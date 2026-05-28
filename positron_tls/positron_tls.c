@@ -3,15 +3,21 @@
  *
  * Contains:
  *   - DllMain (WSAStartup / WSACleanup)
- *   - Custom mbedtls_hardware_poll (entropy from WinCE timers/IDs)
+ *   - Custom mbedtls_hardware_poll
+ *       primary: CryptGenRandom from CryptoAPI
+ *       fallback: timer/ID jitter, accumulated via CTR_DRBG
  *   - Winsock2 BIO callbacks (no gethostbyname dependency in BIO)
  *   - PTls_* exported API
+ *       PTls_Connect           - no cert verification (legacy / diag)
+ *       PTls_ConnectVerified   - full chain + hostname check
+ *       PTls_AddRootCA         - extend trust store at runtime
  *
  * C89 only: no slash-slash comments, no mid-block declarations.
  */
 
 #include <windows.h>
 #include <winsock2.h>
+#include <wincrypt.h>
 #include <stdio.h>      /* _snprintf */
 #include <string.h>     /* memcpy, memset */
 
@@ -21,12 +27,14 @@
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/error.h"
 #include "mbedtls/debug.h"
+#include "mbedtls/x509_crt.h"
 
 #include "positron_tls.h"
+#include "ca_bundle.h"
 
 /* MBEDTLS_NET_C is disabled in our config; net error codes live behind
  * that guard, so re-declare the two we use locally. Values are pinned
- * to mbedTLS 2.28's net_sockets.h. */
+ * to mbedTLS 2.x's net_sockets.h. */
 #ifndef MBEDTLS_ERR_NET_SEND_FAILED
 #define MBEDTLS_ERR_NET_SEND_FAILED   -0x004E
 #endif
@@ -43,6 +51,16 @@ static CRITICAL_SECTION  g_err_lock;
 static BOOL              g_err_lock_inited  = FALSE;
 static char              g_last_error[256];
 static char              g_last_bio_msg[128];
+
+/* CryptoAPI random provider, held for the lifetime of the process so we
+ * don't pay acquire/release on every entropy poll. Zero if acquisition
+ * failed at PTls_Init (we'll fall back to the jitter path). */
+static HCRYPTPROV        g_crypt_prov       = 0;
+
+/* Trust store. Parsed once from ca_bundle.h in PTls_Init; extra roots
+ * may be appended via PTls_AddRootCA. */
+static mbedtls_x509_crt  g_cacert;
+static BOOL              g_cacert_inited    = FALSE;
 
 static const char* PTLS_PERS = "positron_tls_client";
 
@@ -121,13 +139,12 @@ PTLS_API const char* PTls_LastError(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Custom hardware entropy for WinCE.                                      */
-/* Called by mbedTLS when MBEDTLS_ENTROPY_HARDWARE_ALT is set.            */
-/* Quality is low; sufficient for Phase 1. Phase 2 should add CryptoAPI. */
+/* Entropy. Primary path is CryptGenRandom (CryptoAPI). Fallback is a    */
+/* timer/ID jitter mix; mbedTLS CTR_DRBG accumulates it across many calls*/
+/* so the result is still usable, just lower quality.                     */
 /* ---------------------------------------------------------------------- */
 
-int mbedtls_hardware_poll(void* data, unsigned char* output,
-                          size_t len, size_t* olen)
+static int hwpoll_jitter(unsigned char* output, size_t len, size_t* olen)
 {
     LARGE_INTEGER qpc;
     DWORD         tick;
@@ -138,16 +155,12 @@ int mbedtls_hardware_poll(void* data, unsigned char* output,
     BYTE          mix[32];
     size_t        copy;
 
-    (void)data;
-
     QueryPerformanceCounter(&qpc);
     tick = GetTickCount();
     tid  = GetCurrentThreadId();
     pid  = GetCurrentProcessId();
     GetSystemTime(&st);
 
-    /* Build a 32-byte block by hashing-style mixing.                     */
-    /* This is not cryptographic mixing on its own - CTR_DRBG over it is.*/
     memcpy(&mix[0],  &qpc.LowPart,  4);
     memcpy(&mix[4],  &qpc.HighPart, 4);
     memcpy(&mix[8],  &tick,         4);
@@ -160,8 +173,6 @@ int mbedtls_hardware_poll(void* data, unsigned char* output,
     memcpy(&mix[28], &st.wDay,          2);
     memcpy(&mix[30], &st.wMonth,        2);
 
-    /* Fold each call into the buffer; caller (entropy module) will         */
-    /* call us many times so timing jitter accumulates.                    */
     copy = len;
     if (copy > sizeof(mix)) {
         copy = sizeof(mix);
@@ -171,6 +182,21 @@ int mbedtls_hardware_poll(void* data, unsigned char* output,
     }
     *olen = copy;
     return 0;
+}
+
+int mbedtls_hardware_poll(void* data, unsigned char* output,
+                          size_t len, size_t* olen)
+{
+    (void)data;
+
+    if (g_crypt_prov != 0) {
+        if (CryptGenRandom(g_crypt_prov, (DWORD)len, (BYTE*)output)) {
+            *olen = len;
+            return 0;
+        }
+        /* CryptGenRandom failed unexpectedly; fall through to jitter. */
+    }
+    return hwpoll_jitter(output, len, olen);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -274,23 +300,94 @@ PTLS_API BOOL PTls_Init(void)
         ptls_set_error("WSAStartup failed", 0);
         return FALSE;
     }
+
+    /* Best-effort: hold one CryptoAPI provider for entire process. */
+    /* VERIFYCONTEXT: no key container needed, just random / hashes. */
+    /* SILENT:        never prompt for UI on WM6.                    */
+    if (!CryptAcquireContextW(&g_crypt_prov, NULL, NULL,
+                              PROV_RSA_FULL,
+                              CRYPT_VERIFYCONTEXT | CRYPT_SILENT)) {
+        g_crypt_prov = 0;
+        /* Not fatal - hardware_poll falls back to jitter. */
+    }
+
+    /* Parse embedded CA bundle into the global trust store. */
+    mbedtls_x509_crt_init(&g_cacert);
+    g_cacert_inited = TRUE;
+    rc = mbedtls_x509_crt_parse(&g_cacert,
+                                (const unsigned char*)g_ca_bundle_pem,
+                                g_ca_bundle_pem_len);
+    if (rc < 0) {
+        ptls_set_error("ca_bundle parse", rc);
+        mbedtls_x509_crt_free(&g_cacert);
+        g_cacert_inited = FALSE;
+        if (g_crypt_prov != 0) {
+            CryptReleaseContext(g_crypt_prov, 0);
+            g_crypt_prov = 0;
+        }
+        WSACleanup();
+        return FALSE;
+    }
+    /* rc > 0 means: this many certs failed to parse but others succeeded.
+     * That's acceptable - we go with whatever roots loaded.            */
+
     g_initialized = TRUE;
     return TRUE;
 }
 
 PTLS_API void PTls_Cleanup(void)
 {
-    if (g_initialized) {
-        WSACleanup();
-        g_initialized = FALSE;
+    if (!g_initialized) {
+        return;
     }
+    if (g_cacert_inited) {
+        mbedtls_x509_crt_free(&g_cacert);
+        g_cacert_inited = FALSE;
+    }
+    if (g_crypt_prov != 0) {
+        CryptReleaseContext(g_crypt_prov, 0);
+        g_crypt_prov = 0;
+    }
+    WSACleanup();
+    g_initialized = FALSE;
 }
 
 /* ---------------------------------------------------------------------- */
-/* PTls_Connect                                                            */
+/* PTls_AddRootCA                                                          */
 /* ---------------------------------------------------------------------- */
 
-PTLS_API HANDLE PTls_Connect(const char* host, int port)
+PTLS_API BOOL PTls_AddRootCA(const char* pem)
+{
+    int rc;
+    size_t len;
+
+    if (!g_initialized || !g_cacert_inited) {
+        ptls_set_error("PTls_Init not called", 0);
+        return FALSE;
+    }
+    if (pem == NULL || *pem == '\0') {
+        ptls_set_error("AddRootCA: empty PEM", 0);
+        return FALSE;
+    }
+    len = strlen(pem) + 1;   /* mbedTLS PEM parser wants NUL counted. */
+    rc = mbedtls_x509_crt_parse(&g_cacert,
+                                (const unsigned char*)pem,
+                                len);
+    if (rc < 0) {
+        ptls_set_error("AddRootCA parse", rc);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Internal connect helper. Verify-mode controls whether we require a    */
+/* trusted chain + hostname match. On success returns the live conn.     */
+/* On failure returns NULL after writing to g_last_error.                 */
+/* ---------------------------------------------------------------------- */
+
+static PTlsConn* tls_connect_internal(const char* host, int port,
+                                      int verify_mode)
 {
     PTlsConn* c;
     int       rc;
@@ -334,9 +431,12 @@ PTLS_API HANDLE PTls_Connect(const char* host, int port)
         goto fail;
     }
 
-    /* Phase 1: skip cert verification. Phase 2 will load a CA bundle.    */
-    mbedtls_ssl_conf_authmode(&c->conf, MBEDTLS_SSL_VERIFY_NONE);
+    mbedtls_ssl_conf_authmode(&c->conf, verify_mode);
     mbedtls_ssl_conf_rng(&c->conf, mbedtls_ctr_drbg_random, &c->drbg);
+
+    if (verify_mode == MBEDTLS_SSL_VERIFY_REQUIRED) {
+        mbedtls_ssl_conf_ca_chain(&c->conf, &g_cacert, NULL);
+    }
 
     rc = mbedtls_ssl_setup(&c->ssl, &c->conf);
     if (rc != 0) {
@@ -344,6 +444,8 @@ PTLS_API HANDLE PTls_Connect(const char* host, int port)
         goto fail;
     }
 
+    /* SNI + hostname-check input. Always set; mbedTLS only uses it for
+     * hostname check when verify_mode != VERIFY_NONE.                    */
     rc = mbedtls_ssl_set_hostname(&c->ssl, host);
     if (rc != 0) {
         ptls_set_error("ssl_set_hostname", rc);
@@ -361,12 +463,38 @@ PTLS_API HANDLE PTls_Connect(const char* host, int port)
     while ((rc = mbedtls_ssl_handshake(&c->ssl)) != 0) {
         if (rc != MBEDTLS_ERR_SSL_WANT_READ &&
             rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
+            /* If the failure was specifically certificate verification,
+             * render the verify flags into a human-readable message so
+             * callers learn whether it was expiry / hostname / chain. */
+            if (verify_mode == MBEDTLS_SSL_VERIFY_REQUIRED) {
+                uint32_t flags = mbedtls_ssl_get_verify_result(&c->ssl);
+                if (flags != 0 && flags != (uint32_t)-1) {
+                    char info[400];
+                    int  n;
+                    info[0] = '\0';
+                    n = mbedtls_x509_crt_verify_info(info, sizeof(info),
+                                                    "", flags);
+                    if (n > 0) {
+                        /* Strip trailing newline mbedTLS adds. */
+                        if (info[n - 1] == '\n') {
+                            info[n - 1] = '\0';
+                        }
+                    }
+                    EnterCriticalSection(&g_err_lock);
+                    _snprintf(g_last_error, sizeof(g_last_error),
+                              "verify failed (flags=0x%08X): %s",
+                              (unsigned)flags, info);
+                    g_last_error[sizeof(g_last_error) - 1] = '\0';
+                    LeaveCriticalSection(&g_err_lock);
+                    goto fail;
+                }
+            }
             ptls_set_error("ssl_handshake", rc);
             goto fail;
         }
     }
 
-    return (HANDLE)c;
+    return c;
 
 fail:
     if (c->sock != INVALID_SOCKET) {
@@ -378,6 +506,22 @@ fail:
     mbedtls_entropy_free(&c->entropy);
     LocalFree(c);
     return NULL;
+}
+
+/* ---------------------------------------------------------------------- */
+/* PTls_Connect / PTls_ConnectVerified                                     */
+/* ---------------------------------------------------------------------- */
+
+PTLS_API HANDLE PTls_Connect(const char* host, int port)
+{
+    return (HANDLE)tls_connect_internal(host, port,
+                                        MBEDTLS_SSL_VERIFY_NONE);
+}
+
+PTLS_API HANDLE PTls_ConnectVerified(const char* host, int port)
+{
+    return (HANDLE)tls_connect_internal(host, port,
+                                        MBEDTLS_SSL_VERIFY_REQUIRED);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -488,6 +632,14 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
             break;
         case DLL_PROCESS_DETACH:
             if (g_initialized) {
+                if (g_cacert_inited) {
+                    mbedtls_x509_crt_free(&g_cacert);
+                    g_cacert_inited = FALSE;
+                }
+                if (g_crypt_prov != 0) {
+                    CryptReleaseContext(g_crypt_prov, 0);
+                    g_crypt_prov = 0;
+                }
                 WSACleanup();
                 g_initialized = FALSE;
             }

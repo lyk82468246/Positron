@@ -310,6 +310,80 @@ static BOOL test4_post(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 5 - Verified TLS                                                 */
+/* Three sub-tests against badssl.com:                                   */
+/*   A) badssl.com           -> must succeed (valid LE cert)             */
+/*   B) expired.badssl.com   -> must fail, reason mentions expiry        */
+/*   C) self-signed.badssl.com -> must fail, reason mentions trust       */
+/*                                                                       */
+/* Prerequisite: the emulator's wall clock must be set to a current      */
+/* date. WM6 emulator defaults to ~2005-2007; X.509 validity windows    */
+/* will reject everything if you don't fix this first. Set it via:      */
+/*   Start -> Settings -> Clock & Alarms                                 */
+/* -------------------------------------------------------------------- */
+
+static BOOL test5_verified_tls(void)
+{
+    HANDLE conn;
+    char   err_buf[256];
+    char   summary[1024];
+
+    /* --- A) valid host --- */
+    conn = PTls_ConnectVerified("badssl.com", 443);
+    if (conn == NULL) {
+        _snprintf(summary, sizeof(summary) - 1,
+                  "TEST 5A FAIL: badssl.com (valid cert) was REJECTED\n"
+                  "Reason: %s\n\n"
+                  "Common causes:\n"
+                  " - Emulator clock is wrong (Settings -> Clock & Alarms)\n"
+                  " - CA bundle does not include ISRG Root X1\n"
+                  " - Network blocked",
+                  PTls_LastError());
+        summary[sizeof(summary) - 1] = '\0';
+        show_error(L"TEST 5 FAIL", summary);
+        return FALSE;
+    }
+    PTls_Close(conn);
+
+    /* --- B) expired cert: must be rejected --- */
+    conn = PTls_ConnectVerified("expired.badssl.com", 443);
+    if (conn != NULL) {
+        PTls_Close(conn);
+        show_error(L"TEST 5 FAIL",
+                   "expired.badssl.com was ACCEPTED; verification is broken.");
+        return FALSE;
+    }
+    _snprintf(err_buf, sizeof(err_buf) - 1, "%s", PTls_LastError());
+    err_buf[sizeof(err_buf) - 1] = '\0';
+
+    /* --- C) self-signed: must be rejected --- */
+    {
+        char err2[256];
+        conn = PTls_ConnectVerified("self-signed.badssl.com", 443);
+        if (conn != NULL) {
+            PTls_Close(conn);
+            show_error(L"TEST 5 FAIL",
+                       "self-signed.badssl.com was ACCEPTED; "
+                       "verification is broken.");
+            return FALSE;
+        }
+        _snprintf(err2, sizeof(err2) - 1, "%s", PTls_LastError());
+        err2[sizeof(err2) - 1] = '\0';
+
+        _snprintf(summary, sizeof(summary) - 1,
+                  "Verified TLS works end-to-end.\n\n"
+                  "A) badssl.com (valid)\n   ACCEPTED\n\n"
+                  "B) expired.badssl.com\n   REJECTED: %.200s\n\n"
+                  "C) self-signed.badssl.com\n   REJECTED: %.200s",
+                  err_buf, err2);
+        summary[sizeof(summary) - 1] = '\0';
+    }
+
+    show_info(L"TEST 5 OK", summary);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -321,7 +395,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     (void)lpCmdLine;
     (void)nCmdShow;
 
-    OutputDebugStringW(L"test_host (Phase 2): starting\r\n");
+    OutputDebugStringW(L"test_host (Phase 3): starting\r\n");
 
     if (!test1_dll_load()) {
         return 1;
@@ -338,14 +412,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         PHttp_Cleanup();
         return 4;
     }
+    if (!test5_verified_tls()) {
+        PHttp_Cleanup();
+        return 5;
+    }
 
     show_info(L"All tests passed",
-              "Positron Phase 2 verified end-to-end:\n"
-              "  TLS 1.2 client\n"
-              "  HTTPS GET + POST\n"
+              "Positron Phase 3 verified end-to-end:\n"
+              "  TLS 1.2 client w/ chain + hostname verification\n"
+              "  CA bundle (5 roots, ~7 KB)\n"
+              "  CryptGenRandom entropy (jitter fallback)\n"
+              "  HTTPS GET + POST (verified by default)\n"
               "  chunked Transfer-Encoding\n"
               "  cJSON parse + nested object extraction\n"
-              "  UTF-8 -> UTF-16 -> MessageBoxW");
+              "  badssl.com positive + negative tests");
 
     PHttp_Cleanup();
     return 0;

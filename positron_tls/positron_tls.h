@@ -21,16 +21,32 @@ extern "C" {
 #  define PTLS_API __declspec(dllimport)
 #endif
 
-/* Initialize Winsock and global TLS state. Idempotent. */
+/* Initialize Winsock, global TLS state, the embedded CA bundle, and
+ * (best-effort) a CryptoAPI random-number provider. Idempotent. */
 PTLS_API BOOL  PTls_Init(void);
 
-/* Tear down Winsock and global TLS state. */
+/* Tear down everything PTls_Init created. */
 PTLS_API void  PTls_Cleanup(void);
 
-/* Resolve host, open TCP socket, perform TLS 1.2 handshake.
- * Returns opaque handle, or NULL on failure (see PTls_LastError).
- * NOTE: Phase 1 uses MBEDTLS_SSL_VERIFY_NONE - no cert chain check. */
+/* Append a PEM-encoded root certificate to the trust chain used by
+ * PTls_ConnectVerified. Multiple roots can be added; for an enterprise
+ * CA bundle, concatenate them in the PEM string. Returns FALSE on
+ * parse failure (PTls_LastError describes it). NOT thread-safe; call
+ * during process startup before issuing any PTls_ConnectVerified. */
+PTLS_API BOOL  PTls_AddRootCA(const char* pem);
+
+/* Resolve host, open TCP socket, perform TLS 1.2 handshake WITHOUT
+ * certificate verification. Returned handle is fully usable. Reserved
+ * for diagnostic / self-signed scenarios; new code SHOULD prefer
+ * PTls_ConnectVerified. */
 PTLS_API HANDLE PTls_Connect(const char* host, int port);
+
+/* Same as PTls_Connect but verifies the server certificate chain
+ * against the embedded CA bundle (plus any roots added via
+ * PTls_AddRootCA) AND verifies that the server's certificate matches
+ * `host`. On failure returns NULL; PTls_LastError contains a verify
+ * info string. */
+PTLS_API HANDLE PTls_ConnectVerified(const char* host, int port);
 
 /* Returns bytes written, or negative on error. */
 PTLS_API int   PTls_Write(HANDLE hConn, const char* buf, int len);

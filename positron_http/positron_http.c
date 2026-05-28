@@ -19,6 +19,7 @@
 #define INITIAL_BUFCAP   8192
 
 static BOOL g_initialized = FALSE;
+static BOOL g_insecure    = FALSE;   /* default: verify chain + hostname */
 
 /* ------------------------------------------------------------------- */
 /* DllMain                                                              */
@@ -54,6 +55,13 @@ PHTTP_API void PHttp_Cleanup(void)
         PTls_Cleanup();
         g_initialized = FALSE;
     }
+}
+
+PHTTP_API BOOL PHttp_SetInsecure(BOOL insecure)
+{
+    BOOL prev = g_insecure;
+    g_insecure = insecure ? TRUE : FALSE;
+    return prev;
 }
 
 /* ------------------------------------------------------------------- */
@@ -521,7 +529,8 @@ static PHttpResponse* http_request(const char* method, const char* host,
         goto done;
     }
 
-    conn = PTls_Connect(host, port);
+    conn = g_insecure ? PTls_Connect(host, port)
+                      : PTls_ConnectVerified(host, port);
     if (conn == NULL) {
         resp_set_error(resp, PTls_LastError());
         goto done;

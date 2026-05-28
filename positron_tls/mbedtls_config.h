@@ -1,6 +1,6 @@
 /*
  * Positron mbedTLS configuration for Windows CE 5.2 / WM6 Pro (ARMV4I).
- * Target: mbedTLS 2.28.x LTS. TLS 1.2 client only.
+ * Target: mbedTLS 2.16.x LTS. TLS 1.2 client only.
  *
  * Activated via preprocessor define:
  *     MBEDTLS_CONFIG_FILE="mbedtls_config.h"
@@ -19,11 +19,15 @@
 #define MBEDTLS_NO_PLATFORM_ENTROPY
 #define MBEDTLS_ENTROPY_HARDWARE_ALT
 
-/* Disable time. We use MBEDTLS_SSL_VERIFY_NONE in Phase 1, so cert        */
-/* expiry checks are skipped. Avoids any time_t portability surprises.    */
-/* (MBEDTLS_HAVE_TIME deliberately NOT defined.)                           */
+/* Time. Phase 3 requires it for cert validity (notBefore/notAfter).       */
+/* WinCE 5 coredll provides time(); rely on it directly (no _ALT path).    */
+/* If a future device build has a broken time(), we can introduce          */
+/* MBEDTLS_PLATFORM_TIME_ALT and supply a GetSystemTimeAsFileTime-based    */
+/* replacement.                                                             */
+#define MBEDTLS_HAVE_TIME
+#define MBEDTLS_HAVE_TIME_DATE
 
-/* No file system. Certs are compiled in (Phase 2).                        */
+/* No file system. Certs are compiled in via ca_bundle.h.                  */
 /* (MBEDTLS_FS_IO deliberately NOT defined.)                               */
 
 /* No built-in net layer. We supply our own Winsock2 BIO callbacks.        */
@@ -67,15 +71,21 @@
 #define MBEDTLS_ECP_DP_SECP384R1_ENABLED
 #define MBEDTLS_ECP_NIST_OPTIM
 
-/* ---- X.509 (parsing only; verification disabled in Phase 1) ----------- */
+/* ---- X.509 (Phase 3: real chain verification on) ---------------------- */
 #define MBEDTLS_X509_USE_C
 #define MBEDTLS_X509_CRT_PARSE_C
+#define MBEDTLS_X509_CHECK_KEY_USAGE
+#define MBEDTLS_X509_CHECK_EXTENDED_KEY_USAGE
+
+/* PEM input (ca_bundle.h ships PEM-encoded roots).                        */
+#define MBEDTLS_PEM_PARSE_C
+#define MBEDTLS_BASE64_C
 
 /* ---- TLS --------------------------------------------------------------- */
 #define MBEDTLS_SSL_TLS_C
 #define MBEDTLS_SSL_CLI_C
 #define MBEDTLS_SSL_PROTO_TLS1_2
-#define MBEDTLS_SSL_SERVER_NAME_INDICATION   /* SNI required by api.anthropic.com */
+#define MBEDTLS_SSL_SERVER_NAME_INDICATION   /* SNI required by Cloudflare/Google */
 
 /* ---- Key exchanges ----------------------------------------------------- */
 #define MBEDTLS_KEY_EXCHANGE_RSA_ENABLED

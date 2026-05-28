@@ -2,13 +2,13 @@
  * positron_http.h - HTTP/1.1 client for the Positron framework.
  * Built on positron_tls; no WinInet, no SChannel.
  *
- * Phase 2 limitations:
- *   - Always HTTPS (port argument exists for clarity / future plain
- *     HTTP, but only :443 is verified).
- *   - "Connection: close" only; no keep-alive in this phase.
- *   - Response body capped at 1 MB to keep WM6 RAM usage bounded.
- *   - Cert validation inherits positron_tls Phase 1 setting
- *     (VERIFY_NONE; CA bundle is Phase 3+).
+ * Phase 3 status:
+ *   - HTTPS only (port is for clarity / future plain HTTP)
+ *   - "Connection: close"; no keep-alive
+ *   - Response body capped at 1 MB
+ *   - Cert chain + hostname verified by default via the embedded
+ *     CA bundle. Call PHttp_SetInsecure(TRUE) to bypass (intended
+ *     for self-signed peers / diagnostics; not for production).
  */
 
 #ifndef POSITRON_HTTP_H
@@ -38,20 +38,26 @@ typedef struct PHttpResponse {
                                occurred (resp may still be non-NULL) */
 } PHttpResponse;
 
-/* Initialize HTTP module. Internally calls PTls_Init.
- * Returns TRUE on success. Safe to call multiple times. */
+/* Initialize HTTP module. Internally calls PTls_Init. */
 PHTTP_API BOOL PHttp_Init(void);
 
 /* Cleanup. Internally calls PTls_Cleanup. */
 PHTTP_API void PHttp_Cleanup(void);
 
+/* Toggle certificate verification for all subsequent PHttp_Get /
+ * PHttp_Post calls.
+ *   FALSE (default): use PTls_ConnectVerified - chain + hostname check.
+ *   TRUE           : use PTls_Connect       - no cert checks.
+ * Returns the previous setting. */
+PHTTP_API BOOL PHttp_SetInsecure(BOOL insecure);
+
 /*
  * Perform HTTPS GET.
  *
  * host    : "api.example.com"
- * port    : 443 (or 80 in future plain-HTTP scenarios)
+ * port    : 443
  * path    : "/v1/foo?bar=baz" (must start with '/')
- * headers : NULL or a NULL-terminated array of "Key: Value" strings;
+ * headers : NULL or NULL-terminated array of "Key: Value" strings;
  *           must NOT include Host, Content-Length, Connection
  *           (those are added automatically).
  *
