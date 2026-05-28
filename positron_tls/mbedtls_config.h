@@ -20,15 +20,35 @@
 #define MBEDTLS_ENTROPY_HARDWARE_ALT
 
 /* Time. Phase 3 requires it for cert validity (notBefore/notAfter).       */
-/* WinCE 5 coredll does NOT export time() or gmtime_s; provide both        */
-/* manually via the FILETIME / SYSTEMTIME APIs.                            */
-/*   - MBEDTLS_PLATFORM_TIME_ALT       : runtime-register a time function */
-/*   - MBEDTLS_PLATFORM_GMTIME_R_ALT   : compile-time symbol override     */
-/* Both implementations live in positron_tls.c.                            */
+/* WinCE 5 coredll exposes neither time() nor gmtime_s; provide both       */
+/* manually via SYSTEMTIME / FILETIME APIs.                                */
+/*                                                                          */
+/*   - MBEDTLS_PLATFORM_TIME_ALT       : function-pointer mode for         */
+/*                                       mbedtls_time. The pointer is      */
+/*                                       statically initialized to         */
+/*                                       MBEDTLS_PLATFORM_STD_TIME, so we  */
+/*                                       must point STD_TIME at our own    */
+/*                                       function or platform.c will       */
+/*                                       reference libc time() (absent).   */
+/*   - MBEDTLS_PLATFORM_GMTIME_R_ALT   : compile-time symbol override -    */
+/*                                       we provide mbedtls_platform_gmtime_r */
+/*                                                                          */
+/* Implementations live in positron_tls.c. We forward-declare here so       */
+/* platform.c sees the symbol when capturing the function-pointer init.    */
 #define MBEDTLS_HAVE_TIME
 #define MBEDTLS_HAVE_TIME_DATE
 #define MBEDTLS_PLATFORM_TIME_ALT
 #define MBEDTLS_PLATFORM_GMTIME_R_ALT
+
+#include <time.h>   /* for time_t (== mbedtls_time_t in our build) */
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern time_t positron_time(time_t* t);
+#ifdef __cplusplus
+}
+#endif
+#define MBEDTLS_PLATFORM_STD_TIME positron_time
 
 /* No file system. Certs are compiled in via ca_bundle.h.                  */
 /* (MBEDTLS_FS_IO deliberately NOT defined.)                               */

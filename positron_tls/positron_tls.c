@@ -156,16 +156,28 @@ PTLS_API const char* PTls_LastError(void)
 
 #define POSITRON_FILETIME_EPOCH_DELTA  116444736000000000
 
-static mbedtls_time_t positron_time(mbedtls_time_t* t)
+/* External linkage: declared in mbedtls_config.h so platform.c's static
+ * initializer for the mbedtls_time function pointer can capture it. */
+time_t positron_time(time_t* t)
 {
+    SYSTEMTIME     st;
     FILETIME       ft;
     ULARGE_INTEGER ui;
-    mbedtls_time_t result;
+    time_t         result;
 
-    GetSystemTimeAsFileTime(&ft);
+    /* WinCE 5 lacks GetSystemTimeAsFileTime, so do it in two steps. */
+    GetSystemTime(&st);
+    if (!SystemTimeToFileTime(&st, &ft)) {
+        result = 0;
+        if (t != NULL) {
+            *t = result;
+        }
+        return result;
+    }
+
     ui.LowPart  = ft.dwLowDateTime;
     ui.HighPart = ft.dwHighDateTime;
-    result = (mbedtls_time_t)(
+    result = (time_t)(
         (ui.QuadPart - POSITRON_FILETIME_EPOCH_DELTA) / 10000000);
 
     if (t != NULL) {
