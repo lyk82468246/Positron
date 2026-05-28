@@ -69,7 +69,8 @@ static void show_info(const WCHAR* title, const char* body)
     OutputDebugStringW(L": ");
     OutputDebugStringW(wbuf);
     OutputDebugStringW(L"\r\n");
-    MessageBoxW(NULL, wbuf, title, MB_OK | MB_ICONINFORMATION);
+    MessageBoxW(NULL, wbuf, title,
+                MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
 }
 
 static void show_error(const WCHAR* title, const char* body)
@@ -86,7 +87,8 @@ static void show_error(const WCHAR* title, const char* body)
     OutputDebugStringW(L": ");
     OutputDebugStringW(wbuf);
     OutputDebugStringW(L"\r\n");
-    MessageBoxW(NULL, wbuf, title, MB_OK | MB_ICONERROR);
+    MessageBoxW(NULL, wbuf, title,
+                MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND);
 }
 
 /* -------------------------------------------------------------------- */

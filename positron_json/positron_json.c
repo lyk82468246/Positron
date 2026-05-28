@@ -11,8 +11,6 @@
 #include <windows.h>
 
 #include "cjson/cJSON.h"
-
-#define POSITRON_JSON_EXPORTS
 #include "positron_json.h"
 
 /* ------------------------------------------------------------------ */

@@ -155,6 +155,13 @@ scripts\stage.bat Release
 - **chunked 解码器内存占用**：响应体目前硬 cap 在 1 MB，cap 之上直接报错。这对 stdlib 而言够用，将来 Phase 3 流式 API 再放宽。
 - **ipify 偶尔限速**。我们仅做一次请求，正常情况下不会被限。
 - **HTTP cert hostname**：`MBEDTLS_SSL_VERIFY_NONE` 仍然在用。Phase 3 嵌入 CA bundle 之后会强制 hostname + chain 校验。
+- **WMDC 网络共享会静默断**：模拟器跑久了 / host 待机后，WMDC 可能卡住不报错，但 emulator 失去网络。表现是 `PTls_Connect` 出 `-0x004C / BIO: recv WSA=...`。修法：宿主机重启 WMDC（任务栏图标右键 → 退出 → 重新启动 Windows Mobile 设备中心），重新挂上后立刻就好。运行测试前先用 IE Mobile 打开任意 HTTPS 站点验证一下。
+
+---
+
+## 验证状态
+
+2026-05-28 在 WM6 Pro Emulator 上跑通 4 步全套，含 ipify GET 和 httpbin POST 真实网络往返。第三方依赖：mbedTLS 2.16.12、cJSON 1.7.18、WMDC bridge。
 
 ---
 

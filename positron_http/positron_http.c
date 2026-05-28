@@ -13,8 +13,6 @@
 #include <stdlib.h>
 
 #include "positron_tls.h"
-
-#define POSITRON_HTTP_EXPORTS
 #include "positron_http.h"
 
 #define MAX_RESP_BODY    (1 * 1024 * 1024)   /* 1 MB cap */

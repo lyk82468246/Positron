@@ -42,6 +42,7 @@ static BOOL              g_initialized      = FALSE;
 static CRITICAL_SECTION  g_err_lock;
 static BOOL              g_err_lock_inited  = FALSE;
 static char              g_last_error[256];
+static char              g_last_bio_msg[128];
 
 static const char* PTLS_PERS = "positron_tls_client";
 
@@ -87,12 +88,19 @@ static void ptls_set_error(const char* fmt, int code)
     EnterCriticalSection(&g_err_lock);
     if (code != 0) {
         mbedtls_strerror(code, detail, sizeof(detail));
-        _snprintf(g_last_error, sizeof(g_last_error),
-                  "%s: -0x%04X (%s)", fmt, (unsigned)-code, detail);
+        if (g_last_bio_msg[0] != '\0') {
+            _snprintf(g_last_error, sizeof(g_last_error),
+                      "%s: -0x%04X (%s) [BIO: %s]",
+                      fmt, (unsigned)-code, detail, g_last_bio_msg);
+        } else {
+            _snprintf(g_last_error, sizeof(g_last_error),
+                      "%s: -0x%04X (%s)", fmt, (unsigned)-code, detail);
+        }
         g_last_error[sizeof(g_last_error) - 1] = '\0';
     } else {
         ptls_safe_copy(g_last_error, sizeof(g_last_error), fmt);
     }
+    g_last_bio_msg[0] = '\0';
     LeaveCriticalSection(&g_err_lock);
 }
 
@@ -181,6 +189,9 @@ static int ptls_bio_send(void* ctx, const unsigned char* buf, size_t len)
         if (err == WSAEWOULDBLOCK || err == WSAEINTR) {
             return MBEDTLS_ERR_SSL_WANT_WRITE;
         }
+        _snprintf(g_last_bio_msg, sizeof(g_last_bio_msg),
+                  "send WSA=%d", err);
+        g_last_bio_msg[sizeof(g_last_bio_msg) - 1] = '\0';
         return MBEDTLS_ERR_NET_SEND_FAILED;
     }
     return n;
@@ -198,9 +209,14 @@ static int ptls_bio_recv(void* ctx, unsigned char* buf, size_t len)
         if (err == WSAEWOULDBLOCK || err == WSAEINTR) {
             return MBEDTLS_ERR_SSL_WANT_READ;
         }
+        _snprintf(g_last_bio_msg, sizeof(g_last_bio_msg),
+                  "recv WSA=%d", err);
+        g_last_bio_msg[sizeof(g_last_bio_msg) - 1] = '\0';
         return MBEDTLS_ERR_NET_RECV_FAILED;
     }
     if (n == 0) {
+        ptls_safe_copy(g_last_bio_msg, sizeof(g_last_bio_msg),
+                       "recv n=0 (peer closed mid-handshake)");
         return MBEDTLS_ERR_SSL_CONN_EOF;
     }
     return n;
@@ -278,6 +294,8 @@ PTLS_API HANDLE PTls_Connect(const char* host, int port)
 {
     PTlsConn* c;
     int       rc;
+
+    g_last_bio_msg[0] = '\0';
 
     if (!g_initialized) {
         ptls_set_error("PTls_Init not called", 0);
