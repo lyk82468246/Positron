@@ -1,0 +1,47 @@
+# VS2008 build artifacts
+bin/
+obj/
+*.ncb
+*.suo
+*.user
+*.aps
+*.pch
+*.idb
+*.obj
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+*.pdb
+ipch/
+.vs/
+
+# VS2008 platform output dir (if anyone reverts to it)
+Windows Mobile 6 Professional SDK (ARMV4I)/
+
+# BuildLog
+BuildLog.htm
+*.rsp
+
+# mbedTLS source tree — each dev downloads separately (Apache 2.0,
+# don't bloat repo + don't drift from upstream tagged release)
+positron_tls/mbedtls/
+
+# Local staging dir for shared-folder deploy
+WMShare/
+
+# OS noise
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editor noise
+*.swp
+*~
+.vscode/
+*.code-workspace
+
+# Phase 2 will use this — local API key, never commit
+test_host/secret_*.h
+.env
