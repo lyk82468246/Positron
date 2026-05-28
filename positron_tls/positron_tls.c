@@ -20,6 +20,7 @@
 #include <wincrypt.h>
 #include <stdio.h>      /* _snprintf */
 #include <string.h>     /* memcpy, memset */
+#include <time.h>       /* struct tm; mbedtls_time_t typedefs through here */
 
 /* mbedTLS public headers */
 #include "mbedtls/ssl.h"
@@ -28,6 +29,8 @@
 #include "mbedtls/error.h"
 #include "mbedtls/debug.h"
 #include "mbedtls/x509_crt.h"
+#include "mbedtls/platform.h"
+#include "mbedtls/platform_time.h"
 
 #include "positron_tls.h"
 #include "ca_bundle.h"
@@ -136,6 +139,71 @@ static void ptls_set_error_wsa(const char* fmt)
 PTLS_API const char* PTls_LastError(void)
 {
     return g_last_error;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Time shims. WinCE 5 coredll exposes neither time() nor gmtime_s, so   */
+/* we route mbedTLS's clock through GetSystemTimeAsFileTime.              */
+/*                                                                         */
+/*   positron_time           -> registered via mbedtls_platform_set_time  */
+/*                              (MBEDTLS_PLATFORM_TIME_ALT path).         */
+/*   mbedtls_platform_gmtime_r -> compile-time symbol override            */
+/*                              (MBEDTLS_PLATFORM_GMTIME_R_ALT path).     */
+/*                                                                         */
+/* FILETIME counts 100-ns ticks since 1601-01-01 UTC.                     */
+/* Unix epoch = 1970-01-01 UTC. Delta = 116444736000000000 (100-ns).     */
+/* ---------------------------------------------------------------------- */
+
+#define POSITRON_FILETIME_EPOCH_DELTA  116444736000000000
+
+static mbedtls_time_t positron_time(mbedtls_time_t* t)
+{
+    FILETIME       ft;
+    ULARGE_INTEGER ui;
+    mbedtls_time_t result;
+
+    GetSystemTimeAsFileTime(&ft);
+    ui.LowPart  = ft.dwLowDateTime;
+    ui.HighPart = ft.dwHighDateTime;
+    result = (mbedtls_time_t)(
+        (ui.QuadPart - POSITRON_FILETIME_EPOCH_DELTA) / 10000000);
+
+    if (t != NULL) {
+        *t = result;
+    }
+    return result;
+}
+
+struct tm* mbedtls_platform_gmtime_r(const mbedtls_time_t* tt,
+                                     struct tm* tm_buf)
+{
+    FILETIME       ft;
+    SYSTEMTIME     st;
+    ULARGE_INTEGER ui;
+
+    if (tt == NULL || tm_buf == NULL) {
+        return NULL;
+    }
+
+    ui.QuadPart = ((ULONGLONG)(*tt)) * 10000000ULL
+                  + POSITRON_FILETIME_EPOCH_DELTA;
+    ft.dwLowDateTime  = ui.LowPart;
+    ft.dwHighDateTime = ui.HighPart;
+
+    if (!FileTimeToSystemTime(&ft, &st)) {
+        return NULL;
+    }
+
+    tm_buf->tm_sec   = (int)st.wSecond;
+    tm_buf->tm_min   = (int)st.wMinute;
+    tm_buf->tm_hour  = (int)st.wHour;
+    tm_buf->tm_mday  = (int)st.wDay;
+    tm_buf->tm_mon   = (int)st.wMonth - 1;
+    tm_buf->tm_year  = (int)st.wYear  - 1900;
+    tm_buf->tm_wday  = (int)st.wDayOfWeek;
+    tm_buf->tm_yday  = 0;
+    tm_buf->tm_isdst = 0;
+    return tm_buf;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -300,6 +368,10 @@ PTLS_API BOOL PTls_Init(void)
         ptls_set_error("WSAStartup failed", 0);
         return FALSE;
     }
+
+    /* Route mbedTLS clock through positron_time (FILETIME-based). */
+    /* gmtime_r is symbol-replaced at link time, no registration needed. */
+    mbedtls_platform_set_time(positron_time);
 
     /* Best-effort: hold one CryptoAPI provider for entire process. */
     /* VERIFYCONTEXT: no key container needed, just random / hashes. */

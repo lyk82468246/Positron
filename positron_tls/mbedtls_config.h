@@ -20,12 +20,15 @@
 #define MBEDTLS_ENTROPY_HARDWARE_ALT
 
 /* Time. Phase 3 requires it for cert validity (notBefore/notAfter).       */
-/* WinCE 5 coredll provides time(); rely on it directly (no _ALT path).    */
-/* If a future device build has a broken time(), we can introduce          */
-/* MBEDTLS_PLATFORM_TIME_ALT and supply a GetSystemTimeAsFileTime-based    */
-/* replacement.                                                             */
+/* WinCE 5 coredll does NOT export time() or gmtime_s; provide both        */
+/* manually via the FILETIME / SYSTEMTIME APIs.                            */
+/*   - MBEDTLS_PLATFORM_TIME_ALT       : runtime-register a time function */
+/*   - MBEDTLS_PLATFORM_GMTIME_R_ALT   : compile-time symbol override     */
+/* Both implementations live in positron_tls.c.                            */
 #define MBEDTLS_HAVE_TIME
 #define MBEDTLS_HAVE_TIME_DATE
+#define MBEDTLS_PLATFORM_TIME_ALT
+#define MBEDTLS_PLATFORM_GMTIME_R_ALT
 
 /* No file system. Certs are compiled in via ca_bundle.h.                  */
 /* (MBEDTLS_FS_IO deliberately NOT defined.)                               */
