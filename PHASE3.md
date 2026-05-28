@@ -42,9 +42,20 @@
 
 `PTls_AddRootCA` 提供运行时口子：企业内网自签 CA、LocalSend 跨设备自签证书都可以走这里，无需重编。
 
-### 不开 `MBEDTLS_PLATFORM_TIME_ALT`
+### 必须开 `MBEDTLS_PLATFORM_TIME_ALT` + `GMTIME_R_ALT`
 
-WinCE 5 coredll 有 `time()`，标准 `MBEDTLS_HAVE_TIME` 直接管用，不需要额外 100ns-tick → Unix epoch 的转换层。如果将来某台真机的 `time()` 行为异常再回头开 ALT。
+最初赌"WinCE 5 coredll 有 `time()`，直接用"——输了。链接时报：
+- `unresolved external symbol time`（被 `ssl_cli.c` 和 `x509.c` 引用）
+- `unresolved external symbol gmtime_s`（被 `platform_util.c` 引用）
+- `unresolved external symbol GetSystemTimeAsFileTime`（这个是桌面 Win32，WinCE 也没有）
+
+WinCE 5 coredll 缺的不止这些 ANSI 变体，连基础 C 时间函数都不全。最终方案：
+- `MBEDTLS_PLATFORM_TIME_ALT` + `MBEDTLS_PLATFORM_STD_TIME = positron_time`——后者让 mbedTLS 静态初始化函数指针时就捕获我们的函数，避免引用 libc `time`
+- `MBEDTLS_PLATFORM_GMTIME_R_ALT`——符号直接替换 `mbedtls_platform_gmtime_r`
+- `positron_time` 用 `GetSystemTime` + `SystemTimeToFileTime` 算 Unix 秒（不能用 `GetSystemTimeAsFileTime`）
+- `mbedtls_platform_gmtime_r` 反向用 `FileTimeToSystemTime` 填 `struct tm`
+
+教训：WinCE 5 coredll 的缺失 pattern——一旦看见 mbedTLS / 任何依赖 libc 的代码报 unresolved external，**默认假设是 coredll 没那个符号**，写 shim 顶替。
 
 ### `CryptGenRandom` provider 全进程持有
 

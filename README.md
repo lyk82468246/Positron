@@ -12,9 +12,10 @@ Electron-like 轻量级框架，目标设备：**Windows Mobile 6 Professional**
 |---|---|---|
 | **1** | `positron_tls.dll` — TLS 1.2 客户端（mbedTLS 2.16 LTS） | ✅ 完成，emulator 验证 |
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1 over TLS) | ✅ 完成，emulator 验证 |
-| 3+ | CA 证书验证、HTTP keep-alive、HTML/JS 渲染（`positron_core`）等 | 规划中 |
+| **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，emulator 验证 |
+| 4+ | `positron_core.dll`（WebBrowser ActiveX + JS↔Native bridge）、HTTP keep-alive / 重定向 / gzip 等 | 规划中 |
 
-Phase 2 验证：`test_host.exe` 在 WM6 Pro Emulator 上跑 4 步——DLL 加载、JSON 解析、HTTPS GET `api.ipify.org`（拿到真公网 IP）、HTTPS POST `httpbin.org/post`（验证 body 回声）。详见 [PHASE2.md](PHASE2.md)。
+Phase 3 验证：`test_host.exe` 跑 5 步——前 4 步沿用 Phase 2 + 新走 verified 路径（ipify、httpbin），第 5 步 badssl.com 正样本 + expired + self-signed 三连测，全部通过。详见 [PHASE3.md](PHASE3.md)。
 
 ---
 
@@ -42,6 +43,8 @@ Positron/
     positron_tls.h              公开 API
     positron_tls.c              实现（DllMain + Winsock2 BIO + 熵源 + API）
     mbedtls_config.h            裁剪后的 mbedTLS 配置
+    ca_bundle.h                 嵌入的 5 根 PEM（Phase 3 起，脚本生成）
+    gen_ca_bundle.py            从 curl cacert.pem 提取根证书的生成脚本
     positron_tls.vcproj
     mbedtls/                    mbedTLS 2.16.12 源（不入 git，见下）
 
@@ -132,23 +135,26 @@ scripts\stage.bat Release :: 或 Release
 
 ### 预期结果
 
-依次 5 个 MessageBox：
+依次 6 个 MessageBox：
 1. TEST 1 OK — 3 个 DLL 加载
 2. TEST 2 OK — JSON 解析
-3. TEST 3 OK — HTTPS GET ipify，显示公网 IP
-4. TEST 4 OK — HTTPS POST httpbin，body 回声验证
-5. All tests passed
+3. TEST 3 OK — HTTPS GET ipify（verified path），显示公网 IP
+4. TEST 4 OK — HTTPS POST httpbin（verified path），body 回声验证
+5. TEST 5 OK — badssl.com 正/expired/self-signed 三连测
+6. All tests passed
+
+> ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 
 ---
 
 ## 已知限制 / 注意事项
 
-- **证书未校验**：`MBEDTLS_SSL_VERIFY_NONE`。连接易被 MITM。Phase 3 候选第一项。
-- **熵源弱**：QPC + GetTickCount + tid/pid 喂 CTR-DRBG。能用但弱于 `CryptGenRandom`。
+- **熵源**：默认 `CryptGenRandom`（Phase 3 起）；CSP 不可用时自动退回 QPC+GetTickCount+tid/pid jitter，CTR-DRBG 兜底。
 - **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 3xx follow、无 gzip 解码、响应体 cap 1 MB。
 - **同步阻塞**：所有网络调用阻塞，不适合直接在 UI 线程长跑。
 - **WM6 X 按钮 = 最小化不是关闭**。每次启动 test_host 前确认任务管理器没有遗留实例，否则 stage.bat 替换 exe 时会产生 image 不一致。
 - **WMDC 桥会静默断**：host 待机 / 模拟器长跑后偶尔失联，表现是 `PTls_Connect` 拿到 `-0x004C [BIO: recv WSA=...]`。修法：重启 WMDC（任务栏 → 退出 → 重启）。**联网测试前先在 IE Mobile 打开 baidu 验证一遍**。
+- **模拟器时钟**：跑 verified TLS 前必须校准（见上）。证书 notBefore/notAfter 都按 UTC 比对当前时间。
 
 ---
 
