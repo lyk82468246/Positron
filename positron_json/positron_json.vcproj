@@ -18,8 +18,8 @@
 	<Configurations>
 		<Configuration
 			Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
-			OutputDirectory="$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
 			ConfigurationType="2"
 			CharacterSet="1"
 			>
@@ -42,12 +42,14 @@
 				Name="VCCLCompilerTool"
 				ExecutionBucket="7"
 				Optimization="0"
-				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_JSON_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
+				AdditionalIncludeDirectories=".;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_JSON_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				MinimalRebuild="true"
 				RuntimeLibrary="1"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
 				DebugInformationFormat="3"
+				CompileAs="1"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -64,17 +66,17 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
-				OutputFile="$(OutDir)/positron_json.dll"
+				OutputFile="$(OutDir)\positron_json.dll"
 				LinkIncremental="2"
 				DelayLoadDLLs="$(NOINHERIT)"
 				GenerateDebugInformation="true"
-				ProgramDatabaseFile="$(OutDir)/positron_json.pdb"
+				ProgramDatabaseFile="$(OutDir)\positron_json.pdb"
 				SubSystem="0"
 				StackReserveSize="65536"
 				StackCommitSize="4096"
 				RandomizedBaseAddress="1"
 				DataExecutionPrevention="0"
-				ImportLibrary="$(OutDir)/positron_json.lib"
+				ImportLibrary="$(OutDir)\positron_json.lib"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -105,8 +107,8 @@
 		</Configuration>
 		<Configuration
 			Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
-			OutputDirectory="$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
 			ConfigurationType="2"
 			CharacterSet="1"
 			>
@@ -130,11 +132,13 @@
 				ExecutionBucket="7"
 				Optimization="2"
 				FavorSizeOrSpeed="2"
-				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_JSON_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
+				AdditionalIncludeDirectories=".;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_JSON_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
 				DebugInformationFormat="3"
+				CompileAs="1"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -151,11 +155,11 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
-				OutputFile="$(OutDir)/positron_json.dll"
+				OutputFile="$(OutDir)\positron_json.dll"
 				LinkIncremental="1"
 				DelayLoadDLLs="$(NOINHERIT)"
 				GenerateDebugInformation="true"
-				ProgramDatabaseFile="$(OutDir)/positron_json.pdb"
+				ProgramDatabaseFile="$(OutDir)\positron_json.pdb"
 				SubSystem="0"
 				StackReserveSize="65536"
 				StackCommitSize="4096"
@@ -163,7 +167,7 @@
 				EnableCOMDATFolding="2"
 				RandomizedBaseAddress="1"
 				DataExecutionPrevention="0"
-				ImportLibrary="$(OutDir)/positron_json.lib"
+				ImportLibrary="$(OutDir)\positron_json.lib"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -197,19 +201,23 @@
 	</References>
 	<Files>
 		<Filter
-			Name="源文件"
+			Name="Source Files"
 			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
+			<File RelativePath=".\positron_json.c"></File>
+			<File RelativePath=".\cjson\cJSON.c"></File>
 		</Filter>
 		<Filter
-			Name="头文件"
+			Name="Header Files"
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
+			<File RelativePath=".\positron_json.h"></File>
+			<File RelativePath=".\cjson\cJSON.h"></File>
 		</Filter>
 		<Filter
-			Name="资源文件"
+			Name="Resource Files"
 			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav"
 			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}"
 			>

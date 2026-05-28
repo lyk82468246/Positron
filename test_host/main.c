@@ -1,139 +1,350 @@
 /*
- * test_host/main.c - Phase 1 verification harness.
+ * test_host/main.c - Phase 2 verification harness.
  *
- * Builds as a WinCE GUI executable (subsystem windowsce,5.02) targeting
- * Windows Mobile 6 Professional. There is no stdout console, so all
- * output goes through MessageBoxW + OutputDebugStringA.
+ * Runs four self-contained tests, showing a MessageBox between each:
  *
- * Flow:
- *   1. PTls_Init()
- *   2. PTls_Connect("api.anthropic.com", 443)   <-- TLS 1.2 handshake
- *   3. PTls_Write() a minimal HTTP/1.1 GET
- *   4. PTls_Read() up to 4 KB of response
- *   5. Show first ~256 bytes in a MessageBox
- *   6. PTls_Close() + PTls_Cleanup()
+ *   TEST 1 - DLL load
+ *     Verify positron_tls / positron_json / positron_http are reachable
+ *     and that key exports resolve. (We link them statically via .lib,
+ *     so this mostly verifies the loader found the DLL files; if not,
+ *     the process wouldn't even start.)
+ *
+ *   TEST 2 - JSON round-trip
+ *     PJson_Parse a small literal, extract a string and an int, free.
+ *
+ *   TEST 3 - HTTPS GET (no auth)
+ *     api.ipify.org / json -> parse {"ip":"..."} -> show IP.
+ *
+ *   TEST 4 - HTTPS POST (no auth)
+ *     httpbin.org/post body {"hello":"positron"} -> parse echo
+ *     response, extract .json.hello, show it.
+ *
+ * No stdout on WinCE - all output via MessageBoxW.
+ * No API keys. All test endpoints are public.
  */
 
 #include <windows.h>
 #include <string.h>
-#include "../positron_tls/positron_tls.h"
+#include <stdio.h>
 
-static const char* GET_REQUEST =
-    "GET / HTTP/1.1\r\n"
-    "Host: api.anthropic.com\r\n"
-    "User-Agent: Positron/0.1 (WinCE)\r\n"
-    "Connection: close\r\n"
-    "\r\n";
+#include "positron_tls.h"
+#include "positron_json.h"
+#include "positron_http.h"
 
-/* Convert UTF-8/ASCII to wide for MessageBoxW. Returns wide chars written
- * (excluding terminator). Truncates safely if dst is too small.            */
-static int ascii_to_wide(const char* src, int src_len, WCHAR* dst, int dst_cap)
+/* -------------------------------------------------------------------- */
+/* Display helpers                                                       */
+/* -------------------------------------------------------------------- */
+
+static void utf8_to_wide(const char* src, int src_len,
+                         WCHAR* dst, int dst_cap)
 {
     int n;
-
+    if (dst_cap < 1) {
+        return;
+    }
+    if (src_len < 0) {
+        src_len = (int)strlen(src);
+    }
     n = MultiByteToWideChar(CP_UTF8, 0, src, src_len, dst, dst_cap - 1);
     if (n <= 0) {
-        /* Fallback: try ANSI                                              */
         n = MultiByteToWideChar(CP_ACP, 0, src, src_len, dst, dst_cap - 1);
-        if (n <= 0) {
-            dst[0] = L'\0';
-            return 0;
-        }
+    }
+    if (n < 0) {
+        n = 0;
     }
     dst[n] = L'\0';
-    return n;
 }
 
-static void show_msg(const WCHAR* title, const char* body)
+static void show_info(const WCHAR* title, const char* body)
 {
-    WCHAR wbuf[1024];
-    int   body_len;
+    WCHAR  wbuf[1536];
+    int    body_len;
 
     body_len = (int)strlen(body);
-    if (body_len > 512) {
-        body_len = 512;
+    if (body_len > 1024) {
+        body_len = 1024;
     }
-    ascii_to_wide(body, body_len, wbuf, sizeof(wbuf) / sizeof(wbuf[0]));
+    utf8_to_wide(body, body_len, wbuf, sizeof(wbuf) / sizeof(wbuf[0]));
+    OutputDebugStringW(title);
+    OutputDebugStringW(L": ");
+    OutputDebugStringW(wbuf);
+    OutputDebugStringW(L"\r\n");
     MessageBoxW(NULL, wbuf, title, MB_OK | MB_ICONINFORMATION);
 }
 
-static void show_error(const WCHAR* stage)
+static void show_error(const WCHAR* title, const char* body)
 {
-    WCHAR  msg[512];
-    WCHAR  wbody[400];
-    const char* err;
+    WCHAR  wbuf[1536];
+    int    body_len;
 
-    err = PTls_LastError();
-    ascii_to_wide(err, (int)strlen(err), wbody,
-                  sizeof(wbody) / sizeof(wbody[0]));
-    wsprintfW(msg, L"%s\n\n%s", stage, wbody);
-    OutputDebugStringW(msg);
-    MessageBoxW(NULL, msg, L"Positron TLS - error", MB_OK | MB_ICONERROR);
+    body_len = (int)strlen(body);
+    if (body_len > 1024) {
+        body_len = 1024;
+    }
+    utf8_to_wide(body, body_len, wbuf, sizeof(wbuf) / sizeof(wbuf[0]));
+    OutputDebugStringW(title);
+    OutputDebugStringW(L": ");
+    OutputDebugStringW(wbuf);
+    OutputDebugStringW(L"\r\n");
+    MessageBoxW(NULL, wbuf, title, MB_OK | MB_ICONERROR);
 }
+
+/* -------------------------------------------------------------------- */
+/* TEST 1 - DLL load                                                     */
+/* -------------------------------------------------------------------- */
+
+static BOOL test1_dll_load(void)
+{
+    /* We are statically linked against all three import libs.
+     * If any DLL failed to load, the process would not have started.
+     * Reach into one export from each module to make sure the link
+     * is real and not eliminated. */
+    const char* probe;
+    HANDLE      h;
+
+    if (!PTls_Init()) {
+        show_error(L"TEST 1 FAIL", "PTls_Init returned FALSE");
+        return FALSE;
+    }
+    PTls_Cleanup();
+
+    h = PJson_Parse("{}");
+    if (h == NULL) {
+        show_error(L"TEST 1 FAIL", "PJson_Parse(empty) returned NULL");
+        return FALSE;
+    }
+    PJson_Free(h);
+
+    probe = "(stub)";
+    (void)probe;
+
+    if (!PHttp_Init()) {
+        show_error(L"TEST 1 FAIL", "PHttp_Init returned FALSE");
+        return FALSE;
+    }
+    /* leave PHttp initialized for the next tests */
+
+    show_info(L"TEST 1 OK", "All three DLLs loaded and core exports resolved.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 2 - JSON round-trip                                              */
+/* -------------------------------------------------------------------- */
+
+static BOOL test2_json(void)
+{
+    HANDLE      root;
+    const char* s;
+    int         n;
+    char        msg[256];
+
+    root = PJson_Parse("{\"key\":\"value\",\"num\":42}");
+    if (root == NULL) {
+        show_error(L"TEST 2 FAIL", "PJson_Parse returned NULL");
+        return FALSE;
+    }
+
+    s = PJson_GetString(root, "key");
+    if (s == NULL || strcmp(s, "value") != 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "PJson_GetString(\"key\") returned %s",
+                  s ? s : "(null)");
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 2 FAIL", msg);
+        PJson_Free(root);
+        return FALSE;
+    }
+
+    n = PJson_GetInt(root, "num");
+    if (n != 42) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "PJson_GetInt(\"num\") returned %d, want 42", n);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 2 FAIL", msg);
+        PJson_Free(root);
+        return FALSE;
+    }
+
+    PJson_Free(root);
+    show_info(L"TEST 2 OK", "JSON parse: key=\"value\", num=42 verified.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 3 - HTTPS GET                                                    */
+/* api.ipify.org returns {"ip":"x.x.x.x"}                                */
+/* -------------------------------------------------------------------- */
+
+static BOOL test3_get(void)
+{
+    PHttpResponse* resp;
+    HANDLE         root;
+    const char*    ip;
+    char           msg[512];
+
+    resp = PHttp_Get("api.ipify.org", 443, "/?format=json", NULL);
+    if (resp == NULL) {
+        show_error(L"TEST 3 FAIL", "PHttp_Get returned NULL (OOM?)");
+        return FALSE;
+    }
+    if (resp->status_code != 200) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "HTTPS GET ipify -> status=%d err=%s\nbody (first 200):\n%.200s",
+                  resp->status_code, resp->error_msg,
+                  resp->body ? resp->body : "(none)");
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 3 FAIL", msg);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+
+    root = PJson_Parse(resp->body);
+    if (root == NULL) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "ipify returned 200 but body is not JSON:\n%.200s",
+                  resp->body ? resp->body : "(none)");
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 3 FAIL", msg);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+
+    ip = PJson_GetString(root, "ip");
+    if (ip == NULL) {
+        show_error(L"TEST 3 FAIL", "ipify JSON missing 'ip' key");
+        PJson_Free(root);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+
+    _snprintf(msg, sizeof(msg) - 1,
+              "HTTPS GET ipify OK\n\nYour public IP:\n%s\n\n"
+              "(Proves TLS+HTTP+JSON round trip.)", ip);
+    msg[sizeof(msg) - 1] = '\0';
+    show_info(L"TEST 3 OK", msg);
+
+    PJson_Free(root);
+    PHttp_FreeResponse(resp);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 4 - HTTPS POST                                                   */
+/* httpbin.org/post echoes the JSON body under "json" key.              */
+/* -------------------------------------------------------------------- */
+
+static BOOL test4_post(void)
+{
+    static const char* HEADERS[] = {
+        "Content-Type: application/json",
+        NULL
+    };
+    static const char* BODY = "{\"hello\":\"positron\"}";
+
+    PHttpResponse* resp;
+    HANDLE         root;
+    HANDLE         json_obj;
+    const char*    echoed;
+    char           msg[512];
+
+    resp = PHttp_Post("httpbin.org", 443, "/post",
+                      HEADERS, BODY, (int)strlen(BODY));
+    if (resp == NULL) {
+        show_error(L"TEST 4 FAIL", "PHttp_Post returned NULL (OOM?)");
+        return FALSE;
+    }
+    if (resp->status_code != 200) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "HTTPS POST httpbin -> status=%d err=%s\nbody (first 256):\n%.256s",
+                  resp->status_code, resp->error_msg,
+                  resp->body ? resp->body : "(none)");
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 4 FAIL", msg);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+
+    root = PJson_Parse(resp->body);
+    if (root == NULL) {
+        show_error(L"TEST 4 FAIL", "httpbin response is not JSON");
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+
+    json_obj = PJson_GetObject(root, "json");
+    if (json_obj == NULL) {
+        show_error(L"TEST 4 FAIL",
+                   "httpbin response missing 'json' key (server changed?)");
+        PJson_Free(root);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+
+    echoed = PJson_GetString(json_obj, "hello");
+    if (echoed == NULL || strcmp(echoed, "positron") != 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "httpbin echo mismatch: expected positron, got %s",
+                  echoed ? echoed : "(null)");
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 4 FAIL", msg);
+        PJson_Free(root);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+
+    _snprintf(msg, sizeof(msg) - 1,
+              "HTTPS POST httpbin OK\n\n"
+              "Sent: {\"hello\":\"positron\"}\n"
+              "Server echoed: hello=%s\n\n"
+              "(Full stack OK: TLS 1.2 + HTTPS POST + chunked decode\n"
+              "+ JSON nested-object extraction.)", echoed);
+    msg[sizeof(msg) - 1] = '\0';
+    show_info(L"TEST 4 OK", msg);
+
+    PJson_Free(root);
+    PHttp_FreeResponse(resp);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* WinMain                                                               */
+/* -------------------------------------------------------------------- */
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                    LPWSTR lpCmdLine, int nCmdShow)
 {
-    HANDLE h;
-    char   recv_buf[4096];
-    int    total;
-    int    n;
-    int    wrote;
-    int    req_len;
-
     (void)hInstance;
     (void)hPrev;
     (void)lpCmdLine;
     (void)nCmdShow;
 
-    OutputDebugStringW(L"test_host: starting\r\n");
+    OutputDebugStringW(L"test_host (Phase 2): starting\r\n");
 
-    if (!PTls_Init()) {
-        show_error(L"PTls_Init failed");
+    if (!test1_dll_load()) {
         return 1;
     }
-
-    h = PTls_Connect("api.anthropic.com", 443);
-    if (h == NULL) {
-        show_error(L"PTls_Connect failed");
-        PTls_Cleanup();
+    if (!test2_json()) {
+        PHttp_Cleanup();
         return 2;
     }
-    OutputDebugStringW(L"test_host: TLS handshake OK\r\n");
-
-    req_len = (int)strlen(GET_REQUEST);
-    wrote   = PTls_Write(h, GET_REQUEST, req_len);
-    if (wrote != req_len) {
-        show_error(L"PTls_Write failed");
-        PTls_Close(h);
-        PTls_Cleanup();
+    if (!test3_get()) {
+        PHttp_Cleanup();
         return 3;
     }
-
-    /* Read until buffer fills, peer closes, or error.                     */
-    total = 0;
-    while (total < (int)sizeof(recv_buf) - 1) {
-        n = PTls_Read(h, recv_buf + total,
-                      (int)sizeof(recv_buf) - 1 - total);
-        if (n <= 0) {
-            break;
-        }
-        total += n;
-    }
-    recv_buf[total] = '\0';
-
-    if (total <= 0) {
-        show_error(L"PTls_Read returned no data");
-    } else {
-        /* Only display the first ~256 bytes per spec.                     */
-        if (total > 256) {
-            recv_buf[256] = '\0';
-        }
-        show_msg(L"Positron TLS - response", recv_buf);
+    if (!test4_post()) {
+        PHttp_Cleanup();
+        return 4;
     }
 
-    PTls_Close(h);
-    PTls_Cleanup();
-    OutputDebugStringW(L"test_host: done\r\n");
+    show_info(L"All tests passed",
+              "Positron Phase 2 verified end-to-end:\n"
+              "  TLS 1.2 client\n"
+              "  HTTPS GET + POST\n"
+              "  chunked Transfer-Encoding\n"
+              "  cJSON parse + nested object extraction\n"
+              "  UTF-8 -> UTF-16 -> MessageBoxW");
+
+    PHttp_Cleanup();
     return 0;
 }

@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="test_host"
-	ProjectGUID="{9DF1016C-F4CF-44D1-B972-B98FF30D4DEB}"
-	RootNamespace="test_host"
+	Name="positron_http"
+	ProjectGUID="{77004AAA-DEF0-47A1-8C84-BAA7CEABFAE5}"
+	RootNamespace="positron_http"
 	Keyword="Win32Proj"
 	TargetFrameworkVersion="196613"
 	>
@@ -20,7 +20,7 @@
 			Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
 			OutputDirectory="bin\$(ConfigurationName)"
 			IntermediateDirectory="bin\$(ConfigurationName)"
-			ConfigurationType="1"
+			ConfigurationType="2"
 			CharacterSet="1"
 			>
 			<Tool
@@ -42,13 +42,14 @@
 				Name="VCCLCompilerTool"
 				ExecutionBucket="7"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\positron_tls;..\positron_json;..\positron_http"
-				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
+				AdditionalIncludeDirectories=".;..\positron_tls;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_HTTP_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				MinimalRebuild="true"
 				RuntimeLibrary="1"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
 				DebugInformationFormat="3"
+				CompileAs="1"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -64,19 +65,20 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib"
-				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_tls.lib ws2.lib"
+				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
-				OutputFile="$(OutDir)\test_host.exe"
+				OutputFile="$(OutDir)\positron_http.dll"
 				LinkIncremental="2"
 				DelayLoadDLLs="$(NOINHERIT)"
 				GenerateDebugInformation="true"
-				ProgramDatabaseFile="$(OutDir)/test_host.pdb"
+				ProgramDatabaseFile="$(OutDir)\positron_http.pdb"
 				SubSystem="0"
 				StackReserveSize="65536"
 				StackCommitSize="4096"
 				RandomizedBaseAddress="1"
 				DataExecutionPrevention="0"
+				ImportLibrary="$(OutDir)\positron_http.lib"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -98,9 +100,9 @@
 			/>
 			<DeploymentTool
 				ForceDirty="-1"
-				RemoteDirectory="\Program Files\test_host"
+				RemoteDirectory=""
 				RegisterOutput="0"
-				AdditionalFiles="positron_tls.dll|..\positron_tls\bin\$(ConfigurationName)|\Program Files\test_host|0;positron_json.dll|..\positron_json\bin\$(ConfigurationName)|\Program Files\test_host|0;positron_http.dll|..\positron_http\bin\$(ConfigurationName)|\Program Files\test_host|0"
+				AdditionalFiles=""
 			/>
 			<DebuggerTool
 			/>
@@ -109,7 +111,7 @@
 			Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
 			OutputDirectory="bin\$(ConfigurationName)"
 			IntermediateDirectory="bin\$(ConfigurationName)"
-			ConfigurationType="1"
+			ConfigurationType="2"
 			CharacterSet="1"
 			>
 			<Tool
@@ -132,12 +134,13 @@
 				ExecutionBucket="7"
 				Optimization="2"
 				FavorSizeOrSpeed="2"
-				AdditionalIncludeDirectories="..\positron_tls;..\positron_json;..\positron_http"
-				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
+				AdditionalIncludeDirectories=".;..\positron_tls;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_HTTP_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
 				DebugInformationFormat="3"
+				CompileAs="1"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -153,14 +156,14 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib"
-				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_tls.lib ws2.lib"
+				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
-				OutputFile="$(OutDir)\test_host.exe"
+				OutputFile="$(OutDir)\positron_http.dll"
 				LinkIncremental="1"
 				DelayLoadDLLs="$(NOINHERIT)"
 				GenerateDebugInformation="true"
-				ProgramDatabaseFile="$(OutDir)/test_host.pdb"
+				ProgramDatabaseFile="$(OutDir)\positron_http.pdb"
 				SubSystem="0"
 				StackReserveSize="65536"
 				StackCommitSize="4096"
@@ -168,6 +171,7 @@
 				EnableCOMDATFolding="2"
 				RandomizedBaseAddress="1"
 				DataExecutionPrevention="0"
+				ImportLibrary="$(OutDir)\positron_http.lib"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -189,9 +193,9 @@
 			/>
 			<DeploymentTool
 				ForceDirty="-1"
-				RemoteDirectory="\Program Files\test_host"
+				RemoteDirectory=""
 				RegisterOutput="0"
-				AdditionalFiles="positron_tls.dll|..\positron_tls\bin\$(ConfigurationName)|\Program Files\test_host|0;positron_json.dll|..\positron_json\bin\$(ConfigurationName)|\Program Files\test_host|0;positron_http.dll|..\positron_http\bin\$(ConfigurationName)|\Program Files\test_host|0"
+				AdditionalFiles=""
 			/>
 			<DebuggerTool
 			/>
@@ -205,13 +209,14 @@
 			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
-			<File RelativePath=".\main.c"></File>
+			<File RelativePath=".\positron_http.c"></File>
 		</Filter>
 		<Filter
 			Name="Header Files"
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
+			<File RelativePath=".\positron_http.h"></File>
 		</Filter>
 		<Filter
 			Name="Resource Files"
