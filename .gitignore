@@ -31,6 +31,10 @@ positron_tls/mbedtls/
 # Local staging dir for shared-folder deploy
 WMShare/
 
+# Phase 4 throwaway spike (mingw32ce experiment + cygwin crash dumps)
+spike_phase4/
+*.stackdump
+
 # OS noise
 Thumbs.db
 desktop.ini

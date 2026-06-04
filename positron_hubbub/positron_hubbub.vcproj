@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="9.00"
+	Name="positron_hubbub"
+	ProjectGUID="{B6165D10-D95C-451B-94A2-281D1971097C}"
+	RootNamespace="positron_hubbub"
+	Keyword="Win32Proj"
+	TargetFrameworkVersion="196613"
+	>
+	<Platforms>
+		<Platform
+			Name="Windows Mobile 6 Professional SDK (ARMV4I)"
+		/>
+	</Platforms>
+	<ToolFiles>
+	</ToolFiles>
+	<Configurations>
+		<Configuration
+			Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4"
+			CharacterSet="1"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				ExecutionBucket="7"
+				Optimization="0"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libhubbub\include;..\netsurf-all-3.11\libhubbub\src;..\netsurf-all-3.11\libparserutils\include;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
+				ForcedIncludeFiles="positron_crt.h"
+				MinimalRebuild="true"
+				RuntimeLibrary="1"
+				UsePrecompiledHeader="0"
+				WarningLevel="3"
+				DebugInformationFormat="3"
+				CompileAs="1"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLibrarianTool"
+				OutputFile="$(OutDir)\positron_hubbub.lib"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCCodeSignTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+			<DeploymentTool
+				ForceDirty="-1"
+				RemoteDirectory=""
+				RegisterOutput="0"
+			/>
+			<DebuggerTool
+			/>
+		</Configuration>
+		<Configuration
+			Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4"
+			CharacterSet="1"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				ExecutionBucket="7"
+				Optimization="2"
+				FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libhubbub\include;..\netsurf-all-3.11\libhubbub\src;..\netsurf-all-3.11\libparserutils\include;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
+				ForcedIncludeFiles="positron_crt.h"
+				RuntimeLibrary="0"
+				UsePrecompiledHeader="0"
+				WarningLevel="3"
+				DebugInformationFormat="3"
+				CompileAs="1"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLibrarianTool"
+				OutputFile="$(OutDir)\positron_hubbub.lib"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCCodeSignTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+			<DeploymentTool
+				ForceDirty="-1"
+				RemoteDirectory=""
+				RegisterOutput="0"
+			/>
+			<DebuggerTool
+			/>
+		</Configuration>
+	</Configurations>
+	<References>
+	</References>
+	<Files>
+		<Filter
+			Name="charset"
+			Filter=""
+			UniqueIdentifier="{B0000001-0000-0000-0000-000000000000}"
+			>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\charset\detect.c"></File>
+		</Filter>
+		<Filter
+			Name="tokeniser"
+			Filter=""
+			UniqueIdentifier="{B0000002-0000-0000-0000-000000000000}"
+			>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\tokeniser\entities.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\tokeniser\tokeniser.c"></File>
+		</Filter>
+		<Filter
+			Name="treebuilder"
+			Filter=""
+			UniqueIdentifier="{B0000003-0000-0000-0000-000000000000}"
+			>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\after_after_body.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\after_after_frameset.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\after_body.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\after_frameset.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\after_head.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\before_head.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\before_html.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\element-type.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\generic_rcdata.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_body.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_caption.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_cell.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_column_group.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_foreign_content.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_frameset.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\initial.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_head.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_head_noscript.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_row.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_select.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_select_in_table.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_table.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\in_table_body.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\treebuilder\treebuilder.c"></File>
+		</Filter>
+		<Filter
+			Name="utils"
+			Filter=""
+			UniqueIdentifier="{B0000004-0000-0000-0000-000000000000}"
+			>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\utils\errors.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\utils\string.c"></File>
+		</Filter>
+		<Filter
+			Name="src"
+			Filter=""
+			UniqueIdentifier="{B0000005-0000-0000-0000-000000000000}"
+			>
+			<File RelativePath="..\netsurf-all-3.11\libhubbub\src\parser.c"></File>
+		</Filter>
+	</Files>
+	<Globals>
+	</Globals>
+</VisualStudioProject>

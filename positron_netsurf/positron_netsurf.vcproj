@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="9.00"
+	Name="positron_netsurf"
+	ProjectGUID="{3FA8C028-AE47-416C-9750-C91FDD8FCD26}"
+	RootNamespace="positron_netsurf"
+	Keyword="Win32Proj"
+	TargetFrameworkVersion="196613"
+	>
+	<Platforms>
+		<Platform
+			Name="Windows Mobile 6 Professional SDK (ARMV4I)"
+		/>
+	</Platforms>
+	<ToolFiles>
+	</ToolFiles>
+	<Configurations>
+		<Configuration
+			Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4"
+			CharacterSet="1"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				ExecutionBucket="7"
+				Optimization="0"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\netsurf-all-3.11\libparserutils\src;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;WITHOUT_ICONV_FILTER;inline=__inline;restrict="
+				ForcedIncludeFiles="positron_crt.h"
+				MinimalRebuild="true"
+				RuntimeLibrary="1"
+				UsePrecompiledHeader="0"
+				WarningLevel="3"
+				DebugInformationFormat="3"
+				CompileAs="1"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLibrarianTool"
+				OutputFile="$(OutDir)\positron_netsurf.lib"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCCodeSignTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+			<DeploymentTool
+				ForceDirty="-1"
+				RemoteDirectory=""
+				RegisterOutput="0"
+			/>
+			<DebuggerTool
+			/>
+		</Configuration>
+		<Configuration
+			Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4"
+			CharacterSet="1"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				ExecutionBucket="7"
+				Optimization="2"
+				FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\netsurf-all-3.11\libparserutils\src;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;WITHOUT_ICONV_FILTER;inline=__inline;restrict="
+				ForcedIncludeFiles="positron_crt.h"
+				RuntimeLibrary="0"
+				UsePrecompiledHeader="0"
+				WarningLevel="3"
+				DebugInformationFormat="3"
+				CompileAs="1"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLibrarianTool"
+				OutputFile="$(OutDir)\positron_netsurf.lib"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCCodeSignTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+			<DeploymentTool
+				ForceDirty="-1"
+				RemoteDirectory=""
+				RegisterOutput="0"
+			/>
+			<DebuggerTool
+			/>
+		</Configuration>
+	</Configurations>
+	<References>
+	</References>
+	<Files>
+		<Filter
+			Name="compat"
+			Filter=""
+			UniqueIdentifier="{A0000000-0000-0000-0000-000000000000}"
+			>
+			<File RelativePath="..\compat\positron_crt.c"></File>
+			<File RelativePath="..\compat\positron_crt.h"></File>
+		</Filter>
+		<Filter
+			Name="libwapcaplet"
+			Filter=""
+			UniqueIdentifier="{A1111111-1111-1111-1111-111111111111}"
+			>
+			<File RelativePath="..\netsurf-all-3.11\libwapcaplet\src\libwapcaplet.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libwapcaplet\include\libwapcaplet\libwapcaplet.h"></File>
+		</Filter>
+		<Filter
+			Name="libparserutils"
+			Filter=""
+			UniqueIdentifier="{A2222222-2222-2222-2222-222222222222}"
+			>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\charset\aliases.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\charset\codec.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\charset\codecs\codec_8859.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\charset\codecs\codec_ascii.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\charset\codecs\codec_ext8.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\charset\codecs\codec_utf16.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\charset\codecs\codec_utf8.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\charset\encodings\utf16.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\charset\encodings\utf8.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\input\filter.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\input\inputstream.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\utils\buffer.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\utils\errors.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\utils\stack.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\libparserutils\src\utils\vector.c"></File>
+		</Filter>
+	</Files>
+	<Globals>
+	</Globals>
+</VisualStudioProject>

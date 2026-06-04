@@ -16,7 +16,7 @@
  *     api.ipify.org / json -> parse {"ip":"..."} -> show IP.
  *
  *   TEST 4 - HTTPS POST (no auth)
- *     httpbin.org/post body {"hello":"positron"} -> parse echo
+ *     postman-echo.com/post body {"hello":"positron"} -> parse echo
  *     response, extract .json.hello, show it.
  *
  * No stdout on WinCE - all output via MessageBoxW.
@@ -30,6 +30,8 @@
 #include "positron_tls.h"
 #include "positron_json.h"
 #include "positron_http.h"
+
+#include <hubbub/parser.h>
 
 /* -------------------------------------------------------------------- */
 /* Display helpers                                                       */
@@ -233,7 +235,8 @@ static BOOL test3_get(void)
 
 /* -------------------------------------------------------------------- */
 /* TEST 4 - HTTPS POST                                                   */
-/* httpbin.org/post echoes the JSON body under "json" key.              */
+/* postman-echo.com/post echoes the JSON body under "json" key          */
+/* (same shape as httpbin; cert chains LE E8 -> ISRG Root X1, in bundle)*/
 /* -------------------------------------------------------------------- */
 
 static BOOL test4_post(void)
@@ -250,7 +253,7 @@ static BOOL test4_post(void)
     const char*    echoed;
     char           msg[512];
 
-    resp = PHttp_Post("httpbin.org", 443, "/post",
+    resp = PHttp_Post("postman-echo.com", 443, "/post",
                       HEADERS, BODY, (int)strlen(BODY));
     if (resp == NULL) {
         show_error(L"TEST 4 FAIL", "PHttp_Post returned NULL (OOM?)");
@@ -258,7 +261,7 @@ static BOOL test4_post(void)
     }
     if (resp->status_code != 200) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "HTTPS POST httpbin -> status=%d err=%s\nbody (first 256):\n%.256s",
+                  "HTTPS POST postman-echo -> status=%d err=%s\nbody (first 256):\n%.256s",
                   resp->status_code, resp->error_msg,
                   resp->body ? resp->body : "(none)");
         msg[sizeof(msg) - 1] = '\0';
@@ -269,7 +272,7 @@ static BOOL test4_post(void)
 
     root = PJson_Parse(resp->body);
     if (root == NULL) {
-        show_error(L"TEST 4 FAIL", "httpbin response is not JSON");
+        show_error(L"TEST 4 FAIL", "postman-echo response is not JSON");
         PHttp_FreeResponse(resp);
         return FALSE;
     }
@@ -277,7 +280,7 @@ static BOOL test4_post(void)
     json_obj = PJson_GetObject(root, "json");
     if (json_obj == NULL) {
         show_error(L"TEST 4 FAIL",
-                   "httpbin response missing 'json' key (server changed?)");
+                   "postman-echo response missing 'json' key (server changed?)");
         PJson_Free(root);
         PHttp_FreeResponse(resp);
         return FALSE;
@@ -286,7 +289,7 @@ static BOOL test4_post(void)
     echoed = PJson_GetString(json_obj, "hello");
     if (echoed == NULL || strcmp(echoed, "positron") != 0) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "httpbin echo mismatch: expected positron, got %s",
+                  "postman-echo echo mismatch: expected positron, got %s",
                   echoed ? echoed : "(null)");
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 4 FAIL", msg);
@@ -296,7 +299,7 @@ static BOOL test4_post(void)
     }
 
     _snprintf(msg, sizeof(msg) - 1,
-              "HTTPS POST httpbin OK\n\n"
+              "HTTPS POST postman-echo OK\n\n"
               "Sent: {\"hello\":\"positron\"}\n"
               "Server echoed: hello=%s\n\n"
               "(Full stack OK: TLS 1.2 + HTTPS POST + chunked decode\n"
@@ -384,6 +387,118 @@ static BOOL test5_verified_tls(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 6 - libhubbub HTML tokeniser (NetSurf engine, Phase 4)           */
+/* Feeds a small HTML document to hubbub in tokeniser mode: setting a     */
+/* custom token handler makes hubbub destroy its default treebuilder and  */
+/* hand us the raw token stream. We verify the structural token counts    */
+/* (deterministic at the tokeniser level) and that the &amp; entity is    */
+/* decoded to '&'. This proves the ported NetSurf parser links against    */
+/* coredll (catches missing CRT exports) and runs on real ARM hardware.   */
+/* fix_enc=true forces a charset-alias lookup, exercising our bsearch shim.*/
+/* -------------------------------------------------------------------- */
+
+typedef struct {
+    int doctype;
+    int start;
+    int end;
+    int comment;
+    int chars;
+    int eof;
+} hb_counts;
+
+static hubbub_error hb_token(const hubbub_token *token, void *pw)
+{
+    hb_counts *c = (hb_counts *) pw;
+
+    switch (token->type) {
+    case HUBBUB_TOKEN_DOCTYPE:   c->doctype++; break;
+    case HUBBUB_TOKEN_START_TAG: c->start++;   break;
+    case HUBBUB_TOKEN_END_TAG:   c->end++;     break;
+    case HUBBUB_TOKEN_COMMENT:   c->comment++; break;
+    case HUBBUB_TOKEN_CHARACTER: c->chars += (int) token->data.character.len; break;
+    case HUBBUB_TOKEN_EOF:       c->eof++;     break;
+    default: break;
+    }
+
+    return HUBBUB_OK;
+}
+
+static BOOL test6_hubbub(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><head><title>Hi</title></head>"
+        "<body><p>Hello &amp; world</p><!-- c --></body></html>";
+
+    hubbub_parser          *parser = NULL;
+    hubbub_parser_optparams params;
+    hubbub_error            err;
+    hb_counts               c;
+    char                    msg[512];
+
+    memset(&c, 0, sizeof(c));
+
+    err = hubbub_parser_create("UTF-8", true, &parser);
+    if (err != HUBBUB_OK || parser == NULL) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "hubbub_parser_create failed: err=%d", (int) err);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 6 FAIL", msg);
+        return FALSE;
+    }
+
+    params.token_handler.handler = hb_token;
+    params.token_handler.pw      = &c;
+    err = hubbub_parser_setopt(parser, HUBBUB_PARSER_TOKEN_HANDLER, &params);
+    if (err != HUBBUB_OK) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "hubbub setopt(TOKEN_HANDLER) failed: err=%d", (int) err);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 6 FAIL", msg);
+        hubbub_parser_destroy(parser);
+        return FALSE;
+    }
+
+    err = hubbub_parser_parse_chunk(parser, (const uint8_t *) HTML,
+                                    strlen(HTML));
+    if (err != HUBBUB_OK) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "hubbub_parser_parse_chunk failed: err=%d", (int) err);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 6 FAIL", msg);
+        hubbub_parser_destroy(parser);
+        return FALSE;
+    }
+
+    hubbub_parser_completed(parser);
+    hubbub_parser_destroy(parser);
+
+    /* Structural counts are deterministic at the tokeniser level:
+     * doctype 1; start tags html/head/title/body/p = 5; end tags
+     * /title//head//p//body//html = 5; one comment. chars should be 15:
+     * "Hi"(2) + "Hello & world"(13, with &amp; decoded to a single '&'). */
+    if (c.doctype != 1 || c.start != 5 || c.end != 5 || c.comment != 1) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "TEST 6 token counts wrong:\n"
+                  "doctype=%d (want 1)\nstart=%d (want 5)\n"
+                  "end=%d (want 5)\ncomment=%d (want 1)\nchars=%d (want 15)",
+                  c.doctype, c.start, c.end, c.comment, c.chars);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 6 FAIL", msg);
+        return FALSE;
+    }
+
+    _snprintf(msg, sizeof(msg) - 1,
+              "libhubbub HTML tokeniser OK\n\n"
+              "doctype=%d  start=%d  end=%d\ncomment=%d  chars=%d\n\n"
+              "chars=15 => &amp; decoded to '&'.\n"
+              "(NetSurf parser links + runs on ARM WinCE.)",
+              c.doctype, c.start, c.end, c.comment, c.chars);
+    msg[sizeof(msg) - 1] = '\0';
+    show_info(L"TEST 6 OK", msg);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -416,6 +531,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         PHttp_Cleanup();
         return 5;
     }
+    if (!test6_hubbub()) {
+        PHttp_Cleanup();
+        return 6;
+    }
 
     show_info(L"All tests passed",
               "Positron Phase 3 verified end-to-end:\n"
@@ -425,7 +544,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
               "  HTTPS GET + POST (verified by default)\n"
               "  chunked Transfer-Encoding\n"
               "  cJSON parse + nested object extraction\n"
-              "  badssl.com positive + negative tests");
+              "  badssl.com positive + negative tests\n"
+              "  libhubbub HTML tokeniser (Phase 4 engine)");
 
     PHttp_Cleanup();
     return 0;

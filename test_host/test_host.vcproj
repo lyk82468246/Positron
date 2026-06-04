@@ -42,7 +42,7 @@
 				Name="VCCLCompilerTool"
 				ExecutionBucket="7"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\positron_tls;..\positron_json;..\positron_http"
+				AdditionalIncludeDirectories="..\positron_tls;..\positron_json;..\positron_http;..\netsurf-all-3.11\libhubbub\include;..\compat"
 				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
 				MinimalRebuild="true"
 				RuntimeLibrary="1"
@@ -64,8 +64,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib"
-				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib positron_hubbub.lib positron_netsurf.lib"
+				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName);..\positron_hubbub\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\test_host.exe"
 				LinkIncremental="2"
@@ -132,7 +132,7 @@
 				ExecutionBucket="7"
 				Optimization="2"
 				FavorSizeOrSpeed="2"
-				AdditionalIncludeDirectories="..\positron_tls;..\positron_json;..\positron_http"
+				AdditionalIncludeDirectories="..\positron_tls;..\positron_json;..\positron_http;..\netsurf-all-3.11\libhubbub\include;..\compat"
 				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="0"
@@ -153,8 +153,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib"
-				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib positron_hubbub.lib positron_netsurf.lib"
+				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName);..\positron_hubbub\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\test_host.exe"
 				LinkIncremental="1"

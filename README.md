@@ -13,9 +13,9 @@ Electron-like 轻量级框架，目标设备：**Windows Mobile 6 Professional**
 | **1** | `positron_tls.dll` — TLS 1.2 客户端（mbedTLS 2.16 LTS） | ✅ 完成，emulator 验证 |
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1 over TLS) | ✅ 完成，emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，emulator 验证 |
-| 4+ | `positron_core.dll`（WebBrowser ActiveX + JS↔Native bridge）、HTTP keep-alive / 重定向 / gzip 等 | 规划中 |
+| 4+ | `positron_core.dll`（NetSurf 内核移植：HTML/CSS 渲染 + JS↔Native bridge）、HTTP keep-alive / 重定向 / gzip 等 | 进行中 |
 
-Phase 3 验证：`test_host.exe` 跑 5 步——前 4 步沿用 Phase 2 + 新走 verified 路径（ipify、httpbin），第 5 步 badssl.com 正样本 + expired + self-signed 三连测，全部通过。详见 [PHASE3.md](PHASE3.md)。
+Phase 3 验证：`test_host.exe` 跑 5 步——前 4 步沿用 Phase 2 + 新走 verified 路径（ipify、postman-echo），第 5 步 badssl.com 正样本 + expired + self-signed 三连测，全部通过。详见 [PHASE3.md](PHASE3.md)。
 
 ---
 
@@ -139,7 +139,7 @@ scripts\stage.bat Release :: 或 Release
 1. TEST 1 OK — 3 个 DLL 加载
 2. TEST 2 OK — JSON 解析
 3. TEST 3 OK — HTTPS GET ipify（verified path），显示公网 IP
-4. TEST 4 OK — HTTPS POST httpbin（verified path），body 回声验证
+4. TEST 4 OK — HTTPS POST postman-echo（verified path），body 回声验证
 5. TEST 5 OK — badssl.com 正/expired/self-signed 三连测
 6. All tests passed
 
