@@ -13,7 +13,9 @@
  *     PJson_Parse a small literal, extract a string and an int, free.
  *
  *   TEST 3 - HTTPS GET (no auth)
- *     api.ipify.org / json -> parse {"ip":"..."} -> show IP.
+ *     checkip.amazonaws.com -> plain-text public IP. China-direct;
+ *     cert chains to Amazon Root CA 1 (in our CA bundle). JSON parsing
+ *     is still covered by the offline TEST 2 and the nested TEST 4.
  *
  *   TEST 4 - HTTPS POST (no auth)
  *     postman-echo.com/post body {"hello":"positron"} -> parse echo
@@ -106,6 +108,18 @@ static void show_error(const WCHAR* title, const char* body)
                 MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND);
 }
 
+/* Ask a Yes/No question via MessageBox; returns TRUE for Yes. Drives the
+ * startup group selector so a subset of tests can be run at a time (e.g.
+ * only the offline engine/rendering group when there is no network). */
+static BOOL ask_yesno(const WCHAR* title, const char* body)
+{
+    WCHAR wbuf[512];
+    utf8_to_wide(body, -1, wbuf, sizeof(wbuf) / sizeof(wbuf[0]));
+    return MessageBoxW(NULL, wbuf, title,
+                       MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND)
+           == IDYES;
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 1 - DLL load                                                     */
 /* -------------------------------------------------------------------- */
@@ -190,24 +204,30 @@ static BOOL test2_json(void)
 
 /* -------------------------------------------------------------------- */
 /* TEST 3 - HTTPS GET                                                    */
-/* api.ipify.org returns {"ip":"x.x.x.x"}                                */
+/* checkip.amazonaws.com returns the caller's public IP as plain text    */
+/* ("x.x.x.x\n"). Picked over api.ipify.org because it is reachable from */
+/* mainland China without a VPN and its cert chains to Amazon Root CA 1, */
+/* which is in our embedded CA bundle. (JSON coverage is unaffected: the */
+/* offline TEST 2 is the JSON unit test and TEST 4 parses nested JSON.)  */
 /* -------------------------------------------------------------------- */
 
 static BOOL test3_get(void)
 {
     PHttpResponse* resp;
-    HANDLE         root;
-    const char*    ip;
+    const char*    body;
+    char           ip[64];
+    int            i;
+    int            dots;
     char           msg[512];
 
-    resp = PHttp_Get("api.ipify.org", 443, "/?format=json", NULL);
+    resp = PHttp_Get("checkip.amazonaws.com", 443, "/", NULL);
     if (resp == NULL) {
         show_error(L"TEST 3 FAIL", "PHttp_Get returned NULL (OOM?)");
         return FALSE;
     }
     if (resp->status_code != 200) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "HTTPS GET ipify -> status=%d err=%s\nbody (first 200):\n%.200s",
+                  "HTTPS GET checkip -> status=%d err=%s\nbody (first 200):\n%.200s",
                   resp->status_code, resp->error_msg,
                   resp->body ? resp->body : "(none)");
         msg[sizeof(msg) - 1] = '\0';
@@ -216,32 +236,40 @@ static BOOL test3_get(void)
         return FALSE;
     }
 
-    root = PJson_Parse(resp->body);
-    if (root == NULL) {
+    /* Body is the public IP as plain text with a trailing newline. Copy it
+     * out, trim trailing CR/LF/space, and sanity-check it looks like a
+     * dotted IPv4 address (exactly three dots). */
+    body = resp->body ? resp->body : "";
+    for (i = 0; body[i] != '\0' && i < (int)sizeof(ip) - 1; i++) {
+        ip[i] = body[i];
+    }
+    ip[i] = '\0';
+    while (i > 0 && (ip[i - 1] == '\n' || ip[i - 1] == '\r' || ip[i - 1] == ' ')) {
+        ip[--i] = '\0';
+    }
+
+    dots = 0;
+    for (i = 0; ip[i] != '\0'; i++) {
+        if (ip[i] == '.') {
+            dots++;
+        }
+    }
+    if (ip[0] == '\0' || dots != 3) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "ipify returned 200 but body is not JSON:\n%.200s",
-                  resp->body ? resp->body : "(none)");
+                  "checkip returned 200 but body is not an IPv4 address:\n%.200s",
+                  body);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 3 FAIL", msg);
         PHttp_FreeResponse(resp);
         return FALSE;
     }
 
-    ip = PJson_GetString(root, "ip");
-    if (ip == NULL) {
-        show_error(L"TEST 3 FAIL", "ipify JSON missing 'ip' key");
-        PJson_Free(root);
-        PHttp_FreeResponse(resp);
-        return FALSE;
-    }
-
     _snprintf(msg, sizeof(msg) - 1,
-              "HTTPS GET ipify OK\n\nYour public IP:\n%s\n\n"
-              "(Proves TLS+HTTP+JSON round trip.)", ip);
+              "HTTPS GET checkip.amazonaws.com OK\n\nYour public IP:\n%s\n\n"
+              "(Proves TLS 1.2 + HTTPS GET round trip; China-direct.)", ip);
     msg[sizeof(msg) - 1] = '\0';
     show_info(L"TEST 3 OK", msg);
 
-    PJson_Free(root);
     PHttp_FreeResponse(resp);
     return TRUE;
 }
@@ -755,63 +783,98 @@ static BOOL test8_core(void)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                    LPWSTR lpCmdLine, int nCmdShow)
 {
+    BOOL run_comm;
+    BOOL run_engine;
+    BOOL run_frontend;
+    int  rc;
+    char summary[768];
+
     (void)hInstance;
     (void)hPrev;
     (void)lpCmdLine;
     (void)nCmdShow;
 
-    OutputDebugStringW(L"test_host (Phase 3): starting\r\n");
+    OutputDebugStringW(L"test_host (Phase 4): starting\r\n");
 
-    if (!test1_dll_load()) {
-        return 1;
-    }
-    if (!test2_json()) {
-        PHttp_Cleanup();
-        return 2;
-    }
-    if (!test3_get()) {
-        PHttp_Cleanup();
-        return 3;
-    }
-    if (!test4_post()) {
-        PHttp_Cleanup();
-        return 4;
-    }
-    if (!test5_verified_tls()) {
-        PHttp_Cleanup();
-        return 5;
-    }
-    if (!test6_hubbub()) {
-        PHttp_Cleanup();
-        return 6;
-    }
-    if (!test7_libcss()) {
-        PHttp_Cleanup();
-        return 7;
-    }
-    if (!test7b_dom()) {
-        PHttp_Cleanup();
-        return 8;
-    }
-    if (!test8_core()) {
-        PHttp_Cleanup();
-        return 9;
+    /* Group selector. One tap runs everything; otherwise pick groups so a
+     * subset can run in isolation - e.g. only the fully-offline engine /
+     * rendering group when there is no network (no VPN needed). */
+    if (ask_yesno(L"Positron test_host",
+                  "Run ALL tests?\n\n"
+                  "Yes = run everything (TEST 1-8)\n"
+                  "No  = choose which groups to run")) {
+        run_comm = TRUE;
+        run_engine = TRUE;
+        run_frontend = TRUE;
+    } else {
+        run_comm = ask_yesno(L"Select groups (1/3)",
+                             "Run COMMUNICATION tests?\n\n"
+                             "TLS / HTTP / JSON  (TEST 1-5)\n"
+                             "Needs network access.");
+        run_engine = ask_yesno(L"Select groups (2/3)",
+                               "Run ENGINE / RENDERING tests?\n\n"
+                               "HTML / CSS / DOM via NetSurf + positron_core\n"
+                               "(TEST 6-8). Fully offline - no network needed.");
+        run_frontend = ask_yesno(L"Select groups (3/3)",
+                                 "Run FRONTEND tests?\n\n"
+                                 "Layout / GDI rendering - not implemented yet.");
     }
 
-    show_info(L"All tests passed",
-              "Positron Phase 3 verified end-to-end:\n"
-              "  TLS 1.2 client w/ chain + hostname verification\n"
-              "  CA bundle (5 roots, ~7 KB)\n"
-              "  CryptGenRandom entropy (jitter fallback)\n"
-              "  HTTPS GET + POST (verified by default)\n"
-              "  chunked Transfer-Encoding\n"
-              "  cJSON parse + nested object extraction\n"
-              "  badssl.com positive + negative tests\n"
-              "  libhubbub HTML tokeniser (Phase 4 engine)\n"
-              "  libcss CSS parser (Phase 4 engine)\n"
-              "  libdom HTML->DOM via dom_hubbub (Phase 4 engine)\n"
-              "  positron_core.dll engine boundary (PCore_ParseHTML/ParseCSS)");
+    rc = 0;
 
-    PHttp_Cleanup();
-    return 0;
+    /* --- Communication group (TEST 1-5) ------------------------------- */
+    if (run_comm) {
+        if (!test1_dll_load()) {
+            /* positron_http was not initialised; nothing to clean up. */
+            return 1;
+        }
+        if (!test2_json())         { rc = 2; goto done; }
+        if (!test3_get())          { rc = 3; goto done; }
+        if (!test4_post())         { rc = 4; goto done; }
+        if (!test5_verified_tls()) { rc = 5; goto done; }
+    }
+
+    /* --- Engine / rendering group (TEST 6-8, all offline) ------------- */
+    if (run_engine) {
+        if (!test6_hubbub())       { rc = 6; goto done; }
+        if (!test7_libcss())       { rc = 7; goto done; }
+        if (!test7b_dom())         { rc = 8; goto done; }
+        if (!test8_core())         { rc = 9; goto done; }
+    }
+
+    /* --- Frontend group (placeholder) -------------------------------- */
+    if (run_frontend) {
+        show_info(L"Frontend (TODO)",
+                  "No frontend tests yet.\n\n"
+                  "Layout + GDI rendering is a future Positron phase; this\n"
+                  "group is a placeholder so the selector already lists it.");
+    }
+
+    /* Success summary - list only the groups that actually ran. */
+    summary[0] = '\0';
+    strcat(summary, "Selected test groups passed:\n\n");
+    if (run_comm) {
+        strcat(summary,
+               "  Communication (TEST 1-5)\n"
+               "    TLS 1.2 + chain/hostname verify, CA bundle,\n"
+               "    HTTPS GET (checkip) + POST, chunked, JSON.\n\n");
+    }
+    if (run_engine) {
+        strcat(summary,
+               "  Engine / Rendering (TEST 6-8)\n"
+               "    libhubbub + libcss + libdom behind\n"
+               "    positron_core.dll. Fully offline.\n\n");
+    }
+    if (!run_comm && !run_engine && !run_frontend) {
+        strcat(summary, "  (no groups selected)\n");
+    }
+    show_info(L"Tests passed", summary);
+
+done:
+    /* Only the communication group brings up positron_http (via TEST 1),
+     * so only tear it down when that group ran. */
+    if (run_comm) {
+        PHttp_Cleanup();
+    }
+    return rc;
 }
