@@ -4,6 +4,7 @@
 	Version="9.00"
 	Name="positron_tls"
 	ProjectGUID="{453A39BE-9C95-40E8-99BF-9A3B04908FE4}"
+	RootNamespace="positron_tls"
 	Keyword="Win32Proj"
 	TargetFrameworkVersion="196613"
 	>
@@ -64,8 +65,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2.lib"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
+				AdditionalDependencies="ws2.lib"
 				OutputFile="$(OutDir)/positron_tls.dll"
 				LinkIncremental="2"
 				DelayLoadDLLs="$(NOINHERIT)"
@@ -154,8 +155,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2.lib"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
+				AdditionalDependencies="ws2.lib"
 				OutputFile="$(OutDir)/positron_tls.dll"
 				LinkIncremental="1"
 				DelayLoadDLLs="$(NOINHERIT)"
@@ -206,90 +207,330 @@
 			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
-			<File RelativePath=".\positron_tls.c"></File>
+			<File
+				RelativePath=".\positron_tls.c"
+				>
+			</File>
 			<Filter
 				Name="mbedtls"
 				Filter="c"
 				>
-				<File RelativePath=".\mbedtls\library\aes.c"></File>
-				<File RelativePath=".\mbedtls\library\aesni.c"></File>
-				<File RelativePath=".\mbedtls\library\arc4.c"></File>
-				<File RelativePath=".\mbedtls\library\aria.c"></File>
-				<File RelativePath=".\mbedtls\library\asn1parse.c"></File>
-				<File RelativePath=".\mbedtls\library\asn1write.c"></File>
-				<File RelativePath=".\mbedtls\library\base64.c"></File>
-				<File RelativePath=".\mbedtls\library\bignum.c"></File>
-				<File RelativePath=".\mbedtls\library\blowfish.c"></File>
-				<File RelativePath=".\mbedtls\library\camellia.c"></File>
-				<File RelativePath=".\mbedtls\library\ccm.c"></File>
-				<File RelativePath=".\mbedtls\library\certs.c"></File>
-				<File RelativePath=".\mbedtls\library\chacha20.c"></File>
-				<File RelativePath=".\mbedtls\library\chachapoly.c"></File>
-				<File RelativePath=".\mbedtls\library\cipher.c"></File>
-				<File RelativePath=".\mbedtls\library\cipher_wrap.c"></File>
-				<File RelativePath=".\mbedtls\library\cmac.c"></File>
-				<File RelativePath=".\mbedtls\library\ctr_drbg.c"></File>
-				<File RelativePath=".\mbedtls\library\debug.c"></File>
-				<File RelativePath=".\mbedtls\library\des.c"></File>
-				<File RelativePath=".\mbedtls\library\dhm.c"></File>
-				<File RelativePath=".\mbedtls\library\ecdh.c"></File>
-				<File RelativePath=".\mbedtls\library\ecdsa.c"></File>
-				<File RelativePath=".\mbedtls\library\ecjpake.c"></File>
-				<File RelativePath=".\mbedtls\library\ecp.c"></File>
-				<File RelativePath=".\mbedtls\library\ecp_curves.c"></File>
-				<File RelativePath=".\mbedtls\library\entropy.c"></File>
-				<File RelativePath=".\mbedtls\library\entropy_poll.c"></File>
-				<File RelativePath=".\mbedtls\library\error.c"></File>
-				<File RelativePath=".\mbedtls\library\gcm.c"></File>
-				<File RelativePath=".\mbedtls\library\havege.c"></File>
-				<File RelativePath=".\mbedtls\library\hkdf.c"></File>
-				<File RelativePath=".\mbedtls\library\hmac_drbg.c"></File>
-				<File RelativePath=".\mbedtls\library\md.c"></File>
-				<File RelativePath=".\mbedtls\library\md2.c"></File>
-				<File RelativePath=".\mbedtls\library\md4.c"></File>
-				<File RelativePath=".\mbedtls\library\md5.c"></File>
-				<File RelativePath=".\mbedtls\library\md_wrap.c"></File>
-				<File RelativePath=".\mbedtls\library\memory_buffer_alloc.c"></File>
-				<File RelativePath=".\mbedtls\library\net_sockets.c"></File>
-				<File RelativePath=".\mbedtls\library\nist_kw.c"></File>
-				<File RelativePath=".\mbedtls\library\oid.c"></File>
-				<File RelativePath=".\mbedtls\library\padlock.c"></File>
-				<File RelativePath=".\mbedtls\library\pem.c"></File>
-				<File RelativePath=".\mbedtls\library\pk.c"></File>
-				<File RelativePath=".\mbedtls\library\pk_wrap.c"></File>
-				<File RelativePath=".\mbedtls\library\pkcs11.c"></File>
-				<File RelativePath=".\mbedtls\library\pkcs12.c"></File>
-				<File RelativePath=".\mbedtls\library\pkcs5.c"></File>
-				<File RelativePath=".\mbedtls\library\pkparse.c"></File>
-				<File RelativePath=".\mbedtls\library\pkwrite.c"></File>
-				<File RelativePath=".\mbedtls\library\platform.c"></File>
-				<File RelativePath=".\mbedtls\library\platform_util.c"></File>
-				<File RelativePath=".\mbedtls\library\poly1305.c"></File>
-				<File RelativePath=".\mbedtls\library\ripemd160.c"></File>
-				<File RelativePath=".\mbedtls\library\rsa.c"></File>
-				<File RelativePath=".\mbedtls\library\rsa_internal.c"></File>
-				<File RelativePath=".\mbedtls\library\sha1.c"></File>
-				<File RelativePath=".\mbedtls\library\sha256.c"></File>
-				<File RelativePath=".\mbedtls\library\sha512.c"></File>
-				<File RelativePath=".\mbedtls\library\ssl_cache.c"></File>
-				<File RelativePath=".\mbedtls\library\ssl_ciphersuites.c"></File>
-				<File RelativePath=".\mbedtls\library\ssl_cli.c"></File>
-				<File RelativePath=".\mbedtls\library\ssl_cookie.c"></File>
-				<File RelativePath=".\mbedtls\library\ssl_srv.c"></File>
-				<File RelativePath=".\mbedtls\library\ssl_ticket.c"></File>
-				<File RelativePath=".\mbedtls\library\ssl_tls.c"></File>
-				<File RelativePath=".\mbedtls\library\threading.c"></File>
-				<File RelativePath=".\mbedtls\library\timing.c"></File>
-				<File RelativePath=".\mbedtls\library\version.c"></File>
-				<File RelativePath=".\mbedtls\library\version_features.c"></File>
-				<File RelativePath=".\mbedtls\library\x509.c"></File>
-				<File RelativePath=".\mbedtls\library\x509_create.c"></File>
-				<File RelativePath=".\mbedtls\library\x509_crl.c"></File>
-				<File RelativePath=".\mbedtls\library\x509_crt.c"></File>
-				<File RelativePath=".\mbedtls\library\x509_csr.c"></File>
-				<File RelativePath=".\mbedtls\library\x509write_crt.c"></File>
-				<File RelativePath=".\mbedtls\library\x509write_csr.c"></File>
-				<File RelativePath=".\mbedtls\library\xtea.c"></File>
+				<File
+					RelativePath=".\mbedtls\library\aes.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\aesni.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\arc4.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\aria.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\asn1parse.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\asn1write.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\base64.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\bignum.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\blowfish.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\camellia.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ccm.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\certs.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\chacha20.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\chachapoly.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\cipher.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\cipher_wrap.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\cmac.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ctr_drbg.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\debug.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\des.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\dhm.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ecdh.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ecdsa.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ecjpake.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ecp.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ecp_curves.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\entropy.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\entropy_poll.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\error.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\gcm.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\havege.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\hkdf.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\hmac_drbg.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\md.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\md2.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\md4.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\md5.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\md_wrap.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\memory_buffer_alloc.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\net_sockets.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\nist_kw.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\oid.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\padlock.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\pem.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\pk.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\pk_wrap.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\pkcs11.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\pkcs12.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\pkcs5.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\pkparse.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\pkwrite.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\platform.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\platform_util.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\poly1305.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ripemd160.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\rsa.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\rsa_internal.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\sha1.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\sha256.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\sha512.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ssl_cache.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ssl_ciphersuites.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ssl_cli.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ssl_cookie.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ssl_srv.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ssl_ticket.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\ssl_tls.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\threading.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\timing.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\version.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\version_features.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\x509.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\x509_create.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\x509_crl.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\x509_crt.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\x509_csr.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\x509write_crt.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\x509write_csr.c"
+					>
+				</File>
+				<File
+					RelativePath=".\mbedtls\library\xtea.c"
+					>
+				</File>
 			</Filter>
 		</Filter>
 		<Filter
@@ -297,8 +538,14 @@
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
-			<File RelativePath=".\positron_tls.h"></File>
-			<File RelativePath=".\mbedtls_config.h"></File>
+			<File
+				RelativePath=".\mbedtls_config.h"
+				>
+			</File>
+			<File
+				RelativePath=".\positron_tls.h"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Resource Files"
