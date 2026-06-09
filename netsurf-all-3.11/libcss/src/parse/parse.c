@@ -720,9 +720,11 @@ css_error eatWS(css_parser *parser)
 
 css_error parseStart(css_parser *parser)
 {
+	parser_state *state;
+	css_error error;
 	enum { Initial = 0, AfterWS = 1, AfterStylesheet = 2 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
-	css_error error = CSS_OK;
+	state = parserutils_stack_get_current(parser->states);
+	error = CSS_OK;
 
 	/* start -> ws stylesheet EOF */
 
@@ -772,10 +774,11 @@ css_error parseStart(css_parser *parser)
 
 css_error parseStylesheet(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, WS = 1 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* stylesheet -> CDO ws stylesheet
 	 *            -> CDC ws stylesheet
@@ -829,10 +832,11 @@ css_error parseStylesheet(css_parser *parser)
 
 css_error parseStatement(css_parser *parser)
 {
-	enum { Initial = 0 };
 	const css_token *token;
-	parser_state to = { sRuleset, Initial };
+	parser_state to;
 	css_error error;
+	enum { Initial = 0 };
+	to.state = sRuleset; to.substate = Initial;
 
 	/* statement -> ruleset
 	 *              at-rule
@@ -854,11 +858,13 @@ css_error parseStatement(css_parser *parser)
 
 css_error parseRuleset(css_parser *parser)
 {
-	enum { Initial = 0, Brace = 1, WS = 2 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
-	parser_state to = { sRulesetEnd, Initial };
+	parser_state *state;
+	parser_state to;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, Brace = 1, WS = 2 };
+	state = parserutils_stack_get_current(parser->states);
+	to.state = sRulesetEnd; to.substate = Initial;
 
 	/* ruleset -> selector '{' ws ruleset-end
 	 *         -> '{' ws ruleset-end
@@ -966,10 +972,11 @@ css_error parseRuleset(css_parser *parser)
 
 css_error parseRulesetEnd(css_parser *parser)
 {
-	enum { Initial = 0, DeclList = 1, Brace = 2, WS = 3 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, DeclList = 1, Brace = 2, WS = 3 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* ruleset-end -> declaration decl-list '}' ws
 	 *             -> decl-list '}' ws
@@ -1054,11 +1061,13 @@ css_error parseRulesetEnd(css_parser *parser)
 
 css_error parseAtRule(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1, Any = 2, AfterAny = 3 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
-	parser_state to = { sAtRuleEnd, Initial };
+	parser_state *state;
+	parser_state to;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, WS = 1, Any = 2, AfterAny = 3 };
+	state = parserutils_stack_get_current(parser->states);
+	to.state = sAtRuleEnd; to.substate = Initial;
 
 	/* at-rule -> ATKEYWORD ws any0 at-rule-end */
 
@@ -1125,10 +1134,11 @@ css_error parseAtRule(css_parser *parser)
 
 css_error parseAtRuleEnd(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1, AfterBlock = 2 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, WS = 1, AfterBlock = 2 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* at-rule-end -> block
 	 *             -> ';' ws
@@ -1206,10 +1216,11 @@ css_error parseAtRuleEnd(css_parser *parser)
 
 css_error parseBlock(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1, Content = 2, Brace = 3, WS2 = 4 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, WS = 1, Content = 2, Brace = 3, WS2 = 4 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* block -> '{' ws block-content '}' ws */
 
@@ -1297,10 +1308,11 @@ css_error parseBlock(css_parser *parser)
 
 css_error parseBlockContent(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, WS = 1 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* block-content -> any block-content
 	 *               -> block block-content
@@ -1444,8 +1456,9 @@ css_error parseBlockContent(css_parser *parser)
 
 css_error parseSelector(css_parser *parser)
 {
+	parser_state *state;
 	enum { Initial = 0, AfterAny1 = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	state = parserutils_stack_get_current(parser->states);
 
 	/* selector -> any1 */
 
@@ -1468,10 +1481,11 @@ css_error parseSelector(css_parser *parser)
 
 css_error parseDeclaration(css_parser *parser)
 {
-	enum { Initial = 0, Colon = 1, WS = 2, AfterValue1 = 3 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, Colon = 1, WS = 2, AfterValue1 = 3 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* declaration -> property ':' ws value1 */
 
@@ -1556,11 +1570,13 @@ css_error parseDeclaration(css_parser *parser)
 
 css_error parseDeclList(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
-	parser_state to = { sDeclListEnd, Initial };
+	parser_state *state;
+	parser_state to;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, WS = 1 };
+	state = parserutils_stack_get_current(parser->states);
+	to.state = sDeclListEnd; to.substate = Initial;
 
 	/* decl-list -> ';' ws decl-list-end
 	 *           ->
@@ -1613,11 +1629,13 @@ css_error parseDeclList(css_parser *parser)
 
 css_error parseDeclListEnd(css_parser *parser)
 {
-	enum { Initial = 0, AfterDeclaration = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
-	parser_state to = { sDeclList, Initial };
+	parser_state *state;
+	parser_state to;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, AfterDeclaration = 1 };
+	state = parserutils_stack_get_current(parser->states);
+	to.state = sDeclList; to.substate = Initial;
 
 	/* decl-list-end -> declaration decl-list
 	 *               -> decl-list
@@ -1659,10 +1677,11 @@ css_error parseDeclListEnd(css_parser *parser)
 
 css_error parseProperty(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, WS = 1 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* property -> IDENT ws */
 
@@ -1702,11 +1721,13 @@ css_error parseProperty(css_parser *parser)
 
 css_error parseValue1(css_parser *parser)
 {
-	enum { Initial = 0, AfterValue = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
-	parser_state to = { sValue0, Initial };
+	parser_state *state;
+	parser_state to;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, AfterValue = 1 };
+	state = parserutils_stack_get_current(parser->states);
+	to.state = sValue0; to.substate = Initial;
 
 	/* value1 -> value value0 */
 
@@ -1748,10 +1769,11 @@ css_error parseValue1(css_parser *parser)
 
 css_error parseValue0(css_parser *parser)
 {
-	enum { Initial = 0, AfterValue = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, AfterValue = 1 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* value0 -> value value0
 	 *        ->
@@ -1803,10 +1825,11 @@ css_error parseValue0(css_parser *parser)
 
 css_error parseValue(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, WS = 1 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* value  -> any
 	 *        -> block
@@ -1856,10 +1879,11 @@ css_error parseValue(css_parser *parser)
 
 css_error parseAny0(css_parser *parser)
 {
-	enum { Initial = 0, AfterAny = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, AfterAny = 1 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* any0 -> any any0
 	 *      ->
@@ -1916,10 +1940,11 @@ css_error parseAny0(css_parser *parser)
 
 css_error parseAny1(css_parser *parser)
 {
-	enum { Initial = 0, AfterAny = 1, AfterAny0 = 2 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, AfterAny = 1, AfterAny0 = 2 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* any1 -> any any0 */
 
@@ -1984,10 +2009,11 @@ css_error parseAny1(css_parser *parser)
 
 css_error parseAny(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1, AfterAny0 = 2, WS2 = 3 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, WS = 1, AfterAny0 = 2, WS2 = 3 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* any -> IDENT ws
 	 *     -> NUMBER ws
@@ -2106,10 +2132,12 @@ css_error parseAny(css_parser *parser)
 
 css_error parseMalformedDeclaration(css_parser *parser)
 {
-	enum { Initial = 0, Go = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
-	const css_token *token = NULL;
+	parser_state *state;
+	const css_token *token;
 	css_error error;
+	enum { Initial = 0, Go = 1 };
+	state = parserutils_stack_get_current(parser->states);
+	token = NULL;
 
 	/* Malformed declaration: read everything up to the next ; or }
 	 * We must ensure that pairs of {}, (), [], are balanced */
@@ -2206,10 +2234,11 @@ css_error parseMalformedDeclaration(css_parser *parser)
 
 css_error parseMalformedSelector(css_parser *parser)
 {
-	enum { Initial = 0, Go = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, Go = 1 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* Malformed selector: discard the entirety of the next block,
 	 * ensuring we correctly match pairs of {}, [], and (). */
@@ -2301,10 +2330,12 @@ css_error parseMalformedSelector(css_parser *parser)
 
 css_error parseMalformedAtRule(css_parser *parser)
 {
-	enum { Initial = 0, Go = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
-	const css_token *token = NULL;
+	parser_state *state;
+	const css_token *token;
 	css_error error;
+	enum { Initial = 0, Go = 1 };
+	state = parserutils_stack_get_current(parser->states);
+	token = NULL;
 
 	/* Malformed at-rule: read everything up to the next ; or the next
 	 * block, whichever is first.
@@ -2409,9 +2440,10 @@ css_error parseMalformedAtRule(css_parser *parser)
 
 css_error parseInlineStyle(css_parser *parser)
 {
-	enum { Initial = 0, WS = 1, AfterISBody0 = 2 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	css_error error;
+	enum { Initial = 0, WS = 1, AfterISBody0 = 2 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* inline-style = ws is-body0 */
 
@@ -2468,10 +2500,11 @@ css_error parseInlineStyle(css_parser *parser)
 
 css_error parseISBody0(css_parser *parser)
 {
-	enum { Initial = 0, AfterISBody = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, AfterISBody = 1 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* is-body0     -> is-body is-body0
 	 *              ->
@@ -2514,10 +2547,11 @@ css_error parseISBody0(css_parser *parser)
 
 css_error parseISBody(css_parser *parser)
 {
-	enum { Initial = 0, DeclList = 1, Brace = 2, WS = 3 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	parser_state *state;
 	const css_token *token;
 	css_error error;
+	enum { Initial = 0, DeclList = 1, Brace = 2, WS = 3 };
+	state = parserutils_stack_get_current(parser->states);
 
 	/* is-body      -> declaration decl-list '}' ws
 	 *              -> decl-list '}' ws
@@ -2595,8 +2629,9 @@ css_error parseISBody(css_parser *parser)
 
 css_error parseMediaQuery(css_parser *parser)
 {
+	parser_state *state;
 	enum { Initial = 0, AfterAtRule = 1 };
-	parser_state *state = parserutils_stack_get_current(parser->states);
+	state = parserutils_stack_get_current(parser->states);
 
 	/* media-query = at-rule */
 

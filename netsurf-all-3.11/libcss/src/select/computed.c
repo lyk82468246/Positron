@@ -243,6 +243,7 @@ css_error css__computed_style_clone(
 		const css_computed_style *orig,
 		css_computed_style **clone_out)
 {
+	size_t i;
 	css_error error;
 	css_computed_style *clone;
 
@@ -251,7 +252,7 @@ css_error css__computed_style_clone(
 		return error;
 	}
 
-	for (size_t i = 0; i < CSS_N_PROPERTIES; i++) {
+	for (i = 0; i < CSS_N_PROPERTIES; i++) {
 		error = prop_dispatch[i].copy(orig, clone);
 		if (error != CSS_OK) {
 			css_computed_style_destroy(clone);
@@ -1137,9 +1138,9 @@ css_error css__compute_absolute_values(const css_computed_style *parent,
 		css_computed_style *style,
 		const css_unit_ctx *unit_ctx)
 {
+	css_error error;
 	css_hint_length *ref_length = NULL;
 	css_hint psize, size, ex_size;
-	css_error error;
 
 	/* Get reference font-size for relative sizes. */
 	if (parent != NULL) {
@@ -1400,8 +1401,8 @@ css_error compute_absolute_color(css_computed_style *style,
  */
 css_error compute_border_colors(css_computed_style *style)
 {
-	css_color color, bcol;
 	css_error error;
+	css_color color, bcol;
 
 	css_computed_color(style, &color);
 
@@ -1530,9 +1531,9 @@ css_error compute_absolute_border_side_width(css_computed_style *style,
 css_error compute_absolute_clip(css_computed_style *style,
 		const css_hint_length *ex_size)
 {
+	css_error error;
 	css_computed_clip_rect rect = { 0, 0, 0, 0, CSS_UNIT_PX, CSS_UNIT_PX,
 			CSS_UNIT_PX, CSS_UNIT_PX, false, false, false, false };
-	css_error error;
 
 	if (get_clip(style, &rect) == CSS_CLIP_RECT) {
 		if (rect.top_auto == false) {
@@ -1790,9 +1791,9 @@ css_error compute_absolute_length_pair(css_computed_style *style,
 				css_fixed len1, css_unit unit1,
 				css_fixed len2, css_unit unit2))
 {
+	uint8_t type;
 	css_fixed length1, length2;
 	css_unit unit1, unit2;
-	uint8_t type;
 
 	type = get(style, &length1, &unit1, &length2, &unit2);
 

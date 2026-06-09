@@ -276,9 +276,9 @@ css__parse_border_side_cleanup:
  */
 static void HSL_to_RGB(css_fixed hue, css_fixed sat, css_fixed lit, uint8_t *r, uint8_t *g, uint8_t *b)
 {
+	int sextant;
 	css_fixed min_rgb, max_rgb, chroma;
 	css_fixed relative_hue, scaled_hue, mid1, mid2;
-	int sextant;
 
 #define ORGB(R, G, B) \
 	*r = FIXTOINT(FDIV(FMUL((R), F_255), F_100)); \
@@ -540,10 +540,11 @@ css_error css__parse_colour_specifier(css_language *c,
 				}
 			}
 		} else if (colour_channels == 5 || colour_channels == 6) {
+			int32_t alpha;
 			/* hue - saturation - lightness */
 			size_t consumed = 0;
 			css_fixed hue, sat, lit;
-			int32_t alpha = 255;
+			alpha = 255;
 
 			/* hue is a number without a unit representing an
 			 * angle (0-360) degrees
@@ -682,6 +683,8 @@ invalid:
 css_error css__parse_named_colour(css_language *c, lwc_string *data,
 		uint32_t *result)
 {
+	int i;
+	bool match;
 	static const uint32_t colourmap[LAST_COLOUR + 1 - FIRST_COLOUR] = {
 		0xfff0f8ff, /* ALICEBLUE */
 		0xfffaebd7, /* ANTIQUEWHITE */
@@ -834,8 +837,6 @@ css_error css__parse_named_colour(css_language *c, lwc_string *data,
 		0xffffff00, /* YELLOW */
 		0xff9acd32  /* YELLOWGREEN */
 	};
-	int i;
-	bool match;
 
 	for (i = FIRST_COLOUR; i <= LAST_COLOUR; i++) {
 		if (lwc_string_caseless_isequal(data, c->strings[i],

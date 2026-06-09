@@ -1,0 +1,871 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="9.00"
+	Name="positron_libdom"
+	ProjectGUID="{8D40B7C1-6E52-4F9A-A073-2B3C4D5E6F70}"
+	RootNamespace="positron_libdom"
+	Keyword="Win32Proj"
+	TargetFrameworkVersion="196613"
+	>
+	<Platforms>
+		<Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" />
+	</Platforms>
+	<ToolFiles>
+	</ToolFiles>
+	<Configurations>
+		<Configuration
+			Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4"
+			CharacterSet="1"
+			>
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool
+				Name="VCCLCompilerTool"
+				ExecutionBucket="7"
+				Optimization="0"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libdom\src;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\netsurf-all-3.11\libhubbub\include;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
+				ForcedIncludeFiles="positron_crt.h"
+				MinimalRebuild="true"
+				RuntimeLibrary="1"
+				UsePrecompiledHeader="0"
+				WarningLevel="3"
+				DebugInformationFormat="3"
+				CompileAs="1"
+			/>
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool
+				Name="VCLibrarianTool"
+				OutputFile="$(OutDir)\positron_libdom.lib"
+			/>
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+		<Configuration
+			Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4"
+			CharacterSet="1"
+			>
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool
+				Name="VCCLCompilerTool"
+				ExecutionBucket="7"
+				Optimization="2"
+				FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libdom\src;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\netsurf-all-3.11\libhubbub\include;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
+				ForcedIncludeFiles="positron_crt.h"
+				MinimalRebuild="true"
+				RuntimeLibrary="0"
+				UsePrecompiledHeader="0"
+				WarningLevel="3"
+				DebugInformationFormat="3"
+				CompileAs="1"
+			/>
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool
+				Name="VCLibrarianTool"
+				OutputFile="$(OutDir)\positron_libdom.lib"
+			/>
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+	</Configurations>
+	<References>
+	</References>
+	<Files>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\attr.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_attr.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_attr.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\cdatasection.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_cdatasection.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_cdatasection.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\characterdata.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_characterdata.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_characterdata.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\comment.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_comment.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_comment.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\doc_fragment.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_doc_fragment.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_doc_fragment.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\document.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_document.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_document.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\document_type.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_document_type.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_document_type.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\entity_ref.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_entity_ref.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_entity_ref.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\implementation.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_implementation.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_implementation.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\namednodemap.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_namednodemap.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_namednodemap.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\node.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_node.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_node.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\nodelist.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_nodelist.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_nodelist.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\pi.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_pi.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_pi.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\string.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_string.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_string.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\text.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_text.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_text.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\tokenlist.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_tokenlist.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_tokenlist.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\typeinfo.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_typeinfo.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\core_typeinfo.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\custom_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_custom_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_custom_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\dispatch.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_dispatch.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_dispatch.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\document_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_document_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_document_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\event_listener.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_event_listener.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_event_listener.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\event_target.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_event_target.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_event_target.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\keyboard_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_keyboard_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_keyboard_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\mouse_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mouse_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mouse_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\mouse_multi_wheel_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mouse_multi_wheel_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mouse_multi_wheel_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\mouse_wheel_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mouse_wheel_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mouse_wheel_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\mutation_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mutation_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mutation_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\mutation_name_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mutation_name_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_mutation_name_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\text_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_text_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_text_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\events\ui_event.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_ui_event.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\events_ui_event.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_anchor_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_anchor_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_anchor_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_applet_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_applet_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_applet_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_area_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_area_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_area_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_base_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_base_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_base_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_basefont_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_basefont_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_basefont_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_body_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_body_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_body_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_br_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_br_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_br_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_button_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_button_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_button_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_canvas_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_canvas_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_canvas_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_collection.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_collection.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_collection.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_directory_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_directory_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_directory_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_div_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_div_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_div_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_dlist_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_dlist_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_dlist_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_document.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_document.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_document.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_fieldset_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_fieldset_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_fieldset_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_font_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_font_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_font_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_form_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_form_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_form_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_frame_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_frame_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_frame_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_frameset_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_frameset_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_frameset_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_head_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_head_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_head_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_heading_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_heading_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_heading_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_hr_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_hr_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_hr_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_html_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_html_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_html_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_iframe_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_iframe_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_iframe_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_image_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_image_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_image_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_input_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_input_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_input_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_isindex_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_isindex_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_isindex_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_label_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_label_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_label_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_legend_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_legend_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_legend_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_li_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_li_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_li_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_link_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_link_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_link_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_map_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_map_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_map_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_menu_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_menu_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_menu_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_meta_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_meta_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_meta_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_mod_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_mod_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_mod_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_object_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_object_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_object_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_olist_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_olist_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_olist_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_opt_group_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_opt_group_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_opt_group_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_option_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_option_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_option_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_options_collection.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_options_collection.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_options_collection.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_paragraph_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_paragraph_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_paragraph_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_param_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_param_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_param_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_pre_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_pre_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_pre_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_quote_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_quote_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_quote_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_script_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_script_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_script_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_select_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_select_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_select_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_style_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_style_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_style_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_table_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_table_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_table_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_tablecaption_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablecaption_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablecaption_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_tablecell_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablecell_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablecell_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_tablecol_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablecol_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablecol_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_tablerow_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablerow_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablerow_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_tablesection_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablesection_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_tablesection_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_text_area_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_text_area_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_text_area_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_title_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_title_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_title_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\html\html_ulist_element.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_ulist_element.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\html_html_ulist_element.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\utils\character_valid.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_character_valid.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_character_valid.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\utils\hashtable.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_hashtable.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_hashtable.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\utils\namespace.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_namespace.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_namespace.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\utils\validate.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_validate.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_validate.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\src\utils\walk.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_walk.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_walk.obj" />
+			</FileConfiguration>
+		</File>
+	</Files>
+	<Globals>
+	</Globals>
+</VisualStudioProject>

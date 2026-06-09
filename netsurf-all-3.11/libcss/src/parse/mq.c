@@ -42,7 +42,8 @@ static void css__mq_cond_or_feature_destroy(
 static void css__mq_cond_destroy(css_mq_cond *cond)
 {
 	if (cond != NULL) {
-		for (uint32_t i = 0; i < cond->nparts; i++) {
+		uint32_t i;
+		for (i = 0; i < cond->nparts; i++) {
 			css__mq_cond_or_feature_destroy(cond->parts[i]);
 		}
 		free(cond->parts);
@@ -264,12 +265,12 @@ static css_error mq_parse_range(lwc_string **strings,
 		const css_token *name_or_value,
 		css_mq_feature **feature)
 {
-	const css_token *token, *value_or_name, *name = NULL, *value2 = NULL;
 	css_mq_feature *result;
+	css_error error;
+	const css_token *token, *value_or_name, *name = NULL, *value2 = NULL;
 	css_mq_feature_op op, op2;
 	css_fixed ratio, ratio2;
 	bool name_first = false, value_is_ratio = false, value2_is_ratio = false, match;
-	css_error error;
 
 	/* <mf-range> = <mf-name> [ '<' | '>' ]? '='? <mf-value>
 	 *            | <mf-value> [ '<' | '>' ]? '='? <mf-name>
@@ -446,9 +447,9 @@ static css_error mq_parse_media_feature(lwc_string **strings,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_mq_feature **feature)
 {
-	const css_token *name_or_value, *token;
 	css_mq_feature *result;
 	css_error error;
+	const css_token *name_or_value, *token;
 
 	/* <media-feature> = ( [ <mf-plain> | <mf-boolean> | <mf-range> ] )
 	 * <mf-plain> = <mf-name> : <mf-value>
@@ -757,12 +758,12 @@ static css_error mq_parse_condition(lwc_string **strings,
 		const parserutils_vector *vector, int32_t *ctx,
 		bool permit_or, css_mq_cond **cond)
 {
+	css_mq_cond *result;
+	css_error error;
 	const css_token *token;
 	bool match = false;
 	int op = 0; /* Will be AND | OR once we've had one */
 	css_mq_cond_or_feature *cond_or_feature, **parts;
-	css_mq_cond *result;
-	css_error error;
 
 	/* <media-condition> = <media-not> | <media-in-parens> [ <media-and>* | <media-or>* ]
 	 * <media-condition-without-or> = <media-not> | <media-in-parens> <media-and>*
@@ -962,10 +963,10 @@ static css_error mq_parse_media_query(lwc_string **strings,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_mq_query **query)
 {
-	const css_token *token;
-	bool match, is_condition = false;
 	css_mq_query *result;
 	css_error error;
+	const css_token *token;
+	bool match, is_condition = false;
 
 	/* <media-query> = <media-condition>
 	 *               | [ not | only ]? <media-type> [ and <media-condition-without-or> ]?
@@ -1196,18 +1197,14 @@ css_error css_parse_media_query(lwc_string **strings,
 {
 	css_error err;
 	css_parser *parser;
-	css_mq_parse_ctx ctx = {
-		.strings = strings,
-	};
-	css_parser_optparams params_quirks = {
-		.quirks = false,
-	};
-	css_parser_optparams params_handler = {
-		.event_handler = {
-			.handler = css_parse_media_query_handle_event,
-			.pw = &ctx,
-		},
-	};
+	css_mq_parse_ctx ctx = {0};
+	css_parser_optparams params_quirks;
+	css_parser_optparams params_handler;
+
+	ctx.strings = strings;
+	params_quirks.quirks = false;
+	params_handler.event_handler.handler = css_parse_media_query_handle_event;
+	params_handler.event_handler.pw = &ctx;
 
 	if (mq == NULL || len == 0) {
 		return CSS_BADPARM;

@@ -173,9 +173,10 @@ static inline bool mq_match_condition(
 		const css_media *media,
 		const css_select_strings *str)
 {
+	uint32_t i;
 	bool matched = !cond->op;
 
-	for (uint32_t i = 0; i < cond->nparts; i++) {
+	for (i = 0; i < cond->nparts; i++) {
 		bool part_matched;
 		if (cond->parts[i]->type == CSS_MQ_FEATURE) {
 			part_matched = mq_match_feature(

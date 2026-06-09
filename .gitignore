@@ -49,3 +49,7 @@ desktop.ini
 # Phase 2 will use this — local API key, never commit
 test_host/secret_*.h
 .env
+
+# Python bytecode cache
+__pycache__/
+*.pyc

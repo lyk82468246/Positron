@@ -1544,11 +1544,11 @@ css_error URI(css_lexer *lexer, css_token **token)
 
 css_error UnicodeRange(css_lexer *lexer, css_token **token)
 {
+	size_t clen;
+	parserutils_error perror;
 	css_token *t = &lexer->token;
 	const uint8_t *cptr;
 	uint8_t c = 0; /* GCC: shush */
-	size_t clen;
-	parserutils_error perror;
 	enum { Initial = 0, MoreDigits = 1 };
 
 	/* UNICODE-RANGE = [Uu] '+' [0-9a-fA-F?]{1,6}(-[0-9a-fA-F]{1,6})?
@@ -1702,11 +1702,11 @@ css_error consumeDigits(css_lexer *lexer)
 
 css_error consumeEscape(css_lexer *lexer, bool nl)
 {
-	const uint8_t *cptr, *sdata;
 	uint8_t c;
-	size_t clen, slen;
 	css_error error;
 	parserutils_error perror;
+	const uint8_t *cptr, *sdata;
+	size_t clen, slen;
 
 	/* escape = unicode | '\' [^\n\r\f0-9a-fA-F]
 	 *

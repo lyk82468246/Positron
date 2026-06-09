@@ -30,6 +30,7 @@ typedef struct css_namespace {
  * Context for a CSS language parser
  */
 typedef struct css_language {
+	lwc_string **strings;
 	css_stylesheet *sheet;		/**< The stylesheet to parse for */
 
 #define STACK_CHUNK 32
@@ -43,7 +44,6 @@ typedef struct css_language {
 	} state;			/**< State flag, for at-rule handling */
 
 	/** Interned strings */
-	lwc_string **strings;
 
 	lwc_string *default_namespace;	/**< Default namespace URI */
 	css_namespace *namespaces;	/**< Array of namespace mappings */

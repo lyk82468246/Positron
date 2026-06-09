@@ -144,24 +144,26 @@ css_error css__parse_flex(css_language *c,
 
 	/* defaults */
 	if (grow) {
+		css_fixed grow_num;
 		error = css__stylesheet_style_appendOPV(grow_style, 
 				CSS_PROP_FLEX_GROW, 0, FLEX_GROW_SET);
 		if (error != CSS_OK)
 			goto css__parse_flex_cleanup;
 
-		css_fixed grow_num = short_auto ? INTTOFIX(1) : 0;
+		grow_num = short_auto ? INTTOFIX(1) : 0;
 		error = css__stylesheet_style_append(grow_style, grow_num);
 		if (error != CSS_OK)
 			goto css__parse_flex_cleanup;
 	}
 
 	if (shrink) {
+		css_fixed shrink_num;
 		error = css__stylesheet_style_appendOPV(shrink_style, 
 				CSS_PROP_FLEX_SHRINK, 0, FLEX_SHRINK_SET);
 		if (error != CSS_OK)
 			goto css__parse_flex_cleanup;
 
-		css_fixed shrink_num = short_none ? 0 : INTTOFIX(1);
+		shrink_num = short_none ? 0 : INTTOFIX(1);
 		error = css__stylesheet_style_append(shrink_style, shrink_num);
 		if (error != CSS_OK)
 			goto css__parse_flex_cleanup;

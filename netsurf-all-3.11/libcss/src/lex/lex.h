@@ -53,6 +53,9 @@ typedef enum css_token_type {
  * Token object
  */
 typedef struct css_token {
+	lwc_string *idata;
+	uint32_t col;
+	uint32_t line;
 	css_token_type type;
 
 	struct {
@@ -60,10 +63,7 @@ typedef struct css_token {
 		size_t len;
 	} data;
 
-	lwc_string *idata;
 
-	uint32_t col;
-	uint32_t line;
 } css_token;
 
 css_error css__lexer_create(parserutils_inputstream *input, css_lexer **lexer);

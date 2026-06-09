@@ -31,11 +31,11 @@ css_error css__parse_overflow(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_style *result)
 {
-	int32_t orig_ctx = *ctx;
-	css_error error1, error2 = CSS_OK;
 	const css_token *token;
 	enum flag_value flag_value;
 	bool match;
+	int32_t orig_ctx = *ctx;
+	css_error error1, error2 = CSS_OK;
 
 	token = parserutils_vector_iterate(vector, ctx);
 	if ((token == NULL) || ((token->type != CSS_TOKEN_IDENT))) {

@@ -2561,9 +2561,10 @@ dom_exception _dom_node_dispatch_event(dom_event_target *et,
 
 	if (dei->actions != NULL) {
 		dom_default_action_phase phase = DOM_DEFAULT_ACTION_END;
+		dom_default_action_callback cb;
 		if (evt->prevent_default == true)
 			phase = DOM_DEFAULT_ACTION_PREVENTED;
-		dom_default_action_callback cb = dei->actions(
+		cb = dei->actions(
 				evt->type, phase, &pw);
 		if (cb != NULL) {
 			cb(evt, pw);

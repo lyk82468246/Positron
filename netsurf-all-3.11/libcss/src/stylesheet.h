@@ -168,6 +168,7 @@ typedef struct css_rule_charset {
 } css_rule_charset;
 
 struct css_stylesheet {
+	css_font_resolution_fn font;
 	css_selector_hash *selectors;		/**< Hashtable of selectors */
 
 	uint32_t rule_count;			/**< Number of rules in sheet */
@@ -204,7 +205,6 @@ struct css_stylesheet {
 	void *color_pw;				/**< Private word */
 
 	/** System font resolution function */
-	css_font_resolution_fn font;
 	void *font_pw;				/**< Private word */
 
 	css_style *cached_style;		/**< Cache for style parsing */

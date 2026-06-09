@@ -372,10 +372,7 @@ static inline css_hint_length css_unit__get_font_size(
 		const css_computed_style *style,
 		css_fixed font_size_default)
 {
-	css_hint_length size = {
-		.value = font_size_default,
-		.unit = CSS_UNIT_PX,
-	};
+	css_hint_length size = { font_size_default, CSS_UNIT_PX };
 
 	if (style != NULL) {
 		enum css_font_size_e status = get_font_size(style,
@@ -401,10 +398,7 @@ css_error css_unit_compute_absolute_font_size(
 		css_fixed font_size_default,
 		css_hint *size)
 {
-	css_hint_length ref_len = {
-		.value = font_size_default,
-		.unit = CSS_UNIT_PX,
-	};
+	css_hint_length ref_len = { font_size_default, CSS_UNIT_PX };
 
 	if (ref_length != NULL) {
 		/* Must be absolute. */
@@ -427,13 +421,13 @@ css_error css_unit_compute_absolute_font_size(
 	case CSS_FONT_SIZE_XX_LARGE:
 	{
 		static const css_fixed factors[CSS_FONT_SIZE_XX_LARGE] = {
-			[CSS_FONT_SIZE_XX_SMALL - 1] = FLTTOFIX(0.5625),
-			[CSS_FONT_SIZE_X_SMALL  - 1] = FLTTOFIX(0.6250),
-			[CSS_FONT_SIZE_SMALL    - 1] = FLTTOFIX(0.8125),
-			[CSS_FONT_SIZE_MEDIUM   - 1] = FLTTOFIX(1.0000),
-			[CSS_FONT_SIZE_LARGE    - 1] = FLTTOFIX(1.1250),
-			[CSS_FONT_SIZE_X_LARGE  - 1] = FLTTOFIX(1.5000),
-			[CSS_FONT_SIZE_XX_LARGE - 1] = FLTTOFIX(2.0000),
+			FLTTOFIX(0.5625), /* [CSS_FONT_SIZE_XX_SMALL - 1] */
+			FLTTOFIX(0.6250), /* [CSS_FONT_SIZE_X_SMALL  - 1] */
+			FLTTOFIX(0.8125), /* [CSS_FONT_SIZE_SMALL    - 1] */
+			FLTTOFIX(1.0000), /* [CSS_FONT_SIZE_MEDIUM   - 1] */
+			FLTTOFIX(1.1250), /* [CSS_FONT_SIZE_LARGE    - 1] */
+			FLTTOFIX(1.5000), /* [CSS_FONT_SIZE_X_LARGE  - 1] */
+			FLTTOFIX(2.0000), /* [CSS_FONT_SIZE_XX_LARGE - 1] */
 		};
 		assert(CSS_FONT_SIZE_INHERIT  == 0);
 		assert(CSS_FONT_SIZE_XX_SMALL == 1);

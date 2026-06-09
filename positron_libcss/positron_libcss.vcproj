@@ -1,0 +1,2535 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="9.00"
+	Name="positron_libcss"
+	ProjectGUID="{7C3E9A20-5D41-4B8E-9F62-1A2B3C4D5E6F}"
+	RootNamespace="positron_libcss"
+	Keyword="Win32Proj"
+	TargetFrameworkVersion="196613"
+	>
+	<Platforms>
+		<Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" />
+	</Platforms>
+	<ToolFiles>
+	</ToolFiles>
+	<Configurations>
+		<Configuration
+			Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4"
+			CharacterSet="1"
+			>
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool
+				Name="VCCLCompilerTool"
+				ExecutionBucket="7"
+				Optimization="0"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libcss\include;..\netsurf-all-3.11\libcss\src;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
+				ForcedIncludeFiles="positron_crt.h"
+				MinimalRebuild="true"
+				RuntimeLibrary="1"
+				UsePrecompiledHeader="0"
+				WarningLevel="3"
+				DebugInformationFormat="3"
+				CompileAs="1"
+			/>
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool
+				Name="VCLibrarianTool"
+				OutputFile="$(OutDir)\positron_libcss.lib"
+			/>
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+		<Configuration
+			Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4"
+			CharacterSet="1"
+			>
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool
+				Name="VCCLCompilerTool"
+				ExecutionBucket="7"
+				Optimization="2"
+				FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libcss\include;..\netsurf-all-3.11\libcss\src;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
+				ForcedIncludeFiles="positron_crt.h"
+				MinimalRebuild="true"
+				RuntimeLibrary="0"
+				UsePrecompiledHeader="0"
+				WarningLevel="3"
+				DebugInformationFormat="3"
+				CompileAs="1"
+			/>
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052"
+				AdditionalIncludeDirectories="$(IntDir)"
+			/>
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool
+				Name="VCLibrarianTool"
+				OutputFile="$(OutDir)\positron_libcss.lib"
+			/>
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+	</Configurations>
+	<References>
+	</References>
+	<Files>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\charset\detect.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\charset_detect.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\charset_detect.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\lex\lex.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\lex_lex.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\lex_lex.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\font_face.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_font_face.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_font_face.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\important.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_important.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_important.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\language.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_language.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_language.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\mq.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_mq.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_mq.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\parse.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_parse.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_parse.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_align_content.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_align_content.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_align_content.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_align_items.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_align_items.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_align_items.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_align_self.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_align_self.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_align_self.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_background_attachment.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_background_attachment.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_background_attachment.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_background_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_background_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_background_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_background_image.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_background_image.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_background_image.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_background_repeat.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_background_repeat.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_background_repeat.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_bottom.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_bottom.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_bottom.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_bottom_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_bottom_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_bottom_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_bottom_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_bottom_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_bottom_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_bottom_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_bottom_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_bottom_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_collapse.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_collapse.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_collapse.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_left.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_left.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_left.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_left_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_left_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_left_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_left_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_left_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_left_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_left_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_left_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_left_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_right.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_right.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_right.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_right_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_right_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_right_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_right_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_right_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_right_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_right_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_right_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_right_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_side_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_side_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_side_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_side_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_side_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_side_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_side_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_side_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_side_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_top.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_top.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_top.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_top_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_top_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_top_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_top_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_top_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_top_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_border_top_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_top_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_border_top_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_bottom.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_bottom.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_bottom.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_box_sizing.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_box_sizing.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_box_sizing.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_break_after.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_break_after.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_break_after.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_break_before.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_break_before.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_break_before.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_break_inside.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_break_inside.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_break_inside.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_caption_side.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_caption_side.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_caption_side.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_clear.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_clear.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_clear.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_column_count.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_count.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_count.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_column_fill.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_fill.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_fill.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_column_gap.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_gap.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_gap.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_column_rule_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_rule_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_rule_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_column_rule_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_rule_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_rule_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_column_rule_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_rule_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_rule_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_column_span.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_span.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_span.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_column_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_column_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_counter_increment.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_counter_increment.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_counter_increment.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_counter_reset.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_counter_reset.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_counter_reset.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_cue_after.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_cue_after.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_cue_after.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_cue_before.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_cue_before.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_cue_before.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_direction.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_direction.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_direction.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_display.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_display.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_display.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_empty_cells.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_empty_cells.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_empty_cells.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_flex_basis.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_basis.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_basis.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_flex_direction.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_direction.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_direction.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_flex_grow.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_grow.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_grow.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_flex_shrink.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_shrink.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_shrink.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_flex_wrap.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_wrap.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_flex_wrap.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_float.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_float.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_float.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_font_size.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_font_size.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_font_size.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_font_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_font_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_font_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_font_variant.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_font_variant.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_font_variant.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_height.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_height.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_height.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_justify_content.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_justify_content.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_justify_content.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_left.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_left.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_left.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_letter_spacing.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_letter_spacing.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_letter_spacing.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_line_height.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_line_height.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_line_height.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_list_style_image.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_list_style_image.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_list_style_image.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_list_style_position.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_list_style_position.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_list_style_position.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_margin_bottom.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_bottom.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_bottom.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_margin_left.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_left.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_left.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_margin_right.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_right.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_right.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_margin_side.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_side.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_side.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_margin_top.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_top.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_margin_top.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_max_height.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_max_height.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_max_height.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_max_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_max_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_max_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_min_height.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_min_height.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_min_height.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_min_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_min_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_min_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_order.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_order.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_order.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_orphans.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_orphans.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_orphans.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_outline_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_outline_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_outline_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_outline_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_outline_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_outline_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_outline_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_outline_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_outline_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_overflow_x.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_overflow_x.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_overflow_x.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_overflow_y.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_overflow_y.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_overflow_y.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_padding_bottom.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_bottom.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_bottom.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_padding_left.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_left.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_left.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_padding_right.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_right.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_right.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_padding_side.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_side.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_side.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_padding_top.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_top.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_padding_top.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_page_break_after.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_page_break_after.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_page_break_after.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_page_break_before.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_page_break_before.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_page_break_before.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_page_break_inside.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_page_break_inside.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_page_break_inside.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_pause_after.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_pause_after.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_pause_after.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_pause_before.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_pause_before.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_pause_before.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_pitch.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_pitch.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_pitch.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_pitch_range.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_pitch_range.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_pitch_range.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_position.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_position.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_position.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_richness.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_richness.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_richness.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_right.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_right.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_right.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_side.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_side.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_side.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_speak.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speak.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speak.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_speak_header.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speak_header.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speak_header.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_speak_numeral.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speak_numeral.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speak_numeral.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_speak_punctuation.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speak_punctuation.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speak_punctuation.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_speech_rate.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speech_rate.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_speech_rate.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_stress.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_stress.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_stress.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_table_layout.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_table_layout.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_table_layout.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_text_align.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_text_align.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_text_align.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_text_indent.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_text_indent.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_text_indent.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_text_transform.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_text_transform.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_text_transform.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_top.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_top.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_top.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_unicode_bidi.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_unicode_bidi.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_unicode_bidi.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_vertical_align.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_vertical_align.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_vertical_align.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_visibility.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_visibility.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_visibility.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_volume.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_volume.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_volume.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_white_space.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_white_space.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_white_space.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_widows.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_widows.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_widows.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_word_spacing.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_word_spacing.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_word_spacing.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_writing_mode.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_writing_mode.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_writing_mode.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\autogenerated_z_index.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_z_index.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_autogenerated_z_index.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\azimuth.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_azimuth.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_azimuth.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\background.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_background.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_background.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\background_position.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_background_position.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_background_position.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\border.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\border_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\border_spacing.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border_spacing.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border_spacing.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\border_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\border_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_border_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\clip.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_clip.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_clip.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\column_rule.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_column_rule.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_column_rule.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\columns.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_columns.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_columns.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\content.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_content.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_content.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\cue.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_cue.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_cue.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\cursor.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_cursor.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_cursor.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\elevation.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_elevation.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_elevation.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\fill_opacity.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_fill_opacity.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_fill_opacity.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\flex.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_flex.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_flex.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\flex_flow.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_flex_flow.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_flex_flow.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\font.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_font.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_font.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\font_family.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_font_family.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_font_family.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\font_weight.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_font_weight.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_font_weight.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\list_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_list_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_list_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\list_style_type.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_list_style_type.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_list_style_type.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\margin.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_margin.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_margin.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\opacity.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_opacity.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_opacity.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\outline.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_outline.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_outline.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\overflow.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_overflow.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_overflow.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\padding.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_padding.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_padding.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\pause.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_pause.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_pause.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\play_during.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_play_during.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_play_during.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\properties.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_properties.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_properties.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\quotes.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_quotes.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_quotes.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\stroke_opacity.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_stroke_opacity.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_stroke_opacity.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\text_decoration.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_text_decoration.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_text_decoration.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\utils.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_utils.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_utils.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\voice_family.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_voice_family.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_voice_family.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\propstrings.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_propstrings.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_propstrings.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\arena.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_arena.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_arena.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\computed.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_computed.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_computed.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\dispatch.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_dispatch.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_dispatch.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\font_face.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_font_face.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_font_face.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\hash.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_hash.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_hash.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\positron_list_style_stub.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_positron_list_style_stub.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_positron_list_style_stub.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\align_content.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_align_content.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_align_content.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\align_items.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_align_items.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_align_items.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\align_self.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_align_self.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_align_self.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\azimuth.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_azimuth.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_azimuth.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\background_attachment.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_attachment.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_attachment.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\background_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\background_image.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_image.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_image.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\background_position.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_position.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_position.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\background_repeat.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_repeat.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_background_repeat.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_bottom_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_bottom_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_bottom_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_bottom_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_bottom_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_bottom_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_bottom_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_bottom_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_bottom_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_collapse.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_collapse.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_collapse.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_left_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_left_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_left_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_left_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_left_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_left_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_left_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_left_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_left_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_right_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_right_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_right_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_right_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_right_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_right_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_right_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_right_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_right_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_spacing.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_spacing.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_spacing.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_top_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_top_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_top_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_top_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_top_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_top_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\border_top_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_top_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_border_top_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\bottom.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_bottom.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_bottom.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\box_sizing.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_box_sizing.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_box_sizing.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\break_after.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_break_after.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_break_after.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\break_before.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_break_before.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_break_before.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\break_inside.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_break_inside.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_break_inside.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\caption_side.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_caption_side.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_caption_side.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\clear.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_clear.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_clear.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\clip.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_clip.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_clip.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\column_count.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_count.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_count.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\column_fill.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_fill.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_fill.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\column_gap.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_gap.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_gap.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\column_rule_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_rule_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_rule_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\column_rule_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_rule_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_rule_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\column_rule_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_rule_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_rule_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\column_span.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_span.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_span.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\column_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_column_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\content.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_content.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_content.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\counter_increment.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_counter_increment.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_counter_increment.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\counter_reset.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_counter_reset.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_counter_reset.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\cue_after.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_cue_after.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_cue_after.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\cue_before.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_cue_before.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_cue_before.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\cursor.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_cursor.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_cursor.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\direction.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_direction.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_direction.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\display.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_display.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_display.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\elevation.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_elevation.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_elevation.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\empty_cells.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_empty_cells.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_empty_cells.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\fill_opacity.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_fill_opacity.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_fill_opacity.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\flex_basis.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_basis.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_basis.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\flex_direction.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_direction.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_direction.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\flex_grow.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_grow.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_grow.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\flex_shrink.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_shrink.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_shrink.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\flex_wrap.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_wrap.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_flex_wrap.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\float.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_float.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_float.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\font_family.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_family.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_family.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\font_size.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_size.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_size.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\font_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\font_variant.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_variant.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_variant.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\font_weight.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_weight.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_font_weight.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\height.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_height.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_height.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\helpers.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_helpers.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_helpers.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\justify_content.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_justify_content.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_justify_content.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\left.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_left.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_left.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\letter_spacing.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_letter_spacing.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_letter_spacing.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\line_height.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_line_height.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_line_height.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\list_style_image.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_list_style_image.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_list_style_image.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\list_style_position.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_list_style_position.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_list_style_position.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\list_style_type.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_list_style_type.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_list_style_type.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\margin_bottom.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_margin_bottom.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_margin_bottom.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\margin_left.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_margin_left.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_margin_left.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\margin_right.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_margin_right.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_margin_right.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\margin_top.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_margin_top.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_margin_top.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\max_height.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_max_height.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_max_height.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\max_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_max_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_max_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\min_height.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_min_height.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_min_height.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\min_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_min_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_min_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\opacity.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_opacity.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_opacity.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\order.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_order.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_order.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\orphans.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_orphans.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_orphans.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\outline_color.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_outline_color.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_outline_color.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\outline_style.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_outline_style.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_outline_style.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\outline_width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_outline_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_outline_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\overflow_x.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_overflow_x.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_overflow_x.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\overflow_y.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_overflow_y.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_overflow_y.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\padding_bottom.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_padding_bottom.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_padding_bottom.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\padding_left.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_padding_left.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_padding_left.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\padding_right.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_padding_right.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_padding_right.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\padding_top.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_padding_top.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_padding_top.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\page_break_after.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_page_break_after.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_page_break_after.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\page_break_before.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_page_break_before.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_page_break_before.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\page_break_inside.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_page_break_inside.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_page_break_inside.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\pause_after.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_pause_after.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_pause_after.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\pause_before.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_pause_before.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_pause_before.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\pitch.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_pitch.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_pitch.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\pitch_range.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_pitch_range.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_pitch_range.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\play_during.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_play_during.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_play_during.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\position.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_position.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_position.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\quotes.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_quotes.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_quotes.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\richness.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_richness.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_richness.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\right.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_right.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_right.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\speak.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speak.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speak.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\speak_header.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speak_header.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speak_header.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\speak_numeral.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speak_numeral.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speak_numeral.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\speak_punctuation.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speak_punctuation.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speak_punctuation.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\speech_rate.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speech_rate.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_speech_rate.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\stress.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_stress.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_stress.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\stroke_opacity.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_stroke_opacity.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_stroke_opacity.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\table_layout.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_table_layout.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_table_layout.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\text_align.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_text_align.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_text_align.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\text_decoration.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_text_decoration.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_text_decoration.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\text_indent.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_text_indent.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_text_indent.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\text_transform.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_text_transform.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_text_transform.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\top.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_top.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_top.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\unicode_bidi.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_unicode_bidi.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_unicode_bidi.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\vertical_align.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_vertical_align.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_vertical_align.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\visibility.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_visibility.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_visibility.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\voice_family.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_voice_family.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_voice_family.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\volume.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_volume.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_volume.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\white_space.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_white_space.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_white_space.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\widows.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_widows.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_widows.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\width.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_width.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_width.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\word_spacing.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_word_spacing.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_word_spacing.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\writing_mode.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_writing_mode.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_writing_mode.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\z_index.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_z_index.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_z_index.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\select.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_select.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_select.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\strings.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_strings.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_strings.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\unit.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_unit.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_unit.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\stylesheet.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\stylesheet.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\stylesheet.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\utils\errors.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_errors.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_errors.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\utils\utils.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_utils.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\utils_utils.obj" />
+			</FileConfiguration>
+		</File>
+	</Files>
+	<Globals>
+	</Globals>
+</VisualStudioProject>

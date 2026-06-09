@@ -788,11 +788,12 @@ css_error handleEndBlockContent(css_language *c, const parserutils_vector *vecto
 
 css_error handleDeclaration(css_language *c, const parserutils_vector *vector)
 {
-	css_error error;
-	const css_token *token, *ident;
-	int32_t ctx = 0;
+	int32_t ctx;
 	context_entry *entry;
 	css_rule *rule;
+	css_error error;
+	const css_token *token, *ident;
+	ctx = 0;
 
 	/* Locations where declarations are permitted:
 	 *
@@ -978,12 +979,14 @@ css_error parseClass(css_language *c, const parserutils_vector *vector,
 css_error parseAttrib(css_language *c, const parserutils_vector *vector,
 		int32_t *ctx, css_selector_detail *specific)
 {
+	css_selector_type type;
+	css_error error;
+	lwc_string *prefix;
 	css_qname qname;
 	css_selector_detail_value detail_value;
 	const css_token *token, *value = NULL;
-	css_selector_type type = CSS_SELECTOR_ATTRIBUTE;
-	css_error error;
-	lwc_string *prefix = NULL;
+	type = CSS_SELECTOR_ATTRIBUTE;
+	prefix = NULL;
 
 	/* attrib    -> '[' ws namespace_prefix? IDENT ws [
 	 *		       [ '=' |
@@ -1281,6 +1284,11 @@ css_error parseNth(css_language *c,
 css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 		int32_t *ctx, bool in_not, css_selector_detail *specific)
 {
+	css_selector_detail_value detail_value;
+	css_qname qname;
+	const css_token *token;
+	uint32_t lut_idx;
+	css_error error;
 	static const struct
 	{
 		int index;
@@ -1318,15 +1326,10 @@ css_error parsePseudo(css_language *c, const parserutils_vector *vector,
 		{ BEFORE, CSS_SELECTOR_PSEUDO_ELEMENT },
 		{ AFTER, CSS_SELECTOR_PSEUDO_ELEMENT }
 	};
-	css_selector_detail_value detail_value;
 	css_selector_detail_value_type value_type =
 			CSS_SELECTOR_DETAIL_VALUE_STRING;
-	css_qname qname;
-	const css_token *token;
 	bool match = false, require_element = false, negate = false;
-	uint32_t lut_idx;
 	css_selector_type type = CSS_SELECTOR_PSEUDO_CLASS;/* GCC's braindead */
-	css_error error;
 
 	/* pseudo    -> ':' ':'? [ IDENT | FUNCTION ws any1 ws ')' ] */
 

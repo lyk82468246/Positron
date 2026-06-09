@@ -59,8 +59,8 @@ struct css_node_data {
 };
 
 struct revert_data {
-	prop_state props[CSS_N_PROPERTIES][CSS_PSEUDO_ELEMENT_COUNT];
 	css_computed_style *style[CSS_PSEUDO_ELEMENT_COUNT];
+	prop_state props[CSS_N_PROPERTIES][CSS_PSEUDO_ELEMENT_COUNT];
 };
 
 /**

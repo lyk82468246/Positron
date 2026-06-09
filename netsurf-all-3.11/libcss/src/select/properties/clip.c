@@ -97,10 +97,11 @@ css_error css__copy_clip(
 		const css_computed_style *from,
 		css_computed_style *to)
 {
+	uint8_t type;
 	css_computed_clip_rect rect = { 0, 0, 0, 0,
 			CSS_UNIT_PX, CSS_UNIT_PX, CSS_UNIT_PX, CSS_UNIT_PX,
 			false, false, false, false };
-	uint8_t type = get_clip(from, &rect);
+	type = get_clip(from, &rect);
 
 	if (from == to) {
 		return CSS_OK;
@@ -113,10 +114,11 @@ css_error css__compose_clip(const css_computed_style *parent,
 		const css_computed_style *child,
 		css_computed_style *result)
 {
+	uint8_t type;
 	css_computed_clip_rect rect = { 0, 0, 0, 0,
 			CSS_UNIT_PX, CSS_UNIT_PX, CSS_UNIT_PX, CSS_UNIT_PX,
 			false, false, false, false };
-	uint8_t type = get_clip(child, &rect);
+	type = get_clip(child, &rect);
 
 	return css__copy_clip(
 			type == CSS_CLIP_INHERIT ? parent : child,

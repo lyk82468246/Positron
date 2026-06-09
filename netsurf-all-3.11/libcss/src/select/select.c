@@ -47,6 +47,8 @@ typedef struct css_select_sheet {
  * CSS selection context
  */
 struct css_select_ctx {
+	css_select_strings str;
+	css_computed_style *default_style;
 	uint32_t n_sheets;		/**< Number of sheets */
 
 	css_select_sheet *sheets;	/**< Array of sheets */
@@ -55,10 +57,8 @@ struct css_select_ctx {
 
 	bool uses_revert;  /**< A sheet used revert property value */
 
-	css_select_strings str;
 
 	/* Interned default style */
-	css_computed_style *default_style;
 };
 
 /**
@@ -86,13 +86,13 @@ typedef struct css_select_font_faces_state {
  * CSS rule source
  */
 typedef struct css_select_rule_source {
+	uint32_t class;
 	enum {
 		CSS_SELECT_RULE_SRC_ELEMENT,
 		CSS_SELECT_RULE_SRC_CLASS,
 		CSS_SELECT_RULE_SRC_ID,
 		CSS_SELECT_RULE_SRC_UNIVERSAL
 	} source;
-	uint32_t class;
 } css_select_rule_source;
 
 
@@ -266,7 +266,8 @@ css_error css_select_ctx_destroy(css_select_ctx *ctx)
 		css_computed_style_destroy(ctx->default_style);
 
 	if (ctx->sheets != NULL) {
-		for (uint32_t index = 0; index < ctx->n_sheets; index++) {
+		uint32_t index;
+		for (index = 0; index < ctx->n_sheets; index++) {
 			css__mq_query_destroy(ctx->sheets[index].media);
 		}
 		free(ctx->sheets);
@@ -638,7 +639,8 @@ static css_error css__create_node_bloom(
 
 	/* Add class names to bloom */
 	if (state->classes != NULL) {
-		for (uint32_t i = 0; i < state->n_classes; i++) {
+		uint32_t i;
+		for (i = 0; i < state->n_classes; i++) {
 			lwc_string *s = state->classes[i];
 			if (lwc_string_caseless_hash_value(s,
 					&hash) != lwc_error_ok) {
@@ -729,6 +731,7 @@ static css_error css_select_style__get_sharable_node_data_for_candidate(
 		enum share_candidate_type type,
 		struct css_node_data **sharable_node_data)
 {
+	uint32_t i;
 	css_error error;
 	lwc_string *share_candidate_id;
 	uint32_t share_candidate_n_classes;
@@ -837,7 +840,7 @@ static css_error css_select_style__get_sharable_node_data_for_candidate(
 	/* TODO: no need to care about the order, but it's simpler to
 	 *       have an ordered match, and authors are more likely to be
 	 *       consistent than  not. */
-	for (uint32_t i = 0; i < share_candidate_n_classes; i++) {
+	for (i = 0; i < share_candidate_n_classes; i++) {
 		bool match;
 		if (lwc_string_caseless_isequal(
 				state->classes[i],
@@ -865,7 +868,8 @@ static css_error css_select_style__get_sharable_node_data_for_candidate(
 
 cleanup:
 	if (share_candidate_classes != NULL) {
-		for (uint32_t i = 0; i < share_candidate_n_classes; i++) {
+		uint32_t i;
+		for (i = 0; i < share_candidate_n_classes; i++) {
 			lwc_string_unref(share_candidate_classes[i]);
 		}
 	}
@@ -1007,7 +1011,8 @@ static void css_select__finalise_selection_state(
 	}
 
 	if (state->classes != NULL) {
-		for (uint32_t i = 0; i < state->n_classes; i++) {
+		uint32_t i;
+		for (i = 0; i < state->n_classes; i++) {
 			lwc_string_unref(state->classes[i]);
 		}
 	}
@@ -1025,8 +1030,10 @@ static void css_select__finalise_selection_state(
 	}
 
 	if (state->revert != NULL) {
-		for (size_t i = 0; i < CSS_ORIGIN_AUTHOR; i++) {
-			for (size_t j = 0; j < CSS_PSEUDO_ELEMENT_COUNT; j++) {
+		size_t i;
+		for (i = 0; i < CSS_ORIGIN_AUTHOR; i++) {
+			size_t j;
+			for (j = 0; j < CSS_PSEUDO_ELEMENT_COUNT; j++) {
 				if (state->revert[i].style[j] == NULL) {
 					continue;
 				}
@@ -1247,13 +1254,15 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 		css_select_handler *handler, void *pw,
 		css_select_results **result)
 {
-	css_origin origin = CSS_ORIGIN_UA;
-	uint32_t i, j, nhints;
 	css_error error;
 	css_select_state state;
-	css_hint *hints = NULL;
-	void *parent = NULL;
+	css_hint *hints;
+	void *parent;
 	struct css_node_data *share;
+	css_origin origin = CSS_ORIGIN_UA;
+	uint32_t i, j, nhints;
+	hints = NULL;
+	parent = NULL;
 
 	if (ctx == NULL || node == NULL || result == NULL || handler == NULL ||
 	    handler->handler_version != CSS_SELECT_HANDLER_VERSION_1)
@@ -2345,10 +2354,11 @@ css_error match_universal_combinator(css_select_ctx *ctx, css_combinator type,
 			next_detail != NULL &&
 			(next_detail->type == CSS_SELECTOR_CLASS ||
 			 next_detail->type == CSS_SELECTOR_ID)) {
+		bool match;
 		reject_item *reject = state->next_reject + 1;
 		reject_item *last = state->reject_cache +
 				N_ELEMENTS(state->reject_cache) - 1;
-		bool match = false;
+		match = false;
 
 		while (reject <= last) {
 			/* Perform pessimistic matching (may hurt quirks) */

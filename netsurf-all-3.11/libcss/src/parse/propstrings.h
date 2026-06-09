@@ -10,6 +10,17 @@
 
 #include "utils/utils.h"
 
+/*
+ * Positron (WinCE): the Windows Mobile CRT headers transitively pull in
+ * <windef.h>/<winbase.h>, whose RECT typedef and INFINITE macro collide with
+ * keyword constants in the enum below. libcss uses neither Win32 meaning, so
+ * for the WinCE build we rename our RECT constant and drop the INFINITE macro.
+ */
+#ifdef _WIN32_WCE
+#define RECT positron_css_kw_RECT
+#undef INFINITE
+#endif
+
 enum {
 	/* Universal selector */
 	UNIVERSAL,

@@ -19,12 +19,12 @@ typedef struct {
 		CSS_MQ_VALUE_TYPE_RATIO
 	} type;
 	union {
+		lwc_string *ident;
 		css_fixed num_or_ratio; /* Where ratio is the result of a/b */
 		struct {
 			css_fixed len;
 			uint32_t unit;
 		} dim;
-		lwc_string *ident;
 	} data;
 } css_mq_value;
 
@@ -57,10 +57,10 @@ typedef struct {
 typedef struct css_mq_cond_or_feature css_mq_cond_or_feature;
 
 typedef struct {
-	uint32_t negate : 1, /* set if "not" */
-		 op     : 1; /* clear if "and", set if "or" */
 	uint32_t nparts;
 	css_mq_cond_or_feature **parts;
+	uint32_t negate : 1, /* set if "not" */
+		 op     : 1; /* clear if "and", set if "or" */
 } css_mq_cond;
 
 struct css_mq_cond_or_feature {
@@ -75,12 +75,12 @@ struct css_mq_cond_or_feature {
 };
 
 typedef struct css_mq_query {
+	css_mq_cond *cond;
 	struct css_mq_query *next;
 
 	uint32_t negate_type : 1; /* set if "not type" */
 	uint64_t type; /* or NULL */
 
-	css_mq_cond *cond;
 } css_mq_query;
 
 css_error css_parse_media_query(lwc_string **strings,

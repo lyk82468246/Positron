@@ -837,8 +837,8 @@ css_error css__stylesheet_selector_create(css_stylesheet *sheet,
 css_error css__stylesheet_selector_destroy(css_stylesheet *sheet,
 		css_selector *selector)
 {
-	css_selector *c, *d;
 	css_selector_detail *detail;
+	css_selector *c, *d;
 
 	if (sheet == NULL || selector == NULL)
 		return CSS_BADPARM;

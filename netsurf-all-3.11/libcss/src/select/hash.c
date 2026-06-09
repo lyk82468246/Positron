@@ -174,8 +174,8 @@ css_error css__selector_hash_create(css_selector_hash **hash)
  */
 css_error css__selector_hash_destroy(css_selector_hash *hash)
 {
-	hash_entry *d, *e;
 	uint32_t i;
+	hash_entry *d, *e;
 
 	if (hash == NULL)
 		return CSS_BADPARM;
@@ -232,9 +232,9 @@ css_error css__selector_hash_destroy(css_selector_hash *hash)
 css_error css__selector_hash_insert(css_selector_hash *hash,
 		const css_selector *selector)
 {
-	uint32_t index, mask;
 	lwc_string *name;
 	css_error error;
+	uint32_t index, mask;
 
 	if (hash == NULL || selector == NULL)
 		return CSS_BADPARM;
@@ -280,9 +280,9 @@ css_error css__selector_hash_insert(css_selector_hash *hash,
 css_error css__selector_hash_remove(css_selector_hash *hash,
 		const css_selector *selector)
 {
-	uint32_t index, mask;
 	lwc_string *name;
 	css_error error;
+	uint32_t index, mask;
 
 	if (hash == NULL || selector == NULL)
 		return CSS_BADPARM;
@@ -334,9 +334,9 @@ css_error css__selector_hash_find(css_selector_hash *hash,
 		css_selector_hash_iterator *iterator,
 		const css_selector ***matched)
 {
-	uint32_t index, mask;
 	lwc_hash name_hash;
 	hash_entry *head;
+	uint32_t index, mask;
 
 	if (hash == NULL || req == NULL || iterator == NULL || matched == NULL)
 		return CSS_BADPARM;
@@ -406,9 +406,9 @@ css_error css__selector_hash_find_by_class(css_selector_hash *hash,
 		css_selector_hash_iterator *iterator,
 		const css_selector ***matched)
 {
-	uint32_t index, mask;
 	lwc_hash class_hash;
 	hash_entry *head;
+	uint32_t index, mask;
 
 	if (hash == NULL || req == NULL || req->class == NULL ||
 			iterator == NULL || matched == NULL)
@@ -488,9 +488,9 @@ css_error css__selector_hash_find_by_id(css_selector_hash *hash,
 		css_selector_hash_iterator *iterator,
 		const css_selector ***matched)
 {
-	uint32_t index, mask;
 	lwc_hash id_hash;
 	hash_entry *head;
+	uint32_t index, mask;
 
 	if (hash == NULL || req == NULL || req->id == NULL ||
 			iterator == NULL || matched == NULL)
@@ -763,9 +763,9 @@ static int bits_set(uint32_t n) {
 /* Selector chain bloom instrumentation ouput display. */
 static void print_chain_bloom_details(css_bloom bloom[CSS_BLOOM_SIZE])
 {
+	int set[CSS_BLOOM_SIZE];
 	printf("Chain bloom:\t");
 	int total = 0, i;
-	int set[CSS_BLOOM_SIZE];
 	for (i = 0; i < CSS_BLOOM_SIZE; i++) {
 		set[i] = bits_set(bloom[i]);
 		total += set[i];

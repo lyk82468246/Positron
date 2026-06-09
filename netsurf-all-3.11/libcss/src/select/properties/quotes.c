@@ -27,8 +27,8 @@ css_error css__cascade_quotes(uint32_t opv, css_style *style,
 		value = CSS_QUOTES_STRING;
 
 		while (v != QUOTES_NONE) {
-			lwc_string *open, *close;
 			lwc_string **temp;
+			lwc_string *open, *close;
 
 			css__stylesheet_string_get(style->sheet,
 					*((css_code_t *) style->bytecode),

@@ -19,6 +19,13 @@
 #include "core/text.h"
 #include "utils/utils.h"
 
+#ifdef _WIN32_WCE
+/* DELETE is a <winnt.h> macro (0x00010000L) the WinCE CRT drags in; it
+ * clobbers the DELETE enumerator of walk_operation below. libdom does not use
+ * the Win32 access-right value. (Pulled in here via <assert.h>/<stdlib.h>.) */
+#undef DELETE
+#endif
+
 /* The virtual table for dom_text */
 const struct dom_text_vtable text_vtable = {
 	{
