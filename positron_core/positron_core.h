@@ -63,6 +63,19 @@ PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
 /* Free a stylesheet HANDLE from PCore_ParseCSS. NULL-safe. */
 PCORE_API void PCore_FreeStylesheet(HANDLE hSheet);
 
+/* --- Select / computed style (engine layer 2) ----------------------- */
+
+/* Compute the CSS 'color' of the first element named `tag` (case-insensitive,
+ * e.g. "p" / "body") in document `hDoc`, applying stylesheet `hSheet` as an
+ * author sheet. On success returns 0 and writes the colour to *out_argb in
+ * libcss order (0xAARRGGBB); returns non-zero if the element is not found or
+ * selection fails. First probe of the select/computed-style layer: it drives
+ * the full libcss selection machinery (a select context + a libdom-backed
+ * select handler) against the real DOM, the precursor to per-element computed
+ * styles for layout. */
+PCORE_API int PCore_ComputeColor(HANDLE hDoc, HANDLE hSheet,
+                                 const char *tag, unsigned long *out_argb);
+
 #ifdef __cplusplus
 }
 #endif

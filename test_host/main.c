@@ -777,6 +777,69 @@ static BOOL test8_core(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 9 - CSS selection / computed style via positron_core.dll         */
+/* Parse a tiny HTML doc + stylesheet, then PCore_ComputeColor drives     */
+/* libcss selection (libdom-backed handler) to compute the <p>'s color.   */
+/* Proves the select / computed-style layer runs end-to-end on ARM WinCE. */
+/* -------------------------------------------------------------------- */
+
+static BOOL test9_select(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><head><title>x</title></head>"
+        "<body><p>Hello</p></body></html>";
+    static const char *CSS = "p { color: #112233; }\n";
+
+    HANDLE        hDoc;
+    HANDLE        hSheet;
+    unsigned long argb;
+    unsigned long rgb;
+    int           rc;
+    char          msg[256];
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 9 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/test.css");
+    if (hSheet == NULL) {
+        show_error(L"TEST 9 FAIL", "PCore_ParseCSS returned NULL");
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+
+    rc = PCore_ComputeColor(hDoc, hSheet, "p", &argb);
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    if (rc != 0) {
+        show_error(L"TEST 9 FAIL",
+                   "PCore_ComputeColor failed (no <p>, or selection error)");
+        return FALSE;
+    }
+
+    rgb = argb & 0x00FFFFFFUL;       /* low 24 bits = RRGGBB */
+    if (rgb != 0x00112233UL) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "computed color = 0x%08lX (RGB 0x%06lX), expected 0x112233",
+                  argb, rgb);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 9 FAIL", msg);
+        return FALSE;
+    }
+
+    _snprintf(msg, sizeof(msg) - 1,
+              "positron_core selected style for <p>:\n"
+              "  p { color: #112233 } -> computed 0x%06lX\n\n"
+              "(libcss selection + libdom-backed handler run on ARM WinCE.)",
+              rgb);
+    msg[sizeof(msg) - 1] = '\0';
+    show_info(L"TEST 9 OK", msg);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -801,7 +864,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run everything (TEST 1-8)\n"
+                  "Yes = run everything (TEST 1-9)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -814,7 +877,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         run_engine = ask_yesno(L"Select groups (2/3)",
                                "Run ENGINE / RENDERING tests?\n\n"
                                "HTML / CSS / DOM via NetSurf + positron_core\n"
-                               "(TEST 6-8). Fully offline - no network needed.");
+                               "(TEST 6-9). Fully offline - no network needed.");
         run_frontend = ask_yesno(L"Select groups (3/3)",
                                  "Run FRONTEND tests?\n\n"
                                  "Layout / GDI rendering - not implemented yet.");
@@ -834,12 +897,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine / rendering group (TEST 6-8, all offline) ------------- */
+    /* --- Engine / rendering group (TEST 6-9, all offline) ------------- */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
         if (!test7b_dom())         { rc = 8; goto done; }
         if (!test8_core())         { rc = 9; goto done; }
+        if (!test9_select())       { rc = 10; goto done; }
     }
 
     /* --- Frontend group (placeholder) -------------------------------- */
@@ -861,9 +925,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine / Rendering (TEST 6-8)\n"
+               "  Engine / Rendering (TEST 6-9)\n"
                "    libhubbub + libcss + libdom behind\n"
-               "    positron_core.dll. Fully offline.\n\n");
+               "    positron_core.dll; CSS select -> computed style.\n"
+               "    Fully offline.\n\n");
     }
     if (!run_comm && !run_engine && !run_frontend) {
         strcat(summary, "  (no groups selected)\n");

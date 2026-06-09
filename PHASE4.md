@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（commit `3234277`，2026-06-09）：**五个 NetSurf 库全部编译通过**；**libcss/libdom 链接 + 真机验证（TEST 7/7b）**；**`positron_core.dll` 解析引擎边界已立起 + 真机验证（TEST 8）**；`test_host` 已分模块（通信/渲染/前端）。布局 + 绘制为后续大战役。
+> 状态（2026-06-09）：**五个 NetSurf 库全部编译通过**；**libcss/libdom 链接 + 真机验证（TEST 7/7b）**；**`positron_core.dll` 解析引擎边界已立起 + 真机验证（TEST 8）**；**CSS 选择 / 计算样式打通 + 真机验证（TEST 9）**；`test_host` 已分模块（通信/渲染/前端）。布局 + 绘制为后续大战役。
 
 ---
 
@@ -117,7 +117,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ## 下一步
 
-1. **CSS 选择 / 计算样式**：在 `positron_core` 里把已解析的样式表应用到 DOM——用 libcss 的 `select`（`css_select_ctx` + `css_select_style`）算出每个元素的 computed style。关键工作量是实现 libcss 的 **select handler 回调**（让 libcss 能查询 DOM 节点的标签名 / class / id / 属性 / 树结构 / 兄弟关系）。产物：DOM 树 + 每节点 computed style。
+1. **给整棵树算计算样式**：把 TEST 9 的"单元素 select 探针"扩展为遍历整棵 DOM、对每个元素调 `css_select_style`，并把 `css_select_results` 挂到节点上（libcss 的 node-data 缓存机制）。产物：DOM 树 + 每节点 computed style。
 2. **布局（盒模型）**：实现块级 + 行内盒模型，算出每个盒子的位置与尺寸。可参考 NetSurf 核心 `content/handlers/html/layout.c`，或先做精简版（块流 + 文本换行）。
 3. **绘制（WinCE GDI 前端）**：把布局结果用 GDI 画到屏幕——文本（`ExtTextOutW`）、矩形 / 边框、背景色填充。把 NetSurf 的 plotter 抽象映射到 GDI 调用。
 4. **更多内容能力（后续）**：图片解码（libnsgif / png / jpeg）、`@import` / 外链资源经 positron_http 拉取、JavaScript（duktape）。
