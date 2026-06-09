@@ -33,6 +33,14 @@
 
 #include <hubbub/parser.h>
 
+#include <libcss/libcss.h>
+#include <libwapcaplet/libwapcaplet.h>
+
+/* dom_hubbub binding (HTML -> libdom DOM). Included by relative path: the
+ * binding header has no clean public name, and its sibling "errors.h"
+ * resolves via the header's own directory. Pulls <dom/dom.h> too. */
+#include "../netsurf-all-3.11/libdom/bindings/hubbub/parser.h"
+
 /* -------------------------------------------------------------------- */
 /* Display helpers                                                       */
 /* -------------------------------------------------------------------- */
@@ -499,6 +507,185 @@ static BOOL test6_hubbub(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 7 - libcss CSS parser (NetSurf engine, Phase 4)                  */
+/* Parse a small stylesheet end-to-end: create -> append_data ->         */
+/* data_done -> destroy. Links positron_libcss (surfaces any missing CRT */
+/* exports such as strdup/strncasecmp) and proves the ported CSS parser  */
+/* runs on real ARM hardware.                                            */
+/* -------------------------------------------------------------------- */
+
+static css_error test7_resolve(void *pw, const char *base,
+                               lwc_string *rel, lwc_string **abs)
+{
+    (void) pw;
+    (void) base;
+    /* No real URL resolution needed (test CSS has no @import); hand the
+     * relative reference straight back, taking a ref as the API expects. */
+    *abs = lwc_string_ref(rel);
+    return CSS_OK;
+}
+
+static BOOL test7_libcss(void)
+{
+    static const char *CSS =
+        "body { color: #ffffff; background: #000000; }\n"
+        "p { margin: 1em; font-size: 12px; }\n"
+        "a:hover { text-decoration: underline; }\n";
+
+    css_stylesheet_params params;
+    css_stylesheet       *sheet = NULL;
+    css_error             err;
+    char                  msg[256];
+
+    /* Zero the block, then set only the fields we need; title / quirks /
+     * inline / import / colour / font callbacks stay NULL/false. */
+    memset(&params, 0, sizeof(params));
+    params.params_version = CSS_STYLESHEET_PARAMS_VERSION_1;
+    params.level          = CSS_LEVEL_DEFAULT;
+    params.charset        = "UTF-8";
+    params.url            = "http://positron.local/test.css";
+    params.resolve        = test7_resolve;
+
+    err = css_stylesheet_create(&params, &sheet);
+    if (err != CSS_OK || sheet == NULL) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "css_stylesheet_create failed: err=%d", (int) err);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 7 FAIL", msg);
+        return FALSE;
+    }
+
+    /* Streaming append: CSS_NEEDDATA is the normal "ok, more welcome". */
+    err = css_stylesheet_append_data(sheet, (const uint8_t *) CSS,
+                                     strlen(CSS));
+    if (err != CSS_OK && err != CSS_NEEDDATA) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "css_stylesheet_append_data failed: err=%d", (int) err);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 7 FAIL", msg);
+        css_stylesheet_destroy(sheet);
+        return FALSE;
+    }
+
+    err = css_stylesheet_data_done(sheet);
+    if (err != CSS_OK) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "css_stylesheet_data_done failed: err=%d", (int) err);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 7 FAIL", msg);
+        css_stylesheet_destroy(sheet);
+        return FALSE;
+    }
+
+    css_stylesheet_destroy(sheet);
+
+    show_info(L"TEST 7 OK",
+              "libcss parsed a stylesheet end-to-end:\n"
+              "create -> append_data -> data_done -> destroy.\n\n"
+              "3 rules (body / p / a:hover) accepted.\n\n"
+              "(NetSurf CSS parser links + runs on ARM WinCE.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 7b - libdom HTML -> DOM via the dom_hubbub binding (Phase 4)     */
+/* Drives hubbub through libdom's binding to build a real DOM tree, then  */
+/* fetches the document element. Links positron_libdom + the binding      */
+/* (surfaces further CRT gaps such as snprintf) and proves the ported     */
+/* HTML->DOM pipeline runs on real ARM hardware.                          */
+/* -------------------------------------------------------------------- */
+
+static void test7b_msg(uint32_t severity, void *ctx, const char *msg, ...)
+{
+    (void) severity;
+    (void) ctx;
+    (void) msg;
+    /* Swallow libdom/hubbub diagnostics (no stdout on WinCE anyway). */
+}
+
+static BOOL test7b_dom(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><head><title>Hi</title></head>"
+        "<body><p>Hello</p><p>World</p></body></html>";
+
+    dom_hubbub_parser_params params;
+    dom_hubbub_parser       *parser = NULL;
+    dom_document            *doc = NULL;
+    dom_element             *root = NULL;
+    dom_hubbub_error         derr;
+    dom_exception            exc;
+    char                     msg[256];
+
+    memset(&params, 0, sizeof(params));
+    params.enc           = "UTF-8";
+    params.fix_enc       = true;
+    params.enable_script = false;
+    params.script        = NULL;
+    params.msg           = test7b_msg;
+    params.ctx           = NULL;
+    params.daf           = NULL;
+
+    derr = dom_hubbub_parser_create(&params, &parser, &doc);
+    if (derr != DOM_HUBBUB_OK || parser == NULL || doc == NULL) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "dom_hubbub_parser_create failed: err=%d", (int) derr);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 7b FAIL", msg);
+        if (parser != NULL) {
+            dom_hubbub_parser_destroy(parser);
+        }
+        return FALSE;
+    }
+
+    derr = dom_hubbub_parser_parse_chunk(parser, (const uint8_t *) HTML,
+                                         strlen(HTML));
+    if (derr != DOM_HUBBUB_OK) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "dom_hubbub_parser_parse_chunk failed: err=%d", (int) derr);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 7b FAIL", msg);
+        dom_hubbub_parser_destroy(parser);
+        dom_node_unref((dom_node *) doc);
+        return FALSE;
+    }
+
+    derr = dom_hubbub_parser_completed(parser);
+    if (derr != DOM_HUBBUB_OK) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "dom_hubbub_parser_completed failed: err=%d", (int) derr);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 7b FAIL", msg);
+        dom_hubbub_parser_destroy(parser);
+        dom_node_unref((dom_node *) doc);
+        return FALSE;
+    }
+
+    /* Parser finished; the document is now owned by us. */
+    dom_hubbub_parser_destroy(parser);
+
+    exc = dom_document_get_document_element(doc, &root);
+    if (exc != DOM_NO_ERR || root == NULL) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "get_document_element failed: exc=%d (root=%p)",
+                  (int) exc, (void *) root);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 7b FAIL", msg);
+        dom_node_unref((dom_node *) doc);
+        return FALSE;
+    }
+
+    dom_node_unref((dom_node *) root);
+    dom_node_unref((dom_node *) doc);
+
+    show_info(L"TEST 7b OK",
+              "libdom built a DOM tree from HTML via dom_hubbub:\n"
+              "create -> parse_chunk -> completed -> document element.\n\n"
+              "(NetSurf HTML->DOM pipeline links + runs on ARM WinCE.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -535,6 +722,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         PHttp_Cleanup();
         return 6;
     }
+    if (!test7_libcss()) {
+        PHttp_Cleanup();
+        return 7;
+    }
+    if (!test7b_dom()) {
+        PHttp_Cleanup();
+        return 8;
+    }
 
     show_info(L"All tests passed",
               "Positron Phase 3 verified end-to-end:\n"
@@ -545,7 +740,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
               "  chunked Transfer-Encoding\n"
               "  cJSON parse + nested object extraction\n"
               "  badssl.com positive + negative tests\n"
-              "  libhubbub HTML tokeniser (Phase 4 engine)");
+              "  libhubbub HTML tokeniser (Phase 4 engine)\n"
+              "  libcss CSS parser (Phase 4 engine)\n"
+              "  libdom HTML->DOM via dom_hubbub (Phase 4 engine)");
 
     PHttp_Cleanup();
     return 0;

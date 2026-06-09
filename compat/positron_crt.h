@@ -35,6 +35,18 @@ void *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
  * trip an unreachable-code warning. */
 void abort(void);
 
+/* POSIX strdup / strncasecmp. WinCE coredll exports neither under these names;
+ * provided in positron_crt.c. strncasecmp forwards to coredll's _strnicmp.
+ * libcss needs both (css_stylesheet_create -> strdup; mq_parse_op ->
+ * strncasecmp). */
+char *strdup(const char *s);
+int strncasecmp(const char *s1, const char *s2, size_t n);
+
+/* C99 snprintf. WinCE coredll has only _vsnprintf; provided in positron_crt.c
+ * (libdom needs the C99 name). time() is also provided there but declared via
+ * <time.h>, not here, to avoid clashing with the platform prototype. */
+int snprintf(char *buf, size_t size, const char *fmt, ...);
+
 #ifdef __cplusplus
 }
 #endif

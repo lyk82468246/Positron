@@ -35,13 +35,13 @@
  * libdom Hubbub parser context
  */
 struct dom_hubbub_parser {
-	hubbub_parser *parser;		/**< Hubbub parser instance */
 	hubbub_tree_handler tree_handler;
+	dom_hubbub_encoding_source encoding_source;
+	hubbub_parser *parser;		/**< Hubbub parser instance */
 					/**< Hubbub parser tree handler */
 
 	struct dom_document *doc;	/**< DOM Document we're building within */
 
-	dom_hubbub_encoding_source encoding_source;
 					/**< The document's encoding source */
 	const char *encoding; 		/**< The document's encoding */
 
@@ -116,10 +116,10 @@ static char *parser_strndup(const char *s, size_t n)
 static hubbub_error create_doctype(void *parser, const hubbub_doctype *doctype,
 		void **result)
 {
+	struct dom_document_type *dtype;
 	dom_hubbub_parser *dom_parser = (dom_hubbub_parser *) parser;
 	dom_exception err;
 	char *qname, *public_id = NULL, *system_id = NULL;
-	struct dom_document_type *dtype;
 
 	*result = NULL;
 
@@ -186,6 +186,7 @@ fail:
 static hubbub_error create_element(void *parser, const hubbub_tag *tag,
 		void **result)
 {
+	dom_html_element_type tag_type;
 	dom_hubbub_parser *dom_parser = (dom_hubbub_parser *) parser;
 	dom_exception err;
 	dom_string *name;
@@ -230,7 +231,6 @@ static hubbub_error create_element(void *parser, const hubbub_tag *tag,
 	}
 
 	/* Now do some special per-element-type handling */
-	dom_html_element_type tag_type;
 	err = dom_html_element_get_tag_type(element, &tag_type);
 	if (err != DOM_NO_ERR) {
 		dom_parser->msg(DOM_MSG_CRITICAL, dom_parser->mctx,
