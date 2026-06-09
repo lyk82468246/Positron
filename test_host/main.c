@@ -41,6 +41,11 @@
  * resolves via the header's own directory. Pulls <dom/dom.h> too. */
 #include "../netsurf-all-3.11/libdom/bindings/hubbub/parser.h"
 
+/* positron_core.dll - the product-level engine boundary. TEST 8 drives the
+ * NetSurf engine through this DLL's PCore_* API instead of the raw static
+ * libs, exactly as a real Positron app would consume it. */
+#include "positron_core.h"
+
 /* -------------------------------------------------------------------- */
 /* Display helpers                                                       */
 /* -------------------------------------------------------------------- */
@@ -686,6 +691,64 @@ static BOOL test7b_dom(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 8 - positron_core.dll product boundary (Phase 4)                 */
+/* The same HTML->DOM and CSS parse as TEST 7/7b, but driven through the  */
+/* PCore_* API exported by positron_core.dll - i.e. the NetSurf engine    */
+/* linked behind the shared DLL, exactly as a real Positron app would     */
+/* consume it. Proves the engine links + runs inside the DLL and that     */
+/* only the small PCore_* surface crosses the boundary.                   */
+/* -------------------------------------------------------------------- */
+
+static BOOL test8_core(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><head><title>Hi</title></head>"
+        "<body><p>Hello</p><p>World</p></body></html>";
+    static const char *CSS =
+        "body { color: #ffffff; background: #000000; }\n"
+        "p { margin: 1em; font-size: 12px; }\n"
+        "a:hover { text-decoration: underline; }\n";
+
+    HANDLE hDoc;
+    HANDLE hSheet;
+
+    if (PCore_Init() != 0) {
+        show_error(L"TEST 8 FAIL", "PCore_Init failed");
+        return FALSE;
+    }
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 8 FAIL",
+                   "PCore_ParseHTML returned NULL "
+                   "(HTML->DOM via positron_core.dll failed)");
+        PCore_Shutdown();
+        return FALSE;
+    }
+
+    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/test.css");
+    if (hSheet == NULL) {
+        show_error(L"TEST 8 FAIL",
+                   "PCore_ParseCSS returned NULL "
+                   "(CSS parse via positron_core.dll failed)");
+        PCore_FreeDocument(hDoc);
+        PCore_Shutdown();
+        return FALSE;
+    }
+
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    PCore_Shutdown();
+
+    show_info(L"TEST 8 OK",
+              "positron_core.dll drove the full engine:\n"
+              "PCore_ParseHTML built a DOM tree, PCore_ParseCSS parsed a\n"
+              "stylesheet - both through the shared DLL boundary.\n\n"
+              "(NetSurf engine runs behind positron_core.dll on ARM WinCE.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -730,6 +793,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         PHttp_Cleanup();
         return 8;
     }
+    if (!test8_core()) {
+        PHttp_Cleanup();
+        return 9;
+    }
 
     show_info(L"All tests passed",
               "Positron Phase 3 verified end-to-end:\n"
@@ -742,7 +809,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
               "  badssl.com positive + negative tests\n"
               "  libhubbub HTML tokeniser (Phase 4 engine)\n"
               "  libcss CSS parser (Phase 4 engine)\n"
-              "  libdom HTML->DOM via dom_hubbub (Phase 4 engine)");
+              "  libdom HTML->DOM via dom_hubbub (Phase 4 engine)\n"
+              "  positron_core.dll engine boundary (PCore_ParseHTML/ParseCSS)");
 
     PHttp_Cleanup();
     return 0;
