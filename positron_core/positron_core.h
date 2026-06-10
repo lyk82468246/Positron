@@ -109,6 +109,16 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h);
 PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
                             int *x, int *y, int *w, int *h);
 
+/* --- Painting (engine layer 4, milestone C) ------------------------- */
+
+/* Paint the laid-out document into a GDI device context. Must be called after
+ * PCore_StyleDocument + PCore_LayoutDocument. Draws each block's background
+ * colour and (un-wrapped) leaf text in its computed colour; scroll_x/scroll_y
+ * shift the page beneath the viewport. The application owns the window and
+ * message loop and calls this from its WM_PAINT handler. */
+PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
+                                   int scroll_x, int scroll_y);
+
 #ifdef __cplusplus
 }
 #endif

@@ -991,6 +991,140 @@ static BOOL test11_layout(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 12 - first visible page: a real window painted by positron_core   */
+/* The app owns the window + message loop; WM_PAINT calls                 */
+/* PCore_PaintDocument over the styled + laid-out tree.                   */
+/* -------------------------------------------------------------------- */
+
+static HANDLE g_render_doc = NULL;
+
+static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
+                                     WPARAM wp, LPARAM lp)
+{
+    switch (msg) {
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC         hdc;
+        RECT        rc;
+
+        hdc = BeginPaint(hwnd, &ps);
+        GetClientRect(hwnd, &rc);
+        FillRect(hdc, &rc, (HBRUSH) GetStockObject(WHITE_BRUSH));
+        if (g_render_doc != NULL) {
+            PCore_PaintDocument(g_render_doc, hdc, 0, 0);
+        }
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    case WM_LBUTTONDOWN:
+    case WM_KEYDOWN:
+    case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 0;
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProc(hwnd, msg, wp, lp);
+}
+
+static BOOL test12_render(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><head><title>x</title></head>"
+        "<body><div><p>Hello Positron</p><p>Rendered on WM6</p></div>"
+        "</body></html>";
+    static const char *CSS =
+        "body { background-color: #ffffff; color: #202020; }\n"
+        "div  { background-color: #cce6ff; }\n"
+        "p    { color: #103080; }\n";
+
+    HINSTANCE hInst;
+    WNDCLASSW wc;
+    HWND      hwnd;
+    MSG       m;
+    HANDLE    hDoc;
+    HANDLE    hSheet;
+    int       vw, vh;
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 12 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/test.css");
+    if (hSheet == NULL) {
+        show_error(L"TEST 12 FAIL", "PCore_ParseCSS returned NULL");
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+    if (PCore_StyleDocument(hDoc, hSheet) != 0) {
+        show_error(L"TEST 12 FAIL", "PCore_StyleDocument failed");
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+
+    vw = GetSystemMetrics(SM_CXSCREEN);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 240; }
+    if (vh <= 0) { vh = 320; }
+
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0) {
+        show_error(L"TEST 12 FAIL", "PCore_LayoutDocument failed");
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+
+    show_info(L"TEST 12",
+              "A render window will open (first visible HTML page).\n\n"
+              "Tap the screen or press a key to close it and finish.");
+
+    g_render_doc = hDoc;
+
+    hInst = GetModuleHandle(NULL);
+    memset(&wc, 0, sizeof(wc));
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc = PCoreWndProc;
+    wc.hInstance = hInst;
+    wc.hbrBackground = (HBRUSH) GetStockObject(WHITE_BRUSH);
+    wc.lpszClassName = L"PositronRenderWnd";
+    RegisterClassW(&wc);
+
+    hwnd = CreateWindowW(L"PositronRenderWnd", L"Positron render",
+            WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+            CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInst, NULL);
+    if (hwnd == NULL) {
+        show_error(L"TEST 12 FAIL", "CreateWindow returned NULL");
+        g_render_doc = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+    SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
+
+    /* Local message loop: the page stays up until tapped / key / closed. */
+    while (GetMessage(&m, NULL, 0, 0)) {
+        TranslateMessage(&m);
+        DispatchMessage(&m);
+    }
+
+    g_render_doc = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    show_info(L"TEST 12 OK",
+              "First HTML page rendered to a real window:\n"
+              "  white body, light-blue div block,\n"
+              "  two dark-blue text lines.\n\n"
+              "(positron_core painted; test_host owned the window.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -1015,7 +1149,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run everything (TEST 1-11)\n"
+                  "Yes = run everything (TEST 1-12)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -1028,7 +1162,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         run_engine = ask_yesno(L"Select groups (2/3)",
                                "Run ENGINE / RENDERING tests?\n\n"
                                "HTML / CSS / DOM via NetSurf + positron_core\n"
-                               "(TEST 6-11). Fully offline - no network needed.");
+                               "(TEST 6-12). Fully offline - no network needed.");
         run_frontend = ask_yesno(L"Select groups (3/3)",
                                  "Run FRONTEND tests?\n\n"
                                  "Layout / GDI rendering - not implemented yet.");
@@ -1048,7 +1182,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine / rendering group (TEST 6-11, all offline) ------------ */
+    /* --- Engine / rendering group (TEST 6-12, all offline) ------------ */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -1057,6 +1191,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test9_select())       { rc = 10; goto done; }
         if (!test10_styledoc())    { rc = 11; goto done; }
         if (!test11_layout())      { rc = 12; goto done; }
+        if (!test12_render())      { rc = 13; goto done; }
     }
 
     /* --- Frontend group (placeholder) -------------------------------- */
@@ -1078,10 +1213,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine / Rendering (TEST 6-11)\n"
+               "  Engine / Rendering (TEST 6-12)\n"
                "    libhubbub + libcss + libdom behind\n"
-               "    positron_core.dll; select + computed style\n"
-               "    + block layout. Fully offline.\n\n");
+               "    positron_core.dll; select + style +\n"
+               "    layout + GDI paint. Fully offline.\n\n");
     }
     if (!run_comm && !run_engine && !run_frontend) {
         strcat(summary, "  (no groups selected)\n");

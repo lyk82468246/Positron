@@ -1352,3 +1352,129 @@ cleanup:
     }
     return rc;
 }
+
+/* ================================================================== */
+/* Painting (milestone C): draw the laid-out box tree to a GDI DC      */
+/* ================================================================== */
+
+/* libcss colour 0xAARRGGBB -> GDI COLORREF 0x00BBGGRR. */
+static COLORREF pcore_argb_to_colorref(css_color argb)
+{
+    return RGB((int) ((argb >> 16) & 0xFF),
+               (int) ((argb >> 8) & 0xFF),
+               (int) (argb & 0xFF));
+}
+
+/* Paint `node` (an element with a box) and its element descendants. Leaf
+ * blocks draw their text content; containers recurse. `sx`/`sy` scroll. */
+static void pcore_paint_node(HDC hdc, dom_node *node, int sx, int sy)
+{
+    void *sd = NULL;
+    void *bd = NULL;
+    css_computed_style *style;
+    pcore_box *box;
+    css_color col;
+    dom_node *child;
+    int had_block_child;
+
+    if (dom_node_get_user_data(node, pcore_box_key, &bd) != DOM_NO_ERR ||
+            bd == NULL) {
+        return;   /* not laid out (e.g. display:none) */
+    }
+    box = (pcore_box *) bd;
+
+    if (dom_node_get_user_data(node, pcore_style_key, &sd) != DOM_NO_ERR ||
+            sd == NULL) {
+        return;
+    }
+    style = (css_computed_style *) sd;
+
+    /* Background colour (skip transparent: alpha 0). */
+    if (css_computed_background_color(style, &col) ==
+            CSS_BACKGROUND_COLOR_COLOR && ((col >> 24) & 0xFF) != 0) {
+        RECT r;
+        HBRUSH br;
+
+        r.left = box->x - sx;
+        r.top = box->y - sy;
+        r.right = box->x + box->w - sx;
+        r.bottom = box->y + box->h - sy;
+        br = CreateSolidBrush(pcore_argb_to_colorref(col));
+        if (br != NULL) {
+            FillRect(hdc, &r, br);
+            DeleteObject(br);
+        }
+    }
+
+    /* Paint element children; remember whether any were laid out. */
+    had_block_child = 0;
+    if (dom_node_get_first_child(node, &child) == DOM_NO_ERR) {
+        while (child != NULL) {
+            dom_node_type type;
+            dom_node *next;
+            void *cbd = NULL;
+
+            if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
+                    type == DOM_ELEMENT_NODE &&
+                    dom_node_get_user_data(child, pcore_box_key, &cbd) ==
+                            DOM_NO_ERR && cbd != NULL) {
+                pcore_paint_node(hdc, child, sx, sy);
+                had_block_child = 1;
+            }
+
+            if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+                dom_node_unref(child);
+                break;
+            }
+            dom_node_unref(child);
+            child = next;
+        }
+    }
+
+    /* Leaf block: draw its text content at the box's top-left (no wrapping). */
+    if (had_block_child == 0) {
+        dom_string *text = NULL;
+
+        if (dom_node_get_text_content(node, &text) == DOM_NO_ERR &&
+                text != NULL) {
+            const char *utf8 = dom_string_data(text);
+            size_t blen = dom_string_byte_length(text);
+
+            if (utf8 != NULL && blen > 0) {
+                WCHAR wbuf[512];
+                int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, (int) blen,
+                        wbuf, 511);
+                if (wlen > 0) {
+                    (void) css_computed_color(style, &col);
+                    SetTextColor(hdc, pcore_argb_to_colorref(col));
+                    SetBkMode(hdc, TRANSPARENT);
+                    ExtTextOutW(hdc, box->x - sx, box->y - sy, 0, NULL,
+                            wbuf, wlen, NULL);
+                }
+            }
+            dom_string_unref(text);
+        }
+    }
+}
+
+PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
+        int scroll_x, int scroll_y)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    dom_node     *root = NULL;
+
+    if (doc == NULL || hdc == NULL) {
+        return;
+    }
+    if (pcore_box_key == NULL || pcore_style_key == NULL) {
+        return;   /* document not styled + laid out */
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        return;
+    }
+
+    pcore_paint_node(hdc, root, scroll_x, scroll_y);
+
+    dom_node_unref(root);
+}

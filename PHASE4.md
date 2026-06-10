@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-06-09）：**五个 NetSurf 库全部编译通过**；**libcss/libdom 链接 + 真机验证（TEST 7/7b）**；**`positron_core.dll` 解析引擎边界已立起 + 真机验证（TEST 8）**；**CSS 选择 / 计算样式打通 + 真机验证（TEST 9）**；`test_host` 已分模块（通信/渲染/前端）。布局 + 绘制为后续大战役。
+> 状态（2026-06-09）：**五个 NetSurf 库全部编译通过**；**libcss/libdom 链接 + 真机验证（TEST 7/7b）**；**`positron_core.dll` 解析引擎边界已立起 + 真机验证（TEST 8）**；**CSS 选择 / 计算样式（TEST 9）、整棵树计算样式（TEST 10）、块级布局（TEST 11）、GDI 绘制首张页面（TEST 12）全部真机验证**；`test_host` 已分模块（通信/渲染/前端）。行内文本换行 / 边框 / 滚动 / 图片为后续。
 
 ---
 
@@ -135,6 +135,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 ### 里程碑 C — GDI 绘制（TEST 12，首次真正上屏）
 建**真窗口**（此前全是 MessageBox）：`HWND` + `WM_PAINT` → 遍历盒树 → GDI 画文本（`ExtTextOutW`）、背景（`FillRect`）、边框。
 - **TEST 12**：把小文档画进设备窗口 —— Positron 第一张可见的 HTML 页面。
+- ✅ **已达成**：首张 HTML 页面真机渲染——`PCore_PaintDocument(hDoc, hdc, sx, sy)` 遍历盒树画背景（`FillRect`，ARGB→COLORREF，透明跳过）+ 叶子块文本（`ExtTextOutW`，computed color，UTF-8→UTF-16，默认字体）；`test_host` 用 WM 惯用的全屏 App 窗口（`CreateWindow` + `CW_USEDEFAULT` + `WS_VISIBLE` + `SetForegroundWindow`，标准标题栏）拥有窗口与消息循环，`WM_PAINT` 调引擎绘制。**WM 坑**：显式 `(0,0,vw,vh)` + 不抢焦点会变成"躲在状态栏后的一条"，要用 `CW_USEDEFAULT` 交系统铺满 + `SetForegroundWindow`。待补：底部命令栏（`SHCreateMenuBar` 左右软键/OK）、行内文本换行（现叶子块用占位行高、文本画在左上角不换行）、边框 padding。
 
 ### 里程碑 D+（后续）
 图片解码（libnsgif/png/jpeg）、`@import`/外链经 positron_http 拉取、更多 CSS、JS（duktape）。
