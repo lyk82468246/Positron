@@ -395,25 +395,35 @@ PTLS_API BOOL PTls_Init(void)
         /* Not fatal - hardware_poll falls back to jitter. */
     }
 
-    /* Parse embedded CA bundle into the global trust store. */
+    /* Parse the embedded CA bundle (one PEM string per root) into the global
+     * trust store. mbedtls_x509_crt_parse appends to the chain, so loop. */
     mbedtls_x509_crt_init(&g_cacert);
     g_cacert_inited = TRUE;
-    rc = mbedtls_x509_crt_parse(&g_cacert,
-                                (const unsigned char*)g_ca_bundle_pem,
-                                g_ca_bundle_pem_len);
-    if (rc < 0) {
-        ptls_set_error("ca_bundle parse", rc);
-        mbedtls_x509_crt_free(&g_cacert);
-        g_cacert_inited = FALSE;
-        if (g_crypt_prov != 0) {
-            CryptReleaseContext(g_crypt_prov, 0);
-            g_crypt_prov = 0;
+    {
+        int i;
+        int loaded = 0;
+        for (i = 0; i < g_ca_cert_count; i++) {
+            const char *pem = g_ca_certs[i];
+            if (mbedtls_x509_crt_parse(&g_cacert,
+                                       (const unsigned char*)pem,
+                                       strlen(pem) + 1) == 0) {
+                loaded++;
+            }
         }
-        WSACleanup();
-        return FALSE;
+        if (loaded == 0) {
+            ptls_set_error("ca_bundle parse", -1);
+            mbedtls_x509_crt_free(&g_cacert);
+            g_cacert_inited = FALSE;
+            if (g_crypt_prov != 0) {
+                CryptReleaseContext(g_crypt_prov, 0);
+                g_crypt_prov = 0;
+            }
+            WSACleanup();
+            return FALSE;
+        }
     }
-    /* rc > 0 means: this many certs failed to parse but others succeeded.
-     * That's acceptable - we go with whatever roots loaded.            */
+    /* Individual certs that fail to parse are skipped; we go with whatever
+     * roots loaded successfully.                                          */
 
     g_initialized = TRUE;
     return TRUE;

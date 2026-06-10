@@ -1137,6 +1137,46 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     return DefWindowProc(hwnd, msg, wp, lp);
 }
 
+/* Create the full-screen render window and run its message loop until closed.
+ * Assumes g_render_doc + g_doc_h + g_scroll_y are already set. Returns FALSE
+ * only if the window could not be created. */
+static BOOL show_render_window(void)
+{
+    HINSTANCE hInst;
+    WNDCLASSW wc;
+    HWND      hwnd;
+    MSG       m;
+
+    hInst = GetModuleHandle(NULL);
+    memset(&wc, 0, sizeof(wc));
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc = PCoreWndProc;
+    wc.hInstance = hInst;
+    wc.hbrBackground = (HBRUSH) GetStockObject(WHITE_BRUSH);
+    wc.lpszClassName = L"PositronRenderWnd";
+    RegisterClassW(&wc);
+
+    hwnd = CreateWindowW(L"PositronRenderWnd", L"Positron render",
+            WS_VISIBLE | WS_VSCROLL, CW_USEDEFAULT, CW_USEDEFAULT,
+            CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInst, NULL);
+    if (hwnd == NULL) {
+        return FALSE;
+    }
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+    SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
+    /* Read-only view: hide the SIP button and keep the keyboard down. */
+    SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
+    SHSipPreference(hwnd, SIP_FORCEDOWN);
+    pcore_set_scrollbar(hwnd);
+
+    while (GetMessage(&m, NULL, 0, 0)) {
+        TranslateMessage(&m);
+        DispatchMessage(&m);
+    }
+    return TRUE;
+}
+
 static BOOL test12_render(void)
 {
     static const char *HTML =
@@ -1162,10 +1202,6 @@ static BOOL test12_render(void)
         " padding: 6px; }\n"
         "p    { color: #103080; }\n";
 
-    HINSTANCE hInst;
-    WNDCLASSW wc;
-    HWND      hwnd;
-    MSG       m;
     HANDLE    hDoc;
     HANDLE    hSheet;
     int       vw, vh;
@@ -1209,42 +1245,15 @@ static BOOL test12_render(void)
               "Tap the content (or press Esc) to close and finish.");
 
     g_render_doc = hDoc;
-
-    hInst = GetModuleHandle(NULL);
-    memset(&wc, 0, sizeof(wc));
-    wc.style = CS_HREDRAW | CS_VREDRAW;
-    wc.lpfnWndProc = PCoreWndProc;
-    wc.hInstance = hInst;
-    wc.hbrBackground = (HBRUSH) GetStockObject(WHITE_BRUSH);
-    wc.lpszClassName = L"PositronRenderWnd";
-    RegisterClassW(&wc);
-
-    hwnd = CreateWindowW(L"PositronRenderWnd", L"Positron render",
-            WS_VISIBLE | WS_VSCROLL, CW_USEDEFAULT, CW_USEDEFAULT,
-            CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInst, NULL);
-    if (hwnd == NULL) {
+    if (!show_render_window()) {
         show_error(L"TEST 12 FAIL", "CreateWindow returned NULL");
         g_render_doc = NULL;
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         return FALSE;
     }
-    ShowWindow(hwnd, SW_SHOW);
-    UpdateWindow(hwnd);
-    SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
-    /* Read-only view: hide the SIP (soft-keyboard) button and keep the
-     * on-screen keyboard down - we take no text input. */
-    SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
-    SHSipPreference(hwnd, SIP_FORCEDOWN);
-    pcore_set_scrollbar(hwnd);
-
-    /* Local message loop: the page stays up until tapped / key / closed. */
-    while (GetMessage(&m, NULL, 0, 0)) {
-        TranslateMessage(&m);
-        DispatchMessage(&m);
-    }
-
     g_render_doc = NULL;
+
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
 
@@ -1258,6 +1267,93 @@ static BOOL test12_render(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 13 - browse: fetch a real HTTPS page and render it                */
+/* positron_http GET -> PCore_ParseHTML -> StyleDocument (UA + the page's */
+/* own <style>) -> layout -> render in the scroll window. PHttp is assumed */
+/* already initialised (WinMain does it). External <link> CSS, images and  */
+/* JS are not fetched/rendered yet.                                        */
+/* -------------------------------------------------------------------- */
+
+static BOOL test_browse(void)
+{
+    static const char *HOST = "example.com";
+    static const char *PATH = "/";
+
+    PHttpResponse *resp;
+    HANDLE         hDoc;
+    int            body_len;
+    int            vw, vh;
+    char           msg[256];
+
+    resp = PHttp_Get(HOST, 443, PATH, NULL);
+    if (resp == NULL) {
+        show_error(L"TEST 13 FAIL", "PHttp_Get returned NULL (OOM?)");
+        return FALSE;
+    }
+    if (resp->status_code != 200 || resp->body == NULL ||
+            resp->body_len <= 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "GET https://%s%s -> status=%d err=%s",
+                  HOST, PATH, resp->status_code, resp->error_msg);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 13 FAIL", msg);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+
+    body_len = resp->body_len;
+    hDoc = PCore_ParseHTML(resp->body, resp->body_len);
+    PHttp_FreeResponse(resp);   /* HTML is now copied into the DOM */
+    if (hDoc == NULL) {
+        show_error(L"TEST 13 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+
+    if (PCore_StyleDocument(hDoc, NULL) != 0) {   /* UA + page's <style> */
+        show_error(L"TEST 13 FAIL", "PCore_StyleDocument failed");
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0) {
+        show_error(L"TEST 13 FAIL", "PCore_LayoutDocument failed");
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+
+    _snprintf(msg, sizeof(msg) - 1,
+              "Fetched https://%s%s (%d bytes).\n\n"
+              "A render window opens: scroll with the bar / keys,\n"
+              "tap the content (or press Esc) to close.",
+              HOST, PATH, body_len);
+    msg[sizeof(msg) - 1] = '\0';
+    show_info(L"TEST 13", msg);
+
+    g_render_doc = hDoc;
+    if (!show_render_window()) {
+        show_error(L"TEST 13 FAIL", "CreateWindow returned NULL");
+        g_render_doc = NULL;
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+    g_render_doc = NULL;
+
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 13 OK",
+              "Rendered a real fetched web page.\n\n"
+              "(HTTPS GET -> parse -> style [UA + page <style>]\n"
+              " -> layout -> GDI paint, on the device.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -1267,8 +1363,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     BOOL run_comm;
     BOOL run_engine;
     BOOL run_render;
+    BOOL run_browse;
     int  rc;
-    char summary[768];
+    char summary[1024];
 
     (void)hInstance;
     (void)hPrev;
@@ -1294,25 +1391,30 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run everything (TEST 1-12)\n"
+                  "Yes = run everything (TEST 1-13)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
         run_render = TRUE;
+        run_browse = TRUE;
     } else {
-        run_comm = ask_yesno(L"Select groups (1/3)",
+        run_comm = ask_yesno(L"Select groups (1/4)",
                              "Run COMMUNICATION tests?\n\n"
                              "TLS / HTTP / JSON  (TEST 1-5).\n"
                              "Needs network access.");
-        run_engine = ask_yesno(L"Select groups (2/3)",
+        run_engine = ask_yesno(L"Select groups (2/4)",
                                "Run ENGINE tests?\n\n"
                                "HTML / CSS / DOM parse, select, style,\n"
-                               "layout (TEST 6-11). Results shown as\n"
-                               "message boxes. Fully offline.");
-        run_render = ask_yesno(L"Select groups (3/3)",
+                               "layout (TEST 6-11). Message boxes.\n"
+                               "Fully offline.");
+        run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER test?\n\n"
-                               "Opens a real window and paints an HTML\n"
+                               "Opens a window and paints a local HTML\n"
                                "page (TEST 12). Fully offline.");
+        run_browse = ask_yesno(L"Select groups (4/4)",
+                               "Run BROWSE test?\n\n"
+                               "Fetch a real HTTPS page and render it\n"
+                               "(TEST 13). Needs network access.");
     }
 
     rc = 0;
@@ -1345,6 +1447,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test12_render())      { rc = 13; goto done; }
     }
 
+    /* --- Browse group (TEST 13: fetch a real page + render, network) -- */
+    if (run_browse) {
+        /* The comm group (TEST 1) normally initialises positron_http; if it
+         * did not run, bring it up here for the fetch. */
+        if (!run_comm && !PHttp_Init()) {
+            show_error(L"TEST 13 FAIL", "PHttp_Init returned FALSE");
+            rc = 14;
+            goto done;
+        }
+        if (!test_browse())        { rc = 14; goto done; }
+    }
+
     /* Success summary - list only the groups that actually ran. */
     summary[0] = '\0';
     strcat(summary, "Selected test groups passed:\n\n");
@@ -1367,15 +1481,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text. Offline.\n\n");
     }
-    if (!run_comm && !run_engine && !run_render) {
+    if (run_browse) {
+        strcat(summary,
+               "  Browse (TEST 13)\n"
+               "    fetched a real HTTPS page + rendered it\n"
+               "    (HTTP -> parse -> style -> layout -> paint).\n\n");
+    }
+    if (!run_comm && !run_engine && !run_render && !run_browse) {
         strcat(summary, "  (no groups selected)\n");
     }
     show_info(L"Tests passed", summary);
 
 done:
-    /* Only the communication group brings up positron_http (via TEST 1),
-     * so only tear it down when that group ran. */
-    if (run_comm) {
+    /* positron_http is brought up by the comm group (TEST 1) and/or the
+     * browse group; tear it down if either ran. */
+    if (run_comm || run_browse) {
         PHttp_Cleanup();
     }
     return rc;

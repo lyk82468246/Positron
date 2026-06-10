@@ -1001,6 +1001,70 @@ static void pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
     }
 }
 
+/* DFS: find <style> elements, parse their CSS text and append it to `ctx` as
+ * author sheets; record the handles in sheets[] (up to max) so the caller can
+ * free them after selection. Lets a fetched page carry its own inline CSS. */
+static void pcore_collect_styles(dom_node *node, lwc_string *style_name,
+        css_select_ctx *ctx, HANDLE *sheets, int *n, int max)
+{
+    dom_node *child;
+    dom_node_type type;
+    dom_string *name;
+    dom_exception err;
+
+    err = dom_node_get_node_type(node, &type);
+    if (err == DOM_NO_ERR && type == DOM_ELEMENT_NODE) {
+        bool is_style = false;
+
+        err = dom_node_get_node_name(node, &name);
+        if (err == DOM_NO_ERR && name != NULL) {
+            is_style = dom_string_caseless_lwc_isequal(name, style_name);
+            dom_string_unref(name);
+        }
+        if (is_style) {
+            dom_string *css = NULL;
+
+            if (*n < max &&
+                    dom_node_get_text_content(node, &css) == DOM_NO_ERR &&
+                    css != NULL) {
+                const char *data = dom_string_data(css);
+                size_t len = dom_string_byte_length(css);
+
+                if (data != NULL && len > 0) {
+                    HANDLE hs = PCore_ParseCSS(data, (int) len,
+                            "positron:inline-style");
+                    if (hs != NULL) {
+                        if (css_select_ctx_append_sheet(ctx,
+                                (css_stylesheet *) hs,
+                                CSS_ORIGIN_AUTHOR, NULL) == CSS_OK) {
+                            sheets[(*n)++] = hs;
+                        } else {
+                            PCore_FreeStylesheet(hs);
+                        }
+                    }
+                }
+                dom_string_unref(css);
+            }
+            return;   /* don't recurse into a <style>'s text children */
+        }
+    }
+
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return;
+    }
+    while (child != NULL) {
+        dom_node *next;
+
+        pcore_collect_styles(child, style_name, ctx, sheets, n, max);
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+}
+
 PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet)
 {
     dom_document   *doc = (dom_document *) hDoc;
@@ -1008,11 +1072,15 @@ PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet)
     HANDLE          hUA = NULL;
     css_select_ctx *ctx = NULL;
     dom_node       *root = NULL;
+    lwc_string     *style_name = NULL;
+    HANDLE          page_sheets[16];
+    int             n_page = 0;
+    int             i;
     css_media       media;
     pcore_select_pw pw;
     int             rc = 1;
 
-    if (doc == NULL || author == NULL) {
+    if (doc == NULL) {
         return 1;
     }
 
@@ -1037,18 +1105,24 @@ PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet)
             CSS_ORIGIN_UA, NULL) != CSS_OK) {
         goto cleanup;
     }
-    if (css_select_ctx_append_sheet(ctx, author,
-            CSS_ORIGIN_AUTHOR, NULL) != CSS_OK) {
-        goto cleanup;
-    }
-
-    memset(&media, 0, sizeof(media));
-    media.type = CSS_MEDIA_SCREEN;
 
     if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
             root == NULL) {
         goto cleanup;
     }
+
+    /* Apply the page's own <style> sheets (author origin). */
+    if (lwc_intern_string("style", 5, &style_name) == lwc_error_ok) {
+        pcore_collect_styles(root, style_name, ctx, page_sheets, &n_page, 16);
+    }
+
+    /* Optional extra author sheet supplied by the caller (may be NULL). */
+    if (author != NULL) {
+        css_select_ctx_append_sheet(ctx, author, CSS_ORIGIN_AUTHOR, NULL);
+    }
+
+    memset(&media, 0, sizeof(media));
+    media.type = CSS_MEDIA_SCREEN;
 
     pcore_style_subtree(ctx, &pw, &media, root, NULL);
     rc = 0;
@@ -1058,10 +1132,16 @@ cleanup:
         dom_node_unref(root);
     }
     if (ctx != NULL) {
-        css_select_ctx_destroy(ctx);
+        css_select_ctx_destroy(ctx);   /* destroy before freeing its sheets */
+    }
+    for (i = 0; i < n_page; i++) {
+        PCore_FreeStylesheet(page_sheets[i]);
     }
     if (hUA != NULL) {
         PCore_FreeStylesheet(hUA);
+    }
+    if (style_name != NULL) {
+        lwc_string_unref(style_name);
     }
     if (pw.universal != NULL) {
         lwc_string_unref(pw.universal);
@@ -1366,7 +1446,9 @@ static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     }
 
     /* Width: explicit content value, else fill the containing block minus this
-     * box's own margins, borders and padding. */
+     * box's own margins, borders and padding. (Fitting over-wide desktop pages
+     * to a small screen - viewport meta / fit-to-width - is a deliberate later
+     * feature, not a blind clamp here.) */
     if (css_computed_width(style, &len, &unit) == CSS_WIDTH_SET) {
         content_w = pcore_len_px(style, len, unit);
     } else {

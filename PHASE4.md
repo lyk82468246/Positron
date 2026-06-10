@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-06-09）：**五个 NetSurf 库全部编译通过**；**libcss/libdom 链接 + 真机验证（TEST 7/7b）**；**`positron_core.dll` 解析引擎边界已立起 + 真机验证（TEST 8）**；**CSS 选择 / 计算样式（TEST 9）、整棵树计算样式（TEST 10）、块级布局（TEST 11）、GDI 绘制首张页面（TEST 12）全部真机验证**；`test_host` 已分模块（通信/渲染/前端）。行内文本换行 / 边框 / 滚动 / 图片为后续。
+> 状态（2026-06-09）：**五个 NetSurf 库全部编译通过**；**libcss/libdom 链接 + 真机验证（TEST 7/7b）**；**`positron_core.dll` 解析引擎边界已立起 + 真机验证（TEST 8）**；**CSS 选择 / 计算样式（TEST 9）、整棵树计算样式（TEST 10）、块级布局（TEST 11）、GDI 绘制首张页面（TEST 12）、联网渲染真实网页（TEST 13：example.com，含完整 Mozilla CA 根集）全部真机验证**；`test_host` 已分模块（通信/引擎/GDI渲染/Browse）。行内元素 / 图片 / 小屏适配为后续。
 
 ---
 
