@@ -1032,10 +1032,15 @@ static BOOL test12_render(void)
 {
     static const char *HTML =
         "<!DOCTYPE html><html><head><title>x</title></head>"
-        "<body><div><p>Hello Positron</p><p>Rendered on WM6</p></div>"
+        "<body><h2>Positron</h2>"
+        "<div><p>This is a longer paragraph of text that should wrap across "
+        "several lines inside the light-blue block, demonstrating real inline "
+        "text measurement and word wrapping on the device screen.</p>"
+        "<p>A second, shorter paragraph follows below it.</p></div>"
         "</body></html>";
     static const char *CSS =
         "body { background-color: #ffffff; color: #202020; }\n"
+        "h2   { color: #800000; }\n"
         "div  { background-color: #cce6ff; }\n"
         "p    { color: #103080; }\n";
 
@@ -1117,10 +1122,11 @@ static BOOL test12_render(void)
     PCore_FreeDocument(hDoc);
 
     show_info(L"TEST 12 OK",
-              "First HTML page rendered to a real window:\n"
-              "  white body, light-blue div block,\n"
-              "  two dark-blue text lines.\n\n"
-              "(positron_core painted; test_host owned the window.)");
+              "HTML page rendered with wrapped text:\n"
+              "  dark-red H2 heading,\n"
+              "  light-blue div holding a paragraph that\n"
+              "  wraps over several lines, then a 2nd one.\n\n"
+              "(positron_core: style + layout + paint w/ inline wrap.)");
     return TRUE;
 }
 

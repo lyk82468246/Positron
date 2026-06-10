@@ -1154,12 +1154,94 @@ static int pcore_len_px(const css_computed_style *style,
     return (int) FIXTOINT(px);
 }
 
+/* Create a font of `px` pixel height (Tahoma; available on WM). WinCE coredll
+ * has no CreateFontW, so build it via CreateFontIndirectW + LOGFONTW. */
+static HFONT pcore_make_font(int px)
+{
+    LOGFONTW lf;
+
+    if (px < 1) {
+        px = 12;
+    }
+    memset(&lf, 0, sizeof(lf));
+    lf.lfHeight = -px;
+    lf.lfWeight = FW_NORMAL;
+    lf.lfCharSet = DEFAULT_CHARSET;
+    lf.lfOutPrecision = OUT_DEFAULT_PRECIS;
+    lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+    lf.lfQuality = DEFAULT_QUALITY;
+    lf.lfPitchAndFamily = (BYTE) (DEFAULT_PITCH | FF_DONTCARE);
+    lstrcpyW(lf.lfFaceName, L"Tahoma");
+    return CreateFontIndirectW(&lf);
+}
+
+/* Greedy word-wrap `text` (wlen UTF-16 units) to lines of at most `maxw` px,
+ * using whatever font is selected in `hdc`. Returns the line count. When
+ * `draw` is non-zero, also draws each line at (x, y + line*lh). A single word
+ * wider than maxw overflows on its own line (no mid-word breaking yet). */
+static int pcore_text_lines(HDC hdc, const WCHAR *text, int wlen, int maxw,
+        int draw, int x, int y, int lh)
+{
+    int line_start = 0;
+    int i = 0;
+    int count = 0;
+    SIZE sz;
+
+    if (maxw < 1) {
+        maxw = 1;
+    }
+
+    while (i < wlen) {
+        int word_end = i;
+
+        while (word_end < wlen && text[word_end] != L' ') {
+            word_end++;   /* word body */
+        }
+        while (word_end < wlen && text[word_end] == L' ') {
+            word_end++;   /* trailing spaces */
+        }
+
+        if (GetTextExtentPoint32W(hdc, text + line_start,
+                word_end - line_start, &sz) && sz.cx > maxw &&
+                i > line_start) {
+            /* This word overflows the current line: emit [line_start, i). */
+            int len = i - line_start;
+            while (len > 0 && text[line_start + len - 1] == L' ') {
+                len--;   /* trim trailing spaces from the drawn line */
+            }
+            if (draw && len > 0) {
+                ExtTextOutW(hdc, x, y + count * lh, 0, NULL,
+                        text + line_start, len, NULL);
+            }
+            count++;
+            line_start = i;   /* start a new line at this word; re-loop */
+        } else {
+            i = word_end;     /* word fits (or is alone): consume it */
+        }
+    }
+
+    /* Final line. */
+    {
+        int len = wlen - line_start;
+        while (len > 0 && text[line_start + len - 1] == L' ') {
+            len--;
+        }
+        if (draw && len > 0) {
+            ExtTextOutW(hdc, x, y + count * lh, 0, NULL,
+                    text + line_start, len, NULL);
+        }
+        count++;
+    }
+
+    return count;
+}
+
 /* Lay out element `node` as a block box inside a containing block whose
  * content edge is at `cb_x` with content width `cb_w`, starting at vertical
  * cursor *cursor_y. Stores the box on the node and advances *cursor_y past it
  * (including bottom margin). `is_root` picks display computation. */
 static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
-        int *cursor_y, int is_root)
+        int *cursor_y, int is_root, HDC mdc)
 {
     void *sd = NULL;
     css_computed_style *style;
@@ -1234,7 +1316,8 @@ static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
             if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
                     type == DOM_ELEMENT_NODE) {
                 int before = child_y;
-                pcore_layout_block(child, content_x, content_w, &child_y, 0);
+                pcore_layout_block(child, content_x, content_w, &child_y,
+                        0, mdc);
                 if (child_y != before) {
                     had_block_child = 1;
                 }
@@ -1252,14 +1335,48 @@ static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     if (had_block_child) {
         box->h = child_y - content_y;
     } else {
-        /* Leaf block: placeholder single-line height from font-size (no
-         * inline text layout yet). ~1.2 line-height. */
+        /* Leaf block: wrap its text content to the content width and set the
+         * height from the resulting line count (real text measurement). */
         int fs = 16;
+        int lh;
+        int n_lines = 1;
+        dom_string *text = NULL;
+
         if (css_computed_font_size(style, &len, &unit) ==
                 CSS_FONT_SIZE_DIMENSION) {
             fs = pcore_len_px(style, len, unit);
         }
-        box->h = (fs * 12) / 10;
+        lh = (fs * 12) / 10;
+
+        if (dom_node_get_text_content(node, &text) == DOM_NO_ERR &&
+                text != NULL) {
+            const char *utf8 = dom_string_data(text);
+            size_t blen = dom_string_byte_length(text);
+
+            if (utf8 != NULL && blen > 0) {
+                WCHAR wbuf[1024];
+                int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8,
+                        (int) blen, wbuf, 1023);
+                if (wlen > 0) {
+                    HFONT f = pcore_make_font(fs);
+                    HFONT old = (HFONT) SelectObject(mdc, f);
+                    TEXTMETRICW tm;
+                    if (GetTextMetricsW(mdc, &tm)) {
+                        lh = tm.tmHeight + tm.tmExternalLeading;
+                    }
+                    n_lines = pcore_text_lines(mdc, wbuf, wlen, content_w,
+                            0, 0, 0, lh);
+                    SelectObject(mdc, old);
+                    DeleteObject(f);
+                }
+            }
+            dom_string_unref(text);
+        }
+
+        if (n_lines < 1) {
+            n_lines = 1;
+        }
+        box->h = n_lines * lh;
     }
 
     *cursor_y = content_y + box->h + mb;
@@ -1287,7 +1404,14 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
         return 1;
     }
 
-    pcore_layout_block(root, 0, viewport_w, &cursor_y, 1);
+    {
+        /* A memory DC for text measurement during layout (font metrics). */
+        HDC mdc = CreateCompatibleDC(NULL);
+        pcore_layout_block(root, 0, viewport_w, &cursor_y, 1, mdc);
+        if (mdc != NULL) {
+            DeleteDC(mdc);
+        }
+    }
 
     dom_node_unref(root);
     return 0;
@@ -1431,7 +1555,7 @@ static void pcore_paint_node(HDC hdc, dom_node *node, int sx, int sy)
         }
     }
 
-    /* Leaf block: draw its text content at the box's top-left (no wrapping). */
+    /* Leaf block: wrap + draw its text content in its computed colour/font. */
     if (had_block_child == 0) {
         dom_string *text = NULL;
 
@@ -1441,15 +1565,34 @@ static void pcore_paint_node(HDC hdc, dom_node *node, int sx, int sy)
             size_t blen = dom_string_byte_length(text);
 
             if (utf8 != NULL && blen > 0) {
-                WCHAR wbuf[512];
+                WCHAR wbuf[1024];
                 int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, (int) blen,
-                        wbuf, 511);
+                        wbuf, 1023);
                 if (wlen > 0) {
+                    css_fixed flen;
+                    css_unit funit;
+                    int fs = 16;
+                    int lh;
+                    HFONT f, old;
+                    TEXTMETRICW tm;
+
+                    if (css_computed_font_size(style, &flen, &funit) ==
+                            CSS_FONT_SIZE_DIMENSION) {
+                        fs = pcore_len_px(style, flen, funit);
+                    }
+                    f = pcore_make_font(fs);
+                    old = (HFONT) SelectObject(hdc, f);
+                    lh = (fs * 12) / 10;
+                    if (GetTextMetricsW(hdc, &tm)) {
+                        lh = tm.tmHeight + tm.tmExternalLeading;
+                    }
                     (void) css_computed_color(style, &col);
                     SetTextColor(hdc, pcore_argb_to_colorref(col));
                     SetBkMode(hdc, TRANSPARENT);
-                    ExtTextOutW(hdc, box->x - sx, box->y - sy, 0, NULL,
-                            wbuf, wlen, NULL);
+                    pcore_text_lines(hdc, wbuf, wlen, box->w, 1,
+                            box->x - sx, box->y - sy, lh);
+                    SelectObject(hdc, old);
+                    DeleteObject(f);
                 }
             }
             dom_string_unref(text);
