@@ -910,6 +910,87 @@ static BOOL test10_styledoc(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 11 - block-flow layout via positron_core.dll                      */
+/* PCore_LayoutDocument computes block boxes; verify body fills the       */
+/* viewport minus its margins, and the first <p> is offset + stacked.     */
+/* -------------------------------------------------------------------- */
+
+static BOOL test11_layout(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><head><title>x</title></head>"
+        "<body><div><p>Hello</p><p>World</p></div></body></html>";
+    static const char *CSS = "body { color: #112233; }\n";
+    const int VW = 240;
+
+    HANDLE hDoc;
+    HANDLE hSheet;
+    int    bx, by, bw, bh;
+    int    px, py, pw, ph;
+    char   msg[320];
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 11 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/test.css");
+    if (hSheet == NULL) {
+        show_error(L"TEST 11 FAIL", "PCore_ParseCSS returned NULL");
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+
+    if (PCore_StyleDocument(hDoc, hSheet) != 0) {
+        show_error(L"TEST 11 FAIL", "PCore_StyleDocument failed");
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+    if (PCore_LayoutDocument(hDoc, VW, 320) != 0) {
+        show_error(L"TEST 11 FAIL", "PCore_LayoutDocument failed");
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+
+    if (PCore_NodeBox(hDoc, "body", &bx, &by, &bw, &bh) != 0 ||
+            PCore_NodeBox(hDoc, "p", &px, &py, &pw, &ph) != 0) {
+        show_error(L"TEST 11 FAIL", "PCore_NodeBox failed (body / p)");
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        return FALSE;
+    }
+
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    /* VW=240: body margin 8 -> (8,8,224); first <p> fills body content and
+     * sits 1em(16px) below the div content-top(8) -> x=8 y=24 w=224. */
+    if (bx != 8 || by != 8 || bw != 224 ||
+            px != 8 || pw != 224 || py != 24) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "geometry off:\n"
+                  "  body=(%d,%d,%d,%d) expect x8 y8 w224\n"
+                  "  p=(%d,%d,%d,%d) expect x8 y24 w224",
+                  bx, by, bw, bh, px, py, pw, ph);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 11 FAIL", msg);
+        return FALSE;
+    }
+
+    _snprintf(msg, sizeof(msg) - 1,
+              "Block layout OK (viewport %d px):\n"
+              "  body box  = (%d,%d) %dx%d\n"
+              "  first <p> = (%d,%d) %dx%d\n\n"
+              "(width fill - margins, x offset, vertical flow.)",
+              VW, bx, by, bw, bh, px, py, pw, ph);
+    msg[sizeof(msg) - 1] = '\0';
+    show_info(L"TEST 11 OK", msg);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -934,7 +1015,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run everything (TEST 1-10)\n"
+                  "Yes = run everything (TEST 1-11)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -947,7 +1028,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         run_engine = ask_yesno(L"Select groups (2/3)",
                                "Run ENGINE / RENDERING tests?\n\n"
                                "HTML / CSS / DOM via NetSurf + positron_core\n"
-                               "(TEST 6-10). Fully offline - no network needed.");
+                               "(TEST 6-11). Fully offline - no network needed.");
         run_frontend = ask_yesno(L"Select groups (3/3)",
                                  "Run FRONTEND tests?\n\n"
                                  "Layout / GDI rendering - not implemented yet.");
@@ -967,7 +1048,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine / rendering group (TEST 6-10, all offline) ------------ */
+    /* --- Engine / rendering group (TEST 6-11, all offline) ------------ */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -975,6 +1056,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test8_core())         { rc = 9; goto done; }
         if (!test9_select())       { rc = 10; goto done; }
         if (!test10_styledoc())    { rc = 11; goto done; }
+        if (!test11_layout())      { rc = 12; goto done; }
     }
 
     /* --- Frontend group (placeholder) -------------------------------- */
@@ -996,10 +1078,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine / Rendering (TEST 6-10)\n"
+               "  Engine / Rendering (TEST 6-11)\n"
                "    libhubbub + libcss + libdom behind\n"
-               "    positron_core.dll; CSS select + whole-tree\n"
-               "    computed style. Fully offline.\n\n");
+               "    positron_core.dll; select + computed style\n"
+               "    + block layout. Fully offline.\n\n");
     }
     if (!run_comm && !run_engine && !run_frontend) {
         strcat(summary, "  (no groups selected)\n");

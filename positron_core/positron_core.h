@@ -93,6 +93,22 @@ PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet);
 PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
                                       unsigned long *out_argb);
 
+/* --- Block layout (engine layer 3, milestone B) --------------------- */
+
+/* Lay out the styled document as block boxes in normal flow, given a viewport
+ * of `viewport_w` x `viewport_h` CSS px. Must be called after
+ * PCore_StyleDocument. Computes each block element's content-box geometry
+ * (x, y, width, height) and attaches it to the node. First cut: block flow
+ * only (vertical stacking, width fill, margins); padding/border, inline text
+ * wrapping, floats and margin-collapsing are not modelled yet. Returns 0 on
+ * success. */
+PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h);
+
+/* Read back the laid-out content-box (CSS px) of the first element named `tag`.
+ * Any of the out pointers may be NULL. Returns 0 on success. */
+PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
+                            int *x, int *y, int *w, int *h);
+
 #ifdef __cplusplus
 }
 #endif

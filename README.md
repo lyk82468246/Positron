@@ -13,11 +13,11 @@ Electron-like 轻量级框架，目标设备：**Windows Mobile 6 Professional**
 | **1** | `positron_tls.dll` — TLS 1.2 客户端（mbedTLS 2.16 LTS） | ✅ 完成，emulator 验证 |
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1 over TLS) | ✅ 完成，emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，emulator 验证 |
-| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层）；HTTP keep-alive / 重定向 / gzip 等 | 🚧 进行中：5 库编译 + 解析 + **CSS 选择 / 整棵树计算样式**真机验证（TEST 6-10）；`positron_core.dll` 边界已立；布局/绘制后续 |
+| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层）；HTTP keep-alive / 重定向 / gzip 等 | 🚧 进行中：5 库编译 + 解析 + 选择 + 计算样式 + **块级布局**真机验证（TEST 6-11）；`positron_core.dll` 边界已立；GDI 绘制后续 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
-Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libparserutils / libhubbub / libdom / libcss）全部在 VS2008 / WinCE / ARM 下编译通过（C99→C89 脚本化转换，见 `scripts/c89ize.py` 等）。libhubbub 分词、libcss 解析、libdom（经 `dom_hubbub`）HTML→DOM 已链接 + 真机验证（TEST 6/7/7b）。**`positron_core.dll` 已立起**——把四个 NetSurf 静态库链进一个共享 DLL，只导出 `PCore_ParseHTML/ParseCSS` 等小巧 opaque-HANDLE API，TEST 8 经 DLL 边界真机验证。`test_host` 已分模块（通信 / 渲染 / 前端；渲染组全离线，断网可测）。**CSS 选择 / 计算样式已打通**——`PCore_ComputeColor` 经 libcss 的 `css_select_style` + 一个 libdom 版 select handler,对真实 DOM 算出元素的 computed color（TEST 9）。`PCore_StyleDocument` 进一步**给整棵 DOM 树算计算样式**:自顶向下遍历 + UA 默认表 + `css_computed_style_compose` 解析继承,计算样式挂到每个节点（TEST 10:嵌套 `<p>` 继承到 `body` 的颜色,真机验证）。下一步:布局（盒模型）→ GDI 绘制。详见 [PHASE4.md](PHASE4.md)。
+Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libparserutils / libhubbub / libdom / libcss）全部在 VS2008 / WinCE / ARM 下编译通过（C99→C89 脚本化转换，见 `scripts/c89ize.py` 等）。libhubbub 分词、libcss 解析、libdom（经 `dom_hubbub`）HTML→DOM 已链接 + 真机验证（TEST 6/7/7b）。**`positron_core.dll` 已立起**——把四个 NetSurf 静态库链进一个共享 DLL，只导出 `PCore_ParseHTML/ParseCSS` 等小巧 opaque-HANDLE API，TEST 8 经 DLL 边界真机验证。`test_host` 已分模块（通信 / 渲染 / 前端；渲染组全离线，断网可测）。**CSS 选择 / 计算样式已打通**——`PCore_ComputeColor` 经 libcss 的 `css_select_style` + 一个 libdom 版 select handler,对真实 DOM 算出元素的 computed color（TEST 9）。`PCore_StyleDocument` 进一步**给整棵 DOM 树算计算样式**:自顶向下遍历 + UA 默认表 + `css_computed_style_compose` 解析继承,计算样式挂到每个节点（TEST 10:嵌套 `<p>` 继承到 `body` 的颜色,真机验证）。`PCore_LayoutDocument` 再把带样式的树排成**块级盒子**:从计算样式读 display/margin/width,算每个 block 的 `(x,y,w,h)`,正常流竖直堆叠（TEST 11 真机验证;padding/border、行内文本换行、margin 折叠后做）。下一步:GDI 绘制（把盒树画上屏）。详见 [PHASE4.md](PHASE4.md)。
 
 ---
 

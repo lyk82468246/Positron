@@ -20,6 +20,7 @@
 
 #include <windows.h>
 #include <string.h>
+#include <stdlib.h>   /* malloc / free (box geometry) */
 
 #include <dom/dom.h>
 
@@ -1089,6 +1090,254 @@ PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
 
     (void) css_computed_color((css_computed_style *) style, &color);
     *out_argb = (unsigned long) color;
+    rc = 0;
+
+cleanup:
+    if (elem != NULL) {
+        dom_node_unref(elem);
+    }
+    if (root != NULL) {
+        dom_node_unref(root);
+    }
+    if (want != NULL) {
+        lwc_string_unref(want);
+    }
+    return rc;
+}
+
+/* ================================================================== */
+/* Block layout (milestone B): normal-flow block boxes                 */
+/* ================================================================== */
+
+/* Content-box geometry attached to each laid-out element (integer CSS px). */
+typedef struct pcore_box {
+    int x;
+    int y;
+    int w;
+    int h;
+    int margin_top;
+    int margin_right;
+    int margin_bottom;
+    int margin_left;
+} pcore_box;
+
+static dom_string *pcore_box_key = NULL;
+
+static int pcore_ensure_box_key(void)
+{
+    if (pcore_box_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) "__pcore_box__", 13,
+            &pcore_box_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_box_ud_handler(dom_node_operation op, dom_string *key,
+        void *data, struct dom_node *src, struct dom_node *dst)
+{
+    (void) key;
+    (void) src;
+    (void) dst;
+    if (op == DOM_NODE_DELETED && data != NULL) {
+        free(data);
+    }
+}
+
+/* Resolve a CSS length (value+unit) to integer CSS px for the given style. */
+static int pcore_len_px(const css_computed_style *style,
+        css_fixed len, css_unit unit)
+{
+    css_fixed px = css_unit_len2css_px(style, &pcore_unit_ctx, len, unit);
+    return (int) FIXTOINT(px);
+}
+
+/* Lay out element `node` as a block box inside a containing block whose
+ * content edge is at `cb_x` with content width `cb_w`, starting at vertical
+ * cursor *cursor_y. Stores the box on the node and advances *cursor_y past it
+ * (including bottom margin). `is_root` picks display computation. */
+static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
+        int *cursor_y, int is_root)
+{
+    void *sd = NULL;
+    css_computed_style *style;
+    pcore_box *box;
+    css_fixed len;
+    css_unit unit;
+    uint8_t disp;
+    int mt, mr, mb, ml;
+    int content_x, content_y, content_w;
+    int child_y;
+    int had_block_child;
+    dom_node *child;
+    void *old = NULL;
+
+    if (dom_node_get_user_data(node, pcore_style_key, &sd) != DOM_NO_ERR ||
+            sd == NULL) {
+        return;
+    }
+    style = (css_computed_style *) sd;
+
+    disp = css_computed_display(style, is_root ? true : false);
+    if (disp == CSS_DISPLAY_NONE) {
+        return;   /* not laid out; contributes nothing to the flow */
+    }
+
+    /* Margins (auto unsupported in this first cut -> 0). */
+    mt = (css_computed_margin_top(style, &len, &unit) == CSS_MARGIN_SET)
+            ? pcore_len_px(style, len, unit) : 0;
+    mr = (css_computed_margin_right(style, &len, &unit) == CSS_MARGIN_SET)
+            ? pcore_len_px(style, len, unit) : 0;
+    mb = (css_computed_margin_bottom(style, &len, &unit) == CSS_MARGIN_SET)
+            ? pcore_len_px(style, len, unit) : 0;
+    ml = (css_computed_margin_left(style, &len, &unit) == CSS_MARGIN_SET)
+            ? pcore_len_px(style, len, unit) : 0;
+
+    /* Width: explicit value, else fill the containing block. */
+    if (css_computed_width(style, &len, &unit) == CSS_WIDTH_SET) {
+        content_w = pcore_len_px(style, len, unit);
+    } else {
+        content_w = cb_w - ml - mr;
+    }
+    if (content_w < 0) {
+        content_w = 0;
+    }
+
+    content_x = cb_x + ml;
+    content_y = *cursor_y + mt;
+
+    box = (pcore_box *) malloc(sizeof(pcore_box));
+    if (box == NULL) {
+        return;
+    }
+    box->x = content_x;
+    box->y = content_y;
+    box->w = content_w;
+    box->h = 0;
+    box->margin_top = mt;
+    box->margin_right = mr;
+    box->margin_bottom = mb;
+    box->margin_left = ml;
+    dom_node_set_user_data(node, pcore_box_key, box,
+            pcore_box_ud_handler, &old);
+
+    /* Lay out block children inside our content box. */
+    child_y = content_y;
+    had_block_child = 0;
+    if (dom_node_get_first_child(node, &child) == DOM_NO_ERR) {
+        while (child != NULL) {
+            dom_node_type type;
+            dom_node *next;
+
+            if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
+                    type == DOM_ELEMENT_NODE) {
+                int before = child_y;
+                pcore_layout_block(child, content_x, content_w, &child_y, 0);
+                if (child_y != before) {
+                    had_block_child = 1;
+                }
+            }
+
+            if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+                dom_node_unref(child);
+                break;
+            }
+            dom_node_unref(child);
+            child = next;
+        }
+    }
+
+    if (had_block_child) {
+        box->h = child_y - content_y;
+    } else {
+        /* Leaf block: placeholder single-line height from font-size (no
+         * inline text layout yet). ~1.2 line-height. */
+        int fs = 16;
+        if (css_computed_font_size(style, &len, &unit) ==
+                CSS_FONT_SIZE_DIMENSION) {
+            fs = pcore_len_px(style, len, unit);
+        }
+        box->h = (fs * 12) / 10;
+    }
+
+    *cursor_y = content_y + box->h + mb;
+}
+
+PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    dom_node     *root = NULL;
+    int           cursor_y = 0;
+
+    (void) viewport_h;   /* not used yet (no %/viewport-relative heights) */
+
+    if (doc == NULL || viewport_w <= 0) {
+        return 1;
+    }
+    if (pcore_style_key == NULL) {
+        return 1;   /* PCore_StyleDocument must run first */
+    }
+    if (pcore_ensure_box_key() != 0) {
+        return 1;
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        return 1;
+    }
+
+    pcore_layout_block(root, 0, viewport_w, &cursor_y, 1);
+
+    dom_node_unref(root);
+    return 0;
+}
+
+PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
+        int *x, int *y, int *w, int *h)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    dom_node     *root = NULL;
+    dom_node     *elem = NULL;
+    lwc_string   *want = NULL;
+    void         *bd = NULL;
+    pcore_box    *box;
+    int           rc = 1;
+
+    if (doc == NULL || tag == NULL) {
+        return 1;
+    }
+    if (pcore_box_key == NULL) {
+        return 1;
+    }
+    if (lwc_intern_string(tag, strlen(tag), &want) != lwc_error_ok) {
+        return 1;
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        goto cleanup;
+    }
+    elem = find_named(root, want);
+    if (elem == NULL) {
+        goto cleanup;
+    }
+    if (dom_node_get_user_data(elem, pcore_box_key, &bd) != DOM_NO_ERR ||
+            bd == NULL) {
+        goto cleanup;
+    }
+    box = (pcore_box *) bd;
+    if (x != NULL) {
+        *x = box->x;
+    }
+    if (y != NULL) {
+        *y = box->y;
+    }
+    if (w != NULL) {
+        *w = box->w;
+    }
+    if (h != NULL) {
+        *h = box->h;
+    }
     rc = 0;
 
 cleanup:
