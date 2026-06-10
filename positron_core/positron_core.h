@@ -76,6 +76,23 @@ PCORE_API void PCore_FreeStylesheet(HANDLE hSheet);
 PCORE_API int PCore_ComputeColor(HANDLE hDoc, HANDLE hSheet,
                                  const char *tag, unsigned long *out_argb);
 
+/* --- Whole-document styling (engine layer 2, milestone A) ----------- */
+
+/* Style the entire document: walk the DOM top-down and, for each element,
+ * compute its style from the UA default sheet + author sheet `hSheet`,
+ * resolving inheritance by composing with the parent's computed style. The
+ * resulting css_computed_style is attached to each element node (freed when
+ * the document is freed). Returns 0 on success. This is the precursor to
+ * layout: it turns a parsed DOM + stylesheet into a fully-styled tree. */
+PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet);
+
+/* Read back the computed 'color' (0xAARRGGBB) that PCore_StyleDocument
+ * attached to the first element named `tag` (case-insensitive). Returns 0 on
+ * success, non-zero if the element/style is absent. Used to verify inheritance
+ * end-to-end (a child with no color of its own returns its ancestor's). */
+PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
+                                      unsigned long *out_argb);
+
 #ifdef __cplusplus
 }
 #endif

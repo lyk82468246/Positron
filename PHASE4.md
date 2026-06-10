@@ -115,12 +115,31 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ---
 
-## 下一步
+## 下一步 — 渲染管线剩余三大里程碑
 
-1. **给整棵树算计算样式**：把 TEST 9 的"单元素 select 探针"扩展为遍历整棵 DOM、对每个元素调 `css_select_style`，并把 `css_select_results` 挂到节点上（libcss 的 node-data 缓存机制）。产物：DOM 树 + 每节点 computed style。
-2. **布局（盒模型）**：实现块级 + 行内盒模型，算出每个盒子的位置与尺寸。可参考 NetSurf 核心 `content/handlers/html/layout.c`，或先做精简版（块流 + 文本换行）。
-3. **绘制（WinCE GDI 前端）**：把布局结果用 GDI 画到屏幕——文本（`ExtTextOutW`）、矩形 / 边框、背景色填充。把 NetSurf 的 plotter 抽象映射到 GDI 调用。
-4. **更多内容能力（后续）**：图片解码（libnsgif / png / jpeg）、`@import` / 外链资源经 positron_http 拉取、JavaScript（duktape）。
+已完成：HTML→DOM、CSS 解析、单元素 CSS 选择/计算样式（TEST 9）。从"算一个元素的颜色"到"屏幕上画出网页"分三步：
+
+### 里程碑 A — 整棵树的 computed style（TEST 10）
+把单元素 select 探针扩成**全树遍历**：自顶向下 DFS，对每个元素调 `css_select_style`，用 `css_computed_style_compose(父, 本节点选中样式, &本节点计算样式)` 解析**继承**，把计算样式存到节点上。
+- **API**：`PCore_StyleDocument(hDoc, hSheet)` → 带样式的树；按节点查 computed 属性的访问器。
+- **前置 A.1：UA 默认样式表**。元素现在只有 `ua_default_for_property` 给的零散默认值，没有 `div{display:block}`、`p{margin:1em 0}` 这类——布局必需。做法：内置一段精简 `html.css`，启动时解析成 `CSS_ORIGIN_UA` 表，排在 author 表前。
+- **存储**：先用 libdom 节点 user-data（或侧表）挂 `css_computed_style`，避开之前 stub 的 `set/get_libcss_node_data` 生命周期。
+- **TEST 10**：`body{color:#112233}` + 嵌套 `<div><p>` → `<p>` 继承到 0x112233，证明全树遍历 + 继承 + UA/author 合并。
+
+### 里程碑 B — 盒模型布局（TEST 11）
+从带样式的 DOM 生成**盒树**，给定视口宽度算每个盒子的 `(x,y,w,h)`。先做精简版：块级竖直流 + 块内行内文本换行 + 基本 margin/padding；floats/表格/定位后做。
+- **前置：文本测量** —— WinCE GDI：内存 DC + `SelectObject(font)` + `GetTextExtentPoint32W`。
+- 参考 NetSurf `content/handlers/html/layout.c`（大、C99，可切片或自写精简）。
+- **TEST 11**：校验某盒子的 x/y/w/h。
+
+### 里程碑 C — GDI 绘制（TEST 12，首次真正上屏）
+建**真窗口**（此前全是 MessageBox）：`HWND` + `WM_PAINT` → 遍历盒树 → GDI 画文本（`ExtTextOutW`）、背景（`FillRect`）、边框。
+- **TEST 12**：把小文档画进设备窗口 —— Positron 第一张可见的 HTML 页面。
+
+### 里程碑 D+（后续）
+图片解码（libnsgif/png/jpeg）、`@import`/外链经 positron_http 拉取、更多 CSS、JS（duktape）。
+
+**贯穿性决策**：① UA 默认表（A.1） ② computed 存储用节点 user-data vs 侧表 ③ 文本测量上下文（B） ④ C 引入项目第一个 GUI 窗口。
 
 ---
 

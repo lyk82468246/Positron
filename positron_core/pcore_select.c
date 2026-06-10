@@ -872,3 +872,234 @@ cleanup:
     }
     return rc;
 }
+
+/* ================================================================== */
+/* Whole-document styling (milestone A): UA sheet + top-down compose   */
+/* ================================================================== */
+
+/* Minimal UA default stylesheet - enough display/box defaults that layout
+ * has something sane to work with. Expanded as later milestones need it. */
+static const char PCORE_UA_CSS[] =
+    "html, body, div, p, h1, h2, h3, h4, h5, h6, ul, ol, dl, dd, dt,"
+    " blockquote, pre, table, tr, form, fieldset, address, hr,"
+    " header, footer, section, article, nav, aside, main, figure"
+    " { display: block; }\n"
+    "head, title, meta, link, style, script, base { display: none; }\n"
+    "li { display: list-item; }\n"
+    "b, strong { font-weight: bold; }\n"
+    "i, em { font-style: italic; }\n"
+    "body { margin: 8px; }\n"
+    "p, blockquote { margin-top: 1em; margin-bottom: 1em; }\n"
+    "h1 { font-size: 2em; }\n"
+    "h2 { font-size: 1.5em; }\n"
+    "h3 { font-size: 1.17em; }\n";
+
+/* libdom user-data key under which each element's css_computed_style hangs. */
+static dom_string *pcore_style_key = NULL;
+
+static int pcore_ensure_style_key(void)
+{
+    if (pcore_style_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) "__pcore_style__", 15,
+            &pcore_style_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+/* Free the attached computed style when libdom deletes the node (e.g. when the
+ * document is destroyed), so the per-node styles do not leak. */
+static void pcore_style_ud_handler(dom_node_operation op, dom_string *key,
+        void *data, struct dom_node *src, struct dom_node *dst)
+{
+    (void) key;
+    (void) src;
+    (void) dst;
+    if (op == DOM_NODE_DELETED && data != NULL) {
+        css_computed_style_destroy((css_computed_style *) data);
+    }
+}
+
+/* Style `node` (an element) and its element descendants top-down, composing
+ * each selected style with `parent_style` to resolve inheritance. The computed
+ * style is attached to the node via user-data. `node` is borrowed. */
+static void pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
+        const css_media *media, dom_node *node,
+        const css_computed_style *parent_style)
+{
+    css_select_results *results = NULL;
+    css_computed_style *node_style = NULL;
+    css_computed_style *base;
+    dom_node *child;
+    void *old = NULL;
+
+    if (css_select_style(ctx, node, &pcore_unit_ctx, media, NULL,
+            &pcore_select_handler, pw, &results) != CSS_OK ||
+            results == NULL) {
+        return;
+    }
+
+    base = results->styles[CSS_PSEUDO_ELEMENT_NONE];
+
+    if (parent_style != NULL) {
+        /* Compose with the parent to fill inherited properties. */
+        if (css_computed_style_compose(parent_style, base, &pcore_unit_ctx,
+                &node_style) != CSS_OK) {
+            css_select_results_destroy(results);
+            return;
+        }
+        /* `base` is freed by results_destroy below. */
+    } else {
+        /* Root element: no parent. Keep the base style and detach it so
+         * results_destroy does not free it. */
+        node_style = base;
+        results->styles[CSS_PSEUDO_ELEMENT_NONE] = NULL;
+    }
+
+    css_select_results_destroy(results);
+
+    /* Attach to the node (handler frees it on node deletion). */
+    dom_node_set_user_data(node, pcore_style_key, node_style,
+            pcore_style_ud_handler, &old);
+
+    /* Recurse into element children, passing our computed style as parent. */
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return;
+    }
+    while (child != NULL) {
+        dom_node_type type;
+        dom_node *next;
+
+        if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
+                type == DOM_ELEMENT_NODE) {
+            pcore_style_subtree(ctx, pw, media, child, node_style);
+        }
+
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+}
+
+PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet)
+{
+    dom_document   *doc = (dom_document *) hDoc;
+    css_stylesheet *author = (css_stylesheet *) hSheet;
+    HANDLE          hUA = NULL;
+    css_select_ctx *ctx = NULL;
+    dom_node       *root = NULL;
+    css_media       media;
+    pcore_select_pw pw;
+    int             rc = 1;
+
+    if (doc == NULL || author == NULL) {
+        return 1;
+    }
+
+    pw.universal = NULL;
+    if (lwc_intern_string("*", 1, &pw.universal) != lwc_error_ok) {
+        return 1;
+    }
+    if (pcore_ensure_style_key() != 0) {
+        goto cleanup;
+    }
+
+    /* UA default sheet, parsed via the existing CSS entry point. */
+    hUA = PCore_ParseCSS(PCORE_UA_CSS, 0, "positron:ua-default.css");
+    if (hUA == NULL) {
+        goto cleanup;
+    }
+
+    if (css_select_ctx_create(&ctx) != CSS_OK) {
+        goto cleanup;
+    }
+    if (css_select_ctx_append_sheet(ctx, (css_stylesheet *) hUA,
+            CSS_ORIGIN_UA, NULL) != CSS_OK) {
+        goto cleanup;
+    }
+    if (css_select_ctx_append_sheet(ctx, author,
+            CSS_ORIGIN_AUTHOR, NULL) != CSS_OK) {
+        goto cleanup;
+    }
+
+    memset(&media, 0, sizeof(media));
+    media.type = CSS_MEDIA_SCREEN;
+
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        goto cleanup;
+    }
+
+    pcore_style_subtree(ctx, &pw, &media, root, NULL);
+    rc = 0;
+
+cleanup:
+    if (root != NULL) {
+        dom_node_unref(root);
+    }
+    if (ctx != NULL) {
+        css_select_ctx_destroy(ctx);
+    }
+    if (hUA != NULL) {
+        PCore_FreeStylesheet(hUA);
+    }
+    if (pw.universal != NULL) {
+        lwc_string_unref(pw.universal);
+    }
+    return rc;
+}
+
+PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
+        unsigned long *out_argb)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    dom_node     *root = NULL;
+    dom_node     *elem = NULL;
+    lwc_string   *want = NULL;
+    void         *style = NULL;
+    css_color     color;
+    int           rc = 1;
+
+    if (doc == NULL || tag == NULL || out_argb == NULL) {
+        return 1;
+    }
+    if (pcore_style_key == NULL) {
+        return 1;   /* PCore_StyleDocument has not run */
+    }
+    if (lwc_intern_string(tag, strlen(tag), &want) != lwc_error_ok) {
+        return 1;
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        goto cleanup;
+    }
+    elem = find_named(root, want);
+    if (elem == NULL) {
+        goto cleanup;
+    }
+    if (dom_node_get_user_data(elem, pcore_style_key, &style) != DOM_NO_ERR ||
+            style == NULL) {
+        goto cleanup;
+    }
+
+    (void) css_computed_color((css_computed_style *) style, &color);
+    *out_argb = (unsigned long) color;
+    rc = 0;
+
+cleanup:
+    if (elem != NULL) {
+        dom_node_unref(elem);
+    }
+    if (root != NULL) {
+        dom_node_unref(root);
+    }
+    if (want != NULL) {
+        lwc_string_unref(want);
+    }
+    return rc;
+}
