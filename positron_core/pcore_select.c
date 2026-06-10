@@ -1109,7 +1109,9 @@ cleanup:
 /* Block layout (milestone B): normal-flow block boxes                 */
 /* ================================================================== */
 
-/* Content-box geometry attached to each laid-out element (integer CSS px). */
+/* Content-box geometry attached to each laid-out element (integer CSS px).
+ * Padding / border are stored alongside so paint can derive the padding and
+ * border boxes; indices are [0]=top [1]=right [2]=bottom [3]=left. */
 typedef struct pcore_box {
     int x;
     int y;
@@ -1119,6 +1121,9 @@ typedef struct pcore_box {
     int margin_right;
     int margin_bottom;
     int margin_left;
+    int pad[4];          /* padding widths */
+    int bord[4];         /* border widths (0 if style none/hidden) */
+    css_color bcol[4];   /* border colours (ARGB) */
 } pcore_box;
 
 static dom_string *pcore_box_key = NULL;
@@ -1152,6 +1157,65 @@ static int pcore_len_px(const css_computed_style *style,
 {
     css_fixed px = css_unit_len2css_px(style, &pcore_unit_ctx, len, unit);
     return (int) FIXTOINT(px);
+}
+
+/* Padding width (px) for side 0=top 1=right 2=bottom 3=left. */
+static int pcore_padding_px(const css_computed_style *s, int side)
+{
+    css_fixed len;
+    css_unit unit;
+    uint8_t t;
+
+    switch (side) {
+    case 0:  t = css_computed_padding_top(s, &len, &unit);    break;
+    case 1:  t = css_computed_padding_right(s, &len, &unit);  break;
+    case 2:  t = css_computed_padding_bottom(s, &len, &unit); break;
+    default: t = css_computed_padding_left(s, &len, &unit);   break;
+    }
+    return (t == CSS_PADDING_SET) ? pcore_len_px(s, len, unit) : 0;
+}
+
+/* Effective border width (px) for a side, honouring border-style. */
+static int pcore_border_w(const css_computed_style *s, int side)
+{
+    css_fixed len;
+    css_unit unit;
+    uint8_t st, wt;
+
+    switch (side) {
+    case 0:  st = css_computed_border_top_style(s);
+             wt = css_computed_border_top_width(s, &len, &unit);    break;
+    case 1:  st = css_computed_border_right_style(s);
+             wt = css_computed_border_right_width(s, &len, &unit);  break;
+    case 2:  st = css_computed_border_bottom_style(s);
+             wt = css_computed_border_bottom_width(s, &len, &unit); break;
+    default: st = css_computed_border_left_style(s);
+             wt = css_computed_border_left_width(s, &len, &unit);   break;
+    }
+    if (st == CSS_BORDER_STYLE_NONE || st == CSS_BORDER_STYLE_HIDDEN) {
+        return 0;
+    }
+    if (wt == CSS_BORDER_WIDTH_WIDTH) {
+        return pcore_len_px(s, len, unit);
+    }
+    if (wt == CSS_BORDER_WIDTH_THIN) {
+        return 1;
+    }
+    return 2;   /* medium / thick */
+}
+
+/* Border colour (ARGB) for a side. */
+static css_color pcore_border_color(const css_computed_style *s, int side)
+{
+    css_color c = 0;
+
+    switch (side) {
+    case 0:  css_computed_border_top_color(s, &c);    break;
+    case 1:  css_computed_border_right_color(s, &c);  break;
+    case 2:  css_computed_border_bottom_color(s, &c); break;
+    default: css_computed_border_left_color(s, &c);   break;
+    }
+    return c;
 }
 
 /* Create a font of `px` pixel height (Tahoma; available on WM). WinCE coredll
@@ -1240,8 +1304,8 @@ static int pcore_text_lines(HDC hdc, const WCHAR *text, int wlen, int maxw,
  * content edge is at `cb_x` with content width `cb_w`, starting at vertical
  * cursor *cursor_y. Stores the box on the node and advances *cursor_y past it
  * (including bottom margin). `is_root` picks display computation. */
-static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
-        int *cursor_y, int is_root, HDC mdc)
+static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
+        int *cursor_y, int is_root, HDC mdc, int prev_mb)
 {
     void *sd = NULL;
     css_computed_style *style;
@@ -1250,6 +1314,9 @@ static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     css_unit unit;
     uint8_t disp;
     int mt, mr, mb, ml;
+    int pad[4];
+    int bord[4];
+    int k;
     int content_x, content_y, content_w;
     int child_y;
     int had_block_child;
@@ -1258,13 +1325,13 @@ static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
 
     if (dom_node_get_user_data(node, pcore_style_key, &sd) != DOM_NO_ERR ||
             sd == NULL) {
-        return;
+        return 0;
     }
     style = (css_computed_style *) sd;
 
     disp = css_computed_display(style, is_root ? true : false);
     if (disp == CSS_DISPLAY_NONE) {
-        return;   /* not laid out; contributes nothing to the flow */
+        return 0;   /* not laid out; contributes nothing to the flow */
     }
 
     /* Margins (auto unsupported in this first cut -> 0). */
@@ -1277,22 +1344,30 @@ static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     ml = (css_computed_margin_left(style, &len, &unit) == CSS_MARGIN_SET)
             ? pcore_len_px(style, len, unit) : 0;
 
-    /* Width: explicit value, else fill the containing block. */
+    /* Padding + border widths (per side). */
+    for (k = 0; k < 4; k++) {
+        pad[k] = pcore_padding_px(style, k);
+        bord[k] = pcore_border_w(style, k);
+    }
+
+    /* Width: explicit content value, else fill the containing block minus this
+     * box's own margins, borders and padding. */
     if (css_computed_width(style, &len, &unit) == CSS_WIDTH_SET) {
         content_w = pcore_len_px(style, len, unit);
     } else {
-        content_w = cb_w - ml - mr;
+        content_w = cb_w - ml - mr - bord[1] - bord[3] - pad[1] - pad[3];
     }
     if (content_w < 0) {
         content_w = 0;
     }
 
-    content_x = cb_x + ml;
-    content_y = *cursor_y + mt;
+    content_x = cb_x + ml + bord[3] + pad[3];
+    content_y = *cursor_y + mt + bord[0] + pad[0]
+            - ((prev_mb < mt) ? prev_mb : mt);   /* collapse with prev sibling */
 
     box = (pcore_box *) malloc(sizeof(pcore_box));
     if (box == NULL) {
-        return;
+        return 0;
     }
     box->x = content_x;
     box->y = content_y;
@@ -1302,33 +1377,43 @@ static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     box->margin_right = mr;
     box->margin_bottom = mb;
     box->margin_left = ml;
+    for (k = 0; k < 4; k++) {
+        box->pad[k] = pad[k];
+        box->bord[k] = bord[k];
+        box->bcol[k] = pcore_border_color(style, k);
+    }
     dom_node_set_user_data(node, pcore_box_key, box,
             pcore_box_ud_handler, &old);
 
     /* Lay out block children inside our content box. */
     child_y = content_y;
     had_block_child = 0;
-    if (dom_node_get_first_child(node, &child) == DOM_NO_ERR) {
-        while (child != NULL) {
-            dom_node_type type;
-            dom_node *next;
+    {
+        int prev_child_mb = 0;   /* previous child's bottom margin (collapse) */
 
-            if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
-                    type == DOM_ELEMENT_NODE) {
-                int before = child_y;
-                pcore_layout_block(child, content_x, content_w, &child_y,
-                        0, mdc);
-                if (child_y != before) {
-                    had_block_child = 1;
+        if (dom_node_get_first_child(node, &child) == DOM_NO_ERR) {
+            while (child != NULL) {
+                dom_node_type type;
+                dom_node *next;
+
+                if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
+                        type == DOM_ELEMENT_NODE) {
+                    int before = child_y;
+                    int cmb = pcore_layout_block(child, content_x, content_w,
+                            &child_y, 0, mdc, prev_child_mb);
+                    if (child_y != before) {
+                        had_block_child = 1;
+                        prev_child_mb = cmb;
+                    }
                 }
-            }
 
-            if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+                if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+                    dom_node_unref(child);
+                    break;
+                }
                 dom_node_unref(child);
-                break;
+                child = next;
             }
-            dom_node_unref(child);
-            child = next;
         }
     }
 
@@ -1379,7 +1464,8 @@ static void pcore_layout_block(dom_node *node, int cb_x, int cb_w,
         box->h = n_lines * lh;
     }
 
-    *cursor_y = content_y + box->h + mb;
+    *cursor_y = content_y + box->h + pad[2] + bord[2] + mb;
+    return mb;
 }
 
 PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
@@ -1407,7 +1493,7 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     {
         /* A memory DC for text measurement during layout (font metrics). */
         HDC mdc = CreateCompatibleDC(NULL);
-        pcore_layout_block(root, 0, viewport_w, &cursor_y, 1, mdc);
+        pcore_layout_block(root, 0, viewport_w, &cursor_y, 1, mdc, 0);
         if (mdc != NULL) {
             DeleteDC(mdc);
         }
@@ -1513,20 +1599,60 @@ static void pcore_paint_node(HDC hdc, dom_node *node, int sx, int sy)
     }
     style = (css_computed_style *) sd;
 
-    /* Background colour (skip transparent: alpha 0). */
-    if (css_computed_background_color(style, &col) ==
-            CSS_BACKGROUND_COLOR_COLOR && ((col >> 24) & 0xFF) != 0) {
+    /* Border box = content box expanded by padding + border widths. */
+    {
+        int bx = box->x - box->pad[3] - box->bord[3] - sx;
+        int by = box->y - box->pad[0] - box->bord[0] - sy;
+        int bw = box->w + box->pad[1] + box->pad[3]
+                + box->bord[1] + box->bord[3];
+        int bh = box->h + box->pad[0] + box->pad[2]
+                + box->bord[0] + box->bord[2];
         RECT r;
-        HBRUSH br;
+        HBRUSH brsh;
+        int s;
 
-        r.left = box->x - sx;
-        r.top = box->y - sy;
-        r.right = box->x + box->w - sx;
-        r.bottom = box->y + box->h - sy;
-        br = CreateSolidBrush(pcore_argb_to_colorref(col));
-        if (br != NULL) {
-            FillRect(hdc, &r, br);
-            DeleteObject(br);
+        /* Background fills the border box (skip transparent: alpha 0). */
+        if (css_computed_background_color(style, &col) ==
+                CSS_BACKGROUND_COLOR_COLOR && ((col >> 24) & 0xFF) != 0) {
+            r.left = bx;
+            r.top = by;
+            r.right = bx + bw;
+            r.bottom = by + bh;
+            brsh = CreateSolidBrush(pcore_argb_to_colorref(col));
+            if (brsh != NULL) {
+                FillRect(hdc, &r, brsh);
+                DeleteObject(brsh);
+            }
+        }
+
+        /* Border edges. */
+        for (s = 0; s < 4; s++) {
+            if (box->bord[s] <= 0) {
+                continue;
+            }
+            switch (s) {
+            case 0:   /* top */
+                r.left = bx; r.top = by;
+                r.right = bx + bw; r.bottom = by + box->bord[0];
+                break;
+            case 1:   /* right */
+                r.left = bx + bw - box->bord[1]; r.top = by;
+                r.right = bx + bw; r.bottom = by + bh;
+                break;
+            case 2:   /* bottom */
+                r.left = bx; r.top = by + bh - box->bord[2];
+                r.right = bx + bw; r.bottom = by + bh;
+                break;
+            default:  /* left */
+                r.left = bx; r.top = by;
+                r.right = bx + box->bord[3]; r.bottom = by + bh;
+                break;
+            }
+            brsh = CreateSolidBrush(pcore_argb_to_colorref(box->bcol[s]));
+            if (brsh != NULL) {
+                FillRect(hdc, &r, brsh);
+                DeleteObject(brsh);
+            }
         }
     }
 

@@ -1041,7 +1041,8 @@ static BOOL test12_render(void)
     static const char *CSS =
         "body { background-color: #ffffff; color: #202020; }\n"
         "h2   { color: #800000; }\n"
-        "div  { background-color: #cce6ff; }\n"
+        "div  { background-color: #cce6ff; border: 2px solid #4060a0;"
+        " padding: 6px; }\n"
         "p    { color: #103080; }\n";
 
     HINSTANCE hInst;
@@ -1122,11 +1123,11 @@ static BOOL test12_render(void)
     PCore_FreeDocument(hDoc);
 
     show_info(L"TEST 12 OK",
-              "HTML page rendered with wrapped text:\n"
+              "HTML page rendered:\n"
               "  dark-red H2 heading,\n"
-              "  light-blue div holding a paragraph that\n"
-              "  wraps over several lines, then a 2nd one.\n\n"
-              "(positron_core: style + layout + paint w/ inline wrap.)");
+              "  light-blue div with a 2px border + padding,\n"
+              "  holding a wrapped paragraph, then a 2nd one.\n\n"
+              "(box model: bg + border + padding + wrapped text.)");
     return TRUE;
 }
 
@@ -1139,7 +1140,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
 {
     BOOL run_comm;
     BOOL run_engine;
-    BOOL run_frontend;
+    BOOL run_render;
     int  rc;
     char summary[768];
 
@@ -1159,19 +1160,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
-        run_frontend = TRUE;
+        run_render = TRUE;
     } else {
         run_comm = ask_yesno(L"Select groups (1/3)",
                              "Run COMMUNICATION tests?\n\n"
-                             "TLS / HTTP / JSON  (TEST 1-5)\n"
+                             "TLS / HTTP / JSON  (TEST 1-5).\n"
                              "Needs network access.");
         run_engine = ask_yesno(L"Select groups (2/3)",
-                               "Run ENGINE / RENDERING tests?\n\n"
-                               "HTML / CSS / DOM via NetSurf + positron_core\n"
-                               "(TEST 6-12). Fully offline - no network needed.");
-        run_frontend = ask_yesno(L"Select groups (3/3)",
-                                 "Run FRONTEND tests?\n\n"
-                                 "Layout / GDI rendering - not implemented yet.");
+                               "Run ENGINE tests?\n\n"
+                               "HTML / CSS / DOM parse, select, style,\n"
+                               "layout (TEST 6-11). Results shown as\n"
+                               "message boxes. Fully offline.");
+        run_render = ask_yesno(L"Select groups (3/3)",
+                               "Run GDI RENDER test?\n\n"
+                               "Opens a real window and paints an HTML\n"
+                               "page (TEST 12). Fully offline.");
     }
 
     rc = 0;
@@ -1188,7 +1191,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine / rendering group (TEST 6-12, all offline) ------------ */
+    /* --- Engine group (TEST 6-11, message-box assertions, offline) ---- */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -1197,15 +1200,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test9_select())       { rc = 10; goto done; }
         if (!test10_styledoc())    { rc = 11; goto done; }
         if (!test11_layout())      { rc = 12; goto done; }
-        if (!test12_render())      { rc = 13; goto done; }
     }
 
-    /* --- Frontend group (placeholder) -------------------------------- */
-    if (run_frontend) {
-        show_info(L"Frontend (TODO)",
-                  "No frontend tests yet.\n\n"
-                  "Layout + GDI rendering is a future Positron phase; this\n"
-                  "group is a placeholder so the selector already lists it.");
+    /* --- GDI render group (TEST 12, opens a real window, offline) ----- */
+    if (run_render) {
+        if (!test12_render())      { rc = 13; goto done; }
     }
 
     /* Success summary - list only the groups that actually ran. */
@@ -1219,12 +1218,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine / Rendering (TEST 6-12)\n"
+               "  Engine (TEST 6-11)\n"
                "    libhubbub + libcss + libdom behind\n"
-               "    positron_core.dll; select + style +\n"
-               "    layout + GDI paint. Fully offline.\n\n");
+               "    positron_core.dll; parse, select, style,\n"
+               "    layout. Message-box assertions, offline.\n\n");
     }
-    if (!run_comm && !run_engine && !run_frontend) {
+    if (run_render) {
+        strcat(summary,
+               "  GDI render (TEST 12)\n"
+               "    HTML page painted to a window: background,\n"
+               "    borders, padding, wrapped text. Offline.\n\n");
+    }
+    if (!run_comm && !run_engine && !run_render) {
         strcat(summary, "  (no groups selected)\n");
     }
     show_info(L"Tests passed", summary);
