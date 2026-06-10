@@ -141,9 +141,10 @@ static css_select_handler pcore_select_handler = {
     get_libcss_node_data
 };
 
-/* 800x600 viewport, 16/6 pt fonts, 96 dpi - constant expressions so this can
- * be a static initialiser (INTTOFIX() is a function call, not allowed here). */
-static const css_unit_ctx pcore_unit_ctx = {
+/* Unit-conversion context. Defaults to 800x600 @ 96dpi (constant expressions
+ * so this is a valid static initialiser); the app overrides viewport + dpi via
+ * PCore_SetViewport so styling/layout adapt to the real device. */
+static css_unit_ctx pcore_unit_ctx = {
     800 * (1 << CSS_RADIX_POINT),   /* viewport_width    */
     600 * (1 << CSS_RADIX_POINT),   /* viewport_height   */
     16  * (1 << CSS_RADIX_POINT),   /* font_size_default */
@@ -153,6 +154,19 @@ static const css_unit_ctx pcore_unit_ctx = {
     NULL,                            /* pw                */
     NULL                             /* measure           */
 };
+
+PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi)
+{
+    if (css_width > 0) {
+        pcore_unit_ctx.viewport_width = css_width * (1 << CSS_RADIX_POINT);
+    }
+    if (css_height > 0) {
+        pcore_unit_ctx.viewport_height = css_height * (1 << CSS_RADIX_POINT);
+    }
+    if (dpi > 0) {
+        pcore_unit_ctx.device_dpi = dpi * (1 << CSS_RADIX_POINT);
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /* node name / classes / id                                            */
@@ -1127,6 +1141,7 @@ typedef struct pcore_box {
 } pcore_box;
 
 static dom_string *pcore_box_key = NULL;
+static int pcore_doc_height = 0;   /* total height of the most recent layout */
 
 static int pcore_ensure_box_key(void)
 {
@@ -1384,6 +1399,9 @@ static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     }
     dom_node_set_user_data(node, pcore_box_key, box,
             pcore_box_ud_handler, &old);
+    if (old != NULL) {
+        free(old);   /* release the box from a previous layout (e.g. resize) */
+    }
 
     /* Lay out block children inside our content box. */
     child_y = content_y;
@@ -1498,9 +1516,16 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
             DeleteDC(mdc);
         }
     }
+    pcore_doc_height = cursor_y;   /* total laid-out height */
 
     dom_node_unref(root);
     return 0;
+}
+
+PCORE_API int PCore_DocumentHeight(HANDLE hDoc)
+{
+    (void) hDoc;
+    return pcore_doc_height;
 }
 
 PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,

@@ -119,6 +119,17 @@ PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
 PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
                                    int scroll_x, int scroll_y);
 
+/* Total laid-out document height in CSS px (the value is from the most recent
+ * PCore_LayoutDocument). Lets the application size a scrollbar. */
+PCORE_API int PCore_DocumentHeight(HANDLE hDoc);
+
+/* Set the rendering viewport: CSS-px width/height (used for vw/vh units and
+ * the initial containing block) and the device DPI. Call before styling /
+ * layout; defaults are 800x600 @ 96 dpi. The app should pass the real screen
+ * size + DPI so styling and layout adapt to the device. A zero/negative
+ * argument leaves that field unchanged. */
+PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi);
+
 #ifdef __cplusplus
 }
 #endif

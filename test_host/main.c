@@ -28,6 +28,7 @@
 #include <windows.h>
 #include <string.h>
 #include <stdio.h>
+#include <aygshell.h>   /* SHFullScreen / SHSipPreference - control the SIP */
 
 #include "positron_tls.h"
 #include "positron_json.h"
@@ -997,6 +998,56 @@ static BOOL test11_layout(void)
 /* -------------------------------------------------------------------- */
 
 static HANDLE g_render_doc = NULL;
+static int    g_scroll_y = 0;
+static int    g_doc_h = 0;
+
+/* Configure the vertical scrollbar from the document height + client size. */
+static void pcore_set_scrollbar(HWND hwnd)
+{
+    SCROLLINFO si;
+    RECT rc;
+    int ch;
+
+    GetClientRect(hwnd, &rc);
+    ch = rc.bottom - rc.top;
+    memset(&si, 0, sizeof(si));
+    si.cbSize = sizeof(si);
+    si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+    si.nMin = 0;
+    si.nMax = (g_doc_h > 0) ? (g_doc_h - 1) : 0;
+    si.nPage = (UINT) ((ch > 0) ? ch : 1);
+    si.nPos = g_scroll_y;
+    SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
+}
+
+/* Scroll by dy px, clamped to [0, doc_height - client_height], and repaint. */
+static void pcore_scroll_by(HWND hwnd, int dy)
+{
+    RECT rc;
+    int ch, maxpos, oldpos, applied;
+
+    GetClientRect(hwnd, &rc);
+    ch = rc.bottom - rc.top;
+    maxpos = (g_doc_h > ch) ? (g_doc_h - ch) : 0;
+    oldpos = g_scroll_y;
+    g_scroll_y += dy;
+    if (g_scroll_y < 0) {
+        g_scroll_y = 0;
+    }
+    if (g_scroll_y > maxpos) {
+        g_scroll_y = maxpos;
+    }
+    applied = g_scroll_y - oldpos;
+    if (applied == 0) {
+        return;
+    }
+    SetScrollPos(hwnd, SB_VERT, g_scroll_y, TRUE);
+    /* Shift the existing pixels by -applied and invalidate only the newly
+     * exposed strip; the following WM_PAINT repaints just that strip at the
+     * new scroll offset. Far cheaper than repainting the whole client. */
+    ScrollWindowEx(hwnd, 0, -applied, NULL, NULL, NULL, NULL, SW_INVALIDATE);
+    UpdateWindow(hwnd);
+}
 
 static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                                      WPARAM wp, LPARAM lp)
@@ -1005,19 +1056,77 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC         hdc;
-        RECT        rc;
 
         hdc = BeginPaint(hwnd, &ps);
-        GetClientRect(hwnd, &rc);
-        FillRect(hdc, &rc, (HBRUSH) GetStockObject(WHITE_BRUSH));
+        /* Repaint only the invalid region. When scrolling, that is just the
+         * thin strip ScrollWindowEx exposed; BeginPaint clips the DC to it, so
+         * PCore_PaintDocument redraws a sliver, not the whole screen. */
+        FillRect(hdc, &ps.rcPaint, (HBRUSH) GetStockObject(WHITE_BRUSH));
         if (g_render_doc != NULL) {
-            PCore_PaintDocument(g_render_doc, hdc, 0, 0);
+            PCore_PaintDocument(g_render_doc, hdc, 0, g_scroll_y);
         }
         EndPaint(hwnd, &ps);
         return 0;
     }
-    case WM_LBUTTONDOWN:
+    case WM_ERASEBKGND:
+        return 1;   /* WM_PAINT clears the invalid region itself; skip erase */
+    case WM_SIZE: {
+        int cw = LOWORD(lp);    /* new client width  */
+        int chh = HIWORD(lp);   /* new client height */
+
+        /* Re-flow layout to the new client width (e.g. on screen rotation).
+         * Styles are unchanged, so only re-run layout, not styling. */
+        if (g_render_doc != NULL && cw > 0 && chh > 0) {
+            PCore_SetViewport(cw, chh, 0);   /* dpi 0 = leave unchanged */
+            PCore_LayoutDocument(g_render_doc, cw, chh);
+            g_doc_h = PCore_DocumentHeight(g_render_doc);
+            if (g_scroll_y > g_doc_h - chh) {
+                g_scroll_y = g_doc_h - chh;
+            }
+            if (g_scroll_y < 0) {
+                g_scroll_y = 0;
+            }
+        }
+        pcore_set_scrollbar(hwnd);
+        SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);   /* keep SIP hidden on rotate */
+        InvalidateRect(hwnd, NULL, TRUE);   /* full repaint after a resize */
+        return 0;
+    }
+    case WM_VSCROLL: {
+        RECT rc;
+        int ch;
+
+        GetClientRect(hwnd, &rc);
+        ch = rc.bottom - rc.top;
+        switch (LOWORD(wp)) {
+        case SB_LINEUP:   pcore_scroll_by(hwnd, -16);  break;
+        case SB_LINEDOWN: pcore_scroll_by(hwnd, 16);   break;
+        case SB_PAGEUP:   pcore_scroll_by(hwnd, -ch);  break;
+        case SB_PAGEDOWN: pcore_scroll_by(hwnd, ch);   break;
+        case SB_THUMBTRACK:
+        case SB_THUMBPOSITION:
+            pcore_scroll_by(hwnd, (int) HIWORD(wp) - g_scroll_y);
+            break;
+        default:
+            break;
+        }
+        return 0;
+    }
     case WM_KEYDOWN:
+        switch (wp) {
+        case VK_UP:    pcore_scroll_by(hwnd, -16);   break;
+        case VK_DOWN:  pcore_scroll_by(hwnd, 16);    break;
+        case VK_PRIOR: pcore_scroll_by(hwnd, -120);  break;
+        case VK_NEXT:  pcore_scroll_by(hwnd, 120);   break;
+        case VK_ESCAPE:
+        case VK_RETURN:
+            DestroyWindow(hwnd);
+            break;
+        default:
+            break;
+        }
+        return 0;
+    case WM_LBUTTONDOWN:
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
@@ -1036,7 +1145,15 @@ static BOOL test12_render(void)
         "<div><p>This is a longer paragraph of text that should wrap across "
         "several lines inside the light-blue block, demonstrating real inline "
         "text measurement and word wrapping on the device screen.</p>"
-        "<p>A second, shorter paragraph follows below it.</p></div>"
+        "<p>A second, shorter paragraph follows below it.</p>"
+        "<p>Third paragraph: the document is now taller than the screen, so a "
+        "vertical scrollbar appears. Drag it, or use the up/down keys, to "
+        "scroll through the content.</p>"
+        "<p>Fourth paragraph - more flowing text to push the page further "
+        "down, past the bottom edge of the viewport.</p>"
+        "<p>Fifth paragraph near the bottom; scrolling all the way down "
+        "reveals it. Tap the content or press Esc to close.</p></div>"
+        "<h2>The End</h2>"
         "</body></html>";
     static const char *CSS =
         "body { background-color: #ffffff; color: #202020; }\n"
@@ -1071,9 +1188,9 @@ static BOOL test12_render(void)
         return FALSE;
     }
 
-    vw = GetSystemMetrics(SM_CXSCREEN);
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
     vh = GetSystemMetrics(SM_CYSCREEN);
-    if (vw <= 0) { vw = 240; }
+    if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
 
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0) {
@@ -1083,9 +1200,13 @@ static BOOL test12_render(void)
         return FALSE;
     }
 
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+
     show_info(L"TEST 12",
-              "A render window will open (first visible HTML page).\n\n"
-              "Tap the screen or press a key to close it and finish.");
+              "A render window will open. The page is taller than the\n"
+              "screen: use the scrollbar or the up/down keys to scroll.\n\n"
+              "Tap the content (or press Esc) to close and finish.");
 
     g_render_doc = hDoc;
 
@@ -1099,7 +1220,7 @@ static BOOL test12_render(void)
     RegisterClassW(&wc);
 
     hwnd = CreateWindowW(L"PositronRenderWnd", L"Positron render",
-            WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+            WS_VISIBLE | WS_VSCROLL, CW_USEDEFAULT, CW_USEDEFAULT,
             CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInst, NULL);
     if (hwnd == NULL) {
         show_error(L"TEST 12 FAIL", "CreateWindow returned NULL");
@@ -1111,6 +1232,11 @@ static BOOL test12_render(void)
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
     SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
+    /* Read-only view: hide the SIP (soft-keyboard) button and keep the
+     * on-screen keyboard down - we take no text input. */
+    SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
+    SHSipPreference(hwnd, SIP_FORCEDOWN);
+    pcore_set_scrollbar(hwnd);
 
     /* Local message loop: the page stays up until tapped / key / closed. */
     while (GetMessage(&m, NULL, 0, 0)) {
@@ -1123,11 +1249,11 @@ static BOOL test12_render(void)
     PCore_FreeDocument(hDoc);
 
     show_info(L"TEST 12 OK",
-              "HTML page rendered:\n"
-              "  dark-red H2 heading,\n"
-              "  light-blue div with a 2px border + padding,\n"
-              "  holding a wrapped paragraph, then a 2nd one.\n\n"
-              "(box model: bg + border + padding + wrapped text.)");
+              "Scrollable HTML page rendered:\n"
+              "  H2 headings, bordered + padded div,\n"
+              "  several wrapped paragraphs.\n"
+              "  Scrolled via scrollbar / up-down keys.\n\n"
+              "(box model + inline wrap + vertical scroll.)");
     return TRUE;
 }
 
@@ -1150,6 +1276,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     (void)nCmdShow;
 
     OutputDebugStringW(L"test_host (Phase 4): starting\r\n");
+
+    /* Tell positron_core the real device viewport + DPI so styling and layout
+     * adapt to this screen rather than a hardcoded default. */
+    {
+        HDC sdc = GetDC(NULL);
+        int dpi = (sdc != NULL) ? GetDeviceCaps(sdc, LOGPIXELSY) : 96;
+        if (sdc != NULL) {
+            ReleaseDC(NULL, sdc);
+        }
+        PCore_SetViewport(GetSystemMetrics(SM_CXSCREEN),
+                          GetSystemMetrics(SM_CYSCREEN), dpi);
+    }
 
     /* Group selector. One tap runs everything; otherwise pick groups so a
      * subset can run in isolation - e.g. only the fully-offline engine /
