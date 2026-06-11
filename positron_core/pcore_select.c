@@ -1409,6 +1409,8 @@ static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     css_unit unit;
     uint8_t disp;
     int mt, mr, mb, ml;
+    uint8_t mlt, mrt;   /* margin left/right types (for auto centering) */
+    int width_set;
     int pad[4];
     int bord[4];
     int k;
@@ -1429,15 +1431,15 @@ static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
         return 0;   /* not laid out; contributes nothing to the flow */
     }
 
-    /* Margins (auto unsupported in this first cut -> 0). */
+    /* Margins. Left/right may be `auto` (enables centering, handled below). */
     mt = (css_computed_margin_top(style, &len, &unit) == CSS_MARGIN_SET)
-            ? pcore_len_px(style, len, unit) : 0;
-    mr = (css_computed_margin_right(style, &len, &unit) == CSS_MARGIN_SET)
             ? pcore_len_px(style, len, unit) : 0;
     mb = (css_computed_margin_bottom(style, &len, &unit) == CSS_MARGIN_SET)
             ? pcore_len_px(style, len, unit) : 0;
-    ml = (css_computed_margin_left(style, &len, &unit) == CSS_MARGIN_SET)
-            ? pcore_len_px(style, len, unit) : 0;
+    mrt = css_computed_margin_right(style, &len, &unit);
+    mr = (mrt == CSS_MARGIN_SET) ? pcore_len_px(style, len, unit) : 0;
+    mlt = css_computed_margin_left(style, &len, &unit);
+    ml = (mlt == CSS_MARGIN_SET) ? pcore_len_px(style, len, unit) : 0;
 
     /* Padding + border widths (per side). */
     for (k = 0; k < 4; k++) {
@@ -1449,13 +1451,30 @@ static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
      * box's own margins, borders and padding. (Fitting over-wide desktop pages
      * to a small screen - viewport meta / fit-to-width - is a deliberate later
      * feature, not a blind clamp here.) */
-    if (css_computed_width(style, &len, &unit) == CSS_WIDTH_SET) {
+    width_set = (css_computed_width(style, &len, &unit) == CSS_WIDTH_SET);
+    if (width_set) {
         content_w = pcore_len_px(style, len, unit);
     } else {
         content_w = cb_w - ml - mr - bord[1] - bord[3] - pad[1] - pad[3];
     }
     if (content_w < 0) {
         content_w = 0;
+    }
+
+    /* margin:auto - a definite-width block with auto left/right margins
+     * centers (both auto) or pushes to one side (one auto) in its container. */
+    if (width_set) {
+        int avail = cb_w - content_w - bord[1] - bord[3] - pad[1] - pad[3];
+        if (avail > 0) {
+            if (mlt == CSS_MARGIN_AUTO && mrt == CSS_MARGIN_AUTO) {
+                ml = avail / 2;
+                mr = avail - ml;
+            } else if (mlt == CSS_MARGIN_AUTO) {
+                ml = avail;
+            } else if (mrt == CSS_MARGIN_AUTO) {
+                mr = avail;
+            }
+        }
     }
 
     content_x = cb_x + ml + bord[3] + pad[3];
