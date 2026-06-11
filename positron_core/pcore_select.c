@@ -903,6 +903,8 @@ static const char PCORE_UA_CSS[] =
     "li { display: list-item; }\n"
     "b, strong { font-weight: bold; }\n"
     "i, em { font-style: italic; }\n"
+    "a { color: #0000ee; text-decoration: underline; }\n"
+    "a { color: #0000ee; text-decoration: underline; }\n"
     "body { margin: 8px; }\n"
     "p, blockquote { margin-top: 1em; margin-bottom: 1em; }\n"
     "h1 { font-size: 2em; }\n"
@@ -1203,9 +1205,32 @@ cleanup:
 /* Block layout (milestone B): normal-flow block boxes                 */
 /* ================================================================== */
 
+/* A positioned run of inline text, produced by inline layout and consumed by
+ * paint / hit-testing. Coordinates are absolute page CSS px (paint subtracts
+ * the scroll offset). `text` is an owned UTF-16 buffer of `len` units (not NUL-
+ * terminated; drawn with an explicit count). A run coalesces consecutive words
+ * of the same style and (if any) the same link, so `href` and the underline
+ * span the whole run. `href` is an owned UTF-8 string, or NULL for non-links. */
+typedef struct pcore_frag {
+    int x;
+    int y;
+    int w;
+    int h;               /* line height: the run's vertical hit / paint extent */
+    WCHAR *text;
+    int len;
+    css_color color;
+    int font_px;
+    int bold;
+    int italic;
+    int underline;
+    char *href;          /* owned UTF-8 link target, or NULL */
+} pcore_frag;
+
 /* Content-box geometry attached to each laid-out element (integer CSS px).
  * Padding / border are stored alongside so paint can derive the padding and
- * border boxes; indices are [0]=top [1]=right [2]=bottom [3]=left. */
+ * border boxes; indices are [0]=top [1]=right [2]=bottom [3]=left. A block that
+ * establishes an inline formatting context (no block-level element children)
+ * also carries its laid-out inline fragments. */
 typedef struct pcore_box {
     int x;
     int y;
@@ -1218,7 +1243,31 @@ typedef struct pcore_box {
     int pad[4];          /* padding widths */
     int bord[4];         /* border widths (0 if style none/hidden) */
     css_color bcol[4];   /* border colours (ARGB) */
+    pcore_frag *frags;   /* inline text fragments (NULL if a block container) */
+    int n_frags;
 } pcore_box;
+
+/* Free a box and any inline fragments it owns. */
+static void pcore_free_box(pcore_box *box)
+{
+    int i;
+
+    if (box == NULL) {
+        return;
+    }
+    if (box->frags != NULL) {
+        for (i = 0; i < box->n_frags; i++) {
+            if (box->frags[i].text != NULL) {
+                free(box->frags[i].text);
+            }
+            if (box->frags[i].href != NULL) {
+                free(box->frags[i].href);
+            }
+        }
+        free(box->frags);
+    }
+    free(box);
+}
 
 static dom_string *pcore_box_key = NULL;
 static int pcore_doc_height = 0;   /* total height of the most recent layout */
@@ -1242,7 +1291,7 @@ static void pcore_box_ud_handler(dom_node_operation op, dom_string *key,
     (void) src;
     (void) dst;
     if (op == DOM_NODE_DELETED && data != NULL) {
-        free(data);
+        pcore_free_box((pcore_box *) data);
     }
 }
 
@@ -1313,9 +1362,10 @@ static css_color pcore_border_color(const css_computed_style *s, int side)
     return c;
 }
 
-/* Create a font of `px` pixel height (Tahoma; available on WM). WinCE coredll
- * has no CreateFontW, so build it via CreateFontIndirectW + LOGFONTW. */
-static HFONT pcore_make_font(int px)
+/* Create a font of `px` pixel height (Tahoma; available on WM), with optional
+ * bold / italic / underline. WinCE coredll has no CreateFontW, so build it via
+ * CreateFontIndirectW + LOGFONTW. */
+static HFONT pcore_make_font_ex(int px, int bold, int italic, int underline)
 {
     LOGFONTW lf;
 
@@ -1324,7 +1374,9 @@ static HFONT pcore_make_font(int px)
     }
     memset(&lf, 0, sizeof(lf));
     lf.lfHeight = -px;
-    lf.lfWeight = FW_NORMAL;
+    lf.lfWeight = bold ? FW_BOLD : FW_NORMAL;
+    lf.lfItalic = (BYTE) (italic ? 1 : 0);
+    lf.lfUnderline = (BYTE) (underline ? 1 : 0);
     lf.lfCharSet = DEFAULT_CHARSET;
     lf.lfOutPrecision = OUT_DEFAULT_PRECIS;
     lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
@@ -1334,65 +1386,542 @@ static HFONT pcore_make_font(int px)
     return CreateFontIndirectW(&lf);
 }
 
-/* Greedy word-wrap `text` (wlen UTF-16 units) to lines of at most `maxw` px,
- * using whatever font is selected in `hdc`. Returns the line count. When
- * `draw` is non-zero, also draws each line at (x, y + line*lh). A single word
- * wider than maxw overflows on its own line (no mid-word breaking yet). */
-static int pcore_text_lines(HDC hdc, const WCHAR *text, int wlen, int maxw,
-        int draw, int x, int y, int lh)
+/* ------------------------------------------------------------------ */
+/* Inline formatting: lay inline content (text + a/span/b/i ...) onto    */
+/* line boxes, wrapping at word boundaries, each run in its own font.     */
+/* ------------------------------------------------------------------ */
+
+#define PCORE_WBUF_CAP   16384   /* UTF-16 units of inline text per block */
+#define PCORE_WORD_CAP    4096   /* words per block                       */
+#define PCORE_FC_CAP        24   /* distinct fonts cached per pass         */
+#define PCORE_HREF_CAP      64   /* distinct link targets per block        */
+
+/* One whitespace-delimited word, indexing into the shared wbuf, tagged with
+ * the computed style of the inline element it came from (for font + colour)
+ * and the index of the enclosing link target (-1 if none). */
+typedef struct pcore_word {
+    int start;
+    int len;
+    int has_space;       /* a collapsible space follows this word */
+    css_computed_style *style;
+    int href;            /* index into pcore_il.hrefs, or -1 */
+} pcore_word;
+
+/* Word-collection state threaded through the inline tree walk. */
+typedef struct pcore_il {
+    WCHAR      *wbuf;
+    int         wpos;
+    pcore_word *words;
+    int         nwords;
+    int         pending_space;          /* whitespace seen since last word */
+    char       *hrefs[PCORE_HREF_CAP];  /* owned UTF-8 link targets         */
+    int         n_hrefs;
+    dom_string *a_name;                 /* interned "a"                     */
+    dom_string *href_name;              /* interned "href"                  */
+} pcore_il;
+
+/* A cached font + its metrics, keyed by (px,bold,italic,underline). */
+typedef struct pcore_fc {
+    int   px, bold, italic, underline;
+    HFONT font;
+    int   lh;        /* line height (px) */
+    int   ascent;    /* baseline from top (px) */
+    int   sp_w;      /* width of a space (px) */
+} pcore_fc;
+
+/* Per-word layout result (pass 1), consumed by run-coalescing (pass 2). */
+typedef struct pcore_wl {
+    int line;
+    int x;           /* absolute x of the word on its line */
+    int word_w;
+    int ascent;
+    int px, bold, italic, underline;
+    css_color color;
+    int href;
+} pcore_wl;
+
+/* Resolve the inline run attributes (font size/weight/style/decoration and
+ * colour) from a computed style. NULL style -> sensible defaults. */
+static void pcore_inline_attrs(css_computed_style *s, int *px, int *bold,
+        int *italic, int *underline, css_color *color)
 {
-    int line_start = 0;
-    int i = 0;
-    int count = 0;
+    css_fixed len;
+    css_unit unit;
+    uint8_t w, st, td;
+    int fs = 16;
+
+    if (s != NULL && css_computed_font_size(s, &len, &unit) ==
+            CSS_FONT_SIZE_DIMENSION) {
+        fs = pcore_len_px(s, len, unit);
+    }
+    if (fs < 1) {
+        fs = 1;
+    }
+    *px = fs;
+
+    w = (s != NULL) ? css_computed_font_weight(s) : CSS_FONT_WEIGHT_NORMAL;
+    *bold = (w == CSS_FONT_WEIGHT_BOLD || w == CSS_FONT_WEIGHT_BOLDER ||
+             w == CSS_FONT_WEIGHT_600 || w == CSS_FONT_WEIGHT_700 ||
+             w == CSS_FONT_WEIGHT_800 || w == CSS_FONT_WEIGHT_900) ? 1 : 0;
+
+    st = (s != NULL) ? css_computed_font_style(s) : CSS_FONT_STYLE_NORMAL;
+    *italic = (st == CSS_FONT_STYLE_ITALIC || st == CSS_FONT_STYLE_OBLIQUE)
+            ? 1 : 0;
+
+    td = (s != NULL) ? css_computed_text_decoration(s)
+                     : CSS_TEXT_DECORATION_NONE;
+    *underline = (td & CSS_TEXT_DECORATION_UNDERLINE) ? 1 : 0;
+
+    *color = 0;
+    if (s != NULL) {
+        css_computed_color(s, color);
+    }
+}
+
+/* Find or create a cached font for the given attributes; measures its metrics
+ * (line height, ascent, space width) on first use. `dc` is used only for
+ * measuring. Returns the cache index, or -1 on failure / cache full. */
+static int pcore_fc_get(HDC dc, pcore_fc *cache, int *n,
+        int px, int bold, int italic, int underline)
+{
+    int i;
+    HFONT f, old;
+    TEXTMETRICW tm;
     SIZE sz;
 
-    if (maxw < 1) {
-        maxw = 1;
+    for (i = 0; i < *n; i++) {
+        if (cache[i].px == px && cache[i].bold == bold &&
+                cache[i].italic == italic && cache[i].underline == underline) {
+            return i;
+        }
+    }
+    if (*n >= PCORE_FC_CAP) {
+        return -1;
+    }
+    f = pcore_make_font_ex(px, bold, italic, underline);
+    if (f == NULL) {
+        return -1;
     }
 
-    while (i < wlen) {
-        int word_end = i;
+    i = *n;
+    cache[i].px = px;
+    cache[i].bold = bold;
+    cache[i].italic = italic;
+    cache[i].underline = underline;
+    cache[i].font = f;
+    cache[i].lh = (px * 12) / 10;
+    cache[i].ascent = px;
+    cache[i].sp_w = px / 3 + 1;
 
-        while (word_end < wlen && text[word_end] != L' ') {
-            word_end++;   /* word body */
+    old = (HFONT) SelectObject(dc, f);
+    if (GetTextMetricsW(dc, &tm)) {
+        cache[i].lh = tm.tmHeight + tm.tmExternalLeading;
+        cache[i].ascent = tm.tmAscent;
+    }
+    if (GetTextExtentPoint32W(dc, L" ", 1, &sz)) {
+        cache[i].sp_w = sz.cx;
+    }
+    SelectObject(dc, old);
+
+    (*n)++;
+    return i;
+}
+
+/* Intern a link target (UTF-8, NUL-terminated copy) into the per-block pool,
+ * de-duplicating by string value. Returns its index, or -1 on failure/full. */
+static int pcore_il_href(pcore_il *il, const char *u8, size_t len)
+{
+    int i;
+    char *copy;
+
+    if (u8 == NULL || len == 0) {
+        return -1;
+    }
+    for (i = 0; i < il->n_hrefs; i++) {
+        if (strncmp(il->hrefs[i], u8, len) == 0 &&
+                il->hrefs[i][len] == '\0') {
+            return i;
         }
-        while (word_end < wlen && text[word_end] == L' ') {
-            word_end++;   /* trailing spaces */
+    }
+    if (il->n_hrefs >= PCORE_HREF_CAP) {
+        return -1;
+    }
+    copy = (char *) malloc(len + 1);
+    if (copy == NULL) {
+        return -1;
+    }
+    memcpy(copy, u8, len);
+    copy[len] = '\0';
+    il->hrefs[il->n_hrefs] = copy;
+    return il->n_hrefs++;
+}
+
+/* Append a text node's UTF-16 text to the word list, splitting on whitespace
+ * and collapsing runs of whitespace to single inter-word spaces. Each word is
+ * tagged with the governing style and link index. */
+static void pcore_il_add_text(pcore_il *il, const WCHAR *s, int len,
+        css_computed_style *style, int href)
+{
+    int i = 0;
+
+    while (i < len) {
+        WCHAR c = s[i];
+        int ws = (c == L' ' || c == L'\t' || c == L'\n' ||
+                  c == L'\r' || c == L'\f');
+        if (ws) {
+            il->pending_space = 1;
+            i++;
+            continue;
         }
 
-        if (GetTextExtentPoint32W(hdc, text + line_start,
-                word_end - line_start, &sz) && sz.cx > maxw &&
-                i > line_start) {
-            /* This word overflows the current line: emit [line_start, i). */
-            int len = i - line_start;
-            while (len > 0 && text[line_start + len - 1] == L' ') {
-                len--;   /* trim trailing spaces from the drawn line */
+        /* Start of a word. */
+        if (il->nwords >= PCORE_WORD_CAP) {
+            return;
+        }
+        if (il->pending_space && il->nwords > 0) {
+            il->words[il->nwords - 1].has_space = 1;
+        }
+        il->pending_space = 0;
+
+        {
+            int start = il->wpos;
+            int wlen = 0;
+
+            while (i < len) {
+                WCHAR cc = s[i];
+                if (cc == L' ' || cc == L'\t' || cc == L'\n' ||
+                        cc == L'\r' || cc == L'\f') {
+                    break;
+                }
+                if (il->wpos >= PCORE_WBUF_CAP - 1) {
+                    break;
+                }
+                il->wbuf[il->wpos++] = cc;
+                wlen++;
+                i++;
             }
-            if (draw && len > 0) {
-                ExtTextOutW(hdc, x, y + count * lh, 0, NULL,
-                        text + line_start, len, NULL);
+            if (wlen > 0) {
+                il->words[il->nwords].start = start;
+                il->words[il->nwords].len = wlen;
+                il->words[il->nwords].has_space = 0;
+                il->words[il->nwords].style = style;
+                il->words[il->nwords].href = href;
+                il->nwords++;
             }
-            count++;
-            line_start = i;   /* start a new line at this word; re-loop */
+        }
+    }
+}
+
+/* Walk the inline subtree of `node` in document order, gathering text runs.
+ * `cur` is the computed style governing text that appears directly here, and
+ * `href` the index of the enclosing <a> target (-1 if none). Inline element
+ * children switch to their own computed style; an <a> with an href starts a
+ * link scope for its descendants. display:none descendants are skipped. */
+static void pcore_il_walk(pcore_il *il, dom_node *node,
+        css_computed_style *cur, int href)
+{
+    dom_node *child;
+
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return;
+    }
+    while (child != NULL) {
+        dom_node_type type;
+        dom_node *next;
+
+        if (dom_node_get_node_type(child, &type) == DOM_NO_ERR) {
+            if (type == DOM_TEXT_NODE) {
+                dom_string *txt = NULL;
+                if (dom_node_get_text_content(child, &txt) == DOM_NO_ERR &&
+                        txt != NULL) {
+                    const char *u8 = dom_string_data(txt);
+                    size_t bl = dom_string_byte_length(txt);
+                    if (u8 != NULL && bl > 0) {
+                        WCHAR tmp[1024];
+                        int wl = MultiByteToWideChar(CP_UTF8, 0, u8,
+                                (int) bl, tmp, 1024);
+                        if (wl > 0) {
+                            pcore_il_add_text(il, tmp, wl, cur, href);
+                        }
+                    }
+                    dom_string_unref(txt);
+                }
+            } else if (type == DOM_ELEMENT_NODE) {
+                void *csd = NULL;
+                css_computed_style *cs = cur;
+                uint8_t cdisp = CSS_DISPLAY_INLINE;
+                int child_href = href;
+
+                if (dom_node_get_user_data(child, pcore_style_key, &csd) ==
+                        DOM_NO_ERR && csd != NULL) {
+                    cs = (css_computed_style *) csd;
+                    cdisp = css_computed_display(cs, false);
+                }
+
+                /* An <a href="..."> opens a link scope for its descendants. */
+                if (il->a_name != NULL) {
+                    dom_string *nm = NULL;
+                    if (dom_node_get_node_name(child, &nm) == DOM_NO_ERR &&
+                            nm != NULL) {
+                        if (dom_string_caseless_isequal(nm, il->a_name)) {
+                            dom_string *hv = NULL;
+                            if (dom_element_get_attribute(child,
+                                    il->href_name, &hv) == DOM_NO_ERR &&
+                                    hv != NULL) {
+                                const char *hu8 = dom_string_data(hv);
+                                size_t hl = dom_string_byte_length(hv);
+                                int hi = pcore_il_href(il, hu8, hl);
+                                if (hi >= 0) {
+                                    child_href = hi;
+                                }
+                                dom_string_unref(hv);
+                            }
+                        }
+                        dom_string_unref(nm);
+                    }
+                }
+
+                if (cdisp != CSS_DISPLAY_NONE) {
+                    pcore_il_walk(il, child, cs, child_href);
+                }
+            }
+        }
+
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+}
+
+/* Establish an inline formatting context for `node`: gather its inline content
+ * and lay it out into line boxes within [content_x, content_x+content_w),
+ * starting at content_y. Consecutive words sharing a style and link coalesce
+ * into one fragment (continuous underline, one hit-rect per link). Stores the
+ * fragments on `box` and returns the total inline height (px). `mdc` measures. */
+static int pcore_layout_inline(dom_node *node, css_computed_style *style,
+        int content_x, int content_y, int content_w, HDC mdc, pcore_box *box)
+{
+    pcore_il    il;
+    pcore_fc    cache[PCORE_FC_CAP];
+    int         nfc = 0;
+    pcore_wl   *wl = NULL;
+    int        *linetop = NULL;
+    int        *linelh = NULL;
+    int        *lineasc = NULL;
+    pcore_frag *frags = NULL;
+    int         nfrags = 0;
+    int         nlines = 0;
+    int         pen_x = 0;
+    int         line = 0;
+    int         total_h = 0;
+    int         i;
+
+    box->frags = NULL;
+    box->n_frags = 0;
+
+    if (content_w < 1) {
+        content_w = 1;
+    }
+
+    il.wbuf = (WCHAR *) malloc(sizeof(WCHAR) * PCORE_WBUF_CAP);
+    il.words = (pcore_word *) malloc(sizeof(pcore_word) * PCORE_WORD_CAP);
+    if (il.wbuf == NULL || il.words == NULL) {
+        if (il.wbuf != NULL) free(il.wbuf);
+        if (il.words != NULL) free(il.words);
+        return 0;
+    }
+    il.wpos = 0;
+    il.nwords = 0;
+    il.pending_space = 0;
+    il.n_hrefs = 0;
+    il.a_name = NULL;
+    il.href_name = NULL;
+    dom_string_create((const uint8_t *) "a", 1, &il.a_name);
+    dom_string_create((const uint8_t *) "href", 4, &il.href_name);
+
+    pcore_il_walk(&il, node, style, -1);
+
+    if (il.nwords == 0) {
+        goto done;
+    }
+
+    wl = (pcore_wl *) malloc(sizeof(pcore_wl) * il.nwords);
+    linetop = (int *) malloc(sizeof(int) * (il.nwords + 1));
+    linelh = (int *) malloc(sizeof(int) * (il.nwords + 1));
+    lineasc = (int *) malloc(sizeof(int) * (il.nwords + 1));
+    frags = (pcore_frag *) malloc(sizeof(pcore_frag) * il.nwords);
+    if (wl == NULL || linetop == NULL || linelh == NULL ||
+            lineasc == NULL || frags == NULL) {
+        if (frags != NULL) { free(frags); frags = NULL; }
+        goto done;
+    }
+
+    /* Pass 1: measure + wrap; record each word's line, x, metrics. */
+    linelh[0] = 0;
+    lineasc[0] = 0;
+    for (i = 0; i < il.nwords; i++) {
+        pcore_word *wd = &il.words[i];
+        int px, bold, italic, underline;
+        css_color color;
+        int fc, word_w, sp_w, lh, asc;
+        HFONT sel;
+        SIZE sz;
+
+        pcore_inline_attrs(wd->style, &px, &bold, &italic, &underline, &color);
+        fc = pcore_fc_get(mdc, cache, &nfc, px, bold, italic, underline);
+        if (fc < 0) {
+            lh = (px * 12) / 10;
+            asc = px;
+            sp_w = px / 3 + 1;
+            sel = NULL;
         } else {
-            i = word_end;     /* word fits (or is alone): consume it */
+            lh = cache[fc].lh;
+            asc = cache[fc].ascent;
+            sp_w = cache[fc].sp_w;
+            sel = cache[fc].font;
         }
+
+        word_w = px * wd->len;   /* fallback estimate */
+        if (sel != NULL) {
+            HFONT old = (HFONT) SelectObject(mdc, sel);
+            if (GetTextExtentPoint32W(mdc, il.wbuf + wd->start, wd->len, &sz)) {
+                word_w = sz.cx;
+            }
+            SelectObject(mdc, old);
+        }
+
+        /* Wrap onto a new line if this word does not fit and the line is
+         * non-empty. */
+        if (pen_x > 0 && pen_x + word_w > content_w) {
+            line++;
+            pen_x = 0;
+            linelh[line] = 0;
+            lineasc[line] = 0;
+        }
+
+        wl[i].line = line;
+        wl[i].x = content_x + pen_x;
+        wl[i].word_w = word_w;
+        wl[i].ascent = asc;
+        wl[i].px = px;
+        wl[i].bold = bold;
+        wl[i].italic = italic;
+        wl[i].underline = underline;
+        wl[i].color = color;
+        wl[i].href = wd->href;
+
+        if (lh > linelh[line]) {
+            linelh[line] = lh;
+        }
+        if (asc > lineasc[line]) {
+            lineasc[line] = asc;
+        }
+        pen_x += word_w + (wd->has_space ? sp_w : 0);
+    }
+    nlines = line + 1;
+
+    /* Line tops stack by each line's height. */
+    linetop[0] = content_y;
+    for (i = 1; i < nlines; i++) {
+        linetop[i] = linetop[i - 1] + linelh[i - 1];
+    }
+    total_h = (linetop[nlines - 1] + linelh[nlines - 1]) - content_y;
+
+    /* Pass 2: coalesce consecutive words sharing line + style + link into a
+     * single fragment (continuous underline, one hit-rect per link). */
+    i = 0;
+    while (i < il.nwords) {
+        int j = i + 1;
+        int ln = wl[i].line;
+        int need, k, pos;
+        WCHAR *copy;
+
+        while (j < il.nwords && wl[j].line == ln &&
+                wl[j].px == wl[i].px && wl[j].bold == wl[i].bold &&
+                wl[j].italic == wl[i].italic &&
+                wl[j].underline == wl[i].underline &&
+                wl[j].color == wl[i].color && wl[j].href == wl[i].href) {
+            j++;
+        }
+
+        /* Text length = word chars + one space per interior collapsible gap. */
+        need = 0;
+        for (k = i; k < j; k++) {
+            need += il.words[k].len;
+            if (k < j - 1 && il.words[k].has_space) {
+                need++;
+            }
+        }
+        copy = (WCHAR *) malloc(sizeof(WCHAR) * (need > 0 ? need : 1));
+        pos = 0;
+        if (copy != NULL) {
+            for (k = i; k < j; k++) {
+                memcpy(copy + pos, il.wbuf + il.words[k].start,
+                        sizeof(WCHAR) * il.words[k].len);
+                pos += il.words[k].len;
+                if (k < j - 1 && il.words[k].has_space) {
+                    copy[pos++] = L' ';
+                }
+            }
+        }
+
+        frags[nfrags].x = wl[i].x;
+        frags[nfrags].y = linetop[ln] + (lineasc[ln] - wl[i].ascent);
+        frags[nfrags].w = (wl[j - 1].x + wl[j - 1].word_w) - wl[i].x;
+        frags[nfrags].h = linelh[ln];
+        frags[nfrags].text = copy;
+        frags[nfrags].len = pos;
+        frags[nfrags].color = wl[i].color;
+        frags[nfrags].font_px = wl[i].px;
+        frags[nfrags].bold = wl[i].bold;
+        frags[nfrags].italic = wl[i].italic;
+        frags[nfrags].underline = wl[i].underline;
+        frags[nfrags].href = NULL;
+        if (wl[i].href >= 0 && wl[i].href < il.n_hrefs) {
+            const char *h = il.hrefs[wl[i].href];
+            size_t hl = strlen(h);
+            char *hc = (char *) malloc(hl + 1);
+            if (hc != NULL) {
+                memcpy(hc, h, hl + 1);
+                frags[nfrags].href = hc;
+            }
+        }
+        nfrags++;
+        i = j;
     }
 
-    /* Final line. */
-    {
-        int len = wlen - line_start;
-        while (len > 0 && text[line_start + len - 1] == L' ') {
-            len--;
-        }
-        if (draw && len > 0) {
-            ExtTextOutW(hdc, x, y + count * lh, 0, NULL,
-                    text + line_start, len, NULL);
-        }
-        count++;
-    }
+    box->frags = frags;
+    box->n_frags = nfrags;
+    frags = NULL;   /* ownership transferred to box */
 
-    return count;
+done:
+    /* Release the cache fonts (paint rebuilds its own), the href pool, the
+     * interned names and the scratch buffers. */
+    for (i = 0; i < nfc; i++) {
+        DeleteObject(cache[i].font);
+    }
+    for (i = 0; i < il.n_hrefs; i++) {
+        free(il.hrefs[i]);
+    }
+    if (il.a_name != NULL) {
+        dom_string_unref(il.a_name);
+    }
+    if (il.href_name != NULL) {
+        dom_string_unref(il.href_name);
+    }
+    if (frags != NULL) {
+        free(frags);
+    }
+    if (wl != NULL) free(wl);
+    if (linetop != NULL) free(linetop);
+    if (linelh != NULL) free(linelh);
+    if (lineasc != NULL) free(lineasc);
+    free(il.wbuf);
+    free(il.words);
+    return total_h;
 }
 
 /* Lay out element `node` as a block box inside a containing block whose
@@ -1489,6 +2018,8 @@ static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     box->y = content_y;
     box->w = content_w;
     box->h = 0;
+    box->frags = NULL;
+    box->n_frags = 0;
     box->margin_top = mt;
     box->margin_right = mr;
     box->margin_bottom = mb;
@@ -1501,10 +2032,14 @@ static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     dom_node_set_user_data(node, pcore_box_key, box,
             pcore_box_ud_handler, &old);
     if (old != NULL) {
-        free(old);   /* release the box from a previous layout (e.g. resize) */
+        pcore_free_box((pcore_box *) old);   /* release previous layout's box */
     }
 
-    /* Lay out block children inside our content box. */
+    /* Lay out block-level element children inside our content box. Inline
+     * children (display:inline / inline-block) are NOT laid out as boxes here;
+     * if this block has no block-level children at all it establishes an inline
+     * formatting context below and its full inline content (text + inline
+     * elements) is laid out onto line boxes. */
     child_y = content_y;
     had_block_child = 0;
     {
@@ -1517,12 +2052,26 @@ static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
 
                 if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
                         type == DOM_ELEMENT_NODE) {
-                    int before = child_y;
-                    int cmb = pcore_layout_block(child, content_x, content_w,
-                            &child_y, 0, mdc, prev_child_mb);
-                    if (child_y != before) {
-                        had_block_child = 1;
-                        prev_child_mb = cmb;
+                    void *csd = NULL;
+                    int is_block = 1;   /* unstyled -> treat as block */
+
+                    if (dom_node_get_user_data(child, pcore_style_key, &csd)
+                            == DOM_NO_ERR && csd != NULL) {
+                        uint8_t cd = css_computed_display(
+                                (css_computed_style *) csd, false);
+                        is_block = (cd != CSS_DISPLAY_INLINE &&
+                                    cd != CSS_DISPLAY_INLINE_BLOCK &&
+                                    cd != CSS_DISPLAY_NONE);
+                    }
+
+                    if (is_block) {
+                        int before = child_y;
+                        int cmb = pcore_layout_block(child, content_x,
+                                content_w, &child_y, 0, mdc, prev_child_mb);
+                        if (child_y != before) {
+                            had_block_child = 1;
+                            prev_child_mb = cmb;
+                        }
                     }
                 }
 
@@ -1539,48 +2088,11 @@ static int pcore_layout_block(dom_node *node, int cb_x, int cb_w,
     if (had_block_child) {
         box->h = child_y - content_y;
     } else {
-        /* Leaf block: wrap its text content to the content width and set the
-         * height from the resulting line count (real text measurement). */
-        int fs = 16;
-        int lh;
-        int n_lines = 1;
-        dom_string *text = NULL;
-
-        if (css_computed_font_size(style, &len, &unit) ==
-                CSS_FONT_SIZE_DIMENSION) {
-            fs = pcore_len_px(style, len, unit);
-        }
-        lh = (fs * 12) / 10;
-
-        if (dom_node_get_text_content(node, &text) == DOM_NO_ERR &&
-                text != NULL) {
-            const char *utf8 = dom_string_data(text);
-            size_t blen = dom_string_byte_length(text);
-
-            if (utf8 != NULL && blen > 0) {
-                WCHAR wbuf[1024];
-                int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8,
-                        (int) blen, wbuf, 1023);
-                if (wlen > 0) {
-                    HFONT f = pcore_make_font(fs);
-                    HFONT old = (HFONT) SelectObject(mdc, f);
-                    TEXTMETRICW tm;
-                    if (GetTextMetricsW(mdc, &tm)) {
-                        lh = tm.tmHeight + tm.tmExternalLeading;
-                    }
-                    n_lines = pcore_text_lines(mdc, wbuf, wlen, content_w,
-                            0, 0, 0, lh);
-                    SelectObject(mdc, old);
-                    DeleteObject(f);
-                }
-            }
-            dom_string_unref(text);
-        }
-
-        if (n_lines < 1) {
-            n_lines = 1;
-        }
-        box->h = n_lines * lh;
+        /* Inline formatting context: lay this block's inline content (text +
+         * inline elements) onto line boxes; the height is the total of those
+         * lines. An empty block has height 0. */
+        box->h = pcore_layout_inline(node, style, content_x, content_y,
+                content_w, mdc, box);
     }
 
     *cursor_y = content_y + box->h + pad[2] + bord[2] + mb;
@@ -1701,8 +2213,10 @@ static COLORREF pcore_argb_to_colorref(css_color argb)
                (int) (argb & 0xFF));
 }
 
-/* Paint `node` (an element with a box) and its element descendants. Leaf
- * blocks draw their text content; containers recurse. `sx`/`sy` scroll. */
+/* Paint `node` (an element with a box) and its element descendants: background
+ * + borders, then block-level child boxes (recursion), then this block's inline
+ * text fragments if it established an inline formatting context. `sx`/`sy`
+ * scroll the page beneath the viewport. */
 static void pcore_paint_node(HDC hdc, dom_node *node, int sx, int sy)
 {
     void *sd = NULL;
@@ -1711,7 +2225,6 @@ static void pcore_paint_node(HDC hdc, dom_node *node, int sx, int sy)
     pcore_box *box;
     css_color col;
     dom_node *child;
-    int had_block_child;
 
     if (dom_node_get_user_data(node, pcore_box_key, &bd) != DOM_NO_ERR ||
             bd == NULL) {
@@ -1782,8 +2295,7 @@ static void pcore_paint_node(HDC hdc, dom_node *node, int sx, int sy)
         }
     }
 
-    /* Paint element children; remember whether any were laid out. */
-    had_block_child = 0;
+    /* Paint block-level element children (each has its own box). */
     if (dom_node_get_first_child(node, &child) == DOM_NO_ERR) {
         while (child != NULL) {
             dom_node_type type;
@@ -1795,7 +2307,6 @@ static void pcore_paint_node(HDC hdc, dom_node *node, int sx, int sy)
                     dom_node_get_user_data(child, pcore_box_key, &cbd) ==
                             DOM_NO_ERR && cbd != NULL) {
                 pcore_paint_node(hdc, child, sx, sy);
-                had_block_child = 1;
             }
 
             if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
@@ -1807,47 +2318,35 @@ static void pcore_paint_node(HDC hdc, dom_node *node, int sx, int sy)
         }
     }
 
-    /* Leaf block: wrap + draw its text content in its computed colour/font. */
-    if (had_block_child == 0) {
-        dom_string *text = NULL;
+    /* Inline formatting context: draw the laid-out text fragments, each in its
+     * own font (size / bold / italic / underline) and computed colour. */
+    if (box->n_frags > 0 && box->frags != NULL) {
+        pcore_fc cache[PCORE_FC_CAP];
+        int nfc = 0;
+        int i;
 
-        if (dom_node_get_text_content(node, &text) == DOM_NO_ERR &&
-                text != NULL) {
-            const char *utf8 = dom_string_data(text);
-            size_t blen = dom_string_byte_length(text);
+        SetBkMode(hdc, TRANSPARENT);
+        for (i = 0; i < box->n_frags; i++) {
+            pcore_frag *fr = &box->frags[i];
+            int fc;
+            HFONT old;
 
-            if (utf8 != NULL && blen > 0) {
-                WCHAR wbuf[1024];
-                int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, (int) blen,
-                        wbuf, 1023);
-                if (wlen > 0) {
-                    css_fixed flen;
-                    css_unit funit;
-                    int fs = 16;
-                    int lh;
-                    HFONT f, old;
-                    TEXTMETRICW tm;
-
-                    if (css_computed_font_size(style, &flen, &funit) ==
-                            CSS_FONT_SIZE_DIMENSION) {
-                        fs = pcore_len_px(style, flen, funit);
-                    }
-                    f = pcore_make_font(fs);
-                    old = (HFONT) SelectObject(hdc, f);
-                    lh = (fs * 12) / 10;
-                    if (GetTextMetricsW(hdc, &tm)) {
-                        lh = tm.tmHeight + tm.tmExternalLeading;
-                    }
-                    (void) css_computed_color(style, &col);
-                    SetTextColor(hdc, pcore_argb_to_colorref(col));
-                    SetBkMode(hdc, TRANSPARENT);
-                    pcore_text_lines(hdc, wbuf, wlen, box->w, 1,
-                            box->x - sx, box->y - sy, lh);
-                    SelectObject(hdc, old);
-                    DeleteObject(f);
-                }
+            if (fr->text == NULL || fr->len <= 0) {
+                continue;
             }
-            dom_string_unref(text);
+            fc = pcore_fc_get(hdc, cache, &nfc, fr->font_px, fr->bold,
+                    fr->italic, fr->underline);
+            if (fc < 0) {
+                continue;
+            }
+            old = (HFONT) SelectObject(hdc, cache[fc].font);
+            SetTextColor(hdc, pcore_argb_to_colorref(fr->color));
+            ExtTextOutW(hdc, fr->x - sx, fr->y - sy, 0, NULL,
+                    fr->text, fr->len, NULL);
+            SelectObject(hdc, old);
+        }
+        for (i = 0; i < nfc; i++) {
+            DeleteObject(cache[i].font);
         }
     }
 }
@@ -1872,4 +2371,92 @@ PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
     pcore_paint_node(hdc, root, scroll_x, scroll_y);
 
     dom_node_unref(root);
+}
+
+/* Recursively find the link fragment containing document-space point (x,y).
+ * Returns a borrowed pointer into a fragment's href (valid while the document
+ * lives), or NULL. `node` is borrowed. */
+static const char *pcore_link_at_node(dom_node *node, int x, int y)
+{
+    void *bd = NULL;
+    pcore_box *box;
+    dom_node *child;
+    const char *found = NULL;
+
+    if (dom_node_get_user_data(node, pcore_box_key, &bd) != DOM_NO_ERR ||
+            bd == NULL) {
+        return NULL;
+    }
+    box = (pcore_box *) bd;
+
+    if (box->frags != NULL) {
+        int i;
+        for (i = 0; i < box->n_frags; i++) {
+            pcore_frag *f = &box->frags[i];
+            if (f->href != NULL &&
+                    x >= f->x && x < f->x + f->w &&
+                    y >= f->y && y < f->y + f->h) {
+                return f->href;
+            }
+        }
+    }
+
+    if (dom_node_get_first_child(node, &child) == DOM_NO_ERR) {
+        while (child != NULL) {
+            dom_node_type type;
+            dom_node *next;
+            void *cbd = NULL;
+
+            if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
+                    type == DOM_ELEMENT_NODE &&
+                    dom_node_get_user_data(child, pcore_box_key, &cbd) ==
+                            DOM_NO_ERR && cbd != NULL) {
+                found = pcore_link_at_node(child, x, y);
+            }
+            if (found != NULL) {
+                dom_node_unref(child);
+                return found;
+            }
+            if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+                dom_node_unref(child);
+                return NULL;
+            }
+            dom_node_unref(child);
+            child = next;
+        }
+    }
+    return NULL;
+}
+
+PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    dom_node     *root = NULL;
+    const char   *href;
+    int           rc = 0;
+
+    if (doc == NULL || out_href == NULL || cap <= 0) {
+        return 0;
+    }
+    if (pcore_box_key == NULL) {
+        return 0;   /* not laid out */
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        return 0;
+    }
+
+    href = pcore_link_at_node(root, x, y);
+    if (href != NULL) {
+        int n = (int) strlen(href);
+        if (n > cap - 1) {
+            n = cap - 1;
+        }
+        memcpy(out_href, href, n);
+        out_href[n] = '\0';
+        rc = 1;
+    }
+
+    dom_node_unref(root);
+    return rc;
 }

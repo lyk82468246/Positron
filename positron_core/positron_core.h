@@ -130,6 +130,17 @@ PCORE_API int PCore_DocumentHeight(HANDLE hDoc);
  * argument leaves that field unchanged. */
 PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi);
 
+/* --- Links / navigation (engine layer 4, inline milestone) ---------- */
+
+/* Hit-test a document-space point (CSS px, i.e. client coordinate + the
+ * current scroll offset) against the laid-out inline link fragments. If a link
+ * covers the point, writes its (UTF-8, NUL-terminated, possibly truncated to
+ * `cap`) href into `out_href` and returns 1; otherwise returns 0 and leaves
+ * `out_href` untouched. Must be called after PCore_LayoutDocument. Lets the
+ * application turn a tap into a navigation. */
+PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
+                           char *out_href, int cap);
+
 #ifdef __cplusplus
 }
 #endif
