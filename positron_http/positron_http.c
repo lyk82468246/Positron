@@ -11,12 +11,14 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <wininet.h>   /* WM6 built-in HTTP: used for plaintext http:// */
 
 #include "positron_tls.h"
 #include "positron_http.h"
 
 #define MAX_RESP_BODY    (1 * 1024 * 1024)   /* 1 MB cap */
 #define INITIAL_BUFCAP   8192
+#define MAX_REDIRECTS    5                    /* 3xx Location follow limit */
 
 static BOOL g_initialized = FALSE;
 static BOOL g_insecure    = FALSE;   /* default: verify chain + hostname */
@@ -485,6 +487,285 @@ static int decode_chunked(HANDLE conn,
     }
 }
 
+/* ---- redirect handling ------------------------------------------- */
+
+static int is_redirect_code(int c)
+{
+    return (c == 301 || c == 302 || c == 303 || c == 307 || c == 308);
+}
+
+/* Bounded NUL-terminated copy. */
+static void cstrcpy(char* d, int cap, const char* s)
+{
+    int n = 0;
+    if (cap <= 0) {
+        return;
+    }
+    while (s[n] != '\0' && n < cap - 1) {
+        d[n] = s[n];
+        n++;
+    }
+    d[n] = '\0';
+}
+
+/* Copy a request path, stopping at any '#' fragment; fall back to "/". */
+static void copy_path_h(char* d, int cap, const char* s)
+{
+    int n = 0;
+    if (cap <= 0) {
+        return;
+    }
+    while (s[n] != '\0' && s[n] != '#' && n < cap - 1) {
+        d[n] = s[n];
+        n++;
+    }
+    if (n == 0 && cap > 1) {
+        d[n++] = '/';
+    }
+    d[n] = '\0';
+}
+
+/* Case-insensitive ASCII prefix test over a counted string. */
+static int ci_prefix(const char* s, size_t slen, const char* pfx)
+{
+    size_t n = strlen(pfx);
+    size_t i;
+    if (slen < n) {
+        return 0;
+    }
+    for (i = 0; i < n; i++) {
+        char a = s[i], b = pfx[i];
+        if (a >= 'A' && a <= 'Z') a = (char)(a + 32);
+        if (b >= 'A' && b <= 'Z') b = (char)(b + 32);
+        if (a != b) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* Resolve a Location header value (loc/loclen, not NUL-terminated) against the
+ * current host/path/port into out_host/out_path/out_port. Handles absolute
+ * http(s) (with optional :port), root-relative ("/x") and same-directory
+ * relative ("x"). Returns 1 on success, 0 if it cannot be parsed. */
+static int resolve_redirect(const char* loc, size_t loclen,
+                            const char* cur_host, const char* cur_path,
+                            int cur_port,
+                            char* out_host, int hostcap,
+                            char* out_path, int pathcap, int* out_port)
+{
+    char        buf[1200];
+    const char* p;
+    int         scheme_port = cur_port;
+
+    while (loclen > 0 && (loc[loclen - 1] == '\r' || loc[loclen - 1] == '\n' ||
+                          loc[loclen - 1] == ' '  || loc[loclen - 1] == '\t')) {
+        loclen--;
+    }
+    if (loclen == 0 || loclen >= sizeof(buf)) {
+        return 0;
+    }
+    memcpy(buf, loc, loclen);
+    buf[loclen] = '\0';
+    p = buf;
+
+    if (ci_prefix(p, strlen(p), "https://")) {
+        p += 8;
+        scheme_port = 443;
+    } else if (ci_prefix(p, strlen(p), "http://")) {
+        p += 7;
+        scheme_port = 80;
+    } else if (p[0] == '/') {
+        cstrcpy(out_host, hostcap, cur_host);
+        copy_path_h(out_path, pathcap, p);
+        *out_port = cur_port;
+        return 1;
+    } else {
+        /* same-directory relative: current host + base dir + target */
+        int i, lastslash = -1, k = 0;
+        cstrcpy(out_host, hostcap, cur_host);
+        for (i = 0; cur_path[i] != '\0'; i++) {
+            if (cur_path[i] == '/') {
+                lastslash = i;
+            }
+        }
+        for (i = 0; i <= lastslash && k < pathcap - 1; i++) {
+            out_path[k++] = cur_path[i];
+        }
+        if (lastslash < 0 && k < pathcap - 1) {
+            out_path[k++] = '/';
+        }
+        for (i = 0; p[i] != '\0' && p[i] != '#' && k < pathcap - 1; i++) {
+            out_path[k++] = p[i];
+        }
+        out_path[k] = '\0';
+        *out_port = cur_port;
+        return 1;
+    }
+
+    /* Absolute: p now points at host[:port][/path]. */
+    {
+        int    k = 0;
+        size_t n = 0;
+        while (p[n] != '\0' && p[n] != '/' && p[n] != ':' && k < hostcap - 1) {
+            out_host[k++] = p[n++];
+        }
+        out_host[k] = '\0';
+        if (k == 0) {
+            return 0;
+        }
+        *out_port = scheme_port;
+        if (p[n] == ':') {
+            int port = 0;
+            n++;
+            while (p[n] >= '0' && p[n] <= '9') {
+                port = port * 10 + (p[n] - '0');
+                n++;
+            }
+            if (port > 0) {
+                *out_port = port;
+            }
+        }
+        if (p[n] == '/') {
+            copy_path_h(out_path, pathcap, p + n);
+        } else {
+            cstrcpy(out_path, pathcap, "/");
+        }
+    }
+    return 1;
+}
+
+/* ---- plaintext HTTP via WinInet (WM6 built-in) ------------------- */
+
+/* Fetch a plain http:// resource using WM6's own WinInet stack rather than a
+ * hand-rolled socket/HTTP path (Positron patches WM6, it does not reinvent its
+ * networking). HTTPS stays on mbedTLS: WinInet's SChannel is stuck on
+ * SSL3/TLS1.0 + old ciphers and cannot reach modern sites, which is the gap
+ * positron_tls exists to fill. Auto-redirect is disabled so the caller's loop
+ * keeps control of cross-scheme redirects (an http->https hop must switch back
+ * to mbedTLS). Writes *out_status, the Location header (UTF-8) into out_loc,
+ * and appends the body to *outbody. Returns 0 on success, non-zero on a
+ * transport error (with resp's error_msg set). */
+static int wininet_fetch(const char* method, const char* host, int port,
+                         const char* path, const char** headers,
+                         const char* body, int body_len,
+                         int* out_status, char* out_loc, int loc_cap,
+                         bytebuf* outbody, PHttpResponse* resp)
+{
+    HINTERNET hInet = NULL;
+    HINTERNET hConn = NULL;
+    HINTERNET hReq  = NULL;
+    WCHAR     whost[256];
+    WCHAR     wpath[1024];
+    WCHAR     wmethod[8];
+    DWORD     flags;
+    DWORD     code;
+    DWORD     sz;
+    int       rc = 1;
+
+    out_loc[0] = '\0';
+    *out_status = 0;
+
+    MultiByteToWideChar(CP_UTF8, 0, host, -1, whost, 256);
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, 1024);
+    MultiByteToWideChar(CP_UTF8, 0, method, -1, wmethod, 8);
+
+    hInet = InternetOpenW(L"Positron", INTERNET_OPEN_TYPE_PRECONFIG,
+                          NULL, NULL, 0);
+    if (hInet == NULL) {
+        resp_set_error(resp, "InternetOpen failed");
+        goto wdone;
+    }
+
+    hConn = InternetConnectW(hInet, whost, (INTERNET_PORT)port, NULL, NULL,
+                             INTERNET_SERVICE_HTTP, 0, 0);
+    if (hConn == NULL) {
+        char eb[160];
+        _snprintf(eb, sizeof(eb) - 1, "%s:%d (http): InternetConnect err=%lu",
+                  host, port, (unsigned long)GetLastError());
+        eb[sizeof(eb) - 1] = '\0';
+        resp_set_error(resp, eb);
+        goto wdone;
+    }
+
+    flags = INTERNET_FLAG_NO_AUTO_REDIRECT | INTERNET_FLAG_NO_CACHE_WRITE |
+            INTERNET_FLAG_RELOAD;
+    hReq = HttpOpenRequestW(hConn, wmethod, wpath, NULL, NULL, NULL, flags, 0);
+    if (hReq == NULL) {
+        resp_set_error(resp, "HttpOpenRequest failed");
+        goto wdone;
+    }
+
+    if (headers != NULL) {
+        int i;
+        for (i = 0; headers[i] != NULL; i++) {
+            WCHAR wh[512];
+            MultiByteToWideChar(CP_UTF8, 0, headers[i], -1, wh, 512);
+            HttpAddRequestHeadersW(hReq, wh, (DWORD)-1,
+                    HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE);
+        }
+    }
+
+    if (!HttpSendRequestW(hReq, NULL, 0, (LPVOID)body,
+                          (DWORD)(body != NULL ? body_len : 0))) {
+        char eb[160];
+        _snprintf(eb, sizeof(eb) - 1, "%s:%d (http): HttpSendRequest err=%lu",
+                  host, port, (unsigned long)GetLastError());
+        eb[sizeof(eb) - 1] = '\0';
+        resp_set_error(resp, eb);
+        goto wdone;
+    }
+
+    code = 0;
+    sz = sizeof(code);
+    HttpQueryInfoW(hReq, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
+                   &code, &sz, NULL);
+    *out_status = (int)code;
+
+    {
+        WCHAR wloc[1024];
+        DWORD lsz = sizeof(wloc);
+        if (HttpQueryInfoW(hReq, HTTP_QUERY_LOCATION, wloc, &lsz, NULL)) {
+            WideCharToMultiByte(CP_UTF8, 0, wloc, -1, out_loc, loc_cap,
+                                NULL, NULL);
+            out_loc[loc_cap - 1] = '\0';
+        }
+    }
+
+    {
+        char  tmp[2048];
+        DWORD got;
+        for (;;) {
+            if (!InternetReadFile(hReq, tmp, sizeof(tmp), &got)) {
+                break;
+            }
+            if (got == 0) {
+                break;
+            }
+            if (bb_append(outbody, tmp, (size_t)got) != 0) {
+                break;
+            }
+            if (outbody->len >= MAX_RESP_BODY) {
+                break;
+            }
+        }
+    }
+
+    rc = 0;
+
+wdone:
+    if (hReq != NULL) {
+        InternetCloseHandle(hReq);
+    }
+    if (hConn != NULL) {
+        InternetCloseHandle(hConn);
+    }
+    if (hInet != NULL) {
+        InternetCloseHandle(hInet);
+    }
+    return rc;
+}
+
 /* ---- worker ------------------------------------------------------ */
 
 static PHttpResponse* http_request(const char* method, const char* host,
@@ -523,91 +804,182 @@ static PHttpResponse* http_request(const char* method, const char* host,
         body_len = (int)strlen(body);
     }
 
-    request = build_request(method, host, path, headers, body, body_len);
-    if (request == NULL) {
-        resp_set_error(resp, "OOM building request");
-        goto done;
-    }
+    {
+        char cur_host[256];
+        char cur_path[1024];
+        int  cur_port = port;
+        int  redirects = 0;
+        int  follow = (strcmp(method, "GET") == 0) ? 1 : 0;
 
-    conn = g_insecure ? PTls_Connect(host, port)
-                      : PTls_ConnectVerified(host, port);
-    if (conn == NULL) {
-        resp_set_error(resp, PTls_LastError());
-        goto done;
-    }
+        cstrcpy(cur_host, sizeof(cur_host), host);
+        cstrcpy(cur_path, sizeof(cur_path), path);
 
-    req_len = (int)strlen(request);
-    wrote = PTls_Write(conn, request, req_len);
-    if (wrote != req_len) {
-        resp_set_error(resp, "PTls_Write incomplete");
-        goto done;
-    }
-
-    if (bb_init(&recvbuf) != 0) {
-        resp_set_error(resp, "OOM recv buffer");
-        goto done;
-    }
-
-    body_start = read_until_headers(conn, &recvbuf);
-    if (body_start <= 0) {
-        resp_set_error(resp, "header block read failed");
-        goto done;
-    }
-
-    resp->status_code = parse_status(recvbuf.data, (size_t)body_start);
-
-    if (bb_init(&bodybuf) != 0) {
-        resp_set_error(resp, "OOM body buffer");
-        goto done;
-    }
-
-    if (is_chunked(recvbuf.data, (size_t)body_start)) {
-        const char* prefix = recvbuf.data + body_start;
-        int prefix_len = (int)recvbuf.len - body_start;
-        if (decode_chunked(conn, prefix, prefix_len, &bodybuf) != 0) {
-            resp_set_error(resp, "chunked decode failed");
-            /* still keep partial body */
+        if (bb_init(&bodybuf) != 0) {
+            resp_set_error(resp, "OOM body buffer");
+            goto done;
         }
-    } else {
-        cl = parse_content_length(recvbuf.data, (size_t)body_start);
-        if (recvbuf.len > (size_t)body_start) {
-            bb_append(&bodybuf,
-                      recvbuf.data + body_start,
-                      recvbuf.len - (size_t)body_start);
-        }
-        if (cl > 0) {
-            char tmp[2048];
-            int  remaining = cl - (int)bodybuf.len;
-            int  got;
-            int  want;
-            while (remaining > 0) {
-                want = remaining < (int)sizeof(tmp)
-                       ? remaining : (int)sizeof(tmp);
-                got = PTls_Read(conn, tmp, want);
-                if (got <= 0) {
-                    break;
+
+        for (;;) {
+            char        location[1024];
+            const char* loc = NULL;
+            size_t      loclen = 0;
+            int         status;
+
+            location[0] = '\0';
+
+            /* Transport by scheme/port: port 80 = plaintext http via WinInet
+             * (WM6 built-in); anything else = TLS via mbedTLS. */
+            if (cur_port == 80) {
+                if (wininet_fetch(method, cur_host, cur_port, cur_path,
+                        headers, body, body_len, &status,
+                        location, sizeof(location), &bodybuf, resp) != 0) {
+                    goto done;   /* error already set */
                 }
-                if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
-                    break;
+                resp->status_code = status;
+
+                if (follow && is_redirect_code(status) &&
+                        redirects < MAX_REDIRECTS && location[0] != '\0') {
+                    char nhost[256];
+                    char npath[1024];
+                    int  nport;
+                    if (resolve_redirect(location, strlen(location),
+                            cur_host, cur_path, cur_port,
+                            nhost, sizeof(nhost), npath, sizeof(npath),
+                            &nport)) {
+                        redirects++;
+                        cstrcpy(cur_host, sizeof(cur_host), nhost);
+                        cstrcpy(cur_path, sizeof(cur_path), npath);
+                        cur_port = nport;
+                        bb_free(&bodybuf);   /* discard the 3xx body */
+                        if (bb_init(&bodybuf) != 0) {
+                            resp_set_error(resp, "OOM body buffer");
+                            goto done;
+                        }
+                        continue;
+                    }
                 }
-                remaining -= got;
+                break;   /* final response; body already in bodybuf */
             }
-        } else {
-            /* No CL, not chunked: read until close. */
-            char tmp[2048];
-            int  got;
-            while (1) {
-                got = PTls_Read(conn, tmp, (int)sizeof(tmp));
-                if (got <= 0) {
-                    break;
+
+            /* ---- TLS https:// via mbedTLS ---- */
+            request = build_request(method, cur_host, cur_path, headers,
+                                    body, body_len);
+            if (request == NULL) {
+                resp_set_error(resp, "OOM building request");
+                goto done;
+            }
+
+            conn = g_insecure ? PTls_Connect(cur_host, cur_port)
+                              : PTls_ConnectVerified(cur_host, cur_port);
+            if (conn == NULL) {
+                char eb[320];
+                _snprintf(eb, sizeof(eb) - 1, "%s:%d (hop %d): %s",
+                          cur_host, cur_port, redirects, PTls_LastError());
+                eb[sizeof(eb) - 1] = '\0';
+                resp_set_error(resp, eb);
+                goto done;
+            }
+
+            req_len = (int)strlen(request);
+            wrote = PTls_Write(conn, request, req_len);
+            if (wrote != req_len) {
+                resp_set_error(resp, "PTls_Write incomplete");
+                goto done;
+            }
+
+            if (bb_init(&recvbuf) != 0) {
+                resp_set_error(resp, "OOM recv buffer");
+                goto done;
+            }
+
+            body_start = read_until_headers(conn, &recvbuf);
+            if (body_start <= 0) {
+                resp_set_error(resp, "header block read failed");
+                goto done;
+            }
+
+            status = parse_status(recvbuf.data, (size_t)body_start);
+            resp->status_code = status;
+
+            /* Follow a 3xx Location (GET only) before reading the body. */
+            if (follow && is_redirect_code(status) &&
+                    redirects < MAX_REDIRECTS) {
+                char nhost[256];
+                char npath[1024];
+                int  nport;
+
+                loc = find_header(recvbuf.data, (size_t)body_start,
+                                  "Location", &loclen);
+                if (loc != NULL && loclen > 0 &&
+                        resolve_redirect(loc, loclen, cur_host, cur_path,
+                                cur_port, nhost, sizeof(nhost),
+                                npath, sizeof(npath), &nport)) {
+                    redirects++;
+                    cstrcpy(cur_host, sizeof(cur_host), nhost);
+                    cstrcpy(cur_path, sizeof(cur_path), npath);
+                    cur_port = nport;
+                    HeapFree(GetProcessHeap(), 0, request);
+                    request = NULL;
+                    bb_free(&recvbuf);
+                    recvbuf.data = NULL;
+                    PTls_Close(conn);
+                    conn = NULL;
+                    continue;
                 }
-                if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
-                    break;
+                /* No usable Location: return the 3xx response as-is. */
+            }
+
+            /* Final TLS response: read the body into bodybuf. */
+            if (is_chunked(recvbuf.data, (size_t)body_start)) {
+                const char* prefix = recvbuf.data + body_start;
+                int prefix_len = (int)recvbuf.len - body_start;
+                if (decode_chunked(conn, prefix, prefix_len, &bodybuf) != 0) {
+                    resp_set_error(resp, "chunked decode failed");
+                    /* still keep partial body */
                 }
-                if (bodybuf.len >= MAX_RESP_BODY) {
-                    break;
+            } else {
+                cl = parse_content_length(recvbuf.data, (size_t)body_start);
+                if (recvbuf.len > (size_t)body_start) {
+                    bb_append(&bodybuf,
+                              recvbuf.data + body_start,
+                              recvbuf.len - (size_t)body_start);
+                }
+                if (cl > 0) {
+                    char tmp[2048];
+                    int  remaining = cl - (int)bodybuf.len;
+                    int  got;
+                    int  want;
+                    while (remaining > 0) {
+                        want = remaining < (int)sizeof(tmp)
+                               ? remaining : (int)sizeof(tmp);
+                        got = PTls_Read(conn, tmp, want);
+                        if (got <= 0) {
+                            break;
+                        }
+                        if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
+                            break;
+                        }
+                        remaining -= got;
+                    }
+                } else {
+                    /* No CL, not chunked: read until close. */
+                    char tmp[2048];
+                    int  got;
+                    while (1) {
+                        got = PTls_Read(conn, tmp, (int)sizeof(tmp));
+                        if (got <= 0) {
+                            break;
+                        }
+                        if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
+                            break;
+                        }
+                        if (bodybuf.len >= MAX_RESP_BODY) {
+                            break;
+                        }
+                    }
                 }
             }
+            break;   /* final TLS response complete */
         }
     }
 

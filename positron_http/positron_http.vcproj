@@ -65,7 +65,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_tls.lib ws2.lib"
+				AdditionalDependencies="positron_tls.lib ws2.lib wininet.lib"
 				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_http.dll"
@@ -156,7 +156,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_tls.lib ws2.lib"
+				AdditionalDependencies="positron_tls.lib ws2.lib wininet.lib"
 				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_http.dll"

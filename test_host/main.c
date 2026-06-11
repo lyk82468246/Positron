@@ -1001,6 +1001,11 @@ static HANDLE g_render_doc = NULL;
 static int    g_scroll_y = 0;
 static int    g_doc_h = 0;
 
+/* Current page origin, for resolving relative links during navigation. */
+static char   g_cur_host[256] = "";
+static char   g_cur_path[1024] = "/";
+static int    g_cur_port = 443;
+
 /* Configure the vertical scrollbar from the document height + client size. */
 static void pcore_set_scrollbar(HWND hwnd)
 {
@@ -1046,6 +1051,216 @@ static void pcore_scroll_by(HWND hwnd, int dy)
      * exposed strip; the following WM_PAINT repaints just that strip at the
      * new scroll offset. Far cheaper than repainting the whole client. */
     ScrollWindowEx(hwnd, 0, -applied, NULL, NULL, NULL, NULL, SW_INVALIDATE);
+    UpdateWindow(hwnd);
+}
+
+/* Case-insensitive ASCII prefix test (avoids depending on _strnicmp). */
+static int ci_prefix(const char *s, const char *pfx)
+{
+    while (*pfx != '\0') {
+        char a = *s, b = *pfx;
+        if (a >= 'A' && a <= 'Z') a = (char) (a + 32);
+        if (b >= 'A' && b <= 'Z') b = (char) (b + 32);
+        if (a != b) {
+            return 0;
+        }
+        s++; pfx++;
+    }
+    return 1;
+}
+
+/* Bounded NUL-terminated string copy. */
+static void cstr_copy(char *d, int cap, const char *s)
+{
+    int n = 0;
+    if (cap <= 0) {
+        return;
+    }
+    while (s[n] != '\0' && n < cap - 1) {
+        d[n] = s[n];
+        n++;
+    }
+    d[n] = '\0';
+}
+
+/* Copy an absolute path (starts with '/') into dst, stripping any #fragment.
+ * Falls back to "/" if empty. */
+static void copy_path(char *dst, int cap, const char *src)
+{
+    int n = 0;
+    if (cap <= 0) {
+        return;
+    }
+    while (*src != '\0' && *src != '#' && n < cap - 1) {
+        dst[n++] = *src++;
+    }
+    if (n == 0 && cap > 1) {
+        dst[n++] = '/';
+    }
+    dst[n] = '\0';
+}
+
+/* Resolve a link href against the current page (g_cur_host / g_cur_path) into
+ * an absolute host + path. Handles absolute http(s), root-relative ("/x") and
+ * same-directory relative ("x"). Returns FALSE for unsupported schemes
+ * (mailto:/javascript:/tel:) and bare #fragments. All fetched over HTTPS. */
+static BOOL resolve_url(const char *href, char *host, int hostcap,
+                        char *path, int pathcap, int *out_port)
+{
+    const char *p = href;
+
+    *out_port = 443;
+
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') {
+        p++;
+    }
+
+    if (ci_prefix(p, "http://")) {
+        p += 7;
+        *out_port = 80;
+    } else if (ci_prefix(p, "https://")) {
+        p += 8;
+        *out_port = 443;
+    } else if (ci_prefix(p, "mailto:") || ci_prefix(p, "javascript:") ||
+               ci_prefix(p, "tel:") || p[0] == '#') {
+        return FALSE;   /* not a navigable http(s) document link */
+    } else if (p[0] == '/') {
+        if (g_cur_host[0] == '\0') {
+            return FALSE;
+        }
+        cstr_copy(host, hostcap, g_cur_host);
+        copy_path(path, pathcap, p);
+        *out_port = g_cur_port;   /* same scheme as current page */
+        return TRUE;
+    } else {
+        /* Same-directory relative: current host + base dir + href. */
+        int n = 0, i, lastslash = -1;
+        if (g_cur_host[0] == '\0') {
+            return FALSE;
+        }
+        cstr_copy(host, hostcap, g_cur_host);
+        for (i = 0; g_cur_path[i] != '\0'; i++) {
+            if (g_cur_path[i] == '/') {
+                lastslash = i;
+            }
+        }
+        for (i = 0; i <= lastslash && n < pathcap - 1; i++) {
+            path[n++] = g_cur_path[i];
+        }
+        if (lastslash < 0 && n < pathcap - 1) {
+            path[n++] = '/';
+        }
+        while (*p != '\0' && *p != '#' && n < pathcap - 1) {
+            path[n++] = *p++;
+        }
+        path[n] = '\0';
+        *out_port = g_cur_port;   /* same scheme as current page */
+        return TRUE;
+    }
+
+    /* Absolute: p now points at host[:port][/path][#frag]. */
+    {
+        int n = 0;
+        while (*p != '\0' && *p != '/' && *p != '#' && *p != ':' &&
+                n < hostcap - 1) {
+            host[n++] = *p++;
+        }
+        host[n] = '\0';
+        if (n == 0) {
+            return FALSE;
+        }
+        if (*p == ':') {
+            int pt = 0;
+            p++;
+            while (*p >= '0' && *p <= '9') {
+                pt = pt * 10 + (*p - '0');
+                p++;
+            }
+            if (pt > 0) {
+                *out_port = pt;
+            }
+        }
+        if (*p == '/') {
+            copy_path(path, pathcap, p);
+        } else {
+            cstr_copy(path, pathcap, "/");
+        }
+    }
+    return TRUE;
+}
+
+/* Follow a link: fetch the target over HTTPS, parse + style + lay it out to the
+ * current client size, swap it in as the rendered document and repaint. On any
+ * failure the current page is left untouched and an error box is shown. */
+static void navigate_to(HWND hwnd, const char *href)
+{
+    char           host[256];
+    char           path[1024];
+    int            port = 443;
+    PHttpResponse *resp;
+    HANDLE         newDoc;
+    RECT           rc;
+    int            cw, chh;
+    char           emsg[320];
+
+    if (!resolve_url(href, host, sizeof(host), path, sizeof(path), &port)) {
+        show_info(L"Link", "Only http(s) document links are followed for now.");
+        return;
+    }
+
+    resp = PHttp_Get(host, port, path, NULL);
+    if (resp == NULL || resp->status_code != 200 || resp->body == NULL ||
+            resp->body_len <= 0) {
+        _snprintf(emsg, sizeof(emsg) - 1,
+                  "GET %s://%s%s -> status=%d %s",
+                  (port == 80) ? "http" : "https", host, path,
+                  (resp != NULL) ? resp->status_code : 0,
+                  (resp != NULL) ? resp->error_msg : "(null)");
+        emsg[sizeof(emsg) - 1] = '\0';
+        show_error(L"Navigation failed", emsg);
+        if (resp != NULL) {
+            PHttp_FreeResponse(resp);
+        }
+        return;
+    }
+
+    newDoc = PCore_ParseHTML(resp->body, resp->body_len);
+    PHttp_FreeResponse(resp);
+    if (newDoc == NULL) {
+        show_error(L"Navigation failed", "PCore_ParseHTML returned NULL");
+        return;
+    }
+    if (PCore_StyleDocument(newDoc, NULL) != 0) {
+        show_error(L"Navigation failed", "PCore_StyleDocument failed");
+        PCore_FreeDocument(newDoc);
+        return;
+    }
+
+    GetClientRect(hwnd, &rc);
+    cw = rc.right - rc.left;
+    chh = rc.bottom - rc.top;
+    if (cw <= 0) { cw = 224; }
+    if (chh <= 0) { chh = 320; }
+    PCore_SetViewport(cw, chh, 0);   /* dpi 0 = leave unchanged */
+    if (PCore_LayoutDocument(newDoc, cw, chh) != 0) {
+        show_error(L"Navigation failed", "PCore_LayoutDocument failed");
+        PCore_FreeDocument(newDoc);
+        return;
+    }
+
+    /* Swap in the new document; free the one being replaced. */
+    if (g_render_doc != NULL) {
+        PCore_FreeDocument(g_render_doc);
+    }
+    g_render_doc = newDoc;
+    g_doc_h = PCore_DocumentHeight(newDoc);
+    g_scroll_y = 0;
+    cstr_copy(g_cur_host, sizeof(g_cur_host), host);
+    cstr_copy(g_cur_path, sizeof(g_cur_path), path);
+    g_cur_port = port;
+
+    pcore_set_scrollbar(hwnd);
+    InvalidateRect(hwnd, NULL, TRUE);
     UpdateWindow(hwnd);
 }
 
@@ -1126,7 +1341,22 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             break;
         }
         return 0;
-    case WM_LBUTTONDOWN:
+    case WM_LBUTTONDOWN: {
+        int cx = (int) (short) LOWORD(lp);
+        int cy = (int) (short) HIWORD(lp);
+        char href[1024];
+
+        /* Document-space point = client point + scroll (scroll_x is 0). If it
+         * lands on a link, follow it; otherwise a tap closes the view. */
+        if (g_render_doc != NULL &&
+                PCore_LinkAt(g_render_doc, cx, cy + g_scroll_y,
+                             href, sizeof(href))) {
+            navigate_to(hwnd, href);
+        } else {
+            DestroyWindow(hwnd);
+        }
+        return 0;
+    }
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
@@ -1276,39 +1506,32 @@ static BOOL test12_render(void)
 
 static BOOL test_browse(void)
 {
-    static const char *HOST = "example.com";
-    static const char *PATH = "/";
+    static const char *START_HTML =
+        "<!DOCTYPE html><html><head><title>Positron</title>"
+        "<style>"
+        "body{background-color:#ffffff;color:#202020;}"
+        "h1{color:#800000;}"
+        "p{margin-top:1em;margin-bottom:1em;}"
+        "</style></head>"
+        "<body><h1>Positron</h1>"
+        "<p>Tap a link to fetch and render a real page over HTTPS:</p>"
+        "<p><a href=\"https://example.com/\">Open example.com</a></p>"
+        "<p>On the fetched page you can tap its own links too. Some hosts "
+        "may be reset by the network (GFW); that error is expected.</p>"
+        "<p>Tap empty space (or press Esc) to close.</p>"
+        "</body></html>";
 
-    PHttpResponse *resp;
-    HANDLE         hDoc;
-    int            body_len;
-    int            vw, vh;
-    char           msg[256];
+    HANDLE hDoc;
+    int    vw, vh;
 
-    resp = PHttp_Get(HOST, 443, PATH, NULL);
-    if (resp == NULL) {
-        show_error(L"TEST 13 FAIL", "PHttp_Get returned NULL (OOM?)");
-        return FALSE;
-    }
-    if (resp->status_code != 200 || resp->body == NULL ||
-            resp->body_len <= 0) {
-        _snprintf(msg, sizeof(msg) - 1,
-                  "GET https://%s%s -> status=%d err=%s",
-                  HOST, PATH, resp->status_code, resp->error_msg);
-        msg[sizeof(msg) - 1] = '\0';
-        show_error(L"TEST 13 FAIL", msg);
-        PHttp_FreeResponse(resp);
-        return FALSE;
-    }
-
-    body_len = resp->body_len;
-    hDoc = PCore_ParseHTML(resp->body, resp->body_len);
-    PHttp_FreeResponse(resp);   /* HTML is now copied into the DOM */
+    /* Landing page is offline; the actual fetch happens when the user taps
+     * the link (navigate_to), exercising the full click -> fetch -> render
+     * loop against a China-reachable host. */
+    hDoc = PCore_ParseHTML(START_HTML, 0);
     if (hDoc == NULL) {
         show_error(L"TEST 13 FAIL", "PCore_ParseHTML returned NULL");
         return FALSE;
     }
-
     if (PCore_StyleDocument(hDoc, NULL) != 0) {   /* UA + page's <style> */
         show_error(L"TEST 13 FAIL", "PCore_StyleDocument failed");
         PCore_FreeDocument(hDoc);
@@ -1319,6 +1542,7 @@ static BOOL test_browse(void)
     vh = GetSystemMetrics(SM_CYSCREEN);
     if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
+    PCore_SetViewport(vw, vh, 0);
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0) {
         show_error(L"TEST 13 FAIL", "PCore_LayoutDocument failed");
         PCore_FreeDocument(hDoc);
@@ -1327,14 +1551,14 @@ static BOOL test_browse(void)
 
     g_doc_h = PCore_DocumentHeight(hDoc);
     g_scroll_y = 0;
+    /* No remote origin yet; the start page's link is absolute. */
+    g_cur_host[0] = '\0';
+    cstr_copy(g_cur_path, sizeof(g_cur_path), "/");
 
-    _snprintf(msg, sizeof(msg) - 1,
-              "Fetched https://%s%s (%d bytes).\n\n"
-              "A render window opens: scroll with the bar / keys,\n"
-              "tap the content (or press Esc) to close.",
-              HOST, PATH, body_len);
-    msg[sizeof(msg) - 1] = '\0';
-    show_info(L"TEST 13", msg);
+    show_info(L"TEST 13",
+              "A start page opens. Tap \"Open example.com\" to fetch\n"
+              "and render a real HTTPS page (click navigation).\n\n"
+              "Tap empty space or press Esc to close.");
 
     g_render_doc = hDoc;
     if (!show_render_window()) {
@@ -1343,13 +1567,16 @@ static BOOL test_browse(void)
         PCore_FreeDocument(hDoc);
         return FALSE;
     }
+    /* Navigation may have replaced the document; free whatever is current. */
+    if (g_render_doc != NULL) {
+        PCore_FreeDocument(g_render_doc);
+    }
     g_render_doc = NULL;
 
-    PCore_FreeDocument(hDoc);
     show_info(L"TEST 13 OK",
-              "Rendered a real fetched web page.\n\n"
-              "(HTTPS GET -> parse -> style [UA + page <style>]\n"
-              " -> layout -> GDI paint, on the device.)");
+              "Click navigation verified:\n"
+              "start page -> tap link -> HTTPS GET -> parse ->\n"
+              "style -> layout -> GDI paint, on the device.");
     return TRUE;
 }
 
