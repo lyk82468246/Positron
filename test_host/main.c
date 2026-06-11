@@ -28,6 +28,7 @@
 #include <windows.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>     /* malloc / free for fetched-CSS buffers */
 #include <aygshell.h>   /* SHFullScreen / SHSipPreference - control the SIP */
 
 #include "positron_tls.h"
@@ -1189,6 +1190,50 @@ static BOOL resolve_url(const char *href, char *host, int hostcap,
     return TRUE;
 }
 
+/* External-CSS fetch for PCore_StyleDocumentEx: resolve `url` against the
+ * current page origin, GET it, and hand the body to the engine (which parses
+ * it and then calls css_free_cb to release it). Returns 0 on success. */
+static int css_fetch_cb(void *pw, const char *url, char **out_data, int *out_len)
+{
+    char           host[256];
+    char           path[1024];
+    int            port = 443;
+    PHttpResponse *resp;
+    char          *buf;
+
+    (void) pw;
+    *out_data = NULL;
+    *out_len = 0;
+
+    if (!resolve_url(url, host, sizeof(host), path, sizeof(path), &port)) {
+        return 1;
+    }
+    resp = PHttp_Get(host, port, path, NULL);
+    if (resp == NULL || resp->status_code != 200 ||
+            resp->body == NULL || resp->body_len <= 0) {
+        if (resp != NULL) {
+            PHttp_FreeResponse(resp);
+        }
+        return 1;
+    }
+    buf = (char *) malloc((size_t) resp->body_len);
+    if (buf == NULL) {
+        PHttp_FreeResponse(resp);
+        return 1;
+    }
+    memcpy(buf, resp->body, (size_t) resp->body_len);
+    *out_data = buf;
+    *out_len = resp->body_len;
+    PHttp_FreeResponse(resp);
+    return 0;
+}
+
+static void css_free_cb(void *pw, char *data)
+{
+    (void) pw;
+    free(data);
+}
+
 /* Follow a link: fetch the target over HTTPS, parse + style + lay it out to the
  * current client size, swap it in as the rendered document and repaint. On any
  * failure the current page is left untouched and an error box is shown. */
@@ -1230,7 +1275,15 @@ static void navigate_to(HWND hwnd, const char *href)
         show_error(L"Navigation failed", "PCore_ParseHTML returned NULL");
         return;
     }
-    if (PCore_StyleDocument(newDoc, NULL) != 0) {
+
+    /* Record the new origin *before* styling so external <link> hrefs in this
+     * page resolve against it (css_fetch_cb uses g_cur_*). */
+    cstr_copy(g_cur_host, sizeof(g_cur_host), host);
+    cstr_copy(g_cur_path, sizeof(g_cur_path), path);
+    g_cur_port = port;
+
+    if (PCore_StyleDocumentEx(newDoc, NULL, css_fetch_cb, css_free_cb,
+            NULL) != 0) {
         show_error(L"Navigation failed", "PCore_StyleDocument failed");
         PCore_FreeDocument(newDoc);
         return;
@@ -1255,9 +1308,6 @@ static void navigate_to(HWND hwnd, const char *href)
     g_render_doc = newDoc;
     g_doc_h = PCore_DocumentHeight(newDoc);
     g_scroll_y = 0;
-    cstr_copy(g_cur_host, sizeof(g_cur_host), host);
-    cstr_copy(g_cur_path, sizeof(g_cur_path), path);
-    g_cur_port = port;
 
     pcore_set_scrollbar(hwnd);
     InvalidateRect(hwnd, NULL, TRUE);

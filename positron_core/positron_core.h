@@ -86,6 +86,26 @@ PCORE_API int PCore_ComputeColor(HANDLE hDoc, HANDLE hSheet,
  * layout: it turns a parsed DOM + stylesheet into a fully-styled tree. */
 PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet);
 
+/* Embedder-provided resource fetch, used to pull external resources the engine
+ * references (currently external <link rel="stylesheet"> CSS). The engine stays
+ * transport-agnostic: it hands the raw href from the document to `fetch`, and
+ * the embedder resolves it against the current page and fetches it (e.g. via
+ * positron_http). On success `fetch` returns 0 and sets *out_data (UTF-8 bytes
+ * owned by the embedder) + *out_len; the engine parses it immediately, then
+ * calls `freefn` to release it. `fetch` returns non-zero to skip the resource.
+ * `pw` is passed through opaquely. */
+typedef int  (*PCoreFetchFn)(void *pw, const char *url,
+                             char **out_data, int *out_len);
+typedef void (*PCoreFreeFn)(void *pw, char *data);
+
+/* As PCore_StyleDocument, but also fetches and applies external
+ * <link rel="stylesheet"> sheets via the embedder's `fetch`/`freefn` (pass NULL
+ * for both to skip external CSS, which makes this identical to
+ * PCore_StyleDocument). The fetched sheets are author-origin, applied in
+ * document order alongside the page's inline <style> blocks. */
+PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw);
+
 /* Read back the computed 'color' (0xAARRGGBB) that PCore_StyleDocument
  * attached to the first element named `tag` (case-insensitive). Returns 0 on
  * success, non-zero if the element/style is absent. Used to verify inheritance

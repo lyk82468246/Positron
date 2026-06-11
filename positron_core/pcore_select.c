@@ -1003,11 +1003,52 @@ static void pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
     }
 }
 
-/* DFS: find <style> elements, parse their CSS text and append it to `ctx` as
- * author sheets; record the handles in sheets[] (up to max) so the caller can
- * free them after selection. Lets a fetched page carry its own inline CSS. */
-static void pcore_collect_styles(dom_node *node, lwc_string *style_name,
-        css_select_ctx *ctx, HANDLE *sheets, int *n, int max)
+/* Shared state for the resource-collection DFS below. */
+typedef struct pcore_collect_ctx {
+    css_select_ctx *ctx;
+    HANDLE         *sheets;     /* parsed sheet handles, freed by caller */
+    int            *n;
+    int             max;
+    PCoreFetchFn    fetch;      /* embedder fetch for external <link> CSS */
+    PCoreFreeFn     freefn;
+    void           *pw;
+    dom_string     *style_name; /* interned "style" */
+    dom_string     *link_name;  /* interned "link"  */
+    dom_string     *rel_name;   /* interned "rel"   */
+    dom_string     *href_name;  /* interned "href"  */
+    dom_string     *css_value;  /* interned "stylesheet" (for rel match) */
+} pcore_collect_ctx;
+
+/* Parse `data`/`len` CSS, append to the select context as an author sheet, and
+ * record the handle for later cleanup. `url` is informational (base for any
+ * @import - not yet followed). */
+static void pcore_add_author_css(pcore_collect_ctx *cc, const char *data,
+        int len, const char *url)
+{
+    HANDLE hs;
+
+    if (*cc->n >= cc->max || data == NULL || len <= 0) {
+        return;
+    }
+    hs = PCore_ParseCSS(data, len, url);
+    if (hs == NULL) {
+        return;
+    }
+    if (css_select_ctx_append_sheet(cc->ctx, (css_stylesheet *) hs,
+            CSS_ORIGIN_AUTHOR, NULL) == CSS_OK) {
+        cc->sheets[(*cc->n)++] = hs;
+    } else {
+        PCore_FreeStylesheet(hs);
+    }
+}
+
+/* DFS: collect author CSS from the page in document order - inline <style>
+ * blocks (text content) and external <link rel="stylesheet" href> sheets
+ * (fetched via the embedder callback, if provided). Parsed sheets are appended
+ * to cc->ctx and recorded in cc->sheets[] for the caller to free. Letting a
+ * fetched page carry both its inline and linked CSS is what makes real pages
+ * look styled rather than bare. */
+static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
 {
     dom_node *child;
     dom_node_type type;
@@ -1017,37 +1058,63 @@ static void pcore_collect_styles(dom_node *node, lwc_string *style_name,
     err = dom_node_get_node_type(node, &type);
     if (err == DOM_NO_ERR && type == DOM_ELEMENT_NODE) {
         bool is_style = false;
+        bool is_link = false;
 
         err = dom_node_get_node_name(node, &name);
         if (err == DOM_NO_ERR && name != NULL) {
-            is_style = dom_string_caseless_lwc_isequal(name, style_name);
+            is_style = dom_string_caseless_isequal(name, cc->style_name);
+            if (!is_style && cc->link_name != NULL) {
+                is_link = dom_string_caseless_isequal(name, cc->link_name);
+            }
             dom_string_unref(name);
         }
+
         if (is_style) {
             dom_string *css = NULL;
-
-            if (*n < max &&
-                    dom_node_get_text_content(node, &css) == DOM_NO_ERR &&
+            if (dom_node_get_text_content(node, &css) == DOM_NO_ERR &&
                     css != NULL) {
-                const char *data = dom_string_data(css);
-                size_t len = dom_string_byte_length(css);
-
-                if (data != NULL && len > 0) {
-                    HANDLE hs = PCore_ParseCSS(data, (int) len,
-                            "positron:inline-style");
-                    if (hs != NULL) {
-                        if (css_select_ctx_append_sheet(ctx,
-                                (css_stylesheet *) hs,
-                                CSS_ORIGIN_AUTHOR, NULL) == CSS_OK) {
-                            sheets[(*n)++] = hs;
-                        } else {
-                            PCore_FreeStylesheet(hs);
-                        }
-                    }
-                }
+                pcore_add_author_css(cc, dom_string_data(css),
+                        (int) dom_string_byte_length(css),
+                        "positron:inline-style");
                 dom_string_unref(css);
             }
             return;   /* don't recurse into a <style>'s text children */
+        }
+
+        if (is_link && cc->fetch != NULL) {
+            dom_string *rel = NULL;
+            dom_string *href = NULL;
+            bool is_sheet = false;
+
+            if (dom_element_get_attribute(node, cc->rel_name, &rel) ==
+                    DOM_NO_ERR && rel != NULL) {
+                is_sheet = dom_string_caseless_isequal(rel, cc->css_value);
+                dom_string_unref(rel);
+            }
+            if (is_sheet &&
+                    dom_element_get_attribute(node, cc->href_name, &href) ==
+                            DOM_NO_ERR && href != NULL) {
+                const char *hu8 = dom_string_data(href);
+                size_t hl = dom_string_byte_length(href);
+                if (hu8 != NULL && hl > 0) {
+                    char  url[1024];
+                    char *data = NULL;
+                    int   len = 0;
+                    int   cl = (hl < sizeof(url) - 1)
+                            ? (int) hl : (int) sizeof(url) - 1;
+                    memcpy(url, hu8, cl);
+                    url[cl] = '\0';
+                    if (cc->fetch(cc->pw, url, &data, &len) == 0 &&
+                            data != NULL) {
+                        pcore_add_author_css(cc, data, len, url);
+                        if (cc->freefn != NULL) {
+                            cc->freefn(cc->pw, data);
+                        }
+                    }
+                }
+                dom_string_unref(href);
+            }
+            return;   /* <link> has no element children */
         }
     }
 
@@ -1057,7 +1124,7 @@ static void pcore_collect_styles(dom_node *node, lwc_string *style_name,
     while (child != NULL) {
         dom_node *next;
 
-        pcore_collect_styles(child, style_name, ctx, sheets, n, max);
+        pcore_collect_resources(cc, child);
         if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
             dom_node_unref(child);
             return;
@@ -1069,18 +1136,30 @@ static void pcore_collect_styles(dom_node *node, lwc_string *style_name,
 
 PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet)
 {
-    dom_document   *doc = (dom_document *) hDoc;
-    css_stylesheet *author = (css_stylesheet *) hSheet;
-    HANDLE          hUA = NULL;
-    css_select_ctx *ctx = NULL;
-    dom_node       *root = NULL;
-    lwc_string     *style_name = NULL;
-    HANDLE          page_sheets[16];
-    int             n_page = 0;
-    int             i;
-    css_media       media;
-    pcore_select_pw pw;
-    int             rc = 1;
+    return PCore_StyleDocumentEx(hDoc, hSheet, NULL, NULL, NULL);
+}
+
+PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch)
+{
+    dom_document     *doc = (dom_document *) hDoc;
+    css_stylesheet   *author = (css_stylesheet *) hSheet;
+    HANDLE            hUA = NULL;
+    css_select_ctx   *ctx = NULL;
+    dom_node         *root = NULL;
+    HANDLE            page_sheets[32];
+    int               n_page = 0;
+    int               i;
+    css_media         media;
+    pcore_select_pw   pw;
+    pcore_collect_ctx cc;
+    int               rc = 1;
+
+    cc.style_name = NULL;
+    cc.link_name = NULL;
+    cc.rel_name = NULL;
+    cc.href_name = NULL;
+    cc.css_value = NULL;
 
     if (doc == NULL) {
         return 1;
@@ -1113,9 +1192,21 @@ PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet)
         goto cleanup;
     }
 
-    /* Apply the page's own <style> sheets (author origin). */
-    if (lwc_intern_string("style", 5, &style_name) == lwc_error_ok) {
-        pcore_collect_styles(root, style_name, ctx, page_sheets, &n_page, 16);
+    /* Apply the page's own inline <style> and external <link> sheets. */
+    cc.ctx = ctx;
+    cc.sheets = page_sheets;
+    cc.n = &n_page;
+    cc.max = 32;
+    cc.fetch = fetch;
+    cc.freefn = freefn;
+    cc.pw = pw_fetch;
+    dom_string_create((const uint8_t *) "style", 5, &cc.style_name);
+    dom_string_create((const uint8_t *) "link", 4, &cc.link_name);
+    dom_string_create((const uint8_t *) "rel", 3, &cc.rel_name);
+    dom_string_create((const uint8_t *) "href", 4, &cc.href_name);
+    dom_string_create((const uint8_t *) "stylesheet", 10, &cc.css_value);
+    if (cc.style_name != NULL) {
+        pcore_collect_resources(&cc, root);
     }
 
     /* Optional extra author sheet supplied by the caller (may be NULL). */
@@ -1142,9 +1233,11 @@ cleanup:
     if (hUA != NULL) {
         PCore_FreeStylesheet(hUA);
     }
-    if (style_name != NULL) {
-        lwc_string_unref(style_name);
-    }
+    if (cc.style_name != NULL) { dom_string_unref(cc.style_name); }
+    if (cc.link_name != NULL)  { dom_string_unref(cc.link_name); }
+    if (cc.rel_name != NULL)   { dom_string_unref(cc.rel_name); }
+    if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
+    if (cc.css_value != NULL)  { dom_string_unref(cc.css_value); }
     if (pw.universal != NULL) {
         lwc_string_unref(pw.universal);
     }
