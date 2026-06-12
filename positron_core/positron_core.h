@@ -161,6 +161,14 @@ PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi);
 PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
                            char *out_href, int cap);
 
+/* --- NetSurf layout/redraw port (milestone H) ----------------------- */
+
+/* M1 self-test for the GDI-backed NetSurf plotter table: draws a bordered box,
+ * a line and a line of text into `hdc` by driving the plotter directly (no
+ * layout engine involved). Lets the plotter + colour/pen/font handling be
+ * device-verified before redraw.c is ported in. */
+PCORE_API void PCore_PlotTest(HDC hdc);
+
 #ifdef __cplusplus
 }
 #endif

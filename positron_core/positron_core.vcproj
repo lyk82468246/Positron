@@ -42,7 +42,7 @@
 				Name="VCCLCompilerTool"
 				ExecutionBucket="7"
 				Optimization="0"
-				AdditionalIncludeDirectories=".;..\compat;..\netsurf-all-3.11\libhubbub\include;..\netsurf-all-3.11\libcss\include;..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libwapcaplet\include"
+				AdditionalIncludeDirectories=".;..\compat;..\netsurf-all-3.11\libhubbub\include;..\netsurf-all-3.11\libcss\include;..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\netsurf\include;..\netsurf-all-3.11\netsurf"
 				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_CORE_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
 				MinimalRebuild="true"
 				RuntimeLibrary="1"
@@ -134,7 +134,7 @@
 				ExecutionBucket="7"
 				Optimization="2"
 				FavorSizeOrSpeed="2"
-				AdditionalIncludeDirectories=".;..\compat;..\netsurf-all-3.11\libhubbub\include;..\netsurf-all-3.11\libcss\include;..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libwapcaplet\include"
+				AdditionalIncludeDirectories=".;..\compat;..\netsurf-all-3.11\libhubbub\include;..\netsurf-all-3.11\libcss\include;..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\netsurf\include;..\netsurf-all-3.11\netsurf"
 				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_CORE_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="0"
@@ -211,6 +211,7 @@
 			>
 			<File RelativePath=".\positron_core.c"></File>
 			<File RelativePath=".\pcore_select.c"></File>
+				<File RelativePath=".\pcore_plot_gdi.c"></File>
 		</Filter>
 		<Filter
 			Name="Header Files"

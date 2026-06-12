@@ -1001,6 +1001,7 @@ static BOOL test11_layout(void)
 static HANDLE g_render_doc = NULL;
 static int    g_scroll_y = 0;
 static int    g_doc_h = 0;
+static int    g_plot_test = 0;   /* M1: paint via PCore_PlotTest, not a doc */
 
 /* Current page origin, for resolving relative links during navigation. */
 static char   g_cur_host[256] = "";
@@ -1327,7 +1328,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
          * thin strip ScrollWindowEx exposed; BeginPaint clips the DC to it, so
          * PCore_PaintDocument redraws a sliver, not the whole screen. */
         FillRect(hdc, &ps.rcPaint, (HBRUSH) GetStockObject(WHITE_BRUSH));
-        if (g_render_doc != NULL) {
+        if (g_plot_test) {
+            PCore_PlotTest(hdc);   /* M1: drive the GDI plotter directly */
+        } else if (g_render_doc != NULL) {
             PCore_PaintDocument(g_render_doc, hdc, 0, g_scroll_y);
         }
         EndPaint(hwnd, &ps);
@@ -1631,6 +1634,39 @@ static BOOL test_browse(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
+/* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
+/* interface backed by GDI - with NO layout engine involved. Confirms the  */
+/* plotter table, colour conversion, pens/brushes and text baseline before */
+/* redraw.c is ported in.                                                  */
+/* -------------------------------------------------------------------- */
+static BOOL test14_plot(void)
+{
+    show_info(L"TEST 14",
+              "Milestone H/M1: a window opens and paints via the\n"
+              "GDI-backed NetSurf plotter (no layout engine).\n\n"
+              "Expect a grey box with a red border, a blue line\n"
+              "below it, and the text \"Positron GDI plotter OK\".\n"
+              "Tap or press Esc to close.");
+
+    g_plot_test = 1;
+    g_render_doc = NULL;
+    g_doc_h = 0;
+    g_scroll_y = 0;
+    if (!show_render_window()) {
+        g_plot_test = 0;
+        show_error(L"TEST 14 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_plot_test = 0;
+
+    show_info(L"TEST 14 OK",
+              "GDI plotter table verified: rectangle (fill+border),\n"
+              "line, and baseline-aligned text drew correctly.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -1685,8 +1721,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout (TEST 6-11). Message boxes.\n"
                                "Fully offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
-                               "Run GDI RENDER test?\n\n"
-                               "Opens a window and paints a local HTML\n"
+                               "Run GDI RENDER tests?\n\n"
+                               "M1 plotter self-test (TEST 14) + local HTML\n"
                                "page (TEST 12). Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -1721,6 +1757,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
 
     /* --- GDI render group (TEST 12, opens a real window, offline) ----- */
     if (run_render) {
+        if (!test14_plot())        { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
 

@@ -26,6 +26,7 @@
 
 #include <stdint.h>
 #include <stdint.h>
+#include <assert.h>   /* colour_engorge_component() uses assert() */
 #include <libwapcaplet/libwapcaplet.h>
 #include "netsurf/types.h"
 
@@ -240,9 +241,11 @@ static inline colour colour_engorge_component(
 		enum plot_colour_component comp)
 {
 	static const colour msk[PLOT_COLOUR_COMPONENT_ALPHA] = {
-		[PLOT_COLOUR_COMPONENT_RED]   = 0x0000ff,
-		[PLOT_COLOUR_COMPONENT_GREEN] = 0x00ff00,
-		[PLOT_COLOUR_COMPONENT_BLUE]  = 0xff0000,
+		/* Positional init (was designated [RED]/[GREEN]/[BLUE]=) for
+		 * MSVC9 / C89; order matches enum plot_colour_component. */
+		0x0000ff,  /* PLOT_COLOUR_COMPONENT_RED   */
+		0x00ff00,  /* PLOT_COLOUR_COMPONENT_GREEN */
+		0xff0000   /* PLOT_COLOUR_COMPONENT_BLUE  */
 	};
 	colour d = dark ? darken_colour(col) : double_darken_colour(col);
 	colour l = dark ? double_lighten_colour(col) : lighten_colour(col);
