@@ -145,6 +145,41 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ---
 
+## 里程碑 H — 移植 NetSurf 真实 layout/redraw 引擎（取代手写精简版）
+
+手写的 `pcore_layout_block/inline` + `pcore_paint_node` 只有块流 + 行内文字,真实页面(如 iana)套上完整 CSS 后会"内容全在但摆得乱"——缺 float / 表格 / 定位 / inline-block / 背景图。决定**抄 + 魔改 NetSurf 自己的 layout/redraw**(用成熟引擎,别重造)。
+
+**架构勘探(只读 Plan agent)关键结论**:
+- `content/handlers/html/layout.c` —— **近乎原样可移植**。`layout_document(html_content*, width, height)` 只读 `content->layout`(根 `struct box*`)、`content->font_func`(`gui_layout_table`)、`content->unit_len_ctx`(我们已有 `pcore_unit_ctx`)。无 `guit` 依赖。
+- `content/handlers/html/redraw.c` —— **可移植,图片分支留空**。`html_redraw()` 全程经 `ctx->plot->*`(plotter 表);文本量度用全局 `guit->layout->width`(需把字体表也挂这里)。`box->object/background` 喂 NULL + `redraw_context.background_images=false` → 所有图片/背景图分支变死代码。
+- `content/handlers/html/box_construct.c` —— **不可移植**。焊死在 talloc 盒池 + 异步 `guit->misc->schedule` 自调度 + corestrings + `nscss_get_style`。**改为自写精简 `pcore_box_construct.c`**:复用现有 DOM 遍历(`pcore_style_subtree`/`pcore_il_walk`)+ 已挂在节点上的 `css_computed_style*`,产出 NetSurf 期望的盒树(`BOX_BLOCK`>`BOX_INLINE_CONTAINER`>`BOX_INLINE`/`BOX_TEXT` + 隐式/匿名盒),再过 `box_normalise_block()`。**这是最大、最易藏 bug 的活**(隐式盒插入/匿名表格盒规则)。
+
+**唯一不可避免的重活 = talloc 精简垫片**(~150 行:`talloc`/`talloc_zero`/`talloc_strdup`/`talloc_free`/`talloc_set_destructor` + 层级释放)。box_manipulate.c 与 layout 折行都用它。corestrings/nscss/调度器靠"不抄 box_construct"全部规避;图片靠喂 NULL 推迟。
+
+**两套字体表同一实现**:layout 读 `content->font_func`、redraw 读 `guit->layout`,必须是同一份 GDI 实现,否则量度与绘制错位。
+
+**GDI plotter 表要实现的回调**(`include/netsurf/plotters.h` `struct plotter_table`,均收 `const redraw_context*`,返回 `nserror`):`clip`(IntersectClipRect)、`rectangle`(FillRect+Pen)、`line`(Pen+MoveTo/LineTo)、`text`(UTF8→16+CreateFontIndirectW+ExtTextOutW,复用现有)、`disc`/`arc`(Ellipse/Arc,列表符号)、`polygon`(Polygon)、`path`/`bitmap` 先 stub、`group_*`/`flush` 置 NULL。颜色 `0x00BBGGRR`(复用 `pcore_argb_to_colorref`),`NS_TRANSPARENT=0x01000000` 跳过。
+**GDI 字体表**(`gui_layout_table`:`width`/`position`/`split`)接 `GetTextExtentPoint32W`/`GetTextExtentExPointW`;`plot_font_style_t`→`LOGFONTW`,复用 `pcore_make_font_ex` + 字体缓存。
+
+**C89 修整**(c89ize.py 只管块中/for 声明,不管指定初始化器):layout.c 5 个文件级 `[TOP]=…` 函数指针数组、redraw.c ~6 个 `plot_style_t/plot_font_style_t` 结构体指定初始化、plot_style.h 一个 `static inline` 内的 `[PLOT_COLOUR_…]=` 数组 —— 手工转位置初始化(或仿 `fix_properties_c_designated.pl` 写个小 perl)。三个文件均无复合字面量。
+
+**分阶段(每步独立真机验证)**:
+| 里程碑 | 内容 | 验证 |
+|---|---|---|
+| M1 | `pcore_plot_gdi.c`:GDI plotter 表(clip/rect/line/text)+ `redraw_context`;`PCore_PlotTest` 直接画矩形+文字 | 真机:出现填充矩形 + 字串 |
+| M2 | `pcore_font_gdi.c`:`gui_layout_table` width/position/split | 离线:量度/断点像素断言 |
+| M3 | 自写 `pcore_box_construct` + `box.h`/`box_manipulate`/`box_inspect`/`box_normalise` + **talloc 垫片** | 离线:盒树 type/text/父子结构断言(最高风险,卡严) |
+| M4 | `layout.c`(+`table.c`/`layout_flex.c`/`font.c`)+ 精简 `html_content` 垫片 | 真机:盒子 x/y/宽/高断言 |
+| M5 | `redraw.c`(+`redraw_border.c`/`desktop/plot_style.c`)+ `content`/`content_redraw_data` stub(图片 NULL) | 真机:真·引擎绘制首屏 |
+| M6 | 端到端:`PCore_LayoutDocument`/`PCore_PaintDocument` 改走 box-build→normalise→layout_document→html_redraw;`PCore_NodeBox`/`LinkAt` 改读 `struct box`;退役 `pcore_layout_*`/`pcore_paint_node`/`pcore_il_*` | 真机:TEST 11/12/13 等价或更好,再现 float/表格/inline-block |
+
+**风险**:① 盒树构建是真战场——隐式/匿名盒规则要对,否则 normalise/layout 拿到错形状;先在 M3 验结构再谈几何。② talloc 释放序/析构器要对(反复 `WM_SIZE` 重排会压它)。③ 两套字体表须同一实现。④ 图片是后续大石头(`box->object/background` 是 `hlcache_handle*`,要 content/hlcache 切片 + 解码器)。
+
+---
+
+## 里程碑 D+（后续）
+
+
 ## 已知风险点
 
 - **解析层已真机验证（TEST 6/7/7b/8）**，但**选择 / 布局 / 绘制尚未开始**——`positron_core.dll` 目前只到「HTML→DOM + CSS 解析」，还不能算计算样式、不能排版、不能上屏。
