@@ -169,6 +169,11 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
  * device-verified before redraw.c is ported in. */
 PCORE_API void PCore_PlotTest(HDC hdc);
 
+/* M3 self-test: build a NetSurf box tree from a small styled document and
+ * report box counts by type into `out` (ASCII). Verifies the slim DOM->box
+ * builder + talloc shim before layout.c is ported. */
+PCORE_API void PCore_BoxTreeTest(char *out, int cap);
+
 /* M2 self-test for the GDI font-measurement table: measures a known string and
  * computes a word-wrap split point, writing a numeric summary into `out`
  * (ASCII, NUL-terminated, <= cap). Lets the measure/split path be sanity-

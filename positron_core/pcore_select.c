@@ -926,6 +926,21 @@ static int pcore_ensure_style_key(void)
     return 0;
 }
 
+/* Internal (pcore_internal.h): read back the computed style attached to a node
+ * by PCore_StyleDocument. Used by the box-tree builder in pcore_box.c. */
+css_computed_style *pcore_node_computed_style(struct dom_node *node)
+{
+    void *sd = NULL;
+
+    if (pcore_style_key == NULL || node == NULL) {
+        return NULL;
+    }
+    if (dom_node_get_user_data(node, pcore_style_key, &sd) != DOM_NO_ERR) {
+        return NULL;
+    }
+    return (css_computed_style *) sd;
+}
+
 /* Free the attached computed style when libdom deletes the node (e.g. when the
  * document is destroyed), so the per-node styles do not leak. */
 static void pcore_style_ud_handler(dom_node_operation op, dom_string *key,

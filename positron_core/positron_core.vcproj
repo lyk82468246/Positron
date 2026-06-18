@@ -212,6 +212,8 @@
 			<File RelativePath=".\positron_core.c"></File>
 			<File RelativePath=".\pcore_select.c"></File>
 				<File RelativePath=".\pcore_plot_gdi.c"></File>
+				<File RelativePath=".\pcore_talloc.c"></File>
+				<File RelativePath=".\pcore_box.c"></File>
 		</Filter>
 		<Filter
 			Name="Header Files"
