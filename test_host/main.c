@@ -1645,8 +1645,10 @@ static BOOL test14_plot(void)
     show_info(L"TEST 14",
               "Milestone H/M1: a window opens and paints via the\n"
               "GDI-backed NetSurf plotter (no layout engine).\n\n"
-              "Expect a grey box with a red border, a blue line\n"
-              "below it, and the text \"Positron GDI plotter OK\".\n"
+              "Expect: a grey box with a SOLID red border + black\n"
+              "text; below it a DOTTED blue box border; and a\n"
+              "DASHED green line. (Dotted/dashed are hand-drawn,\n"
+              "since WinCE pens are solid-only.)\n"
               "Tap or press Esc to close.");
 
     g_plot_test = 1;
@@ -1757,6 +1759,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
 
     /* --- GDI render group (TEST 12, opens a real window, offline) ----- */
     if (run_render) {
+        char fb[192];
+        PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
+        show_info(L"TEST (M2) font table", fb);
         if (!test14_plot())        { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }

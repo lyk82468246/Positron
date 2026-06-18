@@ -169,6 +169,12 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
  * device-verified before redraw.c is ported in. */
 PCORE_API void PCore_PlotTest(HDC hdc);
 
+/* M2 self-test for the GDI font-measurement table: measures a known string and
+ * computes a word-wrap split point, writing a numeric summary into `out`
+ * (ASCII, NUL-terminated, <= cap). Lets the measure/split path be sanity-
+ * checked offline before layout.c (which depends on it) is ported. */
+PCORE_API void PCore_FontTest(char *out, int cap);
+
 #ifdef __cplusplus
 }
 #endif
