@@ -35,6 +35,7 @@
 #include "netsurf/layout.h"                  /* struct gui_layout_table */
 #include "content/handlers/html/private.h"   /* html_content (real NetSurf) */
 #include "content/handlers/html/layout.h"    /* layout_document */
+#include "content/handlers/html/box_inspect.h" /* box_coords */
 
 /* GDI font measurement table (pcore_plot_gdi.c, M2). */
 extern const struct gui_layout_table pcore_gdi_layout;
@@ -477,6 +478,9 @@ PCORE_API void PCore_LayoutBoxTest(char *out, int cap)
     struct box *t;
     html_content c;
     WCHAR w[256];
+    struct box *body;
+    int ax = 0;
+    int ay = 0;
     int vw = 240;
     int vh = 320;
 
@@ -514,14 +518,22 @@ PCORE_API void PCore_LayoutBoxTest(char *out, int cap)
 
         layout_document(&c, vw, vh);
 
+        body = tree->children;   /* <head> is display:none, so child 0 = body */
         t = pcore_first_text(tree);
+        if (t != NULL) {
+            box_coords(t, &ax, &ay);   /* absolute coords up the parent chain */
+        }
         wsprintfW(w,
-                L"layout_document ran.\r\nroot(html) w=%d h=%d\r\n"
-                L"first text box: w=%d x=%d y=%d",
+                L"root w=%d h=%d\r\n"
+                L"body x=%d y=%d w=%d h=%d\r\n"
+                L"text abs x=%d y=%d w=%d",
                 tree->width, tree->height,
-                (t != NULL) ? t->width : -1,
-                (t != NULL) ? t->x : -1,
-                (t != NULL) ? t->y : -1);
+                (body != NULL) ? body->x : -1,
+                (body != NULL) ? body->y : -1,
+                (body != NULL) ? body->width : -1,
+                (body != NULL) ? body->height : -1,
+                ax, ay,
+                (t != NULL) ? t->width : -1);
         WideCharToMultiByte(CP_ACP, 0, w, -1, out, cap, NULL, NULL);
         out[cap - 1] = '\0';
     }
