@@ -72,42 +72,42 @@
 
 /** Array of per-side access functions for computed style margins. */
 const css_len_func margin_funcs[4] = {
-	[TOP]    = css_computed_margin_top,
-	[RIGHT]  = css_computed_margin_right,
-	[BOTTOM] = css_computed_margin_bottom,
-	[LEFT]   = css_computed_margin_left,
+	css_computed_margin_top,     /* TOP */
+	css_computed_margin_right,   /* RIGHT */
+	css_computed_margin_bottom,  /* BOTTOM */
+	css_computed_margin_left     /* LEFT */
 };
 
 /** Array of per-side access functions for computed style paddings. */
 const css_len_func padding_funcs[4] = {
-	[TOP]    = css_computed_padding_top,
-	[RIGHT]  = css_computed_padding_right,
-	[BOTTOM] = css_computed_padding_bottom,
-	[LEFT]   = css_computed_padding_left,
+	css_computed_padding_top,    /* TOP */
+	css_computed_padding_right,  /* RIGHT */
+	css_computed_padding_bottom, /* BOTTOM */
+	css_computed_padding_left    /* LEFT */
 };
 
 /** Array of per-side access functions for computed style border_widths. */
 const css_len_func border_width_funcs[4] = {
-	[TOP]    = css_computed_border_top_width,
-	[RIGHT]  = css_computed_border_right_width,
-	[BOTTOM] = css_computed_border_bottom_width,
-	[LEFT]   = css_computed_border_left_width,
+	css_computed_border_top_width,    /* TOP */
+	css_computed_border_right_width,  /* RIGHT */
+	css_computed_border_bottom_width, /* BOTTOM */
+	css_computed_border_left_width    /* LEFT */
 };
 
 /** Array of per-side access functions for computed style border styles. */
 const css_border_style_func border_style_funcs[4] = {
-	[TOP]    = css_computed_border_top_style,
-	[RIGHT]  = css_computed_border_right_style,
-	[BOTTOM] = css_computed_border_bottom_style,
-	[LEFT]   = css_computed_border_left_style,
+	css_computed_border_top_style,    /* TOP */
+	css_computed_border_right_style,  /* RIGHT */
+	css_computed_border_bottom_style, /* BOTTOM */
+	css_computed_border_left_style    /* LEFT */
 };
 
 /** Array of per-side access functions for computed style border colors. */
 const css_border_color_func border_color_funcs[4] = {
-	[TOP]    = css_computed_border_top_color,
-	[RIGHT]  = css_computed_border_right_color,
-	[BOTTOM] = css_computed_border_bottom_color,
-	[LEFT]   = css_computed_border_left_color,
+	css_computed_border_top_color,    /* TOP */
+	css_computed_border_right_color,  /* RIGHT */
+	css_computed_border_bottom_color, /* BOTTOM */
+	css_computed_border_left_color    /* LEFT */
 };
 
 /* forward declaration to break cycles */
@@ -258,16 +258,23 @@ static void layout_minmax_table(struct box *table,
 		const struct gui_layout_table *font_func,
 		const html_content *content)
 {
-	unsigned int i, j;
-	int border_spacing_h = 0;
-	int table_min = 0, table_max = 0;
-	int extra_fixed = 0;
-	float extra_frac = 0;
+	int border_spacing_h;
+	int extra_fixed;
+	float extra_frac;
 	struct column *col;
-	struct box *row_group, *row, *cell;
 	enum css_width_e wtype;
-	css_fixed value = 0;
-	css_unit unit = CSS_UNIT_PX;
+	css_fixed value;
+	css_unit unit;
+	unsigned int i, j;
+	int table_min, table_max;
+	struct box *row_group, *row, *cell;
+	border_spacing_h = 0;
+	table_min = 0;
+	table_max = 0;
+	extra_fixed = 0;
+	extra_frac = 0;
+	value = 0;
+	unit = CSS_UNIT_PX;
 
 	/* check if the widths have already been calculated */
 	if (table->max_width != UNKNOWN_MAX_WIDTH)
@@ -474,13 +481,13 @@ layout_minmax_line(struct box *first,
 		   const struct gui_layout_table *font_func,
 		   const html_content *content)
 {
-	int min = 0, max = 0, width, height, fixed;
-	float frac;
-	size_t i, j;
 	struct box *b;
 	struct box *block;
 	plot_font_style_t fstyle;
 	bool no_wrap;
+	int min = 0, max = 0, width, height, fixed;
+	float frac;
+	size_t i, j;
 
 	assert(first->parent);
 	assert(first->parent->parent);
@@ -1501,12 +1508,16 @@ layout_block_find_dimensions(const css_unit_ctx *unit_len_ctx,
 			     int rm,
 			     struct box *box)
 {
+	int *margin;
+	int *padding;
+	struct box_border *border;
+	const css_computed_style *style;
 	int width, max_width, min_width;
 	int height, max_height, min_height;
-	int *margin = box->margin;
-	int *padding = box->padding;
-	struct box_border *border = box->border;
-	const css_computed_style *style = box->style;
+	margin = box->margin;
+	padding = box->padding;
+	border = box->border;
+	style = box->style;
 
 	layout_find_dimensions(unit_len_ctx, available_width, viewport_height, box,
 			style, &width, &height, &max_width, &min_width,
@@ -1606,33 +1617,42 @@ bool layout_table(
 		int available_width,
 		html_content *content)
 {
-	unsigned int columns = table->columns;  /* total columns */
 	unsigned int i;
 	unsigned int *row_span;
 	int *excess_y;
-	int table_width, min_width = 0, max_width = 0;
-	int required_width = 0;
-	int x, remainder = 0, count = 0;
-	int table_height = 0;
-	int min_height = 0;
-	int *xs;  /* array of column x positions */
+	int required_width;
+	int table_height;
+	int min_height;
 	int auto_width;
 	int spare_width;
-	int relative_sum = 0;
-	int border_spacing_h = 0, border_spacing_v = 0;
+	int relative_sum;
 	int spare_height;
-	int positioned_columns = 0;
-	struct box *containing_block = NULL;
+	int positioned_columns;
+	struct box *containing_block;
 	struct box *c;
 	struct box *row;
 	struct box *row_group;
 	struct box **row_span_cell;
 	struct column *col;
-	const css_computed_style *style = table->style;
+	const css_computed_style *style;
 	enum css_width_e wtype;
 	enum css_height_e htype;
-	css_fixed value = 0;
-	css_unit unit = CSS_UNIT_PX;
+	css_fixed value;
+	css_unit unit;
+	unsigned int columns = table->columns;  /* total columns */
+	int table_width, min_width = 0, max_width = 0;
+	int x, remainder = 0, count = 0;
+	int *xs;  /* array of column x positions */
+	int border_spacing_h = 0, border_spacing_v = 0;
+	required_width = 0;
+	table_height = 0;
+	min_height = 0;
+	relative_sum = 0;
+	positioned_columns = 0;
+	containing_block = NULL;
+	style = table->style;
+	value = 0;
+	unit = CSS_UNIT_PX;
 
 	assert(table->type == BOX_TABLE);
 	assert(style);
@@ -2457,17 +2477,23 @@ layout_float_find_dimensions(
 		const css_computed_style *style,
 		struct box *box)
 {
+	int *margin;
+	int *padding;
+	struct box_border *border;
+	enum css_overflow_e overflow_x;
+	enum css_overflow_e overflow_y;
 	int width, height, max_width, min_width, max_height, min_height;
-	int *margin = box->margin;
-	int *padding = box->padding;
-	struct box_border *border = box->border;
-	enum css_overflow_e overflow_x = css_computed_overflow_x(style);
-	enum css_overflow_e overflow_y = css_computed_overflow_y(style);
-	int scrollbar_width_x =
+	int scrollbar_width_x, scrollbar_width_y;
+	margin = box->margin;
+	padding = box->padding;
+	border = box->border;
+	overflow_x = css_computed_overflow_x(style);
+	overflow_y = css_computed_overflow_y(style);
+	scrollbar_width_x =
 			(overflow_x == CSS_OVERFLOW_SCROLL ||
 			 overflow_x == CSS_OVERFLOW_AUTO) ?
 			SCROLLBAR_WIDTH : 0;
-	int scrollbar_width_y =
+	scrollbar_width_y =
 			(overflow_y == CSS_OVERFLOW_SCROLL ||
 			 overflow_y == CSS_OVERFLOW_AUTO) ?
 			SCROLLBAR_WIDTH : 0;
@@ -2632,9 +2658,9 @@ static bool layout_float(struct box *b, int width, html_content *content)
 static void
 place_float_below(struct box *c, int width, int cx, int y, struct box *cont)
 {
-	int x0, x1, yy;
 	struct box *left;
 	struct box *right;
+	int x0, x1, yy;
 
 	yy = y > cont->cached_place_below_level ?
 			y : cont->cached_place_below_level;
@@ -2738,24 +2764,33 @@ layout_line(struct box *first,
 	    html_content *content,
 	    struct box **next_box)
 {
-	int height, used_height;
-	int x0 = 0;
-	int x1 = *width;
-	int x, h, x_previous;
-	int fy = cy;
+	int x0;
+	int x1;
+	int fy;
 	struct box *left;
 	struct box *right;
 	struct box *b;
-	struct box *split_box = 0;
+	struct box *split_box;
 	struct box *d;
-	struct box *br_box = 0;
-	bool move_y = false;
-	bool place_below = false;
-	int space_before = 0, space_after = 0;
-	unsigned int inline_count = 0;
+	struct box *br_box;
+	bool move_y;
+	bool place_below;
+	unsigned int inline_count;
 	unsigned int i;
-	const struct gui_layout_table *font_func = content->font_func;
+	const struct gui_layout_table *font_func;
 	plot_font_style_t fstyle;
+	int height, used_height;
+	int x, h, x_previous;
+	int space_before = 0, space_after = 0;
+	x0 = 0;
+	x1 = *width;
+	fy = cy;
+	split_box = 0;
+	br_box = 0;
+	move_y = false;
+	place_below = false;
+	inline_count = 0;
+	font_func = content->font_func;
 
 	NSLOG(layout, DEBUG,
 	      "first %p, first->text '%.*s', width %i, y %i, cx %i, cy %i",
@@ -3466,11 +3501,12 @@ layout_line(struct box *first,
 static bool layout_inline_container(struct box *inline_container, int width,
 		struct box *cont, int cx, int cy, html_content *content)
 {
+	int y;
 	bool first_line = true;
 	bool has_text_children;
 	struct box *c, *next;
-	int y = 0;
-	int curwidth,maxwidth = width;
+	int curwidth, maxwidth = width;
+	y = 0;
 
 	assert(inline_container->type == BOX_INLINE_CONTAINER);
 
@@ -3533,16 +3569,21 @@ bool layout_block_context(
 		int viewport_height,
 		html_content *content)
 {
+	int max_pos_margin;
+	int max_neg_margin;
+	int y;
+	struct box *margin_collapse;
+	bool in_margin;
+	css_fixed gadget_size;
 	struct box *box;
 	int cx, cy;  /**< current coordinates */
-	int max_pos_margin = 0;
-	int max_neg_margin = 0;
-	int y = 0;
 	int lm, rm;
-	struct box *margin_collapse = NULL;
-	bool in_margin = false;
-	css_fixed gadget_size;
 	css_unit gadget_unit; /* Checkbox / radio buttons */
+	max_pos_margin = 0;
+	max_neg_margin = 0;
+	y = 0;
+	margin_collapse = NULL;
+	in_margin = false;
 
 	assert(block->type == BOX_BLOCK ||
 			block->type == BOX_INLINE_BLOCK ||
@@ -4583,14 +4624,18 @@ layout_absolute(struct box *box,
 		int cx, int cy,
 		html_content *content)
 {
+	int *margin;
+	int *padding;
+	struct box_border *border;
+	int available_width;
+	int space;
 	int static_left, static_top;  /* static position */
 	int top, right, bottom, left;
 	int width, height, max_width, min_width;
-	int *margin = box->margin;
-	int *padding = box->padding;
-	struct box_border *border = box->border;
-	int available_width = containing_block->width;
-	int space;
+	margin = box->margin;
+	padding = box->padding;
+	border = box->border;
+	available_width = containing_block->width;
 
 	assert(box->type == BOX_BLOCK || box->type == BOX_TABLE ||
 			box->type == BOX_INLINE_BLOCK ||
@@ -5037,8 +5082,8 @@ static void layout_compute_relative_offset(
 		int *x,
 		int *y)
 {
-	int left, right, top, bottom;
 	struct box *containing_block;
+	int left, right, top, bottom;
 
 	assert(box && box->parent && box->style &&
 			css_computed_position(box->style) ==
@@ -5264,17 +5309,22 @@ layout_update_descendant_bbox(
 		int off_x,
 		int off_y)
 {
+	int child_x;
+	int child_y;
+	enum css_overflow_e overflow_x;
+	enum css_overflow_e overflow_y;
 	int child_desc_x0, child_desc_y0, child_desc_x1, child_desc_y1;
+	bool html_object;
 
 	/* get coordinates of child relative to box */
-	int child_x = child->x - off_x;
-	int child_y = child->y - off_y;
+	child_x = child->x - off_x;
+	child_y = child->y - off_y;
 
-	bool html_object = (child->object &&
+	html_object = (child->object &&
 			content_get_type(child->object) == CONTENT_HTML);
 
-	enum css_overflow_e overflow_x = CSS_OVERFLOW_VISIBLE;
-	enum css_overflow_e overflow_y = CSS_OVERFLOW_VISIBLE;
+	overflow_x = CSS_OVERFLOW_VISIBLE;
+	overflow_y = CSS_OVERFLOW_VISIBLE;
 
 	if (child->style != NULL) {
 		overflow_x = css_computed_overflow_x(child->style);

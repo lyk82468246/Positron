@@ -174,6 +174,10 @@ PCORE_API void PCore_PlotTest(HDC hdc);
  * builder + talloc shim before layout.c is ported. */
 PCORE_API void PCore_BoxTreeTest(char *out, int cap);
 
+/* M4 self-test: build a box tree and run NetSurf's real layout_document on it,
+ * reporting root + first-text-box geometry. Verifies the ported layout.c. */
+PCORE_API void PCore_LayoutBoxTest(char *out, int cap);
+
 /* M2 self-test for the GDI font-measurement table: measures a known string and
  * computes a word-wrap split point, writing a numeric summary into `out`
  * (ASCII, NUL-terminated, <= cap). Lets the measure/split path be sanity-

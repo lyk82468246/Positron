@@ -17,9 +17,17 @@
  * by the node's user-data). */
 css_computed_style *pcore_node_computed_style(struct dom_node *node);
 
+/* The engine's unit-conversion context (viewport + dpi), for feeding NetSurf
+ * layout's html_content.unit_len_ctx. Implemented in pcore_select.c. */
+const css_unit_ctx *pcore_get_unit_ctx(void);
+
 /* Build a NetSurf box tree (struct box) from the styled document element
  * `root`, allocating under talloc context `ctx`. Returns the root box, or NULL.
  * The tree is freed by talloc_free(ctx). Boxes borrow DOM node pointers. */
 struct box *pcore_box_construct(struct dom_node *root, void *ctx);
+
+/* Intern the corestrings the ported NetSurf layout.c references. Call once
+ * before layout (PCore_Init). Implemented in pcore_nsshim.c. */
+void pcore_nsshim_init(void);
 
 #endif /* PCORE_INTERNAL_H */

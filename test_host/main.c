@@ -1653,6 +1653,24 @@ static BOOL test_boxtree(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 16 - milestone H/M4: NetSurf real layout_document on the box tree */
+/* Builds the box tree then runs the ported NetSurf layout.c over it and  */
+/* reports box geometry. Verifies the layout engine compiles + runs.      */
+/* -------------------------------------------------------------------- */
+static BOOL test_layout(void)
+{
+    char buf[512];
+
+    PCore_LayoutBoxTest(buf, sizeof(buf));
+    if (buf[0] == '\0') {
+        show_error(L"TEST 16 FAIL", "PCore_LayoutBoxTest produced no output");
+        return FALSE;
+    }
+    show_info(L"TEST 16 (NetSurf layout)", buf);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -1739,8 +1757,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         run_engine = ask_yesno(L"Select groups (2/4)",
                                "Run ENGINE tests?\n\n"
                                "HTML / CSS / DOM parse, select, style,\n"
-                               "layout, box tree (TEST 6-11, 15).\n"
-                               "Message boxes. Fully offline.");
+                               "layout, box tree, NetSurf layout\n"
+                               "(TEST 6-11, 15, 16). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "M1 plotter self-test (TEST 14) + local HTML\n"
@@ -1775,6 +1793,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test10_styledoc())    { rc = 11; goto done; }
         if (!test11_layout())      { rc = 12; goto done; }
         if (!test_boxtree())       { rc = 12; goto done; }
+        if (!test_layout())        { rc = 12; goto done; }
     }
 
     /* --- GDI render group (TEST 12, opens a real window, offline) ----- */
@@ -1809,10 +1828,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15)\n"
+               "  Engine (TEST 6-11, 15, 16)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
-               "    layout, box tree. Offline assertions.\n\n");
+               "    layout, box tree, NetSurf layout. Offline.\n\n");
     }
     if (run_render) {
         strcat(summary,

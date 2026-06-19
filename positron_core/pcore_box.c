@@ -31,6 +31,14 @@
 #include "positron_core.h"
 #include "pcore_internal.h"
 
+#include "utils/errors.h"                    /* nserror (layout.h / private.h) */
+#include "netsurf/layout.h"                  /* struct gui_layout_table */
+#include "content/handlers/html/private.h"   /* html_content (real NetSurf) */
+#include "content/handlers/html/layout.h"    /* layout_document */
+
+/* GDI font measurement table (pcore_plot_gdi.c, M2). */
+extern const struct gui_layout_table pcore_gdi_layout;
+
 /* Referenced (extern) by content/handlers/css/utils.h; the device DPI in fixed
  * point. layout uses it for unit conversion. Set from PCore_SetViewport's dpi
  * in a later milestone; 96dpi default for now. */
@@ -425,6 +433,101 @@ PCORE_API void PCore_BoxTreeTest(char *out, int cap)
 
     if (ctx != NULL) {
         talloc_free(ctx);   /* frees the whole box tree */
+    }
+    dom_node_unref(root);
+    PCore_FreeDocument(hDoc);
+}
+
+/* ------------------------------------------------------------------ */
+/* M4 self-test: run NetSurf's real layout_document on the box tree    */
+/* ------------------------------------------------------------------ */
+
+static struct box *pcore_first_text(struct box *b)
+{
+    struct box *c;
+
+    if (b == NULL) {
+        return NULL;
+    }
+    if (b->type == BOX_TEXT) {
+        return b;
+    }
+    for (c = b->children; c != NULL; c = c->next) {
+        struct box *r = pcore_first_text(c);
+        if (r != NULL) {
+            return r;
+        }
+    }
+    return NULL;
+}
+
+PCORE_API void PCore_LayoutBoxTest(char *out, int cap)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><head><title>x</title>"
+        "<style>body{width:200px}h1{font-size:24px}</style></head>"
+        "<body><h1>Title</h1>"
+        "<p>Some bold and italic text in a paragraph that should wrap onto "
+        "several lines within the body width.</p></body></html>";
+    HANDLE hDoc;
+    dom_document *doc;
+    dom_node *root = NULL;
+    void *ctx;
+    struct box *tree;
+    struct box *t;
+    html_content c;
+    WCHAR w[256];
+    int vw = 240;
+    int vh = 320;
+
+    if (out == NULL || cap <= 0) {
+        return;
+    }
+    out[0] = '\0';
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        return;
+    }
+    if (PCore_StyleDocument(hDoc, NULL) != 0) {
+        PCore_FreeDocument(hDoc);
+        return;
+    }
+    doc = (dom_document *) hDoc;
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        PCore_FreeDocument(hDoc);
+        return;
+    }
+
+    pcore_nsshim_init();   /* intern corestrings layout references */
+    ctx = talloc_named_const(NULL, 0, "pcore_layout_test");
+    tree = pcore_box_construct(root, ctx);
+    if (tree != NULL) {
+        memset(&c, 0, sizeof(c));
+        c.layout = tree;
+        c.bctx = (int *) ctx;
+        c.font_func = &pcore_gdi_layout;
+        memcpy(&c.unit_len_ctx, pcore_get_unit_ctx(),
+                sizeof(c.unit_len_ctx));   /* struct has const-qualified member */
+        c.background_colour = 0x00ffffff;
+
+        layout_document(&c, vw, vh);
+
+        t = pcore_first_text(tree);
+        wsprintfW(w,
+                L"layout_document ran.\r\nroot(html) w=%d h=%d\r\n"
+                L"first text box: w=%d x=%d y=%d",
+                tree->width, tree->height,
+                (t != NULL) ? t->width : -1,
+                (t != NULL) ? t->x : -1,
+                (t != NULL) ? t->y : -1);
+        WideCharToMultiByte(CP_ACP, 0, w, -1, out, cap, NULL, NULL);
+        out[cap - 1] = '\0';
+    }
+
+    if (ctx != NULL) {
+        talloc_free(ctx);
     }
     dom_node_unref(root);
     PCore_FreeDocument(hDoc);

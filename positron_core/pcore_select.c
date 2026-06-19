@@ -168,6 +168,13 @@ PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi)
     }
 }
 
+/* Internal (pcore_internal.h): the engine's unit-conversion context (viewport +
+ * dpi), for feeding NetSurf layout's html_content.unit_len_ctx. */
+const css_unit_ctx *pcore_get_unit_ctx(void)
+{
+    return &pcore_unit_ctx;
+}
+
 /* ------------------------------------------------------------------ */
 /* node name / classes / id                                            */
 /* ------------------------------------------------------------------ */
