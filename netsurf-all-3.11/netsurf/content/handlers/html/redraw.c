@@ -67,6 +67,12 @@
 
 bool html_redraw_debug = false;
 
+/* Positron: these print-mode globals live in NetSurf's print/save module,
+ * which we do not build. We never print, so define them here = off. */
+bool html_redraw_printing = false;
+int html_redraw_printing_border = 0;
+int html_redraw_printing_top_cropped = 0;
+
 /**
  * Determine if a box has a background that needs drawing
  *
@@ -205,13 +211,15 @@ text_redraw(const char *utf8_text,
 
 		/* \todo make search terms visible within selected text */
 		if (highlighted) {
+			plot_style_t pstyle_fill_hback;
+			plot_font_style_t fstyle_hback;
 			struct rect r;
 			unsigned endtxt_idx = end_idx;
 			bool clip_changed = false;
 			bool text_visible = true;
 			int startx, endx;
-			plot_style_t pstyle_fill_hback = *plot_style_fill_white;
-			plot_font_style_t fstyle_hback = plot_fstyle;
+			pstyle_fill_hback = *plot_style_fill_white;
+			fstyle_hback = plot_fstyle;
 
 			if (end_idx > utf8_len) {
 				/* adjust for trailing space, not present in
@@ -598,6 +606,10 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 		const css_unit_ctx *unit_len_ctx,
 		const struct redraw_context *ctx)
 {
+	struct box *parent;
+	struct rect r;
+	css_color bgcol;
+	nserror res;
 	bool repeat_x = false;
 	bool repeat_y = false;
 	bool plot_colour = true;
@@ -608,14 +620,9 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 	int width, height;
 	css_fixed hpos = 0, vpos = 0;
 	css_unit hunit = CSS_UNIT_PX, vunit = CSS_UNIT_PX;
-	struct box *parent;
-	struct rect r = *clip;
-	css_color bgcol;
-	plot_style_t pstyle_fill_bg = {
-		.fill_type = PLOT_OP_TYPE_SOLID,
-		.fill_colour = *background_colour,
-	};
-	nserror res;
+	plot_style_t pstyle_fill_bg = { 0, 0, 0, PLOT_OP_TYPE_SOLID,
+			*background_colour };
+	r = *clip;
 
 	if (ctx->background_images == false)
 		return true;
@@ -827,6 +834,7 @@ static bool html_redraw_inline_background(int x, int y, struct box *box,
 		const css_unit_ctx *unit_len_ctx,
 		const struct redraw_context *ctx)
 {
+	nserror res;
 	struct rect r = *clip;
 	bool repeat_x = false;
 	bool repeat_y = false;
@@ -835,11 +843,8 @@ static bool html_redraw_inline_background(int x, int y, struct box *box,
 	css_fixed hpos = 0, vpos = 0;
 	css_unit hunit = CSS_UNIT_PX, vunit = CSS_UNIT_PX;
 	css_color bgcol;
-	plot_style_t pstyle_fill_bg = {
-		.fill_type = PLOT_OP_TYPE_SOLID,
-		.fill_colour = *background_colour,
-	};
-	nserror res;
+	plot_style_t pstyle_fill_bg = { 0, 0, 0, PLOT_OP_TYPE_SOLID,
+			*background_colour };
 
 	plot_content = (box->background != NULL);
 
@@ -980,13 +985,10 @@ html_redraw_text_decoration_inline(struct box *box,
 				   float ratio,
 				   const struct redraw_context *ctx)
 {
-	struct box *c;
-	plot_style_t plot_style_box = {
-		.stroke_type = PLOT_OP_TYPE_SOLID,
-		.stroke_colour = colour,
-	};
 	nserror res;
 	struct rect rect;
+	struct box *c;
+	plot_style_t plot_style_box = { PLOT_OP_TYPE_SOLID, 0, colour, 0, 0 };
 
 	for (c = box->next;
 	     c && c != box->inline_end;
@@ -1028,13 +1030,10 @@ html_redraw_text_decoration_block(struct box *box,
 				  float ratio,
 				  const struct redraw_context *ctx)
 {
-	struct box *c;
-	plot_style_t plot_style_box = {
-		.stroke_type = PLOT_OP_TYPE_SOLID,
-		.stroke_colour = colour,
-	};
 	nserror res;
 	struct rect rect;
+	struct box *c;
+	plot_style_t plot_style_box = { PLOT_OP_TYPE_SOLID, 0, colour, 0, 0 };
 
 	/* draw through text descendants */
 	for (c = box->children; c; c = c->next) {
@@ -1074,13 +1073,13 @@ static bool html_redraw_text_decoration(struct box *box,
 		int x_parent, int y_parent, float scale,
 		colour background_colour, const struct redraw_context *ctx)
 {
-	static const enum css_text_decoration_e decoration[] = {
-		CSS_TEXT_DECORATION_UNDERLINE, CSS_TEXT_DECORATION_OVERLINE,
-		CSS_TEXT_DECORATION_LINE_THROUGH };
-	static const float line_ratio[] = { 0.9, 0.1, 0.5 };
+	static const float line_ratio[] = { 0.9f, 0.1f, 0.5f };
 	colour fgcol;
 	unsigned int i;
 	css_color col;
+	static const enum css_text_decoration_e decoration[] = {
+		CSS_TEXT_DECORATION_UNDERLINE, CSS_TEXT_DECORATION_OVERLINE,
+		CSS_TEXT_DECORATION_LINE_THROUGH };
 
 	css_computed_color(box->style, &col);
 	fgcol = nscss_color_to_ns(col);
@@ -1234,20 +1233,23 @@ bool html_redraw_box(const html_content *html, struct box *box,
 		colour current_background_color,
 		const struct redraw_context *ctx)
 {
+	struct rect r;
+	struct rect rect;
+	struct box *bg_box;
+	css_computed_clip_rect css_rect;
+	enum css_overflow_e overflow_x;
+	enum css_overflow_e overflow_y;
+	dom_exception exc;
+	dom_html_element_type tag_type;
 	const struct plotter_table *plot = ctx->plot;
 	int x, y;
 	int width, height;
 	int padding_left, padding_top, padding_width, padding_height;
 	int border_left, border_top, border_right, border_bottom;
-	struct rect r;
-	struct rect rect;
 	int x_scrolled, y_scrolled;
-	struct box *bg_box = NULL;
-	css_computed_clip_rect css_rect;
-	enum css_overflow_e overflow_x = CSS_OVERFLOW_VISIBLE;
-	enum css_overflow_e overflow_y = CSS_OVERFLOW_VISIBLE;
-	dom_exception exc;
-	dom_html_element_type tag_type;
+	bg_box = NULL;
+	overflow_x = CSS_OVERFLOW_VISIBLE;
+	overflow_y = CSS_OVERFLOW_VISIBLE;
 
 
 	if (html_redraw_printing && (box->flags & PRINTED))
@@ -1545,16 +1547,18 @@ bool html_redraw_box(const html_content *html, struct box *box,
 			(html_redraw_box_has_background(box) ||
 			border_top || border_right ||
 			border_bottom || border_left)) {
+		bool first;
+		int ib_x;
+		int ib_y;
+		int ib_p_width;
 		/* inline backgrounds and borders span other boxes and may
 		 * wrap onto separate lines */
 		struct box *ib;
 		struct rect b; /* border edge rectangle */
 		struct rect p; /* clipped rect */
-		bool first = true;
-		int ib_x;
-		int ib_y = y;
-		int ib_p_width;
 		int ib_b_left, ib_b_right;
+		first = true;
+		ib_y = y;
 
 		b.x0 = x - border_left;
 		b.x1 = x + padding_width + border_right;
@@ -1948,10 +1952,8 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 	struct box *box;
 	bool result = true;
 	bool select, select_only;
-	plot_style_t pstyle_fill_bg = {
-		.fill_type = PLOT_OP_TYPE_SOLID,
-		.fill_colour = data->background_colour,
-	};
+	plot_style_t pstyle_fill_bg = { 0, 0, 0, PLOT_OP_TYPE_SOLID,
+			data->background_colour };
 
 	box = html->layout;
 	assert(box);

@@ -8,10 +8,17 @@
 #ifndef PCORE_SHIM_DESKTOP_SCROLLBAR_H
 #define PCORE_SHIM_DESKTOP_SCROLLBAR_H
 
+#include "utils/errors.h"
+
 struct scrollbar;
+struct rect;
+struct redraw_context;
 
 #define SCROLLBAR_WIDTH 16
 
 int scrollbar_get_offset(struct scrollbar *s);
+nserror scrollbar_redraw(struct scrollbar *s, int x, int y,
+        const struct rect *clip, float scale,
+        const struct redraw_context *ctx);
 
 #endif

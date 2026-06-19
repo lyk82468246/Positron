@@ -217,8 +217,10 @@
 				<File RelativePath=".\pcore_box_inspect.c"></File>
 				<File RelativePath=".\pcore_nsshim.c"></File>
 				<File RelativePath=".\pcore_layout_stubs.c"></File>
+				<File RelativePath=".\pcore_plot_style.c"></File>
 				<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\html\font.c"></File>
 				<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\html\layout.c"></File>
+				<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\html\redraw.c"></File>
 		</Filter>
 		<Filter
 			Name="Header Files"
