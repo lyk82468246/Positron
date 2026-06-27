@@ -20,6 +20,7 @@
  */
 
 #include <windows.h>
+#include <stdlib.h>   /* malloc / free for the per-document render state */
 #include <string.h>
 
 #include <dom/dom.h>
@@ -187,6 +188,8 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
             if (type == DOM_TEXT_NODE) {
                 struct box *t = pcore_make_text_box(child, style, ctx);
                 if (t != NULL) {
+                    t->node = node;   /* attribute text to its inline
+                                       * element (e.g. <a>) for hit-testing */
                     pcore_box_add_child(cont, t);
                 }
             } else if (type == DOM_ELEMENT_NODE) {
@@ -652,4 +655,351 @@ PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
     }
     dom_node_unref(root);
     PCore_FreeDocument(hDoc);
+}
+
+/* ================================================================== */
+/* M6: the official render path, now on the NetSurf engine             */
+/*                                                                     */
+/* PCore_LayoutDocument / PaintDocument / DocumentHeight / NodeBox /    */
+/* LinkAt drive box_construct + NetSurf's layout_document + html_redraw */
+/* in place of the retired hand-rolled block engine. Per-document       */
+/* render state (the box tree, its talloc arena and the html_content    */
+/* shim) hangs off the dom_document via libdom user-data and is freed   */
+/* automatically when the document is destroyed (or re-laid-out).       */
+/* ================================================================== */
+
+/* Per-document render state. */
+typedef struct pcore_render {
+    void         *bctx;        /* talloc root; talloc_free frees the box tree */
+    struct box   *root_box;    /* == content.layout                          */
+    html_content  content;     /* operated on by layout_document/html_redraw */
+    int           doc_height;  /* total laid-out height (CSS px)             */
+    int           vw;          /* viewport used for layout (redraw extent)   */
+    int           vh;
+} pcore_render;
+
+/* libdom user-data key under which the render state hangs on the document. */
+static dom_string *pcore_render_key = NULL;
+
+static int pcore_ensure_render_key(void)
+{
+    if (pcore_render_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) "__pcore_render__", 16,
+            &pcore_render_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+/* "a" / "href", interned once for link hit-testing. */
+static dom_string *pcore_a_name = NULL;
+static dom_string *pcore_href_name = NULL;
+
+static int pcore_ensure_link_strings(void)
+{
+    if (pcore_a_name == NULL &&
+            dom_string_create((const uint8_t *) "a", 1, &pcore_a_name)
+                    != DOM_NO_ERR) {
+        return 1;
+    }
+    if (pcore_href_name == NULL &&
+            dom_string_create((const uint8_t *) "href", 4, &pcore_href_name)
+                    != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_render_free(pcore_render *st)
+{
+    if (st == NULL) {
+        return;
+    }
+    if (st->bctx != NULL) {
+        talloc_free(st->bctx);   /* frees the whole box tree in one shot */
+    }
+    free(st);
+}
+
+/* Free the render state when libdom destroys the document. */
+static void pcore_render_ud_handler(dom_node_operation op, dom_string *key,
+        void *data, struct dom_node *src, struct dom_node *dst)
+{
+    (void) key;
+    (void) src;
+    (void) dst;
+    if (op == DOM_NODE_DELETED && data != NULL) {
+        pcore_render_free((pcore_render *) data);
+    }
+}
+
+/* Fetch the render state hung off `doc`, or NULL if not laid out. */
+static pcore_render *pcore_get_render(dom_document *doc)
+{
+    void *d = NULL;
+
+    if (doc == NULL || pcore_render_key == NULL) {
+        return NULL;
+    }
+    if (dom_node_get_user_data((struct dom_node *) doc, pcore_render_key, &d)
+            != DOM_NO_ERR) {
+        return NULL;
+    }
+    return (pcore_render *) d;
+}
+
+PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    dom_node     *root = NULL;
+    void         *ctx;
+    void         *old = NULL;
+    struct box   *tree;
+    pcore_render *st;
+
+    if (doc == NULL || viewport_w <= 0 || viewport_h <= 0) {
+        return 1;
+    }
+    if (pcore_ensure_render_key() != 0) {
+        return 1;
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        return 1;   /* PCore_StyleDocument must have run first (styles per node) */
+    }
+
+    pcore_nsshim_init();
+
+    ctx = talloc_named_const(NULL, 0, "pcore_render");
+    if (ctx == NULL) {
+        dom_node_unref(root);
+        return 1;
+    }
+    tree = pcore_box_construct(root, ctx);
+    dom_node_unref(root);
+    if (tree == NULL) {
+        talloc_free(ctx);
+        return 1;
+    }
+
+    st = (pcore_render *) malloc(sizeof(*st));
+    if (st == NULL) {
+        talloc_free(ctx);
+        return 1;
+    }
+    memset(st, 0, sizeof(*st));
+    st->bctx = ctx;
+    st->root_box = tree;
+    st->vw = viewport_w;
+    st->vh = viewport_h;
+
+    /* Update the unit context (vw/vh CSS units) before copying it in. */
+    PCore_SetViewport(viewport_w, viewport_h, 0);
+
+    memset(&st->content, 0, sizeof(st->content));
+    st->content.layout = tree;
+    st->content.bctx = (int *) ctx;
+    st->content.font_func = &pcore_gdi_layout;
+    memcpy((void *) &st->content.unit_len_ctx, pcore_get_unit_ctx(),
+            sizeof(st->content.unit_len_ctx));
+    st->content.background_colour = 0x00ffffff;
+
+    layout_document(&st->content, viewport_w, viewport_h);
+
+    st->doc_height = tree->height;
+    if (tree->descendant_y1 > st->doc_height) {
+        st->doc_height = tree->descendant_y1;   /* include overflowing content */
+    }
+
+    /* Replace any previous state (re-layout on resize). set_user_data does NOT
+     * run the handler on replace, so free the old state by hand. */
+    dom_node_set_user_data((struct dom_node *) doc, pcore_render_key, st,
+            pcore_render_ud_handler, &old);
+    if (old != NULL && old != st) {
+        pcore_render_free((pcore_render *) old);
+    }
+    return 0;
+}
+
+PCORE_API int PCore_DocumentHeight(HANDLE hDoc)
+{
+    pcore_render *st = pcore_get_render((dom_document *) hDoc);
+    return (st != NULL) ? st->doc_height : 0;
+}
+
+/* DFS for the first box whose DOM node is an element named `want` (caseless). */
+static struct box *pcore_box_for_tag(struct box *b, dom_string *want)
+{
+    struct box *c;
+
+    if (b == NULL) {
+        return NULL;
+    }
+    if (b->node != NULL) {
+        dom_string *nm = NULL;
+        if (dom_node_get_node_name(b->node, &nm) == DOM_NO_ERR &&
+                nm != NULL) {
+            bool eq = dom_string_caseless_isequal(nm, want);
+            dom_string_unref(nm);
+            if (eq) {
+                return b;
+            }
+        }
+    }
+    for (c = b->children; c != NULL; c = c->next) {
+        struct box *r = pcore_box_for_tag(c, want);
+        if (r != NULL) {
+            return r;
+        }
+    }
+    return NULL;
+}
+
+PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
+        int *x, int *y, int *w, int *h)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    pcore_render *st = pcore_get_render(doc);
+    dom_string   *want = NULL;
+    struct box   *box;
+    int           ax = 0;
+    int           ay = 0;
+
+    if (st == NULL || tag == NULL) {
+        return 1;
+    }
+    if (dom_string_create((const uint8_t *) tag, strlen(tag), &want)
+            != DOM_NO_ERR) {
+        return 1;
+    }
+    box = pcore_box_for_tag(st->root_box, want);
+    dom_string_unref(want);
+    if (box == NULL) {
+        return 1;
+    }
+    box_coords(box, &ax, &ay);   /* absolute page coords up the parent chain */
+    if (x != NULL) { *x = ax; }
+    if (y != NULL) { *y = ay; }
+    if (w != NULL) { *w = box->width; }
+    if (h != NULL) { *h = box->height; }
+    return 0;
+}
+
+/* Deepest box (absolute coords via box_coords) containing point (px,py). */
+static struct box *pcore_hit(struct box *b, int px, int py)
+{
+    struct box *c;
+    int ax = 0;
+    int ay = 0;
+
+    for (c = b->children; c != NULL; c = c->next) {
+        struct box *r = pcore_hit(c, px, py);
+        if (r != NULL) {
+            return r;   /* children first: report the deepest match */
+        }
+    }
+    box_coords(b, &ax, &ay);
+    if (px >= ax && px < ax + b->width &&
+            py >= ay && py < ay + b->height) {
+        return b;
+    }
+    return NULL;
+}
+
+PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    pcore_render *st = pcore_get_render(doc);
+    struct box   *hit;
+    struct box   *b;
+    int           rc = 0;
+
+    if (st == NULL || out_href == NULL || cap <= 0) {
+        return 0;
+    }
+    if (pcore_ensure_link_strings() != 0) {
+        return 0;
+    }
+    hit = pcore_hit(st->root_box, x, y);
+    if (hit == NULL) {
+        return 0;
+    }
+    /* Walk up to the nearest <a> ancestor and read its href. */
+    for (b = hit; b != NULL; b = b->parent) {
+        dom_string *nm = NULL;
+        bool isa = false;
+
+        if (b->node == NULL) {
+            continue;
+        }
+        if (dom_node_get_node_name(b->node, &nm) == DOM_NO_ERR && nm != NULL) {
+            isa = dom_string_caseless_isequal(nm, pcore_a_name);
+            dom_string_unref(nm);
+        }
+        if (isa) {
+            dom_string *val = NULL;
+            if (dom_element_get_attribute((dom_element *) b->node,
+                    pcore_href_name, &val) == DOM_NO_ERR && val != NULL) {
+                const char *s = dom_string_data(val);
+                int n = (int) dom_string_byte_length(val);
+                if (n > cap - 1) {
+                    n = cap - 1;
+                }
+                memcpy(out_href, s, n);
+                out_href[n] = '\0';
+                dom_string_unref(val);
+                rc = 1;
+            }
+            break;
+        }
+    }
+    return rc;
+}
+
+PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
+        int scroll_x, int scroll_y)
+{
+    pcore_render *st = pcore_get_render((dom_document *) hDoc);
+    struct redraw_context      rc;
+    struct content_redraw_data data;
+    struct rect   clip;
+    struct { HDC hdc; } pv;   /* layout matches pcore_plot_ctx (one HDC) */
+    RECT          cb;
+
+    if (st == NULL || hdc == NULL) {
+        return;
+    }
+
+    pv.hdc = hdc;
+    memset(&rc, 0, sizeof(rc));
+    rc.background_images = true;   /* else html_redraw_background paints nothing */
+    rc.plot = &pcore_gdi_plotters;
+    rc.priv = &pv;
+
+    memset(&data, 0, sizeof(data));
+    data.x = -scroll_x;            /* shift the page beneath the viewport */
+    data.y = -scroll_y;
+    data.width = st->vw;
+    data.height = st->vh;
+    data.background_colour = 0x00ffffff;
+    data.scale = 1.0f;
+
+    /* Clip to the DC's update region (the WM_PAINT invalid rect), falling back
+     * to the layout viewport. */
+    if (GetClipBox(hdc, &cb) != ERROR &&
+            cb.right > cb.left && cb.bottom > cb.top) {
+        clip.x0 = cb.left;
+        clip.y0 = cb.top;
+        clip.x1 = cb.right;
+        clip.y1 = cb.bottom;
+    } else {
+        clip.x0 = 0;
+        clip.y0 = 0;
+        clip.x1 = st->vw;
+        clip.y1 = st->vh;
+    }
+
+    html_redraw((struct content *) &st->content, &data, &clip, &rc);
 }
