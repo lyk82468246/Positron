@@ -1002,6 +1002,7 @@ static HANDLE g_render_doc = NULL;
 static int    g_scroll_y = 0;
 static int    g_doc_h = 0;
 static int    g_plot_test = 0;   /* M1: paint via PCore_PlotTest, not a doc */
+static int    g_ns_render = 0;    /* M5e: paint via PCore_NsRenderTest */
 
 /* Current page origin, for resolving relative links during navigation. */
 static char   g_cur_host[256] = "";
@@ -1330,6 +1331,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         FillRect(hdc, &ps.rcPaint, (HBRUSH) GetStockObject(WHITE_BRUSH));
         if (g_plot_test) {
             PCore_PlotTest(hdc);   /* M1: drive the GDI plotter directly */
+        } else if (g_ns_render) {
+            RECT rcc;
+            GetClientRect(hwnd, &rcc);
+            PCore_NsRenderTest(hdc, rcc.right - rcc.left, rcc.bottom - rcc.top);
         } else if (g_render_doc != NULL) {
             PCore_PaintDocument(g_render_doc, hdc, 0, g_scroll_y);
         }
@@ -1706,6 +1711,39 @@ static BOOL test14_plot(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 17 - milestone H/M5e: NetSurf real layout.c + redraw.c on screen */
+/* A window opens; the page is laid out by NetSurf's layout_document and    */
+/* painted by html_redraw through our GDI plotter (M1) + font table (M2).   */
+/* First page rendered end-to-end by the ported engine.                     */
+/* -------------------------------------------------------------------- */
+static BOOL test17_nsrender(void)
+{
+    show_info(L"TEST 17",
+              "NetSurf REAL layout + redraw (M5e):\n"
+              "the page is laid out by NetSurf's layout.c and painted\n"
+              "by its redraw.c through our GDI plotter.\n\n"
+              "Expect a dark-red H1, a light-blue padded box with two\n"
+              "wrapped blue paragraphs. Tap or Esc to close.");
+
+    g_ns_render = 1;
+    g_render_doc = NULL;
+    g_plot_test = 0;
+    g_scroll_y = 0;
+    g_doc_h = 0;
+    if (!show_render_window()) {
+        g_ns_render = 0;
+        show_error(L"TEST 17 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_ns_render = 0;
+
+    show_info(L"TEST 17 OK",
+              "First page rendered end-to-end by the ported NetSurf\n"
+              "engine (layout.c + redraw.c) on the device.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
 
@@ -1802,6 +1840,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
         show_info(L"TEST (M2) font table", fb);
         if (!test14_plot())        { rc = 13; goto done; }
+        if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
 

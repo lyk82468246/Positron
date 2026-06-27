@@ -36,6 +36,8 @@
 #include "content/handlers/html/private.h"   /* html_content (real NetSurf) */
 #include "content/handlers/html/layout.h"    /* layout_document */
 #include "content/handlers/html/box_inspect.h" /* box_coords */
+#include "netsurf/content.h"                  /* content_redraw_data */
+#include "netsurf/plotters.h"                 /* struct redraw_context */
 
 /* GDI font measurement table (pcore_plot_gdi.c, M2). */
 extern const struct gui_layout_table pcore_gdi_layout;
@@ -466,10 +468,11 @@ PCORE_API void PCore_LayoutBoxTest(char *out, int cap)
 {
     static const char *HTML =
         "<!DOCTYPE html><html><head><title>x</title>"
-        "<style>body{width:200px}h1{font-size:24px}</style></head>"
+        "<style>body{width:200px}h1{font-size:24px}"
+        "div{background-color:#cce6ff;padding:6px}</style></head>"
         "<body><h1>Title</h1>"
-        "<p>Some bold and italic text in a paragraph that should wrap onto "
-        "several lines within the body width.</p></body></html>";
+        "<div><p>Some text in a paragraph that should wrap onto several "
+        "lines within the box.</p></div></body></html>";
     HANDLE hDoc;
     dom_document *doc;
     dom_node *root = NULL;
@@ -479,6 +482,8 @@ PCORE_API void PCore_LayoutBoxTest(char *out, int cap)
     html_content c;
     WCHAR w[256];
     struct box *body;
+    struct box *dv;
+    css_color   dbg = 0;
     int ax = 0;
     int ay = 0;
     int vw = 240;
@@ -519,23 +524,127 @@ PCORE_API void PCore_LayoutBoxTest(char *out, int cap)
         layout_document(&c, vw, vh);
 
         body = tree->children;   /* <head> is display:none, so child 0 = body */
+        dv = (body != NULL && body->children != NULL) ?
+                body->children->next : NULL;   /* h1 then div */
+        if (dv != NULL && dv->style != NULL) {
+            css_computed_background_color(dv->style, &dbg);
+        }
         t = pcore_first_text(tree);
         if (t != NULL) {
             box_coords(t, &ax, &ay);   /* absolute coords up the parent chain */
         }
         wsprintfW(w,
-                L"root w=%d h=%d\r\n"
-                L"body x=%d y=%d w=%d h=%d\r\n"
-                L"text abs x=%d y=%d w=%d",
+                L"root w=%d h=%d  body w=%d h=%d\r\n"
+                L"div x=%d y=%d w=%d h=%d bg=%08lx\r\n"
+                L"first text abs x=%d y=%d w=%d",
                 tree->width, tree->height,
-                (body != NULL) ? body->x : -1,
-                (body != NULL) ? body->y : -1,
                 (body != NULL) ? body->width : -1,
                 (body != NULL) ? body->height : -1,
+                (dv != NULL) ? dv->x : -1,
+                (dv != NULL) ? dv->y : -1,
+                (dv != NULL) ? dv->width : -1,
+                (dv != NULL) ? dv->height : -1,
+                (unsigned long) dbg,
                 ax, ay,
                 (t != NULL) ? t->width : -1);
         WideCharToMultiByte(CP_ACP, 0, w, -1, out, cap, NULL, NULL);
         out[cap - 1] = '\0';
+    }
+
+    if (ctx != NULL) {
+        talloc_free(ctx);
+    }
+    dom_node_unref(root);
+    PCore_FreeDocument(hDoc);
+}
+
+/* M5e: render the built-in test page with NetSurf's real layout + redraw,
+ * painting through the GDI plotter (M1) + GDI font table (M2). Builds the box
+ * tree, runs layout_document, then drives html_redraw into `hdc` over a cw x ch
+ * client area. Rebuilt on each call (the app paints this from WM_PAINT). This
+ * is the first page rendered end-to-end by the ported NetSurf engine. */
+PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><head><style>"
+        "body{background-color:#ffffff;color:#202020;margin:8px;}"
+        "h1{color:#800000;font-size:24px;}"
+        "p{color:#103080;}"
+        "div{background-color:#cce6ff;padding:6px;}"
+        "</style></head><body>"
+        "<h1>Positron + NetSurf</h1>"
+        "<div><p>This paragraph is laid out by NetSurf's real layout.c and "
+        "painted by its real redraw.c through our GDI plotter. It should wrap "
+        "across several lines inside the light-blue block.</p>"
+        "<p>A second paragraph follows below it.</p></div>"
+        "</body></html>";
+
+    HANDLE        hDoc;
+    dom_document *doc;
+    dom_node     *root = NULL;
+    void         *ctx;
+    struct box   *tree;
+    html_content  c;
+    struct redraw_context     rc;
+    struct content_redraw_data data;
+    struct rect   clip;
+    struct { HDC hdc; } pv;   /* layout matches pcore_plot_ctx (one HDC) */
+
+    if (hdc == NULL || cw <= 0 || ch <= 0) {
+        return;
+    }
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        return;
+    }
+    if (PCore_StyleDocument(hDoc, NULL) != 0) {
+        PCore_FreeDocument(hDoc);
+        return;
+    }
+    doc = (dom_document *) hDoc;
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        PCore_FreeDocument(hDoc);
+        return;
+    }
+
+    pcore_nsshim_init();
+    ctx = talloc_named_const(NULL, 0, "pcore_render_test");
+    tree = pcore_box_construct(root, ctx);
+    if (tree != NULL) {
+        memset(&c, 0, sizeof(c));
+        c.layout = tree;
+        c.bctx = (int *) ctx;
+        c.font_func = &pcore_gdi_layout;
+        memcpy(&c.unit_len_ctx, pcore_get_unit_ctx(),
+                sizeof(c.unit_len_ctx));
+        c.background_colour = 0x00ffffff;
+
+        PCore_SetViewport(cw, ch, 0);
+        layout_document(&c, cw, ch);
+
+        pv.hdc = hdc;
+        memset(&rc, 0, sizeof(rc));
+        /* Must be true or html_redraw_background() returns early and paints
+         * NO background at all - not even background-color. We have no bitmap
+         * decoder yet (plot_bitmap is a stub), so background images simply
+         * don't draw, but background colours do. */
+        rc.background_images = true;
+        rc.plot = &pcore_gdi_plotters;
+        rc.priv = &pv;
+
+        memset(&data, 0, sizeof(data));
+        data.width = cw;
+        data.height = ch;
+        data.background_colour = 0x00ffffff;
+        data.scale = 1.0f;
+
+        clip.x0 = 0;
+        clip.y0 = 0;
+        clip.x1 = cw;
+        clip.y1 = ch;
+
+        html_redraw((struct content *) &c, &data, &clip, &rc);
     }
 
     if (ctx != NULL) {

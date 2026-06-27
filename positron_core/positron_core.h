@@ -169,6 +169,11 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
  * device-verified before redraw.c is ported in. */
 PCORE_API void PCore_PlotTest(HDC hdc);
 
+/* M5e self-test: render a built-in page with NetSurf's real layout + redraw
+ * into `hdc` over a cw x ch client area - the first page drawn end-to-end by
+ * the ported NetSurf engine (rebuilt each call; drive it from WM_PAINT). */
+PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch);
+
 /* M3 self-test: build a NetSurf box tree from a small styled document and
  * report box counts by type into `out` (ASCII). Verifies the slim DOM->box
  * builder + talloc shim before layout.c is ported. */

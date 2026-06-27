@@ -30,4 +30,9 @@ struct box *pcore_box_construct(struct dom_node *root, void *ctx);
  * before layout (PCore_Init). Implemented in pcore_nsshim.c. */
 void pcore_nsshim_init(void);
 
+/* The GDI plotter table (defined in pcore_plot_gdi.c), for building a
+ * redraw_context to drive NetSurf's html_redraw. */
+struct plotter_table;
+extern const struct plotter_table pcore_gdi_plotters;
+
 #endif /* PCORE_INTERNAL_H */
