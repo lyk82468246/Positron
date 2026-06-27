@@ -167,6 +167,8 @@ static struct box *pcore_construct_block(dom_node *node,
         css_computed_style *style, int is_root, void *ctx);
 static void pcore_construct_inline(dom_node *node, css_computed_style *style,
         struct box *cont, void *ctx);
+static struct box *pcore_construct_flex(dom_node *node,
+        css_computed_style *style, int is_inline, void *ctx);
 
 /* Flatten the inline content of `node` into inline container `cont`: text
  * children become BOX_TEXT; inline element children emit BOX_INLINE ...
@@ -321,10 +323,17 @@ static struct box *pcore_construct_block(dom_node *node,
                             }
                         }
                     } else {
-                        /* block-level child: close any open inline run. */
+                        /* block-level child: close any open inline run. A
+                         * display:flex child becomes BOX_FLEX so layout.c
+                         * routes it through the ported layout_flex (M7). */
                         struct box *cbox;
                         inline_cont = NULL;
-                        cbox = pcore_construct_block(child, cs, 0, ctx);
+                        if (css_computed_display(cs, false) ==
+                                CSS_DISPLAY_FLEX) {
+                            cbox = pcore_construct_flex(child, cs, 0, ctx);
+                        } else {
+                            cbox = pcore_construct_block(child, cs, 0, ctx);
+                        }
                         if (cbox != NULL) {
                             pcore_box_add_child(box, cbox);
                         }
@@ -341,6 +350,58 @@ static struct box *pcore_construct_block(dom_node *node,
         child = next;
     }
 
+    return box;
+}
+
+/* Build a BOX_FLEX (or BOX_INLINE_FLEX) flex container. Each element child is a
+ * flex item: a nested flex stays flex, everything else is blockified to a
+ * BOX_BLOCK (per CSS flex-item rules), and items are added directly - no
+ * anonymous inline container, unlike block layout. layout.c routes BOX_FLEX
+ * boxes through the ported layout_flex (M7). Bare text between items is dropped
+ * (flex items are elements in the pages we target). */
+static struct box *pcore_construct_flex(dom_node *node,
+        css_computed_style *style, int is_inline, void *ctx)
+{
+    struct box *box;
+    dom_node *child;
+
+    box = pcore_box_new(is_inline ? BOX_INLINE_FLEX : BOX_FLEX, style, ctx);
+    if (box == NULL) {
+        return NULL;
+    }
+    box->node = node;
+
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return box;
+    }
+    while (child != NULL) {
+        dom_node_type type;
+        dom_node *next;
+
+        if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
+                type == DOM_ELEMENT_NODE) {
+            css_computed_style *cs = pcore_node_computed_style(child);
+            if (cs != NULL && !pcore_is_display_none(cs, 0)) {
+                uint8_t d = css_computed_display(cs, false);
+                struct box *item;
+                if (d == CSS_DISPLAY_FLEX || d == CSS_DISPLAY_INLINE_FLEX) {
+                    item = pcore_construct_flex(child, cs, 0, ctx);
+                } else {
+                    item = pcore_construct_block(child, cs, 0, ctx);
+                }
+                if (item != NULL) {
+                    pcore_box_add_child(box, item);
+                }
+            }
+        }
+
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            break;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
     return box;
 }
 
@@ -574,12 +635,18 @@ PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
         "h1{color:#800000;font-size:24px;}"
         "p{color:#103080;}"
         "div{background-color:#cce6ff;padding:6px;}"
+        ".row{display:flex;background-color:#eeeeee;}"
+        ".c1{background-color:#ff8080;padding:4px;}"
+        ".c2{background-color:#80ff80;padding:4px;}"
+        ".c3{background-color:#8080ff;padding:4px;}"
         "</style></head><body>"
         "<h1>Positron + NetSurf</h1>"
         "<div><p>This paragraph is laid out by NetSurf's real layout.c and "
         "painted by its real redraw.c through our GDI plotter. It should wrap "
         "across several lines inside the light-blue block.</p>"
         "<p>A second paragraph follows below it.</p></div>"
+        "<div class=\"row\"><div class=\"c1\">One</div>"
+        "<div class=\"c2\">Two</div><div class=\"c3\">Three</div></div>"
         "</body></html>";
 
     HANDLE        hDoc;

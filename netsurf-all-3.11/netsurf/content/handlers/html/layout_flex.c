@@ -31,16 +31,44 @@
  * layout_minmax_X() and layout_X().
  */
 
+/* Include set aligned with layout.c: private.h / layout_internal.h need the
+ * dom / css / content types defined by these prerequisite headers, which the
+ * upstream file relied on the build system to pre-include. */
+#include <assert.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <math.h>
+#include <dom/dom.h>
 
 #include "utils/log.h"
+#include "utils/talloc.h"
 #include "utils/utils.h"
+#include "utils/nsoption.h"
+#include "utils/corestrings.h"
+#include "utils/nsurl.h"
+#include "netsurf/inttypes.h"
+#include "netsurf/content.h"
+#include "netsurf/browser_window.h"
+#include "netsurf/layout.h"
+#include "content/content.h"
+#include "content/content_protected.h"
+#include "css/utils.h"
+#include "desktop/scrollbar.h"
+#include "desktop/textarea.h"
 
-#include "html/box.h"
 #include "html/html.h"
+#include "html/html_save.h"
 #include "html/private.h"
+#include "html/box.h"
 #include "html/box_inspect.h"
+#include "html/font.h"
+#include "html/form_internal.h"
+#include "html/layout.h"
 #include "html/layout_internal.h"
+#include "html/table.h"
 
 /**
  * Flex item data
@@ -345,10 +373,11 @@ static void layout_flex_ctx__populate_item_data(
 		const struct box *flex,
 		int available_width)
 {
+	struct box *b;
 	size_t i = 0;
 	bool horizontal = ctx->horizontal;
 
-	for (struct box *b = flex->children; b != NULL; b = b->next) {
+	for (b = flex->children; b != NULL; b = b->next) {
 		struct flex_item_data *item = &ctx->item.data[i++];
 
 		b->float_container = b->parent;
@@ -512,12 +541,13 @@ static inline int layout_flex__remaining_free_main(
 		int available_main,
 		bool grow)
 {
+	size_t i;
 	int remaining_free_main = available_main;
 	size_t item_count = line->first + line->count;
 
 	*unfrozen_factor_sum = 0;
 
-	for (size_t i = line->first; i < item_count; i++) {
+	for (i = line->first; i < item_count; i++) {
 		struct flex_item_data *item = &ctx->item.data[i];
 
 		if (item->freeze) {
@@ -556,11 +586,12 @@ static inline int layout_flex__get_min_max_violations(
 		struct flex_ctx *ctx,
 		struct flex_line_data *line)
 {
+	size_t i;
 
 	int total_violation = 0;
 	size_t item_count = line->first + line->count;
 
-	for (size_t i = line->first; i < item_count; i++) {
+	for (i = line->first; i < item_count; i++) {
 		struct flex_item_data *item = &ctx->item.data[i];
 		int target_main_size = item->target_main_size;
 
@@ -629,8 +660,9 @@ static inline void layout_flex__distribute_free_main(
 	size_t item_count = line->first + line->count;
 
 	if (grow) {
+		size_t i;
 		css_fixed remainder = 0;
-		for (size_t i = line->first; i < item_count; i++) {
+		for (i = line->first; i < item_count; i++) {
 			struct flex_item_data *item = &ctx->item.data[i];
 			css_fixed result;
 			css_fixed ratio;
@@ -648,10 +680,11 @@ static inline void layout_flex__distribute_free_main(
 			remainder = FIXFRAC(result);
 		}
 	} else {
+		size_t i;
 		css_fixed scaled_shrink_factor_sum = 0;
 		css_fixed remainder = 0;
 
-		for (size_t i = line->first; i < item_count; i++) {
+		for (i = line->first; i < item_count; i++) {
 			struct flex_item_data *item = &ctx->item.data[i];
 			css_fixed scaled_shrink_factor;
 
@@ -665,7 +698,7 @@ static inline void layout_flex__distribute_free_main(
 			scaled_shrink_factor_sum += scaled_shrink_factor;
 		}
 
-		for (size_t i = line->first; i < item_count; i++) {
+		for (i = line->first; i < item_count; i++) {
 			struct flex_item_data *item = &ctx->item.data[i];
 			css_fixed scaled_shrink_factor;
 			css_fixed result;
@@ -707,6 +740,7 @@ static bool layout_flex__resolve_line(
 		struct flex_ctx *ctx,
 		struct flex_line_data *line)
 {
+	size_t i;
 	size_t item_count = line->first + line->count;
 	int available_main = ctx->available_main;
 	int initial_free_main;
@@ -725,7 +759,7 @@ static bool layout_flex__resolve_line(
 	NSLOG(flex, DEEPDEBUG, "Line main_size: %i, available_main: %i",
 			line->main_size, available_main);
 
-	for (size_t i = line->first; i < item_count; i++) {
+	for (i = line->first; i < item_count; i++) {
 		struct flex_item_data *item = &ctx->item.data[i];
 
 		/* 3. Size inflexible items */
@@ -753,6 +787,7 @@ static bool layout_flex__resolve_line(
 
 	/* 5. Loop */
 	while (line->frozen < line->count) {
+		size_t i;
 		css_fixed unfrozen_factor_sum;
 		int remaining_free_main;
 		int total_violation;
@@ -777,7 +812,7 @@ static bool layout_flex__resolve_line(
 				ctx, line);
 
 		/* e */
-		for (size_t i = line->first; i < item_count; i++) {
+		for (i = line->first; i < item_count; i++) {
 			struct flex_item_data *item = &ctx->item.data[i];
 
 			if (item->freeze) {
@@ -806,6 +841,7 @@ static bool layout_flex__place_line_items_main(
 		struct flex_ctx *ctx,
 		struct flex_line_data *line)
 {
+	size_t i;
 	int main_pos = ctx->flex->padding[layout_flex__main_start_side(ctx)];
 	int post_multiplier = ctx->main_reversed ? 0 : 1;
 	int pre_multiplier = ctx->main_reversed ? -1 : 0;
@@ -829,7 +865,7 @@ static bool layout_flex__place_line_items_main(
 		}
 	}
 
-	for (size_t i = line->first; i < item_count; i++) {
+	for (i = line->first; i < item_count; i++) {
 		enum box_side main_end = ctx->horizontal ? RIGHT : BOTTOM;
 		enum box_side main_start = ctx->horizontal ? LEFT : TOP;
 		struct flex_item_data *item = &ctx->item.data[i];
@@ -942,10 +978,11 @@ static bool layout_flex__collect_items_into_lines(
 static void layout_flex__place_line_items_cross(struct flex_ctx *ctx,
 		struct flex_line_data *line, int extra)
 {
+	size_t i;
 	enum box_side cross_start = ctx->horizontal ? TOP : LEFT;
 	size_t item_count = line->first + line->count;
 
-	for (size_t i = line->first; i < item_count; i++) {
+	for (i = line->first; i < item_count; i++) {
 		struct flex_item_data *item = &ctx->item.data[i];
 		struct box *b = item->box;
 		int cross_free_space;
@@ -1004,6 +1041,7 @@ static void layout_flex__place_line_items_cross(struct flex_ctx *ctx,
  */
 static void layout_flex__place_lines(struct flex_ctx *ctx)
 {
+	size_t i;
 	bool reversed = ctx->wrap == CSS_FLEX_WRAP_WRAP_REVERSE;
 	int line_pos = reversed ? ctx->cross_size : 0;
 	int post_multiplier = reversed ? 0 : 1;
@@ -1020,7 +1058,7 @@ static void layout_flex__place_lines(struct flex_ctx *ctx)
 		extra /= ctx->line.count;
 	}
 
-	for (size_t i = 0; i < ctx->line.count; i++) {
+	for (i = 0; i < ctx->line.count; i++) {
 		struct flex_line_data *line = &ctx->line.data[i];
 
 		line_pos += pre_multiplier * line->cross_size;
@@ -1048,9 +1086,10 @@ static void layout_flex__place_lines(struct flex_ctx *ctx)
 bool layout_flex(struct box *flex, int available_width,
 		html_content *content)
 {
-	int max_height, min_height;
 	struct flex_ctx *ctx;
-	bool success = false;
+	bool success;
+	int max_height, min_height;
+	success = false;
 
 	ctx = layout_flex_ctx__create(content, flex);
 	if (ctx == NULL) {

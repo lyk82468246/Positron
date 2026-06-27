@@ -50,17 +50,6 @@ void table_used_border_for_cell(const css_unit_ctx *unit_len_ctx,
     (void) cell;
 }
 
-/* --- flex (M7) ---------------------------------------------------- */
-
-bool layout_flex(struct box *flex, int available_width,
-        struct html_content *content)
-{
-    (void) flex;
-    (void) available_width;
-    (void) content;
-    return false;
-}
-
 /* --- debug dump --------------------------------------------------- */
 
 void box_dump(FILE *stream, struct box *box, unsigned int depth, bool style)

@@ -1719,11 +1719,14 @@ static BOOL test14_plot(void)
 static BOOL test17_nsrender(void)
 {
     show_info(L"TEST 17",
-              "NetSurf REAL layout + redraw (M5e):\n"
+              "NetSurf REAL layout + redraw + FLEX (M7):\n"
               "the page is laid out by NetSurf's layout.c and painted\n"
               "by its redraw.c through our GDI plotter.\n\n"
               "Expect a dark-red H1, a light-blue padded box with two\n"
-              "wrapped blue paragraphs. Tap or Esc to close.");
+              "wrapped blue paragraphs, then THREE colour blocks\n"
+              "(red/green/blue: One/Two/Three) in a row.\n"
+              "Side by side = flex works; stacked = flex failed.\n"
+              "Tap or Esc to close.");
 
     g_ns_render = 1;
     g_render_doc = NULL;
@@ -1738,8 +1741,8 @@ static BOOL test17_nsrender(void)
     g_ns_render = 0;
 
     show_info(L"TEST 17 OK",
-              "First page rendered end-to-end by the ported NetSurf\n"
-              "engine (layout.c + redraw.c) on the device.");
+              "Rendered end-to-end by the ported NetSurf engine\n"
+              "(layout.c + redraw.c + layout_flex.c) on the device.");
     return TRUE;
 }
 
