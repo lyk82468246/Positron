@@ -167,6 +167,8 @@ static struct box *pcore_construct_block(dom_node *node,
         css_computed_style *style, int is_root, void *ctx);
 static void pcore_construct_inline(dom_node *node, css_computed_style *style,
         struct box *cont, void *ctx);
+static struct box *pcore_construct_table(dom_node *node,
+        css_computed_style *style, void *ctx);
 static struct box *pcore_construct_flex(dom_node *node,
         css_computed_style *style, int is_inline, void *ctx);
 
@@ -331,6 +333,9 @@ static struct box *pcore_construct_block(dom_node *node,
                         if (css_computed_display(cs, false) ==
                                 CSS_DISPLAY_FLEX) {
                             cbox = pcore_construct_flex(child, cs, 0, ctx);
+                        } else if (css_computed_display(cs, false) ==
+                                CSS_DISPLAY_TABLE) {
+                            cbox = pcore_construct_table(child, cs, ctx);
                         } else {
                             cbox = pcore_construct_block(child, cs, 0, ctx);
                         }
@@ -403,6 +408,256 @@ static struct box *pcore_construct_flex(dom_node *node,
         child = next;
     }
     return box;
+}
+
+/* ------------------------------------------------------------------ */
+/* table construction (M7-table)                                       */
+/* ------------------------------------------------------------------ */
+
+/* Read an HTML span attribute (colspan / rowspan) as a positive int (default
+ * 1), parsing the leading ASCII digits of the attribute value. */
+static unsigned int pcore_span_attr(dom_node *node, const char *attr)
+{
+    dom_string *nm = NULL;
+    dom_string *vl = NULL;
+    unsigned int n = 1;
+
+    if (dom_string_create((const uint8_t *) attr, strlen(attr), &nm) !=
+            DOM_NO_ERR) {
+        return 1;
+    }
+    if (dom_element_get_attribute(node, nm, &vl) == DOM_NO_ERR && vl != NULL) {
+        const char *s = dom_string_data(vl);
+        size_t len = dom_string_byte_length(vl);
+        int v = 0;
+        size_t i;
+        for (i = 0; i < len && s[i] >= '0' && s[i] <= '9'; i++) {
+            v = v * 10 + (s[i] - '0');
+        }
+        if (v > 0) {
+            n = (unsigned int) v;
+        }
+        dom_string_unref(vl);
+    }
+    dom_string_unref(nm);
+    return n;
+}
+
+static int pcore_disp_table_cell(css_computed_style *s)
+{
+    return css_computed_display(s, false) == CSS_DISPLAY_TABLE_CELL;
+}
+
+static int pcore_disp_table_row(css_computed_style *s)
+{
+    return css_computed_display(s, false) == CSS_DISPLAY_TABLE_ROW;
+}
+
+static int pcore_disp_table_rowgroup(css_computed_style *s)
+{
+    uint8_t d = css_computed_display(s, false);
+    return (d == CSS_DISPLAY_TABLE_ROW_GROUP ||
+            d == CSS_DISPLAY_TABLE_HEADER_GROUP ||
+            d == CSS_DISPLAY_TABLE_FOOTER_GROUP) ? 1 : 0;
+}
+
+/* A table cell holds ordinary block flow, so build it as a block then retype to
+ * BOX_TABLE_CELL and record its colspan / rowspan. */
+static struct box *pcore_construct_cell(dom_node *node,
+        css_computed_style *style, void *ctx)
+{
+    struct box *cell = pcore_construct_block(node, style, 0, ctx);
+    if (cell != NULL) {
+        cell->type = BOX_TABLE_CELL;
+        cell->columns = pcore_span_attr(node, "colspan");
+        cell->rows = pcore_span_attr(node, "rowspan");
+    }
+    return cell;
+}
+
+/* BOX_TABLE_ROW from a <tr>: its table-cell element children become cells. */
+static struct box *pcore_construct_row(dom_node *node,
+        css_computed_style *style, void *ctx)
+{
+    struct box *row = pcore_box_new(BOX_TABLE_ROW, style, ctx);
+    dom_node *child;
+
+    if (row == NULL) {
+        return NULL;
+    }
+    row->node = node;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return row;
+    }
+    while (child != NULL) {
+        dom_node_type type;
+        dom_node *next;
+
+        if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
+                type == DOM_ELEMENT_NODE) {
+            css_computed_style *cs = pcore_node_computed_style(child);
+            if (cs != NULL && !pcore_is_display_none(cs, 0) &&
+                    pcore_disp_table_cell(cs)) {
+                struct box *cell = pcore_construct_cell(child, cs, ctx);
+                if (cell != NULL) {
+                    pcore_box_add_child(row, cell);
+                }
+            }
+        }
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            break;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    return row;
+}
+
+/* BOX_TABLE_ROW_GROUP from <thead>/<tbody>/<tfoot>: children are rows. */
+static struct box *pcore_construct_rowgroup(dom_node *node,
+        css_computed_style *style, void *ctx)
+{
+    struct box *rg = pcore_box_new(BOX_TABLE_ROW_GROUP, style, ctx);
+    dom_node *child;
+
+    if (rg == NULL) {
+        return NULL;
+    }
+    rg->node = node;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return rg;
+    }
+    while (child != NULL) {
+        dom_node_type type;
+        dom_node *next;
+
+        if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
+                type == DOM_ELEMENT_NODE) {
+            css_computed_style *cs = pcore_node_computed_style(child);
+            if (cs != NULL && !pcore_is_display_none(cs, 0) &&
+                    pcore_disp_table_row(cs)) {
+                struct box *row = pcore_construct_row(child, cs, ctx);
+                if (row != NULL) {
+                    pcore_box_add_child(rg, row);
+                }
+            }
+        }
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            break;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    return rg;
+}
+
+/* Build a BOX_TABLE tree (row-group > row > cell) from a display:table element.
+ * Bare <tr> children are wrapped in an anonymous row group. Each cell is then
+ * assigned a start_column (honouring colspan; rowspan column-occupancy across
+ * rows is simplified - correct for the common no-rowspan tables), and
+ * table->columns / table->rows / table->col[] are filled - the shape
+ * layout_table needs (it asserts columns>0 and memcpy's table->col). Falls back
+ * to BOX_BLOCK if no cells were produced, so layout never sees a malformed
+ * table. */
+static struct box *pcore_construct_table(dom_node *node,
+        css_computed_style *style, void *ctx)
+{
+    struct box *table = pcore_box_new(BOX_TABLE, style, ctx);
+    struct box *anon_rg = NULL;
+    struct box *rg;
+    struct box *row;
+    struct box *cell;
+    dom_node *child;
+    unsigned int max_cols = 0;
+    unsigned int nrows = 0;
+
+    if (table == NULL) {
+        return NULL;
+    }
+    table->node = node;
+
+    if (dom_node_get_first_child(node, &child) == DOM_NO_ERR) {
+        while (child != NULL) {
+            dom_node_type type;
+            dom_node *next;
+
+            if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
+                    type == DOM_ELEMENT_NODE) {
+                css_computed_style *cs = pcore_node_computed_style(child);
+                if (cs != NULL && !pcore_is_display_none(cs, 0)) {
+                    if (pcore_disp_table_rowgroup(cs)) {
+                        struct box *g = pcore_construct_rowgroup(child, cs,
+                                ctx);
+                        if (g != NULL) {
+                            pcore_box_add_child(table, g);
+                        }
+                        anon_rg = NULL;
+                    } else if (pcore_disp_table_row(cs)) {
+                        struct box *r;
+                        if (anon_rg == NULL) {
+                            anon_rg = pcore_box_new(BOX_TABLE_ROW_GROUP, NULL,
+                                    ctx);
+                            if (anon_rg != NULL) {
+                                pcore_box_add_child(table, anon_rg);
+                            }
+                        }
+                        r = pcore_construct_row(child, cs, ctx);
+                        if (r != NULL && anon_rg != NULL) {
+                            pcore_box_add_child(anon_rg, r);
+                        }
+                    }
+                }
+            }
+            if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+                dom_node_unref(child);
+                break;
+            }
+            dom_node_unref(child);
+            child = next;
+        }
+    }
+
+    /* layout_table asserts table->children && children->children && columns. */
+    if (table->children == NULL || table->children->children == NULL) {
+        table->type = BOX_BLOCK;
+        return table;
+    }
+
+    for (rg = table->children; rg != NULL; rg = rg->next) {
+        for (row = rg->children; row != NULL; row = row->next) {
+            unsigned int col = 0;
+            nrows++;
+            for (cell = row->children; cell != NULL; cell = cell->next) {
+                cell->start_column = col;
+                if (cell->columns == 0) {
+                    cell->columns = 1;
+                }
+                col += cell->columns;
+            }
+            if (col > max_cols) {
+                max_cols = col;
+            }
+        }
+    }
+
+    if (max_cols == 0) {
+        table->type = BOX_BLOCK;
+        return table;
+    }
+
+    table->columns = max_cols;
+    table->rows = nrows;
+    table->col = talloc_zero_array(ctx, struct column, max_cols);
+    if (table->col == NULL) {
+        table->type = BOX_BLOCK;
+        return table;
+    }
+    /* col[].type stays COLUMN_WIDTH_UNKNOWN(0); table_calculate_column_types
+     * recomputes the types from cell styles during layout_table. */
+
+    return table;
 }
 
 /* Internal (pcore_internal.h). */
@@ -639,14 +894,17 @@ PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
         ".c1{background-color:#ff8080;padding:4px;}"
         ".c2{background-color:#80ff80;padding:4px;}"
         ".c3{background-color:#8080ff;padding:4px;}"
+        "td{padding:4px;}"
         "</style></head><body>"
         "<h1>Positron + NetSurf</h1>"
+        "<div class=\"row\"><div class=\"c1\">One</div>"
+        "<div class=\"c2\">Two</div><div class=\"c3\">Three</div></div>"
+        "<table><tr><td class=\"c1\">A1</td><td class=\"c2\">B1</td></tr>"
+        "<tr><td class=\"c3\">A2</td><td class=\"c1\">B2</td></tr></table>"
         "<div><p>This paragraph is laid out by NetSurf's real layout.c and "
         "painted by its real redraw.c through our GDI plotter. It should wrap "
         "across several lines inside the light-blue block.</p>"
         "<p>A second paragraph follows below it.</p></div>"
-        "<div class=\"row\"><div class=\"c1\">One</div>"
-        "<div class=\"c2\">Two</div><div class=\"c3\">Three</div></div>"
         "</body></html>";
 
     HANDLE        hDoc;

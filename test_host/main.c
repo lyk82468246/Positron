@@ -1726,6 +1726,7 @@ static BOOL test17_nsrender(void)
               "wrapped blue paragraphs, then THREE colour blocks\n"
               "(red/green/blue: One/Two/Three) in a row.\n"
               "Side by side = flex works; stacked = flex failed.\n"
+              "Below that, a 2x2 table (A1/B1 over A2/B2 in a grid).\n"
               "Tap or Esc to close.");
 
     g_ns_render = 1;

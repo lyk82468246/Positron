@@ -22,14 +22,42 @@
  * implementation of HTML table processing and layout.
  */
 
+/* Include set aligned with layout.c (same M7-flex fix): bring in the dom /
+ * css / content prerequisite headers the upstream build pre-included. */
 #include <assert.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 #include <dom/dom.h>
 
 #include "utils/log.h"
 #include "utils/talloc.h"
+#include "utils/utils.h"
+#include "utils/nsoption.h"
+#include "utils/corestrings.h"
+#include "utils/nsurl.h"
+#include "netsurf/inttypes.h"
+#include "netsurf/content.h"
+#include "netsurf/browser_window.h"
+#include "netsurf/layout.h"
+#include "content/content.h"
+#include "content/content_protected.h"
 #include "css/utils.h"
+#include "desktop/scrollbar.h"
+#include "desktop/textarea.h"
 
+#include "html/html.h"
+#include "html/html_save.h"
+#include "html/private.h"
 #include "html/box.h"
+#include "html/box_inspect.h"
+#include "html/font.h"
+#include "html/form_internal.h"
+#include "html/layout.h"
+#include "html/layout_internal.h"
 #include "html/table.h"
 
 /* Define to enable verbose table debug */
@@ -64,8 +92,9 @@ table_border_is_more_eyecatching(const css_unit_ctx *unit_len_ctx,
 				 const struct border *b,
 				 box_type b_src)
 {
+	int impact;
 	css_fixed awidth, bwidth;
-	int impact = 0;
+	impact = 0;
 
 	/* See CSS 2.1 $17.6.2.1 */
 
@@ -517,10 +546,12 @@ table_used_left_border_for_cell(const css_unit_ctx *unit_len_ctx, struct box *ce
 static void
 table_used_top_border_for_cell(const css_unit_ctx *unit_len_ctx, struct box *cell)
 {
+	struct box *row;
+	bool process_group;
 	struct border a, b;
 	box_type a_src, b_src;
-	struct box *row = cell->parent;
-	bool process_group = false;
+	row = cell->parent;
+	process_group = false;
 
 	/* Initialise to computed top border for cell */
 	a.style = css_computed_border_top_style(cell->style);
@@ -722,10 +753,12 @@ static void
 table_used_bottom_border_for_cell(const css_unit_ctx *unit_len_ctx,
 				  struct box *cell)
 {
+	struct box *row;
+	unsigned int rows;
 	struct border a, b;
 	box_type a_src, b_src;
-	struct box *row = cell->parent;
-	unsigned int rows = cell->rows;
+	row = cell->parent;
+	rows = cell->rows;
 
 	/* Initialise to computed bottom border for cell */
 	a.style = css_computed_border_bottom_style(cell->style);
@@ -811,8 +844,8 @@ table_used_bottom_border_for_cell(const css_unit_ctx *unit_len_ctx,
 bool
 table_calculate_column_types(const css_unit_ctx *unit_len_ctx, struct box *table)
 {
-	unsigned int i, j;
 	struct column *col;
+	unsigned int i, j;
 	struct box *row_group, *row, *cell;
 
 	if (table->col)
@@ -883,14 +916,17 @@ table_calculate_column_types(const css_unit_ctx *unit_len_ctx, struct box *table
 	for (row_group = table->children; row_group; row_group =row_group->next)
 		for (row = row_group->children; row; row = row->next)
 			for (cell = row->children; cell; cell = cell->next) {
+				enum css_width_e type;
+				css_fixed value;
+				css_unit unit;
 				unsigned int fixed_columns = 0,
 					percent_columns = 0,
 					auto_columns = 0,
 					unknown_columns = 0;
-				int fixed_width = 0, percent_width = 0;
-				enum css_width_e type;
-				css_fixed value = 0;
-				css_unit unit = CSS_UNIT_PX;
+				int fixed_width = 0;
+				int percent_width = 0;
+				value = 0;
+				unit = CSS_UNIT_PX;
 
 				if (cell->columns == 1)
 					continue;

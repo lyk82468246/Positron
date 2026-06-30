@@ -33,22 +33,8 @@ struct scrollbar;
 struct redraw_context;
 struct form_control;
 
-/* --- tables (M7) -------------------------------------------------- */
-
-bool table_calculate_column_types(const css_unit_ctx *unit_len_ctx,
-        struct box *table)
-{
-    (void) unit_len_ctx;
-    (void) table;
-    return false;   /* "could not establish column types" -> minmax bails */
-}
-
-void table_used_border_for_cell(const css_unit_ctx *unit_len_ctx,
-        struct box *cell)
-{
-    (void) unit_len_ctx;
-    (void) cell;
-}
+/* tables: the real table_calculate_column_types / table_used_border_for_cell
+ * now come from the ported table.c (M7-table). */
 
 /* --- debug dump --------------------------------------------------- */
 

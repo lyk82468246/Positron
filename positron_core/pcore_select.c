@@ -903,9 +903,16 @@ cleanup:
  * has something sane to work with. Expanded as later milestones need it. */
 static const char PCORE_UA_CSS[] =
     "html, body, div, p, h1, h2, h3, h4, h5, h6, ul, ol, dl, dd, dt,"
-    " blockquote, pre, table, tr, form, fieldset, address, hr,"
+    " blockquote, pre, form, fieldset, address, hr,"
     " header, footer, section, article, nav, aside, main, figure"
     " { display: block; }\n"
+    "table { display: table; }\n"
+    "thead { display: table-header-group; }\n"
+    "tbody { display: table-row-group; }\n"
+    "tfoot { display: table-footer-group; }\n"
+    "tr { display: table-row; }\n"
+    "td, th { display: table-cell; }\n"
+    "th { font-weight: bold; }\n"
     "head, title, meta, link, style, script, base { display: none; }\n"
     "li { display: list-item; }\n"
     "b, strong { font-weight: bold; }\n"
