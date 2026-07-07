@@ -13,11 +13,13 @@ Electron-like 轻量级框架，目标设备：**Windows Mobile 6 Professional**
 | **1** | `positron_tls.dll` — TLS 1.2 客户端（mbedTLS 2.16 LTS） | ✅ 完成，emulator 验证 |
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1 over TLS) | ✅ 完成，emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，emulator 验证 |
-| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层）；HTTP keep-alive / 重定向 / gzip 等 | 🚧 进行中：解析 + 选择 + 计算样式 + 块级布局 + **GDI 绘制首张页面**真机验证（TEST 6-12）；行内文本/滚动/图片后续 |
+| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 进行中：NetSurf 真实 `layout.c/redraw.c` 已成为正式 Browse 路径；flex + table 已真机验证（TEST 17）；border / selector / 图片后续 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
-Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libparserutils / libhubbub / libdom / libcss）全部在 VS2008 / WinCE / ARM 下编译通过（C99→C89 脚本化转换，见 `scripts/c89ize.py` 等）。libhubbub 分词、libcss 解析、libdom（经 `dom_hubbub`）HTML→DOM 已链接 + 真机验证（TEST 6/7/7b）。**`positron_core.dll` 已立起**——把四个 NetSurf 静态库链进一个共享 DLL，只导出 `PCore_ParseHTML/ParseCSS` 等小巧 opaque-HANDLE API，TEST 8 经 DLL 边界真机验证。`test_host` 已分模块（通信 / 渲染 / 前端；渲染组全离线，断网可测）。**CSS 选择 / 计算样式已打通**——`PCore_ComputeColor` 经 libcss 的 `css_select_style` + 一个 libdom 版 select handler,对真实 DOM 算出元素的 computed color（TEST 9）。`PCore_StyleDocument` 进一步**给整棵 DOM 树算计算样式**:自顶向下遍历 + UA 默认表 + `css_computed_style_compose` 解析继承,计算样式挂到每个节点（TEST 10:嵌套 `<p>` 继承到 `body` 的颜色,真机验证）。`PCore_LayoutDocument` 再把带样式的树排成**块级盒子**:从计算样式读 display/margin/width,算每个 block 的 `(x,y,w,h)`,正常流竖直堆叠（TEST 11 真机验证;padding/border、行内文本换行、margin 折叠后做）。`PCore_PaintDocument` 把盒树画到 GDI DC（背景 `FillRect` + 叶子文本 `ExtTextOutW`,ARGB→COLORREF,UTF-8→UTF-16）,test_host 用 WM 全屏 App 窗口（标准标题栏）拥有窗口 + 消息循环——**TEST 12 真机渲染出 Positron 第一张 HTML 页面**（白底 + 浅蓝 div 块 + 深蓝文字）。文本已支持 **GDI 测量 + 贪心按词换行**（`CreateFontIndirectW` 按 font-size 建 Tahoma、`GetTextExtentPoint32W` 测宽），叶子块高随换行行数撑开。`test_host` 选择器分 通信 / 引擎(弹框) / GDI渲染 三组。渲染窗口支持**垂直滚动**（`ScrollWindowEx` 只重画露出条,平滑)、**viewport/DPI 自适应**（按真实屏幕尺寸排版、旋转后重排）、**隐藏软键盘**（aygshell）。**TEST 13:`test_browse` 用 positron_http 抓取真实 HTTPS 页面(example.com)→ 解析 → 套用页面 `<style>` + UA → 布局 → 渲染**,TLS→HTTP→渲染整条栈打通;CA 信任库已扩为**完整 Mozilla 根集**(~140 根,`g_ca_certs[]` 逐个解析,绕开 MSVC 64KB 字面量限制)。下一步:行内元素(a/span/b/i)、图片(WM Imaging API)、链接导航、小屏 viewport 适配。详见 [PHASE4.md](PHASE4.md)。
+Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libparserutils / libhubbub / libdom / libcss）全部在 VS2008 / WinCE / ARM 下编译通过（C99→C89 脚本化转换，见 `scripts/c89ize.py` 等）。`positron_core.dll` 已作为产品级引擎边界立起，公开 `PCore_ParseHTML/ParseCSS/StyleDocument/LayoutDocument/PaintDocument/LinkAt` 等小巧 opaque-HANDLE API。HTML→DOM、CSS 解析、CSS select/computed style、整树样式、GDI 窗口绘制、垂直滚动、viewport/DPI 自适应、点击导航、外部 `<link rel="stylesheet">` 抓取、明文 `http://` via WinInet、跨协议重定向、完整 Mozilla CA bundle 均已真机验证。
+
+当前 Browse 正式路径已经从手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex 已接入 `layout_flex.c`，TEST 17 三色块横排；M7-table 已接入 `table.c` + `BOX_TABLE > ROW_GROUP > ROW > CELL` 构建，TEST 17 2×2 表格网格真机验证。下一步优先级：真实 border 绘制（`redraw_border.c`）、CSS attribute/sibling selector、图片/SVG、后台导航体验。详见 [PHASE4.md](PHASE4.md) 和 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
 
 ---
 
@@ -58,10 +60,14 @@ Positron/
     positron_http.h / .c / .vcproj
 
   positron_core/                NetSurf 引擎共享 DLL 边界
-    positron_core.h / .c          PCore_* API（ParseHTML→DOM / ParseCSS）
-    positron_core.vcproj          DLL，静态链入 4 个 NetSurf 库
+    positron_core.h / .c          PCore_* API（Parse/Style/Layout/Paint/LinkAt）
+    pcore_box.c                   DOM+computed style → NetSurf box tree；正式 layout/paint/link path
+    pcore_plot_gdi.c              NetSurf plotter + GDI 字体量度表
+    pcore_talloc.c                精简 talloc 垫片
+    nsshim/                       NetSurf layout/redraw 依赖的精简 shim 头
+    positron_core.vcproj          DLL，静态链入 NetSurf 库与移植的 layout/redraw 源
 
-  test_host/                    端到端测试 EXE（8 测试，分通信/渲染/前端组）
+  test_host/                    端到端测试 EXE（分通信/引擎/GDI渲染/Browse 组）
     main.c
     test_host.vcproj
 
@@ -70,7 +76,9 @@ Positron/
     inttypes.h
 
   scripts/
-    stage.bat                   一键把 4 个二进制拷到 C:\WMShare\
+    stage.bat                   一键把 5 个二进制拷到 C:\WMShare\
+
+  .agents/                      Codex 接手交接、调试纪律、路线图
 ```
 
 ---
@@ -107,6 +115,7 @@ cJSON 已经入 git，无需额外下载。
 positron_tls/bin/Debug/positron_tls.dll
 positron_json/bin/Debug/positron_json.dll
 positron_http/bin/Debug/positron_http.dll
+positron_core/bin/Debug/positron_core.dll
 test_host/bin/Debug/test_host.exe
 ```
 
@@ -133,19 +142,23 @@ scripts\stage.bat         :: 默认 Debug
 scripts\stage.bat Release :: 或 Release
 ```
 
-把 4 个二进制拷到 `C:\WMShare\`。
+把 5 个二进制拷到 `C:\WMShare\`。
 
 模拟器内 Start → File Explorer → **Storage Card** → 双击 `test_host.exe`。
 
-### 预期结果
+### 测试入口
 
-依次 6 个 MessageBox：
-1. TEST 1 OK — 3 个 DLL 加载
-2. TEST 2 OK — JSON 解析
-3. TEST 3 OK — HTTPS GET ipify（verified path），显示公网 IP
-4. TEST 4 OK — HTTPS POST postman-echo（verified path），body 回声验证
-5. TEST 5 OK — badssl.com 正/expired/self-signed 三连测
-6. All tests passed
+`test_host.exe` 启动后先选择测试组：
+
+- **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
+- **Engine**：TEST 6-11、15、16，HTML/CSS/DOM/select/style/layout/box tree，离线。
+- **GDI Render**：TEST 14、17、12，窗口绘制，离线。
+- **Browse**：TEST 13，真实 HTTPS 页面抓取 + 渲染，需要网络。
+
+当前关键 smoke test：
+
+- TEST 17：内置 NetSurf real layout + redraw 页面。预期看到深红 H1、三色 flex 横排、2×2 table 网格。
+- TEST 13：打开 start page，点击 `Open example.com`，走真实 Browse 路径；页面内链接可继续点击导航。
 
 > ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 
@@ -154,8 +167,9 @@ scripts\stage.bat Release :: 或 Release
 ## 已知限制 / 注意事项
 
 - **熵源**：默认 `CryptGenRandom`（Phase 3 起）；CSP 不可用时自动退回 QPC+GetTickCount+tid/pid jitter，CTR-DRBG 兜底。
-- **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 3xx follow、无 gzip 解码、响应体 cap 1 MB。
+- **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 gzip 解码、响应体 cap 1 MB；GET 已有有限 3xx follow，明文 `http://` 经 WinInet。
 - **同步阻塞**：所有网络调用阻塞，不适合直接在 UI 线程长跑。
+- **渲染限制**：真实 NetSurf layout/redraw 已接入，但 border redraw、图片/SVG、部分 CSS selector、float/复杂表格仍待补。
 - **WM6 X 按钮 = 最小化不是关闭**。每次启动 test_host 前确认任务管理器没有遗留实例，否则 stage.bat 替换 exe 时会产生 image 不一致。
 - **WMDC 桥会静默断**：host 待机 / 模拟器长跑后偶尔失联，表现是 `PTls_Connect` 拿到 `-0x004C [BIO: recv WSA=...]`。修法：重启 WMDC（任务栏 → 退出 → 重启）。**联网测试前先在 IE Mobile 打开 baidu 验证一遍**。
 - **模拟器时钟**：跑 verified TLS 前必须校准（见上）。证书 notBefore/notAfter 都按 UTC 比对当前时间。

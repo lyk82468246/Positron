@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-06-11）：**五个 NetSurf 库全部编译通过**；**libcss/libdom 链接 + 真机验证（TEST 7/7b）**；**`positron_core.dll` 解析引擎边界已立起 + 真机验证（TEST 8）**；**CSS 选择 / 计算样式（TEST 9）、整棵树计算样式（TEST 10）、块级布局（TEST 11）、GDI 绘制首张页面（TEST 12）、联网渲染真实网页（TEST 13：example.com，含完整 Mozilla CA 根集）全部真机验证**；**行内格式化（a/span/b/i + 行盒，同样式同链接合并成片段，下划线连续）、可点击超链接（`PCore_LinkAt` 命中测试 + 点击导航：抓取→重渲染）、明文 http:// 经 WM6 自带 WinInet（现代 https 仍走 mbedTLS），跟随 https→http→https 跨协议重定向链全部真机验证**；`test_host` 已分模块（通信/引擎/GDI渲染/Browse）。图片 / 小屏适配 / 后台抓取（消除点击卡顿）/ 更高保真渲染为后续。
+> 状态（2026-07-07）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；CSS select / computed style / whole-document style / external stylesheet fetch / click navigation / full Mozilla CA bundle / WinInet 明文 http 都已打通。当前 Browse 正式路径已经切到 **NetSurf 真实 `layout.c` + `redraw.c`**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → `layout_document` → `html_redraw` → GDI plotter。**M7-flex** 已移植 `layout_flex.c` 并真机验证（TEST 17 三色块横排）；**M7-table** 已移植 `table.c` 并构建 `BOX_TABLE > ROW_GROUP > ROW > CELL`，2×2 表格真机成网格。下一步优先：`redraw_border.c` 真实边框、CSS attribute/sibling selectors、图片/SVG、后台导航体验。
 
 
 ---
@@ -18,11 +18,13 @@
   - `positron_libcss.lib` = libcss（CSS 解析 + 选择器）
 - 补齐 WinCE coredll 缺失的 CRT（bsearch、abort，…）
 - 把 C99 写法系统性降级到 C89（脚本化，可复现）
-- `test_host` TEST 6：真机验证 hubbub 分词器
+- `test_host` TEST 6-17：分层真机验证解析、选择、样式、布局、GDI plotter、NetSurf real layout/redraw、flex、table、真实 Browse
 
 **显式不做的（留后续 Phase / 子阶段）**：
-- 完整 HTML **渲染**（布局 + 绘制）——需移植 NetSurf 核心 `content/handlers/html/`（layout.c / redraw.c / 盒模型）+ WinCE GDI 前端 plotters + 更多库（libnsfb / libnsgif / libutf8proc…）。大工程，多阶段。
-- JavaScript（duktape）、图片解码（gif/png/jpeg）、SVG
+- JavaScript（duktape/QuickJS 等）
+- 图片解码与显示（gif/png/jpeg）、SVG
+- 完整 form/widget/iframe/object 支持
+- 高保真现代 CSS 全覆盖（float、复杂 table、更多 selector 等分阶段补）
 - libcss 的花哨 list-style 计数器（罗马 / CJK / 亚美尼亚…）——见下 stub 决策
 
 ---
@@ -116,32 +118,28 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ---
 
-## 下一步 — 渲染管线剩余三大里程碑
+## 当前路线图（M7 后）
 
-已完成：HTML→DOM、CSS 解析、单元素 CSS 选择/计算样式（TEST 9）。从"算一个元素的颜色"到"屏幕上画出网页"分三步：
+旧的 A/B/C 里程碑（整树 computed style、手写 block layout、首次 GDI 绘制）已经完成并被后续 M6 替代：正式渲染路径现在不再使用手写 `pcore_layout_block/inline` + `pcore_paint_node`，而是走 NetSurf 真实 `layout_document` / `html_redraw`。
 
-### 里程碑 A — 整棵树的 computed style（TEST 10）
-把单元素 select 探针扩成**全树遍历**：自顶向下 DFS，对每个元素调 `css_select_style`，用 `css_computed_style_compose(父, 本节点选中样式, &本节点计算样式)` 解析**继承**，把计算样式存到节点上。
-- **API**：`PCore_StyleDocument(hDoc, hSheet)` → 带样式的树；按节点查 computed 属性的访问器。
-- **前置 A.1：UA 默认样式表**。元素现在只有 `ua_default_for_property` 给的零散默认值，没有 `div{display:block}`、`p{margin:1em 0}` 这类——布局必需。做法：内置一段精简 `html.css`，启动时解析成 `CSS_ORIGIN_UA` 表，排在 author 表前。
-- **存储**：先用 libdom 节点 user-data（或侧表）挂 `css_computed_style`，避开之前 stub 的 `set/get_libcss_node_data` 生命周期。
-- **TEST 10**：`body{color:#112233}` + 嵌套 `<div><p>` → `<p>` 继承到 0x112233，证明全树遍历 + 继承 + UA/author 合并。
+当前优先级：
 
-### 里程碑 B — 盒模型布局（TEST 11）
-从带样式的 DOM 生成**盒树**，给定视口宽度算每个盒子的 `(x,y,w,h)`。先做精简版：块级竖直流 + 块内行内文本换行 + 基本 margin/padding；floats/表格/定位后做。
-- **前置：文本测量** —— WinCE GDI：内存 DC + `SelectObject(font)` + `GetTextExtentPoint32W`。
-- 参考 NetSurf `content/handlers/html/layout.c`（大、C99，可切片或自写精简）。
-- **TEST 11**：校验某盒子的 x/y/w/h。
+1. **M5f：真实 border 绘制**  
+   `redraw_border.c` 尚未接入，`html_redraw_borders` / `html_redraw_inline_borders` 仍在 `pcore_layout_stubs.c` 里 no-op。真实网页的导航框、表格线、分隔线、按钮边框都会受影响。
 
-### 里程碑 C — GDI 绘制（TEST 12，首次真正上屏）
-建**真窗口**（此前全是 MessageBox）：`HWND` + `WM_PAINT` → 遍历盒树 → GDI 画文本（`ExtTextOutW`）、背景（`FillRect`）、边框。
-- **TEST 12**：把小文档画进设备窗口 —— Positron 第一张可见的 HTML 页面。
-- ✅ **已达成**：首张 HTML 页面真机渲染 + 行内文本换行——`PCore_PaintDocument(hDoc, hdc, sx, sy)` 遍历盒树画背景（`FillRect`，ARGB→COLORREF，透明跳过）+ 叶子块文本（`ExtTextOutW`，computed color，UTF-8→UTF-16，按 font-size 建 Tahoma 字体、贪心按词换行）；`test_host` 用 WM 惯用的全屏 App 窗口（`CreateWindow` + `CW_USEDEFAULT` + `WS_VISIBLE` + `SetForegroundWindow`，标准标题栏）拥有窗口与消息循环，`WM_PAINT` 调引擎绘制。布局用测量 DC（`CreateCompatibleDC` + `GetTextMetricsW`/`GetTextExtentPoint32W`）按换行行数算叶子块高。**WM 坑两则**：① 显式 `(0,0,vw,vh)` + 不抢焦点会变成"躲在状态栏后的一条"，要用 `CW_USEDEFAULT` 交系统铺满 + `SetForegroundWindow`；② coredll 无 `CreateFontW`，用 `CreateFontIndirectW` + `LOGFONTW`。**已补**：padding + 边框（读 `css_computed_padding/border_*`，布局把内容盒按 border+padding 内缩，绘制由内容盒推出边框盒、填背景 + 画四条边框边）、相邻兄弟 margin 折叠（布局函数收"前一兄弟下边距"、返回本块下边距，内容盒顶按 `min` 上提）、`test_host` 选择器拆成**通信 / 引擎(弹框) / GDI渲染**三组。**已补（续）**：垂直滚动（`PCore_DocumentHeight` + `WS_VSCROLL` + `ScrollWindowEx` 平移已有像素、只重画露出的一条，旧机也顺）、viewport/DPI 自适应（`PCore_SetViewport` 用真实屏幕尺寸 + `GetDeviceCaps` DPI，不再写死 800×600）、旋转重排（`WM_SIZE` 按新客户区宽重新 `PCore_LayoutDocument`）、隐藏软键盘（aygshell `SHFullScreen(SHFS_HIDESIPBUTTON)` + `SHSipPreference(SIP_FORCEDOWN)`）。待补：抓取真实网页、行内元素（a/span/b/i 等行内格式化）、图片（img）、DPI 视觉缩放（高 dpi 屏按 dpi/96 放大坐标）、绘制剔除、兄弟组合选择器（`+`/`~`，曾误 stub）、父子 margin 折叠、底部命令栏。
+2. **CSS selector 补强**  
+   `pcore_select.c` 里 attribute selectors（`[foo]` / `[foo=bar]` / `[foo*=bar]` 等）和 adjacent/general sibling selectors（`+` / `~`）仍是 stub。真实网页 CSS 套用完整度会受影响。
 
-### 里程碑 D+（后续）
-图片解码（libnsgif/png/jpeg）、`@import`/外链经 positron_http 拉取、更多 CSS、JS（duktape）。
+3. **图片 / SVG**  
+   `plot_bitmap` 仍是 stub，`box->object/background` 路径尚未喂真实资源。方向：优先用 WM Imaging API 做 PNG/JPEG/GIF 位图解码，再接 NetSurf bitmap/plotter；SVG 可后置评估 libsvgtiny。
 
-**贯穿性决策**：① UA 默认表（A.1） ② computed 存储用节点 user-data vs 侧表 ③ 文本测量上下文（B） ④ C 引入项目第一个 GUI 窗口。
+4. **后台导航体验**  
+   点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document。
+
+5. **布局细化**  
+   flex 和常见 table 已通；float、rowspan 精确跨行占用、border-collapse 视觉、forms/widgets 仍需按真实页面痛点推进。
+
+更完整规划见 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
 
 ---
 
@@ -182,7 +180,11 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ## 已知风险点
 
-- **解析层已真机验证（TEST 6/7/7b/8）**，但**选择 / 布局 / 绘制尚未开始**——`positron_core.dll` 目前只到「HTML→DOM + CSS 解析」，还不能算计算样式、不能排版、不能上屏。
+- **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table；但 border、图片/SVG、float、forms/widgets、复杂 table 仍需分阶段补。
+- **border redraw 仍是 no-op**：`pcore_layout_stubs.c` 里的 `html_redraw_borders` / `html_redraw_inline_borders` 暂未接 `redraw_border.c`，真实页面会缺大量边线。
+- **图片路径为空**：`plot_bitmap` 是 stub，`box->object/background` 尚未接资源加载和 bitmap 解码。
+- **部分 CSS selector 仍 stub**：attribute selectors、adjacent/general sibling selectors、动态伪类会影响真实网页样式命中。
+- **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。
 - **行结尾 LF→CRLF**：git autocrlf 会规范化 vendored 源码的行尾，无害（MSVC 两者都吃）。
 - **c89ize.py 的边角**：多声明符留人工；新出现的 `*const*` 型 for 声明正则可能漏（手补，如 helpers.h）。
