@@ -1592,10 +1592,10 @@ static BOOL test12_render(void)
 
 /* -------------------------------------------------------------------- */
 /* TEST 13 - browse: fetch a real HTTPS page and render it                */
-/* positron_http GET -> PCore_ParseHTML -> StyleDocument (UA + the page's */
-/* own <style>) -> layout -> render in the scroll window. PHttp is assumed */
-/* already initialised (WinMain does it). External <link> CSS, images and  */
-/* JS are not fetched/rendered yet.                                        */
+/* positron_http GET -> PCore_ParseHTML -> StyleDocumentEx (UA + inline and */
+/* external CSS) -> layout -> render in the scroll window. PHttp is assumed */
+/* already initialised (WinMain does it). Images only have <img> fallback;  */
+/* JS is not fetched/executed yet.                                          */
 /* -------------------------------------------------------------------- */
 
 static BOOL test_browse(void)
@@ -1764,6 +1764,7 @@ static BOOL test17_nsrender(void)
               "(red/green/blue: One/Two/Three) in a dashed border row.\n"
               "Side by side = flex works; stacked = flex failed.\n"
               "Below that, a 2x2 table with visible cell borders.\n"
+              "Also expect text: Image fallback: Logo.\n"
               "Tap or Esc to close.");
 
     g_ns_render = 1;
@@ -1780,7 +1781,7 @@ static BOOL test17_nsrender(void)
 
     show_info(L"TEST 17 OK",
               "Rendered end-to-end by the ported NetSurf engine\n"
-              "(layout.c + redraw.c + redraw_border.c + flex/table)\n"
+              "(layout.c + redraw.c + redraw_border.c + flex/table/img alt)\n"
               "on the device.");
     return TRUE;
 }

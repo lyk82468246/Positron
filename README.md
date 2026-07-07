@@ -19,11 +19,11 @@ Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaw
 
 Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libparserutils / libhubbub / libdom / libcss）全部在 VS2008 / WinCE / ARM 下编译通过（C99→C89 脚本化转换，见 `scripts/c89ize.py` 等）。`positron_core.dll` 已作为产品级引擎边界立起，公开 `PCore_ParseHTML/ParseCSS/StyleDocumentEx/LayoutDocument/PaintDocument/LinkAt` 等小巧 opaque-HANDLE API。HTML→DOM、CSS 解析、CSS select/computed style、整树样式、外部 `<link rel="stylesheet">` 抓取、GDI 窗口绘制、垂直滚动、viewport/DPI 自适应、点击命中与导航、HTTPS verified fetch、明文 `http://` via WinInet、跨协议重定向、完整 Mozilla CA bundle 均已真机验证。
 
-当前 Browse 正式路径已经从早期手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex 已接入 `layout_flex.c`，TEST 17 三色块横排；M7-table 已接入 `table.c` + `BOX_TABLE > ROW_GROUP > ROW > CELL` 构建，TEST 17 2×2 表格网格真机验证。M5f 已把 NetSurf `redraw_border.c` 加入工程并移除 border no-op stub，TEST 17 已增加可见边框验收；CSS attribute/sibling selector 与 `:link` / `:lang()` 也已在 `pcore_select.c` 实现并扩展 TEST 9。下一步是 VS2008/WM6 编译与真机确认，然后推进图片/SVG 与后台导航体验。详见 [PHASE4.md](PHASE4.md) 和 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
+当前 Browse 正式路径已经从早期手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex 已接入 `layout_flex.c`，TEST 17 三色块横排；M7-table 已接入 `table.c` + `BOX_TABLE > ROW_GROUP > ROW > CELL` 构建，TEST 17 2×2 表格网格真机验证。M5f 已把 NetSurf `redraw_border.c` 加入工程并移除 border no-op stub，TEST 17 已增加可见边框验收；CSS attribute/sibling selector 与 `:link` / `:lang()` 也已在 `pcore_select.c` 实现并扩展 TEST 9；`<img>` 已先接入 alt/src 文本占位路径并扩展 TEST 15/17，真实位图/SVG 解码仍待后续。下一步是 VS2008/WM6 编译与真机确认，然后推进真实图片/SVG 与后台导航体验。详见 [PHASE4.md](PHASE4.md) 和 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
 
-当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex 和常见 table。`redraw_border.c` 与 CSS attribute/sibling/static-pseudo selector 已源码接入，等待 WM6 编译/真机验证。
+当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex 和常见 table；`<img>` alt/src 文本占位。`redraw_border.c`、CSS attribute/sibling/static-pseudo selector、`<img>` fallback 已源码接入，等待 WM6 编译/真机验证。
 
-当前明确缺口：图片/SVG 未显示；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整；网络与导航仍同步阻塞；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：真实图片/SVG 未显示（`<img>` 只有 alt/src 文本占位）；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整；网络与导航仍同步阻塞；JavaScript 尚未实现但属于长期必做目标。
 
 ---
 
@@ -173,7 +173,7 @@ scripts\stage.bat Release :: 或 Release
 - **熵源**：默认 `CryptGenRandom`（Phase 3 起）；CSP 不可用时自动退回 QPC+GetTickCount+tid/pid jitter，CTR-DRBG 兜底。
 - **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 gzip 解码、响应体 cap 1 MB；GET 已有有限 3xx follow，明文 `http://` 经 WinInet。
 - **同步阻塞**：所有网络调用阻塞，不适合直接在 UI 线程长跑。
-- **渲染限制**：真实 NetSurf layout/redraw 已接入，`redraw_border.c` 与 CSS attribute/sibling/static-pseudo selector 已源码接入但仍待 WM6 编译/真机验证；图片/SVG、CSS 动态状态伪类、float、rowspan 精确跨行、border-collapse、forms/widgets 仍待补。JavaScript 是长期必做项，当前尚未实现。
+- **渲染限制**：真实 NetSurf layout/redraw 已接入，`redraw_border.c`、CSS attribute/sibling/static-pseudo selector、`<img>` alt/src 文本占位已源码接入但仍待 WM6 编译/真机验证；真实图片/SVG 解码绘制、CSS 动态状态伪类、float、rowspan 精确跨行、border-collapse、forms/widgets 仍待补。JavaScript 是长期必做项，当前尚未实现。
 - **WM6 X 按钮 = 最小化不是关闭**。每次启动 test_host 前确认任务管理器没有遗留实例，否则 stage.bat 替换 exe 时会产生 image 不一致。
 - **WMDC 桥会静默断**：host 待机 / 模拟器长跑后偶尔失联，表现是 `PTls_Connect` 拿到 `-0x004C [BIO: recv WSA=...]`。修法：重启 WMDC（任务栏 → 退出 → 重启）。**联网测试前先在 IE Mobile 打开 baidu 验证一遍**。
 - **模拟器时钟**：跑 verified TLS 前必须校准（见上）。证书 notBefore/notAfter 都按 UTC 比对当前时间。

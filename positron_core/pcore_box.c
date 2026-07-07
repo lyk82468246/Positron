@@ -11,9 +11,10 @@
  * box_normalise.c would (wrapping runs of inline content in anonymous
  * BOX_INLINE_CONTAINER), so the tree is layout-ready.
  *
- * Current scope: block/inline text, inline-block, flex, and common table
- * structures are built for NetSurf's real layout/redraw path. Objects, images,
- * forms/widgets, floats, and exact rowspan occupancy remain staged follow-ups.
+ * Current scope: block/inline text, inline-block, flex, common table
+ * structures, and <img> alt/src text fallback are built for NetSurf's real
+ * layout/redraw path. Real object/bitmap image decoding, forms/widgets,
+ * floats, and exact rowspan occupancy remain staged follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -127,6 +128,116 @@ static int pcore_text_all_ws(const char *s, size_t len)
     return 1;
 }
 
+static int pcore_node_name_is(dom_node *node, const char *want)
+{
+    dom_string *name = NULL;
+    dom_string *want_name = NULL;
+    int match = 0;
+
+    if (node == NULL || want == NULL) {
+        return 0;
+    }
+    if (dom_node_get_node_name(node, &name) != DOM_NO_ERR || name == NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) want, strlen(want), &want_name) ==
+            DOM_NO_ERR && want_name != NULL) {
+        match = dom_string_caseless_isequal(name, want_name) ? 1 : 0;
+        dom_string_unref(want_name);
+    }
+    dom_string_unref(name);
+    return match;
+}
+
+/* Copy an attribute's raw UTF-8 bytes into the box-tree talloc context.
+ * Returns 1 when the attribute is present, even if its value is empty. */
+static int pcore_copy_attr_text(dom_node *node, const char *attr, void *ctx,
+        char **out, size_t *out_len)
+{
+    dom_string *name = NULL;
+    dom_string *value = NULL;
+    int present = 0;
+
+    *out = NULL;
+    *out_len = 0;
+    if (dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+            DOM_NO_ERR) {
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) == DOM_NO_ERR &&
+            value != NULL) {
+        const char *data = dom_string_data(value);
+        size_t len = dom_string_byte_length(value);
+
+        present = 1;
+        if (data != NULL && len > 0) {
+            char *copy = (char *) talloc_memdup(ctx, data, len);
+            if (copy != NULL) {
+                *out = copy;
+                *out_len = len;
+            }
+        }
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return present;
+}
+
+static struct box *pcore_make_owned_text_box(dom_node *owner,
+        css_computed_style *style, void *ctx, char *text, size_t len)
+{
+    struct box *b;
+
+    if (text == NULL || len == 0) {
+        return NULL;
+    }
+    b = pcore_box_new(BOX_TEXT, style, ctx);
+    if (b != NULL) {
+        b->node = owner;
+        b->text = text;
+        b->length = len;
+    }
+    return b;
+}
+
+static struct box *pcore_make_literal_text_box(dom_node *owner,
+        css_computed_style *style, void *ctx, const char *text)
+{
+    char *copy;
+    size_t len;
+
+    if (text == NULL) {
+        return NULL;
+    }
+    len = strlen(text);
+    if (len == 0) {
+        return NULL;
+    }
+    copy = (char *) talloc_memdup(ctx, text, len);
+    return pcore_make_owned_text_box(owner, style, ctx, copy, len);
+}
+
+/* Minimal image path: before bitmap/object plumbing exists, make <img>
+ * contribute accessible fallback text to layout/redraw. alt="" stays silent. */
+static struct box *pcore_make_image_fallback_box(dom_node *node,
+        css_computed_style *style, void *ctx)
+{
+    char *text;
+    size_t len;
+
+    if (!pcore_node_name_is(node, "img")) {
+        return NULL;
+    }
+    if (pcore_copy_attr_text(node, "alt", ctx, &text, &len)) {
+        return pcore_make_owned_text_box(node, style, ctx, text, len);
+    }
+    if (pcore_copy_attr_text(node, "src", ctx, &text, &len) &&
+            text != NULL && len > 0) {
+        return pcore_make_owned_text_box(node, style, ctx, text, len);
+    }
+    return pcore_make_literal_text_box(node, style, ctx, "[image]");
+}
+
 /* Create a BOX_TEXT for a DOM text node, copying its UTF-8 into the talloc ctx.
  * Returns NULL for empty text. `style` is the governing inline style. */
 static struct box *pcore_make_text_box(dom_node *tnode,
@@ -201,7 +312,13 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                 css_computed_style *cs = pcore_node_computed_style(child);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
-                    if (d == CSS_DISPLAY_INLINE_BLOCK ||
+                    if (pcore_node_name_is(child, "img")) {
+                        struct box *img = pcore_make_image_fallback_box(child,
+                                cs, ctx);
+                        if (img != NULL) {
+                            pcore_box_add_child(cont, img);
+                        }
+                    } else if (d == CSS_DISPLAY_INLINE_BLOCK ||
                             d == CSS_DISPLAY_INLINE_TABLE ||
                             d == CSS_DISPLAY_INLINE_FLEX) {
                         /* atomic inline: a block subtree typed inline-block */
@@ -292,7 +409,18 @@ static struct box *pcore_construct_block(dom_node *node,
             } else if (type == DOM_ELEMENT_NODE) {
                 css_computed_style *cs = pcore_node_computed_style(child);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
-                    if (pcore_is_inline_level(cs, 0)) {
+                    if (pcore_node_name_is(child, "img")) {
+                        struct box *img;
+                        if (inline_cont == NULL) {
+                            inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
+                                    NULL, ctx);
+                            pcore_box_add_child(box, inline_cont);
+                        }
+                        img = pcore_make_image_fallback_box(child, cs, ctx);
+                        if (img != NULL) {
+                            pcore_box_add_child(inline_cont, img);
+                        }
+                    } else if (pcore_is_inline_level(cs, 0)) {
                         uint8_t d = css_computed_display(cs, false);
                         if (inline_cont == NULL) {
                             inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
@@ -709,6 +837,7 @@ PCORE_API void PCore_BoxTreeTest(char *out, int cap)
         "<style>i{font-style:italic}</style></head>"
         "<body><h1>Title</h1>"
         "<p>Some <b>bold</b> and <i>italic</i> text in a paragraph.</p>"
+        "<p>Image fallback: <img alt=\"Logo\" src=\"logo.png\"></p>"
         "<div><p>Nested paragraph one.</p><p>Nested two.</p></div>"
         "</body></html>";
     HANDLE hDoc;
@@ -748,7 +877,7 @@ PCORE_API void PCore_BoxTreeTest(char *out, int cap)
 
     wsprintfW(w, L"box tree: blocks=%d inline_containers=%d\r\n"
                  L"inline(+end/iblock)=%d text=%d other=%d\r\n"
-                 L"total=%d (expect blocks>=5, text>=4)",
+                 L"total=%d (expect blocks>=6, text>=6 incl img alt)",
               blk, icont, inl, txt, other,
               blk + icont + inl + txt + other);
     WideCharToMultiByte(CP_ACP, 0, w, -1, out, cap, NULL, NULL);
@@ -902,6 +1031,7 @@ PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
         "<div class=\"c2\">Two</div><div class=\"c3\">Three</div></div>"
         "<table><tr><td class=\"c1\">A1</td><td class=\"c2\">B1</td></tr>"
         "<tr><td class=\"c3\">A2</td><td class=\"c1\">B2</td></tr></table>"
+        "<p>Image fallback: <img alt=\"Logo\" src=\"logo.png\"></p>"
         "<div><p>This paragraph is laid out by NetSurf's real layout.c and "
         "painted by its real redraw.c through our GDI plotter. It should wrap "
         "across several lines inside the light-blue block.</p>"

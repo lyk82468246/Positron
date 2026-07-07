@@ -71,19 +71,22 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 当前状态：
 
+- `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，TEST 15/17 已扩展，待 VS2008/WM6 编译和真机验证。
 - `plot_bitmap` 是 stub。
 - `box->object/background` 相关内容基本为空。
-- SVG logo、PNG/JPEG 图片都不会显示。
+- SVG logo、PNG/JPEG 图片仍不会真实显示，只会在 `<img>` 有 alt/src 时显示文本占位。
 
 建议顺序：
 
-1. 基础 `<img>` 资源发现和 fetch。
-2. PNG/JPEG/GIF 位图解码，优先看 WM Imaging API。
-3. 接 NetSurf bitmap / plot_bitmap。
-4. SVG 可后置，必要时先占位或引入 libsvgtiny。
+1. 先验证当前 `<img>` alt/src 文本占位能在 TEST 15/17 编译和真机显示。
+2. 基础 `<img>` 资源发现、相对 URL 解析和 fetch。
+3. PNG/JPEG/GIF 位图解码，优先看 WM Imaging API。
+4. 接 NetSurf bitmap / plot_bitmap。
+5. SVG 可后置，必要时先占位或引入 libsvgtiny。
 
 验收：
 
+- TEST 17 可见 `Image fallback: Logo`。
 - 本地 HTML + 小 PNG/JPEG 能显示。
 - 真实网页 logo/图片不再空白。
 

@@ -99,7 +99,7 @@ scripts\stage.bat
 
 1. M5f 验证：用 VS2008/WM6 编译 `positron_core`，跑 TEST 17，确认 `redraw_border.c` 没有 C89/链接问题且边框可见。
 2. CSS selector 验证：用 VS2008/WM6 编译并跑 TEST 9，确认 attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 在真机 libdom/libcss 路径上可用。
-3. 图片/SVG：`plot_bitmap` 仍是 stub，SVG logo 等不会显示。方向应优先看 WM Imaging API / NetSurf bitmap 接口，而不是从零写解码器。
+3. 图片/SVG：`<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，TEST 15/17 已扩展，待 WM6 编译/真机验证；`plot_bitmap` 仍是 stub，SVG logo/PNG/JPEG 仍不会真实显示。方向应优先看 WM Imaging API / NetSurf bitmap 接口，而不是从零写解码器。
 4. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。
 
 ## 开发纪律

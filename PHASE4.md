@@ -131,7 +131,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    `pcore_select.c` 已实现 attribute selectors（`[foo]` / `[foo=bar]` / `[foo*=bar]` 等）、adjacent/general sibling selectors（`+` / `~`）以及 `:link` / `:lang()`。TEST 9 已扩展为离线 computed-style 验收。下一步是用 VS2008/WM6 编译并跑 TEST 9；动态状态伪类仍保持 no-match。
 
 3. **图片 / SVG**  
-   `plot_bitmap` 仍是 stub，`box->object/background` 路径尚未喂真实资源。方向：优先用 WM Imaging API 做 PNG/JPEG/GIF 位图解码，再接 NetSurf bitmap/plotter；SVG 可后置评估 libsvgtiny。
+   `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，TEST 15/17 已扩展（待 WM6 编译/真机验证）；`plot_bitmap` 仍是 stub，`box->object/background` 路径尚未喂真实资源。方向：优先用 WM Imaging API 做 PNG/JPEG/GIF 位图解码，再接 NetSurf bitmap/plotter；SVG 可后置评估 libsvgtiny。
 
 4. **后台导航体验**  
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document。
@@ -180,9 +180,9 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ## 已知风险点
 
-- **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table；M5f 已接入 `redraw_border.c` 源码但仍待 WM6 编译/真机确认；图片/SVG、float、forms/widgets、复杂 table 仍需分阶段补。
+- **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table；M5f 已接入 `redraw_border.c` 源码但仍待 WM6 编译/真机确认；`<img>` alt/src 文本占位已接入源码但仍待 WM6 编译/真机确认；真实图片/SVG、float、forms/widgets、复杂 table 仍需分阶段补。
 - **border redraw 待验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制现在来自 NetSurf `redraw_border.c`；需要用 TEST 17 和真实 Browse 页面确认 solid/dotted/dashed/table 边框表现。
-- **图片路径为空**：`plot_bitmap` 是 stub，`box->object/background` 尚未接资源加载和 bitmap 解码。
+- **图片路径仍未真实解码**：`<img>` 目前只生成 alt/src 文本占位；`plot_bitmap` 是 stub，`box->object/background` 尚未接资源加载和 bitmap 解码。
 - **部分 CSS selector 待验证/补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已源码实现并由 TEST 9 覆盖，但仍待 WM6 编译/真机确认；动态状态伪类仍为 no-match，会影响真实网页样式命中。
 - **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。
