@@ -13,7 +13,7 @@
  * "corestring" table, no html-content structures). Selectors that need more
  * machinery than this first cut provides - dynamic pseudo-classes (:hover,
  * :visited, ...) - are stubbed to "no match"; type / class / id / attribute /
- * descendant / sibling structure all work.
+ * static pseudo-classes / descendant / sibling structure all work.
  *
  * C89 only.
  */
@@ -945,11 +945,69 @@ static css_error node_is_empty(void *pw, void *node, bool *match)
 }
 
 /* ------------------------------------------------------------------ */
-/* dynamic / state pseudo-classes - not modelled yet, all false        */
+/* static / dynamic pseudo-classes                                    */
 /* ------------------------------------------------------------------ */
 
+static bool pcore_node_name_is(dom_node *node, const char *want)
+{
+    dom_string *name;
+    dom_string *want_name;
+    dom_node_type type;
+    dom_exception err;
+    bool match;
+
+    err = dom_node_get_node_type(node, &type);
+    if (err != DOM_NO_ERR || type != DOM_ELEMENT_NODE) {
+        return false;
+    }
+
+    err = dom_node_get_node_name(node, &name);
+    if (err != DOM_NO_ERR || name == NULL) {
+        return false;
+    }
+    err = dom_string_create_interned((const uint8_t *) want, strlen(want),
+            &want_name);
+    if (err != DOM_NO_ERR) {
+        dom_string_unref(name);
+        return false;
+    }
+    match = dom_string_caseless_isequal(name, want_name);
+    dom_string_unref(want_name);
+    dom_string_unref(name);
+    return match;
+}
+
+static bool pcore_node_has_attr_cstr(dom_node *node, const char *attr_name)
+{
+    dom_string *name;
+    dom_exception err;
+    bool has_attr;
+
+    err = dom_string_create_interned((const uint8_t *) attr_name,
+            strlen(attr_name), &name);
+    if (err != DOM_NO_ERR) {
+        return false;
+    }
+    has_attr = false;
+    err = dom_element_has_attribute(node, name, &has_attr);
+    dom_string_unref(name);
+    return (err == DOM_NO_ERR && has_attr);
+}
+
 static css_error node_is_link(void *pw, void *node, bool *match)
-{ (void) pw; (void) node; *match = false; return CSS_OK; }
+{
+    dom_node *n = (dom_node *) node;
+
+    (void) pw;
+    *match = false;
+    if (!pcore_node_has_attr_cstr(n, "href")) {
+        return CSS_OK;
+    }
+    *match = pcore_node_name_is(n, "a") ||
+            pcore_node_name_is(n, "area") ||
+            pcore_node_name_is(n, "link");
+    return CSS_OK;
+}
 static css_error node_is_visited(void *pw, void *node, bool *match)
 { (void) pw; (void) node; *match = false; return CSS_OK; }
 static css_error node_is_hover(void *pw, void *node, bool *match)
@@ -969,7 +1027,60 @@ static css_error node_is_target(void *pw, void *node, bool *match)
 
 static css_error node_is_lang(void *pw, void *node,
         lwc_string *lang, bool *match)
-{ (void) pw; (void) node; (void) lang; *match = false; return CSS_OK; }
+{
+    dom_node *n;
+    dom_string *attr_name;
+    size_t want_len;
+    dom_exception err;
+
+    (void) pw;
+    *match = false;
+    want_len = lwc_string_length(lang);
+    if (want_len == 0) {
+        return CSS_OK;
+    }
+    err = dom_string_create_interned((const uint8_t *) "lang", 4,
+            &attr_name);
+    if (err != DOM_NO_ERR) {
+        return CSS_NOMEM;
+    }
+
+    n = dom_node_ref((dom_node *) node);
+    while (n != NULL) {
+        dom_node *parent;
+        dom_node_type type;
+
+        err = dom_node_get_node_type(n, &type);
+        if (err == DOM_NO_ERR && type == DOM_ELEMENT_NODE) {
+            dom_string *attr = NULL;
+            if (dom_element_get_attribute(n, attr_name, &attr) ==
+                    DOM_NO_ERR && attr != NULL) {
+                const char *data = dom_string_data(attr);
+                size_t len = dom_string_byte_length(attr);
+                const char *want = lwc_string_data(lang);
+                if ((len == want_len ||
+                        (len > want_len && data[want_len] == '-')) &&
+                        strncasecmp(data, want, want_len) == 0) {
+                    *match = true;
+                    dom_string_unref(attr);
+                    dom_node_unref(n);
+                    break;
+                }
+                dom_string_unref(attr);
+            }
+        }
+
+        err = dom_node_get_parent_node(n, &parent);
+        dom_node_unref(n);
+        if (err != DOM_NO_ERR) {
+            break;
+        }
+        n = parent;
+    }
+
+    dom_string_unref(attr_name);
+    return CSS_OK;
+}
 
 /* ------------------------------------------------------------------ */
 /* presentational hints + UA defaults + node data                      */

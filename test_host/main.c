@@ -782,7 +782,7 @@ static BOOL test8_core(void)
 /* TEST 9 - CSS selection / computed style via positron_core.dll         */
 /* Parse a tiny HTML doc + stylesheet, then PCore_ComputeColor drives     */
 /* libcss selection (libdom-backed handler) to compute element colours.   */
-/* Proves type/class/id + attribute and sibling selectors end-to-end.     */
+/* Proves type/class/id + attribute/sibling/static-pseudo selectors.      */
 /* -------------------------------------------------------------------- */
 
 static BOOL test9_select(void)
@@ -793,8 +793,10 @@ static BOOL test9_select(void)
     unsigned long p_rgb;
     unsigned long span_argb;
     unsigned long span_rgb;
+    unsigned long a_argb;
+    unsigned long a_rgb;
     int           rc;
-    char          msg[384];
+    char          msg[512];
     static const char *HTML =
         "<!DOCTYPE html><html><head><title>x</title></head>"
         "<body><h1>Title</h1>"
@@ -802,6 +804,7 @@ static BOOL test9_select(void)
         "lang=\"en-US\">Hello</p>"
         "<div>gap</div>"
         "<span data-code=\"pre-mid-post\">World</span>"
+        "<a href=\"/next\" lang=\"zh-CN\">Next</a>"
         "</body></html>";
     static const char *CSS =
         "p { color: #010101; }\n"
@@ -809,7 +812,9 @@ static BOOL test9_select(void)
         "{ color: #112233; }\n"
         "span { color: #010101; }\n"
         "h1 ~ span[data-code^=\"pre\"][data-code$=\"post\"]"
-        "[data-code*=\"-mid-\"] { color: #445566; }\n";
+        "[data-code*=\"-mid-\"] { color: #445566; }\n"
+        "a { color: #010101; }\n"
+        "a:link:lang(zh) { color: #778899; }\n";
 
 
     hDoc = PCore_ParseHTML(HTML, 0);
@@ -828,24 +833,30 @@ static BOOL test9_select(void)
     if (rc == 0) {
         rc = PCore_ComputeColor(hDoc, hSheet, "span", &span_argb);
     }
+    if (rc == 0) {
+        rc = PCore_ComputeColor(hDoc, hSheet, "a", &a_argb);
+    }
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
 
     if (rc != 0) {
         show_error(L"TEST 9 FAIL",
-                   "PCore_ComputeColor failed (missing <p>/<span>, "
+                   "PCore_ComputeColor failed (missing <p>/<span>/<a>, "
                    "or selection error)");
         return FALSE;
     }
 
     p_rgb = p_argb & 0x00FFFFFFUL;          /* low 24 bits = RRGGBB */
     span_rgb = span_argb & 0x00FFFFFFUL;
-    if (p_rgb != 0x00112233UL || span_rgb != 0x00445566UL) {
+    a_rgb = a_argb & 0x00FFFFFFUL;
+    if (p_rgb != 0x00112233UL || span_rgb != 0x00445566UL ||
+            a_rgb != 0x00778899UL) {
         _snprintf(msg, sizeof(msg) - 1,
                   "computed colors off:\n"
                   "  p    RGB 0x%06lX, expected 0x112233\n"
-                  "  span RGB 0x%06lX, expected 0x445566",
-                  p_rgb, span_rgb);
+                  "  span RGB 0x%06lX, expected 0x445566\n"
+                  "  a    RGB 0x%06lX, expected 0x778899",
+                  p_rgb, span_rgb, a_rgb);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 9 FAIL", msg);
         return FALSE;
@@ -857,8 +868,10 @@ static BOOL test9_select(void)
               "    -> p RGB 0x%06lX\n"
               "  h1 ~ span[data-code^][data-code$][data-code*]\n"
               "    -> span RGB 0x%06lX\n\n"
-              "(attribute + sibling selectors via libdom handler.)",
-              p_rgb, span_rgb);
+              "  a:link:lang(zh)\n"
+              "    -> a RGB 0x%06lX\n\n"
+              "(attribute + sibling + static pseudo selectors.)",
+              p_rgb, span_rgb, a_rgb);
     msg[sizeof(msg) - 1] = '\0';
     show_info(L"TEST 9 OK", msg);
     return TRUE;

@@ -2,7 +2,7 @@
 
 更新时间：2026-07-07  
 当前分支：`main`  
-当前最新提交：请以 `git log --oneline -5` 为准；Codex 接手后已刷新文档，接入 M5f border 源码，并实现 CSS attribute/sibling selector 源码路径。
+当前最新提交：请以 `git log --oneline -5` 为准；Codex 接手后已刷新文档，接入 M5f border 源码，并实现 CSS attribute/sibling/static-pseudo selector 源码路径。
 
 ## 项目目标
 
@@ -31,7 +31,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 - `layout_flex.c` 已移植并真机验证，TEST 17 三色块横排。
 - `table.c` 已移植，`pcore_construct_table` 生成 `BOX_TABLE > ROW_GROUP > ROW > CELL`，TEST 17 2x2 table 网格真机验证。
 - `redraw_border.c` 已接入源码和 `positron_core.vcproj`；`pcore_layout_stubs.c` 中 border no-op 已移除。当前环境未找到 VS2008/MSBuild，仍需在 WM6 工具链编译并跑 TEST 17 真机确认。
-- `pcore_select.c` 已实现 CSS attribute selectors 与 adjacent/general sibling selectors；TEST 9 已扩展为离线 computed-style 验收。当前环境未找到 VS2008/MSBuild，仍需在 WM6 工具链编译并跑 TEST 9 真机确认。
+- `pcore_select.c` 已实现 CSS attribute selectors、adjacent/general sibling selectors、`:link` 与 `:lang()`；TEST 9 已扩展为离线 computed-style 验收。当前环境未找到 VS2008/MSBuild，仍需在 WM6 工具链编译并跑 TEST 9 真机确认。
 
 ## 关键文件
 
@@ -39,7 +39,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
   DOM + computed style -> NetSurf `struct box`；含 flex/table 构建；正式 layout/paint/link hit-test。
 
 - `positron_core/pcore_select.c`  
-  libcss select handler、UA CSS、整树 computed style、外部 `<link rel=stylesheet>` 抓取入口；attribute/sibling selector 源码已接入，动态伪类仍多为 no-match。
+  libcss select handler、UA CSS、整树 computed style、外部 `<link rel=stylesheet>` 抓取入口；attribute/sibling/static-pseudo selector 源码已接入，动态状态伪类仍为 no-match。
 
 - `positron_core/pcore_plot_gdi.c`  
   NetSurf plotter table + GDI 字体测量表。
@@ -98,7 +98,7 @@ scripts\stage.bat
 优先候选：
 
 1. M5f 验证：用 VS2008/WM6 编译 `positron_core`，跑 TEST 17，确认 `redraw_border.c` 没有 C89/链接问题且边框可见。
-2. CSS selector 验证：用 VS2008/WM6 编译并跑 TEST 9，确认 attribute selectors 和 adjacent/general sibling selectors 在真机 libdom/libcss 路径上可用；之后可补 `:link` 等静态伪类。
+2. CSS selector 验证：用 VS2008/WM6 编译并跑 TEST 9，确认 attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 在真机 libdom/libcss 路径上可用。
 3. 图片/SVG：`plot_bitmap` 仍是 stub，SVG logo 等不会显示。方向应优先看 WM Imaging API / NetSurf bitmap 接口，而不是从零写解码器。
 4. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。
 
