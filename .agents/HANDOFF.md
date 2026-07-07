@@ -2,7 +2,7 @@
 
 更新时间：2026-07-07  
 当前分支：`main`  
-当前最新提交：`db97b95 Phase 4 (M7-table): port table.c + build BOX_TABLE - tables render on device`
+当前最新提交：请以 `git log --oneline -5` 为准；Codex 接手后已刷新文档，并在当前工作中接入 M5f border 源码。
 
 ## 项目目标
 
@@ -20,7 +20,7 @@ Phase 1-3 已完成：
 - `positron_json.dll`：cJSON 包装。
 - `positron_http.dll`：HTTP/HTTPS GET/POST，HTTPS 走 mbedTLS verified，明文 `http://` 走 WinInet，支持有限重定向。
 
-Phase 4 当前已到 M7-table：
+Phase 4 当前已越过 M7-table，并进入 M5f border 验证：
 
 - NetSurf 底层库已在 VS2008 / WinCE / ARMV4I / C89-only 下编译通过：
   `positron_netsurf`、`positron_hubbub`、`positron_libdom`、`positron_libcss`。
@@ -30,6 +30,7 @@ Phase 4 当前已到 M7-table：
 - 旧的手写 block/inline layout + paint 已退休。
 - `layout_flex.c` 已移植并真机验证，TEST 17 三色块横排。
 - `table.c` 已移植，`pcore_construct_table` 生成 `BOX_TABLE > ROW_GROUP > ROW > CELL`，TEST 17 2x2 table 网格真机验证。
+- `redraw_border.c` 已接入源码和 `positron_core.vcproj`；`pcore_layout_stubs.c` 中 border no-op 已移除。当前环境未找到 VS2008/MSBuild，仍需在 WM6 工具链编译并跑 TEST 17 真机确认。
 
 ## 关键文件
 
@@ -86,20 +87,19 @@ scripts\stage.bat
 - GDI Render：TEST 14、17、12，离线窗口渲染。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
-M7 当前最关键验证：
+当前最关键验证：
 
-- TEST 17：内置 NetSurf real layout + redraw 页面。预期：深红 H1，三色 flex 横排，2x2 table 网格。
+- TEST 17：内置 NetSurf real layout + redraw 页面。预期：深红 H1 和红色下边框、带边框的三色 flex 横排、2x2 table 可见 cell 边框。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步
 
 优先候选：
 
-1. M5f：移植/接入 `redraw_border.c`，让 CSS border 真正绘制。当前 `pcore_layout_stubs.c` 里 border redraw 仍是 no-op。
-2. 图片/SVG：`plot_bitmap` 仍是 stub，SVG logo 等不会显示。方向应优先看 WM Imaging API / NetSurf bitmap 接口，而不是从零写解码器。
-3. CSS selector fidelity：`pcore_select.c` 里 attribute selectors 和 adjacent/general sibling selectors 仍是 stub；真实网页保真度会受影响。
+1. M5f 验证：用 VS2008/WM6 编译 `positron_core`，跑 TEST 17，确认 `redraw_border.c` 没有 C89/链接问题且边框可见。
+2. CSS selector fidelity：`pcore_select.c` 里 attribute selectors 和 adjacent/general sibling selectors 仍是 stub；真实网页保真度会受影响。
+3. 图片/SVG：`plot_bitmap` 仍是 stub，SVG logo 等不会显示。方向应优先看 WM Imaging API / NetSurf bitmap 接口，而不是从零写解码器。
 4. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。
-5. 文档同步：`README.md` / `PHASE4.md` 落后于 `main`，可单独做一次 docs refresh。
 
 ## 开发纪律
 
@@ -108,4 +108,3 @@ M7 当前最关键验证：
 - 改 TEST 时必须同步所有 MessageBox 文案、分组范围、最终 summary。
 - 改 vendored NetSurf 源码时保持最小差异，C89 化要谨慎；`c89ize.py` 不能处理所有情况，特别是 designated initializers / static aggregate initializers。
 - 不要引入 IE Mobile ActiveX 作为渲染层；渲染层方向是 OSS browser kernel port。
-

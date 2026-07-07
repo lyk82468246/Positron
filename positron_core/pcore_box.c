@@ -11,9 +11,10 @@
  * box_normalise.c would (wrapping runs of inline content in anonymous
  * BOX_INLINE_CONTAINER), so the tree is layout-ready.
  *
- * Staged scope (per the milestone plan): list-item / table* / flex display
- * values are treated as BOX_BLOCK for now; real tables/flex come later. Boxes
- * borrow DOM node pointers (the document outlives the box tree) and are all
+ * Current scope: block/inline text, inline-block, flex, and common table
+ * structures are built for NetSurf's real layout/redraw path. Objects, images,
+ * forms/widgets, floats, and exact rowspan occupancy remain staged follow-ups.
+ * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
  * C89.
@@ -877,7 +878,7 @@ PCORE_API void PCore_LayoutBoxTest(char *out, int cap)
     PCore_FreeDocument(hDoc);
 }
 
-/* M5e: render the built-in test page with NetSurf's real layout + redraw,
+/* M5f: render the built-in test page with NetSurf's real layout + redraw,
  * painting through the GDI plotter (M1) + GDI font table (M2). Builds the box
  * tree, runs layout_document, then drives html_redraw into `hdc` over a cw x ch
  * client area. Rebuilt on each call (the app paints this from WM_PAINT). This
@@ -887,14 +888,14 @@ PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
     static const char *HTML =
         "<!DOCTYPE html><html><head><style>"
         "body{background-color:#ffffff;color:#202020;margin:8px;}"
-        "h1{color:#800000;font-size:24px;}"
+        "h1{color:#800000;font-size:24px;border-bottom:3px solid #800000;}"
         "p{color:#103080;}"
-        "div{background-color:#cce6ff;padding:6px;}"
-        ".row{display:flex;background-color:#eeeeee;}"
-        ".c1{background-color:#ff8080;padding:4px;}"
-        ".c2{background-color:#80ff80;padding:4px;}"
-        ".c3{background-color:#8080ff;padding:4px;}"
-        "td{padding:4px;}"
+        "div{background-color:#cce6ff;padding:6px;border:2px solid #4060a0;}"
+        ".row{display:flex;background-color:#eeeeee;border:2px dashed #404040;}"
+        ".c1{background-color:#ff8080;padding:4px;border:1px solid #a00000;}"
+        ".c2{background-color:#80ff80;padding:4px;border:1px dotted #006000;}"
+        ".c3{background-color:#8080ff;padding:4px;border:1px solid #0000a0;}"
+        "table{border:2px solid #202020;}td{padding:4px;border:1px solid #202020;}"
         "</style></head><body>"
         "<h1>Positron + NetSurf</h1>"
         "<div class=\"row\"><div class=\"c1\">One</div>"

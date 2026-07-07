@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-07-07）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；CSS select / computed style / whole-document style / external stylesheet fetch / click navigation / full Mozilla CA bundle / WinInet 明文 http 都已打通。当前 Browse 正式路径已经切到 **NetSurf 真实 `layout.c` + `redraw.c`**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → `layout_document` → `html_redraw` → GDI plotter。**M7-flex** 已移植 `layout_flex.c` 并真机验证（TEST 17 三色块横排）；**M7-table** 已移植 `table.c` 并构建 `BOX_TABLE > ROW_GROUP > ROW > CELL`，2×2 表格真机成网格。下一步优先：`redraw_border.c` 真实边框、CSS attribute/sibling selectors、图片/SVG、后台导航体验。
+> 状态（2026-07-07）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；CSS select / computed style / whole-document style / external stylesheet fetch / click navigation / full Mozilla CA bundle / WinInet 明文 http 都已打通。当前 Browse 正式路径已经切到 **NetSurf 真实 `layout.c` + `redraw.c`**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → `layout_document` → `html_redraw` → GDI plotter。**M7-flex** 已移植 `layout_flex.c` 并真机验证（TEST 17 三色块横排）；**M7-table** 已移植 `table.c` 并构建 `BOX_TABLE > ROW_GROUP > ROW > CELL`，2×2 表格真机成网格。**M5f** 已把 `redraw_border.c` 接入源码与 `positron_core.vcproj`，并移除 border no-op stub；下一步先做 VS2008/WM6 编译与 TEST 17 真机验证，再推进 CSS attribute/sibling selectors、图片/SVG、后台导航体验。
 
 
 ---
@@ -124,8 +124,8 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 当前优先级：
 
-1. **M5f：真实 border 绘制**  
-   `redraw_border.c` 尚未接入，`html_redraw_borders` / `html_redraw_inline_borders` 仍在 `pcore_layout_stubs.c` 里 no-op。真实网页的导航框、表格线、分隔线、按钮边框都会受影响。
+1. **M5f：真实 border 绘制验证**
+   `redraw_border.c` 已源码接入并加入 `positron_core.vcproj`，`pcore_layout_stubs.c` 里的 `html_redraw_borders` / `html_redraw_inline_borders` no-op 已移除；`scripts/c89ize.py` 也补了 `plot_style_t` / `plot_font_style_t` 简单 designated initializer 转换规则。下一步是用 VS2008/WM6 编译并跑 TEST 17，确认 H1 下边框、flex 容器边框、table/cell 边框可见。
 
 2. **CSS selector 补强**  
    `pcore_select.c` 里 attribute selectors（`[foo]` / `[foo=bar]` / `[foo*=bar]` 等）和 adjacent/general sibling selectors（`+` / `~`）仍是 stub。真实网页 CSS 套用完整度会受影响。
@@ -180,12 +180,12 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ## 已知风险点
 
-- **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table；但 border、图片/SVG、float、forms/widgets、复杂 table 仍需分阶段补。
-- **border redraw 仍是 no-op**：`pcore_layout_stubs.c` 里的 `html_redraw_borders` / `html_redraw_inline_borders` 暂未接 `redraw_border.c`，真实页面会缺大量边线。
+- **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table；M5f 已接入 `redraw_border.c` 源码但仍待 WM6 编译/真机确认；图片/SVG、float、forms/widgets、复杂 table 仍需分阶段补。
+- **border redraw 待验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制现在来自 NetSurf `redraw_border.c`；需要用 TEST 17 和真实 Browse 页面确认 solid/dotted/dashed/table 边框表现。
 - **图片路径为空**：`plot_bitmap` 是 stub，`box->object/background` 尚未接资源加载和 bitmap 解码。
 - **部分 CSS selector 仍 stub**：attribute selectors、adjacent/general sibling selectors、动态伪类会影响真实网页样式命中。
 - **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。
 - **行结尾 LF→CRLF**：git autocrlf 会规范化 vendored 源码的行尾，无害（MSVC 两者都吃）。
-- **c89ize.py 的边角**：多声明符留人工；新出现的 `*const*` 型 for 声明正则可能漏（手补，如 helpers.h）。
+- **c89ize.py 的边角**：已补 `plot_style_t` / `plot_font_style_t` 简单 designated initializer 转换；多声明符仍留人工，新出现的 `*const*` 型 for 声明正则可能漏（手补，如 helpers.h）。
 - **工具链小坑**：Bash/PowerShell/Edit 共用一个安全分类器（曾短暂故障）；`git rm` / `Remove-Item` 会触发"删除 / 根路径"静态守卫——用 `git reset -- <file>` 取消暂存替代。

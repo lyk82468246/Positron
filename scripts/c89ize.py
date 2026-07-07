@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
 c89ize.py - rewrite NetSurf libcss C99 constructs so the VS2008 (C89) C
-compiler accepts them. Two scope-preserving transforms:
+compiler accepts them. Three conservative transforms:
 
-1. Mid-block variable declarations -> hoist the declarator to the top of its
+1. Simple NetSurf plot style designated initializers -> positional C89
+   initializers for known field order (`plot_style_t`, `plot_font_style_t`).
+
+2. Mid-block variable declarations -> hoist the declarator to the top of its
    enclosing block, leaving the initializer in place as an assignment:
        stmt; TYPE name = init;  ->  { TYPE name;  ...stmt;  name = init; ... }
 
-2. for-loop declarations -> hoist the loop variable to the enclosing block top:
+3. for-loop declarations -> hoist the loop variable to the enclosing block top:
        for (TYPE i = init; ...)  ->  TYPE i;  ...  for (i = init; ...)
 
 A proper brace stack is maintained by tracking, per line, the MINIMUM depth
@@ -43,6 +46,75 @@ FORD = re.compile(
     r'(?P<type>(?:const\s+)?(?:unsigned\s+|signed\s+|struct\s+)?[A-Za-z_]\w*(?:\s*\*+\s*|\s+))'
     r'(?P<name>[A-Za-z_]\w*)'
     r'(?P<post>\s*=.*)$')
+
+DESIGNATED_TYPES = {
+    'plot_style_t': [
+        'stroke_type', 'stroke_width', 'stroke_colour',
+        'fill_type', 'fill_colour',
+    ],
+    'plot_font_style_t': [
+        'families', 'family', 'size', 'weight',
+        'flags', 'background', 'foreground',
+    ],
+}
+
+DESIGNATED_START = re.compile(
+    r'^(?P<ind>\s*)'
+    r'(?P<decl>(?:(?:static|const)\s+)*'
+    r'(?P<type>plot_style_t|plot_font_style_t)\s+'
+    r'(?:const\s+)?[A-Za-z_]\w*)\s*=\s*\{\s*$')
+
+DESIGNATED_ENTRY = re.compile(
+    r'^\s*\.(?P<field>[A-Za-z_]\w*)\s*=\s*(?P<value>.*?)(?:,)?\s*$')
+
+
+def transform_designated_structs(text):
+    """Rewrite simple multiline designated initializers for known NetSurf
+    structs. This deliberately avoids nested values and unknown types."""
+    lines = text.split('\n')
+    out = []
+    i = 0
+    n = 0
+
+    while i < len(lines):
+        m = DESIGNATED_START.match(lines[i])
+        if not m:
+            out.append(lines[i])
+            i += 1
+            continue
+
+        fields = DESIGNATED_TYPES[m.group('type')]
+        values = {}
+        j = i + 1
+        ok = True
+
+        while j < len(lines):
+            s = lines[j].strip()
+            if s == '};':
+                break
+            em = DESIGNATED_ENTRY.match(lines[j])
+            if not em:
+                ok = False
+                break
+            if em.group('field') not in fields:
+                ok = False
+                break
+            values[em.group('field')] = em.group('value')
+            j += 1
+
+        if ok and j < len(lines) and lines[j].strip() == '};':
+            out.append(lines[i])
+            out.append('%s\t%s' % (
+                m.group('ind'),
+                ', '.join(values.get(field, '0') for field in fields)))
+            out.append(lines[j])
+            i = j + 1
+            n += 1
+        else:
+            out.append(lines[i])
+            i += 1
+
+    return '\n'.join(out), n
 
 
 def has_top_level_comma(s):
@@ -135,12 +207,13 @@ def is_stmt(stripped):
 
 
 def transform(text):
+    text, ndesignated = transform_designated_structs(text)
     lines = text.split('\n')
     starts, mins = line_depths(text)
     n = len(lines)
     inserts = {}
     replaces = {}
-    nchg = 0
+    nchg = ndesignated
     stack = []
 
     for i in range(n):

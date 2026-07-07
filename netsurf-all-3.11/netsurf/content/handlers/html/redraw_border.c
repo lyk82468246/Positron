@@ -22,6 +22,7 @@
  * Redrawing CONTENT_HTML borders implementation.
  */
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 
@@ -34,22 +35,22 @@
 
 
 static plot_style_t plot_style_bdr = {
-	.stroke_type = PLOT_OP_TYPE_DASH,
+	PLOT_OP_TYPE_DASH, 0, 0, PLOT_OP_TYPE_NONE, 0
 };
 static plot_style_t plot_style_fillbdr = {
-	.fill_type = PLOT_OP_TYPE_SOLID,
+	PLOT_OP_TYPE_NONE, 0, 0, PLOT_OP_TYPE_SOLID, 0
 };
 static plot_style_t plot_style_fillbdr_dark = {
-	.fill_type = PLOT_OP_TYPE_SOLID,
+	PLOT_OP_TYPE_NONE, 0, 0, PLOT_OP_TYPE_SOLID, 0
 };
 static plot_style_t plot_style_fillbdr_light = {
-	.fill_type = PLOT_OP_TYPE_SOLID,
+	PLOT_OP_TYPE_NONE, 0, 0, PLOT_OP_TYPE_SOLID, 0
 };
 static plot_style_t plot_style_fillbdr_ddark = {
-	.fill_type = PLOT_OP_TYPE_SOLID,
+	PLOT_OP_TYPE_NONE, 0, 0, PLOT_OP_TYPE_SOLID, 0
 };
 static plot_style_t plot_style_fillbdr_dlight = {
-	.fill_type = PLOT_OP_TYPE_SOLID,
+	PLOT_OP_TYPE_NONE, 0, 0, PLOT_OP_TYPE_SOLID, 0
 };
 
 
@@ -98,12 +99,14 @@ html_redraw_border_plot(const int side,
 			const struct rect *clip,
 			const struct redraw_context *ctx)
 {
-	int z[8]; /* Vertices of border part */
-	unsigned int light = side;
+	unsigned int light;
 	plot_style_t *plot_style_bdr_in;
 	plot_style_t *plot_style_bdr_out;
-	nserror res = NSERROR_OK;
+	nserror res;
 	struct rect rect;
+	int z[8]; /* Vertices of border part */
+	light = side;
+	res = NSERROR_OK;
 
 	if (c == NS_TRANSPARENT) {
 		return res;
@@ -449,6 +452,9 @@ html_redraw_borders(struct box *box,
 		    float scale,
 		    const struct redraw_context *ctx)
 {
+	bool square_end_1;
+	bool square_end_2;
+	nserror res;
 	unsigned int sides[] = { LEFT, RIGHT, TOP, BOTTOM };
 	int top = box->border[TOP].width;
 	int right = box->border[RIGHT].width;
@@ -458,9 +464,8 @@ html_redraw_borders(struct box *box,
 	unsigned int i, side;
 	int p[8]; /* Box border vertices */
 	int z[8]; /* Border vertices */
-	bool square_end_1 = false;
-	bool square_end_2 = false;
-	nserror res;
+	square_end_1 = false;
+	square_end_2 = false;
 
 	x = x_parent + box->x;
 	y = y_parent + box->y;
@@ -711,6 +716,9 @@ html_redraw_inline_borders(struct box *box,
 			   bool last,
 			   const struct redraw_context *ctx)
 {
+	bool square_end_1;
+	bool square_end_2;
+	nserror res;
 	int top = box->border[TOP].width;
 	int right = box->border[RIGHT].width;
 	int bottom = box->border[BOTTOM].width;
@@ -718,9 +726,6 @@ html_redraw_inline_borders(struct box *box,
 	colour col;
 	int p[8]; /* Box border vertices */
 	int z[8]; /* Border vertices */
-	bool square_end_1;
-	bool square_end_2;
-	nserror res;
 
 	if (scale != 1.0) {
 		top *= scale;

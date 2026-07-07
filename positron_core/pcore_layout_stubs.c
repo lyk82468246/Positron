@@ -1,14 +1,13 @@
 /*
  * pcore_layout_stubs.c - no-op link stubs for functions the ported layout.c
  * references but which live in NetSurf subsystems we deliberately don't bring
- * in yet (tables = M7, flex = M7, iframes/objects, the textarea widget, and the
- * box_dump debug dumper).
+ * in yet (iframes/objects, the textarea widget, scrollbars, selection/search,
+ * and the box_dump debug dumper).
  *
  * Every one of these is only ever *called* on a path our slim box builder never
  * produces: box->object / box->gadget / html_content.bw are always NULL, and
- * construct maps display:table/flex to BOX_BLOCK so layout_table / layout_flex
- * are never entered. So these stubs exist purely to satisfy the linker; if one
- * is ever actually invoked it is a sign the staged scope changed.
+ * form/widget/scrollbar paths are outside the current scope. Table, flex, and
+ * border redraw now come from the real NetSurf sources.
  *
  * Signatures match the real declarations so the (unused) calls stay ABI-correct.
  * C89.
@@ -93,7 +92,7 @@ void textarea_set_layout(struct textarea *ta, const plot_font_style_t *fstyle,
     (void) left;
 }
 
-/* --- redraw: selection / search / scrollbar / messages / borders --- */
+/* --- redraw: selection / search / scrollbar / messages ------------- */
 
 bool selection_highlighted(const struct selection *s,
         unsigned start, unsigned end,
@@ -142,38 +141,6 @@ const char *messages_get_errorcode(nserror code)
 {
     (void) code;
     return "";
-}
-
-/* Border drawing lives in redraw_border.c, not ported yet (M5 follow-up).
- * Stubbed to "drew nothing, ok" so the page body/text render first; real
- * borders come next. */
-bool html_redraw_borders(struct box *box, int x_parent, int y_parent,
-        int p_width, int p_height, const struct rect *clip, float scale,
-        const struct redraw_context *ctx)
-{
-    (void) box;
-    (void) x_parent;
-    (void) y_parent;
-    (void) p_width;
-    (void) p_height;
-    (void) clip;
-    (void) scale;
-    (void) ctx;
-    return true;
-}
-
-bool html_redraw_inline_borders(struct box *box, struct rect b,
-        const struct rect *clip, float scale, bool first, bool last,
-        const struct redraw_context *ctx)
-{
-    (void) box;
-    (void) b;
-    (void) clip;
-    (void) scale;
-    (void) first;
-    (void) last;
-    (void) ctx;
-    return true;
 }
 
 /* --- redraw: textarea / iframe / form-select widgets (never drawn) --- */

@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-07  
-基线：`main` 最新为 `db97b95`，Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。
+基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。Codex 接手后已刷新 README/PHASE4，并已开始 M5f border 接入。
 
 ## 总原则
 
@@ -15,25 +15,23 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 目标：把当前“已经能浏览真实网页”的 NetSurf 路径打磨到更可信、更像网页。
 
-### 1. M5f：真实 border 绘制
+### 1. M5f：真实 border 绘制验证
 
-当前 `pcore_layout_stubs.c` 里：
+当前进展：
 
-- `html_redraw_borders`
-- `html_redraw_inline_borders`
+- NetSurf `content/handlers/html/redraw_border.c` 已加入 `positron_core.vcproj`。
+- `pcore_layout_stubs.c` 里的 `html_redraw_borders` / `html_redraw_inline_borders` no-op 已移除。
+- `redraw_border.c` 已用 `scripts/c89ize.py` 做 C89 化，脚本也补了 `plot_style_t` / `plot_font_style_t` 简单 designated initializer 规则。
+- TEST 17 的内置页面与 MessageBox 已加入明确 border 预期。
 
-仍是 no-op。真实网页里的导航框、表格线、分隔线、按钮边框都会受影响。
-
-建议做法：
-
-- 移植/接入 NetSurf `content/handlers/html/redraw_border.c`。
-- 复用已有 GDI plotter，尤其是 `plot_line` / dashed-dotted 手绘逻辑。
-- TEST 17 加一个明确 border 预期，更新所有 MessageBox 文案。
+下一步必须先做 VS2008/WM6 编译和真机确认；当前环境没有可调用的 VS2008/MSBuild。
 
 验收：
 
-- TEST 17 能看到块级和 inline/table 相关边框。
+- TEST 17 能看到 H1 下边框、flex 容器 dashed border、块级和 table/cell 相关边框。
 - TEST 13 打开 example/iana 类页面，导航/表格/分隔线观感明显提升。
+
+如果编译报 C89 语法错误，优先跑/改 `scripts/c89ize.py`，再做手工修补；不要只在 vendored 源里一次性手改。
 
 ### 2. CSS selector 缺口补强
 
@@ -207,4 +205,3 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 7. float/table 细化。
 8. 后台导航体验。
 9. JS runtime spike。
-

@@ -1711,7 +1711,7 @@ static BOOL test14_plot(void)
 }
 
 /* -------------------------------------------------------------------- */
-/* TEST 17 - milestone H/M5e: NetSurf real layout.c + redraw.c on screen */
+/* TEST 17 - milestone H/M5f: NetSurf real layout/redraw/borders on screen */
 /* A window opens; the page is laid out by NetSurf's layout_document and    */
 /* painted by html_redraw through our GDI plotter (M1) + font table (M2).   */
 /* First page rendered end-to-end by the ported engine.                     */
@@ -1719,14 +1719,15 @@ static BOOL test14_plot(void)
 static BOOL test17_nsrender(void)
 {
     show_info(L"TEST 17",
-              "NetSurf REAL layout + redraw + FLEX (M7):\n"
+              "NetSurf REAL layout + redraw + borders (M5f/M7):\n"
               "the page is laid out by NetSurf's layout.c and painted\n"
-              "by its redraw.c through our GDI plotter.\n\n"
-              "Expect a dark-red H1, a light-blue padded box with two\n"
+              "by redraw.c + redraw_border.c through our GDI plotter.\n\n"
+              "Expect a dark-red H1 with a red underline border,\n"
+              "a light-blue padded box with a blue border and two\n"
               "wrapped blue paragraphs, then THREE colour blocks\n"
-              "(red/green/blue: One/Two/Three) in a row.\n"
+              "(red/green/blue: One/Two/Three) in a dashed border row.\n"
               "Side by side = flex works; stacked = flex failed.\n"
-              "Below that, a 2x2 table (A1/B1 over A2/B2 in a grid).\n"
+              "Below that, a 2x2 table with visible cell borders.\n"
               "Tap or Esc to close.");
 
     g_ns_render = 1;
@@ -1743,7 +1744,8 @@ static BOOL test17_nsrender(void)
 
     show_info(L"TEST 17 OK",
               "Rendered end-to-end by the ported NetSurf engine\n"
-              "(layout.c + redraw.c + layout_flex.c) on the device.");
+              "(layout.c + redraw.c + redraw_border.c + flex/table)\n"
+              "on the device.");
     return TRUE;
 }
 
