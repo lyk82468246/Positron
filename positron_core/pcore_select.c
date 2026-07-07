@@ -11,15 +11,16 @@
  * The handler is modelled on NetSurf's content/handlers/css/select.c, but is
  * self-contained: it talks to libdom through core primitives only (no NetSurf
  * "corestring" table, no html-content structures). Selectors that need more
- * machinery than this first cut provides - attribute-value matches and the
- * dynamic pseudo-classes (:hover, :link, ...) - are stubbed to "no match";
- * type / class / id / descendant / sibling structure all work.
+ * machinery than this first cut provides - dynamic pseudo-classes (:hover,
+ * :visited, ...) - are stubbed to "no match"; type / class / id / attribute /
+ * descendant / sibling structure all work.
  *
  * C89 only.
  */
 
 #include <windows.h>
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>   /* malloc / free (box geometry) */
 
 #include <dom/dom.h>
@@ -342,34 +343,115 @@ static css_error named_parent_node(void *pw, void *node,
     return CSS_OK;
 }
 
+static css_error pcore_prev_element(dom_node *start, dom_node **out)
+{
+    dom_node *n;
+    dom_node *prev;
+    dom_node_type type;
+    dom_exception err;
+
+    *out = NULL;
+    err = dom_node_get_previous_sibling(start, &n);
+    if (err != DOM_NO_ERR) {
+        return CSS_OK;
+    }
+
+    while (n != NULL) {
+        err = dom_node_get_node_type(n, &type);
+        if (err != DOM_NO_ERR) {
+            dom_node_unref(n);
+            return CSS_OK;
+        }
+        if (type == DOM_ELEMENT_NODE) {
+            dom_node_unref(n);       /* return borrowed */
+            *out = n;
+            return CSS_OK;
+        }
+
+        err = dom_node_get_previous_sibling(n, &prev);
+        dom_node_unref(n);
+        if (err != DOM_NO_ERR) {
+            return CSS_OK;
+        }
+        n = prev;
+    }
+
+    return CSS_OK;
+}
+
+static bool pcore_node_name_matches(void *pw, dom_node *node,
+        const css_qname *qname)
+{
+    pcore_select_pw *ctx = (pcore_select_pw *) pw;
+    dom_string *name;
+    dom_node_type type;
+    dom_exception err;
+    bool match;
+
+    err = dom_node_get_node_type(node, &type);
+    if (err != DOM_NO_ERR || type != DOM_ELEMENT_NODE) {
+        return false;
+    }
+
+    match = false;
+    if (lwc_string_isequal(qname->name, ctx->universal, &match) ==
+            lwc_error_ok && match) {
+        return true;
+    }
+
+    err = dom_node_get_node_name(node, &name);
+    if (err != DOM_NO_ERR || name == NULL) {
+        return false;
+    }
+    match = dom_string_caseless_lwc_isequal(name, qname->name);
+    dom_string_unref(name);
+    return match;
+}
+
 /* Previous element sibling, optionally requiring a matching name. */
-/* adjacent / general sibling lookup.
- *
- * TEMP STUB: report "no previous sibling". These callbacks walk previous
- * siblings via dom_node_get_previous_sibling - the prime suspect for the
- * css_select_style crash, since get_sharable_node_data calls
- * named_generic_sibling_node first. dom_node_get_parent_node is known good
- * (it runs at css_select_style entry) but get_previous_sibling has never been
- * exercised. Returning NULL makes libcss skip style sharing (an optimisation)
- * and disables adjacent/general-sibling combinators until the libdom call is
- * verified safe. */
 static css_error named_sibling_node(void *pw, void *node,
         const css_qname *qname, void **sibling)
 {
-    (void) pw;
-    (void) node;
-    (void) qname;
+    dom_node *prev;
+
     *sibling = NULL;
+
+    if (pcore_prev_element((dom_node *) node, &prev) != CSS_OK) {
+        return CSS_OK;
+    }
+    if (prev != NULL && pcore_node_name_matches(pw, prev, qname)) {
+        *sibling = prev;
+    }
     return CSS_OK;
 }
 
 static css_error named_generic_sibling_node(void *pw, void *node,
         const css_qname *qname, void **sibling)
 {
-    (void) pw;
-    (void) node;
-    (void) qname;
+    dom_node *n;
+    dom_node *prev;
+    dom_exception err;
+
     *sibling = NULL;
+
+    err = dom_node_get_previous_sibling((dom_node *) node, &n);
+    if (err != DOM_NO_ERR) {
+        return CSS_OK;
+    }
+    while (n != NULL) {
+        if (pcore_node_name_matches(pw, n, qname)) {
+            dom_node_unref(n);       /* return borrowed */
+            *sibling = n;
+            return CSS_OK;
+        }
+        err = dom_node_get_previous_sibling(n, &prev);
+        dom_node_unref(n);
+        if (err != DOM_NO_ERR) {
+            return CSS_OK;
+        }
+        n = prev;
+    }
+
     return CSS_OK;
 }
 
@@ -399,10 +481,7 @@ static css_error parent_node(void *pw, void *node, void **parent)
 static css_error sibling_node(void *pw, void *node, void **sibling)
 {
     (void) pw;
-    (void) node;
-    /* TEMP STUB: no previous sibling (see named_sibling_node note). */
-    *sibling = NULL;
-    return CSS_OK;
+    return pcore_prev_element((dom_node *) node, (dom_node **) sibling);
 }
 
 /* ------------------------------------------------------------------ */
@@ -470,63 +549,254 @@ static css_error node_has_id(void *pw, void *node,
 }
 
 /* ------------------------------------------------------------------ */
-/* attribute matching - first cut stubs to "no match"                  */
-/* (attribute-value selectors come with a later milestone)             */
+/* attribute matching                                                  */
 /* ------------------------------------------------------------------ */
+
+static css_error pcore_attr_name(const css_qname *qname, dom_string **name)
+{
+    dom_exception err;
+
+    err = dom_string_create_interned(
+            (const uint8_t *) lwc_string_data(qname->name),
+            lwc_string_length(qname->name), name);
+    return (err == DOM_NO_ERR) ? CSS_OK : CSS_NOMEM;
+}
+
+static css_error pcore_get_attr(dom_node *node, const css_qname *qname,
+        dom_string **value)
+{
+    dom_string *name;
+    dom_exception err;
+    css_error ret;
+
+    *value = NULL;
+    ret = pcore_attr_name(qname, &name);
+    if (ret != CSS_OK) {
+        return ret;
+    }
+    err = dom_element_get_attribute(node, name, value);
+    dom_string_unref(name);
+    if (err != DOM_NO_ERR) {
+        *value = NULL;
+    }
+    return CSS_OK;
+}
 
 static css_error node_has_attribute(void *pw, void *node,
         const css_qname *qname, bool *match)
 {
-    (void) pw; (void) node; (void) qname;
+    dom_string *name;
+    dom_exception err;
+
+    (void) pw;
     *match = false;
+    if (pcore_attr_name(qname, &name) != CSS_OK) {
+        return CSS_NOMEM;
+    }
+    err = dom_element_has_attribute(node, name, match);
+    dom_string_unref(name);
+    if (err != DOM_NO_ERR) {
+        *match = false;
+    }
     return CSS_OK;
 }
 
 static css_error node_has_attribute_equal(void *pw, void *node,
         const css_qname *qname, lwc_string *value, bool *match)
 {
-    (void) pw; (void) node; (void) qname; (void) value;
+    dom_string *attr;
+
+    (void) pw;
     *match = false;
+    if (lwc_string_length(value) == 0) {
+        return CSS_OK;
+    }
+    if (pcore_get_attr(node, qname, &attr) != CSS_OK) {
+        return CSS_NOMEM;
+    }
+    if (attr != NULL) {
+        *match = dom_string_caseless_lwc_isequal(attr, value);
+        dom_string_unref(attr);
+    }
     return CSS_OK;
 }
 
 static css_error node_has_attribute_dashmatch(void *pw, void *node,
         const css_qname *qname, lwc_string *value, bool *match)
 {
-    (void) pw; (void) node; (void) qname; (void) value;
+    dom_string *attr;
+    const char *data;
+    const char *want;
+    size_t len;
+    size_t vlen;
+
+    (void) pw;
     *match = false;
+    vlen = lwc_string_length(value);
+    if (vlen == 0) {
+        return CSS_OK;
+    }
+    if (pcore_get_attr(node, qname, &attr) != CSS_OK) {
+        return CSS_NOMEM;
+    }
+    if (attr != NULL) {
+        *match = dom_string_caseless_lwc_isequal(attr, value);
+        if (!*match) {
+            data = dom_string_data(attr);
+            len = dom_string_byte_length(attr);
+            want = lwc_string_data(value);
+            if (len > vlen && data[vlen] == '-' &&
+                    strncasecmp(data, want, vlen) == 0) {
+                *match = true;
+            }
+        }
+        dom_string_unref(attr);
+    }
     return CSS_OK;
 }
 
 static css_error node_has_attribute_includes(void *pw, void *node,
         const css_qname *qname, lwc_string *value, bool *match)
 {
-    (void) pw; (void) node; (void) qname; (void) value;
+    dom_string *attr;
+    const char *start;
+    const char *end;
+    const char *p;
+    size_t vlen;
+
+    (void) pw;
     *match = false;
+    vlen = lwc_string_length(value);
+    if (vlen == 0) {
+        return CSS_OK;
+    }
+    if (pcore_get_attr(node, qname, &attr) != CSS_OK) {
+        return CSS_NOMEM;
+    }
+    if (attr != NULL) {
+        start = dom_string_data(attr);
+        end = start + dom_string_byte_length(attr);
+        for (p = start; p <= end; p++) {
+            if (*p == ' ' || *p == '\0') {
+                if ((size_t) (p - start) == vlen &&
+                        strncasecmp(start, lwc_string_data(value),
+                                vlen) == 0) {
+                    *match = true;
+                    break;
+                }
+                start = p + 1;
+            }
+        }
+        dom_string_unref(attr);
+    }
     return CSS_OK;
 }
 
 static css_error node_has_attribute_prefix(void *pw, void *node,
         const css_qname *qname, lwc_string *value, bool *match)
 {
-    (void) pw; (void) node; (void) qname; (void) value;
+    dom_string *attr;
+    const char *data;
+    size_t len;
+    size_t vlen;
+
+    (void) pw;
     *match = false;
+    vlen = lwc_string_length(value);
+    if (vlen == 0) {
+        return CSS_OK;
+    }
+    if (pcore_get_attr(node, qname, &attr) != CSS_OK) {
+        return CSS_NOMEM;
+    }
+    if (attr != NULL) {
+        *match = dom_string_caseless_lwc_isequal(attr, value);
+        if (!*match) {
+            data = dom_string_data(attr);
+            len = dom_string_byte_length(attr);
+            if (len >= vlen &&
+                    strncasecmp(data, lwc_string_data(value), vlen) == 0) {
+                *match = true;
+            }
+        }
+        dom_string_unref(attr);
+    }
     return CSS_OK;
 }
 
 static css_error node_has_attribute_suffix(void *pw, void *node,
         const css_qname *qname, lwc_string *value, bool *match)
 {
-    (void) pw; (void) node; (void) qname; (void) value;
+    dom_string *attr;
+    const char *data;
+    const char *start;
+    size_t len;
+    size_t vlen;
+
+    (void) pw;
     *match = false;
+    vlen = lwc_string_length(value);
+    if (vlen == 0) {
+        return CSS_OK;
+    }
+    if (pcore_get_attr(node, qname, &attr) != CSS_OK) {
+        return CSS_NOMEM;
+    }
+    if (attr != NULL) {
+        *match = dom_string_caseless_lwc_isequal(attr, value);
+        if (!*match) {
+            data = dom_string_data(attr);
+            len = dom_string_byte_length(attr);
+            if (len >= vlen) {
+                start = data + len - vlen;
+                if (strncasecmp(start, lwc_string_data(value), vlen) == 0) {
+                    *match = true;
+                }
+            }
+        }
+        dom_string_unref(attr);
+    }
     return CSS_OK;
 }
 
 static css_error node_has_attribute_substring(void *pw, void *node,
         const css_qname *qname, lwc_string *value, bool *match)
 {
-    (void) pw; (void) node; (void) qname; (void) value;
+    dom_string *attr;
+    const char *start;
+    const char *last_start;
+    const char *want;
+    size_t len;
+    size_t vlen;
+
+    (void) pw;
     *match = false;
+    vlen = lwc_string_length(value);
+    if (vlen == 0) {
+        return CSS_OK;
+    }
+    if (pcore_get_attr(node, qname, &attr) != CSS_OK) {
+        return CSS_NOMEM;
+    }
+    if (attr != NULL) {
+        *match = dom_string_caseless_lwc_isequal(attr, value);
+        if (!*match) {
+            start = dom_string_data(attr);
+            len = dom_string_byte_length(attr);
+            want = lwc_string_data(value);
+            if (len >= vlen) {
+                last_start = start + len - vlen;
+                while (start <= last_start) {
+                    if (strncasecmp(start, want, vlen) == 0) {
+                        *match = true;
+                        break;
+                    }
+                    start++;
+                }
+            }
+        }
+        dom_string_unref(attr);
+    }
     return CSS_OK;
 }
 

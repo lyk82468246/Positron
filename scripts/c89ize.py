@@ -32,6 +32,9 @@ import sys
 CTRL = {'return', 'if', 'else', 'for', 'while', 'switch', 'case', 'default',
         'do', 'goto', 'break', 'continue', 'sizeof', 'typedef'}
 
+AGGREGATE_START = re.compile(
+    r'^\s*(?:typedef\s+)?(?:struct|union|enum)(?:\s+[A-Za-z_]\w*)?\s*\{')
+
 DECL = re.compile(
     r'^(?P<ind>[ \t]+)'
     r'(?P<head>(?:(?:const|static|volatile|register|unsigned|signed|struct|enum|union)\s+)*'
@@ -40,6 +43,22 @@ DECL = re.compile(
     r'(?P<name>[A-Za-z_]\w*)'
     r'(?P<arr>\s*\[[^\]]*\])?'
     r'\s*(?P<init>=[^;]*)?;[ \t]*$')
+
+DECL_INIT_START = re.compile(
+    r'^\s*'
+    r'(?:(?:const|static|volatile|register|unsigned|signed|struct|enum|union)\s+)*'
+    r'[A-Za-z_]\w*'
+    r'(?:\s*\*+\s*|\s+)'
+    r'[A-Za-z_]\w*'
+    r'(?:\s*\[[^\]]*\])?'
+    r'\s*=')
+
+DECL_LIKE = re.compile(
+    r'^\s*'
+    r'(?P<head>(?:(?:const|static|volatile|register|unsigned|signed|struct|enum|union)\s+)*'
+    r'[A-Za-z_]\w*)'
+    r'(?:\s*\*+\s*|\s+)'
+    r'[A-Za-z_]\w*')
 
 FORD = re.compile(
     r'^(?P<pre>\s*for\s*\(\s*)'
@@ -195,6 +214,8 @@ def line_depths(text):
 
 
 def is_stmt(stripped):
+    m = None
+
     if not stripped:
         return False
     if stripped.startswith(('//', '/*', '*', '#')):
@@ -202,6 +223,11 @@ def is_stmt(stripped):
     if stripped in ('{', '}'):
         return False
     if re.match(r'^[A-Za-z_]\w*:$', stripped):
+        return False
+    if DECL_INIT_START.match(stripped):
+        return False
+    m = DECL_LIKE.match(stripped)
+    if m and m.group('head').split()[0] not in CTRL and stripped.endswith(';'):
         return False
     return True
 
@@ -215,8 +241,31 @@ def transform(text):
     replaces = {}
     nchg = ndesignated
     stack = []
+    aggregate_depth = None
+    decl_cont = False
 
     for i in range(n):
+        stripped = lines[i].strip()
+
+        if decl_cont:
+            if stripped.endswith(';'):
+                decl_cont = False
+            continue
+        if DECL_INIT_START.match(stripped) and not stripped.endswith(';'):
+            decl_cont = True
+            continue
+
+        if aggregate_depth is not None:
+            next_depth = starts[i + 1] if i + 1 < n else 0
+            if next_depth <= aggregate_depth:
+                aggregate_depth = None
+            else:
+                continue
+
+        if AGGREGATE_START.match(lines[i]):
+            aggregate_depth = starts[i]
+            continue
+
         # Close blocks that ended within this line (e.g. leading '}' of
         # "} else if (...) {"). Use the minimum depth reached on the line.
         while len(stack) > mins[i]:

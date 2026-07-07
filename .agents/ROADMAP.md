@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-07  
-基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。Codex 接手后已刷新 README/PHASE4，并已开始 M5f border 接入。
+基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。Codex 接手后已刷新 README/PHASE4，接入 M5f border 源码，并实现 CSS attribute/sibling selector 源码路径。
 
 ## 总原则
 
@@ -33,23 +33,24 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 如果编译报 C89 语法错误，优先跑/改 `scripts/c89ize.py`，再做手工修补；不要只在 vendored 源里一次性手改。
 
-### 2. CSS selector 缺口补强
+### 2. CSS selector 补强验证
 
-当前 `pcore_select.c` 明确 stub：
+当前进展：
 
-- attribute selectors：`[foo]`、`[foo=bar]`、`[foo*=bar]` 等。
-- adjacent/general sibling：`+` / `~`。
+- attribute selectors：`[foo]`、`[foo=bar]`、`[foo*=bar]` 等已在 `pcore_select.c` 实现。
+- adjacent/general sibling：`+` / `~` 已实现。
+- TEST 9 已扩展为离线 computed-style 验收，覆盖 attribute + sibling selector 组合。
 - 动态伪类多数仍 false。
 
 优先级建议：
 
-1. attribute selectors。
-2. adjacent/general sibling selectors。
-3. `:link` 等静态可判定伪类。
+1. 用 VS2008/WM6 编译并跑 TEST 9，确认实现没有 C89/链接/真机 libdom 行为问题。
+2. 继续补 `:link` 等静态可判定伪类。
+3. 结合 TEST 13 看真实页面 CSS 套用是否更完整。
 
 验收：
 
-- 加离线 TEST，验证 `[class]` / `[href^=]` / `h1 + p` 等规则能影响 computed style。
+- TEST 9 中 `[title]` / `[data-role=]` / `[class~=]` / `[lang|=]` / `[data-code^=]` / `[data-code$=]` / `[data-code*=]` / `h1 + p` / `h1 ~ span` 都能影响 computed style。
 - 再跑 TEST 13 看真实页面 CSS 套用是否更完整。
 
 ### 3. 文档刷新
@@ -196,12 +197,10 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. M5f border。
-2. attribute selectors。
-3. sibling selectors。
-4. docs refresh。
-5. 图片基础路径。
-6. resource loader 整理。
-7. float/table 细化。
-8. 后台导航体验。
-9. JS runtime spike。
+1. M5f border 编译/真机验证。
+2. TEST 9 selector 编译/真机验证。
+3. 图片基础路径。
+4. resource loader 整理。
+5. float/table 细化。
+6. 后台导航体验。
+7. JS runtime spike。

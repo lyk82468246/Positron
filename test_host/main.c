@@ -781,23 +781,36 @@ static BOOL test8_core(void)
 /* -------------------------------------------------------------------- */
 /* TEST 9 - CSS selection / computed style via positron_core.dll         */
 /* Parse a tiny HTML doc + stylesheet, then PCore_ComputeColor drives     */
-/* libcss selection (libdom-backed handler) to compute the <p>'s color.   */
-/* Proves the select / computed-style layer runs end-to-end on ARM WinCE. */
+/* libcss selection (libdom-backed handler) to compute element colours.   */
+/* Proves type/class/id + attribute and sibling selectors end-to-end.     */
 /* -------------------------------------------------------------------- */
 
 static BOOL test9_select(void)
 {
-    static const char *HTML =
-        "<!DOCTYPE html><html><head><title>x</title></head>"
-        "<body><p>Hello</p></body></html>";
-    static const char *CSS = "p { color: #112233; }\n";
-
     HANDLE        hDoc;
     HANDLE        hSheet;
-    unsigned long argb;
-    unsigned long rgb;
+    unsigned long p_argb;
+    unsigned long p_rgb;
+    unsigned long span_argb;
+    unsigned long span_rgb;
     int           rc;
-    char          msg[256];
+    char          msg[384];
+    static const char *HTML =
+        "<!DOCTYPE html><html><head><title>x</title></head>"
+        "<body><h1>Title</h1>"
+        "<p title=\"hello\" data-role=\"intro\" class=\"lead\" "
+        "lang=\"en-US\">Hello</p>"
+        "<div>gap</div>"
+        "<span data-code=\"pre-mid-post\">World</span>"
+        "</body></html>";
+    static const char *CSS =
+        "p { color: #010101; }\n"
+        "h1 + p[title][data-role=\"intro\"][class~=\"lead\"][lang|=\"en\"] "
+        "{ color: #112233; }\n"
+        "span { color: #010101; }\n"
+        "h1 ~ span[data-code^=\"pre\"][data-code$=\"post\"]"
+        "[data-code*=\"-mid-\"] { color: #445566; }\n";
+
 
     hDoc = PCore_ParseHTML(HTML, 0);
     if (hDoc == NULL) {
@@ -811,31 +824,41 @@ static BOOL test9_select(void)
         return FALSE;
     }
 
-    rc = PCore_ComputeColor(hDoc, hSheet, "p", &argb);
+    rc = PCore_ComputeColor(hDoc, hSheet, "p", &p_argb);
+    if (rc == 0) {
+        rc = PCore_ComputeColor(hDoc, hSheet, "span", &span_argb);
+    }
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
 
     if (rc != 0) {
         show_error(L"TEST 9 FAIL",
-                   "PCore_ComputeColor failed (no <p>, or selection error)");
+                   "PCore_ComputeColor failed (missing <p>/<span>, "
+                   "or selection error)");
         return FALSE;
     }
 
-    rgb = argb & 0x00FFFFFFUL;       /* low 24 bits = RRGGBB */
-    if (rgb != 0x00112233UL) {
+    p_rgb = p_argb & 0x00FFFFFFUL;          /* low 24 bits = RRGGBB */
+    span_rgb = span_argb & 0x00FFFFFFUL;
+    if (p_rgb != 0x00112233UL || span_rgb != 0x00445566UL) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "computed color = 0x%08lX (RGB 0x%06lX), expected 0x112233",
-                  argb, rgb);
+                  "computed colors off:\n"
+                  "  p    RGB 0x%06lX, expected 0x112233\n"
+                  "  span RGB 0x%06lX, expected 0x445566",
+                  p_rgb, span_rgb);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 9 FAIL", msg);
         return FALSE;
     }
 
     _snprintf(msg, sizeof(msg) - 1,
-              "positron_core selected style for <p>:\n"
-              "  p { color: #112233 } -> computed 0x%06lX\n\n"
-              "(libcss selection + libdom-backed handler run on ARM WinCE.)",
-              rgb);
+              "CSS select OK:\n"
+              "  h1 + p[title][data-role][class~][lang|]\n"
+              "    -> p RGB 0x%06lX\n"
+              "  h1 ~ span[data-code^][data-code$][data-code*]\n"
+              "    -> span RGB 0x%06lX\n\n"
+              "(attribute + sibling selectors via libdom handler.)",
+              p_rgb, span_rgb);
     msg[sizeof(msg) - 1] = '\0';
     show_info(L"TEST 9 OK", msg);
     return TRUE;
