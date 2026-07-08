@@ -22,16 +22,45 @@
  * Redrawing CONTENT_HTML borders implementation.
  */
 
+/* Include set aligned with layout.c / redraw.c: private.h needs dom / css /
+ * content prerequisite types that the upstream build provided indirectly. */
 #include <assert.h>
+#include <limits.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <dom/dom.h>
 
 #include "utils/log.h"
+#include "utils/talloc.h"
+#include "utils/utils.h"
+#include "utils/nsoption.h"
+#include "utils/corestrings.h"
+#include "utils/nsurl.h"
+#include "netsurf/inttypes.h"
+#include "netsurf/content.h"
+#include "netsurf/browser_window.h"
 #include "netsurf/plotters.h"
 #include "netsurf/css.h"
+#include "netsurf/layout.h"
+#include "content/content.h"
+#include "content/content_protected.h"
+#include "css/utils.h"
+#include "desktop/scrollbar.h"
+#include "desktop/textarea.h"
 
+#include "html/html.h"
+#include "html/html_save.h"
 #include "html/box.h"
+#include "html/box_inspect.h"
+#include "html/font.h"
+#include "html/form_internal.h"
 #include "html/private.h"
+#include "html/layout.h"
+#include "html/layout_internal.h"
+#include "html/table.h"
 
 
 static plot_style_t plot_style_bdr = {

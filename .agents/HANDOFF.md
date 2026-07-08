@@ -30,7 +30,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 - 旧的手写 block/inline layout + paint 已退休。
 - `layout_flex.c` 已移植并真机验证，TEST 17 三色块横排。
 - `table.c` 已移植，`pcore_construct_table` 生成 `BOX_TABLE > ROW_GROUP > ROW > CELL`，TEST 17 2x2 table 网格真机验证。
-- `redraw_border.c` 已接入源码和 `positron_core.vcproj`；`pcore_layout_stubs.c` 中 border no-op 已移除。当前环境未找到 VS2008/MSBuild，仍需在 WM6 工具链编译并跑 TEST 17 真机确认。
+- `redraw_border.c` 已接入源码和 `positron_core.vcproj`；`pcore_layout_stubs.c` 中 border no-op 已移除。2026-07-08 用户真实 VS2008 编译暴露其 include 前置依赖不足（`html/private.h` 里 `dom_document` / `dom_node` / `bool` 连锁错误），现已按 `layout.c`/`redraw.c` 补齐 include；当前环境未找到 VS2008/MSBuild，仍需在 WM6 工具链复编并跑 TEST 17 真机确认。
 - `pcore_select.c` 已实现 CSS attribute selectors、adjacent/general sibling selectors、`:link` 与 `:lang()`；TEST 9 已扩展为离线 computed-style 验收。当前环境未找到 VS2008/MSBuild，仍需在 WM6 工具链编译并跑 TEST 9 真机确认。
 
 ## 关键文件
@@ -97,9 +97,9 @@ scripts\stage.bat
 
 优先候选：
 
-1. M5f 验证：用 VS2008/WM6 编译 `positron_core`，跑 TEST 17，确认 `redraw_border.c` 没有 C89/链接问题且边框可见。
+1. M5f 验证：用 VS2008/WM6 复编 `positron_core`，确认 `redraw_border.c` include 修复后不再触发 `html/private.h` 类型连锁错误；跑 TEST 17，确认边框可见。
 2. CSS selector 验证：用 VS2008/WM6 编译并跑 TEST 9，确认 attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 在真机 libdom/libcss 路径上可用。
-3. 图片/SVG：`<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，TEST 15/17 已扩展，待 WM6 编译/真机验证；`plot_bitmap` 仍是 stub，SVG logo/PNG/JPEG 仍不会真实显示。方向应优先看 WM Imaging API / NetSurf bitmap 接口，而不是从零写解码器。
+3. 图片/SVG：`<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，TEST 15/17 已扩展；`PCore_FetchImageResources` 已接入 `<img src>` 资源发现/fetch 骨架，TEST 18 fake fetch 离线覆盖；以上均待 WM6 编译/真机验证。`plot_bitmap` 仍是 stub，SVG logo/PNG/JPEG 仍不会真实显示。方向应优先看 WM Imaging API / NetSurf bitmap 接口，而不是从零写解码器。
 4. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。
 
 ## 开发纪律
@@ -108,4 +108,5 @@ scripts\stage.bat
 - 默认先查环境，再改代码。WMDC、僵尸 `test_host`、共享目录、旧二进制非常容易造成假故障。
 - 改 TEST 时必须同步所有 MessageBox 文案、分组范围、最终 summary。
 - 改 vendored NetSurf 源码时保持最小差异，C89 化要谨慎；`c89ize.py` 不能处理所有情况，特别是 designated initializers / static aggregate initializers。
+- 如果新接入 NetSurf content-handler `.c` 后从 `html/private.h` 爆出 `dom_document` / `dom_node` / `bool` 之类连锁语法错，优先检查该 `.c` 的 include 区是否对齐 `layout.c` / `redraw.c`，不要先改 `private.h` 或让 `c89ize.py` 硬处理。
 - 不要引入 IE Mobile ActiveX 作为渲染层；渲染层方向是 OSS browser kernel port。

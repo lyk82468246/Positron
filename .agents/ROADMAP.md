@@ -22,6 +22,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - NetSurf `content/handlers/html/redraw_border.c` 已加入 `positron_core.vcproj`。
 - `pcore_layout_stubs.c` 里的 `html_redraw_borders` / `html_redraw_inline_borders` no-op 已移除。
 - `redraw_border.c` 已用 `scripts/c89ize.py` 做 C89 化，脚本也补了 `plot_style_t` / `plot_font_style_t` 简单 designated initializer 规则。
+- 2026-07-08 用户真实 VS2008 编译暴露 `redraw_border.c` include 前置依赖不足（`html/private.h` 中 `dom_document` / `dom_node` / `bool` 连锁错误）；已按 `layout.c`/`redraw.c` 补齐 dom/css/content 前置 include，待复编确认。
 - TEST 17 的内置页面与 MessageBox 已加入明确 border 预期。
 
 下一步必须先做 VS2008/WM6 编译和真机确认；当前环境没有可调用的 VS2008/MSBuild。
@@ -72,14 +73,15 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 当前状态：
 
 - `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，TEST 15/17 已扩展，待 VS2008/WM6 编译和真机验证。
+- `PCore_FetchImageResources` 已接入 `<img src>` 资源发现/fetch 骨架，TEST 18 用 fake fetch 离线覆盖；fetch 到的字节立即释放，尚不缓存/解码/绘制。
 - `plot_bitmap` 是 stub。
 - `box->object/background` 相关内容基本为空。
 - SVG logo、PNG/JPEG 图片仍不会真实显示，只会在 `<img>` 有 alt/src 时显示文本占位。
 
 建议顺序：
 
-1. 先验证当前 `<img>` alt/src 文本占位能在 TEST 15/17 编译和真机显示。
-2. 基础 `<img>` 资源发现、相对 URL 解析和 fetch。
+1. 先验证当前 `<img>` alt/src 文本占位与 TEST 18 image fetch skeleton 能在 VS2008/WM6 编译和真机运行。
+2. 将 image fetch 结果接入简单缓存/生命周期管理（仍可先不绘制）。
 3. PNG/JPEG/GIF 位图解码，优先看 WM Imaging API。
 4. 接 NetSurf bitmap / plot_bitmap。
 5. SVG 可后置，必要时先占位或引入 libsvgtiny。
@@ -87,6 +89,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 验收：
 
 - TEST 17 可见 `Image fallback: Logo`。
+- TEST 18 显示 `image resources: found=2 fetched=2`。
 - 本地 HTML + 小 PNG/JPEG 能显示。
 - 真实网页 logo/图片不再空白。
 

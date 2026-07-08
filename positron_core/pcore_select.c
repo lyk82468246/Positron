@@ -1654,6 +1654,138 @@ cleanup:
     return rc;
 }
 
+typedef struct pcore_image_fetch_ctx {
+    PCoreFetchFn fetch;
+    PCoreFreeFn  freefn;
+    void        *pw;
+    int          found;
+    int          fetched;
+    dom_string  *img_name;
+    dom_string  *src_name;
+} pcore_image_fetch_ctx;
+
+static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
+{
+    dom_node_type type;
+    dom_exception err;
+    dom_node *child;
+
+    err = dom_node_get_node_type(node, &type);
+    if (err == DOM_NO_ERR && type == DOM_ELEMENT_NODE) {
+        dom_string *name = NULL;
+        bool is_img = false;
+
+        err = dom_node_get_node_name(node, &name);
+        if (err == DOM_NO_ERR && name != NULL) {
+            is_img = dom_string_caseless_isequal(name, ic->img_name);
+            dom_string_unref(name);
+        }
+        if (is_img) {
+            dom_string *src = NULL;
+            if (dom_element_get_attribute(node, ic->src_name, &src) ==
+                    DOM_NO_ERR && src != NULL) {
+                const char *su8 = dom_string_data(src);
+                size_t sl = dom_string_byte_length(src);
+
+                if (su8 != NULL && sl > 0) {
+                    char url[1024];
+                    int cl = (sl < sizeof(url) - 1)
+                            ? (int) sl : (int) sizeof(url) - 1;
+                    char *data = NULL;
+                    int len = 0;
+
+                    memcpy(url, su8, cl);
+                    url[cl] = '\0';
+                    ic->found++;
+                    if (ic->fetch != NULL &&
+                            ic->fetch(ic->pw, url, &data, &len) == 0 &&
+                            data != NULL && len > 0) {
+                        ic->fetched++;
+                    }
+                    if (data != NULL && ic->freefn != NULL) {
+                        ic->freefn(ic->pw, data);
+                    }
+                }
+                dom_string_unref(src);
+            }
+            return;   /* <img> is void; no useful children to scan. */
+        }
+    }
+
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return;
+    }
+    while (child != NULL) {
+        dom_node *next;
+
+        pcore_fetch_images_walk(ic, child);
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+}
+
+PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
+        PCoreFreeFn freefn, void *pw_fetch, int *out_found, int *out_fetched)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    dom_node *root = NULL;
+    pcore_image_fetch_ctx ic;
+    int rc = 1;
+
+    if (out_found != NULL) {
+        *out_found = 0;
+    }
+    if (out_fetched != NULL) {
+        *out_fetched = 0;
+    }
+    if (doc == NULL) {
+        return 1;
+    }
+
+    ic.fetch = fetch;
+    ic.freefn = freefn;
+    ic.pw = pw_fetch;
+    ic.found = 0;
+    ic.fetched = 0;
+    ic.img_name = NULL;
+    ic.src_name = NULL;
+
+    dom_string_create((const uint8_t *) "img", 3, &ic.img_name);
+    dom_string_create((const uint8_t *) "src", 3, &ic.src_name);
+    if (ic.img_name == NULL || ic.src_name == NULL) {
+        goto cleanup;
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        goto cleanup;
+    }
+
+    pcore_fetch_images_walk(&ic, root);
+    if (out_found != NULL) {
+        *out_found = ic.found;
+    }
+    if (out_fetched != NULL) {
+        *out_fetched = ic.fetched;
+    }
+    rc = 0;
+
+cleanup:
+    if (root != NULL) {
+        dom_node_unref(root);
+    }
+    if (ic.img_name != NULL) {
+        dom_string_unref(ic.img_name);
+    }
+    if (ic.src_name != NULL) {
+        dom_string_unref(ic.src_name);
+    }
+    return rc;
+}
+
 PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
         unsigned long *out_argb)
 {

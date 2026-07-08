@@ -1712,6 +1712,91 @@ static BOOL test_layout(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 18 - image resource discovery / fetch skeleton                    */
+/* Scans <img src> resources and drives the PCoreFetchFn callback without */
+/* decoding/caching/painting bytes yet. Fully offline via a fake fetcher.  */
+/* -------------------------------------------------------------------- */
+typedef struct image_resource_test_ctx {
+    int calls;
+    int matched;
+} image_resource_test_ctx;
+
+static int image_resource_fetch(void *pw, const char *url,
+                                char **out_data, int *out_len)
+{
+    image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
+    char *buf;
+    int ok;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    ok = (strcmp(url, "/img/logo.png") == 0 ||
+          strcmp(url, "rel/photo.jpg") == 0);
+    if (!ok) {
+        return 1;
+    }
+    buf = (char *) malloc(4);
+    if (buf == NULL) {
+        return 1;
+    }
+    memcpy(buf, "IMG!", 4);
+    *out_data = buf;
+    *out_len = 4;
+    ctx->matched++;
+    return 0;
+}
+
+static void image_resource_free(void *pw, char *data)
+{
+    (void) pw;
+    free(data);
+}
+
+static BOOL test_image_resources(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body>"
+        "<img alt=\"Logo\" src=\"/img/logo.png\">"
+        "<img alt=\"Photo\" src=\"rel/photo.jpg\">"
+        "<img alt=\"Empty\" src=\"\">"
+        "<img alt=\"Missing\">"
+        "</body></html>";
+    HANDLE hDoc;
+    image_resource_test_ctx ctx;
+    int found;
+    int fetched;
+    char msg[192];
+
+    ctx.calls = 0;
+    ctx.matched = 0;
+    found = 0;
+    fetched = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 18 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    if (PCore_FetchImageResources(hDoc, image_resource_fetch,
+            image_resource_free, &ctx, &found, &fetched) != 0) {
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 18 FAIL", "PCore_FetchImageResources failed");
+        return FALSE;
+    }
+    PCore_FreeDocument(hDoc);
+    if (found != 2 || fetched != 2 || ctx.calls != 2 || ctx.matched != 2) {
+        sprintf(msg, "found=%d fetched=%d calls=%d matched=%d",
+                found, fetched, ctx.calls, ctx.matched);
+        show_error(L"TEST 18 FAIL", msg);
+        return FALSE;
+    }
+    sprintf(msg, "image resources: found=%d fetched=%d (offline fake fetch)",
+            found, fetched);
+    show_info(L"TEST 18 (image resources)", msg);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -1824,7 +1909,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run everything (TEST 1-13)\n"
+                  "Yes = run all selected groups (TEST 1-18)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -1838,12 +1923,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         run_engine = ask_yesno(L"Select groups (2/4)",
                                "Run ENGINE tests?\n\n"
                                "HTML / CSS / DOM parse, select, style,\n"
-                               "layout, box tree, NetSurf layout\n"
-                               "(TEST 6-11, 15, 16). Offline.");
+                               "layout, box tree, NetSurf layout,\n"
+                               "image resource scan\n"
+                               "(TEST 6-11, 15, 16, 18). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
-                               "M1 plotter self-test (TEST 14) + local HTML\n"
-                               "page (TEST 12). Fully offline.");
+                               "M1 plotter (TEST 14), NetSurf render\n"
+                               "(TEST 17), local HTML page (TEST 12).\n"
+                               "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
                                "Fetch a real HTTPS page and render it\n"
@@ -1864,7 +1951,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine group (TEST 6-11, message-box assertions, offline) ---- */
+    /* --- Engine group (TEST 6-11, 15, 16, 18; offline) --------------- */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -1875,9 +1962,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test11_layout())      { rc = 12; goto done; }
         if (!test_boxtree())       { rc = 12; goto done; }
         if (!test_layout())        { rc = 12; goto done; }
+        if (!test_image_resources()) { rc = 12; goto done; }
     }
 
-    /* --- GDI render group (TEST 12, opens a real window, offline) ----- */
+    /* --- GDI render group (TEST 12, 14, 17; opens windows, offline) --- */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -1913,13 +2001,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "  Engine (TEST 6-11, 15, 16)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
-               "    layout, box tree, NetSurf layout. Offline.\n\n");
+               "    layout, box tree, NetSurf layout, image\n"
+               "    resource discovery/fetch skeleton. Offline.\n\n");
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12)\n"
+               "  GDI render (TEST 12, 14, 17)\n"
                "    HTML page painted to a window: background,\n"
-               "    borders, padding, wrapped text. Offline.\n\n");
+               "    borders, padding, wrapped text, NetSurf redraw.\n"
+               "    Offline.\n\n");
     }
     if (run_browse) {
         strcat(summary,

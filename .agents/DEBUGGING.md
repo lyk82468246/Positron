@@ -38,6 +38,7 @@ WinCE/WM6 上没有 stdout。定位崩溃/卡死时：
 - 不写 designated initializers，除非后续有转换脚本处理。
 - 谨慎使用 `scripts/c89ize.py`：它主要处理块中声明和 for 声明，不能包治 designated initializer / static aggregate initializer。
 - 新移植 NetSurf content-handler `.c` 时，把 include 列表先对齐已经编过的 `layout.c`，否则容易出现 `private.h` 类型未定义连锁错误。
+- 2026-07-08 复盘：`redraw_border.c` 编译时报 `html/private.h` 里 `dom_document` / `dom_node` / `bool` 连锁语法错误，根因仍是单文件 include 前置依赖不足，不是 `c89ize.py` 应处理的问题。修法是像 `layout_flex.c` / `table.c` 一样补齐 `layout.c`/`redraw.c` 的 dom/css/content 前置 include，再跑 `c89ize.py` 确认 0 change。
 
 ## test_host 文案纪律
 
@@ -49,4 +50,3 @@ WinCE/WM6 上没有 stdout。定位崩溃/卡死时：
 - 最终 success summary。
 
 设备端 MessageBox 是用户看到的全部 UI，错误文案就是用户可见 bug。
-

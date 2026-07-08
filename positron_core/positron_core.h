@@ -87,13 +87,13 @@ PCORE_API int PCore_ComputeColor(HANDLE hDoc, HANDLE hSheet,
 PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet);
 
 /* Embedder-provided resource fetch, used to pull external resources the engine
- * references (currently external <link rel="stylesheet"> CSS). The engine stays
- * transport-agnostic: it hands the raw href from the document to `fetch`, and
- * the embedder resolves it against the current page and fetches it (e.g. via
- * positron_http). On success `fetch` returns 0 and sets *out_data (UTF-8 bytes
- * owned by the embedder) + *out_len; the engine parses it immediately, then
- * calls `freefn` to release it. `fetch` returns non-zero to skip the resource.
- * `pw` is passed through opaquely. */
+ * references (<link rel="stylesheet"> CSS, and now <img src> discovery). The
+ * engine stays transport-agnostic: it hands the raw href/src from the document
+ * to `fetch`, and the embedder resolves it against the current page and fetches
+ * it (e.g. via positron_http). On success `fetch` returns 0 and sets *out_data
+ * (raw bytes owned by the embedder) + *out_len; the engine consumes or probes it
+ * immediately, then calls `freefn` to release it. `fetch` returns non-zero to
+ * skip the resource. `pw` is passed through opaquely. */
 typedef int  (*PCoreFetchFn)(void *pw, const char *url,
                              char **out_data, int *out_len);
 typedef void (*PCoreFreeFn)(void *pw, char *data);
@@ -105,6 +105,15 @@ typedef void (*PCoreFreeFn)(void *pw, char *data);
  * document order alongside the page's inline <style> blocks. */
 PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw);
+
+/* Scan the document for non-empty <img src> resources and invoke the embedder's
+ * fetch callback for each one. This is the resource-discovery/preload skeleton:
+ * bytes are released immediately and are not decoded, cached or painted yet.
+ * `out_found` receives the number of non-empty src attributes; `out_fetched`
+ * receives the number whose fetch returned success with a non-empty body. Either
+ * output pointer may be NULL. Returns 0 when the DOM was scanned. */
+PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
+        PCoreFreeFn freefn, void *pw, int *out_found, int *out_fetched);
 
 /* Read back the computed 'color' (0xAARRGGBB) that PCore_StyleDocument
  * attached to the first element named `tag` (case-insensitive). Returns 0 on
