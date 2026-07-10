@@ -50,14 +50,16 @@
  * libs, exactly as a real Positron app would consume it. */
 #include "positron_core.h"
 
-static const unsigned char g_test_png_2x2[] = {
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
-    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02,
-    0x08, 0x06, 0x00, 0x00, 0x00, 0x72, 0xb6, 0x0d, 0x24, 0x00, 0x00, 0x00,
-    0x14, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0,
-    0x1f, 0x0c, 0x81, 0x34, 0x10, 0x30, 0xfc, 0x07, 0x00, 0x47, 0xca, 0x08,
-    0xf8, 0x8b, 0x4e, 0x43, 0x85, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
-    0x44, 0xae, 0x42, 0x60, 0x82
+static const unsigned char g_test_bmp_2x2[] = {
+    0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x36, 0x00, 0x00, 0x00, 0x28, 0x00,
+    0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0xff, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00,
+    0x00, 0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00
 };
 
 /* -------------------------------------------------------------------- */
@@ -1421,8 +1423,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             RECT rcc;
             int rc;
             GetClientRect(hwnd, &rcc);
-            rc = PCore_DrawImageFromMemory((const char *) g_test_png_2x2,
-                    sizeof(g_test_png_2x2), hdc, 24, 40,
+            rc = PCore_DrawImageFromMemory((const char *) g_test_bmp_2x2,
+                    sizeof(g_test_bmp_2x2), hdc, 24, 40,
                     rcc.right - rcc.left - 48, 120);
             if (g_image_draw_rc != 0) {
                 g_image_draw_rc = rc;
@@ -1877,21 +1879,27 @@ static BOOL test_image_resources(void)
 /* -------------------------------------------------------------------- */
 /* TEST 19 - Windows Mobile native Imaging API decode/draw                */
 /* Uses IImagingFactory/IImage through positron_core.dll to decode a tiny  */
-/* in-memory PNG and draw it to the window HDC. This verifies the native    */
+/* in-memory BMP and draw it to the window HDC. This verifies the native    */
 /* image path before it is wired into <img> layout/object boxes.            */
 /* -------------------------------------------------------------------- */
 static BOOL test19_wmimage(void)
 {
     int w;
     int h;
+    int rc;
+    int stage;
+    unsigned long hr;
     char msg[256];
 
     w = 0;
     h = 0;
-    if (PCore_ImageInfoFromMemory((const char *) g_test_png_2x2,
-            sizeof(g_test_png_2x2), &w, &h) != 0) {
-        show_error(L"TEST 19 FAIL",
-                   "WM Imaging could not decode the in-memory PNG");
+    rc = PCore_ImageInfoFromMemory((const char *) g_test_bmp_2x2,
+            sizeof(g_test_bmp_2x2), &w, &h);
+    if (rc != 0) {
+        PCore_ImageLastError(&stage, &hr);
+        sprintf(msg, "WM Imaging info failed: rc=%d stage=%d hr=0x%08lx",
+                rc, stage, hr);
+        show_error(L"TEST 19 FAIL", msg);
         return FALSE;
     }
     if (w != 2 || h != 2) {
@@ -1902,7 +1910,7 @@ static BOOL test19_wmimage(void)
 
     show_info(L"TEST 19",
               "WM Imaging native decode/draw test.\n\n"
-              "Expect a stretched 2x2 PNG painted by IImage::Draw:\n"
+              "Expect a stretched 2x2 BMP painted by IImage::Draw:\n"
               "red/green on top, blue/yellow below.\n"
               "Tap or press Esc to close.");
 
@@ -1921,11 +1929,13 @@ static BOOL test19_wmimage(void)
     g_image_test = 0;
 
     if (g_image_draw_rc != 0) {
-        sprintf(msg, "IImage::Draw rc=%d", g_image_draw_rc);
+        PCore_ImageLastError(&stage, &hr);
+        sprintf(msg, "IImage::Draw failed: rc=%d stage=%d hr=0x%08lx",
+                g_image_draw_rc, stage, hr);
         show_error(L"TEST 19 FAIL", msg);
         return FALSE;
     }
-    sprintf(msg, "WM Imaging decoded %dx%d PNG and drew it via IImage::Draw",
+    sprintf(msg, "WM Imaging decoded %dx%d BMP and drew it via IImage::Draw",
             w, h);
     show_info(L"TEST 19 OK", msg);
     return TRUE;
@@ -2149,7 +2159,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "  GDI render (TEST 12, 14, 17, 19)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
-               "    plus WM Imaging native PNG decode/draw.\n"
+               "    plus WM Imaging native BMP decode/draw.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

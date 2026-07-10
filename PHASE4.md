@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-07-10）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selectors、`:link` / `:lang()` 与 `<img>` alt fallback 已由 TEST 9/17 真机验证；TEST 11 的 margin collapse 与 1px padding barrier 正反样例已于 2026-07-10 真机通过；旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码新增 document user-data 图片字节缓存和 URL 去重，新版 TEST 18 会二次扫描验证不重复 fetch，仍待复编；同时新增 WM Imaging API C++ 适配层与 TEST 19，用原生 `IImage::Draw` 验证内存 PNG 解码/绘制，仍待复编。
+> 状态（2026-07-10）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selectors、`:link` / `:lang()` 与 `<img>` alt fallback 已由 TEST 9/17 真机验证；TEST 11 的 margin collapse 与 1px padding barrier 正反样例已于 2026-07-10 真机通过；旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码新增 document user-data 图片字节缓存和 URL 去重，新版 TEST 18 会二次扫描验证不重复 fetch，仍待复编；同时新增 WM Imaging API C++ 适配层与 TEST 19，用原生 `IImage::Draw` 先验证内存 BMP 解码/绘制并输出 HRESULT 阶段码。
 
 
 ---
@@ -131,7 +131,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    `redraw_border.c` 补齐 include 后已于 2026-07-10 成功复编，TEST 17 可见 H1、flex、table/cell 边框；attribute/sibling selectors 与 `:link` / `:lang()` 也已由 TEST 9 真机通过。动态状态伪类仍保持 no-match。
 
 3. **图片 / SVG**  
-   `<img>` alt fallback 已由 TEST 17 真机验证；旧 TEST 18 的资源发现/fetch 已真机通过。`PCore_FetchImageResources` 现将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；第二次扫描应命中缓存且 fetch calls 保持 2。缓存去重待新版 TEST 18 复编验证。`pcore_wmimage.cpp` 已新增薄 C++ 适配层，公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 解码/绘制内存 PNG；TEST 19 待复编真机验证。`plot_bitmap` 仍是 stub，`<img>` 仍未接回 `box->object`。
+   `<img>` alt fallback 已由 TEST 17 真机验证；旧 TEST 18 的资源发现/fetch 已真机通过。`PCore_FetchImageResources` 现将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；第二次扫描应命中缓存且 fetch calls 保持 2。缓存去重待新版 TEST 18 复编验证。`pcore_wmimage.cpp` 已新增薄 C++ 适配层，公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 先解码/绘制内存 BMP；TEST 19 待复编真机验证。内存 PNG 首次真机反馈为 decode fail，后续需在 BMP 基线通过后单独做格式覆盖。`plot_bitmap` 仍是 stub，`<img>` 仍未接回 `box->object`。
 
 4. **后台导航体验**  
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document。

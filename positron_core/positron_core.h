@@ -130,6 +130,11 @@ PCORE_API int PCore_ImageInfoFromMemory(const char *data, int len,
 PCORE_API int PCore_DrawImageFromMemory(const char *data, int len, HDC hdc,
         int x, int y, int w, int h);
 
+/* Last WM Imaging bridge failure, for device-side diagnostics. `stage` is:
+ * 0 none/success, 1 invalid argument, 2 COM init, 3 factory creation,
+ * 4 image-from-buffer, 5 image-info, 6 draw. `hr` is the HRESULT. */
+PCORE_API void PCore_ImageLastError(int *out_stage, unsigned long *out_hr);
+
 /* Read back the computed 'color' (0xAARRGGBB) that PCore_StyleDocument
  * attached to the first element named `tag` (case-insensitive). Returns 0 on
  * success, non-zero if the element/style is absent. Used to verify inheritance

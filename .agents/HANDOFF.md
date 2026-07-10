@@ -34,7 +34,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 - `pcore_select.c` 已实现 CSS attribute selectors、adjacent/general sibling selectors、`:link` 与 `:lang()`；TEST 9 已于 2026-07-10 真机通过。
 - TEST 11 原有 `body.y=8` / `p.y=24` 是旧手写布局器预期；NetSurf 折叠结果为 `body.y=p.y=16`。当前源码新增 `padding-top:1px` 阻断组，必须同时得到 `(16,16)` 与 `(8,25)` 才通过；2026-07-10 用户真机截图已确认 TEST 11 OK。
 - 旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码新增 document user-data 字节缓存和 URL 去重；新版 TEST 18 二次扫描时 fetch calls 必须仍为 2，待复编确认。
-- `pcore_wmimage.cpp` 是刻意新增的 C++ 小适配层：项目主体仍按 C89 编译，只有该文件 include WM6 SDK 的 C++ `imaging.h`，通过 `IImagingFactory::CreateImageFromBuffer` / `IImage::Draw` 暴露 C ABI 的 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`。TEST 19 待复编真机确认。
+- `pcore_wmimage.cpp` 是刻意新增的 C++ 小适配层：项目主体仍按 C89 编译，只有该文件 include WM6 SDK 的 C++ `imaging.h`，通过 `IImagingFactory::CreateImageFromBuffer` / `IImage::Draw` 暴露 C ABI 的 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`。内存 PNG 首次真机反馈为 decode fail；TEST 19 现改为 2x2 BMP 基线并输出 HRESULT 阶段码，待复编真机确认。
 
 ## 关键文件
 
@@ -57,7 +57,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
   仅保留未移植/未产生路径的链接桩。注意注释可能落后，看到 stub 前先确认真实源码和 vcproj。
 
 - `test_host/main.c`  
-  设备端唯一可靠测试 UI。没有 stdout，所有结果靠 MessageBox/window。TEST 19 是 WM Imaging 原生内存 PNG 解码/绘制验证，不代表 `<img>` 已接入布局树。
+  设备端唯一可靠测试 UI。没有 stdout，所有结果靠 MessageBox/window。TEST 19 是 WM Imaging 原生内存 BMP 解码/绘制验证，不代表 `<img>` 已接入布局树。
 
 ## 构建与运行
 
@@ -101,7 +101,7 @@ scripts\stage.bat
 优先候选：
 
 1. ENGINE 回归：TEST 11 已由真机截图确认；新版 TEST 18 应显示 first/second 都为 `2/2` 且 fetch calls 为 2。
-2. 图片/SVG：先复编确认 TEST 19 能显示 2x2 PNG（red/green + blue/yellow）并报告 `IImage::Draw` 成功；再把缓存字节接回 NetSurf bitmap / `plot_bitmap`。当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。
+2. 图片/SVG：先复编确认 TEST 19 能显示 2x2 BMP（red/green + blue/yellow）并报告 `IImage::Draw` 成功；如果仍失败，看 MessageBox 的 `stage/hr`；再把缓存字节接回 NetSurf bitmap / `plot_bitmap`。当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。
 3. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。
 
 ## 开发纪律

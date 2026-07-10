@@ -6,8 +6,6 @@
  * export plain C PCore_* functions for the rest of Positron.
  */
 
-#define _WIN32_DCOM
-
 #include <windows.h>
 #include <objbase.h>
 #include <imaging.h>
@@ -22,6 +20,15 @@ static const CLSID PCORE_CLSID_ImagingFactory =
 static const IID PCORE_IID_IImagingFactory =
     { 0x327abda7, 0x072b, 0x11d3,
       { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
+
+static HRESULT g_last_hr = S_OK;
+static int g_last_stage = 0;
+
+static void pcore_wmimage_set_error(int stage, HRESULT hr)
+{
+    g_last_stage = stage;
+    g_last_hr = hr;
+}
 
 static HRESULT pcore_wmimage_com_init(BOOL *did_init)
 {
@@ -53,6 +60,7 @@ static HRESULT pcore_wmimage_create(const char *data, int len, IImage **image)
 
     *image = NULL;
     if (data == NULL || len <= 0) {
+        pcore_wmimage_set_error(1, E_INVALIDARG);
         return E_INVALIDARG;
     }
 
@@ -60,9 +68,15 @@ static HRESULT pcore_wmimage_create(const char *data, int len, IImage **image)
     hr = CoCreateInstance(PCORE_CLSID_ImagingFactory, NULL,
             CLSCTX_INPROC_SERVER, PCORE_IID_IImagingFactory,
             (void **) &factory);
+    if (FAILED(hr) || factory == NULL) {
+        pcore_wmimage_set_error(3, hr);
+    }
     if (SUCCEEDED(hr) && factory != NULL) {
         hr = factory->CreateImageFromBuffer(data, (UINT) len,
                 BufferDisposalFlagNone, image);
+        if (FAILED(hr) || *image == NULL) {
+            pcore_wmimage_set_error(4, hr);
+        }
         factory->Release();
     }
     return hr;
@@ -84,22 +98,25 @@ extern "C" PCORE_API int PCore_ImageInfoFromMemory(const char *data, int len,
     }
 
     image = NULL;
+    pcore_wmimage_set_error(0, S_OK);
     hr = pcore_wmimage_com_init(&did_init);
     if (FAILED(hr)) {
-        return 1;
+        pcore_wmimage_set_error(2, hr);
+        return 2;
     }
     hr = pcore_wmimage_create(data, len, &image);
     if (FAILED(hr) || image == NULL) {
         pcore_wmimage_com_done(did_init);
-        return 1;
+        return (g_last_stage != 0) ? g_last_stage : 4;
     }
 
     memset(&info, 0, sizeof(info));
     hr = image->GetImageInfo(&info);
     image->Release();
     if (FAILED(hr)) {
+        pcore_wmimage_set_error(5, hr);
         pcore_wmimage_com_done(did_init);
-        return 1;
+        return 5;
     }
 
     if (out_w != NULL) {
@@ -122,18 +139,21 @@ extern "C" PCORE_API int PCore_DrawImageFromMemory(const char *data, int len,
     RECT dst;
 
     if (hdc == NULL) {
+        pcore_wmimage_set_error(1, E_INVALIDARG);
         return 1;
     }
 
     image = NULL;
+    pcore_wmimage_set_error(0, S_OK);
     hr = pcore_wmimage_com_init(&did_init);
     if (FAILED(hr)) {
-        return 1;
+        pcore_wmimage_set_error(2, hr);
+        return 2;
     }
     hr = pcore_wmimage_create(data, len, &image);
     if (FAILED(hr) || image == NULL) {
         pcore_wmimage_com_done(did_init);
-        return 1;
+        return (g_last_stage != 0) ? g_last_stage : 4;
     }
 
     if (w <= 0 || h <= 0) {
@@ -141,8 +161,9 @@ extern "C" PCORE_API int PCore_DrawImageFromMemory(const char *data, int len,
         hr = image->GetImageInfo(&info);
         if (FAILED(hr)) {
             image->Release();
+            pcore_wmimage_set_error(5, hr);
             pcore_wmimage_com_done(did_init);
-            return 1;
+            return 5;
         }
         if (w <= 0) {
             w = (int) info.Width;
@@ -159,5 +180,20 @@ extern "C" PCORE_API int PCore_DrawImageFromMemory(const char *data, int len,
     hr = image->Draw(hdc, &dst, NULL);
     image->Release();
     pcore_wmimage_com_done(did_init);
-    return SUCCEEDED(hr) ? 0 : 1;
+    if (FAILED(hr)) {
+        pcore_wmimage_set_error(6, hr);
+        return 6;
+    }
+    return 0;
+}
+
+extern "C" PCORE_API void PCore_ImageLastError(int *out_stage,
+        unsigned long *out_hr)
+{
+    if (out_stage != NULL) {
+        *out_stage = g_last_stage;
+    }
+    if (out_hr != NULL) {
+        *out_hr = (unsigned long) g_last_hr;
+    }
 }
