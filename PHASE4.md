@@ -125,7 +125,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 当前优先级：
 
 1. **ENGINE 回归**
-   TEST 11 原有 `body.y=8` / `p.y=24` 来自旧手写布局器；NetSurf 的折叠结果是 `body.y=p.y=16`。当前测试新增 `body { padding-top:1px }` 反例，必须同时得到折叠组 `(16,16)` 与阻断组 `(8,25)` 才通过；2026-07-10 已由用户真机截图确认 TEST 11 OK。TEST 15/16/18 仍收集失败后继续执行，待复编确认。
+   TEST 11 原有 `body.y=8` / `p.y=24` 来自旧手写布局器；NetSurf 的折叠结果是 `body.y=p.y=16`。当前测试新增 `body { padding-top:1px }` 反例，必须同时得到折叠组 `(16,16)` 与阻断组 `(8,25)` 才通过；2026-07-10 已由用户真机截图确认 TEST 11 OK。2026-07-11 用户真机截图进一步确认完整 ENGINE 组 TEST 6-11、15、16、18、21、22 全部通过；后续引擎改动仍应重跑整组。
 
 2. **已完成的 border / selector 验证**
    `redraw_border.c` 补齐 include 后已于 2026-07-10 成功复编，TEST 17 可见 H1、flex、table/cell 边框；attribute/sibling selectors 与 `:link` / `:lang()` 也已由 TEST 9 真机通过。动态状态伪类仍保持 no-match。

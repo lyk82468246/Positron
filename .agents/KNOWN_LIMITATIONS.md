@@ -12,6 +12,7 @@
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | 最新 TEST 13 截图确认：此前约 25px 的左缘正文裁切已消失，`Example Domains` 标题可完整显示。 | 页面已达到原浏览器或现代浏览器的像素级还原。 |
 | 图片 | TEST 18、19、20 已分别确认资源去重、WM Imaging 内存 BMP 解码/绘制、缓存 `<img>` 进入 NetSurf `box->object -> content_redraw -> plot_bitmap` 链。 | PNG/JPEG/GIF、SVG、背景图或任意网络图片均可显示。 |
+| ENGINE 离线回归 | 2026-07-11 用户截图确认 ENGINE 组 TEST 6-11、15、16、18、21、22 全部通过。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 会以新 client 宽高更新 viewport、重新 layout、校正滚动位置并重绘。 | 旋转后会重新选择跨断点的 CSS 规则。 |
 
 ## 真实页面观察到的未完成项

@@ -101,12 +101,12 @@ scripts\stage.bat
 
 优先候选：
 
-1. ENGINE 回归：TEST 11 已由真机截图确认；新版 TEST 18 应显示 first/second 都为 `2/2` 且 fetch calls 为 2。
-2. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。
-3. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。
-4. TEST 21 与 TEST 22 已于 2026-07-11 真机通过；IANA 正文不再左裁切。下一步不是再改 clip，而是针对页脚/导航仍有的拥挤和错位，先做最小复现并检查 box 几何/样式。
-5. `WM_SIZE` 会重新 layout，但不重新 style；旋转跨 CSS 媒体断点仍可能使用旋转前规则。后续做不联网 restyle + layout。
-6. 导航的 fetch/parse/style/layout 仍在 UI 线程同步执行。后续需要 worker fetch、loading、generation 和 UI 线程安全 swap；禁止未经验证就跨线程并发操作 DOM/libcss/NetSurf document。完整边界和完成条件见 `KNOWN_LIMITATIONS.md`。
+1. 2026-07-11 用户真机截图确认 ENGINE 组 TEST 6-11、15、16、18、21、22 全部通过。此离线回归门槛已完成；后续修改引擎路径时必须重跑整组。
+2. IANA 正文不再左裁切；下一步不是再改 clip，而是针对页脚/导航仍有的拥挤和错位，先做最小复现并检查 box 几何/样式。
+3. `WM_SIZE` 会重新 layout，但不重新 style；旋转跨 CSS 媒体断点仍可能使用旋转前规则。后续做不联网 restyle + layout。
+4. 导航的 fetch/parse/style/layout 仍在 UI 线程同步执行。后续需要 worker fetch、loading、generation 和 UI 线程安全 swap；禁止未经验证就跨线程并发操作 DOM/libcss/NetSurf document。
+5. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。
+6. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。完整边界和完成条件见 `KNOWN_LIMITATIONS.md`。
 
 ## 开发纪律
 
