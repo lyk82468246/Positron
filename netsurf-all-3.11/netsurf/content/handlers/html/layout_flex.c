@@ -850,8 +850,12 @@ static bool layout_flex__place_line_items_main(
 	int extra = 0;
 
 	if (ctx->main_reversed) {
-		main_pos = lh__box_size_main(ctx->horizontal, ctx->flex) -
-				main_pos;
+		/* Box width/height is the content size. For a reversed main axis,
+		 * start at the far content edge: leading padding plus content size.
+		 * Subtracting the opposite padding here shifts every row-reverse /
+		 * column-reverse item outside the leading edge. */
+		main_pos = lh__box_size_main(ctx->horizontal, ctx->flex) +
+				ctx->flex->padding[layout_flex__main_end_side(ctx)];
 	}
 
 	if (ctx->available_main != AUTO &&

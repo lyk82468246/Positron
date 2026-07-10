@@ -1057,6 +1057,83 @@ static BOOL test21_media_viewport(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 22 - reverse flex respects container padding                     */
+/* IANA's narrow layout is a row-reverse flex article with a hidden nav. */
+/* Its sole main item must start after the 25px leading padding, not at a */
+/* negative x coordinate.                                                 */
+/* -------------------------------------------------------------------- */
+static BOOL test22_reverse_flex_padding(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><div><main>main</main>"
+        "<nav>hidden</nav></div></body></html>";
+    static const char *CSS =
+        "body{margin:0;}"
+        "div{display:flex;flex-direction:row-reverse;"
+        "padding-left:25px;padding-right:25px;}"
+        "main{flex-grow:1;flex-basis:0;}nav{display:none;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    int x = 0, y = 0, w = 0, h = 0;
+    int screen_w;
+    int screen_h;
+    int screen_dpi = 96;
+    HDC screen_dc;
+    char msg[256];
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/flex.css");
+    if (hDoc == NULL || hSheet == NULL) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 22 FAIL", "parse HTML/CSS failed");
+        return FALSE;
+    }
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        int dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
+        if (dpi > 0) {
+            screen_dpi = dpi;
+        }
+        ReleaseDC(NULL, screen_dc);
+    }
+    PCore_SetViewport(224, 320, screen_dpi);
+    if (PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 224, 320) != 0 ||
+            PCore_NodeBox(hDoc, "main", &x, &y, &w, &h) != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        screen_w = GetSystemMetrics(SM_CXSCREEN);
+        screen_h = GetSystemMetrics(SM_CYSCREEN);
+        if (screen_w <= 0) { screen_w = 240; }
+        if (screen_h <= 0) { screen_h = 320; }
+        PCore_SetViewport(screen_w, screen_h, screen_dpi);
+        show_error(L"TEST 22 FAIL", "style/layout/main box failed");
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, screen_dpi);
+
+    if (x != 25 || w != 174) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "main=(%d,%d) %dx%d, expect x=25 width=174", x, y, w, h);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 22 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 22 OK",
+              "row-reverse flex + 25px padding OK:\n"
+              "main x=25, width=174 in a 224px viewport.\n\n"
+              "(hidden side nav cannot push content left.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 11 - block-flow layout via positron_core.dll                      */
 /* PCore_LayoutDocument computes block boxes; verify both parent/child    */
 /* margin collapse and the padding barrier that must stop that collapse. */
@@ -2281,7 +2358,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-21)\n"
+                  "Yes = run all selected groups (TEST 1-22)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -2297,7 +2374,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "HTML / CSS / DOM parse, select, style,\n"
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
-                               "(TEST 6-11, 15, 16, 18, 21). Offline.");
+                               "(TEST 6-11, 15, 16, 18, 21, 22). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "M1 plotter (TEST 14), NetSurf render\n"
@@ -2324,7 +2401,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine group (TEST 6-11, 15, 16, 18, 21; offline) ----------- */
+    /* --- Engine group (TEST 6-11, 15, 16, 18, 21, 22; offline) ------- */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -2333,6 +2410,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test9_select())       { rc = 10; goto done; }
         if (!test10_styledoc())    { rc = 11; goto done; }
         if (!test21_media_viewport()){ rc = 11; goto done; }
+        if (!test22_reverse_flex_padding()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -2377,10 +2455,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
-               "    layout, media-query viewport, box tree, NetSurf layout, image\n"
+               "    layout, media-query viewport, reverse flex, box tree, NetSurf layout, image\n"
                "    resource discovery/document cache. Offline.\n\n");
     }
     if (run_render) {

@@ -76,7 +76,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 建议顺序：
 
-1. 复编 TEST 21，再重跑 IANA 的 TEST 13：确认 `@media` 已按真实 client 宽度选规则，正文不再向左裁切。
+1. 复编 TEST 22，再重跑 IANA 的 TEST 13：确认 row-reverse flex 保留 leading padding，正文不再向左裁切。TEST 21 已通过。
 2. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback。
 3. 为图片 fetch 增加受控的诊断/大小限制，避免同步 UI 线程被多个资源长期阻塞。
 4. SVG 可后置，必要时先占位或引入 libsvgtiny。
