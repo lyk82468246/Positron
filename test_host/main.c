@@ -949,81 +949,118 @@ static BOOL test10_styledoc(void)
 
 /* -------------------------------------------------------------------- */
 /* TEST 11 - block-flow layout via positron_core.dll                      */
-/* PCore_LayoutDocument computes block boxes; verify body fills the       */
-/* viewport minus its margins, and the first <p> is offset + stacked.     */
+/* PCore_LayoutDocument computes block boxes; verify both parent/child    */
+/* margin collapse and the padding barrier that must stop that collapse. */
 /* -------------------------------------------------------------------- */
 
-static BOOL test11_layout(void)
+static BOOL test11_measure(const char *css,
+        int *bx, int *by, int *bw, int *bh,
+        int *px, int *py, int *pw, int *ph,
+        char *err, int err_cap)
 {
     static const char *HTML =
         "<!DOCTYPE html><html><head><title>x</title></head>"
         "<body><div><p>Hello</p><p>World</p></div></body></html>";
-    static const char *CSS = "body { color: #112233; }\n";
-    const int VW = 240;
+    HANDLE hDoc = NULL;
+    HANDLE hSheet = NULL;
+    BOOL ok = FALSE;
 
-    HANDLE hDoc;
-    HANDLE hSheet;
-    int    bx, by, bw, bh;
-    int    px, py, pw, ph;
-    char   msg[320];
+    err[0] = '\0';
 
     hDoc = PCore_ParseHTML(HTML, 0);
     if (hDoc == NULL) {
-        show_error(L"TEST 11 FAIL", "PCore_ParseHTML returned NULL");
-        return FALSE;
+        _snprintf(err, err_cap - 1, "PCore_ParseHTML returned NULL");
+        goto cleanup;
     }
-    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/test.css");
+    hSheet = PCore_ParseCSS(css, 0, "http://positron.local/test.css");
     if (hSheet == NULL) {
-        show_error(L"TEST 11 FAIL", "PCore_ParseCSS returned NULL");
-        PCore_FreeDocument(hDoc);
-        return FALSE;
+        _snprintf(err, err_cap - 1, "PCore_ParseCSS returned NULL");
+        goto cleanup;
     }
 
     if (PCore_StyleDocument(hDoc, hSheet) != 0) {
-        show_error(L"TEST 11 FAIL", "PCore_StyleDocument failed");
+        _snprintf(err, err_cap - 1, "PCore_StyleDocument failed");
+        goto cleanup;
+    }
+    if (PCore_LayoutDocument(hDoc, 240, 320) != 0) {
+        _snprintf(err, err_cap - 1, "PCore_LayoutDocument failed");
+        goto cleanup;
+    }
+
+    if (PCore_NodeBox(hDoc, "body", bx, by, bw, bh) != 0 ||
+            PCore_NodeBox(hDoc, "p", px, py, pw, ph) != 0) {
+        _snprintf(err, err_cap - 1, "PCore_NodeBox failed (body / p)");
+        goto cleanup;
+    }
+    ok = TRUE;
+
+cleanup:
+    err[err_cap - 1] = '\0';
+    if (hSheet != NULL) {
         PCore_FreeStylesheet(hSheet);
+    }
+    if (hDoc != NULL) {
         PCore_FreeDocument(hDoc);
+    }
+    return ok;
+}
+
+static BOOL test11_layout(void)
+{
+    static const char *CSS_COLLAPSE =
+        "body { color: #112233; }\n";
+    static const char *CSS_BARRIER =
+        "body { color: #112233; padding-top: 1px; }\n";
+    int cbx, cby, cbw, cbh;
+    int cpx, cpy, cpw, cph;
+    int bbx, bby, bbw, bbh;
+    int bpx, bpy, bpw, bph;
+    char err[128];
+    char msg[512];
+
+    if (!test11_measure(CSS_COLLAPSE,
+            &cbx, &cby, &cbw, &cbh, &cpx, &cpy, &cpw, &cph,
+            err, sizeof(err))) {
+        _snprintf(msg, sizeof(msg) - 1, "collapse case: %s", err);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 11 FAIL", msg);
         return FALSE;
     }
-    if (PCore_LayoutDocument(hDoc, VW, 320) != 0) {
-        show_error(L"TEST 11 FAIL", "PCore_LayoutDocument failed");
-        PCore_FreeStylesheet(hSheet);
-        PCore_FreeDocument(hDoc);
+    if (!test11_measure(CSS_BARRIER,
+            &bbx, &bby, &bbw, &bbh, &bpx, &bpy, &bpw, &bph,
+            err, sizeof(err))) {
+        _snprintf(msg, sizeof(msg) - 1, "padding barrier case: %s", err);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 11 FAIL", msg);
         return FALSE;
     }
 
-    if (PCore_NodeBox(hDoc, "body", &bx, &by, &bw, &bh) != 0 ||
-            PCore_NodeBox(hDoc, "p", &px, &py, &pw, &ph) != 0) {
-        show_error(L"TEST 11 FAIL", "PCore_NodeBox failed (body / p)");
-        PCore_FreeStylesheet(hSheet);
-        PCore_FreeDocument(hDoc);
-        return FALSE;
-    }
-
-    PCore_FreeStylesheet(hSheet);
-    PCore_FreeDocument(hDoc);
-
-    /* VW=240: horizontal body margins give x=8,w=224. NetSurf collapses the
+    /* Horizontal body margins give x=8,w=224. NetSurf collapses the
      * body's 8px top margin with the first paragraph's 1em (16px) margin
-     * through its borderless div, so both box origins land at page y=16. */
-    if (bx != 8 || by != 16 || bw != 224 ||
-            px != 8 || pw != 224 || py != 16) {
+     * through its borderless div. A 1px body padding stops that collapse. */
+    if (cbx != 8 || cby != 16 || cbw != 224 ||
+            cpx != 8 || cpy != 16 || cpw != 224 ||
+            bbx != 8 || bby != 8 || bbw != 224 ||
+            bpx != 8 || bpy != 25 || bpw != 224) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "geometry off:\n"
-                  "  body=(%d,%d,%d,%d) expect x8 y16 w224\n"
-                  "  p=(%d,%d,%d,%d) expect x8 y16 w224",
-                  bx, by, bw, bh, px, py, pw, ph);
+                  "margin geometry off:\n"
+                  " collapse body=(%d,%d,%d,%d), p=(%d,%d,%d,%d)\n"
+                  "   expect body/p x8 y16 w224\n"
+                  " barrier body=(%d,%d,%d,%d), p=(%d,%d,%d,%d)\n"
+                  "   expect body x8 y8 w224; p x8 y25 w224",
+                  cbx, cby, cbw, cbh, cpx, cpy, cpw, cph,
+                  bbx, bby, bbw, bbh, bpx, bpy, bpw, bph);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 11 FAIL", msg);
         return FALSE;
     }
 
     _snprintf(msg, sizeof(msg) - 1,
-              "Block layout OK (viewport %d px):\n"
-              "  body box  = (%d,%d) %dx%d\n"
-              "  first <p> = (%d,%d) %dx%d\n\n"
-              "(width fill - margins, x offset, vertical flow.)",
-              VW, bx, by, bw, bh, px, py, pw, ph);
+              "Margin collapse + barrier OK:\n"
+              " collapse: body y=%d, p y=%d\n"
+              " padding-top:1px: body y=%d, p y=%d\n\n"
+              "Both cases keep x=8 and width=224.",
+              cby, cpy, bby, bpy);
     msg[sizeof(msg) - 1] = '\0';
     show_info(L"TEST 11 OK", msg);
     return TRUE;
@@ -1713,13 +1750,14 @@ static BOOL test_layout(void)
 }
 
 /* -------------------------------------------------------------------- */
-/* TEST 18 - image resource discovery / fetch skeleton                    */
-/* Scans <img src> resources and drives the PCoreFetchFn callback without */
-/* decoding/caching/painting bytes yet. Fully offline via a fake fetcher.  */
+/* TEST 18 - image resource discovery / document cache                    */
+/* Scans <img src>, fetches into the document cache, then scans again to   */
+/* prove cache hits avoid duplicate fetches. No decode/paint yet.          */
 /* -------------------------------------------------------------------- */
 typedef struct image_resource_test_ctx {
     int calls;
     int matched;
+    int frees;
 } image_resource_test_ctx;
 
 static int image_resource_fetch(void *pw, const char *url,
@@ -1750,7 +1788,9 @@ static int image_resource_fetch(void *pw, const char *url,
 
 static void image_resource_free(void *pw, char *data)
 {
-    (void) pw;
+    image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
+
+    ctx->frees++;
     free(data);
 }
 
@@ -1767,12 +1807,17 @@ static BOOL test_image_resources(void)
     image_resource_test_ctx ctx;
     int found;
     int fetched;
-    char msg[192];
+    int found_again;
+    int fetched_again;
+    char msg[256];
 
     ctx.calls = 0;
     ctx.matched = 0;
+    ctx.frees = 0;
     found = 0;
     fetched = 0;
+    found_again = 0;
+    fetched_again = 0;
     hDoc = PCore_ParseHTML(HTML, 0);
     if (hDoc == NULL) {
         show_error(L"TEST 18 FAIL", "PCore_ParseHTML returned NULL");
@@ -1784,16 +1829,26 @@ static BOOL test_image_resources(void)
         show_error(L"TEST 18 FAIL", "PCore_FetchImageResources failed");
         return FALSE;
     }
-    PCore_FreeDocument(hDoc);
-    if (found != 2 || fetched != 2 || ctx.calls != 2 || ctx.matched != 2) {
-        sprintf(msg, "found=%d fetched=%d calls=%d matched=%d",
-                found, fetched, ctx.calls, ctx.matched);
+    if (PCore_FetchImageResources(hDoc, NULL, NULL, NULL,
+            &found_again, &fetched_again) != 0) {
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 18 FAIL", "second image resource scan failed");
+        return FALSE;
+    }
+    if (found != 2 || fetched != 2 || found_again != 2 ||
+            fetched_again != 2 || ctx.calls != 2 || ctx.matched != 2 ||
+            ctx.frees != 2) {
+        sprintf(msg, "first=%d/%d second=%d/%d calls=%d matched=%d frees=%d",
+                found, fetched, found_again, fetched_again,
+                ctx.calls, ctx.matched, ctx.frees);
+        PCore_FreeDocument(hDoc);
         show_error(L"TEST 18 FAIL", msg);
         return FALSE;
     }
-    sprintf(msg, "image resources: found=%d fetched=%d (offline fake fetch)",
-            found, fetched);
-    show_info(L"TEST 18 (image resources)", msg);
+    PCore_FreeDocument(hDoc);
+    sprintf(msg, "image cache: first=%d/%d second=%d/%d; fetch calls=%d",
+            found, fetched, found_again, fetched_again, ctx.calls);
+    show_info(L"TEST 18 OK (image cache)", msg);
     return TRUE;
 }
 
@@ -1925,7 +1980,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "Run ENGINE tests?\n\n"
                                "HTML / CSS / DOM parse, select, style,\n"
                                "layout, box tree, NetSurf layout,\n"
-                               "image resource scan\n"
+                               "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
@@ -2006,7 +2061,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, box tree, NetSurf layout, image\n"
-               "    resource discovery/fetch skeleton. Offline.\n\n");
+               "    resource discovery/document cache. Offline.\n\n");
     }
     if (run_render) {
         strcat(summary,

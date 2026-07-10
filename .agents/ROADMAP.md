@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-10
-基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border 与 CSS attribute/sibling/static-pseudo selector 已于 2026-07-10 真机通过；TEST 11 的旧布局器几何预期已修正，待复编回归。
+基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector 与图片资源发现/fetch 已于 2026-07-10 真机通过；TEST 11 正反样例与文档级图片缓存待复编回归。
 
 ## 总原则
 
@@ -56,9 +56,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 ### 3. ENGINE 回归可观测性
 
-- TEST 11 已从旧手写布局器的 `body.y=8` / `p.y=24` 更新为 NetSurf margin collapse 的 `body.y=p.y=16`。
+- TEST 11 同时覆盖折叠组 `body.y=p.y=16` 和 `padding-top:1px` 阻断组 `body.y=8,p.y=25`。
 - TEST 11/15/16/18 改为收集失败后继续执行，避免较早断言遮住后续结果。
-- 待 WM6 复编确认 TEST 11、15、16、18 全部通过，其中 TEST 18 应报告 `found=2 fetched=2`。
+- 待 WM6 复编确认 TEST 11、15、16、18 全部通过。
 
 ## 中期规划
 
@@ -69,23 +69,22 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 当前状态：
 
 - `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，并由 TEST 17 于 2026-07-10 真机验证。
-- `PCore_FetchImageResources` 已接入 `<img src>` 资源发现/fetch 骨架，TEST 18 用 fake fetch 离线覆盖；fetch 到的字节立即释放，尚不缓存/解码/绘制。
+- 旧 TEST 18 的 `<img src>` 资源发现/fetch 已真机通过；当前源码将成功字节复制到 document user-data 缓存，并按 URL 去重。embedder 缓冲仍由 `freefn` 立即释放；核心副本随文档释放。
 - `plot_bitmap` 是 stub。
 - `box->object/background` 相关内容基本为空。
 - SVG logo、PNG/JPEG 图片仍不会真实显示，只会在 `<img>` 有 alt/src 时显示文本占位。
 
 建议顺序：
 
-1. 先复编运行 TEST 18，验证 image fetch skeleton 在 VS2008/WM6 上报告 `found=2 fetched=2`。
-2. 将 image fetch 结果接入简单缓存/生命周期管理（仍可先不绘制）。
-3. PNG/JPEG/GIF 位图解码，优先看 WM Imaging API。
-4. 接 NetSurf bitmap / plot_bitmap。
-5. SVG 可后置，必要时先占位或引入 libsvgtiny。
+1. 先复编新版 TEST 18，验证二次扫描 first/second 均为 `2/2` 且 fetch calls 保持 2。
+2. PNG/JPEG/GIF 位图解码，优先看 WM Imaging API。
+3. 接 NetSurf bitmap / plot_bitmap。
+4. SVG 可后置，必要时先占位或引入 libsvgtiny。
 
 验收：
 
 - TEST 17 可见 `Image fallback: Logo`。
-- TEST 18 显示 `image resources: found=2 fetched=2`。
+- TEST 18 显示 `image cache: first=2/2 second=2/2; fetch calls=2`。
 - 本地 HTML + 小 PNG/JPEG 能显示。
 - 真实网页 logo/图片不再空白。
 

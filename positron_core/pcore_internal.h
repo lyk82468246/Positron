@@ -21,6 +21,11 @@ css_computed_style *pcore_node_computed_style(struct dom_node *node);
  * layout's html_content.unit_len_ctx. Implemented in pcore_select.c. */
 const css_unit_ctx *pcore_get_unit_ctx(void);
 
+/* Look up raw image bytes cached on `doc` by PCore_FetchImageResources.
+ * Returned data is borrowed and remains valid until the document is freed. */
+int pcore_image_resource_get(struct dom_document *doc, const char *url,
+        const char **out_data, int *out_len);
+
 /* Build a NetSurf box tree (struct box) from the styled document element
  * `root`, allocating under talloc context `ctx`. Returns the root box, or NULL.
  * The tree is freed by talloc_free(ctx). Boxes borrow DOM node pointers. */

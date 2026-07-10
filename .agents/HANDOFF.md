@@ -2,7 +2,7 @@
 
 更新时间：2026-07-10
 当前分支：`main`  
-当前最新提交：请以 `git log --oneline -5` 为准；Codex 接手后已刷新文档，接入 M5f border、CSS selector 补强与 `<img>` fallback/fetch 骨架，并修正 TEST 11 的 NetSurf margin-collapse 预期。
+当前最新提交：请以 `git log --oneline -5` 为准；Codex 接手后已刷新文档，接入 M5f border、CSS selector 补强、`<img>` fallback/fetch 与文档级图片字节缓存，并把 TEST 11 扩展为 margin-collapse 正反样例。
 
 ## 项目目标
 
@@ -32,7 +32,8 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 - `table.c` 已移植，`pcore_construct_table` 生成 `BOX_TABLE > ROW_GROUP > ROW > CELL`，TEST 17 2x2 table 网格真机验证。
 - `redraw_border.c` 已接入源码和 `positron_core.vcproj`；`pcore_layout_stubs.c` 中 border no-op 已移除。2026-07-08 根据真实 VS2008 错误补齐 include 后，2026-07-10 已成功复编；TEST 17 真机可见 H1、flex、table/cell 边框并通过。
 - `pcore_select.c` 已实现 CSS attribute selectors、adjacent/general sibling selectors、`:link` 与 `:lang()`；TEST 9 已于 2026-07-10 真机通过。
-- TEST 11 原有 `body.y=8` / `p.y=24` 是旧手写布局器预期；M6 切换 NetSurf 后 body 8px 与首段 1em margin 经无 border/padding 的 `div` 折叠，设备结果为 `body.y=p.y=16`。断言已修正，ENGINE 从 TEST 11 起改为收集失败后继续跑 TEST 15/16/18；待 WM6 复编复跑确认。
+- TEST 11 原有 `body.y=8` / `p.y=24` 是旧手写布局器预期；NetSurf 折叠结果为 `body.y=p.y=16`。当前源码新增 `padding-top:1px` 阻断组，必须同时得到 `(16,16)` 与 `(8,25)` 才通过；待 WM6 复编确认。
+- 旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码新增 document user-data 字节缓存和 URL 去重；新版 TEST 18 二次扫描时 fetch calls 必须仍为 2，待复编确认。
 
 ## 关键文件
 
@@ -85,7 +86,7 @@ scripts\stage.bat
 启动时可选择：
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18，解析/选择/样式/layout/box tree/image resource scan，离线。
+- Engine：TEST 6-11、15、16、18，解析/选择/样式/layout/box tree/image resource cache，离线。
 - GDI Render：TEST 14、17、12，离线窗口渲染。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
@@ -98,8 +99,8 @@ scripts\stage.bat
 
 优先候选：
 
-1. ENGINE 回归：复编后确认 TEST 11 显示 `body=(8,16,224,304)`、`p=(8,16,224,20)` 并通过，随后 TEST 15/16/18 都会继续运行；TEST 18 应显示 `found=2 fetched=2`。
-2. 图片/SVG：`<img>` alt fallback 已由 TEST 17 真机验证；`PCore_FetchImageResources` 的 TEST 18 fake fetch 仍待首次真机运行。`plot_bitmap` 仍是 stub，SVG logo/PNG/JPEG 仍不会真实显示。方向应优先看 WM Imaging API / NetSurf bitmap 接口，而不是从零写解码器。
+1. ENGINE 回归：TEST 11 应显示 collapse `body/p y=16`、padding barrier `body y=8, p y=25`；新版 TEST 18 应显示 first/second 都为 `2/2` 且 fetch calls 为 2。
+2. 图片/SVG：缓存去重复编通过后，把缓存字节交给 WM Imaging API 解码，再接 NetSurf bitmap / `plot_bitmap`；当前 SVG logo/PNG/JPEG 仍不会真实显示。
 3. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。
 
 ## 开发纪律

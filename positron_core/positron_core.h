@@ -91,9 +91,9 @@ PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet);
  * engine stays transport-agnostic: it hands the raw href/src from the document
  * to `fetch`, and the embedder resolves it against the current page and fetches
  * it (e.g. via positron_http). On success `fetch` returns 0 and sets *out_data
- * (raw bytes owned by the embedder) + *out_len; the engine consumes or probes it
- * immediately, then calls `freefn` to release it. `fetch` returns non-zero to
- * skip the resource. `pw` is passed through opaquely. */
+ * (raw bytes owned by the embedder) + *out_len; the engine consumes or copies
+ * them before calling `freefn` to release the embedder buffer. `fetch` returns
+ * non-zero to skip the resource. `pw` is passed through opaquely. */
 typedef int  (*PCoreFetchFn)(void *pw, const char *url,
                              char **out_data, int *out_len);
 typedef void (*PCoreFreeFn)(void *pw, char *data);
@@ -107,11 +107,12 @@ PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw);
 
 /* Scan the document for non-empty <img src> resources and invoke the embedder's
- * fetch callback for each one. This is the resource-discovery/preload skeleton:
- * bytes are released immediately and are not decoded, cached or painted yet.
+ * fetch callback for each one. Successful bodies are copied into a per-document
+ * URL cache, so repeated scans do not fetch the same raw src again; the cache is
+ * freed with the document. Bytes are not decoded or painted yet.
  * `out_found` receives the number of non-empty src attributes; `out_fetched`
- * receives the number whose fetch returned success with a non-empty body. Either
- * output pointer may be NULL. Returns 0 when the DOM was scanned. */
+ * receives the number available from cache or a successful non-empty fetch.
+ * Either output pointer may be NULL. Returns 0 when the DOM was scanned. */
 PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
         PCoreFreeFn freefn, void *pw, int *out_found, int *out_fetched);
 
@@ -124,13 +125,11 @@ PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
 
 /* --- Block layout (engine layer 3, milestone B) --------------------- */
 
-/* Lay out the styled document as block boxes in normal flow, given a viewport
- * of `viewport_w` x `viewport_h` CSS px. Must be called after
- * PCore_StyleDocument. Computes each block element's content-box geometry
- * (x, y, width, height) and attaches it to the node. First cut: block flow
- * only (vertical stacking, width fill, margins); padding/border, inline text
- * wrapping, floats and margin-collapsing are not modelled yet. Returns 0 on
- * success. */
+/* Lay out the styled document through NetSurf's layout_document, given a
+ * viewport of `viewport_w` x `viewport_h` CSS px. Must be called after
+ * PCore_StyleDocument. The resulting NetSurf box tree supplies geometry,
+ * margin collapse, inline wrapping, flex and common table layout. Returns 0
+ * on success. */
 PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h);
 
 /* Read back the laid-out content-box (CSS px) of the first element named `tag`.
@@ -140,11 +139,11 @@ PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
 
 /* --- Painting (engine layer 4, milestone C) ------------------------- */
 
-/* Paint the laid-out document into a GDI device context. Must be called after
- * PCore_StyleDocument + PCore_LayoutDocument. Draws each block's background
- * colour and (un-wrapped) leaf text in its computed colour; scroll_x/scroll_y
- * shift the page beneath the viewport. The application owns the window and
- * message loop and calls this from its WM_PAINT handler. */
+/* Paint the laid-out document into a GDI device context through NetSurf's
+ * html_redraw and the Positron GDI plotter. Must be called after
+ * PCore_StyleDocument + PCore_LayoutDocument. scroll_x/scroll_y shift the page
+ * beneath the viewport. The application owns the window and message loop and
+ * calls this from its WM_PAINT handler. */
 PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
                                    int scroll_x, int scroll_y);
 

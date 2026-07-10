@@ -30,6 +30,7 @@
 #include <libwapcaplet/libwapcaplet.h>
 
 #include "positron_core.h"
+#include "pcore_internal.h"
 
 /* Client data threaded through css_select_style into the handler. */
 typedef struct pcore_select_pw {
@@ -1654,10 +1655,183 @@ cleanup:
     return rc;
 }
 
+typedef struct pcore_image_resource {
+    struct pcore_image_resource *next;
+    char *url;
+    char *data;
+    int len;
+} pcore_image_resource;
+
+typedef struct pcore_image_cache {
+    pcore_image_resource *head;
+} pcore_image_cache;
+
+static dom_string *pcore_image_cache_key = NULL;
+
+static int pcore_ensure_image_cache_key(void)
+{
+    static const char *name = "__pcore_image_cache__";
+
+    if (pcore_image_cache_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) name, strlen(name),
+            &pcore_image_cache_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_image_cache_free(pcore_image_cache *cache)
+{
+    pcore_image_resource *entry;
+
+    if (cache == NULL) {
+        return;
+    }
+    entry = cache->head;
+    while (entry != NULL) {
+        pcore_image_resource *next = entry->next;
+
+        free(entry->url);
+        free(entry->data);
+        free(entry);
+        entry = next;
+    }
+    free(cache);
+}
+
+static void pcore_image_cache_ud_handler(dom_node_operation op,
+        dom_string *key, void *data, struct dom_node *src,
+        struct dom_node *dst)
+{
+    (void) key;
+    (void) src;
+    (void) dst;
+    if (op == DOM_NODE_DELETED && data != NULL) {
+        pcore_image_cache_free((pcore_image_cache *) data);
+    }
+}
+
+static pcore_image_cache *pcore_image_cache_get(dom_document *doc, int create)
+{
+    void *data = NULL;
+    void *old = NULL;
+    pcore_image_cache *cache;
+
+    if (doc == NULL || pcore_ensure_image_cache_key() != 0) {
+        return NULL;
+    }
+    if (dom_node_get_user_data((struct dom_node *) doc,
+            pcore_image_cache_key, &data) != DOM_NO_ERR) {
+        return NULL;
+    }
+    if (data != NULL) {
+        return (pcore_image_cache *) data;
+    }
+    if (!create) {
+        return NULL;
+    }
+
+    cache = (pcore_image_cache *) malloc(sizeof(*cache));
+    if (cache == NULL) {
+        return NULL;
+    }
+    cache->head = NULL;
+    if (dom_node_set_user_data((struct dom_node *) doc,
+            pcore_image_cache_key, cache, pcore_image_cache_ud_handler,
+            &old) != DOM_NO_ERR) {
+        free(cache);
+        return NULL;
+    }
+    if (old != NULL && old != cache) {
+        pcore_image_cache_free((pcore_image_cache *) old);
+    }
+    return cache;
+}
+
+static pcore_image_resource *pcore_image_cache_find(
+        pcore_image_cache *cache, const char *url)
+{
+    pcore_image_resource *entry;
+
+    if (cache == NULL || url == NULL) {
+        return NULL;
+    }
+    for (entry = cache->head; entry != NULL; entry = entry->next) {
+        if (strcmp(entry->url, url) == 0) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+static int pcore_image_cache_store(pcore_image_cache *cache,
+        const char *url, const char *data, int len)
+{
+    pcore_image_resource *entry;
+    size_t url_len;
+
+    if (cache == NULL || url == NULL || data == NULL || len <= 0) {
+        return 1;
+    }
+    entry = (pcore_image_resource *) malloc(sizeof(*entry));
+    if (entry == NULL) {
+        return 1;
+    }
+    entry->next = NULL;
+    entry->url = NULL;
+    entry->data = NULL;
+    entry->len = 0;
+
+    url_len = strlen(url);
+    entry->url = (char *) malloc(url_len + 1);
+    entry->data = (char *) malloc((size_t) len);
+    if (entry->url == NULL || entry->data == NULL) {
+        free(entry->url);
+        free(entry->data);
+        free(entry);
+        return 1;
+    }
+    memcpy(entry->url, url, url_len + 1);
+    memcpy(entry->data, data, (size_t) len);
+    entry->len = len;
+    entry->next = cache->head;
+    cache->head = entry;
+    return 0;
+}
+
+int pcore_image_resource_get(dom_document *doc, const char *url,
+        const char **out_data, int *out_len)
+{
+    pcore_image_cache *cache;
+    pcore_image_resource *entry;
+
+    if (out_data != NULL) {
+        *out_data = NULL;
+    }
+    if (out_len != NULL) {
+        *out_len = 0;
+    }
+    cache = pcore_image_cache_get(doc, 0);
+    entry = pcore_image_cache_find(cache, url);
+    if (entry == NULL) {
+        return 1;
+    }
+    if (out_data != NULL) {
+        *out_data = entry->data;
+    }
+    if (out_len != NULL) {
+        *out_len = entry->len;
+    }
+    return 0;
+}
+
 typedef struct pcore_image_fetch_ctx {
     PCoreFetchFn fetch;
     PCoreFreeFn  freefn;
     void        *pw;
+    pcore_image_cache *cache;
     int          found;
     int          fetched;
     dom_string  *img_name;
@@ -1688,22 +1862,31 @@ static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
                 size_t sl = dom_string_byte_length(src);
 
                 if (su8 != NULL && sl > 0) {
-                    char url[1024];
-                    int cl = (sl < sizeof(url) - 1)
-                            ? (int) sl : (int) sizeof(url) - 1;
+                    char *url;
                     char *data = NULL;
                     int len = 0;
+                    pcore_image_resource *cached;
 
-                    memcpy(url, su8, cl);
-                    url[cl] = '\0';
                     ic->found++;
-                    if (ic->fetch != NULL &&
-                            ic->fetch(ic->pw, url, &data, &len) == 0 &&
-                            data != NULL && len > 0) {
-                        ic->fetched++;
-                    }
-                    if (data != NULL && ic->freefn != NULL) {
-                        ic->freefn(ic->pw, data);
+                    url = (char *) malloc(sl + 1);
+                    if (url != NULL) {
+                        memcpy(url, su8, sl);
+                        url[sl] = '\0';
+                        cached = pcore_image_cache_find(ic->cache, url);
+                        if (cached != NULL) {
+                            ic->fetched++;
+                        } else if (ic->fetch != NULL &&
+                                ic->fetch(ic->pw, url, &data, &len) == 0 &&
+                                data != NULL && len > 0) {
+                            if (pcore_image_cache_store(ic->cache, url,
+                                    data, len) == 0) {
+                                ic->fetched++;
+                            }
+                        }
+                        if (data != NULL && ic->freefn != NULL) {
+                            ic->freefn(ic->pw, data);
+                        }
+                        free(url);
                     }
                 }
                 dom_string_unref(src);
@@ -1749,11 +1932,15 @@ PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
     ic.fetch = fetch;
     ic.freefn = freefn;
     ic.pw = pw_fetch;
+    ic.cache = pcore_image_cache_get(doc, 1);
     ic.found = 0;
     ic.fetched = 0;
     ic.img_name = NULL;
     ic.src_name = NULL;
 
+    if (ic.cache == NULL) {
+        goto cleanup;
+    }
     dom_string_create((const uint8_t *) "img", 3, &ic.img_name);
     dom_string_create((const uint8_t *) "src", 3, &ic.src_name);
     if (ic.img_name == NULL || ic.src_name == NULL) {
