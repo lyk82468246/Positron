@@ -12,9 +12,9 @@
  * BOX_INLINE_CONTAINER), so the tree is layout-ready.
  *
  * Current scope: block/inline text, inline-block, flex, common table
- * structures, and <img> alt/src text fallback are built for NetSurf's real
- * layout/redraw path. Real object/bitmap image decoding, forms/widgets,
- * floats, and exact rowspan occupancy remain staged follow-ups.
+ * structures, plus cached <img> resources when WM Imaging can decode them,
+ * are built for NetSurf's real layout/redraw path. Forms/widgets, floats,
+ * background images, and exact rowspan occupancy remain staged follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -40,6 +40,7 @@
 #include "content/handlers/html/layout.h"    /* layout_document */
 #include "content/handlers/html/box_inspect.h" /* box_coords */
 #include "netsurf/content.h"                  /* content_redraw_data */
+#include "netsurf/bitmap.h"                   /* thin WM Imaging carrier */
 #include "netsurf/plotters.h"                 /* struct redraw_context */
 
 /* GDI font measurement table (pcore_plot_gdi.c, M2). */
@@ -217,8 +218,72 @@ static struct box *pcore_make_literal_text_box(dom_node *owner,
     return pcore_make_owned_text_box(owner, style, ctx, copy, len);
 }
 
-/* Minimal image path: before bitmap/object plumbing exists, make <img>
- * contribute accessible fallback text to layout/redraw. alt="" stays silent. */
+/* The portable NetSurf part of an image is a replaced box with an object.
+ * Our object is the small nsshim bitmap carrier, whose bytes are owned by the
+ * document cache. layout.c reads its intrinsic dimensions through
+ * content_get_width/height; redraw.c reaches plot_bitmap through
+ * content_redraw. Return NULL for absent/cache-miss/undecodable resources so
+ * the caller can retain the established alt/src fallback. */
+static struct box *pcore_make_cached_image_box(dom_node *node,
+        css_computed_style *style, void *ctx)
+{
+    char *src = NULL;
+    size_t src_len = 0;
+    char *url = NULL;
+    const char *data = NULL;
+    int len = 0;
+    int width = 0;
+    int height = 0;
+    dom_document *doc = NULL;
+    struct bitmap *bitmap;
+    struct box *box;
+
+    if (!pcore_node_name_is(node, "img") ||
+            !pcore_copy_attr_text(node, "src", ctx, &src, &src_len) ||
+            src == NULL || src_len == 0) {
+        return NULL;
+    }
+    url = (char *) malloc(src_len + 1);
+    if (url == NULL) {
+        return NULL;
+    }
+    memcpy(url, src, src_len);
+    url[src_len] = '\0';
+    if (dom_node_get_owner_document(node, &doc) != DOM_NO_ERR ||
+            doc == NULL ||
+            pcore_image_resource_get(doc, url, &data, &len) != 0 ||
+            PCore_ImageInfoFromMemory(data, len, &width, &height) != 0 ||
+            width <= 0 || height <= 0) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
+        }
+        free(url);
+        return NULL;
+    }
+    dom_node_unref((dom_node *) doc);
+    free(url);
+
+    bitmap = talloc_zero(ctx, struct bitmap);
+    if (bitmap == NULL) {
+        return NULL;
+    }
+    bitmap->data = data;
+    bitmap->len = len;
+    bitmap->width = width;
+    bitmap->height = height;
+
+    box = pcore_box_new(BOX_INLINE, style, ctx);
+    if (box == NULL) {
+        return NULL;
+    }
+    box->node = node;
+    box->object = (struct hlcache_handle *) bitmap;
+    box->flags |= IS_REPLACED;
+    return box;
+}
+
+/* Cache misses and decode failures retain accessible fallback text. alt=""
+ * stays silent, matching the prior rendering behaviour. */
 static struct box *pcore_make_image_fallback_box(dom_node *node,
         css_computed_style *style, void *ctx)
 {
@@ -313,8 +378,12 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
                     if (pcore_node_name_is(child, "img")) {
-                        struct box *img = pcore_make_image_fallback_box(child,
+                        struct box *img = pcore_make_cached_image_box(child,
                                 cs, ctx);
+                        if (img == NULL) {
+                            img = pcore_make_image_fallback_box(child, cs,
+                                    ctx);
+                        }
                         if (img != NULL) {
                             pcore_box_add_child(cont, img);
                         }
@@ -416,7 +485,11 @@ static struct box *pcore_construct_block(dom_node *node,
                                     NULL, ctx);
                             pcore_box_add_child(box, inline_cont);
                         }
-                        img = pcore_make_image_fallback_box(child, cs, ctx);
+                        img = pcore_make_cached_image_box(child, cs, ctx);
+                        if (img == NULL) {
+                            img = pcore_make_image_fallback_box(child, cs,
+                                    ctx);
+                        }
                         if (img != NULL) {
                             pcore_box_add_child(inline_cont, img);
                         }
@@ -1085,9 +1158,9 @@ PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
         pv.hdc = hdc;
         memset(&rc, 0, sizeof(rc));
         /* Must be true or html_redraw_background() returns early and paints
-         * NO background at all - not even background-color. We have no bitmap
-         * decoder yet (plot_bitmap is a stub), so background images simply
-         * don't draw, but background colours do. */
+         * NO background at all - not even background-color. This self-test
+         * does not populate a document image cache, and CSS background-image
+         * is still staged, so only background colours draw here. */
         rc.background_images = true;
         rc.plot = &pcore_gdi_plotters;
         rc.priv = &pv;

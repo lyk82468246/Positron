@@ -5,9 +5,9 @@
  * which we deliberately do not bring in wholesale: interned corestrings, the
  * nsurl accessors, the `guit` operation table (its ->layout points at our GDI
  * font measurement table so redraw measures text exactly as layout did), and
- * the content_get_* object accessors. Everything here is a constant default or
- * a path that is dead because our slim box builder never creates objects,
- * scrollbars, gadgets or selections.
+ * the content_get_* object accessors. The image subset represents cached WM
+ * Imaging bytes as a small bitmap carrier; form/iframe/scrollbar/gadget and
+ * selection paths remain constant defaults.
  *
  * C89.
  */
@@ -20,6 +20,8 @@
 #include "utils/errors.h"      /* nserror (used by layout.h) */
 #include "netsurf/layout.h"    /* struct gui_layout_table */
 #include "netsurf/content.h"   /* content_get_* decls, content_type, redraw_data */
+#include "netsurf/bitmap.h"    /* Positron's cached-image carrier */
+#include "netsurf/plotters.h"  /* redraw_context / BITMAPF_* */
 
 #include "utils/corestrings.h"
 #include "utils/nsurl.h"
@@ -82,24 +84,28 @@ void nsurl_unref(struct nsurl *url)
     (void) url;
 }
 
-/* ---- content_get_*: dead paths (box->object is always NULL) ------ */
+/* ---- content_get_*: cached image objects plus safe defaults -------- */
+
+static struct bitmap *pcore_image_bitmap(struct hlcache_handle *h)
+{
+    return (struct bitmap *) h;
+}
 
 content_type content_get_type(struct hlcache_handle *h)
 {
-    (void) h;
-    return CONTENT_NONE;
+    return (h != NULL) ? CONTENT_IMAGE : CONTENT_NONE;
 }
 
 int content_get_width(struct hlcache_handle *h)
 {
-    (void) h;
-    return 0;
+    struct bitmap *bitmap = pcore_image_bitmap(h);
+    return (bitmap != NULL) ? bitmap->width : 0;
 }
 
 int content_get_height(struct hlcache_handle *h)
 {
-    (void) h;
-    return 0;
+    struct bitmap *bitmap = pcore_image_bitmap(h);
+    return (bitmap != NULL) ? bitmap->height : 0;
 }
 
 int content_get_available_width(struct hlcache_handle *h)
@@ -123,11 +129,15 @@ struct nsurl *content_get_url(struct hlcache_handle *h)
 bool content_redraw(struct hlcache_handle *h, struct content_redraw_data *data,
         const struct rect *clip, const struct redraw_context *ctx)
 {
-    (void) h;
-    (void) data;
     (void) clip;
-    (void) ctx;
-    return true;
+    if (h == NULL || data == NULL || ctx == NULL || ctx->plot == NULL ||
+            ctx->plot->bitmap == NULL) {
+        return false;
+    }
+    return ctx->plot->bitmap(ctx, pcore_image_bitmap(h), data->x, data->y,
+            data->width, data->height, data->background_colour,
+            (data->repeat_x ? BITMAPF_REPEAT_X : BITMAPF_NONE) |
+            (data->repeat_y ? BITMAPF_REPEAT_Y : BITMAPF_NONE)) == NSERROR_OK;
 }
 
 void content_reformat(struct hlcache_handle *h, bool background,

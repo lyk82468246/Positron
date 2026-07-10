@@ -28,6 +28,7 @@
 #include "netsurf/types.h"       /* colour (XBGR), struct rect */
 #include "netsurf/plot_style.h"  /* plot_style_t, plot_font_style_t */
 #include "netsurf/plotters.h"    /* struct plotter_table, redraw_context */
+#include "netsurf/bitmap.h"      /* cached WM Imaging image carrier */
 #include "netsurf/layout.h"      /* struct gui_layout_table (font measure) */
 
 #include "positron_core.h"
@@ -349,11 +350,20 @@ static nserror plot_bitmap(const struct redraw_context *ctx,
         struct bitmap *bitmap, int x, int y, int width, int height,
         colour bg, bitmap_flags_t flags)
 {
-    /* Images land in a later milestone (WM Imaging API); stubbed so the box
-     * redraw path - which only calls this when box->object != NULL - links. */
-    (void) ctx; (void) bitmap; (void) x; (void) y;
-    (void) width; (void) height; (void) bg; (void) flags;
-    return NSERROR_OK;
+    pcore_plot_ctx *p;
+
+    (void) bg;
+    (void) flags;  /* tiled CSS background images are not connected yet */
+    if (ctx == NULL || ctx->priv == NULL || bitmap == NULL ||
+            bitmap->data == NULL || bitmap->len <= 0) {
+        return NSERROR_INVALID;
+    }
+    p = (pcore_plot_ctx *) ctx->priv;
+    if (p->hdc == NULL || width <= 0 || height <= 0) {
+        return NSERROR_OK;
+    }
+    return PCore_DrawImageFromMemory(bitmap->data, bitmap->len, p->hdc,
+            x, y, width, height) == 0 ? NSERROR_OK : NSERROR_INVALID;
 }
 
 /* The GDI plotter table. Field order MUST match struct plotter_table:
@@ -792,4 +802,3 @@ PCORE_API void PCore_FontTest(char *out, int cap)
     WideCharToMultiByte(CP_ACP, 0, wtmp, -1, out, cap, NULL, NULL);
     out[cap - 1] = '\0';
 }
-

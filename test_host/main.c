@@ -1942,6 +1942,124 @@ static BOOL test19_wmimage(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 20 - cached <img> through NetSurf object/layout/redraw           */
+/* The fetch body is copied into PCore's document cache first. The core  */
+/* then makes a real replaced box, lets layout.c apply CSS dimensions, and */
+/* reaches WM Imaging only through content_redraw -> plot_bitmap.         */
+/* -------------------------------------------------------------------- */
+static int image_bitmap_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
+    char *data;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/img/test.bmp") != 0) {
+        return 1;
+    }
+    data = (char *) malloc(sizeof(g_test_bmp_2x2));
+    if (data == NULL) {
+        return 1;
+    }
+    memcpy(data, g_test_bmp_2x2, sizeof(g_test_bmp_2x2));
+    *out_data = data;
+    *out_len = sizeof(g_test_bmp_2x2);
+    ctx->matched++;
+    return 0;
+}
+
+static BOOL test20_cached_img(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><h2>Cached image</h2>"
+        "<p>The colour square below is a NetSurf image object:</p>"
+        "<img alt=\"fallback text\" src=\"/img/test.bmp\">"
+        "<p>It should be red/green above blue/yellow.</p>"
+        "</body></html>";
+    static const char *CSS =
+        "body{background-color:#ffffff;color:#202020;margin:8px;}"
+        "h2{color:#800000;}p{color:#103080;}"
+        "img{width:96px;height:72px;border:2px solid #202020;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    image_resource_test_ctx ctx;
+    int found = 0;
+    int fetched = 0;
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+    int vw, vh;
+    char msg[256];
+
+    ctx.calls = 0;
+    ctx.matched = 0;
+    ctx.frees = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 20 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    if (PCore_FetchImageResources(hDoc, image_bitmap_fetch,
+            image_resource_free, &ctx, &found, &fetched) != 0 ||
+            found != 1 || fetched != 1 || ctx.calls != 1 ||
+            ctx.matched != 1 || ctx.frees != 1) {
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 20 FAIL", "image cache setup failed");
+        return FALSE;
+    }
+    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/img.css");
+    if (hSheet == NULL || PCore_StyleDocument(hDoc, hSheet) != 0) {
+        if (hSheet != NULL) {
+            PCore_FreeStylesheet(hSheet);
+        }
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 20 FAIL", "CSS styling failed");
+        return FALSE;
+    }
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
+            w != 96 || h != 72) {
+        sprintf(msg, "image box=(%d,%d) %dx%d; expect 96x72", x, y, w, h);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 20 FAIL", msg);
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 20",
+              "Cached <img> through NetSurf layout/redraw.\n\n"
+              "Expect a 96x72 image with a black border:\n"
+              "red/green on top, blue/yellow below.\n"
+              "It must replace the fallback text. Tap or Esc to close.");
+    g_render_doc = hDoc;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 20 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    show_info(L"TEST 20 OK",
+              "Cached BMP became a NetSurf replaced image box (96x72)\n"
+              "and painted through content_redraw -> plot_bitmap ->\n"
+              "WM Imaging IImage::Draw.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -2054,7 +2172,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-19)\n"
+                  "Yes = run all selected groups (TEST 1-20)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -2114,13 +2232,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* --- GDI render group (TEST 12, 14, 17, 19; opens windows, offline) */
+    /* --- GDI render group (TEST 12, 14, 17, 19, 20; offline) ---------- */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
         show_info(L"TEST (M2) font table", fb);
         if (!test14_plot())        { rc = 13; goto done; }
         if (!test19_wmimage())     { rc = 13; goto done; }
+        if (!test20_cached_img())  { rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -2156,10 +2275,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
-               "    plus WM Imaging native BMP decode/draw.\n"
+               "    plus WM Imaging native BMP decode/draw and cached <img>.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

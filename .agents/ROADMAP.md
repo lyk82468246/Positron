@@ -1,7 +1,7 @@
 # Positron Roadmap
 
-更新时间：2026-07-10
-基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector、TEST 11 正反样例、图片资源发现/fetch 与 TEST 19 WM Imaging BMP 原生图片绘制已于 2026-07-10 真机通过；文档级图片缓存待复编回归。
+更新时间：2026-07-11
+基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector、TEST 11 正反样例、图片资源发现/fetch 与 TEST 19 WM Imaging BMP 原生图片绘制已于 2026-07-10 真机通过；缓存 BMP 已接到 NetSurf object/redraw 链，TEST 20 待真机验证，文档级缓存去重待复编回归。
 
 ## 总原则
 
@@ -71,15 +71,14 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，并由 TEST 17 于 2026-07-10 真机验证。
 - 旧 TEST 18 的 `<img src>` 资源发现/fetch 已真机通过；当前源码将成功字节复制到 document user-data 缓存，并按 URL 去重。embedder 缓冲仍由 `freefn` 立即释放；核心副本随文档释放。
 - 已新增 `pcore_wmimage.cpp` C++ 小适配层，调用 WM Imaging API 的 `CreateImageFromBuffer` / `IImage::Draw`，并在 TEST 19 中用内存 2x2 BMP 验证原生解码/绘制；2026-07-10 已真机通过。内存 PNG 首次真机反馈为 decode fail，需在 BMP 基线后单独做格式覆盖。
-- `plot_bitmap` 是 stub。
-- `box->object/background` 相关内容基本为空。
-- SVG logo、PNG/JPEG 图片仍不会真实显示，只会在 `<img>` 有 alt/src 时显示文本占位。
+- 缓存命中且可解码的 `<img>` 现在生成 `box->object`，并走 `content_redraw -> plot_bitmap -> IImage::Draw`；TEST 20 待真机验证。
+- 背景图、SVG 和 PNG/JPEG/GIF 覆盖仍未接通；解码失败或缓存未命中时 `<img>` 仍显示 alt/src 文本占位。
 
 建议顺序：
 
-1. 先复编新版 TEST 18，验证二次扫描 first/second 均为 `2/2` 且 fetch calls 保持 2。
-2. 将文档缓存字节接回 NetSurf bitmap / plot_bitmap，让真实 `<img>` 不再只是 alt/src 文本占位。
-3. 在 bitmap 接入后补 PNG/JPEG/GIF 格式覆盖。
+1. 复编新版 TEST 18 与 TEST 20，验证二次扫描 first/second 均为 `2/2`、fetch calls 保持 2，且 TEST 20 显示有边框的 96x72 四色 BMP 而非 fallback 文本。
+2. 将同一缓存 fetch 流程接到 Browse host，避免真实页面只在显式调用 `PCore_FetchImageResources` 后显示图片。
+3. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback。
 4. SVG 可后置，必要时先占位或引入 libsvgtiny。
 
 验收：
@@ -87,6 +86,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - TEST 17 可见 `Image fallback: Logo`。
 - TEST 18 显示 `image cache: first=2/2 second=2/2; fetch calls=2`。
 - TEST 19 显示 WM Imaging decoded 2x2 BMP and drew it via `IImage::Draw`。
+- TEST 20 显示 96x72 的红/绿/蓝/黄 BMP，且没有 `fallback text`。
 - 本地 HTML + 小 PNG/JPEG 能显示。
 - 真实网页 logo/图片不再空白。
 
