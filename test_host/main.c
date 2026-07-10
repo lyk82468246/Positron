@@ -1003,14 +1003,15 @@ static BOOL test11_layout(void)
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
 
-    /* VW=240: body margin 8 -> (8,8,224); first <p> fills body content and
-     * sits 1em(16px) below the div content-top(8) -> x=8 y=24 w=224. */
-    if (bx != 8 || by != 8 || bw != 224 ||
-            px != 8 || pw != 224 || py != 24) {
+    /* VW=240: horizontal body margins give x=8,w=224. NetSurf collapses the
+     * body's 8px top margin with the first paragraph's 1em (16px) margin
+     * through its borderless div, so both box origins land at page y=16. */
+    if (bx != 8 || by != 16 || bw != 224 ||
+            px != 8 || pw != 224 || py != 16) {
         _snprintf(msg, sizeof(msg) - 1,
                   "geometry off:\n"
-                  "  body=(%d,%d,%d,%d) expect x8 y8 w224\n"
-                  "  p=(%d,%d,%d,%d) expect x8 y24 w224",
+                  "  body=(%d,%d,%d,%d) expect x8 y16 w224\n"
+                  "  p=(%d,%d,%d,%d) expect x8 y16 w224",
                   bx, by, bw, bh, px, py, pw, ph);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 11 FAIL", msg);
@@ -1959,10 +1960,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test8_core())         { rc = 9; goto done; }
         if (!test9_select())       { rc = 10; goto done; }
         if (!test10_styledoc())    { rc = 11; goto done; }
-        if (!test11_layout())      { rc = 12; goto done; }
-        if (!test_boxtree())       { rc = 12; goto done; }
-        if (!test_layout())        { rc = 12; goto done; }
-        if (!test_image_resources()) { rc = 12; goto done; }
+        /* These exercise separate views of the now-initialised engine. Run
+         * all of them so one geometry assertion cannot hide later results. */
+        if (!test11_layout())        { rc = 12; }
+        if (!test_boxtree())         { rc = 12; }
+        if (!test_layout())          { rc = 12; }
+        if (!test_image_resources()) { rc = 12; }
+        if (rc != 0)                 { goto done; }
     }
 
     /* --- GDI render group (TEST 12, 14, 17; opens windows, offline) --- */
@@ -1998,7 +2002,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16)\n"
+               "  Engine (TEST 6-11, 15, 16, 18)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, box tree, NetSurf layout, image\n"

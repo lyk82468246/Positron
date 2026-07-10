@@ -1,7 +1,7 @@
 # Positron Roadmap
 
-更新时间：2026-07-07  
-基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。Codex 接手后已刷新 README/PHASE4，接入 M5f border 源码，并实现 CSS attribute/sibling/static-pseudo selector 源码路径。
+更新时间：2026-07-10
+基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border 与 CSS attribute/sibling/static-pseudo selector 已于 2026-07-10 真机通过；TEST 11 的旧布局器几何预期已修正，待复编回归。
 
 ## 总原则
 
@@ -22,10 +22,10 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - NetSurf `content/handlers/html/redraw_border.c` 已加入 `positron_core.vcproj`。
 - `pcore_layout_stubs.c` 里的 `html_redraw_borders` / `html_redraw_inline_borders` no-op 已移除。
 - `redraw_border.c` 已用 `scripts/c89ize.py` 做 C89 化，脚本也补了 `plot_style_t` / `plot_font_style_t` 简单 designated initializer 规则。
-- 2026-07-08 用户真实 VS2008 编译暴露 `redraw_border.c` include 前置依赖不足（`html/private.h` 中 `dom_document` / `dom_node` / `bool` 连锁错误）；已按 `layout.c`/`redraw.c` 补齐 dom/css/content 前置 include，待复编确认。
-- TEST 17 的内置页面与 MessageBox 已加入明确 border 预期。
+- 2026-07-08 用户真实 VS2008 编译暴露 `redraw_border.c` include 前置依赖不足（`html/private.h` 中 `dom_document` / `dom_node` / `bool` 连锁错误）；已按 `layout.c`/`redraw.c` 补齐 dom/css/content 前置 include。
+- 2026-07-10 已成功复编，TEST 17 真机可见 H1、flex、table/cell 边框并通过。
 
-下一步必须先做 VS2008/WM6 编译和真机确认；当前环境没有可调用的 VS2008/MSBuild。
+源码接入与真机验收已完成；后续用真实 Browse 页面继续观察复杂 border 风格。
 
 验收：
 
@@ -41,28 +41,24 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - attribute selectors：`[foo]`、`[foo=bar]`、`[foo*=bar]` 等已在 `pcore_select.c` 实现。
 - adjacent/general sibling：`+` / `~` 已实现。
 - `:link` / `:lang()` 已实现。
-- TEST 9 已扩展为离线 computed-style 验收，覆盖 attribute + sibling + static pseudo selector 组合。
+- TEST 9 已扩展为离线 computed-style 验收，覆盖 attribute + sibling + static pseudo selector 组合，并于 2026-07-10 真机通过。
 - 动态状态伪类仍 false。
 
 优先级建议：
 
-1. 用 VS2008/WM6 编译并跑 TEST 9，确认实现没有 C89/链接/真机 libdom 行为问题。
-2. 结合 TEST 13 看真实页面 CSS 套用是否更完整。
-3. 后续再按页面痛点补其他静态伪类。
+1. 结合 TEST 13 看真实页面 CSS 套用是否更完整。
+2. 后续再按页面痛点补其他静态伪类。
 
 验收：
 
 - TEST 9 中 `[title]` / `[data-role=]` / `[class~=]` / `[lang|=]` / `[data-code^=]` / `[data-code$=]` / `[data-code*=]` / `h1 + p` / `h1 ~ span` / `a:link:lang(zh)` 都能影响 computed style。
 - 再跑 TEST 13 看真实页面 CSS 套用是否更完整。
 
-### 3. 文档刷新
+### 3. ENGINE 回归可观测性
 
-根目录 `README.md` 和 `PHASE4.md` 已落后于 `main`：
-
-- 它们仍像停在手写 block layout / 首张 GDI 页面阶段。
-- 实际上 M6/M7 已经切到 NetSurf real layout/redraw/flex/table。
-
-建议单独做 docs commit，不混入功能改动。
+- TEST 11 已从旧手写布局器的 `body.y=8` / `p.y=24` 更新为 NetSurf margin collapse 的 `body.y=p.y=16`。
+- TEST 11/15/16/18 改为收集失败后继续执行，避免较早断言遮住后续结果。
+- 待 WM6 复编确认 TEST 11、15、16、18 全部通过，其中 TEST 18 应报告 `found=2 fetched=2`。
 
 ## 中期规划
 
@@ -72,7 +68,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 当前状态：
 
-- `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，TEST 15/17 已扩展，待 VS2008/WM6 编译和真机验证。
+- `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，并由 TEST 17 于 2026-07-10 真机验证。
 - `PCore_FetchImageResources` 已接入 `<img src>` 资源发现/fetch 骨架，TEST 18 用 fake fetch 离线覆盖；fetch 到的字节立即释放，尚不缓存/解码/绘制。
 - `plot_bitmap` 是 stub。
 - `box->object/background` 相关内容基本为空。
@@ -80,7 +76,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 建议顺序：
 
-1. 先验证当前 `<img>` alt/src 文本占位与 TEST 18 image fetch skeleton 能在 VS2008/WM6 编译和真机运行。
+1. 先复编运行 TEST 18，验证 image fetch skeleton 在 VS2008/WM6 上报告 `found=2 fetched=2`。
 2. 将 image fetch 结果接入简单缓存/生命周期管理（仍可先不绘制）。
 3. PNG/JPEG/GIF 位图解码，优先看 WM Imaging API。
 4. 接 NetSurf bitmap / plot_bitmap。
@@ -204,10 +200,9 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. M5f border 编译/真机验证。
-2. TEST 9 selector 编译/真机验证。
-3. 图片基础路径。
-4. resource loader 整理。
-5. float/table 细化。
-6. 后台导航体验。
-7. JS runtime spike。
+1. TEST 11/15/16/18 ENGINE 回归。
+2. 图片基础路径。
+3. resource loader 整理。
+4. float/table 细化。
+5. 后台导航体验。
+6. JS runtime spike。

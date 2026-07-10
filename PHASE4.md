@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-07-08）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；CSS select / computed style / whole-document style / external stylesheet fetch / click navigation / full Mozilla CA bundle / WinInet 明文 http 都已打通。当前 Browse 正式路径已经切到 **NetSurf 真实 `layout.c` + `redraw.c`**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → `layout_document` → `html_redraw` → GDI plotter。**M7-flex** 已移植 `layout_flex.c` 并真机验证（TEST 17 三色块横排）；**M7-table** 已移植 `table.c` 并构建 `BOX_TABLE > ROW_GROUP > ROW > CELL`，2×2 表格真机成网格。**M5f** 已把 `redraw_border.c` 接入源码与 `positron_core.vcproj`，并移除 border no-op stub；真实 VS2008 编译日志暴露其 include 前置依赖不足，现已按 `layout.c`/`redraw.c` 补齐，待复编确认。CSS attribute/sibling selectors 与 `:link` / `:lang()` 已在 `pcore_select.c` 实现并扩展 TEST 9。`<img>` alt/src 文本占位与 `<img src>` fetch 骨架已接入源码，仍待复编/真机验证。下一步先做 VS2008/WM6 编译与 TEST 17/TEST 9/TEST 18 真机验证，再推进图片/SVG、后台导航体验。
+> 状态（2026-07-10）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；CSS select / computed style / whole-document style / external stylesheet fetch / click navigation / full Mozilla CA bundle / WinInet 明文 http 都已打通。当前 Browse 正式路径已经切到 **NetSurf 真实 `layout.c` + `redraw.c`**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → `layout_document` → `html_redraw` → GDI plotter。**M7-flex/table** 已由 TEST 17 真机验证；**M5f border** 补齐 include 后已成功复编并由 TEST 17 真机验证；CSS attribute/sibling selectors 与 `:link` / `:lang()` 已由 TEST 9 真机验证；`<img>` alt fallback 已由 TEST 17 真机验证。`<img src>` fetch 骨架仍待 TEST 18 首次真机运行。TEST 11 的旧手写布局器几何断言已改为 NetSurf margin collapse 预期，并让 TEST 15/16/18 在 TEST 11 失败时仍继续执行，待复编回归。
 
 
 ---
@@ -124,14 +124,14 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 当前优先级：
 
-1. **M5f：真实 border 绘制验证**
-   `redraw_border.c` 已源码接入并加入 `positron_core.vcproj`，`pcore_layout_stubs.c` 里的 `html_redraw_borders` / `html_redraw_inline_borders` no-op 已移除；`scripts/c89ize.py` 也补了 `plot_style_t` / `plot_font_style_t` 简单 designated initializer 转换规则。2026-07-08 真实 VS2008 编译报 `html/private.h` 中 `dom_document` / `dom_node` / `bool` 连锁错误，根因是 `redraw_border.c` include 区缺少 NetSurf 上游构建隐含的 dom/css/content 前置头；已按 `layout.c`/`redraw.c` 补齐 include。下一步是复编并跑 TEST 17，确认 H1 下边框、flex 容器边框、table/cell 边框可见。
+1. **ENGINE 回归**
+   TEST 11 原有 `body.y=8` / `p.y=24` 来自旧手写布局器；NetSurf 会把 body 8px 与首段 1em margin 经无 border/padding 的 `div` 折叠，真机结果是 `body.y=p.y=16`。断言已同步，并让 TEST 11/15/16/18 收集失败后继续执行。下一步复编确认四项全部通过，TEST 18 应报告 `found=2 fetched=2`。
 
-2. **CSS selector 补强验证**
-   `pcore_select.c` 已实现 attribute selectors（`[foo]` / `[foo=bar]` / `[foo*=bar]` 等）、adjacent/general sibling selectors（`+` / `~`）以及 `:link` / `:lang()`。TEST 9 已扩展为离线 computed-style 验收。下一步是用 VS2008/WM6 编译并跑 TEST 9；动态状态伪类仍保持 no-match。
+2. **已完成的 border / selector 验证**
+   `redraw_border.c` 补齐 include 后已于 2026-07-10 成功复编，TEST 17 可见 H1、flex、table/cell 边框；attribute/sibling selectors 与 `:link` / `:lang()` 也已由 TEST 9 真机通过。动态状态伪类仍保持 no-match。
 
 3. **图片 / SVG**  
-   `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，TEST 15/17 已扩展；`PCore_FetchImageResources` 已接入 `<img src>` 资源发现/fetch 骨架，TEST 18 离线 fake fetch 覆盖（以上均待 WM6 编译/真机验证）。`plot_bitmap` 仍是 stub，fetch 到的图片字节尚未缓存/解码/绘制，`box->object/background` 路径尚未喂真实资源。方向：优先用 WM Imaging API 做 PNG/JPEG/GIF 位图解码，再接 NetSurf bitmap/plotter；SVG 可后置评估 libsvgtiny。
+   `<img>` alt fallback 已由 TEST 17 真机验证；`PCore_FetchImageResources` 已接入 `<img src>` 资源发现/fetch 骨架，TEST 18 离线 fake fetch 覆盖但仍待首次真机运行。`plot_bitmap` 仍是 stub，fetch 到的图片字节尚未缓存/解码/绘制，`box->object/background` 路径尚未喂真实资源。方向：优先用 WM Imaging API 做 PNG/JPEG/GIF 位图解码，再接 NetSurf bitmap/plotter；SVG 可后置评估 libsvgtiny。
 
 4. **后台导航体验**  
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document。
@@ -180,10 +180,10 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ## 已知风险点
 
-- **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table；M5f 已接入 `redraw_border.c` 源码并补齐 include 前置头但仍待 WM6 复编/真机确认；`<img>` alt/src 文本占位与 `<img src>` fetch 骨架已接入源码但仍待 WM6 编译/真机确认；真实图片/SVG、float、forms/widgets、复杂 table 仍需分阶段补。
-- **border redraw 待验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制现在来自 NetSurf `redraw_border.c`；2026-07-08 已根据真实编译错误补齐 include 区，仍需要复编并用 TEST 17 和真实 Browse 页面确认 solid/dotted/dashed/table 边框表现。
+- **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table/border 与 `<img>` alt fallback；`<img src>` fetch 骨架仍待 TEST 18 真机验证；真实图片/SVG、float、forms/widgets、复杂 table 仍需分阶段补。
+- **border redraw 已通过内置页验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制来自 NetSurf `redraw_border.c`；TEST 17 已确认 solid/dashed/table cell 边框可见，复杂真实页面仍需持续观察。
 - **图片路径仍未真实解码**：`<img>` 目前只生成 alt/src 文本占位；`PCore_FetchImageResources` 只发现/fetch 后立即释放字节；`plot_bitmap` 是 stub，`box->object/background` 尚未接资源缓存和 bitmap 解码。
-- **部分 CSS selector 待验证/补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已源码实现并由 TEST 9 覆盖，但仍待 WM6 编译/真机确认；动态状态伪类仍为 no-match，会影响真实网页样式命中。
+- **部分 CSS selector 仍待补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已由 TEST 9 真机验证；动态状态伪类仍为 no-match，会影响真实网页样式命中。
 - **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。
 - **行结尾 LF→CRLF**：git autocrlf 会规范化 vendored 源码的行尾，无害（MSVC 两者都吃）。
