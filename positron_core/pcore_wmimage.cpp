@@ -35,7 +35,9 @@ static HRESULT pcore_wmimage_com_init(BOOL *did_init)
     HRESULT hr;
 
     *did_init = FALSE;
-    hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    /* WM6 SDK winx.h maps CoInitialize(x) to COINIT_MULTITHREADED; using
+     * apartment-threaded init returns E_INVALIDARG on the target device. */
+    hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     if (hr == S_OK || hr == S_FALSE) {
         *did_init = TRUE;
         return S_OK;

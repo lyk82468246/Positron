@@ -131,7 +131,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    `redraw_border.c` 补齐 include 后已于 2026-07-10 成功复编，TEST 17 可见 H1、flex、table/cell 边框；attribute/sibling selectors 与 `:link` / `:lang()` 也已由 TEST 9 真机通过。动态状态伪类仍保持 no-match。
 
 3. **图片 / SVG**  
-   `<img>` alt fallback 已由 TEST 17 真机验证；旧 TEST 18 的资源发现/fetch 已真机通过。`PCore_FetchImageResources` 现将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；第二次扫描应命中缓存且 fetch calls 保持 2。缓存去重待新版 TEST 18 复编验证。`pcore_wmimage.cpp` 已新增薄 C++ 适配层，公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 先解码/绘制内存 BMP；TEST 19 待复编真机验证。内存 PNG 首次真机反馈为 decode fail，后续需在 BMP 基线通过后单独做格式覆盖。`plot_bitmap` 仍是 stub，`<img>` 仍未接回 `box->object`。
+   `<img>` alt fallback 已由 TEST 17 真机验证；旧 TEST 18 的资源发现/fetch 已真机通过。`PCore_FetchImageResources` 现将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；第二次扫描应命中缓存且 fetch calls 保持 2。缓存去重待新版 TEST 18 复编验证。`pcore_wmimage.cpp` 已新增薄 C++ 适配层，公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 先解码/绘制内存 BMP；TEST 19 待复编真机验证。内存 PNG 首次真机反馈为 decode fail；随后 BMP 基线报 `stage=2 hr=0x80070057`，已将 COM init 改为 WM6 SDK 约定的 `COINIT_MULTITHREADED`。后续需在 BMP 基线通过后单独做格式覆盖。`plot_bitmap` 仍是 stub，`<img>` 仍未接回 `box->object`。
 
 4. **后台导航体验**  
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document。

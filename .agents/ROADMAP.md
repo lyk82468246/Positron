@@ -70,7 +70,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 - `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，并由 TEST 17 于 2026-07-10 真机验证。
 - 旧 TEST 18 的 `<img src>` 资源发现/fetch 已真机通过；当前源码将成功字节复制到 document user-data 缓存，并按 URL 去重。embedder 缓冲仍由 `freefn` 立即释放；核心副本随文档释放。
-- 已新增 `pcore_wmimage.cpp` C++ 小适配层，调用 WM Imaging API 的 `CreateImageFromBuffer` / `IImage::Draw`，并在 TEST 19 中用内存 2x2 BMP 验证原生解码/绘制；待复编真机确认。内存 PNG 首次真机反馈为 decode fail，需等 BMP 基线通过后再做格式覆盖。
+- 已新增 `pcore_wmimage.cpp` C++ 小适配层，调用 WM Imaging API 的 `CreateImageFromBuffer` / `IImage::Draw`，并在 TEST 19 中用内存 2x2 BMP 验证原生解码/绘制；待复编真机确认。内存 PNG 首次真机反馈为 decode fail；第二次真机反馈为 `stage=2 hr=0x80070057`，已改用 WM6 SDK 约定的 `COINIT_MULTITHREADED`。需等 BMP 基线通过后再做格式覆盖。
 - `plot_bitmap` 是 stub。
 - `box->object/background` 相关内容基本为空。
 - SVG logo、PNG/JPEG 图片仍不会真实显示，只会在 `<img>` 有 alt/src 时显示文本占位。
