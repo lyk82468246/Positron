@@ -1280,10 +1280,12 @@ static BOOL resolve_url(const char *href, char *host, int hostcap,
     return TRUE;
 }
 
-/* External-CSS fetch for PCore_StyleDocumentEx: resolve `url` against the
- * current page origin, GET it, and hand the body to the engine (which parses
- * it and then calls css_free_cb to release it). Returns 0 on success. */
-static int css_fetch_cb(void *pw, const char *url, char **out_data, int *out_len)
+/* Fetch an external page resource against the current page origin. CSS and
+ * <img> share this exact resolver and HTTP path; their PCore callers decide
+ * how to parse/cache the returned bytes. The core releases the copied buffer
+ * through page_resource_free_cb after it has consumed it. */
+static int page_resource_fetch_cb(void *pw, const char *url,
+        char **out_data, int *out_len)
 {
     char           host[256];
     char           path[1024];
@@ -1318,7 +1320,7 @@ static int css_fetch_cb(void *pw, const char *url, char **out_data, int *out_len
     return 0;
 }
 
-static void css_free_cb(void *pw, char *data)
+static void page_resource_free_cb(void *pw, char *data)
 {
     (void) pw;
     free(data);
@@ -1367,17 +1369,23 @@ static void navigate_to(HWND hwnd, const char *href)
     }
 
     /* Record the new origin *before* styling so external <link> hrefs in this
-     * page resolve against it (css_fetch_cb uses g_cur_*). */
+     * page resolve against it (page_resource_fetch_cb uses g_cur_*). */
     cstr_copy(g_cur_host, sizeof(g_cur_host), host);
     cstr_copy(g_cur_path, sizeof(g_cur_path), path);
     g_cur_port = port;
 
-    if (PCore_StyleDocumentEx(newDoc, NULL, css_fetch_cb, css_free_cb,
-            NULL) != 0) {
+    if (PCore_StyleDocumentEx(newDoc, NULL, page_resource_fetch_cb,
+            page_resource_free_cb, NULL) != 0) {
         show_error(L"Navigation failed", "PCore_StyleDocument failed");
         PCore_FreeDocument(newDoc);
         return;
     }
+
+    /* Populate document-owned image bytes before layout builds the NetSurf
+     * box tree. Fetch failures are intentionally non-fatal: pcore_box keeps
+     * the accessible alt/src fallback for each missing or undecodable image. */
+    PCore_FetchImageResources(newDoc, page_resource_fetch_cb,
+            page_resource_free_cb, NULL, NULL, NULL);
 
     GetClientRect(hwnd, &rc);
     cw = rc.right - rc.left;
@@ -1655,9 +1663,9 @@ static BOOL test12_render(void)
 /* -------------------------------------------------------------------- */
 /* TEST 13 - browse: fetch a real HTTPS page and render it                */
 /* positron_http GET -> PCore_ParseHTML -> StyleDocumentEx (UA + inline and */
-/* external CSS) -> layout -> render in the scroll window. PHttp is assumed */
-/* already initialised (WinMain does it). Images only have <img> fallback;  */
-/* JS is not fetched/executed yet.                                          */
+/* external CSS) -> image-resource cache -> layout -> render. PHttp is      */
+/* assumed already initialised (WinMain does it). Failed images retain their */
+/* <img> fallback text; JS is not fetched/executed yet.                     */
 /* -------------------------------------------------------------------- */
 
 static BOOL test_browse(void)
@@ -1732,7 +1740,7 @@ static BOOL test_browse(void)
     show_info(L"TEST 13 OK",
               "Click navigation verified:\n"
               "start page -> tap link -> HTTPS GET -> parse ->\n"
-              "style -> layout -> GDI paint, on the device.");
+              "style -> image cache -> layout -> GDI paint, on the device.");
     return TRUE;
 }
 

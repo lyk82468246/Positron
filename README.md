@@ -13,17 +13,17 @@ Electron-like 轻量级框架，目标设备：**Windows Mobile 6 Professional**
 | **1** | `positron_tls.dll` — TLS 1.2 客户端（mbedTLS 2.16 LTS） | ✅ 完成，WM6 Emulator 验证 |
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1：HTTPS via mbedTLS，明文 HTTP via WinInet) | ✅ 完成，WM6 Emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
-| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 M5f/M7 后：正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、图片资源发现与 WM Imaging BMP 基线已真机验证；图片文档缓存待复编 |
+| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 M5f/M7 后：正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、图片缓存/重绘链与 WM Imaging BMP 已真机验证；PNG/JPEG/GIF 与 SVG 待补 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
 Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libparserutils / libhubbub / libdom / libcss）全部在 VS2008 / WinCE / ARM 下编译通过（C99→C89 脚本化转换，见 `scripts/c89ize.py` 等）。`positron_core.dll` 已作为产品级引擎边界立起，公开 `PCore_ParseHTML/ParseCSS/StyleDocumentEx/LayoutDocument/PaintDocument/LinkAt` 等小巧 opaque-HANDLE API。HTML→DOM、CSS 解析、CSS select/computed style、整树样式、外部 `<link rel="stylesheet">` 抓取、GDI 窗口绘制、垂直滚动、viewport/DPI 自适应、点击命中与导航、HTTPS verified fetch、明文 `http://` via WinInet、跨协议重定向、完整 Mozilla CA bundle 均已真机验证。
 
-当前 Browse 正式路径已经从早期手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selector 与 `:link` / `:lang()` 已由 TEST 9/17 真机验证。TEST 11 的 margin collapse 与 `padding-top:1px` 阻断折叠成对断言已于 2026-07-10 真机通过。`<img>` alt fallback 已由 TEST 17 验证；旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码进一步把成功字节复制到 document user-data 缓存，重复扫描按 URL 去重；新版 TEST 18 会验证第二次扫描不再 fetch，仍待复编。WM Imaging API C++ 适配层已由 TEST 19 真机验证，能用原生 `IImage::Draw` 解码/绘制内存 BMP；现在缓存命中且可解码的 `<img>` 已接到 NetSurf replaced box、`content_redraw` 与 `plot_bitmap`，新增 TEST 20 待真机验证。PNG/JPEG/GIF 格式覆盖与 SVG 解码仍待后续。详见 [PHASE4.md](PHASE4.md) 和 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
+当前 Browse 正式路径已经从早期手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selector 与 `:link` / `:lang()` 已由 TEST 9/17 真机验证。TEST 11 的 margin collapse 与 `padding-top:1px` 阻断折叠成对断言已于 2026-07-10 真机通过。`<img>` alt fallback 已由 TEST 17 验证；TEST 18 的文档级资源缓存与 URL 去重已于 2026-07-11 真机通过。WM Imaging API C++ 适配层已由 TEST 19 真机验证；TEST 20 已确认缓存 BMP 能成为 NetSurf replaced box 并经 `content_redraw` / `plot_bitmap` 绘制。Browse host 现在在布局前使用同一 HTTP 获取器填充 `<img>` 缓存，失败仍保留 alt/src 回退。PNG/JPEG/GIF 格式覆盖与 SVG 解码仍待后续。详见 [PHASE4.md](PHASE4.md) 和 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
 
-当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 内存 BMP 解码/绘制 API 已由 TEST 19 真机验证；缓存图片可进入 NetSurf `<img>` replaced box 并通过 `plot_bitmap` 绘制，TEST 20 待真机验证；文档级图片字节缓存仍等待新版 TEST 18 真机验证。
+当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 内存 BMP 解码/绘制 API 已由 TEST 19 真机验证；TEST 18/20 已确认文档缓存去重及缓存 BMP 经 `<img>` / `plot_bitmap` 绘制；Browse 会在布局前填充图片缓存。
 
-当前明确缺口：真实 `<img>` 的 BMP 缓存链已经接入，但 TEST 20 尚待真机验证，PNG/JPEG/GIF 格式覆盖与 SVG 仍未完成；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整；网络与导航仍同步阻塞；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：真实 `<img>` 的 BMP 缓存链已通过真机验证，但 PNG/JPEG/GIF 格式覆盖与 SVG 仍未完成；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整；网络与导航仍同步阻塞；JavaScript 尚未实现但属于长期必做目标。
 
 ---
 

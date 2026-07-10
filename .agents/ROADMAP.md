@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-11
-基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector、TEST 11 正反样例、图片资源发现/fetch 与 TEST 19 WM Imaging BMP 原生图片绘制已于 2026-07-10 真机通过；缓存 BMP 已接到 NetSurf object/redraw 链，TEST 20 待真机验证，文档级缓存去重待复编回归。
+基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector、TEST 11 正反样例与 TEST 19 WM Imaging BMP 已于 2026-07-10 真机通过；TEST 18 缓存去重和 TEST 20 缓存 BMP object/redraw 链已于 2026-07-11 真机通过。Browse host 现会在 layout 前拉取 `<img>` 资源。
 
 ## 总原则
 
@@ -71,14 +71,14 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，并由 TEST 17 于 2026-07-10 真机验证。
 - 旧 TEST 18 的 `<img src>` 资源发现/fetch 已真机通过；当前源码将成功字节复制到 document user-data 缓存，并按 URL 去重。embedder 缓冲仍由 `freefn` 立即释放；核心副本随文档释放。
 - 已新增 `pcore_wmimage.cpp` C++ 小适配层，调用 WM Imaging API 的 `CreateImageFromBuffer` / `IImage::Draw`，并在 TEST 19 中用内存 2x2 BMP 验证原生解码/绘制；2026-07-10 已真机通过。内存 PNG 首次真机反馈为 decode fail，需在 BMP 基线后单独做格式覆盖。
-- 缓存命中且可解码的 `<img>` 现在生成 `box->object`，并走 `content_redraw -> plot_bitmap -> IImage::Draw`；TEST 20 待真机验证。
+- 缓存命中且可解码的 `<img>` 现在生成 `box->object`，并走 `content_redraw -> plot_bitmap -> IImage::Draw`；TEST 20 已真机验证。
 - 背景图、SVG 和 PNG/JPEG/GIF 覆盖仍未接通；解码失败或缓存未命中时 `<img>` 仍显示 alt/src 文本占位。
 
 建议顺序：
 
-1. 复编新版 TEST 18 与 TEST 20，验证二次扫描 first/second 均为 `2/2`、fetch calls 保持 2，且 TEST 20 显示有边框的 96x72 四色 BMP 而非 fallback 文本。
-2. 将同一缓存 fetch 流程接到 Browse host，避免真实页面只在显式调用 `PCore_FetchImageResources` 后显示图片。
-3. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback。
+1. 复编 TEST 13，确认 Browse 页面在 layout 前拉取 `<img>`，远程图片失败时仍正常显示 alt/src 回退。
+2. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback。
+3. 为图片 fetch 增加受控的诊断/大小限制，避免同步 UI 线程被多个资源长期阻塞。
 4. SVG 可后置，必要时先占位或引入 libsvgtiny。
 
 验收：

@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-07-11）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selectors、`:link` / `:lang()` 与 `<img>` alt fallback 已由 TEST 9/17 真机验证；TEST 11 的 margin collapse 与 1px padding barrier 正反样例已于 2026-07-10 真机通过；旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码新增 document user-data 图片字节缓存和 URL 去重，新版 TEST 18 会二次扫描验证不重复 fetch，仍待复编；WM Imaging API C++ 适配层已由 TEST 19 真机验证，能用原生 `IImage::Draw` 解码/绘制内存 BMP。缓存命中且可解码的 `<img>` 现已接到 NetSurf replaced box、`content_redraw` 与 `plot_bitmap`，TEST 20 待真机验证。
+> 状态（2026-07-11）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selectors、`:link` / `:lang()` 与 `<img>` alt fallback 已由 TEST 9/17 真机验证；TEST 11 的 margin collapse 与 1px padding barrier 正反样例已于 2026-07-10 真机通过；TEST 18 的 document user-data 图片缓存和 URL 去重、TEST 20 的缓存 BMP replaced box/重绘链均已于 2026-07-11 真机通过；Browse host 现会在布局前自动填充 `<img>` 缓存。WM Imaging API C++ 适配层仍以原生 `IImage::Draw` 解码/绘制内存 BMP。
 
 
 ---
@@ -131,7 +131,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    `redraw_border.c` 补齐 include 后已于 2026-07-10 成功复编，TEST 17 可见 H1、flex、table/cell 边框；attribute/sibling selectors 与 `:link` / `:lang()` 也已由 TEST 9 真机通过。动态状态伪类仍保持 no-match。
 
 3. **图片 / SVG**  
-   `<img>` alt fallback 已由 TEST 17 真机验证；旧 TEST 18 的资源发现/fetch 已真机通过。`PCore_FetchImageResources` 现将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；第二次扫描应命中缓存且 fetch calls 保持 2。缓存去重待新版 TEST 18 复编验证。`pcore_wmimage.cpp` 已新增薄 C++ 适配层，公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 解码/绘制内存 BMP；TEST 19 已真机通过。缓存命中且可解码的 `<img>` 现在生成 NetSurf replaced box，`layout.c` 读取固有尺寸，`redraw.c` 经 `content_redraw -> plot_bitmap` 交给 WM Imaging。TEST 20 以离线 BMP 断言 CSS `96x72` 并要求可见图片，待真机验证。内存 PNG 首次真机反馈为 decode fail，PNG/JPEG/GIF 格式覆盖与 SVG 仍待后续。
+   `<img>` alt fallback 已由 TEST 17 真机验证。`PCore_FetchImageResources` 将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；TEST 18 已于 2026-07-11 确认二次扫描命中缓存、fetch calls 保持 2。`pcore_wmimage.cpp` 的 C++ 适配层公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 解码/绘制内存 BMP；TEST 19 已真机通过。缓存命中且可解码的 `<img>` 会生成 NetSurf replaced box，`layout.c` 读取固有尺寸，`redraw.c` 经 `content_redraw -> plot_bitmap` 交给 WM Imaging；TEST 20 的离线 BMP `96x72` 图像已真机通过。Browse host 也会在 layout 前调用同一资源获取器填充图片缓存。内存 PNG 首次真机反馈为 decode fail，PNG/JPEG/GIF 格式覆盖与 SVG 仍待后续。
 
 4. **后台导航体验**  
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document。
@@ -180,9 +180,9 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ## 已知风险点
 
-- **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table/border、`<img>` alt fallback 与资源 fetch；缓存图片已接入 NetSurf object/redraw 路径但 TEST 20 和新版 TEST 18 都待复编验证；PNG/JPEG/GIF、SVG、float、forms/widgets、复杂 table 仍需分阶段补。
+- **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table/border、`<img>` alt fallback、资源缓存与 BMP object/redraw 链；Browse host 已在 layout 前调用图片资源获取。PNG/JPEG/GIF、SVG、float、forms/widgets、复杂 table 仍需分阶段补。
 - **border redraw 已通过内置页验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制来自 NetSurf `redraw_border.c`；TEST 17 已确认 solid/dashed/table cell 边框可见，复杂真实页面仍需持续观察。
-- **图片路径只完成 BMP 最小链**：缓存命中且可由 WM Imaging 解码的 `<img>` 会生成 `box->object`，并走 `content_redraw -> plot_bitmap -> IImage::Draw`；TEST 20 尚待真机验证。背景图、SVG 和 PNG/JPEG/GIF 覆盖尚未接通，解码失败时仍回退 alt/src 文本。
+- **图片路径只完成 BMP 最小链**：缓存命中且可由 WM Imaging 解码的 `<img>` 会生成 `box->object`，并走 `content_redraw -> plot_bitmap -> IImage::Draw`；TEST 20 已真机验证。背景图、SVG 和 PNG/JPEG/GIF 覆盖尚未接通，解码失败时仍回退 alt/src 文本。
 - **部分 CSS selector 仍待补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已由 TEST 9 真机验证；动态状态伪类仍为 no-match，会影响真实网页样式命中。
 - **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。
