@@ -50,6 +50,16 @@
  * libs, exactly as a real Positron app would consume it. */
 #include "positron_core.h"
 
+static const unsigned char g_test_png_2x2[] = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02,
+    0x08, 0x06, 0x00, 0x00, 0x00, 0x72, 0xb6, 0x0d, 0x24, 0x00, 0x00, 0x00,
+    0x14, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0,
+    0x1f, 0x0c, 0x81, 0x34, 0x10, 0x30, 0xfc, 0x07, 0x00, 0x47, 0xca, 0x08,
+    0xf8, 0x8b, 0x4e, 0x43, 0x85, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
+    0x44, 0xae, 0x42, 0x60, 0x82
+};
+
 /* -------------------------------------------------------------------- */
 /* Display helpers                                                       */
 /* -------------------------------------------------------------------- */
@@ -1077,6 +1087,8 @@ static int    g_scroll_y = 0;
 static int    g_doc_h = 0;
 static int    g_plot_test = 0;   /* M1: paint via PCore_PlotTest, not a doc */
 static int    g_ns_render = 0;    /* M5e: paint via PCore_NsRenderTest */
+static int    g_image_test = 0;   /* TEST 19: native WM Imaging draw */
+static int    g_image_draw_rc = -1;
 
 /* Current page origin, for resolving relative links during navigation. */
 static char   g_cur_host[256] = "";
@@ -1405,6 +1417,16 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         FillRect(hdc, &ps.rcPaint, (HBRUSH) GetStockObject(WHITE_BRUSH));
         if (g_plot_test) {
             PCore_PlotTest(hdc);   /* M1: drive the GDI plotter directly */
+        } else if (g_image_test) {
+            RECT rcc;
+            int rc;
+            GetClientRect(hwnd, &rcc);
+            rc = PCore_DrawImageFromMemory((const char *) g_test_png_2x2,
+                    sizeof(g_test_png_2x2), hdc, 24, 40,
+                    rcc.right - rcc.left - 48, 120);
+            if (g_image_draw_rc != 0) {
+                g_image_draw_rc = rc;
+            }
         } else if (g_ns_render) {
             RECT rcc;
             GetClientRect(hwnd, &rcc);
@@ -1853,6 +1875,63 @@ static BOOL test_image_resources(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 19 - Windows Mobile native Imaging API decode/draw                */
+/* Uses IImagingFactory/IImage through positron_core.dll to decode a tiny  */
+/* in-memory PNG and draw it to the window HDC. This verifies the native    */
+/* image path before it is wired into <img> layout/object boxes.            */
+/* -------------------------------------------------------------------- */
+static BOOL test19_wmimage(void)
+{
+    int w;
+    int h;
+    char msg[256];
+
+    w = 0;
+    h = 0;
+    if (PCore_ImageInfoFromMemory((const char *) g_test_png_2x2,
+            sizeof(g_test_png_2x2), &w, &h) != 0) {
+        show_error(L"TEST 19 FAIL",
+                   "WM Imaging could not decode the in-memory PNG");
+        return FALSE;
+    }
+    if (w != 2 || h != 2) {
+        sprintf(msg, "decoded size=%dx%d, expect 2x2", w, h);
+        show_error(L"TEST 19 FAIL", msg);
+        return FALSE;
+    }
+
+    show_info(L"TEST 19",
+              "WM Imaging native decode/draw test.\n\n"
+              "Expect a stretched 2x2 PNG painted by IImage::Draw:\n"
+              "red/green on top, blue/yellow below.\n"
+              "Tap or press Esc to close.");
+
+    g_image_test = 1;
+    g_image_draw_rc = -1;
+    g_plot_test = 0;
+    g_ns_render = 0;
+    g_render_doc = NULL;
+    g_scroll_y = 0;
+    g_doc_h = 0;
+    if (!show_render_window()) {
+        g_image_test = 0;
+        show_error(L"TEST 19 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_image_test = 0;
+
+    if (g_image_draw_rc != 0) {
+        sprintf(msg, "IImage::Draw rc=%d", g_image_draw_rc);
+        show_error(L"TEST 19 FAIL", msg);
+        return FALSE;
+    }
+    sprintf(msg, "WM Imaging decoded %dx%d PNG and drew it via IImage::Draw",
+            w, h);
+    show_info(L"TEST 19 OK", msg);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -1965,7 +2044,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-18)\n"
+                  "Yes = run all selected groups (TEST 1-19)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -1985,7 +2064,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "M1 plotter (TEST 14), NetSurf render\n"
-                               "(TEST 17), local HTML page (TEST 12).\n"
+                               "(TEST 17), native image draw (TEST 19),\n"
+                               "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -2024,12 +2104,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* --- GDI render group (TEST 12, 14, 17; opens windows, offline) --- */
+    /* --- GDI render group (TEST 12, 14, 17, 19; opens windows, offline) */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
         show_info(L"TEST (M2) font table", fb);
         if (!test14_plot())        { rc = 13; goto done; }
+        if (!test19_wmimage())     { rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -2065,9 +2146,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17)\n"
+               "  GDI render (TEST 12, 14, 17, 19)\n"
                "    HTML page painted to a window: background,\n"
-               "    borders, padding, wrapped text, NetSurf redraw.\n"
+               "    borders, padding, wrapped text, NetSurf redraw,\n"
+               "    plus WM Imaging native PNG decode/draw.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

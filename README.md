@@ -19,11 +19,11 @@ Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaw
 
 Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libparserutils / libhubbub / libdom / libcss）全部在 VS2008 / WinCE / ARM 下编译通过（C99→C89 脚本化转换，见 `scripts/c89ize.py` 等）。`positron_core.dll` 已作为产品级引擎边界立起，公开 `PCore_ParseHTML/ParseCSS/StyleDocumentEx/LayoutDocument/PaintDocument/LinkAt` 等小巧 opaque-HANDLE API。HTML→DOM、CSS 解析、CSS select/computed style、整树样式、外部 `<link rel="stylesheet">` 抓取、GDI 窗口绘制、垂直滚动、viewport/DPI 自适应、点击命中与导航、HTTPS verified fetch、明文 `http://` via WinInet、跨协议重定向、完整 Mozilla CA bundle 均已真机验证。
 
-当前 Browse 正式路径已经从早期手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selector 与 `:link` / `:lang()` 已由 TEST 9/17 真机验证。`<img>` alt fallback 已由 TEST 17 验证；旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码进一步把成功字节复制到 document user-data 缓存，重复扫描按 URL 去重；新版 TEST 18 会验证第二次扫描不再 fetch，仍待复编。TEST 11 也已扩展为 margin collapse 与 `padding-top:1px` 阻断折叠的成对断言，待复编回归。真实位图/SVG 解码仍待后续。详见 [PHASE4.md](PHASE4.md) 和 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
+当前 Browse 正式路径已经从早期手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selector 与 `:link` / `:lang()` 已由 TEST 9/17 真机验证。TEST 11 的 margin collapse 与 `padding-top:1px` 阻断折叠成对断言已于 2026-07-10 真机通过。`<img>` alt fallback 已由 TEST 17 验证；旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码进一步把成功字节复制到 document user-data 缓存，重复扫描按 URL 去重；新版 TEST 18 会验证第二次扫描不再 fetch，仍待复编。源码也已新增 WM Imaging API C++ 适配层和 TEST 19，用原生 `IImage::Draw` 验证内存 PNG 解码/绘制，仍待复编真机确认。真实 `<img>` 接入布局树/SVG 解码仍待后续。详见 [PHASE4.md](PHASE4.md) 和 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
 
-当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。文档级图片字节缓存已源码接入，等待新版 TEST 18 真机验证。
+当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。文档级图片字节缓存和 WM Imaging 内存图片解码/绘制 API 已源码接入，等待新版 TEST 18/19 真机验证。
 
-当前明确缺口：真实图片/SVG 未显示（`<img>` 只有 alt/src 文本占位，fetch 到的字节虽已缓存但尚未解码/绘制）；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整；网络与导航仍同步阻塞；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：真实 `<img>` 尚未接入布局树/SVG 未显示（`<img>` 仍只有 alt/src 文本占位；fetch 到的字节已缓存，WM Imaging 原生解码/绘制 API 已接入但尚未接回 `box->object` / `plot_bitmap`）；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整；网络与导航仍同步阻塞；JavaScript 尚未实现但属于长期必做目标。
 
 ---
 
@@ -156,7 +156,7 @@ scripts\stage.bat Release :: 或 Release
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
 - **Engine**：TEST 6-11、15、16、18，HTML/CSS/DOM/select/style/layout/box tree/image resource cache，离线。
-- **GDI Render**：TEST 14、17、12，窗口绘制，离线。
+- **GDI Render**：TEST 14、19、17、12，窗口绘制与 WM Imaging 原生图片绘制，离线。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 
 当前关键 smoke test：
@@ -173,7 +173,7 @@ scripts\stage.bat Release :: 或 Release
 - **熵源**：默认 `CryptGenRandom`（Phase 3 起）；CSP 不可用时自动退回 QPC+GetTickCount+tid/pid jitter，CTR-DRBG 兜底。
 - **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 gzip 解码、响应体 cap 1 MB；GET 已有有限 3xx follow，明文 `http://` 经 WinInet。
 - **同步阻塞**：所有网络调用阻塞，不适合直接在 UI 线程长跑。
-- **渲染限制**：真实 NetSurf layout/redraw、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 发现/fetch 已真机验证；文档级图片缓存仍待新版 TEST 18 验证。真实图片/SVG 解码绘制、CSS 动态状态伪类、float、rowspan 精确跨行、border-collapse、forms/widgets 仍待补。JavaScript 是长期必做项，当前尚未实现。
+- **渲染限制**：真实 NetSurf layout/redraw、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 发现/fetch 已真机验证；文档级图片缓存仍待新版 TEST 18 验证，WM Imaging 原生 PNG 解码/绘制仍待 TEST 19 验证。真实 `<img>` 接入、SVG 解码绘制、CSS 动态状态伪类、float、rowspan 精确跨行、border-collapse、forms/widgets 仍待补。JavaScript 是长期必做项，当前尚未实现。
 - **WM6 X 按钮 = 最小化不是关闭**。每次启动 test_host 前确认任务管理器没有遗留实例，否则 stage.bat 替换 exe 时会产生 image 不一致。
 - **WMDC 桥会静默断**：host 待机 / 模拟器长跑后偶尔失联，表现是 `PTls_Connect` 拿到 `-0x004C [BIO: recv WSA=...]`。修法：重启 WMDC（任务栏 → 退出 → 重启）。**联网测试前先在 IE Mobile 打开 baidu 验证一遍**。
 - **模拟器时钟**：跑 verified TLS 前必须校准（见上）。证书 notBefore/notAfter 都按 UTC 比对当前时间。

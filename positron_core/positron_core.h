@@ -116,6 +116,20 @@ PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
 PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
         PCoreFreeFn freefn, void *pw, int *out_found, int *out_fetched);
 
+/* Decode an in-memory PNG/JPEG/GIF/BMP/etc. with the Windows Mobile Imaging
+ * API and return its pixel dimensions. This is the native decoder bridge used
+ * by the image pipeline; it does not fetch bytes itself. Returns 0 on success.
+ */
+PCORE_API int PCore_ImageInfoFromMemory(const char *data, int len,
+        int *out_w, int *out_h);
+
+/* Draw an in-memory image with the Windows Mobile Imaging API directly into a
+ * GDI HDC. This proves native decode + draw before the bytes are wired into
+ * NetSurf's <img> object/layout path. If w/h are <= 0, the image's natural
+ * dimensions are used. Returns 0 on success. */
+PCORE_API int PCore_DrawImageFromMemory(const char *data, int len, HDC hdc,
+        int x, int y, int w, int h);
+
 /* Read back the computed 'color' (0xAARRGGBB) that PCore_StyleDocument
  * attached to the first element named `tag` (case-insensitive). Returns 0 on
  * success, non-zero if the element/style is absent. Used to verify inheritance

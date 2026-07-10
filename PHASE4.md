@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-07-10）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selectors、`:link` / `:lang()` 与 `<img>` alt fallback 已由 TEST 9/17 真机验证；旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码新增 document user-data 图片字节缓存和 URL 去重，新版 TEST 18 会二次扫描验证不重复 fetch，仍待复编。TEST 11 也已扩展为 margin collapse 与 1px padding barrier 正反样例，待复编回归。
+> 状态（2026-07-10）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selectors、`:link` / `:lang()` 与 `<img>` alt fallback 已由 TEST 9/17 真机验证；TEST 11 的 margin collapse 与 1px padding barrier 正反样例已于 2026-07-10 真机通过；旧 TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过。当前源码新增 document user-data 图片字节缓存和 URL 去重，新版 TEST 18 会二次扫描验证不重复 fetch，仍待复编；同时新增 WM Imaging API C++ 适配层与 TEST 19，用原生 `IImage::Draw` 验证内存 PNG 解码/绘制，仍待复编。
 
 
 ---
@@ -18,7 +18,7 @@
   - `positron_libcss.lib` = libcss（CSS 解析 + 选择器）
 - 补齐 WinCE coredll 缺失的 CRT（bsearch、abort，…）
 - 把 C99 写法系统性降级到 C89（脚本化，可复现）
-- `test_host` TEST 6-17：分层真机验证解析、选择、样式、布局、GDI plotter、NetSurf real layout/redraw、flex、table、真实 Browse
+- `test_host` TEST 6-19：分层真机验证解析、选择、样式、布局、GDI plotter、NetSurf real layout/redraw、flex、table、WM Imaging 原生图片绘制、真实 Browse
 
 **显式不做的（留后续 Phase / 子阶段）**：
 - JavaScript（duktape/QuickJS 等）
@@ -125,13 +125,13 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 当前优先级：
 
 1. **ENGINE 回归**
-   TEST 11 原有 `body.y=8` / `p.y=24` 来自旧手写布局器；NetSurf 的折叠结果是 `body.y=p.y=16`。当前测试新增 `body { padding-top:1px }` 反例，必须同时得到折叠组 `(16,16)` 与阻断组 `(8,25)` 才通过。TEST 11/15/16/18 仍收集失败后继续执行，待复编确认。
+   TEST 11 原有 `body.y=8` / `p.y=24` 来自旧手写布局器；NetSurf 的折叠结果是 `body.y=p.y=16`。当前测试新增 `body { padding-top:1px }` 反例，必须同时得到折叠组 `(16,16)` 与阻断组 `(8,25)` 才通过；2026-07-10 已由用户真机截图确认 TEST 11 OK。TEST 15/16/18 仍收集失败后继续执行，待复编确认。
 
 2. **已完成的 border / selector 验证**
    `redraw_border.c` 补齐 include 后已于 2026-07-10 成功复编，TEST 17 可见 H1、flex、table/cell 边框；attribute/sibling selectors 与 `:link` / `:lang()` 也已由 TEST 9 真机通过。动态状态伪类仍保持 no-match。
 
 3. **图片 / SVG**  
-   `<img>` alt fallback 已由 TEST 17 真机验证；旧 TEST 18 的资源发现/fetch 已真机通过。`PCore_FetchImageResources` 现将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；第二次扫描应命中缓存且 fetch calls 保持 2。缓存去重待新版 TEST 18 复编验证。`plot_bitmap` 仍是 stub，缓存字节尚未解码/绘制。方向：优先用 WM Imaging API 做 PNG/JPEG/GIF 位图解码，再接 NetSurf bitmap/plotter；SVG 可后置评估 libsvgtiny。
+   `<img>` alt fallback 已由 TEST 17 真机验证；旧 TEST 18 的资源发现/fetch 已真机通过。`PCore_FetchImageResources` 现将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；第二次扫描应命中缓存且 fetch calls 保持 2。缓存去重待新版 TEST 18 复编验证。`pcore_wmimage.cpp` 已新增薄 C++ 适配层，公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 解码/绘制内存 PNG；TEST 19 待复编真机验证。`plot_bitmap` 仍是 stub，`<img>` 仍未接回 `box->object`。
 
 4. **后台导航体验**  
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document。
@@ -182,7 +182,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 - **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table/border、`<img>` alt fallback 与资源 fetch；文档级图片缓存仍待新版 TEST 18 验证；真实图片/SVG、float、forms/widgets、复杂 table 仍需分阶段补。
 - **border redraw 已通过内置页验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制来自 NetSurf `redraw_border.c`；TEST 17 已确认 solid/dashed/table cell 边框可见，复杂真实页面仍需持续观察。
-- **图片路径仍未真实解码**：`<img>` 目前只生成 alt/src 文本占位；`PCore_FetchImageResources` 已缓存原始字节，但 `plot_bitmap` 仍是 stub，`box->object/background` 尚未接 bitmap 解码与绘制。
+- **图片路径仍未接入真实 `<img>`**：`<img>` 目前只生成 alt/src 文本占位；`PCore_FetchImageResources` 已缓存原始字节，WM Imaging 原生内存图片解码/绘制 API 已源码接入并等待 TEST 19 验证，但 `plot_bitmap` 仍是 stub，`box->object/background` 尚未接 bitmap 解码与绘制。
 - **部分 CSS selector 仍待补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已由 TEST 9 真机验证；动态状态伪类仍为 no-match，会影响真实网页样式命中。
 - **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。

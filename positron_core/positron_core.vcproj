@@ -65,7 +65,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib"
+				AdditionalDependencies="positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib imaging.lib ole32.lib"
 				AdditionalLibraryDirectories="..\positron_hubbub\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName);..\positron_libcss\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_core.dll"
@@ -156,7 +156,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib"
+				AdditionalDependencies="positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib imaging.lib ole32.lib"
 				AdditionalLibraryDirectories="..\positron_hubbub\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName);..\positron_libcss\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_core.dll"
@@ -211,6 +211,14 @@
 			>
 			<File RelativePath=".\positron_core.c"></File>
 			<File RelativePath=".\pcore_select.c"></File>
+			<File RelativePath=".\pcore_wmimage.cpp">
+				<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+					<Tool Name="VCCLCompilerTool" CompileAs="2" />
+				</FileConfiguration>
+				<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+					<Tool Name="VCCLCompilerTool" CompileAs="2" />
+				</FileConfiguration>
+			</File>
 				<File RelativePath=".\pcore_plot_gdi.c"></File>
 				<File RelativePath=".\pcore_talloc.c"></File>
 				<File RelativePath=".\pcore_box.c"></File>

@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-10
-基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector 与图片资源发现/fetch 已于 2026-07-10 真机通过；TEST 11 正反样例与文档级图片缓存待复编回归。
+基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector、TEST 11 正反样例与图片资源发现/fetch 已于 2026-07-10 真机通过；文档级图片缓存与 TEST 19 WM Imaging 原生图片绘制待复编回归。
 
 ## 总原则
 
@@ -56,9 +56,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 ### 3. ENGINE 回归可观测性
 
-- TEST 11 同时覆盖折叠组 `body.y=p.y=16` 和 `padding-top:1px` 阻断组 `body.y=8,p.y=25`。
+- TEST 11 同时覆盖折叠组 `body.y=p.y=16` 和 `padding-top:1px` 阻断组 `body.y=8,p.y=25`，已由 2026-07-10 用户真机截图确认通过。
 - TEST 11/15/16/18 改为收集失败后继续执行，避免较早断言遮住后续结果。
-- 待 WM6 复编确认 TEST 11、15、16、18 全部通过。
+- 待 WM6 复编确认 TEST 15、16、18 仍通过。
 
 ## 中期规划
 
@@ -70,6 +70,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 - `<img>` 已先在 `pcore_box.c` 接入 alt/src 文本占位，并由 TEST 17 于 2026-07-10 真机验证。
 - 旧 TEST 18 的 `<img src>` 资源发现/fetch 已真机通过；当前源码将成功字节复制到 document user-data 缓存，并按 URL 去重。embedder 缓冲仍由 `freefn` 立即释放；核心副本随文档释放。
+- 已新增 `pcore_wmimage.cpp` C++ 小适配层，调用 WM Imaging API 的 `CreateImageFromBuffer` / `IImage::Draw`，并在 TEST 19 中用内存 2x2 PNG 验证原生解码/绘制；待复编真机确认。
 - `plot_bitmap` 是 stub。
 - `box->object/background` 相关内容基本为空。
 - SVG logo、PNG/JPEG 图片仍不会真实显示，只会在 `<img>` 有 alt/src 时显示文本占位。
@@ -77,14 +78,15 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 建议顺序：
 
 1. 先复编新版 TEST 18，验证二次扫描 first/second 均为 `2/2` 且 fetch calls 保持 2。
-2. PNG/JPEG/GIF 位图解码，优先看 WM Imaging API。
-3. 接 NetSurf bitmap / plot_bitmap。
+2. 复编 TEST 19，验证 WM Imaging 能从内存 PNG 取到 2x2 尺寸并用 `IImage::Draw` 画出 red/green + blue/yellow 方块。
+3. 将文档缓存字节接回 NetSurf bitmap / plot_bitmap。
 4. SVG 可后置，必要时先占位或引入 libsvgtiny。
 
 验收：
 
 - TEST 17 可见 `Image fallback: Logo`。
 - TEST 18 显示 `image cache: first=2/2 second=2/2; fetch calls=2`。
+- TEST 19 显示 WM Imaging decoded 2x2 PNG and drew it via `IImage::Draw`。
 - 本地 HTML + 小 PNG/JPEG 能显示。
 - 真实网页 logo/图片不再空白。
 
@@ -199,7 +201,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. TEST 11/15/16/18 ENGINE 回归。
+1. TEST 15/16/18 ENGINE 回归 + TEST 19 原生图片绘制回归。
 2. 图片基础路径。
 3. resource loader 整理。
 4. float/table 细化。
