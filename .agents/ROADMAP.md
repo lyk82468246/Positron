@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-11
-基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector、TEST 11 正反样例与 TEST 19 WM Imaging BMP 已于 2026-07-10 真机通过；TEST 18 缓存去重和 TEST 20 缓存 BMP object/redraw 链已于 2026-07-11 真机通过。Browse host 现会在 layout 前拉取 `<img>` 资源。
+基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector、TEST 11 正反样例与 TEST 19 WM Imaging BMP 已于 2026-07-10 真机通过；TEST 18 缓存去重、TEST 20 缓存 BMP object/redraw 链、TEST 21 响应式媒体视口、TEST 22 row-reverse flex leading padding 已于 2026-07-11 真机通过。IANA TEST 13 的左缘裁切已消失，但窄屏页脚/导航仍有版式缺口，不能视为完整页面验收。详见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -76,10 +76,11 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 建议顺序：
 
-1. 复编 TEST 22，再重跑 IANA 的 TEST 13：确认 row-reverse flex 保留 leading padding，正文不再向左裁切。TEST 21 已通过。
-2. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback。
-3. 为图片 fetch 增加受控的诊断/大小限制，避免同步 UI 线程被多个资源长期阻塞。
-4. SVG 可后置，必要时先占位或引入 libsvgtiny。
+1. 将 IANA TEST 13 的剩余页脚/导航错位缩成最小复现；先记录 box 几何和 computed style，再修复。
+2. 旋转跨媒体断点时执行不联网的 restyle + layout；现有 `WM_SIZE` 仅 reflow。
+3. 让导航主文档 fetch 脱离 UI 线程，并保留旧页与 loading 状态；CSS/图片资源的完整异步事务随后处理。
+4. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback。
+5. SVG 可后置，必要时先占位或引入 libsvgtiny。
 
 验收：
 
@@ -129,14 +130,13 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 ### 4. 交互体验
 
-当前点击导航会同步抓取、解析、重排，设备上可能卡住。
+当前点击导航会同步抓取、解析、重排，设备上会卡住；这是明确记录的阶段性实现，不是预期交互体验。
 
 建议：
 
-- 点击链接后显示 loading 状态。
-- 后台 fetch，完成后 swap document。
-- 尽量保持 UI 线程消息循环响应。
-- 谨慎跨线程碰 DOM/GDI；必要时用队列把 UI 更新投回窗口线程。
+- 点击链接后显示 loading 状态，旧页继续绘制和交互。
+- 后台 fetch，完成后用 generation 校验并在 UI 线程 swap document。
+- 谨慎跨线程碰 DOM/GDI；确认线程安全前不让 worker 与 UI 共享 document 或全局 viewport context。
 
 ## 长期规划
 

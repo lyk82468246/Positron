@@ -1,6 +1,6 @@
 # Positron Current Handoff
 
-更新时间：2026-07-10
+更新时间：2026-07-11
 当前分支：`main`  
 当前最新提交：请以 `git log --oneline -5` 为准；Codex 接手后已刷新文档，接入 M5f border、CSS selector 补强、`<img>` fallback/fetch、文档级图片字节缓存与 WM Imaging 原生图片适配层，并把 TEST 11 扩展为 margin-collapse 正反样例。
 
@@ -28,13 +28,14 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 - Browse 正式路径已经切到 NetSurf 真实引擎：
   `PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` -> NetSurf `layout_document` -> `html_redraw` -> GDI plotter。
 - 旧的手写 block/inline layout + paint 已退休。
-- `layout_flex.c` 已移植并真机验证，TEST 17 三色块横排。
+- `layout_flex.c` 已移植并真机验证，TEST 17 三色块横排。2026-07-11 的 TEST 22 进一步确认 `row-reverse` 配合 25px leading padding 时主内容不会被推到 viewport 左侧；这只是该回归子例，不代表完整 flex 兼容。
 - `table.c` 已移植，`pcore_construct_table` 生成 `BOX_TABLE > ROW_GROUP > ROW > CELL`，TEST 17 2x2 table 网格真机验证。
 - `redraw_border.c` 已接入源码和 `positron_core.vcproj`；`pcore_layout_stubs.c` 中 border no-op 已移除。2026-07-08 根据真实 VS2008 错误补齐 include 后，2026-07-10 已成功复编；TEST 17 真机可见 H1、flex、table/cell 边框并通过。
 - `pcore_select.c` 已实现 CSS attribute selectors、adjacent/general sibling selectors、`:link` 与 `:lang()`；TEST 9 已于 2026-07-10 真机通过。
 - TEST 11 原有 `body.y=8` / `p.y=24` 是旧手写布局器预期；NetSurf 折叠结果为 `body.y=p.y=16`。当前源码新增 `padding-top:1px` 阻断组，必须同时得到 `(16,16)` 与 `(8,25)` 才通过；2026-07-10 用户真机截图已确认 TEST 11 OK。
 - TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过；2026-07-11 已确认 document user-data 字节缓存与 URL 去重，二次扫描 fetch calls 保持 2。
 - `pcore_wmimage.cpp` 是刻意新增的 C++ 小适配层：项目主体仍按 C89 编译，只有该文件 include WM6 SDK 的 C++ `imaging.h`，通过 `IImagingFactory::CreateImageFromBuffer` / `IImage::Draw` 暴露 C ABI 的 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`。内存 PNG 首次真机反馈为 decode fail；TEST 19 现改为 2x2 BMP 基线并输出 HRESULT 阶段码。第二次真机反馈为 `stage=2 hr=0x80070057`，已按 WM6 SDK `winx.h` 的约定把 COM init 改为 `COINIT_MULTITHREADED`；2026-07-10 BMP 基线已真机通过。2026-07-11 新增缓存 `<img>` 最小链：`box->object -> content_redraw -> plot_bitmap -> IImage::Draw`，TEST 20 已真机验证。
+- TEST 21 已确认 `css_media.width/height` 采用实际 client viewport；TEST 13 的 IANA 左缘裁切因此消失。最新截图仍显示窄屏页脚/导航拥挤、错位和资源/字形替代方框，故 TEST 13 只能算“可继续浏览的回归改善”，不是版式验收通过。
 
 ## 关键文件
 
@@ -87,7 +88,7 @@ scripts\stage.bat
 启动时可选择：
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18，解析/选择/样式/layout/box tree/image resource cache，离线。
+- Engine：TEST 6-11、15、16、18、21、22，解析/选择/样式/layout/box tree/image resource cache，离线。
 - GDI Render：TEST 14、19、17、12，离线窗口渲染与 WM Imaging 原生图片绘制。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
@@ -103,8 +104,9 @@ scripts\stage.bat
 1. ENGINE 回归：TEST 11 已由真机截图确认；新版 TEST 18 应显示 first/second 都为 `2/2` 且 fetch calls 为 2。
 2. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。
 3. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。
-4. 2026-07-11 TEST 13 的 IANA 截图显示左侧裁切：先验证新 TEST 21，再重跑 TEST 13。根因和修复在 `pcore_select.c` 的 `css_media.width/height`；若仍有越界，再检查具体 CSS 特性，而不是先改绘制 clip。
-5. TEST 21 已通过但 IANA 仍裁切：`article.sidenav` 的 `row-reverse` + 25px padding 触发 `layout_flex.c` 反向起点错误。新 TEST 22 要求 224px 下 main 为 `x=25,width=174`；通过后再看真实页。
+4. TEST 21 与 TEST 22 已于 2026-07-11 真机通过；IANA 正文不再左裁切。下一步不是再改 clip，而是针对页脚/导航仍有的拥挤和错位，先做最小复现并检查 box 几何/样式。
+5. `WM_SIZE` 会重新 layout，但不重新 style；旋转跨 CSS 媒体断点仍可能使用旋转前规则。后续做不联网 restyle + layout。
+6. 导航的 fetch/parse/style/layout 仍在 UI 线程同步执行。后续需要 worker fetch、loading、generation 和 UI 线程安全 swap；禁止未经验证就跨线程并发操作 DOM/libcss/NetSurf document。完整边界和完成条件见 `KNOWN_LIMITATIONS.md`。
 
 ## 开发纪律
 

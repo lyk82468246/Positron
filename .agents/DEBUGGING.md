@@ -69,4 +69,8 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 
 2026-07-11：TEST 13 打开 IANA Reserved Domains 的截图暴露正文、导航和页脚向左裁切。根因不是页面固定宽度：`pcore_select.c` 仅设置 `css_media.type=screen`，却把 `css_media.width/height` 留为 0；libcss 的 `@media (min/max-width)` 直接比较这些字段，于是所有断点按 0px 选规则。修复是从 `PCore_SetViewport` 的 unit context 填充媒体宽高，并在 Browse 的 `StyleDocumentEx` 前设置实际 client viewport。TEST 21 在 320px/299px 分别断言 `min-width:300px`/`max-width:299px`；若又退回 0px 就会选错规则并失败。这里的 299/300/320 仅为测试边界，运行时宽高和 DPI 都从设备 client/HDC 动态取得。
 
-同一页面的第二轮截图仍有约 25px 左侧裁切，但 TEST 21 已通过，所以继续检查真实 CSS：IANA 的窄屏 `article.sidenav` 是 `flex-direction:row-reverse`、左右 padding 25px，且侧栏 `display:none`。`layout_flex.c` 反向主轴起点把 content width 减去 opposite padding，导致唯一的 main item 左移一个 padding。修复为 `leading padding + content size`，TEST 22 断言 224px viewport 中 main 必须为 `x=25,width=174`。待真机验证后再判定真实页的裁切是否完全消失。
+同一页面的第二轮截图仍有约 25px 左侧裁切，但 TEST 21 已通过，所以继续检查真实 CSS：IANA 的窄屏 `article.sidenav` 是 `flex-direction:row-reverse`、左右 padding 25px，且侧栏 `display:none`。`layout_flex.c` 反向主轴起点把 content width 减去 opposite padding，导致唯一的 main item 左移一个 padding。修复为 `leading padding + content size`，TEST 22 断言 224px viewport 中 main 必须为 `x=25,width=174`。
+
+2026-07-11：用户真机截图确认 TEST 22 OK，随后 IANA TEST 13 的 `Example Domains` 左缘不再裁切。不要把这条结论扩大成“页面版式完整”：同一组截图的页脚/导航仍有拥挤、局部错位与替代方框。后续必须先用 computed style + `PCore_NodeBox` 缩成最小复现，不能仅凭观感继续修改 clip 或硬编码页面尺寸。已验证范围与完成条件统一记录在 `KNOWN_LIMITATIONS.md`。
+
+旋转调试注意：`WM_SIZE` 当前会调用 `PCore_SetViewport` 和 `PCore_LayoutDocument`，所以几何会重新 flow；它不会调用 `PCore_StyleDocumentEx`，因此跨 CSS 断点时媒体规则可能仍是旋转前的选择结果。排查旋转问题时先区分“layout 没更新”和“style 没重选”。

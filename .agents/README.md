@@ -7,13 +7,14 @@
 ## 阅读顺序
 
 1. `HANDOFF.md`：当前真实状态、架构、构建/运行方式、下一步。
-2. `ROADMAP.md`：短期 / 中期 / 长期规划，以及建议执行顺序。
-3. `CLAUDE_LAST_CONTEXT.md`：Claude Code 网络出错前最后几段对话的整理，包含 M7-flex/M7-table 的真实过程。
-4. `DEBUGGING.md`：WM6/WinCE 设备调试纪律，尤其是先查环境再改代码。
-5. 根目录 `PHASE*.md` / `README.md`：阶段脉络。注意它们有些内容落后于 git main。
+2. `KNOWN_LIMITATIONS.md`：已验证基线、明确的阶段性取舍、未完成项及完成条件。
+3. `ROADMAP.md`：短期 / 中期 / 长期规划，以及建议执行顺序。
+4. `CLAUDE_LAST_CONTEXT.md`：Claude Code 网络出错前最后几段对话的整理，包含 M7-flex/M7-table 的真实过程。
+5. `DEBUGGING.md`：WM6/WinCE 设备调试纪律，尤其是先查环境再改代码。
+6. 根目录 `PHASE*.md` / `README.md`：阶段脉络和面向使用者的现状摘要。
 
 ## 权威性
 
 - 最新代码状态以 `git log`、源码和本目录为准。
-- `README.md` / `PHASE4.md` 有历史价值，但截至 2026-07-07 已落后于 `main` 最新提交。
+- `README.md` 是面向使用者的现状摘要；`PHASE4.md` 保留阶段历史。详细限制以 `KNOWN_LIMITATIONS.md` 为准。
 - Claude Code 本地 transcript 在 `C:\Users\Joe\.claude\projects\c--Users-Joe-Documents-C--Positron\`，但以后应优先维护本目录，避免下一位 agent 找不到交接信息。
