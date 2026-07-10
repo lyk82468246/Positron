@@ -960,6 +960,103 @@ static BOOL test10_styledoc(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 21 - responsive @media uses the actual CSS viewport              */
+/* 299/300/320 are test-only breakpoints, not product constants. A zero  */
+/* css_media.width wrongly selects max-width rules regardless of the       */
+/* dynamic PCore_SetViewport dimensions. Test both sides offline.         */
+/* -------------------------------------------------------------------- */
+static BOOL test21_media_viewport(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><p>media</p></body></html>";
+    static const char *CSS =
+        "p{color:#aa0000;}"
+        "@media screen and (min-width:300px){p{color:#00aa00;}}"
+        "@media screen and (max-width:299px){p{color:#0000aa;}}";
+    HANDLE hDoc = NULL;
+    HANDLE hSheet = NULL;
+    unsigned long argb;
+    unsigned long rgb;
+    unsigned long expected;
+    int width;
+    int pass;
+    int screen_w;
+    int screen_h;
+    int screen_dpi = 96;
+    HDC screen_dc;
+    char msg[256];
+
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        int dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
+        if (dpi > 0) {
+            screen_dpi = dpi;
+        }
+        ReleaseDC(NULL, screen_dc);
+    }
+
+    msg[0] = '\0';
+    for (pass = 0; pass < 2; pass++) {
+        width = (pass == 0) ? 320 : 299;
+        expected = (pass == 0) ? 0x0000aa00UL : 0x000000aaUL;
+        hDoc = PCore_ParseHTML(HTML, 0);
+        hSheet = PCore_ParseCSS(CSS, 0,
+                "http://positron.local/media.css");
+        if (hDoc == NULL || hSheet == NULL) {
+            if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+            if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+            hDoc = NULL;
+            hSheet = NULL;
+            break;
+        }
+
+        PCore_SetViewport(width, 200, screen_dpi);
+        argb = 0;
+        if (PCore_StyleDocument(hDoc, hSheet) != 0 ||
+                PCore_NodeComputedColor(hDoc, "p", &argb) != 0) {
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            hDoc = NULL;
+            hSheet = NULL;
+            break;
+        }
+        rgb = argb & 0x00FFFFFFUL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        hDoc = NULL;
+        hSheet = NULL;
+        if (rgb != expected) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "width=%d: @media color=0x%06lX, expect 0x%06lX",
+                    width, rgb, expected);
+            msg[sizeof(msg) - 1] = '\0';
+            break;
+        }
+    }
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, screen_dpi);
+
+    if (pass != 2) {
+        if (msg[0] == '\0') {
+            show_error(L"TEST 21 FAIL", "parse, style, or color lookup failed");
+        } else {
+            show_error(L"TEST 21 FAIL", msg);
+        }
+        return FALSE;
+    }
+    show_info(L"TEST 21 OK",
+              "Responsive media query OK:\n"
+              "320px selected min-width:300px; 299px selected\n"
+              "max-width:299px.\n\n"
+              "(runtime viewport + DPI remain dynamic.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 11 - block-flow layout via positron_core.dll                      */
 /* PCore_LayoutDocument computes block boxes; verify both parent/child    */
 /* margin collapse and the padding barrier that must stop that collapse. */
@@ -1374,6 +1471,16 @@ static void navigate_to(HWND hwnd, const char *href)
     cstr_copy(g_cur_path, sizeof(g_cur_path), path);
     g_cur_port = port;
 
+    /* Select responsive CSS against the actual render client, not the full
+     * screen size left over from startup. StyleDocumentEx evaluates @media
+     * now, before LayoutDocument builds the box tree. */
+    GetClientRect(hwnd, &rc);
+    cw = rc.right - rc.left;
+    chh = rc.bottom - rc.top;
+    if (cw <= 0) { cw = 224; }
+    if (chh <= 0) { chh = 320; }
+    PCore_SetViewport(cw, chh, 0);
+
     if (PCore_StyleDocumentEx(newDoc, NULL, page_resource_fetch_cb,
             page_resource_free_cb, NULL) != 0) {
         show_error(L"Navigation failed", "PCore_StyleDocument failed");
@@ -1387,12 +1494,6 @@ static void navigate_to(HWND hwnd, const char *href)
     PCore_FetchImageResources(newDoc, page_resource_fetch_cb,
             page_resource_free_cb, NULL, NULL, NULL);
 
-    GetClientRect(hwnd, &rc);
-    cw = rc.right - rc.left;
-    chh = rc.bottom - rc.top;
-    if (cw <= 0) { cw = 224; }
-    if (chh <= 0) { chh = 320; }
-    PCore_SetViewport(cw, chh, 0);   /* dpi 0 = leave unchanged */
     if (PCore_LayoutDocument(newDoc, cw, chh) != 0) {
         show_error(L"Navigation failed", "PCore_LayoutDocument failed");
         PCore_FreeDocument(newDoc);
@@ -2180,7 +2281,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-20)\n"
+                  "Yes = run all selected groups (TEST 1-21)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -2196,7 +2297,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "HTML / CSS / DOM parse, select, style,\n"
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
-                               "(TEST 6-11, 15, 16, 18). Offline.");
+                               "(TEST 6-11, 15, 16, 18, 21). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "M1 plotter (TEST 14), NetSurf render\n"
@@ -2223,7 +2324,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine group (TEST 6-11, 15, 16, 18; offline) --------------- */
+    /* --- Engine group (TEST 6-11, 15, 16, 18, 21; offline) ----------- */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -2231,6 +2332,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test8_core())         { rc = 9; goto done; }
         if (!test9_select())       { rc = 10; goto done; }
         if (!test10_styledoc())    { rc = 11; goto done; }
+        if (!test21_media_viewport()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -2275,10 +2377,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
-               "    layout, box tree, NetSurf layout, image\n"
+               "    layout, media-query viewport, box tree, NetSurf layout, image\n"
                "    resource discovery/document cache. Offline.\n\n");
     }
     if (run_render) {

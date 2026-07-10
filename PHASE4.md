@@ -131,7 +131,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    `redraw_border.c` 补齐 include 后已于 2026-07-10 成功复编，TEST 17 可见 H1、flex、table/cell 边框；attribute/sibling selectors 与 `:link` / `:lang()` 也已由 TEST 9 真机通过。动态状态伪类仍保持 no-match。
 
 3. **图片 / SVG**  
-   `<img>` alt fallback 已由 TEST 17 真机验证。`PCore_FetchImageResources` 将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；TEST 18 已于 2026-07-11 确认二次扫描命中缓存、fetch calls 保持 2。`pcore_wmimage.cpp` 的 C++ 适配层公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 解码/绘制内存 BMP；TEST 19 已真机通过。缓存命中且可解码的 `<img>` 会生成 NetSurf replaced box，`layout.c` 读取固有尺寸，`redraw.c` 经 `content_redraw -> plot_bitmap` 交给 WM Imaging；TEST 20 的离线 BMP `96x72` 图像已真机通过。Browse host 也会在 layout 前调用同一资源获取器填充图片缓存。内存 PNG 首次真机反馈为 decode fail，PNG/JPEG/GIF 格式覆盖与 SVG 仍待后续。
+   `<img>` alt fallback 已由 TEST 17 真机验证。`PCore_FetchImageResources` 将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；TEST 18 已于 2026-07-11 确认二次扫描命中缓存、fetch calls 保持 2。`pcore_wmimage.cpp` 的 C++ 适配层公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 解码/绘制内存 BMP；TEST 19 已真机通过。缓存命中且可解码的 `<img>` 会生成 NetSurf replaced box，`layout.c` 读取固有尺寸，`redraw.c` 经 `content_redraw -> plot_bitmap` 交给 WM Imaging；TEST 20 的离线 BMP `96x72` 图像已真机通过。Browse host 也会在 layout 前调用同一资源获取器填充图片缓存。TEST 13 的 IANA 截图随后暴露 `@media` 宽高被错误传为 0px，现已修正并新增 TEST 21，待复编确认。内存 PNG 首次真机反馈为 decode fail，PNG/JPEG/GIF 格式覆盖与 SVG 仍待后续。
 
 4. **后台导航体验**  
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document。

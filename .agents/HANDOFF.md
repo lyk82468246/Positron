@@ -103,6 +103,7 @@ scripts\stage.bat
 1. ENGINE 回归：TEST 11 已由真机截图确认；新版 TEST 18 应显示 first/second 都为 `2/2` 且 fetch calls 为 2。
 2. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。
 3. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。
+4. 2026-07-11 TEST 13 的 IANA 截图显示左侧裁切：先验证新 TEST 21，再重跑 TEST 13。根因和修复在 `pcore_select.c` 的 `css_media.width/height`；若仍有越界，再检查具体 CSS 特性，而不是先改绘制 clip。
 
 ## 开发纪律
 

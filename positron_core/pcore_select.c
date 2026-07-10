@@ -177,6 +177,20 @@ const css_unit_ctx *pcore_get_unit_ctx(void)
     return &pcore_unit_ctx;
 }
 
+/* libcss keeps CSS media-query dimensions separate from css_unit_ctx. A zero
+ * media width makes every max-width query look mobile and every min-width
+ * query fail, even when ordinary vw units use the right viewport. Keep both
+ * sources in lockstep before selecting a document. */
+static void pcore_init_screen_media(css_media *media)
+{
+    memset(media, 0, sizeof(*media));
+    media->type = CSS_MEDIA_SCREEN;
+    media->width = pcore_unit_ctx.viewport_width;
+    media->height = pcore_unit_ctx.viewport_height;
+    media->orientation = (media->width > media->height) ?
+            CSS_MEDIA_ORIENTATION_LANDSCAPE : CSS_MEDIA_ORIENTATION_PORTRAIT;
+}
+
 /* ------------------------------------------------------------------ */
 /* node name / classes / id                                            */
 /* ------------------------------------------------------------------ */
@@ -1235,8 +1249,7 @@ PCORE_API int PCore_ComputeColor(HANDLE hDoc, HANDLE hSheet,
         goto cleanup;
     }
 
-    memset(&media, 0, sizeof(media));
-    media.type = CSS_MEDIA_SCREEN;
+    pcore_init_screen_media(&media);
 
     cerr = css_select_style(ctx, elem, &pcore_unit_ctx, &media, NULL,
             &pcore_select_handler, &pw, &results);
@@ -1625,8 +1638,7 @@ PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
         css_select_ctx_append_sheet(ctx, author, CSS_ORIGIN_AUTHOR, NULL);
     }
 
-    memset(&media, 0, sizeof(media));
-    media.type = CSS_MEDIA_SCREEN;
+    pcore_init_screen_media(&media);
 
     pcore_style_subtree(ctx, &pw, &media, root, NULL);
     rc = 0;
