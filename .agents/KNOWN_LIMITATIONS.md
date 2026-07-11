@@ -37,7 +37,7 @@
 
 ### 导航仅主文档 GET 已异步
 
-第一阶段已把主文档 `PHttp_Get` 移到单一 worker，并在旧页顶部绘制不定量 loading 条；HTTP response 通过 `WM_APP` 消息交回窗口线程，DOM/libcss/NetSurf/GDI 从不跨线程。设备结果待确认。
+第一阶段已把主文档 `PHttp_Get` 移到单一 worker，并在旧页顶部绘制不定量 loading 条；HTTP response 通过 `WM_APP` 消息交回窗口线程，DOM/libcss/NetSurf/GDI 从不跨线程。设备已确认进度条持续移动、旧页可滚动且成功后正常换页。首次版本的条带滚动复制/轻微卡顿已修复并通过构建，待复测；失败分支待测。
 
 - **当前取舍**：同一时刻只允许一个主文档请求；旧页可绘制和滚动，但加载中再次点击链接会被忽略。HTML parse、外部 CSS fetch、图片 fetch、style 和 layout 仍在 UI 提交阶段同步执行，主文档返回后仍可能短暂卡顿。
 - **后续实现**：把资源发现与 CSS/图片 fetch 组织成后台事务，再由 generation 校验最新结果后提交。真实百分比需给 `positron_http` 增加 content-length/progress 回调。

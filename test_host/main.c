@@ -1502,6 +1502,7 @@ static void pcore_set_scrollbar(HWND hwnd)
 static void pcore_scroll_by(HWND hwnd, int dy)
 {
     RECT rc;
+    RECT scroll_rc;
     int ch, maxpos, oldpos, applied;
 
     GetClientRect(hwnd, &rc);
@@ -1523,7 +1524,17 @@ static void pcore_scroll_by(HWND hwnd, int dy)
     /* Shift the existing pixels by -applied and invalidate only the newly
      * exposed strip; the following WM_PAINT repaints just that strip at the
      * new scroll offset. Far cheaper than repainting the whole client. */
-    ScrollWindowEx(hwnd, 0, -applied, NULL, NULL, NULL, NULL, SW_INVALIDATE);
+    scroll_rc = rc;
+    if (g_nav_loading && scroll_rc.bottom - scroll_rc.top > 5) {
+        scroll_rc.top += 5;
+    }
+    ScrollWindowEx(hwnd, 0, -applied, &scroll_rc, &scroll_rc,
+            NULL, NULL, SW_INVALIDATE);
+    if (g_nav_loading) {
+        RECT loading_rc = rc;
+        loading_rc.bottom = loading_rc.top + 5;
+        InvalidateRect(hwnd, &loading_rc, FALSE);
+    }
     UpdateWindow(hwnd);
 }
 
@@ -1906,13 +1917,19 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC         hdc;
+        int         loading_only;
 
         hdc = BeginPaint(hwnd, &ps);
+        loading_only = (g_nav_loading && ps.rcPaint.top <= 0 &&
+                ps.rcPaint.bottom <= 5);
         /* Repaint only the invalid region. When scrolling, that is just the
          * thin strip ScrollWindowEx exposed; BeginPaint clips the DC to it, so
          * PCore_PaintDocument redraws a sliver, not the whole screen. */
         FillRect(hdc, &ps.rcPaint, (HBRUSH) GetStockObject(WHITE_BRUSH));
-        if (g_plot_test) {
+        if (loading_only) {
+            /* The loading strip is a fixed overlay. Timer ticks repaint only
+             * these pixels instead of traversing the NetSurf document. */
+        } else if (g_plot_test) {
             PCore_PlotTest(hdc);   /* M1: drive the GDI plotter directly */
         } else if (g_image_test) {
             RECT rcc;
