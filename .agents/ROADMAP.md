@@ -78,9 +78,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 建议顺序：
 
 1. 最新 TEST13 已确认普通文本方框消失、词间距正确；补齐上游 `<pre>` UA 默认后，TEST15 也已由用户确认 `normal_ws=ok/pre_lf=kept`，文本空白闭环完成。页面整体仍未通过。
-2. 在真实 Browse 页面旋转跨断点，验证缓存 CSS restyle、滚动位置与无联网行为。TEST24 现增加滚动范围 0%/50%/100% 比例断言并已通过构建，待设备复测；随后在 TEST13 中实际旋转确认阅读段落保持。
+2. 旋转验收已完成：扩展 TEST24 的缓存重选、无联网和 0%/50%/100% 滚动比例已由设备确认；真实 TEST13 横竖屏切换也保持在 `Further Reading / Domain Names` 同一阅读区域。
 3. float 保持未支持；先对照上游 box construction/normalisation 建立整树结构和普通文流端到端回归，再重新实现。
-4. 让导航主文档 fetch 脱离 UI 线程，并保留旧页与 loading 状态；CSS/图片资源的完整异步事务随后处理。
+4. 导航异步化第一阶段已实现并通过 VS2008 全量构建：主文档 GET 在 worker 执行，旧页继续绘制/滚动并显示不定量进度条，HTTP response 通过窗口消息回到 UI 线程后才 parse/style/layout/swap；窗口关闭会等待并回收 worker。待设备确认。CSS/图片资源的完整异步事务随后处理。
 5. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback；SVG 可后置，必要时先占位或引入 libsvgtiny。
 
 验收：
@@ -131,12 +131,12 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 ### 4. 交互体验
 
-当前点击导航会同步抓取、解析、重排，设备上会卡住；这是明确记录的阶段性实现，不是预期交互体验。
+主文档 GET 已移出 UI 线程，设备结果待确认。HTML parse、外部 CSS/图片 fetch、style 和 layout 仍在完成消息的 UI 提交阶段执行，因此复杂页面在主文档返回后仍可能短暂卡顿。
 
 建议：
 
-- 点击链接后显示 loading 状态，旧页继续绘制和交互。
-- 后台 fetch，完成后用 generation 校验并在 UI 线程 swap document。
+- 第一阶段验收：点击链接后不定量 loading 条持续移动，旧页仍可绘制和滚动；失败保留旧页，关闭窗口不会遗留网络线程。
+- 第二阶段：将 CSS/图片资源组成完整后台 fetch 事务，完成后用 generation 校验并在 UI 线程 swap document。
 - 谨慎跨线程碰 DOM/GDI；确认线程安全前不让 worker 与 UI 共享 document 或全局 viewport context。
 
 ## 长期规划

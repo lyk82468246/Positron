@@ -23,9 +23,9 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 内存 BMP 解码/绘制 API 已由 TEST 19 真机验证；TEST 18/20 已确认文档缓存去重及缓存 BMP 经 `<img>` / `plot_bitmap` 绘制；Browse 会在布局前填充图片缓存。
 
-最新设备反馈（2026-07-11）：TEST15 已为 `normal_ws=ok pre_lf=kept`，文本空白修复闭环。旋转路径现进一步按新旧可滚动范围保持相对阅读进度；扩展 TEST24 覆盖 0/50/100% 三个边界并已通过 VS2008 全量构建，待设备复测和真实 TEST13 旋转验收。
+最新设备反馈（2026-07-11）：TEST15 已为 `normal_ws=ok pre_lf=kept`，文本空白修复闭环。扩展 TEST24 的缓存重选、无联网和 0/50/100% 滚动比例已通过；真实 TEST13 横竖屏也保持 `Further Reading / Domain Names` 同一阅读区域。导航第一阶段已将主文档 GET 移出 UI 线程，旧页保留绘制/滚动并显示不定量进度条，VS2008 全量构建 9/9 通过，待设备确认；外链 CSS/图片及 parse/style/layout 提交仍可能短暂占用 UI。
 
-当前明确缺口：真实 `<img>` 的 BMP 缓存链已通过真机验证，但 PNG/JPEG/GIF 格式覆盖与 SVG 仍未完成；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整。普通 float 构盒曾通过简化测试但造成真实 Browse 回归，现已撤回。IANA 窄屏页仍有页脚/导航拥挤与替代方框；网络与导航仍同步阻塞；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：真实 `<img>` 的 BMP 缓存链已通过真机验证，但 PNG/JPEG/GIF 格式覆盖与 SVG 仍未完成；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整。普通 float 构盒曾通过简化测试但造成真实 Browse 回归，现已撤回。IANA 窄屏页仍有页脚/导航拥挤；导航仅主文档 GET 已异步，资源 fetch 与渲染提交仍会占用 UI；JavaScript 尚未实现但属于长期必做目标。
 
 ---
 

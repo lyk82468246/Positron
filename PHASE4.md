@@ -134,16 +134,19 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    `<img>` alt fallback 已由 TEST 17 真机验证。`PCore_FetchImageResources` 将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；TEST 18 已于 2026-07-11 确认二次扫描命中缓存、fetch calls 保持 2。`pcore_wmimage.cpp` 的 C++ 适配层公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 解码/绘制内存 BMP；TEST 19 已真机通过。缓存命中且可解码的 `<img>` 会生成 NetSurf replaced box，`layout.c` 读取固有尺寸，`redraw.c` 经 `content_redraw -> plot_bitmap` 交给 WM Imaging；TEST 20 的离线 BMP `96x72` 图像已真机通过。Browse host 也会在 layout 前调用同一资源获取器填充图片缓存。TEST 21 已修复 IANA 页面 `@media` 宽高为 0px；TEST 22 已确认 `row-reverse` 保留 25px leading padding，IANA 正文左裁切已消失。窄屏页脚/导航仍有错位，故该页面尚未验收通过。内存 PNG 首次真机反馈为 decode fail，PNG/JPEG/GIF 格式覆盖与 SVG 仍待后续；完整边界见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 
 4. **后台导航体验**  
-   点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document；旧页必须在新页成功前保持可交互。跨线程 DOM/libcss/NetSurf document 的安全性尚未证明，不能把完整渲染事务直接搬到 worker。
+   主文档 GET 已进入 worker，旧页在此期间继续响应并显示 loading；response 回到 UI 线程后，parse、外链 CSS/图片 fetch、style/layout 仍同步发生，复杂页面可能短暂卡顿。后续应把资源 fetch 纳入后台事务，同时继续保证 DOM/libcss/NetSurf document 只在 UI 线程提交。
 
 5. **布局细化**  
    flex 和常见 table 已通；IANA 页脚曾触发普通 `float:left` 构盒尝试，TEST23 最小样例通过但真实 Browse 严重回归，已于 2026-07-11 撤回。float、rowspan 精确跨行占用、border-collapse 视觉、forms/widgets 仍需按真实页面痛点推进；float 必须先补上游构盒 normalisation 的前后条件和端到端回归。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法；整数 px 的 `width <=` / `width <` 已由扩展 TEST21 真机确认。TEST13 的 normal/nowrap 文本空白与 TEST15 的 `<pre>` 保留断言也已由设备确认，剩余导航/页脚版式仍需继续处理。
 
 6. **旋转响应式重选**
-   `WM_SIZE` 现在从 document-owned 外链 CSS 缓存重新 style + layout，使用 cache-only callback 禁止尺寸变化联网；重样式会释放被替换的 computed style。TEST24 已于 2026-07-11 真机确认外链 CSS 从 320px 重选到 299px，而 fetch/free 都维持一次；真实 Browse 旋转仍待验收。
+   `WM_SIZE` 从 document-owned 外链 CSS 缓存重新 style + layout，使用 cache-only callback 禁止尺寸变化联网；重样式会释放被替换的 computed style。TEST24 已真机确认跨断点重选、fetch/free 维持一次及 0/50/100% 滚动比例；真实 TEST13 横竖屏也保持同一阅读区域。
 
 7. **文本空白规范化**
-   TEST13 已真机确认 `white-space:normal/nowrap` 的源码 LF 方框消失且词间距正常。TEST15 的正反断言随后确认 `normal_ws=ok pre_lf=kept`；最小 UA CSS 已按 NetSurf `resources/default.css` 补齐 `pre { white-space:pre }`。旋转时滚动位置现按旧/新可滚动范围保持相对进度，扩展 TEST24 覆盖 0/50/100% 边界并已通过全量构建，待设备与真实 Browse 旋转确认。
+   TEST13 已真机确认 `white-space:normal/nowrap` 的源码 LF 方框消失且词间距正常。TEST15 的正反断言随后确认 `normal_ws=ok pre_lf=kept`；最小 UA CSS 已按 NetSurf `resources/default.css` 补齐 `pre { white-space:pre }`。旋转时滚动位置按旧/新可滚动范围保持相对进度，扩展 TEST24 与真实 Browse 旋转均已由设备确认。
+
+8. **后台导航第一阶段**
+   主文档 GET 已移到 worker；旧页继续绘制和滚动，顶部显示不定量 loading 条，response 通过窗口消息回 UI 线程后才 parse/style/layout/swap。窗口退出会等待并回收 worker。VS2008 Debug 全量重建 9/9 通过，待设备确认。外链 CSS/图片 fetch 仍在 UI 提交阶段，尚不能宣称完整导航无冻结。
 
 更完整规划见 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
 

@@ -1456,6 +1456,24 @@ static int    g_ns_render = 0;    /* M5e: paint via PCore_NsRenderTest */
 static int    g_image_test = 0;   /* TEST 19: native WM Imaging draw */
 static int    g_image_draw_rc = -1;
 
+#define WM_PCORE_NAV_DONE (WM_APP + 1)
+#define PCORE_NAV_TIMER 24
+
+typedef struct pcore_navigation_request {
+    HWND           hwnd;
+    LONG           generation;
+    char           host[256];
+    char           path[1024];
+    int            port;
+    PHttpResponse *response;
+} pcore_navigation_request;
+
+static HANDLE                    g_nav_thread = NULL;
+static pcore_navigation_request *g_nav_request = NULL;
+static LONG                      g_nav_generation = 0;
+static int                       g_nav_loading = 0;
+static int                       g_nav_phase = 0;
+
 /* Current page origin, for resolving relative links during navigation. */
 static char   g_cur_host[256] = "";
 static char   g_cur_path[1024] = "/";
@@ -1703,31 +1721,55 @@ static int page_resource_cache_only_cb(void *pw, const char *url,
     return 1;
 }
 
-/* Follow a link: fetch the target over HTTPS, parse + style + lay it out to the
- * current client size, swap it in as the rendered document and repaint. On any
- * failure the current page is left untouched and an error box is shown. */
-static void navigate_to(HWND hwnd, const char *href)
+static void pcore_navigation_set_loading(HWND hwnd, int loading)
 {
-    char           host[256];
-    char           path[1024];
-    int            port = 443;
+    RECT r;
+
+    g_nav_loading = loading;
+    g_nav_phase = 0;
+    if (loading) {
+        SetTimer(hwnd, PCORE_NAV_TIMER, 100, NULL);
+    } else {
+        KillTimer(hwnd, PCORE_NAV_TIMER);
+    }
+    GetClientRect(hwnd, &r);
+    r.bottom = r.top + 5;
+    InvalidateRect(hwnd, &r, TRUE);
+}
+
+static DWORD WINAPI pcore_navigation_worker(LPVOID param)
+{
+    pcore_navigation_request *request;
+
+    request = (pcore_navigation_request *) param;
+    request->response = PHttp_Get(request->host, request->port,
+            request->path, NULL);
+    PostMessage(request->hwnd, WM_PCORE_NAV_DONE,
+            (WPARAM) request->generation, (LPARAM) request);
+    return 0;
+}
+
+/* Parse/style/layout and swap only on the window thread. The worker owns no
+ * DOM, libcss, NetSurf or GDI state; it transfers only the HTTP response. */
+static void pcore_navigation_complete(HWND hwnd,
+        pcore_navigation_request *request)
+{
     PHttpResponse *resp;
     HANDLE         newDoc;
     RECT           rc;
     int            cw, chh;
     char           emsg[320];
+    char           old_host[256];
+    char           old_path[1024];
+    int            old_port;
 
-    if (!resolve_url(href, host, sizeof(host), path, sizeof(path), &port)) {
-        show_info(L"Link", "Only http(s) document links are followed for now.");
-        return;
-    }
-
-    resp = PHttp_Get(host, port, path, NULL);
+    resp = request->response;
     if (resp == NULL || resp->status_code != 200 || resp->body == NULL ||
             resp->body_len <= 0) {
         _snprintf(emsg, sizeof(emsg) - 1,
                   "GET %s://%s%s -> status=%d %s",
-                  (port == 80) ? "http" : "https", host, path,
+                  (request->port == 80) ? "http" : "https",
+                  request->host, request->path,
                   (resp != NULL) ? resp->status_code : 0,
                   (resp != NULL) ? resp->error_msg : "(null)");
         emsg[sizeof(emsg) - 1] = '\0';
@@ -1747,9 +1789,12 @@ static void navigate_to(HWND hwnd, const char *href)
 
     /* Record the new origin *before* styling so external <link> hrefs in this
      * page resolve against it (page_resource_fetch_cb uses g_cur_*). */
-    cstr_copy(g_cur_host, sizeof(g_cur_host), host);
-    cstr_copy(g_cur_path, sizeof(g_cur_path), path);
-    g_cur_port = port;
+    cstr_copy(old_host, sizeof(old_host), g_cur_host);
+    cstr_copy(old_path, sizeof(old_path), g_cur_path);
+    old_port = g_cur_port;
+    cstr_copy(g_cur_host, sizeof(g_cur_host), request->host);
+    cstr_copy(g_cur_path, sizeof(g_cur_path), request->path);
+    g_cur_port = request->port;
 
     /* Select responsive CSS against the actual render client, not the full
      * screen size left over from startup. StyleDocumentEx evaluates @media
@@ -1765,6 +1810,9 @@ static void navigate_to(HWND hwnd, const char *href)
             page_resource_free_cb, NULL) != 0) {
         show_error(L"Navigation failed", "PCore_StyleDocument failed");
         PCore_FreeDocument(newDoc);
+        cstr_copy(g_cur_host, sizeof(g_cur_host), old_host);
+        cstr_copy(g_cur_path, sizeof(g_cur_path), old_path);
+        g_cur_port = old_port;
         return;
     }
 
@@ -1777,6 +1825,9 @@ static void navigate_to(HWND hwnd, const char *href)
     if (PCore_LayoutDocument(newDoc, cw, chh) != 0) {
         show_error(L"Navigation failed", "PCore_LayoutDocument failed");
         PCore_FreeDocument(newDoc);
+        cstr_copy(g_cur_host, sizeof(g_cur_host), old_host);
+        cstr_copy(g_cur_path, sizeof(g_cur_path), old_path);
+        g_cur_port = old_port;
         return;
     }
 
@@ -1791,6 +1842,61 @@ static void navigate_to(HWND hwnd, const char *href)
     pcore_set_scrollbar(hwnd);
     InvalidateRect(hwnd, NULL, TRUE);
     UpdateWindow(hwnd);
+}
+
+/* Start only the main-document GET on a worker. Resource discovery and all
+ * engine work remain on the UI thread until their ownership is made explicit. */
+static void navigate_to(HWND hwnd, const char *href)
+{
+    pcore_navigation_request *request;
+    DWORD thread_id;
+
+    if (g_nav_loading) {
+        return;
+    }
+    request = (pcore_navigation_request *) malloc(sizeof(*request));
+    if (request == NULL) {
+        show_error(L"Navigation failed", "Out of memory");
+        return;
+    }
+    memset(request, 0, sizeof(*request));
+    request->port = 443;
+    if (!resolve_url(href, request->host, sizeof(request->host),
+            request->path, sizeof(request->path), &request->port)) {
+        free(request);
+        show_info(L"Link", "Only http(s) document links are followed for now.");
+        return;
+    }
+
+    request->hwnd = hwnd;
+    request->generation = ++g_nav_generation;
+    g_nav_request = request;
+    pcore_navigation_set_loading(hwnd, 1);
+    g_nav_thread = CreateThread(NULL, 0, pcore_navigation_worker,
+            request, 0, &thread_id);
+    if (g_nav_thread == NULL) {
+        pcore_navigation_set_loading(hwnd, 0);
+        g_nav_request = NULL;
+        free(request);
+        show_error(L"Navigation failed", "CreateThread failed");
+    }
+}
+
+static void pcore_navigation_cleanup(void)
+{
+    if (g_nav_thread != NULL) {
+        WaitForSingleObject(g_nav_thread, INFINITE);
+        CloseHandle(g_nav_thread);
+        g_nav_thread = NULL;
+    }
+    if (g_nav_request != NULL) {
+        if (g_nav_request->response != NULL) {
+            PHttp_FreeResponse(g_nav_request->response);
+        }
+        free(g_nav_request);
+        g_nav_request = NULL;
+    }
+    g_nav_loading = 0;
 }
 
 static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
@@ -1824,6 +1930,26 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             PCore_NsRenderTest(hdc, rcc.right - rcc.left, rcc.bottom - rcc.top);
         } else if (g_render_doc != NULL) {
             PCore_PaintDocument(g_render_doc, hdc, 0, g_scroll_y);
+        }
+        if (g_nav_loading) {
+            RECT lr;
+            HBRUSH brush;
+            int width;
+            int segment;
+            int x;
+
+            GetClientRect(hwnd, &lr);
+            width = lr.right - lr.left;
+            segment = (width > 0) ? width / 4 : 1;
+            x = ((g_nav_phase * (width + segment)) / 16) - segment;
+            lr.left = x;
+            lr.right = x + segment;
+            lr.bottom = lr.top + 4;
+            brush = CreateSolidBrush(RGB(0, 128, 160));
+            if (brush != NULL) {
+                FillRect(hdc, &lr, brush);
+                DeleteObject(brush);
+            }
         }
         EndPaint(hwnd, &ps);
         return 0;
@@ -1875,6 +2001,34 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         return 0;
     }
+    case WM_TIMER:
+        if (wp == PCORE_NAV_TIMER && g_nav_loading) {
+            RECT r;
+            g_nav_phase = (g_nav_phase + 1) & 15;
+            GetClientRect(hwnd, &r);
+            r.bottom = r.top + 5;
+            InvalidateRect(hwnd, &r, TRUE);
+            return 0;
+        }
+        break;
+    case WM_PCORE_NAV_DONE: {
+        pcore_navigation_request *request;
+
+        request = (pcore_navigation_request *) lp;
+        if (g_nav_thread != NULL) {
+            WaitForSingleObject(g_nav_thread, INFINITE);
+            CloseHandle(g_nav_thread);
+            g_nav_thread = NULL;
+        }
+        pcore_navigation_set_loading(hwnd, 0);
+        if (request == g_nav_request &&
+                request->generation == g_nav_generation) {
+            g_nav_request = NULL;
+            pcore_navigation_complete(hwnd, request);
+            free(request);
+        }
+        return 0;
+    }
     case WM_KEYDOWN:
         switch (wp) {
         case VK_UP:    pcore_scroll_by(hwnd, -16);   break;
@@ -1909,6 +2063,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:
+        g_nav_generation++;
+        pcore_navigation_set_loading(hwnd, 0);
         PostQuitMessage(0);
         return 0;
     }
@@ -1952,6 +2108,7 @@ static BOOL show_render_window(void)
         TranslateMessage(&m);
         DispatchMessage(&m);
     }
+    pcore_navigation_cleanup();
     return TRUE;
 }
 

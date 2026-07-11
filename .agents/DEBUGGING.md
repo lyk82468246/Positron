@@ -82,6 +82,8 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 
 补齐 UA 默认后的用户截图确认 TEST15 OK：`normal_ws=ok pre_lf=kept`。随后 `WM_SIZE` 的滚动恢复从“旧像素值裁剪”改为按旧/新可滚动范围保持比例；扩展 TEST24 要求 0%、50%、100% 分别映射到新范围的 0%、50%、100%，并继续要求 restyle 不联网。
 
+2026-07-11 用户截图确认扩展 TEST24 OK；真实 TEST13 在竖屏 `Further Reading / Domain Names` 区域旋转到横屏后仍保持同一阅读位置，旋转响应式与阅读进度闭环。随后导航第一阶段改为 worker 主文档 GET + `WM_APP` 完成消息；若设备仍卡顿，先区分“主 GET 期间进度条是否停止”和“GET 完成后资源/style/layout 提交是否短暂停止”，两者属于不同阶段。
+
 旋转调试注意：`WM_SIZE` 当前会调用 `PCore_SetViewport` 和 `PCore_LayoutDocument`，所以几何会重新 flow；它不会调用 `PCore_StyleDocumentEx`，因此跨 CSS 断点时媒体规则可能仍是旋转前的选择结果。排查旋转问题时先区分“layout 没更新”和“style 没重选”。
 
 2026-07-11：用户截图显示最终汇总 `Tests passed`，明确列出 ENGINE 的 TEST 6-11、15、16、18、21、22 全部通过。它是离线 HTML parse/select/style/layout、media-query viewport、反向 flex、box tree 及图片资源发现/document cache 的回归证据；不覆盖网络 Browse 或 GDI Render 组。
