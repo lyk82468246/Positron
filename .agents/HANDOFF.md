@@ -35,7 +35,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 - TEST 11 原有 `body.y=8` / `p.y=24` 是旧手写布局器预期；NetSurf 折叠结果为 `body.y=p.y=16`。当前源码新增 `padding-top:1px` 阻断组，必须同时得到 `(16,16)` 与 `(8,25)` 才通过；2026-07-10 用户真机截图已确认 TEST 11 OK。
 - TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过；2026-07-11 已确认 document user-data 字节缓存与 URL 去重，二次扫描 fetch calls 保持 2。
 - `pcore_wmimage.cpp` 是刻意新增的 C++ 小适配层：项目主体仍按 C89 编译，只有该文件 include WM6 SDK 的 C++ `imaging.h`，通过 `IImagingFactory::CreateImageFromBuffer` / `IImage::Draw` 暴露 C ABI 的 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`。内存 PNG 首次真机反馈为 decode fail；TEST 19 现改为 2x2 BMP 基线并输出 HRESULT 阶段码。第二次真机反馈为 `stage=2 hr=0x80070057`，已按 WM6 SDK `winx.h` 的约定把 COM init 改为 `COINIT_MULTITHREADED`；2026-07-10 BMP 基线已真机通过。2026-07-11 新增缓存 `<img>` 最小链：`box->object -> content_redraw -> plot_bitmap -> IImage::Draw`，TEST 20 已真机验证。
-- TEST 21 已确认 `css_media.width/height` 采用实际 client viewport；TEST 13 的 IANA 左缘裁切因此消失。2026-07-11 已为当前 IANA 使用的整数像素 MQ4 `(width <= Npx)` / `(width < Npx)` 增加保守改写并通过 VS2008 全量构建；扩展 TEST21 和 TEST13 的设备结果待确认。最新截图仍显示窄屏页脚/导航拥挤、错位和资源/字形替代方框，故 TEST 13 只能算“可继续浏览的回归改善”，不是版式验收通过。
+- TEST 21 已确认 `css_media.width/height` 采用实际 client viewport；2026-07-11 用户又确认整数像素 MQ4 `(width <= Npx)` / `(width < Npx)` 的 320/300/299px 边界通过。随后 TEST13 方框在空白折叠修复后消失且词间距正常；补齐 NetSurf 上游 `<pre>` UA 默认后，TEST15 已确认 `normal_ws=ok pre_lf=kept`。页脚/导航拥挤仍未解决。TEST24 已扩展滚动比例 0/50/100% 断言并通过构建，待设备复测。
 
 ## 关键文件
 
@@ -109,7 +109,7 @@ scripts\stage.bat
 2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。最新 TEST13 截图已确认灾难性重叠消失、可读基线恢复，但导航/页脚拥挤、替代方框与未完整应用现代 CSS 的问题仍在，不能记为 TEST13 通过。后续 float 必须对照上游 box construction/normalisation，而不是基于该简化测试继续扩展。
 3. `WM_SIZE` 已改为从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback，尺寸变化不会联网。TEST24 已确认 320px/299px 的外链 CSS 重选与 fetch/free=1；随后验证真实 Browse 旋转。
 4. 导航的 fetch/parse/style/layout 仍在 UI 线程同步执行。后续需要 worker fetch、loading、generation 和 UI 线程安全 swap；禁止未经验证就跨线程并发操作 DOM/libcss/NetSurf document。
-5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法。现仅兼容整数像素 `width <=` / `width <` 两种形式，扩展 TEST21 待设备确认；不要把它扩大为完整 MQ4/custom-properties 支持。
+5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法。整数像素 `width <=` / `width <` 两种形式已由扩展 TEST21 真机确认；不要把它扩大为完整 MQ4/custom-properties 支持。
 6. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。table rowspan 仍是简化版。完整边界和完成条件见 `KNOWN_LIMITATIONS.md`。
 
 ## 开发纪律

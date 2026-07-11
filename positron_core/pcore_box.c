@@ -321,10 +321,38 @@ static struct box *pcore_make_text_box(dom_node *tnode,
         if (data != NULL && len > 0) {
             b = pcore_box_new(BOX_TEXT, style, ctx);
             if (b != NULL) {
-                char *copy = (char *) talloc_memdup(ctx, data, len);
+                char *copy = (char *) talloc_size(ctx, len + 1);
                 if (copy != NULL) {
+                    uint8_t ws = (style != NULL) ?
+                            css_computed_white_space(style) :
+                            CSS_WHITE_SPACE_NORMAL;
+                    size_t out_len = 0;
+                    size_t i;
+
+                    if (ws == CSS_WHITE_SPACE_NORMAL ||
+                            ws == CSS_WHITE_SPACE_NOWRAP) {
+                        int in_space = 0;
+                        for (i = 0; i < len; i++) {
+                            char c = data[i];
+                            int is_space = (c == ' ' || c == '\t' ||
+                                    c == '\r' || c == '\n' || c == '\f');
+                            if (is_space) {
+                                if (!in_space) {
+                                    copy[out_len++] = ' ';
+                                    in_space = 1;
+                                }
+                            } else {
+                                copy[out_len++] = c;
+                                in_space = 0;
+                            }
+                        }
+                    } else {
+                        memcpy(copy, data, len);
+                        out_len = len;
+                    }
+                    copy[out_len] = '\0';
                     b->text = copy;
-                    b->length = len;
+                    b->length = out_len;
                 } else {
                     b->text = NULL;
                     b->length = 0;
@@ -334,6 +362,37 @@ static struct box *pcore_make_text_box(dom_node *tnode,
     }
     dom_string_unref(txt);
     return b;
+}
+
+/* NetSurf stores collapsible whitespace between text runs as the width of a
+ * trailing space on the previous box. Keep text boxes free of raw layout
+ * whitespace so GDI never receives LF/TAB glyphs for white-space:normal. */
+static void pcore_box_add_text(struct box *parent, struct box *text)
+{
+    int leading;
+    int trailing;
+
+    if (parent == NULL || text == NULL || text->text == NULL) {
+        return;
+    }
+    leading = (text->length > 0 && text->text[0] == ' ');
+    trailing = (text->length > 0 &&
+            text->text[text->length - 1] == ' ');
+    if (leading) {
+        if (parent->last != NULL) {
+            parent->last->space = UNKNOWN_WIDTH;
+        }
+        text->length--;
+        memmove(text->text, text->text + 1, text->length);
+    }
+    if (trailing && text->length > 0) {
+        text->length--;
+        text->space = UNKNOWN_WIDTH;
+    }
+    text->text[text->length] = '\0';
+    if (text->length > 0) {
+        pcore_box_add_child(parent, text);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -371,7 +430,7 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                 if (t != NULL) {
                     t->node = node;   /* attribute text to its inline
                                        * element (e.g. <a>) for hit-testing */
-                    pcore_box_add_child(cont, t);
+                    pcore_box_add_text(cont, t);
                 }
             } else if (type == DOM_ELEMENT_NODE) {
                 css_computed_style *cs = pcore_node_computed_style(child);
@@ -472,7 +531,7 @@ static struct box *pcore_construct_block(dom_node *node,
                                     NULL, ctx);
                             pcore_box_add_child(box, inline_cont);
                         }
-                        pcore_box_add_child(inline_cont, t);
+                        pcore_box_add_text(inline_cont, t);
                     }
                 }
             } else if (type == DOM_ELEMENT_NODE) {
@@ -903,6 +962,73 @@ static void pcore_box_count(struct box *b, int *blk, int *icont, int *inl,
     }
 }
 
+static int pcore_box_text_has_control_space(struct box *b)
+{
+    struct box *c;
+    size_t i;
+
+    if (b == NULL) {
+        return 0;
+    }
+    if (b->type == BOX_TEXT && b->style != NULL &&
+            (css_computed_white_space(b->style) == CSS_WHITE_SPACE_NORMAL ||
+             css_computed_white_space(b->style) == CSS_WHITE_SPACE_NOWRAP)) {
+        for (i = 0; i < b->length; i++) {
+            if (b->text[i] == '\t' || b->text[i] == '\r' ||
+                    b->text[i] == '\n' || b->text[i] == '\f') {
+                return 1;
+            }
+        }
+    }
+    for (c = b->children; c != NULL; c = c->next) {
+        if (pcore_box_text_has_control_space(c)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pcore_box_subtree_has_lf(struct box *b)
+{
+    struct box *c;
+    size_t i;
+
+    if (b == NULL) {
+        return 0;
+    }
+    if (b->type == BOX_TEXT) {
+        for (i = 0; i < b->length; i++) {
+            if (b->text[i] == '\n') {
+                return 1;
+            }
+        }
+    }
+    for (c = b->children; c != NULL; c = c->next) {
+        if (pcore_box_subtree_has_lf(c)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pcore_pre_kept_lf(struct box *b)
+{
+    struct box *c;
+
+    if (b == NULL) {
+        return 0;
+    }
+    if (b->node != NULL && pcore_node_name_is(b->node, "pre")) {
+        return pcore_box_subtree_has_lf(b);
+    }
+    for (c = b->children; c != NULL; c = c->next) {
+        if (pcore_pre_kept_lf(c)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 PCORE_API void PCore_BoxTreeTest(char *out, int cap)
 {
     static const char *HTML =
@@ -910,6 +1036,7 @@ PCORE_API void PCore_BoxTreeTest(char *out, int cap)
         "<style>i{font-style:italic}</style></head>"
         "<body><h1>Title</h1>"
         "<p>Some <b>bold</b> and <i>italic</i> text in a paragraph.</p>"
+        "<p>Whitespace a\nnumber stays readable.</p><pre>A\nB</pre>"
         "<p>Image fallback: <img alt=\"Logo\" src=\"logo.png\"></p>"
         "<div><p>Nested paragraph one.</p><p>Nested two.</p></div>"
         "</body></html>";
@@ -919,6 +1046,8 @@ PCORE_API void PCore_BoxTreeTest(char *out, int cap)
     void *ctx;
     struct box *tree;
     int blk = 0, icont = 0, inl = 0, txt = 0, other = 0;
+    int normal_ws_ok = 0;
+    int pre_lf_ok = 0;
     WCHAR w[256];
 
     if (out == NULL || cap <= 0) {
@@ -946,13 +1075,17 @@ PCORE_API void PCore_BoxTreeTest(char *out, int cap)
     tree = pcore_box_construct(root, ctx);
     if (tree != NULL) {
         pcore_box_count(tree, &blk, &icont, &inl, &txt, &other);
+        normal_ws_ok = !pcore_box_text_has_control_space(tree);
+        pre_lf_ok = pcore_pre_kept_lf(tree);
     }
 
     wsprintfW(w, L"box tree: blocks=%d inline_containers=%d\r\n"
                  L"inline(+end/iblock)=%d text=%d other=%d\r\n"
-                 L"total=%d (expect blocks>=6, text>=6 incl img alt)",
+                 L"total=%d normal_ws=%s pre_lf=%s",
               blk, icont, inl, txt, other,
-              blk + icont + inl + txt + other);
+              blk + icont + inl + txt + other,
+              normal_ws_ok ? L"ok" : L"FAIL",
+              pre_lf_ok ? L"kept" : L"FAIL");
     WideCharToMultiByte(CP_ACP, 0, w, -1, out, cap, NULL, NULL);
     out[cap - 1] = '\0';
 

@@ -76,6 +76,12 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 
 2026-07-11：当前 IANA CSS 确认大量使用 `(width <= 1000px)` / `(width < 1200px)`，libcss 3.11 不解析这类 MQ4 范围。`PCore_ParseCSS` 现只在字符串/注释之外改写整数 px 的 `width <=` 和 `width <`，严格小于按 WM6 整数 client px 转成 `max-width:N-1px`。首次实现使用 `wsprintfA`，VS2008 编译通过但 WinCE 链接报 LNK2019；已改为内部十进制格式化并加溢出保护，随后全解决方案 9/9 构建通过。不要因构建通过跳过扩展 TEST21 的设备边界验证。
 
+同日用户截图确认扩展 TEST21 OK。TEST13 中 `a□number`、`maintained□for`、`are□provided`、`require□the` 与线上 HTML 的源码 LF 精确对应；`Homepage□` 是 SVG alt fallback 后的格式化换行。根因不是字体或网络，而是 `pcore_make_text_box` 未移植上游 `box_construct_text` 的 normal/nowrap 空白折叠。现已折叠 ASCII 空白并用 `box->space` 保存词间距，TEST15 同时要求 `normal_ws=ok` 与 `pre_lf=kept`，防止全局删除换行；设备结果待确认。
+
+首次设备结果为 `normal_ws=ok pre_lf=FAIL`，同时 TEST13 方框已消失且词间距正常。这不是普通空白修复回归，而是最小 `PCORE_UA_CSS` 漏了 HTML 默认 `pre { white-space:pre }`，导致 `<pre>` computed style 仍为 normal。已按上游 `resources/default.css` 补齐 `font-family:monospace; white-space:pre; margin-bottom:1em`；不得删除 `pre_lf` 反例来让测试变绿。
+
+补齐 UA 默认后的用户截图确认 TEST15 OK：`normal_ws=ok pre_lf=kept`。随后 `WM_SIZE` 的滚动恢复从“旧像素值裁剪”改为按旧/新可滚动范围保持比例；扩展 TEST24 要求 0%、50%、100% 分别映射到新范围的 0%、50%、100%，并继续要求 restyle 不联网。
+
 旋转调试注意：`WM_SIZE` 当前会调用 `PCore_SetViewport` 和 `PCore_LayoutDocument`，所以几何会重新 flow；它不会调用 `PCore_StyleDocumentEx`，因此跨 CSS 断点时媒体规则可能仍是旋转前的选择结果。排查旋转问题时先区分“layout 没更新”和“style 没重选”。
 
 2026-07-11：用户截图显示最终汇总 `Tests passed`，明确列出 ENGINE 的 TEST 6-11、15、16、18、21、22 全部通过。它是离线 HTML parse/select/style/layout、media-query viewport、反向 flex、box tree 及图片资源发现/document cache 的回归证据；不覆盖网络 Browse 或 GDI Render 组。

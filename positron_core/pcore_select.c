@@ -1314,6 +1314,7 @@ static const char PCORE_UA_CSS[] =
     "i, em { font-style: italic; }\n"
     "a { color: #0000ee; text-decoration: underline; }\n"
     "a { color: #0000ee; text-decoration: underline; }\n"
+    "pre { font-family: monospace; white-space: pre; margin-bottom: 1em; }\n"
     "body { margin: 8px; }\n"
     "p, blockquote { margin-top: 1em; margin-bottom: 1em; }\n"
     "h1 { font-size: 2em; }\n"

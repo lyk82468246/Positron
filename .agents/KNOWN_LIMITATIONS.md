@@ -8,7 +8,7 @@
 
 | 范围 | 已验证事实 | 不代表 |
 |---|---|---|
-| CSS 媒体查询 | 原 TEST 21 已在设备上确认：运行时 client viewport 与 DPI 进入 libcss，320px 命中 `min-width:300px`，299px 命中 `max-width:299px`。整数像素 MQ4 `width <=` / `width <` 兼容已编译，扩展测试待设备确认。 | 所有媒体特性、MQ4 范围、custom properties 和旋转场景均已覆盖。 |
+| CSS 媒体查询 | TEST 21 已在设备确认：运行时 viewport/DPI、旧式 min/max-width 及整数像素 MQ4 `width <=` / `width <` 均在 320/300/299px 正确命中边界。 | 所有媒体特性、MQ4 范围、custom properties 和旋转场景均已覆盖。 |
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | 撤回 TEST23 对应实现后的最新 TEST 13 截图确认：灾难性的正文重叠已消失，此前约 25px 的左缘裁切也未复现，`Example Domains` 可读。 | TEST 13 版式通过，或页面已达到原浏览器/现代浏览器的还原度。 |
 | 图片 | TEST 18、19、20 已分别确认资源去重、WM Imaging 内存 BMP 解码/绘制、缓存 `<img>` 进入 NetSurf `box->object -> content_redraw -> plot_bitmap` 链。 | PNG/JPEG/GIF、SVG、背景图或任意网络图片均可显示。 |
@@ -19,7 +19,7 @@
 
 ### IANA 窄屏布局仍非验收通过
 
-撤回 TEST23 对应实现后的最新 TEST 13 已确认灾难性回归消失、左缘裁切未复现，但截图仍可见：导航在窄屏右侧纵向堆叠，页脚两列严重拥挤并产生不理想断行；`Homepage` 后和正文中的方框也说明 SVG/图标、字形或替代资源尚未正确呈现。当前结论只能是“旧的可读基线恢复”，不是“TEST 13 符合最终预期”或“版式通过”。
+撤回 TEST23 对应实现后的最新 TEST 13 已确认灾难性回归消失、左缘裁切未复现，但截图仍可见导航和页脚拥挤。普通文本空白折叠修复已由 TEST13 确认：源码 LF 方框消失且词间距正常；补齐 UA CSS 后 TEST15 也已确认 `normal_ws=ok pre_lf=kept`。当前结论仍不是“TEST 13 符合最终预期”或“版式通过”。
 
 - **可能范围**：剩余 flex/table/inline/字体或未实现 CSS 特性的组合；尚未把单一原因当作结论。
 - **已撤回的一项**：IANA 页脚是 table cell 内 `display:inline; float:left` 列表。TEST23 曾在最小样例中确认两个浮动块同行及 `clear:both`，但将该构盒规则直接接入真实页面后，2026-07-11 Browse 截图出现严重错位和替代方框；实现已撤回。该测试不再参加 ENGINE 组，不能作为 float 支持证据。
@@ -32,7 +32,7 @@
 `WM_SIZE` 现调用 `PCore_SetViewport`、缓存专用 `PCore_StyleDocumentEx` 和 `PCore_LayoutDocument`。外链 CSS 首次导航时以原始字节缓存到 document，尺寸变化只从该缓存重选 `@media`，不重新联网。TEST24 已于 2026-07-11 在设备确认 320px 到 299px 的外链 CSS 重选，fetch/free 都保持一次。
 
 - **当前取舍**：只缓存最多 32 份、单份不超过 256 KiB、每 document 合计不超过 512 KiB 的成功外链 CSS 原始字节；缓存未命中的样式在旋转时保持缺失，不能在 `WM_SIZE` 中重新联网。
-- **后续实现**：验证真实 Browse 页面旋转前后跨断点的样式和滚动位置；扩大 MQ4 语法或处理 custom properties 仍是独立兼容性工作。
+- **后续实现**：TEST24 已加入按可滚动范围保留 0/50/100% 阅读进度的离线断言，待设备复测；随后验证真实 Browse 页面旋转前后跨断点的样式、段落位置与无联网行为。扩大 MQ4 语法或处理 custom properties 仍是独立兼容性工作。
 - **完成条件**：旋转前后跨越 TEST 21 式断点时，computed style 与几何都切换正确，并恢复原滚动位置的合理比例。
 
 ### 导航仍同步阻塞 UI

@@ -1158,8 +1158,37 @@ static BOOL test22_reverse_flex_padding(void)
 /* TEST 24 - cached external CSS can restyle a new viewport              */
 /* A first StyleDocumentEx call fetches the linked sheet. A second call  */
 /* at a different width must reselect @media from document-owned bytes, */
-/* without calling transport again.                                     */
+/* without calling transport again. Rotation must also preserve the      */
+/* reader's relative position in the old/new scrollable ranges.          */
 /* -------------------------------------------------------------------- */
+static int pcore_scale_scroll_position(int old_pos, int old_doc_h,
+        int old_view_h, int new_doc_h, int new_view_h)
+{
+    int old_max = (old_doc_h > old_view_h) ? old_doc_h - old_view_h : 0;
+    int new_max = (new_doc_h > new_view_h) ? new_doc_h - new_view_h : 0;
+    double ratio;
+    int result;
+
+    if (old_pos < 0) {
+        old_pos = 0;
+    }
+    if (old_pos > old_max) {
+        old_pos = old_max;
+    }
+    if (old_max == 0 || new_max == 0) {
+        return 0;
+    }
+    ratio = (double) old_pos / (double) old_max;
+    result = (int) (ratio * (double) new_max + 0.5);
+    if (result < 0) {
+        result = 0;
+    }
+    if (result > new_max) {
+        result = new_max;
+    }
+    return result;
+}
+
 typedef struct stylesheet_cache_test_ctx {
     int calls;
     int frees;
@@ -1279,10 +1308,17 @@ static BOOL test24_cached_stylesheet_restyle(void)
     if (screen_w <= 0) { screen_w = 240; }
     if (screen_h <= 0) { screen_h = 320; }
     PCore_SetViewport(screen_w, screen_h, screen_dpi);
+    if (pcore_scale_scroll_position(0, 1000, 320, 700, 360) != 0 ||
+            pcore_scale_scroll_position(340, 1000, 320, 700, 360) != 170 ||
+            pcore_scale_scroll_position(680, 1000, 320, 700, 360) != 340) {
+        show_error(L"TEST 24 FAIL", "rotation scroll ratio 0/50/100 failed");
+        return FALSE;
+    }
     show_info(L"TEST 24 OK",
               "Cached linked CSS restyled at 320px -> 299px:\n"
-              "green -> blue; fetch calls stayed 1.\n\n"
-              "(viewport restyle does not network.)");
+              "green -> blue; fetch calls stayed 1.\n"
+              "Rotation scroll ratio passed at 0/50/100%.\n\n"
+              "(restyle does not network.)");
     return TRUE;
 }
 
@@ -1414,6 +1450,7 @@ static BOOL test11_layout(void)
 static HANDLE g_render_doc = NULL;
 static int    g_scroll_y = 0;
 static int    g_doc_h = 0;
+static int    g_view_h = 0;
 static int    g_plot_test = 0;   /* M1: paint via PCore_PlotTest, not a doc */
 static int    g_ns_render = 0;    /* M5e: paint via PCore_NsRenderTest */
 static int    g_image_test = 0;   /* TEST 19: native WM Imaging draw */
@@ -1796,6 +1833,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_SIZE: {
         int cw = LOWORD(lp);    /* new client width  */
         int chh = HIWORD(lp);   /* new client height */
+        int old_scroll = g_scroll_y;
+        int old_doc_h = g_doc_h;
 
         /* Re-select styles and re-flow to the new client width (e.g. screen
          * rotation). The callback is cache-only, so this message never
@@ -1807,13 +1846,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                 PCore_LayoutDocument(g_render_doc, cw, chh);
             }
             g_doc_h = PCore_DocumentHeight(g_render_doc);
-            if (g_scroll_y > g_doc_h - chh) {
-                g_scroll_y = g_doc_h - chh;
-            }
-            if (g_scroll_y < 0) {
-                g_scroll_y = 0;
-            }
+            g_scroll_y = pcore_scale_scroll_position(old_scroll, old_doc_h,
+                    g_view_h, g_doc_h, chh);
         }
+        g_view_h = chh;
         pcore_set_scrollbar(hwnd);
         SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);   /* keep SIP hidden on rotate */
         InvalidateRect(hwnd, NULL, TRUE);   /* full repaint after a resize */
@@ -2105,6 +2141,11 @@ static BOOL test_boxtree(void)
     PCore_BoxTreeTest(buf, sizeof(buf));
     if (buf[0] == '\0') {
         show_error(L"TEST 15 FAIL", "PCore_BoxTreeTest produced no output");
+        return FALSE;
+    }
+    if (strstr(buf, "normal_ws=ok") == NULL ||
+            strstr(buf, "pre_lf=kept") == NULL) {
+        show_error(L"TEST 15 FAIL", buf);
         return FALSE;
     }
     show_info(L"TEST 15 (box tree)", buf);

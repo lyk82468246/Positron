@@ -137,10 +137,13 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document；旧页必须在新页成功前保持可交互。跨线程 DOM/libcss/NetSurf document 的安全性尚未证明，不能把完整渲染事务直接搬到 worker。
 
 5. **布局细化**  
-   flex 和常见 table 已通；IANA 页脚曾触发普通 `float:left` 构盒尝试，TEST23 最小样例通过但真实 Browse 严重回归，已于 2026-07-11 撤回。float、rowspan 精确跨行占用、border-collapse 视觉、forms/widgets 仍需按真实页面痛点推进；float 必须先补上游构盒 normalisation 的前后条件和端到端回归。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法；现已为整数 px 的 `width <=` / `width <` 加入保守改写并通过 VS2008 全量构建，扩展 TEST21 与真实 TEST13 待设备确认，不能据此宣称完整 MQ4 支持。
+   flex 和常见 table 已通；IANA 页脚曾触发普通 `float:left` 构盒尝试，TEST23 最小样例通过但真实 Browse 严重回归，已于 2026-07-11 撤回。float、rowspan 精确跨行占用、border-collapse 视觉、forms/widgets 仍需按真实页面痛点推进；float 必须先补上游构盒 normalisation 的前后条件和端到端回归。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法；整数 px 的 `width <=` / `width <` 已由扩展 TEST21 真机确认。TEST13 的 normal/nowrap 文本空白与 TEST15 的 `<pre>` 保留断言也已由设备确认，剩余导航/页脚版式仍需继续处理。
 
 6. **旋转响应式重选**
    `WM_SIZE` 现在从 document-owned 外链 CSS 缓存重新 style + layout，使用 cache-only callback 禁止尺寸变化联网；重样式会释放被替换的 computed style。TEST24 已于 2026-07-11 真机确认外链 CSS 从 320px 重选到 299px，而 fetch/free 都维持一次；真实 Browse 旋转仍待验收。
+
+7. **文本空白规范化**
+   TEST13 已真机确认 `white-space:normal/nowrap` 的源码 LF 方框消失且词间距正常。TEST15 的正反断言随后确认 `normal_ws=ok pre_lf=kept`；最小 UA CSS 已按 NetSurf `resources/default.css` 补齐 `pre { white-space:pre }`。旋转时滚动位置现按旧/新可滚动范围保持相对进度，扩展 TEST24 覆盖 0/50/100% 边界并已通过全量构建，待设备与真实 Browse 旋转确认。
 
 更完整规划见 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
 
