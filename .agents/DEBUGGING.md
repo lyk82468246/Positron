@@ -76,3 +76,7 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 旋转调试注意：`WM_SIZE` 当前会调用 `PCore_SetViewport` 和 `PCore_LayoutDocument`，所以几何会重新 flow；它不会调用 `PCore_StyleDocumentEx`，因此跨 CSS 断点时媒体规则可能仍是旋转前的选择结果。排查旋转问题时先区分“layout 没更新”和“style 没重选”。
 
 2026-07-11：用户截图显示最终汇总 `Tests passed`，明确列出 ENGINE 的 TEST 6-11、15、16、18、21、22 全部通过。它是离线 HTML parse/select/style/layout、media-query viewport、反向 flex、box tree 及图片资源发现/document cache 的回归证据；不覆盖网络 Browse 或 GDI Render 组。
+
+2026-07-11：IANA 页脚的 HTML 是 table cell 内的 `<ul>`，其条目规则为 `display:inline; float:left`。原始 `pcore_box.c` 没有仿照 NetSurf `box_construct.c` 在容器与块化后的浮动元素之间插入 `BOX_FLOAT_LEFT/RIGHT`，所以 float/clear 的 layout 路径不会被触发。已加入该匿名包装（不截获 `<img>`，以免绕开已验证的 replaced-box 路径），并添加 TEST 23 最小复现；设备端应确认两块同行，`clear:both` 在其下。
+
+同日线上 IANA CSS 的文件名与此前版本不同，并使用 CSS custom properties 和 `@media (width <= 1000px)`。这不是 TEST21 的 `min-width` / `max-width` 断言所覆盖的语法；定位真实页问题前先确认实际抓取的是哪一个 CSS 版本，不能把旧截图结论外推到新站点资源。

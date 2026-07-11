@@ -88,7 +88,7 @@ scripts\stage.bat
 启动时可选择：
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18、21、22，解析/选择/样式/layout/box tree/image resource cache，离线。
+- Engine：TEST 6-11、15、16、18、21-23，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、footer-style floats，离线。TEST 23 待设备确认。
 - GDI Render：TEST 14、19、17、12，离线窗口渲染与 WM Imaging 原生图片绘制。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
@@ -102,11 +102,11 @@ scripts\stage.bat
 优先候选：
 
 1. 2026-07-11 用户真机截图确认 ENGINE 组 TEST 6-11、15、16、18、21、22 全部通过。此离线回归门槛已完成；后续修改引擎路径时必须重跑整组。
-2. IANA 正文不再左裁切；下一步不是再改 clip，而是针对页脚/导航仍有的拥挤和错位，先做最小复现并检查 box 几何/样式。
+2. IANA 正文不再左裁切。页脚已缩成 TEST 23：table cell 内两个 `float:left` 块必须同行，`clear:both` 必须在其下；`pcore_box.c` 已补 `BOX_FLOAT_*` 包装，待设备编译/运行确认。
 3. `WM_SIZE` 会重新 layout，但不重新 style；旋转跨 CSS 媒体断点仍可能使用旋转前规则。后续做不联网 restyle + layout。
 4. 导航的 fetch/parse/style/layout 仍在 UI 线程同步执行。后续需要 worker fetch、loading、generation 和 UI 线程安全 swap；禁止未经验证就跨线程并发操作 DOM/libcss/NetSurf document。
-5. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。
-6. table rowspan：当前 `pcore_construct_table` 对 rowspan 跨行占用是简化版，常见无 rowspan 表正常。完整边界和完成条件见 `KNOWN_LIMITATIONS.md`。
+5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法；不要用 TEST21 的传统断点通过结果宣称它已完整兼容。需单独审计 libcss 3.11 的解析范围或维护稳定回归快照。
+6. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。table rowspan 仍是简化版。完整边界和完成条件见 `KNOWN_LIMITATIONS.md`。
 
 ## 开发纪律
 

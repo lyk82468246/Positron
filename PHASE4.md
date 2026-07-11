@@ -137,7 +137,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document；旧页必须在新页成功前保持可交互。跨线程 DOM/libcss/NetSurf document 的安全性尚未证明，不能把完整渲染事务直接搬到 worker。
 
 5. **布局细化**  
-   flex 和常见 table 已通；float、rowspan 精确跨行占用、border-collapse 视觉、forms/widgets 仍需按真实页面痛点推进。
+   flex 和常见 table 已通；IANA 页脚暴露普通 `float:left` 仍缺构盒包装，已新增 TEST 23（待设备确认）。float 的 replaced element、rowspan 精确跨行占用、border-collapse 视觉、forms/widgets 仍需按真实页面痛点推进。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法，不能由 TEST21 的传统断点覆盖代替审计。
 
 更完整规划见 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
 
