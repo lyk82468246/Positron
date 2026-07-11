@@ -88,6 +88,8 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 
 第二次设备反馈仍可见多条 loading 残影。下一版不再由父窗口 `WM_PAINT` 绘制进度条，改用独立 `STATIC` 子窗口并给 render window 加 `WS_CLIPCHILDREN`；timer 只 `MoveWindow` 子窗口。若该版仍复现，按已知视觉缺陷挂起，不再阻塞资源异步化主线。
 
+`STATIC` 子窗口在设备上完全不可见。复核 WM6 SDK 后改用正确的 Common Controls 路径：`InitCommonControlsEx(ICC_PROGRESS_CLASS)`、`PROGRESS_CLASS`、`PBM_SETRANGE/PBM_SETPOS`，并链接 `commctrl.lib`。控件位于 render client 的 `y=0`，不是系统任务栏坐标；高度来自 `SM_CYHSCROLL` 且至少 6px。若 `CreateWindowExW` 失败，窗口标题会显示 `Positron render - loading`，便于区分创建失败与绘制/遮挡。
+
 旋转调试注意：`WM_SIZE` 当前会调用 `PCore_SetViewport` 和 `PCore_LayoutDocument`，所以几何会重新 flow；它不会调用 `PCore_StyleDocumentEx`，因此跨 CSS 断点时媒体规则可能仍是旋转前的选择结果。排查旋转问题时先区分“layout 没更新”和“style 没重选”。
 
 2026-07-11：用户截图显示最终汇总 `Tests passed`，明确列出 ENGINE 的 TEST 6-11、15、16、18、21、22 全部通过。它是离线 HTML parse/select/style/layout、media-query viewport、反向 flex、box tree 及图片资源发现/document cache 的回归证据；不覆盖网络 Browse 或 GDI Render 组。

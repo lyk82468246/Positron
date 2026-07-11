@@ -108,7 +108,7 @@ scripts\stage.bat
 1. 2026-07-11 用户真机确认 ENGINE 组 TEST 6-11、15、16、18、21、22、24 通过。此离线回归门槛已完成；后续修改引擎路径时必须重跑整组。
 2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。最新 TEST13 截图已确认灾难性重叠消失、可读基线恢复，但导航/页脚拥挤、替代方框与未完整应用现代 CSS 的问题仍在，不能记为 TEST13 通过。后续 float 必须对照上游 box construction/normalisation，而不是基于该简化测试继续扩展。
 3. `WM_SIZE` 从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback。TEST24 与真实 Browse 旋转均已确认。
-4. 主文档 GET 已在单一 worker 执行。设备已确认 loading 持续移动、旧页可滚动且成功后正常换页；首次版本滚动会复制 loading 条并略卡，现已将顶部 5px 从 `ScrollWindowEx` 排除，timer 仅重画固定条带，构建通过待复测。失败保留旧页仍待测。parse、外链 CSS/图片 fetch、style/layout 仍在 UI 提交阶段。
+4. 主文档 GET 已在单一 worker 执行。设备已确认旧页可滚动且成功后正常换页。父窗口条带有复制残影，`STATIC` 子窗口又完全不可见；现已按 WM6 SDK 改用 `PROGRESS_CLASS` + `PBM_SETPOS` 并链接 `commctrl.lib`，全量构建通过待复测。创建失败时标题显示 loading。失败保留旧页仍待测；资源 fetch 与 style/layout 仍在 UI 提交阶段。
 5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法。整数像素 `width <=` / `width <` 两种形式已由扩展 TEST21 真机确认；不要把它扩大为完整 MQ4/custom-properties 支持。
 6. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。table rowspan 仍是简化版。完整边界和完成条件见 `KNOWN_LIMITATIONS.md`。
 

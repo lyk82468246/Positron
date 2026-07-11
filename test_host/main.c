@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>     /* malloc / free for fetched-CSS buffers */
 #include <aygshell.h>   /* SHFullScreen / SHSipPreference - control the SIP */
+#include <commctrl.h>   /* WM6 common-controls progress bar */
 
 #include "positron_tls.h"
 #include "positron_json.h"
@@ -1458,9 +1459,6 @@ static int    g_image_draw_rc = -1;
 
 #define WM_PCORE_NAV_DONE (WM_APP + 1)
 #define PCORE_NAV_TIMER 24
-#ifndef SS_BLACKRECT
-#define SS_BLACKRECT 0x00000004L
-#endif
 
 typedef struct pcore_navigation_request {
     HWND           hwnd;
@@ -1474,6 +1472,7 @@ typedef struct pcore_navigation_request {
 static HANDLE                    g_nav_thread = NULL;
 static pcore_navigation_request *g_nav_request = NULL;
 static HWND                      g_nav_bar = NULL;
+static int                       g_nav_bar_h = 0;
 static LONG                      g_nav_generation = 0;
 static int                       g_nav_loading = 0;
 static int                       g_nav_phase = 0;
@@ -1740,18 +1739,26 @@ static void pcore_navigation_set_loading(HWND hwnd, int loading)
 {
     RECT r;
     int width;
-    int segment;
 
     g_nav_loading = loading;
     g_nav_phase = 0;
     if (loading) {
         GetClientRect(hwnd, &r);
         width = r.right - r.left;
-        segment = (width > 0) ? width / 4 : 1;
-        g_nav_bar = CreateWindowW(L"STATIC", L"",
-                WS_CHILD | WS_VISIBLE | SS_BLACKRECT,
-                -segment, 0, segment, 4, hwnd, NULL,
+        g_nav_bar_h = GetSystemMetrics(SM_CYHSCROLL) / 3;
+        if (g_nav_bar_h < 6) {
+            g_nav_bar_h = 6;
+        }
+        g_nav_bar = CreateWindowExW(0, PROGRESS_CLASS, NULL,
+                WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
+                0, 0, width, g_nav_bar_h, hwnd, NULL,
                 GetModuleHandle(NULL), NULL);
+        if (g_nav_bar != NULL) {
+            SendMessage(g_nav_bar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+            SendMessage(g_nav_bar, PBM_SETPOS, 0, 0);
+        } else {
+            SetWindowTextW(hwnd, L"Positron render - loading");
+        }
         SetTimer(hwnd, PCORE_NAV_TIMER, 100, NULL);
     } else {
         KillTimer(hwnd, PCORE_NAV_TIMER);
@@ -1759,9 +1766,10 @@ static void pcore_navigation_set_loading(HWND hwnd, int loading)
             DestroyWindow(g_nav_bar);
             g_nav_bar = NULL;
         }
+        SetWindowTextW(hwnd, L"Positron render");
     }
     GetClientRect(hwnd, &r);
-    r.bottom = r.top + 5;
+    r.bottom = r.top + ((g_nav_bar_h > 0) ? g_nav_bar_h : 6);
     InvalidateRect(hwnd, &r, TRUE);
 }
 
@@ -1984,6 +1992,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     g_view_h, g_doc_h, chh);
         }
         g_view_h = chh;
+        if (g_nav_bar != NULL && cw > 0) {
+            MoveWindow(g_nav_bar, 0, 0, cw, g_nav_bar_h, TRUE);
+        }
         pcore_set_scrollbar(hwnd);
         SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);   /* keep SIP hidden on rotate */
         InvalidateRect(hwnd, NULL, TRUE);   /* full repaint after a resize */
@@ -2011,18 +2022,13 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     }
     case WM_TIMER:
         if (wp == PCORE_NAV_TIMER && g_nav_loading) {
-            RECT r;
-            int width;
-            int segment;
-            int x;
+            int pos;
 
-            g_nav_phase = (g_nav_phase + 1) & 15;
-            GetClientRect(hwnd, &r);
-            width = r.right - r.left;
-            segment = (width > 0) ? width / 4 : 1;
-            x = ((g_nav_phase * (width + segment)) / 16) - segment;
+            g_nav_phase = (g_nav_phase + 1) % 21;
+            pos = (g_nav_phase <= 10) ? g_nav_phase * 10 :
+                    (20 - g_nav_phase) * 10;
             if (g_nav_bar != NULL) {
-                MoveWindow(g_nav_bar, x, 0, segment, 4, TRUE);
+                SendMessage(g_nav_bar, PBM_SETPOS, (WPARAM) pos, 0);
             }
             return 0;
         }
@@ -2094,10 +2100,17 @@ static BOOL show_render_window(void)
 {
     HINSTANCE hInst;
     WNDCLASSW wc;
+    INITCOMMONCONTROLSEX icc;
     HWND      hwnd;
     MSG       m;
 
     hInst = GetModuleHandle(NULL);
+    memset(&icc, 0, sizeof(icc));
+    icc.dwSize = sizeof(icc);
+    icc.dwICC = ICC_PROGRESS_CLASS;
+    if (!InitCommonControlsEx(&icc)) {
+        InitCommonControls();
+    }
     memset(&wc, 0, sizeof(wc));
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.lpfnWndProc = PCoreWndProc;
