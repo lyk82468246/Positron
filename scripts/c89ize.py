@@ -224,6 +224,12 @@ def is_stmt(stripped):
         return False
     if re.match(r'^[A-Za-z_]\w*:$', stripped):
         return False
+    # A function-style expression such as `memcpy(dst, src, n);` can look
+    # like a declaration to DECL_LIKE because it starts with an identifier.
+    # It is unambiguously a statement and must mark its block as having seen
+    # code, otherwise a later declaration escapes C89 hoisting.
+    if re.match(r'^[A-Za-z_]\w*\s*\(', stripped):
+        return True
     if DECL_INIT_START.match(stripped):
         return False
     m = DECL_LIKE.match(stripped)

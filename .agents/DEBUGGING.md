@@ -80,3 +80,5 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 2026-07-11：IANA 页脚的 HTML 是 table cell 内的 `<ul>`，其条目规则为 `display:inline; float:left`。原始 `pcore_box.c` 没有仿照 NetSurf `box_construct.c` 在容器与块化后的浮动元素之间插入 `BOX_FLOAT_LEFT/RIGHT`，所以 float/clear 的 layout 路径不会被触发。已加入该匿名包装（不截获 `<img>`，以免绕开已验证的 replaced-box 路径），并添加 TEST 23 最小复现；用户已确认两块同行，`clear:both` 在其下。下一步必须看真实 TEST 13，而非仅以最小测试替代页面验收。
 
 同日线上 IANA CSS 的文件名与此前版本不同，并使用 CSS custom properties 和 `@media (width <= 1000px)`。这不是 TEST21 的 `min-width` / `max-width` 断言所覆盖的语法；定位真实页问题前先确认实际抓取的是哪一个 CSS 版本，不能把旧截图结论外推到新站点资源。
+
+2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。TEST 24 待设备确认：320px 首次 fetch 应选绿色，299px cache-only restyle 应选蓝色，fetch/free 计数都保持 1。

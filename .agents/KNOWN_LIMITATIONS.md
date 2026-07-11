@@ -27,12 +27,12 @@
 - **下一步**：重跑真实 IANA TEST 13，观察页脚实际改善；随后为仍有问题的节点记录 computed style/box 几何，以最小 HTML/CSS 测试锁定每个问题，再改 NetSurf 移植层或 box 构建层。另行决定是升级 CSS 能力、降级解析，还是维护稳定的回归样式快照。
 - **完成条件**：在目标设备的竖屏和横屏下，主内容、页脚和导航均不裁切、不重叠，且没有明显错误图标/替代字符；结果需要新的真机截图确认。
 
-### 旋转只完成 reflow，尚未完成 responsive restyle
+### 旋转 responsive restyle 待设备验收
 
-`WM_SIZE` 当前只调用 `PCore_SetViewport` 和 `PCore_LayoutDocument`。`@media` 规则在 `PCore_StyleDocumentEx` 时已选定，因此设备旋转若跨过 CSS 断点，可能保留旋转前选中的规则。
+`WM_SIZE` 现调用 `PCore_SetViewport`、缓存专用 `PCore_StyleDocumentEx` 和 `PCore_LayoutDocument`。外链 CSS 首次导航时以原始字节缓存到 document，尺寸变化只从该缓存重选 `@media`，不重新联网。新 TEST 24 覆盖 320px 到 299px 的外链 CSS 重选与 fetch 只发生一次，待设备确认。
 
-- **当前取舍**：保留现有页面与交互，避免在窗口尺寸消息中同步抓取外部 CSS 或重建文档。
-- **后续实现**：将已获取的样式资源复用到一次 UI 线程 restyle，再 layout；不能在 `WM_SIZE` 中重新进行网络请求。
+- **当前取舍**：只缓存最多 32 份、单份不超过 256 KiB、每 document 合计不超过 512 KiB 的成功外链 CSS 原始字节；缓存未命中的样式在旋转时保持缺失，不能在 `WM_SIZE` 中重新联网。
+- **后续实现**：确认 TEST24 后，验证真实 Browse 页面旋转前后跨断点的样式和滚动位置；处理 custom properties/新式媒体查询语法是独立兼容性工作。
 - **完成条件**：旋转前后跨越 TEST 21 式断点时，computed style 与几何都切换正确，并恢复原滚动位置的合理比例。
 
 ### 导航仍同步阻塞 UI

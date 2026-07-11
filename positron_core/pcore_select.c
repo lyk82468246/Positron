@@ -1401,9 +1401,14 @@ static void pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
 
     css_select_results_destroy(results);
 
-    /* Attach to the node (handler frees it on node deletion). */
+    /* Attach to the node (handler frees it on node deletion). Re-styling
+     * replaces user-data without invoking that handler, so free the previous
+     * computed style here instead of leaking it on every viewport change. */
     dom_node_set_user_data(node, pcore_style_key, node_style,
             pcore_style_ud_handler, &old);
+    if (old != NULL && old != node_style) {
+        css_computed_style_destroy((css_computed_style *) old);
+    }
 
     /* Recurse into element children, passing our computed style as parent. */
     if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
@@ -1427,6 +1432,168 @@ static void pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
     }
 }
 
+/* External CSS is fetched once while navigating, then retained as raw bytes
+ * on its document. That lets a WM_SIZE restyle re-evaluate @media without
+ * running the transport again. The parsed stylesheet remains per-style-pass:
+ * css_select_ctx owns it only until all computed styles have been produced. */
+#define PCORE_STYLESHEET_CACHE_MAX 32
+#define PCORE_STYLESHEET_CACHE_ENTRY_MAX (256 * 1024)
+#define PCORE_STYLESHEET_CACHE_BYTES_MAX (512 * 1024)
+
+typedef struct pcore_stylesheet_resource {
+    struct pcore_stylesheet_resource *next;
+    char *url;
+    char *data;
+    int len;
+} pcore_stylesheet_resource;
+
+typedef struct pcore_stylesheet_cache {
+    pcore_stylesheet_resource *head;
+    int count;
+    int bytes;
+} pcore_stylesheet_cache;
+
+static dom_string *pcore_stylesheet_cache_key = NULL;
+
+static int pcore_ensure_stylesheet_cache_key(void)
+{
+    static const char *name = "__pcore_stylesheet_cache__";
+
+    if (pcore_stylesheet_cache_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) name, strlen(name),
+            &pcore_stylesheet_cache_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_stylesheet_cache_free(pcore_stylesheet_cache *cache)
+{
+    pcore_stylesheet_resource *entry;
+
+    if (cache == NULL) {
+        return;
+    }
+    entry = cache->head;
+    while (entry != NULL) {
+        pcore_stylesheet_resource *next = entry->next;
+
+        free(entry->url);
+        free(entry->data);
+        free(entry);
+        entry = next;
+    }
+    free(cache);
+}
+
+static void pcore_stylesheet_cache_ud_handler(dom_node_operation op,
+        dom_string *key, void *data, struct dom_node *src,
+        struct dom_node *dst)
+{
+    (void) key;
+    (void) src;
+    (void) dst;
+    if (op == DOM_NODE_DELETED && data != NULL) {
+        pcore_stylesheet_cache_free((pcore_stylesheet_cache *) data);
+    }
+}
+
+static pcore_stylesheet_cache *pcore_stylesheet_cache_get(
+        dom_document *doc, int create)
+{
+    void *data = NULL;
+    void *old = NULL;
+    pcore_stylesheet_cache *cache;
+
+    if (doc == NULL || pcore_ensure_stylesheet_cache_key() != 0) {
+        return NULL;
+    }
+    if (dom_node_get_user_data((struct dom_node *) doc,
+            pcore_stylesheet_cache_key, &data) != DOM_NO_ERR) {
+        return NULL;
+    }
+    if (data != NULL) {
+        return (pcore_stylesheet_cache *) data;
+    }
+    if (!create) {
+        return NULL;
+    }
+    cache = (pcore_stylesheet_cache *) malloc(sizeof(*cache));
+    if (cache == NULL) {
+        return NULL;
+    }
+    cache->head = NULL;
+    cache->count = 0;
+    cache->bytes = 0;
+    if (dom_node_set_user_data((struct dom_node *) doc,
+            pcore_stylesheet_cache_key, cache,
+            pcore_stylesheet_cache_ud_handler, &old) != DOM_NO_ERR) {
+        free(cache);
+        return NULL;
+    }
+    if (old != NULL && old != cache) {
+        pcore_stylesheet_cache_free((pcore_stylesheet_cache *) old);
+    }
+    return cache;
+}
+
+static pcore_stylesheet_resource *pcore_stylesheet_cache_find(
+        pcore_stylesheet_cache *cache, const char *url)
+{
+    pcore_stylesheet_resource *entry;
+
+    if (cache == NULL || url == NULL) {
+        return NULL;
+    }
+    for (entry = cache->head; entry != NULL; entry = entry->next) {
+        if (strcmp(entry->url, url) == 0) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+static int pcore_stylesheet_cache_store(pcore_stylesheet_cache *cache,
+        const char *url, const char *data, int len)
+{
+    pcore_stylesheet_resource *entry;
+    size_t url_len;
+
+    if (cache == NULL || url == NULL || data == NULL || len <= 0 ||
+            cache->count >= PCORE_STYLESHEET_CACHE_MAX ||
+            len > PCORE_STYLESHEET_CACHE_ENTRY_MAX ||
+            cache->bytes > PCORE_STYLESHEET_CACHE_BYTES_MAX - len) {
+        return 1;
+    }
+    entry = (pcore_stylesheet_resource *) malloc(sizeof(*entry));
+    if (entry == NULL) {
+        return 1;
+    }
+    entry->next = NULL;
+    entry->url = NULL;
+    entry->data = NULL;
+    entry->len = 0;
+    url_len = strlen(url);
+    entry->url = (char *) malloc(url_len + 1);
+    entry->data = (char *) malloc((size_t) len);
+    if (entry->url == NULL || entry->data == NULL) {
+        free(entry->url);
+        free(entry->data);
+        free(entry);
+        return 1;
+    }
+    memcpy(entry->url, url, url_len + 1);
+    memcpy(entry->data, data, (size_t) len);
+    entry->len = len;
+    entry->next = cache->head;
+    cache->head = entry;
+    cache->count++;
+    cache->bytes += len;
+    return 0;
+}
+
 /* Shared state for the resource-collection DFS below. */
 typedef struct pcore_collect_ctx {
     css_select_ctx *ctx;
@@ -1436,6 +1603,7 @@ typedef struct pcore_collect_ctx {
     PCoreFetchFn    fetch;      /* embedder fetch for external <link> CSS */
     PCoreFreeFn     freefn;
     void           *pw;
+    pcore_stylesheet_cache *cache; /* per-document external CSS bytes */
     dom_string     *style_name; /* interned "style" */
     dom_string     *link_name;  /* interned "link"  */
     dom_string     *rel_name;   /* interned "rel"   */
@@ -1505,7 +1673,7 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
             return;   /* don't recurse into a <style>'s text children */
         }
 
-        if (is_link && cc->fetch != NULL) {
+        if (is_link && (cc->cache != NULL || cc->fetch != NULL)) {
             dom_string *rel = NULL;
             dom_string *href = NULL;
             bool is_sheet = false;
@@ -1526,10 +1694,18 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                     int   len = 0;
                     int   cl = (hl < sizeof(url) - 1)
                             ? (int) hl : (int) sizeof(url) - 1;
+                    pcore_stylesheet_resource *cached;
                     memcpy(url, hu8, cl);
                     url[cl] = '\0';
-                    if (cc->fetch(cc->pw, url, &data, &len) == 0 &&
-                            data != NULL) {
+                    cached = pcore_stylesheet_cache_find(cc->cache, url);
+                    if (cached != NULL) {
+                        pcore_add_author_css(cc, cached->data, cached->len,
+                                url);
+                    } else if (cc->fetch != NULL &&
+                            cc->fetch(cc->pw, url, &data, &len) == 0 &&
+                            data != NULL && len > 0) {
+                        pcore_stylesheet_cache_store(cc->cache, url, data,
+                                len);
                         pcore_add_author_css(cc, data, len, url);
                         if (cc->freefn != NULL) {
                             cc->freefn(cc->pw, data);
@@ -1624,6 +1800,7 @@ PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
     cc.fetch = fetch;
     cc.freefn = freefn;
     cc.pw = pw_fetch;
+    cc.cache = pcore_stylesheet_cache_get(doc, 1);
     dom_string_create((const uint8_t *) "style", 5, &cc.style_name);
     dom_string_create((const uint8_t *) "link", 4, &cc.link_name);
     dom_string_create((const uint8_t *) "rel", 3, &cc.rel_name);

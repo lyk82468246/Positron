@@ -1223,6 +1223,138 @@ static BOOL test23_footer_float_layout(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 24 - cached external CSS can restyle a new viewport              */
+/* A first StyleDocumentEx call fetches the linked sheet. A second call  */
+/* at a different width must reselect @media from document-owned bytes, */
+/* without calling transport again.                                     */
+/* -------------------------------------------------------------------- */
+typedef struct stylesheet_cache_test_ctx {
+    int calls;
+    int frees;
+} stylesheet_cache_test_ctx;
+
+static int stylesheet_cache_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char CSS[] =
+        "@media (min-width:300px){p{color:#00aa00;}}"
+        "@media (max-width:299px){p{color:#0000aa;}}";
+    stylesheet_cache_test_ctx *ctx = (stylesheet_cache_test_ctx *) pw;
+    char *data;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/responsive.css") != 0) {
+        return 1;
+    }
+    data = (char *) malloc(sizeof(CSS) - 1);
+    if (data == NULL) {
+        return 1;
+    }
+    memcpy(data, CSS, sizeof(CSS) - 1);
+    *out_data = data;
+    *out_len = sizeof(CSS) - 1;
+    return 0;
+}
+
+static void stylesheet_cache_free(void *pw, char *data)
+{
+    stylesheet_cache_test_ctx *ctx = (stylesheet_cache_test_ctx *) pw;
+
+    ctx->frees++;
+    free(data);
+}
+
+static int stylesheet_cache_only_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    (void) pw;
+    (void) url;
+    *out_data = NULL;
+    *out_len = 0;
+    return 1;
+}
+
+static BOOL test24_cached_stylesheet_restyle(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><head>"
+        "<link rel=\"stylesheet\" href=\"/responsive.css\">"
+        "</head><body><p>responsive</p></body></html>";
+    HANDLE hDoc;
+    stylesheet_cache_test_ctx ctx;
+    unsigned long argb = 0;
+    int screen_w;
+    int screen_h;
+    int screen_dpi = 96;
+    HDC screen_dc;
+    char msg[192];
+
+    ctx.calls = 0;
+    ctx.frees = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 24 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        int dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
+        if (dpi > 0) {
+            screen_dpi = dpi;
+        }
+        ReleaseDC(NULL, screen_dc);
+    }
+
+    PCore_SetViewport(320, 320, screen_dpi);
+    if (PCore_StyleDocumentEx(hDoc, NULL, stylesheet_cache_fetch,
+            stylesheet_cache_free, &ctx) != 0 ||
+            PCore_NodeComputedColor(hDoc, "p", &argb) != 0 ||
+            (argb & 0x00ffffffUL) != 0x0000aa00UL) {
+        PCore_FreeDocument(hDoc);
+        screen_w = GetSystemMetrics(SM_CXSCREEN);
+        screen_h = GetSystemMetrics(SM_CYSCREEN);
+        if (screen_w <= 0) { screen_w = 240; }
+        if (screen_h <= 0) { screen_h = 320; }
+        PCore_SetViewport(screen_w, screen_h, screen_dpi);
+        show_error(L"TEST 24 FAIL", "initial linked CSS/media selection failed");
+        return FALSE;
+    }
+
+    PCore_SetViewport(299, 320, screen_dpi);
+    if (PCore_StyleDocumentEx(hDoc, NULL, stylesheet_cache_only_fetch,
+            NULL, NULL) != 0 ||
+            PCore_NodeComputedColor(hDoc, "p", &argb) != 0 ||
+            (argb & 0x00ffffffUL) != 0x000000aaUL ||
+            ctx.calls != 1 || ctx.frees != 1) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "reselect color=0x%06lX calls=%d frees=%d",
+                  argb & 0x00ffffffUL, ctx.calls, ctx.frees);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeDocument(hDoc);
+        screen_w = GetSystemMetrics(SM_CXSCREEN);
+        screen_h = GetSystemMetrics(SM_CYSCREEN);
+        if (screen_w <= 0) { screen_w = 240; }
+        if (screen_h <= 0) { screen_h = 320; }
+        PCore_SetViewport(screen_w, screen_h, screen_dpi);
+        show_error(L"TEST 24 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeDocument(hDoc);
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, screen_dpi);
+    show_info(L"TEST 24 OK",
+              "Cached linked CSS restyled at 320px -> 299px:\n"
+              "green -> blue; fetch calls stayed 1.\n\n"
+              "(viewport restyle does not network.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 11 - block-flow layout via positron_core.dll                      */
 /* PCore_LayoutDocument computes block boxes; verify both parent/child    */
 /* margin collapse and the padding barrier that must stop that collapse. */
@@ -1589,6 +1721,19 @@ static void page_resource_free_cb(void *pw, char *data)
     free(data);
 }
 
+/* A resize must never start a network request. PCore's document stylesheet
+ * cache supplies resources fetched during navigation; a cache miss simply
+ * leaves the corresponding sheet absent, matching the original failure mode. */
+static int page_resource_cache_only_cb(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    (void) pw;
+    (void) url;
+    *out_data = NULL;
+    *out_len = 0;
+    return 1;
+}
+
 /* Follow a link: fetch the target over HTTPS, parse + style + lay it out to the
  * current client size, swap it in as the rendered document and repaint. On any
  * failure the current page is left untouched and an error box is shown. */
@@ -1720,11 +1865,15 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int cw = LOWORD(lp);    /* new client width  */
         int chh = HIWORD(lp);   /* new client height */
 
-        /* Re-flow layout to the new client width (e.g. on screen rotation).
-         * Styles are unchanged, so only re-run layout, not styling. */
+        /* Re-select styles and re-flow to the new client width (e.g. screen
+         * rotation). The callback is cache-only, so this message never
+         * starts a network request. */
         if (g_render_doc != NULL && cw > 0 && chh > 0) {
             PCore_SetViewport(cw, chh, 0);   /* dpi 0 = leave unchanged */
-            PCore_LayoutDocument(g_render_doc, cw, chh);
+            if (PCore_StyleDocumentEx(g_render_doc, NULL,
+                    page_resource_cache_only_cb, NULL, NULL) == 0) {
+                PCore_LayoutDocument(g_render_doc, cw, chh);
+            }
             g_doc_h = PCore_DocumentHeight(g_render_doc);
             if (g_scroll_y > g_doc_h - chh) {
                 g_scroll_y = g_doc_h - chh;
@@ -2447,7 +2596,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-23)\n"
+                  "Yes = run all selected groups (TEST 1-24)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -2463,7 +2612,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "HTML / CSS / DOM parse, select, style,\n"
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
-                               "(TEST 6-11, 15, 16, 18, 21-23). Offline.");
+                               "(TEST 6-11, 15, 16, 18, 21-24). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "M1 plotter (TEST 14), NetSurf render\n"
@@ -2490,7 +2639,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine group (TEST 6-11, 15, 16, 18, 21-23; offline) ------- */
+    /* --- Engine group (TEST 6-11, 15, 16, 18, 21-24; offline) ------- */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -2501,6 +2650,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test21_media_viewport()){ rc = 11; goto done; }
         if (!test22_reverse_flex_padding()){ rc = 11; goto done; }
         if (!test23_footer_float_layout()){ rc = 11; goto done; }
+        if (!test24_cached_stylesheet_restyle()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -2545,10 +2695,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21-23)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21-24)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
-               "    layout, media-query viewport, reverse flex, footer floats, box tree, NetSurf layout, image\n"
+               "    layout, media-query viewport, reverse flex, footer floats, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource discovery/document cache. Offline.\n\n");
     }
     if (run_render) {
