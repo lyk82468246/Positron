@@ -76,7 +76,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 建议顺序：
 
-1. 编译并运行新 TEST 23：IANA footer table 形状的 `float:left` + `clear:both` 最小复现；通过后再看真实页脚。
+1. 重跑 IANA TEST 13，确认 TEST 23 覆盖的浮动页脚路径在真实页面中改善；若仍有错位，记录对应 box 几何和 computed style。
 2. 旋转跨媒体断点时执行不联网的 restyle + layout；现有 `WM_SIZE` 仅 reflow。
 3. 让导航主文档 fetch 脱离 UI 线程，并保留旧页与 loading 状态；CSS/图片资源的完整异步事务随后处理。
 4. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback。

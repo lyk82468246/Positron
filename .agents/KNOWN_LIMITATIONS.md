@@ -12,7 +12,7 @@
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | 最新 TEST 13 截图确认：此前约 25px 的左缘正文裁切已消失，`Example Domains` 标题可完整显示。 | 页面已达到原浏览器或现代浏览器的像素级还原。 |
 | 图片 | TEST 18、19、20 已分别确认资源去重、WM Imaging 内存 BMP 解码/绘制、缓存 `<img>` 进入 NetSurf `box->object -> content_redraw -> plot_bitmap` 链。 | PNG/JPEG/GIF、SVG、背景图或任意网络图片均可显示。 |
-| ENGINE 离线回归 | 2026-07-11 用户截图确认 ENGINE 组 TEST 6-11、15、16、18、21、22 全部通过。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
+| ENGINE 离线回归 | 2026-07-11 用户截图确认 ENGINE 组 TEST 6-11、15、16、18、21-23 全部通过。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 会以新 client 宽高更新 viewport、重新 layout、校正滚动位置并重绘。 | 旋转后会重新选择跨断点的 CSS 规则。 |
 
 ## 真实页面观察到的未完成项
@@ -22,9 +22,9 @@
 最新 TEST 13 已修复左缘裁切，但截图仍可见：页脚/导航区域在 224px 宽度下有拥挤、断行和局部文本视觉错位；`Homepage` 后的方框也说明图标或字形资源尚未正确呈现。当前结论是“回归改善且能继续浏览”，不是“TEST 13 版式通过”。
 
 - **可能范围**：剩余 flex/table/inline/字体或未实现 CSS 特性的组合；尚未把单一原因当作结论。
-- **已缩小的一项**：IANA 页脚是 table cell 内 `display:inline; float:left` 列表。`pcore_box.c` 现为非替换元素构造 `BOX_FLOAT_LEFT/RIGHT` 匿名包装盒；新 TEST 23 覆盖两个浮动块同行及随后的 `clear:both`。待设备编译/运行确认。
+- **已缩小的一项**：IANA 页脚是 table cell 内 `display:inline; float:left` 列表。`pcore_box.c` 现为非替换元素构造 `BOX_FLOAT_LEFT/RIGHT` 匿名包装盒；TEST 23 已于 2026-07-11 在设备上确认两个浮动块同行及随后的 `clear:both`。
 - **当前站点版本风险**：2026-07-11 读取到 IANA 改用带哈希的 CSS 资源，且其中有 CSS custom properties 与 `@media (width <= 1000px)` 范围语法。TEST 21 只覆盖旧式 `min-width` / `max-width`；不得假定当前线上样式完全被 libcss 3.11 解析。
-- **下一步**：先运行 TEST 23；随后为仍有问题的节点记录 computed style/box 几何，以最小 HTML/CSS 测试锁定每个问题，再改 NetSurf 移植层或 box 构建层。另行决定是升级 CSS 能力、降级解析，还是维护稳定的回归样式快照。
+- **下一步**：重跑真实 IANA TEST 13，观察页脚实际改善；随后为仍有问题的节点记录 computed style/box 几何，以最小 HTML/CSS 测试锁定每个问题，再改 NetSurf 移植层或 box 构建层。另行决定是升级 CSS 能力、降级解析，还是维护稳定的回归样式快照。
 - **完成条件**：在目标设备的竖屏和横屏下，主内容、页脚和导航均不裁切、不重叠，且没有明显错误图标/替代字符；结果需要新的真机截图确认。
 
 ### 旋转只完成 reflow，尚未完成 responsive restyle
