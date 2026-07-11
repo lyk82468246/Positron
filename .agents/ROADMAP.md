@@ -76,7 +76,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 建议顺序：
 
-1. 重跑 IANA TEST 13，确认 TEST 23 覆盖的浮动页脚路径在真实页面中改善；若仍有错位，记录对应 box 几何和 computed style。
+1. 重跑 IANA TEST13，确认撤回普通 float 构盒后真实页面基线恢复；float 保持未支持，后续先对照上游 box construction/normalisation 设计端到端回归。
 2. 在真实 Browse 页面旋转跨断点，验证缓存 CSS restyle、滚动位置与无联网行为。TEST24 已通过。
 3. 让导航主文档 fetch 脱离 UI 线程，并保留旧页与 loading 状态；CSS/图片资源的完整异步事务随后处理。
 4. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback。

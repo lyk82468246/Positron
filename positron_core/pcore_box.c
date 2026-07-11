@@ -12,10 +12,9 @@
  * BOX_INLINE_CONTAINER), so the tree is layout-ready.
  *
  * Current scope: block/inline text, inline-block, flex, common table
- * structures, ordinary left/right floats, plus cached <img> resources when
- * WM Imaging can decode them, are built for NetSurf's real layout/redraw path.
- * Forms/widgets, floated replaced elements, background images, and exact
- * rowspan occupancy remain staged follow-ups.
+ * structures, plus cached <img> resources when WM Imaging can decode them,
+ * are built for NetSurf's real layout/redraw path. Forms/widgets, floats,
+ * background images, and exact rowspan occupancy remain staged follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -350,43 +349,6 @@ static struct box *pcore_construct_table(dom_node *node,
 static struct box *pcore_construct_flex(dom_node *node,
         css_computed_style *style, int is_inline, void *ctx);
 
-/* Build a normal flow child, preserving the special NetSurf box types that
- * layout_document dispatches to. A float wrapper itself stays anonymous; the
- * styled child beneath it supplies dimensions and content. */
-static struct box *pcore_construct_flow_child(dom_node *node,
-        css_computed_style *style, void *ctx)
-{
-    uint8_t d = css_computed_display(style, false);
-
-    if (d == CSS_DISPLAY_FLEX || d == CSS_DISPLAY_INLINE_FLEX) {
-        return pcore_construct_flex(node, style, 0, ctx);
-    }
-    if (d == CSS_DISPLAY_TABLE || d == CSS_DISPLAY_INLINE_TABLE) {
-        return pcore_construct_table(node, style, ctx);
-    }
-    return pcore_construct_block(node, style, 0, ctx);
-}
-
-/* NetSurf's box constructor places an anonymous BOX_FLOAT_* between the
- * inline container and the blockified floated element. layout.c recognises
- * that wrapper, registers it with the float container, and honours clear. */
-static struct box *pcore_wrap_float(struct box *item,
-        css_computed_style *style, void *ctx)
-{
-    uint8_t f = css_computed_float(style);
-    struct box *flt;
-
-    if (item == NULL || (f != CSS_FLOAT_LEFT && f != CSS_FLOAT_RIGHT)) {
-        return NULL;
-    }
-    flt = pcore_box_new((f == CSS_FLOAT_LEFT) ? BOX_FLOAT_LEFT :
-            BOX_FLOAT_RIGHT, NULL, ctx);
-    if (flt != NULL) {
-        pcore_box_add_child(flt, item);
-    }
-    return flt;
-}
-
 /* Flatten the inline content of `node` into inline container `cont`: text
  * children become BOX_TEXT; inline element children emit BOX_INLINE ...
  * BOX_INLINE_END around their (recursively flattened) content; inline-block
@@ -516,23 +478,7 @@ static struct box *pcore_construct_block(dom_node *node,
             } else if (type == DOM_ELEMENT_NODE) {
                 css_computed_style *cs = pcore_node_computed_style(child);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
-                    uint8_t f = css_computed_float(cs);
-                    if ((f == CSS_FLOAT_LEFT || f == CSS_FLOAT_RIGHT) &&
-                            !pcore_node_name_is(child, "img")) {
-                        struct box *item;
-                        struct box *flt;
-
-                        if (inline_cont == NULL) {
-                            inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
-                                    NULL, ctx);
-                            pcore_box_add_child(box, inline_cont);
-                        }
-                        item = pcore_construct_flow_child(child, cs, ctx);
-                        flt = pcore_wrap_float(item, cs, ctx);
-                        if (flt != NULL) {
-                            pcore_box_add_child(inline_cont, flt);
-                        }
-                    } else if (pcore_node_name_is(child, "img")) {
+                    if (pcore_node_name_is(child, "img")) {
                         struct box *img;
                         if (inline_cont == NULL) {
                             inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
@@ -581,10 +527,20 @@ static struct box *pcore_construct_block(dom_node *node,
                             }
                         }
                     } else {
-                        /* Block-level child: close any open inline run. */
+                        /* block-level child: close any open inline run. A
+                         * display:flex child becomes BOX_FLEX so layout.c
+                         * routes it through the ported layout_flex (M7). */
                         struct box *cbox;
                         inline_cont = NULL;
-                        cbox = pcore_construct_flow_child(child, cs, ctx);
+                        if (css_computed_display(cs, false) ==
+                                CSS_DISPLAY_FLEX) {
+                            cbox = pcore_construct_flex(child, cs, 0, ctx);
+                        } else if (css_computed_display(cs, false) ==
+                                CSS_DISPLAY_TABLE) {
+                            cbox = pcore_construct_table(child, cs, ctx);
+                        } else {
+                            cbox = pcore_construct_block(child, cs, 0, ctx);
+                        }
                         if (cbox != NULL) {
                             pcore_box_add_child(box, cbox);
                         }

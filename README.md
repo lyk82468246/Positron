@@ -23,7 +23,7 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 内存 BMP 解码/绘制 API 已由 TEST 19 真机验证；TEST 18/20 已确认文档缓存去重及缓存 BMP 经 `<img>` / `plot_bitmap` 绘制；Browse 会在布局前填充图片缓存。
 
-当前明确缺口：真实 `<img>` 的 BMP 缓存链已通过真机验证，但 PNG/JPEG/GIF 格式覆盖与 SVG 仍未完成；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整；IANA 窄屏页仍有页脚/导航拥挤与替代方框；旋转时当前只 reflow、不重新选择跨断点 CSS；网络与导航仍同步阻塞；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：真实 `<img>` 的 BMP 缓存链已通过真机验证，但 PNG/JPEG/GIF 格式覆盖与 SVG 仍未完成；CSS 动态状态伪类（如 `:hover` / `:visited`）仍为 no-match；float、rowspan 精确跨行、border-collapse、forms/widgets 未完整。普通 float 构盒曾通过简化测试但造成真实 Browse 回归，现已撤回。IANA 窄屏页仍有页脚/导航拥挤与替代方框；网络与导航仍同步阻塞；JavaScript 尚未实现但属于长期必做目标。
 
 ---
 
@@ -155,7 +155,7 @@ scripts\stage.bat Release :: 或 Release
 `test_host.exe` 启动后先选择测试组：
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
-- **Engine**：TEST 6-11、15、16、18、21-24，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、footer-style floats、cached CSS restyle，离线。2026-07-11 已由用户真机确认整组通过。
+- **Engine**：TEST 6-11、15、16、18、21、22、24，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle，离线。2026-07-11 已由用户真机确认通过；TEST23 float 最小样例已因真实 Browse 回归撤回。
 - **GDI Render**：TEST 14、19、17、12，窗口绘制与 WM Imaging 原生图片绘制，离线。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 
@@ -173,7 +173,7 @@ scripts\stage.bat Release :: 或 Release
 - **熵源**：默认 `CryptGenRandom`（Phase 3 起）；CSP 不可用时自动退回 QPC+GetTickCount+tid/pid jitter，CTR-DRBG 兜底。
 - **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 gzip 解码、响应体 cap 1 MB；GET 已有有限 3xx follow，明文 `http://` 经 WinInet。
 - **同步阻塞**：当前导航的 document fetch、parse、外部 CSS/图片 fetch、style、layout 都在 UI 线程执行；旧页不能在加载中继续响应，也没有 loading 指示。后续会采用 worker fetch + UI 线程安全 swap；在确认 NetSurf 移植层线程安全前，不并发操作 document。
-- **渲染限制**：真实 NetSurf layout/redraw、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 发现/fetch 已真机验证；WM Imaging 原生 BMP 解码/绘制已由 TEST 19 验证，缓存 BMP 已由 TEST 20 验证。TEST 21/22/23 分别覆盖媒体 viewport、反向 flex 内边距、普通 float；TEST24 将覆盖缓存外链 CSS 的跨断点重选。它们不代表完整 responsive/Flexbox/CSS 兼容。PNG/JPEG/GIF 格式覆盖、SVG 解码绘制、CSS 动态状态伪类、float 的 replaced element、rowspan 精确跨行、border-collapse、forms/widgets 仍待补。完整范围、取舍和完成条件见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
+- **渲染限制**：真实 NetSurf layout/redraw、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 发现/fetch 已真机验证；WM Imaging 原生 BMP 解码/绘制已由 TEST 19 验证，缓存 BMP 已由 TEST 20 验证。TEST21/22/24 分别覆盖媒体 viewport、反向 flex 内边距、缓存外链 CSS 的跨断点重选。TEST23 浮动最小样例虽通过却造成真实 Browse 回归，已撤回。它们不代表完整 responsive/Flexbox/CSS 兼容。PNG/JPEG/GIF 格式覆盖、SVG 解码绘制、CSS 动态状态伪类、float、rowspan 精确跨行、border-collapse、forms/widgets 仍待补。完整范围、取舍和完成条件见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 - **WM6 X 按钮 = 最小化不是关闭**。每次启动 test_host 前确认任务管理器没有遗留实例，否则 stage.bat 替换 exe 时会产生 image 不一致。
 - **WMDC 桥会静默断**：host 待机 / 模拟器长跑后偶尔失联，表现是 `PTls_Connect` 拿到 `-0x004C [BIO: recv WSA=...]`。修法：重启 WMDC（任务栏 → 退出 → 重启）。**联网测试前先在 IE Mobile 打开 baidu 验证一遍**。
 - **模拟器时钟**：跑 verified TLS 前必须校准（见上）。证书 notBefore/notAfter 都按 UTC 比对当前时间。

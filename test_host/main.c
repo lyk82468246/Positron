@@ -1134,95 +1134,6 @@ static BOOL test22_reverse_flex_padding(void)
 }
 
 /* -------------------------------------------------------------------- */
-/* TEST 23 - ordinary floats in the IANA footer table shape              */
-/* IANA's footer puts display:inline; float:left list entries in a table */
-/* cell. The slim box builder must create BOX_FLOAT_* wrappers, so two    */
-/* blockified entries share a row and a following clear:both box starts  */
-/* below them.                                                           */
-/* -------------------------------------------------------------------- */
-static BOOL test23_footer_float_layout(void)
-{
-    static const char *HTML =
-        "<!DOCTYPE html><html><body><table><tr><td><ul>"
-        "<one>Root</one><two>Time</two><after>After</after>"
-        "</ul></td></tr></table></body></html>";
-    static const char *CSS =
-        "body{margin:0;}"
-        "table{display:table;border-collapse:collapse;}"
-        "tr{display:table-row;}td{display:table-cell;vertical-align:top;}"
-        "ul{display:block;margin:0;padding:0;}"
-        "one,two{display:block;float:left;margin-left:5px;}"
-        "after{display:block;clear:both;}";
-    HANDLE hDoc;
-    HANDLE hSheet;
-    int one_x = 0, one_y = 0, one_w = 0, one_h = 0;
-    int two_x = 0, two_y = 0, two_w = 0, two_h = 0;
-    int after_x = 0, after_y = 0, after_w = 0, after_h = 0;
-    int screen_w;
-    int screen_h;
-    int screen_dpi = 96;
-    HDC screen_dc;
-    char msg[256];
-
-    hDoc = PCore_ParseHTML(HTML, 0);
-    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/footer.css");
-    if (hDoc == NULL || hSheet == NULL) {
-        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
-        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
-        show_error(L"TEST 23 FAIL", "parse HTML/CSS failed");
-        return FALSE;
-    }
-    screen_dc = GetDC(NULL);
-    if (screen_dc != NULL) {
-        int dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
-        if (dpi > 0) {
-            screen_dpi = dpi;
-        }
-        ReleaseDC(NULL, screen_dc);
-    }
-    PCore_SetViewport(224, 320, screen_dpi);
-    if (PCore_StyleDocument(hDoc, hSheet) != 0 ||
-            PCore_LayoutDocument(hDoc, 224, 320) != 0 ||
-            PCore_NodeBox(hDoc, "one", &one_x, &one_y, &one_w, &one_h) != 0 ||
-            PCore_NodeBox(hDoc, "two", &two_x, &two_y, &two_w, &two_h) != 0 ||
-            PCore_NodeBox(hDoc, "after", &after_x, &after_y,
-                    &after_w, &after_h) != 0) {
-        PCore_FreeStylesheet(hSheet);
-        PCore_FreeDocument(hDoc);
-        screen_w = GetSystemMetrics(SM_CXSCREEN);
-        screen_h = GetSystemMetrics(SM_CYSCREEN);
-        if (screen_w <= 0) { screen_w = 240; }
-        if (screen_h <= 0) { screen_h = 320; }
-        PCore_SetViewport(screen_w, screen_h, screen_dpi);
-        show_error(L"TEST 23 FAIL", "style/layout/footer boxes failed");
-        return FALSE;
-    }
-    PCore_FreeStylesheet(hSheet);
-    PCore_FreeDocument(hDoc);
-    screen_w = GetSystemMetrics(SM_CXSCREEN);
-    screen_h = GetSystemMetrics(SM_CYSCREEN);
-    if (screen_w <= 0) { screen_w = 240; }
-    if (screen_h <= 0) { screen_h = 320; }
-    PCore_SetViewport(screen_w, screen_h, screen_dpi);
-
-    if (one_y != two_y || two_x <= one_x ||
-            after_y < one_y + one_h || after_y < two_y + two_h) {
-        _snprintf(msg, sizeof(msg) - 1,
-                  "one=(%d,%d) %dx%d two=(%d,%d) %dx%d after=(%d,%d) %dx%d",
-                  one_x, one_y, one_w, one_h, two_x, two_y, two_w, two_h,
-                  after_x, after_y, after_w, after_h);
-        msg[sizeof(msg) - 1] = '\0';
-        show_error(L"TEST 23 FAIL", msg);
-        return FALSE;
-    }
-    show_info(L"TEST 23 OK",
-              "Footer-style floats OK:\n"
-              "two floated blocks share a row; clear:both starts below.\n\n"
-              "(IANA footer table list shape.)");
-    return TRUE;
-}
-
-/* -------------------------------------------------------------------- */
 /* TEST 24 - cached external CSS can restyle a new viewport              */
 /* A first StyleDocumentEx call fetches the linked sheet. A second call  */
 /* at a different width must reselect @media from document-owned bytes, */
@@ -2612,7 +2523,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "HTML / CSS / DOM parse, select, style,\n"
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
-                               "(TEST 6-11, 15, 16, 18, 21-24). Offline.");
+                               "(TEST 6-11, 15, 16, 18, 21, 22, 24). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "M1 plotter (TEST 14), NetSurf render\n"
@@ -2639,7 +2550,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine group (TEST 6-11, 15, 16, 18, 21-24; offline) ------- */
+    /* --- Engine group (TEST 6-11, 15, 16, 18, 21, 22, 24; offline) --- */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -2649,7 +2560,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test10_styledoc())    { rc = 11; goto done; }
         if (!test21_media_viewport()){ rc = 11; goto done; }
         if (!test22_reverse_flex_padding()){ rc = 11; goto done; }
-        if (!test23_footer_float_layout()){ rc = 11; goto done; }
         if (!test24_cached_stylesheet_restyle()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
@@ -2695,10 +2605,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21-24)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
-               "    layout, media-query viewport, reverse flex, footer floats, cached CSS restyle, box tree, NetSurf layout, image\n"
+               "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource discovery/document cache. Offline.\n\n");
     }
     if (run_render) {

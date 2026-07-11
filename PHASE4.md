@@ -137,7 +137,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    点击链接后 fetch/parse/style/layout 仍同步发生，旧设备上会卡。后续应做 loading 状态 + 后台 fetch + UI 线程 swap document；旧页必须在新页成功前保持可交互。跨线程 DOM/libcss/NetSurf document 的安全性尚未证明，不能把完整渲染事务直接搬到 worker。
 
 5. **布局细化**  
-   flex 和常见 table 已通；IANA 页脚暴露普通 `float:left` 缺构盒包装，现已新增并由 TEST 23 于 2026-07-11 真机确认。float 的 replaced element、rowspan 精确跨行占用、border-collapse 视觉、forms/widgets 仍需按真实页面痛点推进。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法，不能由 TEST21 的传统断点覆盖代替审计。
+   flex 和常见 table 已通；IANA 页脚曾触发普通 `float:left` 构盒尝试，TEST23 最小样例通过但真实 Browse 严重回归，已于 2026-07-11 撤回。float、rowspan 精确跨行占用、border-collapse 视觉、forms/widgets 仍需按真实页面痛点推进；float 必须先补上游构盒 normalisation 的前后条件和端到端回归。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法，不能由 TEST21 的传统断点覆盖代替审计。
 
 6. **旋转响应式重选**
    `WM_SIZE` 现在从 document-owned 外链 CSS 缓存重新 style + layout，使用 cache-only callback 禁止尺寸变化联网；重样式会释放被替换的 computed style。TEST24 已于 2026-07-11 真机确认外链 CSS 从 320px 重选到 299px，而 fetch/free 都维持一次；真实 Browse 旋转仍待验收。
