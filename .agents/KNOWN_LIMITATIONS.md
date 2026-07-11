@@ -12,8 +12,8 @@
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | 最新 TEST 13 截图确认：此前约 25px 的左缘正文裁切已消失，`Example Domains` 标题可完整显示。 | 页面已达到原浏览器或现代浏览器的像素级还原。 |
 | 图片 | TEST 18、19、20 已分别确认资源去重、WM Imaging 内存 BMP 解码/绘制、缓存 `<img>` 进入 NetSurf `box->object -> content_redraw -> plot_bitmap` 链。 | PNG/JPEG/GIF、SVG、背景图或任意网络图片均可显示。 |
-| ENGINE 离线回归 | 2026-07-11 用户截图确认 ENGINE 组 TEST 6-11、15、16、18、21-23 全部通过。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
-| 旋转尺寸 | `WM_SIZE` 会以新 client 宽高更新 viewport、重新 layout、校正滚动位置并重绘。 | 旋转后会重新选择跨断点的 CSS 规则。 |
+| ENGINE 离线回归 | 2026-07-11 用户确认 ENGINE 组 TEST 6-11、15、16、18、21-24 全部通过。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
+| 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认 320px/299px 跨断点重选且 fetch/free 都为 1。 | 真实 Browse 页面、所有媒体语法和任意样式资源均已通过旋转验收。 |
 
 ## 真实页面观察到的未完成项
 
@@ -27,12 +27,12 @@
 - **下一步**：重跑真实 IANA TEST 13，观察页脚实际改善；随后为仍有问题的节点记录 computed style/box 几何，以最小 HTML/CSS 测试锁定每个问题，再改 NetSurf 移植层或 box 构建层。另行决定是升级 CSS 能力、降级解析，还是维护稳定的回归样式快照。
 - **完成条件**：在目标设备的竖屏和横屏下，主内容、页脚和导航均不裁切、不重叠，且没有明显错误图标/替代字符；结果需要新的真机截图确认。
 
-### 旋转 responsive restyle 待设备验收
+### 旋转 responsive restyle 待真实页面验收
 
-`WM_SIZE` 现调用 `PCore_SetViewport`、缓存专用 `PCore_StyleDocumentEx` 和 `PCore_LayoutDocument`。外链 CSS 首次导航时以原始字节缓存到 document，尺寸变化只从该缓存重选 `@media`，不重新联网。新 TEST 24 覆盖 320px 到 299px 的外链 CSS 重选与 fetch 只发生一次，待设备确认。
+`WM_SIZE` 现调用 `PCore_SetViewport`、缓存专用 `PCore_StyleDocumentEx` 和 `PCore_LayoutDocument`。外链 CSS 首次导航时以原始字节缓存到 document，尺寸变化只从该缓存重选 `@media`，不重新联网。TEST24 已于 2026-07-11 在设备确认 320px 到 299px 的外链 CSS 重选，fetch/free 都保持一次。
 
 - **当前取舍**：只缓存最多 32 份、单份不超过 256 KiB、每 document 合计不超过 512 KiB 的成功外链 CSS 原始字节；缓存未命中的样式在旋转时保持缺失，不能在 `WM_SIZE` 中重新联网。
-- **后续实现**：确认 TEST24 后，验证真实 Browse 页面旋转前后跨断点的样式和滚动位置；处理 custom properties/新式媒体查询语法是独立兼容性工作。
+- **后续实现**：验证真实 Browse 页面旋转前后跨断点的样式和滚动位置；处理 custom properties/新式媒体查询语法是独立兼容性工作。
 - **完成条件**：旋转前后跨越 TEST 21 式断点时，computed style 与几何都切换正确，并恢复原滚动位置的合理比例。
 
 ### 导航仍同步阻塞 UI

@@ -155,7 +155,7 @@ scripts\stage.bat Release :: 或 Release
 `test_host.exe` 启动后先选择测试组：
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
-- **Engine**：TEST 6-11、15、16、18、21-24，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、footer-style floats、cached CSS restyle，离线。TEST 6-11、15、16、18、21-23 已于 2026-07-11 由用户真机确认；TEST 24 待设备确认。
+- **Engine**：TEST 6-11、15、16、18、21-24，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、footer-style floats、cached CSS restyle，离线。2026-07-11 已由用户真机确认整组通过。
 - **GDI Render**：TEST 14、19、17、12，窗口绘制与 WM Imaging 原生图片绘制，离线。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 

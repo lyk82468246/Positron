@@ -88,7 +88,7 @@ scripts\stage.bat
 启动时可选择：
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18、21-23，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、footer-style floats，离线。2026-07-11 用户真机确认整组通过。
+- Engine：TEST 6-11、15、16、18、21-24，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、footer-style floats、cached CSS restyle，离线。2026-07-11 用户真机确认整组通过。
 - GDI Render：TEST 14、19、17、12，离线窗口渲染与 WM Imaging 原生图片绘制。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
@@ -101,9 +101,9 @@ scripts\stage.bat
 
 优先候选：
 
-1. 2026-07-11 用户真机确认 ENGINE 组 TEST 6-11、15、16、18、21-23 全部通过。此离线回归门槛已完成；后续修改引擎路径时必须重跑整组。
+1. 2026-07-11 用户真机确认 ENGINE 组 TEST 6-11、15、16、18、21-24 全部通过。此离线回归门槛已完成；后续修改引擎路径时必须重跑整组。
 2. IANA 正文不再左裁切，页脚的 TEST 23 浮动最小复现也已通过。下一步重跑真实 TEST 13；若仍有拥挤/错位，先记录 box 几何/样式，不再改 clip。
-3. `WM_SIZE` 已改为从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback，尺寸变化不会联网。TEST 24 覆盖 320px/299px 的外链 CSS 重选与 fetch=1，待设备确认；随后验证真实 Browse 旋转。
+3. `WM_SIZE` 已改为从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback，尺寸变化不会联网。TEST24 已确认 320px/299px 的外链 CSS 重选与 fetch/free=1；随后验证真实 Browse 旋转。
 4. 导航的 fetch/parse/style/layout 仍在 UI 线程同步执行。后续需要 worker fetch、loading、generation 和 UI 线程安全 swap；禁止未经验证就跨线程并发操作 DOM/libcss/NetSurf document。
 5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法；不要用 TEST21 的传统断点通过结果宣称它已完整兼容。需单独审计 libcss 3.11 的解析范围或维护稳定回归快照。
 6. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。table rowspan 仍是简化版。完整边界和完成条件见 `KNOWN_LIMITATIONS.md`。
