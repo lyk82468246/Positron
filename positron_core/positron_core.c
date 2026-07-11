@@ -18,6 +18,8 @@
  */
 
 #include <windows.h>
+#include <limits.h>   /* ULONG_MAX */
+#include <stdlib.h>   /* malloc / free */
 #include <string.h>    /* strlen */
 
 #include <libcss/libcss.h>
@@ -144,18 +146,191 @@ static css_error pcore_css_resolve(void *pw, const char *base,
     return CSS_OK;
 }
 
+static int pcore_css_space(char c)
+{
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
+}
+
+static int pcore_css_width_word(const char *css, unsigned int len,
+                                unsigned int pos)
+{
+    static const char word[] = "width";
+    unsigned int i;
+
+    if (pos + 5 > len) {
+        return 0;
+    }
+    for (i = 0; i < 5; i++) {
+        char c = css[pos + i];
+        if (c >= 'A' && c <= 'Z') {
+            c = (char) (c + ('a' - 'A'));
+        }
+        if (c != word[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static unsigned int pcore_css_ulong_decimal(char *out, unsigned long value)
+{
+    char reverse[32];
+    unsigned int count = 0;
+    unsigned int i;
+
+    do {
+        reverse[count++] = (char) ('0' + value % 10UL);
+        value /= 10UL;
+    } while (value != 0 && count < sizeof(reverse));
+    for (i = 0; i < count; i++) {
+        out[i] = reverse[count - i - 1];
+    }
+    return count;
+}
+
+/* libcss 3.11 predates Media Queries level 4 range syntax. Convert only the
+ * integer-pixel forms used by the current IANA stylesheet. Other ranges stay
+ * untouched so an uncertain compatibility guess cannot change semantics. */
+static char *pcore_css_compat_ranges(const char *css, unsigned int len,
+                                     unsigned int *out_len)
+{
+    char *out;
+    unsigned int i = 0;
+    unsigned int o = 0;
+    int quote = 0;
+    int comment = 0;
+
+    if (len > 0x7fffffffU / 2U) {
+        return NULL;
+    }
+    out = (char *) malloc((size_t) len * 2U + 1U);
+    if (out == NULL) {
+        return NULL;
+    }
+
+    while (i < len) {
+        if (comment) {
+            out[o++] = css[i];
+            if (css[i] == '*' && i + 1 < len && css[i + 1] == '/') {
+                out[o++] = css[++i];
+                comment = 0;
+            }
+            i++;
+            continue;
+        }
+        if (quote != 0) {
+            out[o++] = css[i];
+            if (css[i] == '\\' && i + 1 < len) {
+                out[o++] = css[++i];
+            } else if (css[i] == quote) {
+                quote = 0;
+            }
+            i++;
+            continue;
+        }
+        if (css[i] == '/' && i + 1 < len && css[i + 1] == '*') {
+            out[o++] = css[i++];
+            out[o++] = css[i++];
+            comment = 1;
+            continue;
+        }
+        if (css[i] == '\'' || css[i] == '"') {
+            quote = css[i];
+            out[o++] = css[i++];
+            continue;
+        }
+        if (css[i] == '(') {
+            unsigned int p = i + 1;
+            unsigned int number_start;
+            unsigned int number_end;
+            unsigned long value = 0;
+            int inclusive = 0;
+            int overflow = 0;
+
+            while (p < len && pcore_css_space(css[p])) { p++; }
+            if (pcore_css_width_word(css, len, p)) {
+                p += 5;
+                while (p < len && pcore_css_space(css[p])) { p++; }
+                if (p < len && css[p] == '<') {
+                    p++;
+                    if (p < len && css[p] == '=') {
+                        inclusive = 1;
+                        p++;
+                    }
+                    while (p < len && pcore_css_space(css[p])) { p++; }
+                    number_start = p;
+                    while (p < len && css[p] >= '0' && css[p] <= '9') {
+                        unsigned long digit =
+                                (unsigned long) (css[p] - '0');
+                        if (value > (ULONG_MAX - digit) / 10UL) {
+                            overflow = 1;
+                        } else if (!overflow) {
+                            value = value * 10UL + digit;
+                        }
+                        p++;
+                    }
+                    number_end = p;
+                    while (p < len && pcore_css_space(css[p])) { p++; }
+                    if (number_end > number_start && p + 2 <= len &&
+                            (css[p] == 'p' || css[p] == 'P') &&
+                            (css[p + 1] == 'x' || css[p + 1] == 'X')) {
+                        p += 2;
+                        while (p < len && pcore_css_space(css[p])) { p++; }
+                        if (p < len && css[p] == ')' &&
+                                (inclusive || (!overflow && value > 0))) {
+                            char number[32];
+                            unsigned int number_len;
+                            static const char prefix[] = "(max-width:";
+
+                            memcpy(out + o, prefix, sizeof(prefix) - 1);
+                            o += (unsigned int) (sizeof(prefix) - 1);
+                            if (inclusive) {
+                                memcpy(out + o, css + number_start,
+                                        number_end - number_start);
+                                o += number_end - number_start;
+                            } else {
+                                number_len = pcore_css_ulong_decimal(number,
+                                        value - 1UL);
+                                memcpy(out + o, number, number_len);
+                                o += number_len;
+                            }
+                            memcpy(out + o, "px)", 3);
+                            o += 3;
+                            i = p + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        out[o++] = css[i++];
+    }
+    out[o] = '\0';
+    *out_len = o;
+    return out;
+}
+
 PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
                                 const char *url)
 {
     css_stylesheet_params params;
     css_stylesheet       *sheet = NULL;
     css_error             err;
+    char                 *compat_css;
+    const char           *parse_css;
+    unsigned int          parse_len;
 
     if (css == NULL) {
         return NULL;
     }
     if (len == 0) {
         len = (unsigned int) strlen(css);
+    }
+    parse_css = css;
+    parse_len = len;
+    compat_css = pcore_css_compat_ranges(css, len, &parse_len);
+    if (compat_css != NULL) {
+        parse_css = compat_css;
     }
 
     /* Zero the block, then set only the fields we need; title / quirks /
@@ -169,11 +344,14 @@ PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
 
     err = css_stylesheet_create(&params, &sheet);
     if (err != CSS_OK || sheet == NULL) {
+        free(compat_css);
         return NULL;
     }
 
     /* Streaming append: CSS_NEEDDATA is the normal "ok, more welcome". */
-    err = css_stylesheet_append_data(sheet, (const uint8_t *) css, len);
+    err = css_stylesheet_append_data(sheet, (const uint8_t *) parse_css,
+            parse_len);
+    free(compat_css);
     if (err != CSS_OK && err != CSS_NEEDDATA) {
         css_stylesheet_destroy(sheet);
         return NULL;

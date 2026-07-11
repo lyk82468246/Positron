@@ -42,6 +42,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - adjacent/general sibling：`+` / `~` 已实现。
 - `:link` / `:lang()` 已实现。
 - TEST 9 已扩展为离线 computed-style 验收，覆盖 attribute + sibling + static pseudo selector 组合，并于 2026-07-10 真机通过。
+- 当前 IANA CSS 使用 MQ4 范围语法。2026-07-11 已在 `PCore_ParseCSS` 前加入保守兼容：仅把整数像素 `(width <= Npx)` / `(width < Npx)` 转为 libcss 3.11 可解析的 `max-width`；字符串、注释、其他单位和复杂范围不改写。VS2008 全量构建已通过，扩展 TEST21 的 320/300/299px 边界仍待设备确认。
 - 动态状态伪类仍 false。
 
 优先级建议：
@@ -76,11 +77,11 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 建议顺序：
 
-1. 最新 IANA TEST13 截图已确认撤回普通 float 构盒后的可读基线恢复，但导航/页脚拥挤和替代方框仍在，不能算版式通过。float 保持未支持，后续先对照上游 box construction/normalisation 设计端到端回归，并独立审计现代 CSS/SVG 缺口。
+1. 先在设备运行扩展 TEST21，再重跑 IANA TEST13，确认 MQ4 整数像素范围兼容是否改善窄屏导航/页脚。它不覆盖 custom properties、复杂范围、SVG 或 float，不能因局部改善宣称页面通过。
 2. 在真实 Browse 页面旋转跨断点，验证缓存 CSS restyle、滚动位置与无联网行为。TEST24 已通过。
-3. 让导航主文档 fetch 脱离 UI 线程，并保留旧页与 loading 状态；CSS/图片资源的完整异步事务随后处理。
-4. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback。
-5. SVG 可后置，必要时先占位或引入 libsvgtiny。
+3. float 保持未支持；先对照上游 box construction/normalisation 建立整树结构和普通文流端到端回归，再重新实现。
+4. 让导航主文档 fetch 脱离 UI 线程，并保留旧页与 loading 状态；CSS/图片资源的完整异步事务随后处理。
+5. 补 PNG/JPEG/GIF 格式覆盖，先保留解码失败 fallback；SVG 可后置，必要时先占位或引入 libsvgtiny。
 
 验收：
 

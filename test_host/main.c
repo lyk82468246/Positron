@@ -968,16 +968,23 @@ static BOOL test10_styledoc(void)
 static BOOL test21_media_viewport(void)
 {
     static const char *HTML =
-        "<!DOCTYPE html><html><body><p>media</p></body></html>";
+        "<!DOCTYPE html><html><body><p>legacy</p>"
+        "<rangele>inclusive</rangele><rangestrict>strict</rangestrict>"
+        "</body></html>";
     static const char *CSS =
         "p{color:#aa0000;}"
         "@media screen and (min-width:300px){p{color:#00aa00;}}"
-        "@media screen and (max-width:299px){p{color:#0000aa;}}";
+        "@media screen and (max-width:299px){p{color:#0000aa;}}"
+        "rangele,rangestrict{color:#aa0000;}"
+        "@media (width <= 300px){rangele{color:#00aa00;}}"
+        "@media (width < 300px){rangestrict{color:#0000aa;}}";
     HANDLE hDoc = NULL;
     HANDLE hSheet = NULL;
     unsigned long argb;
     unsigned long rgb;
-    unsigned long expected;
+    unsigned long legacy_expected;
+    unsigned long rangele_expected;
+    unsigned long strict_expected;
     int width;
     int pass;
     int screen_w;
@@ -996,9 +1003,11 @@ static BOOL test21_media_viewport(void)
     }
 
     msg[0] = '\0';
-    for (pass = 0; pass < 2; pass++) {
-        width = (pass == 0) ? 320 : 299;
-        expected = (pass == 0) ? 0x0000aa00UL : 0x000000aaUL;
+    for (pass = 0; pass < 3; pass++) {
+        width = (pass == 0) ? 320 : ((pass == 1) ? 300 : 299);
+        legacy_expected = (width >= 300) ? 0x0000aa00UL : 0x000000aaUL;
+        rangele_expected = (width <= 300) ? 0x0000aa00UL : 0x00aa0000UL;
+        strict_expected = (width < 300) ? 0x000000aaUL : 0x00aa0000UL;
         hDoc = PCore_ParseHTML(HTML, 0);
         hSheet = PCore_ParseCSS(CSS, 0,
                 "http://positron.local/media.css");
@@ -1021,14 +1030,26 @@ static BOOL test21_media_viewport(void)
             break;
         }
         rgb = argb & 0x00FFFFFFUL;
+        if (rgb == legacy_expected &&
+                PCore_NodeComputedColor(hDoc, "rangele", &argb) == 0) {
+            rgb = argb & 0x00FFFFFFUL;
+        } else {
+            rgb = 0xFFFFFFFFUL;
+        }
+        if (rgb == rangele_expected &&
+                PCore_NodeComputedColor(hDoc, "rangestrict", &argb) == 0) {
+            rgb = argb & 0x00FFFFFFUL;
+        } else {
+            rgb = 0xFFFFFFFFUL;
+        }
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         hDoc = NULL;
         hSheet = NULL;
-        if (rgb != expected) {
+        if (rgb != strict_expected) {
             _snprintf(msg, sizeof(msg) - 1,
-                    "width=%d: @media color=0x%06lX, expect 0x%06lX",
-                    width, rgb, expected);
+                    "width=%d: media boundary mismatch (last=0x%06lX)",
+                    width, rgb);
             msg[sizeof(msg) - 1] = '\0';
             break;
         }
@@ -1040,7 +1061,7 @@ static BOOL test21_media_viewport(void)
     if (screen_h <= 0) { screen_h = 320; }
     PCore_SetViewport(screen_w, screen_h, screen_dpi);
 
-    if (pass != 2) {
+    if (pass != 3) {
         if (msg[0] == '\0') {
             show_error(L"TEST 21 FAIL", "parse, style, or color lookup failed");
         } else {
@@ -1050,8 +1071,8 @@ static BOOL test21_media_viewport(void)
     }
     show_info(L"TEST 21 OK",
               "Responsive media query OK:\n"
-              "320px selected min-width:300px; 299px selected\n"
-              "max-width:299px.\n\n"
+              "Legacy min/max-width plus MQ4 width <= / <\n"
+              "boundaries passed at 320, 300, and 299px.\n\n"
               "(runtime viewport + DPI remain dynamic.)");
     return TRUE;
 }
