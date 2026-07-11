@@ -109,7 +109,21 @@ cJSON 已经入 git，无需额外下载。
 
 ### 构建
 
-打开 `Positron.sln`，确认顶部工具栏：
+命令行构建（agent 和日常开发的首选入口）：
+
+```cmd
+scripts\build.bat                 :: 默认 Debug 全量 Rebuild
+scripts\build.bat Debug build     :: Debug 增量 Build
+scripts\build.bat Release rebuild :: Release 全量 Rebuild
+scripts\build.bat Debug clean     :: 清理 Debug
+```
+
+脚本调用 VS2008 的 `Common7\IDE\devenv.com`，按解决方案中的工程依赖构建
+`Debug|Windows Mobile 6 Professional SDK (ARMV4I)`，并将完整输出写入
+`vs2008-build.log`。ARM 编译器本体位于 `VC\ce\bin\x86_arm\cl.exe`，但不应绕过
+`.sln` 直接逐文件调用它，否则必须手工复制 SDK include/lib、宏、链接参数和工程顺序。
+
+也可以打开 `Positron.sln`，确认顶部工具栏：
 - Solution Configuration = `Debug`
 - Solution Platform = `Windows Mobile 6 Professional SDK (ARMV4I)`
 

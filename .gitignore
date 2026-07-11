@@ -23,6 +23,7 @@ Windows Mobile 6 Professional SDK (ARMV4I)/
 # BuildLog
 BuildLog.htm
 *.rsp
+vs2008-build.log
 
 # mbedTLS source tree — each dev downloads separately (Apache 2.0,
 # don't bloat repo + don't drift from upstream tagged release)

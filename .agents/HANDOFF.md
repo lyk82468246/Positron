@@ -71,9 +71,12 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 
 构建：
 
-1. 打开 `Positron.sln`
-2. 选择 `Debug | Windows Mobile 6 Professional SDK (ARMV4I)`
-3. Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 源码时。
+1. 首选运行 `scripts\build.bat`；默认执行 `Debug` 全解决方案 `Rebuild`。
+2. 可用 `scripts\build.bat Debug build` 做增量构建，或用第二参数 `clean` 清理。
+3. 脚本调用 `Common7\IDE\devenv.com`，不是直接调用 `VC\ce\bin\x86_arm\cl.exe`；前者负责 `.sln` 工程依赖和完整 WM6 平台设置。
+4. GUI 等价操作是打开 `Positron.sln`，选择 `Debug | Windows Mobile 6 Professional SDK (ARMV4I)` 后 Rebuild whole Solution。
+
+2026-07-11 已由 Codex 在本机通过该脚本完整重建：9 个工程成功、0 个失败；随后增量构建也成功并报告 9 个工程均为最新。根目录 `vs2008-build.log` 保存最近一次调用的输出（已忽略，不入 git）。
 
 部署：
 
@@ -102,7 +105,7 @@ scripts\stage.bat
 优先候选：
 
 1. 2026-07-11 用户真机确认 ENGINE 组 TEST 6-11、15、16、18、21、22、24 通过。此离线回归门槛已完成；后续修改引擎路径时必须重跑整组。
-2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。先重跑 TEST13 确认基线恢复；后续 float 必须对照上游 box construction/normalisation，而不是基于该简化测试继续扩展。
+2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。最新 TEST13 截图已确认灾难性重叠消失、可读基线恢复，但导航/页脚拥挤、替代方框与未完整应用现代 CSS 的问题仍在，不能记为 TEST13 通过。后续 float 必须对照上游 box construction/normalisation，而不是基于该简化测试继续扩展。
 3. `WM_SIZE` 已改为从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback，尺寸变化不会联网。TEST24 已确认 320px/299px 的外链 CSS 重选与 fetch/free=1；随后验证真实 Browse 旋转。
 4. 导航的 fetch/parse/style/layout 仍在 UI 线程同步执行。后续需要 worker fetch、loading、generation 和 UI 线程安全 swap；禁止未经验证就跨线程并发操作 DOM/libcss/NetSurf document。
 5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法；不要用 TEST21 的传统断点通过结果宣称它已完整兼容。需单独审计 libcss 3.11 的解析范围或维护稳定回归快照。

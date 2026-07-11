@@ -13,6 +13,7 @@
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
+- 首选用 `scripts\build.bat` 重建；默认是 `Debug` 全量 Rebuild，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。脚本使用 `devenv.com` 读取解决方案依赖，不要直接调用 ARM `cl.exe` 拼装整套工程。
 - 设备上是否在跑旧的 VS Deploy 目录，例如 `\Program Files\test_host\`。
 
 ## 没有 console，MessageBox 就是调试器

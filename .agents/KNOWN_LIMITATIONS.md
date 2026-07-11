@@ -10,7 +10,7 @@
 |---|---|---|
 | CSS 媒体查询 | TEST 21 已在设备上确认：运行时 client viewport 与 DPI 进入 libcss，320px 命中 `min-width:300px`，299px 命中 `max-width:299px`。 | 所有媒体特性和旋转场景均已覆盖。 |
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
-| IANA 窄屏页 | 最新 TEST 13 截图确认：此前约 25px 的左缘正文裁切已消失，`Example Domains` 标题可完整显示。 | 页面已达到原浏览器或现代浏览器的像素级还原。 |
+| IANA 窄屏页 | 撤回 TEST23 对应实现后的最新 TEST 13 截图确认：灾难性的正文重叠已消失，此前约 25px 的左缘裁切也未复现，`Example Domains` 可读。 | TEST 13 版式通过，或页面已达到原浏览器/现代浏览器的还原度。 |
 | 图片 | TEST 18、19、20 已分别确认资源去重、WM Imaging 内存 BMP 解码/绘制、缓存 `<img>` 进入 NetSurf `box->object -> content_redraw -> plot_bitmap` 链。 | PNG/JPEG/GIF、SVG、背景图或任意网络图片均可显示。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认 TEST 6-11、15、16、18、21、22、24 通过。TEST23 的浮动最小样例曾通过，但对应实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认 320px/299px 跨断点重选且 fetch/free 都为 1。 | 真实 Browse 页面、所有媒体语法和任意样式资源均已通过旋转验收。 |
@@ -19,12 +19,12 @@
 
 ### IANA 窄屏布局仍非验收通过
 
-最新 TEST 13 已修复左缘裁切，但截图仍可见：页脚/导航区域在 224px 宽度下有拥挤、断行和局部文本视觉错位；`Homepage` 后的方框也说明图标或字形资源尚未正确呈现。当前结论是“回归改善且能继续浏览”，不是“TEST 13 版式通过”。
+撤回 TEST23 对应实现后的最新 TEST 13 已确认灾难性回归消失、左缘裁切未复现，但截图仍可见：导航在窄屏右侧纵向堆叠，页脚两列严重拥挤并产生不理想断行；`Homepage` 后和正文中的方框也说明 SVG/图标、字形或替代资源尚未正确呈现。当前结论只能是“旧的可读基线恢复”，不是“TEST 13 符合最终预期”或“版式通过”。
 
 - **可能范围**：剩余 flex/table/inline/字体或未实现 CSS 特性的组合；尚未把单一原因当作结论。
 - **已撤回的一项**：IANA 页脚是 table cell 内 `display:inline; float:left` 列表。TEST23 曾在最小样例中确认两个浮动块同行及 `clear:both`，但将该构盒规则直接接入真实页面后，2026-07-11 Browse 截图出现严重错位和替代方框；实现已撤回。该测试不再参加 ENGINE 组，不能作为 float 支持证据。
 - **当前站点版本风险**：2026-07-11 读取到 IANA 改用带哈希的 CSS 资源，且其中有 CSS custom properties 与 `@media (width <= 1000px)` 范围语法。TEST 21 只覆盖旧式 `min-width` / `max-width`；不得假定当前线上样式完全被 libcss 3.11 解析。
-- **下一步**：先重跑真实 IANA TEST13，确认基线已恢复；随后必须对比上游 `box_construct.c` 的 float 前后处理、匿名盒 normalisation 与 list marker，再设计新的端到端回归，而不是复用 TEST23 的简化断言。
+- **下一步**：基线恢复已经由最新截图确认。随后必须对比上游 `box_construct.c` 的 float 前后处理、匿名盒 normalisation 与 list marker，并分别审计当前 IANA 样式中的 custom properties、MQ4 范围语法和 SVG 资源，再设计新的端到端回归，而不是复用 TEST23 的简化断言。
 - **完成条件**：在目标设备的竖屏和横屏下，主内容、页脚和导航均不裁切、不重叠，且没有明显错误图标/替代字符；结果需要新的真机截图确认。
 
 ### 旋转 responsive restyle 待真实页面验收
