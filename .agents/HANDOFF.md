@@ -71,7 +71,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 
 构建：
 
-1. 首选运行 `scripts\build.bat`；默认执行 `Debug` 全解决方案 `Rebuild`。
+1. 首选运行 `scripts\build.bat`；默认执行 `Debug` 增量 `Build`。改工程依赖、生成规则或需要干净基线时显式运行 `scripts\build.bat Debug rebuild`。
 2. 可用 `scripts\build.bat Debug build` 做增量构建，或用第二参数 `clean` 清理。
 3. 脚本调用 `Common7\IDE\devenv.com`，不是直接调用 `VC\ce\bin\x86_arm\cl.exe`；前者负责 `.sln` 工程依赖和完整 WM6 平台设置。
 4. GUI 等价操作是打开 `Positron.sln`，选择 `Debug | Windows Mobile 6 Professional SDK (ARMV4I)` 后 Rebuild whole Solution。

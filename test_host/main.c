@@ -1458,6 +1458,9 @@ static int    g_image_draw_rc = -1;
 
 #define WM_PCORE_NAV_DONE (WM_APP + 1)
 #define PCORE_NAV_TIMER 24
+#ifndef SS_BLACKRECT
+#define SS_BLACKRECT 0x00000004L
+#endif
 
 typedef struct pcore_navigation_request {
     HWND           hwnd;
@@ -1470,6 +1473,7 @@ typedef struct pcore_navigation_request {
 
 static HANDLE                    g_nav_thread = NULL;
 static pcore_navigation_request *g_nav_request = NULL;
+static HWND                      g_nav_bar = NULL;
 static LONG                      g_nav_generation = 0;
 static int                       g_nav_loading = 0;
 static int                       g_nav_phase = 0;
@@ -1735,13 +1739,26 @@ static int page_resource_cache_only_cb(void *pw, const char *url,
 static void pcore_navigation_set_loading(HWND hwnd, int loading)
 {
     RECT r;
+    int width;
+    int segment;
 
     g_nav_loading = loading;
     g_nav_phase = 0;
     if (loading) {
+        GetClientRect(hwnd, &r);
+        width = r.right - r.left;
+        segment = (width > 0) ? width / 4 : 1;
+        g_nav_bar = CreateWindowW(L"STATIC", L"",
+                WS_CHILD | WS_VISIBLE | SS_BLACKRECT,
+                -segment, 0, segment, 4, hwnd, NULL,
+                GetModuleHandle(NULL), NULL);
         SetTimer(hwnd, PCORE_NAV_TIMER, 100, NULL);
     } else {
         KillTimer(hwnd, PCORE_NAV_TIMER);
+        if (g_nav_bar != NULL) {
+            DestroyWindow(g_nav_bar);
+            g_nav_bar = NULL;
+        }
     }
     GetClientRect(hwnd, &r);
     r.bottom = r.top + 5;
@@ -1917,19 +1934,13 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC         hdc;
-        int         loading_only;
 
         hdc = BeginPaint(hwnd, &ps);
-        loading_only = (g_nav_loading && ps.rcPaint.top <= 0 &&
-                ps.rcPaint.bottom <= 5);
         /* Repaint only the invalid region. When scrolling, that is just the
          * thin strip ScrollWindowEx exposed; BeginPaint clips the DC to it, so
          * PCore_PaintDocument redraws a sliver, not the whole screen. */
         FillRect(hdc, &ps.rcPaint, (HBRUSH) GetStockObject(WHITE_BRUSH));
-        if (loading_only) {
-            /* The loading strip is a fixed overlay. Timer ticks repaint only
-             * these pixels instead of traversing the NetSurf document. */
-        } else if (g_plot_test) {
+        if (g_plot_test) {
             PCore_PlotTest(hdc);   /* M1: drive the GDI plotter directly */
         } else if (g_image_test) {
             RECT rcc;
@@ -1947,26 +1958,6 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             PCore_NsRenderTest(hdc, rcc.right - rcc.left, rcc.bottom - rcc.top);
         } else if (g_render_doc != NULL) {
             PCore_PaintDocument(g_render_doc, hdc, 0, g_scroll_y);
-        }
-        if (g_nav_loading) {
-            RECT lr;
-            HBRUSH brush;
-            int width;
-            int segment;
-            int x;
-
-            GetClientRect(hwnd, &lr);
-            width = lr.right - lr.left;
-            segment = (width > 0) ? width / 4 : 1;
-            x = ((g_nav_phase * (width + segment)) / 16) - segment;
-            lr.left = x;
-            lr.right = x + segment;
-            lr.bottom = lr.top + 4;
-            brush = CreateSolidBrush(RGB(0, 128, 160));
-            if (brush != NULL) {
-                FillRect(hdc, &lr, brush);
-                DeleteObject(brush);
-            }
         }
         EndPaint(hwnd, &ps);
         return 0;
@@ -2021,10 +2012,18 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_TIMER:
         if (wp == PCORE_NAV_TIMER && g_nav_loading) {
             RECT r;
+            int width;
+            int segment;
+            int x;
+
             g_nav_phase = (g_nav_phase + 1) & 15;
             GetClientRect(hwnd, &r);
-            r.bottom = r.top + 5;
-            InvalidateRect(hwnd, &r, TRUE);
+            width = r.right - r.left;
+            segment = (width > 0) ? width / 4 : 1;
+            x = ((g_nav_phase * (width + segment)) / 16) - segment;
+            if (g_nav_bar != NULL) {
+                MoveWindow(g_nav_bar, x, 0, segment, 4, TRUE);
+            }
             return 0;
         }
         break;
@@ -2108,7 +2107,8 @@ static BOOL show_render_window(void)
     RegisterClassW(&wc);
 
     hwnd = CreateWindowW(L"PositronRenderWnd", L"Positron render",
-            WS_VISIBLE | WS_VSCROLL, CW_USEDEFAULT, CW_USEDEFAULT,
+            WS_VISIBLE | WS_VSCROLL | WS_CLIPCHILDREN,
+            CW_USEDEFAULT, CW_USEDEFAULT,
             CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInst, NULL);
     if (hwnd == NULL) {
         return FALSE;

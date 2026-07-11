@@ -4,7 +4,7 @@ setlocal
 set "ROOT=%~dp0.."
 set "SLN=%ROOT%\Positron.sln"
 set "CFG=Debug"
-set "ACTION=Rebuild"
+set "ACTION=Build"
 set "PLATFORM=Windows Mobile 6 Professional SDK (ARMV4I)"
 set "LOG=%ROOT%\vs2008-build.log"
 

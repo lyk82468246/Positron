@@ -13,7 +13,7 @@
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
-- 首选用 `scripts\build.bat` 重建；默认是 `Debug` 全量 Rebuild，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。脚本使用 `devenv.com` 读取解决方案依赖，不要直接调用 ARM `cl.exe` 拼装整套工程。
+- 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
 - 设备上是否在跑旧的 VS Deploy 目录，例如 `\Program Files\test_host\`。
 
 ## 没有 console，MessageBox 就是调试器
@@ -85,6 +85,8 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 2026-07-11 用户截图确认扩展 TEST24 OK；真实 TEST13 在竖屏 `Further Reading / Domain Names` 区域旋转到横屏后仍保持同一阅读位置，旋转响应式与阅读进度闭环。随后导航第一阶段改为 worker 主文档 GET + `WM_APP` 完成消息；若设备仍卡顿，先区分“主 GET 期间进度条是否停止”和“GET 完成后资源/style/layout 提交是否短暂停止”，两者属于不同阶段。
 
 导航第一阶段首次设备反馈：loading 条持续移动，等待主 GET 时旧页可滚动且成功后正常换页；网络失败未测。滚动时 loading 条会被 `ScrollWindowEx` 复制并随页面下移，timer 也因每 100ms 调用一次文档绘制造成轻微卡顿。修复后滚动矩形排除顶部 5px，纯 loading invalid region 只清除/重画固定条带，不再调用 `PCore_PaintDocument`；待设备复测复制残影与流畅度。
+
+第二次设备反馈仍可见多条 loading 残影。下一版不再由父窗口 `WM_PAINT` 绘制进度条，改用独立 `STATIC` 子窗口并给 render window 加 `WS_CLIPCHILDREN`；timer 只 `MoveWindow` 子窗口。若该版仍复现，按已知视觉缺陷挂起，不再阻塞资源异步化主线。
 
 旋转调试注意：`WM_SIZE` 当前会调用 `PCore_SetViewport` 和 `PCore_LayoutDocument`，所以几何会重新 flow；它不会调用 `PCore_StyleDocumentEx`，因此跨 CSS 断点时媒体规则可能仍是旋转前的选择结果。排查旋转问题时先区分“layout 没更新”和“style 没重选”。
 
