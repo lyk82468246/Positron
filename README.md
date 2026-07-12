@@ -16,7 +16,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1：HTTPS via mbedTLS，明文 HTTP via WinInet) | ✅ 完成，WM6 Emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
 | **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector 与 BMP/PNG/JPEG/GIF 缓存图片链已真机验证；窄屏复杂布局、SVG 与背景图待补 |
-| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 BMP/PNG/JPEG/GIF 仍由 WM Imaging；Expat 2.8.2 + libdom XML + libsvgtiny 的内存 SVG 解析已在 ARM 构建打通，TEST 25 待真机；SVG 绘制待补 |
+| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 BMP/PNG/JPEG/GIF 仍由 WM Imaging；Expat 2.8.2 + libdom XML + libsvgtiny 的内存 SVG 解析已由 TEST 25 真机验证；SVG 绘制待补 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
@@ -24,9 +24,9 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 当前 Browse 正式路径已经从早期手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selector 与 `:link` / `:lang()` 已由 TEST 9/17 真机验证。TEST 11 的 margin collapse 与 `padding-top:1px` 阻断折叠成对断言已于 2026-07-10 真机通过。`<img>` alt fallback 已由 TEST 17 验证；TEST 18 的文档级资源缓存与 URL 去重、TEST 20 的 BMP/PNG/JPEG/GIF 缓存 replaced box/`content_redraw`/`plot_bitmap` 绘制均已真机通过。TEST 21 已验证运行时 viewport/DPI 及整数像素 MQ4 `(width <= Npx)` / `(width < Npx)` 的 320/300/299px 边界。TEST13 已确认 `white-space:normal/nowrap` 的源码换行被正确折叠、词间距正常；TEST15 又确认 `<pre>` 换行仍保留。TEST 22 已验证反向 flex 的 25px leading padding；IANA 正文不再左裁切，但窄屏页脚/导航仍有真实版式缺口，因此 TEST13 整体仍未验收通过。Browse host 在布局前使用同一 HTTP 获取器填充 `<img>` 缓存，失败仍保留 alt/src 回退。SVG 内存解析已接通，GDI 绘制和 `<img>` 接入仍待后续。详见 [PHASE4.md](PHASE4.md)、[.agents/ROADMAP.md](.agents/ROADMAP.md) 和 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 
-当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 的 BMP/PNG/JPEG/GIF 与缓存 `<img>` 链已真机验证。新增 `positron_image.dll` 公共 C ABI，并接通 Expat 2.8.2、libdom XML binding 与 libsvgtiny 的内存 SVG parse；当前仅本地 ARM 构建通过，TEST 25 仍待设备确认。
+当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 的 BMP/PNG/JPEG/GIF 与缓存 `<img>` 链已真机验证。新增 `positron_image.dll` 公共 C ABI，并接通 Expat 2.8.2、libdom XML binding 与 libsvgtiny 的内存 SVG parse；TEST 25 已在 WM6 ARM 设备确认尺寸 `64x32`、shape 数量 `2`。
 
-最新设备反馈（2026-07-11）：TEST15 已为 `normal_ws=ok pre_lf=kept`，文本空白修复闭环。扩展 TEST24 的缓存重选、无联网和 0/50/100% 滚动比例已通过；真实 TEST13 横竖屏也保持 `Further Reading / Domain Names` 同一阅读区域。导航第一阶段已确认主文档 GET 期间旧页可滚动且成功后正常换页。父窗口进度条有滚动残影，`STATIC` 子窗口则不可见；现已按 WM6 SDK 改用 `PROGRESS_CLASS` Common Control，待设备复测。网络失败分支及外链资源完整异步仍待后续。
+最新设备反馈（2026-07-12）：TEST25 已确认公共 `positron_image.dll` 的 Expat -> libdom XML -> libsvgtiny SVG 解析链在 WM6 ARM 真机通过，内置样例为 `64x32`、`2 shapes`。此前 TEST15 文本空白修复、TEST24 缓存重选/无联网/滚动比例及导航第一阶段均已确认。网络失败分支、外链资源完整异步和 SVG 绘制仍待后续。
 
 当前明确缺口：位图四格式链已经闭环；SVG 已完成 XML parse/link 和公共 DLL 边界，但尚未完成 GDI shape/path 绘制、缓存对象与 `<img>` 接入。背景图、CSS 动态状态伪类、float、复杂 table、forms/widgets 仍不完整；导航资源提交仍会占用 UI；JavaScript 尚未实现但属于长期必做目标。
 
@@ -180,7 +180,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 `test_host.exe` 启动后先选择测试组：
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
-- **Engine**：TEST 6-11、15、16、18、21、22、24、25，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle 与 SVG parse，离线。至 TEST24 已由用户真机确认通过；新增 TEST25 本地 ARM 构建通过、待设备验收。TEST23 float 最小样例已因真实 Browse 回归撤回。
+- **Engine**：TEST 6-11、15、16、18、21、22、24、25，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle 与 SVG parse，离线。2026-07-12 已由用户真机确认整组通过。TEST23 float 最小样例已因真实 Browse 回归撤回。
 - **GDI Render**：TEST 14、19、17、12，窗口绘制与 WM Imaging 原生图片绘制，离线。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 
@@ -198,7 +198,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 - **熵源**：默认 `CryptGenRandom`（Phase 3 起）；CSP 不可用时自动退回 QPC+GetTickCount+tid/pid jitter，CTR-DRBG 兜底。
 - **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 gzip 解码、响应体 cap 1 MB；GET 已有有限 3xx follow，明文 `http://` 经 WinInet。
 - **导航卡顿**：主文档 GET 已移到 worker，旧页在等待网络时可滚动，父窗口 common-control 进度条可见；HTML parse、外部 CSS/图片 fetch、style、layout 仍在 UI 提交阶段执行，大页面返回后仍可能短暂卡顿。真实进度、失败分支复测和完整资源事务仍待后续。
-- **渲染限制**：真实 NetSurf layout/redraw、border、CSS selector、四种缓存位图和 TEST21/22/24 已有设备基线。SVG 的 Expat/libdom/libsvgtiny 解析链及 `positron_image.dll` 已构建，TEST25 待设备确认；shape/path 绘制与 `<img>` 接入尚未完成。TEST23 浮动最小样例虽通过却造成真实 Browse 回归，已撤回。CSS 动态状态伪类、float、rowspan 精确跨行、border-collapse、forms/widgets 仍待补。完整范围见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
+- **渲染限制**：真实 NetSurf layout/redraw、border、CSS selector、四种缓存位图和 TEST21/22/24 已有设备基线。SVG 的 Expat/libdom/libsvgtiny 解析链及 `positron_image.dll` 已由 TEST25 真机确认；shape/path 绘制与 `<img>` 接入尚未完成。TEST23 浮动最小样例虽通过却造成真实 Browse 回归，已撤回。CSS 动态状态伪类、float、rowspan 精确跨行、border-collapse、forms/widgets 仍待补。完整范围见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 - **WM6 X 按钮 = 最小化不是关闭**。每次启动 test_host 前确认任务管理器没有遗留实例，否则 stage.bat 替换 exe 时会产生 image 不一致。
 - **WMDC 桥会静默断**：host 待机 / 模拟器长跑后偶尔失联，表现是 `PTls_Connect` 拿到 `-0x004C [BIO: recv WSA=...]`。修法：重启 WMDC（任务栏 → 退出 → 重启）。**联网测试前先在 IE Mobile 打开 baidu 验证一遍**。
 - **模拟器时钟**：跑 verified TLS 前必须校准（见上）。证书 notBefore/notAfter 都按 UTC 比对当前时间。

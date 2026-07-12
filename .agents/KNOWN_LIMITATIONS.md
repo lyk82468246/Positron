@@ -49,7 +49,7 @@
 
 WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
-- **当前结论**：BMP/PNG/JPEG/GIF 四格式的 WM Imaging 直接解码及 TEST20 缓存 `<img>` 正式 NetSurf replaced-box 链已由设备视觉确认。SVG 的 Expat 2.8.2 -> libdom XML -> libsvgtiny 内存 parse 和公共 `positron_image.dll` 已在本地 ARM 构建通过，TEST25 待设备确认；尚无 SVG GDI shape/path 绘制、SVG `<img>` 或 CSS background image。
+- **当前结论**：BMP/PNG/JPEG/GIF 四格式的 WM Imaging 直接解码及 TEST20 缓存 `<img>` 正式 NetSurf replaced-box 链已由设备视觉确认。SVG 的 Expat 2.8.2 -> libdom XML -> libsvgtiny 内存 parse 和公共 `positron_image.dll` 已由 TEST25 在 WM6 ARM 真机确认；尚无 SVG GDI shape/path 绘制、SVG `<img>` 或 CSS background image。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则

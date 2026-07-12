@@ -35,7 +35,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 - `pcore_select.c` 已实现 CSS attribute selectors、adjacent/general sibling selectors、`:link` 与 `:lang()`；TEST 9 已于 2026-07-10 真机通过。
 - TEST 11 原有 `body.y=8` / `p.y=24` 是旧手写布局器预期；NetSurf 折叠结果为 `body.y=p.y=16`。当前源码新增 `padding-top:1px` 阻断组，必须同时得到 `(16,16)` 与 `(8,25)` 才通过；2026-07-10 用户真机截图已确认 TEST 11 OK。
 - TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过；2026-07-11 已确认 document user-data 字节缓存与 URL 去重，二次扫描 fetch calls 保持 2。
-- `pcore_wmimage.cpp` 是刻意新增的 C++ 小适配层，主体仍为 C89。TEST19 的 BMP/PNG/JPEG/GIF 可见绘制已确认；TEST20 小点回归也已通过 `g_render_sheet` 修复。TEST20 现进一步缓存并绘制四种格式，资源计数要求 4/4，构建通过待设备确认。
+- `pcore_wmimage.cpp` 是刻意新增的 C++ 小适配层，主体仍为 C89。TEST19 的 BMP/PNG/JPEG/GIF 可见绘制已确认；TEST20 小点回归也已通过 `g_render_sheet` 修复，四格式缓存绘制与资源计数 4/4 已由设备确认。
 - TEST 21 已确认 `css_media.width/height` 采用实际 client viewport；2026-07-11 用户又确认整数像素 MQ4 `(width <= Npx)` / `(width < Npx)` 的 320/300/299px 边界通过。随后 TEST13 方框在空白折叠修复后消失且词间距正常；补齐 NetSurf 上游 `<pre>` UA 默认后，TEST15 已确认 `normal_ws=ok pre_lf=kept`。页脚/导航拥挤仍未解决。TEST24 的滚动比例断言及真实 TEST13 横竖屏同区域保持均已确认。
 
 ## 关键文件
@@ -93,7 +93,7 @@ scripts\stage.bat
 启动时可选择：
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18、21、22、24、25，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle 与 SVG parse，离线。至 TEST24 已由用户真机确认；TEST25 本地 ARM 构建通过、待设备确认。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
+- Engine：TEST 6-11、15、16、18、21、22、24、25，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle 与 SVG parse，离线。2026-07-12 用户真机确认整组通过。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
 - GDI Render：TEST 14、19、17、12，离线窗口渲染与 WM Imaging 原生图片绘制。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
@@ -111,7 +111,7 @@ scripts\stage.bat
 3. `WM_SIZE` 从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback。TEST24 与真实 Browse 旋转均已确认。
 4. 主文档 GET 已在单一 worker 执行。设备已确认旧页可滚动且成功后正常换页。父窗口条带有复制残影，`STATIC` 子窗口又完全不可见；现已按 WM6 SDK 改用 `PROGRESS_CLASS` + `PBM_SETPOS` 并链接 `commctrl.lib`，全量构建通过待复测。创建失败时标题显示 loading。失败保留旧页仍待测；资源 fetch 与 style/layout 仍在 UI 提交阶段。
 5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法。整数像素 `width <=` / `width <` 两种形式已由扩展 TEST21 真机确认；不要把它扩大为完整 MQ4/custom-properties 支持。
-6. 图片/SVG：TEST20 已确认 BMP/PNG/JPEG/GIF 四格式缓存 `<img>` 在横竖屏颜色与顺序一致。官方 Expat 2.8.2、libdom XML binding、libsvgtiny 与新的 `positron_image.dll` 已接通内存 SVG parse；TEST25 待设备确认。下一步是 GDI shape/path 绘制和缓存 `<img>` 接入；table rowspan 仍是简化版。完整边界见 `KNOWN_LIMITATIONS.md`。
+6. 图片/SVG：TEST20 已确认 BMP/PNG/JPEG/GIF 四格式缓存 `<img>` 在横竖屏颜色与顺序一致。官方 Expat 2.8.2、libdom XML binding、libsvgtiny 与新的 `positron_image.dll` 已接通内存 SVG parse；TEST25 已在 WM6 ARM 真机确认 `64x32`、`2 shapes`。下一步是 GDI shape/path 绘制和缓存 `<img>` 接入；table rowspan 仍是简化版。完整边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 开发纪律
 
