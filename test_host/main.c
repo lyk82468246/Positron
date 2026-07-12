@@ -56,12 +56,36 @@ static const unsigned char g_test_bmp_2x2[] = {
     0x00, 0x00, 0x36, 0x00, 0x00, 0x00, 0x28, 0x00,
     0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00,
     0x00, 0x00, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0xff, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00,
-    0x00, 0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00
+    0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0xc4, 0x0e,
+    0x00, 0x00, 0xc4, 0x0e, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00,
+    0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+    0xff, 0x00, 0xff, 0x00, 0x00, 0x00
 };
+
+static const char g_test_png_2x2_b64[] =
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGP4z8DA"
+    "AMIM////ZwAAHu8E/KPItPcAAAAASUVORK5CYII=";
+
+static const char g_test_gif_2x2_b64[] =
+    "R0lGODdhAgACAIEAAP//AAD/AP8AAAAA/ywAAAAAAgACAAAIBwAFBBgAICAAOw==";
+
+static const char g_test_jpeg_2x2_b64[] =
+    "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoH"
+    "BwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQME"
+    "BAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU"
+    "FBQUFBQUFBQUFBQUFBT/wAARCAACAAIDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEA"
+    "AAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIh"
+    "MUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6"
+    "Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZ"
+    "mqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx"
+    "8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREA"
+    "AgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAV"
+    "YnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hp"
+    "anN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPE"
+    "xcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD6"
+    "v+APhXRb/wCBHw4ubnR7C4uZvDemySzS2qM8jm1jJZiRkkkkkmiiiv8AP3Ov+Rni"
+    "v+vk/wD0pn45mP8Avtb/ABS/Nn//2Q==";
 
 /* -------------------------------------------------------------------- */
 /* Display helpers                                                       */
@@ -1449,6 +1473,7 @@ static BOOL test11_layout(void)
 /* -------------------------------------------------------------------- */
 
 static HANDLE g_render_doc = NULL;
+static HANDLE g_render_sheet = NULL; /* caller-owned while window lives */
 static int    g_scroll_y = 0;
 static int    g_doc_h = 0;
 static int    g_view_h = 0;
@@ -1456,6 +1481,12 @@ static int    g_plot_test = 0;   /* M1: paint via PCore_PlotTest, not a doc */
 static int    g_ns_render = 0;    /* M5e: paint via PCore_NsRenderTest */
 static int    g_image_test = 0;   /* TEST 19: native WM Imaging draw */
 static int    g_image_draw_rc = -1;
+#define PCORE_IMAGE_FORMAT_COUNT 4
+static const char *g_image_format_data[PCORE_IMAGE_FORMAT_COUNT];
+static int g_image_format_len[PCORE_IMAGE_FORMAT_COUNT];
+static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
+    L"BMP", L"PNG", L"JPEG", L"GIF"
+};
 
 #define WM_PCORE_NAV_DONE (WM_APP + 1)
 #define PCORE_NAV_TIMER 24
@@ -1872,6 +1903,7 @@ static void pcore_navigation_complete(HWND hwnd,
         PCore_FreeDocument(g_render_doc);
     }
     g_render_doc = newDoc;
+    g_render_sheet = NULL;
     g_doc_h = PCore_DocumentHeight(newDoc);
     g_scroll_y = 0;
 
@@ -1953,12 +1985,26 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         } else if (g_image_test) {
             RECT rcc;
             int rc;
+            int i;
+            int cell_h;
+            int y;
+
             GetClientRect(hwnd, &rcc);
-            rc = PCore_DrawImageFromMemory((const char *) g_test_bmp_2x2,
-                    sizeof(g_test_bmp_2x2), hdc, 24, 40,
-                    rcc.right - rcc.left - 48, 120);
-            if (g_image_draw_rc != 0) {
-                g_image_draw_rc = rc;
+            cell_h = (rcc.bottom - rcc.top) / PCORE_IMAGE_FORMAT_COUNT;
+            if (cell_h < 24) {
+                cell_h = 24;
+            }
+            for (i = 0; i < PCORE_IMAGE_FORMAT_COUNT; i++) {
+                y = i * cell_h;
+                ExtTextOutW(hdc, 4, y + 4, 0, NULL,
+                        g_image_format_name[i],
+                        (UINT) wcslen(g_image_format_name[i]), NULL);
+                rc = PCore_DrawImageFromMemory(g_image_format_data[i],
+                        g_image_format_len[i], hdc, 64, y + 2,
+                        rcc.right - 68, cell_h - 4);
+                if (rc != 0 && g_image_draw_rc == 0) {
+                    g_image_draw_rc = rc;
+                }
             }
         } else if (g_ns_render) {
             RECT rcc;
@@ -1983,7 +2029,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
          * starts a network request. */
         if (g_render_doc != NULL && cw > 0 && chh > 0) {
             PCore_SetViewport(cw, chh, 0);   /* dpi 0 = leave unchanged */
-            if (PCore_StyleDocumentEx(g_render_doc, NULL,
+            if (PCore_StyleDocumentEx(g_render_doc, g_render_sheet,
                     page_resource_cache_only_cb, NULL, NULL) == 0) {
                 PCore_LayoutDocument(g_render_doc, cw, chh);
             }
@@ -2210,14 +2256,17 @@ static BOOL test12_render(void)
               "Tap the content (or press Esc) to close and finish.");
 
     g_render_doc = hDoc;
+    g_render_sheet = hSheet;
     if (!show_render_window()) {
         show_error(L"TEST 12 FAIL", "CreateWindow returned NULL");
         g_render_doc = NULL;
+        g_render_sheet = NULL;
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         return FALSE;
     }
     g_render_doc = NULL;
+    g_render_sheet = NULL;
 
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
@@ -2296,6 +2345,7 @@ static BOOL test_browse(void)
               "Tap empty space or press Esc to close.");
 
     g_render_doc = hDoc;
+    g_render_sheet = NULL;
     if (!show_render_window()) {
         show_error(L"TEST 13 FAIL", "CreateWindow returned NULL");
         g_render_doc = NULL;
@@ -2461,48 +2511,116 @@ static BOOL test_image_resources(void)
 }
 
 /* -------------------------------------------------------------------- */
-/* TEST 19 - Windows Mobile native Imaging API decode/draw                */
-/* Uses IImagingFactory/IImage through positron_core.dll to decode a tiny  */
-/* in-memory BMP and draw it to the window HDC. This verifies the native    */
-/* image path before it is wired into <img> layout/object boxes.            */
+/* TEST 19 - Windows Mobile native Imaging API format decode/draw          */
+/* Probes BMP/PNG/JPEG/GIF independently through IImagingFactory/IImage,   */
+/* then draws all successful fixtures in one window.                       */
 /* -------------------------------------------------------------------- */
+static int pcore_base64_value(char c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+static int pcore_decode_base64(const char *src, unsigned char *out, int cap)
+{
+    unsigned int acc;
+    int bits;
+    int count;
+    int value;
+
+    acc = 0;
+    bits = 0;
+    count = 0;
+    while (*src != '\0' && *src != '=') {
+        value = pcore_base64_value(*src++);
+        if (value < 0) {
+            continue;
+        }
+        acc = (acc << 6) | (unsigned int) value;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (count >= cap) {
+                return -1;
+            }
+            out[count++] = (unsigned char) ((acc >> bits) & 0xff);
+        }
+    }
+    return count;
+}
+
 static BOOL test19_wmimage(void)
 {
+    unsigned char png[128];
+    unsigned char jpeg[1024];
+    unsigned char gif[64];
+    const char *data[PCORE_IMAGE_FORMAT_COUNT];
+    int len[PCORE_IMAGE_FORMAT_COUNT];
+    int expect_w[PCORE_IMAGE_FORMAT_COUNT];
+    int expect_h[PCORE_IMAGE_FORMAT_COUNT];
+    const char *name[PCORE_IMAGE_FORMAT_COUNT];
     int w;
     int h;
     int rc;
     int stage;
+    int i;
     unsigned long hr;
     char msg[256];
 
-    w = 0;
-    h = 0;
-    rc = PCore_ImageInfoFromMemory((const char *) g_test_bmp_2x2,
-            sizeof(g_test_bmp_2x2), &w, &h);
-    if (rc != 0) {
-        PCore_ImageLastError(&stage, &hr);
-        sprintf(msg, "WM Imaging info failed: rc=%d stage=%d hr=0x%08lx",
-                rc, stage, hr);
-        show_error(L"TEST 19 FAIL", msg);
-        return FALSE;
-    }
-    if (w != 2 || h != 2) {
-        sprintf(msg, "decoded size=%dx%d, expect 2x2", w, h);
-        show_error(L"TEST 19 FAIL", msg);
-        return FALSE;
+    len[0] = sizeof(g_test_bmp_2x2);
+    len[1] = pcore_decode_base64(g_test_png_2x2_b64, png, sizeof(png));
+    len[2] = pcore_decode_base64(g_test_jpeg_2x2_b64, jpeg, sizeof(jpeg));
+    len[3] = pcore_decode_base64(g_test_gif_2x2_b64, gif, sizeof(gif));
+    data[0] = (const char *) g_test_bmp_2x2;
+    data[1] = (const char *) png;
+    data[2] = (const char *) jpeg;
+    data[3] = (const char *) gif;
+    name[0] = "BMP"; name[1] = "PNG"; name[2] = "JPEG"; name[3] = "GIF";
+    expect_w[0] = 2; expect_w[1] = 2; expect_w[2] = 2; expect_w[3] = 2;
+    expect_h[0] = 2; expect_h[1] = 2; expect_h[2] = 2; expect_h[3] = 2;
+
+    for (i = 0; i < PCORE_IMAGE_FORMAT_COUNT; i++) {
+        if (len[i] <= 0) {
+            sprintf(msg, "%s fixture base64 decode failed", name[i]);
+            show_error(L"TEST 19 FAIL", msg);
+            return FALSE;
+        }
+        w = 0;
+        h = 0;
+        rc = PCore_ImageInfoFromMemory(data[i], len[i], &w, &h);
+        if (rc != 0) {
+            PCore_ImageLastError(&stage, &hr);
+            sprintf(msg, "%s info failed: rc=%d stage=%d hr=0x%08lx",
+                    name[i], rc, stage, hr);
+            show_error(L"TEST 19 FAIL", msg);
+            return FALSE;
+        }
+        if (w != expect_w[i] || h != expect_h[i]) {
+            sprintf(msg, "%s size=%dx%d, expect %dx%d", name[i], w, h,
+                    expect_w[i], expect_h[i]);
+            show_error(L"TEST 19 FAIL", msg);
+            return FALSE;
+        }
+        g_image_format_data[i] = data[i];
+        g_image_format_len[i] = len[i];
     }
 
     show_info(L"TEST 19",
-              "WM Imaging native decode/draw test.\n\n"
-              "Expect a stretched 2x2 BMP painted by IImage::Draw:\n"
-              "red/green on top, blue/yellow below.\n"
+              "WM Imaging format coverage.\n\n"
+              "Expect four labeled rows drawn by IImage::Draw:\n"
+              "BMP, PNG, JPEG, GIF.\n"
               "Tap or press Esc to close.");
 
     g_image_test = 1;
-    g_image_draw_rc = -1;
+    g_image_draw_rc = 0;
     g_plot_test = 0;
     g_ns_render = 0;
     g_render_doc = NULL;
+    g_render_sheet = NULL;
     g_scroll_y = 0;
     g_doc_h = 0;
     if (!show_render_window()) {
@@ -2511,6 +2629,10 @@ static BOOL test19_wmimage(void)
         return FALSE;
     }
     g_image_test = 0;
+    for (i = 0; i < PCORE_IMAGE_FORMAT_COUNT; i++) {
+        g_image_format_data[i] = NULL;
+        g_image_format_len[i] = 0;
+    }
 
     if (g_image_draw_rc != 0) {
         PCore_ImageLastError(&stage, &hr);
@@ -2519,8 +2641,7 @@ static BOOL test19_wmimage(void)
         show_error(L"TEST 19 FAIL", msg);
         return FALSE;
     }
-    sprintf(msg, "WM Imaging decoded %dx%d BMP and drew it via IImage::Draw",
-            w, h);
+    sprintf(msg, "WM Imaging decoded/drew BMP, PNG, JPEG and GIF");
     show_info(L"TEST 19 OK", msg);
     return TRUE;
 }
@@ -2625,14 +2746,17 @@ static BOOL test20_cached_img(void)
               "red/green on top, blue/yellow below.\n"
               "It must replace the fallback text. Tap or Esc to close.");
     g_render_doc = hDoc;
+    g_render_sheet = hSheet;
     if (!show_render_window()) {
         g_render_doc = NULL;
+        g_render_sheet = NULL;
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 20 FAIL", "CreateWindow returned NULL");
         return FALSE;
     }
     g_render_doc = NULL;
+    g_render_sheet = NULL;
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
 

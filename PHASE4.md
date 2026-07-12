@@ -191,7 +191,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 - **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table/border、`<img>` alt fallback、资源缓存与 BMP object/redraw 链；Browse host 已在 layout 前调用图片资源获取。PNG/JPEG/GIF、SVG、float、forms/widgets、复杂 table 仍需分阶段补。
 - **border redraw 已通过内置页验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制来自 NetSurf `redraw_border.c`；TEST 17 已确认 solid/dashed/table cell 边框可见，复杂真实页面仍需持续观察。
-- **图片路径只完成 BMP 最小链**：缓存命中且可由 WM Imaging 解码的 `<img>` 会生成 `box->object`，并走 `content_redraw -> plot_bitmap -> IImage::Draw`；TEST 20 已真机验证。背景图、SVG 和 PNG/JPEG/GIF 覆盖尚未接通，解码失败时仍回退 alt/src 文本。
+- **图片路径正在扩展格式验收**：缓存命中且可由 WM Imaging 解码的 `<img>` 会生成 `box->object`，并走 `content_redraw -> plot_bitmap -> IImage::Draw`。BMP/PNG/JPEG/GIF 已通过设备尺寸/Draw 返回；可见 2x2 fixture 与 TEST20 author-sheet 保留修复待复测。背景图、SVG 尚未接通，解码失败时仍回退 alt/src 文本。
 - **部分 CSS selector 仍待补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已由 TEST 9 真机验证；动态状态伪类仍为 no-match，会影响真实网页样式命中。
 - **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。

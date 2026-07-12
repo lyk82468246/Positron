@@ -47,9 +47,9 @@
 
 ### 图片能力只以 BMP 最小链路为基线
 
-WM Imaging 在本设备上对内存 BMP 已确认可用；先前内存 PNG 解码失败。当前 `<img>` 解码失败时刻意回退到 alt/src 文本，不把失败伪装成已显示图片。
+WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
-- **后续实现**：以独立的设备测试分别验证小 PNG、JPEG、GIF，记录 WM Imaging 的 HRESULT；SVG 和 CSS background image 是独立工作项。
+- **当前复测**：TEST19 已统一为可见 2x2 四象限 fixture；TEST20 修复 `WM_SIZE` 丢失调用方 author sheet 导致的 96x72→2x2 回归。两项已增量构建通过待设备确认；SVG 和 CSS background image 仍独立后置。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则
