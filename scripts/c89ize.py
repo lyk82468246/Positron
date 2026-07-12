@@ -18,11 +18,13 @@ reached (so "} else if (...) {" correctly closes the previous block and opens a
 fresh sibling - its body decls are NOT mis-seen as mid-block) and the END depth
 (so newly opened blocks are pushed fresh with seen=False).
 
-SAFETY: multi-declarator declarations ("TYPE a = .., b ..;") and multi-variable
-for-inits are left untouched (a top-level comma is the signal) - splitting them
-is error-prone, so they are left for manual fixup (rare; the compiler flags
-them). Declarations already preceding every statement in their block are left
-alone (legal C89). Idempotent. Audit `git diff`, then compile.
+SAFETY: multi-declarator declarations ("TYPE a = .., b ..;"), conditional-
+compilation regions, block comments, and multi-variable for-inits are left
+untouched. Rewriting those without a preprocessor/parser is error-prone, so
+the compiler flags any active C99 that remains. Multiline declarations are
+tracked as declarations rather than statements. Declarations already preceding
+every statement in their block are left alone (legal C89). Idempotent. Audit
+`git diff`, then compile.
 
 Usage:  python scripts/c89ize.py <file> [...]
 """
@@ -59,6 +61,9 @@ DECL_LIKE = re.compile(
     r'[A-Za-z_]\w*)'
     r'(?:\s*\*+\s*|\s+)'
     r'[A-Za-z_]\w*')
+
+EXPR_CONT_START = re.compile(
+    r'^\s*[A-Za-z_]\w*(?:\s*(?:->|\.)\s*[A-Za-z_]\w*)?\s*=')
 
 FORD = re.compile(
     r'^(?P<pre>\s*for\s*\(\s*)'
@@ -249,16 +254,48 @@ def transform(text):
     stack = []
     aggregate_depth = None
     decl_cont = False
+    expr_cont = False
+    block_comment = False
+    conditional_depth = 0
 
     for i in range(n):
         stripped = lines[i].strip()
+
+        # A regex rewriter must not interpret disabled/debug source or example
+        # code in comments as active C. Leave all conditional regions for the
+        # compiler/agent to assess conservatively.
+        if stripped.startswith(('#if ', '#if\t', '#ifdef', '#ifndef')):
+            conditional_depth += 1
+            continue
+        if stripped.startswith('#endif'):
+            if conditional_depth > 0:
+                conditional_depth -= 1
+            continue
+        if conditional_depth > 0:
+            continue
+
+        if block_comment:
+            if '*/' in lines[i]:
+                block_comment = False
+            continue
+        if '/*' in lines[i] and '*/' not in lines[i].split('/*', 1)[1]:
+            block_comment = True
+            continue
 
         if decl_cont:
             if stripped.endswith(';'):
                 decl_cont = False
             continue
-        if DECL_INIT_START.match(stripped) and not stripped.endswith(';'):
+        if expr_cont:
+            if stripped.endswith(';'):
+                expr_cont = False
+            continue
+        if (DECL_INIT_START.match(stripped) or DECL_LIKE.match(stripped)) and \
+                not stripped.endswith(';'):
             decl_cont = True
+            continue
+        if EXPR_CONT_START.match(stripped) and not stripped.endswith(';'):
+            expr_cont = True
             continue
 
         if aggregate_depth is not None:

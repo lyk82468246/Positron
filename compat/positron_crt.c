@@ -115,6 +115,15 @@ int snprintf(char *buf, size_t size, const char *fmt, ...)
 	return n;
 }
 
+/* C99 lroundf, with halfway cases rounded away from zero. */
+long lroundf(float value)
+{
+	if (value >= 0.0f) {
+		return (long) (value + 0.5f);
+	}
+	return (long) (value - 0.5f);
+}
+
 /*
  * Standard C time(). WinCE 5 coredll has no time() at all (NetSurf libdom
  * stamps DOM events with it). Derive Unix seconds from the system clock via

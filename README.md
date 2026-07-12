@@ -13,7 +13,7 @@ Electron-like 轻量级框架，目标设备：**Windows Mobile 6 Professional**
 | **1** | `positron_tls.dll` — TLS 1.2 客户端（mbedTLS 2.16 LTS） | ✅ 完成，WM6 Emulator 验证 |
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1：HTTPS via mbedTLS，明文 HTTP via WinInet) | ✅ 完成，WM6 Emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
-| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 M5f/M7 后：正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、图片缓存/重绘链与 WM Imaging BMP 已真机验证；IANA 左缘裁切已修复，但窄屏复杂布局、PNG/JPEG/GIF 与 SVG 待补 |
+| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector 与 BMP/PNG/JPEG/GIF 缓存图片链已真机验证；窄屏复杂布局、SVG 与背景图待补 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
@@ -25,7 +25,7 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 最新设备反馈（2026-07-11）：TEST15 已为 `normal_ws=ok pre_lf=kept`，文本空白修复闭环。扩展 TEST24 的缓存重选、无联网和 0/50/100% 滚动比例已通过；真实 TEST13 横竖屏也保持 `Further Reading / Domain Names` 同一阅读区域。导航第一阶段已确认主文档 GET 期间旧页可滚动且成功后正常换页。父窗口进度条有滚动残影，`STATIC` 子窗口则不可见；现已按 WM6 SDK 改用 `PROGRESS_CLASS` Common Control，待设备复测。网络失败分支及外链资源完整异步仍待后续。
 
-当前明确缺口：BMP/PNG/JPEG/GIF 的 WM Imaging 可见绘制已确认；TEST20 已扩为四格式缓存 `<img>` 正式 NetSurf 链，待真机复测。SVG 与背景图仍未完成。CSS 动态状态伪类、float、复杂 table、forms/widgets 仍不完整；导航资源提交仍会占用 UI；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：位图四格式链已经闭环；SVG 目前仅完成 libsvgtiny 静态编译基线，尚未完成 XML parse/link、GDI shape/path 绘制和 `<img>` 接入。背景图、CSS 动态状态伪类、float、复杂 table、forms/widgets 仍不完整；导航资源提交仍会占用 UI；JavaScript 尚未实现但属于长期必做目标。
 
 ---
 
@@ -44,7 +44,7 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 ```
 Positron/
-  Positron.sln                  VS2008 solution（9 工程登记）
+  Positron.sln                  VS2008 solution（含 NetSurf 静态库与产品 DLL）
   README.md                     本文件
   PHASE1.md                     Phase 1 经验/坑记录
   PHASE2.md                     Phase 2 设计 + 已知风险点
@@ -72,6 +72,8 @@ Positron/
     pcore_talloc.c                精简 talloc 垫片
     nsshim/                       NetSurf layout/redraw 依赖的精简 shim 头
     positron_core.vcproj          DLL，静态链入 NetSurf 库与移植的 layout/redraw 源
+
+  positron_libsvgtiny/          NetSurf libsvgtiny 静态库（SVG 编译基线）
 
   test_host/                    端到端测试 EXE（分通信/引擎/GDI渲染/Browse 组）
     main.c

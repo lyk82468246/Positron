@@ -47,6 +47,10 @@ int strncasecmp(const char *s1, const char *s2, size_t n);
  * <time.h>, not here, to avoid clashing with the platform prototype. */
 int snprintf(char *buf, size_t size, const char *fmt, ...);
 
+/* C99 lroundf. WinCE 5.2 omits it; libsvgtiny needs round-to-nearest with
+ * halfway values away from zero when converting geometry. */
+long lroundf(float value);
+
 #ifdef __cplusplus
 }
 #endif

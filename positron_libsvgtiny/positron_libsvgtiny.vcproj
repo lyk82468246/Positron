@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="9.00"
+	Name="positron_libsvgtiny"
+	ProjectGUID="{A54B6C31-7D82-4E9F-B105-6C7D8E9F0123}"
+	RootNamespace="positron_libsvgtiny"
+	Keyword="Win32Proj"
+	TargetFrameworkVersion="196613">
+	<Platforms>
+		<Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" />
+	</Platforms>
+	<ToolFiles />
+	<Configurations>
+		<Configuration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libsvgtiny\include;..\netsurf-all-3.11\libsvgtiny\src;..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict=;isnan=_isnan"
+				ForcedIncludeFiles="positron_crt.h" MinimalRebuild="true"
+				RuntimeLibrary="1" UsePrecompiledHeader="0" WarningLevel="3"
+				DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLibrarianTool" OutputFile="$(OutDir)\positron_libsvgtiny.lib" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+		<Configuration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
+				FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libsvgtiny\include;..\netsurf-all-3.11\libsvgtiny\src;..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict=;isnan=_isnan"
+				ForcedIncludeFiles="positron_crt.h" RuntimeLibrary="0"
+				UsePrecompiledHeader="0" WarningLevel="3"
+				DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLibrarianTool" OutputFile="$(OutDir)\positron_libsvgtiny.lib" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+	</Configurations>
+	<References />
+	<Files>
+		<File RelativePath="..\netsurf-all-3.11\libsvgtiny\src\svgtiny.c" />
+		<File RelativePath="..\netsurf-all-3.11\libsvgtiny\src\svgtiny_gradient.c" />
+		<File RelativePath="..\netsurf-all-3.11\libsvgtiny\src\svgtiny_list.c" />
+	</Files>
+	<Globals />
+</VisualStudioProject>
