@@ -37,6 +37,8 @@ CTRL = {'return', 'if', 'else', 'for', 'while', 'switch', 'case', 'default',
 AGGREGATE_START = re.compile(
     r'^\s*(?:typedef\s+)?(?:struct|union|enum)(?:\s+[A-Za-z_]\w*)?\s*\{')
 
+CASE_BLOCK = re.compile(r'^\s*(?:case\b.*|default)\s*:\s*\{\s*$')
+
 DECL = re.compile(
     r'^(?P<ind>[ \t]+)'
     r'(?P<head>(?:(?:const|static|volatile|register|unsigned|signed|struct|enum|union)\s+)*'
@@ -261,6 +263,22 @@ def transform(text):
     def crosses_function_end(start, end):
         return any(lines[k] == '}' for k in range(start + 1, end))
 
+    def is_leading_declaration(index):
+        """True when only declarations/blank lines separate this declaration
+        from its block opener. Such a prefix is already legal C89, regardless
+        of any imperfect lexical stack state around switch cases."""
+        k = index - 1
+        while k >= 0:
+            candidate = lines[k].strip()
+            if not candidate:
+                k -= 1
+                continue
+            if DECL.match(lines[k]):
+                k -= 1
+                continue
+            return candidate.endswith('{')
+        return False
+
     for i in range(n):
         stripped = lines[i].strip()
 
@@ -344,6 +362,8 @@ def transform(text):
             else:
                 m = DECL.match(ln)
                 if m and m.group('head').split()[0] not in CTRL:
+                    if is_leading_declaration(i):
+                        continue
                     init = m.group('init')
                     if init and has_top_level_comma(init):
                         pass  # multi-declarator: leave for manual fixup
@@ -367,6 +387,11 @@ def transform(text):
         de = starts[i + 1] if i + 1 < n else 0
         while len(stack) < de:
             stack.append({'insert': i, 'seen': False, 'names': set()})
+        # Sibling braced cases end and reopen at the same lexical depth. A
+        # depth-only stack would otherwise retain the previous case's seen
+        # state and hoist declarations into that sibling (or even WM_PAINT).
+        if CASE_BLOCK.match(lines[i]) and de > 0:
+            stack[-1] = {'insert': i, 'seen': False, 'names': set()}
         # Raw preprocessor branches can confuse lexical brace depth. A
         # column-zero closing brace is the established style for a function
         # end in imported NetSurf/Expat sources; never carry block state into

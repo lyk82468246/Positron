@@ -21,7 +21,7 @@ Positron 是 Windows Mobile 6 / WinCE 5.02 的现代基础设施集合，同时�
 - `positron_json.dll`：稳定的 JSON C API。
 - `positron_http.dll`：HTTP/HTTPS，复用 TLS 和系统网络能力。
 - `positron_core.dll`：HTML/CSS/DOM/layout/redraw 的产品级引擎边界。
-- `positron_image.dll`：统一 WM Imaging 位图与 SVG 能力，可被 core 或其他 WM 程序独立调用。首个公共 API 已封装 Expat/libdom/libsvgtiny 内存 SVG parse；位图 API 迁移与 SVG 绘制仍在后续。
+- `positron_image.dll`：统一 WM Imaging 位图与 SVG 能力，可被 core 或其他 WM 程序独立调用。现有公共 API 提供 opaque SVG create/info/draw/free；解析对象和内存始终由 DLL 持有，位图 API 迁移与浏览器 `<img>` 接入仍在后续。
 
 公共 DLL 使用稳定 C ABI、UTF-8 字符串和 opaque handle。不得向调用者暴露 C++ ABI、NetSurf 内部结构或第三方库的易变类型。
 

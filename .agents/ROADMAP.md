@@ -84,8 +84,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 3. float 保持未支持；先对照上游 box construction/normalisation 建立整树结构和普通文流端到端回归，再重新实现。
 4. 导航异步化第一阶段已实现并通过 VS2008 全量构建：主文档 GET 在 worker 执行，旧页继续绘制/滚动并显示不定量进度条，HTTP response 通过窗口消息回到 UI 线程后才 parse/style/layout/swap；窗口关闭会等待并回收 worker。待设备确认。CSS/图片资源的完整异步事务随后处理。
 5. **已完成并真机验收**：Expat -> libdom XML -> libsvgtiny 内存 SVG 解析与 TEST25。
-6. 下一步将 libsvgtiny path/shape 映射到 GDI，定义 DLL 内部 SVG 对象的创建/绘制/释放 API，再接入缓存 `<img>`。
-7. 图片能力采用两层边界：上游解析库保持静态 `.lib`；稳定的 `positron_image.dll` 统一封装 WM Imaging 与 libsvgtiny，供 `positron_core.dll` 和其他 WM 程序调用。对象必须由同一 DLL 创建/释放，不能暴露 NetSurf 内部结构或跨 CRT 所有权；现有 `PCore_Image*` 暂保留为兼容转发。
+6. **已完成构建、待设备验收**：新增 opaque SVG create/info/draw/free API；按仓库内 libnsfb `cubic_points()` 策略将曲线细分为 30 点，再调用 WM GDI Polygon/Polyline。TEST26 自动检查红/绿填充像素并显示蓝色 cubic stroke。
+7. TEST26 通过后，把 retained SVG 对象接入文档图片缓存与 NetSurf replaced box；随后再按真实页面需求处理复合孔洞、抗锯齿和 SVG text。
+8. 图片能力采用两层边界：上游解析库保持静态 `.lib`；稳定的 `positron_image.dll` 统一封装 WM Imaging 与 libsvgtiny，供 `positron_core.dll` 和其他 WM 程序调用。对象必须由同一 DLL 创建/释放，不能暴露 NetSurf 内部结构或跨 CRT 所有权；现有 `PCore_Image*` 暂保留为兼容转发。
 
 验收：
 
@@ -169,7 +170,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `positron_json`
 - `positron_http`
 - `positron_core`
-- `positron_image`（已建立公共 DLL；SVG parse API 已构建，位图迁移与 SVG draw 待完成）
+- `positron_image`（公共 DLL；SVG retained object + 基础 GDI draw 已构建，TEST26 待设备，位图迁移待完成）
 
 API 要能被外部 WM6 C app 消费，不只服务 test_host。LocalSend WM6 port 是这个原则的现实驱动。
 

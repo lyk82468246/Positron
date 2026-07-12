@@ -1527,6 +1527,9 @@ static int    g_plot_test = 0;   /* M1: paint via PCore_PlotTest, not a doc */
 static int    g_ns_render = 0;    /* M5e: paint via PCore_NsRenderTest */
 static int    g_image_test = 0;   /* TEST 19: native WM Imaging draw */
 static int    g_image_draw_rc = -1;
+static int    g_svg_test = 0;     /* TEST 26: positron_image SVG draw */
+static int    g_svg_draw_rc = -1;
+static PIMAGE_SVG g_svg_handle = NULL;
 #define PCORE_IMAGE_FORMAT_COUNT 4
 static const char *g_image_format_data[PCORE_IMAGE_FORMAT_COUNT];
 static int g_image_format_len[PCORE_IMAGE_FORMAT_COUNT];
@@ -2028,6 +2031,23 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         FillRect(hdc, &ps.rcPaint, (HBRUSH) GetStockObject(WHITE_BRUSH));
         if (g_plot_test) {
             PCore_PlotTest(hdc);   /* M1: drive the GDI plotter directly */
+        } else if (g_svg_test) {
+            RECT rcc;
+            int width;
+            int height;
+            int rc;
+
+            GetClientRect(hwnd, &rcc);
+            width = rcc.right - rcc.left - 20;
+            height = width / 2;
+            if (height > rcc.bottom - rcc.top - 40) {
+                height = rcc.bottom - rcc.top - 40;
+                width = height * 2;
+            }
+            rc = PImage_DrawSvg(g_svg_handle, hdc, 10, 20, width, height);
+            if (rc != PIMAGE_OK && g_svg_draw_rc == PIMAGE_OK) {
+                g_svg_draw_rc = rc;
+            }
         } else if (g_image_test) {
             RECT rcc;
             int rc;
@@ -2843,6 +2863,115 @@ static BOOL test20_cached_img(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 26 - retained SVG object rendered through positron_image.dll     */
+/* Verifies fills in an off-screen DC, then shows scaled path rendering. */
+/* -------------------------------------------------------------------- */
+static BOOL test26_svg_draw(void)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" "
+        "height=\"60\" viewBox=\"0 0 120 60\">"
+        "<rect x=\"0\" y=\"0\" width=\"40\" height=\"60\" "
+        "fill=\"#ff0000\"/>"
+        "<rect x=\"40\" y=\"0\" width=\"40\" height=\"60\" "
+        "fill=\"#00ff00\"/>"
+        "<path d=\"M86 52 C86 5 114 5 114 52\" fill=\"none\" "
+        "stroke=\"#0000ff\" stroke-width=\"4\"/>"
+        "</svg>";
+    PIMAGE_SVG svg;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF red;
+    COLORREF green;
+    int rc;
+    char msg[192];
+
+    svg = NULL;
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    rc = PImage_CreateSvgFromMemory(SVG, (int) sizeof(SVG) - 1,
+            120, 60, &svg);
+    if (rc != PIMAGE_OK || svg == NULL) {
+        _snprintf(msg, sizeof(msg) - 1, "create rc=%d handle=%p", rc, svg);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 26 FAIL", msg);
+        return FALSE;
+    }
+
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        memory_dc = CreateCompatibleDC(screen_dc);
+        bitmap = CreateCompatibleBitmap(screen_dc, 120, 60);
+    }
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 26 FAIL", "could not create off-screen GDI surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 120, 60);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    rc = PImage_DrawSvg(svg, memory_dc, 0, 0, 120, 60);
+    red = GetPixel(memory_dc, 20, 30);
+    green = GetPixel(memory_dc, 60, 30);
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    if (rc != PIMAGE_OK || red != RGB(255, 0, 0) ||
+            green != RGB(0, 255, 0)) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "draw rc=%d red=0x%06lX green=0x%06lX",
+                rc, red & 0x00ffffffUL, green & 0x00ffffffUL);
+        msg[sizeof(msg) - 1] = '\0';
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 26 FAIL", msg);
+        return FALSE;
+    }
+
+    show_info(L"TEST 26",
+              "A vector image window will open. Expect:\n"
+              "red and green solid blocks, then a BLUE cubic curve.\n"
+              "The drawing scales to the current client area.\n\n"
+              "Tap or press Esc to close.");
+    g_svg_handle = svg;
+    g_svg_test = 1;
+    g_svg_draw_rc = PIMAGE_OK;
+    g_render_doc = NULL;
+    g_doc_h = 0;
+    g_scroll_y = 0;
+    if (!show_render_window()) {
+        g_svg_test = 0;
+        g_svg_handle = NULL;
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 26 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_svg_test = 0;
+    g_svg_handle = NULL;
+    PImage_FreeSvg(svg);
+    if (g_svg_draw_rc != PIMAGE_OK) {
+        _snprintf(msg, sizeof(msg) - 1, "window draw rc=%d", g_svg_draw_rc);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 26 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 26 OK",
+              "Retained SVG rendered through positron_image.dll:\n"
+              "solid fills + cubic path + scaled stroke.\n"
+              "Off-screen red/green pixels matched exactly.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -2955,7 +3084,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-25)\n"
+                  "Yes = run all selected groups (TEST 1-26)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -2976,7 +3105,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "Run GDI RENDER tests?\n\n"
                                "M1 plotter (TEST 14), NetSurf render\n"
                                "(TEST 17), native image draw (TEST 19),\n"
-                               "local HTML page (TEST 12).\n"
+                               "SVG path draw (TEST 26), local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -3019,13 +3148,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* --- GDI render group (TEST 12, 14, 17, 19, 20; offline) ---------- */
+    /* --- GDI render group (TEST 12, 14, 17, 19, 20, 26; offline) ------ */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
         show_info(L"TEST (M2) font table", fb);
         if (!test14_plot())        { rc = 13; goto done; }
         if (!test19_wmimage())     { rc = 13; goto done; }
+        if (!test26_svg_draw())    { rc = 13; goto done; }
         if (!test20_cached_img())  { rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
@@ -3062,10 +3192,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
-               "    plus WM Imaging native BMP decode/draw and cached <img>.\n"
+               "    plus WM Imaging bitmaps, cached <img>, and SVG path draw.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

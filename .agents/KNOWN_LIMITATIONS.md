@@ -12,7 +12,7 @@
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | 撤回 TEST23 对应实现后的最新 TEST 13 截图确认：灾难性的正文重叠已消失，此前约 25px 的左缘裁切也未复现，`Example Domains` 可读。 | TEST 13 版式通过，或页面已达到原浏览器/现代浏览器的还原度。 |
 | 图片 | TEST 18、19、20 已分别确认资源去重、WM Imaging 内存 BMP 解码/绘制、缓存 `<img>` 进入 NetSurf `box->object -> content_redraw -> plot_bitmap` 链。 | PNG/JPEG/GIF、SVG、背景图或任意网络图片均可显示。 |
-| ENGINE 离线回归 | 2026-07-11 用户确认 TEST 6-11、15、16、18、21、22、24 通过。TEST23 的浮动最小样例曾通过，但对应实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
+| ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认跨断点重选、无联网及滚动比例，真实 TEST13 横竖屏也保持同一阅读区域。 | 所有媒体语法和任意样式资源均已覆盖。 |
 
 ## 真实页面观察到的未完成项
@@ -49,7 +49,7 @@
 
 WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
-- **当前结论**：BMP/PNG/JPEG/GIF 四格式的 WM Imaging 直接解码及 TEST20 缓存 `<img>` 正式 NetSurf replaced-box 链已由设备视觉确认。SVG 的 Expat 2.8.2 -> libdom XML -> libsvgtiny 内存 parse 和公共 `positron_image.dll` 已由 TEST25 在 WM6 ARM 真机确认；尚无 SVG GDI shape/path 绘制、SVG `<img>` 或 CSS background image。
+- **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。SVG parse 和公共 DLL 已由 TEST25 真机确认；opaque SVG 对象及基础 GDI path draw 已构建，TEST26 待设备。由于 WM6 GDI 缺少桌面 path API，当前沿用 libnsfb 固定 30 点 cubic 细分并逐子路径 Polygon/Polyline；复合路径孔洞/非零 winding、抗锯齿、SVG text、SVG `<img>` 和 CSS background image 尚不支持。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则
