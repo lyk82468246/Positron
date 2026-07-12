@@ -258,8 +258,14 @@ def transform(text):
     block_comment = False
     conditional_depth = 0
 
+    def crosses_function_end(start, end):
+        return any(lines[k] == '}' for k in range(start + 1, end))
+
     for i in range(n):
         stripped = lines[i].strip()
+
+        if lines[i] == '}':
+            stack = []
 
         # A regex rewriter must not interpret disabled/debug source or example
         # code in comments as active C. Leave all conditional regions for the
@@ -324,6 +330,10 @@ def transform(text):
                 typ = mf.group('type'); name = mf.group('name')
                 lead = re.match(r'^\s*', ln).group(0)
                 if name not in cur['names']:
+                    if crosses_function_end(cur['insert'], i):
+                        raise ValueError(
+                            "refusing to hoist for-variable across function end "
+                            "at line %d" % (i + 1))
                     decl = "%s%s%s;" % (lead, typ.rstrip(),
                                         (' ' + name) if not typ.rstrip().endswith('*') else name)
                     inserts.setdefault(cur['insert'], []).append(decl)
@@ -341,6 +351,10 @@ def transform(text):
                         ind = m.group('ind'); head = m.group('head'); sep = m.group('sep')
                         name = m.group('name'); arr = m.group('arr') or ''
                         if name not in cur['names']:
+                            if crosses_function_end(cur['insert'], i):
+                                raise ValueError(
+                                    "refusing to hoist declaration across "
+                                    "function end at line %d" % (i + 1))
                             inserts.setdefault(cur['insert'], []).append(
                                 "%s%s%s%s%s;" % (ind, head, sep, name, arr))
                             cur['names'].add(name)
@@ -353,6 +367,12 @@ def transform(text):
         de = starts[i + 1] if i + 1 < n else 0
         while len(stack) < de:
             stack.append({'insert': i, 'seen': False, 'names': set()})
+        # Raw preprocessor branches can confuse lexical brace depth. A
+        # column-zero closing brace is the established style for a function
+        # end in imported NetSurf/Expat sources; never carry block state into
+        # the next function.
+        if lines[i] == '}':
+            stack = []
 
     if nchg == 0:
         return text, 0

@@ -30,8 +30,8 @@
 				Name="VCCLCompilerTool"
 				ExecutionBucket="7"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libdom\src;..\netsurf-all-3.11\libdom\bindings\hubbub;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\netsurf-all-3.11\libhubbub\include;..\compat"
-				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libdom\src;..\netsurf-all-3.11\libdom\bindings\hubbub;..\netsurf-all-3.11\libdom\bindings\xml;..\positron_expat\expat;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\netsurf-all-3.11\libhubbub\include;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_LIB;XML_STATIC;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
 				ForcedIncludeFiles="positron_crt.h"
 				MinimalRebuild="true"
 				RuntimeLibrary="1"
@@ -78,8 +78,8 @@
 				ExecutionBucket="7"
 				Optimization="2"
 				FavorSizeOrSpeed="2"
-				AdditionalIncludeDirectories="..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libdom\src;..\netsurf-all-3.11\libdom\bindings\hubbub;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\netsurf-all-3.11\libhubbub\include;..\compat"
-				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_LIB;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
+				AdditionalIncludeDirectories="..\netsurf-all-3.11\libdom\include;..\netsurf-all-3.11\libdom\src;..\netsurf-all-3.11\libdom\bindings\hubbub;..\netsurf-all-3.11\libdom\bindings\xml;..\positron_expat\expat;..\netsurf-all-3.11\libwapcaplet\include;..\netsurf-all-3.11\libparserutils\include;..\netsurf-all-3.11\libhubbub\include;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_LIB;XML_STATIC;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;inline=__inline;restrict="
 				ForcedIncludeFiles="positron_crt.h"
 				MinimalRebuild="true"
 				RuntimeLibrary="0"
@@ -119,6 +119,14 @@
 			</FileConfiguration>
 			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
 				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\bindings_hubbub_parser.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libdom\bindings\xml\expat_xmlparser.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\bindings_xml_expat_xmlparser.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\bindings_xml_expat_xmlparser.obj" />
 			</FileConfiguration>
 		</File>
 		<File RelativePath="..\netsurf-all-3.11\libdom\src\core\attr.c">

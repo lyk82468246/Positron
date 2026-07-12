@@ -4,7 +4,7 @@ REM folder C:\WMShare\.
 REM
 REM VS2008 Smart Device deploy is broken for this project (see PHASE1.md).
 REM Workaround: use the emulator's shared folder. This script collects
-REM the five binaries we need. Optional arg 2 selects an alternate folder.
+REM the six binaries we need. Optional arg 2 selects an alternate folder.
 
 setlocal
 set CFG=Debug
@@ -21,6 +21,7 @@ copy /Y "%ROOT%\positron_tls\bin\%CFG%\positron_tls.dll"   "%STAGE%\" || goto :f
 copy /Y "%ROOT%\positron_json\bin\%CFG%\positron_json.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_http\bin\%CFG%\positron_http.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_core\bin\%CFG%\positron_core.dll" "%STAGE%\" || goto :fail
+copy /Y "%ROOT%\positron_image\bin\%CFG%\positron_image.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\bin\%CFG%\test_host.exe"         "%STAGE%\" || goto :fail
 
 echo.

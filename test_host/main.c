@@ -35,6 +35,7 @@
 #include "positron_tls.h"
 #include "positron_json.h"
 #include "positron_http.h"
+#include "positron_image.h"
 
 #include <hubbub/parser.h>
 
@@ -1353,6 +1354,42 @@ static BOOL test24_cached_stylesheet_restyle(void)
               "green -> blue; fetch calls stayed 1.\n"
               "Rotation scroll ratio passed at 0/50/100%.\n\n"
               "(restyle does not network.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 25 - public SVG parsing path through positron_image.dll          */
+/* Exercises Expat -> libdom XML binding -> libsvgtiny without network. */
+/* -------------------------------------------------------------------- */
+static BOOL test25_svg_parse(void)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" "
+        "height=\"32\" viewBox=\"0 0 64 32\">"
+        "<rect x=\"0\" y=\"0\" width=\"32\" height=\"32\" fill=\"red\"/>"
+        "<path d=\"M32 0 L64 0 L64 32 L32 32 Z\" fill=\"green\"/>"
+        "</svg>";
+    int rc;
+    int width;
+    int height;
+    unsigned int shapes;
+    char msg[192];
+
+    rc = PImage_SvgInfoFromMemory(SVG, (int) sizeof(SVG) - 1,
+            64, 32, &width, &height, &shapes);
+    if (rc != PIMAGE_OK || width != 64 || height != 32 || shapes != 2) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "rc=%d size=%dx%d shapes=%u; expect rc=0 64x32 shapes=2",
+                rc, width, height, shapes);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 25 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 25 OK",
+              "SVG parsed through the public image DLL:\n"
+              "Expat -> libdom XML -> libsvgtiny.\n"
+              "Intrinsic size=64x32; shapes=2.\n\n"
+              "(in-memory and fully offline.)");
     return TRUE;
 }
 
@@ -2918,7 +2955,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-24)\n"
+                  "Yes = run all selected groups (TEST 1-25)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -2934,7 +2971,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "HTML / CSS / DOM parse, select, style,\n"
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
-                               "(TEST 6-11, 15, 16, 18, 21, 22, 24). Offline.");
+                               "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "M1 plotter (TEST 14), NetSurf render\n"
@@ -2961,7 +2998,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine group (TEST 6-11, 15, 16, 18, 21, 22, 24; offline) --- */
+    /* --- Engine group (TEST 6-11, 15, 16, 18, 21, 22, 24, 25; offline) */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -2972,6 +3009,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test21_media_viewport()){ rc = 11; goto done; }
         if (!test22_reverse_flex_padding()){ rc = 11; goto done; }
         if (!test24_cached_stylesheet_restyle()){ rc = 11; goto done; }
+        if (!test25_svg_parse())   { rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -3016,11 +3054,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
-               "    resource discovery/document cache. Offline.\n\n");
+               "    resource cache, and SVG parse through positron_image.dll. Offline.\n\n");
     }
     if (run_render) {
         strcat(summary,

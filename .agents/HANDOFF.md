@@ -93,7 +93,7 @@ scripts\stage.bat
 启动时可选择：
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18、21、22、24，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle，离线。2026-07-11 用户真机确认通过。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
+- Engine：TEST 6-11、15、16、18、21、22、24、25，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle 与 SVG parse，离线。至 TEST24 已由用户真机确认；TEST25 本地 ARM 构建通过、待设备确认。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
 - GDI Render：TEST 14、19、17、12，离线窗口渲染与 WM Imaging 原生图片绘制。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
@@ -111,7 +111,7 @@ scripts\stage.bat
 3. `WM_SIZE` 从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback。TEST24 与真实 Browse 旋转均已确认。
 4. 主文档 GET 已在单一 worker 执行。设备已确认旧页可滚动且成功后正常换页。父窗口条带有复制残影，`STATIC` 子窗口又完全不可见；现已按 WM6 SDK 改用 `PROGRESS_CLASS` + `PBM_SETPOS` 并链接 `commctrl.lib`，全量构建通过待复测。创建失败时标题显示 loading。失败保留旧页仍待测；资源 fetch 与 style/layout 仍在 UI 提交阶段。
 5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法。整数像素 `width <=` / `width <` 两种形式已由扩展 TEST21 真机确认；不要把它扩大为完整 MQ4/custom-properties 支持。
-6. 图片/SVG：TEST 20 已确认 96x72 有边框的 2x2 BMP（red/green + blue/yellow）显示且无 fallback text；Browse host 已在 layout 前接入同一 fetch 流程。下一步是 PNG/JPEG/GIF 格式覆盖；当前 SVG logo/PNG/JPEG 仍不会通过 `<img>` 真实显示。table rowspan 仍是简化版。完整边界和完成条件见 `KNOWN_LIMITATIONS.md`。
+6. 图片/SVG：TEST20 已确认 BMP/PNG/JPEG/GIF 四格式缓存 `<img>` 在横竖屏颜色与顺序一致。官方 Expat 2.8.2、libdom XML binding、libsvgtiny 与新的 `positron_image.dll` 已接通内存 SVG parse；TEST25 待设备确认。下一步是 GDI shape/path 绘制和缓存 `<img>` 接入；table rowspan 仍是简化版。完整边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 开发纪律
 
