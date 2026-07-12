@@ -25,7 +25,7 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 最新设备反馈（2026-07-11）：TEST15 已为 `normal_ws=ok pre_lf=kept`，文本空白修复闭环。扩展 TEST24 的缓存重选、无联网和 0/50/100% 滚动比例已通过；真实 TEST13 横竖屏也保持 `Further Reading / Domain Names` 同一阅读区域。导航第一阶段已确认主文档 GET 期间旧页可滚动且成功后正常换页。父窗口进度条有滚动残影，`STATIC` 子窗口则不可见；现已按 WM6 SDK 改用 `PROGRESS_CLASS` Common Control，待设备复测。网络失败分支及外链资源完整异步仍待后续。
 
-当前明确缺口：BMP/PNG/GIF 可见绘制与 TEST20 96x72 缓存图片已确认；JPEG 已换用不受 2x2 DCT 严重失真影响的 16x16 4:4:4 样本，待真机复测。SVG 与背景图仍未完成。CSS 动态状态伪类、float、复杂 table、forms/widgets 仍不完整；导航资源提交仍会占用 UI；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：BMP/PNG/JPEG/GIF 的 WM Imaging 可见绘制已确认；TEST20 已扩为四格式缓存 `<img>` 正式 NetSurf 链，待真机复测。SVG 与背景图仍未完成。CSS 动态状态伪类、float、复杂 table、forms/widgets 仍不完整；导航资源提交仍会占用 UI；JavaScript 尚未实现但属于长期必做目标。
 
 ---
 

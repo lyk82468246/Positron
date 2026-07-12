@@ -2666,20 +2666,44 @@ static int image_bitmap_fetch(void *pw, const char *url,
 {
     image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
     char *data;
+    const char *b64;
+    int cap;
+    int len;
 
     *out_data = NULL;
     *out_len = 0;
     ctx->calls++;
-    if (strcmp(url, "/img/test.bmp") != 0) {
+    b64 = NULL;
+    if (strcmp(url, "/img/test.bmp") == 0) {
+        len = sizeof(g_test_bmp_2x2);
+        data = (char *) malloc((size_t) len);
+        if (data == NULL) {
+            return 1;
+        }
+        memcpy(data, g_test_bmp_2x2, (size_t) len);
+    } else if (strcmp(url, "/img/test.png") == 0) {
+        b64 = g_test_png_2x2_b64;
+    } else if (strcmp(url, "/img/test.jpg") == 0) {
+        b64 = g_test_jpeg_16x16_b64;
+    } else if (strcmp(url, "/img/test.gif") == 0) {
+        b64 = g_test_gif_2x2_b64;
+    } else {
         return 1;
     }
-    data = (char *) malloc(sizeof(g_test_bmp_2x2));
-    if (data == NULL) {
-        return 1;
+    if (b64 != NULL) {
+        cap = (int) strlen(b64) * 3 / 4 + 4;
+        data = (char *) malloc((size_t) cap);
+        if (data == NULL) {
+            return 1;
+        }
+        len = pcore_decode_base64(b64, (unsigned char *) data, cap);
+        if (len <= 0) {
+            free(data);
+            return 1;
+        }
     }
-    memcpy(data, g_test_bmp_2x2, sizeof(g_test_bmp_2x2));
     *out_data = data;
-    *out_len = sizeof(g_test_bmp_2x2);
+    *out_len = len;
     ctx->matched++;
     return 0;
 }
@@ -2687,15 +2711,19 @@ static int image_bitmap_fetch(void *pw, const char *url,
 static BOOL test20_cached_img(void)
 {
     static const char *HTML =
-        "<!DOCTYPE html><html><body><h2>Cached image</h2>"
-        "<p>The colour square below is a NetSurf image object:</p>"
-        "<img alt=\"fallback text\" src=\"/img/test.bmp\">"
-        "<p>It should be red/green above blue/yellow.</p>"
+        "<!DOCTYPE html><html><body><h2>Cached formats</h2>"
+        "<p>NetSurf image objects: BMP, PNG, JPEG, GIF.</p>"
+        "<div><img alt=\"BMP fallback\" src=\"/img/test.bmp\">"
+        "<img alt=\"PNG fallback\" src=\"/img/test.png\">"
+        "<img alt=\"JPEG fallback\" src=\"/img/test.jpg\">"
+        "<img alt=\"GIF fallback\" src=\"/img/test.gif\"></div>"
+        "<p>All four should show red/green above blue/yellow.</p>"
         "</body></html>";
     static const char *CSS =
         "body{background-color:#ffffff;color:#202020;margin:8px;}"
         "h2{color:#800000;}p{color:#103080;}"
-        "img{width:96px;height:72px;border:2px solid #202020;}";
+        "img{width:48px;height:48px;border:1px solid #202020;"
+        "margin-right:2px;}";
     HANDLE hDoc;
     HANDLE hSheet;
     image_resource_test_ctx ctx;
@@ -2718,8 +2746,8 @@ static BOOL test20_cached_img(void)
     }
     if (PCore_FetchImageResources(hDoc, image_bitmap_fetch,
             image_resource_free, &ctx, &found, &fetched) != 0 ||
-            found != 1 || fetched != 1 || ctx.calls != 1 ||
-            ctx.matched != 1 || ctx.frees != 1) {
+            found != 4 || fetched != 4 || ctx.calls != 4 ||
+            ctx.matched != 4 || ctx.frees != 4) {
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 20 FAIL", "image cache setup failed");
         return FALSE;
@@ -2739,8 +2767,9 @@ static BOOL test20_cached_img(void)
     if (vh <= 0) { vh = 320; }
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != 96 || h != 72) {
-        sprintf(msg, "image box=(%d,%d) %dx%d; expect 96x72", x, y, w, h);
+            w != 48 || h != 48) {
+        sprintf(msg, "first image box=(%d,%d) %dx%d; expect 48x48",
+                x, y, w, h);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 20 FAIL", msg);
@@ -2750,10 +2779,10 @@ static BOOL test20_cached_img(void)
     g_doc_h = PCore_DocumentHeight(hDoc);
     g_scroll_y = 0;
     show_info(L"TEST 20",
-              "Cached <img> through NetSurf layout/redraw.\n\n"
-              "Expect a 96x72 image with a black border:\n"
-              "red/green on top, blue/yellow below.\n"
-              "It must replace the fallback text. Tap or Esc to close.");
+              "Cached formats through NetSurf layout/redraw.\n\n"
+              "Expect four bordered images in this order:\n"
+              "BMP, PNG, JPEG, GIF. No fallback text.\n"
+              "Tap or Esc to close.");
     g_render_doc = hDoc;
     g_render_sheet = hSheet;
     if (!show_render_window()) {
@@ -2770,9 +2799,9 @@ static BOOL test20_cached_img(void)
     PCore_FreeDocument(hDoc);
 
     show_info(L"TEST 20 OK",
-              "Cached BMP became a NetSurf replaced image box (96x72)\n"
+              "Cached BMP/PNG/JPEG/GIF became NetSurf replaced boxes\n"
               "and painted through content_redraw -> plot_bitmap ->\n"
-              "WM Imaging IImage::Draw.");
+              "WM Imaging IImage::Draw; fetch/free stayed 4/4.");
     return TRUE;
 }
 

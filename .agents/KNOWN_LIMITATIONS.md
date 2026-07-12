@@ -49,7 +49,7 @@
 
 WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
-- **当前复测**：BMP/PNG/GIF 四象限与 TEST20 的 96x72 author-sheet 保留修复已由设备确认。旧 2x2 JPEG fixture 自身严重失真，已换成桌面解码中心误差不超过 1 的 16x16 4:4:4 JPEG，待设备确认；SVG 和 CSS background image 仍独立后置。
+- **当前结论**：BMP/PNG/JPEG/GIF 四格式的 WM Imaging 直接解码/绘制已由设备视觉确认。TEST20 已扩为四格式缓存 `<img>` 正式 NetSurf replaced-box 链，构建通过待设备确认；SVG 和 CSS background image 仍独立后置。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则

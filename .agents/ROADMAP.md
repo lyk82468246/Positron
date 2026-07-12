@@ -73,7 +73,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - 旧 TEST 18 的 `<img src>` 资源发现/fetch 已真机通过；当前源码将成功字节复制到 document user-data 缓存，并按 URL 去重。embedder 缓冲仍由 `freefn` 立即释放；核心副本随文档释放。
 - 已新增 `pcore_wmimage.cpp` C++ 小适配层，调用 WM Imaging API 的 `CreateImageFromBuffer` / `IImage::Draw`，并在 TEST 19 中用内存 2x2 BMP 验证原生解码/绘制；2026-07-10 已真机通过。内存 PNG 首次真机反馈为 decode fail，需在 BMP 基线后单独做格式覆盖。
 - 缓存命中且可解码的 `<img>` 现在生成 `box->object`，并走 `content_redraw -> plot_bitmap -> IImage::Draw`；TEST 20 已真机验证。
-- BMP/PNG/GIF 可见四象限及 TEST20 author-sheet 保留修复已由设备确认；JPEG 原 2x2 fixture 自身失真，已换 16x16 4:4:4 样本待确认。背景图、SVG 仍未接通；解码失败或缓存未命中时 `<img>` 继续显示 alt/src 文本占位。
+- BMP/PNG/JPEG/GIF 的 WM Imaging 可见绘制已确认；TEST20 已扩为四格式缓存 `<img>` 正式 NetSurf 链，构建通过待设备确认。背景图、SVG 仍未接通；解码失败或缓存未命中时 `<img>` 继续显示 alt/src 文本占位。
 
 建议顺序：
 
