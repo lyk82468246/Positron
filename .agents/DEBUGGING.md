@@ -66,6 +66,8 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 
 2026-07-12 扩展 TEST19 首次真机结果：BMP/PNG/JPEG/GIF 都通过尺寸探测和 Draw 返回，但 PNG/GIF fixture 本身是黑色/透明 1x1，缺少视觉证明；旧 BMP 数组还只有 68 字节而头声明 70，宽容解码后颜色错误。同期 TEST20 从 96x72 退成小点，且 H2/p 颜色丢失：根因是 render window 首次 `WM_SIZE` 用 NULL author sheet restyle，覆盖了调用方 `hSheet`。现改为四种标准编码器 2x2 fixture（BMP 70/PNG 77/JPEG 694/GIF 46 字节），并由 `g_render_sheet` 在窗口生命周期内保留调用方 stylesheet；导航换文档时清空。增量构建通过，待复测 TEST19/20。
 
+复测确认 BMP/PNG/GIF 四象限和 TEST20 的 96x72、边框、标题/段落颜色恢复；JPEG 仍呈橄榄色，不能称为轻微偏色。桌面解码旧 2x2 JPEG 得到的本来就是橄榄色，根因是 fixture 尺寸小于合理 DCT 色块而非 WM codec。现换成 16x16、每象限 8x8、quality=100、4:4:4 的 305 字节 JPEG；桌面象限中心为 `(254,0,0)/(0,255,1)/(0,0,254)/(255,255,0)`，增量构建通过待设备复测 JPEG 行。
+
 2026-07-10 真机反馈：首次 TEST 19 使用内存 PNG 时，`PCore_ImageInfoFromMemory` 失败并显示“could not decode”。后续处理：去掉手写 `_WIN32_DCOM` 避免重定义警告，增加 `PCore_ImageLastError(stage, hr)`，并把 TEST 19 改为 2x2 BMP 基线。第二次真机反馈为 `stage=2 hr=0x80070057`，即 COM init invalid argument；WM6 SDK `winx.h` 把 `CoInitialize(x)` 映射为 `CoInitializeEx(x, COINIT_MULTITHREADED)`，所以 `pcore_wmimage.cpp` 已改用 `COINIT_MULTITHREADED`。2026-07-10 用户确认 BMP 基线正常；后续若 WM Imaging 又失败，看 stage：2=COM init，3=CoCreate factory，4=CreateImageFromBuffer，5=GetImageInfo，6=Draw。
 
 2026-07-10：旧 TEST 18 已真机得到 `found=2 fetched=2`。后续缓存版测试必须再扫描同一文档，并确认结果仍为 `2/2`、fetch callback 总调用数仍为 2；只看第二次也成功不足以证明去重。

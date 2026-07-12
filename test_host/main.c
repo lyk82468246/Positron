@@ -70,7 +70,7 @@ static const char g_test_png_2x2_b64[] =
 static const char g_test_gif_2x2_b64[] =
     "R0lGODdhAgACAIEAAP//AAD/AP8AAAAA/ywAAAAAAgACAAAIBwAFBBgAICAAOw==";
 
-static const char g_test_jpeg_2x2_b64[] =
+static const char g_test_jpeg_bad_2x2_b64[] =
     "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoH"
     "BwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQME"
     "BAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU"
@@ -86,6 +86,15 @@ static const char g_test_jpeg_2x2_b64[] =
     "xcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD6"
     "v+APhXRb/wCBHw4ubnR7C4uZvDemySzS2qM8jm1jJZiRkkkkkmiiiv8AP3Ov+Rni"
     "v+vk/wD0pn45mP8Avtb/ABS/Nn//2Q==";
+
+static const char g_test_jpeg_16x16_b64[] =
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+    "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEB"
+    "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+    "AQEBAQEBAQEBAQEBAQH/wAARCAAQABADAREAAhEBAxEB/8QAFgABAQEAAAAAAAAA"
+    "AAAAAAAACgkL/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/EABYBAQEBAAAAAAAAAAAAAA"
+    "AAAAkLCv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AIvinb+CUBbo"
+    "V4G60w1YNihAHKg//9k=";
 
 /* -------------------------------------------------------------------- */
 /* Display helpers                                                       */
@@ -2573,15 +2582,15 @@ static BOOL test19_wmimage(void)
 
     len[0] = sizeof(g_test_bmp_2x2);
     len[1] = pcore_decode_base64(g_test_png_2x2_b64, png, sizeof(png));
-    len[2] = pcore_decode_base64(g_test_jpeg_2x2_b64, jpeg, sizeof(jpeg));
+    len[2] = pcore_decode_base64(g_test_jpeg_16x16_b64, jpeg, sizeof(jpeg));
     len[3] = pcore_decode_base64(g_test_gif_2x2_b64, gif, sizeof(gif));
     data[0] = (const char *) g_test_bmp_2x2;
     data[1] = (const char *) png;
     data[2] = (const char *) jpeg;
     data[3] = (const char *) gif;
     name[0] = "BMP"; name[1] = "PNG"; name[2] = "JPEG"; name[3] = "GIF";
-    expect_w[0] = 2; expect_w[1] = 2; expect_w[2] = 2; expect_w[3] = 2;
-    expect_h[0] = 2; expect_h[1] = 2; expect_h[2] = 2; expect_h[3] = 2;
+    expect_w[0] = 2; expect_w[1] = 2; expect_w[2] = 16; expect_w[3] = 2;
+    expect_h[0] = 2; expect_h[1] = 2; expect_h[2] = 16; expect_h[3] = 2;
 
     for (i = 0; i < PCORE_IMAGE_FORMAT_COUNT; i++) {
         if (len[i] <= 0) {

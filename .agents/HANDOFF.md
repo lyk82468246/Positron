@@ -34,7 +34,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 - `pcore_select.c` 已实现 CSS attribute selectors、adjacent/general sibling selectors、`:link` 与 `:lang()`；TEST 9 已于 2026-07-10 真机通过。
 - TEST 11 原有 `body.y=8` / `p.y=24` 是旧手写布局器预期；NetSurf 折叠结果为 `body.y=p.y=16`。当前源码新增 `padding-top:1px` 阻断组，必须同时得到 `(16,16)` 与 `(8,25)` 才通过；2026-07-10 用户真机截图已确认 TEST 11 OK。
 - TEST 18 的两个 `<img src>` 资源发现/fetch 已于 2026-07-10 真机通过；2026-07-11 已确认 document user-data 字节缓存与 URL 去重，二次扫描 fetch calls 保持 2。
-- `pcore_wmimage.cpp` 是刻意新增的 C++ 小适配层，主体仍为 C89。TEST19 现探测 BMP/PNG/JPEG/GIF；2026-07-12 首轮均通过尺寸/Draw，但 fixture 视觉不足且旧 BMP 截断，已换成标准 2x2 四象限样本待复测。TEST20 的 96x72 小点回归已定位为 `WM_SIZE` 丢失调用方 author sheet，host 现用 `g_render_sheet` 保持该句柄。
+- `pcore_wmimage.cpp` 是刻意新增的 C++ 小适配层，主体仍为 C89。TEST19 的 BMP/PNG/GIF 可见四象限已确认；旧 2x2 JPEG 自身严重失真，现换 16x16 4:4:4 样本待复测。TEST20 的小点回归已通过 `g_render_sheet` 保持 author sheet 修复并由设备确认。
 - TEST 21 已确认 `css_media.width/height` 采用实际 client viewport；2026-07-11 用户又确认整数像素 MQ4 `(width <= Npx)` / `(width < Npx)` 的 320/300/299px 边界通过。随后 TEST13 方框在空白折叠修复后消失且词间距正常；补齐 NetSurf 上游 `<pre>` UA 默认后，TEST15 已确认 `normal_ws=ok pre_lf=kept`。页脚/导航拥挤仍未解决。TEST24 的滚动比例断言及真实 TEST13 横竖屏同区域保持均已确认。
 
 ## 关键文件
