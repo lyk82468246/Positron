@@ -160,16 +160,19 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - JS 调 native API。
 - native 回调 JS。
 
-### 2. Positron App API
+### 2. WM 现代基础设施与 Positron App API
 
-继续保持 DLL 生态：
+继续扩展可被任意 WM 程序独立使用的 DLL 生态，而不只服务浏览器或 Positron App：
 
 - `positron_tls`
 - `positron_json`
 - `positron_http`
 - `positron_core`
+- `positron_image`（规划中）
 
 API 要能被外部 WM6 C app 消费，不只服务 test_host。LocalSend WM6 port 是这个原则的现实驱动。
+
+浏览器/应用运行时是这些基础设施的组合消费者。新增协议、解析器、编解码器或 runtime 时，优先联网寻找并移植成熟开源库；公共 DLL 负责稳定 C ABI 与 WM 平台适配。
 
 候选 API：
 

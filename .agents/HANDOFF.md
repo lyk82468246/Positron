@@ -1,16 +1,17 @@
 # Positron Current Handoff
 
-更新时间：2026-07-11
+更新时间：2026-07-12
 当前分支：`main`  
 当前最新提交：请以 `git log --oneline -5` 为准；Codex 接手后已刷新文档，接入 M5f border、CSS selector 补强、`<img>` fallback/fetch、文档级图片字节缓存与 WM Imaging 原生图片适配层，并把 TEST 11 扩展为 margin-collapse 正反样例。
 
 ## 项目目标
 
-Positron 是面向 Windows Mobile 6 Professional / WinCE 5.02 / ARMV4I 的 Electron-like 轻量框架。核心原则是“给 WM6 打补丁”，不是重造系统：
+Positron 是面向 Windows Mobile 6 Professional / WinCE 5.02 / ARMV4I 的现代基础设施集合，并在其上建设浏览器内核和 Electron-like 应用运行时。公共 DLL 必须能被其他 WM 程序独立调用，不能只按 test_host 或浏览器内部模块设计。完整分层见 `ARCHITECTURE.md`。核心原则是“给 WM6 打补丁”，不是重造系统：
 
 - 现代 TLS 是 WM6 缺口，所以用 `positron_tls.dll` + mbedTLS 2.16.12。
 - 现代 HTML/CSS 渲染是 IE Mobile 缺口，所以移植 NetSurf 3.11。
 - WM6 已有且够用的能力优先复用：明文 HTTP 用 WinInet，绘图用 GDI，后续图片应优先考虑 WM Imaging API。
+- WM6 缺少的成熟能力优先联网检索并移植许可证兼容的开源实现；只有平台胶水和 ABI 包装才优先自写。
 
 ## 当前真实状态
 

@@ -6,12 +6,13 @@
 
 ## 阅读顺序
 
-1. `HANDOFF.md`：当前真实状态、架构、构建/运行方式、下一步。
-2. `KNOWN_LIMITATIONS.md`：已验证基线、明确的阶段性取舍、未完成项及完成条件。
-3. `ROADMAP.md`：短期 / 中期 / 长期规划，以及建议执行顺序。
-4. `CLAUDE_LAST_CONTEXT.md`：Claude Code 网络出错前最后几段对话的整理，包含 M7-flex/M7-table 的真实过程。
-5. `DEBUGGING.md`：WM6/WinCE 设备调试纪律，尤其是先查环境再改代码。
-6. 根目录 `PHASE*.md` / `README.md`：阶段脉络和面向使用者的现状摘要。
+1. `ARCHITECTURE.md`：项目定位、公共 DLL、内部静态库、ABI/所有权和开源移植原则。
+2. `HANDOFF.md`：当前真实状态、构建/运行方式、下一步。
+3. `KNOWN_LIMITATIONS.md`：已验证基线、明确的阶段性取舍、未完成项及完成条件。
+4. `ROADMAP.md`：短期 / 中期 / 长期规划，以及建议执行顺序。
+5. `CLAUDE_LAST_CONTEXT.md`：Claude Code 网络出错前最后几段对话的整理，包含 M7-flex/M7-table 的真实过程。
+6. `DEBUGGING.md`：WM6/WinCE 设备调试纪律，尤其是先查环境再改代码。
+7. 根目录 `PHASE*.md` / `README.md`：阶段脉络和面向使用者的现状摘要。
 
 ## 权威性
 
