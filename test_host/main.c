@@ -3608,6 +3608,139 @@ static BOOL test30_css_background_image(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 31 - SVG text through the native Windows Mobile GDI font backend */
+/* -------------------------------------------------------------------- */
+static BOOL test31_svg_text(void)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"240\" "
+        "height=\"100\" viewBox=\"0 0 240 100\">"
+        "<rect width=\"240\" height=\"100\" fill=\"#ffffff\"/>"
+        "<g style=\"font-family:sans-serif;font-size:24px;"
+        "font-weight:bold;fill:#0000ff\">"
+        "<text x=\"10\" y=\"30\">HIDDEN</text>"
+        "<rect x=\"0\" y=\"0\" width=\"110\" height=\"40\" "
+        "fill=\"#ffffff\"/>"
+        "<text x=\"120\" y=\"76\" text-anchor=\"middle\">SVG TEXT</text>"
+        "<rect x=\"116\" y=\"48\" width=\"8\" height=\"32\" "
+        "fill=\"#ff0000\"/>"
+        "</g></svg>";
+    PIMAGE_SVG svg;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF pixel;
+    int rc;
+    int px;
+    int py;
+    int red;
+    int green;
+    int blue;
+    int upper_blue;
+    int lower_blue;
+    int min_x;
+    int max_x;
+    int center_x;
+    char msg[192];
+
+    svg = NULL;
+    rc = PImage_CreateSvgFromMemory(SVG, (int) sizeof(SVG) - 1,
+            240, 100, &svg);
+    if (rc != PIMAGE_OK || svg == NULL) {
+        sprintf(msg, "create rc=%d", rc);
+        show_error(L"TEST 31 FAIL", msg);
+        return FALSE;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 240, 100) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 31 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 240, 100);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    rc = PImage_DrawSvg(svg, memory_dc, 0, 0, 240, 100);
+    upper_blue = 0;
+    lower_blue = 0;
+    min_x = 240;
+    max_x = -1;
+    for (py = 0; py < 100; py++) {
+        for (px = 0; px < 240; px++) {
+            pixel = GetPixel(memory_dc, px, py);
+            red = (int) GetRValue(pixel);
+            green = (int) GetGValue(pixel);
+            blue = (int) GetBValue(pixel);
+            if (blue > 120 && blue > red + 40 && blue > green + 40) {
+                if (py < 40 && px < 110) {
+                    upper_blue++;
+                }
+                if (py >= 45) {
+                    lower_blue++;
+                    if (px < min_x) { min_x = px; }
+                    if (px > max_x) { max_x = px; }
+                }
+            }
+        }
+    }
+    pixel = GetPixel(memory_dc, 120, 60);
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    center_x = (min_x <= max_x) ? (min_x + max_x) / 2 : -1;
+    if (rc != PIMAGE_OK || upper_blue != 0 || lower_blue < 20 ||
+            center_x < 105 || center_x > 135 ||
+            pixel != RGB(255, 0, 0)) {
+        sprintf(msg, "rc=%d hidden=%d visible=%d center=%d red=%06lX",
+                rc, upper_blue, lower_blue, center_x,
+                pixel & 0xffffffUL);
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 31 FAIL", msg);
+        return FALSE;
+    }
+
+    show_info(L"TEST 31",
+              "SVG text window will open. Expect centred bold BLUE text\n"
+              "with a narrow RED bar drawn over its middle.\n\n"
+              "UTF-8 conversion, inherited font style, text anchor and\n"
+              "path/text paint order already passed off-screen.");
+    g_svg_handle = svg;
+    g_svg_test = 1;
+    g_svg_draw_rc = PIMAGE_OK;
+    g_render_doc = NULL;
+    g_doc_h = 0;
+    g_scroll_y = 0;
+    if (!show_render_window()) {
+        g_svg_test = 0;
+        g_svg_handle = NULL;
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 31 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_svg_test = 0;
+    g_svg_handle = NULL;
+    PImage_FreeSvg(svg);
+    if (g_svg_draw_rc != PIMAGE_OK) {
+        sprintf(msg, "window draw rc=%d", g_svg_draw_rc);
+        show_error(L"TEST 31 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 31 OK",
+              "Basic SVG text rendered through the native WM GDI font\n"
+              "backend while preserving SVG paint order.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -3720,7 +3853,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-30)\n"
+                  "Yes = run all selected groups (TEST 1-31)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -3745,6 +3878,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 27), broken SVG fallback (TEST 28),\n"
                                "compound fill rules (TEST 29),\n"
                                "CSS background images (TEST 30),\n"
+                               "native SVG text (TEST 31),\n"
                                "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
@@ -3788,7 +3922,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-30; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-31; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -3801,6 +3935,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test28_broken_svg_fallback()){ rc = 13; goto done; }
         if (!test29_svg_fill_rule()){ rc = 13; goto done; }
         if (!test30_css_background_image()){ rc = 13; goto done; }
+        if (!test31_svg_text())    { rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -3836,11 +3971,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-30)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-31)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
-               "    cached SVG, fallback, fill rules and CSS backgrounds.\n"
+               "    cached SVG, fallback, fill rules, CSS backgrounds and\n"
+               "    native SVG text.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

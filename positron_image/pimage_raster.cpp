@@ -34,9 +34,21 @@ static float pimage_acosf(float value) { return (float) acos((double) value); }
 
 #define PIMAGE_RASTER_MAX_PIXELS 1048576
 
+#define PIMAGE_ITEM_PATHS 1
+#define PIMAGE_ITEM_TEXT 2
+
+typedef struct pimage_raster_item {
+    int type;
+    NSVGshape *shapes;
+    const struct svgtiny_shape *text_shape;
+    struct pimage_raster_item *next;
+} pimage_raster_item;
+
 typedef struct pimage_raster_image {
-    NSVGimage image;
+    float width;
+    float height;
     NSVGrasterizer *rasterizer;
+    pimage_raster_item *items;
 } pimage_raster_image;
 
 typedef struct pimage_path_builder {
@@ -144,6 +156,18 @@ static void pimage_free_shapes(NSVGshape *shape)
         pimage_free_paths(shape->paths);
         free(shape);
         shape = next;
+    }
+}
+
+static void pimage_free_items(pimage_raster_item *item)
+{
+    pimage_raster_item *next;
+
+    while (item != NULL) {
+        next = item->next;
+        pimage_free_shapes(item->shapes);
+        free(item);
+        item = next;
     }
 }
 
@@ -284,8 +308,10 @@ static NSVGshape *pimage_convert_shape(const struct svgtiny_shape *source)
 extern "C" void *pimage_raster_create(const struct svgtiny_diagram *diagram)
 {
     pimage_raster_image *result;
+    pimage_raster_item *item;
+    pimage_raster_item *last_item;
     NSVGshape *shape;
-    NSVGshape *last;
+    NSVGshape *last_shape;
     unsigned int i;
 
     if (diagram == NULL) {
@@ -295,29 +321,64 @@ extern "C" void *pimage_raster_create(const struct svgtiny_diagram *diagram)
     if (result == NULL) {
         return NULL;
     }
-    result->image.width = (float) diagram->width;
-    result->image.height = (float) diagram->height;
-    last = NULL;
+    result->width = (float) diagram->width;
+    result->height = (float) diagram->height;
+    last_item = NULL;
+    last_shape = NULL;
     for (i = 0; i < diagram->shape_count; i++) {
-        if (diagram->shape[i].path == NULL) {
+        if (diagram->shape[i].path == NULL && diagram->shape[i].text == NULL) {
             continue;
+        }
+        if (diagram->shape[i].text != NULL) {
+            item = (pimage_raster_item *) calloc(1, sizeof(*item));
+            if (item == NULL) {
+                pimage_free_items(result->items);
+                free(result);
+                return NULL;
+            }
+            item->type = PIMAGE_ITEM_TEXT;
+            item->text_shape = &diagram->shape[i];
+            if (last_item == NULL) {
+                result->items = item;
+            } else {
+                last_item->next = item;
+            }
+            last_item = item;
+            last_shape = NULL;
+            continue;
+        }
+        if (last_item == NULL || last_item->type != PIMAGE_ITEM_PATHS) {
+            item = (pimage_raster_item *) calloc(1, sizeof(*item));
+            if (item == NULL) {
+                pimage_free_items(result->items);
+                free(result);
+                return NULL;
+            }
+            item->type = PIMAGE_ITEM_PATHS;
+            if (last_item == NULL) {
+                result->items = item;
+            } else {
+                last_item->next = item;
+            }
+            last_item = item;
+            last_shape = NULL;
         }
         shape = pimage_convert_shape(&diagram->shape[i]);
         if (shape == NULL) {
-            pimage_free_shapes(result->image.shapes);
+            pimage_free_items(result->items);
             free(result);
             return NULL;
         }
-        if (last == NULL) {
-            result->image.shapes = shape;
+        if (last_shape == NULL) {
+            last_item->shapes = shape;
         } else {
-            last->next = shape;
+            last_shape->next = shape;
         }
-        last = shape;
+        last_shape = shape;
     }
     result->rasterizer = nsvgCreateRasterizer();
     if (result->rasterizer == NULL) {
-        pimage_free_shapes(result->image.shapes);
+        pimage_free_items(result->items);
         free(result);
         return NULL;
     }
@@ -330,7 +391,7 @@ extern "C" void pimage_raster_free(void *raster_image)
 
     if (image != NULL) {
         nsvgDeleteRasterizer(image->rasterizer);
-        pimage_free_shapes(image->image.shapes);
+        pimage_free_items(image->items);
         free(image);
     }
 }
@@ -346,22 +407,21 @@ static int pimage_make_raster_size(const pimage_raster_image *image,
     int raster_width;
     int raster_height;
 
-    if (image->image.width <= 0.0f || image->image.height <= 0.0f ||
+    if (image->width <= 0.0f || image->height <= 0.0f ||
             width <= 0 || height <= 0) {
         return 0;
     }
-    scale_x = (double) width / (double) image->image.width;
-    scale_y = (double) height / (double) image->image.height;
+    scale_x = (double) width / (double) image->width;
+    scale_y = (double) height / (double) image->height;
     scale = (scale_x > scale_y) ? scale_x : scale_y;
-    pixels = (double) image->image.width * (double) image->image.height *
+    pixels = (double) image->width * (double) image->height *
             scale * scale;
     if (pixels > PIMAGE_RASTER_MAX_PIXELS) {
         scale = sqrt((double) PIMAGE_RASTER_MAX_PIXELS /
-                ((double) image->image.width *
-                (double) image->image.height));
+                ((double) image->width * (double) image->height));
     }
-    raster_width = (int) ceil((double) image->image.width * scale);
-    raster_height = (int) ceil((double) image->image.height * scale);
+    raster_width = (int) ceil((double) image->width * scale);
+    raster_height = (int) ceil((double) image->height * scale);
     if (raster_width < 1) { raster_width = 1; }
     if (raster_height < 1) { raster_height = 1; }
     if ((double) raster_width * (double) raster_height >
@@ -374,10 +434,12 @@ static int pimage_make_raster_size(const pimage_raster_image *image,
     return 1;
 }
 
-extern "C" int pimage_raster_draw(void *raster_image, HDC hdc,
-        int x, int y, int width, int height)
+static int pimage_draw_path_batch(pimage_raster_image *image,
+        const pimage_raster_item *item, HDC hdc, int x, int y,
+        int width, int height, int raster_width, int raster_height,
+        float scale)
 {
-    pimage_raster_image *image = (pimage_raster_image *) raster_image;
+    NSVGimage nsvg_image;
     unsigned char *rgba;
     unsigned char *dib_bits;
     unsigned char *source;
@@ -387,26 +449,22 @@ extern "C" int pimage_raster_draw(void *raster_image, HDC hdc,
     HBITMAP bitmap;
     HBITMAP old_bitmap;
     HDC memory_dc;
-    float scale;
-    int raster_width;
-    int raster_height;
     int stride;
     int row;
     int column;
     int alpha;
     int ok;
 
-    if (image == NULL || hdc == NULL ||
-            !pimage_make_raster_size(image, width, height,
-            &raster_width, &raster_height, &scale)) {
-        return 0;
-    }
+    memset(&nsvg_image, 0, sizeof(nsvg_image));
+    nsvg_image.width = image->width;
+    nsvg_image.height = image->height;
+    nsvg_image.shapes = item->shapes;
     stride = raster_width * 4;
     rgba = (unsigned char *) malloc((size_t) stride * raster_height);
     if (rgba == NULL) {
         return 0;
     }
-    nsvgRasterize(image->rasterizer, &image->image, 0.0f, 0.0f, scale,
+    nsvgRasterize(image->rasterizer, &nsvg_image, 0.0f, 0.0f, scale,
             rgba, raster_width, raster_height, stride);
 
     memset(&bitmap_info, 0, sizeof(bitmap_info));
@@ -455,4 +513,143 @@ extern "C" int pimage_raster_draw(void *raster_image, HDC hdc,
     DeleteDC(memory_dc);
     DeleteObject(bitmap);
     return ok;
+}
+
+static const WCHAR *pimage_font_face(svgtiny_font_family family)
+{
+    if (family == svgtiny_FONT_MONOSPACE) {
+        return L"Courier New";
+    }
+    if (family == svgtiny_FONT_SERIF) {
+        return L"Times New Roman";
+    }
+    return L"Tahoma";
+}
+
+static int pimage_draw_text(const pimage_raster_image *image,
+        const struct svgtiny_shape *shape, HDC hdc,
+        int x, int y, int width, int height)
+{
+    WCHAR *wide;
+    LOGFONTW font_desc;
+    HFONT font;
+    HFONT old_font;
+    SIZE extent;
+    COLORREF old_color;
+    int old_mode;
+    UINT old_align;
+    double scale_x;
+    double scale_y;
+    double radians;
+    double anchor;
+    int wide_len;
+    int font_height;
+    int escapement;
+    int draw_x;
+    int draw_y;
+    int ok;
+
+    if (shape == NULL || shape->text == NULL ||
+            shape->fill == svgtiny_TRANSPARENT) {
+        return 1;
+    }
+    wide_len = MultiByteToWideChar(CP_UTF8, 0, shape->text, -1,
+            NULL, 0);
+    if (wide_len <= 1) {
+        return wide_len == 1;
+    }
+    wide = (WCHAR *) malloc((size_t) wide_len * sizeof(WCHAR));
+    if (wide == NULL) {
+        return 0;
+    }
+    if (MultiByteToWideChar(CP_UTF8, 0, shape->text, -1,
+            wide, wide_len) == 0) {
+        free(wide);
+        return 0;
+    }
+    scale_x = (double) width / (double) image->width;
+    scale_y = (double) height / (double) image->height;
+    font_height = (int) floor((double) shape->text_size * scale_y + 0.5);
+    if (font_height < 1) {
+        font_height = 1;
+    }
+    escapement = (int) floor((double) shape->text_rotation * 10.0 + 0.5);
+    memset(&font_desc, 0, sizeof(font_desc));
+    font_desc.lfHeight = -font_height;
+    font_desc.lfEscapement = escapement;
+    font_desc.lfOrientation = escapement;
+    font_desc.lfWeight = shape->text_weight;
+    font_desc.lfItalic = shape->text_italic ? (BYTE) 1 : (BYTE) 0;
+    font_desc.lfCharSet = DEFAULT_CHARSET;
+    font_desc.lfOutPrecision = OUT_DEFAULT_PRECIS;
+    font_desc.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+    font_desc.lfQuality = DEFAULT_QUALITY;
+    font_desc.lfPitchAndFamily = (shape->text_family ==
+            svgtiny_FONT_MONOSPACE) ? (BYTE) (FIXED_PITCH | FF_MODERN) :
+            (BYTE) (DEFAULT_PITCH | FF_DONTCARE);
+    lstrcpyW(font_desc.lfFaceName, pimage_font_face(shape->text_family));
+    font = CreateFontIndirectW(&font_desc);
+    if (font == NULL) {
+        free(wide);
+        return 0;
+    }
+    old_font = (HFONT) SelectObject(hdc, font);
+    old_mode = SetBkMode(hdc, TRANSPARENT);
+    old_color = SetTextColor(hdc, RGB(svgtiny_RED(shape->fill),
+            svgtiny_GREEN(shape->fill), svgtiny_BLUE(shape->fill)));
+    old_align = SetTextAlign(hdc, TA_LEFT | TA_BASELINE);
+    if (!GetTextExtentPoint32W(hdc, wide, wide_len - 1, &extent)) {
+        extent.cx = 0;
+        extent.cy = 0;
+    }
+    anchor = 0.0;
+    if (shape->text_anchor == svgtiny_TEXT_ANCHOR_MIDDLE) {
+        anchor = (double) extent.cx / 2.0;
+    } else if (shape->text_anchor == svgtiny_TEXT_ANCHOR_END) {
+        anchor = (double) extent.cx;
+    }
+    radians = (double) shape->text_rotation * 3.14159265358979323846 / 180.0;
+    draw_x = x + (int) floor((double) shape->text_x * scale_x -
+            anchor * cos(radians) + 0.5);
+    draw_y = y + (int) floor((double) shape->text_y * scale_y -
+            anchor * sin(radians) + 0.5);
+    ok = ExtTextOutW(hdc, draw_x, draw_y, 0, NULL,
+            wide, (UINT) (wide_len - 1), NULL) ? 1 : 0;
+    SetTextAlign(hdc, old_align);
+    SetTextColor(hdc, old_color);
+    SetBkMode(hdc, old_mode);
+    SelectObject(hdc, old_font);
+    DeleteObject(font);
+    free(wide);
+    return ok;
+}
+
+extern "C" int pimage_raster_draw(void *raster_image, HDC hdc,
+        int x, int y, int width, int height)
+{
+    pimage_raster_image *image = (pimage_raster_image *) raster_image;
+    pimage_raster_item *item;
+    float scale;
+    int raster_width;
+    int raster_height;
+
+    if (image == NULL || hdc == NULL ||
+            !pimage_make_raster_size(image, width, height,
+            &raster_width, &raster_height, &scale)) {
+        return 0;
+    }
+    for (item = image->items; item != NULL; item = item->next) {
+        if (item->type == PIMAGE_ITEM_PATHS) {
+            if (!pimage_draw_path_batch(image, item, hdc, x, y,
+                    width, height, raster_width, raster_height, scale)) {
+                return 0;
+            }
+        } else if (item->type == PIMAGE_ITEM_TEXT) {
+            if (!pimage_draw_text(image, item->text_shape, hdc,
+                    x, y, width, height)) {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }

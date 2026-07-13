@@ -40,7 +40,8 @@ PIMAGE_API int PImage_SvgGetInfo(PIMAGE_SVG svg, int *out_w, int *out_h,
         unsigned int *out_shape_count);
 
 /* Draw a parsed SVG into an HDC. Non-positive width/height use the intrinsic
- * dimensions. Paths use anti-aliased solid fills and scaled solid strokes. */
+ * dimensions. Paths use anti-aliased solid fills and scaled solid strokes.
+ * Basic SVG text uses the native WM GDI font backend. */
 PIMAGE_API int PImage_DrawSvg(PIMAGE_SVG svg, HDC hdc,
         int x, int y, int width, int height);
 

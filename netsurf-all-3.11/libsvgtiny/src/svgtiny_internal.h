@@ -54,6 +54,13 @@ struct svgtiny_parse_state {
 	svgtiny_colour stroke;
 	int stroke_width;
 
+	/* inherited text attributes retained for the platform font backend */
+	float font_size;
+	svgtiny_font_family font_family;
+	svgtiny_text_anchor text_anchor;
+	int font_weight;
+	int font_italic;
+
 	/* gradients */
 	struct svgtiny_parse_state_gradient fill_grad;
 	struct svgtiny_parse_state_gradient stroke_grad;

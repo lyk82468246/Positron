@@ -70,6 +70,18 @@ static void _svgtiny_parse_color(const char *s, svgtiny_colour *c,
 		struct svgtiny_parse_state *state);
 static void svgtiny_parse_fill_rule_value(const char *value, size_t len,
 		svgtiny_fill_rule *fill_rule);
+static void svgtiny_parse_font_size_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state);
+static void svgtiny_parse_font_family_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state);
+static void svgtiny_parse_font_weight_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state);
+static void svgtiny_parse_font_style_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state);
+static void svgtiny_parse_text_anchor_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state);
+static const char *svgtiny_find_style_value(const char *style,
+		size_t style_len, const char *property, size_t *value_len);
 
 /**
  * rotate midpoint vector
@@ -726,6 +738,11 @@ svgtiny_code svgtiny_parse(struct svgtiny_diagram *diagram,
 	state.fill_rule = svgtiny_FILL_NONZERO;
 	state.stroke = svgtiny_TRANSPARENT;
 	state.stroke_width = 1;
+	state.font_size = 16.0f;
+	state.font_family = svgtiny_FONT_SANS_SERIF;
+	state.text_anchor = svgtiny_TEXT_ANCHOR_START;
+	state.font_weight = 400;
+	state.font_italic = 0;
 
 	/* parse tree */
 	code = svgtiny_parse_svg(svg, state);
@@ -1682,6 +1699,7 @@ svgtiny_code svgtiny_parse_text(dom_element *text,
 
 	svgtiny_parse_position_attributes(text, state,
 			&x, &y, &width, &height);
+	svgtiny_parse_paint_attributes(text, &state);
 	svgtiny_parse_font_attributes(text, &state);
 	svgtiny_parse_transform_attributes(text, &state);
 
@@ -2032,29 +2050,280 @@ void svgtiny_parse_color(dom_string *s, svgtiny_colour *c,
  * Parse font attributes, if present.
  */
 
+static int svgtiny_ascii_space(char c)
+{
+	return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
+}
+
+static char svgtiny_ascii_lower(char c)
+{
+	if (c >= 'A' && c <= 'Z') {
+		return (char) (c + ('a' - 'A'));
+	}
+	return c;
+}
+
+static int svgtiny_value_equal(const char *value, size_t len,
+		const char *word)
+{
+	size_t i;
+	size_t word_len = strlen(word);
+
+	while (len > 0 && svgtiny_ascii_space(*value)) {
+		value++;
+		len--;
+	}
+	while (len > 0 && svgtiny_ascii_space(value[len - 1])) {
+		len--;
+	}
+	if (len != word_len) {
+		return 0;
+	}
+	for (i = 0; i < len; i++) {
+		if (svgtiny_ascii_lower(value[i]) != word[i]) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static int svgtiny_value_contains(const char *value, size_t len,
+		const char *word)
+{
+	size_t i;
+	size_t j;
+	size_t word_len = strlen(word);
+
+	if (word_len == 0 || word_len > len) {
+		return 0;
+	}
+	for (i = 0; i + word_len <= len; i++) {
+		for (j = 0; j < word_len; j++) {
+			if (svgtiny_ascii_lower(value[i + j]) != word[j]) {
+				break;
+			}
+		}
+		if (j == word_len) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static const char *svgtiny_find_style_value(const char *style,
+		size_t style_len, const char *property, size_t *value_len)
+{
+	size_t property_len;
+	size_t i;
+	size_t start;
+	size_t end;
+
+	if (value_len != NULL) {
+		*value_len = 0;
+	}
+	if (style == NULL || property == NULL) {
+		return NULL;
+	}
+	property_len = strlen(property);
+	for (i = 0; i + property_len < style_len; i++) {
+		if (i > 0 && style[i - 1] != ';' &&
+				!svgtiny_ascii_space(style[i - 1])) {
+			continue;
+		}
+		if (strncmp(style + i, property, property_len) != 0) {
+			continue;
+		}
+		start = i + property_len;
+		while (start < style_len && svgtiny_ascii_space(style[start])) {
+			start++;
+		}
+		if (start >= style_len || style[start] != ':') {
+			continue;
+		}
+		start++;
+		while (start < style_len && svgtiny_ascii_space(style[start])) {
+			start++;
+		}
+		end = start;
+		while (end < style_len && style[end] != ';') {
+			end++;
+		}
+		while (end > start && svgtiny_ascii_space(style[end - 1])) {
+			end--;
+		}
+		if (value_len != NULL) {
+			*value_len = end - start;
+		}
+		return style + start;
+	}
+	return NULL;
+}
+
+static void svgtiny_parse_font_size_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state)
+{
+	char buffer[64];
+	char *end;
+	double number;
+	size_t copy_len;
+
+	if (value == NULL || state == NULL || len == 0) {
+		return;
+	}
+	copy_len = (len < sizeof(buffer) - 1) ? len : sizeof(buffer) - 1;
+	memcpy(buffer, value, copy_len);
+	buffer[copy_len] = '\0';
+	number = strtod(buffer, &end);
+	if (end == buffer || number <= 0.0) {
+		return;
+	}
+	while (*end != '\0' && svgtiny_ascii_space(*end)) {
+		end++;
+	}
+	if (*end == '%') {
+		state->font_size = (float) (state->font_size * number / 100.0);
+	} else if (end[0] == 'e' && end[1] == 'm') {
+		state->font_size = (float) (state->font_size * number);
+	} else if (*end == '\0' || (end[0] == 'p' && end[1] == 'x')) {
+		state->font_size = (float) number;
+	}
+}
+
+static void svgtiny_parse_font_family_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state)
+{
+	if (svgtiny_value_contains(value, len, "mono") ||
+			svgtiny_value_contains(value, len, "courier")) {
+		state->font_family = svgtiny_FONT_MONOSPACE;
+	} else if (svgtiny_value_contains(value, len, "sans") ||
+			svgtiny_value_contains(value, len, "tahoma") ||
+			svgtiny_value_contains(value, len, "arial")) {
+		state->font_family = svgtiny_FONT_SANS_SERIF;
+	} else if (svgtiny_value_contains(value, len, "serif") ||
+			svgtiny_value_contains(value, len, "times")) {
+		state->font_family = svgtiny_FONT_SERIF;
+	}
+}
+
+static void svgtiny_parse_font_weight_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state)
+{
+	char buffer[16];
+	char *end;
+	long weight;
+	size_t copy_len;
+
+	if (svgtiny_value_equal(value, len, "bold") ||
+			svgtiny_value_equal(value, len, "bolder")) {
+		state->font_weight = 700;
+		return;
+	}
+	if (svgtiny_value_equal(value, len, "normal") ||
+			svgtiny_value_equal(value, len, "lighter")) {
+		state->font_weight = 400;
+		return;
+	}
+	copy_len = (len < sizeof(buffer) - 1) ? len : sizeof(buffer) - 1;
+	memcpy(buffer, value, copy_len);
+	buffer[copy_len] = '\0';
+	weight = strtol(buffer, &end, 10);
+	if (end != buffer && weight >= 100 && weight <= 900) {
+		state->font_weight = (int) weight;
+	}
+}
+
+static void svgtiny_parse_font_style_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state)
+{
+	state->font_italic = (svgtiny_value_equal(value, len, "italic") ||
+			svgtiny_value_equal(value, len, "oblique")) ? 1 : 0;
+}
+
+static void svgtiny_parse_text_anchor_value(const char *value, size_t len,
+		struct svgtiny_parse_state *state)
+{
+	if (svgtiny_value_equal(value, len, "middle")) {
+		state->text_anchor = svgtiny_TEXT_ANCHOR_MIDDLE;
+	} else if (svgtiny_value_equal(value, len, "end")) {
+		state->text_anchor = svgtiny_TEXT_ANCHOR_END;
+	} else if (svgtiny_value_equal(value, len, "start")) {
+		state->text_anchor = svgtiny_TEXT_ANCHOR_START;
+	}
+}
+
 void svgtiny_parse_font_attributes(dom_element *node,
 		struct svgtiny_parse_state *state)
 {
-	/* TODO: Implement this, it never used to be */
-	UNUSED(node);
-	UNUSED(state);
-#ifdef WRITTEN_THIS_PROPERLY
-	const xmlAttr *attr;
+	dom_string *attr = NULL;
+	dom_exception exc;
+	const char *style;
+	size_t style_len;
+	const char *value;
+	size_t value_len;
 
-	UNUSED(state);
+	exc = dom_element_get_attribute(node, state->interned_font_size, &attr);
+	if (exc == DOM_NO_ERR && attr != NULL) {
+		svgtiny_parse_font_size_value(dom_string_data(attr),
+				dom_string_byte_length(attr), state);
+		dom_string_unref(attr);
+	}
+	exc = dom_element_get_attribute(node, state->interned_font_family, &attr);
+	if (exc == DOM_NO_ERR && attr != NULL) {
+		svgtiny_parse_font_family_value(dom_string_data(attr),
+				dom_string_byte_length(attr), state);
+		dom_string_unref(attr);
+	}
+	exc = dom_element_get_attribute(node, state->interned_font_weight, &attr);
+	if (exc == DOM_NO_ERR && attr != NULL) {
+		svgtiny_parse_font_weight_value(dom_string_data(attr),
+				dom_string_byte_length(attr), state);
+		dom_string_unref(attr);
+	}
+	exc = dom_element_get_attribute(node, state->interned_font_style, &attr);
+	if (exc == DOM_NO_ERR && attr != NULL) {
+		svgtiny_parse_font_style_value(dom_string_data(attr),
+				dom_string_byte_length(attr), state);
+		dom_string_unref(attr);
+	}
+	exc = dom_element_get_attribute(node, state->interned_text_anchor, &attr);
+	if (exc == DOM_NO_ERR && attr != NULL) {
+		svgtiny_parse_text_anchor_value(dom_string_data(attr),
+				dom_string_byte_length(attr), state);
+		dom_string_unref(attr);
+	}
 
-	for (attr = node->properties; attr; attr = attr->next) {
-		if (strcmp((const char *) attr->name, "font-size") == 0) {
-			/*if (css_parse_length(
-					(const char *) attr->children->content,
-					&state->style.font_size.value.length,
-					true, true)) {
-				state->style.font_size.size =
-						CSS_FONT_SIZE_LENGTH;
-			}*/
-		}
-        }
-#endif
+	exc = dom_element_get_attribute(node, state->interned_style, &attr);
+	if (exc != DOM_NO_ERR || attr == NULL) {
+		return;
+	}
+	style = dom_string_data(attr);
+	style_len = dom_string_byte_length(attr);
+	value = svgtiny_find_style_value(style, style_len, "font-size",
+			&value_len);
+	if (value != NULL) {
+		svgtiny_parse_font_size_value(value, value_len, state);
+	}
+	value = svgtiny_find_style_value(style, style_len, "font-family",
+			&value_len);
+	if (value != NULL) {
+		svgtiny_parse_font_family_value(value, value_len, state);
+	}
+	value = svgtiny_find_style_value(style, style_len, "font-weight",
+			&value_len);
+	if (value != NULL) {
+		svgtiny_parse_font_weight_value(value, value_len, state);
+	}
+	value = svgtiny_find_style_value(style, style_len, "font-style",
+			&value_len);
+	if (value != NULL) {
+		svgtiny_parse_font_style_value(value, value_len, state);
+	}
+	value = svgtiny_find_style_value(style, style_len, "text-anchor",
+			&value_len);
+	if (value != NULL) {
+		svgtiny_parse_text_anchor_value(value, value_len, state);
+	}
+	dom_string_unref(attr);
 }
 
 
@@ -2209,6 +2478,17 @@ struct svgtiny_shape *svgtiny_add_shape(struct svgtiny_parse_state *state)
 	shape->path = 0;
 	shape->path_length = 0;
 	shape->text = 0;
+	shape->text_x = 0;
+	shape->text_y = 0;
+	shape->text_size = state->font_size *
+			(float) sqrt(state->ctm.c * state->ctm.c +
+			state->ctm.d * state->ctm.d);
+	shape->text_rotation = (float) (atan2(state->ctm.b, state->ctm.a) *
+			180.0 / M_PI);
+	shape->text_family = state->font_family;
+	shape->text_anchor = state->text_anchor;
+	shape->text_weight = state->font_weight;
+	shape->text_italic = state->font_italic;
 	shape->fill = state->fill;
 	shape->fill_rule = state->fill_rule;
 	shape->stroke = state->stroke;

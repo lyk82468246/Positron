@@ -27,11 +27,29 @@ typedef enum {
 	svgtiny_FILL_EVENODD = 1
 } svgtiny_fill_rule;
 
+typedef enum {
+	svgtiny_FONT_SANS_SERIF = 0,
+	svgtiny_FONT_SERIF = 1,
+	svgtiny_FONT_MONOSPACE = 2
+} svgtiny_font_family;
+
+typedef enum {
+	svgtiny_TEXT_ANCHOR_START = 0,
+	svgtiny_TEXT_ANCHOR_MIDDLE = 1,
+	svgtiny_TEXT_ANCHOR_END = 2
+} svgtiny_text_anchor;
+
 struct svgtiny_shape {
 	float *path;
 	unsigned int path_length;
 	char *text;
 	float text_x, text_y;
+	float text_size;
+	float text_rotation;
+	svgtiny_font_family text_family;
+	svgtiny_text_anchor text_anchor;
+	int text_weight;
+	int text_italic;
 	svgtiny_colour fill;
 	svgtiny_fill_rule fill_rule;
 	svgtiny_colour stroke;
