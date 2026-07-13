@@ -5,8 +5,8 @@
  * which we deliberately do not bring in wholesale: interned corestrings, the
  * nsurl accessors, the `guit` operation table (its ->layout points at our GDI
  * font measurement table so redraw measures text exactly as layout did), and
- * the content_get_* object accessors. The image subset represents cached WM
- * Imaging bytes as a small bitmap carrier; form/iframe/scrollbar/gadget and
+ * the content_get_* object accessors. The image subset represents cached
+ * native or SVG images as a small typed carrier; form/iframe/scrollbar/gadget and
  * selection paths remain constant defaults.
  *
  * C89.

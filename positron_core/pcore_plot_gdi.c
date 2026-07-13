@@ -32,6 +32,7 @@
 #include "netsurf/layout.h"      /* struct gui_layout_table (font measure) */
 
 #include "positron_core.h"
+#include "positron_image.h"
 
 /* Private context behind redraw_context.priv. */
 typedef struct pcore_plot_ctx {
@@ -354,16 +355,24 @@ static nserror plot_bitmap(const struct redraw_context *ctx,
 
     (void) bg;
     (void) flags;  /* tiled CSS background images are not connected yet */
-    if (ctx == NULL || ctx->priv == NULL || bitmap == NULL ||
-            bitmap->data == NULL || bitmap->len <= 0) {
+    if (ctx == NULL || ctx->priv == NULL || bitmap == NULL) {
         return NSERROR_INVALID;
     }
     p = (pcore_plot_ctx *) ctx->priv;
     if (p->hdc == NULL || width <= 0 || height <= 0) {
         return NSERROR_OK;
     }
-    return PCore_DrawImageFromMemory(bitmap->data, bitmap->len, p->hdc,
-            x, y, width, height) == 0 ? NSERROR_OK : NSERROR_INVALID;
+    if (bitmap->kind == PCORE_BITMAP_SVG && bitmap->svg != NULL) {
+        return PImage_DrawSvg((PIMAGE_SVG) bitmap->svg, p->hdc,
+                x, y, width, height) == PIMAGE_OK ?
+                NSERROR_OK : NSERROR_INVALID;
+    }
+    if (bitmap->kind == PCORE_BITMAP_WM_IMAGE &&
+            bitmap->data != NULL && bitmap->len > 0) {
+        return PCore_DrawImageFromMemory(bitmap->data, bitmap->len, p->hdc,
+                x, y, width, height) == 0 ? NSERROR_OK : NSERROR_INVALID;
+    }
+    return NSERROR_INVALID;
 }
 
 /* The GDI plotter table. Field order MUST match struct plotter_table:

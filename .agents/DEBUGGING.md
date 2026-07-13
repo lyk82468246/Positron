@@ -64,6 +64,8 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 
 图片路径分层记忆：TEST 18 只验证 `<img src>` 资源发现、fetch、document user-data 字节缓存和 URL 去重；TEST 19 只验证 WM Imaging API 能从内存 BMP 取尺寸并通过 `IImage::Draw` 画到 HDC；TEST 20 验证缓存字节变成 `box->object`，经 `content_redraw -> plot_bitmap` 真正绘制 `<img>`。用户于 2026-07-11 确认 TEST 18（first/second=2/2，fetch calls=2）与 TEST 20 均通过。
 
+2026-07-13：增强 TEST26 会在打开可见窗口前，先离屏检查红绿内部像素和蓝色 cubic 的部分覆盖边缘像素；用户截图既出现平滑曲线又进入该窗口，因此自动断言与视觉结果都已通过。缓存 SVG 不另走旁路：TEST27 把 retained object 放进 typed image carrier，仍经 `box->object -> content_redraw -> plot_bitmap`，并在开窗前检查 fetch/free、`120x60` 布局及离屏红绿像素。
+
 2026-07-12 扩展 TEST19 首次真机结果：BMP/PNG/JPEG/GIF 都通过尺寸探测和 Draw 返回，但 PNG/GIF fixture 本身是黑色/透明 1x1，缺少视觉证明；旧 BMP 数组还只有 68 字节而头声明 70，宽容解码后颜色错误。同期 TEST20 从 96x72 退成小点，且 H2/p 颜色丢失：根因是 render window 首次 `WM_SIZE` 用 NULL author sheet restyle，覆盖了调用方 `hSheet`。现改为四种标准编码器 2x2 fixture（BMP 70/PNG 77/JPEG 694/GIF 46 字节），并由 `g_render_sheet` 在窗口生命周期内保留调用方 stylesheet；导航换文档时清空。增量构建通过，待复测 TEST19/20。
 
 复测确认 BMP/PNG/GIF 四象限和 TEST20 的 96x72、边框、标题/段落颜色恢复；JPEG 仍呈橄榄色，不能称为轻微偏色。桌面解码旧 2x2 JPEG 得到的本来就是橄榄色，根因是 fixture 尺寸小于合理 DCT 色块而非 WM codec。现换成 16x16、每象限 8x8、quality=100、4:4:4 的 305 字节 JPEG；桌面象限中心为 `(254,0,0)/(0,255,1)/(0,0,254)/(255,255,0)`，增量构建通过待设备复测 JPEG 行。

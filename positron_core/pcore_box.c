@@ -12,7 +12,7 @@
  * BOX_INLINE_CONTAINER), so the tree is layout-ready.
  *
  * Current scope: block/inline text, inline-block, flex, common table
- * structures, plus cached <img> resources when WM Imaging can decode them,
+ * structures, plus cached <img> resources decoded by WM Imaging/libsvgtiny,
  * are built for NetSurf's real layout/redraw path. Forms/widgets, floats,
  * background images, and exact rowspan occupancy remain staged follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
@@ -32,6 +32,7 @@
 #include "content/handlers/html/box.h"
 
 #include "positron_core.h"
+#include "positron_image.h"
 #include "pcore_internal.h"
 
 #include "utils/errors.h"                    /* nserror (layout.h / private.h) */
@@ -219,11 +220,22 @@ static struct box *pcore_make_literal_text_box(dom_node *owner,
 }
 
 /* The portable NetSurf part of an image is a replaced box with an object.
- * Our object is the small nsshim bitmap carrier, whose bytes are owned by the
- * document cache. layout.c reads its intrinsic dimensions through
+ * Our object is the small nsshim image carrier. Encoded bytes are owned by the
+ * document cache; retained SVG state is released by the carrier destructor.
+ * layout.c reads its intrinsic dimensions through
  * content_get_width/height; redraw.c reaches plot_bitmap through
  * content_redraw. Return NULL for absent/cache-miss/undecodable resources so
  * the caller can retain the established alt/src fallback. */
+static int pcore_bitmap_destroy(struct bitmap *bitmap)
+{
+    if (bitmap != NULL && bitmap->kind == PCORE_BITMAP_SVG &&
+            bitmap->svg != NULL) {
+        PImage_FreeSvg((PIMAGE_SVG) bitmap->svg);
+        bitmap->svg = NULL;
+    }
+    return 0;
+}
+
 static struct box *pcore_make_cached_image_box(dom_node *node,
         css_computed_style *style, void *ctx)
 {
@@ -234,6 +246,8 @@ static struct box *pcore_make_cached_image_box(dom_node *node,
     int len = 0;
     int width = 0;
     int height = 0;
+    int kind = 0;
+    PIMAGE_SVG svg = NULL;
     dom_document *doc = NULL;
     struct bitmap *bitmap;
     struct box *box;
@@ -251,9 +265,7 @@ static struct box *pcore_make_cached_image_box(dom_node *node,
     url[src_len] = '\0';
     if (dom_node_get_owner_document(node, &doc) != DOM_NO_ERR ||
             doc == NULL ||
-            pcore_image_resource_get(doc, url, &data, &len) != 0 ||
-            PCore_ImageInfoFromMemory(data, len, &width, &height) != 0 ||
-            width <= 0 || height <= 0) {
+            pcore_image_resource_get(doc, url, &data, &len) != 0) {
         if (doc != NULL) {
             dom_node_unref((dom_node *) doc);
         }
@@ -263,14 +275,35 @@ static struct box *pcore_make_cached_image_box(dom_node *node,
     dom_node_unref((dom_node *) doc);
     free(url);
 
-    bitmap = talloc_zero(ctx, struct bitmap);
-    if (bitmap == NULL) {
+    if (PCore_ImageInfoFromMemory(data, len, &width, &height) == 0 &&
+            width > 0 && height > 0) {
+        kind = PCORE_BITMAP_WM_IMAGE;
+    } else if (PImage_CreateSvgFromMemory(data, len, 0, 0, &svg) ==
+            PIMAGE_OK && svg != NULL &&
+            PImage_SvgGetInfo(svg, &width, &height, NULL) == PIMAGE_OK &&
+            width > 0 && height > 0) {
+        kind = PCORE_BITMAP_SVG;
+    } else {
+        if (svg != NULL) {
+            PImage_FreeSvg(svg);
+        }
         return NULL;
     }
+
+    bitmap = talloc_zero(ctx, struct bitmap);
+    if (bitmap == NULL) {
+        if (svg != NULL) {
+            PImage_FreeSvg(svg);
+        }
+        return NULL;
+    }
+    bitmap->kind = kind;
     bitmap->data = data;
     bitmap->len = len;
     bitmap->width = width;
     bitmap->height = height;
+    bitmap->svg = (void *) svg;
+    talloc_set_destructor(bitmap, pcore_bitmap_destroy);
 
     box = pcore_box_new(BOX_INLINE, style, ctx);
     if (box == NULL) {

@@ -60,7 +60,7 @@ browser host -> positron_core.dll
 
 positron_image.dll -> WM Imaging API + NanoSVG rasterizer + positron_libsvgtiny.lib
                      -> positron_libdom.lib -> positron_expat.lib
-positron_core.dll  -> NetSurf/libdom/libcss static libraries
+positron_core.dll  -> positron_image.dll + NetSurf/libdom/libcss static libraries
 ```
 
 这样图片能力既服务浏览器，也成为 WM 平台可复用的现代基础设施。

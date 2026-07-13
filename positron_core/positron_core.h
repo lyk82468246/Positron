@@ -109,8 +109,9 @@ PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
 /* Scan the document for non-empty <img src> resources and invoke the embedder's
  * fetch callback for each one. Successful bodies are copied into a per-document
  * URL cache, so repeated scans do not fetch the same raw src again; the cache is
- * freed with the document. A subsequent PCore_LayoutDocument turns a cached,
- * WM-Imaging-decodable <img> into a NetSurf replaced box; PaintDocument draws it.
+ * freed with the document. A subsequent PCore_LayoutDocument turns a cached
+ * WM-Imaging or libsvgtiny-decodable <img> into a NetSurf replaced box;
+ * PaintDocument draws it through the matching public image service.
  * Cache misses and decoder failures retain the element's alt/src text fallback.
  * `out_found` receives the number of non-empty src attributes; `out_fetched`
  * receives the number available from cache or a successful non-empty fetch.

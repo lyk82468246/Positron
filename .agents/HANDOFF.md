@@ -94,7 +94,7 @@ scripts\stage.bat
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle 与 SVG parse，离线。2026-07-12 用户真机确认整组通过。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26，离线窗口渲染、WM Imaging 位图与 SVG path；增强 TEST26 会断言抗锯齿边缘像素，本地 ARM 构建通过、待设备确认。
+- GDI Render：TEST 12、14、17、19、20、26、27，离线窗口渲染、WM Imaging 位图、SVG path 与缓存 SVG `<img>`；TEST26 已真机通过，TEST27 本地 ARM 构建通过、待设备确认。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -111,7 +111,7 @@ scripts\stage.bat
 3. `WM_SIZE` 从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback。TEST24 与真实 Browse 旋转均已确认。
 4. 主文档 GET 已在单一 worker 执行。设备已确认旧页可滚动且成功后正常换页。父窗口条带有复制残影，`STATIC` 子窗口又完全不可见；现已按 WM6 SDK 改用 `PROGRESS_CLASS` + `PBM_SETPOS` 并链接 `commctrl.lib`，全量构建通过待复测。创建失败时标题显示 loading。失败保留旧页仍待测；资源 fetch 与 style/layout 仍在 UI 提交阶段。
 5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法。整数像素 `width <=` / `width <` 两种形式已由扩展 TEST21 真机确认；不要把它扩大为完整 MQ4/custom-properties 支持。
-6. 图片/SVG：TEST20 四格式缓存 `<img>` 与 TEST25 SVG parse 已真机确认。首版 TEST26 的 libnsfb 固定分段 + GDI 输出虽几何正确，但设备截图有明显锯齿，不能算视觉通过。`positron_image.dll` 现保留 libsvgtiny 解析，改用固定上游提交的 NanoSVG 抗锯齿软件栅格器和 WM `AlphaBlend`；增强 TEST26 自动检查部分覆盖边缘像素，待设备复测。通过后接入缓存 `<img>`；复合孔洞需专门测试，SVG text 仍是显式缺口。
+6. 图片/SVG：TEST20 四格式缓存 `<img>`、TEST25 SVG parse 与增强 TEST26 抗锯齿 retained draw 已真机确认。`positron_core.dll` 现明确依赖公共 `positron_image.dll`；统一图片载体在构盒时选择 WM Imaging 或 SVG retained object，析构回到创建 DLL，绘制仍走 NetSurf `content_redraw -> plot_bitmap`。TEST27 已完成 fetch/free、布局及离屏像素自动断言，待设备确认窗口结果。之后验证真实网络 SVG/fallback；复合孔洞和 SVG text 仍是显式缺口。
 
 ## 开发纪律
 
