@@ -94,8 +94,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 13. **已完成并真机验收**：TEST33 用三块 70x70 图和九个颜色点验证 objectBoundingBox 斜向渐变、userSpaceOnUse 水平渐变以及 `gradientTransform="rotate(90 ...)"` 后的竖向渐变，并对水平/竖直轴各做一条接缝扫描；2026-07-13 真机截图确认三块方向、颜色和连续性均正确。
 14. **已完成并真机验收**：TEST34 在 libsvgtiny DOM 桥中加入 `radialGradient` 的 `cx/cy/r`、objectBoundingBox/userSpaceOnUse 和 `gradientTransform`，继续复用 NanoSVG 已有径向光栅器。2026-07-13 真机截图确认三块图依次为平滑椭圆、圆和向右平移的圆，九点颜色及三条连续性断言同时通过。
 15. **已完成并真机验收**：TEST35 将 160x80 中心径向 SVG 作为内存资源送入文档缓存，生成 replaced box 并经 NetSurf redraw 绘制。2026-07-13 真机截图确认连续横向椭圆、无 fallback，且此前 fetch/free、盒尺寸、横纵采样与连续性断言全部通过。
-16. **渐变完整性批次已完成构建、待设备验收**：TEST36 一次验证 objectBoundingBox 无单位 `0..1` 坐标、`xlink:href` 渐变继承、属性/inline style `stop-opacity`、线性/径向 alpha 混合及循环引用深度保护；TEST37 再用 SVG2 `href` 把同一半透明偏心径向 SVG 同时用于 `<img>` 和 CSS 背景，要求资源只 fetch/free 一次且两处像素一致。焦点 `fx/fy` 与 spread method 因 NanoSVG rasterizer 仍有明确 TODO，不纳入本批次。
+16. **已完成并真机验收**：TEST36 一次验证 objectBoundingBox 无单位 `0..1` 坐标、`xlink:href` 渐变继承、属性/inline style `stop-opacity`、线性/径向 alpha 混合及循环引用深度保护；TEST37 再用 SVG2 `href` 把同一半透明偏心径向 SVG 同时用于 `<img>` 和 CSS 背景，资源只 fetch/free 一次且两处像素一致。2026-07-13 用户截图确认四面板与两处缓存结果符合预期。焦点 `fx/fy` 与 spread method 因 NanoSVG rasterizer 仍有明确 TODO，不在已完成范围。
 17. 图片能力采用两层边界：上游解析库保持静态 `.lib`；稳定的 `positron_image.dll` 统一封装 WM Imaging 与 libsvgtiny，供 `positron_core.dll` 和其他 WM 程序调用。对象必须由同一 DLL 创建/释放，不能暴露 NetSurf 内部结构或跨 CRT 所有权；现有 `PCore_Image*` 暂保留为兼容转发。
+18. **IANA custom-properties 根因批次已实现、待设备验收**：联网读取当前 `iana_website.80c103cc08b6.css` 后确认窄屏 padding/margin 大量依赖 `var(--space-*)`；审计 NetSurf 最新 libcss `104d87f` 仍无 custom-properties 实现。`PCore_ParseCSS` 因此新增保守兼容层，只收集同一 stylesheet 顶层精确 `:root` token，支持嵌套引用、fallback、循环拒绝、字符串/注释保护，并设置 128 token/16 层递归/8 倍输出上限。TEST38 验证 alias、嵌套 fallback 与 cycle fallback 的 computed color；TEST39 在 240/320px 自动断言主内容和 footer 的 25px inset，再走正式 NetSurf redraw。元素作用域、跨表级联、`@property`、完整 `calc()`/`oklch()` 均不在此兼容层范围；float 仍保持撤回。
 
 验收：
 

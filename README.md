@@ -16,7 +16,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1：HTTPS via mbedTLS，明文 HTTP via WinInet) | ✅ 完成，WM6 Emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
 | **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、缓存图片链与 CSS 背景图已真机验证，窄屏复杂布局仍待补 |
-| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 SVG parse/draw/cache/fallback、网络 fixture、复合 fill-rule、CSS 背景图、原生 GDI text、线性/径向渐变及其缓存链已由 TEST25-35/13 真机验证；TEST36-37 渐变完整性批次待设备验收 |
+| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 SVG parse/draw/cache/fallback、网络 fixture、复合 fill-rule、CSS 背景图、原生 GDI text、线性/径向渐变、继承/透明 stop 及缓存复用已由 TEST25-37/13 真机验证 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
@@ -26,9 +26,9 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 的 BMP/PNG/JPEG/GIF 与缓存 `<img>` 链已真机验证。`positron_image.dll` 公共 C ABI 已接通 Expat、libdom XML、libsvgtiny 与 NanoSVG rasterizer；TEST25-27 已依次确认 SVG parse、抗锯齿 retained draw 和缓存 replaced-box 绘制。
 
-最新设备反馈（2026-07-13）：TEST29-34 已依次确认 fill-rule、CSS 背景图、基础文本、连续线性渐变、渐变坐标变换和中心径向渐变。TEST35 真机截图确认 160x80 径向 SVG 经 document cache、replaced box 与 NetSurf redraw 正式链显示为连续横向椭圆且无 fallback。随后按批次开发 TEST36-37：同时覆盖 objectBoundingBox 无单位坐标、`href`/`xlink:href` 继承、线性/径向 `stop-opacity`、循环引用保护，以及同一 SVG 在 `<img>` 与 CSS 背景间的单次 fetch 复用；已完成 ARM 构建，待一次设备验收。
+最新设备反馈（2026-07-13）：TEST29-35 已依次确认 fill-rule、CSS 背景图、基础文本、连续线性/径向渐变、坐标变换和径向 SVG 正式缓存链。TEST36-37 随后真机确认 objectBoundingBox 无单位坐标、`href`/`xlink:href` 继承、线性/径向 `stop-opacity`、循环引用保护，以及同一 SVG 在 `<img>` 与 CSS 背景间的单次 fetch 复用。SVG 渐变阶段在这里收束，下一批 TEST38-39 转回 TEST13 根因：同表顶层 `:root` design token、嵌套 fallback/循环保护，以及 IANA 同款 25px 窄屏间距的 240/320px geometry + 正式 redraw，已实现待设备验收。
 
-当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环。TEST36-37 新增渐变继承、无单位 bbox 坐标和 stop opacity，但尚未真机验收，也不包含径向焦点 `fx/fy` 或 spread method；NanoSVG 光栅器对后两者仍有显式 TODO。CSS `background-size`、多层背景和完整异步资源事务未完成；复杂 SVG text、动态状态伪类、float、复杂 table、forms/widgets 仍不完整；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade、`@property`，也不使 libcss 自动支持 `calc()`/`oklch()`。CSS `background-size`、多层背景和完整异步资源事务未完成；复杂 SVG text、动态状态伪类、float、复杂 table、forms/widgets 仍不完整；JavaScript 尚未实现但属于长期必做目标。
 
 ---
 
@@ -186,13 +186,13 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 tests=31,32
 ```
 
-读取到有效配置后，程序先提示是否只运行列出的 TEST；选 **Yes** 直接按编号升序执行，选 **No** 完整保留下面原有的 All/四组选择流程。文件缺失时直接走旧流程；文件存在但无效时提示并忽略。TEST23 已撤回，配置中出现 23 会被拒绝。`scripts\stage.bat` 会复制仓库内默认的 `test_host\test_host.ini`，当前默认运行本批次 TEST36、37；可在共享目录直接修改后重新启动。
+读取到有效配置后，程序先提示是否只运行列出的 TEST；选 **Yes** 直接按编号升序执行，选 **No** 完整保留下面原有的 All/四组选择流程。文件缺失时直接走旧流程；文件存在但无效时提示并忽略。TEST23 已撤回，配置中出现 23 会被拒绝。`scripts\stage.bat` 会复制仓库内默认的 `test_host\test_host.ini`，当前默认运行本批次 TEST38、39；可在共享目录直接修改后重新启动。
 
 测试交付默认按能力批次进行：先积累多项相关实现、自动像素/资源/安全断言和直绘/正式链两层回归，再请求一次设备验收。只有真实编译错误、高风险回归定位或设备特有故障才临时拆成单项包，避免每个微小改动都要求人工截图。
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
-- **Engine**：TEST 6-11、15、16、18、21、22、24、25，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle 与 SVG parse，离线。2026-07-12 已由用户真机确认整组通过。TEST23 float 最小样例已因真实 Browse 回归撤回。
-- **GDI Render**：TEST 12、14、17、19、20、26-37，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 SVG text、线性/径向渐变、继承/透明 stop 与缓存复用，离线；TEST26-35 已真机通过，TEST36-37 待设备。
+- **Engine**：TEST 6-11、15、16、18、21、22、24、25、38，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse 与受约束的 `:root` token，离线。原整组已真机通过，TEST38 待设备。TEST23 float 最小样例已因真实 Browse 回归撤回。
+- **GDI Render**：TEST 12、14、17、19、20、26-37、39，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用与 IANA token 间距正式 redraw，离线；TEST26-37 已真机通过，TEST39 待设备。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 
 当前关键 smoke test：
@@ -209,7 +209,7 @@ tests=31,32
 - **熵源**：默认 `CryptGenRandom`（Phase 3 起）；CSP 不可用时自动退回 QPC+GetTickCount+tid/pid jitter，CTR-DRBG 兜底。
 - **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 gzip 解码、响应体 cap 1 MB；GET 已有有限 3xx follow，明文 `http://` 经 WinInet。
 - **导航卡顿**：主文档 GET 已移到 worker，旧页在等待网络时可滚动，父窗口 common-control 进度条可见；HTML parse、外部 CSS/图片 fetch、style、layout 仍在 UI 提交阶段执行，大页面返回后仍可能短暂卡顿。真实进度、失败分支复测和完整资源事务仍待后续。
-- **渲染限制**：TEST25-35 与 TEST13 fixture 已确认 SVG parse/draw/cache/fallback/fill-rule/网络链、CSS 单背景图、基础 SVG text、线性/径向渐变及缓存链。TEST36-37 正在验证继承、无单位 bbox 坐标、透明 stop 和缓存复用；复杂 SVG text、径向焦点、spread method、background-size 和多层背景仍未完成。TEST23 浮动实现已因 Browse 回归撤回。完整范围见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
+- **渲染限制**：TEST25-37 与 TEST13 fixture 已确认 SVG parse/draw/cache/fallback/fill-rule/网络链、CSS 单背景图、基础 SVG text、线性/径向渐变、继承/透明 stop 及缓存复用；复杂 SVG text、径向焦点、spread method、background-size 和多层背景仍未完成。TEST38-39 的 `:root` token 兼容批次待设备，不代表完整 CSS Variables。TEST23 浮动实现已因 Browse 回归撤回。完整范围见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 - **WM6 X 按钮 = 最小化不是关闭**。每次启动 test_host 前确认任务管理器没有遗留实例，否则 stage.bat 替换 exe 时会产生 image 不一致。
 - **WMDC 桥会静默断**：host 待机 / 模拟器长跑后偶尔失联，表现是 `PTls_Connect` 拿到 `-0x004C [BIO: recv WSA=...]`。修法：重启 WMDC（任务栏 → 退出 → 重启）。**联网测试前先在 IE Mobile 打开 baidu 验证一遍**。
 - **模拟器时钟**：跑 verified TLS 前必须校准（见上）。证书 notBefore/notAfter 都按 UTC 比对当前时间。

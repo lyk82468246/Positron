@@ -170,7 +170,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 37
+#define TEST_MAX_NUMBER 39
 
 static int test_config_space(char c)
 {
@@ -5206,6 +5206,210 @@ static BOOL test37_cached_svg_gradient_batch(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 38 - constrained :root custom properties compatibility          */
+/* The compatibility layer intentionally handles only top-level :root   */
+/* tokens in one sheet. Verify aliases, nested fallback and cycle        */
+/* fallback without claiming element-scoped CSS Variables support.       */
+/* -------------------------------------------------------------------- */
+static BOOL test38_css_root_variables(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><main>alias</main>"
+        "<section>nested fallback</section><aside>cycle fallback</aside>"
+        "<mark>double fallback</mark></body></html>";
+    static const char *CSS =
+        "@charset \"UTF-8\";/* prelude must not hide :root */"
+        ":root{--red:#ff0000;--blue:#0000ff;--alias:var(--red);"
+        "--cycle-a:var(--cycle-b);--cycle-b:var(--cycle-a);}"
+        "main{color:var(--alias);}"
+        "section{color:var(--missing,var(--blue));}"
+        "aside{color:var(--cycle-a,#00ff00);}"
+        "mark{color:var(--missing,var(--also-missing,#112233));}";
+    static const char *tags[4] = { "main", "section", "aside", "mark" };
+    static const unsigned long expect[4] = {
+        0x00ff0000UL, 0x000000ffUL, 0x0000ff00UL, 0x00112233UL
+    };
+    HANDLE hDoc;
+    HANDLE hSheet;
+    unsigned long argb;
+    unsigned long got[4] = { 0, 0, 0, 0 };
+    int i;
+    char msg[256];
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/root-variables.css");
+    if (hDoc == NULL || hSheet == NULL) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 38 FAIL", "parse HTML/CSS failed");
+        return FALSE;
+    }
+    if (PCore_StyleDocument(hDoc, hSheet) != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 38 FAIL", "PCore_StyleDocument failed");
+        return FALSE;
+    }
+    for (i = 0; i < 4; i++) {
+        argb = 0;
+        if (PCore_NodeComputedColor(hDoc, tags[i], &argb) != 0) {
+            break;
+        }
+        got[i] = argb & 0x00ffffffUL;
+        if (got[i] != expect[i]) {
+            break;
+        }
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    if (i != 4) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "case=%d tag=%s got=0x%06lX expect=0x%06lX",
+                i, (i < 4) ? tags[i] : "?",
+                (i < 4) ? got[i] : 0UL,
+                (i < 4) ? expect[i] : 0UL);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 38 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 38 OK",
+              "Top-level :root design tokens passed:\n"
+              "alias=red, nested fallback=blue, cycle fallback=green,\n"
+              "and double fallback=#112233.\n\n"
+              "(Element scope and cross-sheet variables remain unsupported.)");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 39 - IANA-style spacing tokens through layout and redraw         */
+/* Current IANA CSS expresses narrow article/footer insets via nested    */
+/* :root variables. Check two widths automatically, then show the same   */
+/* document through the formal NetSurf window path.                      */
+/* -------------------------------------------------------------------- */
+static BOOL test39_css_variable_layout(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body>"
+        "<article><main><h2>IANA spacing tokens</h2>"
+        "<p>The green content band must keep equal side insets.</p>"
+        "</main><aside>wide side navigation</aside></article>"
+        "<footer><footnav>Footer inset uses a nested token.</footnav>"
+        "</footer></body></html>";
+    static const char *CSS =
+        ":root{--space-xs:10px;--space-md:25px;--space-lg:50px;"
+        "--page-margin-sm:var(--space-md);--panel:#ccffcc;}"
+        "html,body{margin:0;padding:0;background:#ffffff;color:#203040;}"
+        "article{display:flex;flex-direction:row-reverse;"
+        "padding:var(--space-md) var(--space-lg);background:#eeeeee;}"
+        "main{flex-grow:1;flex-basis:0;background-color:var(--panel);}"
+        "aside{width:60px;}footer{padding:var(--space-xs) 0;"
+        "background:#dddddd;}footnav{display:block;margin:var(--space-xs) "
+        "var(--page-margin-sm);color:#003366;}"
+        "@media(width <= 1000px){article{padding:var(--space-md) "
+        "var(--space-md);}aside{display:none;}}";
+    static const int widths[2] = { 240, 320 };
+    HANDLE hDoc = NULL;
+    HANDLE hSheet = NULL;
+    HDC screen_dc;
+    int dpi = 96;
+    int screen_w;
+    int screen_h;
+    int pass;
+    int mx = 0;
+    int my = 0;
+    int mw = 0;
+    int mh = 0;
+    int fx = 0;
+    int fy = 0;
+    int fw = 0;
+    int fh = 0;
+    char msg[256];
+
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        int device_dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
+        if (device_dpi > 0) { dpi = device_dpi; }
+        ReleaseDC(NULL, screen_dc);
+    }
+    msg[0] = '\0';
+    for (pass = 0; pass < 2; pass++) {
+        hDoc = PCore_ParseHTML(HTML, 0);
+        hSheet = PCore_ParseCSS(CSS, 0,
+                "http://positron.local/iana-spacing.css");
+        PCore_SetViewport(widths[pass], 320, dpi);
+        if (hDoc == NULL || hSheet == NULL ||
+                PCore_StyleDocument(hDoc, hSheet) != 0 ||
+                PCore_LayoutDocument(hDoc, widths[pass], 320) != 0 ||
+                PCore_NodeBox(hDoc, "main", &mx, &my, &mw, &mh) != 0 ||
+                PCore_NodeBox(hDoc, "footnav", &fx, &fy, &fw, &fh) != 0) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "width=%d parse/style/layout lookup failed",
+                    widths[pass]);
+        } else if (mx != 25 || mw != widths[pass] - 50 || fx != 25) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "width=%d main=(%d,%d) %dx%d footnav.x=%d; "
+                    "expect main x=25 w=%d footer x=25",
+                    widths[pass], mx, my, mw, mh, fx, widths[pass] - 50);
+        }
+        msg[sizeof(msg) - 1] = '\0';
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        hSheet = NULL;
+        hDoc = NULL;
+        if (msg[0] != '\0') {
+            break;
+        }
+    }
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, dpi);
+    if (pass != 2) {
+        show_error(L"TEST 39 FAIL", msg);
+        return FALSE;
+    }
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/iana-spacing.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 39 FAIL", "visible parse/style/layout failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 39",
+              "IANA-style variable layout will open. Expect a green content\n"
+              "band inset equally by 25px and footer text aligned to the\n"
+              "same 25px left edge. Rotation must retain those insets.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 39 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 39 OK",
+              ":root spacing tokens passed 240/320px geometry and the\n"
+              "formal NetSurf layout/redraw window path.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -5357,6 +5561,8 @@ static int run_configured_tests(const unsigned char *selected,
         case 35: ok = test35_cached_svg_radial_gradient(); break;
         case 36: ok = test36_svg_gradient_feature_matrix(); break;
         case 37: ok = test37_cached_svg_gradient_batch(); break;
+        case 38: ok = test38_css_root_variables(); break;
+        case 39: ok = test39_css_variable_layout(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -5436,7 +5642,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-37)\n"
+                  "Yes = run all selected groups (TEST 1-39)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -5452,7 +5658,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "HTML / CSS / DOM parse, select, style,\n"
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
-                               "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25). Offline.");
+                               "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "M1 plotter (TEST 14), NetSurf render\n"
@@ -5467,6 +5673,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "radial gradients (TEST 34),\n"
                                "cached radial SVG (TEST 35),\n"
                                "gradient feature matrix/cache reuse (TEST 36-37),\n"
+                               "IANA variable layout redraw (TEST 39),\n"
                                "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
@@ -5489,7 +5696,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* --- Engine group (TEST 6-11, 15, 16, 18, 21, 22, 24, 25; offline) */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38; offline. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -5501,6 +5708,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test22_reverse_flex_padding()){ rc = 11; goto done; }
         if (!test24_cached_stylesheet_restyle()){ rc = 11; goto done; }
         if (!test25_svg_parse())   { rc = 11; goto done; }
+        if (!test38_css_root_variables()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -5510,7 +5718,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -5530,6 +5738,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test35_cached_svg_radial_gradient()){ rc = 13; goto done; }
         if (!test36_svg_gradient_feature_matrix()){ rc = 13; goto done; }
         if (!test37_cached_svg_gradient_batch()){ rc = 13; goto done; }
+        if (!test39_css_variable_layout()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -5557,21 +5766,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
-               "    resource cache, and SVG parse through positron_image.dll. Offline.\n\n");
+               "    resource cache, SVG parse, and constrained :root CSS variables. Offline.\n\n");
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
                "    cached SVG, fallback, fill rules, CSS backgrounds and\n"
                "    native SVG text, cached SVG gradients, coordinate transforms\n"
-               "    radial gradients, inherited/alpha stops and cache reuse.\n"
+               "    radial gradients, inherited/alpha stops, cache reuse, and\n"
+               "    IANA-style variable spacing through formal redraw.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {
