@@ -170,7 +170,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 39
+#define TEST_MAX_NUMBER 40
 
 static int test_config_space(char c)
 {
@@ -5410,6 +5410,103 @@ static BOOL test39_css_variable_layout(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 40 - modern CSS values compatibility batch                      */
+/* One automatic test covers OKLCH conversion, alpha, root-token use,   */
+/* reducible calc arithmetic and preservation of mixed-unit calc.        */
+/* -------------------------------------------------------------------- */
+static BOOL test40_css_modern_values(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><main>red</main>"
+        "<section>half red</section><mark>IANA link</mark>"
+        "<aside>calc division</aside><article>mixed units</article>"
+        "</body></html>";
+    static const char *CSS =
+        ":root{--brand:oklch(0.627955 0.257683 29.233);"
+        "--half:oklch(0.627955 0.257683 29.233 / .5);"
+        "--link:oklch(0.58 0.14 251);--base:20px;}"
+        "html,body{margin:0;padding:0;}"
+        "main{color:var(--brand);width:calc(var(--base) * 3);"
+        "margin-left:calc((var(--base) - 5px) * 2);height:10px;}"
+        "section{color:var(--half);height:10px;}"
+        "mark{color:var(--link);}"
+        "aside{width:calc(120px / 4);margin-left:calc(5px + 5px);"
+        "height:10px;}"
+        "article{width:77px;width:calc(100% - 20px);height:10px;}";
+    static const char *tags[3] = { "main", "section", "mark" };
+    static const unsigned long expected[3] = {
+        0xffff0000UL, 0x80ff0000UL, 0xff2e7dcaUL
+    };
+    HANDLE hDoc;
+    HANDLE hSheet;
+    unsigned long got[3] = { 0, 0, 0 };
+    int mx = 0;
+    int my = 0;
+    int mw = 0;
+    int mh = 0;
+    int ax = 0;
+    int ay = 0;
+    int aw = 0;
+    int ah = 0;
+    int rx = 0;
+    int ry = 0;
+    int rw = 0;
+    int rh = 0;
+    int i;
+    char msg[256];
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/modern-values.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 200, 200) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 40 FAIL", "parse/style/layout failed");
+        return FALSE;
+    }
+    for (i = 0; i < 3; i++) {
+        if (PCore_NodeComputedColor(hDoc, tags[i], &got[i]) != 0 ||
+                got[i] != expected[i]) {
+            break;
+        }
+    }
+    if (i == 3 &&
+            (PCore_NodeBox(hDoc, "main", &mx, &my, &mw, &mh) != 0 ||
+             PCore_NodeBox(hDoc, "aside", &ax, &ay, &aw, &ah) != 0 ||
+             PCore_NodeBox(hDoc, "article", &rx, &ry, &rw, &rh) != 0)) {
+        i = 4;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    if (i < 3) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "color %d %s got=%08lX expect=%08lX",
+                i, tags[i], got[i], expected[i]);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 40 FAIL", msg);
+        return FALSE;
+    }
+    if (i == 4 || mx != 30 || mw != 60 || ax != 10 || aw != 30 ||
+            rx != 0 || rw != 77) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "boxes main x/w=%d/%d aside=%d/%d mixed=%d/%d; "
+                "expect 30/60 10/30 0/77",
+                mx, mw, ax, aw, rx, rw);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 40 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 40 OK",
+              "Modern CSS value batch passed:\n"
+              "OKLCH red/alpha/IANA link colours; root-token calc with\n"
+              "+, -, *, /; and mixed %/px calc remained unconverted.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -5563,6 +5660,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 37: ok = test37_cached_svg_gradient_batch(); break;
         case 38: ok = test38_css_root_variables(); break;
         case 39: ok = test39_css_variable_layout(); break;
+        case 40: ok = test40_css_modern_values(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -5642,7 +5740,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-39)\n"
+                  "Yes = run all selected groups (TEST 1-40)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -5658,23 +5756,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "HTML / CSS / DOM parse, select, style,\n"
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
-                               "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38). Offline.");
+                               "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
-                               "M1 plotter (TEST 14), NetSurf render\n"
-                               "(TEST 17), native image draw (TEST 19),\n"
-                               "SVG path draw (TEST 26), cached SVG <img>\n"
-                               "(TEST 27), broken SVG fallback (TEST 28),\n"
-                               "compound fill rules (TEST 29),\n"
-                               "CSS background images (TEST 30),\n"
-                               "native SVG text (TEST 31),\n"
-                               "cached SVG gradient/text (TEST 32),\n"
-                               "gradient coordinates (TEST 33),\n"
-                               "radial gradients (TEST 34),\n"
-                               "cached radial SVG (TEST 35),\n"
-                               "gradient feature matrix/cache reuse (TEST 36-37),\n"
-                               "IANA variable layout redraw (TEST 39),\n"
-                               "local HTML page (TEST 12).\n"
+                               "NetSurf/GDI pages (TEST 12, 14, 17),\n"
+                               "native bitmap draw (TEST 19),\n"
+                               "SVG draw/cache/fallback/text/gradients\n"
+                               "(TEST 26-37), and responsive IANA-style\n"
+                               "layout redraw (TEST 39).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -5696,7 +5785,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38; offline. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40; offline. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -5709,6 +5798,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test24_cached_stylesheet_restyle()){ rc = 11; goto done; }
         if (!test25_svg_parse())   { rc = 11; goto done; }
         if (!test38_css_root_variables()){ rc = 11; goto done; }
+        if (!test40_css_modern_values()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -5766,11 +5856,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
-               "    resource cache, SVG parse, and constrained :root CSS variables. Offline.\n\n");
+               "    resource cache, SVG parse, constrained :root variables,\n"
+               "    OKLCH colours and reducible calc values. Offline.\n\n");
     }
     if (run_render) {
         strcat(summary,

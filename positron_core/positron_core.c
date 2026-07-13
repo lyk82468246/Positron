@@ -31,6 +31,7 @@
 #include "../netsurf-all-3.11/libdom/bindings/hubbub/parser.h"
 
 #include "positron_core.h"
+#include "pcore_css_values.h"
 
 /* ------------------------------------------------------------------ */
 /* DllMain                                                            */
@@ -936,6 +937,7 @@ PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
     css_error             err;
     char                 *compat_css;
     char                 *vars_css;
+    char                 *values_css;
     const char           *parse_css;
     unsigned int          parse_len;
 
@@ -955,6 +957,10 @@ PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
     if (vars_css != NULL) {
         parse_css = vars_css;
     }
+    values_css = pcore_css_compat_values(parse_css, parse_len, &parse_len);
+    if (values_css != NULL) {
+        parse_css = values_css;
+    }
 
     /* Zero the block, then set only the fields we need; title / quirks /
      * inline / import / colour / font callbacks stay NULL/false. */
@@ -967,6 +973,7 @@ PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
 
     err = css_stylesheet_create(&params, &sheet);
     if (err != CSS_OK || sheet == NULL) {
+        free(values_css);
         free(vars_css);
         free(compat_css);
         return NULL;
@@ -975,6 +982,7 @@ PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
     /* Streaming append: CSS_NEEDDATA is the normal "ok, more welcome". */
     err = css_stylesheet_append_data(sheet, (const uint8_t *) parse_css,
             parse_len);
+    free(values_css);
     free(vars_css);
     free(compat_css);
     if (err != CSS_OK && err != CSS_NEEDDATA) {

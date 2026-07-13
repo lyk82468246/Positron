@@ -210,6 +210,7 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File RelativePath=".\positron_core.c"></File>
+			<File RelativePath=".\pcore_css_values.c"></File>
 			<File RelativePath=".\pcore_select.c"></File>
 			<File RelativePath=".\pcore_wmimage.cpp">
 				<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
@@ -239,6 +240,7 @@
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File RelativePath=".\positron_core.h"></File>
+			<File RelativePath=".\pcore_css_values.h"></File>
 		</Filter>
 		<Filter
 			Name="Resource Files"

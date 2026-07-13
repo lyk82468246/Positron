@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=38,39`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=40`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -91,7 +91,11 @@ TEST36 首次设备结果为 `unit=1 inherit=0 alpha=1/1 cycle=1`：除 SVG1.1 X
 
 随后联网读取当前 IANA `iana_website.80c103cc08b6.css`：窄屏 `article.sidenav`、footer navigation/custodian/legalnotice 的关键 padding/margin 使用 `var(--space-*)`，libcss 会丢弃整条声明。审计 NetSurf 最新 libcss `104d87f` 仍找不到 `var()`/custom-properties 实现，因此没有可直接抄入的上游补丁。新增兼容层只收集同表顶层精确 `:root` token，结构化处理注释/字符串、嵌套 fallback 与循环，设 128 token、16 层递归和 8 倍输出上限；TEST38-39 分别覆盖 computed color 语义和 IANA 同款 240/320px 25px inset + 正式 redraw。float 未重新启用。
 
-TEST38-39 批次经 `c89ize.py` 检查两个 C 文件均为 0 修改；VS2008 ARMV4I 增量构建 0 错误，`positron_core` 与 `test_host` 各仅保留 libcss `fpmath.h` 三条既有 C4244。最终设备包为 `C:\WMShare\Positron-next30`，默认配置 `tests=38,39`，待一次真机验收。
+TEST38-39 批次经 `c89ize.py` 检查两个 C 文件均为 0 修改；VS2008 ARMV4I 增量构建 0 错误，`positron_core` 与 `test_host` 各仅保留 libcss `fpmath.h` 三条既有 C4244。设备包 `C:\WMShare\Positron-next30` 已由用户确认：TEST39 竖横屏均为等距 25px inset，新的 TEST13 中导航、正文和注册表列也恢复可读。
+
+随后审计同一份 IANA CSS：共见 22 处 `oklch()`、15 处 `calc()`。Oklab 转换矩阵采用 Bjorn Ottosson 公开域/MIT 参考实现；没有引入不适配 VS2008 的完整现代颜色库。新 `pcore_css_values.c` 只转换数值型 OKLCH，并求值同单位且不依赖布局上下文的 calc；混合 `%/px` 原样保留。TEST40 将颜色、alpha、变量 calc 的 `+ - * /` 和混合单位保留合并为一次自动验收。多组路由第 3 组提示也已压缩，避免 WM6 MessageBox 长文本异常。
+
+TEST40 最终批次经 `c89ize.py` 检查三个 C 文件均为 0 修改。首次增量构建重编 core/test_host，各只有 libcss `fpmath.h` 三条既有 C4244；修正 22:10 fixed alpha 量化后，最终增量构建只重编 `pcore_css_values.c` 并重链接 test_host，两个项目均为 0 错误、0 警告。设备包为 `C:\WMShare\Positron-next31`，默认配置 `tests=40`。
 
 用户截图确认修正后的 TEST29 三个样本正确：红色 nonzero 实心，蓝/绿 evenodd 中心为白色。随后 CSS background-image 按 NetSurf 现有边界接入：样式后的资源扫描读取 computed URI 并复用 document cache；构盒后设置 `box->background`；`redraw.c` 继续负责 position/repeat/clip；GDI plotter 参照上游 Windows frontend 展开 BITMAPF_REPEAT_X/Y。TEST30 的同步 fetch 是当前导航资源阶段的既有取舍，不代表 background-size、多层背景或异步资源事务完成。
 
