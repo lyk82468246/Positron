@@ -16,12 +16,7 @@
 #define UNUSED(x) ((void) (x))
 #endif
 
-struct svgtiny_gradient_stop {
-	float offset;
-	svgtiny_colour color;
-};
-
-#define svgtiny_MAX_STOPS 10
+#define svgtiny_MAX_STOPS svgtiny_MAX_GRADIENT_STOPS
 #define svgtiny_LINEAR_GRADIENT 0x2000000
 
 struct svgtiny_parse_state_gradient {

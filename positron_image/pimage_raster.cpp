@@ -154,6 +154,14 @@ static void pimage_free_shapes(NSVGshape *shape)
     while (shape != NULL) {
         next = shape->next;
         pimage_free_paths(shape->paths);
+        if (shape->fill.type == NSVG_PAINT_LINEAR_GRADIENT ||
+                shape->fill.type == NSVG_PAINT_RADIAL_GRADIENT) {
+            free(shape->fill.gradient);
+        }
+        if (shape->stroke.type == NSVG_PAINT_LINEAR_GRADIENT ||
+                shape->stroke.type == NSVG_PAINT_RADIAL_GRADIENT) {
+            free(shape->stroke.gradient);
+        }
         free(shape);
         shape = next;
     }
@@ -275,6 +283,9 @@ error:
 static NSVGshape *pimage_convert_shape(const struct svgtiny_shape *source)
 {
     NSVGshape *shape;
+    NSVGgradient *gradient;
+    size_t gradient_size;
+    unsigned int i;
 
     if (source->path == NULL) {
         return NULL;
@@ -288,9 +299,33 @@ static NSVGshape *pimage_convert_shape(const struct svgtiny_shape *source)
         free(shape);
         return NULL;
     }
-    shape->fill.type = (source->fill == svgtiny_TRANSPARENT) ?
-            NSVG_PAINT_NONE : NSVG_PAINT_COLOR;
-    shape->fill.color = pimage_nsvg_color(source->fill);
+    if (source->fill_gradient_stop_count != 0) {
+        gradient_size = sizeof(NSVGgradient) +
+                (source->fill_gradient_stop_count - 1) *
+                sizeof(NSVGgradientStop);
+        gradient = (NSVGgradient *) calloc(1, gradient_size);
+        if (gradient == NULL) {
+            pimage_free_paths(shape->paths);
+            free(shape);
+            return NULL;
+        }
+        memcpy(gradient->xform, source->fill_gradient_xform,
+                sizeof(gradient->xform));
+        gradient->spread = NSVG_SPREAD_PAD;
+        gradient->nstops = (int) source->fill_gradient_stop_count;
+        for (i = 0; i < source->fill_gradient_stop_count; i++) {
+            gradient->stops[i].offset =
+                    source->fill_gradient_stop[i].offset;
+            gradient->stops[i].color = pimage_nsvg_color(
+                    source->fill_gradient_stop[i].color);
+        }
+        shape->fill.type = NSVG_PAINT_LINEAR_GRADIENT;
+        shape->fill.gradient = gradient;
+    } else {
+        shape->fill.type = (source->fill == svgtiny_TRANSPARENT) ?
+                NSVG_PAINT_NONE : NSVG_PAINT_COLOR;
+        shape->fill.color = pimage_nsvg_color(source->fill);
+    }
     shape->stroke.type = (source->stroke == svgtiny_TRANSPARENT) ?
             NSVG_PAINT_NONE : NSVG_PAINT_COLOR;
     shape->stroke.color = pimage_nsvg_color(source->stroke);

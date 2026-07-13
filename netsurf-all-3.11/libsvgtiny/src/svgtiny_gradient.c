@@ -276,7 +276,7 @@ float svgtiny_parse_gradient_offset(const char *s)
 {
 	int num_length = strspn(s, "0123456789+-.");
 	const char *unit = s + num_length;
-	float n = atof((const char *) s);
+	float n = (float) atof((const char *) s);
 
 	if (unit[0] == 0)
 		;
@@ -299,6 +299,134 @@ float svgtiny_parse_gradient_offset(const char *s)
 
 svgtiny_code svgtiny_add_path_linear_gradient(float *p, unsigned int n,
 		struct svgtiny_parse_state *state)
+{
+	float object_x0, object_y0, object_x1, object_y1;
+	float gradient_x0, gradient_y0, gradient_x1, gradient_y1;
+	float gradient_dx, gradient_dy, gradient_norm_squared;
+	float inverse_ctm[6], inverse_gradient[6];
+	float ux_x, ux_y, ux_c, uy_x, uy_y, uy_c;
+	float axis_x, axis_y, axis_c;
+	float ctm_matrix[6];
+	float gradient_matrix[6];
+	float ctm_determinant, gradient_determinant;
+	unsigned int i, stop_count;
+	struct svgtiny_parse_state_gradient *grad;
+	struct svgtiny_shape *shape;
+
+	assert(state->fill == svgtiny_LINEAR_GRADIENT);
+	grad = &state->fill_grad;
+	stop_count = grad->linear_gradient_stop_count;
+	if (stop_count == 0) {
+		free(p);
+		return svgtiny_OK;
+	}
+
+	svgtiny_path_bbox(p, n, &object_x0, &object_y0,
+			&object_x1, &object_y1);
+	if (!grad->gradient_user_space_on_use) {
+		gradient_x0 = object_x0 + svgtiny_parse_length(
+				grad->gradient_x1,
+				(int) (object_x1 - object_x0), *state);
+		gradient_y0 = object_y0 + svgtiny_parse_length(
+				grad->gradient_y1,
+				(int) (object_y1 - object_y0), *state);
+		gradient_x1 = object_x0 + svgtiny_parse_length(
+				grad->gradient_x2,
+				(int) (object_x1 - object_x0), *state);
+		gradient_y1 = object_y0 + svgtiny_parse_length(
+				grad->gradient_y2,
+				(int) (object_y1 - object_y0), *state);
+	} else {
+		gradient_x0 = svgtiny_parse_length(grad->gradient_x1,
+				(int) state->viewport_width, *state);
+		gradient_y0 = svgtiny_parse_length(grad->gradient_y1,
+				(int) state->viewport_height, *state);
+		gradient_x1 = svgtiny_parse_length(grad->gradient_x2,
+				(int) state->viewport_width, *state);
+		gradient_y1 = svgtiny_parse_length(grad->gradient_y2,
+				(int) state->viewport_height, *state);
+	}
+
+	gradient_dx = gradient_x1 - gradient_x0;
+	gradient_dy = gradient_y1 - gradient_y0;
+	gradient_norm_squared = gradient_dx * gradient_dx +
+			gradient_dy * gradient_dy;
+	ctm_matrix[0] = state->ctm.a;
+	ctm_matrix[1] = state->ctm.b;
+	ctm_matrix[2] = state->ctm.c;
+	ctm_matrix[3] = state->ctm.d;
+	ctm_matrix[4] = state->ctm.e;
+	ctm_matrix[5] = state->ctm.f;
+	gradient_matrix[0] = grad->gradient_transform.a;
+	gradient_matrix[1] = grad->gradient_transform.b;
+	gradient_matrix[2] = grad->gradient_transform.c;
+	gradient_matrix[3] = grad->gradient_transform.d;
+	gradient_matrix[4] = grad->gradient_transform.e;
+	gradient_matrix[5] = grad->gradient_transform.f;
+	ctm_determinant = ctm_matrix[0] * ctm_matrix[3] -
+			ctm_matrix[1] * ctm_matrix[2];
+	gradient_determinant = gradient_matrix[0] * gradient_matrix[3] -
+			gradient_matrix[1] * gradient_matrix[2];
+
+	svgtiny_transform_path(p, n, state);
+	shape = svgtiny_add_shape(state);
+	if (shape == NULL) {
+		free(p);
+		return svgtiny_OUT_OF_MEMORY;
+	}
+	shape->path = p;
+	shape->path_length = n;
+	shape->fill = grad->gradient_stop[stop_count - 1].color;
+
+	/* Degenerate transforms have a well-defined solid-colour fallback. */
+	if (gradient_norm_squared > 0.000001f &&
+			fabsf(ctm_determinant) > 0.000001f &&
+			fabsf(gradient_determinant) > 0.000001f) {
+		svgtiny_invert_matrix(ctm_matrix, inverse_ctm);
+		svgtiny_invert_matrix(gradient_matrix, inverse_gradient);
+
+		/* final point -> inverse CTM -> inverse gradientTransform */
+		ux_x = inverse_gradient[0] * inverse_ctm[0] +
+				inverse_gradient[2] * inverse_ctm[1];
+		ux_y = inverse_gradient[0] * inverse_ctm[2] +
+				inverse_gradient[2] * inverse_ctm[3];
+		ux_c = inverse_gradient[0] * inverse_ctm[4] +
+				inverse_gradient[2] * inverse_ctm[5] +
+				inverse_gradient[4];
+		uy_x = inverse_gradient[1] * inverse_ctm[0] +
+				inverse_gradient[3] * inverse_ctm[1];
+		uy_y = inverse_gradient[1] * inverse_ctm[2] +
+				inverse_gradient[3] * inverse_ctm[3];
+		uy_c = inverse_gradient[1] * inverse_ctm[4] +
+				inverse_gradient[3] * inverse_ctm[5] +
+				inverse_gradient[5];
+		axis_x = (gradient_dx * ux_x + gradient_dy * uy_x) /
+				gradient_norm_squared;
+		axis_y = (gradient_dx * ux_y + gradient_dy * uy_y) /
+				gradient_norm_squared;
+		axis_c = (gradient_dx * (ux_c - gradient_x0) +
+				gradient_dy * (uy_c - gradient_y0)) /
+				gradient_norm_squared;
+
+		shape->fill_gradient_xform[0] = -axis_y;
+		shape->fill_gradient_xform[1] = axis_x;
+		shape->fill_gradient_xform[2] = axis_x;
+		shape->fill_gradient_xform[3] = axis_y;
+		shape->fill_gradient_xform[4] = 0;
+		shape->fill_gradient_xform[5] = axis_c;
+		shape->fill_gradient_stop_count = stop_count;
+		for (i = 0; i < stop_count; i++) {
+			shape->fill_gradient_stop[i] = grad->gradient_stop[i];
+		}
+	}
+	state->diagram->shape_count++;
+	return svgtiny_OK;
+}
+
+#if 0
+/* Upstream triangulation retained as a source reference only. */
+static svgtiny_code svgtiny_add_path_linear_gradient_triangulated(
+		float *p, unsigned int n, struct svgtiny_parse_state *state)
 {
 	struct grad_point {
 		float x, y, r;
@@ -719,6 +847,7 @@ svgtiny_code svgtiny_add_path_linear_gradient(float *p, unsigned int n,
 
 	return svgtiny_OK;
 }
+#endif
 
 
 /**

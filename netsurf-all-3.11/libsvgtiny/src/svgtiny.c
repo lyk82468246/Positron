@@ -2491,6 +2491,11 @@ struct svgtiny_shape *svgtiny_add_shape(struct svgtiny_parse_state *state)
 	shape->text_italic = state->font_italic;
 	shape->fill = state->fill;
 	shape->fill_rule = state->fill_rule;
+	shape->fill_gradient_stop_count = 0;
+	memset(shape->fill_gradient_stop, 0,
+			sizeof(shape->fill_gradient_stop));
+	memset(shape->fill_gradient_xform, 0,
+			sizeof(shape->fill_gradient_xform));
 	shape->stroke = state->stroke;
 	shape->stroke_width = lroundf((float) state->stroke_width *
 			(state->ctm.a + state->ctm.d) / 2.0);

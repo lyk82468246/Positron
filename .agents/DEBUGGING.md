@@ -71,6 +71,8 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 
 TEST29 首次设备结果仅在绿色环精确值失败：SVG `#00a000` 经 screen-compatible RGB565 bitmap 量化后，`GetPixel` 返回 `#00a200`；红/蓝环及两个白色孔洞均正确。这不是 fill-rule 失败。测试 fixture 改用 RGB565 可精确表示的纯绿 `#00ff00`，仍对六个位置做精确相等断言，不放宽孔洞或颜色判断。
 
+2026-07-13：TEST32 首次设备截图证明缓存 SVG 渐变/文本正式链已经可见，但红到蓝色带中出现密集竖向亮缝。根因是 libsvgtiny 上游线性渐变实现把原路径三角剖分为许多纯色 shape，NanoSVG 分别抗锯齿时边界重复混合背景。修复不替换解析器：libsvgtiny 输出单一路径、stop 数组和“最终坐标到归一化渐变轴”的矩阵，`positron_image` 将其映射为 NanoSVG `NSVG_PAINT_LINEAR_GRADIENT` 一次填充。TEST32 现除左右/中点和白色文字外，还拒绝扫描线上的绿色亮缝及大幅邻色跳变。
+
 用户截图确认修正后的 TEST29 三个样本正确：红色 nonzero 实心，蓝/绿 evenodd 中心为白色。随后 CSS background-image 按 NetSurf 现有边界接入：样式后的资源扫描读取 computed URI 并复用 document cache；构盒后设置 `box->background`；`redraw.c` 继续负责 position/repeat/clip；GDI plotter 参照上游 Windows frontend 展开 BITMAPF_REPEAT_X/Y。TEST30 的同步 fetch 是当前导航资源阶段的既有取舍，不代表 background-size、多层背景或异步资源事务完成。
 
 2026-07-12 扩展 TEST19 首次真机结果：BMP/PNG/JPEG/GIF 都通过尺寸探测和 Draw 返回，但 PNG/GIF fixture 本身是黑色/透明 1x1，缺少视觉证明；旧 BMP 数组还只有 68 字节而头声明 70，宽容解码后颜色错误。同期 TEST20 从 96x72 退成小点，且 H2/p 颜色丢失：根因是 render window 首次 `WM_SIZE` 用 NULL author sheet restyle，覆盖了调用方 `hSheet`。现改为四种标准编码器 2x2 fixture（BMP 70/PNG 77/JPEG 694/GIF 46 字节），并由 `g_render_sheet` 在窗口生命周期内保留调用方 stylesheet；导航换文档时清空。增量构建通过，待复测 TEST19/20。

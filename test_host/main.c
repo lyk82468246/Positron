@@ -4044,6 +4044,7 @@ static BOOL test32_cached_svg_gradient_text(void)
     COLORREF middle;
     COLORREF right;
     COLORREF pixel;
+    COLORREF previous;
     int found;
     int fetched;
     int x;
@@ -4055,6 +4056,8 @@ static BOOL test32_cached_svg_gradient_text(void)
     int px;
     int py;
     int white_pixels;
+    int seam_pixels;
+    int large_jumps;
     int left_ok;
     int middle_ok;
     int right_ok;
@@ -4127,6 +4130,25 @@ static BOOL test32_cached_svg_gradient_text(void)
     left = GetPixel(memory_dc, x + 8, y + 12);
     middle = GetPixel(memory_dc, x + 80, y + 12);
     right = GetPixel(memory_dc, x + 151, y + 12);
+    previous = CLR_INVALID;
+    seam_pixels = 0;
+    large_jumps = 0;
+    for (px = x + 2; px < x + w - 2; px++) {
+        pixel = GetPixel(memory_dc, px, y + 12);
+        if (GetGValue(pixel) > 48) {
+            seam_pixels++;
+        }
+        if (previous != CLR_INVALID &&
+                abs((int) GetRValue(pixel) -
+                (int) GetRValue(previous)) +
+                abs((int) GetGValue(pixel) -
+                (int) GetGValue(previous)) +
+                abs((int) GetBValue(pixel) -
+                (int) GetBValue(previous)) > 80) {
+            large_jumps++;
+        }
+        previous = pixel;
+    }
     white_pixels = 0;
     for (py = y + 27; py < y + 55; py += 2) {
         for (px = x + 35; px < x + 125; px += 2) {
@@ -4144,10 +4166,11 @@ static BOOL test32_cached_svg_gradient_text(void)
     left_ok = GetRValue(left) > 150 && GetBValue(left) < 120;
     middle_ok = GetRValue(middle) > 50 && GetBValue(middle) > 50;
     right_ok = GetBValue(right) > 150 && GetRValue(right) < 120;
-    if (!left_ok || !middle_ok || !right_ok || white_pixels < 8) {
-        sprintf(msg, "gradient L=%06lX M=%06lX R=%06lX white=%d",
+    if (!left_ok || !middle_ok || !right_ok || white_pixels < 8 ||
+            seam_pixels > 2 || large_jumps > 2) {
+        sprintf(msg, "L=%06lX M=%06lX R=%06lX W=%d seam=%d jump=%d",
                 left & 0xffffffUL, middle & 0xffffffUL,
-                right & 0xffffffUL, white_pixels);
+                right & 0xffffffUL, white_pixels, seam_pixels, large_jumps);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 32 FAIL", msg);
@@ -4175,8 +4198,9 @@ static BOOL test32_cached_svg_gradient_text(void)
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
     show_info(L"TEST 32 OK",
-              "libsvgtiny gradient and native SVG text passed through\n"
-              "document cache -> replaced box -> NetSurf redraw.");
+              "Continuous libsvgtiny/NanoSVG gradient and native text\n"
+              "passed cache -> replaced box -> NetSurf redraw.\n"
+              "The scanline also passed the seam/jump guard.");
     return TRUE;
 }
 

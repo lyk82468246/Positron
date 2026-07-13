@@ -39,6 +39,13 @@ typedef enum {
 	svgtiny_TEXT_ANCHOR_END = 2
 } svgtiny_text_anchor;
 
+#define svgtiny_MAX_GRADIENT_STOPS 10
+
+struct svgtiny_gradient_stop {
+	float offset;
+	svgtiny_colour color;
+};
+
 struct svgtiny_shape {
 	float *path;
 	unsigned int path_length;
@@ -52,6 +59,11 @@ struct svgtiny_shape {
 	int text_italic;
 	svgtiny_colour fill;
 	svgtiny_fill_rule fill_rule;
+	unsigned int fill_gradient_stop_count;
+	struct svgtiny_gradient_stop
+			fill_gradient_stop[svgtiny_MAX_GRADIENT_STOPS];
+	/* Maps final diagram coordinates to the normalized gradient axis. */
+	float fill_gradient_xform[6];
 	svgtiny_colour stroke;
 	int stroke_width;
 };
