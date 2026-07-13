@@ -85,6 +85,8 @@ TEST34 已通过 C89 专家脚本及 VS2008 ARM 增量构建：离屏先验证 o
 
 首个批次 TEST36-37：libsvgtiny 对 objectBoundingBox 无单位数按 `0..1 * bbox` 解释，支持 SVG2 `href` 与 SVG1.1 `xlink:href`，引用深度限制为 16 防止循环耗尽栈；gradient stop 新增独立 opacity，并沿 `positron_image` 结构化桥映射到 NanoSVG stop alpha。TEST36 用四面板及循环引用白底降级做直绘自动断言；TEST37 要求同一继承半透明径向 SVG 被 `<img>` 与 CSS background 发现两次但只 fetch/free 一次，两处中心/中点/边缘像素一致。C89 脚本零改动，VS2008 ARM 增量构建 0 错误。
 
+TEST36 首次设备结果为 `unit=1 inherit=0 alpha=1/1 cycle=1`：除 SVG1.1 XLink 继承外，本批次其余直绘断言均已通过。根因是 XML DOM 中 `xlink:href` 是带命名空间的属性，不能用 qualified name 字符串调用 `dom_element_get_attribute`；修复改用 libdom 正式 API `dom_element_get_attribute_ns`，传 `dom_namespaces[DOM_NAMESPACE_XLINK]` 与本地名 `href`。测试 fixture 和 inherit 断言未放宽。
+
 用户截图确认修正后的 TEST29 三个样本正确：红色 nonzero 实心，蓝/绿 evenodd 中心为白色。随后 CSS background-image 按 NetSurf 现有边界接入：样式后的资源扫描读取 computed URI 并复用 document cache；构盒后设置 `box->background`；`redraw.c` 继续负责 position/repeat/clip；GDI plotter 参照上游 Windows frontend 展开 BITMAPF_REPEAT_X/Y。TEST30 的同步 fetch 是当前导航资源阶段的既有取舍，不代表 background-size、多层背景或异步资源事务完成。
 
 2026-07-12 扩展 TEST19 首次真机结果：BMP/PNG/JPEG/GIF 都通过尺寸探测和 Draw 返回，但 PNG/GIF fixture 本身是黑色/透明 1x1，缺少视觉证明；旧 BMP 数组还只有 68 字节而头声明 70，宽容解码后颜色错误。同期 TEST20 从 96x72 退成小点，且 H2/p 颜色丢失：根因是 render window 首次 `WM_SIZE` 用 NULL author sheet restyle，覆盖了调用方 `hSheet`。现改为四种标准编码器 2x2 fixture（BMP 70/PNG 77/JPEG 694/GIF 46 字节），并由 `g_render_sheet` 在窗口生命周期内保留调用方 stylesheet；导航换文档时清空。增量构建通过，待复测 TEST19/20。

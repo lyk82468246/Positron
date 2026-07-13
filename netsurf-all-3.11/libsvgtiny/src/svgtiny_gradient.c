@@ -135,8 +135,9 @@ svgtiny_code svgtiny_parse_linear_gradient(dom_element *linear,
 	attr = NULL;
 	exc = dom_element_get_attribute(linear, state->interned_href, &attr);
 	if ((exc != DOM_NO_ERR || attr == NULL)) {
-		exc = dom_element_get_attribute(linear,
-				state->interned_xlink_href, &attr);
+		exc = dom_element_get_attribute_ns(linear,
+				dom_namespaces[DOM_NAMESPACE_XLINK],
+				state->interned_href, &attr);
 	}
 	if (exc == DOM_NO_ERR && attr != NULL) {
 		if (dom_string_data(attr)[0] == (uint8_t) '#' &&
