@@ -46,6 +46,12 @@ struct svgtiny_gradient_stop {
 	svgtiny_colour color;
 };
 
+typedef enum {
+	svgtiny_GRADIENT_NONE = 0,
+	svgtiny_GRADIENT_LINEAR = 1,
+	svgtiny_GRADIENT_RADIAL = 2
+} svgtiny_gradient_type;
+
 struct svgtiny_shape {
 	float *path;
 	unsigned int path_length;
@@ -59,6 +65,7 @@ struct svgtiny_shape {
 	int text_italic;
 	svgtiny_colour fill;
 	svgtiny_fill_rule fill_rule;
+	svgtiny_gradient_type fill_gradient_type;
 	unsigned int fill_gradient_stop_count;
 	struct svgtiny_gradient_stop
 			fill_gradient_stop[svgtiny_MAX_GRADIENT_STOPS];

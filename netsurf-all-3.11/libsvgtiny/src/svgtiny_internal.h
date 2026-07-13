@@ -18,10 +18,13 @@
 
 #define svgtiny_MAX_STOPS svgtiny_MAX_GRADIENT_STOPS
 #define svgtiny_LINEAR_GRADIENT 0x2000000
+#define svgtiny_RADIAL_GRADIENT 0x3000000
 
 struct svgtiny_parse_state_gradient {
-	unsigned int linear_gradient_stop_count;
+	unsigned int gradient_stop_count;
+	svgtiny_gradient_type gradient_type;
 	dom_string *gradient_x1, *gradient_y1, *gradient_x2, *gradient_y2;
+	dom_string *gradient_cx, *gradient_cy, *gradient_r;
 	struct svgtiny_gradient_stop gradient_stop[svgtiny_MAX_STOPS];
 	bool gradient_user_space_on_use;
 	struct {
@@ -93,6 +96,8 @@ void svgtiny_find_gradient(const char *id,
 		struct svgtiny_parse_state_gradient *grad,
 		struct svgtiny_parse_state *state);
 svgtiny_code svgtiny_add_path_linear_gradient(float *p, unsigned int n,
+		struct svgtiny_parse_state *state);
+svgtiny_code svgtiny_add_path_radial_gradient(float *p, unsigned int n,
 		struct svgtiny_parse_state *state);
 
 /* svgtiny_list.c */

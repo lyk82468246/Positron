@@ -170,7 +170,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 33
+#define TEST_MAX_NUMBER 34
 
 static int test_config_space(char c)
 {
@@ -4389,6 +4389,185 @@ static BOOL test33_svg_gradient_coordinates(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 34 - centred SVG radial gradients through NanoSVG rasterization  */
+/* -------------------------------------------------------------------- */
+static BOOL test34_svg_radial_gradient(void)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"240\" "
+        "height=\"100\" viewBox=\"0 0 240 100\">"
+        "<defs>"
+        "<radialGradient id=\"bbox\">"
+        "<stop offset=\"0%\" stop-color=\"#ff0000\"/>"
+        "<stop offset=\"50%\" stop-color=\"#800080\"/>"
+        "<stop offset=\"100%\" stop-color=\"#0000ff\"/>"
+        "</radialGradient>"
+        "<radialGradient id=\"user\" gradientUnits=\"userSpaceOnUse\" "
+        "cx=\"120\" cy=\"50\" r=\"35\">"
+        "<stop offset=\"0%\" stop-color=\"#ff0000\"/>"
+        "<stop offset=\"50%\" stop-color=\"#800080\"/>"
+        "<stop offset=\"100%\" stop-color=\"#0000ff\"/>"
+        "</radialGradient>"
+        "<radialGradient id=\"moved\" gradientUnits=\"userSpaceOnUse\" "
+        "cx=\"190\" cy=\"50\" r=\"30\" "
+        "gradientTransform=\"translate(15 0)\">"
+        "<stop offset=\"0%\" stop-color=\"#ff0000\"/>"
+        "<stop offset=\"50%\" stop-color=\"#800080\"/>"
+        "<stop offset=\"100%\" stop-color=\"#0000ff\"/>"
+        "</radialGradient>"
+        "</defs>"
+        "<rect x=\"5\" y=\"5\" width=\"70\" height=\"90\" "
+        "fill=\"url(#bbox)\"/>"
+        "<rect x=\"85\" y=\"5\" width=\"70\" height=\"90\" "
+        "fill=\"url(#user)\"/>"
+        "<rect x=\"165\" y=\"5\" width=\"70\" height=\"90\" "
+        "fill=\"url(#moved)\"/>"
+        "</svg>";
+    PIMAGE_SVG svg;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF center[3];
+    COLORREF middle[3];
+    COLORREF edge[3];
+    COLORREF pixel;
+    COLORREF previous;
+    int rc;
+    int i;
+    int panel;
+    int start_x[3];
+    int end_x[3];
+    int seam_pixels;
+    int large_jumps;
+    int red_ok;
+    int purple_ok;
+    int blue_ok;
+    char msg[256];
+
+    svg = NULL;
+    rc = PImage_CreateSvgFromMemory(SVG, (int) sizeof(SVG) - 1,
+            240, 100, &svg);
+    if (rc != PIMAGE_OK || svg == NULL) {
+        sprintf(msg, "create rc=%d handle=%p", rc, svg);
+        show_error(L"TEST 34 FAIL", msg);
+        return FALSE;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 240, 100) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 34 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 240, 100);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    rc = PImage_DrawSvg(svg, memory_dc, 0, 0, 240, 100);
+
+    center[0] = GetPixel(memory_dc, 40, 50);
+    middle[0] = GetPixel(memory_dc, 40, 27);
+    edge[0] = GetPixel(memory_dc, 8, 8);
+    center[1] = GetPixel(memory_dc, 120, 50);
+    middle[1] = GetPixel(memory_dc, 137, 50);
+    edge[1] = GetPixel(memory_dc, 152, 50);
+    center[2] = GetPixel(memory_dc, 205, 50);
+    middle[2] = GetPixel(memory_dc, 220, 50);
+    edge[2] = GetPixel(memory_dc, 233, 50);
+
+    start_x[0] = 40;
+    start_x[1] = 120;
+    start_x[2] = 205;
+    end_x[0] = 72;
+    end_x[1] = 152;
+    end_x[2] = 233;
+    seam_pixels = 0;
+    large_jumps = 0;
+    for (panel = 0; panel < 3; panel++) {
+        previous = CLR_INVALID;
+        for (i = start_x[panel]; i <= end_x[panel]; i++) {
+            pixel = GetPixel(memory_dc, i, 50);
+            if (GetGValue(pixel) > 48) { seam_pixels++; }
+            if (previous != CLR_INVALID &&
+                    abs((int) GetRValue(pixel) -
+                    (int) GetRValue(previous)) +
+                    abs((int) GetGValue(pixel) -
+                    (int) GetGValue(previous)) +
+                    abs((int) GetBValue(pixel) -
+                    (int) GetBValue(previous)) > 80) {
+                large_jumps++;
+            }
+            previous = pixel;
+        }
+    }
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+
+    red_ok = 1;
+    purple_ok = 1;
+    blue_ok = 1;
+    for (i = 0; i < 3; i++) {
+        if (GetRValue(center[i]) <= 150 || GetBValue(center[i]) >= 110) {
+            red_ok = 0;
+        }
+        if (GetRValue(middle[i]) <= 50 || GetBValue(middle[i]) <= 50) {
+            purple_ok = 0;
+        }
+        if (GetBValue(edge[i]) <= 150 || GetRValue(edge[i]) >= 110) {
+            blue_ok = 0;
+        }
+    }
+    if (rc != PIMAGE_OK || !red_ok || !purple_ok || !blue_ok ||
+            seam_pixels > 2 || large_jumps > 2) {
+        sprintf(msg, "rc=%d rgb=%d/%d/%d seam=%d jump=%d",
+                rc, red_ok, purple_ok, blue_ok,
+                seam_pixels, large_jumps);
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 34 FAIL", msg);
+        return FALSE;
+    }
+
+    show_info(L"TEST 34",
+              "Radial gradient window will open. Expect three smooth\n"
+              "red-centre to blue-edge fields: ellipse, circle, and\n"
+              "a circle shifted right by gradientTransform.\n\n"
+              "Nine colour samples and three seam guards already passed.");
+    g_svg_handle = svg;
+    g_svg_test = 1;
+    g_svg_draw_rc = PIMAGE_OK;
+    g_render_doc = NULL;
+    g_doc_h = 0;
+    g_scroll_y = 0;
+    if (!show_render_window()) {
+        g_svg_test = 0;
+        g_svg_handle = NULL;
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 34 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_svg_test = 0;
+    g_svg_handle = NULL;
+    PImage_FreeSvg(svg);
+    if (g_svg_draw_rc != PIMAGE_OK) {
+        sprintf(msg, "window draw rc=%d", g_svg_draw_rc);
+        show_error(L"TEST 34 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 34 OK",
+              "Centred radial gradients passed objectBoundingBox,\n"
+              "userSpaceOnUse and gradientTransform through the DLL.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -4536,6 +4715,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 31: ok = test31_svg_text(); break;
         case 32: ok = test32_cached_svg_gradient_text(); break;
         case 33: ok = test33_svg_gradient_coordinates(); break;
+        case 34: ok = test34_svg_radial_gradient(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -4615,7 +4795,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-33)\n"
+                  "Yes = run all selected groups (TEST 1-34)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -4643,6 +4823,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "native SVG text (TEST 31),\n"
                                "cached SVG gradient/text (TEST 32),\n"
                                "gradient coordinates (TEST 33),\n"
+                               "radial gradients (TEST 34),\n"
                                "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
@@ -4686,7 +4867,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-33; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-34; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -4702,6 +4883,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test31_svg_text())    { rc = 13; goto done; }
         if (!test32_cached_svg_gradient_text()){ rc = 13; goto done; }
         if (!test33_svg_gradient_coordinates()){ rc = 13; goto done; }
+        if (!test34_svg_radial_gradient()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -4737,12 +4919,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-33)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-34)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
                "    cached SVG, fallback, fill rules, CSS backgrounds and\n"
-               "    native SVG text, cached SVG gradients and gradient coordinates.\n"
+               "    native SVG text, cached SVG gradients, coordinate transforms\n"
+               "    and centred radial gradients.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

@@ -543,6 +543,15 @@ static void svgtiny_grad_string_ref(struct svgtiny_parse_state_gradient *grad)
 	if (grad->gradient_y2 != NULL) {
 		dom_string_ref(grad->gradient_y2);
 	}
+	if (grad->gradient_cx != NULL) {
+		dom_string_ref(grad->gradient_cx);
+	}
+	if (grad->gradient_cy != NULL) {
+		dom_string_ref(grad->gradient_cy);
+	}
+	if (grad->gradient_r != NULL) {
+		dom_string_ref(grad->gradient_r);
+	}
 }
 
 /**
@@ -566,6 +575,18 @@ static void svgtiny_grad_string_cleanup(
 	if (grad->gradient_y2 != NULL) {
 		dom_string_unref(grad->gradient_y2);
 		grad->gradient_y2 = NULL;
+	}
+	if (grad->gradient_cx != NULL) {
+		dom_string_unref(grad->gradient_cx);
+		grad->gradient_cx = NULL;
+	}
+	if (grad->gradient_cy != NULL) {
+		dom_string_unref(grad->gradient_cy);
+		grad->gradient_cy = NULL;
+	}
+	if (grad->gradient_r != NULL) {
+		dom_string_unref(grad->gradient_r);
+		grad->gradient_r = NULL;
 	}
 }
 
@@ -2021,10 +2042,12 @@ static void _svgtiny_parse_color(const char *s, svgtiny_colour *c,
 				*rparen = 0;
 			svgtiny_find_gradient(id, grad, state);
 			free(id);
-			if (grad->linear_gradient_stop_count == 0)
+			if (grad->gradient_stop_count == 0)
 				*c = svgtiny_TRANSPARENT;
-			else if (grad->linear_gradient_stop_count == 1)
+			else if (grad->gradient_stop_count == 1)
 				*c = grad->gradient_stop[0].color;
+			else if (grad->gradient_type == svgtiny_GRADIENT_RADIAL)
+				*c = svgtiny_RADIAL_GRADIENT;
 			else
 				*c = svgtiny_LINEAR_GRADIENT;
 		}
@@ -2445,6 +2468,8 @@ svgtiny_code svgtiny_add_path(float *p, unsigned int n,
 
 	if (state->fill == svgtiny_LINEAR_GRADIENT)
 		return svgtiny_add_path_linear_gradient(p, n, state);
+	if (state->fill == svgtiny_RADIAL_GRADIENT)
+		return svgtiny_add_path_radial_gradient(p, n, state);
 
 	svgtiny_transform_path(p, n, state);
 
@@ -2491,6 +2516,7 @@ struct svgtiny_shape *svgtiny_add_shape(struct svgtiny_parse_state *state)
 	shape->text_italic = state->font_italic;
 	shape->fill = state->fill;
 	shape->fill_rule = state->fill_rule;
+	shape->fill_gradient_type = svgtiny_GRADIENT_NONE;
 	shape->fill_gradient_stop_count = 0;
 	memset(shape->fill_gradient_stop, 0,
 			sizeof(shape->fill_gradient_stop));

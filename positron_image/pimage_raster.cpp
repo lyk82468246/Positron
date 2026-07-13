@@ -299,7 +299,8 @@ static NSVGshape *pimage_convert_shape(const struct svgtiny_shape *source)
         free(shape);
         return NULL;
     }
-    if (source->fill_gradient_stop_count != 0) {
+    if (source->fill_gradient_type != svgtiny_GRADIENT_NONE &&
+            source->fill_gradient_stop_count != 0) {
         gradient_size = sizeof(NSVGgradient) +
                 (source->fill_gradient_stop_count - 1) *
                 sizeof(NSVGgradientStop);
@@ -319,7 +320,9 @@ static NSVGshape *pimage_convert_shape(const struct svgtiny_shape *source)
             gradient->stops[i].color = pimage_nsvg_color(
                     source->fill_gradient_stop[i].color);
         }
-        shape->fill.type = NSVG_PAINT_LINEAR_GRADIENT;
+        shape->fill.type =
+                (source->fill_gradient_type == svgtiny_GRADIENT_RADIAL) ?
+                NSVG_PAINT_RADIAL_GRADIENT : NSVG_PAINT_LINEAR_GRADIENT;
         shape->fill.gradient = gradient;
     } else {
         shape->fill.type = (source->fill == svgtiny_TRANSPARENT) ?

@@ -11,7 +11,7 @@
 | CSS 媒体查询 | TEST 21 已在设备确认：运行时 viewport/DPI、旧式 min/max-width 及整数像素 MQ4 `width <=` / `width <` 均在 320/300/299px 正确命中边界。 | 所有媒体特性、MQ4 范围、custom properties 和旋转场景均已覆盖。 |
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | 撤回 TEST23 对应实现后的最新 TEST 13 截图确认：灾难性的正文重叠已消失，此前约 25px 的左缘裁切也未复现，`Example Domains` 可读。 | TEST 13 版式通过，或页面已达到原浏览器/现代浏览器的还原度。 |
-| 图片 | TEST18-20 已确认 WM Imaging 四格式缓存链；TEST25-32/13 已确认 SVG parse/draw/cache/fallback/fill-rule、网络相对 SVG、CSS 背景图、基础文本与连续线性渐变。 | 复杂 SVG text、任意渐变、复杂 CSS 背景或任意网络图片均已通过。 |
+| 图片 | TEST18-20 已确认 WM Imaging 四格式缓存链；TEST25-33/13 已确认 SVG parse/draw/cache/fallback/fill-rule、网络相对 SVG、CSS 背景图、基础文本、连续线性渐变及坐标变换。TEST34 中心径向渐变待设备。 | 复杂 SVG text、任意渐变、复杂 CSS 背景或任意网络图片均已通过。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认跨断点重选、无联网及滚动比例，真实 TEST13 横竖屏也保持同一阅读区域。 | 所有媒体语法和任意样式资源均已覆盖。 |
 
@@ -49,7 +49,7 @@
 
 WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
-- **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。TEST25-32/13 已真机确认 SVG parse、公共 DLL retained object、NanoSVG 抗锯齿 draw、缓存/fallback、真实网络相对资源、nonzero/evenodd、CSS background-image、基础 WM GDI text/path 顺序和无接缝线性渐变。TEST33 的 objectBoundingBox/userSpaceOnUse/gradientTransform 坐标矩阵已构建待设备。CSS 背景仍不含 background-size、多层背景和异步资源事务；SVG 暂不支持复杂 shaping、`textPath`、逐字 dx/dy、任意 shear、径向渐变、spread method 或完整透明度。单次栅格源缓冲限制为 1,048,576 像素，超大输出会降低内部采样分辨率后再缩放。
+- **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。TEST25-33/13 已真机确认 SVG parse、公共 DLL retained object、NanoSVG 抗锯齿 draw、缓存/fallback、真实网络相对资源、nonzero/evenodd、CSS background-image、基础 WM GDI text/path 顺序、无接缝线性渐变及坐标变换。TEST34 的中心径向渐变已构建待设备。CSS 背景仍不含 background-size、多层背景和异步资源事务；SVG 暂不支持复杂 shaping、`textPath`、逐字 dx/dy、任意 shear、径向焦点 `fx/fy`、spread method 或完整透明度。单次栅格源缓冲限制为 1,048,576 像素，超大输出会降低内部采样分辨率后再缩放。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则
