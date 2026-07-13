@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=42`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=43`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -104,6 +104,8 @@ TEST41 修复只在 flex item 树中实际检测到 grid/inline-grid 降级盒�
 2026-07-13 用户截图确认 TEST41 竖横屏均保持主内容左右 inset，宽表格未再把页面推到负 x。随后移植 NetSurf 3.11 `desktop/scrollbar.c`；`c89ize.py` 只将 6 处 `plot_style_t` designated initializer 转为位置初始化，再次运行 0 修改。恢复 `descendant_x1/y1` 溢出判定、创建/销毁和祖先 offset，WM DOWN/MOVE/UP 经 `PCore_OverflowPointer` 转给箭头与 thumb。TEST42 合并离屏右箭头 16px 坐标断言和可见拖动页。首次构建只暴露 `box_is_float` 是上游文件内宏而非外部函数，改为等价 box-type 宏后增量构建 core/test_host 0 错误；TEST42 真机仍待确认。
 
 2026-07-13 用户确认 TEST42 功能正常，横向 scrollbar、箭头与 thumb 链闭环。性能目标不是原生外观：该控件继续使用 NetSurf retained scrollbar 经 GDI plotter 绘制，避免为页面内每个 overflow 建立 WM child HWND。随后新增 `PCore_OverflowDirtyRect`，DOWN/MOVE/UP 后 host 只 `InvalidateRect` 对应 overflow viewport（文档 y 减当前 page scroll），不再整窗失效；TEST42 自动断言脏矩形小于 240x320 页面。`c89ize.py` 两次均 0 修改，VS2008 ARM 增量构建 core/test_host 0 错误，仅有既有 `fpmath` 警告。
+
+2026-07-13 导航第二阶段把外链 CSS、`<img>` 和应用外链 CSS 后发现的背景 URL 纳入同一 request 的分轮 worker。pending request 持有未交换 document、去重 URL、attempted 状态与原始字节；UI 只在 worker 停止后执行 parse/discovery/style/layout，成功 swap 后 core 已复制资源，失败/关闭则统一释放 request/document/resource。`test_host` 临时预算为 64 URL/2 MiB，限制的是提交前峰值而非 core ABI。TEST43 离线覆盖显式 origin 的 relative/root/absolute URL、去重、成功副本和失败只尝试一次；`c89ize.py` 为 0 修改，VS2008 ARM 增量构建 0 错误、3 条既有 `fpmath` 警告。真机 TEST43 与 TEST13 资源等待仍待确认。
 
 用户截图确认修正后的 TEST29 三个样本正确：红色 nonzero 实心，蓝/绿 evenodd 中心为白色。随后 CSS background-image 按 NetSurf 现有边界接入：样式后的资源扫描读取 computed URI 并复用 document cache；构盒后设置 `box->background`；`redraw.c` 继续负责 position/repeat/clip；GDI plotter 参照上游 Windows frontend 展开 BITMAPF_REPEAT_X/Y。TEST30 的同步 fetch 是当前导航资源阶段的既有取舍，不代表 background-size、多层背景或异步资源事务完成。
 

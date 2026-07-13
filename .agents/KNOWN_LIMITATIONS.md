@@ -27,7 +27,7 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **已撤回的一项**：IANA 页脚是 table cell 内 `display:inline; float:left` 列表。TEST23 曾在最小样例中确认两个浮动块同行及 `clear:both`，但将该构盒规则直接接入真实页面后，2026-07-11 Browse 截图出现严重错位和替代方框；实现已撤回。该测试不再参加 ENGINE 组，不能作为 float 支持证据。
 - **当前站点版本风险**：2026-07-13 重新读取到 IANA 的 `iana_website.80c103cc08b6.css`；除已确认的 `var(--space-*)` 外还有 22 处 `oklch()`、15 处 `calc()`、`color-mix()`、grid/gap 与 `:has()`。新兼容模块只处理数值型 OKLCH 和可完全求值的同单位 calc；混合单位及其他现代能力仍会降级。
 - **最新子页结论**：`/numbers` 使用 `display:grid`，其中 `.dtable-wrap { overflow:auto }` 包住宽表格。TEST41 的竖横屏截图已确认 flex 主内容负 x 修复，标题/正文保持 inset；Grid 仍只保持单列文档顺序。
-- **下一步**：推进外部 CSS/图片的后台资源事务，让旧页面在资源等待阶段继续响应；Grid/gap 因 NetSurf HTML 层仍无现成轨道布局，须先继续审计可移植上游实现。float 仍须对照上游 box construction/normalisation 与 list marker，不能复用 TEST23 的简化断言。
+- **下一步**：先用 TEST43 与真实 TEST13 验收后台 CSS/图片资源阶段；随后把真实下载进度或提交阶段分片作为交互主线。Grid/gap 因 NetSurf HTML 层仍无现成轨道布局，须先继续审计可移植上游实现。float 仍须对照上游 box construction/normalisation 与 list marker，不能复用 TEST23 的简化断言。
 - **完成条件**：在目标设备的竖屏和横屏下，主内容、页脚和导航均不裁切、不重叠，且没有明显错误图标/替代字符；结果需要新的真机截图确认。
 
 ### 旋转 responsive restyle 已完成当前验收
@@ -38,21 +38,22 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **设备结论**：TEST24 的 0/50/100% 比例断言通过；真实 TEST13 从竖屏 `Further Reading / Domain Names` 区域旋转到横屏后仍停留在同一区域。扩大 MQ4 语法或处理 custom properties 仍是独立兼容性工作。
 - **完成条件**：旋转前后跨越 TEST 21 式断点时，computed style 与几何都切换正确，并恢复原滚动位置的合理比例。
 
-### 导航仅主文档 GET 已异步
+### 导航 CSS/图片抓取已异步，最终提交仍在 UI
 
-第一阶段已把主文档 `PHttp_Get` 移到单一 worker；HTTP response 通过 `WM_APP` 消息交回窗口线程，DOM/libcss/NetSurf/GDI 从不跨线程。设备已确认旧页可滚动且成功后正常换页。父窗口条带出现复制残影，`STATIC` 子窗口又完全不可见；现已按 WM6 SDK 改为 `PROGRESS_CLASS` Common Control，待设备复测。若仍异常则挂起该视觉问题。失败分支待测。
+主文档之后的外链 CSS、`<img>` 和应用外链 CSS 后发现的背景 URL 现也分轮交给同一 worker；HTTP 字节通过 `WM_APP` 消息交回窗口线程，DOM/libcss/NetSurf/GDI 从不跨线程。设备此前确认主 GET 阶段旧页可滚动且成功后正常换页，`PROGRESS_CLASS` Common Control 已可见；新增资源阶段待 TEST43/13 复测。失败分支仍待测。
 
-- **当前取舍**：同一时刻只允许一个主文档请求；旧页可绘制和滚动，但加载中再次点击链接会被忽略。HTML parse、外部 CSS fetch、图片 fetch、style 和 layout 仍在 UI 提交阶段同步执行，主文档返回后仍可能短暂卡顿。
-- **后续实现**：把资源发现与 CSS/图片 fetch 组织成后台事务，再由 generation 校验最新结果后提交。真实百分比需给 `positron_http` 增加 content-length/progress 回调。
+- **当前取舍**：同一时刻只允许一个导航请求；旧页可绘制和滚动，但加载中再次点击链接会被忽略。HTML parse、style、cache copy 和 layout 仍在 UI 提交阶段同步执行，全部网络完成后仍可能短暂卡顿。
+- **资源预算**：`test_host` 最多暂存 64 个去重 URL、合计 2 MiB 原始字节，成功提交时 core 会复制所需数据后立刻释放事务。该值用于限制 WM 峰值，是可替换的宿主策略，不是 `positron_core` ABI 或最终页面的硬上限。
+- **后续实现**：真实百分比需给 `positron_http` 增加 content-length/progress 回调；`@import`、web fonts、脚本及更广资源类型尚未进入事务。
 - **并发约束**：在确认 libdom/libcss/NetSurf 移植层的线程安全前，不能让 worker 与 UI 同时操作同一 document 或共享全局 viewport context；过期请求只丢弃结果，不使用强制终止线程。
 - **第一阶段完成条件**：慢网主文档 GET 期间旧页可滚动，loading 可见；成功后才 swap，错误保留当前页面，关闭窗口不会遗留线程。
-- **完整完成条件**：资源 fetch 也不阻塞 UI；支持 generation 后只有最新请求允许 swap，过期结果不会替换当前页面。
+- **当前完成条件**：TEST43 的 URL/去重/成功/失败断言通过；真实 TEST13 的 CSS/图片网络等待不阻塞 UI，generation 正确，成功后才 swap，失败资源保留 fallback。
 
 ### 图片能力只以 BMP 最小链路为基线
 
 WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
-- **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。TEST25-37/13 已真机确认 SVG parse、公共 DLL retained object、NanoSVG 抗锯齿 draw、缓存/fallback、真实网络相对资源、fill-rule、CSS background-image、基础 text、线性/径向渐变、继承/透明 stop、循环保护与缓存复用。CSS 背景仍不含 background-size、多层背景和异步资源事务；SVG 暂不支持复杂 shaping、`textPath`、逐字 dx/dy、任意 shear、径向焦点 `fx/fy` 或 spread method。单次栅格源缓冲限制为 1,048,576 像素，超大输出会降低内部采样分辨率后再缩放。
+- **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。TEST25-37/13 已真机确认 SVG parse、公共 DLL retained object、NanoSVG 抗锯齿 draw、缓存/fallback、真实网络相对资源、fill-rule、CSS background-image、基础 text、线性/径向渐变、继承/透明 stop、循环保护与缓存复用。CSS 背景仍不含 background-size 和多层背景；后台事务真机结果待 TEST43/13。SVG 暂不支持复杂 shaping、`textPath`、逐字 dx/dy、任意 shear、径向焦点 `fx/fy` 或 spread method。单次栅格源缓冲限制为 1,048,576 像素，超大输出会降低内部采样分辨率后再缩放。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则

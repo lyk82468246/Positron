@@ -170,7 +170,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 42
+#define TEST_MAX_NUMBER 43
 
 static int test_config_space(char c)
 {
@@ -1777,6 +1777,21 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 
 #define WM_PCORE_NAV_DONE (WM_APP + 1)
 #define PCORE_NAV_TIMER 24
+#define PCORE_NAV_STAGE_DOCUMENT 1
+#define PCORE_NAV_STAGE_RESOURCES 2
+#define PCORE_NAV_RESULT_MORE 0
+#define PCORE_NAV_RESULT_DONE 1
+#define PCORE_NAV_RESULT_FAILED -1
+#define PCORE_NAV_MAX_RESOURCES 64
+#define PCORE_NAV_RESOURCE_BYTES_MAX (2 * 1024 * 1024)
+
+typedef struct pcore_navigation_resource {
+    struct pcore_navigation_resource *next;
+    char *url;
+    char *data;
+    int len;
+    int attempted;
+} pcore_navigation_resource;
 
 typedef struct pcore_navigation_request {
     HWND           hwnd;
@@ -1785,6 +1800,11 @@ typedef struct pcore_navigation_request {
     char           path[1024];
     int            port;
     PHttpResponse *response;
+    HANDLE         document;
+    pcore_navigation_resource *resources;
+    int            resource_count;
+    int            resource_bytes;
+    int            worker_stage;
 } pcore_navigation_request;
 
 static HANDLE                    g_nav_thread = NULL;
@@ -1936,12 +1956,11 @@ static void copy_path(char *dst, int cap, const char *src)
     dst[n] = '\0';
 }
 
-/* Resolve a link href against the current page (g_cur_host / g_cur_path) into
- * an absolute host + path. Handles absolute http(s), root-relative ("/x") and
- * same-directory relative ("x"). Returns FALSE for unsupported schemes
- * (mailto:/javascript:/tel:) and bare #fragments. All fetched over HTTPS. */
-static BOOL resolve_url(const char *href, char *host, int hostcap,
-                        char *path, int pathcap, int *out_port)
+/* Resolve a URL against an explicit page origin. The navigation worker uses
+ * the pending origin while the visible page keeps its old global origin. */
+static BOOL resolve_url_from(const char *base_host, const char *base_path,
+        int base_port, const char *href, char *host, int hostcap,
+        char *path, int pathcap, int *out_port)
 {
     const char *p = href;
 
@@ -1961,27 +1980,27 @@ static BOOL resolve_url(const char *href, char *host, int hostcap,
                ci_prefix(p, "tel:") || p[0] == '#') {
         return FALSE;   /* not a navigable http(s) document link */
     } else if (p[0] == '/') {
-        if (g_cur_host[0] == '\0') {
+        if (base_host == NULL || base_host[0] == '\0') {
             return FALSE;
         }
-        cstr_copy(host, hostcap, g_cur_host);
+        cstr_copy(host, hostcap, base_host);
         copy_path(path, pathcap, p);
-        *out_port = g_cur_port;   /* same scheme as current page */
+        *out_port = base_port;   /* same scheme as current page */
         return TRUE;
     } else {
         /* Same-directory relative: current host + base dir + href. */
         int n = 0, i, lastslash = -1;
-        if (g_cur_host[0] == '\0') {
+        if (base_host == NULL || base_host[0] == '\0' || base_path == NULL) {
             return FALSE;
         }
-        cstr_copy(host, hostcap, g_cur_host);
-        for (i = 0; g_cur_path[i] != '\0'; i++) {
-            if (g_cur_path[i] == '/') {
+        cstr_copy(host, hostcap, base_host);
+        for (i = 0; base_path[i] != '\0'; i++) {
+            if (base_path[i] == '/') {
                 lastslash = i;
             }
         }
         for (i = 0; i <= lastslash && n < pathcap - 1; i++) {
-            path[n++] = g_cur_path[i];
+            path[n++] = base_path[i];
         }
         if (lastslash < 0 && n < pathcap - 1) {
             path[n++] = '/';
@@ -1990,7 +2009,7 @@ static BOOL resolve_url(const char *href, char *host, int hostcap,
             path[n++] = *p++;
         }
         path[n] = '\0';
-        *out_port = g_cur_port;   /* same scheme as current page */
+        *out_port = base_port;   /* same scheme as current page */
         return TRUE;
     }
 
@@ -2025,43 +2044,80 @@ static BOOL resolve_url(const char *href, char *host, int hostcap,
     return TRUE;
 }
 
-/* Fetch an external page resource against the current page origin. CSS and
- * <img> share this exact resolver and HTTP path; their PCore callers decide
- * how to parse/cache the returned bytes. The core releases the copied buffer
- * through page_resource_free_cb after it has consumed it. */
-static int page_resource_fetch_cb(void *pw, const char *url,
+/* Resolve a clicked link against the currently visible page. */
+static BOOL resolve_url(const char *href, char *host, int hostcap,
+                        char *path, int pathcap, int *out_port)
+{
+    return resolve_url_from(g_cur_host, g_cur_path, g_cur_port, href,
+            host, hostcap, path, pathcap, out_port);
+}
+
+static pcore_navigation_resource *pcore_navigation_resource_find(
+        pcore_navigation_request *request, const char *url)
+{
+    pcore_navigation_resource *entry;
+
+    if (request == NULL || url == NULL) {
+        return NULL;
+    }
+    for (entry = request->resources; entry != NULL; entry = entry->next) {
+        if (strcmp(entry->url, url) == 0) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+/* PCore calls this on the window thread. A cache hit returns an owned copy;
+ * a miss is queued for the next worker stage and deliberately reports failure
+ * to the current style/image discovery pass. */
+static int pcore_navigation_resource_cb(void *pw, const char *url,
         char **out_data, int *out_len)
 {
-    char           host[256];
-    char           path[1024];
-    int            port = 443;
-    PHttpResponse *resp;
-    char          *buf;
+    pcore_navigation_request *request;
+    pcore_navigation_resource *entry;
+    size_t url_len;
+    char *copy;
 
-    (void) pw;
+    request = (pcore_navigation_request *) pw;
     *out_data = NULL;
     *out_len = 0;
-
-    if (!resolve_url(url, host, sizeof(host), path, sizeof(path), &port)) {
+    if (request == NULL || url == NULL || url[0] == '\0') {
         return 1;
     }
-    resp = PHttp_Get(host, port, path, NULL);
-    if (resp == NULL || resp->status_code != 200 ||
-            resp->body == NULL || resp->body_len <= 0) {
-        if (resp != NULL) {
-            PHttp_FreeResponse(resp);
+    entry = pcore_navigation_resource_find(request, url);
+    if (entry == NULL) {
+        url_len = strlen(url);
+        if (url_len == 0 || url_len >= 1024 ||
+                request->resource_count >= PCORE_NAV_MAX_RESOURCES) {
+            return 1;
         }
+        entry = (pcore_navigation_resource *) malloc(sizeof(*entry));
+        if (entry == NULL) {
+            return 1;
+        }
+        memset(entry, 0, sizeof(*entry));
+        entry->url = (char *) malloc(url_len + 1);
+        if (entry->url == NULL) {
+            free(entry);
+            return 1;
+        }
+        memcpy(entry->url, url, url_len + 1);
+        entry->next = request->resources;
+        request->resources = entry;
+        request->resource_count++;
         return 1;
     }
-    buf = (char *) malloc((size_t) resp->body_len);
-    if (buf == NULL) {
-        PHttp_FreeResponse(resp);
+    if (entry->data == NULL || entry->len <= 0) {
         return 1;
     }
-    memcpy(buf, resp->body, (size_t) resp->body_len);
-    *out_data = buf;
-    *out_len = resp->body_len;
-    PHttp_FreeResponse(resp);
+    copy = (char *) malloc((size_t) entry->len);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, entry->data, (size_t) entry->len);
+    *out_data = copy;
+    *out_len = entry->len;
     return 0;
 }
 
@@ -2069,6 +2125,51 @@ static void page_resource_free_cb(void *pw, char *data)
 {
     (void) pw;
     free(data);
+}
+
+static int pcore_navigation_pending_count(
+        const pcore_navigation_request *request)
+{
+    const pcore_navigation_resource *entry;
+    int count;
+
+    count = 0;
+    if (request == NULL) {
+        return 0;
+    }
+    for (entry = request->resources; entry != NULL; entry = entry->next) {
+        if (!entry->attempted) {
+            count++;
+        }
+    }
+    return count;
+}
+
+static void pcore_navigation_request_free(
+        pcore_navigation_request *request)
+{
+    pcore_navigation_resource *entry;
+
+    if (request == NULL) {
+        return;
+    }
+    if (request->response != NULL) {
+        PHttp_FreeResponse(request->response);
+    }
+    if (request->document != NULL) {
+        PCore_FreeDocument(request->document);
+    }
+    entry = request->resources;
+    while (entry != NULL) {
+        pcore_navigation_resource *next;
+
+        next = entry->next;
+        free(entry->url);
+        free(entry->data);
+        free(entry);
+        entry = next;
+    }
+    free(request);
 }
 
 /* A resize must never start a network request. PCore's document stylesheet
@@ -2125,61 +2226,96 @@ static void pcore_navigation_set_loading(HWND hwnd, int loading)
 static DWORD WINAPI pcore_navigation_worker(LPVOID param)
 {
     pcore_navigation_request *request;
+    pcore_navigation_resource *entry;
+    PHttpResponse *resp;
+    char host[256];
+    char path[1024];
+    int port;
+    char *data;
 
     request = (pcore_navigation_request *) param;
-    request->response = PHttp_Get(request->host, request->port,
-            request->path, NULL);
+    if (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) {
+        request->response = PHttp_Get(request->host, request->port,
+                request->path, NULL);
+    } else {
+        for (entry = request->resources; entry != NULL;
+                entry = entry->next) {
+            if (entry->attempted) {
+                continue;
+            }
+            entry->attempted = 1;
+            port = request->port;
+            if (!resolve_url_from(request->host, request->path,
+                    request->port, entry->url, host, sizeof(host), path,
+                    sizeof(path), &port)) {
+                continue;
+            }
+            resp = PHttp_Get(host, port, path, NULL);
+            if (resp != NULL && resp->status_code == 200 &&
+                    resp->body != NULL && resp->body_len > 0 &&
+                    resp->body_len <= PCORE_NAV_RESOURCE_BYTES_MAX -
+                            request->resource_bytes) {
+                data = (char *) malloc((size_t) resp->body_len);
+                if (data != NULL) {
+                    memcpy(data, resp->body, (size_t) resp->body_len);
+                    entry->data = data;
+                    entry->len = resp->body_len;
+                    request->resource_bytes += resp->body_len;
+                }
+            }
+            if (resp != NULL) {
+                PHttp_FreeResponse(resp);
+            }
+        }
+    }
     PostMessage(request->hwnd, WM_PCORE_NAV_DONE,
             (WPARAM) request->generation, (LPARAM) request);
     return 0;
 }
 
-/* Parse/style/layout and swap only on the window thread. The worker owns no
- * DOM, libcss, NetSurf or GDI state; it transfers only the HTTP response. */
-static void pcore_navigation_complete(HWND hwnd,
+static int pcore_navigation_start_worker(
+        pcore_navigation_request *request)
+{
+    DWORD thread_id;
+
+    g_nav_thread = CreateThread(NULL, 0, pcore_navigation_worker,
+            request, 0, &thread_id);
+    return (g_nav_thread != NULL) ? 0 : 1;
+}
+
+/* Parse, discover resources, style, layout and swap only on the window
+ * thread. A missing callback body queues the URL, so this function may return
+ * MORE and let the same request run another resource-only worker stage. */
+static int pcore_navigation_complete(HWND hwnd,
         pcore_navigation_request *request)
 {
     PHttpResponse *resp;
-    HANDLE         newDoc;
     RECT           rc;
     int            cw, chh;
     char           emsg[320];
-    char           old_host[256];
-    char           old_path[1024];
-    int            old_port;
 
-    resp = request->response;
-    if (resp == NULL || resp->status_code != 200 || resp->body == NULL ||
-            resp->body_len <= 0) {
-        _snprintf(emsg, sizeof(emsg) - 1,
-                  "GET %s://%s%s -> status=%d %s",
-                  (request->port == 80) ? "http" : "https",
-                  request->host, request->path,
-                  (resp != NULL) ? resp->status_code : 0,
-                  (resp != NULL) ? resp->error_msg : "(null)");
-        emsg[sizeof(emsg) - 1] = '\0';
-        show_error(L"Navigation failed", emsg);
-        if (resp != NULL) {
-            PHttp_FreeResponse(resp);
+    if (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) {
+        resp = request->response;
+        if (resp == NULL || resp->status_code != 200 || resp->body == NULL ||
+                resp->body_len <= 0) {
+            _snprintf(emsg, sizeof(emsg) - 1,
+                      "GET %s://%s%s -> status=%d %s",
+                      (request->port == 80) ? "http" : "https",
+                      request->host, request->path,
+                      (resp != NULL) ? resp->status_code : 0,
+                      (resp != NULL) ? resp->error_msg : "(null)");
+            emsg[sizeof(emsg) - 1] = '\0';
+            show_error(L"Navigation failed", emsg);
+            return PCORE_NAV_RESULT_FAILED;
         }
-        return;
+        request->document = PCore_ParseHTML(resp->body, resp->body_len);
+        PHttp_FreeResponse(resp);
+        request->response = NULL;
+        if (request->document == NULL) {
+            show_error(L"Navigation failed", "PCore_ParseHTML returned NULL");
+            return PCORE_NAV_RESULT_FAILED;
+        }
     }
-
-    newDoc = PCore_ParseHTML(resp->body, resp->body_len);
-    PHttp_FreeResponse(resp);
-    if (newDoc == NULL) {
-        show_error(L"Navigation failed", "PCore_ParseHTML returned NULL");
-        return;
-    }
-
-    /* Record the new origin *before* styling so external <link> hrefs in this
-     * page resolve against it (page_resource_fetch_cb uses g_cur_*). */
-    cstr_copy(old_host, sizeof(old_host), g_cur_host);
-    cstr_copy(old_path, sizeof(old_path), g_cur_path);
-    old_port = g_cur_port;
-    cstr_copy(g_cur_host, sizeof(g_cur_host), request->host);
-    cstr_copy(g_cur_path, sizeof(g_cur_path), request->path);
-    g_cur_port = request->port;
 
     /* Select responsive CSS against the actual render client, not the full
      * screen size left over from startup. StyleDocumentEx evaluates @media
@@ -2191,51 +2327,54 @@ static void pcore_navigation_complete(HWND hwnd,
     if (chh <= 0) { chh = 320; }
     PCore_SetViewport(cw, chh, 0);
 
-    if (PCore_StyleDocumentEx(newDoc, NULL, page_resource_fetch_cb,
-            page_resource_free_cb, NULL) != 0) {
+    if (PCore_StyleDocumentEx(request->document, NULL,
+            pcore_navigation_resource_cb, page_resource_free_cb,
+            request) != 0) {
         show_error(L"Navigation failed", "PCore_StyleDocument failed");
-        PCore_FreeDocument(newDoc);
-        cstr_copy(g_cur_host, sizeof(g_cur_host), old_host);
-        cstr_copy(g_cur_path, sizeof(g_cur_path), old_path);
-        g_cur_port = old_port;
-        return;
+        return PCORE_NAV_RESULT_FAILED;
     }
 
     /* Populate document-owned image bytes before layout builds the NetSurf
      * box tree. Fetch failures are intentionally non-fatal: pcore_box keeps
      * the accessible alt/src fallback for each missing or undecodable image. */
-    PCore_FetchImageResources(newDoc, page_resource_fetch_cb,
-            page_resource_free_cb, NULL, NULL, NULL);
+    PCore_FetchImageResources(request->document,
+            pcore_navigation_resource_cb, page_resource_free_cb,
+            request, NULL, NULL);
 
-    if (PCore_LayoutDocument(newDoc, cw, chh) != 0) {
+    if (pcore_navigation_pending_count(request) > 0) {
+        request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
+        return PCORE_NAV_RESULT_MORE;
+    }
+
+    if (PCore_LayoutDocument(request->document, cw, chh) != 0) {
         show_error(L"Navigation failed", "PCore_LayoutDocument failed");
-        PCore_FreeDocument(newDoc);
-        cstr_copy(g_cur_host, sizeof(g_cur_host), old_host);
-        cstr_copy(g_cur_path, sizeof(g_cur_path), old_path);
-        g_cur_port = old_port;
-        return;
+        return PCORE_NAV_RESULT_FAILED;
     }
 
     /* Swap in the new document; free the one being replaced. */
     if (g_render_doc != NULL) {
         PCore_FreeDocument(g_render_doc);
     }
-    g_render_doc = newDoc;
+    g_render_doc = request->document;
+    request->document = NULL;
     g_render_sheet = NULL;
-    g_doc_h = PCore_DocumentHeight(newDoc);
+    g_doc_h = PCore_DocumentHeight(g_render_doc);
     g_scroll_y = 0;
+    cstr_copy(g_cur_host, sizeof(g_cur_host), request->host);
+    cstr_copy(g_cur_path, sizeof(g_cur_path), request->path);
+    g_cur_port = request->port;
 
     pcore_set_scrollbar(hwnd);
     InvalidateRect(hwnd, NULL, TRUE);
     UpdateWindow(hwnd);
+    return PCORE_NAV_RESULT_DONE;
 }
 
-/* Start only the main-document GET on a worker. Resource discovery and all
- * engine work remain on the UI thread until their ownership is made explicit. */
+/* Start the main-document stage. Later stages reuse this request for external
+ * CSS/image GETs while the old visible document remains interactive. */
 static void navigate_to(HWND hwnd, const char *href)
 {
     pcore_navigation_request *request;
-    DWORD thread_id;
 
     if (g_nav_loading) {
         return;
@@ -2256,14 +2395,13 @@ static void navigate_to(HWND hwnd, const char *href)
 
     request->hwnd = hwnd;
     request->generation = ++g_nav_generation;
+    request->worker_stage = PCORE_NAV_STAGE_DOCUMENT;
     g_nav_request = request;
     pcore_navigation_set_loading(hwnd, 1);
-    g_nav_thread = CreateThread(NULL, 0, pcore_navigation_worker,
-            request, 0, &thread_id);
-    if (g_nav_thread == NULL) {
+    if (pcore_navigation_start_worker(request) != 0) {
         pcore_navigation_set_loading(hwnd, 0);
         g_nav_request = NULL;
-        free(request);
+        pcore_navigation_request_free(request);
         show_error(L"Navigation failed", "CreateThread failed");
     }
 }
@@ -2276,10 +2414,7 @@ static void pcore_navigation_cleanup(void)
         g_nav_thread = NULL;
     }
     if (g_nav_request != NULL) {
-        if (g_nav_request->response != NULL) {
-            PHttp_FreeResponse(g_nav_request->response);
-        }
-        free(g_nav_request);
+        pcore_navigation_request_free(g_nav_request);
         g_nav_request = NULL;
     }
     g_nav_loading = 0;
@@ -2430,6 +2565,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         break;
     case WM_PCORE_NAV_DONE: {
         pcore_navigation_request *request;
+        int result;
 
         request = (pcore_navigation_request *) lp;
         if (g_nav_thread != NULL) {
@@ -2437,12 +2573,20 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             CloseHandle(g_nav_thread);
             g_nav_thread = NULL;
         }
-        pcore_navigation_set_loading(hwnd, 0);
         if (request == g_nav_request &&
                 request->generation == g_nav_generation) {
-            g_nav_request = NULL;
-            pcore_navigation_complete(hwnd, request);
-            free(request);
+            result = pcore_navigation_complete(hwnd, request);
+            if (result == PCORE_NAV_RESULT_MORE &&
+                    pcore_navigation_start_worker(request) != 0) {
+                show_error(L"Navigation failed",
+                        "CreateThread failed during resource fetch");
+                result = PCORE_NAV_RESULT_FAILED;
+            }
+            if (result != PCORE_NAV_RESULT_MORE) {
+                pcore_navigation_set_loading(hwnd, 0);
+                g_nav_request = NULL;
+                pcore_navigation_request_free(request);
+            }
         }
         return 0;
     }
@@ -5854,6 +5998,118 @@ static BOOL test42_overflow_scrollbar(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 43 - staged navigation resource transaction, fully offline       */
+/* -------------------------------------------------------------------- */
+static BOOL test43_navigation_resource_transaction(void)
+{
+    pcore_navigation_request *request;
+    pcore_navigation_resource *entry;
+    char host[256];
+    char path[1024];
+    char *data;
+    char *hit_data;
+    int len;
+    int hit_len;
+    int port;
+    int first_rc;
+    int duplicate_rc;
+    int hit_rc;
+    int root_ok;
+    int absolute_ok;
+    char msg[256];
+
+    request = (pcore_navigation_request *) malloc(sizeof(*request));
+    if (request == NULL) {
+        show_error(L"TEST 43 FAIL", "request allocation failed");
+        return FALSE;
+    }
+    memset(request, 0, sizeof(*request));
+    cstr_copy(request->host, sizeof(request->host), "example.test");
+    cstr_copy(request->path, sizeof(request->path), "/dir/page.html");
+    request->port = 443;
+
+    port = 0;
+    root_ok = resolve_url_from(request->host, request->path, request->port,
+            "/img/logo.png", host, sizeof(host), path, sizeof(path), &port) &&
+            strcmp(host, "example.test") == 0 &&
+            strcmp(path, "/img/logo.png") == 0 && port == 443;
+    port = 0;
+    absolute_ok = resolve_url_from(request->host, request->path,
+            request->port, "http://cdn.test:8080/a.png#fragment",
+            host, sizeof(host), path, sizeof(path), &port) &&
+            strcmp(host, "cdn.test") == 0 && strcmp(path, "/a.png") == 0 &&
+            port == 8080;
+
+    data = NULL;
+    len = 0;
+    first_rc = pcore_navigation_resource_cb(request, "style.css",
+            &data, &len);
+    duplicate_rc = pcore_navigation_resource_cb(request, "style.css",
+            &data, &len);
+    entry = pcore_navigation_resource_find(request, "style.css");
+    if (entry == NULL) {
+        pcore_navigation_request_free(request);
+        show_error(L"TEST 43 FAIL", "resource queue lookup failed");
+        return FALSE;
+    }
+    entry->data = (char *) malloc(3);
+    if (entry->data == NULL) {
+        pcore_navigation_request_free(request);
+        show_error(L"TEST 43 FAIL", "resource body allocation failed");
+        return FALSE;
+    }
+    memcpy(entry->data, "css", 3);
+    entry->len = 3;
+    entry->attempted = 1;
+    request->resource_bytes = 3;
+    data = NULL;
+    len = 0;
+    hit_rc = pcore_navigation_resource_cb(request, "style.css",
+            &data, &len);
+    hit_data = data;
+    hit_len = len;
+    data = NULL;
+    len = 0;
+
+    if (pcore_navigation_resource_cb(request, "/img/missing.png",
+            &data, &len) != 1) {
+        if (data != NULL) { page_resource_free_cb(NULL, data); }
+        if (hit_data != NULL) { page_resource_free_cb(NULL, hit_data); }
+        pcore_navigation_request_free(request);
+        show_error(L"TEST 43 FAIL", "new resource unexpectedly hit");
+        return FALSE;
+    }
+    entry = pcore_navigation_resource_find(request, "/img/missing.png");
+    if (entry != NULL) {
+        entry->attempted = 1;   /* model one failed worker attempt */
+    }
+
+    if (!root_ok || !absolute_ok || first_rc != 1 || duplicate_rc != 1 ||
+            request->resource_count != 2 || hit_rc != 0 ||
+            hit_data == NULL || hit_len != 3 ||
+            memcmp(hit_data, "css", 3) != 0 || entry == NULL ||
+            pcore_navigation_pending_count(request) != 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "url=%d/%d rc=%d/%d/%d count=%d len=%d pending=%d",
+                root_ok, absolute_ok, first_rc, duplicate_rc, hit_rc,
+                request->resource_count, hit_len,
+                pcore_navigation_pending_count(request));
+        msg[sizeof(msg) - 1] = '\0';
+        if (data != NULL) { page_resource_free_cb(NULL, data); }
+        if (hit_data != NULL) { page_resource_free_cb(NULL, hit_data); }
+        pcore_navigation_request_free(request);
+        show_error(L"TEST 43 FAIL", msg);
+        return FALSE;
+    }
+    page_resource_free_cb(NULL, hit_data);
+    pcore_navigation_request_free(request);
+    show_info(L"TEST 43 OK",
+              "Navigation resource transaction: explicit origin URL resolve,\n"
+              "dedupe, copied cache hit and one-shot failure all passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -6010,6 +6266,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 40: ok = test40_css_modern_values(); break;
         case 41: ok = test41_grid_overflow_flex(); break;
         case 42: ok = test42_overflow_scrollbar(); break;
+        case 43: ok = test43_navigation_resource_transaction(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -6089,7 +6346,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-42)\n"
+                  "Yes = run all selected groups (TEST 1-43)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -6106,7 +6363,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40-42). Offline.");
+                               "38, 40-43). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -6135,7 +6392,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40, 41; offline. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-43; offline. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -6151,6 +6408,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test40_css_modern_values()){ rc = 11; goto done; }
         if (!test41_grid_overflow_flex()){ rc = 11; goto done; }
         if (!test42_overflow_scrollbar()){ rc = 11; goto done; }
+        if (!test43_navigation_resource_transaction()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -6208,12 +6466,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40, 41)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-43)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource cache, SVG parse, constrained :root variables,\n"
-               "    OKLCH/calc values and grid-overflow flex containment.\n"
+               "    OKLCH/calc values, grid-overflow containment, scrollbar\n"
+               "    input and staged navigation resource transactions.\n"
                "    Offline.\n\n");
     }
     if (run_render) {

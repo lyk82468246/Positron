@@ -82,7 +82,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 1. 最新 TEST13 已确认普通文本方框消失、词间距正确；补齐上游 `<pre>` UA 默认后，TEST15 也已由用户确认 `normal_ws=ok/pre_lf=kept`，文本空白闭环完成。页面整体仍未通过。
 2. 旋转验收已完成：扩展 TEST24 的缓存重选、无联网和 0%/50%/100% 滚动比例已由设备确认；真实 TEST13 横竖屏切换也保持在 `Further Reading / Domain Names` 同一阅读区域。
 3. float 保持未支持；先对照上游 box construction/normalisation 建立整树结构和普通文流端到端回归，再重新实现。
-4. 导航异步化第一阶段已实现并通过 VS2008 全量构建：主文档 GET 在 worker 执行，旧页继续绘制/滚动并显示不定量进度条，HTTP response 通过窗口消息回到 UI 线程后才 parse/style/layout/swap；窗口关闭会等待并回收 worker。待设备确认。CSS/图片资源的完整异步事务随后处理。
+4. 导航异步化第二阶段已实现并通过 VS2008 ARM 增量构建：主文档 GET 后，UI 线程只负责 parse 与结构化资源发现，外链 CSS、`<img>` 和外链 CSS 应用后出现的背景 URL 分轮交给同一 worker；全部成功或失败后才在 UI 做最终 style/layout/swap。旧页与不定量进度条贯穿所有网络阶段，窗口关闭会等待并统一回收 request/document/resource。TEST43 离线覆盖显式 origin URL、去重、cache hit copy 与一次失败；待真机及 TEST13 验收。
 5. **已完成并真机验收**：Expat -> libdom XML -> libsvgtiny 内存 SVG 解析与 TEST25。
 6. **已完成并真机验收**：首版固定折线 cubic 因明显阶梯边缘判定视觉失败；替代实现保留 libsvgtiny 解析，使用固定提交的 NanoSVG 5 倍子像素栅格器及预乘 BGRA DIB + WM `AlphaBlend`。2026-07-13 增强 TEST26 的内部填充、部分覆盖边缘断言及设备截图均通过。
 7. **已完成并真机验收**：统一图片载体和缓存 SVG `<img>` 正式链由 TEST27 的自动断言及设备截图确认。
@@ -100,6 +100,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 19. **现代 CSS 值兼容批次已完成并真机验收**：当前 IANA CSS 另有 22 处 `oklch()` 和 15 处 `calc()`。新增独立 `pcore_css_values.c`，其中 Oklab 到线性 sRGB 的矩阵移植自 Bjorn Ottosson 的公开域/MIT 参考实现，再做 sRGB transfer 与边界裁剪；`calc()` 只求值同单位加减、一个有单位因子的乘法及无单位除数，混合 `%/px` 等依赖布局上下文的表达式原样保留。TEST40 已确认红色、alpha、IANA link 色、变量展开后的 `+ - * /` 几何和混合单位保留；同期 TEST13 的配色、标题与间距改善。数值型 OKLCH、裁剪 gamut 与可完全求值 calc 不得表述为完整 CSS Color 4/Values 实现。
 20. **IANA `/numbers` grid-overflow 修复已真机验收**：该页的 `main` 含 `display:grid`，其 `.dtable-wrap { overflow:auto }` 内宽表格曾在单列 block 降级中把 flex item 的 min-content 撑宽，`row-reverse` 因而把正文排到负 x。`layout_flex.c` 现只对树中实际含 grid/inline-grid 降级盒的 flex item 跳过错误的 block min-content 钳制；普通 flex 保持原规则，`inline-grid` 按 inline-block 降级。TEST41 的竖横屏截图均确认主内容保持左右 inset，宽表格没有再移动页面。此项仍不代表 Grid 轨道或 gap 已实现。
 21. **NetSurf overflow scrollbar 已完成当前验收**：移植并 C89 化上游 `desktop/scrollbar.c`，恢复 `descendant_x1/y1` 溢出判定、`box_handle_scrollbars` 创建/更新/成对销毁、祖先 scroll offset 坐标和 GDI redraw。公开 `PCore_OverflowPointer` 把 WM 的 DOWN/MOVE/UP 转发给箭头、page well 与 thumb drag；TEST42 的离屏 16px 步进断言及真机箭头/thumb 交互均已通过。随后新增 `PCore_OverflowDirtyRect`，host 只失效 overflow viewport，不再为每个拖动消息重绘整窗；VS2008 ARM 增量构建 0 错误。仍不宣称触摸惯性、overlay scrollbar 或完整 Grid。
+22. **CSS/图片后台资源事务已实现、待 TEST43/13 真机验收**：pending request 持有未交换 document 与最多 64 个去重 URL；worker 只读显式新页面 origin 并保存总计最多 2 MiB 原始字节，DOM/libcss/NetSurf/GDI 始终留在 UI。资源失败只尝试一次并沿用 fallback，成功提交后 core 已复制字节，request 统一释放。2 MiB 是 `test_host` 防止 WM 峰值失控的临时宿主预算，不是 core 或最终页面的产品上限；真实百分比、`@import`、字体、脚本和提交阶段卡顿仍未完成。
 
 验收：
 
@@ -114,7 +115,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 ### 2. Resource loader
 
-当前外部 CSS 已通过 `PCore_StyleDocumentEx` + fetch callback 拉取。
+当前外部 CSS、`<img>` 和计算后的单背景 URL 已通过分阶段 worker 事务拉取；core 仍只接收 transport-agnostic fetch callback。
 
 后续应统一处理：
 
@@ -151,12 +152,12 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 ### 4. 交互体验
 
-主文档 GET 已移出 UI 线程，设备结果待确认。HTML parse、外部 CSS/图片 fetch、style 和 layout 仍在完成消息的 UI 提交阶段执行，因此复杂页面在主文档返回后仍可能短暂卡顿。
+主文档、外部 CSS 和图片 GET 已移出 UI 线程，设备结果待确认。HTML parse、style、document cache copy 与 layout 仍在完成消息的 UI 提交阶段执行，因此复杂页面在全部网络完成后仍可能短暂卡顿。
 
 建议：
 
 - 第一阶段验收：点击链接后不定量 loading 条持续移动，旧页仍可绘制和滚动；失败保留旧页，关闭窗口不会遗留网络线程。
-- 第二阶段：将 CSS/图片资源组成完整后台 fetch 事务，完成后用 generation 校验并在 UI 线程 swap document。
+- 第二阶段验收：TEST43 通过；真实 TEST13 在 CSS/图片等待期间进度条与旧页持续响应，成功后一次 swap，失败资源保留 fallback。
 - 谨慎跨线程碰 DOM/GDI；确认线程安全前不让 worker 与 UI 共享 document 或全局 viewport context。
 
 ## 长期规划
