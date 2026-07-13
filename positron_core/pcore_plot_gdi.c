@@ -347,21 +347,9 @@ static nserror plot_path(const struct redraw_context *ctx,
     return NSERROR_OK;
 }
 
-static nserror plot_bitmap(const struct redraw_context *ctx,
-        struct bitmap *bitmap, int x, int y, int width, int height,
-        colour bg, bitmap_flags_t flags)
+static nserror pcore_plot_bitmap_once(pcore_plot_ctx *p,
+        struct bitmap *bitmap, int x, int y, int width, int height)
 {
-    pcore_plot_ctx *p;
-
-    (void) bg;
-    (void) flags;  /* tiled CSS background images are not connected yet */
-    if (ctx == NULL || ctx->priv == NULL || bitmap == NULL) {
-        return NSERROR_INVALID;
-    }
-    p = (pcore_plot_ctx *) ctx->priv;
-    if (p->hdc == NULL || width <= 0 || height <= 0) {
-        return NSERROR_OK;
-    }
     if (bitmap->kind == PCORE_BITMAP_SVG && bitmap->svg != NULL) {
         return PImage_DrawSvg((PIMAGE_SVG) bitmap->svg, p->hdc,
                 x, y, width, height) == PIMAGE_OK ?
@@ -373,6 +361,79 @@ static nserror plot_bitmap(const struct redraw_context *ctx,
                 x, y, width, height) == 0 ? NSERROR_OK : NSERROR_INVALID;
     }
     return NSERROR_INVALID;
+}
+
+static nserror plot_bitmap(const struct redraw_context *ctx,
+        struct bitmap *bitmap, int x, int y, int width, int height,
+        colour bg, bitmap_flags_t flags)
+{
+    pcore_plot_ctx *p;
+    RECT clip;
+    int repeat_x;
+    int repeat_y;
+    int start_x;
+    int start_y;
+    int end_x;
+    int end_y;
+    int px;
+    int py;
+    nserror err;
+
+    (void) bg;
+    if (ctx == NULL || ctx->priv == NULL || bitmap == NULL) {
+        return NSERROR_INVALID;
+    }
+    p = (pcore_plot_ctx *) ctx->priv;
+    if (p->hdc == NULL || width <= 0 || height <= 0) {
+        return NSERROR_OK;
+    }
+    repeat_x = (flags & BITMAPF_REPEAT_X) != 0;
+    repeat_y = (flags & BITMAPF_REPEAT_Y) != 0;
+    if (!repeat_x && !repeat_y) {
+        return pcore_plot_bitmap_once(p, bitmap, x, y, width, height);
+    }
+    if (GetClipBox(p->hdc, &clip) == ERROR) {
+        clip.left = x;
+        clip.top = y;
+        clip.right = x + width;
+        clip.bottom = y + height;
+    }
+
+    start_x = x;
+    start_y = y;
+    if (repeat_x) {
+        while (start_x > clip.left) {
+            start_x -= width;
+        }
+        if (start_x + width <= clip.left) {
+            start_x += ((clip.left - start_x) / width) * width;
+            while (start_x + width <= clip.left) {
+                start_x += width;
+            }
+        }
+    }
+    if (repeat_y) {
+        while (start_y > clip.top) {
+            start_y -= height;
+        }
+        if (start_y + height <= clip.top) {
+            start_y += ((clip.top - start_y) / height) * height;
+            while (start_y + height <= clip.top) {
+                start_y += height;
+            }
+        }
+    }
+    end_x = repeat_x ? clip.right : start_x + 1;
+    end_y = repeat_y ? clip.bottom : start_y + 1;
+    for (px = start_x; px < end_x; px += width) {
+        for (py = start_y; py < end_y; py += height) {
+            err = pcore_plot_bitmap_once(p, bitmap, px, py, width, height);
+            if (err != NSERROR_OK) {
+                return err;
+            }
+        }
+    }
+    return NSERROR_OK;
 }
 
 /* The GDI plotter table. Field order MUST match struct plotter_table:

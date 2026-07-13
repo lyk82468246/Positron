@@ -70,6 +70,8 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 
 TEST29 首次设备结果仅在绿色环精确值失败：SVG `#00a000` 经 screen-compatible RGB565 bitmap 量化后，`GetPixel` 返回 `#00a200`；红/蓝环及两个白色孔洞均正确。这不是 fill-rule 失败。测试 fixture 改用 RGB565 可精确表示的纯绿 `#00ff00`，仍对六个位置做精确相等断言，不放宽孔洞或颜色判断。
 
+用户截图确认修正后的 TEST29 三个样本正确：红色 nonzero 实心，蓝/绿 evenodd 中心为白色。随后 CSS background-image 按 NetSurf 现有边界接入：样式后的资源扫描读取 computed URI 并复用 document cache；构盒后设置 `box->background`；`redraw.c` 继续负责 position/repeat/clip；GDI plotter 参照上游 Windows frontend 展开 BITMAPF_REPEAT_X/Y。TEST30 的同步 fetch 是当前导航资源阶段的既有取舍，不代表 background-size、多层背景或异步资源事务完成。
+
 2026-07-12 扩展 TEST19 首次真机结果：BMP/PNG/JPEG/GIF 都通过尺寸探测和 Draw 返回，但 PNG/GIF fixture 本身是黑色/透明 1x1，缺少视觉证明；旧 BMP 数组还只有 68 字节而头声明 70，宽容解码后颜色错误。同期 TEST20 从 96x72 退成小点，且 H2/p 颜色丢失：根因是 render window 首次 `WM_SIZE` 用 NULL author sheet restyle，覆盖了调用方 `hSheet`。现改为四种标准编码器 2x2 fixture（BMP 70/PNG 77/JPEG 694/GIF 46 字节），并由 `g_render_sheet` 在窗口生命周期内保留调用方 stylesheet；导航换文档时清空。增量构建通过，待复测 TEST19/20。
 
 复测确认 BMP/PNG/GIF 四象限和 TEST20 的 96x72、边框、标题/段落颜色恢复；JPEG 仍呈橄榄色，不能称为轻微偏色。桌面解码旧 2x2 JPEG 得到的本来就是橄榄色，根因是 fixture 尺寸小于合理 DCT 色块而非 WM codec。现换成 16x16、每象限 8x8、quality=100、4:4:4 的 305 字节 JPEG；桌面象限中心为 `(254,0,0)/(0,255,1)/(0,0,254)/(255,255,0)`，增量构建通过待设备复测 JPEG 行。

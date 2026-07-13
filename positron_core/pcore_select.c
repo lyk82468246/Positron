@@ -2028,6 +2028,40 @@ typedef struct pcore_image_fetch_ctx {
     dom_string  *src_name;
 } pcore_image_fetch_ctx;
 
+static void pcore_fetch_image_url(pcore_image_fetch_ctx *ic,
+        const char *url_data, size_t url_len)
+{
+    char *url;
+    char *data = NULL;
+    int len = 0;
+    pcore_image_resource *cached;
+
+    if (ic == NULL || url_data == NULL || url_len == 0) {
+        return;
+    }
+    ic->found++;
+    url = (char *) malloc(url_len + 1);
+    if (url == NULL) {
+        return;
+    }
+    memcpy(url, url_data, url_len);
+    url[url_len] = '\0';
+    cached = pcore_image_cache_find(ic->cache, url);
+    if (cached != NULL) {
+        ic->fetched++;
+    } else if (ic->fetch != NULL &&
+            ic->fetch(ic->pw, url, &data, &len) == 0 &&
+            data != NULL && len > 0) {
+        if (pcore_image_cache_store(ic->cache, url, data, len) == 0) {
+            ic->fetched++;
+        }
+    }
+    if (data != NULL && ic->freefn != NULL) {
+        ic->freefn(ic->pw, data);
+    }
+    free(url);
+}
+
 static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
 {
     dom_node_type type;
@@ -2038,6 +2072,16 @@ static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
     if (err == DOM_NO_ERR && type == DOM_ELEMENT_NODE) {
         dom_string *name = NULL;
         bool is_img = false;
+        css_computed_style *style;
+        lwc_string *bg_uri = NULL;
+
+        style = pcore_node_computed_style(node);
+        if (style != NULL &&
+                css_computed_background_image(style, &bg_uri) ==
+                CSS_BACKGROUND_IMAGE_IMAGE && bg_uri != NULL) {
+            pcore_fetch_image_url(ic, lwc_string_data(bg_uri),
+                    lwc_string_length(bg_uri));
+        }
 
         err = dom_node_get_node_name(node, &name);
         if (err == DOM_NO_ERR && name != NULL) {
@@ -2052,32 +2096,7 @@ static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
                 size_t sl = dom_string_byte_length(src);
 
                 if (su8 != NULL && sl > 0) {
-                    char *url;
-                    char *data = NULL;
-                    int len = 0;
-                    pcore_image_resource *cached;
-
-                    ic->found++;
-                    url = (char *) malloc(sl + 1);
-                    if (url != NULL) {
-                        memcpy(url, su8, sl);
-                        url[sl] = '\0';
-                        cached = pcore_image_cache_find(ic->cache, url);
-                        if (cached != NULL) {
-                            ic->fetched++;
-                        } else if (ic->fetch != NULL &&
-                                ic->fetch(ic->pw, url, &data, &len) == 0 &&
-                                data != NULL && len > 0) {
-                            if (pcore_image_cache_store(ic->cache, url,
-                                    data, len) == 0) {
-                                ic->fetched++;
-                            }
-                        }
-                        if (data != NULL && ic->freefn != NULL) {
-                            ic->freefn(ic->pw, data);
-                        }
-                        free(url);
-                    }
+                    pcore_fetch_image_url(ic, su8, sl);
                 }
                 dom_string_unref(src);
             }

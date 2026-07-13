@@ -3415,6 +3415,199 @@ static BOOL test29_svg_fill_rule(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 30 - cached CSS background image through NetSurf redraw          */
+/* -------------------------------------------------------------------- */
+static int image_background_svg_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" "
+        "height=\"20\" viewBox=\"0 0 20 20\">"
+        "<rect width=\"10\" height=\"10\" fill=\"#ff0000\"/>"
+        "<rect x=\"10\" width=\"10\" height=\"10\" fill=\"#00ff00\"/>"
+        "<rect y=\"10\" width=\"10\" height=\"10\" fill=\"#0000ff\"/>"
+        "<rect x=\"10\" y=\"10\" width=\"10\" height=\"10\" "
+        "fill=\"#ffff00\"/></svg>";
+    image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
+    char *copy;
+    int len;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/img/background.svg") != 0) {
+        return 1;
+    }
+    len = (int) sizeof(SVG) - 1;
+    copy = (char *) malloc((size_t) len);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, SVG, (size_t) len);
+    *out_data = copy;
+    *out_len = len;
+    ctx->matched++;
+    return 0;
+}
+
+static BOOL test30_css_background_image(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body>"
+        "<header></header><section></section>"
+        "</body></html>";
+    static const char *CSS =
+        "body{background:#ffffff;margin:8px;}"
+        "header{display:block;width:100px;height:40px;"
+        "background-color:#ffffff;"
+        "background-image:url('/img/background.svg');"
+        "background-repeat:no-repeat;background-position:20px 10px;}"
+        "section{display:block;width:60px;height:40px;margin-top:8px;"
+        "background-image:url('/img/background.svg');"
+        "background-repeat:repeat;background-position:0 0;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    image_resource_test_ctx ctx;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    int found;
+    int fetched;
+    int hx;
+    int hy;
+    int hw;
+    int hh;
+    int sx;
+    int sy;
+    int sw;
+    int sh;
+    int vw;
+    int vh;
+    COLORREF p0;
+    COLORREF p1;
+    COLORREF p2;
+    COLORREF p3;
+    COLORREF p4;
+    COLORREF p5;
+    COLORREF p6;
+    COLORREF p7;
+    char msg[256];
+
+    ctx.calls = 0;
+    ctx.matched = 0;
+    ctx.frees = 0;
+    found = 0;
+    fetched = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/background.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 30 FAIL", "parse/style failed");
+        return FALSE;
+    }
+    if (PCore_FetchImageResources(hDoc, image_background_svg_fetch,
+            image_resource_free, &ctx, &found, &fetched) != 0 ||
+            found != 2 || fetched != 2 || ctx.calls != 1 ||
+            ctx.matched != 1 || ctx.frees != 1) {
+        sprintf(msg, "resources found=%d fetched=%d calls=%d matched=%d free=%d",
+                found, fetched, ctx.calls, ctx.matched, ctx.frees);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 30 FAIL", msg);
+        return FALSE;
+    }
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_NodeBox(hDoc, "header", &hx, &hy, &hw, &hh) != 0 ||
+            PCore_NodeBox(hDoc, "section", &sx, &sy, &sw, &sh) != 0 ||
+            hw != 100 || hh != 40 || sw != 60 || sh != 40) {
+        sprintf(msg, "geometry header=%d,%d %dx%d section=%d,%d %dx%d",
+                hx, hy, hw, hh, sx, sy, sw, sh);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 30 FAIL", msg);
+        return FALSE;
+    }
+
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, vw, vh) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 30 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, vw, vh);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+    p0 = GetPixel(memory_dc, hx + 5, hy + 5);
+    p1 = GetPixel(memory_dc, hx + 25, hy + 15);
+    p2 = GetPixel(memory_dc, hx + 35, hy + 15);
+    p3 = GetPixel(memory_dc, hx + 45, hy + 15);
+    p4 = GetPixel(memory_dc, sx + 5, sy + 5);
+    p5 = GetPixel(memory_dc, sx + 25, sy + 5);
+    p6 = GetPixel(memory_dc, sx + 5, sy + 25);
+    p7 = GetPixel(memory_dc, sx + 15, sy + 15);
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    if (p0 != RGB(255, 255, 255) || p1 != RGB(255, 0, 0) ||
+            p2 != RGB(0, 255, 0) || p3 != RGB(255, 255, 255) ||
+            p4 != RGB(255, 0, 0) || p5 != RGB(255, 0, 0) ||
+            p6 != RGB(255, 0, 0) || p7 != RGB(255, 255, 0)) {
+        sprintf(msg, "pixels %06lX %06lX %06lX %06lX / "
+                "%06lX %06lX %06lX %06lX",
+                p0 & 0xffffffUL, p1 & 0xffffffUL,
+                p2 & 0xffffffUL, p3 & 0xffffffUL,
+                p4 & 0xffffffUL, p5 & 0xffffffUL,
+                p6 & 0xffffffUL, p7 & 0xffffffUL);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 30 FAIL", msg);
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 30",
+              "CSS background-image window will open.\n\n"
+              "Expect one positioned tile, then a 3x2 tiled strip.\n"
+              "Resource dedupe and eight pixels already passed.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 30 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 30 OK",
+              "Cached CSS background-image passed position, no-repeat,\n"
+              "repeat-x/y, resource dedupe and NetSurf redraw.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -3527,7 +3720,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-29)\n"
+                  "Yes = run all selected groups (TEST 1-30)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -3551,6 +3744,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "SVG path draw (TEST 26), cached SVG <img>\n"
                                "(TEST 27), broken SVG fallback (TEST 28),\n"
                                "compound fill rules (TEST 29),\n"
+                               "CSS background images (TEST 30),\n"
                                "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
@@ -3594,7 +3788,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-29; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-30; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -3606,6 +3800,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test27_cached_svg_img()){ rc = 13; goto done; }
         if (!test28_broken_svg_fallback()){ rc = 13; goto done; }
         if (!test29_svg_fill_rule()){ rc = 13; goto done; }
+        if (!test30_css_background_image()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -3641,11 +3836,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-29)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-30)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
-               "    cached SVG, fallback, and compound fill rules.\n"
+               "    cached SVG, fallback, fill rules and CSS backgrounds.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

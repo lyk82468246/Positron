@@ -12,9 +12,9 @@
  * BOX_INLINE_CONTAINER), so the tree is layout-ready.
  *
  * Current scope: block/inline text, inline-block, flex, common table
- * structures, plus cached <img> resources decoded by WM Imaging/libsvgtiny,
- * are built for NetSurf's real layout/redraw path. Forms/widgets, floats,
- * background images, and exact rowspan occupancy remain staged follow-ups.
+ * structures, plus cached <img> and CSS background-image resources decoded by
+ * WM Imaging/libsvgtiny, are built for NetSurf's real layout/redraw path.
+ * Forms/widgets, floats, and exact rowspan occupancy remain staged follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -236,45 +236,21 @@ static int pcore_bitmap_destroy(struct bitmap *bitmap)
     return 0;
 }
 
-static struct box *pcore_make_cached_image_box(dom_node *node,
-        css_computed_style *style, void *ctx)
+static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
+        const char *url, void *ctx)
 {
-    char *src = NULL;
-    size_t src_len = 0;
-    char *url = NULL;
     const char *data = NULL;
     int len = 0;
     int width = 0;
     int height = 0;
     int kind = 0;
     PIMAGE_SVG svg = NULL;
-    dom_document *doc = NULL;
     struct bitmap *bitmap;
-    struct box *box;
 
-    if (!pcore_node_name_is(node, "img") ||
-            !pcore_copy_attr_text(node, "src", ctx, &src, &src_len) ||
-            src == NULL || src_len == 0) {
-        return NULL;
-    }
-    url = (char *) malloc(src_len + 1);
-    if (url == NULL) {
-        return NULL;
-    }
-    memcpy(url, src, src_len);
-    url[src_len] = '\0';
-    if (dom_node_get_owner_document(node, &doc) != DOM_NO_ERR ||
-            doc == NULL ||
+    if (doc == NULL || url == NULL || url[0] == '\0' ||
             pcore_image_resource_get(doc, url, &data, &len) != 0) {
-        if (doc != NULL) {
-            dom_node_unref((dom_node *) doc);
-        }
-        free(url);
         return NULL;
     }
-    dom_node_unref((dom_node *) doc);
-    free(url);
-
     if (PCore_ImageInfoFromMemory(data, len, &width, &height) == 0 &&
             width > 0 && height > 0) {
         kind = PCORE_BITMAP_WM_IMAGE;
@@ -304,6 +280,44 @@ static struct box *pcore_make_cached_image_box(dom_node *node,
     bitmap->height = height;
     bitmap->svg = (void *) svg;
     talloc_set_destructor(bitmap, pcore_bitmap_destroy);
+    return bitmap;
+}
+
+static struct box *pcore_make_cached_image_box(dom_node *node,
+        css_computed_style *style, void *ctx)
+{
+    char *src = NULL;
+    size_t src_len = 0;
+    char *url = NULL;
+    dom_document *doc = NULL;
+    struct bitmap *bitmap;
+    struct box *box;
+
+    if (!pcore_node_name_is(node, "img") ||
+            !pcore_copy_attr_text(node, "src", ctx, &src, &src_len) ||
+            src == NULL || src_len == 0) {
+        return NULL;
+    }
+    url = (char *) malloc(src_len + 1);
+    if (url == NULL) {
+        return NULL;
+    }
+    memcpy(url, src, src_len);
+    url[src_len] = '\0';
+    if (dom_node_get_owner_document(node, &doc) != DOM_NO_ERR ||
+            doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
+        }
+        free(url);
+        return NULL;
+    }
+    bitmap = pcore_make_cached_bitmap(doc, url, ctx);
+    dom_node_unref((dom_node *) doc);
+    free(url);
+    if (bitmap == NULL) {
+        return NULL;
+    }
 
     box = pcore_box_new(BOX_INLINE, style, ctx);
     if (box == NULL) {
@@ -313,6 +327,41 @@ static struct box *pcore_make_cached_image_box(dom_node *node,
     box->object = (struct hlcache_handle *) bitmap;
     box->flags |= IS_REPLACED;
     return box;
+}
+
+static void pcore_attach_cached_backgrounds(struct box *box, void *ctx)
+{
+    struct box *child;
+
+    if (box == NULL) {
+        return;
+    }
+    if (box->background == NULL && box->style != NULL && box->node != NULL &&
+            box->type != BOX_TEXT && box->type != BOX_INLINE_END) {
+        lwc_string *uri = NULL;
+        if (css_computed_background_image(box->style, &uri) ==
+                CSS_BACKGROUND_IMAGE_IMAGE && uri != NULL) {
+            dom_document *doc = NULL;
+            const char *data = lwc_string_data(uri);
+            size_t len = lwc_string_length(uri);
+            char *url = (char *) malloc(len + 1);
+
+            if (url != NULL) {
+                memcpy(url, data, len);
+                url[len] = '\0';
+                if (dom_node_get_owner_document(box->node, &doc) ==
+                        DOM_NO_ERR && doc != NULL) {
+                    box->background = (struct hlcache_handle *)
+                            pcore_make_cached_bitmap(doc, url, ctx);
+                    dom_node_unref((dom_node *) doc);
+                }
+                free(url);
+            }
+        }
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        pcore_attach_cached_backgrounds(child, ctx);
+    }
 }
 
 /* Cache misses and decode failures retain accessible fallback text. alt=""
@@ -958,6 +1007,7 @@ static struct box *pcore_construct_table(dom_node *node,
 struct box *pcore_box_construct(struct dom_node *root, void *ctx)
 {
     css_computed_style *style;
+    struct box *tree;
 
     if (root == NULL) {
         return NULL;
@@ -966,7 +1016,9 @@ struct box *pcore_box_construct(struct dom_node *root, void *ctx)
     if (style == NULL) {
         return NULL;
     }
-    return pcore_construct_block(root, style, 1, ctx);
+    tree = pcore_construct_block(root, style, 1, ctx);
+    pcore_attach_cached_backgrounds(tree, ctx);
+    return tree;
 }
 
 /* ------------------------------------------------------------------ */

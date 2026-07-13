@@ -106,14 +106,15 @@ typedef void (*PCoreFreeFn)(void *pw, char *data);
 PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw);
 
-/* Scan the document for non-empty <img src> resources and invoke the embedder's
- * fetch callback for each one. Successful bodies are copied into a per-document
- * URL cache, so repeated scans do not fetch the same raw src again; the cache is
- * freed with the document. A subsequent PCore_LayoutDocument turns a cached
- * WM-Imaging or libsvgtiny-decodable <img> into a NetSurf replaced box;
- * PaintDocument draws it through the matching public image service.
+/* Scan the document for non-empty <img src> and computed background-image
+ * resources and invoke the embedder's fetch callback for each one. Background
+ * URLs are visible after PCore_StyleDocument[Ex]. Successful bodies are copied
+ * into a per-document URL cache, so repeated URLs do not fetch again; the cache
+ * is freed with the document. A subsequent PCore_LayoutDocument turns cached
+ * WM-Imaging or libsvgtiny-decodable resources into NetSurf image carriers;
+ * PaintDocument draws them through the matching public image service.
  * Cache misses and decoder failures retain the element's alt/src text fallback.
- * `out_found` receives the number of non-empty src attributes; `out_fetched`
+ * `out_found` receives the number of non-empty image references; `out_fetched`
  * receives the number available from cache or a successful non-empty fetch.
  * Either output pointer may be NULL. Returns 0 when the DOM was scanned. */
 PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
