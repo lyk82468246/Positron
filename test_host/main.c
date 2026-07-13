@@ -170,7 +170,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 34
+#define TEST_MAX_NUMBER 35
 
 static int test_config_space(char c)
 {
@@ -4568,6 +4568,241 @@ static BOOL test34_svg_radial_gradient(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 35 - cached radial SVG through the NetSurf replaced-image chain */
+/* -------------------------------------------------------------------- */
+static int image_svg_radial_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" "
+        "height=\"80\" viewBox=\"0 0 160 80\">"
+        "<defs><radialGradient id=\"g\">"
+        "<stop offset=\"0%\" stop-color=\"#ff0000\"/>"
+        "<stop offset=\"50%\" stop-color=\"#800080\"/>"
+        "<stop offset=\"100%\" stop-color=\"#0000ff\"/>"
+        "</radialGradient></defs>"
+        "<rect width=\"160\" height=\"80\" fill=\"url(#g)\"/>"
+        "</svg>";
+    image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
+    char *copy;
+    int len;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/img/radial.svg") != 0) {
+        return 1;
+    }
+    len = (int) sizeof(SVG) - 1;
+    copy = (char *) malloc((size_t) len);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, SVG, (size_t) len);
+    *out_data = copy;
+    *out_len = len;
+    ctx->matched++;
+    return 0;
+}
+
+static BOOL test35_cached_svg_radial_gradient(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><h2>Cached radial SVG</h2>"
+        "<p>The ellipse below is a NetSurf replaced image box.</p>"
+        "<img alt=\"Radial SVG fallback\" src=\"/img/radial.svg\">"
+        "<p>Expect a red centre fading through purple to blue.</p>"
+        "</body></html>";
+    static const char *CSS =
+        "body{background-color:#ffffff;color:#202020;margin:8px;}"
+        "h2{color:#800000;}p{color:#103080;}"
+        "img{width:160px;height:80px;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    image_resource_test_ctx ctx;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF center;
+    COLORREF horizontal_middle;
+    COLORREF vertical_middle;
+    COLORREF right_edge;
+    COLORREF top_edge;
+    COLORREF pixel;
+    COLORREF previous;
+    int found;
+    int fetched;
+    int x;
+    int y;
+    int w;
+    int h;
+    int vw;
+    int vh;
+    int px;
+    int py;
+    int seam_pixels;
+    int large_jumps;
+    int center_ok;
+    int middle_ok;
+    int edge_ok;
+    char msg[256];
+
+    ctx.calls = 0;
+    ctx.matched = 0;
+    ctx.frees = 0;
+    found = 0;
+    fetched = 0;
+    x = 0;
+    y = 0;
+    w = 0;
+    h = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 35 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    if (PCore_FetchImageResources(hDoc, image_svg_radial_fetch,
+            image_resource_free, &ctx, &found, &fetched) != 0 ||
+            found != 1 || fetched != 1 || ctx.calls != 1 ||
+            ctx.matched != 1 || ctx.frees != 1) {
+        sprintf(msg, "cache found=%d fetched=%d calls=%d match=%d free=%d",
+                found, fetched, ctx.calls, ctx.matched, ctx.frees);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 35 FAIL", msg);
+        return FALSE;
+    }
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/svg-radial.css");
+    if (hSheet == NULL || PCore_StyleDocument(hDoc, hSheet) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 35 FAIL", "CSS styling failed");
+        return FALSE;
+    }
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
+            w != 160 || h != 80) {
+        sprintf(msg, "radial SVG box=(%d,%d) %dx%d; expect 160x80",
+                x, y, w, h);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 35 FAIL", msg);
+        return FALSE;
+    }
+
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, vw, vh) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 35 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, vw, vh);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+    center = GetPixel(memory_dc, x + 80, y + 40);
+    horizontal_middle = GetPixel(memory_dc, x + 120, y + 40);
+    vertical_middle = GetPixel(memory_dc, x + 80, y + 20);
+    right_edge = GetPixel(memory_dc, x + 156, y + 40);
+    top_edge = GetPixel(memory_dc, x + 80, y + 2);
+
+    seam_pixels = 0;
+    large_jumps = 0;
+    previous = CLR_INVALID;
+    for (px = x + 80; px <= x + 156; px++) {
+        pixel = GetPixel(memory_dc, px, y + 40);
+        if (GetGValue(pixel) > 48) { seam_pixels++; }
+        if (previous != CLR_INVALID &&
+                abs((int) GetRValue(pixel) -
+                (int) GetRValue(previous)) +
+                abs((int) GetGValue(pixel) -
+                (int) GetGValue(previous)) +
+                abs((int) GetBValue(pixel) -
+                (int) GetBValue(previous)) > 80) {
+            large_jumps++;
+        }
+        previous = pixel;
+    }
+    previous = CLR_INVALID;
+    for (py = y + 40; py >= y + 2; py--) {
+        pixel = GetPixel(memory_dc, x + 80, py);
+        if (GetGValue(pixel) > 48) { seam_pixels++; }
+        if (previous != CLR_INVALID &&
+                abs((int) GetRValue(pixel) -
+                (int) GetRValue(previous)) +
+                abs((int) GetGValue(pixel) -
+                (int) GetGValue(previous)) +
+                abs((int) GetBValue(pixel) -
+                (int) GetBValue(previous)) > 80) {
+            large_jumps++;
+        }
+        previous = pixel;
+    }
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+
+    center_ok = GetRValue(center) > 150 && GetBValue(center) < 110;
+    middle_ok = GetRValue(horizontal_middle) > 50 &&
+            GetBValue(horizontal_middle) > 50 &&
+            GetRValue(vertical_middle) > 50 &&
+            GetBValue(vertical_middle) > 50;
+    edge_ok = GetBValue(right_edge) > 150 &&
+            GetRValue(right_edge) < 110 &&
+            GetBValue(top_edge) > 150 && GetRValue(top_edge) < 110;
+    if (!center_ok || !middle_ok || !edge_ok ||
+            seam_pixels > 2 || large_jumps > 2) {
+        sprintf(msg, "C=%06lX HM=%06lX VM=%06lX edge=%d seam=%d jump=%d",
+                center & 0xffffffUL, horizontal_middle & 0xffffffUL,
+                vertical_middle & 0xffffffUL, edge_ok,
+                seam_pixels, large_jumps);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 35 FAIL", msg);
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 35",
+              "Cached radial SVG window will open.\n\n"
+              "Expect a wide ellipse with a RED centre, PURPLE middle\n"
+              "and BLUE edge. Cache, box and pixels already passed.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 35 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 35 OK",
+              "Radial SVG passed cache -> replaced box -> NetSurf redraw.\n"
+              "Horizontal and vertical continuity guards also passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -4716,6 +4951,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 32: ok = test32_cached_svg_gradient_text(); break;
         case 33: ok = test33_svg_gradient_coordinates(); break;
         case 34: ok = test34_svg_radial_gradient(); break;
+        case 35: ok = test35_cached_svg_radial_gradient(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -4795,7 +5031,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-34)\n"
+                  "Yes = run all selected groups (TEST 1-35)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -4824,6 +5060,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "cached SVG gradient/text (TEST 32),\n"
                                "gradient coordinates (TEST 33),\n"
                                "radial gradients (TEST 34),\n"
+                               "cached radial SVG (TEST 35),\n"
                                "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
@@ -4867,7 +5104,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-34; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-35; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -4884,6 +5121,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test32_cached_svg_gradient_text()){ rc = 13; goto done; }
         if (!test33_svg_gradient_coordinates()){ rc = 13; goto done; }
         if (!test34_svg_radial_gradient()){ rc = 13; goto done; }
+        if (!test35_cached_svg_radial_gradient()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -4919,13 +5157,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-34)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-35)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
                "    cached SVG, fallback, fill rules, CSS backgrounds and\n"
                "    native SVG text, cached SVG gradients, coordinate transforms\n"
-               "    and centred radial gradients.\n"
+               "    centred radial gradients and their cached image chain.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {
