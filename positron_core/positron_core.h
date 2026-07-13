@@ -201,6 +201,12 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
 #define PCORE_POINTER_UP   3
 PCORE_API int PCore_OverflowPointer(HANDLE hDoc, int action, int x, int y);
 
+/* Return the document-space viewport that must be repainted after the most
+ * recent overflow-scrollbar pointer event. This includes the scrolled content
+ * and its retained scrollbar, but excludes unrelated page content. */
+PCORE_API int PCore_OverflowDirtyRect(HANDLE hDoc,
+        int *x, int *y, int *w, int *h);
+
 /* --- NetSurf layout/redraw port (milestone H) ----------------------- */
 
 /* M1 self-test for the GDI-backed NetSurf plotter table: draws a bordered box,

@@ -103,6 +103,8 @@ TEST41 修复只在 flex item 树中实际检测到 grid/inline-grid 降级盒�
 
 2026-07-13 用户截图确认 TEST41 竖横屏均保持主内容左右 inset，宽表格未再把页面推到负 x。随后移植 NetSurf 3.11 `desktop/scrollbar.c`；`c89ize.py` 只将 6 处 `plot_style_t` designated initializer 转为位置初始化，再次运行 0 修改。恢复 `descendant_x1/y1` 溢出判定、创建/销毁和祖先 offset，WM DOWN/MOVE/UP 经 `PCore_OverflowPointer` 转给箭头与 thumb。TEST42 合并离屏右箭头 16px 坐标断言和可见拖动页。首次构建只暴露 `box_is_float` 是上游文件内宏而非外部函数，改为等价 box-type 宏后增量构建 core/test_host 0 错误；TEST42 真机仍待确认。
 
+2026-07-13 用户确认 TEST42 功能正常，横向 scrollbar、箭头与 thumb 链闭环。性能目标不是原生外观：该控件继续使用 NetSurf retained scrollbar 经 GDI plotter 绘制，避免为页面内每个 overflow 建立 WM child HWND。随后新增 `PCore_OverflowDirtyRect`，DOWN/MOVE/UP 后 host 只 `InvalidateRect` 对应 overflow viewport（文档 y 减当前 page scroll），不再整窗失效；TEST42 自动断言脏矩形小于 240x320 页面。`c89ize.py` 两次均 0 修改，VS2008 ARM 增量构建 core/test_host 0 错误，仅有既有 `fpmath` 警告。
+
 用户截图确认修正后的 TEST29 三个样本正确：红色 nonzero 实心，蓝/绿 evenodd 中心为白色。随后 CSS background-image 按 NetSurf 现有边界接入：样式后的资源扫描读取 computed URI 并复用 document cache；构盒后设置 `box->background`；`redraw.c` 继续负责 position/repeat/clip；GDI plotter 参照上游 Windows frontend 展开 BITMAPF_REPEAT_X/Y。TEST30 的同步 fetch 是当前导航资源阶段的既有取舍，不代表 background-size、多层背景或异步资源事务完成。
 
 2026-07-12 扩展 TEST19 首次真机结果：BMP/PNG/JPEG/GIF 都通过尺寸探测和 Draw 返回，但 PNG/GIF fixture 本身是黑色/透明 1x1，缺少视觉证明；旧 BMP 数组还只有 68 字节而头声明 70，宽容解码后颜色错误。同期 TEST20 从 96x72 退成小点，且 H2/p 颜色丢失：根因是 render window 首次 `WM_SIZE` 用 NULL author sheet restyle，覆盖了调用方 `hSheet`。现改为四种标准编码器 2x2 fixture（BMP 70/PNG 77/JPEG 694/GIF 46 字节），并由 `g_render_sheet` 在窗口生命周期内保留调用方 stylesheet；导航换文档时清空。增量构建通过，待复测 TEST19/20。

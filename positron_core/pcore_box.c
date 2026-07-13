@@ -1430,6 +1430,11 @@ typedef struct pcore_render {
     struct scrollbar *active_scrollbar;
     int           active_scrollbar_x;
     int           active_scrollbar_y;
+    int           overflow_dirty_valid;
+    int           overflow_dirty_x;
+    int           overflow_dirty_y;
+    int           overflow_dirty_w;
+    int           overflow_dirty_h;
 } pcore_render;
 
 /* libdom user-data key under which the render state hangs on the document. */
@@ -1714,7 +1719,8 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
 }
 
 static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,
-        int *out_x, int *out_y)
+        int *out_x, int *out_y, int *dirty_x, int *dirty_y,
+        int *dirty_w, int *dirty_h)
 {
     struct box *child;
     struct scrollbar *found;
@@ -1730,7 +1736,8 @@ static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,
         return NULL;
     }
     for (child = box->children; child != NULL; child = child->next) {
-        found = pcore_scrollbar_at(child, x, y, out_x, out_y);
+        found = pcore_scrollbar_at(child, x, y, out_x, out_y,
+                dirty_x, dirty_y, dirty_w, dirty_h);
         if (found != NULL) {
             return found;
         }
@@ -1748,6 +1755,10 @@ static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,
                 y < bar_y + SCROLLBAR_WIDTH) {
             *out_x = bar_x;
             *out_y = bar_y;
+            *dirty_x = ax;
+            *dirty_y = ay;
+            *dirty_w = visible_width;
+            *dirty_h = visible_height;
             return box->scroll_x;
         }
     }
@@ -1759,6 +1770,10 @@ static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,
                 y < bar_y + length) {
             *out_x = bar_x;
             *out_y = bar_y;
+            *dirty_x = ax;
+            *dirty_y = ay;
+            *dirty_w = visible_width;
+            *dirty_h = visible_height;
             return box->scroll_y;
         }
     }
@@ -1779,11 +1794,15 @@ PCORE_API int PCore_OverflowPointer(HANDLE hDoc, int action, int x, int y)
     if (action == PCORE_POINTER_DOWN) {
         origin_x = 0;
         origin_y = 0;
+        st->overflow_dirty_valid = 0;
         scrollbar = pcore_scrollbar_at(st->root_box, x, y,
-                &origin_x, &origin_y);
+                &origin_x, &origin_y, &st->overflow_dirty_x,
+                &st->overflow_dirty_y, &st->overflow_dirty_w,
+                &st->overflow_dirty_h);
         if (scrollbar == NULL) {
             return 0;
         }
+        st->overflow_dirty_valid = 1;
         st->active_scrollbar = scrollbar;
         st->active_scrollbar_x = origin_x;
         st->active_scrollbar_y = origin_y;
@@ -1811,6 +1830,23 @@ PCORE_API int PCore_OverflowPointer(HANDLE hDoc, int action, int x, int y)
         return 1;
     }
     return 0;
+}
+
+PCORE_API int PCore_OverflowDirtyRect(HANDLE hDoc,
+        int *x, int *y, int *w, int *h)
+{
+    pcore_render *st;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL || !st->overflow_dirty_valid || x == NULL || y == NULL ||
+            w == NULL || h == NULL) {
+        return 0;
+    }
+    *x = st->overflow_dirty_x;
+    *y = st->overflow_dirty_y;
+    *w = st->overflow_dirty_w;
+    *h = st->overflow_dirty_h;
+    return 1;
 }
 
 PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,

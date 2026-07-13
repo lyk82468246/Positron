@@ -1859,6 +1859,37 @@ static void pcore_scroll_by(HWND hwnd, int dy)
     UpdateWindow(hwnd);
 }
 
+/* Convert the core's document-space overflow viewport to the current client
+ * coordinates. Retained scrollbar input never needs to invalidate the rest of
+ * the page, which is important on slow WM GDI devices. */
+static void pcore_invalidate_overflow(HWND hwnd)
+{
+    RECT client;
+    RECT dirty;
+    int x;
+    int y;
+    int w;
+    int h;
+
+    if (g_render_doc == NULL ||
+            !PCore_OverflowDirtyRect(g_render_doc, &x, &y, &w, &h)) {
+        InvalidateRect(hwnd, NULL, FALSE);
+        return;
+    }
+    GetClientRect(hwnd, &client);
+    dirty.left = x - 1;
+    dirty.top = y - g_scroll_y - 1;
+    dirty.right = x + w + 1;
+    dirty.bottom = y - g_scroll_y + h + 1;
+    if (dirty.left < client.left) { dirty.left = client.left; }
+    if (dirty.top < client.top) { dirty.top = client.top; }
+    if (dirty.right > client.right) { dirty.right = client.right; }
+    if (dirty.bottom > client.bottom) { dirty.bottom = client.bottom; }
+    if (dirty.left < dirty.right && dirty.top < dirty.bottom) {
+        InvalidateRect(hwnd, &dirty, FALSE);
+    }
+}
+
 /* Case-insensitive ASCII prefix test (avoids depending on _strnicmp). */
 static int ci_prefix(const char *s, const char *pfx)
 {
@@ -2439,7 +2470,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                         cx, cy + g_scroll_y)) {
             g_overflow_pointer = 1;
             SetCapture(hwnd);
-            InvalidateRect(hwnd, NULL, FALSE);
+            pcore_invalidate_overflow(hwnd);
             return 0;
         }
         /* Document-space point = client point + scroll (scroll_x is 0). If it
@@ -2460,7 +2491,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             int cy = (int) (short) HIWORD(lp);
             PCore_OverflowPointer(g_render_doc, PCORE_POINTER_MOVE,
                     cx, cy + g_scroll_y);
-            InvalidateRect(hwnd, NULL, FALSE);
+            pcore_invalidate_overflow(hwnd);
             return 0;
         }
         break;
@@ -2474,7 +2505,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             }
             g_overflow_pointer = 0;
             ReleaseCapture();
-            InvalidateRect(hwnd, NULL, FALSE);
+            pcore_invalidate_overflow(hwnd);
             return 0;
         }
         break;
@@ -5707,6 +5738,11 @@ static BOOL test42_overflow_scrollbar(void)
     int after_h;
     int down_used;
     int up_used;
+    int dirty_used;
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
     int screen_w;
     int screen_h;
     char msg[256];
@@ -5746,6 +5782,12 @@ static BOOL test42_overflow_scrollbar(void)
 
     down_used = PCore_OverflowPointer(hDoc, PCORE_POINTER_DOWN,
             sx + sw - 8, sy + sh - 8);
+    dirty_x = 0;
+    dirty_y = 0;
+    dirty_w = 0;
+    dirty_h = 0;
+    dirty_used = PCore_OverflowDirtyRect(hDoc, &dirty_x, &dirty_y,
+            &dirty_w, &dirty_h);
     up_used = PCore_OverflowPointer(hDoc, PCORE_POINTER_UP,
             sx + sw - 8, sy + sh - 8);
     PCore_NodeBox(hDoc, "td", &after_x, &after_y, &after_w, &after_h);
@@ -5754,10 +5796,13 @@ static BOOL test42_overflow_scrollbar(void)
     DeleteDC(memory_dc);
     ReleaseDC(NULL, screen_dc);
 
-    if (!down_used || !up_used || after_x != before_x - 16) {
+    if (!down_used || !up_used || !dirty_used ||
+            dirty_w <= 0 || dirty_h <= 0 || dirty_w >= 240 ||
+            dirty_h >= 320 || after_x != before_x - 16) {
         _snprintf(msg, sizeof(msg) - 1,
-                "used=%d/%d td.x=%d->%d expect -16; section=%d,%d %dx%d",
-                down_used, up_used, before_x, after_x, sx, sy, sw, sh);
+                "used=%d/%d/%d td.x=%d->%d dirty=%d,%d %dx%d",
+                down_used, up_used, dirty_used, before_x, after_x,
+                dirty_x, dirty_y, dirty_w, dirty_h);
         msg[sizeof(msg) - 1] = '\0';
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
