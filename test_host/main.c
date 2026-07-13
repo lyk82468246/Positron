@@ -170,7 +170,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 40
+#define TEST_MAX_NUMBER 41
 
 static int test_config_space(char c)
 {
@@ -5507,6 +5507,125 @@ static BOOL test40_css_modern_values(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 41 - narrow grid fallback must not displace a reversed flex item */
+/* Mirrors IANA /numbers: main + hidden sidenav, a one-track grid and an */
+/* overflow:auto wrapper containing a table wider than the viewport.     */
+/* -------------------------------------------------------------------- */
+static BOOL test41_grid_overflow_flex(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><article><main>"
+        "<h1>Number Resources</h1>"
+        "<p>Global coordination of Internet Protocol addressing.</p>"
+        "<div class=grid><span class=inlinegrid>grid fallback</span>"
+        "<div class=scroll><table><tr>"
+        "<td>REGISTRY-NAME-THAT-MUST-NOT-SHIFT-THE-PAGE</td>"
+        "<td>AREA-COVERED-BY-THIS-REGISTRY</td>"
+        "</tr></table></div></div></main>"
+        "<nav>wide side navigation</nav></article></body></html>";
+    static const char *CSS =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "article{display:flex;flex-direction:row-reverse;padding:25px;}"
+        "main{flex-grow:1;flex-basis:0;background:#f7f7fb;}"
+        "nav{display:none;width:180px;}"
+        ".grid{display:grid;grid-template-columns:1fr;gap:25px;}"
+        ".inlinegrid{display:inline-grid;color:#0060a0;}"
+        ".scroll{overflow:auto;border:1px solid #808080;}"
+        "table{border-collapse:collapse;}td{white-space:nowrap;padding:4px;}";
+    static const int widths[2] = { 224, 320 };
+    HANDLE hDoc = NULL;
+    HANDLE hSheet = NULL;
+    HDC screen_dc;
+    int dpi = 96;
+    int screen_w;
+    int screen_h;
+    int pass;
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+    char msg[256];
+
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        int device_dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
+        if (device_dpi > 0) { dpi = device_dpi; }
+        ReleaseDC(NULL, screen_dc);
+    }
+    msg[0] = '\0';
+    for (pass = 0; pass < 2; pass++) {
+        hDoc = PCore_ParseHTML(HTML, 0);
+        hSheet = PCore_ParseCSS(CSS, 0,
+                "http://positron.local/grid-overflow.css");
+        PCore_SetViewport(widths[pass], 320, dpi);
+        if (hDoc == NULL || hSheet == NULL ||
+                PCore_StyleDocument(hDoc, hSheet) != 0 ||
+                PCore_LayoutDocument(hDoc, widths[pass], 320) != 0 ||
+                PCore_NodeBox(hDoc, "main", &x, &y, &w, &h) != 0) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "width=%d parse/style/layout lookup failed",
+                    widths[pass]);
+        } else if (x != 25 || w != widths[pass] - 50) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "width=%d main=(%d,%d) %dx%d; expect x=25 w=%d",
+                    widths[pass], x, y, w, h, widths[pass] - 50);
+        }
+        msg[sizeof(msg) - 1] = '\0';
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        hSheet = NULL;
+        hDoc = NULL;
+        if (msg[0] != '\0') { break; }
+    }
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, dpi);
+    if (pass != 2) {
+        show_error(L"TEST 41 FAIL", msg);
+        return FALSE;
+    }
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/grid-overflow.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 41 FAIL", "visible parse/style/layout failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 41",
+              "IANA /numbers overflow fixture will open. The heading and\n"
+              "paragraph must keep equal 25px side insets. The deliberately\n"
+              "wide table may clip, but must not move the page left.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 41 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 41 OK",
+              "Grid fallback + overflow table kept reversed-flex main at\n"
+              "x=25 for 224/320px and passed the formal redraw path.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -5661,6 +5780,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 38: ok = test38_css_root_variables(); break;
         case 39: ok = test39_css_variable_layout(); break;
         case 40: ok = test40_css_modern_values(); break;
+        case 41: ok = test41_grid_overflow_flex(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -5740,7 +5860,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-40)\n"
+                  "Yes = run all selected groups (TEST 1-41)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -5756,7 +5876,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "HTML / CSS / DOM parse, select, style,\n"
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
-                               "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40). Offline.");
+                               "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
+                               "38, 40, 41). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -5785,7 +5906,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40; offline. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40, 41; offline. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -5799,6 +5920,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test25_svg_parse())   { rc = 11; goto done; }
         if (!test38_css_root_variables()){ rc = 11; goto done; }
         if (!test40_css_modern_values()){ rc = 11; goto done; }
+        if (!test41_grid_overflow_flex()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -5856,12 +5978,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40, 41)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource cache, SVG parse, constrained :root variables,\n"
-               "    OKLCH colours and reducible calc values. Offline.\n\n");
+               "    OKLCH/calc values and grid-overflow flex containment.\n"
+               "    Offline.\n\n");
     }
     if (run_render) {
         strcat(summary,

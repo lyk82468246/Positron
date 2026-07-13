@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=40`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=41`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -96,6 +96,10 @@ TEST38-39 批次经 `c89ize.py` 检查两个 C 文件均为 0 修改；VS2008 AR
 随后审计同一份 IANA CSS：共见 22 处 `oklch()`、15 处 `calc()`。Oklab 转换矩阵采用 Bjorn Ottosson 公开域/MIT 参考实现；没有引入不适配 VS2008 的完整现代颜色库。新 `pcore_css_values.c` 只转换数值型 OKLCH，并求值同单位且不依赖布局上下文的 calc；混合 `%/px` 原样保留。TEST40 将颜色、alpha、变量 calc 的 `+ - * /` 和混合单位保留合并为一次自动验收。多组路由第 3 组提示也已压缩，避免 WM6 MessageBox 长文本异常。
 
 TEST40 最终批次经 `c89ize.py` 检查三个 C 文件均为 0 修改。首次增量构建重编 core/test_host，各只有 libcss `fpmath.h` 三条既有 C4244；修正 22:10 fixed alpha 量化后，最终增量构建只重编 `pcore_css_values.c` 并重链接 test_host，两个项目均为 0 错误、0 警告。设备包为 `C:\WMShare\Positron-next31`，默认配置 `tests=40`。
+
+用户随后确认 TEST40 OK，TEST13 的 IANA logo/header、导航、标题和页脚表格配色/间距均继续改善；但从页脚进入 `/numbers` 后，`Number Resources` 主内容左缘再次越出 viewport。联网读取原始 HTML/CSS 确认该子页是 `article.sidenav` 反向 flex，`main` 内 `#rir-map { display:grid }`，并含 `.dtable-wrap { overflow:auto }` 宽表格。NetSurf 3.11 只解析 grid display 值而没有 grid layout，本项目也未附加 box overflow scrollbar；block 降级的表格 min-content 因而向上钳住 flex item，反向定位产生负 x。
+
+TEST41 修复只在 flex item 树中实际检测到 grid/inline-grid 降级盒时跳过错误的 block min-content 钳制，普通 flex 保持原规则；inline-grid 归入 inline-block 降级。fixture 同时覆盖隐藏 sidenav、25px 动态 padding、one-track grid、overflow:auto 宽表格、224/320px geometry 与正式 redraw。三个 C 文件经 `c89ize.py` 检查均为 0 修改；VS2008 ARM 增量构建两个项目 0 错误，core 7 条与 test_host 3 条均为既有 fpmath/layout float-to-int 警告。设备结果仍待确认，且不得表述为完整 Grid/gap/横向 scrollbar。
 
 用户截图确认修正后的 TEST29 三个样本正确：红色 nonzero 实心，蓝/绿 evenodd 中心为白色。随后 CSS background-image 按 NetSurf 现有边界接入：样式后的资源扫描读取 computed URI 并复用 document cache；构盒后设置 `box->background`；`redraw.c` 继续负责 position/repeat/clip；GDI plotter 参照上游 Windows frontend 展开 BITMAPF_REPEAT_X/Y。TEST30 的同步 fetch 是当前导航资源阶段的既有取舍，不代表 background-size、多层背景或异步资源事务完成。
 

@@ -95,6 +95,7 @@ struct flex_item_data {
 	bool freeze;
 	bool min_violation;
 	bool max_violation;
+	bool grid_fallback;
 };
 
 /**
@@ -362,6 +363,35 @@ static inline bool layout_flex__base_and_main_sizes(
 }
 
 /**
+ * Detect a CSS grid that the Positron slim box builder has conservatively
+ * blockified. NetSurf 3.11 parses the display value but has no grid layout,
+ * so retaining the block min-content width can make an enclosing reversed
+ * flex item start at a negative coordinate. A real grid's shrinkable tracks
+ * and overflow items do not move the whole flex item in that situation.
+ */
+static bool layout_flex__has_grid_fallback(const struct box *box)
+{
+	const struct box *child;
+	uint8_t display;
+
+	if (box->style != NULL) {
+		display = css_computed_display(box->style, false);
+		if (display == CSS_DISPLAY_GRID ||
+		    display == CSS_DISPLAY_INLINE_GRID) {
+			return true;
+		}
+	}
+
+	for (child = box->children; child != NULL; child = child->next) {
+		if (layout_flex__has_grid_fallback(child)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
  * Fill out all item's data in a flex container.
  *
  * \param[in] ctx              Flex layout context
@@ -394,6 +424,7 @@ static void layout_flex_ctx__populate_item_data(
 				b, b->width);
 
 		item->box = b;
+		item->grid_fallback = layout_flex__has_grid_fallback(b);
 		item->basis = css_computed_flex_basis(b->style,
 				&item->basis_length, &item->basis_unit);
 
@@ -617,7 +648,8 @@ static inline int layout_flex__get_min_max_violations(
 					item->min_main);
 		}
 
-		if (target_main_size < item->box->min_width) {
+		if (!item->grid_fallback &&
+		    target_main_size < item->box->min_width) {
 			target_main_size = item->box->min_width;
 			item->min_violation = true;
 			NSLOG(flex, DEEPDEBUG, "Violation: box min_width: %i",

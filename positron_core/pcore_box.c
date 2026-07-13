@@ -104,7 +104,8 @@ static int pcore_is_inline_level(css_computed_style *style, int is_root)
     return (d == CSS_DISPLAY_INLINE ||
             d == CSS_DISPLAY_INLINE_BLOCK ||
             d == CSS_DISPLAY_INLINE_TABLE ||
-            d == CSS_DISPLAY_INLINE_FLEX) ? 1 : 0;
+            d == CSS_DISPLAY_INLINE_FLEX ||
+            d == CSS_DISPLAY_INLINE_GRID) ? 1 : 0;
 }
 
 /* True if display is none (box not generated). */
@@ -530,7 +531,8 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                         }
                     } else if (d == CSS_DISPLAY_INLINE_BLOCK ||
                             d == CSS_DISPLAY_INLINE_TABLE ||
-                            d == CSS_DISPLAY_INLINE_FLEX) {
+                            d == CSS_DISPLAY_INLINE_FLEX ||
+                            d == CSS_DISPLAY_INLINE_GRID) {
                         /* atomic inline: a block subtree typed inline-block */
                         struct box *ib = pcore_construct_block(child, cs, 0,
                                 ctx);
@@ -643,7 +645,8 @@ static struct box *pcore_construct_block(dom_node *node,
                         }
                         if (d == CSS_DISPLAY_INLINE_BLOCK ||
                                 d == CSS_DISPLAY_INLINE_TABLE ||
-                                d == CSS_DISPLAY_INLINE_FLEX) {
+                                d == CSS_DISPLAY_INLINE_FLEX ||
+                                d == CSS_DISPLAY_INLINE_GRID) {
                             struct box *ib = pcore_construct_block(child, cs,
                                     0, ctx);
                             if (ib != NULL) {
