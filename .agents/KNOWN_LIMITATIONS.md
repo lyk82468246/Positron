@@ -49,7 +49,7 @@
 
 WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
-- **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。SVG parse 和公共 DLL 已由 TEST25 真机确认；opaque SVG 对象及基础 GDI path draw 已构建，TEST26 待设备。由于 WM6 GDI 缺少桌面 path API，当前沿用 libnsfb 固定 30 点 cubic 细分并逐子路径 Polygon/Polyline；复合路径孔洞/非零 winding、抗锯齿、SVG text、SVG `<img>` 和 CSS background image 尚不支持。
+- **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。SVG parse 和公共 DLL 已由 TEST25 真机确认。首版 TEST26 的固定 30 点 cubic + GDI Polygon/Polyline 在设备上几何正确但明显锯齿，已判定视觉不通过。替代实现保留 libsvgtiny 解析，使用固定上游提交的 NanoSVG 5 倍子像素栅格器生成 RGBA，再经预乘 BGRA DIB 和 WM `AlphaBlend` 输出；增强 TEST26 会自动检查部分覆盖边缘像素，当前仅完成 ARM 构建。复合路径孔洞/非零 winding 仍待专门测试；SVG text、SVG `<img>` 和 CSS background image 尚不支持。单次栅格源缓冲限制为 1,048,576 像素，超大输出会降低内部采样分辨率后再缩放。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则

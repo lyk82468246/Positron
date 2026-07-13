@@ -58,7 +58,7 @@ WM application ---------> positron_image.dll
                               |
 browser host -> positron_core.dll
 
-positron_image.dll -> WM Imaging API + positron_libsvgtiny.lib
+positron_image.dll -> WM Imaging API + NanoSVG rasterizer + positron_libsvgtiny.lib
                      -> positron_libdom.lib -> positron_expat.lib
 positron_core.dll  -> NetSurf/libdom/libcss static libraries
 ```

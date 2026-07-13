@@ -90,6 +90,15 @@
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\pimage_raster.cpp">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" CompileAs="2" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" CompileAs="2" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath=".\pimage_raster.h" />
 		<File RelativePath=".\positron_image.c" />
 		<File RelativePath=".\positron_image.h" />
 	</Files>

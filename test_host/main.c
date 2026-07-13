@@ -2864,7 +2864,7 @@ static BOOL test20_cached_img(void)
 
 /* -------------------------------------------------------------------- */
 /* TEST 26 - retained SVG object rendered through positron_image.dll     */
-/* Verifies fills in an off-screen DC, then shows scaled path rendering. */
+/* Verifies fills and an anti-aliased edge, then shows scaled rendering. */
 /* -------------------------------------------------------------------- */
 static BOOL test26_svg_draw(void)
 {
@@ -2886,7 +2886,11 @@ static BOOL test26_svg_draw(void)
     RECT rect;
     COLORREF red;
     COLORREF green;
+    COLORREF pixel;
     int rc;
+    int x;
+    int y;
+    int aa_pixels;
     char msg[192];
 
     svg = NULL;
@@ -2922,15 +2926,27 @@ static BOOL test26_svg_draw(void)
     rc = PImage_DrawSvg(svg, memory_dc, 0, 0, 120, 60);
     red = GetPixel(memory_dc, 20, 30);
     green = GetPixel(memory_dc, 60, 30);
+    aa_pixels = 0;
+    for (y = 0; y < 60; y++) {
+        for (x = 80; x < 120; x++) {
+            pixel = GetPixel(memory_dc, x, y);
+            if (GetBValue(pixel) == 255 &&
+                    GetRValue(pixel) > 0 && GetRValue(pixel) < 255 &&
+                    GetGValue(pixel) > 0 && GetGValue(pixel) < 255) {
+                aa_pixels++;
+            }
+        }
+    }
     SelectObject(memory_dc, old_bitmap);
     DeleteObject(bitmap);
     DeleteDC(memory_dc);
     ReleaseDC(NULL, screen_dc);
     if (rc != PIMAGE_OK || red != RGB(255, 0, 0) ||
-            green != RGB(0, 255, 0)) {
+            green != RGB(0, 255, 0) || aa_pixels == 0) {
         _snprintf(msg, sizeof(msg) - 1,
-                "draw rc=%d red=0x%06lX green=0x%06lX",
-                rc, red & 0x00ffffffUL, green & 0x00ffffffUL);
+                "draw rc=%d red=0x%06lX green=0x%06lX aa=%d",
+                rc, red & 0x00ffffffUL, green & 0x00ffffffUL,
+                aa_pixels);
         msg[sizeof(msg) - 1] = '\0';
         PImage_FreeSvg(svg);
         show_error(L"TEST 26 FAIL", msg);
@@ -2966,8 +2982,8 @@ static BOOL test26_svg_draw(void)
     }
     show_info(L"TEST 26 OK",
               "Retained SVG rendered through positron_image.dll:\n"
-              "solid fills + cubic path + scaled stroke.\n"
-              "Off-screen red/green pixels matched exactly.");
+              "solid fills + anti-aliased cubic path + scaled stroke.\n"
+              "Off-screen fill and partial edge pixels passed.");
     return TRUE;
 }
 
