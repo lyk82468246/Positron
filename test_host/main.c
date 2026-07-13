@@ -170,7 +170,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 41
+#define TEST_MAX_NUMBER 42
 
 static int test_config_space(char c)
 {
@@ -1767,6 +1767,7 @@ static int    g_image_draw_rc = -1;
 static int    g_svg_test = 0;     /* TEST 26: positron_image SVG draw */
 static int    g_svg_draw_rc = -1;
 static PIMAGE_SVG g_svg_handle = NULL;
+static int    g_overflow_pointer = 0;
 #define PCORE_IMAGE_FORMAT_COUNT 4
 static const char *g_image_format_data[PCORE_IMAGE_FORMAT_COUNT];
 static int g_image_format_len[PCORE_IMAGE_FORMAT_COUNT];
@@ -2336,6 +2337,11 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int old_scroll = g_scroll_y;
         int old_doc_h = g_doc_h;
 
+        if (g_overflow_pointer) {
+            g_overflow_pointer = 0;
+            ReleaseCapture();
+        }
+
         /* Re-select styles and re-flow to the new client width (e.g. screen
          * rotation). The callback is cache-only, so this message never
          * starts a network request. */
@@ -2428,6 +2434,14 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int cy = (int) (short) HIWORD(lp);
         char href[1024];
 
+        if (g_render_doc != NULL &&
+                PCore_OverflowPointer(g_render_doc, PCORE_POINTER_DOWN,
+                        cx, cy + g_scroll_y)) {
+            g_overflow_pointer = 1;
+            SetCapture(hwnd);
+            InvalidateRect(hwnd, NULL, FALSE);
+            return 0;
+        }
         /* Document-space point = client point + scroll (scroll_x is 0). If it
          * lands on a link, follow it; otherwise a tap closes the view. */
         if (g_render_doc != NULL &&
@@ -2439,11 +2453,37 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         return 0;
     }
+    case WM_MOUSEMOVE:
+        if (g_overflow_pointer && g_render_doc != NULL &&
+                (wp & MK_LBUTTON) != 0) {
+            int cx = (int) (short) LOWORD(lp);
+            int cy = (int) (short) HIWORD(lp);
+            PCore_OverflowPointer(g_render_doc, PCORE_POINTER_MOVE,
+                    cx, cy + g_scroll_y);
+            InvalidateRect(hwnd, NULL, FALSE);
+            return 0;
+        }
+        break;
+    case WM_LBUTTONUP:
+        if (g_overflow_pointer) {
+            int cx = (int) (short) LOWORD(lp);
+            int cy = (int) (short) HIWORD(lp);
+            if (g_render_doc != NULL) {
+                PCore_OverflowPointer(g_render_doc, PCORE_POINTER_UP,
+                        cx, cy + g_scroll_y);
+            }
+            g_overflow_pointer = 0;
+            ReleaseCapture();
+            InvalidateRect(hwnd, NULL, FALSE);
+            return 0;
+        }
+        break;
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:
         g_nav_generation++;
+        g_overflow_pointer = 0;
         pcore_navigation_set_loading(hwnd, 0);
         PostQuitMessage(0);
         return 0;
@@ -5626,6 +5666,149 @@ static BOOL test41_grid_overflow_flex(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 42 - NetSurf overflow scrollbar create/redraw/input batch       */
+/* Paint once to create the retained widget, exercise its right arrow   */
+/* through PCore_OverflowPointer, then show arrow and thumb interaction. */
+/* -------------------------------------------------------------------- */
+static BOOL test42_overflow_scrollbar(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><h1>Overflow table</h1>"
+        "<p>The table stays inside this viewport.</p><section>"
+        "<table><tr><td>ALPHA-REGISTRY</td><td>BETA-REGISTRY</td>"
+        "<td>GAMMA-REGISTRY</td><td>DELTA-REGISTRY</td></tr>"
+        "<tr><td>North</td><td>South</td><td>East</td><td>West</td>"
+        "</tr></table></section></body></html>";
+    static const char *CSS =
+        "html,body{background:#fff;}body{margin:16px;color:#102040;}"
+        "h1{margin:0 0 8px 0;color:#800000;}p{margin:0 0 8px 0;}"
+        "section{display:block;height:96px;overflow:auto;"
+        "border:1px solid #606060;background:#f7f7fb;}"
+        "table{border-collapse:collapse;}"
+        "td{white-space:nowrap;padding:8px;border:1px solid #808080;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    int sx;
+    int sy;
+    int sw;
+    int sh;
+    int before_x;
+    int before_y;
+    int before_w;
+    int before_h;
+    int after_x;
+    int after_y;
+    int after_w;
+    int after_h;
+    int down_used;
+    int up_used;
+    int screen_w;
+    int screen_h;
+    char msg[256];
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/overflow-scrollbar.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0 ||
+            PCore_NodeBox(hDoc, "section", &sx, &sy, &sw, &sh) != 0 ||
+            PCore_NodeBox(hDoc, "td", &before_x, &before_y,
+                    &before_w, &before_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 42 FAIL", "parse/style/layout lookup failed");
+        return FALSE;
+    }
+
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 240, 320) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 42 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 240, 320);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+
+    down_used = PCore_OverflowPointer(hDoc, PCORE_POINTER_DOWN,
+            sx + sw - 8, sy + sh - 8);
+    up_used = PCore_OverflowPointer(hDoc, PCORE_POINTER_UP,
+            sx + sw - 8, sy + sh - 8);
+    PCore_NodeBox(hDoc, "td", &after_x, &after_y, &after_w, &after_h);
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+
+    if (!down_used || !up_used || after_x != before_x - 16) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "used=%d/%d td.x=%d->%d expect -16; section=%d,%d %dx%d",
+                down_used, up_used, before_x, after_x, sx, sy, sw, sh);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 42 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/overflow-scrollbar.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 42 FAIL", "visible parse/style/layout failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 42",
+              "A wide table will open inside a bordered overflow box.\n"
+              "Expect a horizontal NetSurf scrollbar. Tap its arrows and\n"
+              "drag its thumb; only the table content should move.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 42 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 42 OK",
+              "Overflow widget creation/redraw and right-arrow input passed;\n"
+              "the visible page exercised WM arrow/thumb forwarding.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -5781,6 +5964,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 39: ok = test39_css_variable_layout(); break;
         case 40: ok = test40_css_modern_values(); break;
         case 41: ok = test41_grid_overflow_flex(); break;
+        case 42: ok = test42_overflow_scrollbar(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -5860,7 +6044,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-41)\n"
+                  "Yes = run all selected groups (TEST 1-42)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -5877,7 +6061,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40, 41). Offline.");
+                               "38, 40-42). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -5921,6 +6105,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test38_css_root_variables()){ rc = 11; goto done; }
         if (!test40_css_modern_values()){ rc = 11; goto done; }
         if (!test41_grid_overflow_flex()){ rc = 11; goto done; }
+        if (!test42_overflow_scrollbar()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }

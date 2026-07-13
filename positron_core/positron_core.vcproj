@@ -231,6 +231,7 @@
 				<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\html\layout.c"></File>
 				<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\html\redraw.c"></File>
 				<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\html\redraw_border.c"></File>
+				<File RelativePath="..\netsurf-all-3.11\netsurf\desktop\scrollbar.c"></File>
 				<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\html\layout_flex.c"></File>
 				<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\html\table.c"></File>
 		</Filter>

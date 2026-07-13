@@ -43,6 +43,7 @@
 #include "netsurf/content.h"                  /* content_redraw_data */
 #include "netsurf/bitmap.h"                   /* thin WM Imaging carrier */
 #include "netsurf/plotters.h"                 /* struct redraw_context */
+#include "desktop/scrollbar.h"
 
 /* GDI font measurement table (pcore_plot_gdi.c, M2). */
 extern const struct gui_layout_table pcore_gdi_layout;
@@ -1426,6 +1427,9 @@ typedef struct pcore_render {
     int           doc_height;  /* total laid-out height (CSS px)             */
     int           vw;          /* viewport used for layout (redraw extent)   */
     int           vh;
+    struct scrollbar *active_scrollbar;
+    int           active_scrollbar_x;
+    int           active_scrollbar_y;
 } pcore_render;
 
 /* libdom user-data key under which the render state hangs on the document. */
@@ -1467,6 +1471,7 @@ static void pcore_render_free(pcore_render *st)
     if (st == NULL) {
         return;
     }
+    pcore_box_scrollbars_destroy(st->root_box);
     if (st->bctx != NULL) {
         talloc_free(st->bctx);   /* frees the whole box tree in one shot */
     }
@@ -1706,6 +1711,106 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
         }
     }
     return rc;
+}
+
+static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,
+        int *out_x, int *out_y)
+{
+    struct box *child;
+    struct scrollbar *found;
+    int ax;
+    int ay;
+    int visible_width;
+    int visible_height;
+    int length;
+    int bar_x;
+    int bar_y;
+
+    if (box == NULL) {
+        return NULL;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        found = pcore_scrollbar_at(child, x, y, out_x, out_y);
+        if (found != NULL) {
+            return found;
+        }
+    }
+
+    box_coords(box, &ax, &ay);
+    visible_width = box->width + box->padding[LEFT] + box->padding[RIGHT];
+    visible_height = box->height + box->padding[TOP] + box->padding[BOTTOM];
+    if (box->scroll_x != NULL) {
+        length = visible_width -
+                ((box->scroll_y != NULL) ? SCROLLBAR_WIDTH : 0);
+        bar_x = ax;
+        bar_y = ay + visible_height - SCROLLBAR_WIDTH;
+        if (x >= bar_x && x < bar_x + length && y >= bar_y &&
+                y < bar_y + SCROLLBAR_WIDTH) {
+            *out_x = bar_x;
+            *out_y = bar_y;
+            return box->scroll_x;
+        }
+    }
+    if (box->scroll_y != NULL) {
+        length = visible_height;
+        bar_x = ax + visible_width - SCROLLBAR_WIDTH;
+        bar_y = ay;
+        if (x >= bar_x && x < bar_x + SCROLLBAR_WIDTH && y >= bar_y &&
+                y < bar_y + length) {
+            *out_x = bar_x;
+            *out_y = bar_y;
+            return box->scroll_y;
+        }
+    }
+    return NULL;
+}
+
+PCORE_API int PCore_OverflowPointer(HANDLE hDoc, int action, int x, int y)
+{
+    pcore_render *st;
+    struct scrollbar *scrollbar;
+    int origin_x;
+    int origin_y;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL) {
+        return 0;
+    }
+    if (action == PCORE_POINTER_DOWN) {
+        origin_x = 0;
+        origin_y = 0;
+        scrollbar = pcore_scrollbar_at(st->root_box, x, y,
+                &origin_x, &origin_y);
+        if (scrollbar == NULL) {
+            return 0;
+        }
+        st->active_scrollbar = scrollbar;
+        st->active_scrollbar_x = origin_x;
+        st->active_scrollbar_y = origin_y;
+        scrollbar_mouse_action(scrollbar, BROWSER_MOUSE_PRESS_1,
+                x - origin_x, y - origin_y);
+        return 1;
+    }
+    scrollbar = st->active_scrollbar;
+    if (scrollbar == NULL) {
+        return 0;
+    }
+    origin_x = st->active_scrollbar_x;
+    origin_y = st->active_scrollbar_y;
+    if (action == PCORE_POINTER_MOVE) {
+        scrollbar_mouse_action(scrollbar, BROWSER_MOUSE_DRAG_1,
+                x - origin_x, y - origin_y);
+        return 1;
+    }
+    if (action == PCORE_POINTER_UP) {
+        if (pcore_scrollbar_is_dragging(scrollbar)) {
+            scrollbar_mouse_drag_end(scrollbar, BROWSER_MOUSE_HOVER,
+                    x - origin_x, y - origin_y);
+        }
+        st->active_scrollbar = NULL;
+        return 1;
+    }
+    return 0;
 }
 
 PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,

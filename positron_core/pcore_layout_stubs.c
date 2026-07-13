@@ -1,7 +1,7 @@
 /*
  * pcore_layout_stubs.c - no-op link stubs for functions the ported layout.c
  * references but which live in NetSurf subsystems we deliberately don't bring
- * in yet (iframes/objects, the textarea widget, scrollbars, selection/search,
+ * in yet (iframes/objects, the textarea widget, selection/search,
  * and the box_dump debug dumper).
  *
  * Every one of these is only ever *called* on a path our slim box builder never
@@ -116,19 +116,6 @@ bool content_textsearch_ishighlighted(struct textsearch_context *textsearch,
     (void) start_idx;
     (void) end_idx;
     return false;
-}
-
-nserror scrollbar_redraw(struct scrollbar *s, int x, int y,
-        const struct rect *clip, float scale,
-        const struct redraw_context *ctx)
-{
-    (void) s;
-    (void) x;
-    (void) y;
-    (void) clip;
-    (void) scale;
-    (void) ctx;
-    return NSERROR_OK;
 }
 
 const char *messages_get(const char *key)

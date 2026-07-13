@@ -15,7 +15,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 | **1** | `positron_tls.dll` — TLS 1.2 客户端（mbedTLS 2.16 LTS） | ✅ 完成，WM6 Emulator 验证 |
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1：HTTPS via mbedTLS，明文 HTTP via WinInet) | ✅ 完成，WM6 Emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
-| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、缓存图片链与 CSS 背景图已真机验证，窄屏复杂布局仍待补 |
+| **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、缓存图片链与 CSS 背景图已真机验证，NetSurf overflow scrollbar 已接入待真机验收，窄屏复杂布局仍待补 |
 | **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 SVG parse/draw/cache/fallback、网络 fixture、复合 fill-rule、CSS 背景图、原生 GDI text、线性/径向渐变、继承/透明 stop 及缓存复用已由 TEST25-37/13 真机验证 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
@@ -26,9 +26,9 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 的 BMP/PNG/JPEG/GIF 与缓存 `<img>` 链已真机验证。`positron_image.dll` 公共 C ABI 已接通 Expat、libdom XML、libsvgtiny 与 NanoSVG rasterizer；TEST25-27 已依次确认 SVG parse、抗锯齿 retained draw 和缓存 replaced-box 绘制。
 
-最新设备反馈（2026-07-13）：TEST29-37 已依次确认 SVG fill-rule、CSS 背景图、基础文本、连续线性/径向渐变、坐标、继承/透明 stop、循环保护和缓存复用。TEST38-39 随后真机确认同表顶层 `:root` design token、嵌套 fallback/循环保护，以及 IANA 同款 25px 窄屏间距的 240/320px geometry + 正式 redraw。TEST40 的数值型 `oklch()`、alpha、可求值 `calc()` 四则运算及混合 `%/px` 保留也已真机通过，TEST13 的配色、标题与间距继续改善。随后 `/numbers` 子页的 grid 内 `overflow:auto` 宽表格暴露反向 flex 主内容负坐标；TEST41 已加入 grid 单列降级的宽度隔离与 224/320px geometry + 正式 redraw 回归，已构建待设备。
+最新设备反馈（2026-07-13）：TEST29-37 已依次确认 SVG fill-rule、CSS 背景图、基础文本、连续线性/径向渐变、坐标、继承/透明 stop、循环保护和缓存复用。TEST38-39 随后真机确认同表顶层 `:root` design token、嵌套 fallback/循环保护，以及 IANA 同款 25px 窄屏间距的 240/320px geometry + 正式 redraw。TEST40 的数值型 `oklch()`、alpha、可求值 `calc()` 四则运算及混合 `%/px` 保留也已真机通过。`/numbers` 子页暴露的 grid 内宽表格负坐标已由 TEST41 的竖横屏截图确认修复：主内容保持 25px inset，宽表格留在自身容器中。随后已接入 NetSurf 3.11 `desktop/scrollbar.c`、上游溢出判定、滚动偏移坐标和 WM 指针转发；TEST42 将一次验收创建/绘制、箭头步进与 thumb 拖动。
 
-当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道、gap 或可交互横向滚动条已经实现。CSS `background-size`、多层背景和完整异步资源事务未完成；复杂 SVG text、动态状态伪类、float、复杂 table、forms/widgets 仍不完整；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已构建接入，但设备端箭头/拖动交互仍以 TEST42 为验收门槛，也不包含触摸惯性或 overlay scrollbar。CSS `background-size`、多层背景和完整异步资源事务未完成；复杂 SVG text、动态状态伪类、float、复杂 table、forms/widgets 仍不完整；JavaScript 尚未实现但属于长期必做目标。
 
 ---
 
@@ -191,7 +191,7 @@ tests=31,32
 测试交付默认按能力批次进行：先积累多项相关实现、自动像素/资源/安全断言和直绘/正式链两层回归，再请求一次设备验收。只有真实编译错误、高风险回归定位或设备特有故障才临时拆成单项包，避免每个微小改动都要求人工截图。
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
-- **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40、41，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值与 grid 宽度隔离降级，离线。TEST40 已真机通过，TEST41 待设备；TEST23 float 最小样例已因真实 Browse 回归撤回。
+- **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40-42，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值、grid 宽度隔离与 overflow scrollbar，离线。TEST40-41 已真机通过，TEST42 待设备；TEST23 float 最小样例已因真实 Browse 回归撤回。
 - **GDI Render**：TEST 12、14、17、19、20、26-37、39，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用与 IANA token 间距正式 redraw，离线；TEST26-39 已真机通过。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 

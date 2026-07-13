@@ -192,6 +192,15 @@ PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi);
 PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
                            char *out_href, int cap);
 
+/* Forward pointer input to a nested CSS overflow scrollbar. Coordinates use
+ * the same document-space convention as PCore_LinkAt. DOWN performs arrow or
+ * page steps, MOVE drags a scrollbar thumb, and UP ends the drag. Returns 1
+ * when an overflow scrollbar consumed the event. */
+#define PCORE_POINTER_DOWN 1
+#define PCORE_POINTER_MOVE 2
+#define PCORE_POINTER_UP   3
+PCORE_API int PCore_OverflowPointer(HANDLE hDoc, int action, int x, int y);
+
 /* --- NetSurf layout/redraw port (milestone H) ----------------------- */
 
 /* M1 self-test for the GDI-backed NetSurf plotter table: draws a bordered box,

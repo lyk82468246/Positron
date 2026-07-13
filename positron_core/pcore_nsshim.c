@@ -24,6 +24,7 @@
 #include "netsurf/plotters.h"  /* redraw_context / BITMAPF_* */
 
 #include "utils/corestrings.h"
+#include "utils/nscolour.h"
 #include "utils/nsurl.h"
 #include "desktop/gui_table.h"
 #include "desktop/scrollbar.h"
@@ -37,6 +38,11 @@ extern const struct gui_layout_table pcore_gdi_layout;
 
 static struct netsurf_table pcore_nstable; /* ->layout set in init */
 struct netsurf_table *guit = &pcore_nstable;
+
+/* NetSurf's standalone scrollbar widget consumes three shared UI colours.
+ * Keep the full table for ABI compatibility; WM uses neutral system-like
+ * greys here while page colours continue to come from computed CSS. */
+colour nscolours[NSCOLOUR__COUNT];
 
 /* ---- corestrings (interned on first PCore use) ------------------- */
 
@@ -56,6 +62,9 @@ static void pcore_intern1(const char *s, dom_string **out)
 void pcore_nsshim_init(void)
 {
     pcore_nstable.layout = &pcore_gdi_layout;
+    nscolours[NSCOLOUR_SCROLL_WELL] = 0x00d4d0c8;
+    nscolours[NSCOLOUR_BUTTON_BG] = 0x00e8e8e8;
+    nscolours[NSCOLOUR_BUTTON_FG] = 0x00000000;
 
     pcore_intern1("start", &corestring_dom_start);
     pcore_intern1("reversed", &corestring_dom_reversed);
@@ -153,12 +162,4 @@ bool content_can_reformat(struct hlcache_handle *h)
 {
     (void) h;
     return false;
-}
-
-/* ---- scrollbar: never attached in the slim build ----------------- */
-
-int scrollbar_get_offset(struct scrollbar *s)
-{
-    (void) s;
-    return 0;
 }

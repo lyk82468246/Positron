@@ -31,6 +31,11 @@ int pcore_image_resource_get(struct dom_document *doc, const char *url,
  * The tree is freed by talloc_free(ctx). Boxes borrow DOM node pointers. */
 struct box *pcore_box_construct(struct dom_node *root, void *ctx);
 
+/* Overflow scrollbar helpers owned by pcore_box_inspect.c. */
+struct scrollbar;
+bool pcore_scrollbar_is_dragging(struct scrollbar *scrollbar);
+void pcore_box_scrollbars_destroy(struct box *box);
+
 /* Intern the corestrings the ported NetSurf layout.c references. Call once
  * before layout (PCore_Init). Implemented in pcore_nsshim.c. */
 void pcore_nsshim_init(void);

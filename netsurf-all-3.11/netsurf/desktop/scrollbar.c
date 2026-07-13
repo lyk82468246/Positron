@@ -164,18 +164,15 @@ scrollbar_rectangle(const struct redraw_context *ctx,
 	nserror res;
 
 	static plot_style_t c0 = {
-		.stroke_type = PLOT_OP_TYPE_SOLID,
-		.stroke_width = plot_style_int_to_fixed(1),
+		PLOT_OP_TYPE_SOLID, plot_style_int_to_fixed(1), 0, 0, 0
 	};
 
 	static plot_style_t c1 = {
-		.stroke_type = PLOT_OP_TYPE_SOLID,
-		.stroke_width = plot_style_int_to_fixed(1),
+		PLOT_OP_TYPE_SOLID, plot_style_int_to_fixed(1), 0, 0, 0
 	};
 
 	static plot_style_t c2 = {
-		.stroke_type = PLOT_OP_TYPE_SOLID,
-		.stroke_width = plot_style_int_to_fixed(1),
+		PLOT_OP_TYPE_SOLID, plot_style_int_to_fixed(1), 0, 0, 0
 	};
 
 	if (inset) {
@@ -250,16 +247,13 @@ scrollbar_redraw(struct scrollbar *s,
 	nserror res;
 
 	plot_style_t bg_fill_style = {
-		.fill_type = PLOT_OP_TYPE_SOLID,
-		.fill_colour = nscolours[NSCOLOUR_SCROLL_WELL],
+		0, 0, 0, PLOT_OP_TYPE_SOLID, nscolours[NSCOLOUR_SCROLL_WELL]
 	};
 	plot_style_t fg_fill_style = {
-		.fill_type = PLOT_OP_TYPE_SOLID,
-		.fill_colour = nscolours[NSCOLOUR_BUTTON_BG],
+		0, 0, 0, PLOT_OP_TYPE_SOLID, nscolours[NSCOLOUR_BUTTON_BG]
 	};
 	plot_style_t arrow_fill_style = {
-		.fill_type = PLOT_OP_TYPE_SOLID,
-		.fill_colour = nscolours[NSCOLOUR_BUTTON_FG],
+		0, 0, 0, PLOT_OP_TYPE_SOLID, nscolours[NSCOLOUR_BUTTON_FG]
 	};
 
 	area.x0 = x;
