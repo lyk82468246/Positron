@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。有效示例为 `tests=32` 或 `tests=31,32`；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。有效示例为 `tests=33` 或 `tests=32,33`；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -72,6 +72,8 @@ TEST 11 不能只接受设备当前坐标：同时保留默认折叠组和 `padd
 TEST29 首次设备结果仅在绿色环精确值失败：SVG `#00a000` 经 screen-compatible RGB565 bitmap 量化后，`GetPixel` 返回 `#00a200`；红/蓝环及两个白色孔洞均正确。这不是 fill-rule 失败。测试 fixture 改用 RGB565 可精确表示的纯绿 `#00ff00`，仍对六个位置做精确相等断言，不放宽孔洞或颜色判断。
 
 2026-07-13：TEST32 首次设备截图证明缓存 SVG 渐变/文本正式链已经可见，但红到蓝色带中出现密集竖向亮缝。根因是 libsvgtiny 上游线性渐变实现把原路径三角剖分为许多纯色 shape，NanoSVG 分别抗锯齿时边界重复混合背景。修复不替换解析器：libsvgtiny 输出单一路径、stop 数组和“最终坐标到归一化渐变轴”的矩阵，`positron_image` 将其映射为 NanoSVG `NSVG_PAINT_LINEAR_GRADIENT` 一次填充。TEST32 现除左右/中点和白色文字外，还拒绝扫描线上的绿色亮缝及大幅邻色跳变。
+
+同日复验：TEST32 新构建在设备上显示连续红紫蓝色带和居中白色 Positron，旧竖缝消失，意味着原有缓存/replaced-box/NetSurf redraw 断言与新增 seam/jump guard 同时通过。随后新增 TEST33，分别覆盖 objectBoundingBox 斜向轴、userSpaceOnUse 水平轴和 `gradientTransform` 旋转得到的竖向轴；设备窗口应依次看到斜向、水平、竖向三块平滑红蓝方块。
 
 用户截图确认修正后的 TEST29 三个样本正确：红色 nonzero 实心，蓝/绿 evenodd 中心为白色。随后 CSS background-image 按 NetSurf 现有边界接入：样式后的资源扫描读取 computed URI 并复用 document cache；构盒后设置 `box->background`；`redraw.c` 继续负责 position/repeat/clip；GDI plotter 参照上游 Windows frontend 展开 BITMAPF_REPEAT_X/Y。TEST30 的同步 fetch 是当前导航资源阶段的既有取舍，不代表 background-size、多层背景或异步资源事务完成。
 

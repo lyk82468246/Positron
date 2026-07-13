@@ -90,8 +90,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 9. **已完成并真机验收**：libsvgtiny 最小 fill-rule 扩展与 TEST29 已确认默认 nonzero、attribute/style 继承 evenodd；首次 `#00a000 -> #00a200` 是 RGB565 量化假失败，改用纯绿后严格像素断言通过。
 10. **已完成并真机验收**：CSS 单一背景 URL 纳入 document image cache，构盒后挂到 `box->background`，由 NetSurf redraw 处理 repeat/position，GDI plotter 参照上游 frontend 落实 tile flags。TEST30 已确认同 URL 去重、no-repeat、position 与双向 repeat；不包含 background-size、多层背景和异步资源 fetch。
 11. **已完成并真机验收**：基础 SVG text 继续使用 libsvgtiny 解析，并扩展其输出以保留继承的 fill、font-size、通用 font-family、weight/style、text-anchor 与常见 transform 元数据；`positron_image.dll` 按原 SVG 顺序交错执行 NanoSVG path 批次和 WM 原生 GDI 字体命令。TEST31 已确认蓝色粗体文本、居中 anchor 与后来红色 path 的覆盖顺序。联网审计过 ThorVG、resvg 和 PlutoSVG：它们分别是现代 C++、Rust 或偏 OpenType SVG 的方案，当前都不是 VS2008/C++03 的直接替换件，因此此阶段没有复制一个不适配的完整渲染器。复杂 shaping、`textPath`、逐字 dx/dy、任意 shear 和完整透明度仍为显式缺口。
-12. **正式链已显示、连续色带修复待复验**：TEST32 已证明红到蓝渐变和白色文本能经过 document cache、160x80 replaced box 与 NetSurf redraw；设备截图同时暴露了 libsvgtiny 把渐变拆成纯色三角形后产生的密集接缝。当前仍由 libsvgtiny 解析 gradientUnits、gradientTransform、坐标和 stops，但公开 shape 保留结构化线性渐变参数，由仓库内 NanoSVG rasterizer 对单一路径连续填充；TEST32 新增绿色亮缝和邻接色跳变扫描线断言。径向渐变、spread method 和 stop opacity 仍是后续范围。
-13. 图片能力采用两层边界：上游解析库保持静态 `.lib`；稳定的 `positron_image.dll` 统一封装 WM Imaging 与 libsvgtiny，供 `positron_core.dll` 和其他 WM 程序调用。对象必须由同一 DLL 创建/释放，不能暴露 NetSurf 内部结构或跨 CRT 所有权；现有 `PCore_Image*` 暂保留为兼容转发。
+12. **已完成并真机验收**：TEST32 已证明红到蓝渐变和白色文本能经过 document cache、160x80 replaced box 与 NetSurf redraw。首轮截图暴露 libsvgtiny 纯色三角展开的密集接缝；改为 libsvgtiny 结构化 stops/归一化轴 -> NanoSVG 单路径连续填充后，2026-07-13 真机截图确认色带平滑，文字与 seam/jump guard 均通过。
+13. **已完成构建、待设备验收**：TEST33 用三块 70x70 图和九个颜色点验证 objectBoundingBox 斜向渐变、userSpaceOnUse 水平渐变以及 `gradientTransform="rotate(90 ...)"` 后的竖向渐变，并对水平/竖直轴各做一条接缝扫描。它只覆盖线性渐变坐标矩阵，不代表径向渐变、spread method 或 stop opacity 已实现。
+14. 图片能力采用两层边界：上游解析库保持静态 `.lib`；稳定的 `positron_image.dll` 统一封装 WM Imaging 与 libsvgtiny，供 `positron_core.dll` 和其他 WM 程序调用。对象必须由同一 DLL 创建/释放，不能暴露 NetSurf 内部结构或跨 CRT 所有权；现有 `PCore_Image*` 暂保留为兼容转发。
 
 验收：
 
