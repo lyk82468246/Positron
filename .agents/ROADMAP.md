@@ -93,8 +93,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 12. **已完成并真机验收**：TEST32 已证明红到蓝渐变和白色文本能经过 document cache、160x80 replaced box 与 NetSurf redraw。首轮截图暴露 libsvgtiny 纯色三角展开的密集接缝；改为 libsvgtiny 结构化 stops/归一化轴 -> NanoSVG 单路径连续填充后，2026-07-13 真机截图确认色带平滑，文字与 seam/jump guard 均通过。
 13. **已完成并真机验收**：TEST33 用三块 70x70 图和九个颜色点验证 objectBoundingBox 斜向渐变、userSpaceOnUse 水平渐变以及 `gradientTransform="rotate(90 ...)"` 后的竖向渐变，并对水平/竖直轴各做一条接缝扫描；2026-07-13 真机截图确认三块方向、颜色和连续性均正确。
 14. **已完成并真机验收**：TEST34 在 libsvgtiny DOM 桥中加入 `radialGradient` 的 `cx/cy/r`、objectBoundingBox/userSpaceOnUse 和 `gradientTransform`，继续复用 NanoSVG 已有径向光栅器。2026-07-13 真机截图确认三块图依次为平滑椭圆、圆和向右平移的圆，九点颜色及三条连续性断言同时通过。
-15. **已完成构建、待设备验收**：TEST35 将 160x80 中心径向 SVG 作为内存资源送入文档缓存，要求生成 replaced box 并经 NetSurf redraw 绘制。显示前检查 fetch/free、盒尺寸、中心/横纵中点/横纵边缘颜色及两条连续性扫描；它证明正式浏览器图片链，不扩大 `fx/fy`、spread method 或 stop opacity 范围。
-16. 图片能力采用两层边界：上游解析库保持静态 `.lib`；稳定的 `positron_image.dll` 统一封装 WM Imaging 与 libsvgtiny，供 `positron_core.dll` 和其他 WM 程序调用。对象必须由同一 DLL 创建/释放，不能暴露 NetSurf 内部结构或跨 CRT 所有权；现有 `PCore_Image*` 暂保留为兼容转发。
+15. **已完成并真机验收**：TEST35 将 160x80 中心径向 SVG 作为内存资源送入文档缓存，生成 replaced box 并经 NetSurf redraw 绘制。2026-07-13 真机截图确认连续横向椭圆、无 fallback，且此前 fetch/free、盒尺寸、横纵采样与连续性断言全部通过。
+16. **渐变完整性批次已完成构建、待设备验收**：TEST36 一次验证 objectBoundingBox 无单位 `0..1` 坐标、`xlink:href` 渐变继承、属性/inline style `stop-opacity`、线性/径向 alpha 混合及循环引用深度保护；TEST37 再用 SVG2 `href` 把同一半透明偏心径向 SVG 同时用于 `<img>` 和 CSS 背景，要求资源只 fetch/free 一次且两处像素一致。焦点 `fx/fy` 与 spread method 因 NanoSVG rasterizer 仍有明确 TODO，不纳入本批次。
+17. 图片能力采用两层边界：上游解析库保持静态 `.lib`；稳定的 `positron_image.dll` 统一封装 WM Imaging 与 libsvgtiny，供 `positron_core.dll` 和其他 WM 程序调用。对象必须由同一 DLL 创建/释放，不能暴露 NetSurf 内部结构或跨 CRT 所有权；现有 `PCore_Image*` 暂保留为兼容转发。
 
 验收：
 
@@ -104,6 +105,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - TEST 20 显示 BMP/PNG/JPEG/GIF 四个相同的红/绿/蓝/黄图块，横竖屏一致且没有 fallback text（2026-07-12 真机确认）。
 - 本地 HTML + 小 PNG/JPEG 能显示。
 - 真实网页 logo/图片不再空白。
+
+测试交付按能力批次进行：默认先积累多项相关实现、自动断言和直绘/正式链两层回归，再生成一个配置包含多个 TEST 的设备包。只有真实编译错误、高风险回归定位或设备专有问题才拆成单项测试，避免把每个微小提交都转化为人工验收负担。
 
 ### 2. Resource loader
 

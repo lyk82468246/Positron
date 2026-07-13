@@ -44,6 +44,7 @@ typedef enum {
 struct svgtiny_gradient_stop {
 	float offset;
 	svgtiny_colour color;
+	float opacity;
 };
 
 typedef enum {

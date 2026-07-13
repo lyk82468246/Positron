@@ -170,7 +170,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 35
+#define TEST_MAX_NUMBER 37
 
 static int test_config_space(char c)
 {
@@ -4803,6 +4803,409 @@ static BOOL test35_cached_svg_radial_gradient(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 36 - gradient inheritance, unitless bbox and stop alpha matrix  */
+/* -------------------------------------------------------------------- */
+static BOOL test36_svg_gradient_feature_matrix(void)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" "
+        "xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"280\" "
+        "height=\"90\" viewBox=\"0 0 280 90\">"
+        "<defs>"
+        "<linearGradient id=\"unit\" x1=\"0\" y1=\"0\" "
+        "x2=\"1\" y2=\"0\">"
+        "<stop offset=\"0\" stop-color=\"#ff0000\"/>"
+        "<stop offset=\"1\" stop-color=\"#0000ff\"/>"
+        "</linearGradient>"
+        "<radialGradient id=\"base\">"
+        "<stop offset=\"0\" stop-color=\"#ff0000\"/>"
+        "<stop offset=\"1\" stop-color=\"#0000ff\"/>"
+        "</radialGradient>"
+        "<radialGradient id=\"inherited\" xlink:href=\"#base\" "
+        "cx=\".25\" cy=\".5\" r=\".5\"/>"
+        "<linearGradient id=\"linearAlpha\" x1=\"0\" x2=\"1\">"
+        "<stop offset=\"0\" stop-color=\"#ff0000\" "
+        "stop-opacity=\"0\"/>"
+        "<stop offset=\"1\" stop-color=\"#ff0000\" "
+        "style=\"stop-opacity:0.5\"/>"
+        "</linearGradient>"
+        "<radialGradient id=\"radialAlpha\">"
+        "<stop offset=\"0\" stop-color=\"#ff0000\" "
+        "style=\"stop-opacity:0.5\"/>"
+        "<stop offset=\"1\" stop-color=\"#ff0000\" "
+        "stop-opacity=\"0\"/>"
+        "</radialGradient>"
+        "</defs>"
+        "<rect x=\"5\" y=\"10\" width=\"60\" height=\"70\" "
+        "fill=\"url(#unit)\"/>"
+        "<rect x=\"75\" y=\"10\" width=\"60\" height=\"70\" "
+        "fill=\"url(#inherited)\"/>"
+        "<rect x=\"145\" y=\"10\" width=\"60\" height=\"70\" "
+        "fill=\"#00ff00\"/>"
+        "<rect x=\"145\" y=\"10\" width=\"60\" height=\"70\" "
+        "fill=\"url(#linearAlpha)\"/>"
+        "<rect x=\"215\" y=\"10\" width=\"60\" height=\"70\" "
+        "fill=\"#00ff00\"/>"
+        "<rect x=\"215\" y=\"10\" width=\"60\" height=\"70\" "
+        "fill=\"url(#radialAlpha)\"/>"
+        "</svg>";
+    static const char CYCLE_SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" "
+        "height=\"20\"><defs>"
+        "<linearGradient id=\"a\" href=\"#b\"/>"
+        "<linearGradient id=\"b\" href=\"#a\"/>"
+        "</defs><rect width=\"20\" height=\"20\" fill=\"url(#a)\"/>"
+        "</svg>";
+    PIMAGE_SVG svg;
+    PIMAGE_SVG cycle_svg;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF unit_left;
+    COLORREF unit_right;
+    COLORREF inherited_center;
+    COLORREF inherited_edge;
+    COLORREF linear_left;
+    COLORREF linear_middle;
+    COLORREF linear_right;
+    COLORREF radial_center;
+    COLORREF radial_edge;
+    COLORREF cycle_pixel;
+    int rc;
+    int cycle_rc;
+    int unit_ok;
+    int inherited_ok;
+    int linear_alpha_ok;
+    int radial_alpha_ok;
+    int cycle_ok;
+    char msg[256];
+
+    svg = NULL;
+    cycle_svg = NULL;
+    rc = PImage_CreateSvgFromMemory(SVG, (int) sizeof(SVG) - 1,
+            280, 90, &svg);
+    cycle_rc = PImage_CreateSvgFromMemory(CYCLE_SVG,
+            (int) sizeof(CYCLE_SVG) - 1, 20, 20, &cycle_svg);
+    if (rc != PIMAGE_OK || svg == NULL ||
+            cycle_rc != PIMAGE_OK || cycle_svg == NULL) {
+        sprintf(msg, "create matrix=%d/%p cycle=%d/%p",
+                rc, svg, cycle_rc, cycle_svg);
+        if (svg != NULL) { PImage_FreeSvg(svg); }
+        if (cycle_svg != NULL) { PImage_FreeSvg(cycle_svg); }
+        show_error(L"TEST 36 FAIL", msg);
+        return FALSE;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 280, 90) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PImage_FreeSvg(svg);
+        PImage_FreeSvg(cycle_svg);
+        show_error(L"TEST 36 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 280, 90);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    rc = PImage_DrawSvg(svg, memory_dc, 0, 0, 280, 90);
+    unit_left = GetPixel(memory_dc, 8, 45);
+    unit_right = GetPixel(memory_dc, 62, 45);
+    inherited_center = GetPixel(memory_dc, 90, 45);
+    inherited_edge = GetPixel(memory_dc, 132, 45);
+    linear_left = GetPixel(memory_dc, 148, 45);
+    linear_middle = GetPixel(memory_dc, 175, 45);
+    linear_right = GetPixel(memory_dc, 202, 45);
+    radial_center = GetPixel(memory_dc, 245, 45);
+    radial_edge = GetPixel(memory_dc, 272, 45);
+    SetRect(&rect, 0, 0, 20, 20);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    cycle_rc = PImage_DrawSvg(cycle_svg, memory_dc, 0, 0, 20, 20);
+    cycle_pixel = GetPixel(memory_dc, 10, 10);
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+
+    unit_ok = GetRValue(unit_left) > 180 &&
+            GetBValue(unit_left) < 90 &&
+            GetBValue(unit_right) > 180 && GetRValue(unit_right) < 90;
+    inherited_ok = GetRValue(inherited_center) > 180 &&
+            GetBValue(inherited_center) < 90 &&
+            GetBValue(inherited_edge) > 150 &&
+            GetRValue(inherited_edge) < 110;
+    linear_alpha_ok = GetGValue(linear_left) > 200 &&
+            GetRValue(linear_left) < 50 &&
+            GetRValue(linear_middle) > 35 &&
+            GetRValue(linear_middle) < 100 &&
+            GetGValue(linear_middle) > 150 &&
+            GetRValue(linear_right) > 95 &&
+            GetRValue(linear_right) < 175 &&
+            GetGValue(linear_right) > 90;
+    radial_alpha_ok = GetRValue(radial_center) > 95 &&
+            GetRValue(radial_center) < 175 &&
+            GetGValue(radial_center) > 90 &&
+            GetGValue(radial_edge) > 190 &&
+            GetRValue(radial_edge) < 65;
+    cycle_ok = cycle_rc == PIMAGE_OK &&
+            GetRValue(cycle_pixel) > 240 &&
+            GetGValue(cycle_pixel) > 240 &&
+            GetBValue(cycle_pixel) > 240;
+    if (rc != PIMAGE_OK || !unit_ok || !inherited_ok ||
+            !linear_alpha_ok || !radial_alpha_ok || !cycle_ok) {
+        sprintf(msg, "rc=%d unit=%d inherit=%d alpha=%d/%d cycle=%d",
+                rc, unit_ok, inherited_ok, linear_alpha_ok,
+                radial_alpha_ok, cycle_ok);
+        PImage_FreeSvg(svg);
+        PImage_FreeSvg(cycle_svg);
+        show_error(L"TEST 36 FAIL", msg);
+        return FALSE;
+    }
+
+    PImage_FreeSvg(cycle_svg);
+    show_info(L"TEST 36",
+              "Gradient feature matrix will open. Expect four panels:\n"
+              "red-to-blue, off-centre radial, transparent linear red\n"
+              "over green, transparent radial red over green.\n\n"
+              "Unitless coordinates, inheritance, alpha and cycle guard passed.");
+    g_svg_handle = svg;
+    g_svg_test = 1;
+    g_svg_draw_rc = PIMAGE_OK;
+    g_render_doc = NULL;
+    g_doc_h = 0;
+    g_scroll_y = 0;
+    if (!show_render_window()) {
+        g_svg_test = 0;
+        g_svg_handle = NULL;
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 36 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_svg_test = 0;
+    g_svg_handle = NULL;
+    PImage_FreeSvg(svg);
+    if (g_svg_draw_rc != PIMAGE_OK) {
+        sprintf(msg, "window draw rc=%d", g_svg_draw_rc);
+        show_error(L"TEST 36 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 36 OK",
+              "Gradient inheritance, unitless objectBoundingBox values,\n"
+              "stop opacity and cyclic-reference fallback passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 37 - inherited/alpha SVG reused by img and CSS background cache */
+/* -------------------------------------------------------------------- */
+static int image_svg_gradient_batch_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" "
+        "height=\"80\" viewBox=\"0 0 160 80\">"
+        "<defs>"
+        "<radialGradient id=\"base\">"
+        "<stop offset=\"0\" stop-color=\"#ff0000\" "
+        "stop-opacity=\"0.5\"/>"
+        "<stop offset=\"1\" stop-color=\"#ff0000\" "
+        "stop-opacity=\"0\"/>"
+        "</radialGradient>"
+        "<radialGradient id=\"derived\" href=\"#base\" "
+        "cx=\".25\" cy=\".5\" r=\".5\"/>"
+        "</defs>"
+        "<rect width=\"160\" height=\"80\" fill=\"#00ff00\"/>"
+        "<rect width=\"160\" height=\"80\" fill=\"url(#derived)\"/>"
+        "</svg>";
+    image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
+    char *copy;
+    int len;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/img/gradient-batch.svg") != 0) {
+        return 1;
+    }
+    len = (int) sizeof(SVG) - 1;
+    copy = (char *) malloc((size_t) len);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, SVG, (size_t) len);
+    *out_data = copy;
+    *out_len = len;
+    ctx->matched++;
+    return 0;
+}
+
+static BOOL test37_cached_svg_gradient_batch(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><h2>Gradient cache reuse</h2>"
+        "<img alt=\"Gradient batch fallback\" "
+        "src=\"/img/gradient-batch.svg\">"
+        "<section></section></body></html>";
+    static const char *CSS =
+        "body{background:#ffffff;margin:8px;}h2{color:#800000;}"
+        "img{display:block;width:160px;height:80px;}"
+        "section{display:block;width:160px;height:80px;margin-top:8px;"
+        "background-image:url('/img/gradient-batch.svg');"
+        "background-repeat:no-repeat;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    image_resource_test_ctx ctx;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF img_center;
+    COLORREF img_middle;
+    COLORREF img_edge;
+    COLORREF bg_center;
+    COLORREF bg_middle;
+    COLORREF bg_edge;
+    int found;
+    int fetched;
+    int ix;
+    int iy;
+    int iw;
+    int ih;
+    int sx;
+    int sy;
+    int sw;
+    int sh;
+    int vw;
+    int vh;
+    int img_ok;
+    int bg_ok;
+    char msg[256];
+
+    ctx.calls = 0;
+    ctx.matched = 0;
+    ctx.frees = 0;
+    found = 0;
+    fetched = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/gradient-batch.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 37 FAIL", "parse/style failed");
+        return FALSE;
+    }
+    if (PCore_FetchImageResources(hDoc, image_svg_gradient_batch_fetch,
+            image_resource_free, &ctx, &found, &fetched) != 0 ||
+            found != 2 || fetched != 2 || ctx.calls != 1 ||
+            ctx.matched != 1 || ctx.frees != 1) {
+        sprintf(msg, "cache found=%d fetched=%d calls=%d match=%d free=%d",
+                found, fetched, ctx.calls, ctx.matched, ctx.frees);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 37 FAIL", msg);
+        return FALSE;
+    }
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_NodeBox(hDoc, "img", &ix, &iy, &iw, &ih) != 0 ||
+            PCore_NodeBox(hDoc, "section", &sx, &sy, &sw, &sh) != 0 ||
+            iw != 160 || ih != 80 || sw != 160 || sh != 80) {
+        sprintf(msg, "boxes img=%d,%d %dx%d bg=%d,%d %dx%d",
+                ix, iy, iw, ih, sx, sy, sw, sh);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 37 FAIL", msg);
+        return FALSE;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, vw, vh) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 37 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, vw, vh);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+    img_center = GetPixel(memory_dc, ix + 40, iy + 40);
+    img_middle = GetPixel(memory_dc, ix + 80, iy + 40);
+    img_edge = GetPixel(memory_dc, ix + 156, iy + 40);
+    bg_center = GetPixel(memory_dc, sx + 40, sy + 40);
+    bg_middle = GetPixel(memory_dc, sx + 80, sy + 40);
+    bg_edge = GetPixel(memory_dc, sx + 156, sy + 40);
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+
+    img_ok = GetRValue(img_center) > 95 &&
+            GetRValue(img_center) < 175 &&
+            GetGValue(img_center) > 90 &&
+            GetRValue(img_middle) > 35 &&
+            GetGValue(img_middle) > 150 &&
+            GetGValue(img_edge) > 200 && GetRValue(img_edge) < 50;
+    bg_ok = GetRValue(bg_center) > 95 &&
+            GetRValue(bg_center) < 175 &&
+            GetGValue(bg_center) > 90 &&
+            GetRValue(bg_middle) > 35 &&
+            GetGValue(bg_middle) > 150 &&
+            GetGValue(bg_edge) > 200 && GetRValue(bg_edge) < 50;
+    if (!img_ok || !bg_ok) {
+        sprintf(msg, "img=%06lX/%06lX/%06lX bg=%06lX/%06lX/%06lX",
+                img_center & 0xffffffUL, img_middle & 0xffffffUL,
+                img_edge & 0xffffffUL, bg_center & 0xffffffUL,
+                bg_middle & 0xffffffUL, bg_edge & 0xffffffUL);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 37 FAIL", msg);
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 37",
+              "Gradient cache reuse page will open. Expect two identical\n"
+              "green fields with a half-transparent red focus left of centre:\n"
+              "first an <img>, then a CSS background. Fetch ran once.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 37 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 37 OK",
+              "Inherited alpha gradient reused one cached SVG for <img>\n"
+              "and CSS background through NetSurf redraw.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -4952,6 +5355,8 @@ static int run_configured_tests(const unsigned char *selected,
         case 33: ok = test33_svg_gradient_coordinates(); break;
         case 34: ok = test34_svg_radial_gradient(); break;
         case 35: ok = test35_cached_svg_radial_gradient(); break;
+        case 36: ok = test36_svg_gradient_feature_matrix(); break;
+        case 37: ok = test37_cached_svg_gradient_batch(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -5031,7 +5436,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-35)\n"
+                  "Yes = run all selected groups (TEST 1-37)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -5061,6 +5466,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "gradient coordinates (TEST 33),\n"
                                "radial gradients (TEST 34),\n"
                                "cached radial SVG (TEST 35),\n"
+                               "gradient feature matrix/cache reuse (TEST 36-37),\n"
                                "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
@@ -5104,7 +5510,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-35; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -5122,6 +5528,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test33_svg_gradient_coordinates()){ rc = 13; goto done; }
         if (!test34_svg_radial_gradient()){ rc = 13; goto done; }
         if (!test35_cached_svg_radial_gradient()){ rc = 13; goto done; }
+        if (!test36_svg_gradient_feature_matrix()){ rc = 13; goto done; }
+        if (!test37_cached_svg_gradient_batch()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -5157,13 +5565,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-35)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
                "    cached SVG, fallback, fill rules, CSS backgrounds and\n"
                "    native SVG text, cached SVG gradients, coordinate transforms\n"
-               "    centred radial gradients and their cached image chain.\n"
+               "    radial gradients, inherited/alpha stops and cache reuse.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

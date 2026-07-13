@@ -66,6 +66,22 @@ static unsigned int pimage_nsvg_color(svgtiny_colour color)
             0xff000000UL;
 }
 
+static unsigned int pimage_nsvg_gradient_color(
+        const struct svgtiny_gradient_stop *stop)
+{
+    unsigned int alpha;
+
+    if (stop->opacity <= 0.0f) {
+        alpha = 0;
+    } else if (stop->opacity >= 1.0f) {
+        alpha = 255;
+    } else {
+        alpha = (unsigned int) (stop->opacity * 255.0f + 0.5f);
+    }
+    return (pimage_nsvg_color(stop->color) & 0x00ffffffUL) |
+            (alpha << 24);
+}
+
 static int pimage_path_reserve(pimage_path_builder *builder, int needed)
 {
     float *points;
@@ -317,8 +333,8 @@ static NSVGshape *pimage_convert_shape(const struct svgtiny_shape *source)
         for (i = 0; i < source->fill_gradient_stop_count; i++) {
             gradient->stops[i].offset =
                     source->fill_gradient_stop[i].offset;
-            gradient->stops[i].color = pimage_nsvg_color(
-                    source->fill_gradient_stop[i].color);
+            gradient->stops[i].color = pimage_nsvg_gradient_color(
+                    &source->fill_gradient_stop[i]);
         }
         shape->fill.type =
                 (source->fill_gradient_type == svgtiny_GRADIENT_RADIAL) ?

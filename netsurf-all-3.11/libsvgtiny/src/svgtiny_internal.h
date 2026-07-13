@@ -26,6 +26,7 @@ struct svgtiny_parse_state_gradient {
 	dom_string *gradient_x1, *gradient_y1, *gradient_x2, *gradient_y2;
 	dom_string *gradient_cx, *gradient_cy, *gradient_r;
 	struct svgtiny_gradient_stop gradient_stop[svgtiny_MAX_STOPS];
+	unsigned int gradient_href_depth;
 	bool gradient_user_space_on_use;
 	struct {
 		float a, b, c, d, e, f;
