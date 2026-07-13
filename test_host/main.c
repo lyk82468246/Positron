@@ -2366,6 +2366,9 @@ static BOOL test_browse(void)
         "<body><h1>Positron</h1>"
         "<p>Tap a link to fetch and render a real page over HTTPS:</p>"
         "<p><a href=\"https://example.com/\">Open example.com</a></p>"
+        "<p><a href=\"https://raw.githubusercontent.com/lyk82468246/"
+        "Positron/main/test_host/fixtures/network-svg.html\">"
+        "Open network SVG fixture</a></p>"
         "<p>On the fetched page you can tap its own links too. Some hosts "
         "may be reset by the network (GFW); that error is expected.</p>"
         "<p>Tap empty space (or press Esc) to close.</p>"
@@ -2406,8 +2409,8 @@ static BOOL test_browse(void)
     cstr_copy(g_cur_path, sizeof(g_cur_path), "/");
 
     show_info(L"TEST 13",
-              "A start page opens. Tap \"Open example.com\" to fetch\n"
-              "and render a real HTTPS page (click navigation).\n\n"
+              "A start page opens. Open example.com for general Browse,\n"
+              "or open the network SVG fixture for HTML + relative SVG.\n\n"
               "Tap empty space or press Esc to close.");
 
     g_render_doc = hDoc;
@@ -3034,6 +3037,131 @@ static BOOL test27_cached_svg_img(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 28 - fetched but malformed SVG retains accessible alt fallback  */
+/* -------------------------------------------------------------------- */
+static int image_broken_svg_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char BROKEN[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" "
+        "height=\"60\"><path d=\"M0 0";
+    image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
+    char *copy;
+    int len;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/img/broken.svg") != 0) {
+        return 1;
+    }
+    len = (int) sizeof(BROKEN) - 1;
+    copy = (char *) malloc((size_t) len);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, BROKEN, (size_t) len);
+    *out_data = copy;
+    *out_len = len;
+    ctx->matched++;
+    return 0;
+}
+
+static BOOL test28_broken_svg_fallback(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><h2>Broken SVG fallback</h2>"
+        "<p>The fetched bytes below are deliberately malformed.</p>"
+        "<img alt=\"Broken SVG fallback text\" src=\"/img/broken.svg\">"
+        "<p>The alt text must remain visible and the page must continue.</p>"
+        "</body></html>";
+    static const char *CSS =
+        "body{background-color:#ffffff;color:#202020;margin:8px;}"
+        "h2{color:#800000;}p{color:#103080;}img{color:#008000;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    image_resource_test_ctx ctx;
+    int found;
+    int fetched;
+    int x;
+    int y;
+    int w;
+    int h;
+    int vw;
+    int vh;
+    char msg[192];
+
+    ctx.calls = 0;
+    ctx.matched = 0;
+    ctx.frees = 0;
+    found = 0;
+    fetched = 0;
+    x = 0;
+    y = 0;
+    w = 0;
+    h = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 28 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    if (PCore_FetchImageResources(hDoc, image_broken_svg_fetch,
+            image_resource_free, &ctx, &found, &fetched) != 0 ||
+            found != 1 || fetched != 1 || ctx.calls != 1 ||
+            ctx.matched != 1 || ctx.frees != 1) {
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 28 FAIL", "broken SVG cache setup failed");
+        return FALSE;
+    }
+    hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/broken-svg.css");
+    if (hSheet == NULL || PCore_StyleDocument(hDoc, hSheet) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 28 FAIL", "CSS styling failed");
+        return FALSE;
+    }
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0 || (w == 120 && h == 60)) {
+        sprintf(msg, "fallback box=(%d,%d) %dx%d; must not be 120x60",
+                x, y, w, h);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 28 FAIL", msg);
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 28",
+              "Malformed SVG bytes were fetched and cached.\n\n"
+              "Expect green text: Broken SVG fallback text.\n"
+              "No image box should appear. Tap or Esc to close.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 28 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 28 OK",
+              "Malformed cached SVG was rejected without aborting layout.\n"
+              "The accessible alt text fallback remained in normal flow.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 26 - retained SVG object rendered through positron_image.dll     */
 /* Verifies fills and an anti-aliased edge, then shows scaled rendering. */
 /* -------------------------------------------------------------------- */
@@ -3271,7 +3399,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-27)\n"
+                  "Yes = run all selected groups (TEST 1-28)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -3293,7 +3421,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "M1 plotter (TEST 14), NetSurf render\n"
                                "(TEST 17), native image draw (TEST 19),\n"
                                "SVG path draw (TEST 26), cached SVG <img>\n"
-                               "(TEST 27), local HTML page (TEST 12).\n"
+                               "(TEST 27), broken SVG fallback (TEST 28),\n"
+                               "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -3336,7 +3465,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* --- GDI render group (TEST 12, 14, 17, 19, 20, 26, 27; offline) -- */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-28; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -3346,6 +3475,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test26_svg_draw())    { rc = 13; goto done; }
         if (!test20_cached_img())  { rc = 13; goto done; }
         if (!test27_cached_svg_img()){ rc = 13; goto done; }
+        if (!test28_broken_svg_fallback()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -3381,11 +3511,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26, 27)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-28)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
-               "    cached SVG replaced-box draw.\n"
+               "    cached SVG draw and malformed SVG fallback.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {
