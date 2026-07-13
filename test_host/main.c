@@ -3308,7 +3308,7 @@ static BOOL test29_svg_fill_rule(void)
         "<g fill-rule=\"evenodd\"><path fill=\"#0000ff\" "
         "d=\"M85 5 L155 5 L155 75 L85 75 Z "
         "M105 25 L135 25 L135 55 L105 55 Z\"/></g>"
-        "<g style=\"fill-rule:evenodd\"><path fill=\"#00a000\" "
+        "<g style=\"fill-rule:evenodd\"><path fill=\"#00ff00\" "
         "d=\"M165 5 L235 5 L235 75 L165 75 Z "
         "M185 25 L215 25 L215 55 L185 55 Z\"/></g>"
         "</svg>";
@@ -3371,7 +3371,7 @@ static BOOL test29_svg_fill_rule(void)
             left_center != RGB(255, 0, 0) ||
             middle_ring != RGB(0, 0, 255) ||
             middle_center != RGB(255, 255, 255) ||
-            right_ring != RGB(0, 160, 0) ||
+            right_ring != RGB(0, 255, 0) ||
             right_center != RGB(255, 255, 255)) {
         sprintf(msg, "rc=%d L=%06lX/%06lX M=%06lX/%06lX R=%06lX/%06lX",
                 rc, left_ring & 0xffffffUL, left_center & 0xffffffUL,
