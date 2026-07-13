@@ -169,6 +169,243 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
            == IDYES;
 }
 
+#define TEST_CONFIG_MAX_BYTES 2048
+#define TEST_MAX_NUMBER 32
+
+static int test_config_space(char c)
+{
+    return c == ' ' || c == '\t';
+}
+
+static int test_config_available(int number)
+{
+    return number >= 1 && number <= TEST_MAX_NUMBER && number != 23;
+}
+
+static int test_config_parse_spec(char *spec,
+        unsigned char selected[TEST_MAX_NUMBER + 1], int *selected_7b)
+{
+    char *p;
+    int start;
+    int end;
+    int number;
+    int separator_space;
+
+    p = spec;
+    while (*p != '\0') {
+        while (test_config_space(*p) || *p == ',') {
+            p++;
+        }
+        if (*p == '\0' || *p == '#') {
+            break;
+        }
+        if (p[0] == '7' && (p[1] == 'b' || p[1] == 'B') &&
+                (p[2] == '\0' || p[2] == '#' || p[2] == ',' ||
+                test_config_space(p[2]))) {
+            *selected_7b = 1;
+            p += 2;
+            continue;
+        }
+        if (*p < '0' || *p > '9') {
+            return 0;
+        }
+        start = 0;
+        while (*p >= '0' && *p <= '9') {
+            start = start * 10 + (*p - '0');
+            p++;
+        }
+        separator_space = 0;
+        while (test_config_space(*p)) {
+            separator_space = 1;
+            p++;
+        }
+        end = start;
+        if (*p == '-') {
+            separator_space = 0;
+            p++;
+            while (test_config_space(*p)) {
+                p++;
+            }
+            if (*p < '0' || *p > '9') {
+                return 0;
+            }
+            end = 0;
+            while (*p >= '0' && *p <= '9') {
+                end = end * 10 + (*p - '0');
+                p++;
+            }
+        }
+        if (end < start) {
+            return 0;
+        }
+        for (number = start; number <= end; number++) {
+            if (!test_config_available(number)) {
+                return 0;
+            }
+            selected[number] = 1;
+        }
+        while (test_config_space(*p)) {
+            separator_space = 1;
+            p++;
+        }
+        if (separator_space && ((*p >= '0' && *p <= '9') ||
+                (*p == '7' && (p[1] == 'b' || p[1] == 'B')))) {
+            continue;
+        }
+        if (*p != '\0' && *p != '#' && *p != ',') {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* Return >0 for a valid selection, 0 when no file exists, and -1 when the
+ * file exists but is unreadable or malformed. */
+static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
+        int *selected_7b)
+{
+    WCHAR path[MAX_PATH];
+    DWORD path_len;
+    DWORD size;
+    DWORD read_count;
+    HANDLE file;
+    char buffer[TEST_CONFIG_MAX_BYTES + 1];
+    char *line;
+    char *next;
+    char *value;
+    char *end;
+    int i;
+    int found;
+    int count;
+
+    memset(selected, 0, TEST_MAX_NUMBER + 1);
+    *selected_7b = 0;
+    path_len = GetModuleFileNameW(NULL, path, MAX_PATH);
+    if (path_len == 0 || path_len >= MAX_PATH) {
+        return -1;
+    }
+    while (path_len > 0 && path[path_len - 1] != L'\\' &&
+            path[path_len - 1] != L'/') {
+        path_len--;
+    }
+    if (path_len == 0 || path_len + 13 >= MAX_PATH) {
+        return -1;
+    }
+    lstrcpyW(path + path_len, L"test_host.ini");
+    file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        return (GetLastError() == ERROR_FILE_NOT_FOUND) ? 0 : -1;
+    }
+    size = GetFileSize(file, NULL);
+    if (size == INVALID_FILE_SIZE || size == 0 ||
+            size > TEST_CONFIG_MAX_BYTES) {
+        CloseHandle(file);
+        return -1;
+    }
+    read_count = 0;
+    if (!ReadFile(file, buffer, size, &read_count, NULL) ||
+            read_count != size) {
+        CloseHandle(file);
+        return -1;
+    }
+    CloseHandle(file);
+    buffer[read_count] = '\0';
+    if (read_count >= 3 && (unsigned char) buffer[0] == 0xef &&
+            (unsigned char) buffer[1] == 0xbb &&
+            (unsigned char) buffer[2] == 0xbf) {
+        memmove(buffer, buffer + 3, read_count - 2);
+    }
+
+    found = 0;
+    line = buffer;
+    while (*line != '\0') {
+        next = line;
+        while (*next != '\0' && *next != '\r' && *next != '\n') {
+            next++;
+        }
+        if (*next != '\0') {
+            *next++ = '\0';
+            while (*next == '\r' || *next == '\n') {
+                next++;
+            }
+        }
+        while (test_config_space(*line)) {
+            line++;
+        }
+        end = line + strlen(line);
+        while (end > line && test_config_space(end[-1])) {
+            *--end = '\0';
+        }
+        if (*line != '\0' && *line != '#' && *line != ';') {
+            value = line;
+            if ((line[0] == 't' || line[0] == 'T') &&
+                    (line[1] == 'e' || line[1] == 'E') &&
+                    (line[2] == 's' || line[2] == 'S') &&
+                    (line[3] == 't' || line[3] == 'T') &&
+                    (line[4] == 's' || line[4] == 'S')) {
+                value = line + 5;
+                while (test_config_space(*value)) {
+                    value++;
+                }
+                if (*value != '=') {
+                    return -1;
+                }
+                value++;
+            } else if (found) {
+                return -1;
+            }
+            if (!test_config_parse_spec(value, selected, selected_7b)) {
+                return -1;
+            }
+            found = 1;
+        }
+        line = next;
+    }
+    if (!found) {
+        return -1;
+    }
+    count = *selected_7b ? 1 : 0;
+    for (i = 1; i <= TEST_MAX_NUMBER; i++) {
+        if (selected[i]) {
+            count++;
+        }
+    }
+    return (count > 0) ? count : -1;
+}
+
+static void test_config_prompt(const unsigned char *selected,
+        int selected_7b, char *buffer, int capacity)
+{
+    char item[24];
+    int i;
+    int first;
+
+    _snprintf(buffer, capacity - 1,
+            "test_host.ini selected:\n\nTEST ");
+    buffer[capacity - 1] = '\0';
+    first = 1;
+    for (i = 1; i <= TEST_MAX_NUMBER; i++) {
+        if (selected[i]) {
+            _snprintf(item, sizeof(item) - 1,
+                    "%s%d", first ? "" : ", ", i);
+            item[sizeof(item) - 1] = '\0';
+            strncat(buffer, item,
+                    (size_t) (capacity - 1 - strlen(buffer)));
+            first = 0;
+        }
+        if (i == 7 && selected_7b) {
+            strncat(buffer, first ? "7b" : ", 7b",
+                    (size_t) (capacity - 1 - strlen(buffer)));
+            first = 0;
+        }
+    }
+    strncat(buffer,
+            "\n\nRun only these tests?\nNo = use the normal group selector.",
+            (size_t) (capacity - 1 - strlen(buffer)));
+    buffer[capacity - 1] = '\0';
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 1 - DLL load                                                     */
 /* -------------------------------------------------------------------- */
@@ -3741,6 +3978,209 @@ static BOOL test31_svg_text(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 32 - cached SVG gradient + text through the NetSurf image chain  */
+/* -------------------------------------------------------------------- */
+static int image_svg_gradient_text_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" "
+        "height=\"80\" viewBox=\"0 0 160 80\">"
+        "<defs><linearGradient id=\"g\" x1=\"0%\" y1=\"0%\" "
+        "x2=\"100%\" y2=\"0%\">"
+        "<stop offset=\"0%\" stop-color=\"#ff0000\"/>"
+        "<stop offset=\"50%\" stop-color=\"#800080\"/>"
+        "<stop offset=\"100%\" stop-color=\"#0000ff\"/>"
+        "</linearGradient></defs>"
+        "<rect width=\"160\" height=\"80\" fill=\"url(#g)\"/>"
+        "<text x=\"80\" y=\"48\" fill=\"#ffffff\" "
+        "font-family=\"sans-serif\" font-size=\"20\" "
+        "font-weight=\"bold\" text-anchor=\"middle\">Positron</text>"
+        "</svg>";
+    image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
+    char *copy;
+    int len;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/img/gradient-text.svg") != 0) {
+        return 1;
+    }
+    len = (int) sizeof(SVG) - 1;
+    copy = (char *) malloc((size_t) len);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, SVG, (size_t) len);
+    *out_data = copy;
+    *out_len = len;
+    ctx->matched++;
+    return 0;
+}
+
+static BOOL test32_cached_svg_gradient_text(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><h2>Cached SVG gradient</h2>"
+        "<p>The image below is fetched into the document cache.</p>"
+        "<img alt=\"Gradient SVG fallback\" "
+        "src=\"/img/gradient-text.svg\">"
+        "<p>Expect a red-to-blue gradient with white Positron text.</p>"
+        "</body></html>";
+    static const char *CSS =
+        "body{background-color:#ffffff;color:#202020;margin:8px;}"
+        "h2{color:#800000;}p{color:#103080;}"
+        "img{width:160px;height:80px;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    image_resource_test_ctx ctx;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF left;
+    COLORREF middle;
+    COLORREF right;
+    COLORREF pixel;
+    int found;
+    int fetched;
+    int x;
+    int y;
+    int w;
+    int h;
+    int vw;
+    int vh;
+    int px;
+    int py;
+    int white_pixels;
+    int left_ok;
+    int middle_ok;
+    int right_ok;
+    char msg[256];
+
+    ctx.calls = 0;
+    ctx.matched = 0;
+    ctx.frees = 0;
+    found = 0;
+    fetched = 0;
+    x = 0;
+    y = 0;
+    w = 0;
+    h = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        show_error(L"TEST 32 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    if (PCore_FetchImageResources(hDoc, image_svg_gradient_text_fetch,
+            image_resource_free, &ctx, &found, &fetched) != 0 ||
+            found != 1 || fetched != 1 || ctx.calls != 1 ||
+            ctx.matched != 1 || ctx.frees != 1) {
+        sprintf(msg, "cache found=%d fetched=%d calls=%d match=%d free=%d",
+                found, fetched, ctx.calls, ctx.matched, ctx.frees);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 32 FAIL", msg);
+        return FALSE;
+    }
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/svg-gradient.css");
+    if (hSheet == NULL || PCore_StyleDocument(hDoc, hSheet) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 32 FAIL", "CSS styling failed");
+        return FALSE;
+    }
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
+            w != 160 || h != 80) {
+        sprintf(msg, "SVG image box=(%d,%d) %dx%d; expect 160x80",
+                x, y, w, h);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 32 FAIL", msg);
+        return FALSE;
+    }
+
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, vw, vh) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 32 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, vw, vh);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+    left = GetPixel(memory_dc, x + 8, y + 12);
+    middle = GetPixel(memory_dc, x + 80, y + 12);
+    right = GetPixel(memory_dc, x + 151, y + 12);
+    white_pixels = 0;
+    for (py = y + 27; py < y + 55; py += 2) {
+        for (px = x + 35; px < x + 125; px += 2) {
+            pixel = GetPixel(memory_dc, px, py);
+            if (GetRValue(pixel) > 220 && GetGValue(pixel) > 220 &&
+                    GetBValue(pixel) > 220) {
+                white_pixels++;
+            }
+        }
+    }
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    left_ok = GetRValue(left) > 150 && GetBValue(left) < 120;
+    middle_ok = GetRValue(middle) > 50 && GetBValue(middle) > 50;
+    right_ok = GetBValue(right) > 150 && GetRValue(right) < 120;
+    if (!left_ok || !middle_ok || !right_ok || white_pixels < 8) {
+        sprintf(msg, "gradient L=%06lX M=%06lX R=%06lX white=%d",
+                left & 0xffffffUL, middle & 0xffffffUL,
+                right & 0xffffffUL, white_pixels);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 32 FAIL", msg);
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 32",
+              "Cached SVG gradient + text window will open.\n\n"
+              "Expect a RED-to-BLUE gradient carrying centred WHITE\n"
+              "Positron text. Cache, box and pixels already passed.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 32 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 32 OK",
+              "libsvgtiny gradient and native SVG text passed through\n"
+              "document cache -> replaced box -> NetSurf redraw.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -3815,6 +4255,90 @@ static BOOL test17_nsrender(void)
     return TRUE;
 }
 
+static int run_configured_tests(const unsigned char *selected,
+        int selected_7b, int *http_active)
+{
+    BOOL ok;
+    int number;
+    int needs_core;
+
+    *http_active = 0;
+    if (!selected[1] && (selected[3] || selected[4] || selected[13])) {
+        if (!PHttp_Init()) {
+            show_error(L"Configured tests FAIL", "PHttp_Init returned FALSE");
+            return 1;
+        }
+        *http_active = 1;
+    }
+    needs_core = 0;
+    for (number = 8; number <= TEST_MAX_NUMBER; number++) {
+        if (selected[number]) {
+            needs_core = 1;
+            break;
+        }
+    }
+    if (needs_core && PCore_Init() != 0) {
+        show_error(L"Configured tests FAIL", "PCore_Init returned an error");
+        return 8;
+    }
+
+    for (number = 1; number <= TEST_MAX_NUMBER; number++) {
+        if (number == 7) {
+            if (selected[7] && !test7_libcss()) {
+                return 7;
+            }
+            if (selected_7b && !test7b_dom()) {
+                return 7;
+            }
+            continue;
+        }
+        if (!selected[number]) {
+            continue;
+        }
+        ok = TRUE;
+        switch (number) {
+        case 1:  ok = test1_dll_load(); break;
+        case 2:  ok = test2_json(); break;
+        case 3:  ok = test3_get(); break;
+        case 4:  ok = test4_post(); break;
+        case 5:  ok = test5_verified_tls(); break;
+        case 6:  ok = test6_hubbub(); break;
+        case 8:  ok = test8_core(); break;
+        case 9:  ok = test9_select(); break;
+        case 10: ok = test10_styledoc(); break;
+        case 11: ok = test11_layout(); break;
+        case 12: ok = test12_render(); break;
+        case 13: ok = test_browse(); break;
+        case 14: ok = test14_plot(); break;
+        case 15: ok = test_boxtree(); break;
+        case 16: ok = test_layout(); break;
+        case 17: ok = test17_nsrender(); break;
+        case 18: ok = test_image_resources(); break;
+        case 19: ok = test19_wmimage(); break;
+        case 20: ok = test20_cached_img(); break;
+        case 21: ok = test21_media_viewport(); break;
+        case 22: ok = test22_reverse_flex_padding(); break;
+        case 24: ok = test24_cached_stylesheet_restyle(); break;
+        case 25: ok = test25_svg_parse(); break;
+        case 26: ok = test26_svg_draw(); break;
+        case 27: ok = test27_cached_svg_img(); break;
+        case 28: ok = test28_broken_svg_fallback(); break;
+        case 29: ok = test29_svg_fill_rule(); break;
+        case 30: ok = test30_css_background_image(); break;
+        case 31: ok = test31_svg_text(); break;
+        case 32: ok = test32_cached_svg_gradient_text(); break;
+        default: ok = FALSE; break;
+        }
+        if (!ok) {
+            return number;
+        }
+        if (number == 1) {
+            *http_active = 1;
+        }
+    }
+    return 0;
+}
+
 /* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
@@ -3826,7 +4350,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     BOOL run_engine;
     BOOL run_render;
     BOOL run_browse;
+    unsigned char configured_tests[TEST_MAX_NUMBER + 1];
+    int configured_7b;
+    int configured_count;
+    int configured_http;
     int  rc;
+    char config_prompt[512];
     char summary[1024];
 
     (void)hInstance;
@@ -3848,12 +4377,36 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                           GetSystemMetrics(SM_CYSCREEN), dpi);
     }
 
+    configured_count = test_config_load(configured_tests, &configured_7b);
+    if (configured_count < 0) {
+        show_error(L"test_host.ini ignored",
+                   "The file exists but is empty, unreadable or malformed.\n"
+                   "Use: tests=31,32 or tests=1-5 7b\n\n"
+                   "TEST 23 is unavailable. Continuing with group selection.");
+    } else if (configured_count > 0) {
+        test_config_prompt(configured_tests, configured_7b,
+                config_prompt, sizeof(config_prompt));
+        if (ask_yesno(L"Configured tests", config_prompt)) {
+            configured_http = 0;
+            rc = run_configured_tests(configured_tests, configured_7b,
+                    &configured_http);
+            if (configured_http) {
+                PHttp_Cleanup();
+            }
+            if (rc == 0) {
+                show_info(L"Configured tests passed",
+                          "All tests selected by test_host.ini passed.");
+            }
+            return rc;
+        }
+    }
+
     /* Group selector. One tap runs everything; otherwise pick groups so a
      * subset can run in isolation - e.g. only the fully-offline engine /
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-31)\n"
+                  "Yes = run all selected groups (TEST 1-32)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -3879,6 +4432,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "compound fill rules (TEST 29),\n"
                                "CSS background images (TEST 30),\n"
                                "native SVG text (TEST 31),\n"
+                               "cached SVG gradient/text (TEST 32),\n"
                                "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
@@ -3922,7 +4476,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-31; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-32; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -3936,6 +4490,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test29_svg_fill_rule()){ rc = 13; goto done; }
         if (!test30_css_background_image()){ rc = 13; goto done; }
         if (!test31_svg_text())    { rc = 13; goto done; }
+        if (!test32_cached_svg_gradient_text()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -3971,12 +4526,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-31)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-32)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
                "    cached SVG, fallback, fill rules, CSS backgrounds and\n"
-               "    native SVG text.\n"
+               "    native SVG text and cached SVG gradients.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

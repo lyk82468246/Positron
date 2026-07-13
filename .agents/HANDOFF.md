@@ -92,9 +92,11 @@ scripts\stage.bat
 
 启动时可选择：
 
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=31,32`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=32`。
+
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle 与 SVG parse，离线。2026-07-12 用户真机确认整组通过。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-31，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image 与原生 SVG text；TEST26-30 已真机通过，TEST31 待设备。
+- GDI Render：TEST 12、14、17、19、20、26-32，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 SVG text 与缓存 SVG gradient/text；TEST26-31 已真机通过，TEST32 待设备。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -110,9 +112,9 @@ scripts\stage.bat
 2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。最新 TEST13 截图已确认灾难性重叠消失、可读基线恢复，但导航/页脚拥挤、替代方框与未完整应用现代 CSS 的问题仍在，不能记为 TEST13 通过。后续 float 必须对照上游 box construction/normalisation，而不是基于该简化测试继续扩展。
 3. `WM_SIZE` 从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback。TEST24 与真实 Browse 旋转均已确认。
 4. 主文档 GET 已在单一 worker 执行。设备已确认旧页可滚动且成功后正常换页。父窗口条带有复制残影，`STATIC` 子窗口又完全不可见；现已按 WM6 SDK 改用 `PROGRESS_CLASS` + `PBM_SETPOS` 并链接 `commctrl.lib`，全量构建通过待复测。创建失败时标题显示 loading。失败保留旧页仍待测；资源 fetch 与 style/layout 仍在 UI 提交阶段。
-5. TEST30 已于 2026-07-13 真机通过。TEST31 已构建待设备：libsvgtiny 保留基础文本样式元数据，`positron_image.dll` 按 SVG 顺序交错执行 NanoSVG path 批次与 WM GDI 文本命令。复杂 shaping、`textPath`、逐字定位和任意 shear 尚未实现。
+5. TEST30/31 已于 2026-07-13 真机通过：CSS 背景定位/平铺/复用成立，libsvgtiny 文本元数据经 WM GDI 绘制且 path/text 顺序正确。TEST32 已构建待设备，用上游 libsvgtiny 线性渐变加白色文本验证缓存 `<img>` -> replaced box -> NetSurf redraw 正式链。复杂 shaping、`textPath`、逐字定位、任意 shear 与径向渐变尚未实现。
 6. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法。整数像素 `width <=` / `width <` 两种形式已由扩展 TEST21 真机确认；不要把它扩大为完整 MQ4/custom-properties 支持。
-7. 图片/SVG：TEST20 四格式缓存 `<img>`、TEST25-30 的 SVG parse/draw/cache/fallback/fill-rule/CSS background-image，以及 TEST13 网络相对 SVG 链均已真机确认。TEST31 已接入基础 SVG text 并完成 ARM 构建待设备；复杂文本、background-size、多层背景与异步资源事务仍是显式缺口。
+7. 图片/SVG：TEST20 四格式缓存 `<img>`、TEST25-31 的 SVG parse/draw/cache/fallback/fill-rule/CSS background-image/basic text，以及 TEST13 网络相对 SVG 链均已真机确认。TEST32 已接入缓存 SVG 线性渐变/文本正式链并完成 ARM 构建待设备；复杂文本、径向渐变、background-size、多层背景与异步资源事务仍是显式缺口。
 
 ## 开发纪律
 
