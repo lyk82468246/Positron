@@ -22,12 +22,18 @@ typedef int svgtiny_colour;
 #define svgtiny_BLUE(c) ((c) & 0xff)
 #endif
 
+typedef enum {
+	svgtiny_FILL_NONZERO = 0,
+	svgtiny_FILL_EVENODD = 1
+} svgtiny_fill_rule;
+
 struct svgtiny_shape {
 	float *path;
 	unsigned int path_length;
 	char *text;
 	float text_x, text_y;
 	svgtiny_colour fill;
+	svgtiny_fill_rule fill_rule;
 	svgtiny_colour stroke;
 	int stroke_width;
 };

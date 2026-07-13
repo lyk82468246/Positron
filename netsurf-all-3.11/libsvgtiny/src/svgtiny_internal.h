@@ -50,6 +50,7 @@ struct svgtiny_parse_state {
 
 	/* paint attributes */
 	svgtiny_colour fill;
+	svgtiny_fill_rule fill_rule;
 	svgtiny_colour stroke;
 	int stroke_width;
 

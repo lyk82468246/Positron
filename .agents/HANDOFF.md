@@ -94,7 +94,7 @@ scripts\stage.bat
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle 与 SVG parse，离线。2026-07-12 用户真机确认整组通过。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-28，离线窗口渲染、WM Imaging 位图、SVG path、缓存 SVG `<img>` 与损坏 fallback；TEST26/27 已真机通过，TEST28 待设备。
+- GDI Render：TEST 12、14、17、19、20、26-29，离线窗口渲染、WM Imaging 位图、SVG path、缓存 SVG `<img>`、损坏 fallback 与复合 fill-rule；TEST26-28 已真机通过，TEST29 待设备。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -111,7 +111,7 @@ scripts\stage.bat
 3. `WM_SIZE` 从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback。TEST24 与真实 Browse 旋转均已确认。
 4. 主文档 GET 已在单一 worker 执行。设备已确认旧页可滚动且成功后正常换页。父窗口条带有复制残影，`STATIC` 子窗口又完全不可见；现已按 WM6 SDK 改用 `PROGRESS_CLASS` + `PBM_SETPOS` 并链接 `commctrl.lib`，全量构建通过待复测。创建失败时标题显示 loading。失败保留旧页仍待测；资源 fetch 与 style/layout 仍在 UI 提交阶段。
 5. 当前 IANA 线上 CSS 已改用带哈希的资源，其中有 custom properties 和媒体查询范围语法。整数像素 `width <=` / `width <` 两种形式已由扩展 TEST21 真机确认；不要把它扩大为完整 MQ4/custom-properties 支持。
-6. 图片/SVG：TEST20 四格式缓存 `<img>` 与 TEST25-27 的 SVG parse、抗锯齿 draw、缓存 replaced-box 链已真机确认。TEST28 已覆盖已 fetch 但损坏 SVG 的 alt fallback，完成 ARM 构建待设备。TEST13 起始页新增仓库托管的 HTTPS HTML + 同目录相对 SVG fixture；点击 `Open network SVG fixture` 验证真实 origin、相对 URL、网络 fetch 和正式绘制。复合孔洞和 SVG text 仍是显式缺口。
+6. 图片/SVG：TEST20 四格式缓存 `<img>`、TEST25-28 的 SVG parse/draw/cache/fallback，以及 TEST13 的 HTTPS HTML + 同目录相对 SVG 资源链均已真机确认。官方最新 libsvgtiny 仍不保留 `fill-rule`；本地最小扩展已接通 attribute/style/继承与 NanoSVG nonzero/evenodd，TEST29 完成 ARM 构建待设备。SVG text 与 CSS background image 仍是显式缺口。
 
 ## 开发纪律
 

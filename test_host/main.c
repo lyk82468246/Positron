@@ -2035,14 +2035,23 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             RECT rcc;
             int width;
             int height;
+            int intrinsic_w;
+            int intrinsic_h;
             int rc;
 
             GetClientRect(hwnd, &rcc);
             width = rcc.right - rcc.left - 20;
-            height = width / 2;
+            intrinsic_w = 2;
+            intrinsic_h = 1;
+            PImage_SvgGetInfo(g_svg_handle, &intrinsic_w, &intrinsic_h, NULL);
+            if (intrinsic_w <= 0 || intrinsic_h <= 0) {
+                intrinsic_w = 2;
+                intrinsic_h = 1;
+            }
+            height = width * intrinsic_h / intrinsic_w;
             if (height > rcc.bottom - rcc.top - 40) {
                 height = rcc.bottom - rcc.top - 40;
-                width = height * 2;
+                width = height * intrinsic_w / intrinsic_h;
             }
             rc = PImage_DrawSvg(g_svg_handle, hdc, 10, 20, width, height);
             if (rc != PIMAGE_OK && g_svg_draw_rc == PIMAGE_OK) {
@@ -3287,6 +3296,125 @@ static BOOL test26_svg_draw(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 29 - compound paths preserve inherited SVG fill-rule semantics  */
+/* -------------------------------------------------------------------- */
+static BOOL test29_svg_fill_rule(void)
+{
+    static const char SVG[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"240\" "
+        "height=\"80\" viewBox=\"0 0 240 80\">"
+        "<path fill=\"#ff0000\" d=\"M5 5 L75 5 L75 75 L5 75 Z "
+        "M25 25 L55 25 L55 55 L25 55 Z\"/>"
+        "<g fill-rule=\"evenodd\"><path fill=\"#0000ff\" "
+        "d=\"M85 5 L155 5 L155 75 L85 75 Z "
+        "M105 25 L135 25 L135 55 L105 55 Z\"/></g>"
+        "<g style=\"fill-rule:evenodd\"><path fill=\"#00a000\" "
+        "d=\"M165 5 L235 5 L235 75 L165 75 Z "
+        "M185 25 L215 25 L215 55 L185 55 Z\"/></g>"
+        "</svg>";
+    PIMAGE_SVG svg;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF left_ring;
+    COLORREF left_center;
+    COLORREF middle_ring;
+    COLORREF middle_center;
+    COLORREF right_ring;
+    COLORREF right_center;
+    int rc;
+    char msg[256];
+
+    svg = NULL;
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    rc = PImage_CreateSvgFromMemory(SVG, (int) sizeof(SVG) - 1,
+            240, 80, &svg);
+    if (rc != PIMAGE_OK || svg == NULL) {
+        sprintf(msg, "create rc=%d handle=%p", rc, svg);
+        show_error(L"TEST 29 FAIL", msg);
+        return FALSE;
+    }
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        memory_dc = CreateCompatibleDC(screen_dc);
+        bitmap = CreateCompatibleBitmap(screen_dc, 240, 80);
+    }
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 29 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 240, 80);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    rc = PImage_DrawSvg(svg, memory_dc, 0, 0, 240, 80);
+    left_ring = GetPixel(memory_dc, 10, 40);
+    left_center = GetPixel(memory_dc, 40, 40);
+    middle_ring = GetPixel(memory_dc, 90, 40);
+    middle_center = GetPixel(memory_dc, 120, 40);
+    right_ring = GetPixel(memory_dc, 170, 40);
+    right_center = GetPixel(memory_dc, 200, 40);
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    if (rc != PIMAGE_OK ||
+            left_ring != RGB(255, 0, 0) ||
+            left_center != RGB(255, 0, 0) ||
+            middle_ring != RGB(0, 0, 255) ||
+            middle_center != RGB(255, 255, 255) ||
+            right_ring != RGB(0, 160, 0) ||
+            right_center != RGB(255, 255, 255)) {
+        sprintf(msg, "rc=%d L=%06lX/%06lX M=%06lX/%06lX R=%06lX/%06lX",
+                rc, left_ring & 0xffffffUL, left_center & 0xffffffUL,
+                middle_ring & 0xffffffUL, middle_center & 0xffffffUL,
+                right_ring & 0xffffffUL, right_center & 0xffffffUL);
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 29 FAIL", msg);
+        return FALSE;
+    }
+
+    show_info(L"TEST 29",
+              "Compound fill-rule window will open. Expect:\n"
+              "solid RED square, BLUE frame, GREEN frame.\n"
+              "The blue/green centres must be white.\n\n"
+              "Tap or press Esc to close.");
+    g_svg_handle = svg;
+    g_svg_test = 1;
+    g_svg_draw_rc = PIMAGE_OK;
+    g_render_doc = NULL;
+    g_doc_h = 0;
+    g_scroll_y = 0;
+    if (!show_render_window()) {
+        g_svg_test = 0;
+        g_svg_handle = NULL;
+        PImage_FreeSvg(svg);
+        show_error(L"TEST 29 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_svg_test = 0;
+    g_svg_handle = NULL;
+    PImage_FreeSvg(svg);
+    if (g_svg_draw_rc != PIMAGE_OK) {
+        sprintf(msg, "window draw rc=%d", g_svg_draw_rc);
+        show_error(L"TEST 29 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 29 OK",
+              "Default nonzero and inherited evenodd fill rules passed.\n"
+              "Presentation attribute and inline style were both preserved.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -3399,7 +3527,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-28)\n"
+                  "Yes = run all selected groups (TEST 1-29)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -3422,6 +3550,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 17), native image draw (TEST 19),\n"
                                "SVG path draw (TEST 26), cached SVG <img>\n"
                                "(TEST 27), broken SVG fallback (TEST 28),\n"
+                               "compound fill rules (TEST 29),\n"
                                "local HTML page (TEST 12).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
@@ -3465,7 +3594,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-28; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-29; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -3476,6 +3605,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test20_cached_img())  { rc = 13; goto done; }
         if (!test27_cached_svg_img()){ rc = 13; goto done; }
         if (!test28_broken_svg_fallback()){ rc = 13; goto done; }
+        if (!test29_svg_fill_rule()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -3511,11 +3641,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-28)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-29)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
-               "    cached SVG draw and malformed SVG fallback.\n"
+               "    cached SVG, fallback, and compound fill rules.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

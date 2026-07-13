@@ -275,7 +275,8 @@ static NSVGshape *pimage_convert_shape(const struct svgtiny_shape *source)
     shape->strokeLineJoin = NSVG_JOIN_MITER;
     shape->strokeLineCap = NSVG_CAP_BUTT;
     shape->miterLimit = 4.0f;
-    shape->fillRule = NSVG_FILLRULE_NONZERO;
+    shape->fillRule = (source->fill_rule == svgtiny_FILL_EVENODD) ?
+            NSVG_FILLRULE_EVENODD : NSVG_FILLRULE_NONZERO;
     shape->flags = NSVG_FLAGS_VISIBLE;
     return shape;
 }

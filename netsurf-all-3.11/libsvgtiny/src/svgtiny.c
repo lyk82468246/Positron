@@ -68,6 +68,8 @@ static svgtiny_code svgtiny_add_path(float *p, unsigned int n,
 static void _svgtiny_parse_color(const char *s, svgtiny_colour *c,
 		struct svgtiny_parse_state_gradient *grad,
 		struct svgtiny_parse_state *state);
+static void svgtiny_parse_fill_rule_value(const char *value, size_t len,
+		svgtiny_fill_rule *fill_rule);
 
 /**
  * rotate midpoint vector
@@ -721,6 +723,7 @@ svgtiny_code svgtiny_parse(struct svgtiny_diagram *diagram,
 	/*state.style = css_base_style;
 	state.style.font_size.value.length.value = option_font_size * 0.1;*/
 	state.fill = 0x000000;
+	state.fill_rule = svgtiny_FILL_NONZERO;
 	state.stroke = svgtiny_TRANSPARENT;
 	state.stroke_width = 1;
 
@@ -1873,6 +1876,13 @@ void svgtiny_parse_paint_attributes(dom_element *node,
 		dom_string_unref(attr);
 	}
 
+	exc = dom_element_get_attribute(node, state->interned_fill_rule, &attr);
+	if (exc == DOM_NO_ERR && attr != NULL) {
+		svgtiny_parse_fill_rule_value(dom_string_data(attr),
+				dom_string_byte_length(attr), &state->fill_rule);
+		dom_string_unref(attr);
+	}
+
 	exc = dom_element_get_attribute(node, state->interned_stroke, &attr);
 	if (exc == DOM_NO_ERR && attr != NULL) {
 		svgtiny_parse_color(attr, &state->stroke, &state->stroke_grad, state);
@@ -1900,6 +1910,15 @@ void svgtiny_parse_paint_attributes(dom_element *node,
 			_svgtiny_parse_color(value, &state->fill, &state->fill_grad, state);
 			free(value);
 		}
+		if ((s = strstr(style, "fill-rule:"))) {
+			s += 10;
+			while (*s == ' ')
+				s++;
+			value = strndup(s, strcspn(s, "; "));
+			svgtiny_parse_fill_rule_value(value, strlen(value),
+					&state->fill_rule);
+			free(value);
+		}
 		if ((s = strstr(style, "stroke:"))) {
 			s += 7;
 			while (*s == ' ')
@@ -1919,6 +1938,19 @@ void svgtiny_parse_paint_attributes(dom_element *node,
 		}
 		free(style);
 		dom_string_unref(attr);
+	}
+}
+
+static void svgtiny_parse_fill_rule_value(const char *value, size_t len,
+		svgtiny_fill_rule *fill_rule)
+{
+	if (value == NULL || fill_rule == NULL) {
+		return;
+	}
+	if (len == 7 && memcmp(value, "evenodd", 7) == 0) {
+		*fill_rule = svgtiny_FILL_EVENODD;
+	} else if (len == 7 && memcmp(value, "nonzero", 7) == 0) {
+		*fill_rule = svgtiny_FILL_NONZERO;
 	}
 }
 
@@ -2178,6 +2210,7 @@ struct svgtiny_shape *svgtiny_add_shape(struct svgtiny_parse_state *state)
 	shape->path_length = 0;
 	shape->text = 0;
 	shape->fill = state->fill;
+	shape->fill_rule = state->fill_rule;
 	shape->stroke = state->stroke;
 	shape->stroke_width = lroundf((float) state->stroke_width *
 			(state->ctm.a + state->ctm.d) / 2.0);
