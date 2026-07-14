@@ -150,7 +150,7 @@ static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
             FillRect(hdc, &client, (HBRUSH) GetStockObject(WHITE_BRUSH));
             SetBkMode(hdc, TRANSPARENT);
             SetTextColor(hdc, RGB(0, 0, 0));
-            demo_text(hdc, 12, 10, L"positron_image ABI 1.1");
+            demo_text(hdc, 12, 10, L"positron_image ABI 1.2");
             demo_text(hdc, 12, 29,
                     L"Native PNG/JPEG memory round-trip");
 
@@ -282,7 +282,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
 
     encoded_len = 0;
-    result = PImage_EncodeBitmap(g_bitmap, PIMAGE_ENCODE_JPEG,
+    result = PImage_EncodeBitmapEx(g_bitmap, PIMAGE_ENCODE_JPEG, 100,
             &encoded, &encoded_len);
     if (result != PIMAGE_OK || encoded_len < 4 || encoded[0] != 0xff ||
             encoded[1] != 0xd8 || encoded[encoded_len - 2] != 0xff ||

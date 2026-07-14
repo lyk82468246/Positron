@@ -29,6 +29,6 @@ next37 之后的实验历史保存在远端分支 `codex/post-next37-experiments
 
 ## 接下来
 
-- 短期：冻结 Browse 导航路径；next45 已确认 retained 位图 ABI 与 TEST13 集成门槛，next46 已确认 ABI 1.0 独立 WM 消费。当前仅扩展不触碰 Browse 的 ABI 1.1 PNG/JPEG 内存编码，next47 待验收。
+- 短期：冻结 Browse 导航路径；next45 已确认 retained 位图 ABI 与 TEST13 集成门槛，next46 已确认 ABI 1.0 独立 WM 消费，next47 已确认 ABI 1.1 PNG/JPEG 内存编码闭环并暴露默认 JPEG 串色。当前仅扩展不触碰 Browse 的 ABI 1.2 JPEG 质量控制，next48 待验收。
 - 中期：完成图片 DLL 分层后，再选择一个冻结项做单变量实验；失败即放弃该实验分支。
 - 长期：继续以可复用 WM 现代基础设施和 JavaScript runtime 为目标，不因本次回退改变总体方向。

@@ -15,6 +15,8 @@
 
 #include "positron_image.h"
 
+#define PIMAGE_ENCODER_VALUE_LONG 4
+
 typedef struct pimage_bitmap {
     IImage *image;
     void *encoded;
@@ -39,6 +41,10 @@ static const GUID PIMAGE_FORMAT_PNG =
 static const GUID PIMAGE_FORMAT_JPEG =
     { 0xb96b3cae, 0x0728, 0x11d3,
       { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
+
+static const GUID PIMAGE_ENCODER_QUALITY =
+    { 0x1d5be4b5, 0xfa4a, 0x452d,
+      { 0x9c, 0xdd, 0x5d, 0xb3, 0x51, 0x05, 0xe7, 0xeb } };
 
 static HRESULT g_bitmap_last_hr = S_OK;
 static int g_bitmap_last_stage = PIMAGE_BITMAP_STAGE_NONE;
@@ -263,8 +269,8 @@ extern "C" PIMAGE_API void PImage_FreeBitmap(PIMAGE_BITMAP handle)
     free(bitmap);
 }
 
-extern "C" PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP handle,
-        int format, unsigned char **out_data, int *out_len)
+extern "C" PIMAGE_API int PImage_EncodeBitmapEx(PIMAGE_BITMAP handle,
+        int format, int quality, unsigned char **out_data, int *out_len)
 {
     pimage_bitmap *bitmap = (pimage_bitmap *) handle;
     const GUID *format_guid;
@@ -295,6 +301,11 @@ extern "C" PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP handle,
     }
     format_guid = pimage_encode_format_guid(format);
     if (format_guid == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ARGUMENT, E_INVALIDARG);
+        return PIMAGE_ERROR_ARGUMENT;
+    }
+    if (quality < -1 || quality > 100 ||
+            (format != PIMAGE_ENCODE_JPEG && quality != -1)) {
         pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ARGUMENT, E_INVALIDARG);
         return PIMAGE_ERROR_ARGUMENT;
     }
@@ -351,6 +362,26 @@ extern "C" PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP handle,
             stream->Release();
         }
         return PIMAGE_ERROR_PLATFORM;
+    }
+
+    if (format == PIMAGE_ENCODE_JPEG && quality >= 0) {
+        EncoderParameters parameters;
+        ULONG quality_value;
+
+        quality_value = (ULONG) quality;
+        memset(&parameters, 0, sizeof(parameters));
+        parameters.Count = 1;
+        parameters.Parameter[0].Guid = PIMAGE_ENCODER_QUALITY;
+        parameters.Parameter[0].NumberOfValues = 1;
+        parameters.Parameter[0].Type = PIMAGE_ENCODER_VALUE_LONG;
+        parameters.Parameter[0].Value = &quality_value;
+        hr = encoder->SetEncoderParameters(&parameters);
+        if (FAILED(hr)) {
+            pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ENCODER, hr);
+            encoder->Release();
+            stream->Release();
+            return PIMAGE_ERROR_UNSUPPORTED;
+        }
     }
 
     hr = encoder->GetEncodeSink(&sink);
@@ -412,6 +443,12 @@ extern "C" PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP handle,
     *out_len = (int) end.QuadPart;
     pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_NONE, S_OK);
     return PIMAGE_OK;
+}
+
+extern "C" PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP handle,
+        int format, unsigned char **out_data, int *out_len)
+{
+    return PImage_EncodeBitmapEx(handle, format, -1, out_data, out_len);
 }
 
 extern "C" PIMAGE_API void PImage_FreeBuffer(void *buffer)

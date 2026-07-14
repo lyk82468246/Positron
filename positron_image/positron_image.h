@@ -31,7 +31,7 @@ extern "C" {
 #define PIMAGE_ABI_VERSION_GET_MINOR(version) \
     ((unsigned int) ((unsigned long) (version) & 0xffffUL))
 #define PIMAGE_ABI_VERSION_MAJOR 1
-#define PIMAGE_ABI_VERSION_MINOR 1
+#define PIMAGE_ABI_VERSION_MINOR 2
 #define PIMAGE_ABI_VERSION \
     PIMAGE_ABI_VERSION_ENCODE(PIMAGE_ABI_VERSION_MAJOR, \
             PIMAGE_ABI_VERSION_MINOR)
@@ -93,9 +93,13 @@ PIMAGE_API void PImage_FreeBitmap(PIMAGE_BITMAP bitmap);
 
 /* Encode a retained bitmap through the installed Windows Mobile Imaging
  * codec. The DLL allocates the result; release it with PImage_FreeBuffer.
- * PNG is lossless. JPEG currently uses the device codec's default quality. */
+ * PNG is lossless. The base call uses the device JPEG quality default. */
 PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP bitmap, int format,
         unsigned char **out_data, int *out_len);
+
+/* JPEG quality is 0..100, or -1 for the device default. PNG accepts -1. */
+PIMAGE_API int PImage_EncodeBitmapEx(PIMAGE_BITMAP bitmap, int format,
+        int quality, unsigned char **out_data, int *out_len);
 
 PIMAGE_API void PImage_FreeBuffer(void *buffer);
 
