@@ -20,8 +20,6 @@
 #define MAX_RESP_BODY    (1 * 1024 * 1024)   /* 1 MB cap */
 #define INITIAL_BUFCAP   8192
 #define MAX_REDIRECTS    5                    /* 3xx Location follow limit */
-#define WININET_CONNECT_TIMEOUT_MS 15000
-#define WININET_IO_TIMEOUT_MS      15000
 
 static BOOL g_initialized = FALSE;
 static BOOL g_insecure    = FALSE;   /* default: verify chain + hostname */
@@ -182,30 +180,6 @@ static void resp_set_error(PHttpResponse* r, const char* msg)
     }
     _snprintf(r->error_msg, sizeof(r->error_msg) - 1, "%s", msg);
     r->error_msg[sizeof(r->error_msg) - 1] = '\0';
-}
-
-static void resp_set_effective_url(PHttpResponse* r, const char* host,
-                                   int port, const char* path)
-{
-    const char* scheme;
-    int n;
-
-    if (r == NULL || host == NULL || path == NULL) {
-        return;
-    }
-    scheme = (port == 80) ? "http" : "https";
-    if (port == 80 || port == 443) {
-        n = _snprintf(r->effective_url, sizeof(r->effective_url) - 1,
-                      "%s://%s%s", scheme, host, path);
-    } else {
-        n = _snprintf(r->effective_url, sizeof(r->effective_url) - 1,
-                      "%s://%s:%d%s", scheme, host, port, path);
-    }
-    if (n < 0 || n >= (int)sizeof(r->effective_url) - 1) {
-        r->effective_url[0] = '\0';
-    } else {
-        r->effective_url[sizeof(r->effective_url) - 1] = '\0';
-    }
 }
 
 /* ---- request building -------------------------------------------- */
@@ -717,25 +691,6 @@ static int wininet_fetch(const char* method, const char* host, int port,
         resp_set_error(resp, "InternetOpen failed");
         goto wdone;
     }
-    {
-        DWORD connect_timeout;
-        DWORD io_timeout;
-        DWORD retries;
-
-        connect_timeout = WININET_CONNECT_TIMEOUT_MS;
-        io_timeout = WININET_IO_TIMEOUT_MS;
-        retries = 1;
-        InternetSetOption(hInet, INTERNET_OPTION_CONNECT_TIMEOUT,
-                &connect_timeout, sizeof(connect_timeout));
-        InternetSetOption(hInet, INTERNET_OPTION_CONNECT_RETRIES,
-                &retries, sizeof(retries));
-        InternetSetOption(hInet, INTERNET_OPTION_CONTROL_RECEIVE_TIMEOUT,
-                &io_timeout, sizeof(io_timeout));
-        InternetSetOption(hInet, INTERNET_OPTION_DATA_RECEIVE_TIMEOUT,
-                &io_timeout, sizeof(io_timeout));
-        InternetSetOption(hInet, INTERNET_OPTION_RECEIVE_TIMEOUT,
-                &io_timeout, sizeof(io_timeout));
-    }
 
     hConn = InternetConnectW(hInet, whost, (INTERNET_PORT)port, NULL, NULL,
                              INTERNET_SERVICE_HTTP, 0, 0);
@@ -900,7 +855,6 @@ static PHttpResponse* http_request(const char* method, const char* host,
             int         status;
 
             location[0] = '\0';
-            resp_set_effective_url(resp, cur_host, cur_port, cur_path);
 
             /* Transport by scheme/port: port 80 = plaintext http via WinInet
              * (WM6 built-in); anything else = TLS via mbedTLS. */

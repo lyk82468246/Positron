@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 48
+#define TEST_MAX_NUMBER 47
 
 static int test_config_space(char c)
 {
@@ -2398,27 +2398,6 @@ static int pcore_navigation_response_error(
               (resp != NULL) ? resp->error_msg : "(null)");
     message[capacity - 1] = '\0';
     return 1;
-}
-
-static void pcore_navigation_apply_effective_url(
-        pcore_navigation_request *request, const PHttpResponse *response)
-{
-    char host[256];
-    char path[1024];
-    int port;
-
-    if (request == NULL || response == NULL ||
-            response->effective_url[0] == '\0') {
-        return;
-    }
-    port = 443;
-    if (!resolve_url_from(NULL, NULL, 443, response->effective_url,
-            host, sizeof(host), path, sizeof(path), &port)) {
-        return;
-    }
-    cstr_copy(request->host, sizeof(request->host), host);
-    cstr_copy(request->path, sizeof(request->path), path);
-    request->port = port;
 }
 
 static DWORD WINAPI pcore_navigation_worker(LPVOID param)
@@ -7007,54 +6986,6 @@ static BOOL test47_document_base_url(void)
 }
 
 /* -------------------------------------------------------------------- */
-/* TEST 48 - redirected main document commits its final URL as origin    */
-/* -------------------------------------------------------------------- */
-static BOOL test48_redirected_document_origin(void)
-{
-    pcore_navigation_request request;
-    PHttpResponse response;
-    char document_url[1536];
-    char resource_url[1536];
-    int ok;
-    char msg[320];
-
-    memset(&request, 0, sizeof(request));
-    memset(&response, 0, sizeof(response));
-    cstr_copy(request.host, sizeof(request.host), "iana.org");
-    cstr_copy(request.path, sizeof(request.path), "/domains/example");
-    request.port = 443;
-    cstr_copy(response.effective_url, sizeof(response.effective_url),
-            "http://www.iana.org/help/example-domains");
-
-    pcore_navigation_apply_effective_url(&request, &response);
-    document_url[0] = '\0';
-    resource_url[0] = '\0';
-    ok = strcmp(request.host, "www.iana.org") == 0 &&
-            strcmp(request.path, "/help/example-domains") == 0 &&
-            request.port == 80 &&
-            pcore_document_url(request.host, request.path, request.port,
-            document_url, sizeof(document_url)) == 0 &&
-            strcmp(document_url,
-            "http://www.iana.org/help/example-domains") == 0 &&
-            wm_combine_url(NULL, document_url, "/_css/site.css",
-            resource_url, sizeof(resource_url)) == 0 &&
-            strcmp(resource_url, "http://www.iana.org/_css/site.css") == 0;
-    if (!ok) {
-        _snprintf(msg, sizeof(msg) - 1,
-                "origin=%s:%d%s doc=%s resource=%s",
-                request.host, request.port, request.path,
-                document_url, resource_url);
-        msg[sizeof(msg) - 1] = '\0';
-        show_error(L"TEST 48 FAIL", msg);
-        return FALSE;
-    }
-    show_info(L"TEST 48 OK",
-              "Redirected document origin committed the final scheme, host\n"
-              "and path; root-relative resources now resolve on www.iana.org.");
-    return TRUE;
-}
-
-/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -7216,7 +7147,6 @@ static int run_configured_tests(const unsigned char *selected,
         case 45: ok = test45_css_import_tree(); break;
         case 46: ok = test46_stylesheet_metadata(); break;
         case 47: ok = test47_document_base_url(); break;
-        case 48: ok = test48_redirected_document_origin(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -7296,7 +7226,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-48)\n"
+                  "Yes = run all selected groups (TEST 1-47)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -7313,7 +7243,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40-48). Offline.");
+                               "38, 40-47). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -7342,7 +7272,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-48; offline. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-47; offline. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -7363,7 +7293,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test45_css_import_tree()){ rc = 11; goto done; }
         if (!test46_stylesheet_metadata()){ rc = 11; goto done; }
         if (!test47_document_base_url()){ rc = 11; goto done; }
-        if (!test48_redirected_document_origin()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -7421,15 +7350,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-48)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-47)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource cache, SVG parse, constrained :root variables,\n"
                "    OKLCH/calc values, grid-overflow containment, scrollbar\n"
                "    input, staged navigation resources, failure rollback,\n"
-               "    CSS import trees, stylesheet metadata, document base URLs,\n"
-               "    and redirected document origins.\n"
+               "    CSS import trees, stylesheet metadata, and document base URLs.\n"
                "    Offline.\n\n");
     }
     if (run_render) {

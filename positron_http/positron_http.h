@@ -3,7 +3,7 @@
  * Modern HTTPS is built on positron_tls; plaintext HTTP uses WM WinInet.
  *
  * Phase 3 status:
- *   - HTTPS via positron_tls; plaintext HTTP via WM WinInet
+ *   - HTTPS only (port is for clarity / future plain HTTP)
  *   - "Connection: close"; no keep-alive
  *   - Response body capped at 1 MB
  *   - Cert chain + hostname verified by default via the embedded
@@ -36,8 +36,6 @@ typedef struct PHttpResponse {
     int    body_len;        /* byte count of body excl. terminator */
     char   error_msg[256];  /* non-empty iff a transport-level error
                                occurred (resp may still be non-NULL) */
-    char   effective_url[1536]; /* final absolute URL after redirects;
-                                   empty only before a request hop starts */
 } PHttpResponse;
 
 /* Called synchronously on the thread running PHttp_GetEx/PHttp_PostEx.
