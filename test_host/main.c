@@ -1834,7 +1834,6 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_COMMIT_LAYOUT 4
 #define PCORE_NAV_MAX_RESOURCES 64
 #define PCORE_NAV_RESOURCE_BYTES_MAX (2 * 1024 * 1024)
-#define PCORE_NAV_RESOURCE_BUDGET_MS 20000
 
 typedef struct pcore_navigation_resource {
     struct pcore_navigation_resource *next;
@@ -1860,7 +1859,6 @@ typedef struct pcore_navigation_request {
     int            progress_last_total;
     int            progress_last_percent;
     int            progress_last_received;
-    DWORD          resource_started_tick;
 } pcore_navigation_request;
 
 static HANDLE                    g_nav_thread = NULL;
@@ -1935,12 +1933,7 @@ static void pcore_scroll_by(HWND hwnd, int dy)
                 ((g_nav_bar_h > 0) ? g_nav_bar_h : 6);
         InvalidateRect(hwnd, &loading_rc, FALSE);
     }
-    /* Thumb tracking can generate many messages. During navigation, let WM
-     * coalesce exposed strips instead of forcing a synchronous NetSurf/GDI
-     * paint for every position while the worker also needs memory. */
-    if (!g_nav_loading) {
-        UpdateWindow(hwnd);
-    }
+    UpdateWindow(hwnd);
 }
 
 /* Convert the core's document-space overflow viewport to the current client
@@ -2449,12 +2442,6 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                 continue;
             }
             entry->attempted = 1;
-            if (request->resource_started_tick != 0 &&
-                    (DWORD)(GetTickCount() -
-                    request->resource_started_tick) >=
-                    PCORE_NAV_RESOURCE_BUDGET_MS) {
-                continue;
-            }
             port = request->port;
             if (!resolve_url_from(request->host, request->path,
                     request->port, entry->url, host, sizeof(host), path,
@@ -2489,13 +2476,6 @@ static int pcore_navigation_start_worker(
 {
     DWORD thread_id;
 
-    if (request->worker_stage == PCORE_NAV_STAGE_RESOURCES &&
-            request->resource_started_tick == 0) {
-        request->resource_started_tick = GetTickCount();
-        if (request->resource_started_tick == 0) {
-            request->resource_started_tick = 1;
-        }
-    }
     g_nav_thread = CreateThread(NULL, 0, pcore_navigation_worker,
             request, 0, &thread_id);
     return (g_nav_thread != NULL) ? 0 : 1;
@@ -2521,7 +2501,6 @@ static int pcore_navigation_commit_step(HWND hwnd,
             }
             return PCORE_NAV_RESULT_FAILED;
         }
-        pcore_navigation_apply_effective_url(request, resp);
         request->document = PCore_ParseHTML(resp->body, resp->body_len);
         PHttp_FreeResponse(resp);
         request->response = NULL;
@@ -2545,9 +2524,10 @@ static int pcore_navigation_commit_step(HWND hwnd,
         PCore_SetViewport(cw, chh, 0);
         if (pcore_document_url(request->host, request->path, request->port,
                 document_url, sizeof(document_url)) != 0 ||
-                PCore_StyleDocumentEx2(request->document, NULL, document_url,
+                PCore_StyleDocumentEx3(request->document, NULL, document_url,
                 wm_combine_url, pcore_navigation_resource_cb,
-                page_resource_free_cb, request) != 0) {
+                page_resource_free_cb, request,
+                PCORE_STYLE_COMPAT_9C5C7C7) != 0) {
             if (report_errors) {
                 show_error(L"Navigation failed",
                         "PCore_StyleDocument failed");
@@ -2559,13 +2539,9 @@ static int pcore_navigation_commit_step(HWND hwnd,
     }
 
     if (request->commit_stage == PCORE_NAV_COMMIT_IMAGES) {
-        if (pcore_document_url(request->host, request->path, request->port,
-                document_url, sizeof(document_url)) != 0) {
-            return PCORE_NAV_RESULT_FAILED;
-        }
-        PCore_FetchImageResourcesEx2(request->document, document_url,
-                wm_combine_url, pcore_navigation_resource_cb,
-                page_resource_free_cb, request, NULL, NULL);
+        PCore_FetchImageResources(request->document,
+                pcore_navigation_resource_cb, page_resource_free_cb,
+                request, NULL, NULL);
         if (pcore_navigation_pending_count(request) > 0) {
             request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
             request->commit_stage = PCORE_NAV_COMMIT_STYLE;
@@ -2789,9 +2765,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     document_url, sizeof(document_url)) == 0) {
                 document_base = document_url;
             }
-            if (PCore_StyleDocumentEx2(g_render_doc, g_render_sheet,
+            if (PCore_StyleDocumentEx3(g_render_doc, g_render_sheet,
                     document_base, wm_combine_url,
-                    page_resource_cache_only_cb, NULL, NULL) == 0) {
+                    page_resource_cache_only_cb, NULL, NULL,
+                    PCORE_STYLE_COMPAT_9C5C7C7) == 0) {
                 PCore_LayoutDocument(g_render_doc, cw, chh);
             }
             g_doc_h = PCore_DocumentHeight(g_render_doc);
@@ -2937,8 +2914,6 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int cx = (int) (short) LOWORD(lp);
         int cy = (int) (short) HIWORD(lp);
         char href[1024];
-        char document_url[1536];
-        const char *document_base;
 
         if (g_render_doc != NULL &&
                 PCore_OverflowPointer(g_render_doc, PCORE_POINTER_DOWN,
@@ -2950,14 +2925,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         /* Document-space point = client point + scroll (scroll_x is 0). If it
          * lands on a link, follow it; otherwise a tap closes the view. */
-        document_base = NULL;
-        if (pcore_document_url(g_cur_host, g_cur_path, g_cur_port,
-                document_url, sizeof(document_url)) == 0) {
-            document_base = document_url;
-        }
         if (g_render_doc != NULL &&
-                PCore_LinkAtEx2(g_render_doc, cx, cy + g_scroll_y,
-                document_base, wm_combine_url, NULL, href, sizeof(href))) {
+                PCore_LinkAt(g_render_doc, cx, cy + g_scroll_y,
+                href, sizeof(href))) {
             navigate_to(hwnd, href);
         } else {
             DestroyWindow(hwnd);
@@ -6734,6 +6704,30 @@ static int test46_cache_only_fetch(void *pw, const char *url,
     return 1;
 }
 
+static int test46_compat_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char CSS[] = "p{color:#445566}";
+    stylesheet_metadata_test_ctx *ctx;
+
+    ctx = (stylesheet_metadata_test_ctx *) pw;
+    ctx->calls++;
+    *out_data = NULL;
+    *out_len = 0;
+    if (strcmp(url, "https://example.test/css/legacy.css") != 0) {
+        ctx->seen |= 2U;
+        return 1;
+    }
+    ctx->seen |= 1U;
+    *out_data = (char *) malloc(sizeof(CSS) - 1);
+    if (*out_data == NULL) {
+        return 1;
+    }
+    memcpy(*out_data, CSS, sizeof(CSS) - 1);
+    *out_len = sizeof(CSS) - 1;
+    return 0;
+}
+
 static void test46_restore_viewport(int dpi)
 {
     int width;
@@ -6765,19 +6759,30 @@ static BOOL test46_stylesheet_metadata(void)
         "</head><body><h1>inline</h1><p>linked</p></body></html>";
     static const char DOCUMENT_URL[] =
         "https://example.test/dir/page.html";
+    static const char COMPAT_HTML[] =
+        "<!doctype html><html><head>"
+        "<base href=\"https://wrong.test/assets/\">"
+        "<style disabled>h1{color:#112233}</style>"
+        "<link rel=\"preload stylesheet\" href=\"skip.css\">"
+        "<link rel=\"stylesheet\" href=\"../css/legacy.css\" "
+        "media=\"(max-width:1px)\">"
+        "</head><body><h1>inline</h1><p>linked</p></body></html>";
     HANDLE document;
     stylesheet_metadata_test_ctx first;
     stylesheet_metadata_test_ctx second;
+    stylesheet_metadata_test_ctx compat;
     unsigned long h1_color;
     unsigned long p_color;
     int dpi;
     int first_ok;
     int second_ok;
+    int compat_ok;
     HDC screen_dc;
     char msg[256];
 
     memset(&first, 0, sizeof(first));
     memset(&second, 0, sizeof(second));
+    memset(&compat, 0, sizeof(compat));
     dpi = 96;
     screen_dc = GetDC(NULL);
     if (screen_dc != NULL) {
@@ -6816,14 +6821,31 @@ static BOOL test46_stylesheet_metadata(void)
             (p_color & 0x00ffffffUL) == 0x000000aaUL &&
             second.calls == 0;
     PCore_FreeDocument(document);
+
+    document = PCore_ParseHTML(COMPAT_HTML, sizeof(COMPAT_HTML) - 1);
+    h1_color = 0;
+    p_color = 0;
+    compat_ok = document != NULL &&
+            PCore_StyleDocumentEx3(document, NULL, DOCUMENT_URL,
+            wm_combine_url, test46_compat_fetch, test46_metadata_free,
+            &compat, PCORE_STYLE_COMPAT_9C5C7C7) == 0 &&
+            PCore_NodeComputedColor(document, "h1", &h1_color) == 0 &&
+            PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
+            (h1_color & 0x00ffffffUL) == 0x00112233UL &&
+            (p_color & 0x00ffffffUL) == 0x00445566UL &&
+            compat.calls == 1 && compat.frees == 1 && compat.seen == 1U;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
     test46_restore_viewport(dpi);
 
-    if (!first_ok || !second_ok) {
+    if (!first_ok || !second_ok || !compat_ok) {
         _snprintf(msg, sizeof(msg) - 1,
                 "first=%d calls=%d frees=%d seen=%u second=%d calls=%d "
-                "colors=%06lX/%06lX",
+                "compat=%d/%d/%d/%u colors=%06lX/%06lX",
                 first_ok, first.calls, first.frees, first.seen,
-                second_ok, second.calls, h1_color & 0x00ffffffUL,
+                second_ok, second.calls, compat_ok, compat.calls,
+                compat.frees, compat.seen, h1_color & 0x00ffffffUL,
                 p_color & 0x00ffffffUL);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 46 FAIL", msg);
@@ -6831,7 +6853,7 @@ static BOOL test46_stylesheet_metadata(void)
     }
     show_info(L"TEST 46 OK",
               "Stylesheet metadata: rel tokens, type/disabled filtering,\n"
-              "full media queries and cache-only breakpoint restyle passed.");
+              "media/cache restyle plus TEST13 9c compatibility passed.");
     return TRUE;
 }
 

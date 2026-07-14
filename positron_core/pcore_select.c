@@ -1612,9 +1612,11 @@ typedef struct pcore_collect_ctx {
     dom_string     *link_name;  /* interned "link"  */
     dom_string     *rel_name;   /* interned "rel"   */
     dom_string     *href_name;  /* interned "href"  */
+    dom_string     *css_value;  /* interned "stylesheet" */
     dom_string     *type_name;  /* interned "type" */
     dom_string     *media_name; /* interned "media" */
     dom_string     *disabled_name; /* interned "disabled" */
+    unsigned long   flags;
 } pcore_collect_ctx;
 
 #define PCORE_IMPORT_DEPTH_MAX 16
@@ -2065,11 +2067,14 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
             dom_string *css = NULL;
             char media_buffer[1024];
             const char *media;
+            int compat;
 
-            media = pcore_element_media(node, cc->media_name, media_buffer,
-                    sizeof(media_buffer));
-            if (!pcore_element_disabled(node, cc->disabled_name) &&
-                    pcore_element_css_type(node, cc->type_name) &&
+            compat = (cc->flags & PCORE_STYLE_COMPAT_9C5C7C7) != 0;
+            media = compat ? NULL : pcore_element_media(node,
+                    cc->media_name, media_buffer, sizeof(media_buffer));
+            if ((compat || (!pcore_element_disabled(node,
+                    cc->disabled_name) && pcore_element_css_type(node,
+                    cc->type_name))) &&
                     dom_node_get_text_content(node, &css) == DOM_NO_ERR &&
                     css != NULL) {
                 pcore_add_author_css(cc, dom_string_data(css),
@@ -2085,16 +2090,24 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
             dom_string *rel = NULL;
             dom_string *href = NULL;
             bool is_sheet = false;
+            int compat;
+
+            compat = (cc->flags & PCORE_STYLE_COMPAT_9C5C7C7) != 0;
 
             if (dom_element_get_attribute(node, cc->rel_name, &rel) ==
                     DOM_NO_ERR && rel != NULL) {
-                is_sheet = pcore_rel_has_token(rel, "stylesheet") &&
-                        !pcore_rel_has_token(rel, "alternate");
+                if (compat) {
+                    is_sheet = dom_string_caseless_isequal(rel,
+                            cc->css_value);
+                } else {
+                    is_sheet = pcore_rel_has_token(rel, "stylesheet") &&
+                            !pcore_rel_has_token(rel, "alternate");
+                }
                 dom_string_unref(rel);
             }
-            if (is_sheet && !pcore_element_disabled(node,
+            if (is_sheet && (compat || (!pcore_element_disabled(node,
                     cc->disabled_name) && pcore_element_css_type(node,
-                    cc->type_name) &&
+                    cc->type_name))) &&
                     dom_element_get_attribute(node, cc->href_name, &href) ==
                             DOM_NO_ERR && href != NULL) {
                 const char *hu8 = dom_string_data(href);
@@ -2117,8 +2130,9 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                             reference, url, (int) sizeof(url)) == 0 &&
                             pcore_get_stylesheet_bytes(cc, url, &data, &len,
                             &owned) == 0) {
-                        media = pcore_element_media(node, cc->media_name,
-                                media_buffer, sizeof(media_buffer));
+                        media = compat ? NULL : pcore_element_media(node,
+                                cc->media_name, media_buffer,
+                                sizeof(media_buffer));
                         pcore_add_author_css(cc, data, len, url, media);
                         if (owned != NULL && cc->freefn != NULL) {
                             cc->freefn(cc->pw, owned);
@@ -2162,6 +2176,15 @@ PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
 PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
         const char *document_url, PCoreResolveUrlFn resolve,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch)
+{
+    return PCore_StyleDocumentEx3(hDoc, hSheet, document_url, resolve,
+            fetch, freefn, pw_fetch, 0);
+}
+
+PCORE_API int PCore_StyleDocumentEx3(HANDLE hDoc, HANDLE hSheet,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
+        unsigned long flags)
 {
     dom_document     *doc = (dom_document *) hDoc;
     css_stylesheet   *author = (css_stylesheet *) hSheet;
@@ -2213,7 +2236,8 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
 
     /* Apply the page's own inline <style> and external <link> sheets. */
     style_base = document_url;
-    if (pcore_document_base_url(doc, document_url, resolve, pw_fetch,
+    if ((flags & PCORE_STYLE_COMPAT_9C5C7C7) == 0 &&
+            pcore_document_base_url(doc, document_url, resolve, pw_fetch,
             effective_base, sizeof(effective_base)) == 0) {
         style_base = effective_base;
     }
@@ -2227,10 +2251,12 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     cc.pw = pw_fetch;
     cc.document_url = style_base;
     cc.cache = pcore_stylesheet_cache_get(doc, 1);
+    cc.flags = flags;
     dom_string_create((const uint8_t *) "style", 5, &cc.style_name);
     dom_string_create((const uint8_t *) "link", 4, &cc.link_name);
     dom_string_create((const uint8_t *) "rel", 3, &cc.rel_name);
     dom_string_create((const uint8_t *) "href", 4, &cc.href_name);
+    dom_string_create((const uint8_t *) "stylesheet", 10, &cc.css_value);
     dom_string_create((const uint8_t *) "type", 4, &cc.type_name);
     dom_string_create((const uint8_t *) "media", 5, &cc.media_name);
     dom_string_create((const uint8_t *) "disabled", 8, &cc.disabled_name);
@@ -2265,6 +2291,7 @@ cleanup:
     if (cc.link_name != NULL)  { dom_string_unref(cc.link_name); }
     if (cc.rel_name != NULL)   { dom_string_unref(cc.rel_name); }
     if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
+    if (cc.css_value != NULL)  { dom_string_unref(cc.css_value); }
     if (cc.type_name != NULL)  { dom_string_unref(cc.type_name); }
     if (cc.media_name != NULL) { dom_string_unref(cc.media_name); }
     if (cc.disabled_name != NULL) {

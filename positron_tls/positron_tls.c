@@ -67,15 +67,12 @@ static BOOL              g_cacert_inited    = FALSE;
 
 static const char* PTLS_PERS = "positron_tls_client";
 
-#define PTLS_DEFAULT_TIMEOUT_MS 30000
-
 /* ---------------------------------------------------------------------- */
 /* Per-connection state                                                    */
 /* ---------------------------------------------------------------------- */
 
 typedef struct PTlsConn {
     SOCKET                       sock;
-    DWORD                        timeout_ms;
     mbedtls_ssl_context          ssl;
     mbedtls_ssl_config           conf;
     mbedtls_entropy_context      entropy;
@@ -134,15 +131,6 @@ static void ptls_set_error_wsa(const char* fmt)
     int wsaerr;
 
     wsaerr = WSAGetLastError();
-    _snprintf(buf, sizeof(buf), "%s (WSA=%d)", fmt, wsaerr);
-    buf[sizeof(buf) - 1] = '\0';
-    ptls_set_error(buf, 0);
-}
-
-static void ptls_set_error_wsa_code(const char* fmt, int wsaerr)
-{
-    char buf[200];
-
     _snprintf(buf, sizeof(buf), "%s (WSA=%d)", fmt, wsaerr);
     buf[sizeof(buf) - 1] = '\0';
     ptls_set_error(buf, 0);
@@ -340,79 +328,15 @@ static int ptls_bio_recv(void* ctx, unsigned char* buf, size_t len)
     return n;
 }
 
-/* Wait for a non-blocking socket using the WinCE-supported select contract.
- * `started` is shared by all retries in one connect/handshake/read/write
- * operation, so repeated WANT_READ/WANT_WRITE cannot reset the deadline. */
-static int ptls_wait_socket(SOCKET s, int want_write, DWORD started,
-                            DWORD timeout_ms, const char* timeout_error)
-{
-    fd_set read_fds;
-    fd_set write_fds;
-    fd_set except_fds;
-    struct timeval tv;
-    struct timeval* tvp;
-    DWORD elapsed;
-    DWORD remaining;
-    int rc;
-
-    for (;;) {
-        FD_ZERO(&read_fds);
-        FD_ZERO(&write_fds);
-        FD_ZERO(&except_fds);
-        if (want_write) {
-            FD_SET(s, &write_fds);
-        } else {
-            FD_SET(s, &read_fds);
-        }
-        FD_SET(s, &except_fds);
-
-        tvp = NULL;
-        if (timeout_ms != INFINITE) {
-            elapsed = (DWORD)(GetTickCount() - started);
-            if (elapsed >= timeout_ms) {
-                ptls_set_error(timeout_error, 0);
-                return 0;
-            }
-            remaining = timeout_ms - elapsed;
-            tv.tv_sec = (long)(remaining / 1000);
-            tv.tv_usec = (long)((remaining % 1000) * 1000);
-            tvp = &tv;
-        }
-        rc = select(0, want_write ? NULL : &read_fds,
-                    want_write ? &write_fds : NULL, &except_fds, tvp);
-        if (rc > 0) {
-            if (FD_ISSET(s, &except_fds)) {
-                ptls_set_error("socket exception", 0);
-                return -1;
-            }
-            return 1;
-        }
-        if (rc == 0) {
-            ptls_set_error(timeout_error, 0);
-            return 0;
-        }
-        if (WSAGetLastError() != WSAEINTR) {
-            ptls_set_error_wsa("select failed");
-            return -1;
-        }
-    }
-}
-
 /* ---------------------------------------------------------------------- */
 /* DNS + TCP connect (WinCE has no getaddrinfo on 5.2).                   */
 /* ---------------------------------------------------------------------- */
 
-static SOCKET ptls_tcp_connect(const char* host, int port, DWORD timeout_ms)
+static SOCKET ptls_tcp_connect(const char* host, int port)
 {
     struct hostent*    he;
     struct sockaddr_in sa;
     SOCKET             s;
-    u_long             nonblocking;
-    DWORD              started;
-    int                rc;
-    int                err;
-    int                so_error;
-    int                so_error_len;
 
     he = gethostbyname(host);
     if (he == NULL || he->h_addr_list == NULL || he->h_addr_list[0] == NULL) {
@@ -431,42 +355,10 @@ static SOCKET ptls_tcp_connect(const char* host, int port, DWORD timeout_ms)
     sa.sin_port   = htons((u_short)port);
     memcpy(&sa.sin_addr, he->h_addr_list[0], 4);
 
-    nonblocking = 1;
-    if (ioctlsocket(s, FIONBIO, &nonblocking) == SOCKET_ERROR) {
-        ptls_set_error_wsa("ioctlsocket(FIONBIO) failed");
+    if (connect(s, (struct sockaddr*)&sa, sizeof(sa)) == SOCKET_ERROR) {
+        ptls_set_error_wsa("connect() failed");
         closesocket(s);
         return INVALID_SOCKET;
-    }
-
-    started = GetTickCount();
-    rc = connect(s, (struct sockaddr*)&sa, sizeof(sa));
-    if (rc == SOCKET_ERROR) {
-        err = WSAGetLastError();
-        if (err != WSAEWOULDBLOCK && err != WSAEINPROGRESS &&
-                err != WSAEALREADY) {
-            ptls_set_error_wsa_code("connect() failed", err);
-            closesocket(s);
-            return INVALID_SOCKET;
-        }
-        rc = ptls_wait_socket(s, 1, started, timeout_ms,
-                "TCP connect timeout");
-        if (rc <= 0) {
-            closesocket(s);
-            return INVALID_SOCKET;
-        }
-        so_error = 0;
-        so_error_len = sizeof(so_error);
-        if (getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&so_error,
-                &so_error_len) == SOCKET_ERROR) {
-            ptls_set_error_wsa("getsockopt(SO_ERROR) failed");
-            closesocket(s);
-            return INVALID_SOCKET;
-        }
-        if (so_error != 0) {
-            ptls_set_error_wsa_code("connect() failed", so_error);
-            closesocket(s);
-            return INVALID_SOCKET;
-        }
     }
     return s;
 }
@@ -589,12 +481,10 @@ PTLS_API BOOL PTls_AddRootCA(const char* pem)
 /* ---------------------------------------------------------------------- */
 
 static PTlsConn* tls_connect_internal(const char* host, int port,
-                                      int verify_mode, DWORD timeout_ms)
+                                      int verify_mode)
 {
     PTlsConn* c;
     int       rc;
-    int       wait_rc;
-    DWORD     started;
 
     g_last_bio_msg[0] = '\0';
 
@@ -613,7 +503,6 @@ static PTlsConn* tls_connect_internal(const char* host, int port,
         return NULL;
     }
     c->sock = INVALID_SOCKET;
-    c->timeout_ms = (timeout_ms == 0) ? PTLS_DEFAULT_TIMEOUT_MS : timeout_ms;
     mbedtls_ssl_init(&c->ssl);
     mbedtls_ssl_config_init(&c->conf);
     mbedtls_entropy_init(&c->entropy);
@@ -657,25 +546,17 @@ static PTlsConn* tls_connect_internal(const char* host, int port,
         goto fail;
     }
 
-    c->sock = ptls_tcp_connect(host, port, c->timeout_ms);
+    c->sock = ptls_tcp_connect(host, port);
     if (c->sock == INVALID_SOCKET) {
         goto fail;
     }
 
     mbedtls_ssl_set_bio(&c->ssl, &c->sock, ptls_bio_send, ptls_bio_recv, NULL);
 
-    /* Drive the handshake on the non-blocking socket with one deadline. */
-    started = GetTickCount();
+    /* Drive the handshake to completion (blocking socket). */
     while ((rc = mbedtls_ssl_handshake(&c->ssl)) != 0) {
-        if (rc == MBEDTLS_ERR_SSL_WANT_READ ||
-                rc == MBEDTLS_ERR_SSL_WANT_WRITE) {
-            wait_rc = ptls_wait_socket(c->sock,
-                    rc == MBEDTLS_ERR_SSL_WANT_WRITE, started,
-                    c->timeout_ms, "TLS handshake timeout");
-            if (wait_rc <= 0) {
-                goto fail;
-            }
-        } else {
+        if (rc != MBEDTLS_ERR_SSL_WANT_READ &&
+            rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
             /* If the failure was specifically certificate verification,
              * render the verify flags into a human-readable message so
              * callers learn whether it was expiry / hostname / chain. */
@@ -727,26 +608,14 @@ fail:
 
 PTLS_API HANDLE PTls_Connect(const char* host, int port)
 {
-    return PTls_ConnectWithTimeout(host, port, 0);
-}
-
-PTLS_API HANDLE PTls_ConnectWithTimeout(const char* host, int port,
-                                        DWORD timeout_ms)
-{
     return (HANDLE)tls_connect_internal(host, port,
-            MBEDTLS_SSL_VERIFY_NONE, timeout_ms);
+                                        MBEDTLS_SSL_VERIFY_NONE);
 }
 
 PTLS_API HANDLE PTls_ConnectVerified(const char* host, int port)
 {
-    return PTls_ConnectVerifiedWithTimeout(host, port, 0);
-}
-
-PTLS_API HANDLE PTls_ConnectVerifiedWithTimeout(const char* host, int port,
-                                                DWORD timeout_ms)
-{
     return (HANDLE)tls_connect_internal(host, port,
-            MBEDTLS_SSL_VERIFY_REQUIRED, timeout_ms);
+                                        MBEDTLS_SSL_VERIFY_REQUIRED);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -758,15 +627,12 @@ PTLS_API int PTls_Write(HANDLE hConn, const char* buf, int len)
     PTlsConn* c;
     int       rc;
     int       total;
-    int       wait_rc;
-    DWORD     started;
 
     if (hConn == NULL || buf == NULL || len <= 0) {
         return -1;
     }
     c = (PTlsConn*)hConn;
     total = 0;
-    started = GetTickCount();
 
     while (total < len) {
         rc = mbedtls_ssl_write(&c->ssl,
@@ -774,12 +640,6 @@ PTLS_API int PTls_Write(HANDLE hConn, const char* buf, int len)
                                (size_t)(len - total));
         if (rc == MBEDTLS_ERR_SSL_WANT_READ ||
             rc == MBEDTLS_ERR_SSL_WANT_WRITE) {
-            wait_rc = ptls_wait_socket(c->sock,
-                    rc == MBEDTLS_ERR_SSL_WANT_WRITE, started,
-                    c->timeout_ms, "TLS write timeout");
-            if (wait_rc <= 0) {
-                return -1;
-            }
             continue;
         }
         if (rc < 0) {
@@ -795,25 +655,16 @@ PTLS_API int PTls_Read(HANDLE hConn, char* buf, int len)
 {
     PTlsConn* c;
     int       rc;
-    int       wait_rc;
-    DWORD     started;
 
     if (hConn == NULL || buf == NULL || len <= 0) {
         return -1;
     }
     c = (PTlsConn*)hConn;
-    started = GetTickCount();
 
     for (;;) {
         rc = mbedtls_ssl_read(&c->ssl, (unsigned char*)buf, (size_t)len);
         if (rc == MBEDTLS_ERR_SSL_WANT_READ ||
             rc == MBEDTLS_ERR_SSL_WANT_WRITE) {
-            wait_rc = ptls_wait_socket(c->sock,
-                    rc == MBEDTLS_ERR_SSL_WANT_WRITE, started,
-                    c->timeout_ms, "TLS read timeout");
-            if (wait_rc <= 0) {
-                return -1;
-            }
             continue;
         }
         if (rc == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
@@ -834,14 +685,18 @@ PTLS_API int PTls_Read(HANDLE hConn, char* buf, int len)
 PTLS_API void PTls_Close(HANDLE hConn)
 {
     PTlsConn* c;
+    int       rc;
 
     if (hConn == NULL) {
         return;
     }
     c = (PTlsConn*)hConn;
 
-    /* Best-effort only: a non-blocking close_notify must not delay teardown. */
-    mbedtls_ssl_close_notify(&c->ssl);
+    /* Best-effort close_notify; ignore errors. */
+    do {
+        rc = mbedtls_ssl_close_notify(&c->ssl);
+    } while (rc == MBEDTLS_ERR_SSL_WANT_READ ||
+             rc == MBEDTLS_ERR_SSL_WANT_WRITE);
 
     if (c->sock != INVALID_SOCKET) {
         closesocket(c->sock);

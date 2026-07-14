@@ -124,6 +124,19 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
         const char *document_url, PCoreResolveUrlFn resolve,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw);
 
+/* Preserve the document stylesheet-discovery behavior used by the fully
+ * accepted TEST13 baseline 9c5c7c7: no <base> override, exact
+ * rel="stylesheet" matching, and no type/disabled/media filtering. */
+#define PCORE_STYLE_COMPAT_9C5C7C7 0x00000001UL
+
+/* Flagged extension of PCore_StyleDocumentEx2. Existing callers should use
+ * Ex2; this entry point lets an embedder pin a compatibility contract while
+ * newer standards behavior remains available to other callers. */
+PCORE_API int PCore_StyleDocumentEx3(HANDLE hDoc, HANDLE hSheet,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw,
+        unsigned long flags);
+
 /* Scan the document for non-empty <img src> and computed background-image
  * resources and invoke the embedder's fetch callback for each one. Background
  * URLs are visible after PCore_StyleDocument[Ex]. Successful bodies are copied

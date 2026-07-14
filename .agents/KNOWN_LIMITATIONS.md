@@ -27,7 +27,7 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **已撤回的一项**：IANA 页脚是 table cell 内 `display:inline; float:left` 列表。TEST23 曾在最小样例中确认两个浮动块同行及 `clear:both`，但将该构盒规则直接接入真实页面后，2026-07-11 Browse 截图出现严重错位和替代方框；实现已撤回。该测试不再参加 ENGINE 组，不能作为 float 支持证据。
 - **当前站点版本风险**：2026-07-13 重新读取到 IANA 的 `iana_website.80c103cc08b6.css`；除已确认的 `var(--space-*)` 外还有 22 处 `oklch()`、15 处 `calc()`、`color-mix()`、grid/gap 与 `:has()`。新兼容模块只处理数值型 OKLCH 和可完全求值的同单位 calc；混合单位及其他现代能力仍会降级。
 - **最新子页结论**：`/numbers` 使用 `display:grid`，其中 `.dtable-wrap { overflow:auto }` 包住宽表格。TEST41 的竖横屏截图已确认 flex 主内容负 x 修复，标题/正文保持 inset；Grid 仍只保持单列文档顺序。
-- **下一步**：TEST3/43-47 已分别验收真实单响应进度、后台资源、主文档失败回滚、CSS import tree、stylesheet 元数据和 document base URL；用户澄清 `c01a349` 时 TEST13 没有走完深层导航，因此 TEST13 不是该批次基线。当前用 TEST13/43/44/47/48 验收最终重定向 origin、TLS/明文有限等待和加载期高频滚动不再崩溃。Grid/gap 因 NetSurf HTML 层仍无现成轨道布局，须先继续审计可移植上游实现。float 仍须对照上游 box construction/normalisation 与 list marker，不能复用 TEST23 的简化断言。
+- **下一步**：TEST13 最后一次完整验收基线为 `9c5c7c7`。后续 stylesheet metadata、document base 和 redirect origin 独立测试均通过，但组合进真实 Browse 后出现 Learn more 一分钟以上不提交；当前已把 Browse 固定到 9c 兼容路径，先复测 TEST13，再逐项重新接入。Grid/gap 因 NetSurf HTML 层仍无现成轨道布局，须先继续审计可移植上游实现。float 仍须对照上游 box construction/normalisation 与 list marker，不能复用 TEST23 的简化断言。
 - **完成条件**：在目标设备的竖屏和横屏下，主内容、页脚和导航均不裁切、不重叠，且没有明显错误图标/替代字符；结果需要新的真机截图确认。
 
 ### 旋转 responsive restyle 已完成当前验收
@@ -40,16 +40,16 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 
 ### 导航 CSS/图片抓取已异步，最终提交仍在 UI
 
-主文档之后的外链 CSS、CSS `@import`、`<img>` 和应用样式后发现的背景 URL 现也分轮交给同一 worker；HTTP 字节通过 `WM_APP` 消息交回窗口线程，DOM/libcss/NetSurf/GDI 从不跨线程。TEST3/43/44 与真实 TEST13 已确认真实正文进度、后台资源阶段、成功 swap 和主文档失败回滚。parse/style/image-discovery/layout 现用一次性 WM timer 在调用之间让出消息循环；单个不可重入调用仍可能卡顿。
+主文档之后的外链 CSS、CSS `@import`、`<img>` 和应用样式后发现的背景 URL 现也分轮交给同一 worker；HTTP 字节通过 `WM_APP` 消息交回窗口线程，DOM/libcss/NetSurf/GDI 从不跨线程。TEST3/43/44 已确认真实正文进度、后台资源阶段和主文档失败回滚；TEST13 的完整成功 swap 只以 `9c5c7c7` 为基线，当前兼容回退仍待设备确认。parse/style/image-discovery/layout 现用一次性 WM timer 在调用之间让出消息循环；单个不可重入调用仍可能卡顿。
 
 - **当前取舍**：同一时刻只允许一个导航请求；旧页可绘制和滚动，但加载中再次点击链接会被忽略。HTML parse、style、cache copy 和 layout 仍在 UI 提交阶段同步执行，全部网络完成后仍可能短暂卡顿。
-- **资源预算**：`test_host` 最多暂存 64 个去重 URL、合计 2 MiB 原始字节，成功提交时 core 会复制所需数据后立刻释放事务；可选资源阶段另有 20 秒总预算，超过后未开始的资源按失败 fallback 并继续提交。WinInet 明文请求设置 15 秒连接/接收选项；HTTP 的 TLS 路径也以非阻塞 socket + `select` 为 connect/handshake/read/write 各设置 15 秒等待。上述值都是可替换的宿主/传输策略，不是 `positron_core` ABI 或最终页面硬上限。同步 `gethostbyname` 仍可能受系统 DNS 等待影响，且尚无跨线程主动取消 API。
+- **资源预算**：`test_host` 最多暂存 64 个去重 URL、合计 2 MiB 原始字节，成功提交时 core 会复制所需数据后立刻释放事务。曾加入的可选资源阶段 20 秒总预算未解决 TEST13 长期等待，现已随 Browse 兼容回退撤销；WinInet 明文请求仍设置 15 秒连接/接收选项。上述值都是可替换的宿主/传输策略，不是 `positron_core` ABI 或最终页面的硬上限；已进入 TLS socket 的请求目前仍没有可靠的强制取消和完整 deadline。
 - **后续实现**：单响应 `Content-Length`/progress 回调已实现并由 TEST3/13 确认；`@import` 已进入事务并由 TEST45 确认。整页多资源聚合进度、web fonts、脚本及更广资源类型仍未实现。
 - **CSS import 边界**：最多追踪 16 层递归和本次样式 pass 的 64 个解析表；失败、循环和超深导入按 libcss 契约注册空表。成功导入复用每 document 最多 32 份/512 KiB 的 CSS 字节缓存；不含 HTTP 缓存失效、跨源安全策略或独立持久缓存。URL 合并由宿主回调负责，WM 宿主使用 `InternetCombineUrlA`，core 本身不绑定传输层。
-- **stylesheet/base 边界**：`media` 使用当前 libcss 可解析的语法，过长属性保守按 `not all`；alternate stylesheet 没有用户选择 UI，因此默认跳过。动态修改 `disabled/media/rel/type` 后自动 restyle 和 preferred stylesheet set 仍未实现。首个 `<base href>` 已用于 CSS/import、图片和点击链接，URL 规范化由宿主 resolver 完成；TEST47 已由设备确认。HTTP 主文档最终重定向 URL 现成为 document origin，但每个重定向资源自己的最终 URL 尚未单独成为 stylesheet/image base。动态修改 base、form action、script/font/media/source 等其他 URL 属性及安全策略仍未覆盖。
+- **stylesheet/base 边界**：普通 Ex2 API 继续实现 metadata 和首个 `<base href>` 语义，TEST46-47 已由设备确认；`PHttpResponse.effective_url` 与 TEST48 也保留。真实 Browse 为恢复已验收稳定性，暂用 `PCORE_STYLE_COMPAT_9C5C7C7`、旧图片扫描和旧链接命中：不采用 base/redirect origin，`rel` 精确匹配，并忽略 stylesheet 的 type/disabled/media 元数据。此妥协只属于 WM Browse 宿主，不降低公共 Ex2 API；重新接入必须逐项跑完整 TEST13。
 - **并发约束**：在确认 libdom/libcss/NetSurf 移植层的线程安全前，不能让 worker 与 UI 同时操作同一 document 或共享全局 viewport context；过期请求只丢弃结果，不使用强制终止线程。
 - **第一阶段完成条件**：慢网主文档 GET 期间旧页可滚动，loading 可见；成功后才 swap，错误保留当前页面，关闭窗口不会遗留线程。
-- **当前完成条件**：TEST43 的 URL/去重/成功/失败断言通过；真实 TEST13 的 CSS/图片网络等待不阻塞 UI，generation 正确，成功后才 swap，失败资源保留 fallback。
+- **当前完成条件**：TEST43 的 URL/去重/成功/失败断言保持通过；本轮必须让真实 TEST13 从 start page 经 Open example 到 Learn more 完整提交，且旋转/滚动不崩溃。设备确认前不能把兼容回退记为完成。
 
 ### 图片能力只以 BMP 最小链路为基线
 
