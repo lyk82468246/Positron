@@ -170,7 +170,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 43
+#define TEST_MAX_NUMBER 44
 
 static int test_config_space(char c)
 {
@@ -1817,12 +1817,20 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 
 #define WM_PCORE_NAV_DONE (WM_APP + 1)
 #define WM_PCORE_NAV_PROGRESS (WM_APP + 2)
+#define WM_PCORE_NAV_CONTINUE (WM_APP + 3)
 #define PCORE_NAV_TIMER 24
+#define PCORE_NAV_COMMIT_TIMER 25
 #define PCORE_NAV_STAGE_DOCUMENT 1
 #define PCORE_NAV_STAGE_RESOURCES 2
 #define PCORE_NAV_RESULT_MORE 0
 #define PCORE_NAV_RESULT_DONE 1
+#define PCORE_NAV_RESULT_CONTINUE 2
 #define PCORE_NAV_RESULT_FAILED -1
+#define PCORE_NAV_COMMIT_NONE 0
+#define PCORE_NAV_COMMIT_PARSE 1
+#define PCORE_NAV_COMMIT_STYLE 2
+#define PCORE_NAV_COMMIT_IMAGES 3
+#define PCORE_NAV_COMMIT_LAYOUT 4
 #define PCORE_NAV_MAX_RESOURCES 64
 #define PCORE_NAV_RESOURCE_BYTES_MAX (2 * 1024 * 1024)
 
@@ -1846,6 +1854,7 @@ typedef struct pcore_navigation_request {
     int            resource_count;
     int            resource_bytes;
     int            worker_stage;
+    int            commit_stage;
     int            progress_last_total;
     int            progress_last_percent;
     int            progress_last_received;
@@ -2260,6 +2269,7 @@ static void pcore_navigation_set_loading(HWND hwnd, int loading)
         SetTimer(hwnd, PCORE_NAV_TIMER, 100, NULL);
     } else {
         KillTimer(hwnd, PCORE_NAV_TIMER);
+        KillTimer(hwnd, PCORE_NAV_COMMIT_TIMER);
         if (g_nav_bar != NULL) {
             DestroyWindow(g_nav_bar);
             g_nav_bar = NULL;
@@ -2323,6 +2333,26 @@ static PHttpResponse *pcore_navigation_get(
             pcore_navigation_progress, request);
 }
 
+static int pcore_navigation_response_error(
+        const pcore_navigation_request *request, char *message, int capacity)
+{
+    const PHttpResponse *resp;
+
+    resp = request->response;
+    if (resp != NULL && resp->status_code == 200 && resp->body != NULL &&
+            resp->body_len > 0) {
+        return 0;
+    }
+    _snprintf(message, capacity - 1,
+              "GET %s://%s%s -> status=%d %s",
+              (request->port == 80) ? "http" : "https",
+              request->host, request->path,
+              (resp != NULL) ? resp->status_code : 0,
+              (resp != NULL) ? resp->error_msg : "(null)");
+    message[capacity - 1] = '\0';
+    return 1;
+}
+
 static DWORD WINAPI pcore_navigation_worker(LPVOID param)
 {
     pcore_navigation_request *request;
@@ -2383,71 +2413,87 @@ static int pcore_navigation_start_worker(
     return (g_nav_thread != NULL) ? 0 : 1;
 }
 
-/* Parse, discover resources, style, layout and swap only on the window
- * thread. A missing callback body queues the URL, so this function may return
- * MORE and let the same request run another resource-only worker stage. */
-static int pcore_navigation_complete(HWND hwnd,
-        pcore_navigation_request *request)
+/* Run one UI-owned commit phase, then yield to the WM message queue. A missing
+ * callback body queues the URL and returns MORE for another worker stage. */
+static int pcore_navigation_commit_step(HWND hwnd,
+        pcore_navigation_request *request, int report_errors)
 {
     PHttpResponse *resp;
     RECT           rc;
     int            cw, chh;
     char           emsg[320];
 
-    if (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) {
+    if (request->commit_stage == PCORE_NAV_COMMIT_PARSE) {
         resp = request->response;
-        if (resp == NULL || resp->status_code != 200 || resp->body == NULL ||
-                resp->body_len <= 0) {
-            _snprintf(emsg, sizeof(emsg) - 1,
-                      "GET %s://%s%s -> status=%d %s",
-                      (request->port == 80) ? "http" : "https",
-                      request->host, request->path,
-                      (resp != NULL) ? resp->status_code : 0,
-                      (resp != NULL) ? resp->error_msg : "(null)");
-            emsg[sizeof(emsg) - 1] = '\0';
-            show_error(L"Navigation failed", emsg);
+        if (pcore_navigation_response_error(request, emsg,
+                sizeof(emsg))) {
+            if (report_errors) {
+                show_error(L"Navigation failed", emsg);
+            }
             return PCORE_NAV_RESULT_FAILED;
         }
         request->document = PCore_ParseHTML(resp->body, resp->body_len);
         PHttp_FreeResponse(resp);
         request->response = NULL;
         if (request->document == NULL) {
-            show_error(L"Navigation failed", "PCore_ParseHTML returned NULL");
+            if (report_errors) {
+                show_error(L"Navigation failed",
+                        "PCore_ParseHTML returned NULL");
+            }
             return PCORE_NAV_RESULT_FAILED;
         }
+        request->commit_stage = PCORE_NAV_COMMIT_STYLE;
+        return PCORE_NAV_RESULT_CONTINUE;
     }
 
-    /* Select responsive CSS against the actual render client, not the full
-     * screen size left over from startup. StyleDocumentEx evaluates @media
-     * now, before LayoutDocument builds the box tree. */
+    if (request->commit_stage == PCORE_NAV_COMMIT_STYLE) {
+        GetClientRect(hwnd, &rc);
+        cw = rc.right - rc.left;
+        chh = rc.bottom - rc.top;
+        if (cw <= 0) { cw = 224; }
+        if (chh <= 0) { chh = 320; }
+        PCore_SetViewport(cw, chh, 0);
+        if (PCore_StyleDocumentEx(request->document, NULL,
+                pcore_navigation_resource_cb, page_resource_free_cb,
+                request) != 0) {
+            if (report_errors) {
+                show_error(L"Navigation failed",
+                        "PCore_StyleDocument failed");
+            }
+            return PCORE_NAV_RESULT_FAILED;
+        }
+        request->commit_stage = PCORE_NAV_COMMIT_IMAGES;
+        return PCORE_NAV_RESULT_CONTINUE;
+    }
+
+    if (request->commit_stage == PCORE_NAV_COMMIT_IMAGES) {
+        PCore_FetchImageResources(request->document,
+                pcore_navigation_resource_cb, page_resource_free_cb,
+                request, NULL, NULL);
+        if (pcore_navigation_pending_count(request) > 0) {
+            request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
+            request->commit_stage = PCORE_NAV_COMMIT_STYLE;
+            return PCORE_NAV_RESULT_MORE;
+        }
+        request->commit_stage = PCORE_NAV_COMMIT_LAYOUT;
+        return PCORE_NAV_RESULT_CONTINUE;
+    }
+
+    if (request->commit_stage != PCORE_NAV_COMMIT_LAYOUT) {
+        if (report_errors) {
+            show_error(L"Navigation failed", "Invalid UI commit stage");
+        }
+        return PCORE_NAV_RESULT_FAILED;
+    }
     GetClientRect(hwnd, &rc);
     cw = rc.right - rc.left;
     chh = rc.bottom - rc.top;
     if (cw <= 0) { cw = 224; }
     if (chh <= 0) { chh = 320; }
-    PCore_SetViewport(cw, chh, 0);
-
-    if (PCore_StyleDocumentEx(request->document, NULL,
-            pcore_navigation_resource_cb, page_resource_free_cb,
-            request) != 0) {
-        show_error(L"Navigation failed", "PCore_StyleDocument failed");
-        return PCORE_NAV_RESULT_FAILED;
-    }
-
-    /* Populate document-owned image bytes before layout builds the NetSurf
-     * box tree. Fetch failures are intentionally non-fatal: pcore_box keeps
-     * the accessible alt/src fallback for each missing or undecodable image. */
-    PCore_FetchImageResources(request->document,
-            pcore_navigation_resource_cb, page_resource_free_cb,
-            request, NULL, NULL);
-
-    if (pcore_navigation_pending_count(request) > 0) {
-        request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
-        return PCORE_NAV_RESULT_MORE;
-    }
-
     if (PCore_LayoutDocument(request->document, cw, chh) != 0) {
-        show_error(L"Navigation failed", "PCore_LayoutDocument failed");
+        if (report_errors) {
+            show_error(L"Navigation failed", "PCore_LayoutDocument failed");
+        }
         return PCORE_NAV_RESULT_FAILED;
     }
 
@@ -2468,6 +2514,33 @@ static int pcore_navigation_complete(HWND hwnd,
     InvalidateRect(hwnd, NULL, TRUE);
     UpdateWindow(hwnd);
     return PCORE_NAV_RESULT_DONE;
+}
+
+static void pcore_navigation_finish(HWND hwnd,
+        pcore_navigation_request *request)
+{
+    if (hwnd != NULL) {
+        pcore_navigation_set_loading(hwnd, 0);
+    } else {
+        g_nav_loading = 0;
+        g_nav_determinate = 0;
+    }
+    if (request == g_nav_request) {
+        g_nav_request = NULL;
+    }
+    pcore_navigation_request_free(request);
+}
+
+static int pcore_navigation_post_continue(HWND hwnd,
+        pcore_navigation_request *request)
+{
+    g_nav_determinate = 0;
+    g_nav_phase = 0;
+    if (g_nav_bar != NULL) {
+        SendMessage(g_nav_bar, PBM_SETPOS, 0, 0);
+    }
+    (void) request;
+    return SetTimer(hwnd, PCORE_NAV_COMMIT_TIMER, 1, NULL) != 0 ? 0 : 1;
 }
 
 /* Start the main-document stage. Later stages reuse this request for external
@@ -2496,6 +2569,7 @@ static void navigate_to(HWND hwnd, const char *href)
     request->hwnd = hwnd;
     request->generation = ++g_nav_generation;
     request->worker_stage = PCORE_NAV_STAGE_DOCUMENT;
+    request->commit_stage = PCORE_NAV_COMMIT_NONE;
     g_nav_request = request;
     pcore_navigation_set_loading(hwnd, 1);
     if (pcore_navigation_start_worker(request) != 0) {
@@ -2651,6 +2725,15 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         return 0;
     }
     case WM_TIMER:
+        if (wp == PCORE_NAV_COMMIT_TIMER) {
+            KillTimer(hwnd, PCORE_NAV_COMMIT_TIMER);
+            if (g_nav_request != NULL) {
+                SendMessage(hwnd, WM_PCORE_NAV_CONTINUE,
+                        (WPARAM) g_nav_request->generation,
+                        (LPARAM) g_nav_request);
+            }
+            return 0;
+        }
         if (wp == PCORE_NAV_TIMER && g_nav_loading && !g_nav_determinate) {
             int pos;
 
@@ -2690,7 +2773,6 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         return 0;
     case WM_PCORE_NAV_DONE: {
         pcore_navigation_request *request;
-        int result;
 
         request = (pcore_navigation_request *) lp;
         if (g_nav_thread != NULL) {
@@ -2700,18 +2782,37 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         if (request == g_nav_request &&
                 request->generation == g_nav_generation) {
-            result = pcore_navigation_complete(hwnd, request);
-            if (result == PCORE_NAV_RESULT_MORE &&
-                    pcore_navigation_start_worker(request) != 0) {
+            request->commit_stage =
+                    (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) ?
+                    PCORE_NAV_COMMIT_PARSE : PCORE_NAV_COMMIT_STYLE;
+            if (pcore_navigation_post_continue(hwnd, request) != 0) {
+                pcore_navigation_finish(hwnd, request);
+            }
+        }
+        return 0;
+    }
+    case WM_PCORE_NAV_CONTINUE: {
+        pcore_navigation_request *request;
+        int result;
+
+        request = (pcore_navigation_request *) lp;
+        if (request != g_nav_request ||
+                request->generation != g_nav_generation) {
+            return 0;
+        }
+        result = pcore_navigation_commit_step(hwnd, request, 1);
+        if (result == PCORE_NAV_RESULT_CONTINUE) {
+            if (pcore_navigation_post_continue(hwnd, request) != 0) {
+                pcore_navigation_finish(hwnd, request);
+            }
+        } else if (result == PCORE_NAV_RESULT_MORE) {
+            if (pcore_navigation_start_worker(request) != 0) {
                 show_error(L"Navigation failed",
                         "CreateThread failed during resource fetch");
-                result = PCORE_NAV_RESULT_FAILED;
+                pcore_navigation_finish(hwnd, request);
             }
-            if (result != PCORE_NAV_RESULT_MORE) {
-                pcore_navigation_set_loading(hwnd, 0);
-                g_nav_request = NULL;
-                pcore_navigation_request_free(request);
-            }
+        } else {
+            pcore_navigation_finish(hwnd, request);
         }
         return 0;
     }
@@ -6235,6 +6336,74 @@ static BOOL test43_navigation_resource_transaction(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 44 - failed main navigation keeps the visible page, fully offline */
+/* -------------------------------------------------------------------- */
+static BOOL test44_navigation_failure_transaction(void)
+{
+    static const char *OLD_HTML =
+        "<!doctype html><html><body><p>visible page</p></body></html>";
+    pcore_navigation_request *request;
+    PHttpResponse *response;
+    HANDLE old_document;
+    int result;
+    int kept;
+    int cleared;
+    char msg[160];
+
+    if (g_render_doc != NULL || g_nav_request != NULL || g_nav_loading) {
+        show_error(L"TEST 44 FAIL", "navigation globals were not idle");
+        return FALSE;
+    }
+    old_document = PCore_ParseHTML(OLD_HTML, 0);
+    request = (pcore_navigation_request *) malloc(sizeof(*request));
+    response = (PHttpResponse *) HeapAlloc(GetProcessHeap(),
+            HEAP_ZERO_MEMORY, sizeof(*response));
+    if (old_document == NULL || request == NULL || response == NULL) {
+        if (response != NULL) {
+            HeapFree(GetProcessHeap(), 0, response);
+        }
+        if (request != NULL) { free(request); }
+        if (old_document != NULL) { PCore_FreeDocument(old_document); }
+        show_error(L"TEST 44 FAIL", "fixture allocation failed");
+        return FALSE;
+    }
+    memset(request, 0, sizeof(*request));
+    cstr_copy(request->host, sizeof(request->host), "offline.invalid");
+    cstr_copy(request->path, sizeof(request->path), "/missing.html");
+    request->port = 443;
+    request->worker_stage = PCORE_NAV_STAGE_DOCUMENT;
+    request->commit_stage = PCORE_NAV_COMMIT_PARSE;
+    request->response = response;
+    response->status_code = 503;
+    cstr_copy(response->error_msg, sizeof(response->error_msg),
+            "offline fixture failure");
+
+    g_render_doc = old_document;
+    g_nav_request = request;
+    g_nav_loading = 1;
+    result = pcore_navigation_commit_step(NULL, request, 0);
+    kept = result == PCORE_NAV_RESULT_FAILED &&
+            g_render_doc == old_document && request->document == NULL;
+    pcore_navigation_finish(NULL, request);
+    cleared = g_nav_request == NULL && !g_nav_loading &&
+            g_render_doc == old_document;
+
+    g_render_doc = NULL;
+    PCore_FreeDocument(old_document);
+    if (!kept || !cleared) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "result=%d kept=%d cleared=%d", result, kept, cleared);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 44 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 44 OK",
+              "Main-document failure kept the visible document and cleared\n"
+              "the pending transaction/loading state (fully offline).");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -6392,6 +6561,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 41: ok = test41_grid_overflow_flex(); break;
         case 42: ok = test42_overflow_scrollbar(); break;
         case 43: ok = test43_navigation_resource_transaction(); break;
+        case 44: ok = test44_navigation_failure_transaction(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -6488,7 +6658,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40-43). Offline.");
+                                "38, 40-44). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -6517,7 +6687,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-43; offline. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-44; offline. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -6534,6 +6704,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test41_grid_overflow_flex()){ rc = 11; goto done; }
         if (!test42_overflow_scrollbar()){ rc = 11; goto done; }
         if (!test43_navigation_resource_transaction()){ rc = 11; goto done; }
+        if (!test44_navigation_failure_transaction()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -6591,13 +6762,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-43)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-44)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource cache, SVG parse, constrained :root variables,\n"
                "    OKLCH/calc values, grid-overflow containment, scrollbar\n"
-               "    input and staged navigation resource transactions.\n"
+               "    input, staged navigation resources and failure rollback.\n"
                "    Offline.\n\n");
     }
     if (run_render) {
