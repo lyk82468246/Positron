@@ -21,7 +21,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - next38 之后的 stylesheet metadata、base URL、redirect origin 和 timeout 方向暂时挂起，归档分支为 `codex/post-next37-experiments`。
 - next44 已由用户确认 TEST13 全流程完全正常，Browse 冻结基线成立。
 - `positron_image.dll` 公共 retained 位图 ABI、核心兼容转发及 NetSurf 解码对象复用已由 next45 的 TEST19/20 真机确认；TEST26/27 与 TEST13 同批无回归。
-- 公共 DLL 的独立消费实现已完成：ABI 1.0 查询和只依赖 `positron_image.dll`/`COREDLL.dll` 的 WM 示例通过 VS2008 ARM 与 PE 审计；next46 待真机确认后关闭该短期项。
+- 公共 DLL 的独立消费闭环已由 next46 横竖屏确认；曲线在示例小尺寸非等比缩放下略显粗，但不构成原有 SVG 正式链回归。
+- 当前短期批次为 ABI 1.1 原生内存编码：retained 位图经 WM Imaging 已安装编码器输出 PNG/JPEG，结果由 DLL 配套释放；独立示例执行签名检查和重新解码，next47 待真机确认。
 - 任何冻结项重新接入都必须一次只改一个变量，并完整跑通 TEST13 深层导航；仅离线 TEST 不能作为合并依据。
 
 ### 1. M5f：真实 border 绘制验证
@@ -111,6 +112,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 21. **NetSurf overflow scrollbar 已完成当前验收**：移植并 C89 化上游 `desktop/scrollbar.c`，恢复 `descendant_x1/y1` 溢出判定、`box_handle_scrollbars` 创建/更新/成对销毁、祖先 scroll offset 坐标和 GDI redraw。公开 `PCore_OverflowPointer` 把 WM 的 DOWN/MOVE/UP 转发给箭头、page well 与 thumb drag；TEST42 的离屏 16px 步进断言及真机箭头/thumb 交互均已通过。随后新增 `PCore_OverflowDirtyRect`，host 只失效 overflow viewport，不再为每个拖动消息重绘整窗；VS2008 ARM 增量构建 0 错误。仍不宣称触摸惯性、overlay scrollbar 或完整 Grid。
 22. **CSS/图片后台资源事务与单响应进度已真机验收**：pending request 持有未交换 document 与最多 64 个去重 URL；worker 只读显式新页面 origin 并保存总计最多 2 MiB 原始字节，DOM/libcss/NetSurf/GDI 始终留在 UI。TEST3/43/13 已确认真实正文进度、资源去重/失败 fallback 和成功 swap。UI 提交现由一次性 WM timer 拆成 parse/style/image-discovery/layout 四段；单个 NetSurf 调用仍可能卡顿。TEST44 已确认主文档失败保留旧页与事务收尾。2 MiB 是 `test_host` 临时宿主预算，不是产品上限；整页聚合进度、字体和脚本仍未完成。
 23. **CSS `@import` 首批实现已真机验收**：`positron_core` 新增兼容扩展 `PCore_StyleDocumentEx2`，保留旧 ABI，并使用 libcss 原生 `next_pending_import/register_import` 递归解析最多 16 层导入；缺失、循环或超深导入注册空表，使父表后续规则继续生效。URL 策略仍在宿主，WM `test_host` 使用 `InternetCombineUrlA` 处理文档、父表和子表相对引用。成功字节进入现有 document CSS cache，旋转仅 cache-only 重选。TEST45 已确认三层 URL 规范化、一个失败导入、父/子 computed color、首次 fetch/free 计数和二次缓存重选。当前不宣称跨源策略、缓存失效、整页聚合进度或 web fonts 已完成。
+24. **图片 DLL ABI 1.1 编码批次待设备验收**：`PImage_EncodeBitmap` 枚举 WM Imaging 已安装编码器，通过 `CreateImageEncoderToStream` 和 OLE 全局内存流输出 PNG/JPEG；`PImage_FreeBuffer` 保证结果不跨 CRT 释放。独立示例用 16x16 四象限 BMP 分别编码、检查 PNG/JPEG 签名、立即重新解码并在释放输出缓冲后绘制；C89 检查、VS2008 ARM 增量构建和 PE 依赖审计通过。当前不含 JPEG quality 参数、原始像素输入、GIF/BMP 输出或跨线程句柄。
 
 验收：
 
@@ -162,7 +164,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 ### 4. 交互体验
 
-主文档、外部 CSS 和图片 GET 已移出 UI 线程，设备结果待确认。HTML parse、style、document cache copy 与 layout 仍在完成消息的 UI 提交阶段执行，因此复杂页面在全部网络完成后仍可能短暂卡顿。
+主文档、外部 CSS 和图片 GET 已移出 UI 线程并由 TEST3/43/44/13 确认。HTML parse、style、document cache copy 与 layout 仍在完成消息的 UI 提交阶段执行，因此复杂页面在全部网络完成后仍可能短暂卡顿。
 
 建议：
 

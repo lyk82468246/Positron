@@ -7,7 +7,9 @@
 
 #include <windows.h>
 #include <objbase.h>
+#include <ole2.h>
 #include <imaging.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -28,6 +30,14 @@ static const CLSID PIMAGE_CLSID_ImagingFactory =
 
 static const IID PIMAGE_IID_IImagingFactory =
     { 0x327abda7, 0x072b, 0x11d3,
+      { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
+
+static const GUID PIMAGE_FORMAT_PNG =
+    { 0xb96b3caf, 0x0728, 0x11d3,
+      { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
+
+static const GUID PIMAGE_FORMAT_JPEG =
+    { 0xb96b3cae, 0x0728, 0x11d3,
       { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
 
 static HRESULT g_bitmap_last_hr = S_OK;
@@ -68,6 +78,17 @@ static int pimage_bitmap_check_thread(const pimage_bitmap *bitmap)
         return PIMAGE_ERROR_THREAD;
     }
     return PIMAGE_OK;
+}
+
+static const GUID *pimage_encode_format_guid(int format)
+{
+    if (format == PIMAGE_ENCODE_PNG) {
+        return &PIMAGE_FORMAT_PNG;
+    }
+    if (format == PIMAGE_ENCODE_JPEG) {
+        return &PIMAGE_FORMAT_JPEG;
+    }
+    return NULL;
 }
 
 extern "C" PIMAGE_API int PImage_CreateBitmapFromMemory(const char *data,
@@ -240,6 +261,162 @@ extern "C" PIMAGE_API void PImage_FreeBitmap(PIMAGE_BITMAP handle)
         CoUninitialize();
     }
     free(bitmap);
+}
+
+extern "C" PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP handle,
+        int format, unsigned char **out_data, int *out_len)
+{
+    pimage_bitmap *bitmap = (pimage_bitmap *) handle;
+    const GUID *format_guid;
+    IImagingFactory *factory;
+    ImageCodecInfo *encoders;
+    IStream *stream;
+    IImageEncoder *encoder;
+    IImageSink *sink;
+    HGLOBAL global;
+    void *source;
+    unsigned char *copy;
+    UINT encoder_count;
+    UINT i;
+    LARGE_INTEGER move;
+    ULARGE_INTEGER end;
+    HRESULT hr;
+    int result;
+
+    if (out_data == NULL || out_len == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ARGUMENT, E_INVALIDARG);
+        return PIMAGE_ERROR_ARGUMENT;
+    }
+    *out_data = NULL;
+    *out_len = 0;
+    result = pimage_bitmap_check_thread(bitmap);
+    if (result != PIMAGE_OK) {
+        return result;
+    }
+    format_guid = pimage_encode_format_guid(format);
+    if (format_guid == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ARGUMENT, E_INVALIDARG);
+        return PIMAGE_ERROR_ARGUMENT;
+    }
+
+    factory = NULL;
+    encoders = NULL;
+    stream = NULL;
+    encoder = NULL;
+    sink = NULL;
+    source = NULL;
+    copy = NULL;
+    global = NULL;
+    encoder_count = 0;
+    hr = CoCreateInstance(PIMAGE_CLSID_ImagingFactory, NULL,
+            CLSCTX_INPROC_SERVER, PIMAGE_IID_IImagingFactory,
+            (void **) &factory);
+    if (FAILED(hr) || factory == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_FACTORY, hr);
+        return PIMAGE_ERROR_PLATFORM;
+    }
+    hr = factory->GetInstalledEncoders(&encoder_count, &encoders);
+    if (FAILED(hr) || encoders == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ENCODER_LIST, hr);
+        factory->Release();
+        return PIMAGE_ERROR_PLATFORM;
+    }
+    for (i = 0; i < encoder_count; i++) {
+        if (IsEqualGUID(encoders[i].FormatID, *format_guid)) {
+            break;
+        }
+    }
+    if (i == encoder_count) {
+        CoTaskMemFree(encoders);
+        factory->Release();
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ENCODER_LIST,
+                IMGERR_CODECNOTFOUND);
+        return PIMAGE_ERROR_UNSUPPORTED;
+    }
+
+    hr = CreateStreamOnHGlobal(NULL, TRUE, &stream);
+    if (FAILED(hr) || stream == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_STREAM, hr);
+    } else {
+        hr = factory->CreateImageEncoderToStream(&encoders[i].Clsid,
+                stream, &encoder);
+        if (FAILED(hr) || encoder == NULL) {
+            pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ENCODER, hr);
+        }
+    }
+    CoTaskMemFree(encoders);
+    factory->Release();
+    if (FAILED(hr) || stream == NULL || encoder == NULL) {
+        if (stream != NULL) {
+            stream->Release();
+        }
+        return PIMAGE_ERROR_PLATFORM;
+    }
+
+    hr = encoder->GetEncodeSink(&sink);
+    if (FAILED(hr) || sink == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_SINK, hr);
+    } else {
+        hr = bitmap->image->PushIntoSink(sink);
+        sink->Release();
+        sink = NULL;
+        if (FAILED(hr)) {
+            pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_SINK, hr);
+        }
+    }
+    if (SUCCEEDED(hr)) {
+        hr = encoder->TerminateEncoder();
+        if (FAILED(hr)) {
+            pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ENCODER, hr);
+        }
+    }
+    encoder->Release();
+    encoder = NULL;
+    if (FAILED(hr)) {
+        stream->Release();
+        return PIMAGE_ERROR_PLATFORM;
+    }
+
+    move.QuadPart = 0;
+    end.QuadPart = 0;
+    hr = stream->Seek(move, STREAM_SEEK_END, &end);
+    if (FAILED(hr) || end.QuadPart == 0 || end.QuadPart > INT_MAX) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_OUTPUT,
+                FAILED(hr) ? hr : E_FAIL);
+        stream->Release();
+        return PIMAGE_ERROR_PLATFORM;
+    }
+    hr = GetHGlobalFromStream(stream, &global);
+    if (SUCCEEDED(hr)) {
+        source = GlobalLock(global);
+        if (source == NULL) {
+            hr = E_OUTOFMEMORY;
+        }
+    }
+    if (FAILED(hr)) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_OUTPUT, hr);
+        stream->Release();
+        return PIMAGE_ERROR_PLATFORM;
+    }
+    copy = (unsigned char *) malloc((size_t) end.QuadPart);
+    if (copy == NULL) {
+        GlobalUnlock(global);
+        stream->Release();
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_MEMORY, E_OUTOFMEMORY);
+        return PIMAGE_ERROR_MEMORY;
+    }
+    memcpy(copy, source, (size_t) end.QuadPart);
+    GlobalUnlock(global);
+    stream->Release();
+    *out_data = copy;
+    *out_len = (int) end.QuadPart;
+    pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_NONE, S_OK);
+    return PIMAGE_OK;
+}
+
+extern "C" PIMAGE_API void PImage_FreeBuffer(void *buffer)
+{
+    free(buffer);
 }
 
 extern "C" PIMAGE_API void PImage_BitmapLastError(int *out_stage,

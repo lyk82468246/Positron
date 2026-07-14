@@ -18,7 +18,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1：HTTPS via mbedTLS，明文 HTTP via WinInet) | ✅ 完成，WM6 Emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
 | **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、缓存图片链、CSS 背景图与 NetSurf overflow scrollbar 已真机验证，窄屏复杂布局仍待补 |
-| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 BMP/PNG/JPEG/GIF retained C ABI、核心缓存复用与 SVG 能力均已真机验证；ABI 1.0 与独立消费者已构建，待 next46 真机确认 |
+| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 retained 解码、SVG 与 ABI 1.0 独立消费均已真机验证；ABI 1.1 原生 PNG/JPEG 内存编码待 next47 确认 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
@@ -28,7 +28,7 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 的 BMP/PNG/JPEG/GIF 与缓存 `<img>` 链已真机验证。`positron_image.dll` 公共 C ABI 已接通 WM Imaging、Expat、libdom XML、libsvgtiny 与 NanoSVG rasterizer；`PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap/FreeBitmap` retained 位图对象会复制输入字节，NetSurf 图片载体也复用同一解码对象。2026-07-15 的 TEST19/20 已确认四格式颜色、清空调用方缓冲后重复绘制、损坏输入拒绝、旧核心 ABI 转发与正式缓存链；TEST26/27 和 TEST13 同批无回归。
 
-最新设备反馈（2026-07-15）：next44 的 TEST13 全流程确认 next37 恢复点可作为 Browse 冻结基线；next45 又确认公共位图 ABI 的 TEST19 四格式、TEST20 缓存图片、TEST26/27 SVG 与 TEST13 全流程均正常。当前已加入图片 ABI 1.0 查询和独立 WM 消费示例，VS2008 ARM 增量构建与 PE 依赖审计通过，next46 只待示例真机确认；不重启 next38 之后的导航实验。此前 TEST29-45 的 SVG、现代 CSS 值、grid 宽度隔离、NetSurf overflow scrollbar 与 CSS import tree 验收基线继续保留。
+最新设备反馈（2026-07-15）：next44 的 TEST13 全流程确认 next37 恢复点可作为 Browse 冻结基线；next45 又确认公共位图 ABI 的 TEST19 四格式、TEST20 缓存图片、TEST26/27 SVG 与 TEST13 全流程均正常。next46 的 ABI 1.0 独立 WM 示例也已在横竖屏确认，SVG 曲线缩放后的平滑观感略逊于先前大图但可接受。当前 ABI 1.1 继续复用 WM Imaging，新增 retained 位图到 PNG/JPEG 内存编码、DLL 配套释放和编码后重新解码闭环，VS2008 ARM 与 PE 审计已通过，待 next47 真机确认；不重启 next38 之后的导航实验。
 
 当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已由 TEST42 验收，但不包含触摸惯性或 overlay scrollbar。CSS `@import` 的嵌套解析、失败空表回退和文档缓存已由 TEST45 验收；它尚不代表跨源策略、完整缓存失效或整页资源进度已完成。`background-size`、多层背景、web fonts 和脚本资源仍未实现。UI 提交已在 parse/style/image-discovery/layout 四个调用之间让出 WM 消息循环，单个不可重入的 NetSurf 调用仍可能短暂卡顿。复杂 SVG text、动态状态伪类、float、复杂 table、forms/widgets 仍不完整；JavaScript 尚未实现但属于长期必做目标。
 

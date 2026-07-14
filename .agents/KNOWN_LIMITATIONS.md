@@ -55,6 +55,7 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
 - **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。2026-07-15 next45 又确认公共位图句柄的四格式颜色、清空调用方输入后的重复绘制、损坏输入拒绝、旧 `PCore_Image*` 转发和 NetSurf retained redraw；TEST13/26/27 同批无回归。句柄仍只允许在创建线程使用和释放。为保证 WM Imaging 的惰性解码数据源始终有效，句柄存活期间会保留一份编码字节；core 的 document cache 也保留原字节以支持重布局，因此当前以额外编码内存换取重绘不重复解码。TEST25-37/13 的 SVG 真机结论保持不变。CSS 背景仍不含 background-size 和多层背景；SVG 仍缺复杂 shaping、`textPath`、逐字 dx/dy、任意 shear、径向焦点 `fx/fy` 或 spread method。单次栅格源缓冲限制为 1,048,576 像素，超大输出会降低内部采样分辨率后再缩放。
+- **独立消费与编码**：next46 已确认只导入 `positron_image.dll`/`COREDLL.dll` 的 ABI 1.0 示例横竖屏工作；其 SVG 被缩放到较窄目标矩形后曲线略粗，用户判定可接受，不改变 TEST26/27 的抗锯齿基线。ABI 1.1 的 PNG/JPEG 内存编码已通过本机构建和编码后重新解码断言设计，next47 待设备确认。编码器来自 WM Imaging 安装列表；设备缺少对应 codec 时返回 unsupported，不自行实现格式。JPEG 暂用设备默认质量，尚无质量参数、原始像素输入或 GIF/BMP 输出。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则

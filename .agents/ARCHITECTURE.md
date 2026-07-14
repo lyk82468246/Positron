@@ -21,7 +21,7 @@ Positron 是 Windows Mobile 6 / WinCE 5.02 的现代基础设施集合，同时�
 - `positron_json.dll`：稳定的 JSON C API。
 - `positron_http.dll`：HTTP/HTTPS，复用 TLS 和系统网络能力。
 - `positron_core.dll`：HTML/CSS/DOM/layout/redraw 的产品级引擎边界。
-- `positron_image.dll`：统一 WM Imaging 位图与 SVG 能力，可被 core 或其他 WM 程序独立调用。公共 API 同时提供 opaque bitmap/SVG create/info/draw/free 和 `PImage_GetAbiVersion`；DLL 复制位图输入字节并持有原生 `IImage`，不向调用方暴露 COM、NetSurf 对象或跨 CRT 所有权。`positron_core` 的旧 `PCore_Image*` 保留为兼容转发。
+- `positron_image.dll`：统一 WM Imaging 位图与 SVG 能力，可被 core 或其他 WM 程序独立调用。公共 API 同时提供 opaque bitmap/SVG create/info/draw/free、ABI 查询，以及 retained 位图到 PNG/JPEG 内存编码；DLL 复制位图输入字节并持有原生 `IImage`，编码结果由 DLL 分配并以 `PImage_FreeBuffer` 释放，不向调用方暴露 COM、NetSurf 对象或跨 CRT 所有权。`positron_core` 的旧 `PCore_Image*` 保留为兼容转发。
 
 公共 DLL 使用稳定 C ABI、UTF-8 字符串和 opaque handle。不得向调用者暴露 C++ ABI、NetSurf 内部结构或第三方库的易变类型。
 
@@ -66,4 +66,4 @@ positron_core.dll  -> positron_image.dll + NetSurf/libdom/libcss static librarie
 
 这样图片能力既服务浏览器，也成为 WM 平台可复用的现代基础设施。
 
-`samples/positron_image_demo` 是边界验证样例：其 PE 导入表只含 `positron_image.dll` 和系统 `COREDLL.dll`，不链接 `positron_core`、`test_host` 或 NetSurf。它同时演示 ABI 协商、retained 位图和 retained SVG 的创建、查询、绘制与释放。
+`samples/positron_image_demo` 是边界验证样例：其 PE 导入表只含 `positron_image.dll` 和系统 `COREDLL.dll`，不链接 `positron_core`、`test_host` 或 NetSurf。它同时演示 ABI 协商、retained 位图/SVG，以及 PNG/JPEG 编码结果的配套释放与重新解码。

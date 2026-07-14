@@ -31,7 +31,7 @@ extern "C" {
 #define PIMAGE_ABI_VERSION_GET_MINOR(version) \
     ((unsigned int) ((unsigned long) (version) & 0xffffUL))
 #define PIMAGE_ABI_VERSION_MAJOR 1
-#define PIMAGE_ABI_VERSION_MINOR 0
+#define PIMAGE_ABI_VERSION_MINOR 1
 #define PIMAGE_ABI_VERSION \
     PIMAGE_ABI_VERSION_ENCODE(PIMAGE_ABI_VERSION_MAJOR, \
             PIMAGE_ABI_VERSION_MINOR)
@@ -45,6 +45,7 @@ enum {
     PIMAGE_ERROR_DRAW = 3,
     PIMAGE_ERROR_PLATFORM = 4,
     PIMAGE_ERROR_THREAD = 5,
+    PIMAGE_ERROR_UNSUPPORTED = 6,
     PIMAGE_ERROR_SVG_BASE = 100
 };
 
@@ -57,7 +58,17 @@ enum {
     PIMAGE_BITMAP_STAGE_INFO = 5,
     PIMAGE_BITMAP_STAGE_DRAW = 6,
     PIMAGE_BITMAP_STAGE_MEMORY = 7,
-    PIMAGE_BITMAP_STAGE_THREAD = 8
+    PIMAGE_BITMAP_STAGE_THREAD = 8,
+    PIMAGE_BITMAP_STAGE_ENCODER_LIST = 9,
+    PIMAGE_BITMAP_STAGE_STREAM = 10,
+    PIMAGE_BITMAP_STAGE_ENCODER = 11,
+    PIMAGE_BITMAP_STAGE_SINK = 12,
+    PIMAGE_BITMAP_STAGE_OUTPUT = 13
+};
+
+enum {
+    PIMAGE_ENCODE_PNG = 1,
+    PIMAGE_ENCODE_JPEG = 2
 };
 
 typedef HANDLE PIMAGE_BITMAP;
@@ -79,6 +90,14 @@ PIMAGE_API int PImage_DrawBitmap(PIMAGE_BITMAP bitmap, HDC hdc,
         int x, int y, int width, int height);
 
 PIMAGE_API void PImage_FreeBitmap(PIMAGE_BITMAP bitmap);
+
+/* Encode a retained bitmap through the installed Windows Mobile Imaging
+ * codec. The DLL allocates the result; release it with PImage_FreeBuffer.
+ * PNG is lossless. JPEG currently uses the device codec's default quality. */
+PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP bitmap, int format,
+        unsigned char **out_data, int *out_len);
+
+PIMAGE_API void PImage_FreeBuffer(void *buffer);
 
 /* Process-global diagnostic for the immediately preceding bitmap call.
  * stage is one of PIMAGE_BITMAP_STAGE_*; hr is the native HRESULT. */

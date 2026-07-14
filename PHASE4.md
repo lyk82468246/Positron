@@ -146,7 +146,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    TEST13 已真机确认 `white-space:normal/nowrap` 的源码 LF 方框消失且词间距正常。TEST15 的正反断言随后确认 `normal_ws=ok pre_lf=kept`；最小 UA CSS 已按 NetSurf `resources/default.css` 补齐 `pre { white-space:pre }`。旋转时滚动位置按旧/新可滚动范围保持相对进度，扩展 TEST24 与真实 Browse 旋转均已由设备确认。
 
 8. **后台导航第一阶段**
-   主文档 GET 已移到 worker；旧页继续绘制和滚动，顶部显示不定量 loading 条，response 通过窗口消息回 UI 线程后才 parse/style/layout/swap。窗口退出会等待并回收 worker。VS2008 Debug 全量重建 9/9 通过，待设备确认。外链 CSS/图片 fetch 仍在 UI 提交阶段，尚不能宣称完整导航无冻结。
+   主文档、外链 CSS、CSS `@import` 与图片 GET 已移到分阶段 worker；旧页继续绘制和滚动，response 通过窗口消息回 UI 线程后才 parse/style/layout/swap。TEST3/43/44/13 已确认进度、资源事务、失败回滚和真实 Browse。单个 UI 线程 NetSurf 调用仍可能短暂卡顿，不能宣称完整导航无冻结。
 
 更完整规划见 [.agents/ROADMAP.md](.agents/ROADMAP.md)。
 
@@ -191,7 +191,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 - **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table/border、`<img>` alt fallback、资源缓存与 BMP object/redraw 链；Browse host 已在 layout 前调用图片资源获取。PNG/JPEG/GIF、SVG、float、forms/widgets、复杂 table 仍需分阶段补。
 - **border redraw 已通过内置页验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制来自 NetSurf `redraw_border.c`；TEST 17 已确认 solid/dashed/table cell 边框可见，复杂真实页面仍需持续观察。
-- **图片路径采用公共 DLL 边界**：BMP/PNG/JPEG/GIF、SVG、CSS 单背景图与缓存 `<img>` 已有真机基线。新的 retained WM 位图句柄已进入 `positron_image.dll`，core 不再直接拥有 `IImage`；该迁移待 TEST19/20 复验，解码失败仍回退 alt/src 文本。
+- **图片路径采用公共 DLL 边界**：BMP/PNG/JPEG/GIF、SVG、CSS 单背景图与缓存 `<img>` 已有真机基线。retained WM 位图迁移已由 next45 的 TEST19/20 与 TEST13 确认，ABI 1.0 独立消费又由 next46 确认；ABI 1.1 继续用 WM Imaging 增加 PNG/JPEG 内存编码，待 next47 设备验收。解码失败仍回退 alt/src 文本。
 - **部分 CSS selector 仍待补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已由 TEST 9 真机验证；动态状态伪类仍为 no-match，会影响真实网页样式命中。
 - **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。
