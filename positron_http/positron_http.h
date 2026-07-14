@@ -1,6 +1,6 @@
 /*
  * positron_http.h - HTTP/1.1 client for the Positron framework.
- * Built on positron_tls; no WinInet, no SChannel.
+ * Modern HTTPS is built on positron_tls; plaintext HTTP uses WM WinInet.
  *
  * Phase 3 status:
  *   - HTTPS only (port is for clarity / future plain HTTP)
@@ -38,6 +38,15 @@ typedef struct PHttpResponse {
                                occurred (resp may still be non-NULL) */
 } PHttpResponse;
 
+/* Called synchronously on the thread running PHttp_GetEx/PHttp_PostEx.
+ * received is the decoded response-body byte count accumulated so far.
+ * total is Content-Length when known, or -1 for chunked/close-delimited
+ * responses. Redirected responses may start a new sequence at zero.
+ * Keep callbacks short and do not call PHttp_Cleanup from inside one. */
+typedef void (*PHttpProgressCallback)(void* user_data,
+                                      int received,
+                                      int total);
+
 /* Initialize HTTP module. Internally calls PTls_Init. */
 PHTTP_API BOOL PHttp_Init(void);
 
@@ -72,6 +81,17 @@ PHTTP_API PHttpResponse* PHttp_Get(
     const char** headers
 );
 
+/* Progress-reporting GET. The legacy PHttp_Get ABI is unchanged and is
+ * equivalent to calling this function with progress == NULL. */
+PHTTP_API PHttpResponse* PHttp_GetEx(
+    const char*           host,
+    int                   port,
+    const char*           path,
+    const char**          headers,
+    PHttpProgressCallback progress,
+    void*                 user_data
+);
+
 /*
  * Perform HTTPS POST. Same conventions as PHttp_Get.
  *
@@ -87,6 +107,19 @@ PHTTP_API PHttpResponse* PHttp_Post(
     const char** headers,
     const char*  body,
     int          body_len
+);
+
+/* Progress-reporting POST; response progress has the same semantics as
+ * PHttp_GetEx. Upload progress is not reported. */
+PHTTP_API PHttpResponse* PHttp_PostEx(
+    const char*           host,
+    int                   port,
+    const char*           path,
+    const char**          headers,
+    const char*           body,
+    int                   body_len,
+    PHttpProgressCallback progress,
+    void*                 user_data
 );
 
 /* Free a response returned by PHttp_Get / PHttp_Post. NULL-safe. */

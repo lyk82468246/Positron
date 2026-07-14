@@ -2,7 +2,8 @@
  * positron_http.c - HTTP/1.1 client over positron_tls.
  *
  * Lives on top of positron_tls (linked directly via .lib import).
- * No WinInet. No keep-alive in this phase (Connection: close).
+ * Plain HTTP uses WM WinInet; modern HTTPS uses positron_tls.
+ * No keep-alive in this phase (Connection: close).
  *
  * C89 only: no slash-slash comments, no mid-block declarations.
  */
@@ -22,6 +23,14 @@
 
 static BOOL g_initialized = FALSE;
 static BOOL g_insecure    = FALSE;   /* default: verify chain + hostname */
+
+static void report_progress(PHttpProgressCallback progress, void* user_data,
+                            int received, int total)
+{
+    if (progress != NULL) {
+        progress(user_data, received, total);
+    }
+}
 
 /* ------------------------------------------------------------------- */
 /* DllMain                                                              */
@@ -391,7 +400,9 @@ static int read_until_headers(HANDLE conn, bytebuf* buf)
  * decoded bytes to out_body. */
 static int decode_chunked(HANDLE conn,
                           const char* prefix, int prefix_len,
-                          bytebuf* out_body)
+                          bytebuf* out_body,
+                          PHttpProgressCallback progress,
+                          void* user_data)
 {
     bytebuf raw;
     size_t  pos;
@@ -483,6 +494,7 @@ static int decode_chunked(HANDLE conn,
             bb_free(&raw);
             return -1;
         }
+        report_progress(progress, user_data, (int)out_body->len, -1);
         pos += chunk_size + 2;   /* skip data + trailing \r\n */
     }
 }
@@ -650,7 +662,8 @@ static int wininet_fetch(const char* method, const char* host, int port,
                          const char* path, const char** headers,
                          const char* body, int body_len,
                          int* out_status, char* out_loc, int loc_cap,
-                         bytebuf* outbody, PHttpResponse* resp)
+                         bytebuf* outbody, PHttpResponse* resp,
+                         PHttpProgressCallback progress, void* user_data)
 {
     HINTERNET hInet = NULL;
     HINTERNET hConn = NULL;
@@ -661,6 +674,8 @@ static int wininet_fetch(const char* method, const char* host, int port,
     DWORD     flags;
     DWORD     code;
     DWORD     sz;
+    DWORD     content_length;
+    int       total;
     int       rc = 1;
 
     out_loc[0] = '\0';
@@ -732,6 +747,17 @@ static int wininet_fetch(const char* method, const char* host, int port,
         }
     }
 
+    content_length = 0;
+    sz = sizeof(content_length);
+    total = -1;
+    if (HttpQueryInfoW(hReq,
+            HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER,
+            &content_length, &sz, NULL)) {
+        total = (content_length <= 0x7fffffffUL) ?
+                (int)content_length : -1;
+    }
+    report_progress(progress, user_data, 0, total);
+
     {
         char  tmp[2048];
         DWORD got;
@@ -745,6 +771,7 @@ static int wininet_fetch(const char* method, const char* host, int port,
             if (bb_append(outbody, tmp, (size_t)got) != 0) {
                 break;
             }
+            report_progress(progress, user_data, (int)outbody->len, total);
             if (outbody->len >= MAX_RESP_BODY) {
                 break;
             }
@@ -771,7 +798,9 @@ wdone:
 static PHttpResponse* http_request(const char* method, const char* host,
                                    int port, const char* path,
                                    const char** headers,
-                                   const char* body, int body_len)
+                                   const char* body, int body_len,
+                                   PHttpProgressCallback progress,
+                                   void* user_data)
 {
     PHttpResponse* resp;
     HANDLE         conn;
@@ -832,7 +861,8 @@ static PHttpResponse* http_request(const char* method, const char* host,
             if (cur_port == 80) {
                 if (wininet_fetch(method, cur_host, cur_port, cur_path,
                         headers, body, body_len, &status,
-                        location, sizeof(location), &bodybuf, resp) != 0) {
+                        location, sizeof(location), &bodybuf, resp,
+                        progress, user_data) != 0) {
                     goto done;   /* error already set */
                 }
                 resp->status_code = status;
@@ -933,18 +963,31 @@ static PHttpResponse* http_request(const char* method, const char* host,
             if (is_chunked(recvbuf.data, (size_t)body_start)) {
                 const char* prefix = recvbuf.data + body_start;
                 int prefix_len = (int)recvbuf.len - body_start;
-                if (decode_chunked(conn, prefix, prefix_len, &bodybuf) != 0) {
+                report_progress(progress, user_data, 0, -1);
+                if (decode_chunked(conn, prefix, prefix_len, &bodybuf,
+                        progress, user_data) != 0) {
                     resp_set_error(resp, "chunked decode failed");
                     /* still keep partial body */
                 }
             } else {
                 cl = parse_content_length(recvbuf.data, (size_t)body_start);
+                report_progress(progress, user_data, 0, cl);
                 if (recvbuf.len > (size_t)body_start) {
-                    bb_append(&bodybuf,
-                              recvbuf.data + body_start,
-                              recvbuf.len - (size_t)body_start);
+                    size_t prefix_len;
+
+                    prefix_len = recvbuf.len - (size_t)body_start;
+                    if (cl >= 0 && prefix_len > (size_t)cl) {
+                        prefix_len = (size_t)cl;
+                    }
+                    if (bb_append(&bodybuf, recvbuf.data + body_start,
+                            prefix_len) != 0) {
+                        resp_set_error(resp, "response body too large");
+                        goto done;
+                    }
+                    report_progress(progress, user_data,
+                            (int)bodybuf.len, cl);
                 }
-                if (cl > 0) {
+                if (cl >= 0) {
                     char tmp[2048];
                     int  remaining = cl - (int)bodybuf.len;
                     int  got;
@@ -960,6 +1003,8 @@ static PHttpResponse* http_request(const char* method, const char* host,
                             break;
                         }
                         remaining -= got;
+                        report_progress(progress, user_data,
+                                (int)bodybuf.len, cl);
                     }
                 } else {
                     /* No CL, not chunked: read until close. */
@@ -973,6 +1018,8 @@ static PHttpResponse* http_request(const char* method, const char* host,
                         if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
                             break;
                         }
+                        report_progress(progress, user_data,
+                                (int)bodybuf.len, -1);
                         if (bodybuf.len >= MAX_RESP_BODY) {
                             break;
                         }
@@ -1012,7 +1059,17 @@ PHTTP_API PHttpResponse* PHttp_Get(const char* host, int port,
                                    const char* path,
                                    const char** headers)
 {
-    return http_request("GET", host, port, path, headers, NULL, 0);
+    return PHttp_GetEx(host, port, path, headers, NULL, NULL);
+}
+
+PHTTP_API PHttpResponse* PHttp_GetEx(const char* host, int port,
+                                     const char* path,
+                                     const char** headers,
+                                     PHttpProgressCallback progress,
+                                     void* user_data)
+{
+    return http_request("GET", host, port, path, headers, NULL, 0,
+                        progress, user_data);
 }
 
 PHTTP_API PHttpResponse* PHttp_Post(const char* host, int port,
@@ -1020,7 +1077,19 @@ PHTTP_API PHttpResponse* PHttp_Post(const char* host, int port,
                                     const char** headers,
                                     const char* body, int body_len)
 {
-    return http_request("POST", host, port, path, headers, body, body_len);
+    return PHttp_PostEx(host, port, path, headers, body, body_len,
+                        NULL, NULL);
+}
+
+PHTTP_API PHttpResponse* PHttp_PostEx(const char* host, int port,
+                                      const char* path,
+                                      const char** headers,
+                                      const char* body, int body_len,
+                                      PHttpProgressCallback progress,
+                                      void* user_data)
+{
+    return http_request("POST", host, port, path, headers, body, body_len,
+                        progress, user_data);
 }
 
 PHTTP_API void PHttp_FreeResponse(PHttpResponse* resp)

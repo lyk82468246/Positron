@@ -497,16 +497,42 @@ static BOOL test2_json(void)
 /* offline TEST 2 is the JSON unit test and TEST 4 parses nested JSON.)  */
 /* -------------------------------------------------------------------- */
 
+typedef struct http_progress_probe {
+    int calls;
+    int monotonic;
+    int last_received;
+    int last_total;
+} http_progress_probe;
+
+static void test3_progress_cb(void *pw, int received, int total)
+{
+    http_progress_probe *probe;
+
+    probe = (http_progress_probe *) pw;
+    if (probe->calls > 0 && (received < probe->last_received ||
+            (probe->last_total >= 0 && total != probe->last_total))) {
+        probe->monotonic = 0;
+    }
+    probe->calls++;
+    probe->last_received = received;
+    probe->last_total = total;
+}
+
 static BOOL test3_get(void)
 {
     PHttpResponse* resp;
+    http_progress_probe progress;
     const char*    body;
     char           ip[64];
     int            i;
     int            dots;
     char           msg[512];
 
-    resp = PHttp_Get("checkip.amazonaws.com", 443, "/", NULL);
+    memset(&progress, 0, sizeof(progress));
+    progress.monotonic = 1;
+    progress.last_total = -2;
+    resp = PHttp_GetEx("checkip.amazonaws.com", 443, "/", NULL,
+            test3_progress_cb, &progress);
     if (resp == NULL) {
         show_error(L"TEST 3 FAIL", "PHttp_Get returned NULL (OOM?)");
         return FALSE;
@@ -516,6 +542,20 @@ static BOOL test3_get(void)
                   "HTTPS GET checkip -> status=%d err=%s\nbody (first 200):\n%.200s",
                   resp->status_code, resp->error_msg,
                   resp->body ? resp->body : "(none)");
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 3 FAIL", msg);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+    if (progress.calls < 2 || !progress.monotonic ||
+            progress.last_received != resp->body_len ||
+            (progress.last_total >= 0 &&
+             progress.last_total != resp->body_len)) {
+        _snprintf(msg, sizeof(msg) - 1,
+                  "progress: calls=%d monotonic=%d received=%d total=%d body=%d",
+                  progress.calls, progress.monotonic,
+                  progress.last_received, progress.last_total,
+                  resp->body_len);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 3 FAIL", msg);
         PHttp_FreeResponse(resp);
@@ -552,7 +592,7 @@ static BOOL test3_get(void)
 
     _snprintf(msg, sizeof(msg) - 1,
               "HTTPS GET checkip.amazonaws.com OK\n\nYour public IP:\n%s\n\n"
-              "(Proves TLS 1.2 + HTTPS GET round trip; China-direct.)", ip);
+              "(TLS 1.2 GET + monotonic body progress; China-direct.)", ip);
     msg[sizeof(msg) - 1] = '\0';
     show_info(L"TEST 3 OK", msg);
 
@@ -1776,6 +1816,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 };
 
 #define WM_PCORE_NAV_DONE (WM_APP + 1)
+#define WM_PCORE_NAV_PROGRESS (WM_APP + 2)
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_STAGE_DOCUMENT 1
 #define PCORE_NAV_STAGE_RESOURCES 2
@@ -1805,6 +1846,9 @@ typedef struct pcore_navigation_request {
     int            resource_count;
     int            resource_bytes;
     int            worker_stage;
+    int            progress_last_total;
+    int            progress_last_percent;
+    int            progress_last_received;
 } pcore_navigation_request;
 
 static HANDLE                    g_nav_thread = NULL;
@@ -1814,6 +1858,7 @@ static int                       g_nav_bar_h = 0;
 static LONG                      g_nav_generation = 0;
 static int                       g_nav_loading = 0;
 static int                       g_nav_phase = 0;
+static int                       g_nav_determinate = 0;
 
 /* Current page origin, for resolving relative links during navigation. */
 static char   g_cur_host[256] = "";
@@ -1866,14 +1911,16 @@ static void pcore_scroll_by(HWND hwnd, int dy)
      * exposed strip; the following WM_PAINT repaints just that strip at the
      * new scroll offset. Far cheaper than repainting the whole client. */
     scroll_rc = rc;
-    if (g_nav_loading && scroll_rc.bottom - scroll_rc.top > 5) {
-        scroll_rc.top += 5;
+    if (g_nav_loading && g_nav_bar_h > 0 &&
+            scroll_rc.bottom - scroll_rc.top > g_nav_bar_h) {
+        scroll_rc.top += g_nav_bar_h;
     }
     ScrollWindowEx(hwnd, 0, -applied, &scroll_rc, &scroll_rc,
             NULL, NULL, SW_INVALIDATE);
     if (g_nav_loading) {
         RECT loading_rc = rc;
-        loading_rc.bottom = loading_rc.top + 5;
+        loading_rc.bottom = loading_rc.top +
+                ((g_nav_bar_h > 0) ? g_nav_bar_h : 6);
         InvalidateRect(hwnd, &loading_rc, FALSE);
     }
     UpdateWindow(hwnd);
@@ -2192,6 +2239,7 @@ static void pcore_navigation_set_loading(HWND hwnd, int loading)
 
     g_nav_loading = loading;
     g_nav_phase = 0;
+    g_nav_determinate = 0;
     if (loading) {
         GetClientRect(hwnd, &r);
         width = r.right - r.left;
@@ -2223,6 +2271,58 @@ static void pcore_navigation_set_loading(HWND hwnd, int loading)
     InvalidateRect(hwnd, &r, TRUE);
 }
 
+/* PHttp invokes this on the navigation worker. Coalesce notifications before
+ * posting them to the WM window queue: a message per 2 KB TLS read would make
+ * the old page less responsive on a slow device. Known-length transfers post
+ * at two-percent steps; unknown-length transfers post every 16 KiB. */
+static void pcore_navigation_progress(void *pw, int received, int total)
+{
+    pcore_navigation_request *request;
+    int percent;
+    int post;
+
+    request = (pcore_navigation_request *) pw;
+    if (request == NULL) {
+        return;
+    }
+    post = 0;
+    percent = -1;
+    if (total != request->progress_last_total) {
+        post = 1;
+    } else if (total > 0) {
+        percent = (received >= total) ? 100 : (received * 100) / total;
+        if (percent >= request->progress_last_percent + 2 ||
+                received >= total) {
+            post = 1;
+        }
+    } else if (received == 0 || received >=
+            request->progress_last_received + 16384) {
+        post = 1;
+    }
+    if (!post) {
+        return;
+    }
+    if (percent < 0 && total > 0) {
+        percent = (received >= total) ? 100 : (received * 100) / total;
+    }
+    request->progress_last_total = total;
+    request->progress_last_percent = percent;
+    request->progress_last_received = received;
+    PostMessage(request->hwnd, WM_PCORE_NAV_PROGRESS,
+            (WPARAM) received, (LPARAM) total);
+}
+
+static PHttpResponse *pcore_navigation_get(
+        pcore_navigation_request *request, const char *host, int port,
+        const char *path)
+{
+    request->progress_last_total = -2;
+    request->progress_last_percent = -2;
+    request->progress_last_received = -16384;
+    return PHttp_GetEx(host, port, path, NULL,
+            pcore_navigation_progress, request);
+}
+
 static DWORD WINAPI pcore_navigation_worker(LPVOID param)
 {
     pcore_navigation_request *request;
@@ -2235,8 +2335,8 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
 
     request = (pcore_navigation_request *) param;
     if (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) {
-        request->response = PHttp_Get(request->host, request->port,
-                request->path, NULL);
+        request->response = pcore_navigation_get(request, request->host,
+                request->port, request->path);
     } else {
         for (entry = request->resources; entry != NULL;
                 entry = entry->next) {
@@ -2250,7 +2350,7 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                     sizeof(path), &port)) {
                 continue;
             }
-            resp = PHttp_Get(host, port, path, NULL);
+            resp = pcore_navigation_get(request, host, port, path);
             if (resp != NULL && resp->status_code == 200 &&
                     resp->body != NULL && resp->body_len > 0 &&
                     resp->body_len <= PCORE_NAV_RESOURCE_BYTES_MAX -
@@ -2551,7 +2651,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         return 0;
     }
     case WM_TIMER:
-        if (wp == PCORE_NAV_TIMER && g_nav_loading) {
+        if (wp == PCORE_NAV_TIMER && g_nav_loading && !g_nav_determinate) {
             int pos;
 
             g_nav_phase = (g_nav_phase + 1) % 21;
@@ -2563,6 +2663,31 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             return 0;
         }
         break;
+    case WM_PCORE_NAV_PROGRESS:
+        if (g_nav_loading && g_nav_bar != NULL) {
+            int received;
+            int total;
+            int pos;
+
+            received = (int) wp;
+            total = (int) lp;
+            if (total >= 0) {
+                g_nav_determinate = 1;
+                if (total == 0 || received >= total) {
+                    pos = 100;
+                } else {
+                    pos = (received * 100) / total;
+                }
+                if (pos < 0) { pos = 0; }
+                if (pos > 100) { pos = 100; }
+                SendMessage(g_nav_bar, PBM_SETPOS, (WPARAM) pos, 0);
+            } else {
+                g_nav_determinate = 0;
+                g_nav_phase = 0;
+                SendMessage(g_nav_bar, PBM_SETPOS, 0, 0);
+            }
+        }
+        return 0;
     case WM_PCORE_NAV_DONE: {
         pcore_navigation_request *request;
         int result;
