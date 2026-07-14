@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 45
+#define TEST_MAX_NUMBER 46
 
 static int test_config_space(char c)
 {
@@ -6614,6 +6614,175 @@ static BOOL test45_css_import_tree(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 46 - stylesheet rel/type/disabled/media metadata                 */
+/* -------------------------------------------------------------------- */
+typedef struct stylesheet_metadata_test_ctx {
+    int calls;
+    int frees;
+    unsigned int seen;
+} stylesheet_metadata_test_ctx;
+
+static int test46_metadata_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char WIDE_CSS[] = "p{color:#aa0000}";
+    static const char NARROW_CSS[] = "p{color:#0000aa}";
+    static const char WRONG_CSS[] = "h1,p{color:#00aa00}";
+    stylesheet_metadata_test_ctx *ctx;
+    const char *source;
+    int len;
+
+    ctx = (stylesheet_metadata_test_ctx *) pw;
+    ctx->calls++;
+    *out_data = NULL;
+    *out_len = 0;
+    source = WRONG_CSS;
+    len = sizeof(WRONG_CSS) - 1;
+    if (strcmp(url, "https://example.test/css/wide.css") == 0) {
+        ctx->seen |= 1U;
+        source = WIDE_CSS;
+        len = sizeof(WIDE_CSS) - 1;
+    } else if (strcmp(url,
+            "https://example.test/css/narrow.css") == 0) {
+        ctx->seen |= 2U;
+        source = NARROW_CSS;
+        len = sizeof(NARROW_CSS) - 1;
+    } else {
+        ctx->seen |= 4U;
+    }
+    *out_data = (char *) malloc((size_t) len);
+    if (*out_data == NULL) {
+        return 1;
+    }
+    memcpy(*out_data, source, (size_t) len);
+    *out_len = len;
+    return 0;
+}
+
+static void test46_metadata_free(void *pw, char *data)
+{
+    stylesheet_metadata_test_ctx *ctx;
+
+    ctx = (stylesheet_metadata_test_ctx *) pw;
+    ctx->frees++;
+    free(data);
+}
+
+static int test46_cache_only_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    stylesheet_metadata_test_ctx *ctx;
+
+    (void) url;
+    ctx = (stylesheet_metadata_test_ctx *) pw;
+    ctx->calls++;
+    *out_data = NULL;
+    *out_len = 0;
+    return 1;
+}
+
+static void test46_restore_viewport(int dpi)
+{
+    int width;
+    int height;
+
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    if (width <= 0) { width = 240; }
+    if (height <= 0) { height = 320; }
+    PCore_SetViewport(width, height, dpi);
+}
+
+static BOOL test46_stylesheet_metadata(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<style media=\"(min-width:300px)\">h1{color:#aa0000}</style>"
+        "<style media=\"(max-width:299px)\">h1{color:#0000aa}</style>"
+        "<style type=\"text/plain\">h1,p{color:#00aa00}</style>"
+        "<style disabled>h1,p{color:#00aa00}</style>"
+        "<link rel=\"preload stylesheet\" href=\"../css/wide.css\" "
+        "media=\"(min-width:300px)\">"
+        "<link rel=\"stylesheet\" type=\"text/css\" "
+        "href=\"../css/narrow.css\" media=\"(max-width:299px)\">"
+        "<link rel=\"alternate stylesheet\" href=\"../css/alt.css\">"
+        "<link rel=\"stylesheet\" type=\"text/plain\" "
+        "href=\"../css/plain.css\">"
+        "<link rel=\"stylesheet\" disabled href=\"../css/off.css\">"
+        "</head><body><h1>inline</h1><p>linked</p></body></html>";
+    static const char DOCUMENT_URL[] =
+        "https://example.test/dir/page.html";
+    HANDLE document;
+    stylesheet_metadata_test_ctx first;
+    stylesheet_metadata_test_ctx second;
+    unsigned long h1_color;
+    unsigned long p_color;
+    int dpi;
+    int first_ok;
+    int second_ok;
+    HDC screen_dc;
+    char msg[256];
+
+    memset(&first, 0, sizeof(first));
+    memset(&second, 0, sizeof(second));
+    dpi = 96;
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        int measured_dpi;
+
+        measured_dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
+        if (measured_dpi > 0) { dpi = measured_dpi; }
+        ReleaseDC(NULL, screen_dc);
+    }
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL) {
+        show_error(L"TEST 46 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+
+    PCore_SetViewport(320, 320, dpi);
+    h1_color = 0;
+    p_color = 0;
+    first_ok = PCore_StyleDocumentEx2(document, NULL, DOCUMENT_URL,
+            wm_combine_url, test46_metadata_fetch, test46_metadata_free,
+            &first) == 0 &&
+            PCore_NodeComputedColor(document, "h1", &h1_color) == 0 &&
+            PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
+            (h1_color & 0x00ffffffUL) == 0x00aa0000UL &&
+            (p_color & 0x00ffffffUL) == 0x00aa0000UL &&
+            first.calls == 2 && first.frees == 2 && first.seen == 3U;
+
+    PCore_SetViewport(299, 320, dpi);
+    h1_color = 0;
+    p_color = 0;
+    second_ok = PCore_StyleDocumentEx2(document, NULL, DOCUMENT_URL,
+            wm_combine_url, test46_cache_only_fetch, NULL, &second) == 0 &&
+            PCore_NodeComputedColor(document, "h1", &h1_color) == 0 &&
+            PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
+            (h1_color & 0x00ffffffUL) == 0x000000aaUL &&
+            (p_color & 0x00ffffffUL) == 0x000000aaUL &&
+            second.calls == 0;
+    PCore_FreeDocument(document);
+    test46_restore_viewport(dpi);
+
+    if (!first_ok || !second_ok) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "first=%d calls=%d frees=%d seen=%u second=%d calls=%d "
+                "colors=%06lX/%06lX",
+                first_ok, first.calls, first.frees, first.seen,
+                second_ok, second.calls, h1_color & 0x00ffffffUL,
+                p_color & 0x00ffffffUL);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 46 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 46 OK",
+              "Stylesheet metadata: rel tokens, type/disabled filtering,\n"
+              "full media queries and cache-only breakpoint restyle passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -6773,6 +6942,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 43: ok = test43_navigation_resource_transaction(); break;
         case 44: ok = test44_navigation_failure_transaction(); break;
         case 45: ok = test45_css_import_tree(); break;
+        case 46: ok = test46_stylesheet_metadata(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -6852,7 +7022,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-45)\n"
+                  "Yes = run all selected groups (TEST 1-46)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -6869,7 +7039,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40-45). Offline.");
+                               "38, 40-46). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -6898,7 +7068,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45; offline. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-46; offline. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -6917,6 +7087,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test43_navigation_resource_transaction()){ rc = 11; goto done; }
         if (!test44_navigation_failure_transaction()){ rc = 11; goto done; }
         if (!test45_css_import_tree()){ rc = 11; goto done; }
+        if (!test46_stylesheet_metadata()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -6974,14 +7145,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-46)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource cache, SVG parse, constrained :root variables,\n"
                "    OKLCH/calc values, grid-overflow containment, scrollbar\n"
                "    input, staged navigation resources, failure rollback,\n"
-               "    and native libcss CSS import trees.\n"
+               "    native libcss CSS import trees and stylesheet metadata.\n"
                "    Offline.\n\n");
     }
     if (run_render) {

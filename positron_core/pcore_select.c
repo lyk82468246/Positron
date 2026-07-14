@@ -1612,7 +1612,9 @@ typedef struct pcore_collect_ctx {
     dom_string     *link_name;  /* interned "link"  */
     dom_string     *rel_name;   /* interned "rel"   */
     dom_string     *href_name;  /* interned "href"  */
-    dom_string     *css_value;  /* interned "stylesheet" (for rel match) */
+    dom_string     *type_name;  /* interned "type" */
+    dom_string     *media_name; /* interned "media" */
+    dom_string     *disabled_name; /* interned "disabled" */
 } pcore_collect_ctx;
 
 #define PCORE_IMPORT_DEPTH_MAX 16
@@ -1772,10 +1774,140 @@ static css_stylesheet *pcore_parse_css_tree(pcore_collect_ctx *cc,
     return sheet;
 }
 
+static int pcore_ascii_space(char c)
+{
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
+}
+
+static int pcore_ascii_equal_ci(const char *value, size_t value_len,
+        const char *expected)
+{
+    size_t i;
+    size_t expected_len;
+
+    while (value_len > 0 && pcore_ascii_space(*value)) {
+        value++;
+        value_len--;
+    }
+    while (value_len > 0 && pcore_ascii_space(value[value_len - 1])) {
+        value_len--;
+    }
+    expected_len = strlen(expected);
+    if (value_len != expected_len) {
+        return 0;
+    }
+    for (i = 0; i < value_len; i++) {
+        char a;
+        char b;
+
+        a = value[i];
+        b = expected[i];
+        if (a >= 'A' && a <= 'Z') { a = (char) (a + ('a' - 'A')); }
+        if (b >= 'A' && b <= 'Z') { b = (char) (b + ('a' - 'A')); }
+        if (a != b) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int pcore_rel_has_token(dom_string *rel, const char *token)
+{
+    const char *data;
+    size_t len;
+    size_t start;
+    size_t end;
+
+    if (rel == NULL) {
+        return 0;
+    }
+    data = dom_string_data(rel);
+    len = dom_string_byte_length(rel);
+    start = 0;
+    while (start < len) {
+        while (start < len && pcore_ascii_space(data[start])) {
+            start++;
+        }
+        end = start;
+        while (end < len && !pcore_ascii_space(data[end])) {
+            end++;
+        }
+        if (end > start && pcore_ascii_equal_ci(data + start, end - start,
+                token)) {
+            return 1;
+        }
+        start = end;
+    }
+    return 0;
+}
+
+static int pcore_element_css_type(dom_node *node, dom_string *type_name)
+{
+    dom_string *type;
+    int is_css;
+
+    type = NULL;
+    if (type_name == NULL || dom_element_get_attribute(node, type_name,
+            &type) != DOM_NO_ERR || type == NULL) {
+        return 1;
+    }
+    is_css = dom_string_byte_length(type) == 0 ||
+            pcore_ascii_equal_ci(dom_string_data(type),
+            dom_string_byte_length(type), "text/css");
+    dom_string_unref(type);
+    return is_css;
+}
+
+static int pcore_element_disabled(dom_node *node, dom_string *disabled_name)
+{
+    bool disabled;
+
+    disabled = false;
+    if (disabled_name != NULL) {
+        dom_element_has_attribute(node, disabled_name, &disabled);
+    }
+    return disabled ? 1 : 0;
+}
+
+static const char *pcore_element_media(dom_node *node,
+        dom_string *media_name, char *buffer, int capacity)
+{
+    dom_string *media;
+    const char *data;
+    size_t len;
+
+    media = NULL;
+    if (media_name == NULL || dom_element_get_attribute(node, media_name,
+            &media) != DOM_NO_ERR || media == NULL) {
+        return NULL;
+    }
+    data = dom_string_data(media);
+    len = dom_string_byte_length(media);
+    while (len > 0 && pcore_ascii_space(*data)) {
+        data++;
+        len--;
+    }
+    while (len > 0 && pcore_ascii_space(data[len - 1])) {
+        len--;
+    }
+    if (len == 0) {
+        dom_string_unref(media);
+        return NULL;
+    }
+    if (len >= (size_t) capacity) {
+        dom_string_unref(media);
+        return "not all";
+    }
+    memcpy(buffer, data, len);
+    buffer[len] = '\0';
+    dom_string_unref(media);
+    return buffer;
+}
+
 /* Parse CSS and its native libcss @import tree, append only the root sheet to
  * the select context, and retain every child handle for pass-end cleanup. */
 static void pcore_add_author_css(pcore_collect_ctx *cc, const char *data,
-        int len, const char *url)
+        int len, const char *url, const char *media)
 {
     css_stylesheet *sheet;
 
@@ -1783,7 +1915,7 @@ static void pcore_add_author_css(pcore_collect_ctx *cc, const char *data,
     if (sheet == NULL) {
         return;
     }
-    css_select_ctx_append_sheet(cc->ctx, sheet, CSS_ORIGIN_AUTHOR, NULL);
+    css_select_ctx_append_sheet(cc->ctx, sheet, CSS_ORIGIN_AUTHOR, media);
 }
 
 /* DFS: collect author CSS from the page in document order - inline <style>
@@ -1815,12 +1947,19 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
 
         if (is_style) {
             dom_string *css = NULL;
-            if (dom_node_get_text_content(node, &css) == DOM_NO_ERR &&
+            char media_buffer[1024];
+            const char *media;
+
+            media = pcore_element_media(node, cc->media_name, media_buffer,
+                    sizeof(media_buffer));
+            if (!pcore_element_disabled(node, cc->disabled_name) &&
+                    pcore_element_css_type(node, cc->type_name) &&
+                    dom_node_get_text_content(node, &css) == DOM_NO_ERR &&
                     css != NULL) {
                 pcore_add_author_css(cc, dom_string_data(css),
                         (int) dom_string_byte_length(css),
                         (cc->document_url != NULL) ? cc->document_url :
-                        "positron:inline-style");
+                        "positron:inline-style", media);
                 dom_string_unref(css);
             }
             return;   /* don't recurse into a <style>'s text children */
@@ -1833,10 +1972,13 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
 
             if (dom_element_get_attribute(node, cc->rel_name, &rel) ==
                     DOM_NO_ERR && rel != NULL) {
-                is_sheet = dom_string_caseless_isequal(rel, cc->css_value);
+                is_sheet = pcore_rel_has_token(rel, "stylesheet") &&
+                        !pcore_rel_has_token(rel, "alternate");
                 dom_string_unref(rel);
             }
-            if (is_sheet &&
+            if (is_sheet && !pcore_element_disabled(node,
+                    cc->disabled_name) && pcore_element_css_type(node,
+                    cc->type_name) &&
                     dom_element_get_attribute(node, cc->href_name, &href) ==
                             DOM_NO_ERR && href != NULL) {
                 const char *hu8 = dom_string_data(href);
@@ -1848,6 +1990,8 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                     char *owned;
                     int len;
                     int cl;
+                    char media_buffer[1024];
+                    const char *media;
 
                     cl = (hl < sizeof(reference) - 1) ? (int) hl :
                             (int) sizeof(reference) - 1;
@@ -1857,7 +2001,9 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                             reference, url, (int) sizeof(url)) == 0 &&
                             pcore_get_stylesheet_bytes(cc, url, &data, &len,
                             &owned) == 0) {
-                        pcore_add_author_css(cc, data, len, url);
+                        media = pcore_element_media(node, cc->media_name,
+                                media_buffer, sizeof(media_buffer));
+                        pcore_add_author_css(cc, data, len, url, media);
                         if (owned != NULL && cc->freefn != NULL) {
                             cc->freefn(cc->pw, owned);
                         }
@@ -1962,7 +2108,9 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     dom_string_create((const uint8_t *) "link", 4, &cc.link_name);
     dom_string_create((const uint8_t *) "rel", 3, &cc.rel_name);
     dom_string_create((const uint8_t *) "href", 4, &cc.href_name);
-    dom_string_create((const uint8_t *) "stylesheet", 10, &cc.css_value);
+    dom_string_create((const uint8_t *) "type", 4, &cc.type_name);
+    dom_string_create((const uint8_t *) "media", 5, &cc.media_name);
+    dom_string_create((const uint8_t *) "disabled", 8, &cc.disabled_name);
     if (cc.style_name != NULL) {
         pcore_collect_resources(&cc, root);
     }
@@ -1994,7 +2142,11 @@ cleanup:
     if (cc.link_name != NULL)  { dom_string_unref(cc.link_name); }
     if (cc.rel_name != NULL)   { dom_string_unref(cc.rel_name); }
     if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
-    if (cc.css_value != NULL)  { dom_string_unref(cc.css_value); }
+    if (cc.type_name != NULL)  { dom_string_unref(cc.type_name); }
+    if (cc.media_name != NULL) { dom_string_unref(cc.media_name); }
+    if (cc.disabled_name != NULL) {
+        dom_string_unref(cc.disabled_name);
+    }
     if (pw.universal != NULL) {
         lwc_string_unref(pw.universal);
     }
