@@ -1,6 +1,6 @@
 # Positron Architecture
 
-更新时间：2026-07-12
+更新时间：2026-07-15
 
 ## 项目定位
 
@@ -21,7 +21,7 @@ Positron 是 Windows Mobile 6 / WinCE 5.02 的现代基础设施集合，同时�
 - `positron_json.dll`：稳定的 JSON C API。
 - `positron_http.dll`：HTTP/HTTPS，复用 TLS 和系统网络能力。
 - `positron_core.dll`：HTML/CSS/DOM/layout/redraw 的产品级引擎边界。
-- `positron_image.dll`：统一 WM Imaging 位图与 SVG 能力，可被 core 或其他 WM 程序独立调用。公共 API 同时提供 opaque bitmap/SVG create/info/draw/free；DLL 复制位图输入字节并持有原生 `IImage`，不向调用方暴露 COM、NetSurf 对象或跨 CRT 所有权。`positron_core` 的旧 `PCore_Image*` 保留为兼容转发。
+- `positron_image.dll`：统一 WM Imaging 位图与 SVG 能力，可被 core 或其他 WM 程序独立调用。公共 API 同时提供 opaque bitmap/SVG create/info/draw/free 和 `PImage_GetAbiVersion`；DLL 复制位图输入字节并持有原生 `IImage`，不向调用方暴露 COM、NetSurf 对象或跨 CRT 所有权。`positron_core` 的旧 `PCore_Image*` 保留为兼容转发。
 
 公共 DLL 使用稳定 C ABI、UTF-8 字符串和 opaque handle。不得向调用者暴露 C++ ABI、NetSurf 内部结构或第三方库的易变类型。
 
@@ -45,6 +45,7 @@ NetSurf、libdom、libcss、libsvgtiny、mbedTLS、cJSON 等上游源码可以�
 - 公共 DLL 应尽量减少传递依赖。只需要图片的程序不应被迫加载 DOM/CSS/浏览器核心。
 - 现有公共 API 若需拆层，优先保留兼容转发，再逐步迁移调用者。
 - WM6 资源有限，DLL 边界不能以明显重复缓存、重复解码或大量常驻内存为代价。
+- ABI 版本高 16 位为 major、低 16 位为 minor；major 变化可能不兼容，minor 只能追加兼容 API。消费者应接受相同 major 且不低于其编译需求的 minor。
 
 ## 浏览器边界
 
@@ -64,3 +65,5 @@ positron_core.dll  -> positron_image.dll + NetSurf/libdom/libcss static librarie
 ```
 
 这样图片能力既服务浏览器，也成为 WM 平台可复用的现代基础设施。
+
+`samples/positron_image_demo` 是边界验证样例：其 PE 导入表只含 `positron_image.dll` 和系统 `COREDLL.dll`，不链接 `positron_core`、`test_host` 或 NetSurf。它同时演示 ABI 协商、retained 位图和 retained SVG 的创建、查询、绘制与释放。

@@ -58,6 +58,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "positron_image", "positron_
 		{3FA8C028-AE47-416C-9750-C91FDD8FCD26} = {3FA8C028-AE47-416C-9750-C91FDD8FCD26}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "positron_image_demo", "samples\positron_image_demo\positron_image_demo.vcproj", "{D87E9F64-A0B5-41C2-9A73-4E56F7890123}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C76D8E53-9FA4-40B1-D327-8E9F01234567} = {C76D8E53-9FA4-40B1-D327-8E9F01234567}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Windows Mobile 6 Professional SDK (ARMV4I) = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
@@ -124,6 +129,12 @@ Global
 		{C76D8E53-9FA4-40B1-D327-8E9F01234567}.Release|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Release|Windows Mobile 6 Professional SDK (ARMV4I)
 		{C76D8E53-9FA4-40B1-D327-8E9F01234567}.Release|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Release|Windows Mobile 6 Professional SDK (ARMV4I)
 		{C76D8E53-9FA4-40B1-D327-8E9F01234567}.Release|Windows Mobile 6 Professional SDK (ARMV4I).Deploy.0 = Release|Windows Mobile 6 Professional SDK (ARMV4I)
+		{D87E9F64-A0B5-41C2-9A73-4E56F7890123}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
+		{D87E9F64-A0B5-41C2-9A73-4E56F7890123}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
+		{D87E9F64-A0B5-41C2-9A73-4E56F7890123}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).Deploy.0 = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
+		{D87E9F64-A0B5-41C2-9A73-4E56F7890123}.Release|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Release|Windows Mobile 6 Professional SDK (ARMV4I)
+		{D87E9F64-A0B5-41C2-9A73-4E56F7890123}.Release|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Release|Windows Mobile 6 Professional SDK (ARMV4I)
+		{D87E9F64-A0B5-41C2-9A73-4E56F7890123}.Release|Windows Mobile 6 Professional SDK (ARMV4I).Deploy.0 = Release|Windows Mobile 6 Professional SDK (ARMV4I)
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

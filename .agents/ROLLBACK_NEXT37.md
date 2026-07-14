@@ -29,6 +29,6 @@ next37 之后的实验历史保存在远端分支 `codex/post-next37-experiments
 
 ## 接下来
 
-- 短期：冻结 Browse 导航路径；`positron_image.dll` 公共 retained 位图 ABI、核心兼容转发和解码对象复用已完成本机编译，下一步集中验收 TEST13/18-20/25-27。TEST13 仅验证真实图片链未破坏冻结基线。
+- 短期：冻结 Browse 导航路径；next45 已确认 `positron_image.dll` 公共 retained 位图 ABI、核心兼容转发、解码对象复用及 TEST13 集成门槛。ABI 1.0 查询和独立 WM 消费示例已构建，next46 待真机确认。
 - 中期：完成图片 DLL 分层后，再选择一个冻结项做单变量实验；失败即放弃该实验分支。
 - 长期：继续以可复用 WM 现代基础设施和 JavaScript runtime 为目标，不因本次回退改变总体方向。

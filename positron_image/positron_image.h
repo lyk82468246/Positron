@@ -22,6 +22,22 @@ extern "C" {
 #  define PIMAGE_API __declspec(dllimport)
 #endif
 
+/* ABI version uses major in the high 16 bits and minor in the low 16 bits.
+ * A major change may break callers; minor versions only add compatible API. */
+#define PIMAGE_ABI_VERSION_ENCODE(major, minor) \
+    ((((unsigned long) (major)) << 16) | ((unsigned long) (minor) & 0xffffUL))
+#define PIMAGE_ABI_VERSION_GET_MAJOR(version) \
+    ((unsigned int) (((unsigned long) (version) >> 16) & 0xffffUL))
+#define PIMAGE_ABI_VERSION_GET_MINOR(version) \
+    ((unsigned int) ((unsigned long) (version) & 0xffffUL))
+#define PIMAGE_ABI_VERSION_MAJOR 1
+#define PIMAGE_ABI_VERSION_MINOR 0
+#define PIMAGE_ABI_VERSION \
+    PIMAGE_ABI_VERSION_ENCODE(PIMAGE_ABI_VERSION_MAJOR, \
+            PIMAGE_ABI_VERSION_MINOR)
+
+PIMAGE_API unsigned long PImage_GetAbiVersion(void);
+
 enum {
     PIMAGE_OK = 0,
     PIMAGE_ERROR_ARGUMENT = 1,

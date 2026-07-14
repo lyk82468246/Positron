@@ -20,7 +20,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `main` 产品源码固定在用户再次确认 TEST13 正常的 `9c5c7c7`/next37。
 - next38 之后的 stylesheet metadata、base URL、redirect origin 和 timeout 方向暂时挂起，归档分支为 `codex/post-next37-experiments`。
 - next44 已由用户确认 TEST13 全流程完全正常，Browse 冻结基线成立。
-- `positron_image.dll` 公共 retained 位图 ABI、核心兼容转发及 NetSurf 解码对象复用已实现并通过 VS2008 ARM 增量构建；当前批次用 TEST13/18-20/25-27 集中验收。实现不修改 Browse 网络、DOM、样式或布局算法，TEST13 只作为真实图片链集成门槛。
+- `positron_image.dll` 公共 retained 位图 ABI、核心兼容转发及 NetSurf 解码对象复用已由 next45 的 TEST19/20 真机确认；TEST26/27 与 TEST13 同批无回归。
+- 公共 DLL 的独立消费实现已完成：ABI 1.0 查询和只依赖 `positron_image.dll`/`COREDLL.dll` 的 WM 示例通过 VS2008 ARM 与 PE 审计；next46 待真机确认后关闭该短期项。
 - 任何冻结项重新接入都必须一次只改一个变量，并完整跑通 TEST13 深层导航；仅离线 TEST 不能作为合并依据。
 
 ### 1. M5f：真实 border 绘制验证
@@ -103,13 +104,13 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 14. **已完成并真机验收**：TEST34 在 libsvgtiny DOM 桥中加入 `radialGradient` 的 `cx/cy/r`、objectBoundingBox/userSpaceOnUse 和 `gradientTransform`，继续复用 NanoSVG 已有径向光栅器。2026-07-13 真机截图确认三块图依次为平滑椭圆、圆和向右平移的圆，九点颜色及三条连续性断言同时通过。
 15. **已完成并真机验收**：TEST35 将 160x80 中心径向 SVG 作为内存资源送入文档缓存，生成 replaced box 并经 NetSurf redraw 绘制。2026-07-13 真机截图确认连续横向椭圆、无 fallback，且此前 fetch/free、盒尺寸、横纵采样与连续性断言全部通过。
 16. **已完成并真机验收**：TEST36 一次验证 objectBoundingBox 无单位 `0..1` 坐标、`xlink:href` 渐变继承、属性/inline style `stop-opacity`、线性/径向 alpha 混合及循环引用深度保护；TEST37 再用 SVG2 `href` 把同一半透明偏心径向 SVG 同时用于 `<img>` 和 CSS 背景，资源只 fetch/free 一次且两处像素一致。2026-07-13 用户截图确认四面板与两处缓存结果符合预期。焦点 `fx/fy` 与 spread method 因 NanoSVG rasterizer 仍有明确 TODO，不在已完成范围。
-17. **公共位图 ABI 已实现，待设备验收**：上游解析库保持静态 `.lib`；`positron_image.dll` 现统一封装 WM Imaging 与 libsvgtiny，公开 opaque bitmap/SVG create/info/draw/free。位图创建时复制编码字节并保留 `IImage`，调用方可立即释放输入；对象必须在创建线程由同一 DLL 释放。`positron_core` 的旧 `PCore_Image*` 保留为兼容转发，NetSurf 图片载体直接复用 retained handle，避免每次重绘重新解码。VS2008 ARM 构建及导出/导入表检查已通过，TEST19/20 待真机确认。
+17. **公共位图 ABI 已完成当前真机验收**：上游解析库保持静态 `.lib`；`positron_image.dll` 统一封装 WM Imaging 与 libsvgtiny，公开 opaque bitmap/SVG create/info/draw/free。位图创建时复制编码字节并保留 `IImage`，调用方可立即释放输入；对象必须在创建线程由同一 DLL 释放。`positron_core` 的旧 `PCore_Image*` 保留为兼容转发，NetSurf 图片载体直接复用 retained handle，避免每次重绘重新解码。2026-07-15 next45 的 TEST19/20 已确认四格式颜色、重复绘制、输入所有权、错误拒绝、兼容转发和正式缓存链，TEST13/26/27 同批无回归。
 18. **IANA custom-properties 根因批次已完成并真机验收**：联网读取当前 `iana_website.80c103cc08b6.css` 后确认窄屏 padding/margin 大量依赖 `var(--space-*)`；审计 NetSurf 最新 libcss `104d87f` 仍无 custom-properties 实现。`PCore_ParseCSS` 因此新增保守兼容层，只收集同一 stylesheet 顶层精确 `:root` token，支持嵌套引用、fallback、循环拒绝、字符串/注释保护，并设置 128 token/16 层递归/8 倍输出上限。TEST38 的语义断言和 TEST39 的 240/320px 25px inset + 正式 redraw 均由设备确认；新的 TEST13 截图中导航、正文和注册表列已恢复可读。元素作用域、跨表级联和 `@property` 仍不在范围；float 保持撤回。
 19. **现代 CSS 值兼容批次已完成并真机验收**：当前 IANA CSS 另有 22 处 `oklch()` 和 15 处 `calc()`。新增独立 `pcore_css_values.c`，其中 Oklab 到线性 sRGB 的矩阵移植自 Bjorn Ottosson 的公开域/MIT 参考实现，再做 sRGB transfer 与边界裁剪；`calc()` 只求值同单位加减、一个有单位因子的乘法及无单位除数，混合 `%/px` 等依赖布局上下文的表达式原样保留。TEST40 已确认红色、alpha、IANA link 色、变量展开后的 `+ - * /` 几何和混合单位保留；同期 TEST13 的配色、标题与间距改善。数值型 OKLCH、裁剪 gamut 与可完全求值 calc 不得表述为完整 CSS Color 4/Values 实现。
 20. **IANA `/numbers` grid-overflow 修复已真机验收**：该页的 `main` 含 `display:grid`，其 `.dtable-wrap { overflow:auto }` 内宽表格曾在单列 block 降级中把 flex item 的 min-content 撑宽，`row-reverse` 因而把正文排到负 x。`layout_flex.c` 现只对树中实际含 grid/inline-grid 降级盒的 flex item 跳过错误的 block min-content 钳制；普通 flex 保持原规则，`inline-grid` 按 inline-block 降级。TEST41 的竖横屏截图均确认主内容保持左右 inset，宽表格没有再移动页面。此项仍不代表 Grid 轨道或 gap 已实现。
 21. **NetSurf overflow scrollbar 已完成当前验收**：移植并 C89 化上游 `desktop/scrollbar.c`，恢复 `descendant_x1/y1` 溢出判定、`box_handle_scrollbars` 创建/更新/成对销毁、祖先 scroll offset 坐标和 GDI redraw。公开 `PCore_OverflowPointer` 把 WM 的 DOWN/MOVE/UP 转发给箭头、page well 与 thumb drag；TEST42 的离屏 16px 步进断言及真机箭头/thumb 交互均已通过。随后新增 `PCore_OverflowDirtyRect`，host 只失效 overflow viewport，不再为每个拖动消息重绘整窗；VS2008 ARM 增量构建 0 错误。仍不宣称触摸惯性、overlay scrollbar 或完整 Grid。
 22. **CSS/图片后台资源事务与单响应进度已真机验收**：pending request 持有未交换 document 与最多 64 个去重 URL；worker 只读显式新页面 origin 并保存总计最多 2 MiB 原始字节，DOM/libcss/NetSurf/GDI 始终留在 UI。TEST3/43/13 已确认真实正文进度、资源去重/失败 fallback 和成功 swap。UI 提交现由一次性 WM timer 拆成 parse/style/image-discovery/layout 四段；单个 NetSurf 调用仍可能卡顿。TEST44 已确认主文档失败保留旧页与事务收尾。2 MiB 是 `test_host` 临时宿主预算，不是产品上限；整页聚合进度、字体和脚本仍未完成。
-23. **CSS `@import` 首批实现待设备验收**：`positron_core` 新增兼容扩展 `PCore_StyleDocumentEx2`，保留旧 ABI，并使用 libcss 原生 `next_pending_import/register_import` 递归解析最多 16 层导入；缺失、循环或超深导入注册空表，使父表后续规则继续生效。URL 策略仍在宿主，WM `test_host` 使用 `InternetCombineUrlA` 处理文档、父表和子表相对引用。成功字节进入现有 document CSS cache，旋转仅 cache-only 重选。TEST45 离线覆盖三层 URL 规范化、一个失败导入、父/子 computed color、首次 fetch/free 计数和二次缓存重选；VS2008 ARM 增量构建已通过，默认设备批次为 TEST13/24/45。当前不宣称跨源策略、缓存失效、整页聚合进度或 web fonts 已完成。
+23. **CSS `@import` 首批实现已真机验收**：`positron_core` 新增兼容扩展 `PCore_StyleDocumentEx2`，保留旧 ABI，并使用 libcss 原生 `next_pending_import/register_import` 递归解析最多 16 层导入；缺失、循环或超深导入注册空表，使父表后续规则继续生效。URL 策略仍在宿主，WM `test_host` 使用 `InternetCombineUrlA` 处理文档、父表和子表相对引用。成功字节进入现有 document CSS cache，旋转仅 cache-only 重选。TEST45 已确认三层 URL 规范化、一个失败导入、父/子 computed color、首次 fetch/free 计数和二次缓存重选。当前不宣称跨源策略、缓存失效、整页聚合进度或 web fonts 已完成。
 
 验收：
 

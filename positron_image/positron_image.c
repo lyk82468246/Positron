@@ -27,6 +27,11 @@ BOOL WINAPI DllMain(HANDLE instance, DWORD reason, LPVOID reserved)
     return TRUE;
 }
 
+PIMAGE_API unsigned long PImage_GetAbiVersion(void)
+{
+    return PIMAGE_ABI_VERSION;
+}
+
 PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
         int viewport_w, int viewport_h, PIMAGE_SVG *out_svg)
 {

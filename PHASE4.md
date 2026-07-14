@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-07-15）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。main 已恢复到 next37 稳定路径，next44 的 TEST13 全流程由用户确认正常。BMP/PNG/JPEG/GIF 和 SVG 正式缓存链已有真机基线；新的 WM Imaging retained 位图 C ABI 已移入 `positron_image.dll` 并通过 VS2008 ARM 构建，待 TEST19/20 设备复验。
+> 状态（2026-07-15）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。main 已恢复到 next37 稳定路径，next44 的 TEST13 全流程由用户确认正常。next45 又确认移入 `positron_image.dll` 的 WM Imaging retained 位图 C ABI、四格式缓存链、SVG 与 TEST13 均无回归。
 
 
 ---
@@ -131,7 +131,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    `redraw_border.c` 补齐 include 后已于 2026-07-10 成功复编，TEST 17 可见 H1、flex、table/cell 边框；attribute/sibling selectors 与 `:link` / `:lang()` 也已由 TEST 9 真机通过。动态状态伪类仍保持 no-match。
 
 3. **图片 / SVG**  
-   `<img>` alt fallback、文档缓存、BMP/PNG/JPEG/GIF 与 SVG replaced-box 正式链均已有真机基线。2026-07-15 将 WM Imaging 实现从 core 私有桥迁入公共 `positron_image.dll`：`PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap/FreeBitmap` 复制调用方字节并保留 `IImage`，NetSurf bitmap carrier 在多次 redraw 间复用它；旧 `PCore_ImageInfoFromMemory/DrawImageFromMemory/ImageLastError` 只保留兼容转发。VS2008 ARM 构建及 PE 导入/导出检查已通过，当前 TEST13/18-20/25-27 批次负责设备复验；完整边界见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
+   `<img>` alt fallback、文档缓存、BMP/PNG/JPEG/GIF 与 SVG replaced-box 正式链均已有真机基线。2026-07-15 将 WM Imaging 实现从 core 私有桥迁入公共 `positron_image.dll`：`PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap/FreeBitmap` 复制调用方字节并保留 `IImage`，NetSurf bitmap carrier 在多次 redraw 间复用它；旧 `PCore_ImageInfoFromMemory/DrawImageFromMemory/ImageLastError` 只保留兼容转发。next45 的 TEST19/20 已确认四格式、重复绘制、输入所有权、错误拒绝、兼容转发和正式缓存链，TEST13/26/27 同批无回归；完整边界见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 
 4. **后台导航体验**  
    主文档 GET 已进入 worker，旧页在此期间继续响应并显示 loading；response 回到 UI 线程后，parse、外链 CSS/图片 fetch、style/layout 仍同步发生，复杂页面可能短暂卡顿。后续应把资源 fetch 纳入后台事务，同时继续保证 DOM/libcss/NetSurf document 只在 UI 线程提交。
