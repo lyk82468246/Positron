@@ -1,6 +1,6 @@
 # Positron Architecture
 
-更新时间：2026-07-12
+更新时间：2026-07-14
 
 ## 项目定位
 
@@ -49,6 +49,8 @@ NetSurf、libdom、libcss、libsvgtiny、mbedTLS、cJSON 等上游源码可以�
 ## 浏览器边界
 
 `positron_core.dll` 负责 transport-agnostic 的解析、样式、布局和绘制；网络由 embedder 通过 fetch callback 提供，URL 合并/安全策略由可选 resolve callback 提供。`PCore_StyleDocumentEx2`、`PCore_FetchImageResourcesEx2` 与 `PCore_LinkAtEx2` 是旧 ABI 的兼容扩展，共享首个 `<base href>` 语义，但不把 WinInet 或具体传输层引入 core；WM 宿主可用 `InternetCombineUrlA`，其他调用者可替换自己的 URL 服务。图片缓存以规范 URL 去重并保留原始 `src` 别名，避免为了 URL 规范化修改 DOM。浏览器宿主负责窗口、消息循环、导航事务和设备交互。
+
+HTTP 响应的传输元数据包括最终绝对 `effective_url`；它由 `positron_http.dll` 在每个重定向 hop 更新，宿主只在主文档响应成功后把最终值作为新 document origin。这个字段不把重定向策略放进 core，也不改变响应正文仍由 HTTP DLL 分配/释放的所有权。超时和资源数量/字节预算属于具体宿主及传输层策略，不是 `positron_core` ABI。
 
 图片拆分后的目标调用关系：
 
