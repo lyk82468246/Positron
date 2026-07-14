@@ -4,7 +4,7 @@
 
 ## 决定
 
-`main` 的产品源码已完整恢复到 `9c5c7c7`，对应用户再次确认 TEST13 全流程正常的 `C:\WMShare\Positron-next37`。这不是兼容模式或局部修补：`positron_core.dll`、`test_host.exe`、`positron_http.dll` 的重编尺寸分别为 2,432,512、1,434,112、19,968 字节，与 next37 完全一致。
+`main` 的产品源码已完整恢复到 `9c5c7c7`，并打包为 `C:\WMShare\Positron-next44`；用户已于 2026-07-15 确认 TEST13 全流程完全正常。恢复提交本身不是兼容模式或局部修补：当时 `positron_core.dll`、`test_host.exe`、`positron_http.dll` 的重编尺寸分别为 2,432,512、1,434,112、19,968 字节，与 next37 完全一致。
 
 next37 之后的实验历史保存在远端分支 `codex/post-next37-experiments`，不丢失，但不得直接合回 `main`。
 
@@ -29,6 +29,6 @@ next37 之后的实验历史保存在远端分支 `codex/post-next37-experiments
 
 ## 接下来
 
-- 短期：冻结 Browse 导航路径，先做不触碰网络/DOM/layout 的 `positron_image.dll` 公共位图 ABI 整理和离线测试。
+- 短期：冻结 Browse 导航路径；`positron_image.dll` 公共 retained 位图 ABI、核心兼容转发和解码对象复用已完成本机编译，下一步集中验收 TEST13/18-20/25-27。TEST13 仅验证真实图片链未破坏冻结基线。
 - 中期：完成图片 DLL 分层后，再选择一个冻结项做单变量实验；失败即放弃该实验分支。
 - 长期：继续以可复用 WM 现代基础设施和 JavaScript runtime 为目标，不因本次回退改变总体方向。

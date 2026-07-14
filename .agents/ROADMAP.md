@@ -1,6 +1,6 @@
 # Positron Roadmap
 
-更新时间：2026-07-14
+更新时间：2026-07-15
 基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector、TEST 11 正反样例与 TEST 19 WM Imaging BMP 已于 2026-07-10 真机通过；TEST 18 缓存去重、TEST 20 缓存 BMP object/redraw 链、TEST 21 响应式媒体视口、TEST 22 row-reverse flex leading padding 已于 2026-07-11 真机通过。TEST38-39 已关闭 IANA 同表顶层根变量造成的窄屏间距问题，当前 TEST13 截图中的导航、正文和注册表列已可读；其他现代 CSS 与更多真实页面仍按限制清单推进。详见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
@@ -19,7 +19,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 - `main` 产品源码固定在用户再次确认 TEST13 正常的 `9c5c7c7`/next37。
 - next38 之后的 stylesheet metadata、base URL、redirect origin 和 timeout 方向暂时挂起，归档分支为 `codex/post-next37-experiments`。
-- 当前短期目标改为 `positron_image.dll` 公共位图 ABI 整理与离线测试，不修改 Browse 网络、DOM、样式或布局路径。
+- next44 已由用户确认 TEST13 全流程完全正常，Browse 冻结基线成立。
+- `positron_image.dll` 公共 retained 位图 ABI、核心兼容转发及 NetSurf 解码对象复用已实现并通过 VS2008 ARM 增量构建；当前批次用 TEST13/18-20/25-27 集中验收。实现不修改 Browse 网络、DOM、样式或布局算法，TEST13 只作为真实图片链集成门槛。
 - 任何冻结项重新接入都必须一次只改一个变量，并完整跑通 TEST13 深层导航；仅离线 TEST 不能作为合并依据。
 
 ### 1. M5f：真实 border 绘制验证
@@ -102,7 +103,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 14. **已完成并真机验收**：TEST34 在 libsvgtiny DOM 桥中加入 `radialGradient` 的 `cx/cy/r`、objectBoundingBox/userSpaceOnUse 和 `gradientTransform`，继续复用 NanoSVG 已有径向光栅器。2026-07-13 真机截图确认三块图依次为平滑椭圆、圆和向右平移的圆，九点颜色及三条连续性断言同时通过。
 15. **已完成并真机验收**：TEST35 将 160x80 中心径向 SVG 作为内存资源送入文档缓存，生成 replaced box 并经 NetSurf redraw 绘制。2026-07-13 真机截图确认连续横向椭圆、无 fallback，且此前 fetch/free、盒尺寸、横纵采样与连续性断言全部通过。
 16. **已完成并真机验收**：TEST36 一次验证 objectBoundingBox 无单位 `0..1` 坐标、`xlink:href` 渐变继承、属性/inline style `stop-opacity`、线性/径向 alpha 混合及循环引用深度保护；TEST37 再用 SVG2 `href` 把同一半透明偏心径向 SVG 同时用于 `<img>` 和 CSS 背景，资源只 fetch/free 一次且两处像素一致。2026-07-13 用户截图确认四面板与两处缓存结果符合预期。焦点 `fx/fy` 与 spread method 因 NanoSVG rasterizer 仍有明确 TODO，不在已完成范围。
-17. 图片能力采用两层边界：上游解析库保持静态 `.lib`；稳定的 `positron_image.dll` 统一封装 WM Imaging 与 libsvgtiny，供 `positron_core.dll` 和其他 WM 程序调用。对象必须由同一 DLL 创建/释放，不能暴露 NetSurf 内部结构或跨 CRT 所有权；现有 `PCore_Image*` 暂保留为兼容转发。
+17. **公共位图 ABI 已实现，待设备验收**：上游解析库保持静态 `.lib`；`positron_image.dll` 现统一封装 WM Imaging 与 libsvgtiny，公开 opaque bitmap/SVG create/info/draw/free。位图创建时复制编码字节并保留 `IImage`，调用方可立即释放输入；对象必须在创建线程由同一 DLL 释放。`positron_core` 的旧 `PCore_Image*` 保留为兼容转发，NetSurf 图片载体直接复用 retained handle，避免每次重绘重新解码。VS2008 ARM 构建及导出/导入表检查已通过，TEST19/20 待真机确认。
 18. **IANA custom-properties 根因批次已完成并真机验收**：联网读取当前 `iana_website.80c103cc08b6.css` 后确认窄屏 padding/margin 大量依赖 `var(--space-*)`；审计 NetSurf 最新 libcss `104d87f` 仍无 custom-properties 实现。`PCore_ParseCSS` 因此新增保守兼容层，只收集同一 stylesheet 顶层精确 `:root` token，支持嵌套引用、fallback、循环拒绝、字符串/注释保护，并设置 128 token/16 层递归/8 倍输出上限。TEST38 的语义断言和 TEST39 的 240/320px 25px inset + 正式 redraw 均由设备确认；新的 TEST13 截图中导航、正文和注册表列已恢复可读。元素作用域、跨表级联和 `@property` 仍不在范围；float 保持撤回。
 19. **现代 CSS 值兼容批次已完成并真机验收**：当前 IANA CSS 另有 22 处 `oklch()` 和 15 处 `calc()`。新增独立 `pcore_css_values.c`，其中 Oklab 到线性 sRGB 的矩阵移植自 Bjorn Ottosson 的公开域/MIT 参考实现，再做 sRGB transfer 与边界裁剪；`calc()` 只求值同单位加减、一个有单位因子的乘法及无单位除数，混合 `%/px` 等依赖布局上下文的表达式原样保留。TEST40 已确认红色、alpha、IANA link 色、变量展开后的 `+ - * /` 几何和混合单位保留；同期 TEST13 的配色、标题与间距改善。数值型 OKLCH、裁剪 gamut 与可完全求值 calc 不得表述为完整 CSS Color 4/Values 实现。
 20. **IANA `/numbers` grid-overflow 修复已真机验收**：该页的 `main` 含 `display:grid`，其 `.dtable-wrap { overflow:auto }` 内宽表格曾在单列 block 降级中把 flex item 的 min-content 撑宽，`row-reverse` 因而把正文排到负 x。`layout_flex.c` 现只对树中实际含 grid/inline-grid 降级盒的 flex item 跳过错误的 block min-content 钳制；普通 flex 保持原规则，`inline-grid` 按 inline-block 降级。TEST41 的竖横屏截图均确认主内容保持左右 inset，宽表格没有再移动页面。此项仍不代表 Grid 轨道或 gap 已实现。
@@ -114,7 +115,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 - TEST 17 可见 `Image fallback: Logo`。
 - TEST 18 显示 `image cache: first=2/2 second=2/2; fetch calls=2`。
-- TEST 19 显示 WM Imaging decoded 2x2 BMP and drew it via `IImage::Draw`。
+- TEST 19 显示 BMP/PNG/JPEG/GIF 四行，验证直接调用 `positron_image.dll`、清空调用方输入后仍可重复绘制、损坏输入拒绝及旧 `PCore_Image*` 转发。
 - TEST 20 显示 BMP/PNG/JPEG/GIF 四个相同的红/绿/蓝/黄图块，横竖屏一致且没有 fallback text（2026-07-12 真机确认）。
 - 本地 HTML + 小 PNG/JPEG 能显示。
 - 真实网页 logo/图片不再空白。

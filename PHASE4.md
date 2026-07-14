@@ -2,7 +2,7 @@
 
 把开源浏览器内核 **NetSurf 3.11** 移植进 Positron，作为 `positron_core` 的 HTML 渲染层——**不是**封装 IE Mobile 的 WebBrowser ActiveX（ES3/HTML4 太旧，且违背"自带可控内核"的目标）。Phase 4 的第一大战役是让 NetSurf 的五个底层库在 VS2008 / MSVC9 / WinCE 5.02 / ARMV4I（C89-only）下编译通过——NetSurf 是 C99 代码，这道墙不小。
 
-> 状态（2026-07-11）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selectors、`:link` / `:lang()` 与 `<img>` alt fallback 已由 TEST 9/17 真机验证；TEST 11 的 margin collapse 与 1px padding barrier 正反样例已于 2026-07-10 真机通过；TEST 18 的 document user-data 图片缓存和 URL 去重、TEST 20 的缓存 BMP replaced box/重绘链均已于 2026-07-11 真机通过；Browse host 现会在布局前自动填充 `<img>` 缓存。WM Imaging API C++ 适配层仍以原生 `IImage::Draw` 解码/绘制内存 BMP。
+> 状态（2026-07-15）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。main 已恢复到 next37 稳定路径，next44 的 TEST13 全流程由用户确认正常。BMP/PNG/JPEG/GIF 和 SVG 正式缓存链已有真机基线；新的 WM Imaging retained 位图 C ABI 已移入 `positron_image.dll` 并通过 VS2008 ARM 构建，待 TEST19/20 设备复验。
 
 
 ---
@@ -131,7 +131,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    `redraw_border.c` 补齐 include 后已于 2026-07-10 成功复编，TEST 17 可见 H1、flex、table/cell 边框；attribute/sibling selectors 与 `:link` / `:lang()` 也已由 TEST 9 真机通过。动态状态伪类仍保持 no-match。
 
 3. **图片 / SVG**  
-   `<img>` alt fallback 已由 TEST 17 真机验证。`PCore_FetchImageResources` 将成功字节复制到文档缓存，embedder 缓冲仍立即由 `freefn` 释放；TEST 18 已于 2026-07-11 确认二次扫描命中缓存、fetch calls 保持 2。`pcore_wmimage.cpp` 的 C++ 适配层公开 `PCore_ImageInfoFromMemory` / `PCore_DrawImageFromMemory`，通过 WM Imaging API 的 `IImage::Draw` 解码/绘制内存 BMP；TEST 19 已真机通过。缓存命中且可解码的 `<img>` 会生成 NetSurf replaced box，`layout.c` 读取固有尺寸，`redraw.c` 经 `content_redraw -> plot_bitmap` 交给 WM Imaging；TEST 20 的离线 BMP `96x72` 图像已真机通过。Browse host 也会在 layout 前调用同一资源获取器填充图片缓存。TEST 21 已修复 IANA 页面 `@media` 宽高为 0px；TEST 22 已确认 `row-reverse` 保留 25px leading padding，IANA 正文左裁切已消失。窄屏页脚/导航仍有错位，故该页面尚未验收通过。内存 PNG 首次真机反馈为 decode fail，PNG/JPEG/GIF 格式覆盖与 SVG 仍待后续；完整边界见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
+   `<img>` alt fallback、文档缓存、BMP/PNG/JPEG/GIF 与 SVG replaced-box 正式链均已有真机基线。2026-07-15 将 WM Imaging 实现从 core 私有桥迁入公共 `positron_image.dll`：`PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap/FreeBitmap` 复制调用方字节并保留 `IImage`，NetSurf bitmap carrier 在多次 redraw 间复用它；旧 `PCore_ImageInfoFromMemory/DrawImageFromMemory/ImageLastError` 只保留兼容转发。VS2008 ARM 构建及 PE 导入/导出检查已通过，当前 TEST13/18-20/25-27 批次负责设备复验；完整边界见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 
 4. **后台导航体验**  
    主文档 GET 已进入 worker，旧页在此期间继续响应并显示 loading；response 回到 UI 线程后，parse、外链 CSS/图片 fetch、style/layout 仍同步发生，复杂页面可能短暂卡顿。后续应把资源 fetch 纳入后台事务，同时继续保证 DOM/libcss/NetSurf document 只在 UI 线程提交。
@@ -191,7 +191,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 - **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table/border、`<img>` alt fallback、资源缓存与 BMP object/redraw 链；Browse host 已在 layout 前调用图片资源获取。PNG/JPEG/GIF、SVG、float、forms/widgets、复杂 table 仍需分阶段补。
 - **border redraw 已通过内置页验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制来自 NetSurf `redraw_border.c`；TEST 17 已确认 solid/dashed/table cell 边框可见，复杂真实页面仍需持续观察。
-- **图片路径正在扩展格式验收**：BMP/PNG/JPEG/GIF 的 WM Imaging 直接可见绘制已确认；TEST20 已扩为四格式缓存 `<img>`，要求全部进入 `box->object -> content_redraw -> plot_bitmap -> IImage::Draw`，构建通过待设备确认。背景图、SVG 尚未接通，解码失败时仍回退 alt/src 文本。
+- **图片路径采用公共 DLL 边界**：BMP/PNG/JPEG/GIF、SVG、CSS 单背景图与缓存 `<img>` 已有真机基线。新的 retained WM 位图句柄已进入 `positron_image.dll`，core 不再直接拥有 `IImage`；该迁移待 TEST19/20 复验，解码失败仍回退 alt/src 文本。
 - **部分 CSS selector 仍待补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已由 TEST 9 真机验证；动态状态伪类仍为 no-match，会影响真实网页样式命中。
 - **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。

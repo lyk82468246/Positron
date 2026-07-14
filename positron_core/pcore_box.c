@@ -223,13 +223,18 @@ static struct box *pcore_make_literal_text_box(dom_node *owner,
 
 /* The portable NetSurf part of an image is a replaced box with an object.
  * Our object is the small nsshim image carrier. Encoded bytes are owned by the
- * document cache; retained SVG state is released by the carrier destructor.
+ * document cache; retained bitmap/SVG state is released by its destructor.
  * layout.c reads its intrinsic dimensions through
  * content_get_width/height; redraw.c reaches plot_bitmap through
  * content_redraw. Return NULL for absent/cache-miss/undecodable resources so
  * the caller can retain the established alt/src fallback. */
 static int pcore_bitmap_destroy(struct bitmap *bitmap)
 {
+    if (bitmap != NULL && bitmap->kind == PCORE_BITMAP_WM_IMAGE &&
+            bitmap->native_image != NULL) {
+        PImage_FreeBitmap((PIMAGE_BITMAP) bitmap->native_image);
+        bitmap->native_image = NULL;
+    }
     if (bitmap != NULL && bitmap->kind == PCORE_BITMAP_SVG &&
             bitmap->svg != NULL) {
         PImage_FreeSvg((PIMAGE_SVG) bitmap->svg);
@@ -246,6 +251,7 @@ static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
     int width = 0;
     int height = 0;
     int kind = 0;
+    PIMAGE_BITMAP native_image = NULL;
     PIMAGE_SVG svg = NULL;
     struct bitmap *bitmap;
 
@@ -253,15 +259,26 @@ static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
             pcore_image_resource_get(doc, url, &data, &len) != 0) {
         return NULL;
     }
-    if (PCore_ImageInfoFromMemory(data, len, &width, &height) == 0 &&
-            width > 0 && height > 0) {
-        kind = PCORE_BITMAP_WM_IMAGE;
-    } else if (PImage_CreateSvgFromMemory(data, len, 0, 0, &svg) ==
+    if (PImage_CreateBitmapFromMemory(data, len, &native_image) ==
+            PIMAGE_OK && native_image != NULL) {
+        if (PImage_BitmapGetInfo(native_image, &width, &height) ==
+                PIMAGE_OK && width > 0 && height > 0) {
+            kind = PCORE_BITMAP_WM_IMAGE;
+        } else {
+            PImage_FreeBitmap(native_image);
+            native_image = NULL;
+        }
+    }
+    if (kind == 0 && PImage_CreateSvgFromMemory(data, len, 0, 0, &svg) ==
             PIMAGE_OK && svg != NULL &&
             PImage_SvgGetInfo(svg, &width, &height, NULL) == PIMAGE_OK &&
             width > 0 && height > 0) {
         kind = PCORE_BITMAP_SVG;
-    } else {
+    }
+    if (kind == 0) {
+        if (native_image != NULL) {
+            PImage_FreeBitmap(native_image);
+        }
         if (svg != NULL) {
             PImage_FreeSvg(svg);
         }
@@ -270,6 +287,9 @@ static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
 
     bitmap = talloc_zero(ctx, struct bitmap);
     if (bitmap == NULL) {
+        if (native_image != NULL) {
+            PImage_FreeBitmap(native_image);
+        }
         if (svg != NULL) {
             PImage_FreeSvg(svg);
         }
@@ -280,6 +300,7 @@ static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
     bitmap->len = len;
     bitmap->width = width;
     bitmap->height = height;
+    bitmap->native_image = (void *) native_image;
     bitmap->svg = (void *) svg;
     talloc_set_destructor(bitmap, pcore_bitmap_destroy);
     return bitmap;

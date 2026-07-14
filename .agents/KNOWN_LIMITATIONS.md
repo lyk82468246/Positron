@@ -13,7 +13,7 @@
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | TEST13 的 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
 | 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
-| 图片 | TEST18-20 已确认 WM Imaging 四格式缓存链；TEST25-37/13 已确认 SVG parse/draw/cache/fallback/fill-rule、网络相对 SVG、CSS 背景图、基础文本、线性/径向渐变、继承/透明 stop 与缓存复用。 | 复杂 SVG text、任意渐变、复杂 CSS 背景或任意网络图片均已通过。 |
+| 图片 | 既有 TEST18-20 已确认 WM Imaging 四格式缓存链；TEST25-37/13 已确认 SVG 链。新的公共 retained 位图 ABI 与核心对象复用已编译通过，待 TEST19/20 重新真机确认。 | 复杂 SVG text、任意渐变、复杂 CSS 背景、跨线程图片句柄或任意网络图片均已通过。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认跨断点重选、无联网及滚动比例，真实 TEST13 横竖屏也保持同一阅读区域。 | 所有媒体语法和任意样式资源均已覆盖。 |
 
@@ -50,11 +50,11 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **第一阶段完成条件**：慢网主文档 GET 期间旧页可滚动，loading 可见；成功后才 swap，错误保留当前页面，关闭窗口不会遗留线程。
 - **当前完成条件**：TEST43 的 URL/去重/成功/失败断言通过；真实 TEST13 的 CSS/图片网络等待不阻塞 UI，generation 正确，成功后才 swap，失败资源保留 fallback。
 
-### 图片能力只以 BMP 最小链路为基线
+### 图片格式已覆盖，新的公共 retained 位图 ABI 待验收
 
 WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
-- **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。TEST25-37/13 已真机确认 SVG parse、公共 DLL retained object、NanoSVG 抗锯齿 draw、缓存/fallback、真实网络相对资源、fill-rule、CSS background-image、基础 text、线性/径向渐变、继承/透明 stop、循环保护与缓存复用；TEST43/13 也已确认后台资源事务未破坏该链。CSS 背景仍不含 background-size 和多层背景。SVG 暂不支持复杂 shaping、`textPath`、逐字 dx/dy、任意 shear、径向焦点 `fx/fy` 或 spread method。单次栅格源缓冲限制为 1,048,576 像素，超大输出会降低内部采样分辨率后再缩放。
+- **当前结论**：BMP/PNG/JPEG/GIF 四格式与旧 TEST20 缓存 `<img>` 已由设备视觉确认。2026-07-15 新增的公共位图句柄由创建线程使用和释放；DLL 复制编码输入并保留 WM `IImage`，NetSurf 重绘复用该句柄，旧 `PCore_Image*` 只做兼容转发。它已通过 VS2008 ARM 编译和 PE 导入/导出检查，但仍须 TEST19/20 真机确认后才能关闭迁移。为保证 WM Imaging 的惰性解码数据源始终有效，句柄存活期间会同时保留一份编码字节；core 的 document cache 也保留原字节以支持重布局，因此当前以额外编码内存换取重绘不重复解码。TEST25-37/13 的 SVG 真机结论保持不变。CSS 背景仍不含 background-size 和多层背景；SVG 仍缺复杂 shaping、`textPath`、逐字 dx/dy、任意 shear、径向焦点 `fx/fy` 或 spread method。单次栅格源缓冲限制为 1,048,576 像素，超大输出会降低内部采样分辨率后再缩放。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则

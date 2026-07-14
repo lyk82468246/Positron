@@ -1810,8 +1810,7 @@ static int    g_svg_draw_rc = -1;
 static PIMAGE_SVG g_svg_handle = NULL;
 static int    g_overflow_pointer = 0;
 #define PCORE_IMAGE_FORMAT_COUNT 4
-static const char *g_image_format_data[PCORE_IMAGE_FORMAT_COUNT];
-static int g_image_format_len[PCORE_IMAGE_FORMAT_COUNT];
+static PIMAGE_BITMAP g_image_format_bitmap[PCORE_IMAGE_FORMAT_COUNT];
 static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
     L"BMP", L"PNG", L"JPEG", L"GIF"
 };
@@ -2702,11 +2701,22 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                 ExtTextOutW(hdc, 4, y + 4, 0, NULL,
                         g_image_format_name[i],
                         (UINT) wcslen(g_image_format_name[i]), NULL);
-                rc = PCore_DrawImageFromMemory(g_image_format_data[i],
-                        g_image_format_len[i], hdc, 64, y + 2,
+                rc = PImage_DrawBitmap(g_image_format_bitmap[i], hdc,
+                        64, y + 2,
                         rcc.right - 68, cell_h - 4);
-                if (rc != 0 && g_image_draw_rc == 0) {
+                if (rc == PIMAGE_OK) {
+                    rc = PImage_DrawBitmap(g_image_format_bitmap[i], hdc,
+                            64, y + 2, rcc.right - 68, cell_h - 4);
+                }
+                if (rc == PIMAGE_OK && i == 0) {
+                    rc = PCore_DrawImageFromMemory(
+                            (const char *) g_test_bmp_2x2,
+                            (int) sizeof(g_test_bmp_2x2), hdc,
+                            64, y + 2, rcc.right - 68, cell_h - 4);
+                }
+                if (rc != PIMAGE_OK && g_image_draw_rc == 0) {
                     g_image_draw_rc = rc;
+                    break;
                 }
             }
         } else if (g_ns_render) {
@@ -3379,6 +3389,9 @@ static BOOL test19_wmimage(void)
     int w;
     int h;
     int rc;
+    int legacy_w;
+    int legacy_h;
+    PIMAGE_BITMAP invalid_bitmap;
     int stage;
     int i;
     unsigned long hr;
@@ -3397,34 +3410,73 @@ static BOOL test19_wmimage(void)
     expect_h[0] = 2; expect_h[1] = 2; expect_h[2] = 16; expect_h[3] = 2;
 
     for (i = 0; i < PCORE_IMAGE_FORMAT_COUNT; i++) {
+        g_image_format_bitmap[i] = NULL;
+    }
+    for (i = 0; i < PCORE_IMAGE_FORMAT_COUNT; i++) {
         if (len[i] <= 0) {
             sprintf(msg, "%s fixture base64 decode failed", name[i]);
             show_error(L"TEST 19 FAIL", msg);
-            return FALSE;
+            goto fail;
         }
         w = 0;
         h = 0;
-        rc = PCore_ImageInfoFromMemory(data[i], len[i], &w, &h);
-        if (rc != 0) {
-            PCore_ImageLastError(&stage, &hr);
+        rc = PImage_CreateBitmapFromMemory(data[i], len[i],
+                &g_image_format_bitmap[i]);
+        if (rc != PIMAGE_OK) {
+            PImage_BitmapLastError(&stage, &hr);
             sprintf(msg, "%s info failed: rc=%d stage=%d hr=0x%08lx",
                     name[i], rc, stage, hr);
             show_error(L"TEST 19 FAIL", msg);
-            return FALSE;
+            goto fail;
+        }
+        rc = PImage_BitmapGetInfo(g_image_format_bitmap[i], &w, &h);
+        if (rc != PIMAGE_OK) {
+            PImage_BitmapLastError(&stage, &hr);
+            sprintf(msg, "%s retained info failed: rc=%d stage=%d "
+                    "hr=0x%08lx", name[i], rc, stage, hr);
+            show_error(L"TEST 19 FAIL", msg);
+            goto fail;
         }
         if (w != expect_w[i] || h != expect_h[i]) {
             sprintf(msg, "%s size=%dx%d, expect %dx%d", name[i], w, h,
                     expect_w[i], expect_h[i]);
             show_error(L"TEST 19 FAIL", msg);
-            return FALSE;
+            goto fail;
         }
-        g_image_format_data[i] = data[i];
-        g_image_format_len[i] = len[i];
     }
+
+    legacy_w = 0;
+    legacy_h = 0;
+    rc = PCore_ImageInfoFromMemory(data[0], len[0], &legacy_w, &legacy_h);
+    if (rc != 0 || legacy_w != expect_w[0] || legacy_h != expect_h[0]) {
+        PCore_ImageLastError(&stage, &hr);
+        sprintf(msg, "legacy core forward failed: rc=%d size=%dx%d "
+                "stage=%d hr=0x%08lx", rc, legacy_w, legacy_h, stage, hr);
+        show_error(L"TEST 19 FAIL", msg);
+        goto fail;
+    }
+
+    invalid_bitmap = NULL;
+    rc = PImage_CreateBitmapFromMemory("bad", 3, &invalid_bitmap);
+    PImage_BitmapLastError(&stage, &hr);
+    if (rc == PIMAGE_OK || invalid_bitmap != NULL ||
+            (stage != PIMAGE_BITMAP_STAGE_CREATE &&
+             stage != PIMAGE_BITMAP_STAGE_INFO)) {
+        show_error(L"TEST 19 FAIL",
+                "Malformed bitmap rejection/diagnostic was incorrect");
+        PImage_FreeBitmap(invalid_bitmap);
+        goto fail;
+    }
+
+    /* The public ABI promises to own a copy after creation. Destroy the
+     * caller buffers before WM_PAINT to exercise that contract. */
+    memset(png, 0, sizeof(png));
+    memset(jpeg, 0, sizeof(jpeg));
+    memset(gif, 0, sizeof(gif));
 
     show_info(L"TEST 19",
               "WM Imaging format coverage.\n\n"
-              "Expect four labeled rows drawn by IImage::Draw:\n"
+              "Expect four labeled rows drawn twice by retained PImage handles:\n"
               "BMP, PNG, JPEG, GIF.\n"
               "Tap or press Esc to close.");
 
@@ -3439,24 +3491,33 @@ static BOOL test19_wmimage(void)
     if (!show_render_window()) {
         g_image_test = 0;
         show_error(L"TEST 19 FAIL", "CreateWindow returned NULL");
-        return FALSE;
+        goto fail;
     }
     g_image_test = 0;
     for (i = 0; i < PCORE_IMAGE_FORMAT_COUNT; i++) {
-        g_image_format_data[i] = NULL;
-        g_image_format_len[i] = 0;
+        PImage_FreeBitmap(g_image_format_bitmap[i]);
+        g_image_format_bitmap[i] = NULL;
     }
 
     if (g_image_draw_rc != 0) {
-        PCore_ImageLastError(&stage, &hr);
-        sprintf(msg, "IImage::Draw failed: rc=%d stage=%d hr=0x%08lx",
+        PImage_BitmapLastError(&stage, &hr);
+        sprintf(msg, "retained draw failed: rc=%d stage=%d hr=0x%08lx",
                 g_image_draw_rc, stage, hr);
         show_error(L"TEST 19 FAIL", msg);
         return FALSE;
     }
-    sprintf(msg, "WM Imaging decoded/drew BMP, PNG, JPEG and GIF");
+    sprintf(msg, "retained/drew BMP, PNG, JPEG and GIF after caller buffers "
+            "were cleared; malformed input rejected; legacy ABI forwarded");
     show_info(L"TEST 19 OK", msg);
     return TRUE;
+
+fail:
+    g_image_test = 0;
+    for (i = 0; i < PCORE_IMAGE_FORMAT_COUNT; i++) {
+        PImage_FreeBitmap(g_image_format_bitmap[i]);
+        g_image_format_bitmap[i] = NULL;
+    }
+    return FALSE;
 }
 
 /* -------------------------------------------------------------------- */

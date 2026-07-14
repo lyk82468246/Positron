@@ -3,7 +3,8 @@
  *
  * The public API is a C ABI and does not expose WM Imaging, libdom or
  * libsvgtiny objects. All input buffers remain owned by the caller.
- * SVG objects must be released with PImage_FreeSvg.
+ * Bitmap and SVG objects must be released by the matching PImage_Free*
+ * function. Retained objects are used on the thread that created them.
  */
 
 #ifndef POSITRON_IMAGE_H
@@ -26,10 +27,47 @@ enum {
     PIMAGE_ERROR_ARGUMENT = 1,
     PIMAGE_ERROR_MEMORY = 2,
     PIMAGE_ERROR_DRAW = 3,
+    PIMAGE_ERROR_PLATFORM = 4,
+    PIMAGE_ERROR_THREAD = 5,
     PIMAGE_ERROR_SVG_BASE = 100
 };
 
+enum {
+    PIMAGE_BITMAP_STAGE_NONE = 0,
+    PIMAGE_BITMAP_STAGE_ARGUMENT = 1,
+    PIMAGE_BITMAP_STAGE_COM_INIT = 2,
+    PIMAGE_BITMAP_STAGE_FACTORY = 3,
+    PIMAGE_BITMAP_STAGE_CREATE = 4,
+    PIMAGE_BITMAP_STAGE_INFO = 5,
+    PIMAGE_BITMAP_STAGE_DRAW = 6,
+    PIMAGE_BITMAP_STAGE_MEMORY = 7,
+    PIMAGE_BITMAP_STAGE_THREAD = 8
+};
+
+typedef HANDLE PIMAGE_BITMAP;
 typedef HANDLE PIMAGE_SVG;
+
+/* Create a retained Windows Mobile Imaging object from encoded BMP, PNG,
+ * JPEG, GIF or another codec installed on the device. The DLL copies the
+ * input bytes, so the caller may release its buffer after this call. The
+ * returned handle must be queried, drawn and freed on the creating thread. */
+PIMAGE_API int PImage_CreateBitmapFromMemory(const char *data, int len,
+        PIMAGE_BITMAP *out_bitmap);
+
+PIMAGE_API int PImage_BitmapGetInfo(PIMAGE_BITMAP bitmap,
+        int *out_w, int *out_h);
+
+/* Non-positive width/height use the intrinsic dimensions. Repeated draws use
+ * the retained image object and do not recreate the decoder. */
+PIMAGE_API int PImage_DrawBitmap(PIMAGE_BITMAP bitmap, HDC hdc,
+        int x, int y, int width, int height);
+
+PIMAGE_API void PImage_FreeBitmap(PIMAGE_BITMAP bitmap);
+
+/* Process-global diagnostic for the immediately preceding bitmap call.
+ * stage is one of PIMAGE_BITMAP_STAGE_*; hr is the native HRESULT. */
+PIMAGE_API void PImage_BitmapLastError(int *out_stage,
+        unsigned long *out_hr);
 
 /* Parse and retain an in-memory UTF-8 SVG. The caller keeps ownership of the
  * input bytes; the returned opaque object owns all parsed data. */

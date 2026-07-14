@@ -2,11 +2,11 @@
 
 面向 **Windows Mobile 6 Professional**（Windows CE 5.2, ARMv4i）的现代基础设施与应用运行时。
 
-Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、渲染核心以及后续图片等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制和点击导航都在 `positron_core.dll` 后面跑通；JavaScript 是长期必须实现的目标，但尚不是当前可用能力。
+Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制和点击导航都在 `positron_core.dll` 后面跑通；JavaScript 是长期必须实现的目标，但尚不是当前可用能力。
 
 公共 DLL 是正式产品，不只是 `test_host.exe` 或浏览器的内部依赖。架构与 ABI 原则见 [.agents/ARCHITECTURE.md](.agents/ARCHITECTURE.md)。
 
-> **稳定性基线（2026-07-15）**：`main` 的产品源码已完整恢复到 `9c5c7c7`/next37。用户重新确认该包的 TEST13 全流程正常，而 next38 之后的 stylesheet metadata、base URL、redirect origin 和 timeout 实验组合导致真实导航长期不提交。实验历史保存在 `codex/post-next37-experiments`，短期挂起；详见 [.agents/ROLLBACK_NEXT37.md](.agents/ROLLBACK_NEXT37.md)。
+> **稳定性基线（2026-07-15）**：`main` 的产品源码已完整恢复到 `9c5c7c7`/next37，并打包为 next44；用户已确认 TEST13 从 start page 到 IANA 深层导航的全流程完全正常。next38 之后的 stylesheet metadata、base URL、redirect origin 和 timeout 实验历史保存在 `codex/post-next37-experiments`，短期挂起；详见 [.agents/ROLLBACK_NEXT37.md](.agents/ROLLBACK_NEXT37.md)。
 
 ---
 
@@ -18,7 +18,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1：HTTPS via mbedTLS，明文 HTTP via WinInet) | ✅ 完成，WM6 Emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
 | **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、缓存图片链、CSS 背景图与 NetSurf overflow scrollbar 已真机验证，窄屏复杂布局仍待补 |
-| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 SVG parse/draw/cache/fallback、网络 fixture、复合 fill-rule、CSS 背景图、原生 GDI text、线性/径向渐变、继承/透明 stop 及缓存复用已由 TEST25-37/13 真机验证 |
+| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 SVG 能力已由 TEST25-37/13 真机验证；BMP/PNG/JPEG/GIF retained C ABI、调用方缓冲复制和核心兼容转发已编译通过，待 TEST19/20 真机验收 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
@@ -26,9 +26,9 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 当前 Browse 正式路径已经从早期手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selector 与 `:link` / `:lang()` 已由 TEST 9/17 真机验证。TEST 11 的 margin collapse 与 `padding-top:1px` 阻断折叠成对断言已于 2026-07-10 真机通过。`<img>` alt fallback 已由 TEST 17 验证；TEST 18 的文档级资源缓存与 URL 去重、TEST 20 的 BMP/PNG/JPEG/GIF 缓存 replaced box/`content_redraw`/`plot_bitmap` 绘制均已真机通过。TEST 21 已验证运行时 viewport/DPI 及整数像素 MQ4 `(width <= Npx)` / `(width < Npx)` 的 320/300/299px 边界。TEST13 已确认 `white-space:normal/nowrap` 的源码换行被正确折叠、词间距正常；TEST15 又确认 `<pre>` 换行仍保留。TEST 22 已验证反向 flex 的 25px leading padding；TEST38-39 进一步关闭了 IANA 顶层根变量造成的窄屏间距问题，当前截图中的导航、正文和注册表列均已可读，但其他真实子页仍需持续观察。Browse host 在布局前使用同一 HTTP 获取器填充 `<img>` 缓存，失败仍保留 alt/src 回退。SVG parse/draw/cache/fallback 已由 TEST25-28 真机通过，TEST13 的 HTTPS HTML + 相对 SVG 网络 fixture 也已显示正确。详见 [PHASE4.md](PHASE4.md)、[.agents/ROADMAP.md](.agents/ROADMAP.md) 和 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 
-当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 的 BMP/PNG/JPEG/GIF 与缓存 `<img>` 链已真机验证。`positron_image.dll` 公共 C ABI 已接通 Expat、libdom XML、libsvgtiny 与 NanoSVG rasterizer；TEST25-27 已依次确认 SVG parse、抗锯齿 retained draw 和缓存 replaced-box 绘制。
+当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 的 BMP/PNG/JPEG/GIF 与缓存 `<img>` 链已真机验证。`positron_image.dll` 公共 C ABI 已接通 WM Imaging、Expat、libdom XML、libsvgtiny 与 NanoSVG rasterizer；新增 `PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap/FreeBitmap` retained 位图对象，输入字节由 DLL 复制，NetSurf 图片载体也改为复用同一解码对象。该位图 ABI 已通过 VS2008 ARM 构建，等待 TEST19/20 设备确认；SVG 的 TEST25-27 基线保持不变。
 
-最新设备反馈（2026-07-14）：TEST3 已确认 TLS 1.2 GET 的真实、单调正文进度，TEST43 已确认外链资源事务的显式 origin URL、去重、复制缓存命中和一次失败语义；TEST13 的 IANA 页面未发现新问题并基本符合当前预期，TEST44 也确认主文档失败时旧页与事务状态正确保留/收尾。它们证明真实进度及后台 CSS/图片事务未破坏现有 Browse 基线，但不代表完整页面兼容性通过。此前 TEST29-42 的 SVG、现代 CSS 值、grid 宽度隔离和 NetSurf overflow scrollbar 基线继续保留。
+最新设备反馈（2026-07-15）：next44 的 TEST13 全流程已确认完全正常，next37 恢复点正式成为 Browse 冻结基线。此前 TEST3/43/44 的进度、后台资源事务与失败回滚事实仍保留，但 next37 之后尚未重新逐项接入的实验能力不能视为当前主线承诺。当前开发转向不触碰网络/DOM/layout 的图片 DLL 分层；TEST29-42 的 SVG、现代 CSS 值、grid 宽度隔离和 NetSurf overflow scrollbar 已验收基线继续保留。
 
 当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已由 TEST42 验收，但不包含触摸惯性或 overlay scrollbar。CSS `@import` 的嵌套解析、失败空表回退和文档缓存代码已完成，TEST45 待设备确认；它尚不代表跨源策略、完整缓存失效或整页资源进度已完成。`background-size`、多层背景、web fonts 和脚本资源仍未实现。UI 提交已在 parse/style/image-discovery/layout 四个调用之间让出 WM 消息循环，单个不可重入的 NetSurf 调用仍可能短暂卡顿。复杂 SVG text、动态状态伪类、float、复杂 table、forms/widgets 仍不完整；JavaScript 尚未实现但属于长期必做目标。
 
@@ -80,7 +80,7 @@ Positron/
 
   positron_expat/               Expat 2.8.2 静态库及 WM/VS2008 适配
   positron_libsvgtiny/          NetSurf libsvgtiny 静态库
-  positron_image/               可供任意 WM 程序调用的图片 DLL（SVG API 起点）
+  positron_image/               可供任意 WM 程序调用的图片 DLL（WM 位图 + SVG retained C ABI）
 
   test_host/                    端到端测试 EXE（分通信/引擎/GDI渲染/Browse 组）
     main.c

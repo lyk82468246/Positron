@@ -65,7 +65,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib positron_image.lib imaging.lib ole32.lib"
+				AdditionalDependencies="positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib positron_image.lib"
 				AdditionalLibraryDirectories="..\positron_hubbub\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName);..\positron_libcss\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_image\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_core.dll"
@@ -156,7 +156,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib positron_image.lib imaging.lib ole32.lib"
+				AdditionalDependencies="positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib positron_image.lib"
 				AdditionalLibraryDirectories="..\positron_hubbub\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName);..\positron_libcss\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_image\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_core.dll"

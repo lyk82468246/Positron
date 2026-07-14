@@ -29,7 +29,7 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_libsvgtiny.lib positron_libdom.lib positron_expat.lib positron_netsurf.lib"
+				AdditionalDependencies="positron_libsvgtiny.lib positron_libdom.lib positron_expat.lib positron_netsurf.lib imaging.lib ole32.lib"
 				AdditionalLibraryDirectories="..\positron_libsvgtiny\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_expat\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_image.dll" LinkIncremental="2"
@@ -68,7 +68,7 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_libsvgtiny.lib positron_libdom.lib positron_expat.lib positron_netsurf.lib"
+				AdditionalDependencies="positron_libsvgtiny.lib positron_libdom.lib positron_expat.lib positron_netsurf.lib imaging.lib ole32.lib"
 				AdditionalLibraryDirectories="..\positron_libsvgtiny\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_expat\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_image.dll" LinkIncremental="1"
@@ -91,6 +91,14 @@
 	<References />
 	<Files>
 		<File RelativePath=".\pimage_raster.cpp">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" CompileAs="2" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" CompileAs="2" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath=".\pimage_wm.cpp">
 			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
 				<Tool Name="VCCLCompilerTool" CompileAs="2" />
 			</FileConfiguration>

@@ -356,9 +356,10 @@ static nserror pcore_plot_bitmap_once(pcore_plot_ctx *p,
                 NSERROR_OK : NSERROR_INVALID;
     }
     if (bitmap->kind == PCORE_BITMAP_WM_IMAGE &&
-            bitmap->data != NULL && bitmap->len > 0) {
-        return PCore_DrawImageFromMemory(bitmap->data, bitmap->len, p->hdc,
-                x, y, width, height) == 0 ? NSERROR_OK : NSERROR_INVALID;
+            bitmap->native_image != NULL) {
+        return PImage_DrawBitmap((PIMAGE_BITMAP) bitmap->native_image,
+                p->hdc, x, y, width, height) == PIMAGE_OK ?
+                NSERROR_OK : NSERROR_INVALID;
     }
     return NSERROR_INVALID;
 }

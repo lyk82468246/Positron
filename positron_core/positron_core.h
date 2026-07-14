@@ -138,17 +138,13 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
 PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
         PCoreFreeFn freefn, void *pw, int *out_found, int *out_fetched);
 
-/* Decode an in-memory PNG/JPEG/GIF/BMP/etc. with the Windows Mobile Imaging
- * API and return its pixel dimensions. This is the native decoder bridge used
- * by the image pipeline; it does not fetch bytes itself. Returns 0 on success.
- */
+/* Legacy one-shot image helpers. New consumers should use positron_image.dll's
+ * retained PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap API. These
+ * exports remain ABI-compatible and forward to that public image service. */
 PCORE_API int PCore_ImageInfoFromMemory(const char *data, int len,
         int *out_w, int *out_h);
 
-/* Draw an in-memory image with the Windows Mobile Imaging API directly into a
- * GDI HDC. This proves native decode + draw before the bytes are wired into
- * NetSurf's <img> object/layout path. If w/h are <= 0, the image's natural
- * dimensions are used. Returns 0 on success. */
+/* If w/h are <= 0, the image's natural dimensions are used. */
 PCORE_API int PCore_DrawImageFromMemory(const char *data, int len, HDC hdc,
         int x, int y, int w, int h);
 

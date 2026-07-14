@@ -16,6 +16,7 @@ struct bitmap {
     int len;
     int width;         /* intrinsic pixels from the selected decoder */
     int height;
+    void *native_image; /* PIMAGE_BITMAP, owned by this carrier */
     void *svg;         /* PIMAGE_SVG, owned and released by this carrier */
 };
 
