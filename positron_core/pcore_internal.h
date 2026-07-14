@@ -12,6 +12,15 @@
 #include <dom/dom.h>
 #include <libcss/libcss.h>
 
+#include "positron_core.h"
+
+/* Parse one stylesheet through Positron's compatibility transforms. Unlike
+ * the public PCore_ParseCSS entry point, this may return CSS_IMPORTS_PENDING
+ * so pcore_select can fetch and register the native libcss import tree. */
+css_stylesheet *pcore_parse_css_internal(const char *css, unsigned int len,
+        const char *url, PCoreResolveUrlFn resolve, void *resolve_pw,
+        css_error *out_done);
+
 /* Return the css_computed_style PCore_StyleDocument attached to `node`, or NULL
  * if the node is not an element / has not been styled. Borrowed pointer (owned
  * by the node's user-data). */

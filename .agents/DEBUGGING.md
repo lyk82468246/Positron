@@ -141,7 +141,7 @@ TEST41 修复只在 flex item 树中实际检测到 grid/inline-grid 降级盒�
 
 `STATIC` 子窗口在设备上完全不可见。复核 WM6 SDK 后改用正确的 Common Controls 路径：`InitCommonControlsEx(ICC_PROGRESS_CLASS)`、`PROGRESS_CLASS`、`PBM_SETRANGE/PBM_SETPOS`，并链接 `commctrl.lib`。控件位于 render client 的 `y=0`，不是系统任务栏坐标；高度来自 `SM_CYHSCROLL` 且至少 6px。若 `CreateWindowExW` 失败，窗口标题会显示 `Positron render - loading`，便于区分创建失败与绘制/遮挡。
 
-旋转调试注意：`WM_SIZE` 当前会调用 `PCore_SetViewport` 和 `PCore_LayoutDocument`，所以几何会重新 flow；它不会调用 `PCore_StyleDocumentEx`，因此跨 CSS 断点时媒体规则可能仍是旋转前的选择结果。排查旋转问题时先区分“layout 没更新”和“style 没重选”。
+旋转调试注意：旧实现只调用 `PCore_SetViewport` 和 `PCore_LayoutDocument`，曾导致跨 CSS 断点时媒体规则沿用旋转前结果。当前 `WM_SIZE` 已改为 `PCore_SetViewport` -> cache-only `PCore_StyleDocumentEx2` -> `PCore_LayoutDocument`，并传入当前绝对文档 URL 与 WM resolver；若再出现问题，应分别检查缓存 URL 命中、style 重选和 layout。
 
 2026-07-11：用户截图显示最终汇总 `Tests passed`，明确列出 ENGINE 的 TEST 6-11、15、16、18、21、22 全部通过。它是离线 HTML parse/select/style/layout、media-query viewport、反向 flex、box tree 及图片资源发现/document cache 的回归证据；不覆盖网络 Browse 或 GDI Render 组。
 
@@ -149,4 +149,4 @@ TEST41 修复只在 flex item 树中实际检测到 grid/inline-grid 降级盒�
 
 同日线上 IANA CSS 的文件名与此前版本不同，并使用 CSS custom properties 和 `@media (width <= 1000px)`。这不是 TEST21 的 `min-width` / `max-width` 断言所覆盖的语法；定位真实页问题前先确认实际抓取的是哪一个 CSS 版本，不能把旧截图结论外推到新站点资源。
 
-2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1。真实 Browse 旋转仍需验收。
+2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。

@@ -88,9 +88,10 @@ PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet);
 
 /* Embedder-provided resource fetch, used to pull external resources the engine
  * references (<link rel="stylesheet"> CSS, and now <img src> discovery). The
- * engine stays transport-agnostic: it hands the raw href/src from the document
- * to `fetch`, and the embedder resolves it against the current page and fetches
- * it (e.g. via positron_http). On success `fetch` returns 0 and sets *out_data
+ * engine stays transport-agnostic: legacy calls receive raw references, while
+ * the base-aware styling API can hand canonical URLs to `fetch` through the
+ * embedder's resolver (e.g. WinINet + positron_http). On success `fetch` returns
+ * 0 and sets *out_data
  * (raw bytes owned by the embedder) + *out_len; the engine consumes or copies
  * them before calling `freefn` to release the embedder buffer. `fetch` returns
  * non-zero to skip the resource. `pw` is passed through opaquely. */
@@ -98,12 +99,29 @@ typedef int  (*PCoreFetchFn)(void *pw, const char *url,
                              char **out_data, int *out_len);
 typedef void (*PCoreFreeFn)(void *pw, char *data);
 
+/* Resolve `reference` against `base_url` into the caller-provided buffer.
+ * Return 0 on success. This keeps URL policy in the embedder while allowing
+ * libcss to resolve @import and url() relative to their owning stylesheet. */
+typedef int (*PCoreResolveUrlFn)(void *pw, const char *base_url,
+                                const char *reference,
+                                char *out_url, int out_capacity);
+
 /* As PCore_StyleDocument, but also fetches and applies external
  * <link rel="stylesheet"> sheets via the embedder's `fetch`/`freefn` (pass NULL
  * for both to skip external CSS, which makes this identical to
  * PCore_StyleDocument). The fetched sheets are author-origin, applied in
  * document order alongside the page's inline <style> blocks. */
 PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw);
+
+/* Base-aware extension of PCore_StyleDocumentEx. `document_url` should be the
+ * absolute URL of the document. `resolve` is used for linked stylesheets,
+ * nested @import and CSS url() values; pass NULL to retain the legacy raw-URL
+ * behavior. Imported sheets use libcss's native pending/register-import API,
+ * including media conditions. Failed imports are registered as empty sheets
+ * so the rest of the parent stylesheet remains usable. */
+PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
+        const char *document_url, PCoreResolveUrlFn resolve,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw);
 
 /* Scan the document for non-empty <img src> and computed background-image

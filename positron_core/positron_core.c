@@ -31,6 +31,7 @@
 #include "../netsurf-all-3.11/libdom/bindings/hubbub/parser.h"
 
 #include "positron_core.h"
+#include "pcore_internal.h"
 #include "pcore_css_values.h"
 
 /* ------------------------------------------------------------------ */
@@ -136,13 +137,34 @@ PCORE_API void PCore_FreeDocument(HANDLE hDoc)
 /* CSS                                                                 */
 /* ------------------------------------------------------------------ */
 
-/* No real URL resolution needed yet (no @import in the sheets we handle);
- * hand the relative reference straight back, taking a ref as the API expects. */
+typedef struct pcore_css_resolve_ctx {
+    PCoreResolveUrlFn resolve;
+    void *pw;
+} pcore_css_resolve_ctx;
+
 static css_error pcore_css_resolve(void *pw, const char *base,
                                    lwc_string *rel, lwc_string **abs)
 {
-    (void) pw;
-    (void) base;
+    pcore_css_resolve_ctx *ctx;
+    size_t rel_len;
+    char reference[2048];
+    char resolved[2048];
+
+    ctx = (pcore_css_resolve_ctx *) pw;
+    if (ctx != NULL && ctx->resolve != NULL && base != NULL) {
+        rel_len = lwc_string_length(rel);
+        if (rel_len < sizeof(reference)) {
+            memcpy(reference, lwc_string_data(rel), rel_len);
+            reference[rel_len] = '\0';
+            resolved[0] = '\0';
+            if (ctx->resolve(ctx->pw, base, reference, resolved,
+                    (int) sizeof(resolved)) == 0 && resolved[0] != '\0' &&
+                    lwc_intern_string(resolved, strlen(resolved), abs) ==
+                            lwc_error_ok) {
+                return CSS_OK;
+            }
+        }
+    }
     *abs = lwc_string_ref(rel);
     return CSS_OK;
 }
@@ -929,12 +951,14 @@ static char *pcore_css_compat_root_vars(const char *css, unsigned int len,
     return out.data;
 }
 
-PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
-                                const char *url)
+css_stylesheet *pcore_parse_css_internal(const char *css, unsigned int len,
+        const char *url, PCoreResolveUrlFn resolve, void *resolve_pw,
+        css_error *out_done)
 {
     css_stylesheet_params params;
     css_stylesheet       *sheet = NULL;
     css_error             err;
+    pcore_css_resolve_ctx resolve_ctx;
     char                 *compat_css;
     char                 *vars_css;
     char                 *values_css;
@@ -943,6 +967,9 @@ PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
 
     if (css == NULL) {
         return NULL;
+    }
+    if (out_done != NULL) {
+        *out_done = CSS_INVALID;
     }
     if (len == 0) {
         len = (unsigned int) strlen(css);
@@ -962,14 +989,15 @@ PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
         parse_css = values_css;
     }
 
-    /* Zero the block, then set only the fields we need; title / quirks /
-     * inline / import / colour / font callbacks stay NULL/false. */
+    resolve_ctx.resolve = resolve;
+    resolve_ctx.pw = resolve_pw;
     memset(&params, 0, sizeof(params));
     params.params_version = CSS_STYLESHEET_PARAMS_VERSION_1;
     params.level          = CSS_LEVEL_DEFAULT;
     params.charset        = "UTF-8";
     params.url            = (url != NULL) ? url : "http://positron.local/";
     params.resolve        = pcore_css_resolve;
+    params.resolve_pw     = &resolve_ctx;
 
     err = css_stylesheet_create(&params, &sheet);
     if (err != CSS_OK || sheet == NULL) {
@@ -991,7 +1019,28 @@ PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
     }
 
     err = css_stylesheet_data_done(sheet);
-    if (err != CSS_OK) {
+    if (err != CSS_OK && err != CSS_IMPORTS_PENDING) {
+        css_stylesheet_destroy(sheet);
+        return NULL;
+    }
+    if (out_done != NULL) {
+        *out_done = err;
+    }
+
+    return sheet;
+}
+
+PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,
+                                const char *url)
+{
+    css_stylesheet *sheet;
+    css_error done;
+
+    sheet = pcore_parse_css_internal(css, len, url, NULL, NULL, &done);
+    if (sheet == NULL) {
+        return NULL;
+    }
+    if (done != CSS_OK) {
         css_stylesheet_destroy(sheet);
         return NULL;
     }

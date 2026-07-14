@@ -64,7 +64,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib positron_core.lib positron_image.lib aygshell.lib commctrl.lib"
+				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib positron_core.lib positron_image.lib aygshell.lib commctrl.lib wininet.lib"
 				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName);..\positron_hubbub\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName);..\positron_libcss\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_core\bin\$(ConfigurationName);..\positron_image\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\test_host.exe"
@@ -153,7 +153,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib positron_core.lib positron_image.lib aygshell.lib commctrl.lib"
+				AdditionalDependencies="positron_tls.lib positron_json.lib positron_http.lib positron_hubbub.lib positron_netsurf.lib positron_libcss.lib positron_libdom.lib positron_core.lib positron_image.lib aygshell.lib commctrl.lib wininet.lib"
 				AdditionalLibraryDirectories="..\positron_tls\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName);..\positron_hubbub\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName);..\positron_libcss\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_core\bin\$(ConfigurationName);..\positron_image\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\test_host.exe"

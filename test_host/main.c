@@ -31,6 +31,7 @@
 #include <stdlib.h>     /* malloc / free for fetched-CSS buffers */
 #include <aygshell.h>   /* SHFullScreen / SHSipPreference - control the SIP */
 #include <commctrl.h>   /* WM6 common-controls progress bar */
+#include <wininet.h>    /* InternetCombineUrlA - WM-native URL resolution */
 
 #include "positron_tls.h"
 #include "positron_json.h"
@@ -170,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 44
+#define TEST_MAX_NUMBER 45
 
 static int test_config_space(char c)
 {
@@ -1995,6 +1996,52 @@ static void cstr_copy(char *d, int cap, const char *s)
     d[n] = '\0';
 }
 
+/* Keep URL policy at the WM host boundary. The engine supplies the CSS base
+ * URL; WinINet supplies RFC-style relative/dot-segment resolution. */
+static int wm_combine_url(void *pw, const char *base_url,
+        const char *reference, char *out_url, int out_capacity)
+{
+    DWORD length;
+
+    (void) pw;
+    if (base_url == NULL || reference == NULL || out_url == NULL ||
+            out_capacity <= 1) {
+        return 1;
+    }
+    length = (DWORD) out_capacity;
+    if (!InternetCombineUrlA(base_url, reference, out_url, &length,
+            ICU_NO_ENCODE)) {
+        out_url[0] = '\0';
+        return 1;
+    }
+    out_url[out_capacity - 1] = '\0';
+    return 0;
+}
+
+static int pcore_document_url(const char *host, const char *path, int port,
+        char *out_url, int out_capacity)
+{
+    const char *scheme;
+    int default_port;
+    int n;
+
+    if (host == NULL || host[0] == '\0' || path == NULL ||
+            out_url == NULL || out_capacity <= 1) {
+        return 1;
+    }
+    scheme = (port == 80) ? "http" : "https";
+    default_port = (port == 80 || port == 443);
+    if (default_port) {
+        n = _snprintf(out_url, out_capacity - 1, "%s://%s%s",
+                scheme, host, path);
+    } else {
+        n = _snprintf(out_url, out_capacity - 1, "%s://%s:%d%s",
+                scheme, host, port, path);
+    }
+    out_url[out_capacity - 1] = '\0';
+    return (n < 0 || n >= out_capacity - 1) ? 1 : 0;
+}
+
 /* Copy an absolute path (starts with '/') into dst, stripping any #fragment.
  * Falls back to "/" if empty. */
 static void copy_path(char *dst, int cap, const char *src)
@@ -2422,6 +2469,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     RECT           rc;
     int            cw, chh;
     char           emsg[320];
+    char           document_url[1536];
 
     if (request->commit_stage == PCORE_NAV_COMMIT_PARSE) {
         resp = request->response;
@@ -2453,9 +2501,11 @@ static int pcore_navigation_commit_step(HWND hwnd,
         if (cw <= 0) { cw = 224; }
         if (chh <= 0) { chh = 320; }
         PCore_SetViewport(cw, chh, 0);
-        if (PCore_StyleDocumentEx(request->document, NULL,
-                pcore_navigation_resource_cb, page_resource_free_cb,
-                request) != 0) {
+        if (pcore_document_url(request->host, request->path, request->port,
+                document_url, sizeof(document_url)) != 0 ||
+                PCore_StyleDocumentEx2(request->document, NULL, document_url,
+                wm_combine_url, pcore_navigation_resource_cb,
+                page_resource_free_cb, request) != 0) {
             if (report_errors) {
                 show_error(L"Navigation failed",
                         "PCore_StyleDocument failed");
@@ -2676,6 +2726,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int chh = HIWORD(lp);   /* new client height */
         int old_scroll = g_scroll_y;
         int old_doc_h = g_doc_h;
+        char document_url[1536];
+        const char *document_base = NULL;
 
         if (g_overflow_pointer) {
             g_overflow_pointer = 0;
@@ -2687,7 +2739,12 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
          * starts a network request. */
         if (g_render_doc != NULL && cw > 0 && chh > 0) {
             PCore_SetViewport(cw, chh, 0);   /* dpi 0 = leave unchanged */
-            if (PCore_StyleDocumentEx(g_render_doc, g_render_sheet,
+            if (pcore_document_url(g_cur_host, g_cur_path, g_cur_port,
+                    document_url, sizeof(document_url)) == 0) {
+                document_base = document_url;
+            }
+            if (PCore_StyleDocumentEx2(g_render_doc, g_render_sheet,
+                    document_base, wm_combine_url,
                     page_resource_cache_only_cb, NULL, NULL) == 0) {
                 PCore_LayoutDocument(g_render_doc, cw, chh);
             }
@@ -6404,6 +6461,159 @@ static BOOL test44_navigation_failure_transaction(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 45 - native libcss @import tree + WM URL resolution/cache        */
+/* -------------------------------------------------------------------- */
+typedef struct css_import_test_ctx {
+    int calls;
+    int frees;
+    unsigned int seen;
+} css_import_test_ctx;
+
+static int test45_import_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char ROOT_CSS[] =
+        "@import \"missing.css\";"
+        "@import \"nested/colors.css\" screen;"
+        "h1{color:#654321}";
+    static const char NESTED_CSS[] =
+        "@import \"../shared/accent.css\";"
+        "p{color:#123456}";
+    static const char SHARED_CSS[] = "span{color:#abcdef}";
+    css_import_test_ctx *ctx;
+    const char *source;
+    int len;
+
+    ctx = (css_import_test_ctx *) pw;
+    ctx->calls++;
+    *out_data = NULL;
+    *out_len = 0;
+    source = NULL;
+    len = 0;
+    if (strcmp(url, "https://example.test/css/base.css") == 0) {
+        ctx->seen |= 1U;
+        source = ROOT_CSS;
+        len = sizeof(ROOT_CSS) - 1;
+    } else if (strcmp(url,
+            "https://example.test/css/missing.css") == 0) {
+        ctx->seen |= 2U;
+        return 1;
+    } else if (strcmp(url,
+            "https://example.test/css/nested/colors.css") == 0) {
+        ctx->seen |= 4U;
+        source = NESTED_CSS;
+        len = sizeof(NESTED_CSS) - 1;
+    } else if (strcmp(url,
+            "https://example.test/css/shared/accent.css") == 0) {
+        ctx->seen |= 8U;
+        source = SHARED_CSS;
+        len = sizeof(SHARED_CSS) - 1;
+    } else {
+        return 1;
+    }
+    *out_data = (char *) malloc((size_t) len);
+    if (*out_data == NULL) {
+        return 1;
+    }
+    memcpy(*out_data, source, (size_t) len);
+    *out_len = len;
+    return 0;
+}
+
+static void test45_import_free(void *pw, char *data)
+{
+    css_import_test_ctx *ctx;
+
+    ctx = (css_import_test_ctx *) pw;
+    ctx->frees++;
+    free(data);
+}
+
+static int test45_cache_only_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    css_import_test_ctx *ctx;
+
+    (void) url;
+    ctx = (css_import_test_ctx *) pw;
+    ctx->calls++;
+    *out_data = NULL;
+    *out_len = 0;
+    return 1;
+}
+
+static BOOL test45_css_import_tree(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<link rel=\"stylesheet\" href=\"../css/base.css\">"
+        "</head><body><h1>parent</h1><p>child</p>"
+        "<span>nested</span></body></html>";
+    static const char DOCUMENT_URL[] =
+        "https://example.test/dir/page.html";
+    HANDLE document;
+    css_import_test_ctx first;
+    css_import_test_ctx second;
+    unsigned long h1_color;
+    unsigned long p_color;
+    unsigned long span_color;
+    int first_ok;
+    int second_ok;
+    char msg[256];
+
+    memset(&first, 0, sizeof(first));
+    memset(&second, 0, sizeof(second));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL) {
+        show_error(L"TEST 45 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    h1_color = 0;
+    p_color = 0;
+    span_color = 0;
+    first_ok = PCore_StyleDocumentEx2(document, NULL, DOCUMENT_URL,
+            wm_combine_url, test45_import_fetch, test45_import_free,
+            &first) == 0 &&
+            PCore_NodeComputedColor(document, "h1", &h1_color) == 0 &&
+            PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
+            PCore_NodeComputedColor(document, "span", &span_color) == 0 &&
+            (h1_color & 0x00ffffffUL) == 0x00654321UL &&
+            (p_color & 0x00ffffffUL) == 0x00123456UL &&
+            (span_color & 0x00ffffffUL) == 0x00abcdefUL &&
+            first.calls == 4 && first.frees == 3 && first.seen == 15U;
+
+    h1_color = 0;
+    p_color = 0;
+    span_color = 0;
+    second_ok = PCore_StyleDocumentEx2(document, NULL, DOCUMENT_URL,
+            wm_combine_url, test45_cache_only_fetch, NULL, &second) == 0 &&
+            PCore_NodeComputedColor(document, "h1", &h1_color) == 0 &&
+            PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
+            PCore_NodeComputedColor(document, "span", &span_color) == 0 &&
+            (h1_color & 0x00ffffffUL) == 0x00654321UL &&
+            (p_color & 0x00ffffffUL) == 0x00123456UL &&
+            (span_color & 0x00ffffffUL) == 0x00abcdefUL &&
+            second.calls == 1;
+    PCore_FreeDocument(document);
+
+    if (!first_ok || !second_ok) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "first=%d calls=%d frees=%d seen=%u second=%d calls=%d "
+                "colors=%06lX/%06lX/%06lX",
+                first_ok, first.calls, first.frees, first.seen,
+                second_ok, second.calls, h1_color & 0x00ffffffUL,
+                p_color & 0x00ffffffUL, span_color & 0x00ffffffUL);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 45 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 45 OK",
+              "CSS import tree: WinINet URL resolution, nested libcss\n"
+              "imports, missing-child fallback and cache-only restyle passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -6562,6 +6772,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 42: ok = test42_overflow_scrollbar(); break;
         case 43: ok = test43_navigation_resource_transaction(); break;
         case 44: ok = test44_navigation_failure_transaction(); break;
+        case 45: ok = test45_css_import_tree(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -6641,7 +6852,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-43)\n"
+                  "Yes = run all selected groups (TEST 1-45)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -6658,7 +6869,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                                "38, 40-44). Offline.");
+                               "38, 40-45). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -6687,7 +6898,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-44; offline. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45; offline. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -6705,6 +6916,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test42_overflow_scrollbar()){ rc = 11; goto done; }
         if (!test43_navigation_resource_transaction()){ rc = 11; goto done; }
         if (!test44_navigation_failure_transaction()){ rc = 11; goto done; }
+        if (!test45_css_import_tree()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -6762,13 +6974,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-44)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource cache, SVG parse, constrained :root variables,\n"
                "    OKLCH/calc values, grid-overflow containment, scrollbar\n"
-               "    input, staged navigation resources and failure rollback.\n"
+               "    input, staged navigation resources, failure rollback,\n"
+               "    and native libcss CSS import trees.\n"
                "    Offline.\n\n");
     }
     if (run_render) {

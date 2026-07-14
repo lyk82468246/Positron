@@ -1603,7 +1603,10 @@ typedef struct pcore_collect_ctx {
     int             max;
     PCoreFetchFn    fetch;      /* embedder fetch for external <link> CSS */
     PCoreFreeFn     freefn;
+    PCoreResolveUrlFn resolve;
     void           *pw;
+    const char     *document_url;
+    const char     *url_stack[16];
     pcore_stylesheet_cache *cache; /* per-document external CSS bytes */
     dom_string     *style_name; /* interned "style" */
     dom_string     *link_name;  /* interned "link"  */
@@ -1612,27 +1615,175 @@ typedef struct pcore_collect_ctx {
     dom_string     *css_value;  /* interned "stylesheet" (for rel match) */
 } pcore_collect_ctx;
 
-/* Parse `data`/`len` CSS, append to the select context as an author sheet, and
- * record the handle for later cleanup. `url` is informational (base for any
- * @import - not yet followed). */
+#define PCORE_IMPORT_DEPTH_MAX 16
+
+static int pcore_resolve_css_url(pcore_collect_ctx *cc, const char *base,
+        const char *reference, char *out, int capacity)
+{
+    size_t len;
+
+    if (cc->resolve != NULL && base != NULL &&
+            cc->resolve(cc->pw, base, reference, out, capacity) == 0 &&
+            out[0] != '\0') {
+        return 0;
+    }
+    len = strlen(reference);
+    if (len >= (size_t) capacity) {
+        return 1;
+    }
+    memcpy(out, reference, len + 1);
+    return 0;
+}
+
+/* Return cached bytes when possible. A successful uncached body is copied to
+ * the document cache; when the cache budget is exhausted, `owned` keeps the
+ * embedder buffer alive until the caller finishes parsing it. */
+static int pcore_get_stylesheet_bytes(pcore_collect_ctx *cc, const char *url,
+        const char **out_data, int *out_len, char **owned)
+{
+    pcore_stylesheet_resource *cached;
+    char *data;
+    int len;
+
+    *out_data = NULL;
+    *out_len = 0;
+    *owned = NULL;
+    cached = pcore_stylesheet_cache_find(cc->cache, url);
+    if (cached != NULL) {
+        *out_data = cached->data;
+        *out_len = cached->len;
+        return 0;
+    }
+    if (cc->fetch == NULL) {
+        return 1;
+    }
+    data = NULL;
+    len = 0;
+    if (cc->fetch(cc->pw, url, &data, &len) != 0 || data == NULL ||
+            len <= 0) {
+        if (data != NULL && cc->freefn != NULL) {
+            cc->freefn(cc->pw, data);
+        }
+        return 1;
+    }
+    if (pcore_stylesheet_cache_store(cc->cache, url, data, len) == 0) {
+        cached = pcore_stylesheet_cache_find(cc->cache, url);
+        if (cc->freefn != NULL) {
+            cc->freefn(cc->pw, data);
+        }
+        if (cached == NULL) {
+            return 1;
+        }
+        *out_data = cached->data;
+        *out_len = cached->len;
+    } else {
+        *out_data = data;
+        *out_len = len;
+        *owned = data;
+    }
+    return 0;
+}
+
+static css_stylesheet *pcore_record_css_sheet(pcore_collect_ctx *cc,
+        const char *data, int len, const char *url, css_error *done)
+{
+    css_stylesheet *sheet;
+
+    if (*cc->n >= cc->max || data == NULL || len <= 0) {
+        return NULL;
+    }
+    sheet = pcore_parse_css_internal(data, (unsigned int) len, url,
+            cc->resolve, cc->pw, done);
+    if (sheet != NULL) {
+        cc->sheets[(*cc->n)++] = (HANDLE) sheet;
+    }
+    return sheet;
+}
+
+static css_stylesheet *pcore_empty_import(pcore_collect_ctx *cc,
+        const char *url)
+{
+    static const char empty_css[] = " ";
+    css_error done = CSS_INVALID;
+    css_stylesheet *sheet;
+
+    sheet = pcore_record_css_sheet(cc, empty_css, 1, url, &done);
+    return (done == CSS_OK) ? sheet : NULL;
+}
+
+static css_stylesheet *pcore_parse_css_tree(pcore_collect_ctx *cc,
+        const char *data, int len, const char *url, int depth)
+{
+    css_stylesheet *sheet;
+    css_stylesheet *child;
+    css_error done;
+    css_error err;
+    lwc_string *pending;
+    const char *import_data;
+    char *owned;
+    int import_len;
+    int cycle;
+    int i;
+
+    sheet = pcore_record_css_sheet(cc, data, len, url, &done);
+    if (sheet == NULL || done == CSS_OK) {
+        return sheet;
+    }
+    if (done != CSS_IMPORTS_PENDING) {
+        return NULL;
+    }
+    cc->url_stack[depth] = url;
+    while (css_stylesheet_next_pending_import(sheet, &pending) == CSS_OK) {
+        const char *import_url;
+
+        import_url = lwc_string_data(pending);
+        child = NULL;
+        cycle = depth + 1 >= PCORE_IMPORT_DEPTH_MAX;
+        for (i = 0; !cycle && i <= depth; i++) {
+            if (cc->url_stack[i] != NULL &&
+                    strcmp(cc->url_stack[i], import_url) == 0) {
+                cycle = 1;
+            }
+        }
+        if (!cycle && pcore_get_stylesheet_bytes(cc, import_url,
+                &import_data, &import_len, &owned) == 0) {
+            child = pcore_parse_css_tree(cc, import_data, import_len,
+                    import_url, depth + 1);
+            if (owned != NULL && cc->freefn != NULL) {
+                cc->freefn(cc->pw, owned);
+            }
+        }
+        if (child == NULL) {
+            child = pcore_empty_import(cc, import_url);
+        }
+        if (child == NULL) {
+            lwc_string_unref(pending);
+            cc->url_stack[depth] = NULL;
+            return NULL;
+        }
+        err = css_stylesheet_register_import(sheet, child);
+        lwc_string_unref(pending);
+        if (err != CSS_OK) {
+            cc->url_stack[depth] = NULL;
+            return NULL;
+        }
+    }
+    cc->url_stack[depth] = NULL;
+    return sheet;
+}
+
+/* Parse CSS and its native libcss @import tree, append only the root sheet to
+ * the select context, and retain every child handle for pass-end cleanup. */
 static void pcore_add_author_css(pcore_collect_ctx *cc, const char *data,
         int len, const char *url)
 {
-    HANDLE hs;
+    css_stylesheet *sheet;
 
-    if (*cc->n >= cc->max || data == NULL || len <= 0) {
+    sheet = pcore_parse_css_tree(cc, data, len, url, 0);
+    if (sheet == NULL) {
         return;
     }
-    hs = PCore_ParseCSS(data, len, url);
-    if (hs == NULL) {
-        return;
-    }
-    if (css_select_ctx_append_sheet(cc->ctx, (css_stylesheet *) hs,
-            CSS_ORIGIN_AUTHOR, NULL) == CSS_OK) {
-        cc->sheets[(*cc->n)++] = hs;
-    } else {
-        PCore_FreeStylesheet(hs);
-    }
+    css_select_ctx_append_sheet(cc->ctx, sheet, CSS_ORIGIN_AUTHOR, NULL);
 }
 
 /* DFS: collect author CSS from the page in document order - inline <style>
@@ -1668,6 +1819,7 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                     css != NULL) {
                 pcore_add_author_css(cc, dom_string_data(css),
                         (int) dom_string_byte_length(css),
+                        (cc->document_url != NULL) ? cc->document_url :
                         "positron:inline-style");
                 dom_string_unref(css);
             }
@@ -1690,26 +1842,24 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                 const char *hu8 = dom_string_data(href);
                 size_t hl = dom_string_byte_length(href);
                 if (hu8 != NULL && hl > 0) {
-                    char  url[1024];
-                    char *data = NULL;
-                    int   len = 0;
-                    int   cl = (hl < sizeof(url) - 1)
-                            ? (int) hl : (int) sizeof(url) - 1;
-                    pcore_stylesheet_resource *cached;
-                    memcpy(url, hu8, cl);
-                    url[cl] = '\0';
-                    cached = pcore_stylesheet_cache_find(cc->cache, url);
-                    if (cached != NULL) {
-                        pcore_add_author_css(cc, cached->data, cached->len,
-                                url);
-                    } else if (cc->fetch != NULL &&
-                            cc->fetch(cc->pw, url, &data, &len) == 0 &&
-                            data != NULL && len > 0) {
-                        pcore_stylesheet_cache_store(cc->cache, url, data,
-                                len);
+                    char reference[1024];
+                    char url[2048];
+                    const char *data;
+                    char *owned;
+                    int len;
+                    int cl;
+
+                    cl = (hl < sizeof(reference) - 1) ? (int) hl :
+                            (int) sizeof(reference) - 1;
+                    memcpy(reference, hu8, cl);
+                    reference[cl] = '\0';
+                    if (pcore_resolve_css_url(cc, cc->document_url,
+                            reference, url, (int) sizeof(url)) == 0 &&
+                            pcore_get_stylesheet_bytes(cc, url, &data, &len,
+                            &owned) == 0) {
                         pcore_add_author_css(cc, data, len, url);
-                        if (cc->freefn != NULL) {
-                            cc->freefn(cc->pw, data);
+                        if (owned != NULL && cc->freefn != NULL) {
+                            cc->freefn(cc->pw, owned);
                         }
                     }
                 }
@@ -1743,12 +1893,20 @@ PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet)
 PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch)
 {
+    return PCore_StyleDocumentEx2(hDoc, hSheet, NULL, NULL, fetch,
+            freefn, pw_fetch);
+}
+
+PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch)
+{
     dom_document     *doc = (dom_document *) hDoc;
     css_stylesheet   *author = (css_stylesheet *) hSheet;
     HANDLE            hUA = NULL;
     css_select_ctx   *ctx = NULL;
     dom_node         *root = NULL;
-    HANDLE            page_sheets[32];
+    HANDLE            page_sheets[64];
     int               n_page = 0;
     int               i;
     css_media         media;
@@ -1756,11 +1914,7 @@ PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
     pcore_collect_ctx cc;
     int               rc = 1;
 
-    cc.style_name = NULL;
-    cc.link_name = NULL;
-    cc.rel_name = NULL;
-    cc.href_name = NULL;
-    cc.css_value = NULL;
+    memset(&cc, 0, sizeof(cc));
 
     if (doc == NULL) {
         return 1;
@@ -1797,10 +1951,12 @@ PCORE_API int PCore_StyleDocumentEx(HANDLE hDoc, HANDLE hSheet,
     cc.ctx = ctx;
     cc.sheets = page_sheets;
     cc.n = &n_page;
-    cc.max = 32;
+    cc.max = 64;
     cc.fetch = fetch;
     cc.freefn = freefn;
+    cc.resolve = resolve;
     cc.pw = pw_fetch;
+    cc.document_url = document_url;
     cc.cache = pcore_stylesheet_cache_get(doc, 1);
     dom_string_create((const uint8_t *) "style", 5, &cc.style_name);
     dom_string_create((const uint8_t *) "link", 4, &cc.link_name);
