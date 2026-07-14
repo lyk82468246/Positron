@@ -27,7 +27,7 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **已撤回的一项**：IANA 页脚是 table cell 内 `display:inline; float:left` 列表。TEST23 曾在最小样例中确认两个浮动块同行及 `clear:both`，但将该构盒规则直接接入真实页面后，2026-07-11 Browse 截图出现严重错位和替代方框；实现已撤回。该测试不再参加 ENGINE 组，不能作为 float 支持证据。
 - **当前站点版本风险**：2026-07-13 重新读取到 IANA 的 `iana_website.80c103cc08b6.css`；除已确认的 `var(--space-*)` 外还有 22 处 `oklch()`、15 处 `calc()`、`color-mix()`、grid/gap 与 `:has()`。新兼容模块只处理数值型 OKLCH 和可完全求值的同单位 calc；混合单位及其他现代能力仍会降级。
 - **最新子页结论**：`/numbers` 使用 `display:grid`，其中 `.dtable-wrap { overflow:auto }` 包住宽表格。TEST41 的竖横屏截图已确认 flex 主内容负 x 修复，标题/正文保持 inset；Grid 仍只保持单列文档顺序。
-- **下一步**：TEST3/43-45 与真实 TEST13 已验收后台资源、真实单响应进度、协作式 UI 提交、主文档失败回滚和 CSS import tree。当前用 TEST13/24/45/46 验收 stylesheet 元数据没有破坏 Browse、旧 ABI 缓存或导入树。Grid/gap 因 NetSurf HTML 层仍无现成轨道布局，须先继续审计可移植上游实现。float 仍须对照上游 box construction/normalisation 与 list marker，不能复用 TEST23 的简化断言。
+- **下一步**：TEST3/43-46 与真实 TEST13 已验收后台资源、真实单响应进度、协作式 UI 提交、主文档失败回滚、CSS import tree 和 stylesheet 元数据。当前用 TEST13/18/24/45/46/47 验收 document base URL 没有破坏 Browse、旧 ABI 图片缓存、旋转重选或导入树。Grid/gap 因 NetSurf HTML 层仍无现成轨道布局，须先继续审计可移植上游实现。float 仍须对照上游 box construction/normalisation 与 list marker，不能复用 TEST23 的简化断言。
 - **完成条件**：在目标设备的竖屏和横屏下，主内容、页脚和导航均不裁切、不重叠，且没有明显错误图标/替代字符；结果需要新的真机截图确认。
 
 ### 旋转 responsive restyle 已完成当前验收
@@ -46,7 +46,7 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **资源预算**：`test_host` 最多暂存 64 个去重 URL、合计 2 MiB 原始字节，成功提交时 core 会复制所需数据后立刻释放事务。该值用于限制 WM 峰值，是可替换的宿主策略，不是 `positron_core` ABI 或最终页面的硬上限。
 - **后续实现**：单响应 `Content-Length`/progress 回调已实现并由 TEST3/13 确认；`@import` 已进入事务并由 TEST45 确认。整页多资源聚合进度、web fonts、脚本及更广资源类型仍未实现。
 - **CSS import 边界**：最多追踪 16 层递归和本次样式 pass 的 64 个解析表；失败、循环和超深导入按 libcss 契约注册空表。成功导入复用每 document 最多 32 份/512 KiB 的 CSS 字节缓存；不含 HTTP 缓存失效、跨源安全策略或独立持久缓存。URL 合并由宿主回调负责，WM 宿主使用 `InternetCombineUrlA`，core 本身不绑定传输层。
-- **stylesheet 元数据边界**：`media` 使用当前 libcss 可解析的语法，过长属性保守按 `not all`；alternate stylesheet 没有用户选择 UI，因此默认跳过。动态修改 `disabled/media/rel/type` 后自动 restyle、preferred stylesheet set 和 `<base>` URL 语义仍未实现。
+- **stylesheet/base 边界**：`media` 使用当前 libcss 可解析的语法，过长属性保守按 `not all`；alternate stylesheet 没有用户选择 UI，因此默认跳过。动态修改 `disabled/media/rel/type` 后自动 restyle 和 preferred stylesheet set 仍未实现。首个 `<base href>` 已用于 CSS/import、图片和点击链接，URL 规范化由宿主 resolver 完成；TEST47 尚待设备确认。动态修改 base、form action、script/font/media/source 等其他 URL 属性及安全策略仍未覆盖。
 - **并发约束**：在确认 libdom/libcss/NetSurf 移植层的线程安全前，不能让 worker 与 UI 同时操作同一 document 或共享全局 viewport context；过期请求只丢弃结果，不使用强制终止线程。
 - **第一阶段完成条件**：慢网主文档 GET 期间旧页可滚动，loading 可见；成功后才 swap，错误保留当前页面，关闭窗口不会遗留线程。
 - **当前完成条件**：TEST43 的 URL/去重/成功/失败断言通过；真实 TEST13 的 CSS/图片网络等待不阻塞 UI，generation 正确，成功后才 swap，失败资源保留 fallback。

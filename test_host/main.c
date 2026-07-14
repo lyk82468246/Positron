@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 46
+#define TEST_MAX_NUMBER 47
 
 static int test_config_space(char c)
 {
@@ -2517,9 +2517,13 @@ static int pcore_navigation_commit_step(HWND hwnd,
     }
 
     if (request->commit_stage == PCORE_NAV_COMMIT_IMAGES) {
-        PCore_FetchImageResources(request->document,
-                pcore_navigation_resource_cb, page_resource_free_cb,
-                request, NULL, NULL);
+        if (pcore_document_url(request->host, request->path, request->port,
+                document_url, sizeof(document_url)) != 0) {
+            return PCORE_NAV_RESULT_FAILED;
+        }
+        PCore_FetchImageResourcesEx2(request->document, document_url,
+                wm_combine_url, pcore_navigation_resource_cb,
+                page_resource_free_cb, request, NULL, NULL);
         if (pcore_navigation_pending_count(request) > 0) {
             request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
             request->commit_stage = PCORE_NAV_COMMIT_STYLE;
@@ -2891,6 +2895,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int cx = (int) (short) LOWORD(lp);
         int cy = (int) (short) HIWORD(lp);
         char href[1024];
+        char document_url[1536];
+        const char *document_base;
 
         if (g_render_doc != NULL &&
                 PCore_OverflowPointer(g_render_doc, PCORE_POINTER_DOWN,
@@ -2902,9 +2908,14 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         /* Document-space point = client point + scroll (scroll_x is 0). If it
          * lands on a link, follow it; otherwise a tap closes the view. */
+        document_base = NULL;
+        if (pcore_document_url(g_cur_host, g_cur_path, g_cur_port,
+                document_url, sizeof(document_url)) == 0) {
+            document_base = document_url;
+        }
         if (g_render_doc != NULL &&
-                PCore_LinkAt(g_render_doc, cx, cy + g_scroll_y,
-                             href, sizeof(href))) {
+                PCore_LinkAtEx2(g_render_doc, cx, cy + g_scroll_y,
+                document_base, wm_combine_url, NULL, href, sizeof(href))) {
             navigate_to(hwnd, href);
         } else {
             DestroyWindow(hwnd);
@@ -6783,6 +6794,155 @@ static BOOL test46_stylesheet_metadata(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 47 - first <base href> across CSS, images and clicked links      */
+/* -------------------------------------------------------------------- */
+typedef struct document_base_test_ctx {
+    int calls;
+    int frees;
+    unsigned int seen;
+} document_base_test_ctx;
+
+static int test47_base_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char CSS[] =
+        "p{color:#123456;background-image:url('../img/bg.svg')}"
+        "a{display:block;width:100px;height:24px;color:#0000aa}";
+    static const char SVG[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='12'>"
+        "<rect width='16' height='12' fill='red'/></svg>";
+    document_base_test_ctx *ctx;
+    const char *source;
+    int len;
+
+    ctx = (document_base_test_ctx *) pw;
+    ctx->calls++;
+    *out_data = NULL;
+    *out_len = 0;
+    source = NULL;
+    len = 0;
+    if (strcmp(url, "https://example.test/assets/css/theme.css") == 0) {
+        ctx->seen |= 1U;
+        source = CSS;
+        len = sizeof(CSS) - 1;
+    } else if (strcmp(url,
+            "https://example.test/assets/img/bg.svg") == 0) {
+        ctx->seen |= 2U;
+        source = SVG;
+        len = sizeof(SVG) - 1;
+    } else if (strcmp(url,
+            "https://example.test/assets/img/logo.svg") == 0) {
+        ctx->seen |= 4U;
+        source = SVG;
+        len = sizeof(SVG) - 1;
+    } else {
+        ctx->seen |= 8U;
+        return 1;
+    }
+    *out_data = (char *) malloc((size_t) len);
+    if (*out_data == NULL) {
+        return 1;
+    }
+    memcpy(*out_data, source, (size_t) len);
+    *out_len = len;
+    return 0;
+}
+
+static void test47_base_free(void *pw, char *data)
+{
+    document_base_test_ctx *ctx;
+
+    ctx = (document_base_test_ctx *) pw;
+    ctx->frees++;
+    free(data);
+}
+
+static BOOL test47_document_base_url(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<base href=\"../assets/\">"
+        "<base href=\"https://wrong.invalid/\">"
+        "<link rel=\"stylesheet\" href=\"css/theme.css\">"
+        "</head><body><p>background</p>"
+        "<a href=\"next.html\">Next</a>"
+        "<img src=\"img/logo.svg\" alt=\"fallback\">"
+        "<img src=\"./img/logo.svg\" alt=\"second fallback\">"
+        "</body></html>";
+    static const char DOCUMENT_URL[] =
+        "https://example.test/dir/page.html";
+    static const char EXPECT_LINK[] =
+        "https://example.test/assets/next.html";
+    HANDLE document;
+    document_base_test_ctx ctx;
+    unsigned long p_color;
+    int found;
+    int fetched;
+    int ax;
+    int ay;
+    int aw;
+    int ah;
+    int ix;
+    int iy;
+    int iw;
+    int ih;
+    char raw_href[128];
+    char absolute_href[256];
+    int ok;
+    char msg[320];
+
+    memset(&ctx, 0, sizeof(ctx));
+    found = 0;
+    fetched = 0;
+    p_color = 0;
+    ax = ay = aw = ah = 0;
+    ix = iy = iw = ih = 0;
+    raw_href[0] = '\0';
+    absolute_href[0] = '\0';
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL) {
+        show_error(L"TEST 47 FAIL", "PCore_ParseHTML returned NULL");
+        return FALSE;
+    }
+    PCore_SetViewport(240, 320, 96);
+    ok = PCore_StyleDocumentEx2(document, NULL, DOCUMENT_URL,
+            wm_combine_url, test47_base_fetch, test47_base_free, &ctx) == 0 &&
+            PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
+            (p_color & 0x00ffffffUL) == 0x00123456UL &&
+            PCore_FetchImageResourcesEx2(document, DOCUMENT_URL,
+            wm_combine_url, test47_base_fetch, test47_base_free, &ctx,
+            &found, &fetched) == 0 && found == 3 && fetched == 3 &&
+            ctx.calls == 3 && ctx.frees == 3 && ctx.seen == 7U &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_NodeBox(document, "a", &ax, &ay, &aw, &ah) == 0 &&
+            PCore_NodeBox(document, "img", &ix, &iy, &iw, &ih) == 0 &&
+            iw == 16 && ih == 12 &&
+            PCore_LinkAt(document, ax + 1, ay + 1, raw_href,
+            sizeof(raw_href)) == 1 && strcmp(raw_href, "next.html") == 0 &&
+            PCore_LinkAtEx2(document, ax + 1, ay + 1, DOCUMENT_URL,
+            wm_combine_url, NULL, absolute_href, sizeof(absolute_href)) == 1 &&
+            strcmp(absolute_href, EXPECT_LINK) == 0;
+    PCore_FreeDocument(document);
+    test46_restore_viewport(96);
+
+    if (!ok) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "color=%06lX found=%d/%d calls=%d frees=%d seen=%u "
+                "a=%d,%d,%d,%d img=%d,%d,%d,%d raw=%s abs=%s",
+                p_color & 0x00ffffffUL, found, fetched, ctx.calls, ctx.frees,
+                ctx.seen, ax, ay, aw, ah, ix, iy, iw, ih, raw_href,
+                absolute_href);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 47 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 47 OK",
+              "First document base URL resolved linked CSS, CSS background,\n"
+              "img cache alias and clicked link; legacy raw href stayed raw.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -6943,6 +7103,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 44: ok = test44_navigation_failure_transaction(); break;
         case 45: ok = test45_css_import_tree(); break;
         case 46: ok = test46_stylesheet_metadata(); break;
+        case 47: ok = test47_document_base_url(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -7022,7 +7183,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-46)\n"
+                  "Yes = run all selected groups (TEST 1-47)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -7039,7 +7200,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40-46). Offline.");
+                               "38, 40-47). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -7068,7 +7229,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-46; offline. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-47; offline. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -7088,6 +7249,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test44_navigation_failure_transaction()){ rc = 11; goto done; }
         if (!test45_css_import_tree()){ rc = 11; goto done; }
         if (!test46_stylesheet_metadata()){ rc = 11; goto done; }
+        if (!test47_document_base_url()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -7145,14 +7307,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-46)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-47)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource cache, SVG parse, constrained :root variables,\n"
                "    OKLCH/calc values, grid-overflow containment, scrollbar\n"
                "    input, staged navigation resources, failure rollback,\n"
-               "    native libcss CSS import trees and stylesheet metadata.\n"
+               "    CSS import trees, stylesheet metadata and document base URLs.\n"
                "    Offline.\n\n");
     }
     if (run_render) {

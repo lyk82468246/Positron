@@ -92,10 +92,10 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=43`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=13,24,45,46`。四组路由的第 3 组提示已压缩为能力类别，避免 WM6 小屏 MessageBox 被长清单撑坏。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=43`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=13,18,24,45,46,47`。四组路由的第 3 组提示已压缩为能力类别，避免 WM6 小屏 MessageBox 被长清单撑坏。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-46，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid-overflow 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree 与 stylesheet 元数据，离线。TEST40-45 已真机确认，TEST46 待设备。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
+- Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-47，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid-overflow 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、stylesheet 元数据与 document base URL，离线。TEST40-46 已真机确认，TEST47 待设备。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
 - GDI Render：TEST 12、14、17、19、20、26-37、39，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用与 IANA token 间距正式 redraw；TEST26-39 已真机通过。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
@@ -117,7 +117,8 @@ scripts\stage.bat
 7. 图片/SVG：TEST20 四格式缓存 `<img>`、TEST25-37 的 SVG parse/draw/cache/fallback/fill-rule/CSS background-image/basic text/线性与径向渐变正式链，以及 TEST13 网络相对 SVG 链均已真机确认；复杂文本、径向焦点、spread method、background-size 和多层背景仍是显式缺口。后台事务现包含 CSS `@import`，仍不含字体或脚本。
 8. 测试节奏：默认按能力批次积累多个相关实现、自动断言和直绘/正式链回归，再用一个 `test_host.ini` 一次交付多个 TEST。除编译错误、高风险回归定位或设备专有故障外，不应为每个微小改动单独要求用户验收。
 9. `PCore_StyleDocumentEx2` 是旧样式 ABI 的兼容扩展：接收绝对 document URL 和宿主 URL resolver；core 用 libcss 原生 pending/register 机制处理最多 16 层导入，失败导入注册空表。WM 宿主使用 `InternetCombineUrlA`，旋转只读 document CSS cache。TEST45 已真机确认嵌套、缺失回退、URL 规范化和缓存重选。
-10. stylesheet 元数据现统一处理：`rel` token、alternate 排除、`type=text/css`、`disabled` 和完整 media query；TEST46 用 320/299px、fetch/free/URL seen 与 cache-only 断言覆盖内联和外链表，已通过 VS2008 ARM 增量构建，待设备确认。默认 `test_host.ini` 为 `tests=13,24,45,46`。
+10. stylesheet 元数据现统一处理：`rel` token、alternate 排除、`type=text/css`、`disabled` 和完整 media query；TEST46 用 320/299px、fetch/free/URL seen 与 cache-only 断言覆盖内联和外链表，2026-07-14 已由用户确认通过。
+11. 首个 `<base href>` 已通过共享 helper 进入 `StyleDocumentEx2`、新增的 `FetchImageResourcesEx2` 和 `LinkAtEx2`；URL 规范化继续由宿主 callback 负责。图片缓存保留规范 URL 和多个原始别名，旧图片/链接 API 不改变语义。TEST47 覆盖 CSS/import 基准、背景与两个等价图片 URL 去重、第二个 base 忽略及 raw/absolute link；已通过 c89ize 与 VS2008 ARM 增量构建，待设备。默认 `test_host.ini` 为 `tests=13,18,24,45,46,47`。
 
 ## 开发纪律
 

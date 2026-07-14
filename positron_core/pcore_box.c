@@ -1668,7 +1668,8 @@ static struct box *pcore_hit(struct box *b, int px, int py)
     return NULL;
 }
 
-PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
+static int pcore_link_at_raw(HANDLE hDoc, int x, int y, char *out_href,
+        int cap)
 {
     dom_document *doc = (dom_document *) hDoc;
     pcore_render *st = pcore_get_render(doc);
@@ -1716,6 +1717,45 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
         }
     }
     return rc;
+}
+
+PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
+{
+    return pcore_link_at_raw(hDoc, x, y, out_href, cap);
+}
+
+PCORE_API int PCore_LinkAtEx2(HANDLE hDoc, int x, int y,
+        const char *document_url, PCoreResolveUrlFn resolve, void *pw,
+        char *out_href, int cap)
+{
+    char reference[2048];
+    char base_url[2048];
+    char resolved[2048];
+    const char *result;
+    size_t len;
+
+    if (out_href == NULL || cap <= 0 ||
+            !pcore_link_at_raw(hDoc, x, y, reference,
+            sizeof(reference))) {
+        return 0;
+    }
+    result = reference;
+    if (resolve != NULL && document_url != NULL &&
+            pcore_document_base_url((dom_document *) hDoc, document_url,
+            resolve, pw, base_url, sizeof(base_url)) == 0) {
+        resolved[0] = '\0';
+        if (resolve(pw, base_url, reference, resolved, sizeof(resolved)) == 0 &&
+                resolved[0] != '\0') {
+            result = resolved;
+        }
+    }
+    len = strlen(result);
+    if (len >= (size_t) cap) {
+        len = (size_t) cap - 1;
+    }
+    memcpy(out_href, result, len);
+    out_href[len] = '\0';
+    return 1;
 }
 
 static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,

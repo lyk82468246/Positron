@@ -119,6 +119,8 @@ TEST41 修复只在 flex item 树中实际检测到 grid/inline-grid 降级盒�
 
 2026-07-10：旧 TEST 18 已真机得到 `found=2 fetched=2`。后续缓存版测试必须再扫描同一文档，并确认结果仍为 `2/2`、fetch callback 总调用数仍为 2；只看第二次也成功不足以证明去重。
 
+2026-07-14：用户确认 TEST13/24/45/46 批次全部通过，stylesheet 的 rel token、alternate/type/disabled 过滤、完整 media query 与 cache-only 断点重选可作为当前基线。随后新增共享首个 `<base href>` 解析器，并让 `StyleDocumentEx2`、`FetchImageResourcesEx2`、`LinkAtEx2` 分别覆盖 CSS/import、图片与点击链接；旧 API 保持原始 URL 语义。图片缓存不能只保存一个 raw alias：多个相对写法可规范化到同一 URL，因此采用 per-resource alias 链，缓存命中时补登记别名而不重复抓取。TEST47 同时覆盖首个 base、第二个 base 忽略、CSS 背景、两个等价图片引用和 raw/absolute link。三个 C 文件经 c89ize 为 0 改动，VS2008 ARM 增量构建 core/test_host 0 错误，仅保留既有 fpmath C4244；设备结果待确认。
+
 2026-07-11：TEST 13 打开 IANA Reserved Domains 的截图暴露正文、导航和页脚向左裁切。根因不是页面固定宽度：`pcore_select.c` 仅设置 `css_media.type=screen`，却把 `css_media.width/height` 留为 0；libcss 的 `@media (min/max-width)` 直接比较这些字段，于是所有断点按 0px 选规则。修复是从 `PCore_SetViewport` 的 unit context 填充媒体宽高，并在 Browse 的 `StyleDocumentEx` 前设置实际 client viewport。TEST 21 在 320px/299px 分别断言 `min-width:300px`/`max-width:299px`；若又退回 0px 就会选错规则并失败。这里的 299/300/320 仅为测试边界，运行时宽高和 DPI 都从设备 client/HDC 动态取得。
 
 同一页面的第二轮截图仍有约 25px 左侧裁切，但 TEST 21 已通过，所以继续检查真实 CSS：IANA 的窄屏 `article.sidenav` 是 `flex-direction:row-reverse`、左右 padding 25px，且侧栏 `display:none`。`layout_flex.c` 反向主轴起点把 content width 减去 opposite padding，导致唯一的 main item 左移一个 padding。修复为 `leading padding + content size`，TEST 22 断言 224px viewport 中 main 必须为 `x=25,width=174`。
