@@ -22,6 +22,7 @@
 #define MAX_REDIRECTS    5                    /* 3xx Location follow limit */
 #define WININET_CONNECT_TIMEOUT_MS 15000
 #define WININET_IO_TIMEOUT_MS      15000
+#define TLS_IO_TIMEOUT_MS          15000
 
 static BOOL g_initialized = FALSE;
 static BOOL g_insecure    = FALSE;   /* default: verify chain + hostname */
@@ -945,8 +946,10 @@ static PHttpResponse* http_request(const char* method, const char* host,
                 goto done;
             }
 
-            conn = g_insecure ? PTls_Connect(cur_host, cur_port)
-                              : PTls_ConnectVerified(cur_host, cur_port);
+            conn = g_insecure ? PTls_ConnectWithTimeout(cur_host, cur_port,
+                    TLS_IO_TIMEOUT_MS) :
+                    PTls_ConnectVerifiedWithTimeout(cur_host, cur_port,
+                    TLS_IO_TIMEOUT_MS);
             if (conn == NULL) {
                 char eb[320];
                 _snprintf(eb, sizeof(eb) - 1, "%s:%d (hop %d): %s",

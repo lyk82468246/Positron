@@ -109,9 +109,9 @@ scripts\stage.bat
 优先候选：
 
 1. 2026-07-11 用户真机确认 ENGINE 原整组至 TEST24 通过；2026-07-12 单独确认 TEST25 SVG parse。后续修改引擎路径时必须重跑当前整组。
-2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。最新 TEST13 已作为当前 IANA 可读基线通过，但这只表示本轮未发现回归，不代表现代 CSS 或任意真实页完整兼容。后续 float 必须对照上游 box construction/normalisation，而不是基于该简化测试继续扩展。
+2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。TEST13 的首页可读截图不再视为完整 Browse 基线：用户确认 `c01a349` 时没有继续走完 `Open example` → `Learn more`。后续 float 必须对照上游 box construction/normalisation，而不是基于简化测试或首页截图继续扩展。
 3. `WM_SIZE` 从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback。TEST24 与真实 Browse 旋转均已确认。
-4. 主文档、外链 CSS、CSS `@import`、`<img>` 和 CSS 背景 GET 已组成分阶段 worker 事务；DOM/style/layout 仍只在 UI。2026-07-14 设备已确认 TEST3 的真实单响应正文进度、TEST43 资源事务、TEST44 主文档失败回滚和 TEST13 IANA Browse 基线。UI 提交现由一次性 WM timer 拆成 parse/style/image-discovery/layout 四段，单个 NetSurf 调用仍可能卡顿。宿主暂存预算为 64 URL/2 MiB，不是 core ABI 限制；整页聚合进度、字体和脚本仍待处理。
+4. 主文档、外链 CSS、CSS `@import`、`<img>` 和 CSS 背景 GET 已组成分阶段 worker 事务；DOM/style/layout 仍只在 UI。2026-07-14 设备已确认 TEST3 的真实单响应正文进度、TEST43 资源事务和 TEST44 主文档失败回滚；TEST13 深层导航尚未形成基线。UI 提交现由一次性 WM timer 拆成 parse/style/image-discovery/layout 四段，单个 NetSurf 调用仍可能卡顿。宿主暂存预算为 64 URL/2 MiB，不是 core ABI 限制；整页聚合进度、字体和脚本仍待处理。
 5. TEST30-37 已于 2026-07-13 真机通过：CSS 背景、基础 text、连续线性/径向渐变及坐标、继承/透明 stop、循环保护、径向 SVG 文档缓存以及 `<img>`/CSS 背景单次 fetch 复用均成立；复杂 shaping、`textPath`、逐字定位、任意 shear、径向焦点与 spread method 尚未实现。
 6. 当前 IANA 线上 CSS `iana_website.80c103cc08b6.css` 使用 custom properties、媒体查询范围语法、`oklch()`、`calc()`、grid/gap 与 `:has()`。整数像素媒体范围、同表顶层 `:root` token、TEST40 的数值型 OKLCH/可求值 calc、TEST41 的 `/numbers` 宽度隔离及 TEST42 的 NetSurf overflow scrollbar 均已真机确认；不要扩大表述为完整 MQ4、custom-properties、CSS Color/Values、Grid、触摸惯性或 overlay scrollbar 支持。
 7. 图片/SVG：TEST20 四格式缓存 `<img>`、TEST25-37 的 SVG parse/draw/cache/fallback/fill-rule/CSS background-image/basic text/线性与径向渐变正式链，以及 TEST13 网络相对 SVG 链均已真机确认；复杂文本、径向焦点、spread method、background-size 和多层背景仍是显式缺口。后台事务现包含 CSS `@import`，仍不含字体或脚本。
@@ -119,7 +119,7 @@ scripts\stage.bat
 9. `PCore_StyleDocumentEx2` 是旧样式 ABI 的兼容扩展：接收绝对 document URL 和宿主 URL resolver；core 用 libcss 原生 pending/register 机制处理最多 16 层导入，失败导入注册空表。WM 宿主使用 `InternetCombineUrlA`，旋转只读 document CSS cache。TEST45 已真机确认嵌套、缺失回退、URL 规范化和缓存重选。
 10. stylesheet 元数据现统一处理：`rel` token、alternate 排除、`type=text/css`、`disabled` 和完整 media query；TEST46 用 320/299px、fetch/free/URL seen 与 cache-only 断言覆盖内联和外链表，2026-07-14 已由用户确认通过。
 11. 首个 `<base href>` 已通过共享 helper 进入 `StyleDocumentEx2`、新增的 `FetchImageResourcesEx2` 和 `LinkAtEx2`；URL 规范化继续由宿主 callback 负责。图片缓存保留规范 URL 和多个原始别名，旧图片/链接 API 不改变语义。TEST47 覆盖 CSS/import 基准、背景与两个等价图片 URL 去重、第二个 base 忽略及 raw/absolute link；2026-07-14 用户已确认通过。
-12. `PHttpResponse.effective_url` 现返回重定向后的最终绝对 URL；宿主只在主文档成功后用它替换待提交文档的 origin。WinInet 每跳连接/接收选项为 15 秒，资源阶段另有 20 秒总预算；这不等于 TLS socket 已可强制取消。加载期间滚动不再逐消息同步 `UpdateWindow`。TEST48 离线覆盖 IANA 式 HTTPS→HTTP/www 重定向及根相对 CSS；默认 `test_host.ini` 为 `tests=13,43,44,47,48`，重点真机复现 TEST13 加载期间反复拖动旧页滚动条。
+12. `PHttpResponse.effective_url` 返回重定向后的最终绝对 URL；宿主只在主文档成功后用它替换待提交 document origin。第一轮仅加入 WinInet 15 秒、资源阶段 20 秒和滚动合并重绘，用户复测 TEST13 仍失败。第二轮把 `positron_tls` 的 TCP socket 改为非阻塞并用 `select` 驱动 connect/handshake/read/write deadline；新增 timeout API 保留旧 ABI，HTTP 使用 15 秒，旧 TLS API 默认 30 秒。同步 DNS 和外部主动取消仍未覆盖。TEST48 离线覆盖 IANA 式 HTTPS→HTTP/www 重定向及根相对 CSS；默认 `test_host.ini` 为 `tests=13,43,44,47,48`，重点真机复现 TEST13 加载期间反复拖动旧页滚动条。
 
 ## 开发纪律
 

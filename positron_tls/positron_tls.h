@@ -41,12 +41,22 @@ PTLS_API BOOL  PTls_AddRootCA(const char* pem);
  * PTls_ConnectVerified. */
 PTLS_API HANDLE PTls_Connect(const char* host, int port);
 
+/* Timeout-aware variant. timeout_ms covers TCP connect, TLS handshake and
+ * each subsequent PTls_Read/PTls_Write wait. A zero value selects the
+ * library default. Existing PTls_Connect uses that default. */
+PTLS_API HANDLE PTls_ConnectWithTimeout(const char* host, int port,
+                                        DWORD timeout_ms);
+
 /* Same as PTls_Connect but verifies the server certificate chain
  * against the embedded CA bundle (plus any roots added via
  * PTls_AddRootCA) AND verifies that the server's certificate matches
  * `host`. On failure returns NULL; PTls_LastError contains a verify
  * info string. */
 PTLS_API HANDLE PTls_ConnectVerified(const char* host, int port);
+
+/* Verified timeout-aware variant; ownership matches PTls_ConnectVerified. */
+PTLS_API HANDLE PTls_ConnectVerifiedWithTimeout(const char* host, int port,
+                                                DWORD timeout_ms);
 
 /* Returns bytes written, or negative on error. */
 PTLS_API int   PTls_Write(HANDLE hConn, const char* buf, int len);

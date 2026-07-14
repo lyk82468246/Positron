@@ -52,6 +52,8 @@ NetSurf、libdom、libcss、libsvgtiny、mbedTLS、cJSON 等上游源码可以�
 
 HTTP 响应的传输元数据包括最终绝对 `effective_url`；它由 `positron_http.dll` 在每个重定向 hop 更新，宿主只在主文档响应成功后把最终值作为新 document origin。这个字段不把重定向策略放进 core，也不改变响应正文仍由 HTTP DLL 分配/释放的所有权。超时和资源数量/字节预算属于具体宿主及传输层策略，不是 `positron_core` ABI。
 
+`positron_tls.dll` 的 socket 使用 WinCE 非阻塞 `FIONBIO` 和 `select` 驱动 mbedTLS 的 `WANT_READ/WANT_WRITE`。兼容扩展 `PTls_ConnectWithTimeout` 与 `PTls_ConnectVerifiedWithTimeout` 把同一等待值用于 TCP connect、TLS handshake 和后续 read/write；旧 connect API 保留并使用默认值。HTTP 选择 15 秒，其他 WM 调用者可自行选择。WinCE 5.2 的同步 `gethostbyname` 和跨线程主动取消目前仍在该契约之外。
+
 图片拆分后的目标调用关系：
 
 ```text
