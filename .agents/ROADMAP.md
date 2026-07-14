@@ -15,6 +15,13 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 目标：把当前“已经能浏览真实网页”的 NetSurf 路径打磨到更可信、更像网页。
 
+### 0. next37 稳定基线与开发转向
+
+- `main` 产品源码固定在用户再次确认 TEST13 正常的 `9c5c7c7`/next37。
+- next38 之后的 stylesheet metadata、base URL、redirect origin 和 timeout 方向暂时挂起，归档分支为 `codex/post-next37-experiments`。
+- 当前短期目标改为 `positron_image.dll` 公共位图 ABI 整理与离线测试，不修改 Browse 网络、DOM、样式或布局路径。
+- 任何冻结项重新接入都必须一次只改一个变量，并完整跑通 TEST13 深层导航；仅离线 TEST 不能作为合并依据。
+
 ### 1. M5f：真实 border 绘制验证
 
 当前进展：
@@ -101,10 +108,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 20. **IANA `/numbers` grid-overflow 修复已真机验收**：该页的 `main` 含 `display:grid`，其 `.dtable-wrap { overflow:auto }` 内宽表格曾在单列 block 降级中把 flex item 的 min-content 撑宽，`row-reverse` 因而把正文排到负 x。`layout_flex.c` 现只对树中实际含 grid/inline-grid 降级盒的 flex item 跳过错误的 block min-content 钳制；普通 flex 保持原规则，`inline-grid` 按 inline-block 降级。TEST41 的竖横屏截图均确认主内容保持左右 inset，宽表格没有再移动页面。此项仍不代表 Grid 轨道或 gap 已实现。
 21. **NetSurf overflow scrollbar 已完成当前验收**：移植并 C89 化上游 `desktop/scrollbar.c`，恢复 `descendant_x1/y1` 溢出判定、`box_handle_scrollbars` 创建/更新/成对销毁、祖先 scroll offset 坐标和 GDI redraw。公开 `PCore_OverflowPointer` 把 WM 的 DOWN/MOVE/UP 转发给箭头、page well 与 thumb drag；TEST42 的离屏 16px 步进断言及真机箭头/thumb 交互均已通过。随后新增 `PCore_OverflowDirtyRect`，host 只失效 overflow viewport，不再为每个拖动消息重绘整窗；VS2008 ARM 增量构建 0 错误。仍不宣称触摸惯性、overlay scrollbar 或完整 Grid。
 22. **CSS/图片后台资源事务与单响应进度已真机验收**：pending request 持有未交换 document 与最多 64 个去重 URL；worker 只读显式新页面 origin 并保存总计最多 2 MiB 原始字节，DOM/libcss/NetSurf/GDI 始终留在 UI。TEST3/43/13 已确认真实正文进度、资源去重/失败 fallback 和成功 swap。UI 提交现由一次性 WM timer 拆成 parse/style/image-discovery/layout 四段；单个 NetSurf 调用仍可能卡顿。TEST44 已确认主文档失败保留旧页与事务收尾。2 MiB 是 `test_host` 临时宿主预算，不是产品上限；整页聚合进度、字体和脚本仍未完成。
-23. **CSS `@import` 首批实现已真机验收**：`positron_core` 新增兼容扩展 `PCore_StyleDocumentEx2`，保留旧 ABI，并使用 libcss 原生 `next_pending_import/register_import` 递归解析最多 16 层导入；缺失、循环或超深导入注册空表，使父表后续规则继续生效。URL 策略仍在宿主，WM `test_host` 使用 `InternetCombineUrlA` 处理文档、父表和子表相对引用。成功字节进入现有 document CSS cache，旋转仅 cache-only 重选。TEST45 已确认三层 URL 规范化、一个失败导入、父/子 computed color、首次 fetch/free 计数和二次缓存重选。当前不宣称跨源策略、缓存失效、整页聚合进度或 web fonts 已完成。
-24. **stylesheet 元数据批次已完成并真机验收**：内联 `<style>` 与外链 `<link>` 现把完整 `media` 字符串交给 libcss 的 selection context；`rel` 按 ASCII 空白 token 识别 stylesheet 并排除 alternate，非空 `type` 仅接受 `text/css`，带 `disabled` 的表不解析也不 fetch。TEST46 在 320/299px 同时验证内联/外链 media 切换、两个合法 URL 仅 fetch/free 一次、alternate/非 CSS/disabled 三个 URL 零 fetch，以及 cache-only 重选；2026-07-14 用户确认整个批次通过。
-25. **文档 base URL 批次已完成当前验收**：新增共享首个 `<base href>` 解析器，仍由宿主 resolver 执行 URL 规范化，core 不绑定 WinInet。`PCore_StyleDocumentEx2` 现让外链 CSS、嵌套 import 与 CSS URL 使用有效 document base；新增兼容扩展 `PCore_FetchImageResourcesEx2` 与 `PCore_LinkAtEx2`，分别处理图片 URL/原始别名和点击链接绝对化，旧 API 保留原始 URL 行为。图片缓存用别名链覆盖多个相对写法映射到同一规范 URL，避免重复 fetch 且保证 NetSurf 构盒仍能按原始 `src` 取到字节。TEST47 离线覆盖首个 base 优先、第二个 base 忽略、CSS/背景/两个等价图片引用、原始/绝对链接和 fetch/free/去重；2026-07-14 用户确认全部通过。
-26. **重定向 origin 与导航活性批次已挂起并恢复 next37 HTTP ABI**：用户再次运行 next37，确认 TEST13 完整正常。失败的 next42 虽已让 core/host 走 9c 兼容路径，仍装载 20,480 字节新版 HTTP DLL；next37 为 19,968 字节。现已把 `positron_http.c/.h` 逐行恢复到 `9c5c7c7`，撤销 1536 字节 `effective_url` 字段、WinInet timeout options 和 TEST48，产物尺寸恢复。Ex2 base-aware core API 与 TEST46-47 保留。下一步先验收单独 TEST13；重定向 origin 必须改成独立、低内存 API 后再逐项接入，不能再次扩大每个响应对象并一次合并多条导航路径。
+23. **CSS `@import` 首批实现待设备验收**：`positron_core` 新增兼容扩展 `PCore_StyleDocumentEx2`，保留旧 ABI，并使用 libcss 原生 `next_pending_import/register_import` 递归解析最多 16 层导入；缺失、循环或超深导入注册空表，使父表后续规则继续生效。URL 策略仍在宿主，WM `test_host` 使用 `InternetCombineUrlA` 处理文档、父表和子表相对引用。成功字节进入现有 document CSS cache，旋转仅 cache-only 重选。TEST45 离线覆盖三层 URL 规范化、一个失败导入、父/子 computed color、首次 fetch/free 计数和二次缓存重选；VS2008 ARM 增量构建已通过，默认设备批次为 TEST13/24/45。当前不宣称跨源策略、缓存失效、整页聚合进度或 web fonts 已完成。
 
 验收：
 

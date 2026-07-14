@@ -124,19 +124,6 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
         const char *document_url, PCoreResolveUrlFn resolve,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw);
 
-/* Preserve the document stylesheet-discovery behavior used by the fully
- * accepted TEST13 baseline 9c5c7c7: no <base> override, exact
- * rel="stylesheet" matching, and no type/disabled/media filtering. */
-#define PCORE_STYLE_COMPAT_9C5C7C7 0x00000001UL
-
-/* Flagged extension of PCore_StyleDocumentEx2. Existing callers should use
- * Ex2; this entry point lets an embedder pin a compatibility contract while
- * newer standards behavior remains available to other callers. */
-PCORE_API int PCore_StyleDocumentEx3(HANDLE hDoc, HANDLE hSheet,
-        const char *document_url, PCoreResolveUrlFn resolve,
-        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw,
-        unsigned long flags);
-
 /* Scan the document for non-empty <img src> and computed background-image
  * resources and invoke the embedder's fetch callback for each one. Background
  * URLs are visible after PCore_StyleDocument[Ex]. Successful bodies are copied
@@ -150,17 +137,6 @@ PCORE_API int PCore_StyleDocumentEx3(HANDLE hDoc, HANDLE hSheet,
  * Either output pointer may be NULL. Returns 0 when the DOM was scanned. */
 PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
         PCoreFreeFn freefn, void *pw, int *out_found, int *out_fetched);
-
-/* Base-aware image discovery. Relative <img src> references use the first
- * <base href>, falling back to document_url if absent or unresolved; computed
- * CSS image URLs retain their stylesheet-relative resolution. The cache
- * remembers canonical and raw aliases so later layout can consume the fetched
- * bytes without mutating DOM attributes. The legacy entry point above keeps
- * raw-reference behavior. */
-PCORE_API int PCore_FetchImageResourcesEx2(HANDLE hDoc,
-        const char *document_url, PCoreResolveUrlFn resolve,
-        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw,
-        int *out_found, int *out_fetched);
 
 /* Decode an in-memory PNG/JPEG/GIF/BMP/etc. with the Windows Mobile Imaging
  * API and return its pixel dimensions. This is the native decoder bridge used
@@ -233,14 +209,6 @@ PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi);
  * application turn a tap into a navigation. */
 PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
                            char *out_href, int cap);
-
-/* Base-aware link hit-test. On a hit, resolves the raw href against the first
- * <base href>, or document_url when the base is absent/unresolved, through the
- * embedder callback. Falls back to the raw href if resolution is unavailable
- * or fails. */
-PCORE_API int PCore_LinkAtEx2(HANDLE hDoc, int x, int y,
-        const char *document_url, PCoreResolveUrlFn resolve, void *pw,
-        char *out_href, int cap);
 
 /* Forward pointer input to a nested CSS overflow scrollbar. Coordinates use
  * the same document-space convention as PCore_LinkAt. DOWN performs arrow or

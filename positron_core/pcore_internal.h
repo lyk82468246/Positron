@@ -21,13 +21,6 @@ css_stylesheet *pcore_parse_css_internal(const char *css, unsigned int len,
         const char *url, PCoreResolveUrlFn resolve, void *resolve_pw,
         css_error *out_done);
 
-/* Resolve the document's effective base URL. The first <base href> is
- * resolved against document_url through the embedder callback; absent or
- * invalid base elements conservatively retain document_url. */
-int pcore_document_base_url(struct dom_document *doc,
-        const char *document_url, PCoreResolveUrlFn resolve, void *resolve_pw,
-        char *out_url, int out_capacity);
-
 /* Return the css_computed_style PCore_StyleDocument attached to `node`, or NULL
  * if the node is not an element / has not been styled. Borrowed pointer (owned
  * by the node's user-data). */

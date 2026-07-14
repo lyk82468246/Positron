@@ -1,6 +1,6 @@
 # Positron Architecture
 
-更新时间：2026-07-14
+更新时间：2026-07-12
 
 ## 项目定位
 
@@ -48,9 +48,7 @@ NetSurf、libdom、libcss、libsvgtiny、mbedTLS、cJSON 等上游源码可以�
 
 ## 浏览器边界
 
-`positron_core.dll` 负责 transport-agnostic 的解析、样式、布局和绘制；网络由 embedder 通过 fetch callback 提供，URL 合并/安全策略由可选 resolve callback 提供。`PCore_StyleDocumentEx2`、`PCore_FetchImageResourcesEx2` 与 `PCore_LinkAtEx2` 是旧 ABI 的兼容扩展，共享首个 `<base href>` 语义，但不把 WinInet 或具体传输层引入 core；WM 宿主可用 `InternetCombineUrlA`，其他调用者可替换自己的 URL 服务。图片缓存以规范 URL 去重并保留原始 `src` 别名，避免为了 URL 规范化修改 DOM。浏览器宿主负责窗口、消息循环、导航事务和设备交互。
-
-HTTP 响应 ABI 当前保持 `9c5c7c7`/next37：状态、正文、长度和错误信息，不暴露最终重定向 URL。曾加入的 1536 字节 `effective_url` 字段、WinInet timeout options 和 TEST48 随 TEST13 长期不提交问题一起撤回；若重新设计，优先使用不扩大每个响应对象的独立查询/导航结果 API，并必须完整验收 TEST13。超时和资源数量/字节预算属于具体宿主及传输层策略，不是 `positron_core` ABI。
+`positron_core.dll` 负责 transport-agnostic 的解析、样式、布局和绘制；网络由 embedder 通过 fetch callback 提供，URL 合并/安全策略由可选 resolve callback 提供。`PCore_StyleDocumentEx2` 只扩展旧 ABI，不把 WinINet 或具体传输层引入 core；WM 宿主可用 `InternetCombineUrlA`，其他调用者可替换自己的 URL 服务。浏览器宿主负责窗口、消息循环、导航事务和设备交互。
 
 图片拆分后的目标调用关系：
 

@@ -1612,11 +1612,7 @@ typedef struct pcore_collect_ctx {
     dom_string     *link_name;  /* interned "link"  */
     dom_string     *rel_name;   /* interned "rel"   */
     dom_string     *href_name;  /* interned "href"  */
-    dom_string     *css_value;  /* interned "stylesheet" */
-    dom_string     *type_name;  /* interned "type" */
-    dom_string     *media_name; /* interned "media" */
-    dom_string     *disabled_name; /* interned "disabled" */
-    unsigned long   flags;
+    dom_string     *css_value;  /* interned "stylesheet" (for rel match) */
 } pcore_collect_ctx;
 
 #define PCORE_IMPORT_DEPTH_MAX 16
@@ -1776,256 +1772,10 @@ static css_stylesheet *pcore_parse_css_tree(pcore_collect_ctx *cc,
     return sheet;
 }
 
-static int pcore_ascii_space(char c)
-{
-    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
-}
-
-static int pcore_ascii_equal_ci(const char *value, size_t value_len,
-        const char *expected)
-{
-    size_t i;
-    size_t expected_len;
-
-    while (value_len > 0 && pcore_ascii_space(*value)) {
-        value++;
-        value_len--;
-    }
-    while (value_len > 0 && pcore_ascii_space(value[value_len - 1])) {
-        value_len--;
-    }
-    expected_len = strlen(expected);
-    if (value_len != expected_len) {
-        return 0;
-    }
-    for (i = 0; i < value_len; i++) {
-        char a;
-        char b;
-
-        a = value[i];
-        b = expected[i];
-        if (a >= 'A' && a <= 'Z') { a = (char) (a + ('a' - 'A')); }
-        if (b >= 'A' && b <= 'Z') { b = (char) (b + ('a' - 'A')); }
-        if (a != b) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-static int pcore_rel_has_token(dom_string *rel, const char *token)
-{
-    const char *data;
-    size_t len;
-    size_t start;
-    size_t end;
-
-    if (rel == NULL) {
-        return 0;
-    }
-    data = dom_string_data(rel);
-    len = dom_string_byte_length(rel);
-    start = 0;
-    while (start < len) {
-        while (start < len && pcore_ascii_space(data[start])) {
-            start++;
-        }
-        end = start;
-        while (end < len && !pcore_ascii_space(data[end])) {
-            end++;
-        }
-        if (end > start && pcore_ascii_equal_ci(data + start, end - start,
-                token)) {
-            return 1;
-        }
-        start = end;
-    }
-    return 0;
-}
-
-static int pcore_element_css_type(dom_node *node, dom_string *type_name)
-{
-    dom_string *type;
-    int is_css;
-
-    type = NULL;
-    if (type_name == NULL || dom_element_get_attribute(node, type_name,
-            &type) != DOM_NO_ERR || type == NULL) {
-        return 1;
-    }
-    is_css = dom_string_byte_length(type) == 0 ||
-            pcore_ascii_equal_ci(dom_string_data(type),
-            dom_string_byte_length(type), "text/css");
-    dom_string_unref(type);
-    return is_css;
-}
-
-static int pcore_element_disabled(dom_node *node, dom_string *disabled_name)
-{
-    bool disabled;
-
-    disabled = false;
-    if (disabled_name != NULL) {
-        dom_element_has_attribute(node, disabled_name, &disabled);
-    }
-    return disabled ? 1 : 0;
-}
-
-static const char *pcore_element_media(dom_node *node,
-        dom_string *media_name, char *buffer, int capacity)
-{
-    dom_string *media;
-    const char *data;
-    size_t len;
-
-    media = NULL;
-    if (media_name == NULL || dom_element_get_attribute(node, media_name,
-            &media) != DOM_NO_ERR || media == NULL) {
-        return NULL;
-    }
-    data = dom_string_data(media);
-    len = dom_string_byte_length(media);
-    while (len > 0 && pcore_ascii_space(*data)) {
-        data++;
-        len--;
-    }
-    while (len > 0 && pcore_ascii_space(data[len - 1])) {
-        len--;
-    }
-    if (len == 0) {
-        dom_string_unref(media);
-        return NULL;
-    }
-    if (len >= (size_t) capacity) {
-        dom_string_unref(media);
-        return "not all";
-    }
-    memcpy(buffer, data, len);
-    buffer[len] = '\0';
-    dom_string_unref(media);
-    return buffer;
-}
-
-static int pcore_find_base_href(dom_node *node, dom_string *base_name,
-        dom_string *href_name, char *reference, int capacity)
-{
-    dom_node_type type;
-    dom_node *child;
-
-    if (dom_node_get_node_type(node, &type) == DOM_NO_ERR &&
-            type == DOM_ELEMENT_NODE) {
-        dom_string *name;
-
-        name = NULL;
-        if (dom_node_get_node_name(node, &name) == DOM_NO_ERR &&
-                name != NULL) {
-            bool is_base;
-
-            is_base = dom_string_caseless_isequal(name, base_name);
-            dom_string_unref(name);
-            if (is_base) {
-                dom_string *href;
-
-                href = NULL;
-                if (dom_element_get_attribute(node, href_name, &href) ==
-                        DOM_NO_ERR && href != NULL) {
-                    size_t len;
-
-                    len = dom_string_byte_length(href);
-                    if (len < (size_t) capacity) {
-                        memcpy(reference, dom_string_data(href), len);
-                        reference[len] = '\0';
-                    } else {
-                        reference[0] = '\0';
-                    }
-                    dom_string_unref(href);
-                    return 1;
-                }
-            }
-        }
-    }
-    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
-        return 0;
-    }
-    while (child != NULL) {
-        dom_node *next;
-        int found;
-
-        found = pcore_find_base_href(child, base_name, href_name,
-                reference, capacity);
-        if (found) {
-            dom_node_unref(child);
-            return 1;
-        }
-        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
-            dom_node_unref(child);
-            return 0;
-        }
-        dom_node_unref(child);
-        child = next;
-    }
-    return 0;
-}
-
-int pcore_document_base_url(dom_document *doc, const char *document_url,
-        PCoreResolveUrlFn resolve, void *resolve_pw, char *out_url,
-        int out_capacity)
-{
-    dom_node *root;
-    dom_string *base_name;
-    dom_string *href_name;
-    char reference[2048];
-    size_t document_len;
-    int found;
-
-    if (doc == NULL || document_url == NULL || out_url == NULL ||
-            out_capacity <= 1) {
-        return 1;
-    }
-    document_len = strlen(document_url);
-    if (document_len >= (size_t) out_capacity) {
-        return 1;
-    }
-    memcpy(out_url, document_url, document_len + 1);
-    if (resolve == NULL) {
-        return 0;
-    }
-    root = NULL;
-    base_name = NULL;
-    href_name = NULL;
-    if (dom_string_create((const uint8_t *) "base", 4, &base_name) !=
-            DOM_NO_ERR || dom_string_create((const uint8_t *) "href", 4,
-            &href_name) != DOM_NO_ERR ||
-            dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
-            root == NULL) {
-        if (root != NULL) { dom_node_unref(root); }
-        if (base_name != NULL) { dom_string_unref(base_name); }
-        if (href_name != NULL) { dom_string_unref(href_name); }
-        return 0;
-    }
-    reference[0] = '\0';
-    found = pcore_find_base_href(root, base_name, href_name, reference,
-            sizeof(reference));
-    dom_node_unref(root);
-    dom_string_unref(base_name);
-    dom_string_unref(href_name);
-    if (found && reference[0] != '\0') {
-        char resolved[2048];
-
-        resolved[0] = '\0';
-        if (resolve(resolve_pw, document_url, reference, resolved,
-                sizeof(resolved)) == 0 && resolved[0] != '\0' &&
-                strlen(resolved) < (size_t) out_capacity) {
-            strcpy(out_url, resolved);
-        }
-    }
-    return 0;
-}
-
 /* Parse CSS and its native libcss @import tree, append only the root sheet to
  * the select context, and retain every child handle for pass-end cleanup. */
 static void pcore_add_author_css(pcore_collect_ctx *cc, const char *data,
-        int len, const char *url, const char *media)
+        int len, const char *url)
 {
     css_stylesheet *sheet;
 
@@ -2033,7 +1783,7 @@ static void pcore_add_author_css(pcore_collect_ctx *cc, const char *data,
     if (sheet == NULL) {
         return;
     }
-    css_select_ctx_append_sheet(cc->ctx, sheet, CSS_ORIGIN_AUTHOR, media);
+    css_select_ctx_append_sheet(cc->ctx, sheet, CSS_ORIGIN_AUTHOR, NULL);
 }
 
 /* DFS: collect author CSS from the page in document order - inline <style>
@@ -2065,22 +1815,12 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
 
         if (is_style) {
             dom_string *css = NULL;
-            char media_buffer[1024];
-            const char *media;
-            int compat;
-
-            compat = (cc->flags & PCORE_STYLE_COMPAT_9C5C7C7) != 0;
-            media = compat ? NULL : pcore_element_media(node,
-                    cc->media_name, media_buffer, sizeof(media_buffer));
-            if ((compat || (!pcore_element_disabled(node,
-                    cc->disabled_name) && pcore_element_css_type(node,
-                    cc->type_name))) &&
-                    dom_node_get_text_content(node, &css) == DOM_NO_ERR &&
+            if (dom_node_get_text_content(node, &css) == DOM_NO_ERR &&
                     css != NULL) {
                 pcore_add_author_css(cc, dom_string_data(css),
                         (int) dom_string_byte_length(css),
                         (cc->document_url != NULL) ? cc->document_url :
-                        "positron:inline-style", media);
+                        "positron:inline-style");
                 dom_string_unref(css);
             }
             return;   /* don't recurse into a <style>'s text children */
@@ -2090,24 +1830,13 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
             dom_string *rel = NULL;
             dom_string *href = NULL;
             bool is_sheet = false;
-            int compat;
-
-            compat = (cc->flags & PCORE_STYLE_COMPAT_9C5C7C7) != 0;
 
             if (dom_element_get_attribute(node, cc->rel_name, &rel) ==
                     DOM_NO_ERR && rel != NULL) {
-                if (compat) {
-                    is_sheet = dom_string_caseless_isequal(rel,
-                            cc->css_value);
-                } else {
-                    is_sheet = pcore_rel_has_token(rel, "stylesheet") &&
-                            !pcore_rel_has_token(rel, "alternate");
-                }
+                is_sheet = dom_string_caseless_isequal(rel, cc->css_value);
                 dom_string_unref(rel);
             }
-            if (is_sheet && (compat || (!pcore_element_disabled(node,
-                    cc->disabled_name) && pcore_element_css_type(node,
-                    cc->type_name))) &&
+            if (is_sheet &&
                     dom_element_get_attribute(node, cc->href_name, &href) ==
                             DOM_NO_ERR && href != NULL) {
                 const char *hu8 = dom_string_data(href);
@@ -2119,8 +1848,6 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                     char *owned;
                     int len;
                     int cl;
-                    char media_buffer[1024];
-                    const char *media;
 
                     cl = (hl < sizeof(reference) - 1) ? (int) hl :
                             (int) sizeof(reference) - 1;
@@ -2130,10 +1857,7 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                             reference, url, (int) sizeof(url)) == 0 &&
                             pcore_get_stylesheet_bytes(cc, url, &data, &len,
                             &owned) == 0) {
-                        media = compat ? NULL : pcore_element_media(node,
-                                cc->media_name, media_buffer,
-                                sizeof(media_buffer));
-                        pcore_add_author_css(cc, data, len, url, media);
+                        pcore_add_author_css(cc, data, len, url);
                         if (owned != NULL && cc->freefn != NULL) {
                             cc->freefn(cc->pw, owned);
                         }
@@ -2177,15 +1901,6 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
         const char *document_url, PCoreResolveUrlFn resolve,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch)
 {
-    return PCore_StyleDocumentEx3(hDoc, hSheet, document_url, resolve,
-            fetch, freefn, pw_fetch, 0);
-}
-
-PCORE_API int PCore_StyleDocumentEx3(HANDLE hDoc, HANDLE hSheet,
-        const char *document_url, PCoreResolveUrlFn resolve,
-        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
-        unsigned long flags)
-{
     dom_document     *doc = (dom_document *) hDoc;
     css_stylesheet   *author = (css_stylesheet *) hSheet;
     HANDLE            hUA = NULL;
@@ -2197,8 +1912,6 @@ PCORE_API int PCore_StyleDocumentEx3(HANDLE hDoc, HANDLE hSheet,
     css_media         media;
     pcore_select_pw   pw;
     pcore_collect_ctx cc;
-    char              effective_base[2048];
-    const char       *style_base;
     int               rc = 1;
 
     memset(&cc, 0, sizeof(cc));
@@ -2235,12 +1948,6 @@ PCORE_API int PCore_StyleDocumentEx3(HANDLE hDoc, HANDLE hSheet,
     }
 
     /* Apply the page's own inline <style> and external <link> sheets. */
-    style_base = document_url;
-    if ((flags & PCORE_STYLE_COMPAT_9C5C7C7) == 0 &&
-            pcore_document_base_url(doc, document_url, resolve, pw_fetch,
-            effective_base, sizeof(effective_base)) == 0) {
-        style_base = effective_base;
-    }
     cc.ctx = ctx;
     cc.sheets = page_sheets;
     cc.n = &n_page;
@@ -2249,17 +1956,13 @@ PCORE_API int PCore_StyleDocumentEx3(HANDLE hDoc, HANDLE hSheet,
     cc.freefn = freefn;
     cc.resolve = resolve;
     cc.pw = pw_fetch;
-    cc.document_url = style_base;
+    cc.document_url = document_url;
     cc.cache = pcore_stylesheet_cache_get(doc, 1);
-    cc.flags = flags;
     dom_string_create((const uint8_t *) "style", 5, &cc.style_name);
     dom_string_create((const uint8_t *) "link", 4, &cc.link_name);
     dom_string_create((const uint8_t *) "rel", 3, &cc.rel_name);
     dom_string_create((const uint8_t *) "href", 4, &cc.href_name);
     dom_string_create((const uint8_t *) "stylesheet", 10, &cc.css_value);
-    dom_string_create((const uint8_t *) "type", 4, &cc.type_name);
-    dom_string_create((const uint8_t *) "media", 5, &cc.media_name);
-    dom_string_create((const uint8_t *) "disabled", 8, &cc.disabled_name);
     if (cc.style_name != NULL) {
         pcore_collect_resources(&cc, root);
     }
@@ -2292,26 +1995,15 @@ cleanup:
     if (cc.rel_name != NULL)   { dom_string_unref(cc.rel_name); }
     if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
     if (cc.css_value != NULL)  { dom_string_unref(cc.css_value); }
-    if (cc.type_name != NULL)  { dom_string_unref(cc.type_name); }
-    if (cc.media_name != NULL) { dom_string_unref(cc.media_name); }
-    if (cc.disabled_name != NULL) {
-        dom_string_unref(cc.disabled_name);
-    }
     if (pw.universal != NULL) {
         lwc_string_unref(pw.universal);
     }
     return rc;
 }
 
-typedef struct pcore_image_alias {
-    struct pcore_image_alias *next;
-    char *url;
-} pcore_image_alias;
-
 typedef struct pcore_image_resource {
     struct pcore_image_resource *next;
     char *url;
-    pcore_image_alias *aliases;
     char *data;
     int len;
 } pcore_image_resource;
@@ -2346,17 +2038,8 @@ static void pcore_image_cache_free(pcore_image_cache *cache)
     entry = cache->head;
     while (entry != NULL) {
         pcore_image_resource *next = entry->next;
-        pcore_image_alias *alias;
 
         free(entry->url);
-        alias = entry->aliases;
-        while (alias != NULL) {
-            pcore_image_alias *next_alias = alias->next;
-
-            free(alias->url);
-            free(alias);
-            alias = next_alias;
-        }
         free(entry->data);
         free(entry);
         entry = next;
@@ -2422,55 +2105,15 @@ static pcore_image_resource *pcore_image_cache_find(
         return NULL;
     }
     for (entry = cache->head; entry != NULL; entry = entry->next) {
-        pcore_image_alias *alias;
-
         if (strcmp(entry->url, url) == 0) {
             return entry;
-        }
-        for (alias = entry->aliases; alias != NULL; alias = alias->next) {
-            if (strcmp(alias->url, url) == 0) {
-                return entry;
-            }
         }
     }
     return NULL;
 }
 
-static int pcore_image_cache_add_alias(pcore_image_resource *entry,
-        const char *url)
-{
-    pcore_image_alias *alias;
-    size_t len;
-
-    if (entry == NULL || url == NULL || url[0] == '\0' ||
-            strcmp(entry->url, url) == 0) {
-        return 0;
-    }
-    for (alias = entry->aliases; alias != NULL; alias = alias->next) {
-        if (strcmp(alias->url, url) == 0) {
-            return 0;
-        }
-    }
-    alias = (pcore_image_alias *) malloc(sizeof(*alias));
-    if (alias == NULL) {
-        return 1;
-    }
-    alias->next = NULL;
-    alias->url = NULL;
-    len = strlen(url);
-    alias->url = (char *) malloc(len + 1);
-    if (alias->url == NULL) {
-        free(alias);
-        return 1;
-    }
-    memcpy(alias->url, url, len + 1);
-    alias->next = entry->aliases;
-    entry->aliases = alias;
-    return 0;
-}
-
 static int pcore_image_cache_store(pcore_image_cache *cache,
-        const char *url, const char *alias, const char *data, int len)
+        const char *url, const char *data, int len)
 {
     pcore_image_resource *entry;
     size_t url_len;
@@ -2484,7 +2127,6 @@ static int pcore_image_cache_store(pcore_image_cache *cache,
     }
     entry->next = NULL;
     entry->url = NULL;
-    entry->aliases = NULL;
     entry->data = NULL;
     entry->len = 0;
 
@@ -2500,12 +2142,6 @@ static int pcore_image_cache_store(pcore_image_cache *cache,
     memcpy(entry->url, url, url_len + 1);
     memcpy(entry->data, data, (size_t) len);
     entry->len = len;
-    if (pcore_image_cache_add_alias(entry, alias) != 0) {
-        free(entry->url);
-        free(entry->data);
-        free(entry);
-        return 1;
-    }
     entry->next = cache->head;
     cache->head = entry;
     return 0;
@@ -2540,9 +2176,7 @@ int pcore_image_resource_get(dom_document *doc, const char *url,
 typedef struct pcore_image_fetch_ctx {
     PCoreFetchFn fetch;
     PCoreFreeFn  freefn;
-    PCoreResolveUrlFn resolve;
     void        *pw;
-    const char  *base_url;
     pcore_image_cache *cache;
     int          found;
     int          fetched;
@@ -2557,8 +2191,6 @@ static void pcore_fetch_image_url(pcore_image_fetch_ctx *ic,
     char *data = NULL;
     int len = 0;
     pcore_image_resource *cached;
-    char resolved[2048];
-    const char *fetch_url;
 
     if (ic == NULL || url_data == NULL || url_len == 0) {
         return;
@@ -2570,23 +2202,13 @@ static void pcore_fetch_image_url(pcore_image_fetch_ctx *ic,
     }
     memcpy(url, url_data, url_len);
     url[url_len] = '\0';
-    fetch_url = url;
-    resolved[0] = '\0';
-    if (ic->resolve != NULL && ic->base_url != NULL &&
-            ic->resolve(ic->pw, ic->base_url, url, resolved,
-            sizeof(resolved)) == 0 && resolved[0] != '\0') {
-        fetch_url = resolved;
-    }
-    cached = pcore_image_cache_find(ic->cache, fetch_url);
+    cached = pcore_image_cache_find(ic->cache, url);
     if (cached != NULL) {
-        if (pcore_image_cache_add_alias(cached, url) == 0) {
-            ic->fetched++;
-        }
+        ic->fetched++;
     } else if (ic->fetch != NULL &&
-            ic->fetch(ic->pw, fetch_url, &data, &len) == 0 &&
+            ic->fetch(ic->pw, url, &data, &len) == 0 &&
             data != NULL && len > 0) {
-        if (pcore_image_cache_store(ic->cache, fetch_url, url, data, len) ==
-                0) {
+        if (pcore_image_cache_store(ic->cache, url, data, len) == 0) {
             ic->fetched++;
         }
     }
@@ -2657,20 +2279,9 @@ static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
 PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
         PCoreFreeFn freefn, void *pw_fetch, int *out_found, int *out_fetched)
 {
-    return PCore_FetchImageResourcesEx2(hDoc, NULL, NULL, fetch, freefn,
-            pw_fetch, out_found, out_fetched);
-}
-
-PCORE_API int PCore_FetchImageResourcesEx2(HANDLE hDoc,
-        const char *document_url, PCoreResolveUrlFn resolve,
-        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
-        int *out_found, int *out_fetched)
-{
     dom_document *doc = (dom_document *) hDoc;
     dom_node *root = NULL;
     pcore_image_fetch_ctx ic;
-    char effective_base[2048];
-    const char *image_base;
     int rc = 1;
 
     if (out_found != NULL) {
@@ -2683,16 +2294,9 @@ PCORE_API int PCore_FetchImageResourcesEx2(HANDLE hDoc,
         return 1;
     }
 
-    image_base = document_url;
-    if (pcore_document_base_url(doc, document_url, resolve, pw_fetch,
-            effective_base, sizeof(effective_base)) == 0) {
-        image_base = effective_base;
-    }
     ic.fetch = fetch;
     ic.freefn = freefn;
-    ic.resolve = resolve;
     ic.pw = pw_fetch;
-    ic.base_url = image_base;
     ic.cache = pcore_image_cache_get(doc, 1);
     ic.found = 0;
     ic.fetched = 0;
