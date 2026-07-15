@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 46
+#define TEST_MAX_NUMBER 47
 
 static int test_config_space(char c)
 {
@@ -6897,6 +6897,164 @@ static BOOL test46_table_spans(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 47 - NetSurf anonymous table boxes + empty-cell completion       */
+/* -------------------------------------------------------------------- */
+static BOOL test47_table_normalise(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><div class=table>"
+        "<div class=direct></div>"
+        "<div class=row><div class=green></div><div class=blue></div></div>"
+        "</div></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        ".table{display:table;width:180px;table-layout:fixed;"
+        "border-spacing:0;margin:8px;}"
+        ".direct{display:block;height:40px;background:#f00;}"
+        ".row{display:table-row;}"
+        ".green{display:block;height:40px;background:#0f0;}"
+        ".blue{display:table-cell;height:40px;background:#00f;}";
+    static const COLORREF EXPECTED[2][2] = {
+        { RGB(255, 0, 0), RGB(255, 255, 255) },
+        { RGB(0, 255, 0), RGB(0, 0, 255) }
+    };
+    HANDLE hDoc;
+    HANDLE hSheet;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF pixel;
+    int tx;
+    int ty;
+    int tw;
+    int th;
+    int row;
+    int column;
+    int px;
+    int py;
+    int screen_w;
+    int screen_h;
+    char msg[256];
+
+    tx = 0;
+    ty = 0;
+    tw = 0;
+    th = 0;
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-normalise.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 180) != 0 ||
+            PCore_NodeBox(hDoc, "div", &tx, &ty, &tw, &th) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 47 FAIL",
+                "anonymous table parse/style/layout lookup failed");
+        return FALSE;
+    }
+    if (tw < 174 || tw > 186 || th < 76 || th > 88) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "table geometry=%d,%d %dx%d expect width 174..186 "
+                "height 76..88", tx, ty, tw, th);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 47 FAIL", msg);
+        return FALSE;
+    }
+
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 240, 180) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 47 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 240, 180);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+    pixel = CLR_INVALID;
+    for (row = 0; row < 2; row++) {
+        for (column = 0; column < 2; column++) {
+            px = tx + column * tw / 2 + 5;
+            py = ty + row * th / 2 + 5;
+            pixel = GetPixel(memory_dc, px, py);
+            if ((pixel & 0x00ffffffUL) !=
+                    (EXPECTED[row][column] & 0x00ffffffUL)) {
+                break;
+            }
+        }
+        if (column != 2) { break; }
+    }
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    if (row != 2) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "pixel r%d c%d=%06lX expect=%06lX table=%d,%d %dx%d",
+                row, column, pixel & 0x00ffffffUL,
+                EXPECTED[row][column] & 0x00ffffffUL, tx, ty, tw, th);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 47 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-normalise.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 47 FAIL", "visible parse/style/layout failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 47",
+              "Anonymous table boxes will open. Expect two rows:\n"
+              "red/white, then green/blue, with equal columns.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 47 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 47 OK",
+              "Anonymous row-group/row/cell wrapping, missing-cell fill,\n"
+              "layout pixels and visible NetSurf redraw all passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -7057,6 +7215,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 44: ok = test44_navigation_failure_transaction(); break;
         case 45: ok = test45_css_import_tree(); break;
         case 46: ok = test46_table_spans(); break;
+        case 47: ok = test47_table_normalise(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -7136,7 +7295,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-46)\n"
+                   "Yes = run all selected groups (TEST 1-47)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -7161,7 +7320,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "SVG draw/cache/fallback/text/gradients\n"
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table-span\n"
-                               "layout/redraw (TEST 46).\n"
+                               "table span/normalisation redraw\n"
+                               "(TEST 46-47).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -7211,7 +7371,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-47; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -7233,6 +7393,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test37_cached_svg_gradient_batch()){ rc = 13; goto done; }
         if (!test39_css_variable_layout()){ rc = 13; goto done; }
         if (!test46_table_spans()){ rc = 13; goto done; }
+        if (!test47_table_normalise()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }

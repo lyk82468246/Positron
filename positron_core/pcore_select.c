@@ -1323,6 +1323,7 @@ static const char PCORE_UA_CSS[] =
 
 /* libdom user-data key under which each element's css_computed_style hangs. */
 static dom_string *pcore_style_key = NULL;
+static dom_string *pcore_default_style_key = NULL;
 
 static int pcore_ensure_style_key(void)
 {
@@ -1331,6 +1332,18 @@ static int pcore_ensure_style_key(void)
     }
     if (dom_string_create((const uint8_t *) "__pcore_style__", 15,
             &pcore_style_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static int pcore_ensure_default_style_key(void)
+{
+    if (pcore_default_style_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) "__pcore_default_style__", 23,
+            &pcore_default_style_key) != DOM_NO_ERR) {
         return 1;
     }
     return 0;
@@ -1346,6 +1359,20 @@ css_computed_style *pcore_node_computed_style(struct dom_node *node)
         return NULL;
     }
     if (dom_node_get_user_data(node, pcore_style_key, &sd) != DOM_NO_ERR) {
+        return NULL;
+    }
+    return (css_computed_style *) sd;
+}
+
+css_computed_style *pcore_document_default_style(struct dom_document *doc)
+{
+    void *sd = NULL;
+
+    if (pcore_default_style_key == NULL || doc == NULL) {
+        return NULL;
+    }
+    if (dom_node_get_user_data((dom_node *) doc, pcore_default_style_key,
+            &sd) != DOM_NO_ERR) {
         return NULL;
     }
     return (css_computed_style *) sd;
@@ -1912,6 +1939,8 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     css_media         media;
     pcore_select_pw   pw;
     pcore_collect_ctx cc;
+    css_computed_style *default_style = NULL;
+    void             *old_default = NULL;
     int               rc = 1;
 
     memset(&cc, 0, sizeof(cc));
@@ -1924,7 +1953,8 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     if (lwc_intern_string("*", 1, &pw.universal) != lwc_error_ok) {
         return 1;
     }
-    if (pcore_ensure_style_key() != 0) {
+    if (pcore_ensure_style_key() != 0 ||
+            pcore_ensure_default_style_key() != 0) {
         goto cleanup;
     }
 
@@ -1975,9 +2005,25 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     pcore_init_screen_media(&media);
 
     pcore_style_subtree(ctx, &pw, &media, root, NULL);
+    if (css_select_default_style(ctx, &pcore_select_handler, &pw,
+            &default_style) != CSS_OK || default_style == NULL) {
+        goto cleanup;
+    }
+    if (dom_node_set_user_data((dom_node *) doc, pcore_default_style_key,
+            default_style, pcore_style_ud_handler, &old_default) !=
+            DOM_NO_ERR) {
+        goto cleanup;
+    }
+    if (old_default != NULL && old_default != default_style) {
+        css_computed_style_destroy((css_computed_style *) old_default);
+    }
+    default_style = NULL;
     rc = 0;
 
 cleanup:
+    if (default_style != NULL) {
+        css_computed_style_destroy(default_style);
+    }
     if (root != NULL) {
         dom_node_unref(root);
     }

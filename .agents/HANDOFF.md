@@ -94,11 +94,11 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,17,41,42,46`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=13,17,41,42,46`。四组路由的第 3 组提示已压缩为能力类别，避免 WM6 小屏 MessageBox 被长清单撑坏。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,17,41,42,46,47`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=13,17,41,42,46,47`。四组路由的第 3 组提示已压缩为能力类别，避免 WM6 小屏 MessageBox 被长清单撑坏。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid-overflow 隔离、overflow scrollbar、分阶段资源事务、失败回滚与 CSS import tree，离线。TEST40-45 已真机确认。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距与 table span 正式 redraw；TEST26-46 的既有断言均已真机通过。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-47，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距与 table span/匿名归一化正式 redraw；TEST47 待设备验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -119,9 +119,10 @@ scripts\stage.bat
 7. 图片/SVG：TEST20 四格式缓存 `<img>`、TEST25-37 的 SVG 正式链，以及 TEST13 网络相对 SVG 链均已真机确认。公共 `positron_image.dll` 已覆盖 retained WM 位图/SVG、旧 core 转发、PNG/JPEG/BMP/GIF 编码与静态 libjpeg-turbo 4:4:4。next51 已确认 ABI 1.4 启动前 BMP/GIF 编码、签名、回读检查和六项视觉均正常，但标题栏 X 仍按 WM 约定 Smart Minimize，说明仅处理 `WM_CLOSE` 不足。next52 改用 `SHDoneButton(SHDB_SHOW)` 的原生标题栏 OK，并处理 `WM_COMMAND/IDOK`；用户已确认进程真退出且可再次启动。按用户要求不增加左右软键。复杂文本、径向焦点、spread method、background-size 和多层背景仍是显式缺口。
 8. 测试节奏：默认按能力批次积累多个相关实现、自动断言和直绘/正式链回归，再用一个 `test_host.ini` 一次交付多个 TEST。除编译错误、高风险回归定位或设备专有故障外，不应为每个微小改动单独要求用户验收。
 9. `PCore_StyleDocumentEx2` 是旧样式 ABI 的兼容扩展：接收绝对 document URL 和宿主 URL resolver；core 用 libcss 原生 pending/register 机制处理最多 16 层导入，失败导入注册空表。WM 宿主使用 `InternetCombineUrlA`，旋转只读 document CSS cache。TEST45 已真机确认嵌套、缺失回退、URL 规范化和缓存重选。
-10. 表格构盒已移植 NetSurf 3.11 的 span occupancy；next53 已确认 TEST46 的有限/自动 rowspan、colspan、row-group 边界、像素与正式 redraw。畸形表格空单元格生成与完整 border-collapse 仍未完成。
+10. 表格构盒已移植 NetSurf 3.11 的 span occupancy；next53 已确认 TEST46 的有限/自动 rowspan、colspan、row-group 边界、像素与正式 redraw。当时尚缺的匿名包装与空 cell 已进入下方 next56 批次；完整 border-collapse 仍未完成。
 11. next54 的宿主纵条和 auto-height 横条空间有效，但第二次整树 layout 误改 fixed-height overflow 几何，导致 TEST42 原右箭头点击位置失败；右箭头图形还相对 16px 控件向下偏 2px。该包不能作为新基线。
-12. next55 在二次 layout 前屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，只让 auto-height 容器获得额外空间；右箭头改用与左箭头对称的 `area.y0` 基准。TEST42 同时自动断言旧 fixed-height 点击/位移、auto-height 末行和箭头上下对称。当前默认 `test_host.ini` 仍为 `tests=13,17,41,42,46`；冻结的 TEST13 导航链未改。
+12. next55 在二次 layout 前屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，只让 auto-height 容器获得额外空间；右箭头改用与左箭头对称的 `area.y0` 基准。用户已确认 TEST41/42、短页纵条与色块页均正常；冻结的 TEST13 导航链未改。
+13. next56 按 NetSurf 3.11 规则补 table/row-group/row/cell 匿名盒和短行空 cell。默认样式保留在 styled document，匿名盒 compose 父样式后由 talloc tree 释放。TEST47 的离屏像素与可见页预期为红/白、绿/蓝两行；默认 `test_host.ini` 为 `tests=13,17,41,42,46,47`，待设备验收。
 
 ## 开发纪律
 

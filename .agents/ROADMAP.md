@@ -117,7 +117,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 26. **ABI 1.4 原生 BMP/GIF 输出与示例真退出均已验收**：next51 能进入六项可见界面，证明启动前的 `BM`/`GIF8` 签名、重新解码和 16x16 尺寸均通过；截图也确认原始像素、PNG alpha、JPEG 与 SVG 视觉保持正常。next51 的 `WM_CLOSE -> DestroyWindow` 没有解决退出，因为 WM/Pocket PC 标题栏 X 是 Shell Smart Minimize，不保证发送 `WM_CLOSE`。next52 按 WM6 SDK 的 `ShellApiDemo` 模式启用 `SHDoneButton(SHDB_SHOW)`，在 `WM_COMMAND/IDOK` 销毁窗口并进入 `WM_DESTROY -> PostQuitMessage`；用户已确认点击原生 OK 后任务管理器不再残留，且示例可正常再次启动。不创建左右软键，不占客户区；跨线程句柄仍未提供。
 27. **NetSurf table span 占位批次已由 next53 真机验收**：`pcore_box.c` 不再让每行从第 0 列盲排，而是移植 NetSurf 3.11 `box_normalise.c` 的 span occupancy：有限 rowspan 逐行递减，`rowspan=0` 延伸到当前 row group 末尾，下一 `<tbody>` 不继承占位，`colspan=0` 归一为 1，并对 HTML span 值和 WM 临时列记录设置上限。TEST46 的四行三列颜色、位置、几何、12 点像素与正式 redraw 均已确认；同批 TEST13/17/41/42 其余功能正常。此项尚不包括畸形表格空单元格生成或完整 collapsed-border 冲突规则。
 28. **next54 的滚动条占位修复只部分通过**：host 用 `WS_VSCROLL`、`SetWindowLong` 与 `SWP_FRAMECHANGED` 按实际文档高度切换原生非客户区，TEST41 的 auto-height 横条也已不再覆盖内容；但第二次整树 layout 同时让 fixed-height overflow 预留空间，改变了已验收几何，TEST42 因而在旧右箭头位置得到 `used=0/0/0`。设备截图还暴露右箭头沿用背景 `rect.y0` 后向下偏 2px。不能把 next54 记为完成。
-29. **next55 收窄 reflow 并补箭头像素回归，待真机验收**：第二次 layout 前只屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，使其保持 next53 几何；auto-height 容器仍利用首轮 descendant bounds 预留 16px。NetSurf 右箭头改回与左箭头对称的 `area.y0` 坐标基准。TEST42 保留原 fixed-height 点击/16px 位移/dirty-rect 断言，继续检查 auto-height 末行红色，并新增右箭头黑色区域上下对称断言。C89 脚本 0 修改，Debug/Release ARMV4I 增量构建均 0 错误。
+29. **next55 收窄 reflow 并补箭头像素回归，已由设备验收**：第二次 layout 前只屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，使其保持 next53 几何；auto-height 容器仍利用首轮 descendant bounds 预留 16px。NetSurf 右箭头改回与左箭头对称的 `area.y0` 坐标基准。用户确认 TEST41/42 的横条空间、箭头位置、短页纵条与色块页表现均正常；冻结的 TEST13 导航链未改。
+30. **next56 匿名表格归一化批次待设备验收**：按 NetSurf 3.11 `box_normalise.c` 补齐 table/row-group/row/cell 的匿名包装及短行空单元格生成。匿名盒使用 libcss 默认样式与父样式 compose，并由 box tree 独立释放，避免借用父背景/边框。TEST47 自动检查红/白、绿/蓝两行像素及正式 redraw；默认批次保留 TEST13/17/41/42/46。C89 检查 0 修改，Debug/Release ARMV4I 增量构建 0 错误。
 
 验收：
 
@@ -157,6 +158,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - flex
 - table 常见路径
 - 有效表格的 colspan、有限/自动 rowspan 与 row-group 占位（TEST46 已真机确认）
+- table/row-group/row/cell 匿名包装与短行空单元格生成（TEST47 待真机确认）
 
 仍缺或简化：
 

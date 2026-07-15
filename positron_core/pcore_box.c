@@ -59,7 +59,7 @@ css_fixed nscss_screen_dpi = 96 * (1 << CSS_RADIX_POINT);
 /* ------------------------------------------------------------------ */
 
 /* Allocate a zeroed box of `type` under talloc context `ctx`, carrying `style`
- * (borrowed; NULL for anonymous boxes). Mirrors the fields box_create() in
+ * (borrowed unless an anonymous box owns it below). Mirrors box_create() in
  * NetSurf's box_manipulate.c initialises, minus the form/scrollbar/url state
  * our slim builder never produces. */
 static struct box *pcore_box_new(box_type type, css_computed_style *style,
@@ -78,6 +78,63 @@ static struct box *pcore_box_new(box_type type, css_computed_style *style,
     b->list_value = 1;
     /* talloc_zero cleared everything else (pointers NULL, ints 0). */
     return b;
+}
+
+typedef struct pcore_owned_style {
+    css_computed_style *style;
+} pcore_owned_style;
+
+static int pcore_owned_style_destroy(pcore_owned_style *owned)
+{
+    if (owned->style != NULL) {
+        css_computed_style_destroy(owned->style);
+        owned->style = NULL;
+    }
+    return 0;
+}
+
+/* NetSurf's normaliser gives implied table boxes a blank style composed with
+ * the parent. Keep the composed style as a talloc child of its box so the box
+ * tree owns it without changing the borrowed-style contract of DOM boxes. */
+static struct box *pcore_make_anonymous_box(box_type type,
+        css_computed_style *parent_style, dom_node *source_node, void *ctx)
+{
+    struct box *box;
+    pcore_owned_style *owned;
+    dom_document *doc = NULL;
+    css_computed_style *base;
+
+    if (parent_style == NULL || source_node == NULL ||
+            dom_node_get_owner_document(source_node, &doc) != DOM_NO_ERR ||
+            doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
+        }
+        return NULL;
+    }
+    base = pcore_document_default_style(doc);
+    dom_node_unref((dom_node *) doc);
+    if (base == NULL) {
+        return NULL;
+    }
+
+    box = pcore_box_new(type, NULL, ctx);
+    if (box == NULL) {
+        return NULL;
+    }
+    owned = talloc_zero(box, pcore_owned_style);
+    if (owned == NULL) {
+        talloc_free(box);
+        return NULL;
+    }
+    talloc_set_destructor(owned, pcore_owned_style_destroy);
+    if (css_computed_style_compose(parent_style, base, pcore_get_unit_ctx(),
+            &owned->style) != CSS_OK || owned->style == NULL) {
+        talloc_free(box);
+        return NULL;
+    }
+    box->style = owned->style;
+    return box;
 }
 
 /* Append `child` as the last child of `parent` (NetSurf box_add_child). */
@@ -513,6 +570,10 @@ static struct box *pcore_construct_table(dom_node *node,
         css_computed_style *style, void *ctx);
 static struct box *pcore_construct_flex(dom_node *node,
         css_computed_style *style, int is_inline, void *ctx);
+static struct box *pcore_construct_row(dom_node *node,
+        css_computed_style *style, void *ctx);
+static struct box *pcore_construct_rowgroup(dom_node *node,
+        css_computed_style *style, void *ctx);
 
 /* Flatten the inline content of `node` into inline container `cont`: text
  * children become BOX_TEXT; inline element children emit BOX_INLINE ...
@@ -866,11 +927,117 @@ static struct box *pcore_construct_cell(dom_node *node,
     return cell;
 }
 
-/* BOX_TABLE_ROW from a <tr>: its table-cell element children become cells. */
+static struct box *pcore_construct_table_content(dom_node *node,
+        css_computed_style *style, void *ctx)
+{
+    uint8_t display = css_computed_display(style, false);
+
+    if (display == CSS_DISPLAY_TABLE) {
+        return pcore_construct_table(node, style, ctx);
+    }
+    if (pcore_disp_table_rowgroup(style)) {
+        return pcore_construct_rowgroup(node, style, ctx);
+    }
+    if (pcore_disp_table_row(style)) {
+        return pcore_construct_row(node, style, ctx);
+    }
+    if (pcore_disp_table_cell(style)) {
+        return pcore_construct_cell(node, style, ctx);
+    }
+    if (display == CSS_DISPLAY_FLEX || display == CSS_DISPLAY_INLINE_FLEX) {
+        return pcore_construct_flex(node, style, 0, ctx);
+    }
+    return pcore_construct_block(node, style, 0, ctx);
+}
+
+/* Append one DOM child to a table row. Consecutive non-cell children share an
+ * implied cell, matching box_normalise_table_row() in NetSurf 3.11. */
+static int pcore_row_append_element(struct box *row, dom_node *node,
+        css_computed_style *style, dom_node *style_source, void *ctx,
+        struct box **implied_cell)
+{
+    struct box *child_box;
+
+    if (pcore_disp_table_cell(style)) {
+        child_box = pcore_construct_cell(node, style, ctx);
+        *implied_cell = NULL;
+        if (child_box == NULL) {
+            return 0;
+        }
+        pcore_box_add_child(row, child_box);
+        return 1;
+    }
+
+    if (*implied_cell == NULL) {
+        *implied_cell = pcore_make_anonymous_box(BOX_TABLE_CELL, row->style,
+                style_source, ctx);
+        if (*implied_cell == NULL) {
+            return 0;
+        }
+        pcore_box_add_child(row, *implied_cell);
+    }
+    child_box = pcore_construct_table_content(node, style, ctx);
+    if (child_box == NULL) {
+        return 0;
+    }
+    pcore_box_add_child(*implied_cell, child_box);
+    return 1;
+}
+
+static int pcore_text_node_has_content(dom_node *node)
+{
+    dom_string *text = NULL;
+    int has_content = 0;
+
+    if (dom_node_get_text_content(node, &text) == DOM_NO_ERR && text != NULL) {
+        const char *data = dom_string_data(text);
+        size_t len = dom_string_byte_length(text);
+        has_content = data != NULL && len > 0 &&
+                !pcore_text_all_ws(data, len);
+        dom_string_unref(text);
+    }
+    return has_content;
+}
+
+static int pcore_row_append_text(struct box *row, dom_node *node,
+        dom_node *style_source, void *ctx, struct box **implied_cell)
+{
+    struct box *container;
+    struct box *text;
+
+    if (!pcore_text_node_has_content(node)) {
+        return 1;
+    }
+    if (*implied_cell == NULL) {
+        *implied_cell = pcore_make_anonymous_box(BOX_TABLE_CELL, row->style,
+                style_source, ctx);
+        if (*implied_cell == NULL) {
+            return 0;
+        }
+        pcore_box_add_child(row, *implied_cell);
+    }
+    container = (*implied_cell)->last;
+    if (container == NULL || container->type != BOX_INLINE_CONTAINER) {
+        container = pcore_box_new(BOX_INLINE_CONTAINER, NULL, ctx);
+        if (container == NULL) {
+            return 0;
+        }
+        pcore_box_add_child(*implied_cell, container);
+    }
+    text = pcore_make_text_box(node, (*implied_cell)->style, ctx);
+    if (text == NULL) {
+        return 0;
+    }
+    pcore_box_add_text(container, text);
+    return 1;
+}
+
+/* BOX_TABLE_ROW from a <tr>, including implied cells for malformed content. */
 static struct box *pcore_construct_row(dom_node *node,
         css_computed_style *style, void *ctx)
 {
     struct box *row = pcore_box_new(BOX_TABLE_ROW, style, ctx);
+    struct box *implied_cell = NULL;
     dom_node *child;
 
     if (row == NULL) {
@@ -884,15 +1051,15 @@ static struct box *pcore_construct_row(dom_node *node,
         dom_node_type type;
         dom_node *next;
 
-        if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
-                type == DOM_ELEMENT_NODE) {
-            css_computed_style *cs = pcore_node_computed_style(child);
-            if (cs != NULL && !pcore_is_display_none(cs, 0) &&
-                    pcore_disp_table_cell(cs)) {
-                struct box *cell = pcore_construct_cell(child, cs, ctx);
-                if (cell != NULL) {
-                    pcore_box_add_child(row, cell);
+        if (dom_node_get_node_type(child, &type) == DOM_NO_ERR) {
+            if (type == DOM_ELEMENT_NODE) {
+                css_computed_style *cs = pcore_node_computed_style(child);
+                if (cs != NULL && !pcore_is_display_none(cs, 0)) {
+                    pcore_row_append_element(row, child, cs, node, ctx,
+                            &implied_cell);
                 }
+            } else if (type == DOM_TEXT_NODE) {
+                pcore_row_append_text(row, child, node, ctx, &implied_cell);
             }
         }
         if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
@@ -905,11 +1072,13 @@ static struct box *pcore_construct_row(dom_node *node,
     return row;
 }
 
-/* BOX_TABLE_ROW_GROUP from <thead>/<tbody>/<tfoot>: children are rows. */
+/* BOX_TABLE_ROW_GROUP, including implied rows for non-row children. */
 static struct box *pcore_construct_rowgroup(dom_node *node,
         css_computed_style *style, void *ctx)
 {
     struct box *rg = pcore_box_new(BOX_TABLE_ROW_GROUP, style, ctx);
+    struct box *implied_row = NULL;
+    struct box *implied_cell = NULL;
     dom_node *child;
 
     if (rg == NULL) {
@@ -923,14 +1092,43 @@ static struct box *pcore_construct_rowgroup(dom_node *node,
         dom_node_type type;
         dom_node *next;
 
-        if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
-                type == DOM_ELEMENT_NODE) {
-            css_computed_style *cs = pcore_node_computed_style(child);
-            if (cs != NULL && !pcore_is_display_none(cs, 0) &&
-                    pcore_disp_table_row(cs)) {
-                struct box *row = pcore_construct_row(child, cs, ctx);
-                if (row != NULL) {
-                    pcore_box_add_child(rg, row);
+        if (dom_node_get_node_type(child, &type) == DOM_NO_ERR) {
+            if (type == DOM_ELEMENT_NODE) {
+                css_computed_style *cs = pcore_node_computed_style(child);
+                if (cs != NULL && !pcore_is_display_none(cs, 0)) {
+                    if (pcore_disp_table_row(cs)) {
+                        struct box *row = pcore_construct_row(child, cs, ctx);
+                        if (row != NULL) {
+                            pcore_box_add_child(rg, row);
+                        }
+                        implied_row = NULL;
+                        implied_cell = NULL;
+                    } else {
+                        if (implied_row == NULL) {
+                            implied_row = pcore_make_anonymous_box(
+                                    BOX_TABLE_ROW, rg->style, node, ctx);
+                            if (implied_row != NULL) {
+                                pcore_box_add_child(rg, implied_row);
+                            }
+                        }
+                        if (implied_row != NULL) {
+                            pcore_row_append_element(implied_row, child, cs,
+                                    node, ctx, &implied_cell);
+                        }
+                    }
+                }
+            } else if (type == DOM_TEXT_NODE &&
+                    pcore_text_node_has_content(child)) {
+                if (implied_row == NULL) {
+                    implied_row = pcore_make_anonymous_box(BOX_TABLE_ROW,
+                            rg->style, node, ctx);
+                    if (implied_row != NULL) {
+                        pcore_box_add_child(rg, implied_row);
+                    }
+                }
+                if (implied_row != NULL) {
+                    pcore_row_append_text(implied_row, child, node, ctx,
+                            &implied_cell);
                 }
             }
         }
@@ -940,6 +1138,13 @@ static struct box *pcore_construct_rowgroup(dom_node *node,
         }
         dom_node_unref(child);
         child = next;
+    }
+    if (rg->children == NULL) {
+        implied_row = pcore_make_anonymous_box(BOX_TABLE_ROW, rg->style,
+                node, ctx);
+        if (implied_row != NULL) {
+            pcore_box_add_child(rg, implied_row);
+        }
     }
     return rg;
 }
@@ -1050,16 +1255,99 @@ static void pcore_finish_table_spans(struct box *table)
     }
 }
 
+static void pcore_insert_table_cell(struct box *row, struct box *cell)
+{
+    struct box *before = row->children;
+    struct box *previous = NULL;
+
+    while (before != NULL && before->start_column < cell->start_column) {
+        previous = before;
+        before = before->next;
+    }
+    cell->parent = row;
+    cell->prev = previous;
+    cell->next = before;
+    if (previous != NULL) {
+        previous->next = cell;
+    } else {
+        row->children = cell;
+    }
+    if (before != NULL) {
+        before->prev = cell;
+    } else {
+        row->last = cell;
+    }
+}
+
+/* Complete gaps left by short rows and rowspans. Adapted from NetSurf 3.11's
+ * box_normalise_table_spans(), with span state reset at row-group boundaries. */
+static int pcore_fill_empty_table_cells(struct box *table,
+        dom_node *style_source, void *ctx)
+{
+    unsigned int *spans;
+    struct box *rg;
+    struct box *row;
+    struct box *cell;
+
+    spans = (unsigned int *) calloc(table->columns, sizeof(*spans));
+    if (spans == NULL) {
+        return 0;
+    }
+    for (rg = table->children; rg != NULL; rg = rg->next) {
+        memset(spans, 0, table->columns * sizeof(*spans));
+        for (row = rg->children; row != NULL; row = row->next) {
+            unsigned int column;
+
+            for (cell = row->children; cell != NULL; cell = cell->next) {
+                unsigned int end = cell->start_column + cell->columns;
+                unsigned int i;
+                if (end > table->columns) {
+                    end = table->columns;
+                }
+                for (i = cell->start_column; i < end; i++) {
+                    spans[i] = cell->rows;
+                }
+            }
+            column = 0;
+            while (column < table->columns) {
+                if (spans[column] == 0) {
+                    unsigned int start = column;
+                    struct box *empty;
+                    while (column < table->columns && spans[column] == 0) {
+                        column++;
+                    }
+                    empty = pcore_make_anonymous_box(BOX_TABLE_CELL,
+                            row->style, style_source, ctx);
+                    if (empty == NULL) {
+                        free(spans);
+                        return 0;
+                    }
+                    empty->rows = 1;
+                    empty->columns = column - start;
+                    empty->start_column = start;
+                    pcore_insert_table_cell(row, empty);
+                } else {
+                    spans[column]--;
+                    column++;
+                }
+            }
+        }
+    }
+    free(spans);
+    return 1;
+}
+
 /* Build a BOX_TABLE tree (row-group > row > cell) from a display:table element.
- * Bare <tr> children are wrapped in an anonymous row group. Cell placement
+ * Unexpected children receive NetSurf-style anonymous wrappers. Cell placement
  * uses NetSurf's span occupancy rules before table->columns / rows / col[] are
- * filled. Falls back to BOX_BLOCK if no cells were produced or temporary span
- * allocation fails, so layout never sees a malformed table. */
+ * filled. Falls back to BOX_BLOCK if temporary normalisation state fails. */
 static struct box *pcore_construct_table(dom_node *node,
         css_computed_style *style, void *ctx)
 {
     struct box *table = pcore_box_new(BOX_TABLE, style, ctx);
     struct box *anon_rg = NULL;
+    struct box *anon_row = NULL;
+    struct box *anon_cell = NULL;
     struct box *rg;
     struct box *row;
     struct box *cell;
@@ -1076,30 +1364,71 @@ static struct box *pcore_construct_table(dom_node *node,
             dom_node_type type;
             dom_node *next;
 
-            if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
-                    type == DOM_ELEMENT_NODE) {
-                css_computed_style *cs = pcore_node_computed_style(child);
-                if (cs != NULL && !pcore_is_display_none(cs, 0)) {
-                    if (pcore_disp_table_rowgroup(cs)) {
-                        struct box *g = pcore_construct_rowgroup(child, cs,
-                                ctx);
-                        if (g != NULL) {
-                            pcore_box_add_child(table, g);
-                        }
-                        anon_rg = NULL;
-                    } else if (pcore_disp_table_row(cs)) {
-                        struct box *r;
-                        if (anon_rg == NULL) {
-                            anon_rg = pcore_box_new(BOX_TABLE_ROW_GROUP, NULL,
-                                    ctx);
-                            if (anon_rg != NULL) {
-                                pcore_box_add_child(table, anon_rg);
+            if (dom_node_get_node_type(child, &type) == DOM_NO_ERR) {
+                if (type == DOM_ELEMENT_NODE) {
+                    css_computed_style *cs = pcore_node_computed_style(child);
+                    if (cs != NULL && !pcore_is_display_none(cs, 0)) {
+                        if (pcore_disp_table_rowgroup(cs)) {
+                            struct box *g = pcore_construct_rowgroup(child,
+                                    cs, ctx);
+                            if (g != NULL) {
+                                pcore_box_add_child(table, g);
+                            }
+                            anon_rg = NULL;
+                            anon_row = NULL;
+                            anon_cell = NULL;
+                        } else {
+                            if (anon_rg == NULL) {
+                                anon_rg = pcore_make_anonymous_box(
+                                        BOX_TABLE_ROW_GROUP, table->style,
+                                        node, ctx);
+                                if (anon_rg != NULL) {
+                                    pcore_box_add_child(table, anon_rg);
+                                }
+                            }
+                            if (pcore_disp_table_row(cs)) {
+                                struct box *r = pcore_construct_row(child,
+                                        cs, ctx);
+                                if (r != NULL && anon_rg != NULL) {
+                                    pcore_box_add_child(anon_rg, r);
+                                }
+                                anon_row = NULL;
+                                anon_cell = NULL;
+                            } else if (anon_rg != NULL) {
+                                if (anon_row == NULL) {
+                                    anon_row = pcore_make_anonymous_box(
+                                            BOX_TABLE_ROW, anon_rg->style,
+                                            node, ctx);
+                                    if (anon_row != NULL) {
+                                        pcore_box_add_child(anon_rg, anon_row);
+                                    }
+                                }
+                                if (anon_row != NULL) {
+                                    pcore_row_append_element(anon_row, child,
+                                            cs, node, ctx, &anon_cell);
+                                }
                             }
                         }
-                        r = pcore_construct_row(child, cs, ctx);
-                        if (r != NULL && anon_rg != NULL) {
-                            pcore_box_add_child(anon_rg, r);
+                    }
+                } else if (type == DOM_TEXT_NODE &&
+                        pcore_text_node_has_content(child)) {
+                    if (anon_rg == NULL) {
+                        anon_rg = pcore_make_anonymous_box(
+                                BOX_TABLE_ROW_GROUP, table->style, node, ctx);
+                        if (anon_rg != NULL) {
+                            pcore_box_add_child(table, anon_rg);
                         }
+                    }
+                    if (anon_row == NULL && anon_rg != NULL) {
+                        anon_row = pcore_make_anonymous_box(BOX_TABLE_ROW,
+                                anon_rg->style, node, ctx);
+                        if (anon_row != NULL) {
+                            pcore_box_add_child(anon_rg, anon_row);
+                        }
+                    }
+                    if (anon_row != NULL) {
+                        pcore_row_append_text(anon_row, child, node, ctx,
+                                &anon_cell);
                     }
                 }
             }
@@ -1112,6 +1441,19 @@ static struct box *pcore_construct_table(dom_node *node,
         }
     }
 
+    if (table->children == NULL) {
+        anon_rg = pcore_make_anonymous_box(BOX_TABLE_ROW_GROUP, table->style,
+                node, ctx);
+        if (anon_rg != NULL) {
+            pcore_box_add_child(table, anon_rg);
+            anon_row = pcore_make_anonymous_box(BOX_TABLE_ROW,
+                    anon_rg->style, node, ctx);
+            if (anon_row != NULL) {
+                pcore_box_add_child(anon_rg, anon_row);
+            }
+        }
+    }
+
     /* layout_table asserts table->children && children->children && columns. */
     if (table->children == NULL || table->children->children == NULL) {
         table->type = BOX_BLOCK;
@@ -1120,6 +1462,7 @@ static struct box *pcore_construct_table(dom_node *node,
 
     memset(&info, 0, sizeof(info));
     info.capacity = 2;
+    info.num_columns = 1;
     info.spans = (pcore_table_span *) calloc(info.capacity,
             sizeof(*info.spans));
     if (info.spans == NULL) {
@@ -1153,6 +1496,10 @@ static struct box *pcore_construct_table(dom_node *node,
     table->rows = info.num_rows;
     pcore_finish_table_spans(table);
     free(info.spans);
+    if (!pcore_fill_empty_table_cells(table, node, ctx)) {
+        table->type = BOX_BLOCK;
+        return table;
+    }
     table->col = talloc_zero_array(ctx, struct column, table->columns);
     if (table->col == NULL) {
         table->type = BOX_BLOCK;

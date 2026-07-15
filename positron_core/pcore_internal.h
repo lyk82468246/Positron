@@ -26,6 +26,10 @@ css_stylesheet *pcore_parse_css_internal(const char *css, unsigned int len,
  * by the node's user-data). */
 css_computed_style *pcore_node_computed_style(struct dom_node *node);
 
+/* Return the default computed style retained on a styled document. Anonymous
+ * NetSurf boxes compose this with their parent style. Borrowed pointer. */
+css_computed_style *pcore_document_default_style(struct dom_document *doc);
+
 /* The engine's unit-conversion context (viewport + dpi), for feeding NetSurf
  * layout's html_content.unit_len_ctx. Implemented in pcore_select.c. */
 const css_unit_ctx *pcore_get_unit_ctx(void);
