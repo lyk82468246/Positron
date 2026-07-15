@@ -21,7 +21,7 @@ Positron 是 Windows Mobile 6 / WinCE 5.02 的现代基础设施集合，同时�
 - `positron_json.dll`：稳定的 JSON C API。
 - `positron_http.dll`：HTTP/HTTPS，复用 TLS 和系统网络能力。
 - `positron_core.dll`：HTML/CSS/DOM/layout/redraw 的产品级引擎边界。
-- `positron_image.dll`：统一 WM Imaging 位图与 SVG 能力，可被 core 或其他 WM 程序独立调用。公共 API 同时提供 opaque bitmap/SVG create/info/draw/free、ABI 查询，以及 retained 位图到 PNG/JPEG 内存编码。PNG 和默认 JPEG 使用 WM Imaging；ABI 1.2 的显式 quality JPEG 使用内部静态链接的 libjpeg-turbo 1.5.3 压缩器并固定 4:4:4。DLL 复制位图输入字节并持有原生 `IImage`，编码结果由 DLL 分配并以 `PImage_FreeBuffer` 释放，不向调用方暴露 COM、libjpeg、NetSurf 对象或跨 CRT 所有权。`positron_core` 的旧 `PCore_Image*` 保留为兼容转发。
+- `positron_image.dll`：统一 WM Imaging 位图与 SVG 能力，可被 core 或其他 WM 程序独立调用。公共 API 同时提供 opaque bitmap/SVG create/info/draw/free、ABI 查询、编码图片或原始 BGR24/BGRA32 到 retained bitmap，以及 retained 位图到 PNG/JPEG 内存编码。PNG 和默认 JPEG 使用 WM Imaging；ABI 1.2 的显式 quality JPEG 使用内部静态链接的 libjpeg-turbo 1.5.3 压缩器并固定 4:4:4。ABI 1.3 原始像素入口先验证长度/stride，再复制到 DLL 自有 WM 对齐行。编码结果由 DLL 分配并以 `PImage_FreeBuffer` 释放，不向调用方暴露 COM、libjpeg、NetSurf 对象或跨 CRT 所有权。`positron_core` 的旧 `PCore_Image*` 保留为兼容转发。
 
 公共 DLL 使用稳定 C ABI、UTF-8 字符串和 opaque handle。不得向调用者暴露 C++ ABI、NetSurf 内部结构或第三方库的易变类型。
 

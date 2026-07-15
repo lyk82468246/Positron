@@ -31,7 +31,7 @@ extern "C" {
 #define PIMAGE_ABI_VERSION_GET_MINOR(version) \
     ((unsigned int) ((unsigned long) (version) & 0xffffUL))
 #define PIMAGE_ABI_VERSION_MAJOR 1
-#define PIMAGE_ABI_VERSION_MINOR 2
+#define PIMAGE_ABI_VERSION_MINOR 3
 #define PIMAGE_ABI_VERSION \
     PIMAGE_ABI_VERSION_ENCODE(PIMAGE_ABI_VERSION_MAJOR, \
             PIMAGE_ABI_VERSION_MINOR)
@@ -71,6 +71,13 @@ enum {
     PIMAGE_ENCODE_JPEG = 2
 };
 
+/* Raw pixel rows are top-down. BGR24 stores B,G,R bytes; BGRA32 stores
+ * B,G,R,A bytes with straight (not premultiplied) alpha. */
+enum {
+    PIMAGE_PIXEL_BGR24 = 1,
+    PIMAGE_PIXEL_BGRA32 = 2
+};
+
 typedef HANDLE PIMAGE_BITMAP;
 typedef HANDLE PIMAGE_SVG;
 
@@ -79,6 +86,15 @@ typedef HANDLE PIMAGE_SVG;
  * input bytes, so the caller may release its buffer after this call. The
  * returned handle must be queried, drawn and freed on the creating thread. */
 PIMAGE_API int PImage_CreateBitmapFromMemory(const char *data, int len,
+        PIMAGE_BITMAP *out_bitmap);
+
+/* Create a retained bitmap from raw top-down pixels. A zero stride means a
+ * tightly packed row; otherwise stride must be positive and large enough for
+ * the selected format. pixels_len is checked before any row is read. The DLL
+ * copies active pixels into its own aligned storage, so the caller may release
+ * or overwrite the input after this call. */
+PIMAGE_API int PImage_CreateBitmapFromPixels(const unsigned char *pixels,
+        int pixels_len, int width, int height, int stride, int format,
         PIMAGE_BITMAP *out_bitmap);
 
 PIMAGE_API int PImage_BitmapGetInfo(PIMAGE_BITMAP bitmap,

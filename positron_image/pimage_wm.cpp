@@ -33,6 +33,10 @@ static const IID PIMAGE_IID_IImagingFactory =
     { 0x327abda7, 0x072b, 0x11d3,
       { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
 
+static const IID PIMAGE_IID_IImage =
+    { 0x327abda9, 0x072b, 0x11d3,
+      { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
+
 static const GUID PIMAGE_FORMAT_PNG =
     { 0xb96b3caf, 0x0728, 0x11d3,
       { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
@@ -90,6 +94,22 @@ static const GUID *pimage_encode_format_guid(int format)
         return &PIMAGE_FORMAT_JPEG;
     }
     return NULL;
+}
+
+static int pimage_pixel_format_info(int format, int *bytes_per_pixel,
+        PixelFormatID *pixel_format)
+{
+    if (format == PIMAGE_PIXEL_BGR24) {
+        *bytes_per_pixel = 3;
+        *pixel_format = PIXFMT_24BPP_RGB;
+        return 1;
+    }
+    if (format == PIMAGE_PIXEL_BGRA32) {
+        *bytes_per_pixel = 4;
+        *pixel_format = PIXFMT_32BPP_ARGB;
+        return 1;
+    }
+    return 0;
 }
 
 extern "C" PIMAGE_API int PImage_CreateBitmapFromMemory(const char *data,
@@ -171,6 +191,143 @@ extern "C" PIMAGE_API int PImage_CreateBitmapFromMemory(const char *data,
     }
     bitmap->width = (int) info.Width;
     bitmap->height = (int) info.Height;
+    *out_bitmap = (PIMAGE_BITMAP) bitmap;
+    pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_NONE, S_OK);
+    return PIMAGE_OK;
+}
+
+extern "C" PIMAGE_API int PImage_CreateBitmapFromPixels(
+        const unsigned char *pixels, int pixels_len, int width, int height,
+        int stride, int format, PIMAGE_BITMAP *out_bitmap)
+{
+    pimage_bitmap *bitmap;
+    IImagingFactory *factory;
+    IBitmapImage *native_bitmap;
+    BitmapData bitmap_data;
+    PixelFormatID pixel_format;
+    size_t required;
+    size_t storage_size;
+    HRESULT hr;
+    int bytes_per_pixel;
+    int row_bytes;
+    int source_stride;
+    int storage_stride;
+    int y;
+
+    pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_NONE, S_OK);
+    if (out_bitmap == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ARGUMENT, E_INVALIDARG);
+        return PIMAGE_ERROR_ARGUMENT;
+    }
+    *out_bitmap = NULL;
+    if (pixels == NULL || pixels_len <= 0 || width <= 0 || height <= 0 ||
+            stride < 0 || !pimage_pixel_format_info(format,
+                    &bytes_per_pixel, &pixel_format) ||
+            width > INT_MAX / bytes_per_pixel) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ARGUMENT, E_INVALIDARG);
+        return PIMAGE_ERROR_ARGUMENT;
+    }
+    row_bytes = width * bytes_per_pixel;
+    source_stride = stride == 0 ? row_bytes : stride;
+    if (source_stride < row_bytes ||
+            (height > 1 && source_stride >
+                    (INT_MAX - row_bytes) / (height - 1))) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ARGUMENT, E_INVALIDARG);
+        return PIMAGE_ERROR_ARGUMENT;
+    }
+    required = (size_t) (height - 1) * (size_t) source_stride +
+            (size_t) row_bytes;
+    if (required > (size_t) pixels_len) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ARGUMENT, E_INVALIDARG);
+        return PIMAGE_ERROR_ARGUMENT;
+    }
+    storage_stride = row_bytes;
+    if (bytes_per_pixel == 3) {
+        if (row_bytes > INT_MAX - 3) {
+            pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ARGUMENT,
+                    E_INVALIDARG);
+            return PIMAGE_ERROR_ARGUMENT;
+        }
+        storage_stride = (row_bytes + 3) & ~3;
+    }
+    if ((size_t) height > ((size_t) -1) / (size_t) storage_stride) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_MEMORY, E_OUTOFMEMORY);
+        return PIMAGE_ERROR_MEMORY;
+    }
+    storage_size = (size_t) storage_stride * (size_t) height;
+
+    bitmap = (pimage_bitmap *) calloc(1, sizeof(*bitmap));
+    if (bitmap == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_MEMORY, E_OUTOFMEMORY);
+        return PIMAGE_ERROR_MEMORY;
+    }
+    bitmap->encoded = calloc(1, storage_size);
+    if (bitmap->encoded == NULL) {
+        free(bitmap);
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_MEMORY, E_OUTOFMEMORY);
+        return PIMAGE_ERROR_MEMORY;
+    }
+    for (y = 0; y < height; y++) {
+        memcpy((unsigned char *) bitmap->encoded +
+                (size_t) y * (size_t) storage_stride,
+                pixels + (size_t) y * (size_t) source_stride,
+                (size_t) row_bytes);
+    }
+    bitmap->width = width;
+    bitmap->height = height;
+    bitmap->owner_thread = GetCurrentThreadId();
+
+    hr = pimage_bitmap_com_init(&bitmap->did_com_init);
+    if (FAILED(hr)) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_COM_INIT, hr);
+        free(bitmap->encoded);
+        free(bitmap);
+        return PIMAGE_ERROR_PLATFORM;
+    }
+    factory = NULL;
+    native_bitmap = NULL;
+    hr = CoCreateInstance(PIMAGE_CLSID_ImagingFactory, NULL,
+            CLSCTX_INPROC_SERVER, PIMAGE_IID_IImagingFactory,
+            (void **) &factory);
+    if (FAILED(hr) || factory == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_FACTORY, hr);
+    } else {
+        memset(&bitmap_data, 0, sizeof(bitmap_data));
+        bitmap_data.Width = (UINT) width;
+        bitmap_data.Height = (UINT) height;
+        bitmap_data.Stride = storage_stride;
+        bitmap_data.PixelFormat = pixel_format;
+        bitmap_data.Scan0 = bitmap->encoded;
+        hr = factory->CreateBitmapFromBuffer(&bitmap_data, &native_bitmap);
+        factory->Release();
+        if (FAILED(hr) || native_bitmap == NULL) {
+            pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_CREATE, hr);
+        }
+    }
+    if (FAILED(hr) || native_bitmap == NULL) {
+        if (native_bitmap != NULL) {
+            native_bitmap->Release();
+        }
+        if (bitmap->did_com_init) {
+            CoUninitialize();
+        }
+        free(bitmap->encoded);
+        free(bitmap);
+        return PIMAGE_ERROR_PLATFORM;
+    }
+    hr = native_bitmap->QueryInterface(PIMAGE_IID_IImage,
+            (void **) &bitmap->image);
+    native_bitmap->Release();
+    native_bitmap = NULL;
+    if (FAILED(hr) || bitmap->image == NULL) {
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_CREATE, hr);
+        if (bitmap->did_com_init) {
+            CoUninitialize();
+        }
+        free(bitmap->encoded);
+        free(bitmap);
+        return PIMAGE_ERROR_PLATFORM;
+    }
     *out_bitmap = (PIMAGE_BITMAP) bitmap;
     pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_NONE, S_OK);
     return PIMAGE_OK;

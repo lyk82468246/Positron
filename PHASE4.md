@@ -191,7 +191,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 - **真实 layout/redraw 已接入，但还不是完整浏览器**：M6/M7 已把正式 Browse 路径切到 NetSurf `layout_document` + `html_redraw`，并真机验证 flex/table/border、`<img>` alt fallback、资源缓存与 BMP object/redraw 链；Browse host 已在 layout 前调用图片资源获取。PNG/JPEG/GIF、SVG、float、forms/widgets、复杂 table 仍需分阶段补。
 - **border redraw 已通过内置页验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制来自 NetSurf `redraw_border.c`；TEST 17 已确认 solid/dashed/table cell 边框可见，复杂真实页面仍需持续观察。
-- **图片路径采用公共 DLL 边界**：BMP/PNG/JPEG/GIF、SVG、CSS 单背景图与缓存 `<img>` 已有真机基线。retained WM 位图迁移已由 next45 的 TEST19/20 与 TEST13 确认，ABI 1.0 独立消费又由 next46 确认；next47 已确认 ABI 1.1 的 WM Imaging PNG/JPEG 内存编码闭环，同时发现默认 JPEG 在高饱和小图上明显串色，next48 的 WM quality=100 也仅有限改善。ABI 1.2 的显式 quality JPEG 因此切到静态 libjpeg-turbo 1.5.3 并强制 4:4:4，next49 待复测；旧默认 JPEG 与 PNG 保留 WM Imaging。解码失败仍回退 alt/src 文本。
+- **图片路径采用公共 DLL 边界**：BMP/PNG/JPEG/GIF、SVG、CSS 单背景图与缓存 `<img>` 已有真机基线。retained WM 位图迁移已由 next45 的 TEST19/20 与 TEST13 确认，ABI 1.0 独立消费又由 next46 确认；next47 已确认 ABI 1.1 的 WM Imaging PNG/JPEG 内存编码闭环，同时发现默认 JPEG 在高饱和小图上明显串色，next48 的 WM quality=100 也仅有限改善。ABI 1.2 的显式 quality JPEG 因此切到静态 libjpeg-turbo 1.5.3 并强制 4:4:4，next49 已确认颜色、行方向和采样正确；旧默认 JPEG 与 PNG 保留 WM Imaging。ABI 1.3 正在增加复制式 BGR24/BGRA32 原始像素入口，next50 一次验收 stride、输入寿命、alpha PNG 和现有编码/SVG。解码失败仍回退 alt/src 文本。
 - **部分 CSS selector 仍待补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已由 TEST 9 真机验证；动态状态伪类仍为 no-match，会影响真实网页样式命中。
 - **table rowspan 简化**：常见无 rowspan 表格已真机成网格；跨行占用暂未完整实现。
 - **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。

@@ -11,9 +11,13 @@
 #include "positron_image.h"
 
 #define DEMO_BITMAP_SIZE 16
-#define DEMO_BITMAP_BYTES (54 + DEMO_BITMAP_SIZE * DEMO_BITMAP_SIZE * 3)
+#define DEMO_BGR_STRIDE (DEMO_BITMAP_SIZE * 3 + 4)
+#define DEMO_BGRA_STRIDE (DEMO_BITMAP_SIZE * 4 + 8)
+#define DEMO_BGR_REQUIRED \
+    ((DEMO_BITMAP_SIZE - 1) * DEMO_BGR_STRIDE + DEMO_BITMAP_SIZE * 3)
 
-static unsigned char g_bitmap_data[DEMO_BITMAP_BYTES];
+static unsigned char g_bgr_data[DEMO_BGR_STRIDE * DEMO_BITMAP_SIZE];
+static unsigned char g_bgra_data[DEMO_BGRA_STRIDE * DEMO_BITMAP_SIZE];
 
 static const char g_svg_data[] =
     "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='60'>"
@@ -23,76 +27,59 @@ static const char g_svg_data[] =
     "stroke='#0000ff' stroke-width='5'/>"
     "</svg>";
 
-static PIMAGE_BITMAP g_bitmap = NULL;
+static PIMAGE_BITMAP g_bgr_bitmap = NULL;
+static PIMAGE_BITMAP g_bgra_bitmap = NULL;
 static PIMAGE_BITMAP g_png_bitmap = NULL;
+static PIMAGE_BITMAP g_png_alpha_bitmap = NULL;
 static PIMAGE_BITMAP g_jpeg_bitmap = NULL;
 static PIMAGE_SVG g_svg = NULL;
 static int g_draw_error = PIMAGE_OK;
 
-static void demo_put_u16(unsigned char *data, int offset,
-        unsigned int value)
+static void demo_pixel_color(int x, int y, unsigned char *red,
+        unsigned char *green, unsigned char *blue)
 {
-    data[offset] = (unsigned char) (value & 0xffU);
-    data[offset + 1] = (unsigned char) ((value >> 8) & 0xffU);
+    *red = 0;
+    *green = 0;
+    *blue = 0;
+    if (y < DEMO_BITMAP_SIZE / 2) {
+        if (x < DEMO_BITMAP_SIZE / 2) {
+            *red = 255;
+        } else {
+            *green = 255;
+        }
+    } else if (x < DEMO_BITMAP_SIZE / 2) {
+        *blue = 255;
+    } else {
+        *red = 255;
+        *green = 255;
+    }
 }
 
-static void demo_put_u32(unsigned char *data, int offset,
-        unsigned long value)
+static void demo_init_pixels(void)
 {
-    data[offset] = (unsigned char) (value & 0xffUL);
-    data[offset + 1] = (unsigned char) ((value >> 8) & 0xffUL);
-    data[offset + 2] = (unsigned char) ((value >> 16) & 0xffUL);
-    data[offset + 3] = (unsigned char) ((value >> 24) & 0xffUL);
-}
-
-static void demo_init_bitmap(void)
-{
-    int file_y;
+    int y;
     int x;
 
-    ZeroMemory(g_bitmap_data, sizeof(g_bitmap_data));
-    g_bitmap_data[0] = 'B';
-    g_bitmap_data[1] = 'M';
-    demo_put_u32(g_bitmap_data, 2, (unsigned long) sizeof(g_bitmap_data));
-    demo_put_u32(g_bitmap_data, 10, 54);
-    demo_put_u32(g_bitmap_data, 14, 40);
-    demo_put_u32(g_bitmap_data, 18, DEMO_BITMAP_SIZE);
-    demo_put_u32(g_bitmap_data, 22, DEMO_BITMAP_SIZE);
-    demo_put_u16(g_bitmap_data, 26, 1);
-    demo_put_u16(g_bitmap_data, 28, 24);
-    demo_put_u32(g_bitmap_data, 34,
-            DEMO_BITMAP_SIZE * DEMO_BITMAP_SIZE * 3);
-    demo_put_u32(g_bitmap_data, 38, 3780);
-    demo_put_u32(g_bitmap_data, 42, 3780);
-    for (file_y = 0; file_y < DEMO_BITMAP_SIZE; file_y++) {
-        int visual_y;
-
-        visual_y = DEMO_BITMAP_SIZE - 1 - file_y;
+    ZeroMemory(g_bgr_data, sizeof(g_bgr_data));
+    ZeroMemory(g_bgra_data, sizeof(g_bgra_data));
+    for (y = 0; y < DEMO_BITMAP_SIZE; y++) {
         for (x = 0; x < DEMO_BITMAP_SIZE; x++) {
             unsigned char red;
             unsigned char green;
             unsigned char blue;
-            int offset;
+            int bgr_offset;
+            int bgra_offset;
 
-            red = 0;
-            green = 0;
-            blue = 0;
-            if (visual_y < DEMO_BITMAP_SIZE / 2) {
-                if (x < DEMO_BITMAP_SIZE / 2) {
-                    red = 255;
-                } else {
-                    green = 255;
-                }
-            } else if (x < DEMO_BITMAP_SIZE / 2) {
-                blue = 255;
-            } else {
-                red = 255;
-                green = 255;
-            }
-            offset = 54 + (file_y * DEMO_BITMAP_SIZE + x) * 3;
-            g_bitmap_data[offset] = blue;
-            g_bitmap_data[offset + 1] = green;
-            g_bitmap_data[offset + 2] = red;
+            demo_pixel_color(x, y, &red, &green, &blue);
+            bgr_offset = y * DEMO_BGR_STRIDE + x * 3;
+            g_bgr_data[bgr_offset] = blue;
+            g_bgr_data[bgr_offset + 1] = green;
+            g_bgr_data[bgr_offset + 2] = red;
+            bgra_offset = y * DEMO_BGRA_STRIDE + x * 4;
+            g_bgra_data[bgra_offset] = blue;
+            g_bgra_data[bgra_offset + 1] = green;
+            g_bgra_data[bgra_offset + 2] = red;
+            g_bgra_data[bgra_offset + 3] = 128;
         }
     }
 }
@@ -101,12 +88,16 @@ static void demo_free_images(void)
 {
     PImage_FreeSvg(g_svg);
     PImage_FreeBitmap(g_jpeg_bitmap);
+    PImage_FreeBitmap(g_png_alpha_bitmap);
     PImage_FreeBitmap(g_png_bitmap);
-    PImage_FreeBitmap(g_bitmap);
+    PImage_FreeBitmap(g_bgra_bitmap);
+    PImage_FreeBitmap(g_bgr_bitmap);
     g_svg = NULL;
     g_jpeg_bitmap = NULL;
+    g_png_alpha_bitmap = NULL;
     g_png_bitmap = NULL;
-    g_bitmap = NULL;
+    g_bgra_bitmap = NULL;
+    g_bgr_bitmap = NULL;
 }
 
 static int demo_bitmap_size_ok(PIMAGE_BITMAP bitmap)
@@ -176,6 +167,76 @@ static void demo_text(HDC hdc, int x, int y, const WCHAR *text)
     ExtTextOutW(hdc, x, y, 0, NULL, text, (UINT) lstrlenW(text), NULL);
 }
 
+static int demo_draw_bitmap_item(HDC hdc, PIMAGE_BITMAP bitmap,
+        int x, int y, int width, int height, const WCHAR *label)
+{
+    int size;
+    int draw_x;
+
+    demo_text(hdc, x, y, label);
+    size = width;
+    if (size > height - 16) {
+        size = height - 16;
+    }
+    if (size > 64) {
+        size = 64;
+    }
+    if (size < 16) {
+        return PIMAGE_ERROR_DRAW;
+    }
+    draw_x = x + (width - size) / 2;
+    return PImage_DrawBitmap(bitmap, hdc, draw_x, y + 16, size, size);
+}
+
+static int demo_draw_svg_item(HDC hdc, int x, int y, int width,
+        int height, const WCHAR *label)
+{
+    int draw_width;
+    int draw_height;
+    int draw_x;
+
+    demo_text(hdc, x, y, label);
+    draw_width = width;
+    if (draw_width > 96) {
+        draw_width = 96;
+    }
+    draw_height = draw_width / 2;
+    if (draw_height > height - 16) {
+        draw_height = height - 16;
+        draw_width = draw_height * 2;
+    }
+    if (draw_width < 24 || draw_height < 12) {
+        return PIMAGE_ERROR_DRAW;
+    }
+    draw_x = x + (width - draw_width) / 2;
+    return PImage_DrawSvg(g_svg, hdc, draw_x, y + 16,
+            draw_width, draw_height);
+}
+
+static int demo_make_png_roundtrip(PIMAGE_BITMAP source,
+        PIMAGE_BITMAP *out_bitmap)
+{
+    unsigned char *encoded;
+    int encoded_len;
+    int result;
+
+    *out_bitmap = NULL;
+    encoded = NULL;
+    encoded_len = 0;
+    result = PImage_EncodeBitmap(source, PIMAGE_ENCODE_PNG,
+            &encoded, &encoded_len);
+    if (result != PIMAGE_OK || encoded_len < 8 || encoded == NULL ||
+            encoded[0] != 0x89 || encoded[1] != 'P' ||
+            encoded[2] != 'N' || encoded[3] != 'G') {
+        PImage_FreeBuffer(encoded);
+        return 0;
+    }
+    result = PImage_CreateBitmapFromMemory((const char *) encoded,
+            encoded_len, out_bitmap);
+    PImage_FreeBuffer(encoded);
+    return result == PIMAGE_OK && demo_bitmap_size_ok(*out_bitmap);
+}
+
 static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
@@ -187,13 +248,13 @@ static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
             RECT client;
             int margin;
             int gap;
-            int row_height;
-            int row1_y;
-            int row2_y;
-            int item_w;
-            int bitmap_size;
-            int left_x;
-            int right_x;
+            int top;
+            int columns;
+            int rows;
+            int slot_width;
+            int slot_height;
+            int x;
+            int y;
             int result;
 
             hdc = BeginPaint(hwnd, &ps);
@@ -201,50 +262,60 @@ static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
             FillRect(hdc, &client, (HBRUSH) GetStockObject(WHITE_BRUSH));
             SetBkMode(hdc, TRANSPARENT);
             SetTextColor(hdc, RGB(0, 0, 0));
-            demo_text(hdc, 12, 10, L"positron_image ABI 1.2");
-            demo_text(hdc, 12, 29,
-                    L"Native PNG/JPEG memory round-trip");
+            demo_text(hdc, 8, 6, L"positron_image ABI 1.3");
+            demo_text(hdc, 8, 23, L"Raw pixels + codec round-trips");
 
-            margin = 12;
-            gap = 10;
-            item_w = (client.right - margin * 2 - gap) / 2;
-            if (item_w > 140) {
-                item_w = 140;
-            }
-            row_height = (client.bottom - 90) / 2;
-            if (row_height > 80) {
-                row_height = 80;
-            }
-            bitmap_size = item_w;
-            if (bitmap_size > row_height) {
-                bitmap_size = row_height;
-            }
-            left_x = margin + (item_w - bitmap_size) / 2;
-            right_x = margin + item_w + gap + (item_w - bitmap_size) / 2;
-            row1_y = 65;
-            row2_y = row1_y + row_height + 20;
-            demo_text(hdc, margin, 49, L"Source BMP");
-            demo_text(hdc, margin + item_w + gap, 49, L"PNG round-trip");
-            demo_text(hdc, margin, row2_y - 16, L"JPEG 4:4:4");
-            demo_text(hdc, margin + item_w + gap, row2_y - 16,
-                    L"Retained SVG");
-            if (item_w < 24 || row_height < 24 || bitmap_size < 24) {
+            margin = 8;
+            gap = 5;
+            top = 43;
+            columns = client.right > client.bottom ? 3 : 2;
+            rows = columns == 3 ? 2 : 3;
+            slot_width = (client.right - margin * 2 -
+                    gap * (columns - 1)) / columns;
+            slot_height = (client.bottom - top - margin -
+                    gap * (rows - 1)) / rows;
+            if (slot_width < 24 || slot_height < 32) {
                 g_draw_error = PIMAGE_ERROR_DRAW;
             } else {
-                result = PImage_DrawBitmap(g_bitmap, hdc, left_x, row1_y,
-                        bitmap_size, bitmap_size);
+                x = margin;
+                y = top;
+                result = demo_draw_bitmap_item(hdc, g_bgr_bitmap,
+                        x, y, slot_width, slot_height, L"Raw BGR24");
                 if (result == PIMAGE_OK) {
-                    result = PImage_DrawBitmap(g_png_bitmap, hdc, right_x,
-                            row1_y, bitmap_size, bitmap_size);
+                    x = margin + slot_width + gap;
+                    result = demo_draw_bitmap_item(hdc, g_bgra_bitmap,
+                            x, y, slot_width, slot_height, L"Raw BGRA alpha");
                 }
                 if (result == PIMAGE_OK) {
-                    result = PImage_DrawBitmap(g_jpeg_bitmap, hdc, left_x,
-                            row2_y, bitmap_size, bitmap_size);
+                    x = columns == 3 ? margin +
+                            (slot_width + gap) * 2 : margin;
+                    y = columns == 3 ? top : top + slot_height + gap;
+                    result = demo_draw_bitmap_item(hdc, g_png_bitmap,
+                            x, y, slot_width, slot_height, L"PNG RGB");
                 }
                 if (result == PIMAGE_OK) {
-                    result = PImage_DrawSvg(g_svg, hdc,
-                            margin + item_w + gap, row2_y,
-                            item_w, row_height);
+                    x = columns == 3 ? margin :
+                            margin + slot_width + gap;
+                    y = top + slot_height + gap;
+                    result = demo_draw_bitmap_item(hdc,
+                            g_png_alpha_bitmap, x, y,
+                            slot_width, slot_height, L"PNG alpha");
+                }
+                if (result == PIMAGE_OK) {
+                    x = columns == 3 ? margin + slot_width + gap : margin;
+                    y = columns == 3 ? top + slot_height + gap :
+                            top + (slot_height + gap) * 2;
+                    result = demo_draw_bitmap_item(hdc, g_jpeg_bitmap,
+                            x, y, slot_width, slot_height, L"JPEG 4:4:4");
+                }
+                if (result == PIMAGE_OK) {
+                    x = columns == 3 ? margin +
+                            (slot_width + gap) * 2 :
+                            margin + slot_width + gap;
+                    y = columns == 3 ? top + slot_height + gap :
+                            top + (slot_height + gap) * 2;
+                    result = demo_draw_svg_item(hdc, x, y,
+                            slot_width, slot_height, L"Retained SVG");
                 }
                 if (result != PIMAGE_OK) {
                     g_draw_error = result;
@@ -298,7 +369,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     (void) command_line;
     (void) show_command;
 
-    demo_init_bitmap();
+    demo_init_pixels();
     abi_version = PImage_GetAbiVersion();
     if (PIMAGE_ABI_VERSION_GET_MAJOR(abi_version) !=
             PIMAGE_ABI_VERSION_MAJOR ||
@@ -306,36 +377,45 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
             PIMAGE_ABI_VERSION_MINOR) {
         return demo_fail(L"Unsupported positron_image ABI version");
     }
-    result = PImage_CreateBitmapFromMemory((const char *) g_bitmap_data,
-            (int) sizeof(g_bitmap_data), &g_bitmap);
-    if (result != PIMAGE_OK || !demo_bitmap_size_ok(g_bitmap)) {
+    result = PImage_CreateBitmapFromPixels(g_bgr_data,
+            DEMO_BGR_REQUIRED - 1, DEMO_BITMAP_SIZE, DEMO_BITMAP_SIZE,
+            DEMO_BGR_STRIDE, PIMAGE_PIXEL_BGR24, &g_bgr_bitmap);
+    if (result != PIMAGE_ERROR_ARGUMENT || g_bgr_bitmap != NULL) {
         demo_free_images();
-        return demo_fail(L"Could not create source bitmap");
+        return demo_fail(L"Raw pixel length validation failed");
+    }
+    result = PImage_CreateBitmapFromPixels(g_bgr_data,
+            (int) sizeof(g_bgr_data), DEMO_BITMAP_SIZE, DEMO_BITMAP_SIZE,
+            DEMO_BGR_STRIDE, PIMAGE_PIXEL_BGR24, &g_bgr_bitmap);
+    if (result != PIMAGE_OK || !demo_bitmap_size_ok(g_bgr_bitmap)) {
+        demo_free_images();
+        return demo_fail(L"Could not create BGR24 bitmap");
+    }
+    ZeroMemory(g_bgr_data, sizeof(g_bgr_data));
+    result = PImage_CreateBitmapFromPixels(g_bgra_data,
+            (int) sizeof(g_bgra_data), DEMO_BITMAP_SIZE, DEMO_BITMAP_SIZE,
+            DEMO_BGRA_STRIDE, PIMAGE_PIXEL_BGRA32, &g_bgra_bitmap);
+    if (result != PIMAGE_OK || !demo_bitmap_size_ok(g_bgra_bitmap)) {
+        demo_free_images();
+        return demo_fail(L"Could not create BGRA32 bitmap");
+    }
+    ZeroMemory(g_bgra_data, sizeof(g_bgra_data));
+
+    if (!demo_make_png_roundtrip(g_bgr_bitmap, &g_png_bitmap)) {
+        demo_free_images();
+        return demo_fail(L"Native RGB PNG round-trip failed");
+    }
+    if (!demo_make_png_roundtrip(g_bgra_bitmap, &g_png_alpha_bitmap)) {
+        demo_free_images();
+        return demo_fail(L"Native alpha PNG round-trip failed");
     }
 
     encoded = NULL;
     encoded_len = 0;
-    result = PImage_EncodeBitmap(g_bitmap, PIMAGE_ENCODE_PNG,
+    result = PImage_EncodeBitmapEx(g_bgr_bitmap, PIMAGE_ENCODE_JPEG, 100,
             &encoded, &encoded_len);
-    if (result != PIMAGE_OK || encoded_len < 8 || encoded[0] != 0x89 ||
-            encoded[1] != 'P' || encoded[2] != 'N' || encoded[3] != 'G') {
-        PImage_FreeBuffer(encoded);
-        demo_free_images();
-        return demo_fail(L"Native PNG memory encoding failed");
-    }
-    result = PImage_CreateBitmapFromMemory((const char *) encoded,
-            encoded_len, &g_png_bitmap);
-    PImage_FreeBuffer(encoded);
-    encoded = NULL;
-    if (result != PIMAGE_OK || !demo_bitmap_size_ok(g_png_bitmap)) {
-        demo_free_images();
-        return demo_fail(L"Could not decode encoded PNG");
-    }
-
-    encoded_len = 0;
-    result = PImage_EncodeBitmapEx(g_bitmap, PIMAGE_ENCODE_JPEG, 100,
-            &encoded, &encoded_len);
-    if (result != PIMAGE_OK || encoded_len < 4 || encoded[0] != 0xff ||
+    if (result != PIMAGE_OK || encoded_len < 4 || encoded == NULL ||
+            encoded[0] != 0xff ||
             encoded[1] != 0xd8 || encoded[encoded_len - 2] != 0xff ||
             encoded[encoded_len - 1] != 0xd9) {
         PImage_FreeBuffer(encoded);
