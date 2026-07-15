@@ -13,7 +13,8 @@
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | TEST13 的 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
 | 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。next54 的 fixed-height 回归已在 next55 收窄，用户确认 auto-height 空间、箭头、短页纵条与色块页正常。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
-| table span/归一化 | NetSurf 3.11 span occupancy 已移植；next53 已确认 TEST46 的有效 `colspan`、有限/自动 `rowspan`、row-group 边界、几何、像素与正式 redraw。next56 增加 block/table 子级的匿名 row-group/row/cell 包装和短行空 cell，TEST47 待设备确认。 | 尚不覆盖任意 inline/float/form 畸形组合、caption/column 归一化或完整 collapsed-border 冲突规则。 |
+| table span/归一化 | NetSurf 3.11 span occupancy 已移植；next53 已确认 TEST46 的有效 `colspan`、有限/自动 `rowspan`、row-group 边界、几何、像素与正式 redraw。next56 的 block/table 匿名 row-group/row/cell 包装和短行空 cell 已由 TEST47 设备确认。 | 尚不覆盖任意 inline/float/form 畸形组合、caption/column 归一化或完整 collapsed-border 冲突规则。 |
+| 列表 marker | next57 接入 NetSurf disc/circle/square marker 构造及 `layout_lists` 十进制计数；TEST48 覆盖嵌套圆点、`start/value/reversed` 和正式 redraw。 | libcss 仍使用 decimal-only 兼容 formatter；roman/alpha/CJK counter-style、`list-style-image` 与完整 CSS Lists 尚未完成。 |
 | 图片 | TEST19/20 已确认公共 retained 位图 ABI、WM Imaging 四格式和核心缓存复用；TEST25-37/13 已确认 SVG 链。 | 复杂 SVG text、任意渐变、复杂 CSS 背景、跨线程图片句柄或任意网络图片均已通过。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认跨断点重选、无联网及滚动比例，真实 TEST13 横竖屏也保持同一阅读区域。 | 所有媒体语法和任意样式资源均已覆盖。 |

@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 47
+#define TEST_MAX_NUMBER 48
 
 static int test_config_space(char c)
 {
@@ -7055,6 +7055,123 @@ static BOOL test47_table_normalise(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 48 - NetSurf list markers + HTML ordered-list counters           */
+/* -------------------------------------------------------------------- */
+static BOOL test48_list_markers(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<ul><li>Disc one</li><li>Disc two"
+        "<ul><li>Circle<ul><li>Square</li></ul></li></ul></li></ul>"
+        "<ol start=3><li>Three</li><li value=7>Seven</li></ol>"
+        "<ol reversed start=5><li>Five</li><li>Four</li></ol>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{background:#fff;color:#000;}"
+        "body{font-size:16px;line-height:20px;}"
+        "ul,ol{margin-top:4px;margin-bottom:4px;}";
+    static const char *EXPECTED[] = {
+        "\342\200\242", "\342\200\242", "\342\227\213",
+        "\342\226\252", "3.", "7.", "5.", "4."
+    };
+    HANDLE hDoc;
+    HANDLE hSheet;
+    char marker[16];
+    char msg[256];
+    int x;
+    int y;
+    int w;
+    int h;
+    int previous_y;
+    int screen_w;
+    int screen_h;
+    unsigned int i;
+
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/list-markers.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 320, 480) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 48 FAIL", "list parse/style/layout failed");
+        return FALSE;
+    }
+
+    previous_y = -1;
+    for (i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); i++) {
+        marker[0] = '\0';
+        x = 0;
+        y = 0;
+        w = 0;
+        h = 0;
+        if (PCore_ListMarker(hDoc, i, marker, sizeof(marker),
+                &x, &y, &w, &h) != 0 ||
+                strcmp(marker, EXPECTED[i]) != 0 ||
+                w <= 0 || h <= 0 || y < previous_y) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "marker %u='%s' expect='%s' box=%d,%d %dx%d prev-y=%d",
+                    i, marker, EXPECTED[i], x, y, w, h, previous_y);
+            msg[sizeof(msg) - 1] = '\0';
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 48 FAIL", msg);
+            return FALSE;
+        }
+        previous_y = y;
+    }
+    if (PCore_ListMarker(hDoc, i, marker, sizeof(marker),
+            &x, &y, &w, &h) == 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 48 FAIL", "unexpected ninth list marker");
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/list-markers.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 48 FAIL", "visible list layout failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 48",
+              "NetSurf list markers will open. Expect disc/circle/square,\n"
+              "then ordered markers 3, 7 and reversed 5, 4.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 48 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 48 OK",
+              "List marker construction, nested bullets and HTML\n"
+              "start/value/reversed counters all passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -7216,6 +7333,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 45: ok = test45_css_import_tree(); break;
         case 46: ok = test46_table_spans(); break;
         case 47: ok = test47_table_normalise(); break;
+        case 48: ok = test48_list_markers(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -7295,7 +7413,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                   "Yes = run all selected groups (TEST 1-47)\n"
+                   "Yes = run all selected groups (TEST 1-48)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -7319,9 +7437,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "native bitmap draw (TEST 19),\n"
                                "SVG draw/cache/fallback/text/gradients\n"
                                "(TEST 26-37), and responsive IANA-style\n"
-                               "layout redraw (TEST 39), plus table-span\n"
-                               "table span/normalisation redraw\n"
-                               "(TEST 46-47).\n"
+                               "layout redraw (TEST 39), plus table/list\n"
+                               "normalisation redraw\n"
+                               "(TEST 46-48).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -7371,7 +7489,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-47; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-48; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -7394,6 +7512,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test39_css_variable_layout()){ rc = 13; goto done; }
         if (!test46_table_spans()){ rc = 13; goto done; }
         if (!test47_table_normalise()){ rc = 13; goto done; }
+        if (!test48_list_markers()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -7433,14 +7552,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-48)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
                "    cached SVG, fallback, fill rules, CSS backgrounds and\n"
                "    native SVG text, cached SVG gradients, coordinate transforms\n"
                "    radial gradients, inherited/alpha stops, cache reuse, and\n"
-               "    IANA-style variable spacing and table spans through\n"
+               "    IANA-style spacing, table normalisation and list markers through\n"
                "    formal redraw.\n"
                "    Offline.\n\n");
     }

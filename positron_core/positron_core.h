@@ -174,6 +174,14 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h);
 PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
                             int *x, int *y, int *w, int *h);
 
+/* Read back a laid-out list marker by document order. `text` receives the
+ * marker's UTF-8 bytes and is always NUL-terminated when cap > 0. The
+ * geometry is in absolute page CSS px. Returns non-zero when the marker does
+ * not exist or layout has not run. This is a diagnostics/inspection API. */
+PCORE_API int PCore_ListMarker(HANDLE hDoc, unsigned int index,
+                              char *text, int cap,
+                              int *x, int *y, int *w, int *h);
+
 /* --- Painting (engine layer 4, milestone C) ------------------------- */
 
 /* Paint the laid-out document into a GDI device context through NetSurf's

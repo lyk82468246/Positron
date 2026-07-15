@@ -30,6 +30,7 @@
 #include <libcss/libcss.h>
 
 #include "utils/talloc.h"
+#include "utils/corestrings.h"
 #include "content/handlers/html/box.h"
 
 #include "positron_core.h"
@@ -150,6 +151,17 @@ static void pcore_box_add_child(struct box *parent, struct box *child)
     parent->last = child;
     child->parent = parent;
     child->next = NULL;
+}
+
+static void pcore_box_attach_dom_node(struct box *box, dom_node *node)
+{
+    void *old_box = NULL;
+
+    box->node = node;
+    if (node != NULL && corestring_dom___ns_key_box_node_data != NULL) {
+        dom_node_set_user_data(node, corestring_dom___ns_key_box_node_data,
+                box, NULL, &old_box);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -667,7 +679,33 @@ static struct box *pcore_construct_block(dom_node *node,
     if (box == NULL) {
         return NULL;
     }
-    box->node = node;
+    pcore_box_attach_dom_node(box, node);
+
+    if (css_computed_display(style, is_root ? true : false) ==
+            CSS_DISPLAY_LIST_ITEM) {
+        struct box *marker = pcore_box_new(BOX_BLOCK, style, box);
+        enum css_list_style_type_e marker_type;
+        if (marker == NULL) {
+            talloc_free(box);
+            return NULL;
+        }
+        marker_type = css_computed_list_style_type(style);
+        if (marker_type == CSS_LIST_STYLE_TYPE_DISC) {
+            marker->text = (char *) "\342\200\242";
+            marker->length = 3;
+        } else if (marker_type == CSS_LIST_STYLE_TYPE_CIRCLE) {
+            marker->text = (char *) "\342\227\213";
+            marker->length = 3;
+        } else if (marker_type == CSS_LIST_STYLE_TYPE_SQUARE) {
+            marker->text = (char *) "\342\226\252";
+            marker->length = 3;
+        } else {
+            marker->text = NULL;
+            marker->length = 0;
+        }
+        box->list_marker = marker;
+        marker->parent = box;
+    }
 
     if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
         return box;
@@ -2215,6 +2253,71 @@ PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
     if (y != NULL) { *y = ay; }
     if (w != NULL) { *w = box->width; }
     if (h != NULL) { *h = box->height; }
+    return 0;
+}
+
+static struct box *pcore_list_marker_at(struct box *box,
+        unsigned int target, unsigned int *current)
+{
+    struct box *child;
+    struct box *found;
+
+    if (box == NULL) {
+        return NULL;
+    }
+    if (box->list_marker != NULL) {
+        if (*current == target) {
+            return box->list_marker;
+        }
+        *current += 1;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        found = pcore_list_marker_at(child, target, current);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+PCORE_API int PCore_ListMarker(HANDLE hDoc, unsigned int index,
+        char *text, int cap, int *x, int *y, int *w, int *h)
+{
+    pcore_render *st;
+    struct box *marker;
+    unsigned int current;
+    size_t copy;
+    int ax;
+    int ay;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    marker = (st != NULL) ?
+            pcore_list_marker_at(st->root_box, index, &current) : NULL;
+    if (marker == NULL) {
+        if (text != NULL && cap > 0) {
+            text[0] = '\0';
+        }
+        return 1;
+    }
+
+    if (text != NULL && cap > 0) {
+        copy = marker->length;
+        if (copy > (size_t) (cap - 1)) {
+            copy = (size_t) (cap - 1);
+        }
+        if (copy > 0 && marker->text != NULL) {
+            memcpy(text, marker->text, copy);
+        }
+        text[copy] = '\0';
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(marker, &ax, &ay);
+    if (x != NULL) { *x = ax; }
+    if (y != NULL) { *y = ay; }
+    if (w != NULL) { *w = marker->width; }
+    if (h != NULL) { *h = marker->height; }
     return 0;
 }
 

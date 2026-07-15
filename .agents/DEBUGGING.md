@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=13,17,41,42,46,47`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=13,17,41,42,46,47,48`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -111,6 +111,10 @@ TEST41 修复只在 flex item 树中实际检测到 grid/inline-grid 降级盒�
 next54 设备结果证明追加的 layout 虽修复 TEST41 类 auto-height 占位，却也让同一树中的 fixed-height overflow 读取首轮 descendant extent 并改变既有控件位置，TEST42 在原右箭头坐标失败为 `used=0/0/0`；不要通过移动测试点击坐标接受这项回归。next55 在第二轮前把 fixed-height auto-overflow 的 `descendant_x1` 临时收回 border edge，最终 bbox 仍会恢复供 redraw 判断，因此只让 auto-height 容器新增 padding。截图像素还确认上游右箭头用 `rect.y0` 后黑色区域位于控件第 7-13 行，向下偏 2px；改为与左箭头一致的 `area.y0` 后，TEST42 自动要求黑色区域上下界之和为 16。C89 检查 0 修改，双配置增量构建 0 错误。
 
 next55 已由用户确认全部正常，可作为新的 overflow 基线。next56 转向 NetSurf 表格归一化：若 TEST47 失败，先看红/白、绿/蓝四点中的哪一点不符。红或绿缺失通常表示匿名 cell 未承载 block；白变成红表示短行空 cell 未生成；蓝缺失表示显式 table-cell 被错误并入匿名 cell。不要改 EXPECTED 掩盖构盒错误。匿名样式来自 `css_select_default_style` 与父样式 compose，必须随 talloc box tree 释放。冻结的 TEST13 导航链未改。
+
+2026-07-15 用户确认 next56 的 TEST47 与同批其余测试正常。next57 的 TEST48 期望 marker 顺序为两个 disc、circle、square、`3.`、`7.`、`5.`、`4.`；失败时先检查 `PCore_ListMarker` 返回的实际序号/文本/几何，不得修改 EXPECTED 回避 LI user-data 或 ordered-list 计数错误。完整上游 `format_list_style.c` 含大量 VS2008 不支持的静态聚合初始化，当前继续使用 decimal-only stub，后续须单独扩充 `c89ize.py` 规则或人工 C89 移植。
+
+next57 的 `c89ize.py` 对 `pcore_box.c`、`pcore_select.c`、`test_host/main.c` 均报告 0 修改；Debug/Release ARMV4I 增量构建均 0 错误，只保留 libcss `fpmath.h` 既有 C4244。包位于 `C:\WMShare\Positron-next57`，配置已核对为 `tests=13,17,41,42,46,47,48`。
 
 2026-07-13 导航第二阶段把外链 CSS、`<img>` 和应用外链 CSS 后发现的背景 URL 纳入同一 request 的分轮 worker。pending request 持有未交换 document、去重 URL、attempted 状态与原始字节；UI 只在 worker 停止后执行 parse/discovery/style/layout，成功 swap 后 core 已复制资源，失败/关闭则统一释放 request/document/resource。`test_host` 临时预算为 64 URL/2 MiB，限制的是提交前峰值而非 core ABI。TEST43 离线覆盖显式 origin 的 relative/root/absolute URL、去重、成功副本和失败只尝试一次；`c89ize.py` 为 0 修改，VS2008 ARM 增量构建 0 错误、3 条既有 `fpmath` 警告。真机 TEST43 与 TEST13 资源等待仍待确认。
 
