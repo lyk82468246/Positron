@@ -19,7 +19,7 @@
 			<Tool Name="VCWebServiceProxyGeneratorTool" />
 			<Tool Name="VCMIDLTool" />
 			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
-				AdditionalIncludeDirectories=".;..\netsurf-all-3.11\libsvgtiny\include;..\compat"
+				AdditionalIncludeDirectories=".;..\third_party\libjpeg-turbo;..\netsurf-all-3.11\libsvgtiny\include;..\compat"
 				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_IMAGE_EXPORTS;XML_STATIC;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
 				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
@@ -29,8 +29,8 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_libsvgtiny.lib positron_libdom.lib positron_expat.lib positron_netsurf.lib imaging.lib ole32.lib"
-				AdditionalLibraryDirectories="..\positron_libsvgtiny\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_expat\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_libjpeg.lib positron_libsvgtiny.lib positron_libdom.lib positron_expat.lib positron_netsurf.lib imaging.lib ole32.lib"
+				AdditionalLibraryDirectories="..\positron_libjpeg\bin\$(ConfigurationName);..\positron_libsvgtiny\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_expat\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_image.dll" LinkIncremental="2"
 				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
@@ -58,7 +58,7 @@
 			<Tool Name="VCMIDLTool" />
 			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
 				FavorSizeOrSpeed="2"
-				AdditionalIncludeDirectories=".;..\netsurf-all-3.11\libsvgtiny\include;..\compat"
+				AdditionalIncludeDirectories=".;..\third_party\libjpeg-turbo;..\netsurf-all-3.11\libsvgtiny\include;..\compat"
 				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_IMAGE_EXPORTS;XML_STATIC;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3"
 				DebugInformationFormat="3" CompileAs="1" />
@@ -68,8 +68,8 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_libsvgtiny.lib positron_libdom.lib positron_expat.lib positron_netsurf.lib imaging.lib ole32.lib"
-				AdditionalLibraryDirectories="..\positron_libsvgtiny\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_expat\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_libjpeg.lib positron_libsvgtiny.lib positron_libdom.lib positron_expat.lib positron_netsurf.lib imaging.lib ole32.lib"
+				AdditionalLibraryDirectories="..\positron_libjpeg\bin\$(ConfigurationName);..\positron_libsvgtiny\bin\$(ConfigurationName);..\positron_libdom\bin\$(ConfigurationName);..\positron_expat\bin\$(ConfigurationName);..\positron_netsurf\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_image.dll" LinkIncremental="1"
 				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
@@ -90,6 +90,14 @@
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\pimage_jpeg.cpp">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" CompileAs="2" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" CompileAs="2" />
+			</FileConfiguration>
+		</File>
 		<File RelativePath=".\pimage_raster.cpp">
 			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
 				<Tool Name="VCCLCompilerTool" CompileAs="2" />
@@ -107,6 +115,7 @@
 			</FileConfiguration>
 		</File>
 		<File RelativePath=".\pimage_raster.h" />
+		<File RelativePath=".\pimage_jpeg.h" />
 		<File RelativePath=".\positron_image.c" />
 		<File RelativePath=".\positron_image.h" />
 	</Files>

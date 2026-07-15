@@ -120,6 +120,57 @@ static int demo_bitmap_size_ok(PIMAGE_BITMAP bitmap)
             width == DEMO_BITMAP_SIZE && height == DEMO_BITMAP_SIZE;
 }
 
+static int demo_jpeg_is_444(const unsigned char *data, int len)
+{
+    int offset;
+
+    if (data == NULL || len < 4 || data[0] != 0xff || data[1] != 0xd8) {
+        return 0;
+    }
+    offset = 2;
+    while (offset + 4 <= len) {
+        int marker;
+        int segment_len;
+
+        if (data[offset] != 0xff) {
+            return 0;
+        }
+        while (offset < len && data[offset] == 0xff) {
+            offset++;
+        }
+        if (offset >= len) {
+            return 0;
+        }
+        marker = data[offset++];
+        if (marker == 0xd9 || marker == 0xda) {
+            return 0;
+        }
+        if (marker == 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+            continue;
+        }
+        if (offset + 2 > len) {
+            return 0;
+        }
+        segment_len = ((int) data[offset] << 8) | data[offset + 1];
+        if (segment_len < 2 || offset + segment_len > len) {
+            return 0;
+        }
+        if (marker == 0xc0) {
+            int components;
+
+            if (segment_len < 17) {
+                return 0;
+            }
+            components = data[offset + 7];
+            return components == 3 && data[offset + 9] == 0x11 &&
+                    data[offset + 12] == 0x11 &&
+                    data[offset + 15] == 0x11;
+        }
+        offset += segment_len;
+    }
+    return 0;
+}
+
 static void demo_text(HDC hdc, int x, int y, const WCHAR *text)
 {
     ExtTextOutW(hdc, x, y, 0, NULL, text, (UINT) lstrlenW(text), NULL);
@@ -174,7 +225,7 @@ static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
             row2_y = row1_y + row_height + 20;
             demo_text(hdc, margin, 49, L"Source BMP");
             demo_text(hdc, margin + item_w + gap, 49, L"PNG round-trip");
-            demo_text(hdc, margin, row2_y - 16, L"JPEG round-trip");
+            demo_text(hdc, margin, row2_y - 16, L"JPEG 4:4:4");
             demo_text(hdc, margin + item_w + gap, row2_y - 16,
                     L"Retained SVG");
             if (item_w < 24 || row_height < 24 || bitmap_size < 24) {
@@ -290,6 +341,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         PImage_FreeBuffer(encoded);
         demo_free_images();
         return demo_fail(L"Native JPEG memory encoding failed");
+    }
+    if (!demo_jpeg_is_444(encoded, encoded_len)) {
+        PImage_FreeBuffer(encoded);
+        demo_free_images();
+        return demo_fail(L"JPEG output is not 4:4:4");
     }
     result = PImage_CreateBitmapFromMemory((const char *) encoded,
             encoded_len, &g_jpeg_bitmap);

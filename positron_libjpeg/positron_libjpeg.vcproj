@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="9.00"
+	Name="positron_libjpeg"
+	ProjectGUID="{E98FA075-B1C6-42D3-A084-5F67089A1234}"
+	RootNamespace="positron_libjpeg"
+	Keyword="Win32Proj"
+	TargetFrameworkVersion="196613">
+	<Platforms>
+		<Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" />
+	</Platforms>
+	<ToolFiles />
+	<Configurations>
+		<Configuration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
+				AdditionalIncludeDirectories=".;..\third_party\libjpeg-turbo"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_LIB;NO_GETENV;$(ARCHFAM);$(_ARCHFAM_);_CRT_SECURE_NO_WARNINGS"
+				ForcedIncludeFiles="positron_jpeg_compat.h" DisableSpecificWarnings="4018"
+				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
+				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLibrarianTool" OutputFile="$(OutDir)\positron_libjpeg.lib" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+		<Configuration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="4" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
+				FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories=".;..\third_party\libjpeg-turbo"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_LIB;NO_GETENV;$(ARCHFAM);$(_ARCHFAM_);_CRT_SECURE_NO_WARNINGS"
+				ForcedIncludeFiles="positron_jpeg_compat.h" DisableSpecificWarnings="4018"
+				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3"
+				DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLibrarianTool" OutputFile="$(OutDir)\positron_libjpeg.lib" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+	</Configurations>
+	<References />
+	<Files>
+		<File RelativePath=".\positron_jpeg_compat.h" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcapimin.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcapistd.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jccoefct.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jccolor.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcdctmgr.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jchuff.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcinit.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcmainct.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcmarker.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcmaster.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcomapi.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcparam.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcphuff.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcprepct.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jcsample.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jctrans.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jdatadst.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jerror.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jfdctflt.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jfdctfst.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jfdctint.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jmemmgr.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jmemnobs.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jsimd_none.c" />
+		<File RelativePath="..\third_party\libjpeg-turbo\jutils.c" />
+	</Files>
+	<Globals />
+</VisualStudioProject>

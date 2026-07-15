@@ -13,9 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "pimage_jpeg.h"
 #include "positron_image.h"
-
-#define PIMAGE_ENCODER_VALUE_LONG 4
 
 typedef struct pimage_bitmap {
     IImage *image;
@@ -41,10 +40,6 @@ static const GUID PIMAGE_FORMAT_PNG =
 static const GUID PIMAGE_FORMAT_JPEG =
     { 0xb96b3cae, 0x0728, 0x11d3,
       { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
-
-static const GUID PIMAGE_ENCODER_QUALITY =
-    { 0x1d5be4b5, 0xfa4a, 0x452d,
-      { 0x9c, 0xdd, 0x5d, 0xb3, 0x51, 0x05, 0xe7, 0xeb } };
 
 static HRESULT g_bitmap_last_hr = S_OK;
 static int g_bitmap_last_stage = PIMAGE_BITMAP_STAGE_NONE;
@@ -326,6 +321,18 @@ extern "C" PIMAGE_API int PImage_EncodeBitmapEx(PIMAGE_BITMAP handle,
         pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_FACTORY, hr);
         return PIMAGE_ERROR_PLATFORM;
     }
+    if (format == PIMAGE_ENCODE_JPEG && quality >= 0) {
+        hr = pimage_jpeg_encode_444(factory, bitmap->image, bitmap->width,
+                bitmap->height, quality, out_data, out_len);
+        factory->Release();
+        if (FAILED(hr)) {
+            pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ENCODER, hr);
+            return hr == E_OUTOFMEMORY ? PIMAGE_ERROR_MEMORY :
+                    PIMAGE_ERROR_PLATFORM;
+        }
+        pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_NONE, S_OK);
+        return PIMAGE_OK;
+    }
     hr = factory->GetInstalledEncoders(&encoder_count, &encoders);
     if (FAILED(hr) || encoders == NULL) {
         pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ENCODER_LIST, hr);
@@ -362,26 +369,6 @@ extern "C" PIMAGE_API int PImage_EncodeBitmapEx(PIMAGE_BITMAP handle,
             stream->Release();
         }
         return PIMAGE_ERROR_PLATFORM;
-    }
-
-    if (format == PIMAGE_ENCODE_JPEG && quality >= 0) {
-        EncoderParameters parameters;
-        ULONG quality_value;
-
-        quality_value = (ULONG) quality;
-        memset(&parameters, 0, sizeof(parameters));
-        parameters.Count = 1;
-        parameters.Parameter[0].Guid = PIMAGE_ENCODER_QUALITY;
-        parameters.Parameter[0].NumberOfValues = 1;
-        parameters.Parameter[0].Type = PIMAGE_ENCODER_VALUE_LONG;
-        parameters.Parameter[0].Value = &quality_value;
-        hr = encoder->SetEncoderParameters(&parameters);
-        if (FAILED(hr)) {
-            pimage_bitmap_set_error(PIMAGE_BITMAP_STAGE_ENCODER, hr);
-            encoder->Release();
-            stream->Release();
-            return PIMAGE_ERROR_UNSUPPORTED;
-        }
     }
 
     hr = encoder->GetEncodeSink(&sink);

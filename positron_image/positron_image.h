@@ -91,13 +91,15 @@ PIMAGE_API int PImage_DrawBitmap(PIMAGE_BITMAP bitmap, HDC hdc,
 
 PIMAGE_API void PImage_FreeBitmap(PIMAGE_BITMAP bitmap);
 
-/* Encode a retained bitmap through the installed Windows Mobile Imaging
- * codec. The DLL allocates the result; release it with PImage_FreeBuffer.
- * PNG is lossless. The base call uses the device JPEG quality default. */
+/* Encode a retained bitmap. The DLL allocates the result; release it with
+ * PImage_FreeBuffer. PNG uses the installed WM Imaging codec. The base JPEG
+ * call preserves the device codec's default behavior. */
 PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP bitmap, int format,
         unsigned char **out_data, int *out_len);
 
-/* JPEG quality is 0..100, or -1 for the device default. PNG accepts -1. */
+/* JPEG quality is 0..100, or -1 for the device default. Explicit JPEG
+ * quality uses the bundled libjpeg-turbo encoder with 4:4:4 sampling.
+ * PNG accepts -1. */
 PIMAGE_API int PImage_EncodeBitmapEx(PIMAGE_BITMAP bitmap, int format,
         int quality, unsigned char **out_data, int *out_len);
 
