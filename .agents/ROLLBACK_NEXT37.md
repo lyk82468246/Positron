@@ -29,6 +29,6 @@ next37 之后的实验历史保存在远端分支 `codex/post-next37-experiments
 
 ## 接下来
 
-- 短期：冻结 Browse 导航路径；next49 已确认静态 libjpeg-turbo 4:4:4 后端修复大面积色带，next50 已确认独立图片 DLL ABI 1.3 原始像素与 alpha 路径，next51 已确认 ABI 1.4 BMP/GIF 输出，但也证明 Shell X 只会 Smart Minimize。next52 仅把示例换成原生标题栏 OK/`IDOK` 真退出，不要求重跑 Browse，也不增加左右软键。
+- 短期：冻结 Browse 导航路径；next49 已确认静态 libjpeg-turbo 4:4:4 后端修复大面积色带，next50 已确认独立图片 DLL ABI 1.3 原始像素与 alpha 路径，next51 已确认 ABI 1.4 BMP/GIF 输出，但也证明 Shell X 只会 Smart Minimize。next52 仅把示例换成原生标题栏 OK/`IDOK`，用户已确认进程真退出且可再次启动；不要求重跑 Browse，也不增加左右软键。
 - 中期：完成图片 DLL 分层后，再选择一个冻结项做单变量实验；失败即放弃该实验分支。
 - 长期：继续以可复用 WM 现代基础设施和 JavaScript runtime 为目标，不因本次回退改变总体方向。

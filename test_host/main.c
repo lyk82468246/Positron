@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 45
+#define TEST_MAX_NUMBER 46
 
 static int test_config_space(char c)
 {
@@ -6675,6 +6675,176 @@ static BOOL test45_css_import_tree(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 46 - NetSurf table colspan/rowspan occupancy + formal redraw    */
+/* -------------------------------------------------------------------- */
+static BOOL test46_table_spans(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><table><tbody>"
+        "<tr><td class=a rowspan=2>A</td>"
+        "<td class=b rowspan=0>B</td><td class=c>C</td></tr>"
+        "<tr><td class=d>D</td></tr>"
+        "<tr><td class=e>E</td><td class=f>F</td></tr>"
+        "</tbody><tbody><tr><td class=g colspan=3>G</td></tr>"
+        "</tbody></table></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "table{display:table;width:180px;border-spacing:0;"
+        "table-layout:fixed;margin:8px;}"
+        "tbody{display:table-row-group;}tr{display:table-row;}"
+        "td{display:table-cell;width:60px;height:40px;padding:0;"
+        "border:0;text-align:center;vertical-align:middle;color:#000;}"
+        ".a{background:#f00}.b{background:#0f0}"
+        ".c{background:#00f;color:#fff}.d{background:#ff0}"
+        ".e{background:#f0f}.f{background:#0ff}"
+        ".g{background:#000;color:#fff}";
+    static const COLORREF EXPECTED[4][3] = {
+        { RGB(255, 0, 0), RGB(0, 255, 0), RGB(0, 0, 255) },
+        { RGB(255, 0, 0), RGB(0, 255, 0), RGB(255, 255, 0) },
+        { RGB(255, 0, 255), RGB(0, 255, 0), RGB(0, 255, 255) },
+        { RGB(0, 0, 0), RGB(0, 0, 0), RGB(0, 0, 0) }
+    };
+    HANDLE hDoc;
+    HANDLE hSheet;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF pixel;
+    int tx;
+    int ty;
+    int tw;
+    int th;
+    int row;
+    int column;
+    int px;
+    int py;
+    int screen_w;
+    int screen_h;
+    char msg[256];
+
+    tx = 0;
+    ty = 0;
+    tw = 0;
+    th = 0;
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-spans.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 220) != 0 ||
+            PCore_NodeBox(hDoc, "table", &tx, &ty, &tw, &th) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 46 FAIL", "table parse/style/layout lookup failed");
+        return FALSE;
+    }
+    if (tw < 174 || tw > 186 || th < 152 || th > 168) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "table geometry=%d,%d %dx%d expect width 174..186 "
+                "height 152..168", tx, ty, tw, th);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 46 FAIL", msg);
+        return FALSE;
+    }
+
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 240, 220) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 46 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 240, 220);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+
+    row = 0;
+    column = 0;
+    pixel = CLR_INVALID;
+    for (row = 0; row < 4; row++) {
+        for (column = 0; column < 3; column++) {
+            px = tx + column * tw / 3 + 5;
+            py = ty + row * th / 4 + 5;
+            pixel = GetPixel(memory_dc, px, py);
+            if ((pixel & 0x00ffffffUL) !=
+                    (EXPECTED[row][column] & 0x00ffffffUL)) {
+                break;
+            }
+        }
+        if (column != 3) { break; }
+    }
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    if (row != 4) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "pixel r%d c%d=%06lX expect=%06lX table=%d,%d %dx%d",
+                row, column, pixel & 0x00ffffffUL,
+                EXPECTED[row][column] & 0x00ffffffUL,
+                tx, ty, tw, th);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 46 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-spans.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 46 FAIL", "visible parse/style/layout failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 46",
+              "NetSurf table-span page will open. Expect four rows:\n"
+              "red/green/blue; red/green/yellow; magenta/green/cyan;\n"
+              "then one black cell spanning all three columns.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 46 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 46 OK",
+              "Finite/automatic rowspan, colspan, row-group boundaries,\n"
+              "layout pixels and visible NetSurf redraw all passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -6834,6 +7004,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 43: ok = test43_navigation_resource_transaction(); break;
         case 44: ok = test44_navigation_failure_transaction(); break;
         case 45: ok = test45_css_import_tree(); break;
+        case 46: ok = test46_table_spans(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -6913,7 +7084,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-45)\n"
+                  "Yes = run all selected groups (TEST 1-46)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -6937,7 +7108,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "native bitmap draw (TEST 19),\n"
                                "SVG draw/cache/fallback/text/gradients\n"
                                "(TEST 26-37), and responsive IANA-style\n"
-                               "layout redraw (TEST 39).\n"
+                               "layout redraw (TEST 39), plus table-span\n"
+                               "layout/redraw (TEST 46).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -6987,7 +7159,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -7008,6 +7180,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test36_svg_gradient_feature_matrix()){ rc = 13; goto done; }
         if (!test37_cached_svg_gradient_batch()){ rc = 13; goto done; }
         if (!test39_css_variable_layout()){ rc = 13; goto done; }
+        if (!test46_table_spans()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -7047,14 +7220,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
                "    cached SVG, fallback, fill rules, CSS backgrounds and\n"
                "    native SVG text, cached SVG gradients, coordinate transforms\n"
                "    radial gradients, inherited/alpha stops, cache reuse, and\n"
-               "    IANA-style variable spacing through formal redraw.\n"
+               "    IANA-style variable spacing and table spans through\n"
+               "    formal redraw.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

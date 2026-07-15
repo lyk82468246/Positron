@@ -13,6 +13,7 @@
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | TEST13 的 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
 | 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
+| table span | NetSurf 3.11 span occupancy 已移植；TEST46 覆盖有效表格的 `colspan`、有限/自动 `rowspan`、row-group 边界、几何、像素与正式 redraw，待 next53 真机确认。 | 畸形表格空单元格生成、任意匿名表格归一化或完整 collapsed-border 冲突规则均已实现。 |
 | 图片 | TEST19/20 已确认公共 retained 位图 ABI、WM Imaging 四格式和核心缓存复用；TEST25-37/13 已确认 SVG 链。 | 复杂 SVG text、任意渐变、复杂 CSS 背景、跨线程图片句柄或任意网络图片均已通过。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认跨断点重选、无联网及滚动比例，真实 TEST13 横竖屏也保持同一阅读区域。 | 所有媒体语法和任意样式资源均已覆盖。 |
@@ -55,7 +56,7 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回，但首轮多格式 fixture 的可见性与旧截断 BMP 不足以完成视觉验收。当前 `<img>` 解码失败时仍刻意回退到 alt/src 文本。
 
 - **当前结论**：BMP/PNG/JPEG/GIF 四格式与 TEST20 缓存 `<img>` 已由设备视觉确认。2026-07-15 next45 又确认公共位图句柄的四格式颜色、清空调用方输入后的重复绘制、损坏输入拒绝、旧 `PCore_Image*` 转发和 NetSurf retained redraw；TEST13/26/27 同批无回归。句柄仍只允许在创建线程使用和释放。为保证 WM Imaging 的惰性解码数据源始终有效，句柄存活期间会保留一份编码字节；core 的 document cache 也保留原字节以支持重布局，因此当前以额外编码内存换取重绘不重复解码。TEST25-37/13 的 SVG 真机结论保持不变。CSS 背景仍不含 background-size 和多层背景；SVG 仍缺复杂 shaping、`textPath`、逐字 dx/dy、任意 shear、径向焦点 `fx/fy` 或 spread method。单次栅格源缓冲限制为 1,048,576 像素，超大输出会降低内部采样分辨率后再缩放。
-- **独立消费与编码**：next46 已确认只导入 `positron_image.dll`/`COREDLL.dll` 的 ABI 1.0 示例横竖屏工作；next47 确认 ABI 1.1 的 PNG/JPEG 内存编码与释放/回读闭环；next48 证明 WM quality=100 不能修复小图色度串扰。ABI 1.2 保留 quality=-1 的 WM 默认路径，显式 0..100 使用静态 libjpeg-turbo 1.5.3 4:4:4，next49 已确认行方向、颜色和 SOF 采样正确。ARMV4I 构建无 SIMD，显式编码会额外生成约 `width*height*3` 字节的 24bpp 中间位图；Debug DLL 增加约 238 KiB，但静态 `.lib`、源码和独立 JPEG DLL 均不部署。next50 截图确认 ABI 1.3 的复制式 padded BGR24/BGRA32、RGB/alpha PNG、JPEG 与 SVG 视觉正确；next51 又确认 ABI 1.4 的 BMP/GIF 系统 encoder、签名与回读成功。next51 的退出仍失败：WM 标题栏 X 是 Smart Minimize，不保证发送 `WM_CLOSE`。next52 以系统 `aygshell.dll` 的 `SHDoneButton` 换成标题栏 OK，并由 `IDOK` 真退出；这不会增加底部软键或占用客户区，待任务管理器确认进程消失。跨线程句柄仍未提供。
+- **独立消费与编码**：next46 已确认只导入 `positron_image.dll`/`COREDLL.dll` 的 ABI 1.0 示例横竖屏工作；next47 确认 ABI 1.1 的 PNG/JPEG 内存编码与释放/回读闭环；next48 证明 WM quality=100 不能修复小图色度串扰。ABI 1.2 保留 quality=-1 的 WM 默认路径，显式 0..100 使用静态 libjpeg-turbo 1.5.3 4:4:4，next49 已确认行方向、颜色和 SOF 采样正确。ARMV4I 构建无 SIMD，显式编码会额外生成约 `width*height*3` 字节的 24bpp 中间位图；Debug DLL 增加约 238 KiB，但静态 `.lib`、源码和独立 JPEG DLL 均不部署。next50 截图确认 ABI 1.3 的复制式 padded BGR24/BGRA32、RGB/alpha PNG、JPEG 与 SVG 视觉正确；next51 又确认 ABI 1.4 的 BMP/GIF 系统 encoder、签名与回读成功。next51 的退出仍失败：WM 标题栏 X 是 Smart Minimize，不保证发送 `WM_CLOSE`。next52 以系统 `aygshell.dll` 的 `SHDoneButton` 换成标题栏 OK，并由 `IDOK` 真退出；用户已确认任务管理器进程消失且可再次启动。这不会增加底部软键或占用客户区。跨线程句柄仍未提供。
 - **完成条件**：每种宣称支持的格式均有内存单测和真实 Browse 页面实例，且资源失败仍保留可访问 fallback。
 
 ## 维护规则

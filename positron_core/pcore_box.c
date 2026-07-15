@@ -12,9 +12,10 @@
  * BOX_INLINE_CONTAINER), so the tree is layout-ready.
  *
  * Current scope: block/inline text, inline-block, flex, common table
- * structures, plus cached <img> and CSS background-image resources decoded by
- * WM Imaging/libsvgtiny, are built for NetSurf's real layout/redraw path.
- * Forms/widgets, floats, and exact rowspan occupancy remain staged follow-ups.
+ * structures, including NetSurf's table-span occupancy, plus cached <img> and
+ * CSS background-image resources decoded by WM Imaging/libsvgtiny, are built
+ * for NetSurf's real layout/redraw path. Forms/widgets and floats remain
+ * staged follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -782,28 +783,48 @@ static struct box *pcore_construct_flex(dom_node *node,
 /* table construction (M7-table)                                       */
 /* ------------------------------------------------------------------ */
 
-/* Read an HTML span attribute (colspan / rowspan) as a positive int (default
- * 1), parsing the leading ASCII digits of the attribute value. */
-static unsigned int pcore_span_attr(dom_node *node, const char *attr)
+/* HTML limits colspan to 1000 and rowspan to 65534. Keeping those limits here
+ * also prevents malformed pages from allocating unbounded WM working memory. */
+#define PCORE_TABLE_MAX_COLSPAN 1000U
+#define PCORE_TABLE_MAX_ROWSPAN 65534U
+#define PCORE_TABLE_MAX_COLUMNS 4096U
+
+/* Read an HTML span attribute, preserving zero for NetSurf's normalisation
+ * rules (colspan=0 becomes 1; rowspan=0 reaches the row-group end). */
+static unsigned int pcore_span_attr(dom_node *node, const char *attr,
+        unsigned int fallback, unsigned int maximum)
 {
     dom_string *nm = NULL;
     dom_string *vl = NULL;
-    unsigned int n = 1;
+    unsigned int n = fallback;
 
     if (dom_string_create((const uint8_t *) attr, strlen(attr), &nm) !=
             DOM_NO_ERR) {
-        return 1;
+        return fallback;
     }
     if (dom_element_get_attribute(node, nm, &vl) == DOM_NO_ERR && vl != NULL) {
         const char *s = dom_string_data(vl);
         size_t len = dom_string_byte_length(vl);
-        int v = 0;
+        unsigned int v = 0;
         size_t i;
+
         for (i = 0; i < len && s[i] >= '0' && s[i] <= '9'; i++) {
-            v = v * 10 + (s[i] - '0');
+            unsigned int digit = (unsigned int) (s[i] - '0');
+            if (v > (maximum - digit) / 10U) {
+                v = maximum;
+                while (i + 1 < len && s[i + 1] >= '0' &&
+                        s[i + 1] <= '9') {
+                    i++;
+                }
+                break;
+            }
+            v = v * 10U + digit;
         }
-        if (v > 0) {
-            n = (unsigned int) v;
+        if (i > 0) {
+            if (v > maximum) {
+                v = maximum;
+            }
+            n = v;
         }
         dom_string_unref(vl);
     }
@@ -837,8 +858,10 @@ static struct box *pcore_construct_cell(dom_node *node,
     struct box *cell = pcore_construct_block(node, style, 0, ctx);
     if (cell != NULL) {
         cell->type = BOX_TABLE_CELL;
-        cell->columns = pcore_span_attr(node, "colspan");
-        cell->rows = pcore_span_attr(node, "rowspan");
+        cell->columns = pcore_span_attr(node, "colspan", 1,
+                PCORE_TABLE_MAX_COLSPAN);
+        cell->rows = pcore_span_attr(node, "rowspan", 1,
+                PCORE_TABLE_MAX_ROWSPAN);
     }
     return cell;
 }
@@ -921,14 +944,117 @@ static struct box *pcore_construct_rowgroup(dom_node *node,
     return rg;
 }
 
+/* Adapted from NetSurf box_normalise.c's calculate_table_row(). The temporary
+ * records are construction-only; the final start_column/columns/rows fields
+ * are consumed unchanged by NetSurf layout.c and table.c. */
+typedef struct pcore_table_span {
+    unsigned int row_span;
+    struct box *row_group;
+    int auto_row;
+} pcore_table_span;
+
+typedef struct pcore_table_columns {
+    unsigned int current_column;
+    unsigned int num_columns;
+    unsigned int capacity;
+    unsigned int num_rows;
+    pcore_table_span *spans;
+} pcore_table_columns;
+
+static int pcore_place_table_cell(pcore_table_columns *info,
+        struct box *cell)
+{
+    unsigned int start;
+    unsigned int end;
+    unsigned int i;
+    unsigned int old_capacity;
+    unsigned int new_capacity;
+    pcore_table_span *spans;
+    struct box *row_group;
+
+    start = info->current_column;
+    row_group = cell->parent->parent;
+    while (start < info->capacity && info->spans[start].row_span != 0 &&
+            info->spans[start].row_group == row_group) {
+        start++;
+    }
+    if (cell->columns == 0) {
+        cell->columns = 1;
+    }
+    if (start >= PCORE_TABLE_MAX_COLUMNS ||
+            cell->columns > PCORE_TABLE_MAX_COLUMNS - start) {
+        return 0;
+    }
+    end = start + cell->columns;
+    if (end >= info->capacity) {
+        old_capacity = info->capacity;
+        new_capacity = end + 1;
+        spans = (pcore_table_span *) realloc(info->spans,
+                sizeof(*spans) * new_capacity);
+        if (spans == NULL) {
+            return 0;
+        }
+        info->spans = spans;
+        info->capacity = new_capacity;
+        memset(info->spans + old_capacity, 0,
+                sizeof(*spans) * (new_capacity - old_capacity));
+    }
+    if (info->num_columns < end) {
+        info->num_columns = end;
+    }
+    for (i = start; i < end; i++) {
+        info->spans[i].row_span = cell->rows == 0 ? 1 : cell->rows;
+        info->spans[i].auto_row = cell->rows == 0;
+        info->spans[i].row_group = row_group;
+    }
+    info->current_column = end;
+    cell->start_column = start;
+    return 1;
+}
+
+static void pcore_finish_table_row(pcore_table_columns *info)
+{
+    unsigned int i;
+
+    for (i = 0; i < info->num_columns; i++) {
+        if (info->spans[i].row_span != 0 &&
+                !info->spans[i].auto_row) {
+            info->spans[i].row_span--;
+        }
+    }
+    info->current_column = 0;
+    info->num_rows++;
+}
+
+static void pcore_finish_table_spans(struct box *table)
+{
+    struct box *rg;
+    struct box *row;
+    struct box *cell;
+
+    for (rg = table->children; rg != NULL; rg = rg->next) {
+        unsigned int rows_left = rg->rows;
+        for (row = rg->children; row != NULL; row = row->next) {
+            for (cell = row->children; cell != NULL; cell = cell->next) {
+                if (cell->columns == 0) {
+                    cell->columns = 1;
+                }
+                if (cell->rows == 0 || cell->rows > rows_left) {
+                    cell->rows = rows_left;
+                }
+            }
+            if (rows_left > 0) {
+                rows_left--;
+            }
+        }
+    }
+}
+
 /* Build a BOX_TABLE tree (row-group > row > cell) from a display:table element.
- * Bare <tr> children are wrapped in an anonymous row group. Each cell is then
- * assigned a start_column (honouring colspan; rowspan column-occupancy across
- * rows is simplified - correct for the common no-rowspan tables), and
- * table->columns / table->rows / table->col[] are filled - the shape
- * layout_table needs (it asserts columns>0 and memcpy's table->col). Falls back
- * to BOX_BLOCK if no cells were produced, so layout never sees a malformed
- * table. */
+ * Bare <tr> children are wrapped in an anonymous row group. Cell placement
+ * uses NetSurf's span occupancy rules before table->columns / rows / col[] are
+ * filled. Falls back to BOX_BLOCK if no cells were produced or temporary span
+ * allocation fails, so layout never sees a malformed table. */
 static struct box *pcore_construct_table(dom_node *node,
         css_computed_style *style, void *ctx)
 {
@@ -938,8 +1064,7 @@ static struct box *pcore_construct_table(dom_node *node,
     struct box *row;
     struct box *cell;
     dom_node *child;
-    unsigned int max_cols = 0;
-    unsigned int nrows = 0;
+    pcore_table_columns info;
 
     if (table == NULL) {
         return NULL;
@@ -993,31 +1118,42 @@ static struct box *pcore_construct_table(dom_node *node,
         return table;
     }
 
-    for (rg = table->children; rg != NULL; rg = rg->next) {
-        for (row = rg->children; row != NULL; row = row->next) {
-            unsigned int col = 0;
-            nrows++;
-            for (cell = row->children; cell != NULL; cell = cell->next) {
-                cell->start_column = col;
-                if (cell->columns == 0) {
-                    cell->columns = 1;
-                }
-                col += cell->columns;
-            }
-            if (col > max_cols) {
-                max_cols = col;
-            }
-        }
-    }
-
-    if (max_cols == 0) {
+    memset(&info, 0, sizeof(info));
+    info.capacity = 2;
+    info.spans = (pcore_table_span *) calloc(info.capacity,
+            sizeof(*info.spans));
+    if (info.spans == NULL) {
         table->type = BOX_BLOCK;
         return table;
     }
 
-    table->columns = max_cols;
-    table->rows = nrows;
-    table->col = talloc_zero_array(ctx, struct column, max_cols);
+    for (rg = table->children; rg != NULL; rg = rg->next) {
+        unsigned int group_rows = 0;
+        for (row = rg->children; row != NULL; row = row->next) {
+            group_rows++;
+            for (cell = row->children; cell != NULL; cell = cell->next) {
+                if (!pcore_place_table_cell(&info, cell)) {
+                    free(info.spans);
+                    table->type = BOX_BLOCK;
+                    return table;
+                }
+            }
+            pcore_finish_table_row(&info);
+        }
+        rg->rows = group_rows;
+    }
+
+    if (info.num_columns == 0) {
+        free(info.spans);
+        table->type = BOX_BLOCK;
+        return table;
+    }
+
+    table->columns = info.num_columns;
+    table->rows = info.num_rows;
+    pcore_finish_table_spans(table);
+    free(info.spans);
+    table->col = talloc_zero_array(ctx, struct column, table->columns);
     if (table->col == NULL) {
         table->type = BOX_BLOCK;
         return table;

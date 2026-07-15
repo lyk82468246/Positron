@@ -28,6 +28,7 @@ factors are 1x1. Any length, stride, copy lifetime, alpha, signature, sampling,
 re-decode or drawing failure produces an error message or a visible mismatch.
 The native Windows Mobile title-bar OK button is enabled with
 `SHDoneButton(SHDB_SHOW)`. Its `WM_COMMAND/IDOK` destroys the window and ends
-the process. The shell's X is Smart Minimize and does not promise `WM_CLOSE`,
+the process; next52 device testing confirmed the process disappears and the
+demo can be launched again. The shell's X is Smart Minimize and does not promise `WM_CLOSE`,
 which is why next51 remained in the Running Programs list. No softkey bar is
 added, so the image client area remains unchanged.
