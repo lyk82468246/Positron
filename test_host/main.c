@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 48
+#define TEST_MAX_NUMBER 49
 
 static int test_config_space(char c)
 {
@@ -7172,6 +7172,88 @@ static BOOL test48_list_markers(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 49 - bundled static symbol/monochrome emoji font fallback       */
+/* -------------------------------------------------------------------- */
+static BOOL test49_bundled_fonts(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<h1>Bundled mono fallback</h1>"
+        "<p class=symbols>Symbols: \342\206\220 \342\206\221 "
+        "\342\206\222 \342\206\223 \342\234\223 \342\230\205 "
+        "\342\231\245 \342\232\240</p>"
+        "<p class=emoji>Emoji: \360\237\230\200 \360\237\232\200 "
+        "\360\237\247\221 \360\237\224\247 \360\237\216\211</p>"
+        "<ul><li>disc<ul><li>circle<ul><li>square</li></ul></li></ul></li></ul>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:17px;line-height:24px;padding:8px;}"
+        "h1{font-size:23px;color:#800000;margin:0 0 10px;}"
+        "p{margin:8px 0;}ul{margin-top:3px;margin-bottom:3px;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    int symbols_loaded;
+    int emoji_loaded;
+    int screen_w;
+    int screen_h;
+
+    symbols_loaded = 0;
+    emoji_loaded = 0;
+    PCore_FontFallbackStatus(&symbols_loaded, &emoji_loaded);
+    if (!symbols_loaded || !emoji_loaded) {
+        char msg[160];
+        _snprintf(msg, sizeof(msg) - 1,
+                "bundled fonts not loaded: symbols=%d emoji=%d; "
+                "check the fonts subdirectory", symbols_loaded, emoji_loaded);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 49 FAIL", msg);
+        return FALSE;
+    }
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/bundled-fonts.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 49 FAIL", "font fixture parse/style/layout failed");
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 49",
+              "Bundled fonts loaded. Expect arrows/check/star/heart/warning,\n"
+              "five monochrome emoji, then disc/circle/square markers.\n"
+              "No hollow square tofu should appear.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 49 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 49 OK",
+              "Static symbols/emoji resources, fallback run measurement\n"
+              "and NetSurf redraw completed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -7334,6 +7416,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 46: ok = test46_table_spans(); break;
         case 47: ok = test47_table_normalise(); break;
         case 48: ok = test48_list_markers(); break;
+        case 49: ok = test49_bundled_fonts(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -7361,6 +7444,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     int configured_7b;
     int configured_count;
     int configured_http;
+    int core_active;
     int  rc;
     char config_prompt[512];
     char summary[1024];
@@ -7400,6 +7484,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
             if (configured_http) {
                 PHttp_Cleanup();
             }
+            PCore_Shutdown();
             if (rc == 0) {
                 show_info(L"Configured tests passed",
                           "All tests selected by test_host.ini passed.");
@@ -7413,7 +7498,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                   "Yes = run all selected groups (TEST 1-48)\n"
+                   "Yes = run all selected groups (TEST 1-49)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -7439,7 +7524,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list\n"
                                "normalisation redraw\n"
-                               "(TEST 46-48).\n"
+                               "(TEST 46-49).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -7448,11 +7533,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
 
     rc = 0;
+    core_active = 0;
+    if (run_engine || run_render || run_browse) {
+        if (PCore_Init() != 0) {
+            show_error(L"positron_core init FAIL", "PCore_Init returned an error");
+            return 8;
+        }
+        core_active = 1;
+    }
 
     /* --- Communication group (TEST 1-5) ------------------------------- */
     if (run_comm) {
         if (!test1_dll_load()) {
-            /* positron_http was not initialised; nothing to clean up. */
+            if (core_active) {
+                PCore_Shutdown();
+            }
             return 1;
         }
         if (!test2_json())         { rc = 2; goto done; }
@@ -7489,7 +7584,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-48; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-49; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -7513,6 +7608,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test46_table_spans()){ rc = 13; goto done; }
         if (!test47_table_normalise()){ rc = 13; goto done; }
         if (!test48_list_markers()){ rc = 13; goto done; }
+        if (!test49_bundled_fonts()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -7552,7 +7648,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-48)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-49)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
@@ -7579,6 +7675,9 @@ done:
      * browse group; tear it down if either ran. */
     if (run_comm || run_browse) {
         PHttp_Cleanup();
+    }
+    if (core_active) {
+        PCore_Shutdown();
     }
     return rc;
 }

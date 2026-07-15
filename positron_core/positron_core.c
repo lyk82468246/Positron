@@ -38,11 +38,14 @@
 /* DllMain                                                            */
 /* ------------------------------------------------------------------ */
 
+static HMODULE g_core_module = NULL;
+
 BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
 {
-    (void) hModule;
     (void) lpReserved;
-    (void) reason;
+    if (reason == DLL_PROCESS_ATTACH) {
+        g_core_module = (HMODULE) hModule;
+    }
     return TRUE;
 }
 
@@ -52,15 +55,18 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
 
 PCORE_API int PCore_Init(void)
 {
-    /* libcss, libdom and libwapcaplet all initialise lazily, so there is
-     * nothing to do yet. Kept as the lifecycle hook a future layout/render
-     * stage (font setup, default stylesheet, etc.) will hang off. */
-    return 0;
+    return pcore_font_initialize(g_core_module);
 }
 
 PCORE_API void PCore_Shutdown(void)
 {
-    /* No global state to release yet. */
+    pcore_font_shutdown();
+}
+
+PCORE_API void PCore_FontFallbackStatus(int *symbols_loaded,
+        int *emoji_loaded)
+{
+    pcore_font_status(symbols_loaded, emoji_loaded);
 }
 
 /* ------------------------------------------------------------------ */

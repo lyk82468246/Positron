@@ -53,6 +53,11 @@ void pcore_box_scrollbars_destroy(struct box *box);
  * before layout (PCore_Init). Implemented in pcore_nsshim.c. */
 void pcore_nsshim_init(void);
 
+/* WM GDI fallback fonts, loaded from the fonts directory beside the DLL. */
+int pcore_font_initialize(HMODULE module);
+void pcore_font_shutdown(void);
+void pcore_font_status(int *symbols_loaded, int *emoji_loaded);
+
 /* The GDI plotter table (defined in pcore_plot_gdi.c), for building a
  * redraw_context to drive NetSurf's html_redraw. */
 struct plotter_table;

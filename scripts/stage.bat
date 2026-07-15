@@ -25,6 +25,11 @@ copy /Y "%ROOT%\positron_core\bin\%CFG%\positron_core.dll" "%STAGE%\" || goto :f
 copy /Y "%ROOT%\positron_image\bin\%CFG%\positron_image.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\bin\%CFG%\test_host.exe"         "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\test_host.ini"                   "%STAGE%\" || goto :fail
+if not exist "%STAGE%\fonts" mkdir "%STAGE%\fonts"
+copy /Y "%ROOT%\assets\fonts\PositronSymbols.ttf" "%STAGE%\fonts\" || goto :fail
+copy /Y "%ROOT%\assets\fonts\PositronEmoji.ttf"   "%STAGE%\fonts\" || goto :fail
+copy /Y "%ROOT%\third_party\noto-symbols2\OFL.txt" "%STAGE%\fonts\OFL-NotoSymbols2.txt" || goto :fail
+copy /Y "%ROOT%\third_party\noto-emoji\OFL.txt"    "%STAGE%\fonts\OFL-NotoEmoji.txt" || goto :fail
 
 echo.
 echo Done. In the emulator, open File Explorer -^> Storage Card

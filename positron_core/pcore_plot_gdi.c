@@ -33,6 +33,229 @@
 
 #include "positron_core.h"
 #include "positron_image.h"
+#include "pcore_font_coverage.h"
+
+#define PCORE_FONT_BASE    0
+#define PCORE_FONT_SYMBOLS 1
+#define PCORE_FONT_EMOJI   2
+
+static int g_font_init_refs = 0;
+static int g_symbols_loaded = 0;
+static int g_emoji_loaded = 0;
+static WCHAR g_symbols_path[MAX_PATH];
+static WCHAR g_emoji_path[MAX_PATH];
+
+static void pcore_font_cache_reset(void);
+
+static int pcore_font_path(HMODULE module, const WCHAR *filename,
+        WCHAR *out, int capacity)
+{
+    DWORD length;
+    int i;
+
+    if (module == NULL || filename == NULL || out == NULL || capacity < 16) {
+        return 0;
+    }
+    length = GetModuleFileNameW(module, out, (DWORD) capacity);
+    if (length == 0 || length >= (DWORD) capacity) {
+        out[0] = L'\0';
+        return 0;
+    }
+    i = (int) length - 1;
+    while (i >= 0 && out[i] != L'\\' && out[i] != L'/') {
+        i--;
+    }
+    if (i < 0) {
+        out[0] = L'\0';
+        return 0;
+    }
+    out[i + 1] = L'\0';
+    if ((int) lstrlenW(out) + 6 + (int) lstrlenW(filename) + 1 > capacity) {
+        out[0] = L'\0';
+        return 0;
+    }
+    lstrcatW(out, L"fonts\\");
+    lstrcatW(out, filename);
+    return 1;
+}
+
+int pcore_font_initialize(HMODULE module)
+{
+    int changed;
+
+    if (g_font_init_refs > 0) {
+        g_font_init_refs++;
+        return 0;
+    }
+    g_font_init_refs = 1;
+    changed = 0;
+    g_symbols_path[0] = L'\0';
+    g_emoji_path[0] = L'\0';
+    if (pcore_font_path(module, L"PositronSymbols.ttf",
+            g_symbols_path, MAX_PATH)) {
+        g_symbols_loaded = AddFontResourceW(g_symbols_path) > 0;
+        changed |= g_symbols_loaded;
+    }
+    if (pcore_font_path(module, L"PositronEmoji.ttf",
+            g_emoji_path, MAX_PATH)) {
+        g_emoji_loaded = AddFontResourceW(g_emoji_path) > 0;
+        changed |= g_emoji_loaded;
+    }
+    if (changed) {
+        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+    }
+    return 0;
+}
+
+void pcore_font_shutdown(void)
+{
+    int changed;
+
+    if (g_font_init_refs <= 0) {
+        return;
+    }
+    g_font_init_refs--;
+    if (g_font_init_refs > 0) {
+        return;
+    }
+    pcore_font_cache_reset();
+    changed = 0;
+    if (g_symbols_loaded) {
+        changed |= RemoveFontResourceW(g_symbols_path) != FALSE;
+    }
+    if (g_emoji_loaded) {
+        changed |= RemoveFontResourceW(g_emoji_path) != FALSE;
+    }
+    g_symbols_loaded = 0;
+    g_emoji_loaded = 0;
+    g_symbols_path[0] = L'\0';
+    g_emoji_path[0] = L'\0';
+    if (changed) {
+        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+    }
+}
+
+void pcore_font_status(int *symbols_loaded, int *emoji_loaded)
+{
+    if (symbols_loaded != NULL) {
+        *symbols_loaded = g_symbols_loaded;
+    }
+    if (emoji_loaded != NULL) {
+        *emoji_loaded = g_emoji_loaded;
+    }
+}
+
+static int pcore_range_contains(const pcore_font_range *ranges,
+        unsigned int count, unsigned long codepoint)
+{
+    unsigned int low;
+    unsigned int high;
+
+    low = 0;
+    high = count;
+    while (low < high) {
+        unsigned int middle = low + (high - low) / 2;
+        if (codepoint < ranges[middle].first) {
+            high = middle;
+        } else if (codepoint > ranges[middle].last) {
+            low = middle + 1;
+        } else {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pcore_font_kind_for_codepoint(unsigned long codepoint)
+{
+    if (g_symbols_loaded && codepoint <= 0xffffUL &&
+            pcore_range_contains(pcore_symbol_ranges,
+                    (unsigned int) PCORE_SYMBOL_RANGES_COUNT, codepoint)) {
+        return PCORE_FONT_SYMBOLS;
+    }
+    if (g_emoji_loaded && pcore_range_contains(pcore_emoji_ranges,
+            (unsigned int) PCORE_EMOJI_RANGES_COUNT, codepoint)) {
+        return PCORE_FONT_EMOJI;
+    }
+    return PCORE_FONT_BASE;
+}
+
+static unsigned short pcore_emoji_alias_for(unsigned long codepoint)
+{
+    unsigned int low;
+    unsigned int high;
+
+    low = 0;
+    high = (unsigned int) PCORE_EMOJI_ALIASES_COUNT;
+    while (low < high) {
+        unsigned int middle;
+        middle = low + (high - low) / 2;
+        if (codepoint < pcore_emoji_aliases[middle].codepoint) {
+            high = middle;
+        } else if (codepoint > pcore_emoji_aliases[middle].codepoint) {
+            low = middle + 1;
+        } else {
+            return pcore_emoji_aliases[middle].pua;
+        }
+    }
+    return 0;
+}
+
+static unsigned long pcore_wide_codepoint(const WCHAR *text, int length,
+        int index, int *units)
+{
+    unsigned long codepoint;
+
+    codepoint = (unsigned long) text[index];
+    *units = 1;
+    if (codepoint >= 0xd800UL && codepoint <= 0xdbffUL &&
+            index + 1 < length && text[index + 1] >= 0xdc00 &&
+            text[index + 1] <= 0xdfff) {
+        codepoint = 0x10000UL + ((codepoint - 0xd800UL) << 10) +
+                ((unsigned long) text[index + 1] - 0xdc00UL);
+        *units = 2;
+    }
+    return codepoint;
+}
+
+static int pcore_font_kind_at(const WCHAR *text, int length, int index,
+        int *units)
+{
+    return pcore_font_kind_for_codepoint(
+            pcore_wide_codepoint(text, length, index, units));
+}
+
+/* Windows CE's GDI predates dependable supplementary-plane cmap handling.
+ * The generated emoji font therefore carries BMP private-use aliases. Compact
+ * surrogate pairs to those aliases immediately before GDI sees the string;
+ * DOM text and every public UTF-8 API remain standard Unicode. */
+static int pcore_gdi_wide_normalize(WCHAR *text, int length)
+{
+    int read_index;
+    int write_index;
+
+    read_index = 0;
+    write_index = 0;
+    while (read_index < length) {
+        int units;
+        unsigned long codepoint;
+        unsigned short alias;
+
+        codepoint = pcore_wide_codepoint(text, length, read_index, &units);
+        alias = (g_emoji_loaded && units == 2) ?
+                pcore_emoji_alias_for(codepoint) : 0;
+        if (alias != 0) {
+            text[write_index++] = (WCHAR) alias;
+        } else {
+            text[write_index++] = text[read_index];
+            if (units == 2) {
+                text[write_index++] = text[read_index + 1];
+            }
+        }
+        read_index += units;
+    }
+    return write_index;
+}
 
 /* Private context behind redraw_context.priv. */
 typedef struct pcore_plot_ctx {
@@ -105,7 +328,8 @@ static void stroke_line(HDC hdc, int x0, int y0, int x1, int y1,
 
 /* Build an HFONT from a NetSurf plot_font_style_t, scaled to the DC's DPI.
  * (M2 will grow this into the shared gui_layout_table font path.) */
-static HFONT pcore_plot_font(HDC hdc, const plot_font_style_t *fstyle)
+static HFONT pcore_plot_font(HDC hdc, const plot_font_style_t *fstyle,
+        int font_kind)
 {
     LOGFONTW lf;
     int dpi;
@@ -138,7 +362,13 @@ static HFONT pcore_plot_font(HDC hdc, const plot_font_style_t *fstyle)
     lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
     lf.lfQuality = DEFAULT_QUALITY;
 
-    switch (fstyle->family) {
+    if (font_kind == PCORE_FONT_SYMBOLS) {
+        face = L"Positron Symbols";
+        lf.lfPitchAndFamily = (BYTE) (DEFAULT_PITCH | FF_DONTCARE);
+    } else if (font_kind == PCORE_FONT_EMOJI) {
+        face = L"Positron Emoji";
+        lf.lfPitchAndFamily = (BYTE) (DEFAULT_PITCH | FF_DONTCARE);
+    } else switch (fstyle->family) {
     case PLOT_FONT_FAMILY_SERIF:
         face = L"Times New Roman";
         lf.lfPitchAndFamily = (BYTE) (DEFAULT_PITCH | FF_ROMAN);
@@ -242,30 +472,60 @@ static nserror plot_text(const struct redraw_context *ctx,
     pcore_plot_ctx *p = (pcore_plot_ctx *) ctx->priv;
     WCHAR wbuf[1024];
     int wl;
-    HFONT f;
-    HFONT old;
-    TEXTMETRICW tm;
-    int top;
+    int start;
+    int draw_x;
 
     wl = MultiByteToWideChar(CP_UTF8, 0, text, (int) length, wbuf, 1024);
     if (wl <= 0) {
         return NSERROR_OK;
     }
-    f = pcore_plot_font(p->hdc, fstyle);
-    if (f == NULL) {
-        return NSERROR_OK;
-    }
-    old = (HFONT) SelectObject(p->hdc, f);
+    wl = pcore_gdi_wide_normalize(wbuf, wl);
     SetTextColor(p->hdc, ns_to_colorref(fstyle->foreground));
     SetBkMode(p->hdc, TRANSPARENT);
-    /* NetSurf passes the text BASELINE as y; GDI draws from the cell top. */
-    top = y;
-    if (GetTextMetricsW(p->hdc, &tm)) {
-        top = y - tm.tmAscent;
+    start = 0;
+    draw_x = x;
+    while (start < wl) {
+        int units;
+        int kind;
+        int end;
+        HFONT f;
+        HFONT old;
+        TEXTMETRICW tm;
+        SIZE size;
+        int top;
+
+        kind = pcore_font_kind_at(wbuf, wl, start, &units);
+        end = start + units;
+        while (end < wl) {
+            int next_units;
+            int next_kind;
+            next_kind = pcore_font_kind_at(wbuf, wl, end, &next_units);
+            if (next_kind != kind) {
+                break;
+            }
+            end += next_units;
+        }
+        f = pcore_plot_font(p->hdc, fstyle, kind);
+        if (f == NULL) {
+            start = end;
+            continue;
+        }
+        old = (HFONT) SelectObject(p->hdc, f);
+        /* NetSurf passes a baseline; each fallback run has its own ascent. */
+        top = y;
+        if (GetTextMetricsW(p->hdc, &tm)) {
+            top = y - tm.tmAscent;
+        }
+        ExtTextOutW(p->hdc, draw_x, top, 0, NULL,
+                wbuf + start, end - start, NULL);
+        if (GetTextExtentPoint32W(p->hdc, wbuf + start,
+                end - start, &size)) {
+            draw_x += size.cx;
+        }
+        SelectObject(p->hdc, old);
+        DeleteObject(f);
+        start = end;
     }
-    ExtTextOutW(p->hdc, x, top, 0, NULL, wbuf, wl, NULL);
-    SelectObject(p->hdc, old);
-    DeleteObject(f);
     return NSERROR_OK;
 }
 
@@ -482,11 +742,29 @@ typedef struct pcore_fc2 {
     int   weight;
     int   italic;
     int   family;
+    int   font_kind;
     HFONT font;
 } pcore_fc2;
 
-static pcore_fc2 g_fc[24];
+static pcore_fc2 g_fc[72];
 static int       g_fc_n = 0;
+
+static void pcore_font_cache_reset(void)
+{
+    int i;
+
+    for (i = 0; i < g_fc_n; i++) {
+        if (g_fc[i].font != NULL) {
+            DeleteObject(g_fc[i].font);
+        }
+    }
+    memset(g_fc, 0, sizeof(g_fc));
+    g_fc_n = 0;
+    if (g_measure_dc != NULL) {
+        DeleteDC(g_measure_dc);
+        g_measure_dc = NULL;
+    }
+}
 
 static int pcore_font_px(HDC dc, const plot_font_style_t *fstyle)
 {
@@ -505,7 +783,8 @@ static int pcore_font_px(HDC dc, const plot_font_style_t *fstyle)
     return (px < 1) ? 1 : px;
 }
 
-static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle)
+static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
+        int font_kind)
 {
     int px = pcore_font_px(dc, fstyle);
     int italic = (fstyle->flags & (FONTF_ITALIC | FONTF_OBLIQUE)) ? 1 : 0;
@@ -516,20 +795,91 @@ static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle)
 
     for (i = 0; i < g_fc_n; i++) {
         if (g_fc[i].px == px && g_fc[i].weight == weight &&
-                g_fc[i].italic == italic && g_fc[i].family == family) {
+                g_fc[i].italic == italic && g_fc[i].family == family &&
+                g_fc[i].font_kind == font_kind) {
             return g_fc[i].font;
         }
     }
-    f = pcore_plot_font(dc, fstyle);   /* reuse the M1 LOGFONT builder */
-    if (f != NULL && g_fc_n < 24) {
+    f = pcore_plot_font(dc, fstyle, font_kind);
+    if (f != NULL && g_fc_n < 72) {
         g_fc[g_fc_n].px = px;
         g_fc[g_fc_n].weight = weight;
         g_fc[g_fc_n].italic = italic;
         g_fc[g_fc_n].family = family;
+        g_fc[g_fc_n].font_kind = font_kind;
         g_fc[g_fc_n].font = f;
         g_fc_n++;
     }
     return f;
+}
+
+/* Measure the same font runs plot_text draws. If cumulative is non-NULL it
+ * receives the cumulative width after every UTF-16 unit. */
+static int pcore_measure_wide(const plot_font_style_t *fstyle,
+        const WCHAR *text, int length, int *cumulative, int *width)
+{
+    HDC dc;
+    int start;
+    int total;
+
+    dc = pcore_measure_dc();
+    if (width != NULL) {
+        *width = 0;
+    }
+    if (dc == NULL || text == NULL || length <= 0) {
+        return 0;
+    }
+    start = 0;
+    total = 0;
+    while (start < length) {
+        int units;
+        int kind;
+        int end;
+        HFONT font;
+        HFONT old;
+        SIZE size;
+
+        kind = pcore_font_kind_at(text, length, start, &units);
+        end = start + units;
+        while (end < length) {
+            int next_units;
+            int next_kind;
+            next_kind = pcore_font_kind_at(text, length, end, &next_units);
+            if (next_kind != kind) {
+                break;
+            }
+            end += next_units;
+        }
+        font = pcore_font_for(dc, fstyle, kind);
+        if (font == NULL) {
+            return 0;
+        }
+        old = (HFONT) SelectObject(dc, font);
+        if (cumulative != NULL) {
+            int dummy;
+            int i;
+            dummy = 0;
+            if (!GetTextExtentExPointW(dc, text + start, end - start,
+                    0x7fffffff, &dummy, cumulative + start, &size)) {
+                SelectObject(dc, old);
+                return 0;
+            }
+            for (i = start; i < end; i++) {
+                cumulative[i] += total;
+            }
+        } else if (!GetTextExtentPoint32W(dc, text + start,
+                end - start, &size)) {
+            SelectObject(dc, old);
+            return 0;
+        }
+        total += size.cx;
+        SelectObject(dc, old);
+        start = end;
+    }
+    if (width != NULL) {
+        *width = total;
+    }
+    return 1;
 }
 
 /* Decode UTF-8 [0,len) into wbuf (UTF-16) and byteofs[] (the UTF-8 byte offset
@@ -580,14 +930,25 @@ static int pcore_utf8_map(const char *s, int len, WCHAR *wbuf,
             byteofs[n] = i;
             wbuf[n++] = (WCHAR) cp;
         } else {
-            if (n + 1 >= cap) {
-                return -1;
+            unsigned short alias;
+            alias = g_emoji_loaded ?
+                    pcore_emoji_alias_for((unsigned long) cp) : 0;
+            if (alias != 0) {
+                if (n >= cap) {
+                    return -1;
+                }
+                byteofs[n] = i;
+                wbuf[n++] = (WCHAR) alias;
+            } else {
+                if (n + 1 >= cap) {
+                    return -1;
+                }
+                cp -= 0x10000;
+                byteofs[n] = i;
+                wbuf[n++] = (WCHAR) (0xD800 + (cp >> 10));
+                byteofs[n] = i;
+                wbuf[n++] = (WCHAR) (0xDC00 + (cp & 0x3FF));
             }
-            cp -= 0x10000;
-            byteofs[n] = i;
-            wbuf[n++] = (WCHAR) (0xD800 + (cp >> 10));
-            byteofs[n] = i;
-            wbuf[n++] = (WCHAR) (0xDC00 + (cp & 0x3FF));
         }
         i += nb;
     }
@@ -601,7 +962,6 @@ static nserror gdi_font_width(const struct plot_font_style *fstyle,
     HDC dc = pcore_measure_dc();
     WCHAR *wbuf;
     int wl;
-    SIZE sz;
 
     *width = 0;
     if (length == 0 || dc == NULL) {
@@ -614,12 +974,8 @@ static nserror gdi_font_width(const struct plot_font_style *fstyle,
     wl = MultiByteToWideChar(CP_UTF8, 0, string, (int) length,
             wbuf, (int) length);
     if (wl > 0) {
-        HFONT f = pcore_font_for(dc, fstyle);
-        HFONT old = (HFONT) SelectObject(dc, f);
-        if (GetTextExtentPoint32W(dc, wbuf, wl, &sz)) {
-            *width = sz.cx;
-        }
-        SelectObject(dc, old);
+        wl = pcore_gdi_wide_normalize(wbuf, wl);
+        pcore_measure_wide(fstyle, wbuf, wl, NULL, width);
     }
     free(wbuf);
     return NSERROR_OK;
@@ -636,10 +992,6 @@ static int pcore_measure(const struct plot_font_style *fstyle,
     int *dx;
     int *byteofs;
     int wl;
-    int dummy = 0;
-    SIZE sz;
-    HFONT f;
-    HFONT old;
 
     *wbuf_out = NULL; *dx_out = NULL; *byteofs_out = NULL;
     if (dc == NULL) {
@@ -657,12 +1009,10 @@ static int pcore_measure(const struct plot_font_style *fstyle,
         free(wbuf); free(dx); free(byteofs);
         return -1;
     }
-    f = pcore_font_for(dc, fstyle);
-    old = (HFONT) SelectObject(dc, f);
-    /* Big nMaxExtent so alpDx is filled for ALL units; we derive the fit
-     * count ourselves from the cumulative widths. */
-    GetTextExtentExPointW(dc, wbuf, wl, 0x7FFFFFFF, &dummy, dx, &sz);
-    SelectObject(dc, old);
+    if (!pcore_measure_wide(fstyle, wbuf, wl, dx, NULL)) {
+        free(wbuf); free(dx); free(byteofs);
+        return -1;
+    }
 
     *wbuf_out = wbuf;
     *dx_out = dx;

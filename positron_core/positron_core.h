@@ -36,12 +36,19 @@ extern "C" {
 #endif
 
 /* Initialise the rendering core. Returns 0 on success, non-zero on failure.
- * Currently a no-op (libcss/libdom/lwc self-initialise lazily) but reserved
- * for the global setup a future layout/render stage will need. */
+ * This also loads the bundled static fallback fonts from the fonts directory
+ * beside positron_core.dll. Missing fonts degrade gracefully; callers can use
+ * PCore_FontFallbackStatus to diagnose deployment. */
 PCORE_API int PCore_Init(void);
 
-/* Tear down the rendering core. Pair with PCore_Init. NULL-safe / no-op now. */
+/* Tear down the rendering core and release session font resources. Pair with
+ * PCore_Init; nested pairs are reference-counted. */
 PCORE_API void PCore_Shutdown(void);
+
+/* Report whether the bundled symbols and monochrome emoji fonts were loaded
+ * into the current Windows CE session. Output pointers may be NULL. */
+PCORE_API void PCore_FontFallbackStatus(int *symbols_loaded,
+                                        int *emoji_loaded);
 
 /* Parse a UTF-8 HTML document into a DOM tree (hubbub -> libdom binding).
  * `len` may be 0 to mean "html is NUL-terminated, use strlen". Returns an

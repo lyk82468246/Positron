@@ -119,7 +119,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 28. **next54 的滚动条占位修复只部分通过**：host 用 `WS_VSCROLL`、`SetWindowLong` 与 `SWP_FRAMECHANGED` 按实际文档高度切换原生非客户区，TEST41 的 auto-height 横条也已不再覆盖内容；但第二次整树 layout 同时让 fixed-height overflow 预留空间，改变了已验收几何，TEST42 因而在旧右箭头位置得到 `used=0/0/0`。设备截图还暴露右箭头沿用背景 `rect.y0` 后向下偏 2px。不能把 next54 记为完成。
 29. **next55 收窄 reflow 并补箭头像素回归，已由设备验收**：第二次 layout 前只屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，使其保持 next53 几何；auto-height 容器仍利用首轮 descendant bounds 预留 16px。NetSurf 右箭头改回与左箭头对称的 `area.y0` 坐标基准。用户确认 TEST41/42 的横条空间、箭头位置、短页纵条与色块页表现均正常；冻结的 TEST13 导航链未改。
 30. **next56 匿名表格归一化批次已由设备验收**：按 NetSurf 3.11 `box_normalise.c` 补齐 table/row-group/row/cell 的匿名包装及短行空单元格生成。匿名盒使用 libcss 默认样式与父样式 compose，并由 box tree 独立释放，避免借用父背景/边框。用户确认 TEST47 红/白、绿/蓝两行以及同批其余测试正常；冻结的 TEST13 导航链未改。
-31. **next57 NetSurf 列表 marker 批次待设备验收**：移植上游 `box_construct_marker` 的 disc/circle/square 构造，恢复 DOM LI 到 box 的 user-data 映射，使 `layout_lists` 正式计算有序列表；UA CSS 补常用 UL/OL padding、margin 与嵌套 marker。TEST48 一次覆盖 8 个 marker，包括嵌套圆点、`start/value` 与 `reversed`。当前 `positron_list_style_stub.c` 仍只格式化十进制，完整 roman/alpha/CJK counter-style 和 `list-style-image` 后续再移植。`c89ize.py` 三个 C 文件均为 0 修改，Debug/Release ARMV4I 增量构建 0 错误；设备包为 `C:\WMShare\Positron-next57`。
+31. **next57 NetSurf 列表 marker 语义已验收、视觉缺口转入 next58**：移植上游 `box_construct_marker` 的 disc/circle/square 构造，恢复 DOM LI 到 box 的 user-data 映射，使 `layout_lists` 正式计算有序列表；UA CSS 补常用 UL/OL padding、margin 与嵌套 marker。TEST48 已确认 8 个 marker 的嵌套层级、`start/value` 与 `reversed` 顺序正确，但设备 Tahoma 把 circle/square 显示为错误字形/豆腐。当前 `positron_list_style_stub.c` 仍只格式化十进制，完整 roman/alpha/CJK counter-style 和 `list-style-image` 后续再移植。
+32. **next58 随包单色字体 fallback 待设备验收**：从 Noto 官方 Noto Sans Symbols 2 与 Noto Emoji 生成改名后的静态 TrueType 子集，合计约 814 KiB；emoji 固化 400 字重并为 1,242 个补充平面字形建立 BMP PUA 别名，避免依赖 WM6 GDI 的 surrogate/cmap12 支持。`PCore_Init/Shutdown` 通过 CE 原生 `AddFontResourceW/RemoveFontResourceW` 管理 DLL 相邻 `fonts` 目录并广播 `WM_FONTCHANGE`；绘制、width、position、split 共用 fallback run 与同一 emoji 映射。TEST49 集中显示常见 symbols、五个单色 emoji 和 disc/circle/square；`scripts/build_fonts.py` 已做双次 SHA-256 可重复性检查，C89 脚本 0 修改，Debug/Release ARMV4I 0 错误。复杂 ZWJ shaping、彩色字体与网页 `@font-face` 不在本批次。
 
 验收：
 
@@ -160,7 +161,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - table 常见路径
 - 有效表格的 colspan、有限/自动 rowspan 与 row-group 占位（TEST46 已真机确认）
 - table/row-group/row/cell 匿名包装与短行空单元格生成（TEST47 已真机确认）
-- 常见列表 marker 与十进制 HTML 有序列表（TEST48 待真机确认）
+- 常见列表 marker 与十进制 HTML 有序列表（TEST48 语义已确认；next58 修复设备字形）
+- 随包静态 symbols/monochrome emoji fallback（TEST49 待真机确认）
 
 仍缺或简化：
 
