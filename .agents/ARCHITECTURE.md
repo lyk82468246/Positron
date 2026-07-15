@@ -67,4 +67,4 @@ positron_core.dll  -> positron_image.dll + NetSurf/libdom/libcss static librarie
 
 这样图片能力既服务浏览器，也成为 WM 平台可复用的现代基础设施。
 
-`samples/positron_image_demo` 是边界验证样例：其 PE 导入表只含 `positron_image.dll` 和系统 `COREDLL.dll`，不链接 `positron_core`、`test_host` 或 NetSurf。它同时演示 ABI 协商、retained 位图/SVG，以及 PNG/JPEG 编码结果的配套释放与重新解码。
+`samples/positron_image_demo` 是边界验证样例：其产品依赖只有 `positron_image.dll`，系统依赖为 `COREDLL.dll` 与用于原生标题栏 OK 的 `aygshell.dll`；不链接 `positron_core`、`test_host` 或 NetSurf。它同时演示 ABI 协商、retained 位图/SVG，以及 PNG/JPEG/BMP/GIF 编码结果的配套释放与重新解码。

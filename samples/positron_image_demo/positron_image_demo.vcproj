@@ -29,7 +29,7 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_image.lib"
+				AdditionalDependencies="positron_image.lib aygshell.lib"
 				AdditionalLibraryDirectories="..\..\positron_image\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_image_demo.exe" LinkIncremental="2"
@@ -69,7 +69,7 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_image.lib"
+				AdditionalDependencies="positron_image.lib aygshell.lib"
 				AdditionalLibraryDirectories="..\..\positron_image\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_image_demo.exe" LinkIncremental="1"

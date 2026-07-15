@@ -1,12 +1,13 @@
 /*
  * positron_image_demo - independent Windows Mobile image DLL consumer.
  *
- * This program intentionally includes and links only positron_image. It is a
- * small integration example for third-party WM C applications, not a browser
- * or test_host component.
+ * This program intentionally links only positron_image as a product library.
+ * It is a small integration example for third-party WM C applications, not a
+ * browser or test_host component.
  */
 
 #include <windows.h>
+#include <aygshell.h>
 #include <string.h>
 
 #include "positron_image.h"
@@ -290,7 +291,7 @@ static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
             FillRect(hdc, &client, (HBRUSH) GetStockObject(WHITE_BRUSH));
             SetBkMode(hdc, TRANSPARENT);
             SetTextColor(hdc, RGB(0, 0, 0));
-            demo_text(hdc, 8, 6, L"positron_image ABI 1.3");
+            demo_text(hdc, 8, 6, L"positron_image ABI 1.4");
             demo_text(hdc, 8, 23, L"Raw pixels + codec round-trips");
 
             margin = 8;
@@ -360,6 +361,13 @@ static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
 
     case WM_KEYDOWN:
         if (wparam == VK_ESCAPE) {
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        break;
+
+    case WM_COMMAND:
+        if (LOWORD(wparam) == IDOK) {
             DestroyWindow(hwnd);
             return 0;
         }
@@ -513,6 +521,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     if (window == NULL) {
         demo_free_images();
         return demo_fail(L"Could not create demo window");
+    }
+    if (!SHDoneButton(window, SHDB_SHOW)) {
+        DestroyWindow(window);
+        demo_free_images();
+        return demo_fail(L"Could not enable the title-bar OK button");
     }
     ShowWindow(window, SW_SHOW);
     UpdateWindow(window);
