@@ -10,12 +10,13 @@ caller buffers, encodes RGB and alpha PNG through native WM Imaging and a
 quality-100 4:4:4 JPEG through the bundled libjpeg-turbo compressor, decodes
 those results after freeing the encoded buffers, and also draws a retained SVG
 through the public C API. A deliberately short pixel buffer must be rejected
-before the visible sample starts.
+before the visible sample starts. ABI 1.4 also performs native WM Imaging BMP
+and GIF encode/signature/decode checks before creating the window.
 
 Build with the root solution, then stage with:
 
 ```cmd
-scripts\stage_image_demo.bat Debug C:\WMShare\Positron-next50
+scripts\stage_image_demo.bat Debug C:\WMShare\Positron-next51
 ```
 
 Expected display: six responsive cells in portrait or landscape: saturated
@@ -24,3 +25,6 @@ alpha PNG, quality-100 JPEG 4:4:4 and the retained red/green/blue SVG. The demo
 parses the JPEG SOF marker and refuses to start unless all three sampling
 factors are 1x1. Any length, stride, copy lifetime, alpha, signature, sampling,
 re-decode or drawing failure produces an error message or a visible mismatch.
+The title-bar X is handled as a real `WM_CLOSE`: it destroys the window and
+ends the process rather than using Windows Mobile smart minimize. No softkey
+bar is added, so the image client area remains unchanged.

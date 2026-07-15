@@ -31,7 +31,7 @@ extern "C" {
 #define PIMAGE_ABI_VERSION_GET_MINOR(version) \
     ((unsigned int) ((unsigned long) (version) & 0xffffUL))
 #define PIMAGE_ABI_VERSION_MAJOR 1
-#define PIMAGE_ABI_VERSION_MINOR 3
+#define PIMAGE_ABI_VERSION_MINOR 4
 #define PIMAGE_ABI_VERSION \
     PIMAGE_ABI_VERSION_ENCODE(PIMAGE_ABI_VERSION_MAJOR, \
             PIMAGE_ABI_VERSION_MINOR)
@@ -68,7 +68,9 @@ enum {
 
 enum {
     PIMAGE_ENCODE_PNG = 1,
-    PIMAGE_ENCODE_JPEG = 2
+    PIMAGE_ENCODE_JPEG = 2,
+    PIMAGE_ENCODE_BMP = 3,
+    PIMAGE_ENCODE_GIF = 4
 };
 
 /* Raw pixel rows are top-down. BGR24 stores B,G,R bytes; BGRA32 stores
@@ -108,14 +110,15 @@ PIMAGE_API int PImage_DrawBitmap(PIMAGE_BITMAP bitmap, HDC hdc,
 PIMAGE_API void PImage_FreeBitmap(PIMAGE_BITMAP bitmap);
 
 /* Encode a retained bitmap. The DLL allocates the result; release it with
- * PImage_FreeBuffer. PNG uses the installed WM Imaging codec. The base JPEG
+ * PImage_FreeBuffer. PNG/BMP/GIF use installed WM Imaging codecs and may
+ * return PIMAGE_ERROR_UNSUPPORTED if an encoder is absent. The base JPEG
  * call preserves the device codec's default behavior. */
 PIMAGE_API int PImage_EncodeBitmap(PIMAGE_BITMAP bitmap, int format,
         unsigned char **out_data, int *out_len);
 
 /* JPEG quality is 0..100, or -1 for the device default. Explicit JPEG
  * quality uses the bundled libjpeg-turbo encoder with 4:4:4 sampling.
- * PNG accepts -1. */
+ * PNG/BMP/GIF accept -1. */
 PIMAGE_API int PImage_EncodeBitmapEx(PIMAGE_BITMAP bitmap, int format,
         int quality, unsigned char **out_data, int *out_len);
 

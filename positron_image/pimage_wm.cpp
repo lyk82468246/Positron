@@ -45,6 +45,14 @@ static const GUID PIMAGE_FORMAT_JPEG =
     { 0xb96b3cae, 0x0728, 0x11d3,
       { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
 
+static const GUID PIMAGE_FORMAT_BMP =
+    { 0xb96b3cab, 0x0728, 0x11d3,
+      { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
+
+static const GUID PIMAGE_FORMAT_GIF =
+    { 0xb96b3cb0, 0x0728, 0x11d3,
+      { 0x9d, 0x7b, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e } };
+
 static HRESULT g_bitmap_last_hr = S_OK;
 static int g_bitmap_last_stage = PIMAGE_BITMAP_STAGE_NONE;
 
@@ -92,6 +100,12 @@ static const GUID *pimage_encode_format_guid(int format)
     }
     if (format == PIMAGE_ENCODE_JPEG) {
         return &PIMAGE_FORMAT_JPEG;
+    }
+    if (format == PIMAGE_ENCODE_BMP) {
+        return &PIMAGE_FORMAT_BMP;
+    }
+    if (format == PIMAGE_ENCODE_GIF) {
+        return &PIMAGE_FORMAT_GIF;
     }
     return NULL;
 }

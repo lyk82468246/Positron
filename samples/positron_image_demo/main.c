@@ -7,6 +7,7 @@
  */
 
 #include <windows.h>
+#include <string.h>
 
 #include "positron_image.h"
 
@@ -237,6 +238,33 @@ static int demo_make_png_roundtrip(PIMAGE_BITMAP source,
     return result == PIMAGE_OK && demo_bitmap_size_ok(*out_bitmap);
 }
 
+static int demo_codec_roundtrip(PIMAGE_BITMAP source, int format,
+        const unsigned char *signature, int signature_len)
+{
+    PIMAGE_BITMAP decoded;
+    unsigned char *encoded;
+    int encoded_len;
+    int result;
+    int valid;
+
+    decoded = NULL;
+    encoded = NULL;
+    encoded_len = 0;
+    result = PImage_EncodeBitmap(source, format, &encoded, &encoded_len);
+    if (result != PIMAGE_OK || encoded == NULL ||
+            encoded_len < signature_len ||
+            memcmp(encoded, signature, (size_t) signature_len) != 0) {
+        PImage_FreeBuffer(encoded);
+        return 0;
+    }
+    result = PImage_CreateBitmapFromMemory((const char *) encoded,
+            encoded_len, &decoded);
+    PImage_FreeBuffer(encoded);
+    valid = result == PIMAGE_OK && demo_bitmap_size_ok(decoded);
+    PImage_FreeBitmap(decoded);
+    return valid;
+}
+
 static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
@@ -337,6 +365,10 @@ static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
         }
         break;
 
+    case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 0;
+
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
@@ -363,6 +395,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     int exit_code;
     unsigned long abi_version;
     unsigned char *encoded;
+    static const unsigned char bmp_signature[] = { 'B', 'M' };
+    static const unsigned char gif_signature[] = { 'G', 'I', 'F', '8' };
     int encoded_len;
 
     (void) previous;
@@ -408,6 +442,16 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     if (!demo_make_png_roundtrip(g_bgra_bitmap, &g_png_alpha_bitmap)) {
         demo_free_images();
         return demo_fail(L"Native alpha PNG round-trip failed");
+    }
+    if (!demo_codec_roundtrip(g_bgr_bitmap, PIMAGE_ENCODE_BMP,
+            bmp_signature, (int) sizeof(bmp_signature))) {
+        demo_free_images();
+        return demo_fail(L"Native BMP memory round-trip failed");
+    }
+    if (!demo_codec_roundtrip(g_bgr_bitmap, PIMAGE_ENCODE_GIF,
+            gif_signature, (int) sizeof(gif_signature))) {
+        demo_free_images();
+        return demo_fail(L"Native GIF memory round-trip failed");
     }
 
     encoded = NULL;
