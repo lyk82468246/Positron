@@ -120,7 +120,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 29. **next55 收窄 reflow 并补箭头像素回归，已由设备验收**：第二次 layout 前只屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，使其保持 next53 几何；auto-height 容器仍利用首轮 descendant bounds 预留 16px。NetSurf 右箭头改回与左箭头对称的 `area.y0` 坐标基准。用户确认 TEST41/42 的横条空间、箭头位置、短页纵条与色块页表现均正常；冻结的 TEST13 导航链未改。
 30. **next56 匿名表格归一化批次已由设备验收**：按 NetSurf 3.11 `box_normalise.c` 补齐 table/row-group/row/cell 的匿名包装及短行空单元格生成。匿名盒使用 libcss 默认样式与父样式 compose，并由 box tree 独立释放，避免借用父背景/边框。用户确认 TEST47 红/白、绿/蓝两行以及同批其余测试正常；冻结的 TEST13 导航链未改。
 31. **next57 NetSurf 列表 marker 语义已验收、视觉缺口转入 next58**：移植上游 `box_construct_marker` 的 disc/circle/square 构造，恢复 DOM LI 到 box 的 user-data 映射，使 `layout_lists` 正式计算有序列表；UA CSS 补常用 UL/OL padding、margin 与嵌套 marker。TEST48 已确认 8 个 marker 的嵌套层级、`start/value` 与 `reversed` 顺序正确，但设备 Tahoma 把 circle/square 显示为错误字形/豆腐。当前 `positron_list_style_stub.c` 仍只格式化十进制，完整 roman/alpha/CJK counter-style 和 `list-style-image` 后续再移植。
-32. **next58 随包单色字体 fallback 待设备验收**：从 Noto 官方 Noto Sans Symbols 2 与 Noto Emoji 生成改名后的静态 TrueType 子集，合计约 814 KiB；emoji 固化 400 字重并为 1,242 个补充平面字形建立 BMP PUA 别名，避免依赖 WM6 GDI 的 surrogate/cmap12 支持。`PCore_Init/Shutdown` 通过 CE 原生 `AddFontResourceW/RemoveFontResourceW` 管理 DLL 相邻 `fonts` 目录并广播 `WM_FONTCHANGE`；绘制、width、position、split 共用 fallback run 与同一 emoji 映射。TEST49 集中显示常见 symbols、五个单色 emoji 和 disc/circle/square；`scripts/build_fonts.py` 已做双次 SHA-256 可重复性检查，C89 脚本 0 修改，Debug/Release ARMV4I 0 错误。复杂 ZWJ shaping、彩色字体与网页 `@font-face` 不在本批次。
+32. **next58 随包单色字体 fallback 部分通过**：从 Noto 官方 Noto Sans Symbols 2 与 Noto Emoji 生成改名后的静态 TrueType 子集，合计约 814 KiB；emoji 固化 400 字重并为 1,242 个补充平面字形建立 BMP PUA 别名，避免依赖 WM6 GDI 的 surrogate/cmap12 支持。`PCore_Init/Shutdown` 通过 CE 原生 `AddFontResourceW/RemoveFontResourceW` 管理 DLL 相邻 `fonts` 目录并广播 `WM_FONTCHANGE`；绘制、width、position、split 共用 fallback run 与同一 emoji 映射。设备已确认 disc/circle/square 及部分符号/emoji 可见；四个基础箭头仍为 tofu，圆形与 emoji 边缘较粗。
+33. **next59 补齐基础符号并请求抗锯齿，待设备验收**：追加官方 hinted Noto Sans Symbols 子集，保留 Symbols 2 对已验收 marker 的优先级，只在其真实 cmap 缺口使用 Basic face；三份部署字体共约 901 KiB。生成器输出两套独立精确覆盖表，`PCore_BundledFontSupports` 与 TEST49 在开窗前逐个断言本页 16 个码点。随包字体使用 WM SDK `ANTIALIASED_QUALITY`，系统 Tahoma 仍保持默认质量；该标志的实际灰度效果依赖设备/OEM GDI。双次 SHA-256 可重复、C89 脚本 0 修改、Debug/Release ARMV4I 0 错误。复杂 ZWJ shaping、彩色字体与网页 `@font-face` 不在本批次。
 
 验收：
 
@@ -162,7 +163,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - 有效表格的 colspan、有限/自动 rowspan 与 row-group 占位（TEST46 已真机确认）
 - table/row-group/row/cell 匿名包装与短行空单元格生成（TEST47 已真机确认）
 - 常见列表 marker 与十进制 HTML 有序列表（TEST48 语义已确认；next58 修复设备字形）
-- 随包静态 symbols/monochrome emoji fallback（TEST49 待真机确认）
+- 随包静态 symbols/monochrome emoji fallback（next58 部分通过；next59 TEST49 待真机确认）
 
 仍缺或简化：
 

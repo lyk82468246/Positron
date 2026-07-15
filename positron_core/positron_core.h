@@ -50,6 +50,11 @@ PCORE_API void PCore_Shutdown(void);
 PCORE_API void PCore_FontFallbackStatus(int *symbols_loaded,
                                         int *emoji_loaded);
 
+/* Return non-zero when a Unicode scalar is covered by one of the currently
+ * loaded bundled symbol/monochrome emoji fonts. This diagnoses packaged font
+ * coverage; it does not query arbitrary system or web fonts. */
+PCORE_API int PCore_BundledFontSupports(unsigned long codepoint);
+
 /* Parse a UTF-8 HTML document into a DOM tree (hubbub -> libdom binding).
  * `len` may be 0 to mean "html is NUL-terminated, use strlen". Returns an
  * opaque document HANDLE, or NULL on failure. Caller MUST free with

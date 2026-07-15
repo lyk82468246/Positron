@@ -7,6 +7,39 @@ typedef struct pcore_font_range {
     unsigned long last;
 } pcore_font_range;
 
+static const pcore_font_range pcore_symbol_basic_ranges[] = {
+    { 0x00002190UL, 0x00002199UL },
+    { 0x00002300UL, 0x0000230fUL },
+    { 0x00002311UL, 0x00002315UL },
+    { 0x00002317UL, 0x00002317UL },
+    { 0x0000231cUL, 0x0000231fUL },
+    { 0x00002322UL, 0x00002323UL },
+    { 0x00002329UL, 0x0000232aUL },
+    { 0x0000232cUL, 0x00002335UL },
+    { 0x0000237cUL, 0x0000237cUL },
+    { 0x00002380UL, 0x00002394UL },
+    { 0x00002396UL, 0x0000239aUL },
+    { 0x000023afUL, 0x000023afUL },
+    { 0x000023beUL, 0x000023cdUL },
+    { 0x000023d0UL, 0x000023dbUL },
+    { 0x000023e2UL, 0x000023e8UL },
+    { 0x000025ccUL, 0x000025ccUL },
+    { 0x0000260aUL, 0x0000260dUL },
+    { 0x00002613UL, 0x00002613UL },
+    { 0x00002624UL, 0x0000262fUL },
+    { 0x00002638UL, 0x0000263bUL },
+    { 0x0000263dUL, 0x00002653UL },
+    { 0x00002669UL, 0x0000267eUL },
+    { 0x00002690UL, 0x0000269dUL },
+    { 0x000026a2UL, 0x000026a9UL },
+    { 0x000026adUL, 0x000026bcUL },
+    { 0x000026ceUL, 0x000026ceUL },
+    { 0x000026e2UL, 0x000026ffUL },
+    { 0x0000271dUL, 0x00002721UL },
+    { 0x00002776UL, 0x00002793UL },
+};
+#define PCORE_SYMBOL_BASIC_RANGES_COUNT (sizeof(pcore_symbol_basic_ranges) / sizeof(pcore_symbol_basic_ranges[0]))
+
 static const pcore_font_range pcore_symbol_ranges[] = {
     { 0x00002022UL, 0x00002022UL },
     { 0x000021afUL, 0x000021afUL },

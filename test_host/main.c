@@ -7176,6 +7176,12 @@ static BOOL test48_list_markers(void)
 /* -------------------------------------------------------------------- */
 static BOOL test49_bundled_fonts(void)
 {
+    static const unsigned long REQUIRED_CODEPOINTS[] = {
+        0x2190UL, 0x2191UL, 0x2192UL, 0x2193UL,
+        0x2713UL, 0x2605UL, 0x2665UL, 0x26a0UL,
+        0x1f600UL, 0x1f680UL, 0x1f9d1UL, 0x1f527UL, 0x1f389UL,
+        0x2022UL, 0x25cbUL, 0x25aaUL
+    };
     static const char HTML[] =
         "<!doctype html><html><body>"
         "<h1>Bundled mono fallback</h1>"
@@ -7195,6 +7201,7 @@ static BOOL test49_bundled_fonts(void)
     HANDLE hSheet;
     int symbols_loaded;
     int emoji_loaded;
+    unsigned int codepoint_index;
     int screen_w;
     int screen_h;
 
@@ -7209,6 +7216,21 @@ static BOOL test49_bundled_fonts(void)
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 49 FAIL", msg);
         return FALSE;
+    }
+    for (codepoint_index = 0;
+            codepoint_index < sizeof(REQUIRED_CODEPOINTS) /
+                    sizeof(REQUIRED_CODEPOINTS[0]);
+            codepoint_index++) {
+        if (!PCore_BundledFontSupports(
+                REQUIRED_CODEPOINTS[codepoint_index])) {
+            char msg[96];
+            _snprintf(msg, sizeof(msg) - 1,
+                    "bundled font coverage missing U+%04lX",
+                    REQUIRED_CODEPOINTS[codepoint_index]);
+            msg[sizeof(msg) - 1] = '\0';
+            show_error(L"TEST 49 FAIL", msg);
+            return FALSE;
+        }
     }
 
     screen_w = GetSystemMetrics(SM_CXSCREEN);
@@ -7230,7 +7252,8 @@ static BOOL test49_bundled_fonts(void)
     g_doc_h = PCore_DocumentHeight(hDoc);
     g_scroll_y = 0;
     show_info(L"TEST 49",
-              "Bundled fonts loaded. Expect arrows/check/star/heart/warning,\n"
+              "Bundled coverage passed. Expect smooth arrows/check/star/\n"
+              "heart/warning,\n"
               "five monochrome emoji, then disc/circle/square markers.\n"
               "No hollow square tofu should appear.");
     g_render_doc = hDoc;
@@ -7248,8 +7271,8 @@ static BOOL test49_bundled_fonts(void)
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
     show_info(L"TEST 49 OK",
-              "Static symbols/emoji resources, fallback run measurement\n"
-              "and NetSurf redraw completed.");
+              "Static symbols/emoji coverage, anti-aliased fallback run\n"
+              "measurement and NetSurf redraw completed.");
     return TRUE;
 }
 

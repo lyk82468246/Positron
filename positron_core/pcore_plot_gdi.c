@@ -35,13 +35,16 @@
 #include "positron_image.h"
 #include "pcore_font_coverage.h"
 
-#define PCORE_FONT_BASE    0
-#define PCORE_FONT_SYMBOLS 1
-#define PCORE_FONT_EMOJI   2
+#define PCORE_FONT_BASE          0
+#define PCORE_FONT_SYMBOLS       1
+#define PCORE_FONT_SYMBOLS_BASIC 2
+#define PCORE_FONT_EMOJI         3
 
 static int g_font_init_refs = 0;
+static int g_symbols_basic_loaded = 0;
 static int g_symbols_loaded = 0;
 static int g_emoji_loaded = 0;
+static WCHAR g_symbols_basic_path[MAX_PATH];
 static WCHAR g_symbols_path[MAX_PATH];
 static WCHAR g_emoji_path[MAX_PATH];
 
@@ -89,8 +92,14 @@ int pcore_font_initialize(HMODULE module)
     }
     g_font_init_refs = 1;
     changed = 0;
+    g_symbols_basic_path[0] = L'\0';
     g_symbols_path[0] = L'\0';
     g_emoji_path[0] = L'\0';
+    if (pcore_font_path(module, L"PositronSymbolsBasic.ttf",
+            g_symbols_basic_path, MAX_PATH)) {
+        g_symbols_basic_loaded = AddFontResourceW(g_symbols_basic_path) > 0;
+        changed |= g_symbols_basic_loaded;
+    }
     if (pcore_font_path(module, L"PositronSymbols.ttf",
             g_symbols_path, MAX_PATH)) {
         g_symbols_loaded = AddFontResourceW(g_symbols_path) > 0;
@@ -120,14 +129,19 @@ void pcore_font_shutdown(void)
     }
     pcore_font_cache_reset();
     changed = 0;
+    if (g_symbols_basic_loaded) {
+        changed |= RemoveFontResourceW(g_symbols_basic_path) != FALSE;
+    }
     if (g_symbols_loaded) {
         changed |= RemoveFontResourceW(g_symbols_path) != FALSE;
     }
     if (g_emoji_loaded) {
         changed |= RemoveFontResourceW(g_emoji_path) != FALSE;
     }
+    g_symbols_basic_loaded = 0;
     g_symbols_loaded = 0;
     g_emoji_loaded = 0;
+    g_symbols_basic_path[0] = L'\0';
     g_symbols_path[0] = L'\0';
     g_emoji_path[0] = L'\0';
     if (changed) {
@@ -138,7 +152,7 @@ void pcore_font_shutdown(void)
 void pcore_font_status(int *symbols_loaded, int *emoji_loaded)
 {
     if (symbols_loaded != NULL) {
-        *symbols_loaded = g_symbols_loaded;
+        *symbols_loaded = g_symbols_basic_loaded && g_symbols_loaded;
     }
     if (emoji_loaded != NULL) {
         *emoji_loaded = g_emoji_loaded;
@@ -168,16 +182,29 @@ static int pcore_range_contains(const pcore_font_range *ranges,
 
 static int pcore_font_kind_for_codepoint(unsigned long codepoint)
 {
+    /* Symbols 2 keeps the accepted list-marker forms. The basic Symbols
+     * face fills only its genuine cmap gaps, notably U+2190..U+2193. */
     if (g_symbols_loaded && codepoint <= 0xffffUL &&
             pcore_range_contains(pcore_symbol_ranges,
                     (unsigned int) PCORE_SYMBOL_RANGES_COUNT, codepoint)) {
         return PCORE_FONT_SYMBOLS;
+    }
+    if (g_symbols_basic_loaded && codepoint <= 0xffffUL &&
+            pcore_range_contains(pcore_symbol_basic_ranges,
+                    (unsigned int) PCORE_SYMBOL_BASIC_RANGES_COUNT,
+                    codepoint)) {
+        return PCORE_FONT_SYMBOLS_BASIC;
     }
     if (g_emoji_loaded && pcore_range_contains(pcore_emoji_ranges,
             (unsigned int) PCORE_EMOJI_RANGES_COUNT, codepoint)) {
         return PCORE_FONT_EMOJI;
     }
     return PCORE_FONT_BASE;
+}
+
+int pcore_font_supports(unsigned long codepoint)
+{
+    return pcore_font_kind_for_codepoint(codepoint) != PCORE_FONT_BASE;
 }
 
 static unsigned short pcore_emoji_alias_for(unsigned long codepoint)
@@ -360,10 +387,14 @@ static HFONT pcore_plot_font(HDC hdc, const plot_font_style_t *fstyle,
     lf.lfCharSet = DEFAULT_CHARSET;
     lf.lfOutPrecision = OUT_DEFAULT_PRECIS;
     lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
-    lf.lfQuality = DEFAULT_QUALITY;
+    lf.lfQuality = (font_kind == PCORE_FONT_BASE) ?
+            DEFAULT_QUALITY : ANTIALIASED_QUALITY;
 
     if (font_kind == PCORE_FONT_SYMBOLS) {
         face = L"Positron Symbols";
+        lf.lfPitchAndFamily = (BYTE) (DEFAULT_PITCH | FF_DONTCARE);
+    } else if (font_kind == PCORE_FONT_SYMBOLS_BASIC) {
+        face = L"Positron Symbols Basic";
         lf.lfPitchAndFamily = (BYTE) (DEFAULT_PITCH | FF_DONTCARE);
     } else if (font_kind == PCORE_FONT_EMOJI) {
         face = L"Positron Emoji";

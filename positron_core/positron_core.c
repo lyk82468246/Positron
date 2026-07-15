@@ -69,6 +69,11 @@ PCORE_API void PCore_FontFallbackStatus(int *symbols_loaded,
     pcore_font_status(symbols_loaded, emoji_loaded);
 }
 
+PCORE_API int PCore_BundledFontSupports(unsigned long codepoint)
+{
+    return pcore_font_supports(codepoint);
+}
+
 /* ------------------------------------------------------------------ */
 /* HTML -> DOM                                                         */
 /* ------------------------------------------------------------------ */

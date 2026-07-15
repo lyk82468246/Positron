@@ -57,6 +57,7 @@ void pcore_nsshim_init(void);
 int pcore_font_initialize(HMODULE module);
 void pcore_font_shutdown(void);
 void pcore_font_status(int *symbols_loaded, int *emoji_loaded);
+int pcore_font_supports(unsigned long codepoint);
 
 /* The GDI plotter table (defined in pcore_plot_gdi.c), for building a
  * redraw_context to drive NetSurf's html_redraw. */

@@ -124,7 +124,7 @@ scripts\stage.bat
 12. next55 在二次 layout 前屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，只让 auto-height 容器获得额外空间；右箭头改用与左箭头对称的 `area.y0` 基准。用户已确认 TEST41/42、短页纵条与色块页均正常；冻结的 TEST13 导航链未改。
 13. next56 按 NetSurf 3.11 规则补 table/row-group/row/cell 匿名盒和短行空 cell。用户已确认 TEST47 红/白、绿/蓝两行及同批其余测试正常。
 14. next57 移植 NetSurf 列表 marker 构造并恢复 LI DOM user-data 映射。TEST48 自动校验 disc/circle/square、十进制 `start/value/reversed` 及 marker 几何；`PCore_ListMarker` 是只读诊断 API。当前 libcss 仍用 decimal-only `positron_list_style_stub.c`，不要宣称 roman/alpha/CJK counter-style 或 `list-style-image` 已完成。
-15. next58 引入 Noto OFL 来源的静态 Positron Symbols/Emoji 子集。字体由 `scripts/build_fonts.py` 离线、可重复生成，部署在 DLL 同级 `fonts` 目录；`PCore_Init/Shutdown` 使用 CE `AddFontResourceW/RemoveFontResourceW`，GDI width/position/split/paint 共用 fallback run。补充平面 emoji 通过字体内 BMP PUA 别名兼容老 GDI。TEST49 待设备验收；不要把它描述成网页 `@font-face`、复杂 emoji shaping 或彩色字体支持。
+15. next58 引入 Noto OFL 来源的静态 Positron Symbols/Emoji 子集。设备确认 marker 和部分 symbols/emoji 可见，但四个基础箭头缺字且曲线边缘较粗。next59 追加官方 hinted Noto Sans Symbols Basic 子集，用生成的精确 cmap 覆盖表互补两套 symbol face；`PCore_BundledFontSupports` 让 TEST49 在显示前逐码点断言，随包 face 请求 `ANTIALIASED_QUALITY`。字体由 `scripts/build_fonts.py` 离线、可重复生成，部署在 DLL 同级 `fonts` 目录；`PCore_Init/Shutdown` 使用 CE `AddFontResourceW/RemoveFontResourceW`，GDI width/position/split/paint 共用 fallback run。补充平面 emoji 通过字体内 BMP PUA 别名兼容老 GDI。next59 待设备验收；不要把 GDI 抗锯齿请求描述成所有 OEM 必然一致，也不要宣称网页 `@font-face`、复杂 emoji shaping 或彩色字体支持。
 
 ## 开发纪律
 
