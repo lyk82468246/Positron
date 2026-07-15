@@ -380,11 +380,11 @@ scrollbar_redraw(struct scrollbar *s,
 
 		/* right arrow */
 		v[0] = rect.x1 - w / 4 + 1;
-		v[1] = rect.y0 + w / 2;
+		v[1] = area.y0 + w / 2;
 		v[2] = rect.x1 - w * 3 / 4 + 1;
-		v[3] = rect.y0 + w / 4;
+		v[3] = area.y0 + w / 4;
 		v[4] = rect.x1 - w * 3 / 4 + 1;
-		v[5] = rect.y0 + w * 3 / 4;
+		v[5] = area.y0 + w * 3 / 4;
 		res = ctx->plot->polygon(ctx, &arrow_fill_style, v, 3);
 		if (res != NSERROR_OK) {
 			return res;

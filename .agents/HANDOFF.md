@@ -120,7 +120,8 @@ scripts\stage.bat
 8. 测试节奏：默认按能力批次积累多个相关实现、自动断言和直绘/正式链回归，再用一个 `test_host.ini` 一次交付多个 TEST。除编译错误、高风险回归定位或设备专有故障外，不应为每个微小改动单独要求用户验收。
 9. `PCore_StyleDocumentEx2` 是旧样式 ABI 的兼容扩展：接收绝对 document URL 和宿主 URL resolver；core 用 libcss 原生 pending/register 机制处理最多 16 层导入，失败导入注册空表。WM 宿主使用 `InternetCombineUrlA`，旋转只读 document CSS cache。TEST45 已真机确认嵌套、缺失回退、URL 规范化和缓存重选。
 10. 表格构盒已移植 NetSurf 3.11 的 span occupancy；next53 已确认 TEST46 的有限/自动 rowspan、colspan、row-group 边界、像素与正式 redraw。畸形表格空单元格生成与完整 border-collapse 仍未完成。
-11. next54 只修复滚动条占位，不触碰冻结的 TEST13 导航链：host 按实际文档高度动态切换 `WS_VSCROLL`，core 对首次 auto-height 横向 overflow 做一次有条件 reflow；TEST42 增加末行像素 guard。当前默认 `test_host.ini` 仍为 `tests=13,17,41,42,46`，两项视觉修复待真机确认。
+11. next54 的宿主纵条和 auto-height 横条空间有效，但第二次整树 layout 误改 fixed-height overflow 几何，导致 TEST42 原右箭头点击位置失败；右箭头图形还相对 16px 控件向下偏 2px。该包不能作为新基线。
+12. next55 在二次 layout 前屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，只让 auto-height 容器获得额外空间；右箭头改用与左箭头对称的 `area.y0` 基准。TEST42 同时自动断言旧 fixed-height 点击/位移、auto-height 末行和箭头上下对称。当前默认 `test_host.ini` 仍为 `tests=13,17,41,42,46`；冻结的 TEST13 导航链未改。
 
 ## 开发纪律
 

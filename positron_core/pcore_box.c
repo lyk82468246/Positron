@@ -1700,6 +1700,36 @@ static int pcore_needs_auto_hscroll_reflow(struct box *box)
     return 0;
 }
 
+/* A settling pass is only for auto-height boxes. Fixed-height overflow boxes
+ * already have an established WM baseline where the scrollbar occupies their
+ * CSS height. Hide their first-pass extent while the shared tree is reflowed,
+ * then layout_calculate_descendant_bboxes restores the real extent for redraw. */
+static void pcore_mask_fixed_auto_hscroll_extent(struct box *box)
+{
+    struct box *child;
+    enum css_height_e height_type;
+    css_fixed height;
+    css_unit unit;
+
+    if (box == NULL) {
+        return;
+    }
+    if (box->type == BOX_BLOCK && box->style != NULL &&
+            css_computed_overflow_x(box->style) == CSS_OVERFLOW_AUTO &&
+            box_hscrollbar_present(box)) {
+        height = 0;
+        unit = CSS_UNIT_PX;
+        height_type = css_computed_height(box->style, &height, &unit);
+        if (height_type != CSS_HEIGHT_AUTO) {
+            box->descendant_x1 = box->padding[LEFT] + box->width +
+                    box->padding[RIGHT] + box->border[RIGHT].width;
+        }
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        pcore_mask_fixed_auto_hscroll_extent(child);
+    }
+}
+
 PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
 {
     dom_document *doc = (dom_document *) hDoc;
@@ -1758,6 +1788,7 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
 
     layout_document(&st->content, viewport_w, viewport_h);
     if (pcore_needs_auto_hscroll_reflow(tree)) {
+        pcore_mask_fixed_auto_hscroll_extent(tree);
         layout_document(&st->content, viewport_w, viewport_h);
     }
 

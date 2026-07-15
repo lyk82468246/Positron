@@ -6257,7 +6257,12 @@ static BOOL test42_overflow_scrollbar(void)
     int dirty_y;
     int dirty_w;
     int dirty_h;
+    int arrow_min_y;
+    int arrow_max_y;
+    int px;
+    int py;
     COLORREF auto_guard;
+    COLORREF arrow_pixel;
     int screen_w;
     int screen_h;
     char msg[256];
@@ -6296,6 +6301,18 @@ static BOOL test42_overflow_scrollbar(void)
     FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
     PCore_PaintDocument(hDoc, memory_dc, 0, 0);
     auto_guard = GetPixel(memory_dc, ax + 5, ay + ah - 3);
+    arrow_min_y = 16;
+    arrow_max_y = -1;
+    for (py = 0; py < 16; py++) {
+        for (px = 3; px < 14; px++) {
+            arrow_pixel = GetPixel(memory_dc,
+                    sx + sw - 16 + px, sy + sh - 16 + py);
+            if ((arrow_pixel & 0x00ffffffUL) == 0) {
+                if (py < arrow_min_y) { arrow_min_y = py; }
+                if (py > arrow_max_y) { arrow_max_y = py; }
+            }
+        }
+    }
 
     down_used = PCore_OverflowPointer(hDoc, PCORE_POINTER_DOWN,
             sx + sw - 8, sy + sh - 8);
@@ -6317,12 +6334,14 @@ static BOOL test42_overflow_scrollbar(void)
             dirty_w <= 0 || dirty_h <= 0 || dirty_w >= 240 ||
             dirty_h >= 320 || after_x != before_x - 16 ||
             (auto_guard & 0x00ffffffUL) !=
-                    (RGB(255, 0, 0) & 0x00ffffffUL)) {
+                    (RGB(255, 0, 0) & 0x00ffffffUL) ||
+            arrow_min_y + arrow_max_y != 16) {
         _snprintf(msg, sizeof(msg) - 1,
-                "used=%d/%d/%d td.x=%d->%d dirty=%d,%d %dx%d auto=%06lX",
+                "used=%d/%d/%d td.x=%d->%d dirty=%d,%d %dx%d "
+                "auto=%06lX arrow=%d/%d",
                 down_used, up_used, dirty_used, before_x, after_x,
                 dirty_x, dirty_y, dirty_w, dirty_h,
-                auto_guard & 0x00ffffffUL);
+                auto_guard & 0x00ffffffUL, arrow_min_y, arrow_max_y);
         msg[sizeof(msg) - 1] = '\0';
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);

@@ -12,7 +12,7 @@
 | 现代 CSS 值 | TEST40 已在设备确认：数值型 `oklch()` 转裁剪 sRGB，并求值无需布局上下文的同单位 `calc()` 四则运算。 | 完整 gamut mapping、`none`/复杂角度、`color-mix()`、混合单位 calc 或 CSS Color/Values 均已实现。 |
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | IANA 窄屏页 | TEST13 的 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
-| 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。next54 对首次 auto-height 横向溢出做一次条件 reflow，并增加末行像素 guard，待设备确认。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
+| 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。next54 因整树二次布局使 fixed-height 基线回归；next55 已收窄到 auto-height，并增加末行与箭头对称像素 guard，待设备确认。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
 | table span | NetSurf 3.11 span occupancy 已移植；next53 已确认 TEST46 的有效 `colspan`、有限/自动 `rowspan`、row-group 边界、几何、像素与正式 redraw。 | 畸形表格空单元格生成、任意匿名表格归一化或完整 collapsed-border 冲突规则均已实现。 |
 | 图片 | TEST19/20 已确认公共 retained 位图 ABI、WM Imaging 四格式和核心缓存复用；TEST25-37/13 已确认 SVG 链。 | 复杂 SVG text、任意渐变、复杂 CSS 背景、跨线程图片句柄或任意网络图片均已通过。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |

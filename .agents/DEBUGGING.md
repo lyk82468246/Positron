@@ -108,6 +108,8 @@ TEST41 修复只在 flex item 树中实际检测到 grid/inline-grid 降级盒�
 
 2026-07-15 next53 真机确认 TEST46 table span 与同批 TEST13/17/41/42 其余功能正常，但截图暴露两个独立占位问题：host 无条件创建 `WS_VSCROLL`，短文档也保留右侧非客户区；Positron 每次公开布局都重建 box tree，而 NetSurf auto-height overflow 原本依赖上一次 reflow 留下的 descendant bounds，因此首轮横条会覆盖末行。next54 改为按文档高度动态切换宿主 `WS_VSCROLL`，并只对首轮已出现 auto-height 横条的树追加一次 layout；普通页面仍是单次布局。TEST42 新增 auto-height 红/绿宽表格及末行像素 guard。首次尝试桌面 `ShowScrollBar` 在 WM6 SDK 链接时报未解析外部符号，改用 style + `SWP_FRAMECHANGED` 后 Debug/Release ARMV4I 增量构建均 0 错误。
 
+next54 设备结果证明追加的 layout 虽修复 TEST41 类 auto-height 占位，却也让同一树中的 fixed-height overflow 读取首轮 descendant extent 并改变既有控件位置，TEST42 在原右箭头坐标失败为 `used=0/0/0`；不要通过移动测试点击坐标接受这项回归。next55 在第二轮前把 fixed-height auto-overflow 的 `descendant_x1` 临时收回 border edge，最终 bbox 仍会恢复供 redraw 判断，因此只让 auto-height 容器新增 padding。截图像素还确认上游右箭头用 `rect.y0` 后黑色区域位于控件第 7-13 行，向下偏 2px；改为与左箭头一致的 `area.y0` 后，TEST42 自动要求黑色区域上下界之和为 16。C89 检查 0 修改，双配置增量构建 0 错误。
+
 2026-07-13 导航第二阶段把外链 CSS、`<img>` 和应用外链 CSS 后发现的背景 URL 纳入同一 request 的分轮 worker。pending request 持有未交换 document、去重 URL、attempted 状态与原始字节；UI 只在 worker 停止后执行 parse/discovery/style/layout，成功 swap 后 core 已复制资源，失败/关闭则统一释放 request/document/resource。`test_host` 临时预算为 64 URL/2 MiB，限制的是提交前峰值而非 core ABI。TEST43 离线覆盖显式 origin 的 relative/root/absolute URL、去重、成功副本和失败只尝试一次；`c89ize.py` 为 0 修改，VS2008 ARM 增量构建 0 错误、3 条既有 `fpmath` 警告。真机 TEST43 与 TEST13 资源等待仍待确认。
 
 用户截图确认修正后的 TEST29 三个样本正确：红色 nonzero 实心，蓝/绿 evenodd 中心为白色。随后 CSS background-image 按 NetSurf 现有边界接入：样式后的资源扫描读取 computed URI 并复用 document cache；构盒后设置 `box->background`；`redraw.c` 继续负责 position/repeat/clip；GDI plotter 参照上游 Windows frontend 展开 BITMAPF_REPEAT_X/Y。TEST30 的同步 fetch 是当前导航资源阶段的既有取舍，不代表 background-size、多层背景或异步资源事务完成。
