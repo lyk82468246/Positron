@@ -1457,12 +1457,12 @@
 				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_hash.obj" />
 			</FileConfiguration>
 		</File>
-		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\positron_list_style_stub.c">
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\positron_format_list_style.c">
 			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
-				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_positron_list_style_stub.obj" />
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_positron_format_list_style.obj" />
 			</FileConfiguration>
 			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
-				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_positron_list_style_stub.obj" />
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_positron_format_list_style.obj" />
 			</FileConfiguration>
 		</File>
 		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\align_content.c">

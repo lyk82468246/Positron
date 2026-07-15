@@ -685,6 +685,7 @@ static struct box *pcore_construct_block(dom_node *node,
             CSS_DISPLAY_LIST_ITEM) {
         struct box *marker = pcore_box_new(BOX_BLOCK, style, box);
         enum css_list_style_type_e marker_type;
+        lwc_string *image_uri = NULL;
         if (marker == NULL) {
             talloc_free(box);
             return NULL;
@@ -702,6 +703,25 @@ static struct box *pcore_construct_block(dom_node *node,
         } else {
             marker->text = NULL;
             marker->length = 0;
+        }
+        if (css_computed_list_style_image(style, &image_uri) ==
+                CSS_LIST_STYLE_IMAGE_URI && image_uri != NULL) {
+            const char *uri_data = lwc_string_data(image_uri);
+            size_t uri_len = lwc_string_length(image_uri);
+            char *url = (char *) malloc(uri_len + 1);
+            dom_document *doc = NULL;
+
+            if (url != NULL) {
+                memcpy(url, uri_data, uri_len);
+                url[uri_len] = '\0';
+                if (dom_node_get_owner_document(node, &doc) == DOM_NO_ERR &&
+                        doc != NULL) {
+                    marker->object = (struct hlcache_handle *)
+                            pcore_make_cached_bitmap(doc, url, ctx);
+                    dom_node_unref((dom_node *) doc);
+                }
+                free(url);
+            }
         }
         box->list_marker = marker;
         marker->parent = box;

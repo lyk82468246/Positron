@@ -114,6 +114,8 @@ next55 已由用户确认全部正常，可作为新的 overflow 基线。next56
 
 2026-07-15 用户确认 next56 的 TEST47 与同批其余测试正常。next57 的 TEST48 期望 marker 顺序为两个 disc、circle、square、`3.`、`7.`、`5.`、`4.`；失败时先检查 `PCore_ListMarker` 返回的实际序号/文本/几何，不得修改 EXPECTED 回避 LI user-data 或 ordered-list 计数错误。完整上游 `format_list_style.c` 含大量 VS2008 不支持的静态聚合初始化，当前继续使用 decimal-only stub，后续须单独扩充 `c89ize.py` 规则或人工 C89 移植。
 
+2026-07-15 next60 已落实上述后续：`port_list_style_vs2008.py` 只接受已知 `list_counter_style`/`numeric` 字段，未知、重复或不平衡初始化会直接失败；所有非 ASCII 字符只允许位于字符串中并转成三位八进制 UTF-8。首次生成暴露 `c89ize.py` 会先把 `struct name {` 误判成未结束声明，从而把 aggregate 字段重排；根因是 aggregate 判断晚于 `DECL_LIKE`，现已提前。若以后生成文件的 struct 字段顺序变化、出现 C4047/C2078，必须修脚本并重新生成，不能手改生成文件或忽略初始化警告。
+
 next57 的 `c89ize.py` 对 `pcore_box.c`、`pcore_select.c`、`test_host/main.c` 均报告 0 修改；Debug/Release ARMV4I 增量构建均 0 错误，只保留 libcss `fpmath.h` 既有 C4244。包位于 `C:\WMShare\Positron-next57`，配置已核对为 `tests=13,17,41,42,46,47,48`。
 
 2026-07-13 导航第二阶段把外链 CSS、`<img>` 和应用外链 CSS 后发现的背景 URL 纳入同一 request 的分轮 worker。pending request 持有未交换 document、去重 URL、attempted 状态与原始字节；UI 只在 worker 停止后执行 parse/discovery/style/layout，成功 swap 后 core 已复制资源，失败/关闭则统一释放 request/document/resource。`test_host` 临时预算为 64 URL/2 MiB，限制的是提交前峰值而非 core ABI。TEST43 离线覆盖显式 origin 的 relative/root/absolute URL、去重、成功副本和失败只尝试一次；`c89ize.py` 为 0 修改，VS2008 ARM 增量构建 0 错误、3 条既有 `fpmath` 警告。真机 TEST43 与 TEST13 资源等待仍待确认。

@@ -98,7 +98,7 @@ scripts\stage.bat
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid-overflow 隔离、overflow scrollbar、分阶段资源事务、失败回滚与 CSS import tree，离线。TEST40-45 已真机确认。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-49，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化、列表 marker 与随包静态字体 fallback 正式 redraw；TEST48 语义已验收，TEST49 待设备验收。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-50，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化、列表 marker/counter/image 与随包静态字体 fallback 正式 redraw；TEST48/49 已验收，TEST50/next60 待设备验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -123,8 +123,9 @@ scripts\stage.bat
 11. next54 的宿主纵条和 auto-height 横条空间有效，但第二次整树 layout 误改 fixed-height overflow 几何，导致 TEST42 原右箭头点击位置失败；右箭头图形还相对 16px 控件向下偏 2px。该包不能作为新基线。
 12. next55 在二次 layout 前屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，只让 auto-height 容器获得额外空间；右箭头改用与左箭头对称的 `area.y0` 基准。用户已确认 TEST41/42、短页纵条与色块页均正常；冻结的 TEST13 导航链未改。
 13. next56 按 NetSurf 3.11 规则补 table/row-group/row/cell 匿名盒和短行空 cell。用户已确认 TEST47 红/白、绿/蓝两行及同批其余测试正常。
-14. next57 移植 NetSurf 列表 marker 构造并恢复 LI DOM user-data 映射。TEST48 自动校验 disc/circle/square、十进制 `start/value/reversed` 及 marker 几何；`PCore_ListMarker` 是只读诊断 API。当前 libcss 仍用 decimal-only `positron_list_style_stub.c`，不要宣称 roman/alpha/CJK counter-style 或 `list-style-image` 已完成。
-15. next58 引入 Noto OFL 来源的静态 Positron Symbols/Emoji 子集。设备确认 marker 和部分 symbols/emoji 可见，但四个基础箭头缺字且曲线边缘较粗。next59 追加官方 hinted Noto Sans Symbols Basic 子集，用生成的精确 cmap 覆盖表互补两套 symbol face；`PCore_BundledFontSupports` 让 TEST49 在显示前逐码点断言，随包 face 请求 `ANTIALIASED_QUALITY`。字体由 `scripts/build_fonts.py` 离线、可重复生成，部署在 DLL 同级 `fonts` 目录；`PCore_Init/Shutdown` 使用 CE `AddFontResourceW/RemoveFontResourceW`，GDI width/position/split/paint 共用 fallback run。补充平面 emoji 通过字体内 BMP PUA 别名兼容老 GDI。next59 待设备验收；不要把 GDI 抗锯齿请求描述成所有 OEM 必然一致，也不要宣称网页 `@font-face`、复杂 emoji shaping 或彩色字体支持。
+14. next57 移植 NetSurf 列表 marker 构造并恢复 LI DOM user-data 映射。TEST48 自动校验 disc/circle/square、十进制 `start/value/reversed` 及 marker 几何；`PCore_ListMarker` 是只读诊断 API。
+15. next58 引入 Noto OFL 来源的静态 Positron Symbols/Emoji 子集。next59 追加官方 hinted Noto Sans Symbols Basic 子集，用生成的精确 cmap 覆盖表互补两套 symbol face；设备确认箭头不再 tofu、marker 和五个 emoji 均可见且视觉稍有改善。`ANTIALIASED_QUALITY` 最终效果仍取决于 OEM GDI；不要宣称网页 `@font-face`、复杂 emoji shaping 或彩色字体支持。
+16. next60 用生成的 `positron_format_list_style.c` 替换 decimal-only stub，算法与 47 种样式来自仓库内原版 libcss。`scripts/port_list_style_vs2008.py` 负责指定初始化器和 UTF-8 字面量的可重复 C89/ASCII 转换；`c89ize.py` 已修复 aggregate 字段被错误重排的规则。`list-style-image` 复用 document image cache，只有 computed list-item 才发现资源，解码失败保留类型 marker。TEST50 待设备验收；不要把它扩大为自定义 counter-style、所有语言字体或 `list-style-position:inside`。
 
 ## 开发纪律
 

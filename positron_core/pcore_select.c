@@ -2283,6 +2283,7 @@ static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
         bool is_img = false;
         css_computed_style *style;
         lwc_string *bg_uri = NULL;
+        lwc_string *list_uri = NULL;
 
         style = pcore_node_computed_style(node);
         if (style != NULL &&
@@ -2290,6 +2291,14 @@ static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
                 CSS_BACKGROUND_IMAGE_IMAGE && bg_uri != NULL) {
             pcore_fetch_image_url(ic, lwc_string_data(bg_uri),
                     lwc_string_length(bg_uri));
+        }
+        if (style != NULL &&
+                css_computed_display(style, false) ==
+                        CSS_DISPLAY_LIST_ITEM &&
+                css_computed_list_style_image(style, &list_uri) ==
+                CSS_LIST_STYLE_IMAGE_URI && list_uri != NULL) {
+            pcore_fetch_image_url(ic, lwc_string_data(list_uri),
+                    lwc_string_length(list_uri));
         }
 
         err = dom_node_get_node_name(node, &name);

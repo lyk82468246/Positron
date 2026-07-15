@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 49
+#define TEST_MAX_NUMBER 50
 
 static int test_config_space(char c)
 {
@@ -7277,6 +7277,179 @@ static BOOL test49_bundled_fonts(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 50 - upstream libcss counter styles + cached list-style-image    */
+/* -------------------------------------------------------------------- */
+static int list_marker_image_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char SVG[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' "
+        "viewBox='0 0 12 12'><circle cx='6' cy='6' r='5' "
+        "fill='#00a000'/></svg>";
+    image_resource_test_ctx *ctx = (image_resource_test_ctx *) pw;
+    char *copy;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "http://positron.local/marker.svg") != 0) {
+        return 1;
+    }
+    copy = (char *) malloc(sizeof(SVG) - 1);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, SVG, sizeof(SVG) - 1);
+    *out_data = copy;
+    *out_len = sizeof(SVG) - 1;
+    ctx->matched++;
+    return 0;
+}
+
+static BOOL test50_counter_styles(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<h1>Counter styles</h1>"
+        "<ol class=roman start=4><li>upper-roman four</li></ol>"
+        "<ol class=alpha start=26><li>lower-alpha 26</li>"
+        "<li>lower-alpha 27</li></ol>"
+        "<ol class=zero start=9><li>leading zero</li></ol>"
+        "<ol class=cjk start=9><li>CJK byte fixture</li></ol>"
+        "<ul class=image><li>cached SVG marker</li></ul>"
+        "<ul class=broken><li>broken image falls back</li></ul>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:16px;line-height:21px;padding:8px;}"
+        "h1{font-size:23px;color:#800000;margin:0 0 6px;}"
+        "ol,ul{margin-top:2px;margin-bottom:2px;}"
+        ".roman{list-style-type:upper-roman;}"
+        ".alpha{list-style-type:lower-alpha;}"
+        ".zero{list-style-type:decimal-leading-zero;}"
+        ".cjk{list-style-type:cjk-decimal;}"
+        ".image{list-style-type:square;list-style-image:"
+        "url('http://positron.local/marker.svg');}"
+        ".broken{list-style-type:circle;list-style-image:"
+        "url('http://positron.local/missing.svg');}";
+    static const char VISIBLE_CSS[] =
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:16px;line-height:21px;padding:8px;}"
+        "h1{font-size:23px;color:#800000;margin:0 0 6px;}"
+        "ol,ul{margin-top:2px;margin-bottom:2px;}"
+        ".roman{list-style-type:upper-roman;}"
+        ".alpha{list-style-type:lower-alpha;}"
+        ".zero{list-style-type:decimal-leading-zero;}"
+        ".cjk{display:none;}"
+        ".image{list-style-type:square;list-style-image:"
+        "url('http://positron.local/marker.svg');}"
+        ".broken{list-style-type:circle;list-style-image:"
+        "url('http://positron.local/missing.svg');}";
+    static const char *EXPECTED[] = {
+        "IV.", "z.", "aa.", "09.",
+        "\344\271\235\343\200\201", "\342\226\252", "\342\227\213"
+    };
+    HANDLE hDoc;
+    HANDLE hSheet;
+    image_resource_test_ctx ctx;
+    char marker[32];
+    char msg[224];
+    int found;
+    int fetched;
+    int x;
+    int y;
+    int w;
+    int h;
+    int screen_w;
+    int screen_h;
+    unsigned int i;
+
+    memset(&ctx, 0, sizeof(ctx));
+    found = 0;
+    fetched = 0;
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/counter-styles.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_FetchImageResources(hDoc, list_marker_image_fetch,
+                    image_resource_free, &ctx, &found, &fetched) != 0 ||
+            PCore_LayoutDocument(hDoc, 320, 480) != 0 ||
+            found != 2 || fetched != 1 || ctx.calls != 2 ||
+            ctx.matched != 1 || ctx.frees != 1) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "setup/resources failed found=%d fetched=%d calls=%d/%d "
+                "frees=%d", found, fetched, ctx.matched, ctx.calls, ctx.frees);
+        msg[sizeof(msg) - 1] = '\0';
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 50 FAIL", msg);
+        return FALSE;
+    }
+    for (i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); i++) {
+        marker[0] = '\0';
+        x = y = w = h = 0;
+        if (PCore_ListMarker(hDoc, i, marker, sizeof(marker),
+                &x, &y, &w, &h) != 0 ||
+                strcmp(marker, EXPECTED[i]) != 0 || w <= 0 || h <= 0 ||
+                (i == 5 && (w != 12 || h != 12))) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "marker %u='%s' expect='%s' box=%d,%d %dx%d",
+                    i, marker, EXPECTED[i], x, y, w, h);
+            msg[sizeof(msg) - 1] = '\0';
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 50 FAIL", msg);
+            return FALSE;
+        }
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    memset(&ctx, 0, sizeof(ctx));
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(VISIBLE_CSS, sizeof(VISIBLE_CSS) - 1,
+            "http://positron.local/counter-styles.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_FetchImageResources(hDoc, list_marker_image_fetch,
+                    image_resource_free, &ctx, NULL, NULL) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 50 FAIL", "visible list setup failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 50",
+              "Full libcss counters + list-style-image passed. Expect IV,\n"
+              "z, aa, 09; a green round image marker; then circle fallback.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 50 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 50 OK",
+              "47 upstream counter styles, UTF-8 CJK output, cached SVG\n"
+              "marker geometry and broken-image type fallback all passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -7440,6 +7613,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 47: ok = test47_table_normalise(); break;
         case 48: ok = test48_list_markers(); break;
         case 49: ok = test49_bundled_fonts(); break;
+        case 50: ok = test50_counter_styles(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -7521,7 +7695,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                   "Yes = run all selected groups (TEST 1-49)\n"
+                   "Yes = run all selected groups (TEST 1-50)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -7547,7 +7721,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list\n"
                                "normalisation redraw\n"
-                               "(TEST 46-49).\n"
+                               "(TEST 46-50).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -7607,7 +7781,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-49; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-50; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -7632,6 +7806,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test47_table_normalise()){ rc = 13; goto done; }
         if (!test48_list_markers()){ rc = 13; goto done; }
         if (!test49_bundled_fonts()){ rc = 13; goto done; }
+        if (!test50_counter_styles()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -7671,7 +7846,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-49)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-50)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

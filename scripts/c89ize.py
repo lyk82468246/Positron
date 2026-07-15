@@ -30,6 +30,7 @@ Usage:  python scripts/c89ize.py <file> [...]
 """
 import re
 import sys
+import locale
 
 CTRL = {'return', 'if', 'else', 'for', 'while', 'switch', 'case', 'default',
         'do', 'goto', 'break', 'continue', 'sizeof', 'typedef'}
@@ -306,6 +307,13 @@ def transform(text):
             block_comment = True
             continue
 
+        # Aggregate definitions also look like unfinished declarations to the
+        # lightweight declaration regex. Recognise them first and ignore the
+        # complete lexical brace range; fields must never be hoisted/reordered.
+        if aggregate_depth is None and AGGREGATE_START.match(lines[i]):
+            aggregate_depth = starts[i]
+            continue
+
         if decl_cont:
             if stripped.endswith(';'):
                 decl_cont = False
@@ -328,10 +336,6 @@ def transform(text):
                 aggregate_depth = None
             else:
                 continue
-
-        if AGGREGATE_START.match(lines[i]):
-            aggregate_depth = starts[i]
-            continue
 
         # Close blocks that ended within this line (e.g. leading '}' of
         # "} else if (...) {"). Use the minimum depth reached on the line.
@@ -417,16 +421,22 @@ def transform(text):
 def main():
     total = 0
     for path in sys.argv[1:]:
-        with open(path, 'r', newline='') as f:
-            raw = f.read()
+        with open(path, 'rb') as f:
+            encoded = f.read()
+        try:
+            raw = encoded.decode('utf-8')
+            encoding = 'utf-8'
+        except UnicodeDecodeError:
+            encoding = locale.getpreferredencoding(False)
+            raw = encoded.decode(encoding)
         crlf = '\r\n' in raw
         text = raw.replace('\r\n', '\n')
         new, n = transform(text)
         if n:
             if crlf:
                 new = new.replace('\n', '\r\n')
-            with open(path, 'w', newline='') as f:
-                f.write(new)
+            with open(path, 'wb') as f:
+                f.write(new.encode(encoding))
         print("%s: %d change(s)" % (path, n))
         total += n
     print("total: %d" % total)
