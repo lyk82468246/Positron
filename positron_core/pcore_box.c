@@ -1667,6 +1667,39 @@ static pcore_render *pcore_get_render(dom_document *doc)
     return (pcore_render *) d;
 }
 
+/* NetSurf normally reflows a retained box tree, so auto-overflow blocks can
+ * use descendant bounds calculated by the previous pass when reserving a
+ * horizontal scrollbar. Positron rebuilds the tree for each public layout
+ * call. Detect the first-pass case and request one targeted settling pass;
+ * ordinary pages still perform exactly one layout. */
+static int pcore_needs_auto_hscroll_reflow(struct box *box)
+{
+    struct box *child;
+    enum css_height_e height_type;
+    css_fixed height;
+    css_unit unit;
+
+    if (box == NULL) {
+        return 0;
+    }
+    if (box->type == BOX_BLOCK && box->style != NULL &&
+            css_computed_overflow_x(box->style) == CSS_OVERFLOW_AUTO &&
+            box_hscrollbar_present(box)) {
+        height = 0;
+        unit = CSS_UNIT_PX;
+        height_type = css_computed_height(box->style, &height, &unit);
+        if (height_type == CSS_HEIGHT_AUTO) {
+            return 1;
+        }
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        if (pcore_needs_auto_hscroll_reflow(child)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
 {
     dom_document *doc = (dom_document *) hDoc;
@@ -1724,6 +1757,9 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     st->content.background_colour = 0x00ffffff;
 
     layout_document(&st->content, viewport_w, viewport_h);
+    if (pcore_needs_auto_hscroll_reflow(tree)) {
+        layout_document(&st->content, viewport_w, viewport_h);
+    }
 
     st->doc_height = tree->height;
     if (tree->descendant_y1 > st->doc_height) {

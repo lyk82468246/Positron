@@ -115,7 +115,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 24. **图片 DLL JPEG 4:4:4 开源后端已真机验收**：ABI 1.1 的 WM Imaging PNG/JPEG 内存编码、`PImage_FreeBuffer` 所有权和重新解码闭环已由 next47 确认；next48 证明 WM quality=100 仍无法避免小尺寸高饱和图的明显色度串扰。按“成熟能力优先移植开源实现”的原则，新增 `positron_libjpeg` 静态工程，固定 libjpeg-turbo 1.5.3；显式 quality JPEG 先由 WM Imaging 转成锁定的 24bpp 行，再由 libjpeg 压缩器以 ISLOW DCT、三个分量 1x1 的 4:4:4 输出。旧 `PImage_EncodeBitmap` 默认 JPEG 与 PNG 仍保留 WM 路径。next49 已确认 SOF 断言、行方向及红绿蓝黄颜色正确，大面积横纵色带消失。Debug DLL 相比 next48 增加约 238 KiB；无额外部署 DLL。编码时主要临时开销是约 `width*height*3` 的 WM 24bpp 中间位图、压缩输出和 libjpeg 工作区，普通解码/绘制不走此路径。
 25. **ABI 1.3 原始像素入口已完成视觉验收，示例退出缺陷转入 next51**：新增复制式 `PImage_CreateBitmapFromPixels`，首批支持顶到下的 BGR24 与 straight-alpha BGRA32，调用方同时提供缓冲长度、尺寸、stride 和格式。实现先验证所有行的可读边界，再复制到 DLL 自有的 WM 对齐存储，并通过 `CreateBitmapFromBuffer` retained；调用方可立即覆盖源缓冲。next50 截图确认 padded BGR24、半透明 BGRA32、RGB/alpha PNG、4:4:4 JPEG 与 retained SVG 六项颜色正确；启动前的短缓冲拒绝和输入清零也均未触发错误。示例原先未处理 `WM_CLOSE`，标题栏 X 采用 WM 智能最小化而使进程残留，故退出生命周期尚未通过。
 26. **ABI 1.4 原生 BMP/GIF 输出与示例真退出均已验收**：next51 能进入六项可见界面，证明启动前的 `BM`/`GIF8` 签名、重新解码和 16x16 尺寸均通过；截图也确认原始像素、PNG alpha、JPEG 与 SVG 视觉保持正常。next51 的 `WM_CLOSE -> DestroyWindow` 没有解决退出，因为 WM/Pocket PC 标题栏 X 是 Shell Smart Minimize，不保证发送 `WM_CLOSE`。next52 按 WM6 SDK 的 `ShellApiDemo` 模式启用 `SHDoneButton(SHDB_SHOW)`，在 `WM_COMMAND/IDOK` 销毁窗口并进入 `WM_DESTROY -> PostQuitMessage`；用户已确认点击原生 OK 后任务管理器不再残留，且示例可正常再次启动。不创建左右软键，不占客户区；跨线程句柄仍未提供。
-27. **NetSurf table span 占位批次已实现，待 next53 真机验收**：`pcore_box.c` 不再让每行从第 0 列盲排，而是移植 NetSurf 3.11 `box_normalise.c` 的 span occupancy：有限 rowspan 逐行递减，`rowspan=0` 延伸到当前 row group 末尾，下一 `<tbody>` 不继承占位，`colspan=0` 归一为 1，并对 HTML span 值和 WM 临时列记录设置上限。TEST46 用四行三列 fixture 同时覆盖有限/自动 rowspan、colspan、row-group 边界、几何、12 点像素与正式 redraw；默认批次再带 TEST17/41/42 和冻结的 TEST13 深层导航。Debug/Release ARMV4I 增量构建均 0 错误；此项尚不包括畸形表格空单元格生成或完整 collapsed-border 冲突规则。
+27. **NetSurf table span 占位批次已由 next53 真机验收**：`pcore_box.c` 不再让每行从第 0 列盲排，而是移植 NetSurf 3.11 `box_normalise.c` 的 span occupancy：有限 rowspan 逐行递减，`rowspan=0` 延伸到当前 row group 末尾，下一 `<tbody>` 不继承占位，`colspan=0` 归一为 1，并对 HTML span 值和 WM 临时列记录设置上限。TEST46 的四行三列颜色、位置、几何、12 点像素与正式 redraw 均已确认；同批 TEST13/17/41/42 其余功能正常。此项尚不包括畸形表格空单元格生成或完整 collapsed-border 冲突规则。
+28. **next54 处理两项滚动条视觉回归，待真机验收**：next53 截图显示短 TEST46 页面仍有无效宿主纵向条，TEST41 的 auto-height overflow 横条会覆盖表格末行。WM6 SDK 不提供桌面 `ShowScrollBar` 导出，host 因而用 `WS_VSCROLL`、`SetWindowLong` 与 `SWP_FRAMECHANGED` 按 `document_height > client_height` 切换原生非客户区。core 只在首轮布局发现 auto-height 横向 overflow 时追加一次 NetSurf reflow，使其利用首轮 descendant bounds 预留 16px；普通页面保持单次布局。TEST42 新增 auto-height 红/绿宽表格及末行红色像素 guard，不以截图代替断言。Debug/Release ARMV4I 增量构建均 0 错误。
 
 验收：
 
@@ -154,13 +155,13 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - real NetSurf inline/text layout
 - flex
 - table 常见路径
-- 有效表格的 colspan、有限/自动 rowspan 与 row-group 占位（TEST46 待真机）
+- 有效表格的 colspan、有限/自动 rowspan 与 row-group 占位（TEST46 已真机确认）
 
 仍缺或简化：
 
 - float
 - border-collapse 视觉完整度
-- overflow scrollbars
+- overflow scrollbar 的惯性触摸、overlay 模式与更多嵌套组合
 - forms/widgets
 
 建议按真实页面痛点推进，不一次性铺开。

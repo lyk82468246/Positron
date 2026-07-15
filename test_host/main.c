@@ -1880,9 +1880,25 @@ static void pcore_set_scrollbar(HWND hwnd)
     SCROLLINFO si;
     RECT rc;
     int ch;
+    int needed;
+    LONG style;
+    LONG next_style;
 
     GetClientRect(hwnd, &rc);
     ch = rc.bottom - rc.top;
+    needed = g_doc_h > ch;
+    if (!needed) {
+        g_scroll_y = 0;
+    }
+    style = GetWindowLong(hwnd, GWL_STYLE);
+    next_style = needed ? (style | WS_VSCROLL) :
+            (style & ~WS_VSCROLL);
+    if (next_style != style) {
+        SetWindowLong(hwnd, GWL_STYLE, next_style);
+        SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
     memset(&si, 0, sizeof(si));
     si.cbSize = sizeof(si);
     si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
@@ -6197,14 +6213,20 @@ static BOOL test42_overflow_scrollbar(void)
         "<table><tr><td>ALPHA-REGISTRY</td><td>BETA-REGISTRY</td>"
         "<td>GAMMA-REGISTRY</td><td>DELTA-REGISTRY</td></tr>"
         "<tr><td>North</td><td>South</td><td>East</td><td>West</td>"
-        "</tr></table></section></body></html>";
+        "</tr></table></section><aside><table><tr><td></td><td></td>"
+        "</tr></table></aside></body></html>";
     static const char *CSS =
         "html,body{background:#fff;}body{margin:16px;color:#102040;}"
         "h1{margin:0 0 8px 0;color:#800000;}p{margin:0 0 8px 0;}"
         "section{display:block;height:96px;overflow:auto;"
         "border:1px solid #606060;background:#f7f7fb;}"
         "table{border-collapse:collapse;}"
-        "td{white-space:nowrap;padding:8px;border:1px solid #808080;}";
+        "td{white-space:nowrap;padding:8px;border:1px solid #808080;}"
+        "aside{display:block;width:180px;overflow:auto;margin-top:8px;"
+        "border:1px solid #606060;}"
+        "aside table{width:360px;table-layout:fixed;}"
+        "aside td{width:180px;height:32px;padding:0;border:0;"
+        "background:#f00;}aside td+td{background:#0f0;}";
     HANDLE hDoc;
     HANDLE hSheet;
     HDC screen_dc;
@@ -6216,6 +6238,10 @@ static BOOL test42_overflow_scrollbar(void)
     int sy;
     int sw;
     int sh;
+    int ax;
+    int ay;
+    int aw;
+    int ah;
     int before_x;
     int before_y;
     int before_w;
@@ -6231,6 +6257,7 @@ static BOOL test42_overflow_scrollbar(void)
     int dirty_y;
     int dirty_w;
     int dirty_h;
+    COLORREF auto_guard;
     int screen_w;
     int screen_h;
     char msg[256];
@@ -6242,6 +6269,7 @@ static BOOL test42_overflow_scrollbar(void)
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 240, 320) != 0 ||
             PCore_NodeBox(hDoc, "section", &sx, &sy, &sw, &sh) != 0 ||
+            PCore_NodeBox(hDoc, "aside", &ax, &ay, &aw, &ah) != 0 ||
             PCore_NodeBox(hDoc, "td", &before_x, &before_y,
                     &before_w, &before_h) != 0) {
         if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
@@ -6267,6 +6295,7 @@ static BOOL test42_overflow_scrollbar(void)
     SetRect(&rect, 0, 0, 240, 320);
     FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
     PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+    auto_guard = GetPixel(memory_dc, ax + 5, ay + ah - 3);
 
     down_used = PCore_OverflowPointer(hDoc, PCORE_POINTER_DOWN,
             sx + sw - 8, sy + sh - 8);
@@ -6286,11 +6315,14 @@ static BOOL test42_overflow_scrollbar(void)
 
     if (!down_used || !up_used || !dirty_used ||
             dirty_w <= 0 || dirty_h <= 0 || dirty_w >= 240 ||
-            dirty_h >= 320 || after_x != before_x - 16) {
+            dirty_h >= 320 || after_x != before_x - 16 ||
+            (auto_guard & 0x00ffffffUL) !=
+                    (RGB(255, 0, 0) & 0x00ffffffUL)) {
         _snprintf(msg, sizeof(msg) - 1,
-                "used=%d/%d/%d td.x=%d->%d dirty=%d,%d %dx%d",
+                "used=%d/%d/%d td.x=%d->%d dirty=%d,%d %dx%d auto=%06lX",
                 down_used, up_used, dirty_used, before_x, after_x,
-                dirty_x, dirty_y, dirty_w, dirty_h);
+                dirty_x, dirty_y, dirty_w, dirty_h,
+                auto_guard & 0x00ffffffUL);
         msg[sizeof(msg) - 1] = '\0';
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
@@ -6319,8 +6351,9 @@ static BOOL test42_overflow_scrollbar(void)
     g_scroll_y = 0;
     show_info(L"TEST 42",
               "A wide table will open inside a bordered overflow box.\n"
-              "Expect a horizontal NetSurf scrollbar. Tap its arrows and\n"
-              "drag its thumb; only the table content should move.");
+              "Expect horizontal NetSurf scrollbars below both tables, not\n"
+              "covering their last row. Tap arrows and drag the first thumb;\n"
+              "only that table content should move.");
     g_render_doc = hDoc;
     g_render_sheet = hSheet;
     if (!show_render_window()) {
@@ -6336,8 +6369,8 @@ static BOOL test42_overflow_scrollbar(void)
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
     show_info(L"TEST 42 OK",
-              "Overflow widget creation/redraw and right-arrow input passed;\n"
-              "the visible page exercised WM arrow/thumb forwarding.");
+              "Fixed/auto-height overflow spacing, widget redraw and\n"
+              "right-arrow input passed; visible WM forwarding was exercised.");
     return TRUE;
 }
 

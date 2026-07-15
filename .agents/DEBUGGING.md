@@ -15,6 +15,7 @@
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
+- WM6 SDK 没有桌面 Win32 `ShowScrollBar` 的声明或导出；需要动态隐藏标准滚动条时，使用 `GetWindowLong/SetWindowLong(GWL_STYLE, WS_VSCROLL)`，再用 `SetWindowPos(..., SWP_FRAMECHANGED)` 重算非客户区。
 - 设备上是否在跑旧的 VS Deploy 目录，例如 `\Program Files\test_host\`。
 
 ## 没有 console，MessageBox 就是调试器
@@ -104,6 +105,8 @@ TEST41 修复只在 flex item 树中实际检测到 grid/inline-grid 降级盒�
 2026-07-13 用户截图确认 TEST41 竖横屏均保持主内容左右 inset，宽表格未再把页面推到负 x。随后移植 NetSurf 3.11 `desktop/scrollbar.c`；`c89ize.py` 只将 6 处 `plot_style_t` designated initializer 转为位置初始化，再次运行 0 修改。恢复 `descendant_x1/y1` 溢出判定、创建/销毁和祖先 offset，WM DOWN/MOVE/UP 经 `PCore_OverflowPointer` 转给箭头与 thumb。TEST42 合并离屏右箭头 16px 坐标断言和可见拖动页。首次构建只暴露 `box_is_float` 是上游文件内宏而非外部函数，改为等价 box-type 宏后增量构建 core/test_host 0 错误；TEST42 真机仍待确认。
 
 2026-07-13 用户确认 TEST42 功能正常，横向 scrollbar、箭头与 thumb 链闭环。性能目标不是原生外观：该控件继续使用 NetSurf retained scrollbar 经 GDI plotter 绘制，避免为页面内每个 overflow 建立 WM child HWND。随后新增 `PCore_OverflowDirtyRect`，DOWN/MOVE/UP 后 host 只 `InvalidateRect` 对应 overflow viewport（文档 y 减当前 page scroll），不再整窗失效；TEST42 自动断言脏矩形小于 240x320 页面。`c89ize.py` 两次均 0 修改，VS2008 ARM 增量构建 core/test_host 0 错误，仅有既有 `fpmath` 警告。
+
+2026-07-15 next53 真机确认 TEST46 table span 与同批 TEST13/17/41/42 其余功能正常，但截图暴露两个独立占位问题：host 无条件创建 `WS_VSCROLL`，短文档也保留右侧非客户区；Positron 每次公开布局都重建 box tree，而 NetSurf auto-height overflow 原本依赖上一次 reflow 留下的 descendant bounds，因此首轮横条会覆盖末行。next54 改为按文档高度动态切换宿主 `WS_VSCROLL`，并只对首轮已出现 auto-height 横条的树追加一次 layout；普通页面仍是单次布局。TEST42 新增 auto-height 红/绿宽表格及末行像素 guard。首次尝试桌面 `ShowScrollBar` 在 WM6 SDK 链接时报未解析外部符号，改用 style + `SWP_FRAMECHANGED` 后 Debug/Release ARMV4I 增量构建均 0 错误。
 
 2026-07-13 导航第二阶段把外链 CSS、`<img>` 和应用外链 CSS 后发现的背景 URL 纳入同一 request 的分轮 worker。pending request 持有未交换 document、去重 URL、attempted 状态与原始字节；UI 只在 worker 停止后执行 parse/discovery/style/layout，成功 swap 后 core 已复制资源，失败/关闭则统一释放 request/document/resource。`test_host` 临时预算为 64 URL/2 MiB，限制的是提交前峰值而非 core ABI。TEST43 离线覆盖显式 origin 的 relative/root/absolute URL、去重、成功副本和失败只尝试一次；`c89ize.py` 为 0 修改，VS2008 ARM 增量构建 0 错误、3 条既有 `fpmath` 警告。真机 TEST43 与 TEST13 资源等待仍待确认。
 
