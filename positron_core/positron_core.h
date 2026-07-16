@@ -186,6 +186,15 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h);
 PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
                             int *x, int *y, int *w, int *h);
 
+/* Inspect one table cell's used border after collapsed-border conflict
+ * resolution. Cells and sides are in document order; side uses CSS order
+ * 0=top, 1=right, 2=bottom, 3=left. `style` receives the libcss border-style
+ * value, `argb` is 0xAARRGGBB and `width` is CSS px. This is a read-only
+ * diagnostics API and does not alter layout or redraw. */
+PCORE_API int PCore_TableCellBorder(HANDLE hDoc, unsigned int cell_index,
+                                   int side, int *style,
+                                   unsigned long *argb, int *width);
+
 /* Read back a laid-out list marker by document order. `text` receives the
  * marker's UTF-8 bytes and is always NUL-terminated when cap > 0. The
  * geometry is in absolute page CSS px. Returns non-zero when the marker does

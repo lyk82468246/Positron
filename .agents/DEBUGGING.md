@@ -11,13 +11,13 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=13,17,41,42,46,47,48,49,50,51,52`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=13,17,41,42,46,47,48,49,50,51,52,53`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
 - 2026-07-16：next60 首次 TEST50 得到 `found=4 fetched=2 matched=1 calls=3`。文件时间证明 staging 中 `positron_core.dll`/`pcore_select.obj` 为 22:04，而带 computed list-item gate 的 `pcore_select.c` 为 22:05；22:14 只补编了 Release，随后却打包 Debug，形成新 TEST50 EXE + 旧 core DLL。旧 DLL 会同时扫描继承 `list-style-image` 的 UL 与 LI，计数恰为 4/2/1/3。不要修改断言；重编 Debug 即包含仓库现有修复。为防复发，`stage.bat` 已改为先增量构建后复制。
 - 同日 next61 首次通过新 staging 门禁：Debug 增量编译实际重编 `positron_format_list_style.c`、`pcore_select.c` 与 `main.c`，三个受影响项目 0 错误，仅有 9 条既有 `fpmath.h` C4244。`C:\WMShare\Positron-next61` 中 core DLL 与 test EXE 的 SHA-256 均和刚生成 Debug 产物一致；用户随后确认 TEST50 的 IV/z/aa/09、绿色图片 marker 与 circle fallback 全部通过。
-- 2026-07-16：next62/TEST51 横竖屏确认 inside `VIII.` 与绿色图片 marker 共享首行，换行回到内容起点，outside 对照未回归。next63 对 block-first/empty inside 不在布局后手动平移：构盒阶段加入零宽匿名 inline run，让 NetSurf 自己形成 marker 行并推开后续块；否则父高度和下一列表项仍会使用旧几何。TEST52 同时检查空 marker 行确实占高、嵌套 VI 缩进及 block-first 图片行。
+- 2026-07-16：next62/TEST51 横竖屏确认 inside `VIII.` 与绿色图片 marker 共享首行，换行回到内容起点，outside 对照未回归。next63/TEST52 随后确认 block-first、空 marker 行、嵌套 VI 与 block-first 图片行在横竖屏均符合预期。next64 不改 `table.c` 冲突算法，先以 `PCore_TableCellBorder` 只读检查 NetSurf 已算出的 used border；TEST53 设备页应依次看到蓝色 dotted、品红 double、hidden gap、橙色 tie、品红 top、青色横线和 separate 对照。
 - WM6 SDK 没有桌面 Win32 `ShowScrollBar` 的声明或导出；需要动态隐藏标准滚动条时，使用 `GetWindowLong/SetWindowLong(GWL_STYLE, WS_VSCROLL)`，再用 `SetWindowPos(..., SWP_FRAMECHANGED)` 重算非客户区。
 - 设备上是否在跑旧的 VS Deploy 目录，例如 `\Program Files\test_host\`。
 

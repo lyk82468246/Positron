@@ -2301,6 +2301,58 @@ PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
     return 0;
 }
 
+static struct box *pcore_table_cell_at(struct box *box,
+        unsigned int target, unsigned int *current)
+{
+    struct box *child;
+    struct box *found;
+
+    if (box == NULL) {
+        return NULL;
+    }
+    if (box->type == BOX_TABLE_CELL) {
+        if (*current == target) {
+            return box;
+        }
+        *current += 1;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        found = pcore_table_cell_at(child, target, current);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+PCORE_API int PCore_TableCellBorder(HANDLE hDoc, unsigned int cell_index,
+        int side, int *style, unsigned long *argb, int *width)
+{
+    pcore_render *st;
+    struct box *cell;
+    unsigned int current;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL || side < TOP || side > LEFT) {
+        return 1;
+    }
+    current = 0;
+    cell = pcore_table_cell_at(st->root_box, cell_index, &current);
+    if (cell == NULL) {
+        return 1;
+    }
+    if (style != NULL) {
+        *style = (int) cell->border[side].style;
+    }
+    if (argb != NULL) {
+        *argb = (unsigned long) cell->border[side].c;
+    }
+    if (width != NULL) {
+        *width = cell->border[side].width;
+    }
+    return 0;
+}
+
 static struct box *pcore_list_marker_at(struct box *box,
         unsigned int target, unsigned int *current)
 {

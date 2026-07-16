@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 52
+#define TEST_MAX_NUMBER 53
 
 static int test_config_space(char c)
 {
@@ -7744,6 +7744,160 @@ static BOOL test52_inside_block_markers(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 53 - NetSurf collapsed-table border conflict resolution         */
+/* -------------------------------------------------------------------- */
+static BOOL test53_table_collapsed_borders(void)
+{
+    HANDLE hDoc;
+    HANDLE hSheet;
+    unsigned int i;
+    int style;
+    int width;
+    unsigned long color;
+    int screen_w;
+    int screen_h;
+    char msg[256];
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Collapsed borders</h1>"
+        "<table class=collapse>"
+        "<tr><td class=wide-a>WIDER</td><td class=wide-b>blue 5</td></tr>"
+        "<tr><td class=style-a>STYLE</td><td class=style-b>double</td></tr>"
+        "<tr><td class=hidden-a>HIDDEN</td><td class=hidden-b>gap</td></tr>"
+        "<tr><td class=tie-a>TIE LEFT</td><td class=tie-b>orange</td></tr>"
+        "</table>"
+        "<table class=origin><tbody><tr><td>ORIGIN: cell top</td></tr>"
+        "</tbody></table>"
+        "<table class=horizontal><tr><td class=top>TOP wins</td></tr>"
+        "<tr><td class=bottom>cyan line</td></tr></table>"
+        "<table class=separate><tr><td class=wide-a>SEPARATE</td>"
+        "<td class=wide-b>keeps both</td></tr></table>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:13px;line-height:17px;margin:0;padding:7px;}"
+        "h1{font-size:22px;color:#800000;margin:0 0 5px;}"
+        "table{width:190px;table-layout:fixed;margin:5px 0;}"
+        "td{height:17px;padding:2px;background:#f7f7fb;}"
+        ".collapse,.origin,.horizontal{border-collapse:collapse;}"
+        ".wide-a{border-right:3px solid #ff0000;}"
+        ".wide-b{border-left:5px dotted #0000ff;}"
+        ".style-a{border-right:4px solid #00a000;}"
+        ".style-b{border-left:4px double #ff00ff;}"
+        ".hidden-a{border-right:6px solid #ff0000;}"
+        ".hidden-b{border-left:1px hidden #000000;}"
+        ".tie-a{border-right:3px solid #ff8000;}"
+        ".tie-b{border-left:3px solid #800080;}"
+        ".origin{border-top:4px solid #ff0000;}"
+        ".origin tbody{border-top:4px solid #00a000;}"
+        ".origin tr{border-top:4px solid #0000ff;}"
+        ".origin td{border-top:4px solid #ff00ff;}"
+        ".horizontal .top{border-bottom:3px solid #00a0c0;}"
+        ".horizontal .bottom{border-top:3px solid #ffff00;}"
+        ".separate{border-collapse:separate;border-spacing:0;}";
+    struct border_expect {
+        unsigned int cell;
+        int side;
+        int style;
+        unsigned long color;
+        int width;
+        int check_color;
+    };
+    static const struct border_expect expected[] = {
+        { 1, 3, CSS_BORDER_STYLE_DOTTED, 0xff0000ffUL, 5, 1 },
+        { 3, 3, CSS_BORDER_STYLE_DOUBLE, 0xffff00ffUL, 4, 1 },
+        { 5, 3, CSS_BORDER_STYLE_HIDDEN, 0, 0, 0 },
+        { 7, 3, CSS_BORDER_STYLE_SOLID, 0xffff8000UL, 3, 1 },
+        { 8, 0, CSS_BORDER_STYLE_SOLID, 0xffff00ffUL, 4, 1 },
+        { 10, 0, CSS_BORDER_STYLE_SOLID, 0xff00a0c0UL, 3, 1 },
+        { 11, 1, CSS_BORDER_STYLE_SOLID, 0xffff0000UL, 3, 1 },
+        { 12, 3, CSS_BORDER_STYLE_DOTTED, 0xff0000ffUL, 5, 1 }
+    };
+
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/collapsed-borders.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 220, 360) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 53 FAIL", "parse/style/layout failed");
+        return FALSE;
+    }
+    for (i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
+        style = -1;
+        width = -1;
+        color = 0;
+        if (PCore_TableCellBorder(hDoc, expected[i].cell,
+                expected[i].side, &style, &color, &width) != 0 ||
+                style != expected[i].style || width != expected[i].width ||
+                (expected[i].check_color && color != expected[i].color)) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "case=%u cell=%u side=%d got=%d/%lu/%08lX "
+                    "expect=%d/%d/%08lX",
+                    i, expected[i].cell, expected[i].side,
+                    style, (unsigned long) width, color,
+                    expected[i].style, expected[i].width,
+                    expected[i].color);
+            msg[sizeof(msg) - 1] = '\0';
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 53 FAIL", msg);
+            return FALSE;
+        }
+    }
+    if (PCore_TableCellBorder(hDoc, 99, 0, NULL, NULL, NULL) == 0 ||
+            PCore_TableCellBorder(hDoc, 0, 4, NULL, NULL, NULL) == 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 53 FAIL", "diagnostic bounds were not rejected");
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/collapsed-borders.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 53 FAIL", "visible border setup failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 53",
+              "Collapsed-border rules passed. Expect blue dotted, magenta\n"
+              "double, hidden gap and orange vertical seams; then magenta\n"
+              "top, cyan horizontal and a final separate-border control.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 53 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 53 OK",
+              "Width/style/hidden/source/tie conflicts and the separate\n"
+              "model control passed through NetSurf layout and redraw.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -7910,6 +8064,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 50: ok = test50_counter_styles(); break;
         case 51: ok = test51_inside_list_markers(); break;
         case 52: ok = test52_inside_block_markers(); break;
+        case 53: ok = test53_table_collapsed_borders(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -7991,7 +8146,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                   "Yes = run all selected groups (TEST 1-52)\n"
+                   "Yes = run all selected groups (TEST 1-53)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -8017,7 +8172,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list\n"
                                "normalisation redraw\n"
-                               "(TEST 46-52).\n"
+                               "(TEST 46-53).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -8077,7 +8232,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-52; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-53; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -8105,6 +8260,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test50_counter_styles()){ rc = 13; goto done; }
         if (!test51_inside_list_markers()){ rc = 13; goto done; }
         if (!test52_inside_block_markers()){ rc = 13; goto done; }
+        if (!test53_table_collapsed_borders()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -8144,7 +8300,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-52)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-53)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
