@@ -460,6 +460,10 @@ static inline bool box_has_percentage_max_width(struct box *b)
 	return ((type == CSS_MAX_WIDTH_SET) && (unit == CSS_UNIT_PCT));
 }
 
+static int line_height(
+		const css_unit_ctx *unit_len_ctx,
+		const css_computed_style *style);
+
 /**
  * Get the horizontal space consumed by an inside list marker.
  *
@@ -490,15 +494,18 @@ layout__inside_list_marker_width(const struct box *first)
 }
 
 static int
-layout__inside_list_marker_height(const struct box *first)
+layout__inside_list_marker_height(const css_unit_ctx *unit_len_ctx,
+		const struct box *first)
 {
 	const struct box *item;
+	int height;
 
 	if (layout__inside_list_marker_width(first) == 0) {
 		return 0;
 	}
 	item = first->parent->parent;
-	return item->list_marker->height;
+	height = line_height(unit_len_ctx, item->style);
+	return max(height, item->list_marker->height);
 }
 
 /**
@@ -2869,8 +2876,11 @@ layout_line(struct box *first,
 		/* inline containers with no text are usually for layout and
 		 * look better with no minimum line-height */
 		used_height = height = 0;
-	if (indent && height < layout__inside_list_marker_height(first))
-		used_height = height = layout__inside_list_marker_height(first);
+	if (indent && height < layout__inside_list_marker_height(
+			&content->unit_len_ctx, first)) {
+		used_height = height = layout__inside_list_marker_height(
+				&content->unit_len_ctx, first);
+	}
 
 	/* pass 1: find height of line assuming sides at top of line: loop
 	 * body executed at least once

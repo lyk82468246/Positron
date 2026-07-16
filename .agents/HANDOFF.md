@@ -98,7 +98,7 @@ scripts\stage.bat
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid-overflow 隔离、overflow scrollbar、分阶段资源事务、失败回滚与 CSS import tree，离线。TEST40-45 已真机确认。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-51，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化、列表 marker/counter/image/inside flow 与随包静态字体 fallback 正式 redraw；TEST48-50 已验收，TEST51/next62 待设备验收。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-52，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化、列表 marker/counter/image/inside flow 与随包静态字体 fallback 正式 redraw；TEST48-51 已验收，TEST52/next63 待设备验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -126,7 +126,8 @@ scripts\stage.bat
 14. next57 移植 NetSurf 列表 marker 构造并恢复 LI DOM user-data 映射。TEST48 自动校验 disc/circle/square、十进制 `start/value/reversed` 及 marker 几何；`PCore_ListMarker` 是只读诊断 API。
 15. next58 引入 Noto OFL 来源的静态 Positron Symbols/Emoji 子集。next59 追加官方 hinted Noto Sans Symbols Basic 子集，用生成的精确 cmap 覆盖表互补两套 symbol face；设备确认箭头不再 tofu、marker 和五个 emoji 均可见且视觉稍有改善。`ANTIALIASED_QUALITY` 最终效果仍取决于 OEM GDI；不要宣称网页 `@font-face`、复杂 emoji shaping 或彩色字体支持。
 16. next60 用生成的 `positron_format_list_style.c` 替换 decimal-only stub，算法与 47 种样式来自仓库内原版 libcss。`scripts/port_list_style_vs2008.py` 负责指定初始化器和 UTF-8 字面量的可重复 C89/ASCII 转换；`list-style-image` 复用 document image cache，只有 computed list-item 才发现资源，解码失败保留类型 marker。next60 首次设备 TEST50 的 `found=4 fetched=2` 来自旧 Debug core DLL 打包事故；`stage.bat` 增加自动增量 Build 门禁后，next61 已确认 TEST50 的计数、缓存 SVG marker 与失败回退全部通过。
-17. next62 把 NetSurf 3.11 已计算但未参与 layout 的 `list-style-position:inside` 接到 inline-first 首行：marker 尺寸在 minmax 前准备，首行吸收 marker+4px，换行恢复内容起点，图片 marker 可抬高行高。TEST51 通过新增只读 `PCore_ListItemGeometry` 自动检查 outside/inside、`VIII.`、缓存 12x12 SVG 与悬挂换行；当前 VS2008 ARM Debug 增量编译 0 错误，待设备验收。复杂 block-first/float marker 保持显式限制，且本批未触碰冻结的 TEST13 导航链。`c89ize.py` 同批增加注释前导声明、函数头和多行初始化声明规则，`scripts/test_c89ize.py` 的 4 个回归必须先通过。
+17. next62 把 NetSurf 3.11 已计算但未参与 layout 的 `list-style-position:inside` 接到 inline-first 首行：marker 尺寸在 minmax 前准备，首行吸收 marker+4px，换行恢复内容起点，图片 marker 可抬高行高。TEST51 通过新增只读 `PCore_ListItemGeometry` 自动检查 outside/inside、`VIII.`、缓存 12x12 SVG 与悬挂换行；用户提供的横竖屏截图均符合预期。`c89ize.py` 同批增加注释前导声明、函数头和多行初始化声明规则，`scripts/test_c89ize.py` 的 4 个回归必须先通过。
+18. next63 按 W3C inside marker 的首个 inline element 语义，在构盒时加入零宽匿名 inline run；block-first、空条目、嵌套列表和 block-first 图片 marker 因而都由原 NetSurf block/inline layout 计算高度与兄弟位置，不在 layout 后手改坐标。图片 marker 匿名行取 `max(line-height, intrinsic height)`。TEST52 自动验证 III/IV/V/VI、空行间距、嵌套缩进、12x12 SVG 资源及正式 redraw；Debug ARM 增量编译 0 错误，待设备验收。float 邻接仍明确不支持，本批未触碰冻结的 TEST13 导航链。
 
 ## 开发纪律
 

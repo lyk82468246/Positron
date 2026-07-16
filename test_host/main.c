@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 51
+#define TEST_MAX_NUMBER 52
 
 static int test_config_space(char c)
 {
@@ -7585,6 +7585,165 @@ static BOOL test51_inside_list_markers(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 52 - inside markers before block, empty and nested content       */
+/* -------------------------------------------------------------------- */
+static BOOL test52_inside_block_markers(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Inside block markers</h1>"
+        "<ol class=blocks start=3>"
+        "<li><div>Block child starts below its marker line.</div></li>"
+        "<li></li>"
+        "<li><div>Parent block before a nested list.</div>"
+        "<ol start=6><li><div>Nested block child.</div></li></ol></li>"
+        "</ol>"
+        "<ul class=image><li><div>Image marker owns a line before this "
+        "block.</div></li></ul></body></html>";
+    static const char CSS[] =
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:16px;line-height:21px;margin:0;padding:8px;}"
+        "h1{font-size:23px;color:#800000;margin:0 0 6px;}"
+        "ol,ul{padding-left:22px;margin:4px 0;}"
+        "li{width:142px;}li div{margin:0 0 3px;}"
+        ".blocks,.blocks ol{list-style-position:inside;"
+        "list-style-type:upper-roman;}"
+        ".image{list-style-position:inside;list-style-type:square;"
+        "list-style-image:url('http://positron.local/marker.svg');}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    image_resource_test_ctx ctx;
+    PCoreListItemGeometry block;
+    PCoreListItemGeometry parent;
+    PCoreListItemGeometry nested;
+    PCoreListItemGeometry image;
+    char marker[24];
+    char msg[256];
+    int found;
+    int fetched;
+    int empty_x;
+    int empty_y;
+    int empty_w;
+    int empty_h;
+    int parent_marker_y;
+    int screen_w;
+    int screen_h;
+
+    memset(&ctx, 0, sizeof(ctx));
+    memset(&block, 0, sizeof(block));
+    memset(&parent, 0, sizeof(parent));
+    memset(&nested, 0, sizeof(nested));
+    memset(&image, 0, sizeof(image));
+    found = 0;
+    fetched = 0;
+    empty_x = empty_y = empty_w = empty_h = -1;
+    parent_marker_y = -1;
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/inside-block-list.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_FetchImageResources(hDoc, list_marker_image_fetch,
+                    image_resource_free, &ctx, &found, &fetched) != 0 ||
+            PCore_LayoutDocument(hDoc, 196, 400) != 0 ||
+            found != 1 || fetched != 1 || ctx.calls != 1 ||
+            ctx.matched != 1 || ctx.frees != 1 ||
+            PCore_ListItemGeometry(hDoc, 0, &block) != 0 ||
+            PCore_ListItemGeometry(hDoc, 2, &parent) != 0 ||
+            PCore_ListItemGeometry(hDoc, 3, &nested) != 0 ||
+            PCore_ListItemGeometry(hDoc, 4, &image) != 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "setup failed resources=%d/%d calls=%d match=%d free=%d",
+                found, fetched, ctx.calls, ctx.matched, ctx.frees);
+        msg[sizeof(msg) - 1] = '\0';
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 52 FAIL", msg);
+        return FALSE;
+    }
+    marker[0] = '\0';
+    if (PCore_ListMarker(hDoc, 0, marker, sizeof(marker),
+            NULL, NULL, NULL, NULL) != 0 || strcmp(marker, "III.") != 0 ||
+            PCore_ListMarker(hDoc, 1, marker, sizeof(marker), &empty_x,
+                    &empty_y, &empty_w, &empty_h) != 0 ||
+            strcmp(marker, "IV.") != 0 ||
+            PCore_ListMarker(hDoc, 2, marker, sizeof(marker), NULL,
+                    &parent_marker_y, NULL, NULL) != 0 ||
+            strcmp(marker, "V.") != 0 ||
+            PCore_ListMarker(hDoc, 3, marker, sizeof(marker),
+                    NULL, NULL, NULL, NULL) != 0 ||
+            strcmp(marker, "VI.") != 0 ||
+            block.marker_x < block.item_x ||
+            block.first_text_y <= block.marker_y ||
+            empty_x < block.item_x || empty_w <= 0 || empty_h <= 0 ||
+            empty_y <= block.first_text_y ||
+            parent_marker_y < empty_y + empty_h ||
+            parent.first_text_y <= parent.marker_y ||
+            nested.marker_x <= parent.marker_x ||
+            nested.first_text_y <= nested.marker_y ||
+            image.marker_x < image.item_x ||
+            image.marker_width != 12 || image.marker_height != 12 ||
+            image.first_text_y - image.marker_y < 16) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "b=%d,%d/%d e=%d,%d,%d,%d p=%d/%d n=%d/%d i=%d,%d/%d",
+                block.marker_x, block.marker_y, block.first_text_y,
+                empty_x, empty_y, empty_w, empty_h,
+                parent.marker_y, parent.first_text_y,
+                nested.marker_x, nested.first_text_y,
+                image.marker_y, image.marker_height, image.first_text_y);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 52 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    memset(&ctx, 0, sizeof(ctx));
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/inside-block-list.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_FetchImageResources(hDoc, list_marker_image_fetch,
+                    image_resource_free, &ctx, NULL, NULL) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 52 FAIL", "visible inside-block setup failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 52",
+              "Expect III before a block, IV alone on an empty line, V with\n"
+              "nested VI, then a green image marker. Every marker owns the\n"
+              "line before its block content.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 52 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 52 OK",
+              "Block-first, empty, nested and cached-image inside marker\n"
+              "flows all passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -7750,6 +7909,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 49: ok = test49_bundled_fonts(); break;
         case 50: ok = test50_counter_styles(); break;
         case 51: ok = test51_inside_list_markers(); break;
+        case 52: ok = test52_inside_block_markers(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -7831,7 +7991,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                   "Yes = run all selected groups (TEST 1-51)\n"
+                   "Yes = run all selected groups (TEST 1-52)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -7857,7 +8017,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list\n"
                                "normalisation redraw\n"
-                               "(TEST 46-51).\n"
+                               "(TEST 46-52).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -7917,7 +8077,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-51; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-52; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -7944,6 +8104,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test49_bundled_fonts()){ rc = 13; goto done; }
         if (!test50_counter_styles()){ rc = 13; goto done; }
         if (!test51_inside_list_markers()){ rc = 13; goto done; }
+        if (!test52_inside_block_markers()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -7983,7 +8144,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-51)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-52)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

@@ -725,6 +725,31 @@ static struct box *pcore_construct_block(dom_node *node,
         }
         box->list_marker = marker;
         marker->parent = box;
+
+        /* CSS Lists places an inside marker as the first inline content of
+         * the list item. A zero-width anonymous run lets NetSurf create that
+         * line even when the first author child is block-level or absent;
+         * layout.c reserves and paints the retained marker itself. */
+        if (css_computed_list_style_position(style) ==
+                CSS_LIST_STYLE_POSITION_INSIDE) {
+            struct box *placeholder;
+
+            inline_cont = pcore_box_new(BOX_INLINE_CONTAINER, NULL, ctx);
+            if (inline_cont == NULL) {
+                talloc_free(box);
+                return NULL;
+            }
+            placeholder = pcore_box_new(BOX_TEXT, style, ctx);
+            if (placeholder == NULL) {
+                talloc_free(inline_cont);
+                talloc_free(box);
+                return NULL;
+            }
+            placeholder->text = (char *) "";
+            placeholder->length = 0;
+            pcore_box_add_child(inline_cont, placeholder);
+            pcore_box_add_child(box, inline_cont);
+        }
     }
 
     if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {

@@ -123,7 +123,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 32. **next58 随包单色字体 fallback 部分通过**：从 Noto 官方 Noto Sans Symbols 2 与 Noto Emoji 生成改名后的静态 TrueType 子集，合计约 814 KiB；emoji 固化 400 字重并为 1,242 个补充平面字形建立 BMP PUA 别名，避免依赖 WM6 GDI 的 surrogate/cmap12 支持。`PCore_Init/Shutdown` 通过 CE 原生 `AddFontResourceW/RemoveFontResourceW` 管理 DLL 相邻 `fonts` 目录并广播 `WM_FONTCHANGE`；绘制、width、position、split 共用 fallback run 与同一 emoji 映射。设备已确认 disc/circle/square 及部分符号/emoji 可见；四个基础箭头仍为 tofu，圆形与 emoji 边缘较粗。
 33. **next59 补齐基础符号并请求抗锯齿，已设备验收**：追加官方 hinted Noto Sans Symbols 子集，保留 Symbols 2 对已验收 marker 的优先级，只在其真实 cmap 缺口使用 Basic face；三份部署字体共约 901 KiB。生成器输出两套独立精确覆盖表，`PCore_BundledFontSupports` 与 TEST49 在开窗前逐个断言本页 16 个码点。设备确认四个箭头不再 tofu、marker 与五个 emoji 均可见，视觉比 next58 稍好；细线仍受 OEM GDI 限制。复杂 ZWJ shaping、彩色字体与网页 `@font-face` 不在本批次。
 34. **next60/61 完整 counter style 与图片 marker 已验收**：用 `scripts/port_list_style_vs2008.py` 从仓库原版 libcss `format_list_style.c` 可重复生成 ASCII/C89 文件，保留上游 47 种 Roman/Latin/Greek/CJK 等 counter style，不再使用 decimal-only stub。生成器把 C99 指定初始化器按已知结构转成位置初始化器，并把 UTF-8 字面量转为固定三位八进制；`list-style-image` 仅从 computed `display:list-item` 发现资源，复用 document image cache，成功生成 NetSurf marker object，失败保留 `list-style-type`。next60 首测失败来自 staging 混用旧 Debug core DLL；`stage.bat` 增加自动增量构建门禁后，next61 的 TEST50 已在设备确认 IV/z/aa/09、绿色缓存 SVG marker 与圆形失败回退均正确。
-35. **next62 `list-style-position:inside` 内联首行，待设备验收**：上游 NetSurf 3.11 已计算 inside/outside computed value，却仍统一把 marker 放到负 x。当前补丁在 marker 尺寸准备后，让 inline-first list item 的首行宽度吸收文本或缓存图片 marker，后续换行回到内容起点；outside 路径保持原语义。TEST51 自动检查 `VIII.`、12x12 SVG 资源计数、inside/outside 几何及悬挂换行，并显示正式 redraw。复杂 block-first、float marker 和完整 CSS Lists 暂不扩张；本批不修改 TEST13 导航冻结路径。
+35. **next62 `list-style-position:inside` 内联首行已验收**：上游 NetSurf 3.11 已计算 inside/outside computed value，却仍统一把 marker 放到负 x。当前补丁在 marker 尺寸准备后，让 inline-first list item 的首行宽度吸收文本或缓存图片 marker，后续换行回到内容起点；outside 路径保持原语义。TEST51 自动检查 `VIII.`、12x12 SVG 资源计数、inside/outside 几何及悬挂换行；用户提供的横竖屏截图均符合预期。
+36. **next63 inside 匿名首行扩展，待设备验收**：W3C CSS Lists Level 3 把 inside marker 定义为列表内容开头的 inline element。构盒阶段现为 inside 项加入零宽、不绘制的匿名 inline run，因此首个作者子项为 block 或不存在时，NetSurf 仍会自然生成 marker 首行并更新后续块、兄弟和父高度；图片 marker 行高取 `max(line-height, intrinsic height)`。TEST52 一次覆盖 III block-first、IV 空条目、V/VI 嵌套计数以及 block-first 缓存 SVG marker。官方 NetSurf source viewer 当前错误路由到旧 bug system，本批以仓库内 3.11 上游和 W3C 规范为依据；float 邻接保持后续限制，且未修改 TEST13 导航冻结路径。
 
 验收：
 
@@ -165,7 +166,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - 有效表格的 colspan、有限/自动 rowspan 与 row-group 占位（TEST46 已真机确认）
 - table/row-group/row/cell 匿名包装与短行空单元格生成（TEST47 已真机确认）
 - 常见列表 marker、上游 47 种 counter formatter 与缓存图片 marker（TEST48-50/next61 已确认）
-- inline-first `list-style-position:inside` 首行占位与悬挂换行（next62/TEST51 已编译，待设备验收）
+- inline-first `list-style-position:inside` 首行占位与悬挂换行（next62/TEST51 已验收）
+- block-first、空条目和嵌套 inside marker 匿名首行（next63/TEST52 已编译，待设备验收）
 - 随包静态 symbols/monochrome emoji fallback（next59 TEST49 已真机确认）
 
 仍缺或简化：
@@ -173,7 +175,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - float
 - border-collapse 视觉完整度
 - overflow scrollbar 的惯性触摸、overlay 模式与更多嵌套组合
-- block-first/float 列表项的 inside marker 与完整 CSS Lists
+- float 邻接 marker、自定义 `@counter-style` 与完整 CSS Lists
 - forms/widgets
 
 建议按真实页面痛点推进，不一次性铺开。
