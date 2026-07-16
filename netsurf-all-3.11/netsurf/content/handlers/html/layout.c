@@ -1715,6 +1715,109 @@ static enum css_vertical_align_e layout_table_cell_alignment(struct box *cell)
 }
 
 
+/**
+ * Distribute a specified table's spare height through its rows and cells.
+ *
+ * Blink's mature table algorithm distributes unconstrained extra height in
+ * proportion to the rows' existing heights and carries fractional pixels
+ * between rows. Keep that rule here, while reusing NetSurf's span-column
+ * bookkeeping so every spanning cell receives the sum of its covered rows.
+ */
+static void layout_table_distribute_height(struct box *table,
+		int extra_height, unsigned int columns, int *row_span,
+		struct box **row_span_cell)
+{
+	struct box *row_group;
+	struct box *row;
+	struct box *cell;
+	int row_count;
+	int row_index;
+	int total_row_height;
+	int distributed_height;
+	int table_shift;
+	int group_shift;
+	int row_extra;
+	int span_rows;
+	unsigned int i;
+	double proportional;
+	double remainder;
+
+	if (extra_height <= 0 || columns == 0) {
+		return;
+	}
+	row_count = 0;
+	total_row_height = 0;
+	for (row_group = table->children; row_group != NULL;
+			row_group = row_group->next) {
+		for (row = row_group->children; row != NULL; row = row->next) {
+			row_count++;
+			if (row->height > 0) {
+				total_row_height += row->height;
+			}
+		}
+	}
+	if (row_count == 0) {
+		return;
+	}
+	for (i = 0; i < columns; i++) {
+		row_span[i] = 0;
+		row_span_cell[i] = NULL;
+	}
+	row_index = 0;
+	distributed_height = 0;
+	table_shift = 0;
+	remainder = 0.0;
+	for (row_group = table->children; row_group != NULL;
+			row_group = row_group->next) {
+		group_shift = 0;
+		for (row = row_group->children; row != NULL; row = row->next) {
+			row_index++;
+			if (row_index == row_count) {
+				row_extra = extra_height - distributed_height;
+			} else if (total_row_height > 0) {
+				proportional = remainder +
+						(double) extra_height * row->height /
+						(double) total_row_height;
+				row_extra = (int) (proportional + 0.000001);
+				remainder = proportional - row_extra;
+			} else {
+				row_extra = (extra_height - distributed_height) /
+						(row_count - row_index + 1);
+			}
+			if (row_extra < 0) {
+				row_extra = 0;
+			}
+			for (cell = row->children; cell != NULL; cell = cell->next) {
+				span_rows = (cell->rows > 0) ? cell->rows : 1;
+				for (i = 0; i < cell->columns &&
+						cell->start_column + i < columns; i++) {
+					row_span[cell->start_column + i] = span_rows;
+				}
+				row_span_cell[cell->start_column] = cell;
+			}
+			for (i = 0; i < columns; i++) {
+				if (row_span_cell[i] != NULL) {
+					row_span_cell[i]->padding[BOTTOM] += row_extra;
+				}
+				if (row_span[i] > 0) {
+					row_span[i]--;
+				}
+				if (row_span[i] == 0) {
+					row_span_cell[i] = NULL;
+				}
+			}
+			row->y += group_shift;
+			row->height += row_extra;
+			group_shift += row_extra;
+			distributed_height += row_extra;
+		}
+		row_group->y += table_shift;
+		row_group->height += group_shift;
+		table_shift += group_shift;
+	}
+}
+
+
 /* Documented in layout_internal.h */
 bool layout_table(
 		struct box *table,
@@ -2224,10 +2327,13 @@ bool layout_table(
 		row_group->height = row_group_height;
 		table_height += row_group_height;
 	}
-	/* Table height is either the height of the contents, or specified
-	 * height if greater */
-	table_height = max(table_height, min_height);
-	/** \todo distribute spare height over the row groups / rows / cells */
+	/* A specified table height is a minimum. Distribute any spare height
+	 * through rows before vertical-align consumes each cell's final space. */
+	if (table_height < min_height) {
+		layout_table_distribute_height(table, min_height - table_height,
+				columns, row_span, row_span_cell);
+		table_height = min_height;
+	}
 
 	/* perform vertical alignment */
 	for (row_group = table->children; row_group;

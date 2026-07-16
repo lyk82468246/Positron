@@ -38,6 +38,8 @@ next58/59 的随包单色 symbol/emoji fallback 是宿主基础字体，不等�
 
 next66 的 TEST55 首次真机运行读到 `FFFFFF/00C300/C6C300`：隐藏格为白、强制 show 格为绿、filled 格为青，功能分类正确；失败是 WM compatible bitmap 的 3-6 色阶量化与过严精确 RGB 断言共同造成的假阴性。next67 只将 TEST55 改为逐通道紧容差，core layout/redraw 不动。TEST13 Further Reading 新出现的圆点来自 IANA 页面真实列表项与已验收的 marker 支持，不是表格对齐回归。
 
+next67 的 TEST55 已通过自动断言，设备截图也确认 top/middle/bottom、大小字体共基线、rowspan 底对齐及白/绿/青 empty-cells 正确。截图另外暴露测试页的四组固定高度刚好超出 WM 客户区十几像素，产生几乎填满轨道的纵向滚动条。next68 已压缩 TEST55 的行高/间距并显式设定标题行高，没有用滚动条掩盖可见内容。
+
 ---
 
 ## 工具链
@@ -199,13 +201,13 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 tests=31,32
 ```
 
-读取到有效配置后，程序先提示是否只运行列出的 TEST；选 **Yes** 直接按编号升序执行，选 **No** 完整保留下面原有的 All/四组选择流程。文件缺失时直接走旧流程；文件存在但无效时提示并忽略。TEST23 已撤回，配置中出现 23 会被拒绝。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制默认 `test_host\test_host.ini` 及三份静态 fallback 字体；构建失败不会留下混合版本包。当前批次运行 TEST13、17、41、42、46-55；可在共享目录直接修改后重新启动。第 3 组 GDI Render 提示已改为能力类别和编号范围，避免 WM6 小屏 MessageBox 被逐项说明撑坏。
+读取到有效配置后，程序先提示是否只运行列出的 TEST；选 **Yes** 直接按编号升序执行，选 **No** 完整保留下面原有的 All/四组选择流程。文件缺失时直接走旧流程；文件存在但无效时提示并忽略。TEST23 已撤回，配置中出现 23 会被拒绝。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制默认 `test_host\test_host.ini` 及三份静态 fallback 字体；构建失败不会留下混合版本包。当前批次运行 TEST13、17、41、42、46-56；可在共享目录直接修改后重新启动。第 3 组 GDI Render 提示已改为能力类别和编号范围，避免 WM6 小屏 MessageBox 被逐项说明撑坏。
 
 测试交付默认按能力批次进行：先积累多项相关实现、自动像素/资源/安全断言和直绘/正式链两层回归，再请求一次设备验收。只有真实编译错误、高风险回归定位或设备特有故障才临时拆成单项包，避免每个微小改动都要求人工截图。
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
 - **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40-45，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值、grid 宽度隔离、overflow scrollbar、分阶段导航资源事务、主文档失败回滚与 CSS import tree，离线。TEST40-45 已真机通过；TEST23 float 最小样例已因真实 Browse 回归撤回。
-- **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-55，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment、列表 marker/counter/image/inside flow 与随包字体 fallback 正式 redraw，离线；TEST48-54 已验收，TEST55/next67 待设备验收。
+- **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-56，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow 与随包字体 fallback 正式 redraw，离线；TEST48-55 已验收，TEST56/next68 待设备验收。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 
 当前关键 smoke test：

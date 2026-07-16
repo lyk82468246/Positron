@@ -212,6 +212,18 @@ typedef struct PCoreTableCellGeometry {
 PCORE_API int PCore_TableCellGeometry(HANDLE hDoc, unsigned int cell_index,
                                      PCoreTableCellGeometry *out_geometry);
 
+typedef struct PCoreTableRowGeometry {
+    int row_x;
+    int row_y;
+    int row_width;
+    int row_height;
+} PCoreTableRowGeometry;
+
+/* Inspect a table row in document order after layout. This diagnostics API
+ * verifies table-height distribution without exposing internal box pointers. */
+PCORE_API int PCore_TableRowGeometry(HANDLE hDoc, unsigned int row_index,
+                                    PCoreTableRowGeometry *out_geometry);
+
 /* Read back a laid-out list marker by document order. `text` receives the
  * marker's UTF-8 bytes and is always NUL-terminated when cap > 0. The
  * geometry is in absolute page CSS px. Returns non-zero when the marker does

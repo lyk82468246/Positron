@@ -2415,6 +2415,54 @@ PCORE_API int PCore_TableCellGeometry(HANDLE hDoc,
     return 0;
 }
 
+static struct box *pcore_table_row_at(struct box *box,
+        unsigned int target, unsigned int *current)
+{
+    struct box *child;
+    struct box *found;
+
+    if (box == NULL) {
+        return NULL;
+    }
+    if (box->type == BOX_TABLE_ROW) {
+        if (*current == target) {
+            return box;
+        }
+        *current += 1;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        found = pcore_table_row_at(child, target, current);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+PCORE_API int PCore_TableRowGeometry(HANDLE hDoc,
+        unsigned int row_index, PCoreTableRowGeometry *out_geometry)
+{
+    pcore_render *st;
+    struct box *row;
+    unsigned int current;
+
+    if (out_geometry == NULL) {
+        return 1;
+    }
+    memset(out_geometry, 0, sizeof(*out_geometry));
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    row = (st != NULL) ?
+            pcore_table_row_at(st->root_box, row_index, &current) : NULL;
+    if (row == NULL) {
+        return 1;
+    }
+    box_coords(row, &out_geometry->row_x, &out_geometry->row_y);
+    out_geometry->row_width = row->width;
+    out_geometry->row_height = row->height;
+    return 0;
+}
+
 static struct box *pcore_list_marker_at(struct box *box,
         unsigned int target, unsigned int *current)
 {

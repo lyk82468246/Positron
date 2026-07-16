@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 55
+#define TEST_MAX_NUMBER 56
 
 static int test_config_space(char c)
 {
@@ -8080,22 +8080,24 @@ static BOOL test55_table_cell_alignment(void)
         "<td class=filled>X</td></tr></table></body></html>";
     static const char CSS[] =
         "html,body{background:#fff;color:#111;}"
-        "body{font-size:12px;line-height:16px;margin:0;padding:5px;}"
-        "h1{font-size:21px;color:#800000;margin:0 0 3px;}"
-        "h2{font-size:17px;color:#800000;margin:4px 0 2px;}"
-        "table{border-collapse:separate;border-spacing:3px;"
-        "table-layout:fixed;width:210px;margin:2px 0;}"
-        "td{padding:2px;border:1px solid #404040;}"
-        ".align tr{height:64px}.align td{width:64px;}"
+        "body{font-size:11px;line-height:14px;margin:0;padding:3px;}"
+        "h1{font-size:18px;line-height:21px;color:#800000;"
+        "margin:0 0 2px;}"
+        "h2{font-size:15px;line-height:18px;color:#800000;"
+        "margin:2px 0 1px;}"
+        "table{border-collapse:separate;border-spacing:2px;"
+        "table-layout:fixed;width:210px;margin:1px 0;}"
+        "td{padding:1px;border:1px solid #404040;}"
+        ".align tr{height:50px}.align td{width:64px;}"
         ".top{vertical-align:top;background:#ffb0b0;}"
         ".middle{vertical-align:middle;background:#b0ffb0;}"
         ".bottom{vertical-align:bottom;background:#b0b0ff;}"
-        ".baseline tr{height:42px}.baseline td{vertical-align:baseline;}"
-        ".big{font-size:24px;line-height:28px;background:#ffe0a0;}"
-        ".small{font-size:12px;line-height:16px;background:#fff0c0;}"
-        ".span tr{height:32px}.spanbottom{vertical-align:bottom;"
+        ".baseline tr{height:34px}.baseline td{vertical-align:baseline;}"
+        ".big{font-size:20px;line-height:24px;background:#ffe0a0;}"
+        ".small{font-size:11px;line-height:14px;background:#fff0c0;}"
+        ".span tr{height:25px}.spanbottom{vertical-align:bottom;"
         "background:#ffc060}.span td{width:100px;}"
-        ".empty{empty-cells:hide}.empty td{height:30px;padding:0;"
+        ".empty{empty-cells:hide}.empty td{height:22px;padding:0;"
         "border:3px solid #004080;background:#00c000;}"
         ".empty .shown{empty-cells:show;}"
         ".empty .filled{background:#00c0c0;text-align:center;"
@@ -8244,6 +8246,165 @@ static BOOL test55_table_cell_alignment(void)
     show_info(L"TEST 55 OK",
               "Top/middle/bottom, baseline, rowspan and separated-table\n"
               "empty-cells painting passed through layout and redraw.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 56 - specified table height distribution through rows/cells    */
+/* -------------------------------------------------------------------- */
+static BOOL test56_table_height_distribution(void)
+{
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreTableRowGeometry rows[5];
+    PCoreTableCellGeometry cells[6];
+    int top_offset;
+    int middle_offset;
+    int bottom_offset;
+    int first_height;
+    int second_height;
+    int screen_w;
+    int screen_h;
+    int i;
+    char msg[256];
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Specified table height</h1>"
+        "<table class=distributed><tr><td class=top>top row</td></tr>"
+        "<tr><td class=middle>middle row</td></tr>"
+        "<tr><td class=bottom>bottom row</td></tr></table>"
+        "<h2>Rowspan distribution</h2>"
+        "<table class=spanheight><tr>"
+        "<td class=spanbottom rowspan=2>span bottom</td>"
+        "<td>row A</td></tr><tr><td>row B</td></tr></table>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:11px;line-height:14px;margin:0;padding:4px;}"
+        "h1{font-size:18px;line-height:21px;color:#800000;"
+        "margin:0 0 2px;}"
+        "h2{font-size:15px;line-height:18px;color:#800000;"
+        "margin:3px 0 1px;}"
+        "table{border-collapse:separate;border-spacing:0;"
+        "table-layout:fixed;width:210px;margin:0;}"
+        "td{padding:1px;border:1px solid #404040;}"
+        ".distributed{height:105px}.distributed .top{"
+        "vertical-align:top;background:#ffb0b0;}"
+        ".distributed .middle{vertical-align:middle;background:#b0ffb0;}"
+        ".distributed .bottom{vertical-align:bottom;background:#b0b0ff;}"
+        ".spanheight{height:70px}.spanheight td{width:100px;}"
+        ".spanbottom{vertical-align:bottom;background:#ffc060;}";
+
+    memset(rows, 0, sizeof(rows));
+    memset(cells, 0, sizeof(cells));
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-height.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 230, 260) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 56 FAIL", "parse/style/layout failed");
+        return FALSE;
+    }
+    for (i = 0; i < 5; i++) {
+        if (PCore_TableRowGeometry(hDoc, (unsigned int) i,
+                &rows[i]) != 0) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "row geometry lookup failed at %d", i);
+            msg[sizeof(msg) - 1] = '\0';
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 56 FAIL", msg);
+            return FALSE;
+        }
+    }
+    for (i = 0; i < 6; i++) {
+        if (PCore_TableCellGeometry(hDoc, (unsigned int) i,
+                &cells[i]) != 0) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "cell geometry lookup failed at %d", i);
+            msg[sizeof(msg) - 1] = '\0';
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 56 FAIL", msg);
+            return FALSE;
+        }
+    }
+    first_height = rows[0].row_height + rows[1].row_height +
+            rows[2].row_height;
+    second_height = rows[3].row_height + rows[4].row_height;
+    top_offset = cells[0].first_text_y - rows[0].row_y;
+    middle_offset = cells[1].first_text_y - rows[1].row_y;
+    bottom_offset = cells[2].first_text_y - rows[2].row_y;
+    if (first_height < 104 || first_height > 106 ||
+            abs(rows[0].row_height - rows[1].row_height) > 1 ||
+            abs(rows[1].row_height - rows[2].row_height) > 1 ||
+            rows[1].row_y != rows[0].row_y + rows[0].row_height ||
+            rows[2].row_y != rows[1].row_y + rows[1].row_height ||
+            top_offset < 0 || top_offset > 6 ||
+            middle_offset < top_offset + 6 ||
+            bottom_offset < middle_offset + 6 ||
+            second_height < 69 || second_height > 71 ||
+            abs(rows[3].row_height - rows[4].row_height) > 1 ||
+            rows[4].row_y != rows[3].row_y + rows[3].row_height ||
+            cells[3].first_text_y <=
+                    rows[4].row_y + rows[4].row_height / 2 ||
+            PCore_TableRowGeometry(hDoc, 99, &rows[0]) == 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "rows=%d/%d/%d %d/%d sum=%d/%d off=%d/%d/%d span=%d",
+                rows[0].row_height, rows[1].row_height,
+                rows[2].row_height, rows[3].row_height,
+                rows[4].row_height, first_height, second_height,
+                top_offset, middle_offset, bottom_offset,
+                cells[3].first_text_y);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 56 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-height.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 56 FAIL", "visible table-height setup failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 56",
+              "Expect three equal-height coloured rows with top, middle and\n"
+              "bottom text, then two equal rows with the orange rowspan\n"
+              "text aligned at the bottom. No vertical scrollbar expected.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 56 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 56 OK",
+              "Specified table height was distributed through rows,\n"
+              "row groups, spanning cells and vertical alignment.");
     return TRUE;
 }
 
@@ -8417,6 +8578,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 53: ok = test53_table_collapsed_borders(); break;
         case 54: ok = test54_table_spanning_borders(); break;
         case 55: ok = test55_table_cell_alignment(); break;
+        case 56: ok = test56_table_height_distribution(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -8498,7 +8660,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                   "Yes = run all selected groups (TEST 1-55)\n"
+                   "Yes = run all selected groups (TEST 1-56)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -8524,7 +8686,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list\n"
                                "normalisation redraw\n"
-                               "(TEST 46-55).\n"
+                               "(TEST 46-56).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -8584,7 +8746,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-55; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-56; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -8615,6 +8777,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test53_table_collapsed_borders()){ rc = 13; goto done; }
         if (!test54_table_spanning_borders()){ rc = 13; goto done; }
         if (!test55_table_cell_alignment()){ rc = 13; goto done; }
+        if (!test56_table_height_distribution()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -8654,7 +8817,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-55)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-56)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
