@@ -7378,8 +7378,9 @@ static BOOL test50_counter_styles(void)
             found != 2 || fetched != 1 || ctx.calls != 2 ||
             ctx.matched != 1 || ctx.frees != 1) {
         _snprintf(msg, sizeof(msg) - 1,
-                "setup/resources failed found=%d fetched=%d calls=%d/%d "
-                "frees=%d", found, fetched, ctx.matched, ctx.calls, ctx.frees);
+                "setup/resources failed found=%d fetched=%d matched=%d "
+                "calls=%d frees=%d", found, fetched, ctx.matched, ctx.calls,
+                ctx.frees);
         msg[sizeof(msg) - 1] = '\0';
         if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
         if (hDoc != NULL) { PCore_FreeDocument(hDoc); }

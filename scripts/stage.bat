@@ -15,6 +15,9 @@ set ROOT=%~dp0..
 set STAGE=C:\WMShare
 if not "%~2"=="" set STAGE=%~2
 
+echo Building %CFG% artifacts incrementally before staging ...
+call "%ROOT%\scripts\build.bat" "%CFG%" build || goto :buildfail
+
 if not exist "%STAGE%" mkdir "%STAGE%"
 
 echo Staging %CFG% artifacts to %STAGE% ...
@@ -38,6 +41,11 @@ echo Done. In the emulator, open File Explorer -^> Storage Card
 echo and run test_host.exe from the shared-folder equivalent of %STAGE%.
 echo.
 exit /b 0
+
+:buildfail
+echo.
+echo FAILED. Incremental %CFG% build did not complete; nothing was staged.
+exit /b 1
 
 :fail
 echo.

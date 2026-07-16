@@ -75,7 +75,7 @@ Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
 构建：
 
 1. 首选运行 `scripts\build.bat`；默认执行 `Debug` 增量 `Build`。改工程依赖、生成规则或需要干净基线时显式运行 `scripts\build.bat Debug rebuild`。
-2. 可用 `scripts\build.bat Debug build` 做增量构建，或用第二参数 `clean` 清理。
+2. 可用 `scripts\build.bat Debug build` 做增量构建，或用第二参数 `clean` 清理。`scripts\stage.bat` 也会在复制前自动调用同配置的增量 Build；构建失败时不复制，避免新 EXE 搭配旧 DLL。
 3. 脚本调用 `Common7\IDE\devenv.com`，不是直接调用 `VC\ce\bin\x86_arm\cl.exe`；前者负责 `.sln` 工程依赖和完整 WM6 平台设置。
 4. GUI 等价操作是打开 `Positron.sln`，选择 `Debug | Windows Mobile 6 Professional SDK (ARMV4I)` 后 Rebuild whole Solution。
 
@@ -94,11 +94,11 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,17,41,42,46,47,48`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=13,17,41,42,46,47,48`。四组路由的第 3 组提示已压缩为能力类别，避免 WM6 小屏 MessageBox 被长清单撑坏。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,17,41,42,46,47,48`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=13,17,41,42,46,47,48,49,50`。四组路由的第 3 组提示已压缩为能力类别，避免 WM6 小屏 MessageBox 被长清单撑坏。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid-overflow 隔离、overflow scrollbar、分阶段资源事务、失败回滚与 CSS import tree，离线。TEST40-45 已真机确认。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-50，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化、列表 marker/counter/image 与随包静态字体 fallback 正式 redraw；TEST48/49 已验收，TEST50/next60 待设备验收。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-50，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化、列表 marker/counter/image 与随包静态字体 fallback 正式 redraw；TEST48/49 已验收，TEST50/next61 待设备验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -125,7 +125,7 @@ scripts\stage.bat
 13. next56 按 NetSurf 3.11 规则补 table/row-group/row/cell 匿名盒和短行空 cell。用户已确认 TEST47 红/白、绿/蓝两行及同批其余测试正常。
 14. next57 移植 NetSurf 列表 marker 构造并恢复 LI DOM user-data 映射。TEST48 自动校验 disc/circle/square、十进制 `start/value/reversed` 及 marker 几何；`PCore_ListMarker` 是只读诊断 API。
 15. next58 引入 Noto OFL 来源的静态 Positron Symbols/Emoji 子集。next59 追加官方 hinted Noto Sans Symbols Basic 子集，用生成的精确 cmap 覆盖表互补两套 symbol face；设备确认箭头不再 tofu、marker 和五个 emoji 均可见且视觉稍有改善。`ANTIALIASED_QUALITY` 最终效果仍取决于 OEM GDI；不要宣称网页 `@font-face`、复杂 emoji shaping 或彩色字体支持。
-16. next60 用生成的 `positron_format_list_style.c` 替换 decimal-only stub，算法与 47 种样式来自仓库内原版 libcss。`scripts/port_list_style_vs2008.py` 负责指定初始化器和 UTF-8 字面量的可重复 C89/ASCII 转换；`c89ize.py` 已修复 aggregate 字段被错误重排的规则。`list-style-image` 复用 document image cache，只有 computed list-item 才发现资源，解码失败保留类型 marker。TEST50 待设备验收；不要把它扩大为自定义 counter-style、所有语言字体或 `list-style-position:inside`。
+16. next60 用生成的 `positron_format_list_style.c` 替换 decimal-only stub，算法与 47 种样式来自仓库内原版 libcss。`scripts/port_list_style_vs2008.py` 负责指定初始化器和 UTF-8 字面量的可重复 C89/ASCII 转换；`c89ize.py` 已修复 aggregate 字段被错误重排的规则。`list-style-image` 复用 document image cache，只有 computed list-item 才发现资源，解码失败保留类型 marker。next60 首次设备 TEST50 的 `found=4 fetched=2` 来自打包事故：Debug `pcore_select.obj` 早于最终源码，而 staging 仍复制了旧 core DLL；Release 与仓库源码已有 list-item gate。next61 必须用自动增量构建后的 Debug 包复测，不得放宽 TEST50 断言；也不要把它扩大为自定义 counter-style、所有语言字体或 `list-style-position:inside`。
 
 ## 开发纪律
 
