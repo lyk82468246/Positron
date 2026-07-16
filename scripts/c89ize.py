@@ -264,6 +264,22 @@ def transform(text):
     def crosses_function_end(start, end):
         return any(lines[k] == '}' for k in range(start + 1, end))
 
+    def multiline_declaration_start(end_index, depth):
+        """Return the start of a declaration ending at end_index.
+
+        This deliberately recognises only an earlier declaration-like line
+        without a semicolon. Ordinary multiline calls remain statements.
+        """
+        j = end_index - 1
+        while j >= 0 and starts[j] == depth:
+            prior = lines[j].strip()
+            if DECL_INIT_START.match(prior) and not prior.endswith(';'):
+                return j
+            if prior.endswith((';', '{', '}')):
+                return None
+            j -= 1
+        return None
+
     def is_leading_declaration(index):
         """True when only declarations/blank lines separate this declaration
         from its block opener. Such a prefix is already legal C89, regardless
@@ -274,9 +290,18 @@ def transform(text):
             if not candidate:
                 k -= 1
                 continue
+            if candidate.startswith(('//', '/*', '*')) or \
+                    candidate.endswith('*/'):
+                k -= 1
+                continue
             if DECL.match(lines[k]):
                 k -= 1
                 continue
+            if candidate.endswith(';'):
+                decl_start = multiline_declaration_start(k, starts[index])
+                if decl_start is not None:
+                    k = decl_start - 1
+                    continue
             return candidate.endswith('{')
         return False
 
@@ -323,7 +348,8 @@ def transform(text):
                 expr_cont = False
             continue
         if (DECL_INIT_START.match(stripped) or DECL_LIKE.match(stripped)) and \
-                not stripped.endswith(';'):
+                not stripped.endswith(';') and \
+                not re.match(r'^.*\b[A-Za-z_]\w*\s*\(', stripped):
             decl_cont = True
             continue
         if EXPR_CONT_START.match(stripped) and not stripped.endswith(';'):

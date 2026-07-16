@@ -2341,6 +2341,74 @@ PCORE_API int PCore_ListMarker(HANDLE hDoc, unsigned int index,
     return 0;
 }
 
+static void pcore_list_text_geometry(struct box *box, struct box *item,
+        PCoreListItemGeometry *geometry, int *have_first)
+{
+    struct box *child;
+    int x;
+    int y;
+
+    if (box == NULL || geometry == NULL || have_first == NULL) {
+        return;
+    }
+    if (box != item && box->list_marker != NULL) {
+        return;
+    }
+    if (box->type == BOX_TEXT && box->text != NULL && box->length > 0) {
+        x = 0;
+        y = 0;
+        box_coords(box, &x, &y);
+        if (!*have_first) {
+            geometry->first_text_x = x;
+            geometry->first_text_y = y;
+            *have_first = 1;
+        } else if (geometry->wrapped_text_y < 0 &&
+                y > geometry->first_text_y) {
+            geometry->wrapped_text_x = x;
+            geometry->wrapped_text_y = y;
+        }
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        pcore_list_text_geometry(child, item, geometry, have_first);
+    }
+}
+
+PCORE_API int PCore_ListItemGeometry(HANDLE hDoc, unsigned int index,
+        PCoreListItemGeometry *out_geometry)
+{
+    pcore_render *st;
+    struct box *marker;
+    struct box *item;
+    unsigned int current;
+    int have_first;
+
+    if (out_geometry == NULL) {
+        return 1;
+    }
+    memset(out_geometry, 0, sizeof(*out_geometry));
+    out_geometry->first_text_x = -1;
+    out_geometry->first_text_y = -1;
+    out_geometry->wrapped_text_x = -1;
+    out_geometry->wrapped_text_y = -1;
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    marker = (st != NULL) ?
+            pcore_list_marker_at(st->root_box, index, &current) : NULL;
+    if (marker == NULL || marker->parent == NULL) {
+        return 1;
+    }
+    item = marker->parent;
+    box_coords(item, &out_geometry->item_x, &out_geometry->item_y);
+    out_geometry->item_width = item->width;
+    out_geometry->item_height = item->height;
+    box_coords(marker, &out_geometry->marker_x, &out_geometry->marker_y);
+    out_geometry->marker_width = marker->width;
+    out_geometry->marker_height = marker->height;
+    have_first = 0;
+    pcore_list_text_geometry(item, item, out_geometry, &have_first);
+    return have_first ? 0 : 1;
+}
+
 /* Deepest box (absolute coords via box_coords) containing point (px,py). */
 static struct box *pcore_hit(struct box *b, int px, int py)
 {

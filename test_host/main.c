@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 50
+#define TEST_MAX_NUMBER 51
 
 static int test_config_space(char c)
 {
@@ -7451,6 +7451,140 @@ static BOOL test50_counter_styles(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 51 - list-style-position inside participates in first-line flow  */
+/* -------------------------------------------------------------------- */
+static BOOL test51_inside_list_markers(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Inside markers</h1>"
+        "<ul class=outside><li>Outside marker keeps the text origin.</li></ul>"
+        "<ol class=inside start=8><li>Inside marker shifts the first line "
+        "while wrapped words return to the content origin.</li></ol>"
+        "<ul class=image><li>Image marker participates inside the first "
+        "line and keeps its fallback.</li></ul></body></html>";
+    static const char CSS[] =
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:16px;line-height:21px;margin:0;padding:8px;}"
+        "h1{font-size:23px;color:#800000;margin:0 0 6px;}"
+        "ul,ol{padding-left:28px;margin:5px 0;}"
+        "li{width:126px;}"
+        ".outside{list-style-position:outside;list-style-type:disc;}"
+        ".inside{list-style-position:inside;list-style-type:upper-roman;}"
+        ".image{list-style-position:inside;list-style-type:square;"
+        "list-style-image:url('http://positron.local/marker.svg');}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    image_resource_test_ctx ctx;
+    PCoreListItemGeometry outside;
+    PCoreListItemGeometry inside;
+    PCoreListItemGeometry image;
+    char marker[24];
+    char msg[256];
+    int found;
+    int fetched;
+    int screen_w;
+    int screen_h;
+
+    memset(&ctx, 0, sizeof(ctx));
+    memset(&outside, 0, sizeof(outside));
+    memset(&inside, 0, sizeof(inside));
+    memset(&image, 0, sizeof(image));
+    found = 0;
+    fetched = 0;
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/inside-list.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_FetchImageResources(hDoc, list_marker_image_fetch,
+                    image_resource_free, &ctx, &found, &fetched) != 0 ||
+            PCore_LayoutDocument(hDoc, 180, 320) != 0 ||
+            found != 1 || fetched != 1 || ctx.calls != 1 ||
+            ctx.matched != 1 || ctx.frees != 1 ||
+            PCore_ListItemGeometry(hDoc, 0, &outside) != 0 ||
+            PCore_ListItemGeometry(hDoc, 1, &inside) != 0 ||
+            PCore_ListItemGeometry(hDoc, 2, &image) != 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "setup failed resources=%d/%d calls=%d match=%d free=%d",
+                found, fetched, ctx.calls, ctx.matched, ctx.frees);
+        msg[sizeof(msg) - 1] = '\0';
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 51 FAIL", msg);
+        return FALSE;
+    }
+    marker[0] = '\0';
+    if (PCore_ListMarker(hDoc, 1, marker, sizeof(marker),
+            NULL, NULL, NULL, NULL) != 0 || strcmp(marker, "VIII.") != 0 ||
+            outside.marker_x + outside.marker_width >= outside.first_text_x ||
+            inside.marker_x < inside.item_x ||
+            inside.first_text_x < inside.marker_x + inside.marker_width + 4 ||
+            inside.wrapped_text_y <= inside.first_text_y ||
+            inside.wrapped_text_x < inside.item_x ||
+            inside.wrapped_text_x >= inside.first_text_x ||
+            image.marker_x < image.item_x ||
+            image.marker_width != 12 || image.marker_height != 12 ||
+            image.first_text_x < image.marker_x + image.marker_width + 4) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "out m/t=%d+%d/%d in=%d,%d,%d wrap=%d,%d img=%d,%d,%d",
+                outside.marker_x, outside.marker_width, outside.first_text_x,
+                inside.marker_x, inside.first_text_x, inside.item_x,
+                inside.wrapped_text_x, inside.wrapped_text_y,
+                image.marker_x, image.marker_width, image.first_text_x);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 51 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    memset(&ctx, 0, sizeof(ctx));
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/inside-list.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_FetchImageResources(hDoc, list_marker_image_fetch,
+                    image_resource_free, &ctx, NULL, NULL) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 51 FAIL", "visible inside-list setup failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 51",
+              "Expect an outside bullet, then inside VIII and green image\n"
+              "markers. Inside markers share the first line; wrapped text\n"
+              "returns to the content edge.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 51 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 51 OK",
+              "Inside text/image marker flow, first-line width, hanging wrap\n"
+              "and inherited list-style-position all passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -7615,6 +7749,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 48: ok = test48_list_markers(); break;
         case 49: ok = test49_bundled_fonts(); break;
         case 50: ok = test50_counter_styles(); break;
+        case 51: ok = test51_inside_list_markers(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -7696,7 +7831,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                   "Yes = run all selected groups (TEST 1-50)\n"
+                   "Yes = run all selected groups (TEST 1-51)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -7722,7 +7857,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list\n"
                                "normalisation redraw\n"
-                               "(TEST 46-50).\n"
+                               "(TEST 46-51).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -7782,7 +7917,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-50; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-51; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -7808,6 +7943,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test48_list_markers()){ rc = 13; goto done; }
         if (!test49_bundled_fonts()){ rc = 13; goto done; }
         if (!test50_counter_styles()){ rc = 13; goto done; }
+        if (!test51_inside_list_markers()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -7847,7 +7983,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-50)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-51)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

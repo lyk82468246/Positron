@@ -11,12 +11,12 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=13,17,41,42,46,47,48,49,50`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=13,17,41,42,46,47,48,49,50,51`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
 - 2026-07-16：next60 首次 TEST50 得到 `found=4 fetched=2 matched=1 calls=3`。文件时间证明 staging 中 `positron_core.dll`/`pcore_select.obj` 为 22:04，而带 computed list-item gate 的 `pcore_select.c` 为 22:05；22:14 只补编了 Release，随后却打包 Debug，形成新 TEST50 EXE + 旧 core DLL。旧 DLL 会同时扫描继承 `list-style-image` 的 UL 与 LI，计数恰为 4/2/1/3。不要修改断言；重编 Debug 即包含仓库现有修复。为防复发，`stage.bat` 已改为先增量构建后复制。
-- 同日 next61 首次通过新 staging 门禁：Debug 增量编译实际重编 `positron_format_list_style.c`、`pcore_select.c` 与 `main.c`，三个受影响项目 0 错误，仅有 9 条既有 `fpmath.h` C4244。`C:\WMShare\Positron-next61` 中 core DLL 与 test EXE 的 SHA-256 均和刚生成 Debug 产物一致，待设备复测 TEST50。
+- 同日 next61 首次通过新 staging 门禁：Debug 增量编译实际重编 `positron_format_list_style.c`、`pcore_select.c` 与 `main.c`，三个受影响项目 0 错误，仅有 9 条既有 `fpmath.h` C4244。`C:\WMShare\Positron-next61` 中 core DLL 与 test EXE 的 SHA-256 均和刚生成 Debug 产物一致；用户随后确认 TEST50 的 IV/z/aa/09、绿色图片 marker 与 circle fallback 全部通过。
 - WM6 SDK 没有桌面 Win32 `ShowScrollBar` 的声明或导出；需要动态隐藏标准滚动条时，使用 `GetWindowLong/SetWindowLong(GWL_STYLE, WS_VSCROLL)`，再用 `SetWindowPos(..., SWP_FRAMECHANGED)` 重算非客户区。
 - 设备上是否在跑旧的 VS Deploy 目录，例如 `\Program Files\test_host\`。
 
@@ -41,7 +41,8 @@ WinCE/WM6 上没有 stdout。定位崩溃/卡死时：
 - 不写 mid-block declarations。
 - 不写 `for (int i = ...)`。
 - 不写 designated initializers，除非后续有转换脚本处理。
-- 谨慎使用 `scripts/c89ize.py`：它主要处理块中声明和 for 声明，不能包治 designated initializer / static aggregate initializer。
+- 谨慎使用 `scripts/c89ize.py`：它主要处理块中声明和 for 声明，不能包治 designated initializer / static aggregate initializer。先运行 `python scripts/test_c89ize.py`；当前 4 个回归覆盖注释后的合法声明组、函数头后的 mid-block 声明、多行初始化声明和 aggregate 字段不重排。
+- 2026-07-16 复盘：旧规则把块首注释误当语句，曾把后面的合法声明组拆坏；又把函数定义头误当未结束声明，从而漏掉真正的 mid-block 声明；多行初始化声明结束行也可能导致紧随声明被误搬。修复后对 `layout.c`、`pcore_box.c`、`main.c` 重跑必须明确显示 `total: 0`，不能只凭 VS2008 恰好能编译判断脚本稳健。
 - 新移植 NetSurf content-handler `.c` 时，把 include 列表先对齐已经编过的 `layout.c`，否则容易出现 `private.h` 类型未定义连锁错误。
 - 2026-07-08 复盘：`redraw_border.c` 编译时报 `html/private.h` 里 `dom_document` / `dom_node` / `bool` 连锁语法错误，根因仍是单文件 include 前置依赖不足，不是 `c89ize.py` 应处理的问题。修法是像 `layout_flex.c` / `table.c` 一样补齐 `layout.c`/`redraw.c` 的 dom/css/content 前置 include，再跑 `c89ize.py` 确认 0 change。
 

@@ -194,6 +194,27 @@ PCORE_API int PCore_ListMarker(HANDLE hDoc, unsigned int index,
                               char *text, int cap,
                               int *x, int *y, int *w, int *h);
 
+typedef struct PCoreListItemGeometry {
+    int item_x;
+    int item_y;
+    int item_width;
+    int item_height;
+    int marker_x;
+    int marker_y;
+    int marker_width;
+    int marker_height;
+    int first_text_x;
+    int first_text_y;
+    int wrapped_text_x;
+    int wrapped_text_y;
+} PCoreListItemGeometry;
+
+/* Inspect list-item flow geometry. Wrapped text coordinates are -1 when the
+ * item has no second text line. This additive API is intended for layout
+ * diagnostics and does not expose internal NetSurf boxes. */
+PCORE_API int PCore_ListItemGeometry(HANDLE hDoc, unsigned int index,
+                                    PCoreListItemGeometry *out_geometry);
+
 /* --- Painting (engine layer 4, milestone C) ------------------------- */
 
 /* Paint the laid-out document into a GDI device context through NetSurf's

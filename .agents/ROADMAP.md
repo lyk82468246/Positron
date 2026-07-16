@@ -1,6 +1,6 @@
 # Positron Roadmap
 
-更新时间：2026-07-15
+更新时间：2026-07-16
 基线：Phase 4 已完成 M7-flex + M7-table，正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`。M5f border、selector、TEST 11 正反样例与 TEST 19 WM Imaging BMP 已于 2026-07-10 真机通过；TEST 18 缓存去重、TEST 20 缓存 BMP object/redraw 链、TEST 21 响应式媒体视口、TEST 22 row-reverse flex leading padding 已于 2026-07-11 真机通过。TEST38-39 已关闭 IANA 同表顶层根变量造成的窄屏间距问题，当前 TEST13 截图中的导航、正文和注册表列已可读；其他现代 CSS 与更多真实页面仍按限制清单推进。详见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
@@ -122,7 +122,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 31. **next57 NetSurf 列表 marker 语义已验收、视觉缺口转入 next58**：移植上游 `box_construct_marker` 的 disc/circle/square 构造，恢复 DOM LI 到 box 的 user-data 映射，使 `layout_lists` 正式计算有序列表；UA CSS 补常用 UL/OL padding、margin 与嵌套 marker。TEST48 已确认 8 个 marker 的嵌套层级、`start/value` 与 `reversed` 顺序正确，但设备 Tahoma 把 circle/square 显示为错误字形/豆腐。当前 `positron_list_style_stub.c` 仍只格式化十进制，完整 roman/alpha/CJK counter-style 和 `list-style-image` 后续再移植。
 32. **next58 随包单色字体 fallback 部分通过**：从 Noto 官方 Noto Sans Symbols 2 与 Noto Emoji 生成改名后的静态 TrueType 子集，合计约 814 KiB；emoji 固化 400 字重并为 1,242 个补充平面字形建立 BMP PUA 别名，避免依赖 WM6 GDI 的 surrogate/cmap12 支持。`PCore_Init/Shutdown` 通过 CE 原生 `AddFontResourceW/RemoveFontResourceW` 管理 DLL 相邻 `fonts` 目录并广播 `WM_FONTCHANGE`；绘制、width、position、split 共用 fallback run 与同一 emoji 映射。设备已确认 disc/circle/square 及部分符号/emoji 可见；四个基础箭头仍为 tofu，圆形与 emoji 边缘较粗。
 33. **next59 补齐基础符号并请求抗锯齿，已设备验收**：追加官方 hinted Noto Sans Symbols 子集，保留 Symbols 2 对已验收 marker 的优先级，只在其真实 cmap 缺口使用 Basic face；三份部署字体共约 901 KiB。生成器输出两套独立精确覆盖表，`PCore_BundledFontSupports` 与 TEST49 在开窗前逐个断言本页 16 个码点。设备确认四个箭头不再 tofu、marker 与五个 emoji 均可见，视觉比 next58 稍好；细线仍受 OEM GDI 限制。复杂 ZWJ shaping、彩色字体与网页 `@font-face` 不在本批次。
-34. **next60 完整 counter style 与图片 marker，next61 复测**：用 `scripts/port_list_style_vs2008.py` 从仓库原版 libcss `format_list_style.c` 可重复生成 ASCII/C89 文件，保留上游 47 种 Roman/Latin/Greek/CJK 等 counter style，不再使用 decimal-only stub。生成器把 C99 指定初始化器按已知结构转成位置初始化器，并把 UTF-8 字面量转为固定三位八进制；`c89ize.py` 同时修复了 aggregate 被误判为未结束声明后重排字段的专家规则。`list-style-image` 仅从 computed `display:list-item` 发现资源，复用 document image cache，成功生成 NetSurf marker object，失败保留 `list-style-type`。TEST50 自动覆盖 IV/z/aa/09/CJK UTF-8、资源计数、12x12 SVG marker 和失败回退，再显示正式 redraw。next60 首测失败已定位为 staging 使用了早于最终 `pcore_select.c` 的 Debug core DLL，并非放宽断言可解决；next61 用重新增量构建的当前源码复测，且 staging 已增加构建前置门禁。
+34. **next60/61 完整 counter style 与图片 marker 已验收**：用 `scripts/port_list_style_vs2008.py` 从仓库原版 libcss `format_list_style.c` 可重复生成 ASCII/C89 文件，保留上游 47 种 Roman/Latin/Greek/CJK 等 counter style，不再使用 decimal-only stub。生成器把 C99 指定初始化器按已知结构转成位置初始化器，并把 UTF-8 字面量转为固定三位八进制；`list-style-image` 仅从 computed `display:list-item` 发现资源，复用 document image cache，成功生成 NetSurf marker object，失败保留 `list-style-type`。next60 首测失败来自 staging 混用旧 Debug core DLL；`stage.bat` 增加自动增量构建门禁后，next61 的 TEST50 已在设备确认 IV/z/aa/09、绿色缓存 SVG marker 与圆形失败回退均正确。
+35. **next62 `list-style-position:inside` 内联首行，待设备验收**：上游 NetSurf 3.11 已计算 inside/outside computed value，却仍统一把 marker 放到负 x。当前补丁在 marker 尺寸准备后，让 inline-first list item 的首行宽度吸收文本或缓存图片 marker，后续换行回到内容起点；outside 路径保持原语义。TEST51 自动检查 `VIII.`、12x12 SVG 资源计数、inside/outside 几何及悬挂换行，并显示正式 redraw。复杂 block-first、float marker 和完整 CSS Lists 暂不扩张；本批不修改 TEST13 导航冻结路径。
 
 验收：
 
@@ -163,7 +164,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - table 常见路径
 - 有效表格的 colspan、有限/自动 rowspan 与 row-group 占位（TEST46 已真机确认）
 - table/row-group/row/cell 匿名包装与短行空单元格生成（TEST47 已真机确认）
-- 常见列表 marker 与十进制 HTML 有序列表（TEST48 已确认；next61 扩展 counter/image marker 待验收）
+- 常见列表 marker、上游 47 种 counter formatter 与缓存图片 marker（TEST48-50/next61 已确认）
+- inline-first `list-style-position:inside` 首行占位与悬挂换行（next62/TEST51 已编译，待设备验收）
 - 随包静态 symbols/monochrome emoji fallback（next59 TEST49 已真机确认）
 
 仍缺或简化：
@@ -171,6 +173,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - float
 - border-collapse 视觉完整度
 - overflow scrollbar 的惯性触摸、overlay 模式与更多嵌套组合
+- block-first/float 列表项的 inside marker 与完整 CSS Lists
 - forms/widgets
 
 建议按真实页面痛点推进，不一次性铺开。

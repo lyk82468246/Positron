@@ -461,6 +461,47 @@ static inline bool box_has_percentage_max_width(struct box *b)
 }
 
 /**
+ * Get the horizontal space consumed by an inside list marker.
+ *
+ * The marker remains a retained list-marker box, but for inline-first list
+ * items it participates in the first line like an inline marker would.
+ */
+static int
+layout__inside_list_marker_width(const struct box *first)
+{
+	const struct box *inline_container;
+	const struct box *item;
+	const struct box *marker;
+
+	if (first == NULL || first->parent == NULL ||
+			first->parent->parent == NULL) {
+		return 0;
+	}
+	inline_container = first->parent;
+	item = inline_container->parent;
+	marker = item->list_marker;
+	if (marker == NULL || item->style == NULL ||
+			css_computed_list_style_position(item->style) !=
+				CSS_LIST_STYLE_POSITION_INSIDE ||
+			marker->width <= 0) {
+		return 0;
+	}
+	return marker->width + 4;
+}
+
+static int
+layout__inside_list_marker_height(const struct box *first)
+{
+	const struct box *item;
+
+	if (layout__inside_list_marker_width(first) == 0) {
+		return 0;
+	}
+	item = first->parent->parent;
+	return item->list_marker->height;
+}
+
+/**
  * Calculate minimum and maximum width of a line.
  *
  * \param first       a box in an inline container
@@ -802,6 +843,7 @@ layout_minmax_line(struct box *first,
 		/* todo: handle text-indent interaction with floats */
 		int text_indent = layout_text_indent(&content->unit_len_ctx,
 				first->parent->parent->style, 100);
+		text_indent += layout__inside_list_marker_width(first);
 		min = (min + text_indent < 0) ? 0 : min + text_indent;
 		max = (max + text_indent < 0) ? 0 : max + text_indent;
 	}
@@ -2811,7 +2853,8 @@ layout_line(struct box *first,
 
 	if (indent)
 		x0 += layout_text_indent(&content->unit_len_ctx,
-				first->parent->parent->style, *width);
+				first->parent->parent->style, *width) +
+			layout__inside_list_marker_width(first);
 
 	if (x1 < x0)
 		x1 = x0;
@@ -2826,6 +2869,8 @@ layout_line(struct box *first,
 		/* inline containers with no text are usually for layout and
 		 * look better with no minimum line-height */
 		used_height = height = 0;
+	if (indent && height < layout__inside_list_marker_height(first))
+		used_height = height = layout__inside_list_marker_height(first);
 
 	/* pass 1: find height of line assuming sides at top of line: loop
 	 * body executed at least once
@@ -3049,7 +3094,8 @@ layout_line(struct box *first,
 
 	if (indent)
 		x0 += layout_text_indent(&content->unit_len_ctx,
-				first->parent->parent->style, *width);
+				first->parent->parent->style, *width) +
+			layout__inside_list_marker_width(first);
 
 	if (x1 < x0)
 		x1 = x0;
@@ -4454,10 +4500,10 @@ layout__list_item_is_numerical(
 }
 
 /**
- * Layout list markers.
+ * Prepare list marker text and intrinsic dimensions before line layout.
  */
 static void
-layout_lists(const html_content *content, struct box *box)
+layout_prepare_lists(const html_content *content, struct box *box)
 {
 	struct box *child;
 
@@ -4476,13 +4522,8 @@ layout_lists(const html_content *content, struct box *box)
 			if (marker->object) {
 				marker->width =
 					content_get_width(marker->object);
-				marker->x = -marker->width;
 				marker->height =
 					content_get_height(marker->object);
-				marker->y = (line_height(
-						&content->unit_len_ctx,
-						marker->style) -
-						marker->height) / 2;
 			} else if (marker->text) {
 				if (marker->width == UNKNOWN_WIDTH) {
 					plot_font_style_t fstyle;
@@ -4496,21 +4537,57 @@ layout_lists(const html_content *content, struct box *box)
 							&marker->width);
 					marker->flags |= MEASURED;
 				}
-				marker->x = -marker->width;
-				marker->y = 0;
 				marker->height = line_height(
 						&content->unit_len_ctx,
 						marker->style);
 			} else {
-				marker->x = 0;
-				marker->y = 0;
 				marker->width = 0;
 				marker->height = 0;
 			}
-			/* Gap between marker and content */
-			marker->x -= 4;
 		}
-		layout_lists(content, child);
+		layout_prepare_lists(content, child);
+	}
+}
+
+/**
+ * Position prepared list markers after normal block and inline layout.
+ */
+static void
+layout_position_lists(const html_content *content, struct box *box)
+{
+	struct box *child;
+
+	for (child = box->children; child; child = child->next) {
+		if (child->list_marker) {
+			struct box *marker = child->list_marker;
+			bool inside = child->style != NULL &&
+					css_computed_list_style_position(child->style) ==
+					CSS_LIST_STYLE_POSITION_INSIDE;
+
+			if (inside && child->children != NULL &&
+					child->children->type == BOX_INLINE_CONTAINER) {
+				struct box *flow = child->children;
+				marker->x = flow->x;
+				marker->y = flow->y;
+				if (marker->object != NULL) {
+					int leading = line_height(&content->unit_len_ctx,
+							marker->style) - marker->height;
+					if (leading > 0) {
+						marker->y += leading / 2;
+					}
+				}
+			} else {
+				marker->x = -marker->width - 4;
+				marker->y = 0;
+				if (marker->object != NULL) {
+					marker->y = (line_height(
+							&content->unit_len_ctx,
+							marker->style) -
+							marker->height) / 2;
+				}
+			}
+		}
+		layout_position_lists(content, child);
 	}
 }
 
@@ -5476,6 +5553,7 @@ bool layout_document(html_content *content, int width, int height)
 			width, height, nsurl_access(content_get_url(
 					&content->base)));
 
+	layout_prepare_lists(content, doc);
 	layout_minmax_block(doc, font_func, content);
 
 	layout_block_find_dimensions(&content->unit_len_ctx,
@@ -5510,7 +5588,7 @@ bool layout_document(html_content *content, int width, int height)
 					 doc->children->margin[BOTTOM]);
 	}
 
-	layout_lists(content, doc);
+	layout_position_lists(content, doc);
 	layout_position_absolute(doc, doc, 0, 0, content);
 	layout_position_relative(&content->unit_len_ctx, doc, doc, 0, 0);
 
