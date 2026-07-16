@@ -125,7 +125,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 34. **next60/61 完整 counter style 与图片 marker 已验收**：用 `scripts/port_list_style_vs2008.py` 从仓库原版 libcss `format_list_style.c` 可重复生成 ASCII/C89 文件，保留上游 47 种 Roman/Latin/Greek/CJK 等 counter style，不再使用 decimal-only stub。生成器把 C99 指定初始化器按已知结构转成位置初始化器，并把 UTF-8 字面量转为固定三位八进制；`list-style-image` 仅从 computed `display:list-item` 发现资源，复用 document image cache，成功生成 NetSurf marker object，失败保留 `list-style-type`。next60 首测失败来自 staging 混用旧 Debug core DLL；`stage.bat` 增加自动增量构建门禁后，next61 的 TEST50 已在设备确认 IV/z/aa/09、绿色缓存 SVG marker 与圆形失败回退均正确。
 35. **next62 `list-style-position:inside` 内联首行已验收**：上游 NetSurf 3.11 已计算 inside/outside computed value，却仍统一把 marker 放到负 x。当前补丁在 marker 尺寸准备后，让 inline-first list item 的首行宽度吸收文本或缓存图片 marker，后续换行回到内容起点；outside 路径保持原语义。TEST51 自动检查 `VIII.`、12x12 SVG 资源计数、inside/outside 几何及悬挂换行；用户提供的横竖屏截图均符合预期。
 36. **next63 inside 匿名首行扩展已由设备验收**：W3C CSS Lists Level 3 把 inside marker 定义为列表内容开头的 inline element。构盒阶段为 inside 项加入零宽、不绘制的匿名 inline run，因此首个作者子项为 block 或不存在时，NetSurf 自然生成 marker 首行并更新后续块、兄弟和父高度；图片 marker 行高取 `max(line-height, intrinsic height)`。TEST52 的横竖屏截图已确认 III block-first、IV 空条目、V/VI 嵌套计数以及绿色图片 marker 均符合预期；float 邻接保持后续限制，且未修改 TEST13 导航冻结路径。
-37. **next64 collapsed-border 冲突批次，待设备验收**：继续使用 NetSurf 3.11 `table.c` 的原生 used-border 算法，不另写浏览器规则。新增只读 `PCore_TableCellBorder` 诊断和 TEST53，一次断言 wider、equal-width style priority、hidden、left/top tie、cell/row/row-group/table origin 及 separate 对照，并通过正式 redraw 展示。W3C CSS 2.2 要求处理 `col`/`colgroup` 来源，但 NetSurf 3.11 的 box enum 与上游 TODO 确认该版本尚未建模，本批明确保留为后续升级/扩展点。Debug ARM 增量构建 0 错误，未触碰 TEST13。
+37. **next64 collapsed-border 冲突批次已由设备验收**：继续使用 NetSurf 3.11 `table.c` 的原生 used-border 算法，不另写浏览器规则。只读 `PCore_TableCellBorder` 诊断和 TEST53 一次断言 wider、equal-width style priority、hidden、left/top tie、cell/row/row-group/table origin 及 separate 对照；2026-07-16 用户提供的纵横屏截图确认蓝色 dotted、品红 double、hidden gap、橙色 tie、品红 top、青色横线和 separate 双边均符合预期。W3C CSS Tables 仍要求处理 `col`/`colgroup` 来源，但 NetSurf 3.11 及 2026-04-28 官方仓库最新提交的 `table.c` 都保留该模型 TODO，本项不扩大为完整表格边框支持。
+38. **next65 修复跨行终止边与 row-group 边界，待设备验收**：上游 `table_used_bottom_border_for_cell` 在 rowspan 到达表格底部时错误取起始 row 的下边框；当前改为记录跨度终止 row，并让非末尾 `tbody` 的共享边由下一组 cell top 承接。TEST54 集中覆盖有限 rowspan、`rowspan=0`、colspan 相邻边及两个 row group，十项 used-border 自动断言后再走正式 redraw。Debug/Release ARM 增量构建均为 0 错误，未触碰 TEST13、网络事务或通用重绘路径。
 
 验收：
 
@@ -174,7 +175,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 仍缺或简化：
 
 - float
-- `border-collapse` 的 col/colgroup 来源、跨 span/复杂表边界与更多视觉完整度（next64/TEST53 先覆盖 cell/row/row-group/table）
+- `border-collapse` 的 col/colgroup 来源及更多复杂表边界；next64/TEST53 已覆盖基本冲突，next65/TEST54 正验证 span 终止边与 row-group 边界
 - overflow scrollbar 的惯性触摸、overlay 模式与更多嵌套组合
 - float 邻接 marker、自定义 `@counter-style` 与完整 CSS Lists
 - forms/widgets

@@ -754,10 +754,16 @@ table_used_bottom_border_for_cell(const css_unit_ctx *unit_len_ctx,
 				  struct box *cell)
 {
 	struct box *row;
+	struct box *last_row;
+	struct box *group;
+	struct box *table;
 	unsigned int rows;
 	struct border a, b;
 	box_type a_src, b_src;
 	row = cell->parent;
+	last_row = row;
+	group = row->parent;
+	table = group->parent;
 	rows = cell->rows;
 
 	/* Initialise to computed bottom border for cell */
@@ -769,21 +775,24 @@ table_used_bottom_border_for_cell(const css_unit_ctx *unit_len_ctx,
 	a.unit = CSS_UNIT_PX;
 	a_src = BOX_TABLE_CELL;
 
-	while (rows-- > 0 && row != NULL)
+	while (rows-- > 0 && row != NULL) {
+		last_row = row;
 		row = row->next;
+	}
 
-	/** \todo Can cells span row groups? */
+	/* Table normalisation clamps rowspans to their row group. A cell at
+	 * the end of a non-final group still has a following table row; that
+	 * shared edge is carried by the next group's cell top borders. */
 
-	if (row != NULL) {
+	if (row != NULL || group->next != NULL) {
 		/* Cell is not at bottom edge of table -- no bottom border */
 		a.style = CSS_BORDER_STYLE_NONE;
 		a.width = 0;
 		a.unit = CSS_UNIT_PX;
 	} else {
-		/* Cell at bottom of table, so consider row and row group */
-		struct box *row = cell->parent;
-		struct box *group = row->parent;
-		struct box *table = group->parent;
+		/* Cell at bottom of table: use the row where its span ends, not
+		 * the row where the cell started. */
+		row = last_row;
 
 		/* Bottom border of row */
 		b.style = css_computed_border_bottom_style(row->style);
