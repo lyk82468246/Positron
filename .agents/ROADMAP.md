@@ -128,6 +128,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 37. **next64 collapsed-border 冲突批次已由设备验收**：继续使用 NetSurf 3.11 `table.c` 的原生 used-border 算法，不另写浏览器规则。只读 `PCore_TableCellBorder` 诊断和 TEST53 一次断言 wider、equal-width style priority、hidden、left/top tie、cell/row/row-group/table origin 及 separate 对照；2026-07-16 用户提供的纵横屏截图确认蓝色 dotted、品红 double、hidden gap、橙色 tie、品红 top、青色横线和 separate 双边均符合预期。W3C CSS Tables 仍要求处理 `col`/`colgroup` 来源，但 NetSurf 3.11 及 2026-04-28 官方仓库最新提交的 `table.c` 都保留该模型 TODO，本项不扩大为完整表格边框支持。
 38. **next65 跨行终止边与 row-group 边界已由设备验收**：上游 `table_used_bottom_border_for_cell` 在 rowspan 到达表格底部时错误取起始 row 的下边框；当前改为记录跨度终止 row，并让非末尾 `tbody` 的共享边由下一组 cell top 承接。TEST54 集中覆盖有限 rowspan、`rowspan=0`、colspan 相邻边及两个 row group；2026-07-16 设备截图确认 finite 红色终止边、auto 紫色终止边、colspan 青边和组间橙边均正确。
 39. **next66 table-cell 对齐与空格绘制批次，待设备验收**：官方 NetSurf 到 2026-04-28 最新版本仍把 cell baseline 降级为 top，也未消费 libcss 已计算的 `empty-cells`。当前 baseline 复用 NetSurf inline layout 的 3/4 line-height 近似，在同一 row 内移动 cell 子树；`empty-cells:hide` 参考 Mozilla 的成熟实现，仅在 separated model 且无可见内容时抑制 cell 背景和边框，collapsed model 与默认 show 不变。新增只读 `PCore_TableCellGeometry` 和 TEST55，一次自动覆盖 top/middle/bottom、大小字体 baseline、rowspan bottom、hide/show/filled 三种离屏像素，再走正式 redraw。Debug ARM 增量编译 0 错误；TEST13 默认页面会受正确 baseline 语义影响，因此仍保留在 next66 默认复测配置。
+40. **next67 收窄 TEST55 的设备色彩断言**：next66 真机读到 `FFFFFF/00C300/C6C300`，分别仍是正确的白、绿、青；失败只因 compatible bitmap 将目标通道量化了 3-6 色阶。next67 改为白色通道 8 色阶、目标绿/青通道 12 色阶的紧容差，仍会拒绝颜色分类或通道错位；core layout/redraw 没有改动。IANA Further Reading 的新圆点是页面真实 `<li>` 在 marker 支持完善后的正常呈现。
 
 验收：
 

@@ -8179,9 +8179,19 @@ static BOOL test55_table_cell_alignment(void)
     DeleteObject(bitmap);
     DeleteDC(memory_dc);
     ReleaseDC(NULL, screen_dc);
-    if (hidden_pixel != RGB(255, 255, 255) ||
-            shown_pixel != RGB(0, 192, 0) ||
-            filled_pixel != RGB(0, 192, 192)) {
+    /* Compatible bitmaps use the device colour format. Some WM targets
+     * quantise #00c000 to #00c300 and #00c0c0 to about #00c3c6, so compare
+     * each channel within a tight tolerance instead of requiring an exact
+     * desktop RGB round-trip. */
+    if (abs((int) GetRValue(hidden_pixel) - 255) > 8 ||
+            abs((int) GetGValue(hidden_pixel) - 255) > 8 ||
+            abs((int) GetBValue(hidden_pixel) - 255) > 8 ||
+            abs((int) GetRValue(shown_pixel)) > 8 ||
+            abs((int) GetGValue(shown_pixel) - 192) > 12 ||
+            abs((int) GetBValue(shown_pixel)) > 8 ||
+            abs((int) GetRValue(filled_pixel)) > 8 ||
+            abs((int) GetGValue(filled_pixel) - 192) > 12 ||
+            abs((int) GetBValue(filled_pixel) - 192) > 12) {
         _snprintf(msg, sizeof(msg) - 1,
                 "empty pixels=%06lX/%06lX/%06lX",
                 (unsigned long) hidden_pixel,

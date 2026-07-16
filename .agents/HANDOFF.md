@@ -98,7 +98,7 @@ scripts\stage.bat
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid-overflow 隔离、overflow scrollbar、分阶段资源事务、失败回滚与 CSS import tree，离线。TEST40-45 已真机确认。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-55，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment、列表 marker/counter/image/inside flow 与随包静态字体 fallback 正式 redraw；TEST48-54 已验收，TEST55/next66 待设备验收。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-55，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment、列表 marker/counter/image/inside flow 与随包静态字体 fallback 正式 redraw；TEST48-54 已验收，TEST55/next67 待设备验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -119,7 +119,7 @@ scripts\stage.bat
 7. 图片/SVG：TEST20 四格式缓存 `<img>`、TEST25-37 的 SVG 正式链，以及 TEST13 网络相对 SVG 链均已真机确认。公共 `positron_image.dll` 已覆盖 retained WM 位图/SVG、旧 core 转发、PNG/JPEG/BMP/GIF 编码与静态 libjpeg-turbo 4:4:4。next51 已确认 ABI 1.4 启动前 BMP/GIF 编码、签名、回读检查和六项视觉均正常，但标题栏 X 仍按 WM 约定 Smart Minimize，说明仅处理 `WM_CLOSE` 不足。next52 改用 `SHDoneButton(SHDB_SHOW)` 的原生标题栏 OK，并处理 `WM_COMMAND/IDOK`；用户已确认进程真退出且可再次启动。按用户要求不增加左右软键。复杂文本、径向焦点、spread method、background-size 和多层背景仍是显式缺口。
 8. 测试节奏：默认按能力批次积累多个相关实现、自动断言和直绘/正式链回归，再用一个 `test_host.ini` 一次交付多个 TEST。除编译错误、高风险回归定位或设备专有故障外，不应为每个微小改动单独要求用户验收。
 9. `PCore_StyleDocumentEx2` 是旧样式 ABI 的兼容扩展：接收绝对 document URL 和宿主 URL resolver；core 用 libcss 原生 pending/register 机制处理最多 16 层导入，失败导入注册空表。WM 宿主使用 `InternetCombineUrlA`，旋转只读 document CSS cache。TEST45 已真机确认嵌套、缺失回退、URL 规范化和缓存重选。
-10. 表格构盒已移植 NetSurf 3.11 的 span occupancy，next53 已确认 TEST46；next56 又确认匿名包装与空 cell。next64/TEST53 的基本 collapsed-border 冲突已验收；next65/TEST54 又确认 rowspan 实际终止 row 和 row-group 边界承接。next66 正补 cell baseline 与 separated-table `empty-cells:hide`，TEST55 待设备验收。NetSurf 3.11 与 2026-04-28 官方最新源码仍未建模 column/colgroup border 来源，该项继续保留。
+10. 表格构盒已移植 NetSurf 3.11 的 span occupancy，next53 已确认 TEST46；next56 又确认匿名包装与空 cell。next64/TEST53 的基本 collapsed-border 冲突已验收；next65/TEST54 又确认 rowspan 实际终止 row 和 row-group 边界承接。next66 已补 cell baseline 与 separated-table `empty-cells:hide`，next67/TEST55 待设备验收。NetSurf 3.11 与 2026-04-28 官方最新源码仍未建模 column/colgroup border 来源，该项继续保留。
 11. next54 的宿主纵条和 auto-height 横条空间有效，但第二次整树 layout 误改 fixed-height overflow 几何，导致 TEST42 原右箭头点击位置失败；右箭头图形还相对 16px 控件向下偏 2px。该包不能作为新基线。
 12. next55 在二次 layout 前屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，只让 auto-height 容器获得额外空间；右箭头改用与左箭头对称的 `area.y0` 基准。用户已确认 TEST41/42、短页纵条与色块页均正常；冻结的 TEST13 导航链未改。
 13. next56 按 NetSurf 3.11 规则补 table/row-group/row/cell 匿名盒和短行空 cell。用户已确认 TEST47 红/白、绿/蓝两行及同批其余测试正常。
@@ -131,6 +131,7 @@ scripts\stage.bat
 19. next64 新增 `PCore_TableCellBorder` 只读诊断，不改变布局/重绘。TEST53 一次检查 collapsed model 的 wider、style priority、hidden、left/top tie、origin precedence 与 separate 对照；用户已放大核对纵横屏截图并确认符合预期。
 20. next65 对 vendored NetSurf `table.c` 做最小修复：bottom used border 使用 rowspan 实际终止 row；非末尾 row group 不冒充 table bottom，组间边由下一组 top 冲突算法承接。TEST54 自动断言 finite/zero rowspan、colspan 和 row-group 四组场景；仅需验收 TEST54，TEST13 路径未改。
 21. next66 用 NetSurf 现有 inline baseline 约定补 table-cell baseline，并按 Mozilla `ShouldPaintBordersAndBackgrounds`/可见内容判定实现 separated model 的 `empty-cells:hide`。`PCore_TableCellGeometry` 只读返回 cell 与首段文字几何；TEST55 同时检查 top/middle/bottom、baseline、rowspan 与三类空格像素。因 baseline 是 table-cell 初始值，本批默认配置保留 TEST13 深层导航复测，不能只看 TEST55。
+22. next66 的 TEST55 真机原始像素为 `FFFFFF/00C300/C6C300`，证明三类绘制正确，但设备 compatible bitmap 将 CSS `#00c000/#00c0c0` 量化了 3-6 色阶，使桌面式精确 RGB 断言假失败。next67 只改 TEST55 为紧格通道容差，未改 core layout/redraw。TEST13 Further Reading 的圆点来自 IANA 页面真实 `<li>` 与 next57-63 已验收的 marker 支持，不是 next66 回归。
 
 ## 开发纪律
 
