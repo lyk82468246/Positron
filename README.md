@@ -40,6 +40,8 @@ next66 的 TEST55 首次真机运行读到 `FFFFFF/00C300/C6C300`：隐藏格为
 
 next67 的 TEST55 已通过自动断言，设备截图也确认 top/middle/bottom、大小字体共基线、rowspan 底对齐及白/绿/青 empty-cells 正确。截图另外暴露测试页的四组固定高度刚好超出 WM 客户区十几像素，产生几乎填满轨道的纵向滚动条。next68 已压缩 TEST55 的行高/间距并显式设定标题行高，没有用滚动条掩盖可见内容。
 
+next68 已由设备验收：TEST55 在竖屏客户区内完整显示且不再产生多余纵向滚动条；TEST56 的 105px 三行表与 70px 两行表按预期等比分配行高，top/middle/bottom 和跨行单元格底对齐正确。同期 TEST13 长页面滚动与 IANA 页脚布局保持正常。
+
 ---
 
 ## 工具链
@@ -207,7 +209,7 @@ tests=31,32
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
 - **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40-45，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值、grid 宽度隔离、overflow scrollbar、分阶段导航资源事务、主文档失败回滚与 CSS import tree，离线。TEST40-45 已真机通过；TEST23 float 最小样例已因真实 Browse 回归撤回。
-- **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-56，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow 与随包字体 fallback 正式 redraw，离线；TEST48-55 已验收，TEST56/next68 待设备验收。
+- **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-56，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow 与随包字体 fallback 正式 redraw，离线；TEST48-56 已验收。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 
 当前关键 smoke test：
