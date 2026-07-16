@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 54
+#define TEST_MAX_NUMBER 55
 
 static int test_config_space(char c)
 {
@@ -8044,6 +8044,200 @@ static BOOL test54_table_spanning_borders(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 55 - table-cell vertical alignment and empty-cells painting     */
+/* -------------------------------------------------------------------- */
+static BOOL test55_table_cell_alignment(void)
+{
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreTableCellGeometry cells[11];
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF hidden_pixel;
+    COLORREF shown_pixel;
+    COLORREF filled_pixel;
+    int i;
+    int big_baseline;
+    int small_baseline;
+    int screen_w;
+    int screen_h;
+    char msg[256];
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Cell alignment</h1>"
+        "<table class=align><tr><td class=top>top</td>"
+        "<td class=middle>middle</td><td class=bottom>bottom</td>"
+        "</tr></table>"
+        "<table class=baseline><tr><td class=big>Big</td>"
+        "<td class=small>small baseline</td></tr></table>"
+        "<table class=span><tr><td class=spanbottom rowspan=2>"
+        "span bottom</td><td>row one</td></tr><tr><td>row two</td>"
+        "</tr></table>"
+        "<h2>empty-cells</h2><table class=empty><tr>"
+        "<td class=hidden></td><td class=shown></td>"
+        "<td class=filled>X</td></tr></table></body></html>";
+    static const char CSS[] =
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:12px;line-height:16px;margin:0;padding:5px;}"
+        "h1{font-size:21px;color:#800000;margin:0 0 3px;}"
+        "h2{font-size:17px;color:#800000;margin:4px 0 2px;}"
+        "table{border-collapse:separate;border-spacing:3px;"
+        "table-layout:fixed;width:210px;margin:2px 0;}"
+        "td{padding:2px;border:1px solid #404040;}"
+        ".align tr{height:64px}.align td{width:64px;}"
+        ".top{vertical-align:top;background:#ffb0b0;}"
+        ".middle{vertical-align:middle;background:#b0ffb0;}"
+        ".bottom{vertical-align:bottom;background:#b0b0ff;}"
+        ".baseline tr{height:42px}.baseline td{vertical-align:baseline;}"
+        ".big{font-size:24px;line-height:28px;background:#ffe0a0;}"
+        ".small{font-size:12px;line-height:16px;background:#fff0c0;}"
+        ".span tr{height:32px}.spanbottom{vertical-align:bottom;"
+        "background:#ffc060}.span td{width:100px;}"
+        ".empty{empty-cells:hide}.empty td{height:30px;padding:0;"
+        "border:3px solid #004080;background:#00c000;}"
+        ".empty .shown{empty-cells:show;}"
+        ".empty .filled{background:#00c0c0;text-align:center;"
+        "vertical-align:middle;}";
+
+    memset(cells, 0, sizeof(cells));
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-cell-alignment.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 230, 440) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 55 FAIL", "parse/style/layout failed");
+        return FALSE;
+    }
+    for (i = 0; i < 11; i++) {
+        if (PCore_TableCellGeometry(hDoc, (unsigned int) i,
+                &cells[i]) != 0) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "cell geometry lookup failed at %d", i);
+            msg[sizeof(msg) - 1] = '\0';
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 55 FAIL", msg);
+            return FALSE;
+        }
+    }
+    big_baseline = cells[3].first_text_y +
+            cells[3].first_text_height * 3 / 4;
+    small_baseline = cells[4].first_text_y +
+            cells[4].first_text_height * 3 / 4;
+    if (cells[0].first_text_y < 0 ||
+            cells[0].first_text_y + 8 > cells[1].first_text_y ||
+            cells[1].first_text_y + 8 > cells[2].first_text_y ||
+            big_baseline < small_baseline - 1 ||
+            big_baseline > small_baseline + 1 ||
+            cells[5].first_text_y <=
+                    cells[5].cell_y + cells[5].cell_height / 2 ||
+            PCore_TableCellGeometry(hDoc, 99, &cells[0]) == 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "align y=%d/%d/%d base=%d/%d span=%d in %d+%d",
+                cells[0].first_text_y, cells[1].first_text_y,
+                cells[2].first_text_y, big_baseline, small_baseline,
+                cells[5].first_text_y, cells[5].cell_y,
+                cells[5].cell_height);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 55 FAIL", msg);
+        return FALSE;
+    }
+
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 240, 440) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 55 FAIL", "off-screen surface failed");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 240, 440);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+    hidden_pixel = GetPixel(memory_dc,
+            cells[8].cell_x + cells[8].cell_width / 2,
+            cells[8].cell_y + cells[8].cell_height / 2);
+    shown_pixel = GetPixel(memory_dc,
+            cells[9].cell_x + cells[9].cell_width / 2,
+            cells[9].cell_y + cells[9].cell_height / 2);
+    filled_pixel = GetPixel(memory_dc,
+            cells[10].cell_x + 5, cells[10].cell_y + 5);
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    if (hidden_pixel != RGB(255, 255, 255) ||
+            shown_pixel != RGB(0, 192, 0) ||
+            filled_pixel != RGB(0, 192, 192)) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "empty pixels=%06lX/%06lX/%06lX",
+                (unsigned long) hidden_pixel,
+                (unsigned long) shown_pixel,
+                (unsigned long) filled_pixel);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 55 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-cell-alignment.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 55 FAIL", "visible table-cell setup failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 55",
+              "Expect top/middle/bottom text at three heights, Big and\n"
+              "small sharing a baseline, rowspan text at the bottom, then\n"
+              "a white gap, green empty cell and cyan filled cell.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 55 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 55 OK",
+              "Top/middle/bottom, baseline, rowspan and separated-table\n"
+              "empty-cells painting passed through layout and redraw.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -8212,6 +8406,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 52: ok = test52_inside_block_markers(); break;
         case 53: ok = test53_table_collapsed_borders(); break;
         case 54: ok = test54_table_spanning_borders(); break;
+        case 55: ok = test55_table_cell_alignment(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -8293,7 +8488,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                   "Yes = run all selected groups (TEST 1-54)\n"
+                   "Yes = run all selected groups (TEST 1-55)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -8319,7 +8514,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list\n"
                                "normalisation redraw\n"
-                               "(TEST 46-54).\n"
+                               "(TEST 46-55).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -8379,7 +8574,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-54; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-55; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -8409,6 +8604,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test52_inside_block_markers()){ rc = 13; goto done; }
         if (!test53_table_collapsed_borders()){ rc = 13; goto done; }
         if (!test54_table_spanning_borders()){ rc = 13; goto done; }
+        if (!test55_table_cell_alignment()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -8448,7 +8644,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-54)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-55)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

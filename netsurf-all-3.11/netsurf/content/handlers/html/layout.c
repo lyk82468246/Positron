@@ -1660,6 +1660,61 @@ static void layout_move_children(struct box *box, int x, int y)
 }
 
 
+/**
+ * Find the first in-flow baseline inside a table cell.
+ *
+ * NetSurf's inline layout and redraw paths use three quarters of the line
+ * height as their font baseline approximation. Reuse that convention here so
+ * table-cell baseline alignment agrees with the positions already assigned to
+ * text runs.
+ */
+static bool layout_table_first_baseline(struct box *box, int parent_y,
+		int *baseline)
+{
+	struct box *child;
+	int child_y;
+
+	for (child = box->children; child != NULL; child = child->next) {
+		child_y = parent_y + child->y;
+		if (child->type == BOX_TEXT && child->text != NULL &&
+				child->length > 0 && child->height > 0) {
+			*baseline = child_y + child->height * 3 / 4;
+			return true;
+		}
+		if ((child->object != NULL || child->gadget != NULL ||
+				(child->flags & (REPLACE_DIM | IFRAME | IS_REPLACED))) &&
+				child->height > 0) {
+			*baseline = child_y + child->height;
+			return true;
+		}
+		if (layout_table_first_baseline(child, child_y, baseline)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+
+/** Map table-cell vertical-align values to the four CSS table alignments. */
+static enum css_vertical_align_e layout_table_cell_alignment(struct box *cell)
+{
+	css_fixed value;
+	css_unit unit;
+	enum css_vertical_align_e align;
+
+	value = 0;
+	unit = CSS_UNIT_PX;
+	align = css_computed_vertical_align(cell->style, &value, &unit);
+	if (align == CSS_VERTICAL_ALIGN_TOP ||
+			align == CSS_VERTICAL_ALIGN_MIDDLE ||
+			align == CSS_VERTICAL_ALIGN_BOTTOM) {
+		return align;
+	}
+	/* CSS table cells map all other vertical-align values to baseline. */
+	return CSS_VERTICAL_ALIGN_BASELINE;
+}
+
+
 /* Documented in layout_internal.h */
 bool layout_table(
 		struct box *table,
@@ -1676,6 +1731,9 @@ bool layout_table(
 	int spare_width;
 	int relative_sum;
 	int spare_height;
+	int row_baseline;
+	int cell_baseline;
+	int baseline_shift;
 	int positioned_columns;
 	struct box *containing_block;
 	struct box *c;
@@ -2175,6 +2233,16 @@ bool layout_table(
 	for (row_group = table->children; row_group;
 			row_group = row_group->next) {
 		for (row = row_group->children; row; row = row->next) {
+			row_baseline = 0;
+			for (c = row->children; c; c = c->next) {
+				if (layout_table_cell_alignment(c) ==
+						CSS_VERTICAL_ALIGN_BASELINE &&
+						layout_table_first_baseline(c, 0,
+								&cell_baseline) &&
+						row_baseline < cell_baseline) {
+					row_baseline = cell_baseline;
+				}
+			}
 			for (c = row->children; c; c = c->next) {
 				enum css_vertical_align_e vertical_align;
 
@@ -2185,18 +2253,24 @@ bool layout_table(
 						c->descendant_y1) +
 						(c->height - c->descendant_y0);
 
-				vertical_align = css_computed_vertical_align(
-						c->style, &value, &unit);
+				vertical_align = layout_table_cell_alignment(c);
 
 				switch (vertical_align) {
-				case CSS_VERTICAL_ALIGN_SUB:
-				case CSS_VERTICAL_ALIGN_SUPER:
-				case CSS_VERTICAL_ALIGN_TEXT_TOP:
-				case CSS_VERTICAL_ALIGN_TEXT_BOTTOM:
-				case CSS_VERTICAL_ALIGN_SET:
 				case CSS_VERTICAL_ALIGN_BASELINE:
-					/* todo: baseline alignment, for now
-					 * just use ALIGN_TOP */
+					if (layout_table_first_baseline(c, 0,
+							&cell_baseline)) {
+						baseline_shift = row_baseline - cell_baseline;
+						if (baseline_shift < 0) {
+							baseline_shift = 0;
+						}
+						if (baseline_shift > spare_height) {
+							baseline_shift = spare_height;
+						}
+						c->padding[TOP] += baseline_shift;
+						c->padding[BOTTOM] -= baseline_shift;
+						layout_move_children(c, 0, baseline_shift);
+					}
+					break;
 				case CSS_VERTICAL_ALIGN_TOP:
 					break;
 				case CSS_VERTICAL_ALIGN_MIDDLE:
@@ -2212,6 +2286,11 @@ bool layout_table(
 							spare_height);
 					break;
 				case CSS_VERTICAL_ALIGN_INHERIT:
+				case CSS_VERTICAL_ALIGN_SUB:
+				case CSS_VERTICAL_ALIGN_SUPER:
+				case CSS_VERTICAL_ALIGN_TEXT_TOP:
+				case CSS_VERTICAL_ALIGN_TEXT_BOTTOM:
+				case CSS_VERTICAL_ALIGN_SET:
 					assert(0);
 					break;
 				}

@@ -1211,6 +1211,66 @@ static bool html_redraw_box_children(const html_content *html, struct box *box,
 	return true;
 }
 
+
+/** Determine whether a table cell has content that contributes visibly. */
+static bool html_redraw_table_cell_has_content(const struct box *box)
+{
+	const struct box *child;
+
+	for (child = box->children; child != NULL; child = child->next) {
+		if (child->type == BOX_TEXT) {
+			if (child->text != NULL && child->length > 0 &&
+					child->width > 0 && child->height > 0) {
+				return true;
+			}
+			continue;
+		}
+		if (child->type == BOX_BR || child->object != NULL ||
+				child->gadget != NULL ||
+				(child->flags & (REPLACE_DIM | IFRAME | IS_REPLACED))) {
+			return true;
+		}
+		if ((child->type == BOX_BLOCK ||
+				child->type == BOX_INLINE_BLOCK ||
+				child->type == BOX_FLEX ||
+				child->type == BOX_INLINE_FLEX ||
+				child->type == BOX_TABLE) && child->height > 0) {
+			return true;
+		}
+		if (html_redraw_table_cell_has_content(child)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+
+/**
+ * Test whether empty-cells suppresses this cell's background and borders.
+ * The property has no painting effect in the collapsed borders model.
+ */
+static bool html_redraw_table_cell_hides_decoration(const struct box *box)
+{
+	const struct box *row;
+	const struct box *group;
+	const struct box *table;
+
+	if (box->type != BOX_TABLE_CELL || box->style == NULL ||
+			css_computed_empty_cells(box->style) !=
+					CSS_EMPTY_CELLS_HIDE) {
+		return false;
+	}
+	row = box->parent;
+	group = (row != NULL) ? row->parent : NULL;
+	table = (group != NULL) ? group->parent : NULL;
+	if (table == NULL || table->type != BOX_TABLE || table->style == NULL ||
+			css_computed_border_collapse(table->style) !=
+					CSS_BORDER_COLLAPSE_SEPARATE) {
+		return false;
+	}
+	return !html_redraw_table_cell_has_content(box);
+}
+
 /**
  * Recursively draw a box.
  *
@@ -1247,9 +1307,12 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	int padding_left, padding_top, padding_width, padding_height;
 	int border_left, border_top, border_right, border_bottom;
 	int x_scrolled, y_scrolled;
+	bool paint_box_decoration;
 	bg_box = NULL;
 	overflow_x = CSS_OVERFLOW_VISIBLE;
 	overflow_y = CSS_OVERFLOW_VISIBLE;
+	paint_box_decoration =
+			!html_redraw_table_cell_hides_decoration(box);
 
 
 	if (html_redraw_printing && (box->flags & PRINTED))
@@ -1475,7 +1538,7 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	* its background rendered. Otherwise filter out linebreaks,
 	* optimize away non-differing inlines, only plot background
 	* for BOX_TEXT it's in an inline */
-	if (bg_box && bg_box->type != BOX_BR &&
+	if (paint_box_decoration && bg_box && bg_box->type != BOX_BR &&
 			bg_box->type != BOX_TEXT &&
 			bg_box->type != BOX_INLINE_END &&
 			(bg_box->type != BOX_INLINE || bg_box->object ||
@@ -1526,7 +1589,7 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	}
 
 	/* borders for block level content and replaced inlines */
-	if (box->style &&
+	if (paint_box_decoration && box->style &&
 	    box->type != BOX_TEXT &&
 	    box->type != BOX_INLINE_END &&
 	    (box->type != BOX_INLINE || box->object ||

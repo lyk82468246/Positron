@@ -195,6 +195,23 @@ PCORE_API int PCore_TableCellBorder(HANDLE hDoc, unsigned int cell_index,
                                    int side, int *style,
                                    unsigned long *argb, int *width);
 
+typedef struct PCoreTableCellGeometry {
+    int cell_x;
+    int cell_y;
+    int cell_width;
+    int cell_height;
+    int first_text_x;
+    int first_text_y;
+    int first_text_width;
+    int first_text_height;
+} PCoreTableCellGeometry;
+
+/* Inspect table-cell and first visible text geometry in absolute page CSS px.
+ * This additive diagnostics API is used to verify vertical alignment without
+ * exposing NetSurf's internal box tree. */
+PCORE_API int PCore_TableCellGeometry(HANDLE hDoc, unsigned int cell_index,
+                                     PCoreTableCellGeometry *out_geometry);
+
 /* Read back a laid-out list marker by document order. `text` receives the
  * marker's UTF-8 bytes and is always NUL-terminated when cap > 0. The
  * geometry is in absolute page CSS px. Returns non-zero when the marker does

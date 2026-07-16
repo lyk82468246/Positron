@@ -126,7 +126,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 35. **next62 `list-style-position:inside` 内联首行已验收**：上游 NetSurf 3.11 已计算 inside/outside computed value，却仍统一把 marker 放到负 x。当前补丁在 marker 尺寸准备后，让 inline-first list item 的首行宽度吸收文本或缓存图片 marker，后续换行回到内容起点；outside 路径保持原语义。TEST51 自动检查 `VIII.`、12x12 SVG 资源计数、inside/outside 几何及悬挂换行；用户提供的横竖屏截图均符合预期。
 36. **next63 inside 匿名首行扩展已由设备验收**：W3C CSS Lists Level 3 把 inside marker 定义为列表内容开头的 inline element。构盒阶段为 inside 项加入零宽、不绘制的匿名 inline run，因此首个作者子项为 block 或不存在时，NetSurf 自然生成 marker 首行并更新后续块、兄弟和父高度；图片 marker 行高取 `max(line-height, intrinsic height)`。TEST52 的横竖屏截图已确认 III block-first、IV 空条目、V/VI 嵌套计数以及绿色图片 marker 均符合预期；float 邻接保持后续限制，且未修改 TEST13 导航冻结路径。
 37. **next64 collapsed-border 冲突批次已由设备验收**：继续使用 NetSurf 3.11 `table.c` 的原生 used-border 算法，不另写浏览器规则。只读 `PCore_TableCellBorder` 诊断和 TEST53 一次断言 wider、equal-width style priority、hidden、left/top tie、cell/row/row-group/table origin 及 separate 对照；2026-07-16 用户提供的纵横屏截图确认蓝色 dotted、品红 double、hidden gap、橙色 tie、品红 top、青色横线和 separate 双边均符合预期。W3C CSS Tables 仍要求处理 `col`/`colgroup` 来源，但 NetSurf 3.11 及 2026-04-28 官方仓库最新提交的 `table.c` 都保留该模型 TODO，本项不扩大为完整表格边框支持。
-38. **next65 修复跨行终止边与 row-group 边界，待设备验收**：上游 `table_used_bottom_border_for_cell` 在 rowspan 到达表格底部时错误取起始 row 的下边框；当前改为记录跨度终止 row，并让非末尾 `tbody` 的共享边由下一组 cell top 承接。TEST54 集中覆盖有限 rowspan、`rowspan=0`、colspan 相邻边及两个 row group，十项 used-border 自动断言后再走正式 redraw。Debug/Release ARM 增量构建均为 0 错误，未触碰 TEST13、网络事务或通用重绘路径。
+38. **next65 跨行终止边与 row-group 边界已由设备验收**：上游 `table_used_bottom_border_for_cell` 在 rowspan 到达表格底部时错误取起始 row 的下边框；当前改为记录跨度终止 row，并让非末尾 `tbody` 的共享边由下一组 cell top 承接。TEST54 集中覆盖有限 rowspan、`rowspan=0`、colspan 相邻边及两个 row group；2026-07-16 设备截图确认 finite 红色终止边、auto 紫色终止边、colspan 青边和组间橙边均正确。
+39. **next66 table-cell 对齐与空格绘制批次，待设备验收**：官方 NetSurf 到 2026-04-28 最新版本仍把 cell baseline 降级为 top，也未消费 libcss 已计算的 `empty-cells`。当前 baseline 复用 NetSurf inline layout 的 3/4 line-height 近似，在同一 row 内移动 cell 子树；`empty-cells:hide` 参考 Mozilla 的成熟实现，仅在 separated model 且无可见内容时抑制 cell 背景和边框，collapsed model 与默认 show 不变。新增只读 `PCore_TableCellGeometry` 和 TEST55，一次自动覆盖 top/middle/bottom、大小字体 baseline、rowspan bottom、hide/show/filled 三种离屏像素，再走正式 redraw。Debug ARM 增量编译 0 错误；TEST13 默认页面会受正确 baseline 语义影响，因此仍保留在 next66 默认复测配置。
 
 验收：
 
@@ -175,7 +176,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 仍缺或简化：
 
 - float
-- `border-collapse` 的 col/colgroup 来源及更多复杂表边界；next64/TEST53 已覆盖基本冲突，next65/TEST54 正验证 span 终止边与 row-group 边界
+- `border-collapse` 的 col/colgroup 来源及更多复杂表边界；next64-65/TEST53-54 已覆盖基本冲突、span 终止边与 row-group 边界
 - overflow scrollbar 的惯性触摸、overlay 模式与更多嵌套组合
 - float 邻接 marker、自定义 `@counter-style` 与完整 CSS Lists
 - forms/widgets

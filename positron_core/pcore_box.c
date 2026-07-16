@@ -2353,6 +2353,68 @@ PCORE_API int PCore_TableCellBorder(HANDLE hDoc, unsigned int cell_index,
     return 0;
 }
 
+static void pcore_table_first_text(struct box *box, struct box *cell,
+        PCoreTableCellGeometry *geometry, int *found)
+{
+    struct box *child;
+    int x;
+    int y;
+
+    if (box == NULL || geometry == NULL || found == NULL || *found) {
+        return;
+    }
+    if (box != cell && box->type == BOX_TABLE_CELL) {
+        return;
+    }
+    if (box->type == BOX_TEXT && box->text != NULL && box->length > 0 &&
+            box->width > 0 && box->height > 0) {
+        x = 0;
+        y = 0;
+        box_coords(box, &x, &y);
+        geometry->first_text_x = x;
+        geometry->first_text_y = y;
+        geometry->first_text_width = box->width;
+        geometry->first_text_height = box->height;
+        *found = 1;
+        return;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        pcore_table_first_text(child, cell, geometry, found);
+        if (*found) {
+            return;
+        }
+    }
+}
+
+PCORE_API int PCore_TableCellGeometry(HANDLE hDoc,
+        unsigned int cell_index, PCoreTableCellGeometry *out_geometry)
+{
+    pcore_render *st;
+    struct box *cell;
+    unsigned int current;
+    int found;
+
+    if (out_geometry == NULL) {
+        return 1;
+    }
+    memset(out_geometry, 0, sizeof(*out_geometry));
+    out_geometry->first_text_x = -1;
+    out_geometry->first_text_y = -1;
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    cell = (st != NULL) ?
+            pcore_table_cell_at(st->root_box, cell_index, &current) : NULL;
+    if (cell == NULL) {
+        return 1;
+    }
+    box_coords(cell, &out_geometry->cell_x, &out_geometry->cell_y);
+    out_geometry->cell_width = cell->width;
+    out_geometry->cell_height = cell->height;
+    found = 0;
+    pcore_table_first_text(cell, cell, out_geometry, &found);
+    return 0;
+}
+
 static struct box *pcore_list_marker_at(struct box *box,
         unsigned int target, unsigned int *current)
 {
