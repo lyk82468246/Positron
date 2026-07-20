@@ -6,7 +6,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 
 公共 DLL 是正式产品，不只是 `test_host.exe` 或浏览器的内部依赖。架构与 ABI 原则见 [.agents/ARCHITECTURE.md](.agents/ARCHITECTURE.md)。
 
-> **稳定性基线（2026-07-15）**：`main` 的产品源码已完整恢复到 `9c5c7c7`/next37，并打包为 next44；用户已确认 TEST13 从 start page 到 IANA 深层导航的全流程完全正常。next38 之后的 stylesheet metadata、base URL、redirect origin 和 timeout 实验历史保存在 `codex/post-next37-experiments`，短期挂起；详见 [.agents/ROLLBACK_NEXT37.md](.agents/ROLLBACK_NEXT37.md)。
+> **Browse 冻结基线（2026-07-15）**：导航产品路径曾完整恢复到 `9c5c7c7`/next37，并由 next44 确认 TEST13 从 start page 到 IANA 深层导航全流程正常。此后 `main` 已继续加入图片、字体、列表和表格能力，但没有重新合入 next38 之后失败的 stylesheet metadata、base URL、redirect origin 与 timeout 实验；这些历史保存在 `codex/post-next37-experiments`。详见 [.agents/ROLLBACK_NEXT37.md](.agents/ROLLBACK_NEXT37.md)。
 
 ---
 
@@ -30,7 +30,7 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 最新设备反馈（2026-07-16）：next44 的 TEST13 全流程确认 next37 恢复点可作为 Browse 冻结基线；next45 又确认公共位图 ABI 的 TEST19 四格式、TEST20 缓存图片、TEST26/27 SVG 与 TEST13 全流程均正常。next46 的 ABI 1.0 独立 WM 示例也已在横竖屏确认，SVG 曲线缩放后的平滑观感略逊于先前大图但可接受。next47 已确认 ABI 1.1 的 PNG/JPEG 内存编码、DLL 配套释放及重新解码闭环；next48 证明 WM `EncoderQuality=100` 仍无法修复小图色度串扰。next49 已确认静态 libjpeg-turbo 1.5.3 的显式 quality JPEG 为正确 4:4:4，行方向、红绿蓝黄颜色与 PNG 一致，大面积色带消失。Debug DLL 相比 next48 增加 243,712 字节（约 238 KiB），设备不需额外 JPEG DLL；额外 CPU 与约 `width*height*3` 的主要中间像素内存只发生在显式 JPEG 编码。next50 的六项截图又确认 ABI 1.3 的 padded BGR24、straight-alpha BGRA32、RGB/alpha PNG、JPEG 与 SVG 一致。next51 进一步证明 ABI 1.4 的 BMP/GIF 隐藏编码、签名与回读检查通过，但也证明标题栏 X 是 Shell Smart Minimize，不保证发送 `WM_CLOSE`。next52 改用 WM/Pocket PC 原生 `SHDoneButton(SHDB_SHOW)` 标题栏 OK，并在 `WM_COMMAND/IDOK` 销毁窗口；用户已确认点击 OK 后进程消失且可以正常再次启动。next53 又确认 TEST46 四行三列表格 span 颜色/位置正确，TEST13/17/41/42 其余功能正常。next54 虽让 TEST41 的 auto-height 横条获得独立空间并去掉短页无效纵条，却因第二次整树 layout 同时改变 fixed-height overflow 几何而令 TEST42 自动断言失败；next55 已限制二次 layout 只影响 auto-height 容器并修正右箭头坐标，用户现已确认 TEST41/42、短页纵条与色块页全部正常。next56 的 TEST47 红/白、绿/蓝两行及同批其他测试现已确认正常。next57 的 TEST48 已确认列表层级和有序计数语义；next58/59 的随包字体最终让基础箭头、marker 与五个单色 emoji 可见。next61 的 TEST50 已确认 IV/z/aa/09 计数、绿色缓存 SVG marker 与圆形失败回退全部通过。next62/TEST51 与 next63/TEST52 又依次确认 inline-first 和 block-first/空条目/嵌套/图片的 inside marker 流在横竖屏符合预期。next64/TEST53 的纵横屏截图现已确认 collapsed border 的宽度、样式、hidden、来源 tie 与 separate 对照均符合预期；next65/TEST54 又确认 finite/auto rowspan、colspan 与 row-group 四组终止边正确。上述改动均没有重启 next38 之后的导航实验。
 
-当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已由 TEST42/next55 验收，但不包含触摸惯性或 overlay scrollbar。CSS `@import` 的嵌套解析、失败空表回退和文档缓存已由 TEST45 验收；它尚不代表跨源策略、完整缓存失效或整页资源进度已完成。有效表格的 span 占位和匿名 row/cell 已由 TEST46/47 真机确认；next64/TEST53 已验证 NetSurf 原生 cell/row/row-group/table collapsed-border 基本冲突规则，next65/TEST54 又验收 span 终止边与 row-group 边界；next66/TEST55 正验证 cell vertical alignment 与 separated-table `empty-cells`，`col`/`colgroup` 来源仍是 NetSurf 3.11 及当前官方源码的 TODO。列表 marker 的 47 种上游 counter formatter、缓存 `list-style-image`、失败回退和 inside 首行流已由 next61-63/TEST50-52 验收；float 邻接 marker、自定义 `@counter-style` 与所有语言字体仍未完成。`background-size`、多层背景、web fonts 和脚本资源仍未实现。UI 提交已在 parse/style/image-discovery/layout 四个调用之间让出 WM 消息循环，单个不可重入的 NetSurf 调用仍可能短暂卡顿。复杂 SVG text、动态状态伪类、float、forms/widgets 仍不完整；JavaScript 尚未实现但属于长期必做目标。
+当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已由 TEST42/next55 验收，但不包含触摸惯性或 overlay scrollbar。CSS `@import` 的嵌套解析、失败空表回退和文档缓存已由 TEST45 验收；它尚不代表跨源策略、完整缓存失效或整页资源进度已完成。有效表格的 span 占位、匿名 row/cell、collapsed-border 冲突、cell vertical alignment、`empty-cells` 和显式 table height 分配已由 TEST46/47、TEST53-56 真机确认；`col`/`colgroup` border 来源、百分比 row height 和跨行 baseline 仍未覆盖。列表 marker 的 47 种上游 counter formatter、缓存 `list-style-image`、失败回退和 inside 首行流已由 next61-63/TEST50-52 验收；float 邻接 marker、自定义 `@counter-style` 与所有语言字体仍未完成。`background-size`、多层背景、web fonts 和脚本资源仍未实现。UI 提交已在 parse/style/image-discovery/layout 四个调用之间让出 WM 消息循环，单个不可重入的 NetSurf 调用仍可能短暂卡顿。复杂 SVG text、动态状态伪类、float、forms/widgets 仍不完整；JavaScript 尚未实现但属于长期必做目标。
 
 next59 的 TEST49 已确认四个箭头不再 tofu、marker 和五个单色 emoji 均可见，视觉比 next58 稍有改善。next60 首次 TEST50 显示 `found=4`，核查确认不是当前源码逻辑失败，而是 staging 在最后一次 Debug 增量编译后又修改了 `pcore_select.c`，最终错误地组合了新 `test_host.exe` 与旧 `positron_core.dll`。next61 重新增量编译后 TEST50 已通过；`stage.bat` 现会先执行同配置增量 Build，失败时不再复制任何产物。next62 的 TEST51 与 next63 的 TEST52 均已由横竖屏截图确认，inside 文本/图片 marker、悬挂换行、block-first、空条目和嵌套布局符合预期。
 
@@ -50,7 +50,7 @@ next68 已由设备验收：TEST55 在竖屏客户区内完整显示且不再产
 - **SDK**：Windows Mobile 6 Professional SDK (ARMV4I)
 - **目标 Subsystem**：`windowsce,5.02`
 - **链接库**：`ws2.lib`（WinCE 版 Winsock2，非桌面 `ws2_32.lib`）
-- **加密库**：mbedTLS **2.16.12 LTS**（最后一条真正 C89 兼容的主线；2.28+ 用了 C99 mid-block 声明 VS2008 编不动）
+- **加密库**：mbedTLS **2.16.12**（历史 2.16 LTS 系列的 WM6/MSVC9 兼容固定版本，不表示当前仍受上游维护；尝试过的 2.28.10 含 MSVC9 无法直接编译的 C99 声明）。当前 verified 路径显式使用 `MBEDTLS_SSL_VERIFY_REQUIRED` 并调用 `mbedtls_ssl_set_hostname()`；迁移到仍受维护版本仍是安全性中期目标。
 - **JSON 库**：cJSON **1.7.18**（C89 兼容）
 
 ---
@@ -71,7 +71,7 @@ Positron/
     ca_bundle.h                 嵌入的完整 Mozilla 根集（~140 根，脚本生成）
     gen_ca_bundle.py            从 curl cacert.pem 提取根证书的生成脚本
     positron_tls.vcproj
-    mbedtls/                    mbedTLS 2.16.12 源（不入 git，见下）
+    mbedtls/                    完整 vendored mbedTLS 2.16.12 源与许可证
 
   positron_json/                cJSON 包装 DLL
     positron_json.h / .c / .vcproj
@@ -105,7 +105,7 @@ Positron/
     inttypes.h
 
   scripts/
-    stage.bat                   一键把 5 个二进制拷到 C:\WMShare\
+    stage.bat                   增量构建并把 6 个二进制拷到 C:\WMShare\
     stage_image_demo.bat        只打包图片 DLL 与独立示例
 
   .agents/                      Codex 接手交接、调试纪律、路线图
@@ -117,21 +117,11 @@ Positron/
 
 ### 一次性准备
 
-1. 安装 **VS2008 SP1** + **Windows Mobile 6 Professional SDK** + **WM6 Pro Emulator**
-2. 下载 mbedTLS 2.16.12：
-   ```
-   https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/mbedtls-2.16.12.zip
-   ```
-3. 解压，把 `include/` 和 `library/` 整体复制到 `positron_tls/mbedtls/` 下：
-   ```
-   positron_tls/mbedtls/include/mbedtls/...
-   positron_tls/mbedtls/include/psa/...
-   positron_tls/mbedtls/library/*.c
-   positron_tls/mbedtls/library/*.h
-   ```
-   （`mbedtls/` 不入 git，开发机自备）
+1. 安装 **VS2008 SP1** + **Windows Mobile 6 Professional SDK** + **WM6 Pro Emulator**。
+2. Clone 本仓库。mbedTLS、cJSON、NetSurf、Expat、libjpeg-turbo、NanoSVG 和字体源均已固定版本并随仓库提供，不需要额外下载源码。
+3. 可先运行 `python scripts\audit_repo.py`，确认 14 个 VS2008 工程引用的源码和关键许可证都存在且已被 Git 跟踪。
 
-cJSON 已经入 git，无需额外下载。
+VS2008、WM6 SDK、模拟器和设备镜像是外部专有工具链，不能随本仓库再分发。第三方版本和许可证清单见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
 ### 构建
 
@@ -226,7 +216,7 @@ tests=31,32
 - **熵源**：默认 `CryptGenRandom`（Phase 3 起）；CSP 不可用时自动退回 QPC+GetTickCount+tid/pid jitter，CTR-DRBG 兜底。
 - **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 gzip 解码、响应体 cap 1 MB；GET 已有有限 3xx follow，明文 `http://` 经 WinInet。
 - **导航卡顿**：主文档、外链 CSS、CSS `@import`、`<img>` 与已计算 CSS 背景资源的 GET 已组成分阶段 worker 事务，旧页在网络等待时可滚动。`PHttp_GetEx/PostEx` 在请求线程报告已解码正文大小和可选 `Content-Length`；父窗口进度条对已知总长显示当前响应的真实百分比，对 chunked/无长度响应保持活动动画，TEST3/13 已真机确认。每个资源响应会开始自己的进度序列，所以这不是整页资源总字节百分比。HTML parse、style、图片 cache copy、layout 仍严格留在 UI 线程，但现通过一次性 WM timer 分成四个提交阶段，让触摸、旋转、绘制和进度控件可在阶段之间运行；单个 NetSurf 调用仍可能短暂卡顿。TEST44 已确认主文档失败保留旧页与事务收尾，TEST45 已确认嵌套导入与失败回退。网页字体/脚本资源仍待后续。`test_host` 暂存最多 64 个 URL、合计 2 MiB 原始字节；这是可替换的宿主预算，不是 `positron_core` ABI 限制。
-- **渲染限制**：TEST25-37 与 TEST13 fixture 已确认 SVG parse/draw/cache/fallback/fill-rule/网络链、CSS 单背景图、基础 SVG text、线性/径向渐变、继承/透明 stop 及缓存复用；复杂 SVG text、径向焦点、spread method、background-size 和多层背景仍未完成。TEST38-39 已确认受约束的 `:root` token，TEST40 已确认数值型 OKLCH/可求值 calc；两者都不代表完整 CSS Variables/Color/Values。TEST41 只验证 grid 单列降级不会把反向 flex 主内容推至负坐标；TEST42 验证的是 overflow scrollbar，不是完整 Grid。TEST46/47 覆盖有效表格 span 与有限匿名包装。TEST48 只覆盖常见列表 marker 和十进制 HTML 计数，不代表完整 CSS Lists/Counter Styles。TEST23 浮动实现已因 Browse 回归撤回。完整范围见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
+- **渲染限制**：TEST25-37 与 TEST13 fixture 已确认 SVG parse/draw/cache/fallback/fill-rule/网络链、CSS 单背景图、基础 SVG text、线性/径向渐变、继承/透明 stop 及缓存复用；复杂 SVG text、径向焦点、spread method、background-size 和多层背景仍未完成。TEST38-39 已确认受约束的 `:root` token，TEST40 已确认数值型 OKLCH/可求值 calc；两者都不代表完整 CSS Variables/Color/Values。TEST41 只验证 grid 单列降级不会把反向 flex 主内容推至负坐标；TEST42 验证的是 overflow scrollbar，不是完整 Grid。TEST46/47 与 TEST53-56 覆盖一批表格构盒、边框和行高子例；TEST48-52 覆盖 47 种上游 counter formatter、图片 marker 及 inside 流，但仍不代表完整 CSS Lists/Counter Styles。TEST23 浮动实现已因 Browse 回归撤回。完整范围见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 - **WM6 X 按钮 = 最小化不是关闭**。每次启动 test_host 前确认任务管理器没有遗留实例，否则 stage.bat 替换 exe 时会产生 image 不一致。
 - **WMDC 桥会静默断**：host 待机 / 模拟器长跑后偶尔失联，表现是 `PTls_Connect` 拿到 `-0x004C [BIO: recv WSA=...]`。修法：重启 WMDC（任务栏 → 退出 → 重启）。**联网测试前先在 IE Mobile 打开 baidu 验证一遍**。
 - **模拟器时钟**：跑 verified TLS 前必须校准（见上）。证书 notBefore/notAfter 都按 UTC 比对当前时间。
@@ -235,4 +225,4 @@ tests=31,32
 
 ## License
 
-代码本身 MIT。mbedTLS 是 Apache 2.0（详见 `mbedtls/LICENSE`，不入 git，跟随上游）。cJSON 是 MIT。
+Positron 自有代码使用 [MIT License](LICENSE)。Vendored 源码保留各自许可证，不能被根许可证覆盖；尤其 `netsurf-all-3.11/netsurf/` 的浏览器源码是 GPLv2。完整组件、版本、路径和通知要求见 [THIRD_PARTY.md](THIRD_PARTY.md)。

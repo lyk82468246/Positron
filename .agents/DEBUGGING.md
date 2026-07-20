@@ -117,7 +117,7 @@ next54 设备结果证明追加的 layout 虽修复 TEST41 类 auto-height 占�
 
 next55 已由用户确认全部正常，可作为新的 overflow 基线。next56 转向 NetSurf 表格归一化：若 TEST47 失败，先看红/白、绿/蓝四点中的哪一点不符。红或绿缺失通常表示匿名 cell 未承载 block；白变成红表示短行空 cell 未生成；蓝缺失表示显式 table-cell 被错误并入匿名 cell。不要改 EXPECTED 掩盖构盒错误。匿名样式来自 `css_select_default_style` 与父样式 compose，必须随 talloc box tree 释放。冻结的 TEST13 导航链未改。
 
-2026-07-15 用户确认 next56 的 TEST47 与同批其余测试正常。next57 的 TEST48 期望 marker 顺序为两个 disc、circle、square、`3.`、`7.`、`5.`、`4.`；失败时先检查 `PCore_ListMarker` 返回的实际序号/文本/几何，不得修改 EXPECTED 回避 LI user-data 或 ordered-list 计数错误。完整上游 `format_list_style.c` 含大量 VS2008 不支持的静态聚合初始化，当前继续使用 decimal-only stub，后续须单独扩充 `c89ize.py` 规则或人工 C89 移植。
+2026-07-15 用户确认 next56 的 TEST47 与同批其余测试正常。next57 的 TEST48 期望 marker 顺序为两个 disc、circle、square、`3.`、`7.`、`5.`、`4.`；失败时先检查 `PCore_ListMarker` 返回的实际序号/文本/几何，不得修改 EXPECTED 回避 LI user-data 或 ordered-list 计数错误。当时仍使用 decimal-only stub；该限制随后已由 next60/61 的 `port_list_style_vs2008.py` 与 TEST50 解除，见下方后续记录。
 
 2026-07-15 next60 已落实上述后续：`port_list_style_vs2008.py` 只接受已知 `list_counter_style`/`numeric` 字段，未知、重复或不平衡初始化会直接失败；所有非 ASCII 字符只允许位于字符串中并转成三位八进制 UTF-8。首次生成暴露 `c89ize.py` 会先把 `struct name {` 误判成未结束声明，从而把 aggregate 字段重排；根因是 aggregate 判断晚于 `DECL_LIKE`，现已提前。若以后生成文件的 struct 字段顺序变化、出现 C4047/C2078，必须修脚本并重新生成，不能手改生成文件或忽略初始化警告。
 

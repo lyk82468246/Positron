@@ -1,6 +1,6 @@
 # Positron Architecture
 
-更新时间：2026-07-15
+更新时间：2026-07-20
 
 ## 项目定位
 
@@ -27,7 +27,9 @@ Positron 是 Windows Mobile 6 / WinCE 5.02 的现代基础设施集合，同时�
 
 ### 内部静态库
 
-NetSurf、libdom、libcss、libsvgtiny、mbedTLS、cJSON 等上游源码可以各自构建为静态 `.lib`，再藏在相应公共 DLL 后面。静态工程用于隔离移植补丁和构建依赖，不等于对外 API。
+NetSurf、libdom、libcss、libsvgtiny 等上游源码按工程构建为静态 `.lib`，再藏在相应公共 DLL 后面；mbedTLS 与 cJSON 当前分别直接编入 `positron_tls.dll` 和 `positron_json.dll`，同样不暴露上游 ABI。内部构建边界用于隔离移植补丁和依赖，不等于对外 API。
+
+所有源码依赖必须固定版本并随仓库提供，禁止让正常构建在编译时临时下载代码。许可证、来源和通知要求集中维护在根目录 `THIRD_PARTY.md`；VS2008、WM6 SDK 和模拟器属于不可随仓库再分发的外部工具链。
 
 缺少能力时按以下顺序处理：
 

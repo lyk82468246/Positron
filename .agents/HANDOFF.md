@@ -1,10 +1,10 @@
 # Positron Current Handoff
 
-更新时间：2026-07-16
+更新时间：2026-07-20
 当前分支：`main`  
-当前最新提交：请以 `git log --oneline -5` 为准；Codex 接手后已刷新文档，接入 M5f border、CSS selector 补强、`<img>` fallback/fetch、文档级图片字节缓存与 WM Imaging 原生图片适配层，并把 TEST 11 扩展为 margin-collapse 正反样例。
+当前最新提交：请以 `git log --oneline -5` 为准；当前设备基线已覆盖 TEST48-56，最近完成列表 marker/counter/inside flow、折叠表格边框、cell alignment/empty-cells 与显式 table height 分配。
 
-> **接手前先读**：`main` 产品源码已完整回退到 `9c5c7c7`/next37，且重编后的 core/host/http 文件尺寸与用户确认正常的 next37 一致。next37 后实验保存在远端 `codex/post-next37-experiments`，不得直接合回。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
+> **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
 ## 项目目标
 
@@ -15,6 +15,8 @@ Positron 是面向 Windows Mobile 6 Professional / WinCE 5.02 / ARMV4I 的现代
 - WM6 已有且够用的能力优先复用：明文 HTTP 用 WinInet，绘图用 GDI，后续图片应优先考虑 WM Imaging API。
 - WM6 缺少的成熟能力优先联网检索并移植许可证兼容的开源实现；只有平台胶水和 ABI 包装才优先自写。
 
+源码依赖现已自包含：NetSurf、mbedTLS、cJSON、Expat、libjpeg-turbo、NanoSVG 与 Noto 字体都固定版本并随仓库提供。新环境只需另行安装不可再分发的 VS2008 SP1、WM6 Professional SDK 与模拟器；运行 `python scripts\audit_repo.py` 可检查 14 个工程引用、版本和许可证。第三方边界见根目录 `THIRD_PARTY.md`。
+
 ## 当前真实状态
 
 Phase 1-3 已完成：
@@ -23,7 +25,7 @@ Phase 1-3 已完成：
 - `positron_json.dll`：cJSON 包装。
 - `positron_http.dll`：HTTP/HTTPS GET/POST，HTTPS 走 mbedTLS verified，明文 `http://` 走 WinInet，支持有限重定向。
 
-Phase 4 当前已越过 M7-table，并进入 M5f border + selector 验证：
+Phase 4 已越过 M7-table 和 M5f border/selector，并推进到 TEST56 的表格显式高度验收：
 
 - NetSurf 底层库已在 VS2008 / WinCE / ARMV4I / C89-only 下编译通过：
   `positron_netsurf`、`positron_hubbub`、`positron_libdom`、`positron_libcss`。
@@ -104,6 +106,7 @@ scripts\stage.bat
 当前最关键验证：
 
 - TEST 17：内置 NetSurf real layout + redraw 页面。预期：深红 H1 和红色下边框、带边框的三色 flex 横排、2x2 table 可见 cell 边框。
+- TEST 56：显式 table height 分配。预期：105px 三行等高且文字依次 top/middle/bottom；70px 两行等高且橙色 rowspan 文字在底部；页面无多余纵向滚动条。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步
@@ -133,6 +136,7 @@ scripts\stage.bat
 21. next66 用 NetSurf 现有 inline baseline 约定补 table-cell baseline，并按 Mozilla `ShouldPaintBordersAndBackgrounds`/可见内容判定实现 separated model 的 `empty-cells:hide`。`PCore_TableCellGeometry` 只读返回 cell 与首段文字几何；TEST55 同时检查 top/middle/bottom、baseline、rowspan 与三类空格像素。因 baseline 是 table-cell 初始值，本批默认配置保留 TEST13 深层导航复测，不能只看 TEST55。
 22. next66 的 TEST55 真机原始像素为 `FFFFFF/00C300/C6C300`，证明三类绘制正确，但设备 compatible bitmap 将 CSS `#00c000/#00c0c0` 量化了 3-6 色阶，使桌面式精确 RGB 断言假失败。next67 只改 TEST55 为紧格通道容差，未改 core layout/redraw。TEST13 Further Reading 的圆点来自 IANA 页面真实 `<li>` 与 next57-63 已验收的 marker 支持，不是 next66 回归。
 23. next67/TEST55 自动断言和可见语义已验收；截图显示测试页因四组固定高度只超出 WM 客户区十几像素，仍生成了纵向滚动条。next68 将 TEST55 压缩到约 240px 内容高并设定标题行高；core 新增的显式表高分配参考 Blink 比例分配/小数余量规则，用 NetSurf rowspan 活跃列累加 cell bottom padding。`PCore_TableRowGeometry` 仅供 TEST56 读取最终 row 几何。2026-07-16 设备截图确认 TEST55 完整显示且无多余纵条，TEST56 的等高行、三种垂直对齐和 rowspan bottom 均正确；同批 TEST13 长页滚动正常。
+24. 2026-07-20 完成仓库自包含审计：mbedTLS 2.16.12 完整官方源树和许可证已纳入 Git，cJSON 1.7.18 补齐独立许可证及来源。根 `LICENSE` 只覆盖 Positron 自有代码；NetSurf 浏览器源码的 GPLv2 等边界见 `THIRD_PARTY.md`。`python scripts\audit_repo.py` 当前检查 14 个工程、598 个工程输入、Git 跟踪、版本与关键许可证。
 
 ## 开发纪律
 

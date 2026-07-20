@@ -17,5 +17,6 @@
 ## 权威性
 
 - 最新代码状态以 `git log`、源码和本目录为准。
-- `README.md` 是面向使用者的现状摘要；`PHASE4.md` 保留阶段历史。详细限制以 `KNOWN_LIMITATIONS.md` 为准。
+- `README.md` 是面向使用者的现状摘要；`PHASE1.md` 至 `PHASE4.md` 都是阶段历史，其中的“当前/待实现”只对当时有效。详细限制以 `KNOWN_LIMITATIONS.md` 为准。
+- 第三方版本、vendored 路径和许可证边界以根目录 `THIRD_PARTY.md` 为准；新 clone 的源码完整性用 `python scripts/audit_repo.py` 检查。
 - Claude Code 本地 transcript 在 `C:\Users\Joe\.claude\projects\c--Users-Joe-Documents-C--Positron\`，但以后应优先维护本目录，避免下一位 agent 找不到交接信息。

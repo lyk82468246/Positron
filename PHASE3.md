@@ -2,6 +2,8 @@
 
 让 `positron_tls.dll` 第一次提供可信任的连接。Phase 1/2 都跑在 `MBEDTLS_SSL_VERIFY_NONE` 之下，任何中间人都能伪装成 ipify / httpbin。Phase 3 嵌入一份 CA bundle、加上链验证 + hostname 校验、把熵源从 jitter 升到 CryptGenRandom，并让 `positron_http` 默认走 verified 路径。
 
+> **历史文档**：本文保留最初“5 根证书”阶段的设计记录。主线已在 2026-06-10 改为 curl 发布的完整 Mozilla CA bundle 快照（当前生成文件含 121 张证书），因此下面关于只挑 5 根和约 7 KB 的描述不再是现状。当前构建和限制以 [README.md](README.md) 为准。
+
 ---
 
 ## 目标与非目标

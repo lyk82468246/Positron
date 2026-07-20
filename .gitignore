@@ -25,10 +25,6 @@ BuildLog.htm
 *.rsp
 vs2008-build.log
 
-# mbedTLS source tree — each dev downloads separately (Apache 2.0,
-# don't bloat repo + don't drift from upstream tagged release)
-positron_tls/mbedtls/
-
 # Local staging dir for shared-folder deploy
 WMShare/
 

@@ -2,6 +2,8 @@
 
 记录从规划到 WM6 模拟器成功握手 api.anthropic.com 的过程中**真正踩到的坑和最终决策**，方便后续阶段及他人复用。
 
+> **历史文档**：本文保留 Phase 1 当时的决策和结果，不是当前构建指南。mbedTLS 2.16.12 现已完整 vendored 到 `positron_tls/mbedtls/`，clone 后无需另行下载；当前构建步骤以 [README.md](README.md) 为准。
+
 ---
 
 ## 时间线摘要

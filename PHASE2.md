@@ -2,6 +2,8 @@
 
 把 framework 的 stdlib 底层做扎实：把任意 WM6 app 都需要的 JSON 解析与 HTTPS 请求能力做成独立的两个 DLL。
 
+> **历史文档**：本文描述 Phase 2 完成时的快照。文中的 `VERIFY_NONE`、不跟随重定向、无进度回调等限制后来已被 Phase 3/4 的 verified TLS、有限 3xx follow 和 `PHttp_GetEx/PostEx` 进度能力取代。当前安全与 API 结论以 [README.md](README.md) 和 [.agents/HANDOFF.md](.agents/HANDOFF.md) 为准。
+
 ---
 
 ## 目标与非目标

@@ -4,6 +4,8 @@
 
 > 状态（2026-07-15）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。main 已恢复到 next37 稳定路径，next44 的 TEST13 全流程由用户确认正常。next45 又确认移入 `positron_image.dll` 的 WM Imaging retained 位图 C ABI、四格式缓存链、SVG 与 TEST13 均无回归。
 
+> **阶段历史说明（2026-07-20）**：本文按 Phase 4 的推进顺序保留旧决策，不能把中途的 “stub / 待实现” 当作当前状态。完整 counter formatter、列表图片/inside marker、表格 span/归一化/折叠边框/单元格对齐/显式表高均已在 TEST46-56 后续批次验收。当前事实、限制和执行顺序以 [.agents/HANDOFF.md](.agents/HANDOFF.md)、[.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md) 与 [.agents/ROADMAP.md](.agents/ROADMAP.md) 为准。
+
 
 ---
 
@@ -22,10 +24,10 @@
 
 **显式不做的（留后续 Phase / 子阶段）**：
 - JavaScript（duktape/QuickJS 等）
-- 图片解码与显示（gif/png/jpeg）、SVG
+- 图片解码与 SVG（该早期非目标后来已由 `positron_image.dll` 与 TEST19/20、25-37 完成基础闭环）
 - 完整 form/widget/iframe/object 支持
 - 高保真现代 CSS 全覆盖（float、复杂 table、更多 selector 等分阶段补）
-- libcss 的花哨 list-style 计数器（罗马 / CJK / 亚美尼亚…）——见下 stub 决策
+- libcss 的完整 list-style 计数器（该早期非目标后来由 next60/61 的可重复 C89 转换和 TEST50 验收）
 
 ---
 
@@ -54,8 +56,8 @@ WinCE 的 CRT 头会把 `windef.h` / `winbase.h` / `winnt.h`（**不含** wingdi
 - `INFINITE`（winbase 宏）、`DELETE`（winnt 宏）→ `#undef`（libcss propstrings.h / libdom text.c）
 - 全部用 `#ifdef _WIN32_WCE` 守在撞名的枚举定义处
 
-### `format_list_style.c` 暂时 stub
-该文件用 255 个嵌套 / 选择性指定初始化器实现 CSS 计数器样式（decimal / 罗马 / CJK…），手改不现实。**从 vcproj 排除**，换 `select/positron_list_style_stub.c`（仅 decimal）。原文件留树里、留 git 历史，完整计数器样式后续再补（可用 CeGCC 单独编）。
+### `format_list_style.c` 曾暂时 stub（已解决）
+该文件用 255 个嵌套 / 选择性指定初始化器实现 CSS 计数器样式（decimal / 罗马 / CJK…），早期曾从 vcproj 排除并换成 decimal-only stub。next60/61 已用 `scripts/port_list_style_vs2008.py` 从仓库原版文件可重复生成 C89/ASCII 版本，恢复上游 47 种 formatter；TEST50 已在设备验收。此段只保留原始取舍背景，不再描述当前构建。
 
 ### CRT 缺口：见到 unresolved 就补 shim
 WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库工程）现已补齐六个：`bsearch`、`abort`（TerminateProcess）、`strdup`（malloc+memcpy）、`strncasecmp`（→`_strnicmp`）、`snprintf`（→`_vsnprintf`）、`time`（FILETIME→Unix 秒）。前两个在 hubbub 阶段就需要；后四个在 TEST 7/7b 链接 libcss/libdom 时以 LNK2019 暴露后补齐——**链接测试就是发现 CRT 缺口的手段**。
@@ -118,7 +120,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 
 ---
 
-## 当前路线图（M7 后）
+## M7 后路线图（历史推进记录）
 
 旧的 A/B/C 里程碑（整树 computed style、手写 block layout、首次 GDI 绘制）已经完成并被后续 M6 替代：正式渲染路径现在不再使用手写 `pcore_layout_block/inline` + `pcore_paint_node`，而是走 NetSurf 真实 `layout_document` / `html_redraw`。
 
@@ -133,11 +135,11 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 3. **图片 / SVG**  
    `<img>` alt fallback、文档缓存、BMP/PNG/JPEG/GIF 与 SVG replaced-box 正式链均已有真机基线。2026-07-15 将 WM Imaging 实现从 core 私有桥迁入公共 `positron_image.dll`：`PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap/FreeBitmap` 复制调用方字节并保留 `IImage`，NetSurf bitmap carrier 在多次 redraw 间复用它；旧 `PCore_ImageInfoFromMemory/DrawImageFromMemory/ImageLastError` 只保留兼容转发。next45 的 TEST19/20 已确认四格式、重复绘制、输入所有权、错误拒绝、兼容转发和正式缓存链，TEST13/26/27 同批无回归；完整边界见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 
-4. **后台导航体验**  
-   主文档 GET 已进入 worker，旧页在此期间继续响应并显示 loading；response 回到 UI 线程后，parse、外链 CSS/图片 fetch、style/layout 仍同步发生，复杂页面可能短暂卡顿。后续应把资源 fetch 纳入后台事务，同时继续保证 DOM/libcss/NetSurf document 只在 UI 线程提交。
+4. **后台导航体验（早期状态，已被第 8 项取代）**
+   当时只有主文档 GET 进入 worker，旧页在此期间继续响应并显示 loading；response 回到 UI 线程后，parse、外链 CSS/图片 fetch、style/layout 仍同步发生。后续已经把资源 fetch 纳入后台事务，同时继续保证 DOM/libcss/NetSurf document 只在 UI 线程提交。
 
 5. **布局细化**  
-   flex 和常见 table 已通；IANA 页脚曾触发普通 `float:left` 构盒尝试，TEST23 最小样例通过但真实 Browse 严重回归，已于 2026-07-11 撤回。有效表格的有限/自动 rowspan、colspan 与 row-group 占位已按 NetSurf 3.11 `box_normalise.c` 移植并由 TEST46 真机验收；畸形表格空单元格补齐、border-collapse 视觉、float、forms/widgets 仍需按真实页面痛点推进。float 必须先补上游构盒 normalisation 的前后条件和端到端回归。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法；整数 px 的 `width <= Npx` / `(width < Npx)` 已由扩展 TEST21 真机确认。TEST13 的 normal/nowrap 文本空白与 TEST15 的 `<pre>` 保留断言也已由设备确认，剩余导航/页脚版式仍需继续处理。
+   flex 和常见 table 已通；IANA 页脚曾触发普通 `float:left` 构盒尝试，TEST23 最小样例通过但真实 Browse 严重回归，已于 2026-07-11 撤回。有效表格的有限/自动 rowspan、colspan 与 row-group 占位已按 NetSurf 3.11 `box_normalise.c` 移植并由 TEST46 真机验收；畸形表格空单元格补齐随后由 TEST47 验收，collapsed-border、cell alignment/empty-cells 与显式表高也在 TEST53-56 完成当前子集。float、forms/widgets 仍需按真实页面痛点推进。float 必须先补上游构盒 normalisation 的前后条件和端到端回归。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法；整数 px 的 `width <= Npx` / `(width < Npx)` 已由扩展 TEST21 真机确认。TEST13 的 normal/nowrap 文本空白与 TEST15 的 `<pre>` 保留断言也已由设备确认，剩余导航/页脚版式仍需继续处理。
 
 6. **旋转响应式重选**
    `WM_SIZE` 从 document-owned 外链 CSS 缓存重新 style + layout，使用 cache-only callback 禁止尺寸变化联网；重样式会释放被替换的 computed style。TEST24 已真机确认跨断点重选、fetch/free 维持一次及 0/50/100% 滚动比例；真实 TEST13 横竖屏也保持同一阅读区域。
@@ -193,8 +195,8 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 - **border redraw 已通过内置页验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制来自 NetSurf `redraw_border.c`；TEST 17 已确认 solid/dashed/table cell 边框可见，复杂真实页面仍需持续观察。
 - **图片路径采用公共 DLL 边界**：BMP/PNG/JPEG/GIF、SVG、CSS 单背景图与缓存 `<img>` 已有真机基线。retained WM 位图迁移、独立消费及 PNG/JPEG 编码均已确认；ABI 1.2 的显式 quality JPEG 使用静态 libjpeg-turbo 1.5.3 4:4:4，next49 已确认颜色、行方向和采样正确。next50 又确认 ABI 1.3 的复制式 padded BGR24/BGRA32、输入清零、RGB/alpha PNG、JPEG 和 SVG 视觉正确。next51 已确认 ABI 1.4 的 WM Imaging BMP/GIF 输出和回读，但也证明 Shell X 是 Smart Minimize，仅处理 `WM_CLOSE` 无法真退出。next52 改用不占客户区的原生标题栏 OK/`IDOK`，用户已确认进程真正退出且可再次启动；不增加软键。解码失败仍回退 alt/src 文本。
 - **部分 CSS selector 仍待补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已由 TEST 9 真机验证；动态状态伪类仍为 no-match，会影响真实网页样式命中。
-- **table span 仍是分阶段能力**：有效表格的 `colspan`、有限/自动 `rowspan` 和 row-group 边界已移植 NetSurf 3.11 占位算法，TEST46 的几何、12 点像素及可见 redraw 已真机验收；畸形表格的空单元格生成和完整 collapsed-border 冲突规则仍未实现。
-- **format_list_style 仅 decimal**——非 decimal 列表序号暂不正确，不影响主体渲染。
+- **table 仍是分阶段能力**：TEST46/47 与 TEST53-56 已覆盖有效 span、匿名 row/cell、常见 collapsed-border 冲突、cell alignment/empty-cells 和显式 table height 分配；`col`/`colgroup` border 来源、百分比 row height、caption/column 归一化、跨行 baseline 与任意畸形表格组合仍未完成。
+- **format_list_style 的 decimal-only 限制已解除**——next60/61 恢复上游 47 种 formatter 并由 TEST50 验收；自定义 `@counter-style` 仍未实现。
 - **行结尾 LF→CRLF**：git autocrlf 会规范化 vendored 源码的行尾，无害（MSVC 两者都吃）。
 - **c89ize.py 的边角**：已补 `plot_style_t` / `plot_font_style_t` 简单 designated initializer 转换；并避免把 struct/enum/union 字段、多行静态字符串初始化、多声明符误当语句来重排。多声明符仍留人工，新出现的 `*const*` 型 for 声明正则可能漏（手补，如 helpers.h）。
 - **工具链小坑**：Bash/PowerShell/Edit 共用一个安全分类器（曾短暂故障）；`git rm` / `Remove-Item` 会触发"删除 / 根路径"静态守卫——用 `git reset -- <file>` 取消暂存替代。
