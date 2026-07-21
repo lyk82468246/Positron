@@ -212,6 +212,12 @@ typedef struct PCoreTableCellGeometry {
 PCORE_API int PCore_TableCellGeometry(HANDLE hDoc, unsigned int cell_index,
                                      PCoreTableCellGeometry *out_geometry);
 
+/* Read the table-cell vertical alignment carried by the final box style.
+ * kind is 1 top, 2 middle, 3 bottom, and 0 for baseline/other. */
+PCORE_API int PCore_TableCellVerticalAlign(HANDLE hDoc,
+                                          unsigned int cell_index,
+                                          int *kind);
+
 typedef struct PCoreTableRowGeometry {
     int row_x;
     int row_y;
@@ -223,6 +229,12 @@ typedef struct PCoreTableRowGeometry {
  * verifies table-height distribution without exposing internal box pointers. */
 PCORE_API int PCore_TableRowGeometry(HANDLE hDoc, unsigned int row_index,
                                     PCoreTableRowGeometry *out_geometry);
+
+/* Read a final row box's specified height. kind is 0 auto, 1 percentage,
+ * and 2 another specified length; percentage value 25 means 25%. */
+PCORE_API int PCore_TableRowSpecifiedHeight(HANDLE hDoc,
+                                           unsigned int row_index,
+                                           int *kind, int *value);
 
 /* Read back a laid-out list marker by document order. `text` receives the
  * marker's UTF-8 bytes and is always NUL-terminated when cap > 0. The

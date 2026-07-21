@@ -130,6 +130,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 39. **next66-67 table-cell 对齐与空格绘制已由设备验收**：官方 NetSurf 到 2026-04-28 最新版本仍把 cell baseline 降级为 top，也未消费 libcss 已计算的 `empty-cells`。当前 baseline 复用 NetSurf inline layout 的 3/4 line-height 近似；`empty-cells:hide` 参考 Mozilla 的成熟实现，仅在 separated model 且无可见内容时抑制 cell 背景和边框。TEST55 已确认 top/middle/bottom、大小字体 baseline、rowspan bottom 及 hide/show/filled；next66 首次失败仅因 WM compatible bitmap 的 3-6 色阶量化，next67 改为仍能拒绝通道错位的紧容差后自动断言和可见语义均通过。IANA Further Reading 的圆点是真实 `<li>` 在 marker 支持完善后的正常呈现。
 40. **next68 修正 TEST55 可见页并补显式 table height 分配，已由设备验收**：next67 四组固定高度只超出 WM 客户区十几像素，但仍生成了纵向滚动条；next68 将其压到约 240px 并设标题行高。NetSurf `layout.c` 原本只扩大 table 自身而留着 row/cell 分配 TODO；当前参考 Blink `LayoutTableSection` 的比例分配和小数余量算法，用 NetSurf 现有 rowspan 活跃列把每行增量累加到覆盖该行的 cell bottom padding，再由已验收的 vertical-align 消费。新增只读 `PCore_TableRowGeometry` 和 TEST56，一次检查 105px 三行等比分配、top/middle/bottom、70px 两行分配与 rowspan bottom。2026-07-16 设备截图确认 TEST55 无多余纵向滚动条、TEST56 两张表的行高和对齐正确，TEST13 长页面滚动回归正常。
 41. **源码自包含与许可证文档整理完成**：官方 mbedTLS `mbedtls-2.16.12` 完整源树已纳入 Git，本机副本与标签提交 `cf466712...` 规范化内容一致；cJSON `v1.7.18` 与官方提交 `acc76239...` 一致并补独立许可证。根 `LICENSE` 只覆盖 Positron 自有代码，`THIRD_PARTY.md` 明确 NetSurf GPLv2、Apache/MIT/OFL/zlib/IJG 等边界。`scripts/audit_repo.py` 会检查 14 个 vcproj 的源码引用、Git 跟踪、版本和关键许可证；正常 clone 不再需要下载源码，仍需用户自行安装不可再分发的微软工具链。
+42. **next73 百分比 table-row 第二遍已由设备验收**：next69 首次得到 20/30/30；包切换期间的 TEST56 异常后来确认是 WM/CE 全局 DLL 复用导致的混搭。next72 的 `styles=0:0` 揭示 inline author CSS 被全 false 的 `nsoption` shim 关闭；TEST57 改用外部类规则后，next73 同时通过 TEST55/56/57，设备显示 20/40/20 与 25/25。
 
 验收：
 
@@ -261,7 +262,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 继续按真实页面痛点补 table 剩余边界，优先评估 `col`/`colgroup` border 来源、百分比 row height、caption/column 归一化；积累成一批再做设备验收。
+1. 修正 `positron_core/nsshim/utils/nsoption.h` 的全 false 专家配置，为 `author_level_css`、前景/背景图片等建立具名默认值；先补 inline-style 最小测试，再以 TEST13 全流程作为启用门槛，JavaScript 仍保持关闭。
 2. 保持 TEST13 冻结链，每次触及构盒、布局、资源事务或 URL 语义都跑完整深层导航，不重启 `codex/post-next37-experiments` 的失败方案。
 3. 选择一个可控的 float 或 forms/widgets 最小能力，对照 NetSurf 上游构盒/归一化实现，失败时撤回而不是扩张手写规则。
 4. 做复杂页面完成阶段的性能与内存观测，重点是 UI 提交卡顿、资源预算、缓存释放和真实整页进度；不把 2 MiB 宿主预算误写成系统上限。

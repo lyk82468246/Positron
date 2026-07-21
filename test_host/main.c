@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 56
+#define TEST_MAX_NUMBER 57
 
 static int test_config_space(char c)
 {
@@ -8258,6 +8258,7 @@ static BOOL test56_table_height_distribution(void)
     HANDLE hSheet;
     PCoreTableRowGeometry rows[5];
     PCoreTableCellGeometry cells[6];
+    int cell_align[6];
     int top_offset;
     int middle_offset;
     int bottom_offset;
@@ -8296,6 +8297,7 @@ static BOOL test56_table_height_distribution(void)
 
     memset(rows, 0, sizeof(rows));
     memset(cells, 0, sizeof(cells));
+    memset(cell_align, 0, sizeof(cell_align));
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-height.css");
@@ -8321,7 +8323,9 @@ static BOOL test56_table_height_distribution(void)
     }
     for (i = 0; i < 6; i++) {
         if (PCore_TableCellGeometry(hDoc, (unsigned int) i,
-                &cells[i]) != 0) {
+                &cells[i]) != 0 ||
+                PCore_TableCellVerticalAlign(hDoc, (unsigned int) i,
+                &cell_align[i]) != 0) {
             _snprintf(msg, sizeof(msg) - 1,
                     "cell geometry lookup failed at %d", i);
             msg[sizeof(msg) - 1] = '\0';
@@ -8345,6 +8349,8 @@ static BOOL test56_table_height_distribution(void)
             top_offset < 0 || top_offset > 6 ||
             middle_offset < top_offset + 6 ||
             bottom_offset < middle_offset + 6 ||
+            cell_align[0] != 1 || cell_align[1] != 2 ||
+            cell_align[2] != 3 || cell_align[3] != 3 ||
             second_height < 69 || second_height > 71 ||
             abs(rows[3].row_height - rows[4].row_height) > 1 ||
             rows[4].row_y != rows[3].row_y + rows[3].row_height ||
@@ -8352,12 +8358,12 @@ static BOOL test56_table_height_distribution(void)
                     rows[4].row_y + rows[4].row_height / 2 ||
             PCore_TableRowGeometry(hDoc, 99, &rows[0]) == 0) {
         _snprintf(msg, sizeof(msg) - 1,
-                "rows=%d/%d/%d %d/%d sum=%d/%d off=%d/%d/%d span=%d",
+                "rows=%d/%d/%d %d/%d sum=%d/%d off=%d/%d/%d va=%d/%d/%d/%d",
                 rows[0].row_height, rows[1].row_height,
                 rows[2].row_height, rows[3].row_height,
                 rows[4].row_height, first_height, second_height,
                 top_offset, middle_offset, bottom_offset,
-                cells[3].first_text_y);
+                cell_align[0], cell_align[1], cell_align[2], cell_align[3]);
         msg[sizeof(msg) - 1] = '\0';
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
@@ -8405,6 +8411,198 @@ static BOOL test56_table_height_distribution(void)
     show_info(L"TEST 56 OK",
               "Specified table height was distributed through rows,\n"
               "row groups, spanning cells and vertical alignment.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 57 - percentage table-row height second-pass distribution       */
+/* -------------------------------------------------------------------- */
+static BOOL test57_table_percentage_rows(void)
+{
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreTableRowGeometry rows[5];
+    PCoreTableRowGeometry auto_rows[2];
+    int row_kind[5];
+    int row_value[5];
+    int auto_kind[2];
+    int auto_value[2];
+    int first_height;
+    int second_height;
+    int auto_height;
+    int screen_w;
+    int screen_h;
+    int i;
+    char msg[256];
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Percentage row heights</h1>"
+        "<table class=pct><tr class=p25><td class=red>25%</td></tr>"
+        "<tr class=p50><td class=green>50%</td></tr>"
+        "<tr><td class=blue>auto</td></tr></table>"
+        "<h2>Over-constrained percentages</h2>"
+        "<table class=over><tr class=p75a><td class=orange>75% A</td></tr>"
+        "<tr class=p75b><td class=cyan>75% B</td></tr></table>"
+        "</body></html>";
+    static const char AUTO_HTML[] =
+        "<!doctype html><html><body><table>"
+        "<tr class=p80><td>percent without table height</td></tr>"
+        "<tr><td>auto row</td></tr></table></body></html>";
+    static const char CSS[] =
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:11px;line-height:14px;margin:0;padding:4px;}"
+        "h1{font-size:18px;line-height:21px;color:#800000;margin:0 0 2px;}"
+        "h2{font-size:14px;line-height:17px;color:#800000;margin:3px 0 1px;}"
+        "table{border-collapse:separate;border-spacing:0;"
+        "table-layout:fixed;width:210px;margin:0;}"
+        "td{padding:1px;border:1px solid #404040;}"
+        ".pct{height:80px}.over{height:50px}"
+        ".p25{height:25%}.p50{height:50%}"
+        ".p75a{height:75%}.p75b{height:75%}"
+        ".red{background:#ffb0b0}.green{background:#b0ffb0}"
+        ".blue{background:#b0b0ff}.orange{background:#ffc060}"
+        ".cyan{background:#80e0e0}";
+    static const char AUTO_CSS[] =
+        "html,body{margin:0;padding:0;font-size:11px;line-height:14px;}"
+        "table{border-collapse:separate;border-spacing:0;width:210px;}"
+        "td{padding:1px;border:1px solid #404040;}"
+        ".p80{height:80%}";
+
+    memset(rows, 0, sizeof(rows));
+    memset(auto_rows, 0, sizeof(auto_rows));
+    memset(row_kind, 0, sizeof(row_kind));
+    memset(row_value, 0, sizeof(row_value));
+    memset(auto_kind, 0, sizeof(auto_kind));
+    memset(auto_value, 0, sizeof(auto_value));
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-percent-height.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 230, 240) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 57 FAIL", "percentage table setup failed");
+        return FALSE;
+    }
+    for (i = 0; i < 5; i++) {
+        if (PCore_TableRowGeometry(hDoc, (unsigned int) i,
+                &rows[i]) != 0 ||
+                PCore_TableRowSpecifiedHeight(hDoc, (unsigned int) i,
+                &row_kind[i], &row_value[i]) != 0) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "row geometry/style lookup failed at %d", i);
+            msg[sizeof(msg) - 1] = '\0';
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 57 FAIL", msg);
+            return FALSE;
+        }
+    }
+    first_height = rows[0].row_height + rows[1].row_height +
+            rows[2].row_height;
+    second_height = rows[3].row_height + rows[4].row_height;
+    if (row_kind[0] != 1 || row_value[0] != 25 ||
+            row_kind[1] != 1 || row_value[1] != 50 ||
+            row_kind[2] != 0 ||
+            row_kind[3] != 1 || row_value[3] != 75 ||
+            row_kind[4] != 1 || row_value[4] != 75 ||
+            first_height < 79 || first_height > 81 ||
+            rows[0].row_height < 19 || rows[0].row_height > 21 ||
+            rows[1].row_height < 39 || rows[1].row_height > 41 ||
+            rows[2].row_height < 19 || rows[2].row_height > 21 ||
+            rows[1].row_y != rows[0].row_y + rows[0].row_height ||
+            rows[2].row_y != rows[1].row_y + rows[1].row_height ||
+            second_height < 49 || second_height > 51 ||
+            abs(rows[3].row_height - rows[4].row_height) > 1 ||
+            rows[4].row_y != rows[3].row_y + rows[3].row_height) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "pct=%d/%d/%d over=%d/%d styles=%d:%d,%d:%d,%d:%d",
+                rows[0].row_height, rows[1].row_height,
+                rows[2].row_height, rows[3].row_height,
+                rows[4].row_height, row_kind[0], row_value[0],
+                row_kind[1], row_value[1], row_kind[2], row_value[2]);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 57 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    hDoc = PCore_ParseHTML(AUTO_HTML, sizeof(AUTO_HTML) - 1);
+    hSheet = PCore_ParseCSS(AUTO_CSS, sizeof(AUTO_CSS) - 1,
+            "http://positron.local/table-percent-auto.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 230, 120) != 0 ||
+            PCore_TableRowGeometry(hDoc, 0, &auto_rows[0]) != 0 ||
+            PCore_TableRowGeometry(hDoc, 1, &auto_rows[1]) != 0 ||
+            PCore_TableRowSpecifiedHeight(hDoc, 0, &auto_kind[0],
+                    &auto_value[0]) != 0 ||
+            PCore_TableRowSpecifiedHeight(hDoc, 1, &auto_kind[1],
+                    &auto_value[1]) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 57 FAIL", "auto-height control setup failed");
+        return FALSE;
+    }
+    auto_height = auto_rows[0].row_height + auto_rows[1].row_height;
+    if (auto_kind[0] != 1 || auto_value[0] != 80 ||
+            auto_kind[1] != 0 ||
+            abs(auto_rows[0].row_height - auto_rows[1].row_height) > 1 ||
+            auto_height > 50) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "auto=%d/%d sum=%d styles=%d:%d,%d:%d",
+                auto_rows[0].row_height, auto_rows[1].row_height,
+                auto_height, auto_kind[0], auto_value[0],
+                auto_kind[1], auto_value[1]);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 57 FAIL", msg);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/table-percent-height.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 57 FAIL", "visible percentage setup failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 57",
+              "Expect red/green/blue rows at 25%/50%/remaining height.\n"
+              "The orange/cyan 75% rows below share their capped table.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 57 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 57 OK",
+              "Percentage rows, over-constraint capping and auto control\n"
+              "passed through NetSurf layout and redraw.");
     return TRUE;
 }
 
@@ -8579,6 +8777,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 54: ok = test54_table_spanning_borders(); break;
         case 55: ok = test55_table_cell_alignment(); break;
         case 56: ok = test56_table_height_distribution(); break;
+        case 57: ok = test57_table_percentage_rows(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -8660,7 +8859,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                   "Yes = run all selected groups (TEST 1-56)\n"
+                  "Yes = run all selected groups (TEST 1-57)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -8686,7 +8885,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list\n"
                                "normalisation redraw\n"
-                               "(TEST 46-56).\n"
+                               "(TEST 46-57).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -8746,7 +8945,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-56; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-57; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -8778,6 +8977,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test54_table_spanning_borders()){ rc = 13; goto done; }
         if (!test55_table_cell_alignment()){ rc = 13; goto done; }
         if (!test56_table_height_distribution()){ rc = 13; goto done; }
+        if (!test57_table_percentage_rows()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -8817,7 +9017,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-56)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-57)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

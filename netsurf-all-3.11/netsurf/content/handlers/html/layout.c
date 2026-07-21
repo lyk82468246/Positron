@@ -1718,27 +1718,44 @@ static enum css_vertical_align_e layout_table_cell_alignment(struct box *cell)
 /**
  * Distribute a specified table's spare height through its rows and cells.
  *
- * Blink's mature table algorithm distributes unconstrained extra height in
- * proportion to the rows' existing heights and carries fractional pixels
- * between rows. Keep that rule here, while reusing NetSurf's span-column
- * bookkeeping so every spanning cell receives the sum of its covered rows.
+ * Keep NetSurf's established proportional rule for ordinary rows. When a
+ * specified table contains percentage rows, resolve their reference heights
+ * against the final row area first, cap over-constrained percentages to the
+ * available spare height, then give any remainder to auto rows.
  */
 static void layout_table_distribute_height(struct box *table,
-		int extra_height, unsigned int columns, int *row_span,
+		int extra_height, int target_height, int border_spacing_v,
+		unsigned int columns, int *row_span,
 		struct box **row_span_cell)
 {
 	struct box *row_group;
 	struct box *row;
 	struct box *cell;
+	int *row_extra_plan;
+	unsigned char *row_is_auto;
 	int row_count;
 	int row_index;
 	int total_row_height;
 	int distributed_height;
+	int row_area;
+	int row_target;
+	int row_required;
+	int percentage_rows;
+	int percentage_index;
+	int auto_rows;
+	int eligible_rows;
+	int eligible_index;
+	int remaining_height;
 	int table_shift;
 	int group_shift;
 	int row_extra;
 	int span_rows;
 	unsigned int i;
+	css_fixed row_value;
+	css_unit row_unit;
+	enum css_height_e row_htype;
+	bool has_percentage;
+	double percentage_needed;
 	double proportional;
 	double remainder;
 
@@ -1759,6 +1776,96 @@ static void layout_table_distribute_height(struct box *table,
 	if (row_count == 0) {
 		return;
 	}
+	row_extra_plan = calloc(row_count, sizeof(*row_extra_plan));
+	row_is_auto = calloc(row_count, sizeof(*row_is_auto));
+	has_percentage = false;
+	percentage_needed = 0.0;
+	percentage_rows = 0;
+	auto_rows = 0;
+	row_area = target_height - (row_count + 1) * border_spacing_v;
+	if (row_area < 0) {
+		row_area = 0;
+	}
+	if (row_extra_plan != NULL && row_is_auto != NULL) {
+		row_index = 0;
+		for (row_group = table->children; row_group != NULL;
+				row_group = row_group->next) {
+			for (row = row_group->children; row != NULL; row = row->next) {
+				row_value = 0;
+				row_unit = CSS_UNIT_PX;
+				row_htype = css_computed_height(row->style,
+						&row_value, &row_unit);
+				if (row_htype == CSS_HEIGHT_SET &&
+						row_unit == CSS_UNIT_PCT) {
+					has_percentage = true;
+					row_target = FPCT_OF_INT_TOINT(row_value, row_area);
+					row_required = row_target - row->height;
+					if (row_required > 0) {
+						row_extra_plan[row_index] = row_required;
+						percentage_needed += row_required;
+						percentage_rows++;
+					}
+				} else if (row_htype == CSS_HEIGHT_AUTO) {
+					row_is_auto[row_index] = 1;
+					auto_rows++;
+				}
+				row_index++;
+			}
+		}
+	}
+	if (row_extra_plan == NULL || row_is_auto == NULL) {
+		free(row_extra_plan);
+		free(row_is_auto);
+		row_extra_plan = NULL;
+		row_is_auto = NULL;
+		has_percentage = false;
+	}
+	if (has_percentage) {
+		distributed_height = 0;
+		if (percentage_needed > extra_height && percentage_rows > 0) {
+			percentage_index = 0;
+			remainder = 0.0;
+			for (row_index = 0; row_index < row_count; row_index++) {
+				if (row_extra_plan[row_index] <= 0) {
+					continue;
+				}
+				percentage_index++;
+				if (percentage_index == percentage_rows) {
+					row_extra_plan[row_index] = extra_height -
+							distributed_height;
+				} else {
+					proportional = remainder + (double) extra_height *
+							row_extra_plan[row_index] /
+							percentage_needed;
+					row_extra_plan[row_index] =
+							(int) (proportional + 0.000001);
+					remainder = proportional -
+							row_extra_plan[row_index];
+				}
+				distributed_height += row_extra_plan[row_index];
+			}
+		} else {
+			for (row_index = 0; row_index < row_count; row_index++) {
+				distributed_height += row_extra_plan[row_index];
+			}
+		}
+		remaining_height = extra_height - distributed_height;
+		if (remaining_height > 0) {
+			eligible_rows = (auto_rows > 0) ? auto_rows : row_count;
+			eligible_index = 0;
+			for (row_index = 0; row_index < row_count; row_index++) {
+				if (auto_rows > 0 && row_is_auto[row_index] == 0) {
+					continue;
+				}
+				eligible_index++;
+				row_extra_plan[row_index] += remaining_height /
+						eligible_rows;
+				if (eligible_index <= remaining_height % eligible_rows) {
+					row_extra_plan[row_index]++;
+				}
+			}
+		}
+	}
 	for (i = 0; i < columns; i++) {
 		row_span[i] = 0;
 		row_span_cell[i] = NULL;
@@ -1772,7 +1879,9 @@ static void layout_table_distribute_height(struct box *table,
 		group_shift = 0;
 		for (row = row_group->children; row != NULL; row = row->next) {
 			row_index++;
-			if (row_index == row_count) {
+			if (has_percentage) {
+				row_extra = row_extra_plan[row_index - 1];
+			} else if (row_index == row_count) {
 				row_extra = extra_height - distributed_height;
 			} else if (total_row_height > 0) {
 				proportional = remainder +
@@ -1815,6 +1924,8 @@ static void layout_table_distribute_height(struct box *table,
 		row_group->height += group_shift;
 		table_shift += group_shift;
 	}
+	free(row_extra_plan);
+	free(row_is_auto);
 }
 
 
@@ -2331,7 +2442,8 @@ bool layout_table(
 	 * through rows before vertical-align consumes each cell's final space. */
 	if (table_height < min_height) {
 		layout_table_distribute_height(table, min_height - table_height,
-				columns, row_span, row_span_cell);
+				min_height, border_spacing_v, columns, row_span,
+				row_span_cell);
 		table_height = min_height;
 	}
 

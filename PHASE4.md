@@ -4,7 +4,7 @@
 
 > 状态（2026-07-15）：**Phase 4 已越过“手写首屏渲染”阶段**。五个 NetSurf 底层库已编译并真机验证；`positron_core.dll` 是正式引擎边界；正式 Browse 路径走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。main 已恢复到 next37 稳定路径，next44 的 TEST13 全流程由用户确认正常。next45 又确认移入 `positron_image.dll` 的 WM Imaging retained 位图 C ABI、四格式缓存链、SVG 与 TEST13 均无回归。
 
-> **阶段历史说明（2026-07-20）**：本文按 Phase 4 的推进顺序保留旧决策，不能把中途的 “stub / 待实现” 当作当前状态。完整 counter formatter、列表图片/inside marker、表格 span/归一化/折叠边框/单元格对齐/显式表高均已在 TEST46-56 后续批次验收。当前事实、限制和执行顺序以 [.agents/HANDOFF.md](.agents/HANDOFF.md)、[.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md) 与 [.agents/ROADMAP.md](.agents/ROADMAP.md) 为准。
+> **阶段历史说明（2026-07-21）**：本文按 Phase 4 的推进顺序保留旧决策，不能把中途的 “stub / 待实现” 当作当前状态。完整 counter formatter、列表图片/inside marker、表格 span/归一化/折叠边框/单元格对齐/显式及百分比 row 高度均已在 TEST46-57 后续批次验收。当前事实、限制和执行顺序以 [.agents/HANDOFF.md](.agents/HANDOFF.md)、[.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md) 与 [.agents/ROADMAP.md](.agents/ROADMAP.md) 为准。
 
 
 ---
@@ -139,7 +139,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
    当时只有主文档 GET 进入 worker，旧页在此期间继续响应并显示 loading；response 回到 UI 线程后，parse、外链 CSS/图片 fetch、style/layout 仍同步发生。后续已经把资源 fetch 纳入后台事务，同时继续保证 DOM/libcss/NetSurf document 只在 UI 线程提交。
 
 5. **布局细化**  
-   flex 和常见 table 已通；IANA 页脚曾触发普通 `float:left` 构盒尝试，TEST23 最小样例通过但真实 Browse 严重回归，已于 2026-07-11 撤回。有效表格的有限/自动 rowspan、colspan 与 row-group 占位已按 NetSurf 3.11 `box_normalise.c` 移植并由 TEST46 真机验收；畸形表格空单元格补齐随后由 TEST47 验收，collapsed-border、cell alignment/empty-cells 与显式表高也在 TEST53-56 完成当前子集。float、forms/widgets 仍需按真实页面痛点推进。float 必须先补上游构盒 normalisation 的前后条件和端到端回归。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法；整数 px 的 `width <= Npx` / `(width < Npx)` 已由扩展 TEST21 真机确认。TEST13 的 normal/nowrap 文本空白与 TEST15 的 `<pre>` 保留断言也已由设备确认，剩余导航/页脚版式仍需继续处理。
+   flex 和常见 table 已通；IANA 页脚曾触发普通 `float:left` 构盒尝试，TEST23 最小样例通过但真实 Browse 严重回归，已于 2026-07-11 撤回。有效表格的有限/自动 rowspan、colspan 与 row-group 占位已按 NetSurf 3.11 `box_normalise.c` 移植并由 TEST46 真机验收；畸形表格空单元格补齐随后由 TEST47 验收，collapsed-border、cell alignment/empty-cells、显式表高和百分比 row 第二遍也在 TEST53-57 完成当前子集。next73 已同时通过 TEST55/56/57。百分比 cell/后代内容仍未覆盖。float、forms/widgets 仍需按真实页面痛点推进。float 必须先补上游构盒 normalisation 的前后条件和端到端回归。当前线上 IANA CSS 还使用 custom properties/媒体查询范围语法；整数 px 的 `width <= Npx` / `(width < Npx)` 已由扩展 TEST21 真机确认。TEST13 的 normal/nowrap 文本空白与 TEST15 的 `<pre>` 保留断言也已由设备确认，剩余导航/页脚版式仍需继续处理。
 
 6. **旋转响应式重选**
    `WM_SIZE` 从 document-owned 外链 CSS 缓存重新 style + layout，使用 cache-only callback 禁止尺寸变化联网；重样式会释放被替换的 computed style。TEST24 已真机确认跨断点重选、fetch/free 维持一次及 0/50/100% 滚动比例；真实 TEST13 横竖屏也保持同一阅读区域。
@@ -195,7 +195,7 @@ WinCE coredll 不全。`compat/positron_crt.c`（强制包含进各 NetSurf 库�
 - **border redraw 已通过内置页验证**：`pcore_layout_stubs.c` 里的 border no-op 已移除，实际绘制来自 NetSurf `redraw_border.c`；TEST 17 已确认 solid/dashed/table cell 边框可见，复杂真实页面仍需持续观察。
 - **图片路径采用公共 DLL 边界**：BMP/PNG/JPEG/GIF、SVG、CSS 单背景图与缓存 `<img>` 已有真机基线。retained WM 位图迁移、独立消费及 PNG/JPEG 编码均已确认；ABI 1.2 的显式 quality JPEG 使用静态 libjpeg-turbo 1.5.3 4:4:4，next49 已确认颜色、行方向和采样正确。next50 又确认 ABI 1.3 的复制式 padded BGR24/BGRA32、输入清零、RGB/alpha PNG、JPEG 和 SVG 视觉正确。next51 已确认 ABI 1.4 的 WM Imaging BMP/GIF 输出和回读，但也证明 Shell X 是 Smart Minimize，仅处理 `WM_CLOSE` 无法真退出。next52 改用不占客户区的原生标题栏 OK/`IDOK`，用户已确认进程真正退出且可再次启动；不增加软键。解码失败仍回退 alt/src 文本。
 - **部分 CSS selector 仍待补全**：attribute selectors、adjacent/general sibling selectors、`:link`、`:lang()` 已由 TEST 9 真机验证；动态状态伪类仍为 no-match，会影响真实网页样式命中。
-- **table 仍是分阶段能力**：TEST46/47 与 TEST53-56 已覆盖有效 span、匿名 row/cell、常见 collapsed-border 冲突、cell alignment/empty-cells 和显式 table height 分配；`col`/`colgroup` border 来源、百分比 row height、caption/column 归一化、跨行 baseline 与任意畸形表格组合仍未完成。
+- **table 仍是分阶段能力**：TEST46/47 与 TEST53-57 已覆盖有效 span、匿名 row/cell、常见 collapsed-border 冲突、cell alignment/empty-cells、显式 table height 和百分比 row 第二遍分配。`col`/`colgroup` border 来源、百分比 cell/后代内容、caption/column 归一化、跨行 baseline 与任意畸形表格组合仍未完成。
 - **format_list_style 的 decimal-only 限制已解除**——next60/61 恢复上游 47 种 formatter 并由 TEST50 验收；自定义 `@counter-style` 仍未实现。
 - **行结尾 LF→CRLF**：git autocrlf 会规范化 vendored 源码的行尾，无害（MSVC 两者都吃）。
 - **c89ize.py 的边角**：已补 `plot_style_t` / `plot_font_style_t` 简单 designated initializer 转换；并避免把 struct/enum/union 字段、多行静态字符串初始化、多声明符误当语句来重排。多声明符仍留人工，新出现的 `*const*` 型 for 声明正则可能漏（手补，如 helpers.h）。

@@ -2415,6 +2415,40 @@ PCORE_API int PCore_TableCellGeometry(HANDLE hDoc,
     return 0;
 }
 
+PCORE_API int PCore_TableCellVerticalAlign(HANDLE hDoc,
+        unsigned int cell_index, int *kind)
+{
+    pcore_render *st;
+    struct box *cell;
+    unsigned int current;
+    css_fixed value;
+    css_unit unit;
+    uint8_t align;
+
+    if (kind == NULL) {
+        return 1;
+    }
+    *kind = 0;
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    cell = (st != NULL) ?
+            pcore_table_cell_at(st->root_box, cell_index, &current) : NULL;
+    if (cell == NULL || cell->style == NULL) {
+        return 1;
+    }
+    value = 0;
+    unit = CSS_UNIT_PX;
+    align = css_computed_vertical_align(cell->style, &value, &unit);
+    if (align == CSS_VERTICAL_ALIGN_TOP) {
+        *kind = 1;
+    } else if (align == CSS_VERTICAL_ALIGN_MIDDLE) {
+        *kind = 2;
+    } else if (align == CSS_VERTICAL_ALIGN_BOTTOM) {
+        *kind = 3;
+    }
+    return 0;
+}
+
 static struct box *pcore_table_row_at(struct box *box,
         unsigned int target, unsigned int *current)
 {
@@ -2460,6 +2494,45 @@ PCORE_API int PCore_TableRowGeometry(HANDLE hDoc,
     box_coords(row, &out_geometry->row_x, &out_geometry->row_y);
     out_geometry->row_width = row->width;
     out_geometry->row_height = row->height;
+    return 0;
+}
+
+PCORE_API int PCore_TableRowSpecifiedHeight(HANDLE hDoc,
+        unsigned int row_index, int *kind, int *value)
+{
+    pcore_render *st;
+    struct box *row;
+    unsigned int current;
+    css_fixed height_value;
+    css_unit unit;
+    enum css_height_e type;
+
+    if (kind == NULL || value == NULL) {
+        return 1;
+    }
+    *kind = 0;
+    *value = 0;
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    row = (st != NULL) ?
+            pcore_table_row_at(st->root_box, row_index, &current) : NULL;
+    if (row == NULL || row->style == NULL) {
+        return 1;
+    }
+    height_value = 0;
+    unit = CSS_UNIT_PX;
+    type = css_computed_height(row->style, &height_value, &unit);
+    if (type == CSS_HEIGHT_AUTO) {
+        return 0;
+    }
+    if (type == CSS_HEIGHT_SET && unit == CSS_UNIT_PCT) {
+        *kind = 1;
+        *value = FIXTOINT(height_value);
+        return 0;
+    }
+    *kind = 2;
+    *value = (type == CSS_HEIGHT_SET && unit == CSS_UNIT_PX) ?
+            FIXTOINT(height_value) : 0;
     return 0;
 }
 

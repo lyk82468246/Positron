@@ -1,8 +1,8 @@
 # Positron Current Handoff
 
-更新时间：2026-07-20
+更新时间：2026-07-21
 当前分支：`main`  
-当前最新提交：请以 `git log --oneline -5` 为准；当前设备基线已覆盖 TEST48-56，最近完成列表 marker/counter/inside flow、折叠表格边框、cell alignment/empty-cells 与显式 table height 分配。
+当前最新提交：请以 `git log --oneline -5` 为准；当前设备基线已覆盖 TEST48-57，最近完成列表 marker/counter/inside flow、折叠表格边框、cell alignment/empty-cells、显式 table height 与百分比 row 第二遍分配。next73 已同时通过 TEST55/56/57。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -25,7 +25,7 @@ Phase 1-3 已完成：
 - `positron_json.dll`：cJSON 包装。
 - `positron_http.dll`：HTTP/HTTPS GET/POST，HTTPS 走 mbedTLS verified，明文 `http://` 走 WinInet，支持有限重定向。
 
-Phase 4 已越过 M7-table 和 M5f border/selector，并推进到 TEST56 的表格显式高度验收：
+Phase 4 已越过 M7-table 和 M5f border/selector，并推进到 TEST57 的百分比 table-row 高度验收：
 
 - NetSurf 底层库已在 VS2008 / WinCE / ARMV4I / C89-only 下编译通过：
   `positron_netsurf`、`positron_hubbub`、`positron_libdom`、`positron_libcss`。
@@ -96,17 +96,18 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,17,41,42,46-56`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=13,17,41,42,46,47,48,49,50,51,52,53,54,55,56`。四组路由的第 3 组提示已压缩为能力类别，避免 WM6 小屏 MessageBox 被长清单撑坏。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,17,41,42,46-57`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=13,17,41,42,46,47,48,49,50,51,52,53,54,55,56,57`。四组路由的第 3 组提示已压缩为能力类别，避免 WM6 小屏 MessageBox 被长清单撑坏。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid-overflow 隔离、overflow scrollbar、分阶段资源事务、失败回滚与 CSS import tree，离线。TEST40-45 已真机确认。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-56，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow 与随包静态字体 fallback 正式 redraw；TEST48-56 已验收。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-57，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow 与随包静态字体 fallback 正式 redraw；TEST48-57 已验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
 
 - TEST 17：内置 NetSurf real layout + redraw 页面。预期：深红 H1 和红色下边框、带边框的三色 flex 横排、2x2 table 可见 cell 边框。
 - TEST 56：显式 table height 分配。预期：105px 三行等高且文字依次 top/middle/bottom；70px 两行等高且橙色 rowspan 文字在底部；页面无多余纵向滚动条。
+- TEST57：第一张 80px 表应约为 20/40/20px，第二张 50px 超约束表应为 25/25px；next73 已连同 TEST55/56 一起通过。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步
@@ -137,6 +138,7 @@ scripts\stage.bat
 22. next66 的 TEST55 真机原始像素为 `FFFFFF/00C300/C6C300`，证明三类绘制正确，但设备 compatible bitmap 将 CSS `#00c000/#00c0c0` 量化了 3-6 色阶，使桌面式精确 RGB 断言假失败。next67 只改 TEST55 为紧格通道容差，未改 core layout/redraw。TEST13 Further Reading 的圆点来自 IANA 页面真实 `<li>` 与 next57-63 已验收的 marker 支持，不是 next66 回归。
 23. next67/TEST55 自动断言和可见语义已验收；截图显示测试页因四组固定高度只超出 WM 客户区十几像素，仍生成了纵向滚动条。next68 将 TEST55 压缩到约 240px 内容高并设定标题行高；core 新增的显式表高分配参考 Blink 比例分配/小数余量规则，用 NetSurf rowspan 活跃列累加 cell bottom padding。`PCore_TableRowGeometry` 仅供 TEST56 读取最终 row 几何。2026-07-16 设备截图确认 TEST55 完整显示且无多余纵条，TEST56 的等高行、三种垂直对齐和 rowspan bottom 均正确；同批 TEST13 长页滚动正常。
 24. 2026-07-20 完成仓库自包含审计：mbedTLS 2.16.12 完整官方源树和许可证已纳入 Git，cJSON 1.7.18 补齐独立许可证及来源。根 `LICENSE` 只覆盖 Positron 自有代码；NetSurf 浏览器源码的 GPLv2 等边界见 `THIRD_PARTY.md`。`python scripts\audit_repo.py` 当前检查 14 个工程、598 个工程输入、Git 跟踪、版本与关键许可证。
+25. next69 首次百分比 table-row 第二遍得到错误的 `20/30/30`。随后切换包时 TEST56 的异常来自 WM/CE 全局 DLL 复用；next72 同包已证明 TEST56 正常。next72 的 TEST57 `styles=0:0` 又暴露 `nsoption` shim 把 `author_level_css` 固定关闭，inline `style=` 没有进入选择。next73 将夹具改为外部 CSS 后，TEST55/56/57 均通过。百分比 cell/后代内容和 `col`/`colgroup` 模型仍未覆盖。
 
 ## 开发纪律
 
