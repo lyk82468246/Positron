@@ -2,7 +2,7 @@
 
 更新时间：2026-07-25
 当前分支：`main`  
-当前设备基线：next86（待固化提交），已覆盖 TEST13/43/44/56/58-62。设备确认其余门禁均 OK；TEST13 实测 total/network/max-UI=6435/5503/673ms，parse/style/images/layout/paint=11/182/6/673/36ms，2 个资源成功、document/cache=10499/121111 bytes、预算拒绝 0。网络主导总时长，layout 主导 UI 最长停顿。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next87，已覆盖 TEST13/43/44/56/58-62。设备确认其余门禁均 OK；IANA 起始页的 core layout 为 `580ms: box/first/settle=515/65/0, pass=0`，进入 Reserved 后最后一次导航为 `662ms: 495/124/43, pass=1`。构盒稳定占约 500ms，是下一步诊断目标；next86 的网络/提交阶段结论继续成立。**next78 仍是已撤回的失败实验，不得使用**。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -113,6 +113,7 @@ scripts\stage.bat
 - TEST61：正式 NetSurf layout 中，同一串文本的 `1px` 与 `8.5pt` 必须测得相同宽度，证明 `font_min_size=85` 生效；`12pt` 控制组必须更宽。JavaScript 策略继续为 false。
 - TEST62：四个离屏探针确认 checkbox/radio 均采用 1em 几何，最终 gadget 的 checked 状态为 0/1，选中状态增加像素暗度，hidden input 不生成 box；随后显示四个只读控件。当前不包含点击、键盘、文本编辑、select 或提交。
 - TEST13 next86 遥测：关闭 Browse 窗口后，既有 OK 框显示最后一次导航的 total/network/max-UI、parse/style/images/layout/paint、资源 queued/ok/fail、worker rounds、document/cache bytes 和 budget-rejected。style/images 是多轮累计，max-UI 才是单次消息循环最长阻塞。
+- next87 在同一 OK 框追加 core layout 的 box/first/settle/final/other 与 settling pass。`PCore_GetLayoutStats` 只复制每个 document 最近一次布局统计；未改变构盒、两轮布局判定、几何或重绘。设备已确认两类真实页面的构盒均约 500ms；该结论只确定下一步细分方向，不代表卡顿已经优化。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步

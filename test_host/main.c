@@ -1861,6 +1861,8 @@ typedef struct pcore_navigation_stats {
     int resource_bytes;
     int budget_rejected;
     int completed;
+    PCoreLayoutStats core_layout;
+    int core_layout_valid;
 } pcore_navigation_stats;
 
 typedef struct pcore_navigation_request {
@@ -2643,6 +2645,9 @@ static int pcore_navigation_commit_step(HWND hwnd,
     if (elapsed > request->stats.max_ui_slice_ms) {
         request->stats.max_ui_slice_ms = elapsed;
     }
+    request->stats.core_layout_valid =
+            PCore_GetLayoutStats(request->document,
+                    &request->stats.core_layout) == 0;
 
     /* Swap in the new document; free the one being replaced. */
     if (g_render_doc != NULL) {
@@ -3241,7 +3246,9 @@ static BOOL test_browse(void)
 
     HANDLE hDoc;
     int    vw, vh;
-    char   summary[512];
+    char   summary[768];
+    unsigned long core_known;
+    unsigned long core_other;
 
     /* Landing page is offline; the actual fetch happens when the user taps
      * the link (navigate_to), exercising the full click -> fetch -> render
@@ -3296,12 +3303,21 @@ static BOOL test_browse(void)
     g_render_doc = NULL;
 
     if (g_nav_last_stats_valid) {
+        core_known = g_nav_last_stats.core_layout.box_construct_ms +
+                g_nav_last_stats.core_layout.first_layout_ms +
+                g_nav_last_stats.core_layout.settling_ms +
+                g_nav_last_stats.core_layout.finalize_ms;
+        core_other = (g_nav_last_stats.core_layout.total_ms >= core_known) ?
+                g_nav_last_stats.core_layout.total_ms - core_known : 0;
         _snprintf(summary, sizeof(summary) - 1,
                 "Last navigation %s:\n"
                 "total=%lums network=%lums max UI=%lums\n"
                 "parse/style/images/layout/paint=%lu/%lu/%lu/%lu/%lums\n"
                 "resources queued/ok/fail=%d/%d/%d rounds=%d\n"
-                "bytes document/cache=%d/%d budget-rejected=%d",
+                "bytes document/cache=%d/%d budget-rejected=%d\n"
+                "core layout total=%lums detail=%s\n"
+                "box/first/settle/final/other=%lu/%lu/%lu/%lu/%lums"
+                " pass=%d",
                 g_nav_last_stats.completed ? "completed" : "failed",
                 (unsigned long) g_nav_last_stats.total_ms,
                 (unsigned long) g_nav_last_stats.network_ms,
@@ -3317,7 +3333,17 @@ static BOOL test_browse(void)
                 g_nav_last_stats.worker_rounds,
                 g_nav_last_stats.document_bytes,
                 g_nav_last_stats.resource_bytes,
-                g_nav_last_stats.budget_rejected);
+                g_nav_last_stats.budget_rejected,
+                (unsigned long) g_nav_last_stats.core_layout.total_ms,
+                g_nav_last_stats.core_layout_valid ? "ok" : "unavailable",
+                (unsigned long)
+                        g_nav_last_stats.core_layout.box_construct_ms,
+                (unsigned long)
+                        g_nav_last_stats.core_layout.first_layout_ms,
+                (unsigned long) g_nav_last_stats.core_layout.settling_ms,
+                (unsigned long) g_nav_last_stats.core_layout.finalize_ms,
+                core_other,
+                g_nav_last_stats.core_layout.settling_pass);
         summary[sizeof(summary) - 1] = '\0';
         show_info(L"TEST 13 OK (telemetry)", summary);
     } else {

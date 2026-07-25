@@ -199,4 +199,6 @@ next86 在 `pcore_navigation_request` 内加入纯宿主遥测，不改变 worke
 
 next86 设备 TEST13 遥测为 total=6435ms、network=5503ms、max UI=673ms，parse/style/images/layout/paint=11/182/6/673/36ms；queued/ok/fail=2/2/0、rounds=2、document/cache=10499/121111 bytes、budget-rejected=0，其余批量门禁均 OK。总加载时间约 85% 在 worker 网络，连续 UI 停顿则集中在 layout；下一步应细分 box construction、首轮 layout、可选 settling pass 和收尾，不要先改网络线程或资源预算。
 
+next87 在 `PCore_LayoutDocument` 内仅用 `GetTickCount` 记录 box construction、首轮 NetSurf layout、overflow 检查及可选 settling 二次 layout、finalize 和 total，并通过只读 `PCore_GetLayoutStats` 交给 TEST13。`settling_pass=1` 表示本次确实执行了第二轮 layout；`other` 是 total 扣除四个已知阶段后的调度/计时余量。设备 IANA 起始页报告 `580=515+65+0ms, pass=0`；进入 Reserved 后最后一次导航报告 `662=495+124+43ms, pass=1`，其余门禁均 OK。构盒在两页都稳定占约 500ms，下一批先细分构盒，不得为了缩短数字跳过既有 settling pass、修改几何或放宽回归断言。
+
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。

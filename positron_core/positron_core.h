@@ -181,6 +181,21 @@ PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
  * on success. */
 PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h);
 
+typedef struct PCoreLayoutStats {
+    unsigned long total_ms;
+    unsigned long box_construct_ms;
+    unsigned long first_layout_ms;
+    unsigned long settling_ms;
+    unsigned long finalize_ms;
+    int settling_pass;
+} PCoreLayoutStats;
+
+/* Read the most recent PCore_LayoutDocument phase timings for this document.
+ * `settling_ms` includes overflow detection and the optional second layout;
+ * `settling_pass` is 1 only when that second pass ran. Timings are diagnostic
+ * GetTickCount deltas and do not alter layout scheduling. */
+PCORE_API int PCore_GetLayoutStats(HANDLE hDoc, PCoreLayoutStats *out_stats);
+
 /* Read back the laid-out content-box (CSS px) of the first element named `tag`.
  * Any of the out pointers may be NULL. Returns 0 on success. */
 PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,

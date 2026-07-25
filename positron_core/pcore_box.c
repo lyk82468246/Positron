@@ -2148,6 +2148,7 @@ typedef struct pcore_render {
     int           overflow_dirty_y;
     int           overflow_dirty_w;
     int           overflow_dirty_h;
+    PCoreLayoutStats layout_stats;
 } pcore_render;
 
 /* libdom user-data key under which the render state hangs on the document. */
@@ -2294,7 +2295,12 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     void         *old = NULL;
     struct box   *tree;
     pcore_render *st;
+    PCoreLayoutStats stats;
+    DWORD total_started;
+    DWORD started;
 
+    total_started = GetTickCount();
+    memset(&stats, 0, sizeof(stats));
     if (doc == NULL || viewport_w <= 0 || viewport_h <= 0) {
         return 1;
     }
@@ -2313,7 +2319,9 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
         dom_node_unref(root);
         return 1;
     }
+    started = GetTickCount();
     tree = pcore_box_construct(root, ctx);
+    stats.box_construct_ms = GetTickCount() - started;
     dom_node_unref(root);
     if (tree == NULL) {
         talloc_free(ctx);
@@ -2342,12 +2350,18 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
             sizeof(st->content.unit_len_ctx));
     st->content.background_colour = 0x00ffffff;
 
+    started = GetTickCount();
     layout_document(&st->content, viewport_w, viewport_h);
+    stats.first_layout_ms = GetTickCount() - started;
+    started = GetTickCount();
     if (pcore_needs_auto_hscroll_reflow(tree)) {
+        stats.settling_pass = 1;
         pcore_mask_fixed_auto_hscroll_extent(tree);
         layout_document(&st->content, viewport_w, viewport_h);
     }
+    stats.settling_ms = GetTickCount() - started;
 
+    started = GetTickCount();
     st->doc_height = tree->height;
     if (tree->descendant_y1 > st->doc_height) {
         st->doc_height = tree->descendant_y1;   /* include overflowing content */
@@ -2360,6 +2374,26 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     if (old != NULL && old != st) {
         pcore_render_free((pcore_render *) old);
     }
+    stats.finalize_ms = GetTickCount() - started;
+    stats.total_ms = GetTickCount() - total_started;
+    st->layout_stats = stats;
+    return 0;
+}
+
+PCORE_API int PCore_GetLayoutStats(HANDLE hDoc,
+        PCoreLayoutStats *out_stats)
+{
+    pcore_render *st;
+
+    if (out_stats == NULL) {
+        return 1;
+    }
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL) {
+        memset(out_stats, 0, sizeof(*out_stats));
+        return 1;
+    }
+    *out_stats = st->layout_stats;
     return 0;
 }
 
