@@ -962,9 +962,9 @@ static char *pcore_css_compat_root_vars(const char *css, unsigned int len,
     return out.data;
 }
 
-css_stylesheet *pcore_parse_css_internal(const char *css, unsigned int len,
+static css_stylesheet *pcore_parse_css_mode(const char *css, unsigned int len,
         const char *url, PCoreResolveUrlFn resolve, void *resolve_pw,
-        css_error *out_done)
+        bool inline_style, css_error *out_done)
 {
     css_stylesheet_params params;
     css_stylesheet       *sheet = NULL;
@@ -1007,6 +1007,7 @@ css_stylesheet *pcore_parse_css_internal(const char *css, unsigned int len,
     params.level          = CSS_LEVEL_DEFAULT;
     params.charset        = "UTF-8";
     params.url            = (url != NULL) ? url : "http://positron.local/";
+    params.inline_style   = inline_style;
     params.resolve        = pcore_css_resolve;
     params.resolve_pw     = &resolve_ctx;
 
@@ -1039,6 +1040,22 @@ css_stylesheet *pcore_parse_css_internal(const char *css, unsigned int len,
     }
 
     return sheet;
+}
+
+css_stylesheet *pcore_parse_css_internal(const char *css, unsigned int len,
+        const char *url, PCoreResolveUrlFn resolve, void *resolve_pw,
+        css_error *out_done)
+{
+    return pcore_parse_css_mode(css, len, url, resolve, resolve_pw, false,
+            out_done);
+}
+
+css_stylesheet *pcore_parse_inline_css_internal(const char *css,
+        unsigned int len, const char *url, PCoreResolveUrlFn resolve,
+        void *resolve_pw, css_error *out_done)
+{
+    return pcore_parse_css_mode(css, len, url, resolve, resolve_pw, true,
+            out_done);
 }
 
 PCORE_API HANDLE PCore_ParseCSS(const char *css, unsigned int len,

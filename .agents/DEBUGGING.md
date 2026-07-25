@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前批次为 `tests=13,17,41,42,46,47,48,49,50,51,52,53,54,55,56`，也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next80 节点缓存门禁使用 `tests=56,58-60`，覆盖 table height、二次 inline restyle、flex overflow 与首表头纵横屏重选，再从原四组路由单独跑 TEST13。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -19,7 +19,8 @@
 - 同日 next61 首次通过新 staging 门禁：Debug 增量编译实际重编 `positron_format_list_style.c`、`pcore_select.c` 与 `main.c`，三个受影响项目 0 错误，仅有 9 条既有 `fpmath.h` C4244。`C:\WMShare\Positron-next61` 中 core DLL 与 test EXE 的 SHA-256 均和刚生成 Debug 产物一致；用户随后确认 TEST50 的 IV/z/aa/09、绿色图片 marker 与 circle fallback 全部通过。
 - 2026-07-16：next62/TEST51 横竖屏确认 inside `VIII.` 与绿色图片 marker 共享首行，换行回到内容起点，outside 对照未回归。next63/TEST52 随后确认 block-first、空 marker 行、嵌套 VI 与 block-first 图片行在横竖屏均符合预期。next64/TEST53 已确认基本 collapsed-border 冲突；next65/TEST54 又确认 finite 红边、auto 紫边、colspan 青边和 row-group 橙边。next66/TEST55 首次真机读到 `FFFFFF/00C300/C6C300`：隐藏格确为白、show 格确为绿、filled 格确为青，失败来自 compatible bitmap 的 WM 色彩量化，不是 empty-cells 语义错误。next67 改为逐通道 8/12 色阶紧容差，仍会拒绝白/绿/青分类或通道错位。可见页应看到 top/middle/bottom 三档、Big 与 small 共基线、rowspan 底对齐，最后依次是白色空位、绿色强制 show 空格和青色有内容单元格。
 - 2026-07-16：next67/TEST55 自动断言与可见语义均已通过；原页四组固定高度只超出 WM 客户区十几像素，仍使纵条 thumb 几乎填满轨道。next68 将 TEST55 压到约 240px 并显式设标题行高，设备确认页面完整显示且无多余纵条。TEST56 设备截图确认 105px 内红/绿/蓝三个等高行，文字依次 top/middle/bottom；下方 70px 表两行等高，橙色 rowspan 文字在底部，页面无纵向滚动条。同期 TEST13 长页面滚动正常。
-- 2026-07-21：next69/TEST57 首次设备运行得到错误的 `20/30/30`；切换多个共享目录包时又出现 TEST56 失败，后来由 next72 同包 TEST56 通过及失败文本版本不符证明这是 WM/CE 全局 DLL 复用造成的 EXE/DLL 混搭，不能归因于普通表高算法。next72 的 TEST57 返回 `styles=0:0`，最终定位为 `nsshim/utils/nsoption.h` 将 `author_level_css` 固定为 false，导致测试中的 inline `style=` 未参与选择。next73 改用外部 author stylesheet 的简单类规则后，设备确认 TEST55/56 通过，TEST57 第一表约 20/40/20、超约束表 25/25。切包前必须彻底结束所有 `test_host` 进程。
+- 2026-07-21：next69/TEST57 首次设备运行得到错误的 `20/30/30`；切换多个共享目录包时又出现 TEST56 失败，后来由 next72 同包 TEST56 通过及失败文本版本不符证明这是 WM/CE 全局 DLL 复用造成的 EXE/DLL 混搭，不能归因于普通表高算法。next72 的 TEST57 返回 `styles=0:0`，说明测试中的 inline `style=` 未参与选择；next73 改用外部 author stylesheet 后确认 TEST55/56/57 通过。2026-07-22 重新审阅 vcproj 与调用图后确认，正式路径不编译/调用 NetSurf `box_construct.c`，所以全 false `nsoption` 并非直接根因；实际是 `pcore_style_subtree` 向 `css_select_style` 固定传了 `NULL`。切包前仍必须彻底结束所有 `test_host` 进程。
+- 2026-07-24：next74 接入 inline sheet 后，TEST56 报 `rows=35/35/35 35/35 sum=105/70 off=2/10/19 va=0/2/3/3`。行高、两表总高和后三个对齐值均正确，退化集中在 `.distributed .top`：移植层 `named_ancestor_node`/`named_parent_node` 把 class-only 复合选择器携带的 qname `*` 当成真实标签名。next75 统一改用已有的 universal-aware name matcher，并在 TEST58 加 `.scope .probe` 后代 class 断言；TEST56 原夹具和断言保持不变。设备随后确认 TEST56/58 均通过，TEST58 的 cascade 文本和 25/50/auto 可见布局符合预期；下一门禁是同二进制的 TEST13 全流程与完整冻结回归。
 - WM6 SDK 没有桌面 Win32 `ShowScrollBar` 的声明或导出；需要动态隐藏标准滚动条时，使用 `GetWindowLong/SetWindowLong(GWL_STYLE, WS_VSCROLL)`，再用 `SetWindowPos(..., SWP_FRAMECHANGED)` 重算非客户区。
 - 设备上是否在跑旧的 VS Deploy 目录，例如 `\Program Files\test_host\`。
 
@@ -167,5 +168,19 @@ next57 的 `c89ize.py` 对 `pcore_box.c`、`pcore_select.c`、`test_host/main.c`
 2026-07-11：IANA 页脚的 HTML 是 table cell 内的 `<ul>`，其条目规则为 `display:inline; float:left`。曾向 `pcore_box.c` 加入仿 NetSurf 的 `BOX_FLOAT_LEFT/RIGHT` 匿名包装，TEST23 最小复现通过；但真实 Browse 截图随即出现全页严重错位和替代方框。结论：该最小测试没有覆盖 pcore 精简构盒与上游 normalisation/list-marker 等前后条件。实现已撤回，TEST23 不再运行；必须先恢复真实页面基线，再以端到端回归重新设计 float 移植。
 
 同日线上 IANA CSS 的文件名与此前版本不同，并使用 CSS custom properties 和 `@media (width <= 1000px)`。这不是 TEST21 的 `min-width` / `max-width` 断言所覆盖的语法；定位真实页问题前先确认实际抓取的是哪一个 CSS 版本，不能把旧截图结论外推到新站点资源。
+
+2026-07-24：TEST13 起始页正常，但进入 IANA `/domains/reserved` 后标题只剩右侧字符，说明不是统一 viewport padding 回归。重新抓取当前页面与 `iana_website.3c174467e53c.css` 后确认结构为 `article.sidenav > main`，宽表格只包在 `.dtable-wrap { overflow:auto }` 中，没有 `/numbers` 的 Grid wrapper。用 Chromium 240/320px viewport 也测得 main 为负 x，根因是宽表格的 min-content 继续钳住 reversed-flex item；这不是网络、资源事务或 inline style 路径。next77 将 TEST41 的 grid-only 标记改为 min-content boundary，只在 horizontal、`flex-shrink>0` 且后代实际含 grid/inline-grid 或 `overflow-x:auto/scroll` 时跳过隐式 `box->min_width`，显式 `min-width` 仍先行。TEST59 用无 Grid fixture 在 224/320px 自动断言 `main x=25`；必须同时复测 TEST41/42 和真实 TEST13 深层链接，不能只看 TEST59 MessageBox。
+
+同日 next77 设备结果：TEST59 与同批回归通过，`/domains/reserved` 竖屏主内容 inset 正常；在表格可见时旋转为横屏后，第一列表头 `Domain` 左移约 18px 并贴住 wrapper 左侧裁剪边界，第二列表头仍呈 700 字重。这个现象会让首个英文词看起来像字体/样式异常，但不能归因于缺少小语种字体。next78 在每次新布局树最终 layout 后显式将内部 scrollbar offset 归零，并用 `PCore_NodeScrollOffset`、`PCore_TableCellTextStyle` 扩展 TEST59：同一 DOM 先 224x300 后 320x200，逐次断言 wrapper offset 0、首格 18px padding、文本相对 x=18 及字重 700。字体范围保持符号与单色 emoji，不为此引入普通语言字体。
+
+next78 真机失败后，上段候选结论作废：递归 `scrollbar_set(...,0)` 会走 NetSurf scrollbar 回调，不是可在布局末尾安全执行的字段归零。设备表现为 TEST13 横屏全部表格单元格间距/样式异常，随后 TEST56 `va=0/2/3/3` 并触发系统级 `test_host.exe` 异常。该行为、两个诊断 API 和同 DOM TEST59 已全部撤回；恢复后的 ARM DLL `.text` 与 next77 完全一致。先隔离复测 TEST56/59，进程稳定后才进入 TEST13。
+
+工具链禁令：不要用 `C:\Program Files (x86)\Microsoft Visual Studio 9.0\VC\bin\dumpbin.exe` 检查 ARM PE。它会内部启动桌面 `link.exe /dump`，在当前机器因 `mspdb80.dll` 缺失弹系统错误。构建只走 `scripts\build.bat` / `scripts\stage.bat` 的 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)`；PE 元数据或 section hash 用 PowerShell/.NET 直接读取。
+
+2026-07-25：next79 设备确认 TEST56/59 OK，真实 `/domains/reserved` 也准确回到“竖屏正常、横屏仅首个 `Domain` 丢 inset/字重观感”的 next77 基线。当前 IANA HTML 的首行是普通四个 `<th>`；`.dtable thead th` 统一给 `padding:10px 14px;font-weight:700`，`.dtable th:first-child` 再给 18px 左 padding，不存在只把第一个表头改坏的站点规则。
+
+继续对照仓库 libcss `select.c` 后找到明确生命周期错误：`css__get_parent_bloom` 在父节点无缓存时创建 node-data，调用 `set_libcss_node_data` 后把其中 bloom 指针返回给后续选择；Positron 旧回调却在 `set` 内立刻用 `CSS_NODE_DELETED` 释放整块数据，因此返回的是悬空指针。next80 改为 NetSurf 同型的 libdom user-data 持有，并在每次新 StyleDocument 事务前递归失效上一轮缓存，既保住本轮父/兄弟选择数据，也不跨 stylesheet/media 复用。TEST60 用两个相同 `Domain` 表头比较首格 18px/10px inset、第二格 14px/10px inset 和文字宽度，并在同 DOM 纵横屏各执行一次。C89 脚本 0 修改，VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建 0 错误；包位于 `C:\WMShare\Positron-next80`，默认 `tests=56,58-60`。
+
+next80 设备验收完成：TEST56/58/59/60 全部通过；真实 TEST13 `/domains/reserved` 在横竖屏截图中首个 `Domain` 均与第二表头保持一致的 inset、字重和基线，其余单元格与 overflow 滚动正常。该问题关闭；后续若再出现“仅第一个复合选择器节点丢样式”，先查 node-data 失效边界，不再改 scrollbar 状态或字体 fallback。
 
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。

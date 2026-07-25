@@ -1,6 +1,6 @@
 # 已验证基线与待消除限制
 
-更新时间：2026-07-20
+更新时间：2026-07-24
 
 这份清单把“已经在设备上验证的最小链路”和“当前刻意保留的阶段性实现”分开记录。未被列为完成的项目不得在后续交接、README 或测试结论中表述为完整浏览器能力。
 
@@ -11,12 +11,12 @@
 | CSS 媒体查询与 token | TEST 21 已在设备确认运行时 viewport/DPI、旧式 min/max-width 及整数像素 MQ4 `width <=` / `width <`；TEST38-39 又确认同表顶层 `:root` token 语义与正式 redraw。 | 所有媒体特性、MQ4 范围、元素作用域或完整 custom properties 均已覆盖。 |
 | 现代 CSS 值 | TEST40 已在设备确认：数值型 `oklch()` 转裁剪 sRGB，并求值无需布局上下文的同单位 `calc()` 四则运算。 | 完整 gamut mapping、`none`/复杂角度、`color-mix()`、混合单位 calc 或 CSS Color/Values 均已实现。 |
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
-| IANA 窄屏页 | TEST13 的 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
+| IANA 窄屏页 | TEST13 起始页和 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。next80 已修复 libcss 父 bloom 节点数据过早销毁；TEST56/58/59/60 与真实 `/domains/reserved` 横竖屏均已通过，首个 `Domain` 表头恢复正常。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
 | 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。next54 的 fixed-height 回归已在 next55 收窄，用户确认 auto-height 空间、箭头、短页纵条与色块页正常。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
 | table span/归一化/折叠边框 | NetSurf 3.11 span occupancy 与匿名 row/cell 已由 TEST46/47 验收。next64/TEST53 至 next68/TEST56 已覆盖常见 collapsed-border、cell alignment/empty-cells 与显式 table height；next73/TEST57 又确认 25/50/auto 百分比 row 分配及超约束缩放。 | 尚不覆盖任意 inline/float/form 畸形组合、caption/column 归一化、`col`/`colgroup` border 来源、百分比 cell/后代内容、跨行 baseline 或所有复杂表格边界。 |
-| author-level inline CSS | 外部 author stylesheet 正常参与 libcss 选择；TEST57 使用外部类规则通过。 | `nsshim/utils/nsoption.h` 当前把所有 `nsoption_bool` 固定为 false，因此 HTML `style=` 属性路径被关闭；启用前必须为选项建立具名默认值并跑 TEST13 全流程。 |
-| 列表 marker | next57/59 已确认基础 marker 与字体；next61/TEST50 已确认 libcss 上游 47 种 counter formatter、document-cache `list-style-image` 与失败类型回退；next62/TEST51、next63/TEST52 已确认 inline-first 及 block-first/空条目/嵌套/图片的 `list-style-position:inside`。 | 不代表 float 邻接 marker、自定义 `@counter-style`、所有语言字体或完整 CSS Lists。 |
-| 字体 fallback | next59 随包部署约 901 KiB 的三份静态 Positron Symbols/Emoji（来自 Noto OFL），精确 cmap 选择统一用于 GDI 测量、换行命中与绘制 run；设备确认箭头/marker/五个 emoji 可见且比 next58 稍平滑。 | `ANTIALIASED_QUALITY` 最终效果依赖 OEM GDI，且没有复杂 ZWJ/variation shaping、彩色 emoji、网页 `@font-face`、字体下载或通用语言字体 fallback。 |
+| author-level inline CSS | 外部 author stylesheet 正常参与 libcss 选择；TEST57 使用外部类规则通过。next75/TEST58 已确认 NetSurf 式声明列表解析、libcss inline cascade、继承、后代 class 选择与正式布局/重绘。 | 正式构盒不调用 NetSurf `box_construct.c`；旧缺口是 `pcore_style_subtree` 固定给 `css_select_style` 传 `NULL`。全零 `nsoption` shim 是另一项需具名默认值和回归测试的技术债，不能再把它写成 inline CSS 的直接开关。完整 TEST13 仍是本批提交前门禁。 |
+| 列表 marker | next57/59 已确认基础 marker 与字体；next61/TEST50 已确认 libcss 上游 47 种 counter formatter、document-cache `list-style-image` 与失败类型回退；next62/TEST51、next63/TEST52 已确认 inline-first 及 block-first/空条目/嵌套/图片的 `list-style-position:inside`。 | 不代表 float 邻接 marker、自定义 `@counter-style` 或完整 CSS Lists。普通语言字体不属于当前 marker 工作范围。 |
+| 字体 fallback | next59 随包部署约 901 KiB 的三份静态 Positron Symbols/Emoji（来自 Noto OFL），精确 cmap 选择统一用于 GDI 测量、换行命中与绘制 run；设备确认箭头/marker/五个 emoji 可见且比 next58 稍平滑。当前范围明确只支持符号与单色 emoji fallback。 | 不计划在本阶段加入普通语言/多语种字体；也没有复杂 ZWJ/variation shaping、彩色 emoji、网页 `@font-face` 或字体下载。`ANTIALIASED_QUALITY` 最终效果仍依赖 OEM GDI。 |
 | 图片 | TEST19/20 已确认公共 retained 位图 ABI、WM Imaging 四格式和核心缓存复用；TEST25-37/13 已确认 SVG 链。 | 复杂 SVG text、任意渐变、复杂 CSS 背景、跨线程图片句柄或任意网络图片均已通过。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认跨断点重选、无联网及滚动比例，真实 TEST13 横竖屏也保持同一阅读区域。 | 所有媒体语法和任意样式资源均已覆盖。 |
@@ -30,8 +30,9 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **可能范围**：剩余 flex/table/inline/字体或未实现 CSS 特性的组合；尚未把单一原因当作结论。
 - **已撤回的一项**：IANA 页脚是 table cell 内 `display:inline; float:left` 列表。TEST23 曾在最小样例中确认两个浮动块同行及 `clear:both`，但将该构盒规则直接接入真实页面后，2026-07-11 Browse 截图出现严重错位和替代方框；实现已撤回。该测试不再参加 ENGINE 组，不能作为 float 支持证据。
 - **当前站点版本风险**：2026-07-13 重新读取到 IANA 的 `iana_website.80c103cc08b6.css`；除已确认的 `var(--space-*)` 外还有 22 处 `oklch()`、15 处 `calc()`、`color-mix()`、grid/gap 与 `:has()`。新兼容模块只处理数值型 OKLCH 和可完全求值的同单位 calc；混合单位及其他现代能力仍会降级。
-- **最新子页结论**：`/numbers` 使用 `display:grid`，其中 `.dtable-wrap { overflow:auto }` 包住宽表格。TEST41 的竖横屏截图已确认 flex 主内容负 x 修复，标题/正文保持 inset；Grid 仍只保持单列文档顺序。
-- **下一步**：TEST3/43/44 与真实 TEST13 已验收后台资源、真实单响应进度、协作式 UI 提交基线和主文档失败回滚。当前用 TEST13/24/45 验收正式 Browse、旧 ABI 旋转缓存和新 CSS import tree。Grid/gap 因 NetSurf HTML 层仍无现成轨道布局，须先继续审计可移植上游实现。float 仍须对照上游 box construction/normalisation 与 list marker，不能复用 TEST23 的简化断言。
+- **最新子页结论**：`/numbers` 使用 `display:grid`，其中 `.dtable-wrap { overflow:auto }` 包住宽表格，TEST41 已确认该路径。`/domains/reserved` 没有 Grid 包装层，但同样以 `.dtable-wrap { overflow:auto }` 包住宽表格。next77 已让 flex main 在竖屏保持正确 inset；旋转到横屏后，wrapper 本身位置正常，但第一格内容左移约 18px，恰好抵消作者的 `padding-left:18px`，导致 `Domain` 贴到 clip edge，视觉上连字体/样式也异常。非拉丁字符 tofu 与这个英文表头问题无关，并按项目范围保留。
+- **失败实验**：next78 在 layout 末尾递归 `scrollbar_set(...,0)` 后，真实页横屏从首个 `Domain` 异常扩大为全部表格单元格异常，TEST56 随后失败并触发系统级异常。该实验及其诊断 API/扩展 TEST59 已撤回，旧包已改名为 `C:\WMShare\Positron-next78-FAILED-DO-NOT-USE`。
+- **已验收边界**：next80 的 TEST56/58/59/60 与 TEST13 起始页、`Open example`、IANA `/domains/reserved` 横竖屏均通过。仍禁止恢复 next78 的全局 scrollbar 回调重置；这次闭环不等于所有 IANA 子页或完整现代 CSS 已实现。
 - **完成条件**：在目标设备的竖屏和横屏下，主内容、页脚和导航均不裁切、不重叠，且没有明显错误图标/替代字符；结果需要新的真机截图确认。
 
 ### 旋转 responsive restyle 已完成当前验收

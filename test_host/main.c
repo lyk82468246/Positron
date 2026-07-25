@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 57
+#define TEST_MAX_NUMBER 60
 
 static int test_config_space(char c)
 {
@@ -8607,6 +8607,359 @@ static BOOL test57_table_percentage_rows(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 58 - HTML style attribute through libcss inline cascade         */
+/* -------------------------------------------------------------------- */
+static BOOL test58_inline_author_style(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><style>"
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font-size:12px;line-height:15px;padding:6px;}"
+        "h1{color:#111111;font-size:19px;line-height:22px;margin:0 0 3px;}"
+        "section{color:#112233;}aside{color:#abcdef!important;}"
+        ".scope .probe{color:#2468ac;}"
+        "table{border-collapse:separate;border-spacing:0;margin-top:4px;}"
+        "td{border:1px solid #404040;padding:1px;}"
+        "</style></head><body>"
+        "<h1 style='color:#123456'>Inline author CSS</h1>"
+        "<article style='width:160px;padding-left:10px;background:#eeeeff'>"
+        "<section style='color:#336699'>inline colour <em>inherited</em>"
+        "</section><aside style='color:#fedcba'>external !important wins"
+        "</aside><strong style='color:#778899!important'>inline !important"
+        " wins</strong><footer style='color:broken;color:#0a0b0c'>"
+        "parser recovery</footer></article>"
+        "<scope class=scope><probe class=probe>descendant class selector"
+        "</probe></scope>"
+        "<nav style='display:none'>must stay hidden</nav>"
+        "<table style='width:180px;height:80px'>"
+        "<tr style='height:25%'><td style='background:#ffb0b0'>25%</td></tr>"
+        "<tr style='height:50%'><td style='background:#b0ffb0'>50%</td></tr>"
+        "<tr><td style='background:#b0b0ff'>auto</td></tr>"
+        "</table></body></html>";
+    static const char EXTRA_CSS[] =
+        "h1{color:#222222}strong{color:#445566!important}";
+    static const char *tags[7] = {
+        "h1", "section", "em", "aside", "strong", "footer", "probe"
+    };
+    static const unsigned long expected[7] = {
+        0x00123456UL, 0x00336699UL, 0x00336699UL,
+        0x00abcdefUL, 0x00778899UL, 0x000a0b0cUL, 0x002468acUL
+    };
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreTableRowGeometry rows[3];
+    int row_kind[3];
+    int row_value[3];
+    unsigned long colors[7];
+    int article_w;
+    int total_h;
+    int screen_w;
+    int screen_h;
+    int i;
+    char msg[256];
+
+    memset(rows, 0, sizeof(rows));
+    memset(row_kind, 0, sizeof(row_kind));
+    memset(row_value, 0, sizeof(row_value));
+    memset(colors, 0, sizeof(colors));
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(EXTRA_CSS, sizeof(EXTRA_CSS) - 1,
+            "http://positron.local/inline-extra.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocumentEx2(hDoc, hSheet,
+                    "http://positron.local/inline/page.html",
+                    wm_combine_url, NULL, NULL, NULL) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 58 FAIL", "inline style setup failed");
+        return FALSE;
+    }
+    for (i = 0; i < 7; i++) {
+        if (PCore_NodeComputedColor(hDoc, tags[i], &colors[i]) != 0 ||
+                (colors[i] & 0x00ffffffUL) != expected[i]) {
+            break;
+        }
+    }
+    if (i != 7) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "cascade case=%d tag=%s got=%06lX expect=%06lX",
+                i, (i < 7) ? tags[i] : "?",
+                (i < 7) ? colors[i] & 0x00ffffffUL : 0UL,
+                (i < 7) ? expected[i] : 0UL);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 58 FAIL", msg);
+        return FALSE;
+    }
+
+    /* A second style pass exercises replacement cleanup and the same inline
+     * declarations before the formal NetSurf box/layout path consumes them. */
+    if (PCore_StyleDocumentEx2(hDoc, hSheet,
+            "http://positron.local/inline/page.html",
+            wm_combine_url, NULL, NULL, NULL) != 0 ||
+            PCore_LayoutDocument(hDoc, 230, 260) != 0 ||
+            PCore_NodeBox(hDoc, "article", NULL, NULL, &article_w, NULL) != 0 ||
+            PCore_NodeBox(hDoc, "nav", NULL, NULL, NULL, NULL) == 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 58 FAIL", "restyle/layout/hidden box failed");
+        return FALSE;
+    }
+    for (i = 0; i < 3; i++) {
+        if (PCore_TableRowGeometry(hDoc, (unsigned int) i, &rows[i]) != 0 ||
+                PCore_TableRowSpecifiedHeight(hDoc, (unsigned int) i,
+                        &row_kind[i], &row_value[i]) != 0) {
+            break;
+        }
+    }
+    total_h = rows[0].row_height + rows[1].row_height + rows[2].row_height;
+    if (i != 3 || article_w != 160 || row_kind[0] != 1 ||
+            row_value[0] != 25 || row_kind[1] != 1 ||
+            row_value[1] != 50 || row_kind[2] != 0 ||
+            total_h < 79 || total_h > 81 ||
+            rows[0].row_height < 19 || rows[0].row_height > 21 ||
+            rows[1].row_height < 39 || rows[1].row_height > 41 ||
+            rows[2].row_height < 19 || rows[2].row_height > 21) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "layout i=%d article=%d rows=%d/%d/%d kinds=%d:%d,%d:%d,%d",
+                i, article_w, rows[0].row_height, rows[1].row_height,
+                rows[2].row_height, row_kind[0], row_value[0],
+                row_kind[1], row_value[1], row_kind[2]);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 58 FAIL", msg);
+        return FALSE;
+    }
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    if (PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 58 FAIL", "visible inline layout failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 58",
+              "Expect a blue heading, tinted 160px content band, cascade\n"
+              "samples and a red/green/blue 25/50/auto table. The hidden\n"
+              "navigation text must not appear.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 58 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 58 OK",
+              "HTML style attributes passed cascade, inheritance,\n"
+              "!important, parser recovery, restyle and layout/redraw.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 59 - overflow boundary inside a reversed flex item               */
+/* -------------------------------------------------------------------- */
+static BOOL test59_flex_overflow_min_content(void)
+{
+    static const char *HTML =
+        "<!DOCTYPE html><html><body><article><main>"
+        "<div class=scroll><table><tr>"
+        "<td>REGISTRY-NAME-THAT-MUST-NOT-SHRINK</td>"
+        "<td>SECOND-WIDE-COLUMN</td></tr></table></div></main>"
+        "<nav>wide side navigation</nav></article></body></html>";
+    static const char *CSS =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "article{display:flex;flex-direction:row-reverse;padding:25px;}"
+        "main{flex-grow:1;flex-basis:0;background:#f7f7fb;}"
+        "nav{display:none;width:180px;}"
+        ".scroll{overflow:auto;border:1px solid #808080;}"
+        "table{border-collapse:collapse;}"
+        "td{white-space:nowrap;padding:4px;}";
+    static const int widths[2] = { 224, 320 };
+    HANDLE hDoc;
+    HANDLE hSheet;
+    int x;
+    int y;
+    int w;
+    int h;
+    int i;
+    char msg[256];
+
+    msg[0] = '\0';
+    for (i = 0; i < 2; i++) {
+        hDoc = PCore_ParseHTML(HTML, 0);
+        hSheet = PCore_ParseCSS(CSS, 0,
+                "http://positron.local/flex-overflow.css");
+        x = 0;
+        y = 0;
+        w = 0;
+        h = 0;
+        if (hDoc == NULL || hSheet == NULL ||
+                PCore_StyleDocument(hDoc, hSheet) != 0 ||
+                PCore_LayoutDocument(hDoc, widths[i], 240) != 0 ||
+                PCore_NodeBox(hDoc, "main", &x, &y, &w, &h) != 0 ||
+                x != 25 || w != widths[i] - 50) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "width=%d main=(%d,%d) %dx%d; expect x=25 w=%d",
+                    widths[i], x, y, w, h, widths[i] - 50);
+        }
+        msg[sizeof(msg) - 1] = '\0';
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        if (msg[0] != '\0') {
+            break;
+        }
+    }
+    if (i != 2) {
+        show_error(L"TEST 59 FAIL", msg);
+        return FALSE;
+    }
+
+    show_info(L"TEST 59 OK",
+              "A wide overflow:auto table stayed inside its\n"
+              "reversed-flex main at 224px and 320px viewports.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 60 - retained libcss node data across a restyle transaction      */
+/* -------------------------------------------------------------------- */
+static BOOL test60_table_header_restyle(void)
+{
+    static const char *HTML =
+        "<!doctype html><html><body><div class=dtable-wrap>"
+        "<table class=dtable><thead><tr>"
+        "<th>Domain</th><th>Domain</th><th>Language</th>"
+        "</tr></thead><tbody>"
+        "<tr><th>row heading</th><td>A-label</td><td>Latin</td></tr>"
+        "<tr><td>example</td><td>xn--example</td><td>Latin</td></tr>"
+        "</tbody></table></div></body></html>";
+    static const char *CSS =
+        "*{box-sizing:border-box;margin:0;padding:0;font-weight:400;}"
+        "html,body{background:#fff;color:#111;}"
+        "body{font-size:12px;line-height:15px;}"
+        ".dtable-wrap{width:100%;overflow:auto;}"
+        ".dtable{width:360px;border-collapse:collapse;font-size:12px;}"
+        ".dtable th,.dtable td{text-align:left;vertical-align:top;}"
+        ".dtable thead th{padding:10px 14px;font-weight:700;"
+        "white-space:nowrap;}"
+        ".dtable td{padding:5px 14px;}"
+        ".dtable th:first-child,.dtable td:first-child{padding-left:18px;}"
+        ".dtable>tbody>tr:first-child>th{padding:5px 14px;}"
+        "@media(min-width:300px){.dtable-wrap{width:390px;}}";
+    static const int widths[2] = { 224, 400 };
+    static const int heights[2] = { 320, 240 };
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreTableCellGeometry cells[4];
+    HDC screen_dc;
+    int screen_w;
+    int screen_h;
+    int dpi;
+    int pass;
+    int dx0;
+    int dx1;
+    int dx3;
+    int dx6;
+    int dy0;
+    int dy1;
+    int dy3;
+    int dy6;
+    BOOL ok;
+    char msg[256];
+
+    hDoc = NULL;
+    hSheet = NULL;
+    ok = FALSE;
+    msg[0] = '\0';
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    screen_dc = GetDC(NULL);
+    dpi = (screen_dc != NULL) ?
+            GetDeviceCaps(screen_dc, LOGPIXELSY) : 96;
+    if (screen_dc != NULL) {
+        ReleaseDC(NULL, screen_dc);
+    }
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/table-header-restyle.css");
+    if (hDoc == NULL || hSheet == NULL) {
+        strcpy(msg, "parse failed");
+        goto cleanup;
+    }
+
+    for (pass = 0; pass < 2; pass++) {
+        memset(cells, 0, sizeof(cells));
+        PCore_SetViewport(widths[pass], heights[pass], dpi);
+        if (PCore_StyleDocument(hDoc, hSheet) != 0 ||
+                PCore_LayoutDocument(hDoc, widths[pass],
+                        heights[pass]) != 0 ||
+                PCore_TableCellGeometry(hDoc, 0, &cells[0]) != 0 ||
+                PCore_TableCellGeometry(hDoc, 1, &cells[1]) != 0 ||
+                PCore_TableCellGeometry(hDoc, 3, &cells[2]) != 0 ||
+                PCore_TableCellGeometry(hDoc, 6, &cells[3]) != 0) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "pass=%d style/layout/geometry failed", pass);
+            msg[sizeof(msg) - 1] = '\0';
+            goto cleanup;
+        }
+
+        dx0 = cells[0].first_text_x - cells[0].cell_x;
+        dx1 = cells[1].first_text_x - cells[1].cell_x;
+        dx3 = cells[2].first_text_x - cells[2].cell_x;
+        dx6 = cells[3].first_text_x - cells[3].cell_x;
+        dy0 = cells[0].first_text_y - cells[0].cell_y;
+        dy1 = cells[1].first_text_y - cells[1].cell_y;
+        dy3 = cells[2].first_text_y - cells[2].cell_y;
+        dy6 = cells[3].first_text_y - cells[3].cell_y;
+        if (dx0 < 17 || dx0 > 19 || dx1 < 13 || dx1 > 15 ||
+                dx3 < 13 || dx3 > 15 || dx6 < 17 || dx6 > 19 ||
+                dy0 < 9 || dy0 > 11 || dy1 < 9 || dy1 > 11 ||
+                dy3 < 4 || dy3 > 6 || dy6 < 4 || dy6 > 6 ||
+                abs(cells[0].first_text_width -
+                        cells[1].first_text_width) > 1) {
+            _snprintf(msg, sizeof(msg) - 1,
+                    "pass=%d x=%d/%d/%d/%d y=%d/%d/%d/%d text=%d/%d",
+                    pass, dx0, dx1, dx3, dx6, dy0, dy1, dy3, dy6,
+                    cells[0].first_text_width,
+                    cells[1].first_text_width);
+            msg[sizeof(msg) - 1] = '\0';
+            goto cleanup;
+        }
+    }
+    ok = TRUE;
+
+cleanup:
+    PCore_SetViewport(screen_w, screen_h, dpi);
+    if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+    if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+    if (!ok) {
+        show_error(L"TEST 60 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 60 OK",
+              "The first table header kept its 18px/10px inset and bold\n"
+              "text while the same DOM restyled from portrait to landscape.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -8778,6 +9131,9 @@ static int run_configured_tests(const unsigned char *selected,
         case 55: ok = test55_table_cell_alignment(); break;
         case 56: ok = test56_table_height_distribution(); break;
         case 57: ok = test57_table_percentage_rows(); break;
+        case 58: ok = test58_inline_author_style(); break;
+        case 59: ok = test59_flex_overflow_min_content(); break;
+        case 60: ok = test60_table_header_restyle(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -8859,7 +9215,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-57)\n"
+                  "Yes = run all selected groups (TEST 1-60)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -8876,7 +9232,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40-45). Offline.");
+                               "38, 40-45, 59, 60). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -8885,7 +9241,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list\n"
                                "normalisation redraw\n"
-                               "(TEST 46-57).\n"
+                               "(TEST 46-58).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -8917,7 +9273,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45; offline. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59, 60. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -8936,6 +9292,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test43_navigation_resource_transaction()){ rc = 11; goto done; }
         if (!test44_navigation_failure_transaction()){ rc = 11; goto done; }
         if (!test45_css_import_tree()){ rc = 11; goto done; }
+        if (!test59_flex_overflow_min_content()){ rc = 11; goto done; }
+        if (!test60_table_header_restyle()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -8945,7 +9303,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-57; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -8978,6 +9336,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test55_table_cell_alignment()){ rc = 13; goto done; }
         if (!test56_table_height_distribution()){ rc = 13; goto done; }
         if (!test57_table_percentage_rows()){ rc = 13; goto done; }
+        if (!test58_inline_author_style()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -9005,19 +9364,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59, 60)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
                "    resource cache, SVG parse, constrained :root variables,\n"
                "    OKLCH/calc values, grid-overflow containment, scrollbar\n"
                "    input, staged navigation resources, failure rollback,\n"
-               "    and native libcss CSS import trees.\n"
+               "    native libcss CSS import trees, and retained selector\n"
+               "    node data across portrait/landscape restyle.\n"
                "    Offline.\n\n");
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-57)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

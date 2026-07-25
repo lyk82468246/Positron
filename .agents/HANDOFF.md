@@ -1,8 +1,8 @@
 # Positron Current Handoff
 
-更新时间：2026-07-21
+更新时间：2026-07-24
 当前分支：`main`  
-当前最新提交：请以 `git log --oneline -5` 为准；当前设备基线已覆盖 TEST48-57，最近完成列表 marker/counter/inside flow、折叠表格边框、cell alignment/empty-cells、显式 table height 与百分比 row 第二遍分配。next73 已同时通过 TEST55/56/57。
+当前最新提交：请以 `git log --oneline -5` 为准；当前设备基线已覆盖 TEST48-60。next80 已由设备确认 TEST56/58/59/60 全部通过，真实 IANA `/domains/reserved` 的首个 `Domain` 在横竖屏均恢复与其他表头一致的 padding、字重和基线。根因是旧 `set_libcss_node_data` 立即销毁数据，而 libcss 的子节点选择仍借用父 bloom 指针；当前实现按 NetSurf 原生方式将数据挂到 DOM，并在新样式事务开始前清掉上一轮缓存。**next78 仍是已撤回的失败实验，不得使用**。验收包位于 `C:\WMShare\Positron-next80`。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -96,11 +96,11 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,17,41,42,46-57`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。`stage.bat` 会复制仓库默认配置，当前为 `tests=13,17,41,42,46,47,48,49,50,51,52,53,54,55,56,57`。四组路由的第 3 组提示已压缩为能力类别，避免 WM6 小屏 MessageBox 被长清单撑坏。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=56,58-60`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。当前 56/58/59/60 与 TEST13 Browse 深层链接旋转均已真机通过。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid-overflow 隔离、overflow scrollbar、分阶段资源事务、失败回滚与 CSS import tree，离线。TEST40-45 已真机确认。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-57，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow 与随包静态字体 fallback 正式 redraw；TEST48-57 已验收。
+- Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59、60，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree 与 selector node-data restyle，离线。TEST40-45 与 next79 的 TEST59 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-58，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS 与随包静态字体 fallback 正式 redraw；TEST48-58 已验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -108,6 +108,8 @@ scripts\stage.bat
 - TEST 17：内置 NetSurf real layout + redraw 页面。预期：深红 H1 和红色下边框、带边框的三色 flex 横排、2x2 table 可见 cell 边框。
 - TEST 56：显式 table height 分配。预期：105px 三行等高且文字依次 top/middle/bottom；70px 两行等高且橙色 rowspan 文字在底部；页面无多余纵向滚动条。
 - TEST57：第一张 80px 表应约为 20/40/20px，第二张 50px 超约束表应为 25/25px；next73 已连同 TEST55/56 一起通过。
+- TEST59：分别在 224px 和 320px viewport 建立无 Grid `overflow:auto` 宽表格夹具，必须保持 reversed-flex main 的 `x=25,width=viewport-50`。next78 的同 DOM 旋转/scrollbar 诊断版本已经撤回。
+- TEST60：同一 DOM 先按 224×320、再按 400×240 重做 style/layout；IANA 同型 `.dtable` 的首个 `<th>` 必须保留 18px/10px inset，并与第二个同文字表头保持同一粗体宽度。它同时覆盖 `thead th`、`:first-child` 和后续 `tbody > tr:first-child > th` 选择器。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步
@@ -115,7 +117,7 @@ scripts\stage.bat
 优先候选：
 
 1. 2026-07-11 用户真机确认 ENGINE 原整组至 TEST24 通过；2026-07-12 单独确认 TEST25 SVG parse。后续修改引擎路径时必须重跑当前整组。
-2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。最新 TEST13 已作为当前 IANA 可读基线通过，但这只表示本轮未发现回归，不代表现代 CSS 或任意真实页完整兼容。后续 float 必须对照上游 box construction/normalisation，而不是基于该简化测试继续扩展。
+2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。TEST13 起始页正常不等于所有 IANA 子页正常；2026-07-24 `/domains/reserved` 已再次证明必须走深层链接和旋转验收。next80 已让 TEST60 与真实页横竖屏全部通过；next78 仍因扩大回归和系统异常保持撤回。后续 float 仍必须对照上游 box construction/normalisation。
 3. `WM_SIZE` 从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback。TEST24 与真实 Browse 旋转均已确认。
 4. 主文档、外链 CSS、CSS `@import`、`<img>` 和 CSS 背景 GET 已组成分阶段 worker 事务；DOM/style/layout 仍只在 UI。2026-07-14 设备已确认 TEST3 的真实单响应正文进度、TEST43 资源事务、TEST44 主文档失败回滚和 TEST13 IANA Browse 基线。UI 提交现由一次性 WM timer 拆成 parse/style/image-discovery/layout 四段，单个 NetSurf 调用仍可能卡顿。宿主暂存预算为 64 URL/2 MiB，不是 core ABI 限制；整页聚合进度、网页字体和脚本仍待处理。
 5. TEST30-37 已于 2026-07-13 真机通过：CSS 背景、基础 text、连续线性/径向渐变及坐标、继承/透明 stop、循环保护、径向 SVG 文档缓存以及 `<img>`/CSS 背景单次 fetch 复用均成立；复杂 shaping、`textPath`、逐字定位、任意 shear、径向焦点与 spread method 尚未实现。
@@ -128,7 +130,7 @@ scripts\stage.bat
 12. next55 在二次 layout 前屏蔽 fixed-height `overflow:auto` 的首轮横向 extent，只让 auto-height 容器获得额外空间；右箭头改用与左箭头对称的 `area.y0` 基准。用户已确认 TEST41/42、短页纵条与色块页均正常；冻结的 TEST13 导航链未改。
 13. next56 按 NetSurf 3.11 规则补 table/row-group/row/cell 匿名盒和短行空 cell。用户已确认 TEST47 红/白、绿/蓝两行及同批其余测试正常。
 14. next57 移植 NetSurf 列表 marker 构造并恢复 LI DOM user-data 映射。TEST48 自动校验 disc/circle/square、十进制 `start/value/reversed` 及 marker 几何；`PCore_ListMarker` 是只读诊断 API。
-15. next58 引入 Noto OFL 来源的静态 Positron Symbols/Emoji 子集。next59 追加官方 hinted Noto Sans Symbols Basic 子集，用生成的精确 cmap 覆盖表互补两套 symbol face；设备确认箭头不再 tofu、marker 和五个 emoji 均可见且视觉稍有改善。`ANTIALIASED_QUALITY` 最终效果仍取决于 OEM GDI；不要宣称网页 `@font-face`、复杂 emoji shaping 或彩色字体支持。
+15. next58 引入 Noto OFL 来源的静态 Positron Symbols/Emoji 子集。next59 追加官方 hinted Noto Sans Symbols Basic 子集，用生成的精确 cmap 覆盖表互补两套 symbol face；设备确认箭头不再 tofu、marker 和五个 emoji 均可见且视觉稍有改善。当前字体范围明确只包含符号与单色 emoji；不要继续加入普通语言/多语种字体，也不要宣称网页 `@font-face`、复杂 emoji shaping 或彩色字体支持。`ANTIALIASED_QUALITY` 最终效果仍取决于 OEM GDI。
 16. next60 用生成的 `positron_format_list_style.c` 替换 decimal-only stub，算法与 47 种样式来自仓库内原版 libcss。`scripts/port_list_style_vs2008.py` 负责指定初始化器和 UTF-8 字面量的可重复 C89/ASCII 转换；`list-style-image` 复用 document image cache，只有 computed list-item 才发现资源，解码失败保留类型 marker。next60 首次设备 TEST50 的 `found=4 fetched=2` 来自旧 Debug core DLL 打包事故；`stage.bat` 增加自动增量 Build 门禁后，next61 已确认 TEST50 的计数、缓存 SVG marker 与失败回退全部通过。
 17. next62 把 NetSurf 3.11 已计算但未参与 layout 的 `list-style-position:inside` 接到 inline-first 首行：marker 尺寸在 minmax 前准备，首行吸收 marker+4px，换行恢复内容起点，图片 marker 可抬高行高。TEST51 通过新增只读 `PCore_ListItemGeometry` 自动检查 outside/inside、`VIII.`、缓存 12x12 SVG 与悬挂换行；用户提供的横竖屏截图均符合预期。`c89ize.py` 同批增加注释前导声明、函数头和多行初始化声明规则，`scripts/test_c89ize.py` 的 4 个回归必须先通过。
 18. next63 按 W3C inside marker 的首个 inline element 语义，在构盒时加入零宽匿名 inline run；block-first、空条目、嵌套列表和 block-first 图片 marker 因而都由原 NetSurf block/inline layout 计算高度与兄弟位置，不在 layout 后手改坐标。TEST52 的 III/IV/V/VI、空行、嵌套缩进和绿色图片 marker 已由横竖屏截图确认。float 邻接仍明确不支持，本批未触碰冻结的 TEST13 导航链。
@@ -138,12 +140,18 @@ scripts\stage.bat
 22. next66 的 TEST55 真机原始像素为 `FFFFFF/00C300/C6C300`，证明三类绘制正确，但设备 compatible bitmap 将 CSS `#00c000/#00c0c0` 量化了 3-6 色阶，使桌面式精确 RGB 断言假失败。next67 只改 TEST55 为紧格通道容差，未改 core layout/redraw。TEST13 Further Reading 的圆点来自 IANA 页面真实 `<li>` 与 next57-63 已验收的 marker 支持，不是 next66 回归。
 23. next67/TEST55 自动断言和可见语义已验收；截图显示测试页因四组固定高度只超出 WM 客户区十几像素，仍生成了纵向滚动条。next68 将 TEST55 压缩到约 240px 内容高并设定标题行高；core 新增的显式表高分配参考 Blink 比例分配/小数余量规则，用 NetSurf rowspan 活跃列累加 cell bottom padding。`PCore_TableRowGeometry` 仅供 TEST56 读取最终 row 几何。2026-07-16 设备截图确认 TEST55 完整显示且无多余纵条，TEST56 的等高行、三种垂直对齐和 rowspan bottom 均正确；同批 TEST13 长页滚动正常。
 24. 2026-07-20 完成仓库自包含审计：mbedTLS 2.16.12 完整官方源树和许可证已纳入 Git，cJSON 1.7.18 补齐独立许可证及来源。根 `LICENSE` 只覆盖 Positron 自有代码；NetSurf 浏览器源码的 GPLv2 等边界见 `THIRD_PARTY.md`。`python scripts\audit_repo.py` 当前检查 14 个工程、598 个工程输入、Git 跟踪、版本与关键许可证。
-25. next69 首次百分比 table-row 第二遍得到错误的 `20/30/30`。随后切换包时 TEST56 的异常来自 WM/CE 全局 DLL 复用；next72 同包已证明 TEST56 正常。next72 的 TEST57 `styles=0:0` 又暴露 `nsoption` shim 把 `author_level_css` 固定关闭，inline `style=` 没有进入选择。next73 将夹具改为外部 CSS 后，TEST55/56/57 均通过。百分比 cell/后代内容和 `col`/`colgroup` 模型仍未覆盖。
+25. next69 首次百分比 table-row 第二遍得到错误的 `20/30/30`。随后切换包时 TEST56 的异常来自 WM/CE 全局 DLL 复用；next72 同包已证明 TEST56 正常。next72 的 TEST57 `styles=0:0` 暴露 inline `style=` 没有进入选择，next73 改外部 CSS 后 TEST55/56/57 均通过。后续确认直接根因是自有 `pcore_style_subtree` 固定传空 inline sheet，而不是未参与正式构盒路径的 NetSurf `author_level_css` 分支。next74 接入 inline sheet 后，TEST56 行高保持正确但 `.distributed .top` 失配；next75 修复祖先/父节点回调的通配 qname `*` 处理，设备已确认未改断言的 TEST56 和新增后代 class 断言的 TEST58 均通过。百分比 cell/后代内容和 `col`/`colgroup` 模型仍未覆盖。
+26. 2026-07-24 TEST13 起始页正常，但进入 IANA `/domains/reserved` 后正文左移；该页没有 TEST41 的 Grid，只在宽表格外声明 `.dtable-wrap { overflow:auto }`。next77 把 TEST41 的 Grid fallback 特例收敛为通用但受限的 min-content boundary，仅对横向可收缩 flex item 的 grid/overflow 后代生效，显式 min-width 保持。设备确认 TEST59 和同批回归通过，竖屏子页边距恢复；继续旋转为横屏后，首个 `Domain` 表头内容却左移约 18px 至 wrapper 裁剪边界，字体/样式观感随之异常。
+27. **next78 已撤回**：每次 layout 后递归调用 `scrollbar_set(...,0)` 并非无副作用的状态清零。设备上 TEST13 横屏从单个 `Domain` 异常扩大为全部表格单元格异常，随后 TEST56 报 `rows=35/35/35 35/35 sum=105/70 off=2/10/19 va=0/2/3/3`，并触发系统级 `test_host.exe` 异常。实现、`PCore_NodeScrollOffset`、`PCore_TableCellTextStyle` 与扩展 TEST59 已全部删除；旧包已改名为 `C:\WMShare\Positron-next78-FAILED-DO-NOT-USE`。
+28. next79 恢复候选保留 next77 已验收的 flex min-content 修复，只恢复旧版 TEST59。`pcore_box.c` 与 `positron_core.h` 已回到 next77 内容；ARMV4I 重建后的 `positron_core.dll` `.text` 段大小 1,308,160 字节，SHA-256 `756629E25B063856B2DC334560B3EAB8C28A043D1758973FADE791BCC912CFFA`，与 next77 逐字节一致。包位于 `C:\WMShare\Positron-next79`，默认配置先隔离运行 TEST56/59，再单独跑 TEST13。
+29. next79 已由设备确认 TEST56/59 正常，TEST13 也准确回到仅横屏首个 `Domain` 异常。继续审查 libcss 发现 Positron 的 `set_libcss_node_data` 曾立即执行 `CSS_NODE_DELETED`；但 `css__get_parent_bloom` 会在回调返回后继续使用该数据中的 bloom，形成悬空指针。next80 随后按 NetSurf `select.c` 的模式把数据挂到 libdom user-data，并在每个新 selection context 开始前递归失效旧缓存；TEST60 对两次 viewport restyle 的首表头几何和字重代理宽度做自动断言。
+30. 2026-07-25 设备确认 next80 的 TEST56/58/59/60 全部通过；真实 TEST13 `/domains/reserved` 截图中首个 `Domain` 在横竖屏均恢复正常 inset、字重和基线，其余表格内容与滚动保持正常。该 selector node-data 生命周期批次完成。
 
 ## 开发纪律
 
 - 面向用户回复使用简体中文。
 - 默认先查环境，再改代码。WMDC、僵尸 `test_host`、共享目录、旧二进制非常容易造成假故障。
+- 构建只允许通过 `scripts\build.bat` / `scripts\stage.bat` 的 WM6 ARMV4I 配置。禁止调用 `VC\bin\dumpbin.exe`、桌面 `link.exe` 或其他 x86 VC 工具；VS2008 `dumpbin.exe` 会内部启动桌面 `link.exe /dump` 并因缺少 `mspdb80.dll` 弹系统错误。PE section 检查使用 PowerShell/.NET 直接读文件。
 - 改 TEST 时必须同步所有 MessageBox 文案、分组范围、最终 summary。
 - 改 vendored NetSurf 源码时保持最小差异，C89 化要谨慎；先运行 `python scripts/test_c89ize.py`，再对目标源运行脚本并要求显式 `0 change(s)` 或审阅每项改写。`c89ize.py` 仍不能处理所有 designated initializers / static aggregate initializers。
 - 如果新接入 NetSurf content-handler `.c` 后从 `html/private.h` 爆出 `dom_document` / `dom_node` / `bool` 之类连锁语法错，优先检查该 `.c` 的 include 区是否对齐 `layout.c` / `redraw.c`，不要先改 `private.h` 或让 `c89ize.py` 硬处理。

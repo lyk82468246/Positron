@@ -95,7 +95,7 @@ struct flex_item_data {
 	bool freeze;
 	bool min_violation;
 	bool max_violation;
-	bool grid_fallback;
+	bool min_content_can_shrink;
 };
 
 /**
@@ -363,16 +363,17 @@ static inline bool layout_flex__base_and_main_sizes(
 }
 
 /**
- * Detect a CSS grid that the Positron slim box builder has conservatively
- * blockified. NetSurf 3.11 parses the display value but has no grid layout,
- * so retaining the block min-content width can make an enclosing reversed
- * flex item start at a negative coordinate. A real grid's shrinkable tracks
- * and overflow items do not move the whole flex item in that situation.
+ * Detect content whose own formatting boundary can contain horizontal
+ * min-content overflow. NetSurf 3.11 has no grid layout, and its flex
+ * implementation otherwise treats a descendant's min-content width as the
+ * flex item's automatic minimum. That can displace the whole item instead
+ * of letting a grid fallback or overflow container handle its wide child.
  */
-static bool layout_flex__has_grid_fallback(const struct box *box)
+static bool layout_flex__has_min_content_boundary(const struct box *box)
 {
 	const struct box *child;
 	uint8_t display;
+	uint8_t overflow_x;
 
 	if (box->style != NULL) {
 		display = css_computed_display(box->style, false);
@@ -380,10 +381,15 @@ static bool layout_flex__has_grid_fallback(const struct box *box)
 		    display == CSS_DISPLAY_INLINE_GRID) {
 			return true;
 		}
+		overflow_x = css_computed_overflow_x(box->style);
+		if (overflow_x == CSS_OVERFLOW_AUTO ||
+		    overflow_x == CSS_OVERFLOW_SCROLL) {
+			return true;
+		}
 	}
 
 	for (child = box->children; child != NULL; child = child->next) {
-		if (layout_flex__has_grid_fallback(child)) {
+		if (layout_flex__has_min_content_boundary(child)) {
 			return true;
 		}
 	}
@@ -424,12 +430,14 @@ static void layout_flex_ctx__populate_item_data(
 				b, b->width);
 
 		item->box = b;
-		item->grid_fallback = layout_flex__has_grid_fallback(b);
 		item->basis = css_computed_flex_basis(b->style,
 				&item->basis_length, &item->basis_unit);
 
 		css_computed_flex_shrink(b->style, &item->shrink);
 		css_computed_flex_grow(b->style, &item->grow);
+		item->min_content_can_shrink = horizontal &&
+				item->shrink > 0 &&
+				layout_flex__has_min_content_boundary(b);
 
 		layout_flex__base_and_main_sizes(ctx, item, available_width);
 	}
@@ -648,7 +656,7 @@ static inline int layout_flex__get_min_max_violations(
 					item->min_main);
 		}
 
-		if (!item->grid_fallback &&
+		if (!item->min_content_can_shrink &&
 		    target_main_size < item->box->min_width) {
 			target_main_size = item->box->min_width;
 			item->min_violation = true;

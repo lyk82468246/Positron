@@ -21,6 +21,13 @@ css_stylesheet *pcore_parse_css_internal(const char *css, unsigned int len,
         const char *url, PCoreResolveUrlFn resolve, void *resolve_pw,
         css_error *out_done);
 
+/* Parse an element's style="..." declaration list. libcss requires an
+ * inline stylesheet flag here; parsing it as a normal rule sheet silently
+ * drops the declarations. */
+css_stylesheet *pcore_parse_inline_css_internal(const char *css,
+        unsigned int len, const char *url, PCoreResolveUrlFn resolve,
+        void *resolve_pw, css_error *out_done);
+
 /* Return the css_computed_style PCore_StyleDocument attached to `node`, or NULL
  * if the node is not an element / has not been styled. Borrowed pointer (owned
  * by the node's user-data). */

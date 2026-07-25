@@ -37,6 +37,10 @@ typedef struct pcore_select_pw {
     lwc_string *universal;   /* interned "*", for node_has_name */
 } pcore_select_pw;
 
+/* libcss owns the value stored under this key. It must remain attached while
+ * descendants are selected because their bloom filters borrow parent data. */
+static dom_string *pcore_libcss_node_data_key = NULL;
+
 /* ------------------------------------------------------------------ */
 /* Handler callback forward declarations                               */
 /* ------------------------------------------------------------------ */
@@ -98,6 +102,8 @@ static css_error set_libcss_node_data(void *pw, void *node,
         void *libcss_node_data);
 static css_error get_libcss_node_data(void *pw, void *node,
         void **libcss_node_data);
+static bool pcore_node_name_matches(void *pw, dom_node *node,
+        const css_qname *qname);
 
 /* ------------------------------------------------------------------ */
 /* Handler vtable + unit context (positional inits = C89-clean)        */
@@ -276,7 +282,6 @@ static css_error named_ancestor_node(void *pw, void *node,
     dom_node *n = (dom_node *) node;
     dom_exception err;
 
-    (void) pw;
     *ancestor = NULL;
 
     /* take our own ref so the unref dance below is balanced */
@@ -285,8 +290,6 @@ static css_error named_ancestor_node(void *pw, void *node,
     while (n != NULL) {
         dom_node *parent;
         dom_node_type type;
-        dom_string *name;
-        bool match;
 
         err = dom_node_get_parent_node(n, &parent);
         dom_node_unref(n);
@@ -303,13 +306,7 @@ static css_error named_ancestor_node(void *pw, void *node,
             continue;
         }
 
-        err = dom_node_get_node_name(n, &name);
-        if (err != DOM_NO_ERR) {
-            continue;
-        }
-        match = dom_string_caseless_lwc_isequal(name, qname->name);
-        dom_string_unref(name);
-        if (match) {
+        if (pcore_node_name_matches(pw, n, qname)) {
             dom_node_unref(n);   /* return borrowed */
             *ancestor = n;
             return CSS_OK;
@@ -325,11 +322,9 @@ static css_error named_parent_node(void *pw, void *node,
     dom_node *n = (dom_node *) node;
     dom_node *p = NULL;
     dom_node_type type;
-    dom_string *name;
     dom_exception err;
     bool match;
 
-    (void) pw;
     *parent = NULL;
 
     err = dom_node_get_parent_node(n, &p);
@@ -343,14 +338,7 @@ static css_error named_parent_node(void *pw, void *node,
         return CSS_OK;
     }
 
-    err = dom_node_get_node_name(p, &name);
-    if (err != DOM_NO_ERR) {
-        dom_node_unref(p);
-        return CSS_OK;
-    }
-    match = dom_string_caseless_lwc_isequal(name, qname->name);
-    dom_string_unref(name);
-
+    match = pcore_node_name_matches(pw, p, qname);
     dom_node_unref(p);           /* return borrowed */
     if (match) {
         *parent = p;
@@ -1134,21 +1122,146 @@ static css_error ua_default_for_property(void *pw, uint32_t property,
     return CSS_OK;
 }
 
+static int pcore_ensure_libcss_node_data_key(void)
+{
+    if (pcore_libcss_node_data_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) "__pcore_libcss_node_data__", 26,
+            &pcore_libcss_node_data_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_libcss_node_data_ud_handler(dom_node_operation operation,
+        dom_string *key, void *data, struct dom_node *src,
+        struct dom_node *dst)
+{
+    css_node_data_action action;
+
+    (void) key;
+    if (data == NULL) {
+        return;
+    }
+
+    if (operation == DOM_NODE_CLONED) {
+        action = CSS_NODE_CLONED;
+    } else if (operation == DOM_NODE_RENAMED) {
+        action = CSS_NODE_MODIFIED;
+    } else if (operation == DOM_NODE_IMPORTED ||
+            operation == DOM_NODE_ADOPTED ||
+            operation == DOM_NODE_DELETED) {
+        action = CSS_NODE_DELETED;
+    } else {
+        return;
+    }
+
+    (void) css_libcss_node_data_handler(&pcore_select_handler, action,
+            NULL, src, dst, data);
+}
+
 static css_error set_libcss_node_data(void *pw, void *node,
         void *libcss_node_data)
 {
-    /* We do not cache per-node data; ensure libcss frees what it handed us. */
-    css_libcss_node_data_handler(&pcore_select_handler, CSS_NODE_DELETED,
-            pw, node, NULL, libcss_node_data);
+    dom_exception err;
+    void *old_data;
+
+    (void) pw;
+    if (node == NULL || pcore_ensure_libcss_node_data_key() != 0) {
+        return CSS_NOMEM;
+    }
+
+    /* A non-NULL replacement should not normally occur in one selection
+     * transaction. Handle it defensively so an old cache cannot leak. */
+    if (libcss_node_data != NULL &&
+            dom_node_get_user_data((dom_node *) node,
+                    pcore_libcss_node_data_key, &old_data) == DOM_NO_ERR &&
+            old_data != NULL && old_data != libcss_node_data) {
+        void *detached = NULL;
+
+        err = dom_node_set_user_data((dom_node *) node,
+                pcore_libcss_node_data_key, NULL,
+                pcore_libcss_node_data_ud_handler, &detached);
+        if (err != DOM_NO_ERR) {
+            return CSS_NOMEM;
+        }
+        if (detached != NULL) {
+            (void) css_libcss_node_data_handler(&pcore_select_handler,
+                    CSS_NODE_DELETED, NULL, node, NULL, detached);
+        }
+    }
+
+    old_data = NULL;
+    err = dom_node_set_user_data((dom_node *) node,
+            pcore_libcss_node_data_key, libcss_node_data,
+            pcore_libcss_node_data_ud_handler, &old_data);
+    if (err != DOM_NO_ERR) {
+        return CSS_NOMEM;
+    }
     return CSS_OK;
 }
 
 static css_error get_libcss_node_data(void *pw, void *node,
         void **libcss_node_data)
 {
-    (void) pw; (void) node;
-    *libcss_node_data = NULL;
+    (void) pw;
+    if (node == NULL || libcss_node_data == NULL ||
+            pcore_ensure_libcss_node_data_key() != 0) {
+        return CSS_NOMEM;
+    }
+    if (dom_node_get_user_data((dom_node *) node,
+            pcore_libcss_node_data_key, libcss_node_data) != DOM_NO_ERR) {
+        return CSS_NOMEM;
+    }
     return CSS_OK;
+}
+
+/* A style transaction builds a fresh select context and may use different
+ * sheets or media dimensions. Drop the previous transaction's libcss cache
+ * before walking the same DOM again, then let this pass retain its own data. */
+static int pcore_clear_libcss_node_data_subtree(dom_node *node)
+{
+    void *data = NULL;
+    void *detached = NULL;
+    dom_node *child;
+
+    if (node == NULL || pcore_ensure_libcss_node_data_key() != 0) {
+        return 1;
+    }
+    if (dom_node_get_user_data(node, pcore_libcss_node_data_key,
+            &data) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (data != NULL) {
+        if (dom_node_set_user_data(node, pcore_libcss_node_data_key, NULL,
+                pcore_libcss_node_data_ud_handler, &detached) != DOM_NO_ERR) {
+            return 1;
+        }
+        if (detached != NULL) {
+            (void) css_libcss_node_data_handler(&pcore_select_handler,
+                    CSS_NODE_DELETED, NULL, node, NULL, detached);
+        }
+    }
+
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return 1;
+    }
+    while (child != NULL) {
+        dom_node *next;
+
+        if (pcore_clear_libcss_node_data_subtree(child) != 0) {
+            dom_node_unref(child);
+            return 1;
+        }
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1401,20 +1514,53 @@ static void pcore_style_ud_handler(dom_node_operation op, dom_string *key,
 /* Style `node` (an element) and its element descendants top-down, composing
  * each selected style with `parent_style` to resolve inheritance. The computed
  * style is attached to the node via user-data. `node` is borrowed. */
-static void pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
+static int pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
         const css_media *media, dom_node *node,
-        const css_computed_style *parent_style)
+        const css_computed_style *parent_style, dom_string *style_name,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        void *resolve_pw)
 {
     css_select_results *results = NULL;
     css_computed_style *node_style = NULL;
+    css_stylesheet *inline_style = NULL;
     css_computed_style *base;
+    css_error done;
+    dom_string *style_value = NULL;
     dom_node *child;
     void *old = NULL;
+    dom_exception dom_err;
 
-    if (css_select_style(ctx, node, &pcore_unit_ctx, media, NULL,
+    if (style_name != NULL) {
+        dom_err = dom_element_get_attribute(node, style_name, &style_value);
+        if (dom_err != DOM_NO_ERR) {
+            return 1;
+        }
+    }
+    if (style_value != NULL) {
+        inline_style = pcore_parse_inline_css_internal(
+                (const char *) dom_string_data(style_value),
+                (unsigned int) dom_string_byte_length(style_value),
+                document_url, resolve, resolve_pw, &done);
+        dom_string_unref(style_value);
+        if (inline_style != NULL && done != CSS_OK) {
+            css_stylesheet_destroy(inline_style);
+            inline_style = NULL;
+        }
+        if (inline_style == NULL) {
+            return 1;
+        }
+    }
+
+    if (css_select_style(ctx, node, &pcore_unit_ctx, media, inline_style,
             &pcore_select_handler, pw, &results) != CSS_OK ||
             results == NULL) {
-        return;
+        if (inline_style != NULL) {
+            css_stylesheet_destroy(inline_style);
+        }
+        return 1;
+    }
+    if (inline_style != NULL) {
+        css_stylesheet_destroy(inline_style);
     }
 
     base = results->styles[CSS_PSEUDO_ELEMENT_NONE];
@@ -1424,7 +1570,7 @@ static void pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
         if (css_computed_style_compose(parent_style, base, &pcore_unit_ctx,
                 &node_style) != CSS_OK) {
             css_select_results_destroy(results);
-            return;
+            return 1;
         }
         /* `base` is freed by results_destroy below. */
     } else {
@@ -1439,15 +1585,18 @@ static void pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
     /* Attach to the node (handler frees it on node deletion). Re-styling
      * replaces user-data without invoking that handler, so free the previous
      * computed style here instead of leaking it on every viewport change. */
-    dom_node_set_user_data(node, pcore_style_key, node_style,
-            pcore_style_ud_handler, &old);
+    if (dom_node_set_user_data(node, pcore_style_key, node_style,
+            pcore_style_ud_handler, &old) != DOM_NO_ERR) {
+        css_computed_style_destroy(node_style);
+        return 1;
+    }
     if (old != NULL && old != node_style) {
         css_computed_style_destroy((css_computed_style *) old);
     }
 
     /* Recurse into element children, passing our computed style as parent. */
     if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
-        return;
+        return 1;
     }
     while (child != NULL) {
         dom_node_type type;
@@ -1455,16 +1604,21 @@ static void pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
 
         if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
                 type == DOM_ELEMENT_NODE) {
-            pcore_style_subtree(ctx, pw, media, child, node_style);
+            if (pcore_style_subtree(ctx, pw, media, child, node_style,
+                    style_name, document_url, resolve, resolve_pw) != 0) {
+                dom_node_unref(child);
+                return 1;
+            }
         }
 
         if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
             dom_node_unref(child);
-            return;
+            return 1;
         }
         dom_node_unref(child);
         child = next;
     }
+    return 0;
 }
 
 /* External CSS is fetched once while navigating, then retained as raw bytes
@@ -1947,6 +2101,7 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     pcore_select_pw   pw;
     pcore_collect_ctx cc;
     css_computed_style *default_style = NULL;
+    dom_string        *inline_style_name = NULL;
     void             *old_default = NULL;
     int               rc = 1;
 
@@ -1961,6 +2116,7 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
         return 1;
     }
     if (pcore_ensure_style_key() != 0 ||
+            pcore_ensure_libcss_node_data_key() != 0 ||
             pcore_ensure_default_style_key() != 0) {
         goto cleanup;
     }
@@ -1983,6 +2139,9 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
             root == NULL) {
         goto cleanup;
     }
+    if (pcore_clear_libcss_node_data_subtree(root) != 0) {
+        goto cleanup;
+    }
 
     /* Apply the page's own inline <style> and external <link> sheets. */
     cc.ctx = ctx;
@@ -2000,6 +2159,11 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     dom_string_create((const uint8_t *) "rel", 3, &cc.rel_name);
     dom_string_create((const uint8_t *) "href", 4, &cc.href_name);
     dom_string_create((const uint8_t *) "stylesheet", 10, &cc.css_value);
+    dom_string_create_interned((const uint8_t *) "style", 5,
+            &inline_style_name);
+    if (inline_style_name == NULL) {
+        goto cleanup;
+    }
     if (cc.style_name != NULL) {
         pcore_collect_resources(&cc, root);
     }
@@ -2011,7 +2175,10 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
 
     pcore_init_screen_media(&media);
 
-    pcore_style_subtree(ctx, &pw, &media, root, NULL);
+    if (pcore_style_subtree(ctx, &pw, &media, root, NULL,
+            inline_style_name, document_url, resolve, pw_fetch) != 0) {
+        goto cleanup;
+    }
     if (css_select_default_style(ctx, &pcore_select_handler, &pw,
             &default_style) != CSS_OK || default_style == NULL) {
         goto cleanup;
@@ -2048,6 +2215,7 @@ cleanup:
     if (cc.rel_name != NULL)   { dom_string_unref(cc.rel_name); }
     if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
     if (cc.css_value != NULL)  { dom_string_unref(cc.css_value); }
+    if (inline_style_name != NULL) { dom_string_unref(inline_style_name); }
     if (pw.universal != NULL) {
         lwc_string_unref(pw.universal);
     }
