@@ -136,6 +136,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 45. **next78 已失败并撤回**：在最终 layout 后递归 `scrollbar_set(...,0)` 令 TEST13 横屏全部表格单元格异常，TEST56 随后报垂直对齐回归并触发系统级 `test_host.exe` 异常。该行为、两个公共诊断 API 和同 DOM 扩展 TEST59 已删除；不得继续沿“全局重置 scrollbar 回调”方向开发。
 46. **next79 已恢复 next77 core 行为并通过设备门禁**：保留已验收的受限 flex min-content boundary，恢复旧版 TEST59；ARM DLL 的 `.text` 与 next77 大小和 SHA-256 完全一致。设备确认 TEST56/59 正常，TEST13 也准确回到仅横屏首个 `Domain` 异常，没有 next78 的全表和系统异常。
 47. **next80 已完成 libcss selector node-data 生命周期修复**：旧 `set_libcss_node_data` 立即执行 `CSS_NODE_DELETED`，而 libcss `css__get_parent_bloom` 在回调返回后仍借用父 bloom，形成明确悬空指针。现按 NetSurf 原生模式将 node-data 挂到 DOM user-data；每个新 selection context 开始前清掉上一轮缓存，避免跨 stylesheet/media 复用。TEST60 使用同一 DOM 的 224×320→400×240 二次重选，自动断言 IANA 同型首表头 18px/10px inset 和粗体文字宽度。2026-07-25 TEST56/58/59/60 与真实 TEST13 `/domains/reserved` 横竖屏均由设备确认正常。
+48. **next81 已清理全零 `nsoption` shim 并通过设备门禁**：审计 ARM 工程实际编译的 NetSurf 文件后，当前只读取 `font_min_size`、`core_select_menu`、`remove_backgrounds`；旧宏令整数默认错误地变成 0。新 shim 对齐 NetSurf 3.11 的 85/false/false，并显式记录 author CSS、前景/背景图片开启和 JavaScript 关闭的产品策略。token-paste 查找让任何未列出的新 option 在编译期失败。TEST61 以 `1px`/`8.5pt` 同宽、`12pt` 更宽验证正式 font/layout 路径；2026-07-25 设备确认 TEST56/58-61 未发现问题。
 
 验收：
 
@@ -268,7 +269,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 ## 建议执行顺序
 
 1. 从已通过的 next80 基线继续下一个短期目标；任何新布局/选择器改动仍须保留 TEST56/58/59/60，并走 TEST13 深层链接与旋转门禁。
-2. 随后独立修正 `positron_core/nsshim/utils/nsoption.h` 的全零专家配置，为编译路径实际读取的选项建立具名默认值，JavaScript 仍保持关闭。保持 TEST13 冻结链，不重启 `codex/post-next37-experiments` 的失败方案。
-3. 选择一个可控的 float 或 forms/widgets 最小能力，对照 NetSurf 上游构盒/归一化实现，失败时撤回而不是扩张手写规则。
+2. next81 的 TEST56/58-61 已通过；最低字号恢复未发现既有排版回归，JavaScript 仍保持关闭。继续保持 TEST13 冻结链，不重启 `codex/post-next37-experiments` 的失败方案。
+3. 选择一个可控的 forms/widgets 最小能力，对照 NetSurf 上游构盒/归一化实现；已撤回的 TEST23 float 方向暂不重启，失败时撤回而不是扩张手写规则。
 4. 做复杂页面完成阶段的性能与内存观测，重点是 UI 提交卡顿、资源预算、缓存释放和真实整页进度；不把 2 MiB 宿主预算误写成系统上限。
 5. 中期补 Grid/背景/SVG 高级能力；长期再做经过开源实现审计的 JavaScript runtime spike。

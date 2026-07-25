@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 60
+#define TEST_MAX_NUMBER 61
 
 static int test_config_space(char c)
 {
@@ -8960,6 +8960,72 @@ cleanup:
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 61 - explicit NetSurf option defaults and minimum font size      */
+/* -------------------------------------------------------------------- */
+static BOOL test61_nsoption_font_minimum(void)
+{
+    static const char *HTML =
+        "<!doctype html><html><body><table><tr>"
+        "<td class=tiny>MMMMMMMM</td>"
+        "<td class=floor>MMMMMMMM</td>"
+        "<td class=normal>MMMMMMMM</td>"
+        "</tr></table></body></html>";
+    static const char *CSS =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "table{border-collapse:collapse;}"
+        "td{padding:0;white-space:nowrap;line-height:20px;}"
+        ".tiny{font-size:1px;}"
+        ".floor{font-size:8.5pt;}"
+        ".normal{font-size:12pt;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreTableCellGeometry tiny;
+    PCoreTableCellGeometry floor;
+    PCoreTableCellGeometry normal;
+    char msg[192];
+
+    memset(&tiny, 0, sizeof(tiny));
+    memset(&floor, 0, sizeof(floor));
+    memset(&normal, 0, sizeof(normal));
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/nsoption-font-minimum.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 360, 100) != 0 ||
+            PCore_TableCellGeometry(hDoc, 0, &tiny) != 0 ||
+            PCore_TableCellGeometry(hDoc, 1, &floor) != 0 ||
+            PCore_TableCellGeometry(hDoc, 2, &normal) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 61 FAIL", "parse/style/layout/geometry failed");
+        return FALSE;
+    }
+
+    if (tiny.first_text_width <= 0 ||
+            tiny.first_text_width != floor.first_text_width ||
+            normal.first_text_width <= floor.first_text_width) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "text widths tiny/floor/normal=%d/%d/%d",
+                tiny.first_text_width, floor.first_text_width,
+                normal.first_text_width);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 61 FAIL", msg);
+        return FALSE;
+    }
+
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 61 OK",
+              "NetSurf font_min_size=85 clamped 1px text to the same\n"
+              "measured width as 8.5pt, while 12pt remained larger.\n"
+              "JavaScript stays explicitly disabled.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -9134,6 +9200,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 58: ok = test58_inline_author_style(); break;
         case 59: ok = test59_flex_overflow_min_content(); break;
         case 60: ok = test60_table_header_restyle(); break;
+        case 61: ok = test61_nsoption_font_minimum(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -9215,7 +9282,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-60)\n"
+                  "Yes = run all selected groups (TEST 1-61)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -9232,7 +9299,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40-45, 59, 60). Offline.");
+                               "38, 40-45, 59-61). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -9273,7 +9340,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59, 60. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -9294,6 +9361,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test45_css_import_tree()){ rc = 11; goto done; }
         if (!test59_flex_overflow_min_content()){ rc = 11; goto done; }
         if (!test60_table_header_restyle()){ rc = 11; goto done; }
+        if (!test61_nsoption_font_minimum()){ rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -9364,7 +9432,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59, 60)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
@@ -9372,7 +9440,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "    OKLCH/calc values, grid-overflow containment, scrollbar\n"
                "    input, staged navigation resources, failure rollback,\n"
                "    native libcss CSS import trees, and retained selector\n"
-               "    node data across portrait/landscape restyle.\n"
+               "    node data across portrait/landscape restyle, and explicit\n"
+               "    NetSurf option defaults with minimum-font clamping.\n"
                "    Offline.\n\n");
     }
     if (run_render) {

@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next80 节点缓存门禁使用 `tests=56,58-60`，覆盖 table height、二次 inline restyle、flex overflow 与首表头纵横屏重选，再从原四组路由单独跑 TEST13。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next81 门禁使用 `tests=56,58-61`，覆盖 table height、二次 inline restyle、flex overflow、首表头纵横屏重选与 `font_min_size=85`，并已由设备确认无异常；真实 Browse 仍从原四组路由单独跑 TEST13。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -182,5 +182,9 @@ next78 真机失败后，上段候选结论作废：递归 `scrollbar_set(...,0)
 继续对照仓库 libcss `select.c` 后找到明确生命周期错误：`css__get_parent_bloom` 在父节点无缓存时创建 node-data，调用 `set_libcss_node_data` 后把其中 bloom 指针返回给后续选择；Positron 旧回调却在 `set` 内立刻用 `CSS_NODE_DELETED` 释放整块数据，因此返回的是悬空指针。next80 改为 NetSurf 同型的 libdom user-data 持有，并在每次新 StyleDocument 事务前递归失效上一轮缓存，既保住本轮父/兄弟选择数据，也不跨 stylesheet/media 复用。TEST60 用两个相同 `Domain` 表头比较首格 18px/10px inset、第二格 14px/10px inset 和文字宽度，并在同 DOM 纵横屏各执行一次。C89 脚本 0 修改，VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建 0 错误；包位于 `C:\WMShare\Positron-next80`，默认 `tests=56,58-60`。
 
 next80 设备验收完成：TEST56/58/59/60 全部通过；真实 TEST13 `/domains/reserved` 在横竖屏截图中首个 `Domain` 均与第二表头保持一致的 inset、字重和基线，其余单元格与 overflow 滚动正常。该问题关闭；后续若再出现“仅第一个复合选择器节点丢样式”，先查 node-data 失效边界，不再改 scrollbar 状态或字体 fallback。
+
+next81 审计 `positron_core.vcproj` 的实际 ARM 输入后确认，shim 覆盖的上游源只读取 `font_min_size`、`core_select_menu`、`remove_backgrounds`。旧全零宏让两个布尔值碰巧正确，却把 NetSurf 3.11 的 `font_min_size=85` 错成 0。新配置为实际读取和近期开关逐项命名，并通过 token-paste 让未知名称直接编译失败；`enable_javascript=false` 保持长期目标尚未启用的边界。TEST61 比较同字串的 1px/8.5pt/12pt 布局宽度。`c89ize.py` 为 0 修改，VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 构建 0 错误；因头文件变化重编 layout/redraw 后重新显示其既有 C4244/C4013 警告，不是本批新增诊断。
+
+2026-07-25 设备验收 next81：默认 TEST56/58/59/60/61 全部运行，未发现问题。最低字号具名默认与既有 table、inline restyle、flex overflow、selector node-data 门禁可共同保留。
 
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。
