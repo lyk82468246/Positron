@@ -197,13 +197,13 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 tests=31,32
 ```
 
-读取到有效配置后，程序先提示是否只运行列出的 TEST；选 **Yes** 直接按编号升序执行，选 **No** 完整保留下面原有的 All/四组选择流程。文件缺失时直接走旧流程；文件存在但无效时提示并忽略。TEST23 已撤回，配置中出现 23 会被拒绝。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制默认 `test_host\test_host.ini` 及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。next81 配置 `tests=56,58-61` 在已通过的选择器/表格门禁上增加具名 NetSurf option 与最低字号 TEST61。第 3 组 GDI Render 提示已改为能力类别和编号范围，避免 WM6 小屏 MessageBox 被逐项说明撑坏。
+读取到有效配置后，程序先提示是否只运行列出的 TEST；选 **Yes** 直接按编号升序执行，选 **No** 完整保留下面原有的 All/四组选择流程。文件缺失时直接走旧流程；文件存在但无效时提示并忽略。TEST23 已撤回，配置中出现 23 会被拒绝。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制默认 `test_host\test_host.ini` 及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。next85 已通过 TEST62 的 gadget 状态、像素暗度、几何、hidden-input 和可视间距验收；checkbox/radio 采用随字体/DPI 缩放的 `0.2em` 右 margin，不写死设备像素。第 3 组 GDI Render 提示已改为能力类别和编号范围，避免 WM6 小屏 MessageBox 被逐项说明撑坏。
 
 测试交付默认按能力批次进行：先积累多项相关实现、自动像素/资源/安全断言和直绘/正式链两层回归，再请求一次设备验收。只有真实编译错误、高风险回归定位或设备特有故障才临时拆成单项包，避免每个微小改动都要求人工截图。
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
 - **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值、grid/overflow min-content 隔离、overflow scrollbar、分阶段导航资源事务、主文档失败回滚、CSS import tree、libcss 节点缓存纵横屏重选与具名 NetSurf option 默认，离线。TEST40-45、59、60 已真机通过；next78 已撤回。TEST23 float 最小样例已因真实 Browse 回归撤回。
-- **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-58，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS 与随包字体 fallback 正式 redraw，离线；TEST48-58 已验收。
+- **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-58、62，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、只读 checkbox/radio 与随包字体 fallback 正式 redraw，离线；TEST48-58、62 已验收。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 
 当前关键 smoke test：

@@ -171,7 +171,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 61
+#define TEST_MAX_NUMBER 62
 
 static int test_config_space(char c)
 {
@@ -9026,6 +9026,231 @@ static BOOL test61_nsoption_font_minimum(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 62 - read-only NetSurf checkbox/radio form gadgets              */
+/* -------------------------------------------------------------------- */
+static int test62_toggle_probe(const char *type, int selected,
+        int *out_w, int *out_h, int *out_darkness, int *out_state)
+{
+    static const char *CSS =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font-size:18px;line-height:24px;}"
+        "input{font-size:18px;}";
+    char html[160];
+    HANDLE hDoc = NULL;
+    HANDLE hSheet = NULL;
+    HDC screen_dc = NULL;
+    HDC memory_dc = NULL;
+    HBITMAP bitmap = NULL;
+    HBITMAP old_bitmap = NULL;
+    int x;
+    int y;
+    int w;
+    int h;
+    int px;
+    int py;
+    int darkness = 0;
+    int state = 0;
+    int rc = 1;
+
+    _snprintf(html, sizeof(html) - 1,
+            "<!doctype html><html><body><input type=%s%s></body></html>",
+            type, selected ? " checked" : "");
+    html[sizeof(html) - 1] = '\0';
+    hDoc = PCore_ParseHTML(html, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/form-toggle-probe.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 64, 48) != 0 ||
+            PCore_NodeBox(hDoc, "input", &x, &y, &w, &h) != 0 ||
+            PCore_NodeFormControlState(hDoc, "input", NULL, &state,
+                    NULL) != 0 ||
+            w <= 0 || h <= 0) {
+        goto cleanup;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 64, 48) : NULL;
+    if (memory_dc == NULL || bitmap == NULL) {
+        goto cleanup;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    PatBlt(memory_dc, 0, 0, 64, 48, WHITENESS);
+    PCore_PaintDocument(hDoc, memory_dc, 0, 0);
+    for (py = y; py < y + h && py < 48; py++) {
+        for (px = x; px < x + w && px < 64; px++) {
+            COLORREF pixel = GetPixel(memory_dc, px, py);
+            if (pixel != CLR_INVALID) {
+                darkness += 255 - (int) GetRValue(pixel);
+                darkness += 255 - (int) GetGValue(pixel);
+                darkness += 255 - (int) GetBValue(pixel);
+            }
+        }
+    }
+    *out_w = w;
+    *out_h = h;
+    *out_darkness = darkness;
+    *out_state = state;
+    rc = 0;
+
+cleanup:
+    if (old_bitmap != NULL && memory_dc != NULL) {
+        SelectObject(memory_dc, old_bitmap);
+    }
+    if (bitmap != NULL) {
+        DeleteObject(bitmap);
+    }
+    if (memory_dc != NULL) {
+        DeleteDC(memory_dc);
+    }
+    if (screen_dc != NULL) {
+        ReleaseDC(NULL, screen_dc);
+    }
+    if (hSheet != NULL) {
+        PCore_FreeStylesheet(hSheet);
+    }
+    if (hDoc != NULL) {
+        PCore_FreeDocument(hDoc);
+    }
+    return rc;
+}
+
+static BOOL test62_form_toggles(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<h1>Read-only form controls</h1>"
+        "<p><input type=checkbox> unchecked checkbox</p>"
+        "<p><input type=checkbox checked> checked checkbox</p>"
+        "<p><input type=radio name=choice> unselected radio</p>"
+        "<p><input type=radio name=choice checked> selected radio</p>"
+        "<input type=hidden value='must not create a box'>"
+        "<footer>The hidden input must not leave a gap.</footer>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font-size:16px;line-height:22px;padding:10px;color:#111;}"
+        "h1{font-size:21px;line-height:25px;color:#8b0000;margin:0 0 8px;}"
+        "p{margin:6px 0;}input{font-size:18px;}"
+        "footer{margin-top:10px;color:#225588;}";
+    static const char HIDDEN_HTML[] =
+        "<!doctype html><html><body><input type=hidden value=x></body></html>";
+    int checkbox_off_w;
+    int checkbox_off_h;
+    int checkbox_off_darkness;
+    int checkbox_off_state;
+    int checkbox_on_w;
+    int checkbox_on_h;
+    int checkbox_on_darkness;
+    int checkbox_on_state;
+    int radio_off_w;
+    int radio_off_h;
+    int radio_off_darkness;
+    int radio_off_state;
+    int radio_on_w;
+    int radio_on_h;
+    int radio_on_darkness;
+    int radio_on_state;
+    HANDLE hidden_doc = NULL;
+    HANDLE hDoc = NULL;
+    HANDLE hSheet = NULL;
+    int screen_w;
+    int screen_h;
+    char msg[256];
+
+    if (test62_toggle_probe("checkbox", 0, &checkbox_off_w,
+                &checkbox_off_h, &checkbox_off_darkness,
+                &checkbox_off_state) != 0 ||
+            test62_toggle_probe("checkbox", 1, &checkbox_on_w,
+                &checkbox_on_h, &checkbox_on_darkness,
+                &checkbox_on_state) != 0 ||
+            test62_toggle_probe("radio", 0, &radio_off_w,
+                &radio_off_h, &radio_off_darkness, &radio_off_state) != 0 ||
+            test62_toggle_probe("radio", 1, &radio_on_w,
+                &radio_on_h, &radio_on_darkness, &radio_on_state) != 0) {
+        show_error(L"TEST 62 FAIL", "toggle probe setup/redraw failed");
+        return FALSE;
+    }
+    if (checkbox_off_w != checkbox_on_w ||
+            checkbox_off_h != checkbox_on_h ||
+            radio_off_w != radio_on_w ||
+            radio_off_h != radio_on_h ||
+            checkbox_off_w < 14 || checkbox_off_w > 24 ||
+            checkbox_off_h < 14 || checkbox_off_h > 24 ||
+            radio_off_w < 14 || radio_off_w > 24 ||
+            radio_off_h < 14 || radio_off_h > 24 ||
+            checkbox_off_state != 0 || checkbox_on_state != 1 ||
+            radio_off_state != 0 || radio_on_state != 1 ||
+            checkbox_on_darkness <= checkbox_off_darkness ||
+            radio_on_darkness <= radio_off_darkness) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "cb=%dx%d dark=%d/%d state=%d/%d\n"
+                "radio=%dx%d dark=%d/%d state=%d/%d",
+                checkbox_off_w, checkbox_off_h, checkbox_off_darkness,
+                checkbox_on_darkness, checkbox_off_state, checkbox_on_state,
+                radio_off_w, radio_off_h, radio_off_darkness,
+                radio_on_darkness,
+                radio_off_state, radio_on_state);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 62 FAIL", msg);
+        return FALSE;
+    }
+
+    hidden_doc = PCore_ParseHTML(HIDDEN_HTML, sizeof(HIDDEN_HTML) - 1);
+    if (hidden_doc == NULL || PCore_StyleDocument(hidden_doc, NULL) != 0 ||
+            PCore_LayoutDocument(hidden_doc, 64, 48) != 0 ||
+            PCore_NodeBox(hidden_doc, "input", NULL, NULL, NULL, NULL) == 0) {
+        if (hidden_doc != NULL) {
+            PCore_FreeDocument(hidden_doc);
+        }
+        show_error(L"TEST 62 FAIL", "hidden input generated a visible box");
+        return FALSE;
+    }
+    PCore_FreeDocument(hidden_doc);
+
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/form-toggles.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 62 FAIL", "visible toggle setup failed");
+        return FALSE;
+    }
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 62",
+              "Expect unchecked/checked checkbox and radio pairs.\n"
+              "The hidden input leaves no visible row. Controls are\n"
+              "read-only in this first forms milestone.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 62 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 62 OK",
+              "NetSurf checkbox/radio geometry, selected-state redraw and\n"
+              "hidden-input suppression passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -9201,6 +9426,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 59: ok = test59_flex_overflow_min_content(); break;
         case 60: ok = test60_table_header_restyle(); break;
         case 61: ok = test61_nsoption_font_minimum(); break;
+        case 62: ok = test62_form_toggles(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -9282,7 +9508,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-61)\n"
+                  "Yes = run all selected groups (TEST 1-62)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -9306,9 +9532,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "native bitmap draw (TEST 19),\n"
                                "SVG draw/cache/fallback/text/gradients\n"
                                "(TEST 26-37), and responsive IANA-style\n"
-                               "layout redraw (TEST 39), plus table/list\n"
-                               "normalisation redraw\n"
-                               "(TEST 46-58).\n"
+                               "layout redraw (TEST 39), plus table/list/\n"
+                               "inline CSS and read-only form redraw\n"
+                               "(TEST 46-58, 62).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -9371,7 +9597,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -9405,6 +9631,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test56_table_height_distribution()){ rc = 13; goto done; }
         if (!test57_table_percentage_rows()){ rc = 13; goto done; }
         if (!test58_inline_author_style()){ rc = 13; goto done; }
+        if (!test62_form_toggles()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -9446,15 +9673,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
                "    cached SVG, fallback, fill rules, CSS backgrounds and\n"
                "    native SVG text, cached SVG gradients, coordinate transforms\n"
                "    radial gradients, inherited/alpha stops, cache reuse, and\n"
-               "    IANA-style spacing, table normalisation and list markers through\n"
-               "    formal redraw.\n"
+               "    IANA-style spacing, table normalisation, list markers and\n"
+               "    read-only checkbox/radio gadgets through formal redraw.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

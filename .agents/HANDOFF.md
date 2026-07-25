@@ -2,7 +2,7 @@
 
 更新时间：2026-07-25
 当前分支：`main`  
-当前设备基线：next81（本次提交），已覆盖 TEST48-61。next80 已由设备确认 TEST56/58/59/60 与真实 IANA `/domains/reserved` 横竖屏正常；next81 又将全零 `nsoption` shim 改为具名专家配置，实际读取的 `font_min_size=85`、`core_select_menu=false`、`remove_backgrounds=false` 对齐 NetSurf 3.11，作者 CSS/前景与背景图片策略显式开启，JavaScript 显式关闭，未知 option 名称编译失败。设备确认 TEST56/58-61 未发现问题。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next85，已覆盖 TEST48-62。设备确认 TEST56/58-62 未发现问题；TEST62 的四种静态 checkbox/radio 状态、hidden-input 抑制和动态 `0.2em` 右间距均符合预期。next82/83 的非白像素指标失败经过保留在 DEBUGGING。**next78 仍是已撤回的失败实验，不得使用**。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -96,11 +96,11 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=56,58-61`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。next81 的 56/58-61 已由设备确认无异常。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=56,58-62`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。next85 的 56/58-62 已通过。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle 与具名 NetSurf option 默认，离线。TEST40-45、59、60 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-58，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS 与随包静态字体 fallback 正式 redraw；TEST48-58 已验收。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-58、62，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、只读 checkbox/radio 与随包静态字体 fallback 正式 redraw；TEST48-58、62 已验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -111,6 +111,7 @@ scripts\stage.bat
 - TEST59：分别在 224px 和 320px viewport 建立无 Grid `overflow:auto` 宽表格夹具，必须保持 reversed-flex main 的 `x=25,width=viewport-50`。next78 的同 DOM 旋转/scrollbar 诊断版本已经撤回。
 - TEST60：同一 DOM 先按 224×320、再按 400×240 重做 style/layout；IANA 同型 `.dtable` 的首个 `<th>` 必须保留 18px/10px inset，并与第二个同文字表头保持同一粗体宽度。它同时覆盖 `thead th`、`:first-child` 和后续 `tbody > tr:first-child > th` 选择器。
 - TEST61：正式 NetSurf layout 中，同一串文本的 `1px` 与 `8.5pt` 必须测得相同宽度，证明 `font_min_size=85` 生效；`12pt` 控制组必须更宽。JavaScript 策略继续为 false。
+- TEST62：四个离屏探针确认 checkbox/radio 均采用 1em 几何，最终 gadget 的 checked 状态为 0/1，选中状态增加像素暗度，hidden input 不生成 box；随后显示四个只读控件。当前不包含点击、键盘、文本编辑、select 或提交。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步

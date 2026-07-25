@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next81 门禁使用 `tests=56,58-61`，覆盖 table height、二次 inline restyle、flex overflow、首表头纵横屏重选与 `font_min_size=85`，并已由设备确认无异常；真实 Browse 仍从原四组路由单独跑 TEST13。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next85 已通过 `tests=56,58-62`：table/inline/flex/selector/option 与只读 form toggle 门禁均由设备确认；真实 Browse 仍从原四组路由单独跑 TEST13。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -186,5 +186,13 @@ next80 设备验收完成：TEST56/58/59/60 全部通过；真实 TEST13 `/domai
 next81 审计 `positron_core.vcproj` 的实际 ARM 输入后确认，shim 覆盖的上游源只读取 `font_min_size`、`core_select_menu`、`remove_backgrounds`。旧全零宏让两个布尔值碰巧正确，却把 NetSurf 3.11 的 `font_min_size=85` 错成 0。新配置为实际读取和近期开关逐项命名，并通过 token-paste 让未知名称直接编译失败；`enable_javascript=false` 保持长期目标尚未启用的边界。TEST61 比较同字串的 1px/8.5pt/12pt 布局宽度。`c89ize.py` 为 0 修改，VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 构建 0 错误；因头文件变化重编 layout/redraw 后重新显示其既有 C4244/C4013 警告，不是本批新增诊断。
 
 2026-07-25 设备验收 next81：默认 TEST56/58/59/60/61 全部运行，未发现问题。最低字号具名默认与既有 table、inline restyle、flex overflow、selector node-data 门禁可共同保留。
+
+next82 首次 forms 构建的 12 个语法错误均来自包含顺序：`form_internal.h` 间接使用 `nserror`，而 `pcore_box.c` 当时尚未包含 `utils/errors.h`。按 NetSurf `layout.c` 的顺序调整后，VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建通过，core 仅有 3 个既有 C4244，test_host 为 0 警告。不要把这类错误误归因于 form gadget 本身，也不要调用桌面 x86 工具链。
+
+next82 设备 TEST62 报 `cb=18x18 ink=300/300 radio=18x18 ink=200/200`；next83 改用 NetSurf `forms.c` 同款 `dom_html_input_element_get_checked/get_disabled` 后仍报 `306/306`、`200/200`。复核 `redraw.c` 后确认旧门禁指标错误：checkbox/radio 的未选中底面本来就是非白浅灰，选中 tick/blob 只覆盖并加深已有像素，非白像素总数可以完全不变。next84 不削弱几何、hidden 或视觉门禁，而是新增 `PCore_NodeFormControlState` 直接验证最终 gadget 0/1 状态，并将视觉指标改为 RGB 暗度总量；这样同时覆盖 DOM -> box 状态传递和 redraw 结果。
+
+next84 设备 TEST62 自动门禁通过，四种静态控件均正确可见。可视验收指出控件与后续文字偏近：NetSurf `default.css` 的 toggle 特例只有 `padding: 0 0.1em`，并保留通用 input 的 1px margin。next85 只追加 `margin-right: 0.2em`，保持动态字号/DPI 语义；不要改成固定 WM 像素。
+
+next85 设备截图确认四种控件状态、文字间距与 hidden-input 行为基本符合预期，作为新的静态 forms 基线。该验收不包含点击切换、焦点、编辑、select 或提交。
 
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。

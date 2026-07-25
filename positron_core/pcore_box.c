@@ -12,10 +12,10 @@
  * BOX_INLINE_CONTAINER), so the tree is layout-ready.
  *
  * Current scope: block/inline text, inline-block, flex, common table
- * structures, including NetSurf's table-span occupancy, plus cached <img> and
- * CSS background-image resources decoded by WM Imaging/libsvgtiny, are built
- * for NetSurf's real layout/redraw path. Forms/widgets and floats remain
- * staged follow-ups.
+ * structures, including NetSurf's table-span occupancy, plus cached <img>,
+ * read-only checkbox/radio gadgets and CSS background-image resources decoded
+ * by WM Imaging/libsvgtiny, are built for NetSurf's real layout/redraw path.
+ * Editable/submittable forms and floats remain staged follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -38,6 +38,7 @@
 #include "pcore_internal.h"
 
 #include "utils/errors.h"                    /* nserror (layout.h / private.h) */
+#include "content/handlers/html/form_internal.h"
 #include "netsurf/layout.h"                  /* struct gui_layout_table */
 #include "content/handlers/html/private.h"   /* html_content (real NetSurf) */
 #include "content/handlers/html/layout.h"    /* layout_document */
@@ -255,6 +256,111 @@ static int pcore_copy_attr_text(dom_node *node, const char *attr, void *ctx,
     }
     dom_string_unref(name);
     return present;
+}
+
+static int pcore_attr_value_is(dom_node *node, const char *attr,
+        const char *want)
+{
+    dom_string *name = NULL;
+    dom_string *value = NULL;
+    dom_string *wanted = NULL;
+    int match = 0;
+
+    if (node == NULL || attr == NULL || want == NULL ||
+            dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+                    DOM_NO_ERR ||
+            dom_string_create((const uint8_t *) want, strlen(want), &wanted) !=
+                    DOM_NO_ERR) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        if (wanted != NULL) {
+            dom_string_unref(wanted);
+        }
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) == DOM_NO_ERR &&
+            value != NULL) {
+        match = dom_string_caseless_isequal(value, wanted) ? 1 : 0;
+        dom_string_unref(value);
+    }
+    dom_string_unref(wanted);
+    dom_string_unref(name);
+    return match;
+}
+
+static int pcore_node_has_attr(dom_node *node, const char *attr)
+{
+    dom_string *name = NULL;
+    bool present = false;
+
+    if (node == NULL || attr == NULL ||
+            dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+                    DOM_NO_ERR) {
+        return 0;
+    }
+    if (dom_element_has_attribute(node, name, &present) != DOM_NO_ERR) {
+        present = false;
+    }
+    dom_string_unref(name);
+    return present ? 1 : 0;
+}
+
+/* NetSurf box_special.c attaches a form_control to checkbox/radio boxes and
+ * lets the already-ported layout.c/redraw.c supply their 1em geometry and
+ * platform-independent painting. Positron does not yet build NetSurf's full
+ * form list, so retain only the fields those read-only paths consume. */
+static int pcore_form_toggle_type(dom_node *node)
+{
+    if (!pcore_node_name_is(node, "input")) {
+        return 0;
+    }
+    if (pcore_attr_value_is(node, "type", "checkbox")) {
+        return GADGET_CHECKBOX;
+    }
+    if (pcore_attr_value_is(node, "type", "radio")) {
+        return GADGET_RADIO;
+    }
+    return 0;
+}
+
+static struct box *pcore_make_form_toggle_box(dom_node *node,
+        css_computed_style *style, void *ctx, int gadget_type)
+{
+    struct box *box;
+    struct form_control *gadget;
+    dom_html_input_element *input;
+    bool selected = false;
+    bool disabled = false;
+
+    if (gadget_type != GADGET_CHECKBOX && gadget_type != GADGET_RADIO) {
+        return NULL;
+    }
+    box = pcore_box_new(BOX_INLINE_BLOCK, style, ctx);
+    if (box == NULL) {
+        return NULL;
+    }
+    gadget = talloc_zero(box, struct form_control);
+    if (gadget == NULL) {
+        talloc_free(box);
+        return NULL;
+    }
+    pcore_box_attach_dom_node(box, node);
+    box->flags |= IS_REPLACED;
+    box->gadget = gadget;
+    gadget->node = node;
+    gadget->type = (form_control_type) gadget_type;
+    gadget->box = box;
+    input = (dom_html_input_element *) node;
+    if (dom_html_input_element_get_checked(input, &selected) != DOM_NO_ERR) {
+        selected = pcore_node_has_attr(node, "checked") ? true : false;
+    }
+    if (dom_html_input_element_get_disabled(input, &disabled) != DOM_NO_ERR) {
+        disabled = pcore_node_has_attr(node, "disabled") ? true : false;
+    }
+    gadget->selected = selected;
+    gadget->disabled = disabled;
+    return box;
 }
 
 static struct box *pcore_make_owned_text_box(dom_node *owner,
@@ -615,7 +721,14 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                 css_computed_style *cs = pcore_node_computed_style(child);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
-                    if (pcore_node_name_is(child, "img")) {
+                    int gadget_type = pcore_form_toggle_type(child);
+                    if (gadget_type != 0) {
+                        struct box *gadget = pcore_make_form_toggle_box(child,
+                                cs, ctx, gadget_type);
+                        if (gadget != NULL) {
+                            pcore_box_add_child(cont, gadget);
+                        }
+                    } else if (pcore_node_name_is(child, "img")) {
                         struct box *img = pcore_make_cached_image_box(child,
                                 cs, ctx);
                         if (img == NULL) {
@@ -788,7 +901,20 @@ static struct box *pcore_construct_block(dom_node *node,
             } else if (type == DOM_ELEMENT_NODE) {
                 css_computed_style *cs = pcore_node_computed_style(child);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
-                    if (pcore_node_name_is(child, "img")) {
+                    int gadget_type = pcore_form_toggle_type(child);
+                    if (gadget_type != 0) {
+                        struct box *gadget;
+                        if (inline_cont == NULL) {
+                            inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
+                                    NULL, ctx);
+                            pcore_box_add_child(box, inline_cont);
+                        }
+                        gadget = pcore_make_form_toggle_box(child, cs, ctx,
+                                gadget_type);
+                        if (gadget != NULL) {
+                            pcore_box_add_child(inline_cont, gadget);
+                        }
+                    } else if (pcore_node_name_is(child, "img")) {
                         struct box *img;
                         if (inline_cont == NULL) {
                             inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
@@ -2298,6 +2424,46 @@ PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
     if (y != NULL) { *y = ay; }
     if (w != NULL) { *w = box->width; }
     if (h != NULL) { *h = box->height; }
+    return 0;
+}
+
+PCORE_API int PCore_NodeFormControlState(HANDLE hDoc, const char *tag,
+        int *kind, int *selected, int *disabled)
+{
+    dom_document *doc = (dom_document *) hDoc;
+    pcore_render *st = pcore_get_render(doc);
+    dom_string *want = NULL;
+    struct box *box;
+    int control_kind;
+
+    if (st == NULL || tag == NULL) {
+        return 1;
+    }
+    if (dom_string_create((const uint8_t *) tag, strlen(tag), &want)
+            != DOM_NO_ERR) {
+        return 1;
+    }
+    box = pcore_box_for_tag(st->root_box, want);
+    dom_string_unref(want);
+    if (box == NULL || box->gadget == NULL) {
+        return 1;
+    }
+    if (box->gadget->type == GADGET_CHECKBOX) {
+        control_kind = 1;
+    } else if (box->gadget->type == GADGET_RADIO) {
+        control_kind = 2;
+    } else {
+        return 1;
+    }
+    if (kind != NULL) {
+        *kind = control_kind;
+    }
+    if (selected != NULL) {
+        *selected = box->gadget->selected ? 1 : 0;
+    }
+    if (disabled != NULL) {
+        *disabled = box->gadget->disabled ? 1 : 0;
+    }
     return 0;
 }
 

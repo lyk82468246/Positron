@@ -1,7 +1,7 @@
 # Positron Roadmap
 
-更新时间：2026-07-20
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义并在 next68 同批复测正常。图片/SVG、字体 fallback、列表 marker/counter/inside flow，以及 table span/匿名归一化/collapsed border/cell alignment/empty-cells/显式高度分配已分别推进到 TEST19-20、25-37、48-56 的设备基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+更新时间：2026-07-25
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径及只读 checkbox/radio 已推进到 next85 / TEST62 的设备基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -137,6 +137,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 46. **next79 已恢复 next77 core 行为并通过设备门禁**：保留已验收的受限 flex min-content boundary，恢复旧版 TEST59；ARM DLL 的 `.text` 与 next77 大小和 SHA-256 完全一致。设备确认 TEST56/59 正常，TEST13 也准确回到仅横屏首个 `Domain` 异常，没有 next78 的全表和系统异常。
 47. **next80 已完成 libcss selector node-data 生命周期修复**：旧 `set_libcss_node_data` 立即执行 `CSS_NODE_DELETED`，而 libcss `css__get_parent_bloom` 在回调返回后仍借用父 bloom，形成明确悬空指针。现按 NetSurf 原生模式将 node-data 挂到 DOM user-data；每个新 selection context 开始前清掉上一轮缓存，避免跨 stylesheet/media 复用。TEST60 使用同一 DOM 的 224×320→400×240 二次重选，自动断言 IANA 同型首表头 18px/10px inset 和粗体文字宽度。2026-07-25 TEST56/58/59/60 与真实 TEST13 `/domains/reserved` 横竖屏均由设备确认正常。
 48. **next81 已清理全零 `nsoption` shim 并通过设备门禁**：审计 ARM 工程实际编译的 NetSurf 文件后，当前只读取 `font_min_size`、`core_select_menu`、`remove_backgrounds`；旧宏令整数默认错误地变成 0。新 shim 对齐 NetSurf 3.11 的 85/false/false，并显式记录 author CSS、前景/背景图片开启和 JavaScript 关闭的产品策略。token-paste 查找让任何未列出的新 option 在编译期失败。TEST61 以 `1px`/`8.5pt` 同宽、`12pt` 更宽验证正式 font/layout 路径；2026-07-25 设备确认 TEST56/58-61 未发现问题。
+49. **next82/83 暴露 TEST62 像素指标缺口，next84 修复，next85 完成间距验收**：参考 NetSurf `box_special.c::box_input` 的 gadget 绑定方式，在 Positron slim builder 中为 checkbox/radio 创建只读 `form_control`，让已移植的 NetSurf `layout.c` 和 `redraw.c` 原生处理 1em 几何、方框/圆框与 selected 状态。next84 以最终 gadget 状态和 RGB 暗度通过设备门禁，四种可视状态正确；next85 在上游默认 `0.1em` padding 之外追加动态 `0.2em` 右 margin。设备截图确认状态、间距和 hidden-input 行为基本符合预期，不使用固定设备像素。
 
 验收：
 
@@ -270,6 +271,6 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 1. 从已通过的 next80 基线继续下一个短期目标；任何新布局/选择器改动仍须保留 TEST56/58/59/60，并走 TEST13 深层链接与旋转门禁。
 2. next81 的 TEST56/58-61 已通过；最低字号恢复未发现既有排版回归，JavaScript 仍保持关闭。继续保持 TEST13 冻结链，不重启 `codex/post-next37-experiments` 的失败方案。
-3. 选择一个可控的 forms/widgets 最小能力，对照 NetSurf 上游构盒/归一化实现；已撤回的 TEST23 float 方向暂不重启，失败时撤回而不是扩张手写规则。
+3. next85 的 TEST56/58-62 已通过；TEST62 只确认静态控件，不能把它写成完整表单交互。已撤回的 TEST23 float 方向暂不重启。
 4. 做复杂页面完成阶段的性能与内存观测，重点是 UI 提交卡顿、资源预算、缓存释放和真实整页进度；不把 2 MiB 宿主预算误写成系统上限。
 5. 中期补 Grid/背景/SVG 高级能力；长期再做经过开源实现审计的 JavaScript runtime spike。

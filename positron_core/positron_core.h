@@ -186,6 +186,14 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h);
 PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
                             int *x, int *y, int *w, int *h);
 
+/* Inspect the first laid-out form control named `tag`. kind is 1 for a
+ * checkbox and 2 for a radio button. `selected` and `disabled` receive 0/1.
+ * This read-only diagnostics API verifies the DOM -> box gadget state carried
+ * into NetSurf redraw without exposing the internal form_control structure. */
+PCORE_API int PCore_NodeFormControlState(HANDLE hDoc, const char *tag,
+                                        int *kind, int *selected,
+                                        int *disabled);
+
 /* Inspect one table cell's used border after collapsed-border conflict
  * resolution. Cells and sides are in document order; side uses CSS order
  * 0=top, 1=right, 2=bottom, 3=left. `style` receives the libcss border-style
