@@ -138,6 +138,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 47. **next80 已完成 libcss selector node-data 生命周期修复**：旧 `set_libcss_node_data` 立即执行 `CSS_NODE_DELETED`，而 libcss `css__get_parent_bloom` 在回调返回后仍借用父 bloom，形成明确悬空指针。现按 NetSurf 原生模式将 node-data 挂到 DOM user-data；每个新 selection context 开始前清掉上一轮缓存，避免跨 stylesheet/media 复用。TEST60 使用同一 DOM 的 224×320→400×240 二次重选，自动断言 IANA 同型首表头 18px/10px inset 和粗体文字宽度。2026-07-25 TEST56/58/59/60 与真实 TEST13 `/domains/reserved` 横竖屏均由设备确认正常。
 48. **next81 已清理全零 `nsoption` shim 并通过设备门禁**：审计 ARM 工程实际编译的 NetSurf 文件后，当前只读取 `font_min_size`、`core_select_menu`、`remove_backgrounds`；旧宏令整数默认错误地变成 0。新 shim 对齐 NetSurf 3.11 的 85/false/false，并显式记录 author CSS、前景/背景图片开启和 JavaScript 关闭的产品策略。token-paste 查找让任何未列出的新 option 在编译期失败。TEST61 以 `1px`/`8.5pt` 同宽、`12pt` 更宽验证正式 font/layout 路径；2026-07-25 设备确认 TEST56/58-61 未发现问题。
 49. **next82/83 暴露 TEST62 像素指标缺口，next84 修复，next85 完成间距验收**：参考 NetSurf `box_special.c::box_input` 的 gadget 绑定方式，在 Positron slim builder 中为 checkbox/radio 创建只读 `form_control`，让已移植的 NetSurf `layout.c` 和 `redraw.c` 原生处理 1em 几何、方框/圆框与 selected 状态。next84 以最终 gadget 状态和 RGB 暗度通过设备门禁，四种可视状态正确；next85 在上游默认 `0.1em` padding 之外追加动态 `0.2em` 右 margin。设备截图确认状态、间距和 hidden-input 行为基本符合预期，不使用固定设备像素。
+50. **next86 已建立并验收复杂页面完成阶段遥测**：不改变 next37 冻结导航控制流，只在 `test_host` 请求对象记录总/网络耗时、parse/style/image-discovery/layout/首帧、最大 UI slice，以及资源 queued/fetched/failed、worker rounds、document/cache bytes 和预算拒绝。设备实测 6435ms 总时长中网络 5503ms；最大 UI slice 与 layout 均为 673ms，style 182ms，其余阶段不超过 36ms；2 个资源和约 128KiB 原始字节没有触及预算。下一步细分 core layout 内部，而不是先改网络或扩大 2MiB 宿主预算。
 
 验收：
 
@@ -272,5 +273,5 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 1. 从已通过的 next80 基线继续下一个短期目标；任何新布局/选择器改动仍须保留 TEST56/58/59/60，并走 TEST13 深层链接与旋转门禁。
 2. next81 的 TEST56/58-61 已通过；最低字号恢复未发现既有排版回归，JavaScript 仍保持关闭。继续保持 TEST13 冻结链，不重启 `codex/post-next37-experiments` 的失败方案。
 3. next85 的 TEST56/58-62 已通过；TEST62 只确认静态控件，不能把它写成完整表单交互。已撤回的 TEST23 float 方向暂不重启。
-4. 做复杂页面完成阶段的性能与内存观测，重点是 UI 提交卡顿、资源预算、缓存释放和真实整页进度；不把 2 MiB 宿主预算误写成系统上限。
+4. next86 已把 UI 瓶颈定位到 673ms layout；下一批细分 box construction、首轮 layout、可选 settling pass 与收尾，再决定优化点。继续观察缓存释放和真实整页进度，不把 2 MiB 宿主预算误写成系统上限。
 5. 中期补 Grid/背景/SVG 高级能力；长期再做经过开源实现审计的 JavaScript runtime spike。

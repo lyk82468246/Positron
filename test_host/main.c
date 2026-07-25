@@ -1842,6 +1842,27 @@ typedef struct pcore_navigation_resource {
     int attempted;
 } pcore_navigation_resource;
 
+typedef struct pcore_navigation_stats {
+    DWORD started_tick;
+    DWORD worker_started_tick;
+    DWORD total_ms;
+    DWORD network_ms;
+    DWORD parse_ms;
+    DWORD style_ms;
+    DWORD images_ms;
+    DWORD layout_ms;
+    DWORD first_paint_ms;
+    DWORD max_ui_slice_ms;
+    int worker_rounds;
+    int document_bytes;
+    int resources_queued;
+    int resources_fetched;
+    int resources_failed;
+    int resource_bytes;
+    int budget_rejected;
+    int completed;
+} pcore_navigation_stats;
+
 typedef struct pcore_navigation_request {
     HWND           hwnd;
     LONG           generation;
@@ -1858,6 +1879,7 @@ typedef struct pcore_navigation_request {
     int            progress_last_total;
     int            progress_last_percent;
     int            progress_last_received;
+    pcore_navigation_stats stats;
 } pcore_navigation_request;
 
 static HANDLE                    g_nav_thread = NULL;
@@ -1868,6 +1890,8 @@ static LONG                      g_nav_generation = 0;
 static int                       g_nav_loading = 0;
 static int                       g_nav_phase = 0;
 static int                       g_nav_determinate = 0;
+static pcore_navigation_stats    g_nav_last_stats;
+static int                       g_nav_last_stats_valid = 0;
 
 /* Current page origin, for resolving relative links during navigation. */
 static char   g_cur_host[256] = "";
@@ -2424,11 +2448,18 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
     char path[1024];
     int port;
     char *data;
+    int fetched;
 
     request = (pcore_navigation_request *) param;
     if (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) {
         request->response = pcore_navigation_get(request, request->host,
                 request->port, request->path);
+        if (request->response != NULL &&
+                request->response->status_code == 200 &&
+                request->response->body != NULL &&
+                request->response->body_len > 0) {
+            request->stats.document_bytes = request->response->body_len;
+        }
     } else {
         for (entry = request->resources; entry != NULL;
                 entry = entry->next) {
@@ -2436,10 +2467,12 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                 continue;
             }
             entry->attempted = 1;
+            fetched = 0;
             port = request->port;
             if (!resolve_url_from(request->host, request->path,
                     request->port, entry->url, host, sizeof(host), path,
                     sizeof(path), &port)) {
+                request->stats.resources_failed++;
                 continue;
             }
             resp = pcore_navigation_get(request, host, port, path);
@@ -2453,13 +2486,24 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                     entry->data = data;
                     entry->len = resp->body_len;
                     request->resource_bytes += resp->body_len;
+                    request->stats.resources_fetched++;
+                    fetched = 1;
                 }
+            } else if (resp != NULL && resp->body_len >
+                    PCORE_NAV_RESOURCE_BYTES_MAX -
+                            request->resource_bytes) {
+                request->stats.budget_rejected++;
+            }
+            if (!fetched) {
+                request->stats.resources_failed++;
             }
             if (resp != NULL) {
                 PHttp_FreeResponse(resp);
             }
         }
     }
+    request->stats.network_ms += GetTickCount() -
+            request->stats.worker_started_tick;
     PostMessage(request->hwnd, WM_PCORE_NAV_DONE,
             (WPARAM) request->generation, (LPARAM) request);
     return 0;
@@ -2470,6 +2514,8 @@ static int pcore_navigation_start_worker(
 {
     DWORD thread_id;
 
+    request->stats.worker_started_tick = GetTickCount();
+    request->stats.worker_rounds++;
     g_nav_thread = CreateThread(NULL, 0, pcore_navigation_worker,
             request, 0, &thread_id);
     return (g_nav_thread != NULL) ? 0 : 1;
@@ -2485,6 +2531,8 @@ static int pcore_navigation_commit_step(HWND hwnd,
     int            cw, chh;
     char           emsg[320];
     char           document_url[1536];
+    DWORD          started;
+    DWORD          elapsed;
 
     if (request->commit_stage == PCORE_NAV_COMMIT_PARSE) {
         resp = request->response;
@@ -2495,7 +2543,13 @@ static int pcore_navigation_commit_step(HWND hwnd,
             }
             return PCORE_NAV_RESULT_FAILED;
         }
+        started = GetTickCount();
         request->document = PCore_ParseHTML(resp->body, resp->body_len);
+        elapsed = GetTickCount() - started;
+        request->stats.parse_ms += elapsed;
+        if (elapsed > request->stats.max_ui_slice_ms) {
+            request->stats.max_ui_slice_ms = elapsed;
+        }
         PHttp_FreeResponse(resp);
         request->response = NULL;
         if (request->document == NULL) {
@@ -2516,25 +2570,42 @@ static int pcore_navigation_commit_step(HWND hwnd,
         if (cw <= 0) { cw = 224; }
         if (chh <= 0) { chh = 320; }
         PCore_SetViewport(cw, chh, 0);
+        started = GetTickCount();
         if (pcore_document_url(request->host, request->path, request->port,
                 document_url, sizeof(document_url)) != 0 ||
                 PCore_StyleDocumentEx2(request->document, NULL, document_url,
                 wm_combine_url, pcore_navigation_resource_cb,
                 page_resource_free_cb, request) != 0) {
+            elapsed = GetTickCount() - started;
+            request->stats.style_ms += elapsed;
+            if (elapsed > request->stats.max_ui_slice_ms) {
+                request->stats.max_ui_slice_ms = elapsed;
+            }
             if (report_errors) {
                 show_error(L"Navigation failed",
                         "PCore_StyleDocument failed");
             }
             return PCORE_NAV_RESULT_FAILED;
         }
+        elapsed = GetTickCount() - started;
+        request->stats.style_ms += elapsed;
+        if (elapsed > request->stats.max_ui_slice_ms) {
+            request->stats.max_ui_slice_ms = elapsed;
+        }
         request->commit_stage = PCORE_NAV_COMMIT_IMAGES;
         return PCORE_NAV_RESULT_CONTINUE;
     }
 
     if (request->commit_stage == PCORE_NAV_COMMIT_IMAGES) {
+        started = GetTickCount();
         PCore_FetchImageResources(request->document,
                 pcore_navigation_resource_cb, page_resource_free_cb,
                 request, NULL, NULL);
+        elapsed = GetTickCount() - started;
+        request->stats.images_ms += elapsed;
+        if (elapsed > request->stats.max_ui_slice_ms) {
+            request->stats.max_ui_slice_ms = elapsed;
+        }
         if (pcore_navigation_pending_count(request) > 0) {
             request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
             request->commit_stage = PCORE_NAV_COMMIT_STYLE;
@@ -2555,11 +2626,22 @@ static int pcore_navigation_commit_step(HWND hwnd,
     chh = rc.bottom - rc.top;
     if (cw <= 0) { cw = 224; }
     if (chh <= 0) { chh = 320; }
+    started = GetTickCount();
     if (PCore_LayoutDocument(request->document, cw, chh) != 0) {
+        elapsed = GetTickCount() - started;
+        request->stats.layout_ms += elapsed;
+        if (elapsed > request->stats.max_ui_slice_ms) {
+            request->stats.max_ui_slice_ms = elapsed;
+        }
         if (report_errors) {
             show_error(L"Navigation failed", "PCore_LayoutDocument failed");
         }
         return PCORE_NAV_RESULT_FAILED;
+    }
+    elapsed = GetTickCount() - started;
+    request->stats.layout_ms += elapsed;
+    if (elapsed > request->stats.max_ui_slice_ms) {
+        request->stats.max_ui_slice_ms = elapsed;
     }
 
     /* Swap in the new document; free the one being replaced. */
@@ -2576,14 +2658,26 @@ static int pcore_navigation_commit_step(HWND hwnd,
     g_cur_port = request->port;
 
     pcore_set_scrollbar(hwnd);
+    started = GetTickCount();
     InvalidateRect(hwnd, NULL, TRUE);
     UpdateWindow(hwnd);
+    elapsed = GetTickCount() - started;
+    request->stats.first_paint_ms += elapsed;
+    if (elapsed > request->stats.max_ui_slice_ms) {
+        request->stats.max_ui_slice_ms = elapsed;
+    }
+    request->stats.completed = 1;
     return PCORE_NAV_RESULT_DONE;
 }
 
 static void pcore_navigation_finish(HWND hwnd,
         pcore_navigation_request *request)
 {
+    request->stats.total_ms = GetTickCount() - request->stats.started_tick;
+    request->stats.resources_queued = request->resource_count;
+    request->stats.resource_bytes = request->resource_bytes;
+    g_nav_last_stats = request->stats;
+    g_nav_last_stats_valid = 1;
     if (hwnd != NULL) {
         pcore_navigation_set_loading(hwnd, 0);
     } else {
@@ -2635,6 +2729,7 @@ static void navigate_to(HWND hwnd, const char *href)
     request->generation = ++g_nav_generation;
     request->worker_stage = PCORE_NAV_STAGE_DOCUMENT;
     request->commit_stage = PCORE_NAV_COMMIT_NONE;
+    request->stats.started_tick = GetTickCount();
     g_nav_request = request;
     pcore_navigation_set_loading(hwnd, 1);
     if (pcore_navigation_start_worker(request) != 0) {
@@ -3146,10 +3241,13 @@ static BOOL test_browse(void)
 
     HANDLE hDoc;
     int    vw, vh;
+    char   summary[512];
 
     /* Landing page is offline; the actual fetch happens when the user taps
      * the link (navigate_to), exercising the full click -> fetch -> render
      * loop against a China-reachable host. */
+    memset(&g_nav_last_stats, 0, sizeof(g_nav_last_stats));
+    g_nav_last_stats_valid = 0;
     hDoc = PCore_ParseHTML(START_HTML, 0);
     if (hDoc == NULL) {
         show_error(L"TEST 13 FAIL", "PCore_ParseHTML returned NULL");
@@ -3197,10 +3295,36 @@ static BOOL test_browse(void)
     }
     g_render_doc = NULL;
 
-    show_info(L"TEST 13 OK",
-              "Click navigation verified:\n"
-              "start page -> tap link -> HTTPS GET -> parse ->\n"
-              "style -> image cache -> layout -> GDI paint, on the device.");
+    if (g_nav_last_stats_valid) {
+        _snprintf(summary, sizeof(summary) - 1,
+                "Last navigation %s:\n"
+                "total=%lums network=%lums max UI=%lums\n"
+                "parse/style/images/layout/paint=%lu/%lu/%lu/%lu/%lums\n"
+                "resources queued/ok/fail=%d/%d/%d rounds=%d\n"
+                "bytes document/cache=%d/%d budget-rejected=%d",
+                g_nav_last_stats.completed ? "completed" : "failed",
+                (unsigned long) g_nav_last_stats.total_ms,
+                (unsigned long) g_nav_last_stats.network_ms,
+                (unsigned long) g_nav_last_stats.max_ui_slice_ms,
+                (unsigned long) g_nav_last_stats.parse_ms,
+                (unsigned long) g_nav_last_stats.style_ms,
+                (unsigned long) g_nav_last_stats.images_ms,
+                (unsigned long) g_nav_last_stats.layout_ms,
+                (unsigned long) g_nav_last_stats.first_paint_ms,
+                g_nav_last_stats.resources_queued,
+                g_nav_last_stats.resources_fetched,
+                g_nav_last_stats.resources_failed,
+                g_nav_last_stats.worker_rounds,
+                g_nav_last_stats.document_bytes,
+                g_nav_last_stats.resource_bytes,
+                g_nav_last_stats.budget_rejected);
+        summary[sizeof(summary) - 1] = '\0';
+        show_info(L"TEST 13 OK (telemetry)", summary);
+    } else {
+        show_info(L"TEST 13 OK",
+                  "Browse window closed without a completed navigation.\n"
+                  "No navigation telemetry was recorded.");
+    }
     return TRUE;
 }
 
@@ -6543,6 +6667,7 @@ static BOOL test44_navigation_failure_transaction(void)
     request->port = 443;
     request->worker_stage = PCORE_NAV_STAGE_DOCUMENT;
     request->commit_stage = PCORE_NAV_COMMIT_PARSE;
+    request->stats.started_tick = GetTickCount();
     request->response = response;
     response->status_code = 503;
     cstr_copy(response->error_msg, sizeof(response->error_msg),

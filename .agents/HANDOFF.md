@@ -2,7 +2,7 @@
 
 更新时间：2026-07-25
 当前分支：`main`  
-当前设备基线：next85，已覆盖 TEST48-62。设备确认 TEST56/58-62 未发现问题；TEST62 的四种静态 checkbox/radio 状态、hidden-input 抑制和动态 `0.2em` 右间距均符合预期。next82/83 的非白像素指标失败经过保留在 DEBUGGING。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next86（待固化提交），已覆盖 TEST13/43/44/56/58-62。设备确认其余门禁均 OK；TEST13 实测 total/network/max-UI=6435/5503/673ms，parse/style/images/layout/paint=11/182/6/673/36ms，2 个资源成功、document/cache=10499/121111 bytes、预算拒绝 0。网络主导总时长，layout 主导 UI 最长停顿。**next78 仍是已撤回的失败实验，不得使用**。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -96,7 +96,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=56,58-62`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。next85 的 56/58-62 已通过。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,43,44,56,58-62`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。next86 一次运行 TEST13 遥测和已通过的事务/forms/layout 门禁。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle 与具名 NetSurf option 默认，离线。TEST40-45、59、60 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
@@ -112,6 +112,7 @@ scripts\stage.bat
 - TEST60：同一 DOM 先按 224×320、再按 400×240 重做 style/layout；IANA 同型 `.dtable` 的首个 `<th>` 必须保留 18px/10px inset，并与第二个同文字表头保持同一粗体宽度。它同时覆盖 `thead th`、`:first-child` 和后续 `tbody > tr:first-child > th` 选择器。
 - TEST61：正式 NetSurf layout 中，同一串文本的 `1px` 与 `8.5pt` 必须测得相同宽度，证明 `font_min_size=85` 生效；`12pt` 控制组必须更宽。JavaScript 策略继续为 false。
 - TEST62：四个离屏探针确认 checkbox/radio 均采用 1em 几何，最终 gadget 的 checked 状态为 0/1，选中状态增加像素暗度，hidden input 不生成 box；随后显示四个只读控件。当前不包含点击、键盘、文本编辑、select 或提交。
+- TEST13 next86 遥测：关闭 Browse 窗口后，既有 OK 框显示最后一次导航的 total/network/max-UI、parse/style/images/layout/paint、资源 queued/ok/fail、worker rounds、document/cache bytes 和 budget-rejected。style/images 是多轮累计，max-UI 才是单次消息循环最长阻塞。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步

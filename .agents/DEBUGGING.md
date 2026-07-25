@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next85 已通过 `tests=56,58-62`：table/inline/flex/selector/option 与只读 form toggle 门禁均由设备确认；真实 Browse 仍从原四组路由单独跑 TEST13。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next86 使用 `tests=13,43,44,56,58-62`，先采集真实 Browse 遥测，再跑已确认的 transaction/table/inline/flex/selector/option/forms 门禁。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -194,5 +194,9 @@ next82 设备 TEST62 报 `cb=18x18 ink=300/300 radio=18x18 ink=200/200`；next83
 next84 设备 TEST62 自动门禁通过，四种静态控件均正确可见。可视验收指出控件与后续文字偏近：NetSurf `default.css` 的 toggle 特例只有 `padding: 0 0.1em`，并保留通用 input 的 1px margin。next85 只追加 `margin-right: 0.2em`，保持动态字号/DPI 语义；不要改成固定 WM 像素。
 
 next85 设备截图确认四种控件状态、文字间距与 hidden-input 行为基本符合预期，作为新的静态 forms 基线。该验收不包含点击切换、焦点、编辑、select 或提交。
+
+next86 在 `pcore_navigation_request` 内加入纯宿主遥测，不改变 worker/commit/swap：每轮 worker 累加 network，UI 分别计 parse/style/image-discovery/layout/首帧并保留最大单次 slice；资源侧记录 queued/fetched/failed、document/cache bytes、轮次和 2 MiB 预算拒绝数。`pcore_navigation_finish` 在释放事务前复制最后结果，TEST13 关闭后的既有 OK 框显示它。计时使用 `GetTickCount` 的无符号差，允许自然回绕；不要把累计 style/images 当成单次冻结时长。
+
+next86 设备 TEST13 遥测为 total=6435ms、network=5503ms、max UI=673ms，parse/style/images/layout/paint=11/182/6/673/36ms；queued/ok/fail=2/2/0、rounds=2、document/cache=10499/121111 bytes、budget-rejected=0，其余批量门禁均 OK。总加载时间约 85% 在 worker 网络，连续 UI 停顿则集中在 layout；下一步应细分 box construction、首轮 layout、可选 settling pass 和收尾，不要先改网络线程或资源预算。
 
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。
