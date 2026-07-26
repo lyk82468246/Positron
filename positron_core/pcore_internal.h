@@ -50,7 +50,8 @@ int pcore_image_resource_retained_get(struct dom_document *doc,
         void **out_svg, int *out_width, int *out_height);
 int pcore_image_resource_retained_store(struct dom_document *doc,
         const char *url, void *native_image, void *svg,
-        int width, int height);
+        int width, int height, const PCoreImageDecodeStats *decode_stats);
+void pcore_image_shared_shutdown(void);
 
 /* Build a NetSurf box tree (struct box) from the styled document element
  * `root`, allocating under talloc context `ctx`. Returns the root box, or NULL.

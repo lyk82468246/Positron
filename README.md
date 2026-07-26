@@ -18,7 +18,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 | **2** | `positron_json.dll` (cJSON 1.7.18) + `positron_http.dll` (HTTP/1.1：HTTPS via mbedTLS，明文 HTTP via WinInet) | ✅ 完成，WM6 Emulator 验证 |
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
 | **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、缓存图片链、CSS 背景图与 NetSurf overflow scrollbar 已真机验证，窄屏复杂布局仍待补 |
-| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 retained 解码、SVG、PNG/JPEG 与原始像素入口均已真机闭环；ABI 1.4 原生 BMP/GIF 编码及 next52 原生标题栏 OK 真退出均已真机确认 |
+| **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 retained 解码、SVG、PNG/JPEG/BMP/GIF 与原始像素入口均已真机闭环；当前 ABI 1.5 增加只读 SVG 创建阶段遥测，next52 原生标题栏 OK 真退出已真机确认 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
@@ -46,7 +46,7 @@ next69 首次百分比 row 第二遍得到错误的 `20/30/30`。随后在多个
 
 next74 首次接入 inline sheet 后，设备在 TEST56 报告 `va=0/2/3/3`：三行与两行高度仍正确，但 `.distributed .top` 的通配祖先 class 复合选择丢失。TEST56 原夹具和断言未改；next75 修复选择器回调对通配 qname `*` 的祖先/父节点匹配，并在 TEST58 增加独立 `.scope .probe` 断言。2026-07-24 设备确认 TEST56 与 TEST58 均通过；TEST58 可见页的 cascade 文本和 25/50/auto 三行布局符合预期。随后 TEST13 起始页和其余回归正常，但 IANA `/domains/reserved` 等宽表格子页仍会把主内容推到负 x。next77 只允许“横向、可收缩 flex item 且后代含 Grid fallback 或 `overflow-x:auto/scroll`”越过隐式 min-content 钳制，设备确认 TEST59 与同批回归通过、竖屏子页边距恢复；然而同页旋转为横屏后，首个英文表头 `Domain` 内容左移约 18px。next78 尝试递归 `scrollbar_set(...,0)` 后把异常扩大到全部表格单元格，并令 TEST56 失败、触发系统级 `test_host.exe` 异常，因此已经完整撤回。next79 已恢复 next77 机器码，设备确认 TEST56/59 均通过，真实页也准确回到“仅横屏首个 `Domain` 异常”的原始状态。next80 修复了 libcss 节点数据被过早销毁而留下父 bloom 悬空指针的问题；新增 TEST60 在同一 DOM 纵横屏重选时自动检查首表头的 18px/10px inset 与粗体宽度。2026-07-25 设备确认 TEST56/58/59/60 全部通过，真实 TEST13 `/domains/reserved` 的首个 `Domain` 在横竖屏均恢复正常 padding、字重和基线。该问题与非拉丁字体覆盖无关，普通语言/多语种字体明确不在当前开发范围。
 
-next85 已建立只读 checkbox/radio 的静态 forms 基线。next86（提交 `210611d`）又在不改变导航控制流的前提下加入宿主侧阶段遥测；设备 TEST13 实测 total/network/max-UI=6435/5503/673ms，parse/style/images/layout/paint=11/182/6/673/36ms，说明总时长主要消耗在网络，而最长连续 UI 停顿集中在 `PCore_LayoutDocument`。next87（提交 `3b2446c`）进一步把该调用拆成 box construction、首轮 layout、overflow settling/可选二次 layout 与 finalize 计时；IANA 起始页得到 `580=515+65+0ms`（无二次布局），进入 Reserved 子页后最后一次导航得到 `662=495+124+43ms`（发生二次布局）。next88 的设备数据将两页构盒进一步定位到单张图片创建：tree/image 分别为 `523/518ms` 与 `481/474ms`。next89 用既有 SVG API 优先处理 XML-like 字节，并在同一 document 内复用 retained handle；TEST20/27 及其余默认门禁均通过，TEST13 首次/随后页面 image 为 `469/37ms`。首次导航与重排收益分别由 SVG-first 和 document cache 提供，不能混称为跨页缓存。
+next85 已建立只读 checkbox/radio 的静态 forms 基线。next86（提交 `210611d`）又在不改变导航控制流的前提下加入宿主侧阶段遥测；设备 TEST13 实测 total/network/max-UI=6435/5503/673ms，parse/style/images/layout/paint=11/182/6/673/36ms，说明总时长主要消耗在网络，而最长连续 UI 停顿集中在 `PCore_LayoutDocument`。next87（提交 `3b2446c`）进一步把该调用拆成 box construction、首轮 layout、overflow settling/可选二次 layout 与 finalize 计时；IANA 起始页得到 `580=515+65+0ms`（无二次布局），进入 Reserved 子页后最后一次导航得到 `662=495+124+43ms`（发生二次布局）。next88 的设备数据将两页构盒进一步定位到单张图片创建：tree/image 分别为 `523/518ms` 与 `481/474ms`。next89（提交 `ef0cc06`）用既有 SVG API 优先处理 XML-like 字节，并在同一 document 内复用 retained handle。next90 的 image ABI 1.5 与独立 core 统计在 next91 自动设备日志中确认创建耗时几乎全在 `svgtiny_parse`。next92 按 NetSurf 的“缓存条目与使用者分离”模型，让同时存活且 URL、长度、双哈希一致的文档共享 SVG；引用归零立即释放，不形成常驻缓存。设备日志确认 Reserved 页 `image reuse=1`、`svg creates=0`，图片阶段由前页的 523ms 降至 2ms，新增 TEST63 也通过释放首文档后的像素绘制检查。
 
 ---
 
@@ -196,22 +196,23 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
-tests=31,32
+auto=1
+tests=13,20,27,43,44,56,58-62
 ```
 
-读取到有效配置后，程序先提示是否只运行列出的 TEST；选 **Yes** 直接按编号升序执行，选 **No** 完整保留下面原有的 All/四组选择流程。文件缺失时直接走旧流程；文件存在但无效时提示并忽略。TEST23 已撤回，配置中出现 23 会被拒绝。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制默认 `test_host\test_host.ini` 及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。next85 已通过 TEST62 的 gadget 状态、像素暗度、几何、hidden-input 和可视间距验收；checkbox/radio 采用随字体/DPI 缩放的 `0.2em` 右 margin，不写死设备像素。第 3 组 GDI Render 提示已改为能力类别和编号范围，避免 WM6 小屏 MessageBox 被逐项说明撑坏。
+`auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 已撤回，配置中出现 23 会被拒绝。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
 
 测试交付默认按能力批次进行：先积累多项相关实现、自动像素/资源/安全断言和直绘/正式链两层回归，再请求一次设备验收。只有真实编译错误、高风险回归定位或设备特有故障才临时拆成单项包，避免每个微小改动都要求人工截图。
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
 - **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值、grid/overflow min-content 隔离、overflow scrollbar、分阶段导航资源事务、主文档失败回滚、CSS import tree、libcss 节点缓存纵横屏重选与具名 NetSurf option 默认，离线。TEST40-45、59、60 已真机通过；next78 已撤回。TEST23 float 最小样例已因真实 Browse 回归撤回。
-- **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-58、62，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、只读 checkbox/radio 与随包字体 fallback 正式 redraw，离线；TEST48-58、62 已验收。
+- **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-58、62-63，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、同文档及重叠文档缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、只读 checkbox/radio 与随包字体 fallback 正式 redraw，离线；TEST48-58、62-63 已验收。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 
 当前关键 smoke test：
 
 - TEST 17：内置 NetSurf real layout + redraw 页面。预期看到深红 H1 及红色下边框、带边框的三色 flex 横排、带可见单元格边框的 2×2 table。
-- TEST 13：打开 start page，点击 `Open example.com`，走真实 Browse 路径；页面内链接可继续点击导航，有限 3xx 与 http/https 切换已覆盖。
+- TEST 13：交互模式从 start page 点击链接；自动模式依次直达 example.com、IANA Example Domains 和 Reserved Domains。两者走相同的 fetch → parse → style/resources → layout → paint 导航事务。
 
 > ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 
@@ -221,7 +222,7 @@ tests=31,32
 
 - **熵源**：默认 `CryptGenRandom`（Phase 3 起）；CSP 不可用时自动退回 QPC+GetTickCount+tid/pid jitter，CTR-DRBG 兜底。
 - **HTTP 限制**：单连接 `Connection: close`、无 keep-alive、无 gzip 解码、响应体 cap 1 MB；GET 已有有限 3xx follow，明文 `http://` 经 WinInet。
-- **导航卡顿**：主文档、外链 CSS、CSS `@import`、`<img>` 与已计算 CSS 背景资源的 GET 已组成分阶段 worker 事务，旧页在网络等待时可滚动。`PHttp_GetEx/PostEx` 在请求线程报告已解码正文大小和可选 `Content-Length`；父窗口进度条对已知总长显示当前响应的真实百分比，对 chunked/无长度响应保持活动动画，TEST3/13 已真机确认。每个资源响应会开始自己的进度序列，所以这不是整页资源总字节百分比。HTML parse、style、图片 cache copy、layout 仍严格留在 UI 线程，但现通过一次性 WM timer 分成四个提交阶段，让触摸、旋转、绘制和进度控件可在阶段之间运行；单个 NetSurf 调用仍可能短暂卡顿。next86 的 TEST13 实测 total/network/max-UI 为 6435/5503/673ms，parse/style/images/layout/paint 为 11/182/6/673/36ms；2 个资源全部成功，document/cache 约 10.5/121KiB，预算拒绝为 0。next87 把两类页面的共同瓶颈定位到约 500ms 构盒，next88 又把其中 474-518ms 定位到单张图片 retained object 创建。next89 的 SVG-first 与 document-owned reuse 已通过设备门禁，同进程随后页面的 image 热点降到 `37ms`，但首次 SVG 仍为 `469ms`；不跨 document 或线程。TEST13 显示导航完成快照，后续旋转布局不会回写该框。TEST44 已确认主文档失败保留旧页与事务收尾，TEST45 已确认嵌套导入与失败回退。网页字体/脚本资源仍待后续。`test_host` 暂存最多 64 个 URL、合计 2 MiB 原始字节；这是可替换的宿主预算，不是 `positron_core` ABI 限制。
+- **导航卡顿**：主文档、外链 CSS、CSS `@import`、`<img>` 与已计算 CSS 背景资源的 GET 已组成分阶段 worker 事务，旧页在网络等待时可滚动。`PHttp_GetEx/PostEx` 在请求线程报告已解码正文大小和可选 `Content-Length`；父窗口进度条对已知总长显示当前响应的真实百分比，对 chunked/无长度响应保持活动动画，TEST3/13 已真机确认。每个资源响应会开始自己的进度序列，所以这不是整页资源总字节百分比。HTML parse、style、图片 cache copy、layout 仍严格留在 UI 线程，但现通过一次性 WM timer 分成四个提交阶段，让触摸、旋转、绘制和进度控件可在阶段之间运行；单个 NetSurf 调用仍可能短暂卡顿。next86-91 的逐层遥测把主要 UI 热点定位到 `svgtiny_parse`。next92 在旧页与新页同时存活的事务窗口内复用内容一致的 SVG，Reserved 页确认 `image reuse=1`、`svg creates=0`，图片阶段为 2ms；首个页面的冷解析仍可能超过 500ms。TEST13 显示导航完成快照，后续旋转布局不会回写该框。TEST44 已确认主文档失败保留旧页与事务收尾，TEST45 已确认嵌套导入与失败回退。网页字体/脚本资源仍待后续。`test_host` 暂存最多 64 个 URL、合计 2 MiB 原始字节；这是可替换的宿主预算，不是 `positron_core` ABI 限制。
 - **渲染限制**：TEST25-37 与 TEST13 fixture 已确认 SVG parse/draw/cache/fallback/fill-rule/网络链、CSS 单背景图、基础 SVG text、线性/径向渐变、继承/透明 stop 及缓存复用；复杂 SVG text、径向焦点、spread method、background-size 和多层背景仍未完成。TEST38-39 已确认受约束的 `:root` token，TEST40 已确认数值型 OKLCH/可求值 calc；两者都不代表完整 CSS Variables/Color/Values。TEST41 只验证 grid 单列降级不会把反向 flex 主内容推至负坐标；TEST42 验证的是 overflow scrollbar，不是完整 Grid。TEST46/47 与 TEST53-57 覆盖一批已验收的表格构盒、边框和行高子例；百分比 cell/后代或 column 模型仍未完成。TEST48-52 覆盖 47 种上游 counter formatter、图片 marker 及 inside 流，但仍不代表完整 CSS Lists/Counter Styles。TEST23 浮动实现已因 Browse 回归撤回。完整范围见 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 - **WM6 X 按钮 = 最小化不是关闭**。每次启动 test_host 前确认任务管理器没有遗留实例，否则 stage.bat 替换 exe 时会产生 image 不一致。
 - **WMDC 桥会静默断**：host 待机 / 模拟器长跑后偶尔失联，表现是 `PTls_Connect` 拿到 `-0x004C [BIO: recv WSA=...]`。修法：重启 WMDC（任务栏 → 退出 → 重启）。**联网测试前先在 IE Mobile 打开 baidu 验证一遍**。

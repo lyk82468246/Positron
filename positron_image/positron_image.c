@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <svgtiny.h>
 
@@ -17,6 +18,7 @@
 typedef struct pimage_svg {
     struct svgtiny_diagram *diagram;
     void *raster_image;
+    PIMAGE_SVG_CREATE_STATS create_stats;
 } pimage_svg;
 
 BOOL WINAPI DllMain(HANDLE instance, DWORD reason, LPVOID reserved)
@@ -37,6 +39,8 @@ PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
 {
     pimage_svg *svg;
     svgtiny_code code;
+    DWORD started;
+    DWORD phase_started;
 
     if (out_svg == NULL) {
         return PIMAGE_ERROR_ARGUMENT;
@@ -51,6 +55,8 @@ PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
     if (viewport_h <= 0) {
         viewport_h = 150;
     }
+    started = GetTickCount();
+    phase_started = started;
     svg = (pimage_svg *) calloc(1, sizeof(*svg));
     if (svg == NULL) {
         return PIMAGE_ERROR_MEMORY;
@@ -60,19 +66,25 @@ PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
         free(svg);
         return PIMAGE_ERROR_MEMORY;
     }
+    svg->create_stats.setup_ms = GetTickCount() - phase_started;
+    phase_started = GetTickCount();
     code = svgtiny_parse(svg->diagram, data, (size_t) len,
             "positron:memory.svg", viewport_w, viewport_h);
+    svg->create_stats.parse_ms = GetTickCount() - phase_started;
     if (code != svgtiny_OK) {
         svgtiny_free(svg->diagram);
         free(svg);
         return PIMAGE_ERROR_SVG_BASE + (int) code;
     }
+    phase_started = GetTickCount();
     svg->raster_image = pimage_raster_create(svg->diagram);
+    svg->create_stats.raster_ms = GetTickCount() - phase_started;
     if (svg->raster_image == NULL) {
         svgtiny_free(svg->diagram);
         free(svg);
         return PIMAGE_ERROR_MEMORY;
     }
+    svg->create_stats.total_ms = GetTickCount() - started;
     *out_svg = (PIMAGE_SVG) svg;
     return PIMAGE_OK;
 }
@@ -103,6 +115,22 @@ PIMAGE_API int PImage_SvgGetInfo(PIMAGE_SVG handle, int *out_w, int *out_h,
     if (out_shape_count != NULL) {
         *out_shape_count = svg->diagram->shape_count;
     }
+    return PIMAGE_OK;
+}
+
+PIMAGE_API int PImage_SvgGetCreateStats(PIMAGE_SVG handle,
+        PIMAGE_SVG_CREATE_STATS *out_stats)
+{
+    pimage_svg *svg = (pimage_svg *) handle;
+
+    if (out_stats == NULL) {
+        return PIMAGE_ERROR_ARGUMENT;
+    }
+    memset(out_stats, 0, sizeof(*out_stats));
+    if (svg == NULL || svg->diagram == NULL) {
+        return PIMAGE_ERROR_ARGUMENT;
+    }
+    *out_stats = svg->create_stats;
     return PIMAGE_OK;
 }
 

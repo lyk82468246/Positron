@@ -142,6 +142,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 51. **next87 只读 core layout 阶段遥测已由设备验收**：`PCore_LayoutDocument` 记录 box construction、首轮 `layout_document`、overflow 检查/可选 settling 二次 layout、finalize 与 total；`PCore_GetLayoutStats` 只复制最近一次结果。IANA 起始页得到 `580=515+65+0ms, pass=0`，进入 Reserved 后最后一次导航得到 `662=495+124+43ms, pass=1`，同批其余门禁均 OK。该批未改变布局次数、几何、滚动条判定或导航控制流；下一步细分约 500ms 的构盒阶段。
 52. **next88 构盒热点已定位**：独立 `PCoreBoxStats` 把 box construction 分成 tree/backgrounds，并在 tree 内记录 style/text/image/anonymous/table-normalise 的互斥累计时间和调用数。设备上 IANA 起始页 tree/image=`523/518ms`，Reserved 为 `481/474ms`，backgrounds=0；热点是单张图片 retained object 创建，不是 DOM 遍历或表格归一化。
 53. **next89 图片分派与文档内 retained reuse 已验收**：不新增解码器；XML-like 字节先走已有 `PImage_CreateSvgFromMemory`，失败仍回退 WM Imaging。document image cache 除原始字节外接管 retained bitmap/SVG 或失败状态，重排 carrier 只借用句柄。设备确认 TEST20/27 二次 layout 的 4/4 与 1/1 reuse、TEST27 首次 SVG-first 及其余默认门禁全部通过；TEST13 首次/随后页面 image 为 `469/37ms`。首屏冷启动仍待细分，该优化不跨 document、导航或线程。
+54. **next90 首次 SVG 创建分段已取得设备结论**：`positron_image` ABI 1.5 在 retained SVG 内记录 wrapper/diagram setup、`svgtiny_parse`、`pimage_raster_create` 与 total；按句柄查询避免全局诊断状态。core 将数据挂在现有 document image cache，并用独立 API 汇总。next91 设备数据中 TEST27、IANA Example、Reserved 的 parse 分别占创建总时长的 `58/59`、`37/37`、`593/595ms`，raster 最多 2ms；下一优化目标是避免跨 document 重复解析相同 SVG，或定位 libsvgtiny/libdom XML 的巨大抖动，不是改绘制器。
+55. **next91 无人值守设备 testbench 已通过首轮验收**：`test_host.ini` 的 `auto=1` 直接执行配置编号、抑制所有选择/结果 MessageBox，并将原始 INFO/ERROR 覆盖写入 EXE 同目录 `test_host.log`。全部可视 TEST 复用公共窗口和原测试函数，首帧后走正常销毁；TEST13 通过既有导航事务依次加载 example.com、IANA Example Domains 和 Reserved Domains。配置的 TEST13/20/27/43/44/56/58-62 全部 PASS。自动首帧冒烟不冒充人工视觉验收；后续候选收紧导航日志作用域，避免把 TEST44 预期失败记成 TEST13 ERROR。
+56. **next92 重叠文档 SVG 复用已通过设备门禁**：参考 NetSurf `hlcache` 的内容条目/使用者分离，不引入完整浏览器缓存。相同 URL、长度与双哈希的 SVG 在旧页和待提交新页同时存活时共享 retained handle；document 析构减引用，最后一个引用释放时立即销毁。TEST13 Reserved 页从重新创建 `593ms parse` 变为 `image reuse=1, creates=0, image=2ms`；新增 TEST63 证明释放首文档后第二文档仍能得到正确红绿像素。TEST44 日志作用域也已修正，next92 配置的 TEST13/20/27/43/44/56/58-63 全部 PASS。
 
 验收：
 
@@ -276,5 +279,5 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 1. 从已通过并提交为 `210611d` 的 next86 基线继续；任何新布局/选择器改动仍须保留 TEST56/58/59/60，并走 TEST13 深层链接与旋转门禁。
 2. next81 的 TEST56/58-61 已通过；最低字号恢复未发现既有排版回归，JavaScript 仍保持关闭。继续保持 TEST13 冻结链，不重启 `codex/post-next37-experiments` 的失败方案。
 3. next85 的 TEST56/58-62 已通过；TEST62 只确认静态控件，不能把它写成完整表单交互。已撤回的 TEST23 float 方向暂不重启。
-4. next89 已通过 document 内 retained reuse 门禁，并把同进程后续 Reserved 页 image 热点降到 `37ms`；首次 SVG 创建仍为 `469ms`。下一步只读细分 `svgtiny_parse` 与 `pimage_raster_create` 的冷启动，不先扩大为跨 document 全局缓存。继续观察释放和真实整页进度，不把 2 MiB 宿主预算误写成系统上限。
+4. next90/91 已确认 SVG retained 创建几乎全耗在 `svgtiny_parse`，且相同 IANA 资源在不同 document 间出现 37ms 与 593ms 的巨大差异。先用自动 testbench 重复采样，并对照 NetSurf 上游内容缓存/共享模型，再决定移植跨 document 复用还是细分 libsvgtiny/libdom XML；不要直接手写全局裸句柄缓存。继续观察释放和真实整页进度，不把 2 MiB 宿主预算误写成系统上限。
 5. 中期补 Grid/背景/SVG 高级能力；长期再做经过开源实现审计的 JavaScript runtime spike。

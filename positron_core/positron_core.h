@@ -221,6 +221,20 @@ typedef struct PCoreBoxStats {
  * before WM Imaging. This diagnostic API does not alter box construction. */
 PCORE_API int PCore_GetBoxStats(HANDLE hDoc, PCoreBoxStats *out_stats);
 
+typedef struct PCoreImageDecodeStats {
+    unsigned long svg_total_ms;
+    unsigned long svg_setup_ms;
+    unsigned long svg_parse_ms;
+    unsigned long svg_raster_ms;
+    unsigned int svg_creates;
+} PCoreImageDecodeStats;
+
+/* Aggregate retained SVG creation timings in this document's image cache.
+ * Cached relayouts do not increment svg_creates. Timings come from the
+ * creating positron_image.dll object and use GetTickCount resolution. */
+PCORE_API int PCore_GetImageDecodeStats(HANDLE hDoc,
+        PCoreImageDecodeStats *out_stats);
+
 /* Read back the laid-out content-box (CSS px) of the first element named `tag`.
  * Any of the out pointers may be NULL. Returns 0 on success. */
 PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,

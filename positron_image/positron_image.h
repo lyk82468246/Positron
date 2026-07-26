@@ -31,7 +31,7 @@ extern "C" {
 #define PIMAGE_ABI_VERSION_GET_MINOR(version) \
     ((unsigned int) ((unsigned long) (version) & 0xffffUL))
 #define PIMAGE_ABI_VERSION_MAJOR 1
-#define PIMAGE_ABI_VERSION_MINOR 4
+#define PIMAGE_ABI_VERSION_MINOR 5
 #define PIMAGE_ABI_VERSION \
     PIMAGE_ABI_VERSION_ENCODE(PIMAGE_ABI_VERSION_MAJOR, \
             PIMAGE_ABI_VERSION_MINOR)
@@ -82,6 +82,13 @@ enum {
 
 typedef HANDLE PIMAGE_BITMAP;
 typedef HANDLE PIMAGE_SVG;
+
+typedef struct PIMAGE_SVG_CREATE_STATS {
+    unsigned long total_ms;
+    unsigned long setup_ms;
+    unsigned long parse_ms;
+    unsigned long raster_ms;
+} PIMAGE_SVG_CREATE_STATS;
 
 /* Create a retained Windows Mobile Imaging object from encoded BMP, PNG,
  * JPEG, GIF or another codec installed on the device. The DLL copies the
@@ -136,6 +143,12 @@ PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
 
 PIMAGE_API int PImage_SvgGetInfo(PIMAGE_SVG svg, int *out_w, int *out_h,
         unsigned int *out_shape_count);
+
+/* Read creation timings retained by this SVG object. setup covers wrapper and
+ * libsvgtiny diagram allocation; parse covers svgtiny_parse; raster covers
+ * conversion to the NanoSVG drawing object. GetTickCount resolution applies. */
+PIMAGE_API int PImage_SvgGetCreateStats(PIMAGE_SVG svg,
+        PIMAGE_SVG_CREATE_STATS *out_stats);
 
 /* Draw a parsed SVG into an HDC. Non-positive width/height use the intrinsic
  * dimensions. Paths use anti-aliased solid fills and scaled solid strokes.

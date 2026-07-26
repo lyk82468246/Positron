@@ -39,6 +39,7 @@
 /* ------------------------------------------------------------------ */
 
 static HMODULE g_core_module = NULL;
+static int g_core_init_refs = 0;
 
 BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
 {
@@ -55,11 +56,24 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
 
 PCORE_API int PCore_Init(void)
 {
-    return pcore_font_initialize(g_core_module);
+    int rc;
+
+    rc = pcore_font_initialize(g_core_module);
+    if (rc == 0) {
+        g_core_init_refs++;
+    }
+    return rc;
 }
 
 PCORE_API void PCore_Shutdown(void)
 {
+    if (g_core_init_refs <= 0) {
+        return;
+    }
+    g_core_init_refs--;
+    if (g_core_init_refs == 0) {
+        pcore_image_shared_shutdown();
+    }
     pcore_font_shutdown();
 }
 

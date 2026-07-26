@@ -2227,6 +2227,18 @@ cleanup:
     return rc;
 }
 
+typedef struct pcore_shared_svg {
+    struct pcore_shared_svg *next;
+    char *url;
+    int len;
+    unsigned long hash_a;
+    unsigned long hash_b;
+    unsigned int users;
+    void *svg;
+    int width;
+    int height;
+} pcore_shared_svg;
+
 typedef struct pcore_image_resource {
     struct pcore_image_resource *next;
     char *url;
@@ -2235,8 +2247,10 @@ typedef struct pcore_image_resource {
     int retained_attempted;
     void *native_image;
     void *svg;
+    pcore_shared_svg *shared_svg;
     int width;
     int height;
+    PCoreImageDecodeStats decode_stats;
 } pcore_image_resource;
 
 typedef struct pcore_image_cache {
@@ -2244,6 +2258,125 @@ typedef struct pcore_image_cache {
 } pcore_image_cache;
 
 static dom_string *pcore_image_cache_key = NULL;
+static pcore_shared_svg *pcore_shared_svg_head = NULL;
+
+static unsigned long pcore_image_hash_a(const char *data, int len)
+{
+    unsigned long hash = 2166136261UL;
+    int i;
+
+    for (i = 0; i < len; i++) {
+        hash ^= (unsigned char) data[i];
+        hash *= 16777619UL;
+    }
+    return hash;
+}
+
+static unsigned long pcore_image_hash_b(const char *data, int len)
+{
+    unsigned long hash = 5381UL;
+    int i;
+
+    for (i = 0; i < len; i++) {
+        hash = ((hash << 5) + hash) ^ (unsigned char) data[i];
+    }
+    return hash;
+}
+
+static pcore_shared_svg *pcore_shared_svg_find(const char *url,
+        const char *data, int len)
+{
+    pcore_shared_svg *entry;
+    unsigned long hash_a;
+    unsigned long hash_b;
+
+    if (url == NULL || data == NULL || len <= 0) {
+        return NULL;
+    }
+    hash_a = pcore_image_hash_a(data, len);
+    hash_b = pcore_image_hash_b(data, len);
+    for (entry = pcore_shared_svg_head; entry != NULL;
+            entry = entry->next) {
+        if (entry->len == len && entry->hash_a == hash_a &&
+                entry->hash_b == hash_b && strcmp(entry->url, url) == 0) {
+            entry->users++;
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+static pcore_shared_svg *pcore_shared_svg_store(const char *url,
+        const char *data, int len, void *svg, int width, int height)
+{
+    pcore_shared_svg *entry;
+    size_t url_len;
+
+    if (url == NULL || data == NULL || len <= 0 || svg == NULL ||
+            width <= 0 || height <= 0) {
+        return NULL;
+    }
+    entry = (pcore_shared_svg *) malloc(sizeof(*entry));
+    if (entry == NULL) {
+        return NULL;
+    }
+    url_len = strlen(url);
+    entry->url = (char *) malloc(url_len + 1);
+    if (entry->url == NULL) {
+        free(entry);
+        return NULL;
+    }
+    memcpy(entry->url, url, url_len + 1);
+    entry->len = len;
+    entry->hash_a = pcore_image_hash_a(data, len);
+    entry->hash_b = pcore_image_hash_b(data, len);
+    entry->users = 1;
+    entry->svg = svg;
+    entry->width = width;
+    entry->height = height;
+    entry->next = pcore_shared_svg_head;
+    pcore_shared_svg_head = entry;
+    return entry;
+}
+
+static void pcore_shared_svg_release(pcore_shared_svg *entry)
+{
+    pcore_shared_svg **link;
+
+    if (entry == NULL || entry->users == 0) {
+        return;
+    }
+    entry->users--;
+    if (entry->users != 0) {
+        return;
+    }
+    link = &pcore_shared_svg_head;
+    while (*link != NULL && *link != entry) {
+        link = &(*link)->next;
+    }
+    if (*link == entry) {
+        *link = entry->next;
+    }
+    PImage_FreeSvg((PIMAGE_SVG) entry->svg);
+    free(entry->url);
+    free(entry);
+}
+
+void pcore_image_shared_shutdown(void)
+{
+    pcore_shared_svg *entry;
+
+    entry = pcore_shared_svg_head;
+    pcore_shared_svg_head = NULL;
+    while (entry != NULL) {
+        pcore_shared_svg *next = entry->next;
+
+        PImage_FreeSvg((PIMAGE_SVG) entry->svg);
+        free(entry->url);
+        free(entry);
+        entry = next;
+    }
+}
 
 static int pcore_ensure_image_cache_key(void)
 {
@@ -2273,7 +2406,9 @@ static void pcore_image_cache_free(pcore_image_cache *cache)
         if (entry->native_image != NULL) {
             PImage_FreeBitmap((PIMAGE_BITMAP) entry->native_image);
         }
-        if (entry->svg != NULL) {
+        if (entry->shared_svg != NULL) {
+            pcore_shared_svg_release(entry->shared_svg);
+        } else if (entry->svg != NULL) {
             PImage_FreeSvg((PIMAGE_SVG) entry->svg);
         }
         free(entry->url);
@@ -2369,8 +2504,10 @@ static int pcore_image_cache_store(pcore_image_cache *cache,
     entry->retained_attempted = 0;
     entry->native_image = NULL;
     entry->svg = NULL;
+    entry->shared_svg = NULL;
     entry->width = 0;
     entry->height = 0;
+    memset(&entry->decode_stats, 0, sizeof(entry->decode_stats));
 
     url_len = strlen(url);
     entry->url = (char *) malloc(url_len + 1);
@@ -2442,6 +2579,16 @@ int pcore_image_resource_retained_get(dom_document *doc,
     if (entry == NULL) {
         return 1;
     }
+    if (!entry->retained_attempted) {
+        entry->shared_svg = pcore_shared_svg_find(entry->url,
+                entry->data, entry->len);
+        if (entry->shared_svg != NULL) {
+            entry->retained_attempted = 1;
+            entry->svg = entry->shared_svg->svg;
+            entry->width = entry->shared_svg->width;
+            entry->height = entry->shared_svg->height;
+        }
+    }
     if (out_attempted != NULL) {
         *out_attempted = entry->retained_attempted;
     }
@@ -2462,7 +2609,7 @@ int pcore_image_resource_retained_get(dom_document *doc,
 
 int pcore_image_resource_retained_store(dom_document *doc,
         const char *url, void *native_image, void *svg,
-        int width, int height)
+        int width, int height, const PCoreImageDecodeStats *decode_stats)
 {
     pcore_image_cache *cache;
     pcore_image_resource *entry;
@@ -2477,6 +2624,37 @@ int pcore_image_resource_retained_store(dom_document *doc,
     entry->svg = svg;
     entry->width = width;
     entry->height = height;
+    if (svg != NULL) {
+        entry->shared_svg = pcore_shared_svg_store(entry->url,
+                entry->data, entry->len, svg, width, height);
+    }
+    if (decode_stats != NULL) {
+        entry->decode_stats = *decode_stats;
+    }
+    return 0;
+}
+
+PCORE_API int PCore_GetImageDecodeStats(HANDLE hDoc,
+        PCoreImageDecodeStats *out_stats)
+{
+    pcore_image_cache *cache;
+    pcore_image_resource *entry;
+
+    if (hDoc == NULL || out_stats == NULL) {
+        return 1;
+    }
+    memset(out_stats, 0, sizeof(*out_stats));
+    cache = pcore_image_cache_get((dom_document *) hDoc, 0);
+    if (cache == NULL) {
+        return 1;
+    }
+    for (entry = cache->head; entry != NULL; entry = entry->next) {
+        out_stats->svg_total_ms += entry->decode_stats.svg_total_ms;
+        out_stats->svg_setup_ms += entry->decode_stats.svg_setup_ms;
+        out_stats->svg_parse_ms += entry->decode_stats.svg_parse_ms;
+        out_stats->svg_raster_ms += entry->decode_stats.svg_raster_ms;
+        out_stats->svg_creates += entry->decode_stats.svg_creates;
+    }
     return 0;
 }
 

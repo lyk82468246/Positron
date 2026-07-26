@@ -21,7 +21,8 @@
  *     postman-echo.com/post body {"hello":"positron"} -> parse echo
  *     response, extract .json.hello, show it.
  *
- * No stdout on WinCE - all output via MessageBoxW.
+ * No stdout on WinCE - interactive output uses MessageBoxW; automated
+ * testbench output is written beside the EXE.
  * No API keys. All test endpoints are public.
  */
 
@@ -102,6 +103,96 @@ static const char g_test_jpeg_16x16_b64[] =
 /* Display helpers                                                       */
 /* -------------------------------------------------------------------- */
 
+static int    g_testbench_auto = 0;
+static HANDLE g_testbench_log = INVALID_HANDLE_VALUE;
+
+static int test_host_sibling_path(const WCHAR *name,
+        WCHAR path[MAX_PATH])
+{
+    DWORD path_len;
+
+    path_len = GetModuleFileNameW(NULL, path, MAX_PATH);
+    if (path_len == 0 || path_len >= MAX_PATH) {
+        return 1;
+    }
+    while (path_len > 0 && path[path_len - 1] != L'\\' &&
+            path[path_len - 1] != L'/') {
+        path_len--;
+    }
+    if (path_len == 0 ||
+            path_len + (DWORD) lstrlenW(name) >= MAX_PATH) {
+        return 1;
+    }
+    lstrcpyW(path + path_len, name);
+    return 0;
+}
+
+static void testbench_log_bytes(const char *text)
+{
+    DWORD written;
+    DWORD length;
+
+    if (g_testbench_log == INVALID_HANDLE_VALUE || text == NULL) {
+        return;
+    }
+    length = (DWORD) strlen(text);
+    if (length > 0) {
+        WriteFile(g_testbench_log, text, length, &written, NULL);
+    }
+}
+
+static void testbench_log_message(const char *kind, const WCHAR *title,
+        const char *body)
+{
+    char title_utf8[192];
+    int count;
+
+    if (g_testbench_log == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    count = WideCharToMultiByte(CP_UTF8, 0, title, -1,
+            title_utf8, sizeof(title_utf8), NULL, NULL);
+    if (count <= 0) {
+        strcpy(title_utf8, "(title conversion failed)");
+    }
+    testbench_log_bytes("[");
+    testbench_log_bytes(kind);
+    testbench_log_bytes("] ");
+    testbench_log_bytes(title_utf8);
+    testbench_log_bytes("\r\n");
+    testbench_log_bytes(body);
+    testbench_log_bytes("\r\n\r\n");
+    FlushFileBuffers(g_testbench_log);
+}
+
+static int testbench_log_open(void)
+{
+    WCHAR path[MAX_PATH];
+
+    if (test_host_sibling_path(L"test_host.log", path) != 0) {
+        return 1;
+    }
+    g_testbench_log = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ,
+            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (g_testbench_log == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
+    testbench_log_bytes("Positron test_host automated run\r\n"
+            "Log format: [INFO]/[ERROR], followed by the original "
+            "test message.\r\n\r\n");
+    FlushFileBuffers(g_testbench_log);
+    return 0;
+}
+
+static void testbench_log_close(void)
+{
+    if (g_testbench_log != INVALID_HANDLE_VALUE) {
+        FlushFileBuffers(g_testbench_log);
+        CloseHandle(g_testbench_log);
+        g_testbench_log = INVALID_HANDLE_VALUE;
+    }
+}
+
 static void utf8_to_wide(const char* src, int src_len,
                          WCHAR* dst, int dst_cap)
 {
@@ -136,6 +227,10 @@ static void show_info(const WCHAR* title, const char* body)
     OutputDebugStringW(L": ");
     OutputDebugStringW(wbuf);
     OutputDebugStringW(L"\r\n");
+    testbench_log_message("INFO", title, body);
+    if (g_testbench_auto) {
+        return;
+    }
     MessageBoxW(NULL, wbuf, title,
                 MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
 }
@@ -154,6 +249,10 @@ static void show_error(const WCHAR* title, const char* body)
     OutputDebugStringW(L": ");
     OutputDebugStringW(wbuf);
     OutputDebugStringW(L"\r\n");
+    testbench_log_message("ERROR", title, body);
+    if (g_testbench_auto) {
+        return;
+    }
     MessageBoxW(NULL, wbuf, title,
                 MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND);
 }
@@ -171,7 +270,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 62
+#define TEST_MAX_NUMBER 63
 
 static int test_config_space(char c)
 {
@@ -260,13 +359,90 @@ static int test_config_parse_spec(char *spec,
     return 1;
 }
 
+static int test_config_word_equal(const char *value, const char *word)
+{
+    char a;
+    char b;
+
+    while (*word != '\0') {
+        a = *value++;
+        b = *word++;
+        if (a >= 'A' && a <= 'Z') {
+            a = (char) (a + ('a' - 'A'));
+        }
+        if (a != b) {
+            return 0;
+        }
+    }
+    while (test_config_space(*value)) {
+        value++;
+    }
+    return *value == '\0' || *value == '#' || *value == ';';
+}
+
+static int test_config_parse_bool(char *value, int *out_value)
+{
+    while (test_config_space(*value)) {
+        value++;
+    }
+    if (test_config_word_equal(value, "1") ||
+            test_config_word_equal(value, "yes") ||
+            test_config_word_equal(value, "true")) {
+        *out_value = 1;
+        return 1;
+    }
+    if (test_config_word_equal(value, "0") ||
+            test_config_word_equal(value, "no") ||
+            test_config_word_equal(value, "false")) {
+        *out_value = 0;
+        return 1;
+    }
+    return 0;
+}
+
+/* Return 1 for a complete key= prefix, 0 for another key/spec, and -1 when
+ * the requested key is present but lacks '='. */
+static int test_config_key_value(char *line, const char *key,
+        char **out_value)
+{
+    char *p;
+    char a;
+    char b;
+
+    p = line;
+    while (*key != '\0') {
+        if (*p == '\0') {
+            return 0;
+        }
+        a = *p++;
+        b = *key++;
+        if (a >= 'A' && a <= 'Z') {
+            a = (char) (a + ('a' - 'A'));
+        }
+        if (a != b) {
+            return 0;
+        }
+    }
+    if (*p != '=' && !test_config_space(*p)) {
+        return 0;
+    }
+    while (test_config_space(*p)) {
+        p++;
+    }
+    if (*p != '=') {
+        return -1;
+    }
+    p++;
+    *out_value = p;
+    return 1;
+}
+
 /* Return >0 for a valid selection, 0 when no file exists, and -1 when the
  * file exists but is unreadable or malformed. */
 static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
-        int *selected_7b)
+        int *selected_7b, int *auto_run)
 {
     WCHAR path[MAX_PATH];
-    DWORD path_len;
     DWORD size;
     DWORD read_count;
     HANDLE file;
@@ -276,23 +452,17 @@ static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
     char *value;
     char *end;
     int i;
-    int found;
+    int tests_found;
+    int auto_found;
+    int key_match;
     int count;
 
     memset(selected, 0, TEST_MAX_NUMBER + 1);
     *selected_7b = 0;
-    path_len = GetModuleFileNameW(NULL, path, MAX_PATH);
-    if (path_len == 0 || path_len >= MAX_PATH) {
+    *auto_run = 0;
+    if (test_host_sibling_path(L"test_host.ini", path) != 0) {
         return -1;
     }
-    while (path_len > 0 && path[path_len - 1] != L'\\' &&
-            path[path_len - 1] != L'/') {
-        path_len--;
-    }
-    if (path_len == 0 || path_len + 13 >= MAX_PATH) {
-        return -1;
-    }
-    lstrcpyW(path + path_len, L"test_host.ini");
     file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) {
@@ -318,7 +488,8 @@ static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
         memmove(buffer, buffer + 3, read_count - 2);
     }
 
-    found = 0;
+    tests_found = 0;
+    auto_found = 0;
     line = buffer;
     while (*line != '\0') {
         next = line;
@@ -340,30 +511,45 @@ static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
         }
         if (*line != '\0' && *line != '#' && *line != ';') {
             value = line;
-            if ((line[0] == 't' || line[0] == 'T') &&
-                    (line[1] == 'e' || line[1] == 'E') &&
-                    (line[2] == 's' || line[2] == 'S') &&
-                    (line[3] == 't' || line[3] == 'T') &&
-                    (line[4] == 's' || line[4] == 'S')) {
-                value = line + 5;
-                while (test_config_space(*value)) {
-                    value++;
-                }
-                if (*value != '=') {
+            key_match = test_config_key_value(line, "tests", &value);
+            if (key_match < 0) {
+                return -1;
+            }
+            if (key_match > 0) {
+                if (tests_found) {
                     return -1;
                 }
-                value++;
-            } else if (found) {
-                return -1;
+                if (!test_config_parse_spec(value, selected, selected_7b)) {
+                    return -1;
+                }
+                tests_found = 1;
+            } else {
+                key_match = test_config_key_value(line, "auto", &value);
+                if (key_match < 0) {
+                    return -1;
+                }
+                if (key_match > 0) {
+                    if (auto_found) {
+                        return -1;
+                    }
+                    if (!test_config_parse_bool(value, auto_run)) {
+                        return -1;
+                    }
+                    auto_found = 1;
+                } else if (!tests_found) {
+                    if (!test_config_parse_spec(line, selected,
+                            selected_7b)) {
+                        return -1;
+                    }
+                    tests_found = 1;
+                } else {
+                    return -1;
+                }
             }
-            if (!test_config_parse_spec(value, selected, selected_7b)) {
-                return -1;
-            }
-            found = 1;
         }
         line = next;
     }
-    if (!found) {
+    if (!tests_found) {
         return -1;
     }
     count = *selected_7b ? 1 : 0;
@@ -376,7 +562,7 @@ static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
 }
 
 static void test_config_prompt(const unsigned char *selected,
-        int selected_7b, char *buffer, int capacity)
+        int selected_7b, int automated, char *buffer, int capacity)
 {
     char item[24];
     int i;
@@ -401,9 +587,15 @@ static void test_config_prompt(const unsigned char *selected,
             first = 0;
         }
     }
-    strncat(buffer,
-            "\n\nRun only these tests?\nNo = use the normal group selector.",
-            (size_t) (capacity - 1 - strlen(buffer)));
+    if (automated) {
+        strncat(buffer,
+                "\n\nAutomated mode: no prompts; results go to test_host.log.",
+                (size_t) (capacity - 1 - strlen(buffer)));
+    } else {
+        strncat(buffer,
+                "\n\nRun only these tests?\nNo = use the normal group selector.",
+                (size_t) (capacity - 1 - strlen(buffer)));
+    }
     buffer[capacity - 1] = '\0';
 }
 
@@ -1818,8 +2010,10 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define WM_PCORE_NAV_DONE (WM_APP + 1)
 #define WM_PCORE_NAV_PROGRESS (WM_APP + 2)
 #define WM_PCORE_NAV_CONTINUE (WM_APP + 3)
+#define WM_TESTBENCH_NAVIGATE (WM_APP + 4)
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_COMMIT_TIMER 25
+#define TESTBENCH_RENDER_TIMER 26
 #define PCORE_NAV_STAGE_DOCUMENT 1
 #define PCORE_NAV_STAGE_RESOURCES 2
 #define PCORE_NAV_RESULT_MORE 0
@@ -1865,6 +2059,8 @@ typedef struct pcore_navigation_stats {
     int core_layout_valid;
     PCoreBoxStats core_box;
     int core_box_valid;
+    PCoreImageDecodeStats core_image;
+    int core_image_valid;
 } pcore_navigation_stats;
 
 typedef struct pcore_navigation_request {
@@ -1896,11 +2092,92 @@ static int                       g_nav_phase = 0;
 static int                       g_nav_determinate = 0;
 static pcore_navigation_stats    g_nav_last_stats;
 static int                       g_nav_last_stats_valid = 0;
+static int                       g_testbench_render_paints = 0;
+static int                       g_testbench_browse_active = 0;
+static int                       g_testbench_browse_step = 0;
+static int                       g_testbench_browse_completed = 0;
+static int                       g_testbench_browse_failed = 0;
+
+static const char *g_testbench_browse_urls[] = {
+    "https://example.com/",
+    "https://www.iana.org/help/example-domains",
+    "https://www.iana.org/domains/reserved"
+};
+#define TESTBENCH_BROWSE_URL_COUNT \
+    ((int) (sizeof(g_testbench_browse_urls) / \
+            sizeof(g_testbench_browse_urls[0])))
 
 /* Current page origin, for resolving relative links during navigation. */
 static char   g_cur_host[256] = "";
 static char   g_cur_path[1024] = "/";
 static int    g_cur_port = 443;
+
+static void testbench_log_navigation(
+        const pcore_navigation_request *request)
+{
+    char title[384];
+    char body[1024];
+    WCHAR wide_title[384];
+    unsigned long image_known;
+    unsigned long image_other;
+
+    if (!g_testbench_auto || !g_testbench_browse_active ||
+            request == NULL) {
+        return;
+    }
+    image_known = request->stats.core_image.svg_setup_ms +
+            request->stats.core_image.svg_parse_ms +
+            request->stats.core_image.svg_raster_ms;
+    image_other = (request->stats.core_image.svg_total_ms >= image_known) ?
+            request->stats.core_image.svg_total_ms - image_known : 0;
+    _snprintf(title, sizeof(title) - 1, "TEST 13 NAV %s%s",
+            request->host, request->path);
+    title[sizeof(title) - 1] = '\0';
+    utf8_to_wide(title, -1, wide_title,
+            sizeof(wide_title) / sizeof(wide_title[0]));
+    _snprintf(body, sizeof(body) - 1,
+            "completed=%d total/net/maxUI=%lu/%lu/%lums\n"
+            "parse/style/images/layout/paint=%lu/%lu/%lu/%lu/%lums\n"
+            "resources queued/ok/fail/rounds=%d/%d/%d/%d bytes=%d\n"
+            "core layout total=%lums box/first/settle/final="
+            "%lu/%lu/%lu/%lums pass=%d\n"
+            "box tree/image/reuse/markup-first=%lu/%lu/%u/%u\n"
+            "svg total/setup/parse/raster/other=%lu/%lu/%lu/%lu/%lums "
+            "creates=%u",
+            request->stats.completed,
+            (unsigned long) request->stats.total_ms,
+            (unsigned long) request->stats.network_ms,
+            (unsigned long) request->stats.max_ui_slice_ms,
+            (unsigned long) request->stats.parse_ms,
+            (unsigned long) request->stats.style_ms,
+            (unsigned long) request->stats.images_ms,
+            (unsigned long) request->stats.layout_ms,
+            (unsigned long) request->stats.first_paint_ms,
+            request->stats.resources_queued,
+            request->stats.resources_fetched,
+            request->stats.resources_failed,
+            request->stats.worker_rounds,
+            request->stats.resource_bytes,
+            (unsigned long) request->stats.core_layout.total_ms,
+            (unsigned long) request->stats.core_layout.box_construct_ms,
+            (unsigned long) request->stats.core_layout.first_layout_ms,
+            (unsigned long) request->stats.core_layout.settling_ms,
+            (unsigned long) request->stats.core_layout.finalize_ms,
+            request->stats.core_layout.settling_pass,
+            (unsigned long) request->stats.core_box.tree_ms,
+            (unsigned long) request->stats.core_box.image_ms,
+            request->stats.core_box.image_reuses,
+            request->stats.core_box.image_markup_first,
+            (unsigned long) request->stats.core_image.svg_total_ms,
+            (unsigned long) request->stats.core_image.svg_setup_ms,
+            (unsigned long) request->stats.core_image.svg_parse_ms,
+            (unsigned long) request->stats.core_image.svg_raster_ms,
+            image_other,
+            request->stats.core_image.svg_creates);
+    body[sizeof(body) - 1] = '\0';
+    testbench_log_message(request->stats.completed ? "INFO" : "ERROR",
+            wide_title, body);
+}
 
 /* Configure the vertical scrollbar from the document height + client size. */
 static void pcore_set_scrollbar(HWND hwnd)
@@ -2653,6 +2930,9 @@ static int pcore_navigation_commit_step(HWND hwnd,
     request->stats.core_box_valid =
             PCore_GetBoxStats(request->document,
                     &request->stats.core_box) == 0;
+    request->stats.core_image_valid =
+            PCore_GetImageDecodeStats(request->document,
+                    &request->stats.core_image) == 0;
 
     /* Swap in the new document; free the one being replaced. */
     if (g_render_doc != NULL) {
@@ -2688,6 +2968,14 @@ static void pcore_navigation_finish(HWND hwnd,
     request->stats.resource_bytes = request->resource_bytes;
     g_nav_last_stats = request->stats;
     g_nav_last_stats_valid = 1;
+    testbench_log_navigation(request);
+    if (g_testbench_auto && g_testbench_browse_active) {
+        if (request->stats.completed) {
+            g_testbench_browse_completed++;
+        } else {
+            g_testbench_browse_failed = 1;
+        }
+    }
     if (hwnd != NULL) {
         pcore_navigation_set_loading(hwnd, 0);
     } else {
@@ -2698,6 +2986,10 @@ static void pcore_navigation_finish(HWND hwnd,
         g_nav_request = NULL;
     }
     pcore_navigation_request_free(request);
+    if (hwnd != NULL && g_testbench_auto && g_testbench_browse_active) {
+        PostMessage(hwnd, g_testbench_browse_failed ?
+                WM_CLOSE : WM_TESTBENCH_NAVIGATE, 0, 0);
+    }
 }
 
 static int pcore_navigation_post_continue(HWND hwnd,
@@ -2848,6 +3140,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             PCore_PaintDocument(g_render_doc, hdc, 0, g_scroll_y);
         }
         EndPaint(hwnd, &ps);
+        if (g_testbench_auto) {
+            g_testbench_render_paints++;
+        }
         return 0;
     }
     case WM_ERASEBKGND:
@@ -2913,6 +3208,14 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         return 0;
     }
     case WM_TIMER:
+        if (wp == TESTBENCH_RENDER_TIMER && g_testbench_auto &&
+                !g_testbench_browse_active) {
+            if (g_testbench_render_paints > 0) {
+                KillTimer(hwnd, TESTBENCH_RENDER_TIMER);
+                DestroyWindow(hwnd);
+            }
+            return 0;
+        }
         if (wp == PCORE_NAV_COMMIT_TIMER) {
             KillTimer(hwnd, PCORE_NAV_COMMIT_TIMER);
             if (g_nav_request != NULL) {
@@ -2930,6 +3233,22 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     (20 - g_nav_phase) * 10;
             if (g_nav_bar != NULL) {
                 SendMessage(g_nav_bar, PBM_SETPOS, (WPARAM) pos, 0);
+            }
+            return 0;
+        }
+        break;
+    case WM_TESTBENCH_NAVIGATE:
+        if (g_testbench_auto && g_testbench_browse_active) {
+            if (g_testbench_browse_step < TESTBENCH_BROWSE_URL_COUNT) {
+                navigate_to(hwnd,
+                        g_testbench_browse_urls[g_testbench_browse_step]);
+                g_testbench_browse_step++;
+                if (!g_nav_loading) {
+                    g_testbench_browse_failed = 1;
+                    PostMessage(hwnd, WM_CLOSE, 0, 0);
+                }
+            } else {
+                PostMessage(hwnd, WM_CLOSE, 0, 0);
             }
             return 0;
         }
@@ -3113,6 +3432,7 @@ static BOOL show_render_window(void)
     if (hwnd == NULL) {
         return FALSE;
     }
+    g_testbench_render_paints = 0;
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
     SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
@@ -3120,6 +3440,13 @@ static BOOL show_render_window(void)
     SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
     SHSipPreference(hwnd, SIP_FORCEDOWN);
     pcore_set_scrollbar(hwnd);
+    if (g_testbench_auto) {
+        if (g_testbench_browse_active) {
+            PostMessage(hwnd, WM_TESTBENCH_NAVIGATE, 0, 0);
+        } else if (SetTimer(hwnd, TESTBENCH_RENDER_TIMER, 100, NULL) == 0) {
+            DestroyWindow(hwnd);
+        }
+    }
 
     while (GetMessage(&m, NULL, 0, 0)) {
         TranslateMessage(&m);
@@ -3257,6 +3584,8 @@ static BOOL test_browse(void)
     unsigned long core_other;
     unsigned long box_known;
     unsigned long box_other;
+    unsigned long image_known;
+    unsigned long image_other;
 
     /* Landing page is offline; the actual fetch happens when the user taps
      * the link (navigate_to), exercising the full click -> fetch -> render
@@ -3298,17 +3627,36 @@ static BOOL test_browse(void)
 
     g_render_doc = hDoc;
     g_render_sheet = NULL;
+    if (g_testbench_auto) {
+        g_testbench_browse_active = 1;
+        g_testbench_browse_step = 0;
+        g_testbench_browse_completed = 0;
+        g_testbench_browse_failed = 0;
+    }
     if (!show_render_window()) {
+        g_testbench_browse_active = 0;
         show_error(L"TEST 13 FAIL", "CreateWindow returned NULL");
         g_render_doc = NULL;
         PCore_FreeDocument(hDoc);
         return FALSE;
     }
+    g_testbench_browse_active = 0;
     /* Navigation may have replaced the document; free whatever is current. */
     if (g_render_doc != NULL) {
         PCore_FreeDocument(g_render_doc);
     }
     g_render_doc = NULL;
+
+    if (g_testbench_auto &&
+            (g_testbench_browse_failed ||
+            g_testbench_browse_completed != TESTBENCH_BROWSE_URL_COUNT)) {
+        _snprintf(summary, sizeof(summary) - 1,
+                "Automated Browse completed %d/%d navigation steps.",
+                g_testbench_browse_completed, TESTBENCH_BROWSE_URL_COUNT);
+        summary[sizeof(summary) - 1] = '\0';
+        show_error(L"TEST 13 FAIL", summary);
+        return FALSE;
+    }
 
     if (g_nav_last_stats_valid) {
         core_known = g_nav_last_stats.core_layout.box_construct_ms +
@@ -3324,6 +3672,12 @@ static BOOL test_browse(void)
                 g_nav_last_stats.core_box.table_normalise_ms;
         box_other = (g_nav_last_stats.core_box.tree_ms >= box_known) ?
                 g_nav_last_stats.core_box.tree_ms - box_known : 0;
+        image_known = g_nav_last_stats.core_image.svg_setup_ms +
+                g_nav_last_stats.core_image.svg_parse_ms +
+                g_nav_last_stats.core_image.svg_raster_ms;
+        image_other = (g_nav_last_stats.core_image.svg_total_ms >=
+                image_known) ?
+                g_nav_last_stats.core_image.svg_total_ms - image_known : 0;
         _snprintf(summary, sizeof(summary) - 1,
                 "Last navigation %s\n"
                 "total/net/maxUI=%lu/%lu/%lums\n"
@@ -3365,9 +3719,9 @@ static BOOL test_browse(void)
                 "tree/bg/other=%lu/%lu/%lums\n"
                 "hot style/text/image/anon/table=\n"
                 "%lu/%lu/%lu/%lu/%lums\n"
-                "calls style/text/image/anon/table=\n"
-                "%u/%u/%u/%u/%u\n"
-                "image reuse/markup-first=%u/%u",
+                "image reuse/markup-first=%u/%u\n"
+                "svg %s total/setup/parse/raster/other=\n"
+                "%lu/%lu/%lu/%lu/%lums creates=%u",
                 g_nav_last_stats.core_box_valid ? "ok" : "unavailable",
                 (unsigned long) g_nav_last_stats.core_box.tree_ms,
                 (unsigned long) g_nav_last_stats.core_box.backgrounds_ms,
@@ -3378,13 +3732,15 @@ static BOOL test_browse(void)
                 (unsigned long) g_nav_last_stats.core_box.anonymous_ms,
                 (unsigned long)
                         g_nav_last_stats.core_box.table_normalise_ms,
-                g_nav_last_stats.core_box.style_calls,
-                g_nav_last_stats.core_box.text_calls,
-                g_nav_last_stats.core_box.image_calls,
-                g_nav_last_stats.core_box.anonymous_calls,
-                g_nav_last_stats.core_box.table_calls,
                 g_nav_last_stats.core_box.image_reuses,
-                g_nav_last_stats.core_box.image_markup_first);
+                g_nav_last_stats.core_box.image_markup_first,
+                g_nav_last_stats.core_image_valid ? "ok" : "unavailable",
+                (unsigned long) g_nav_last_stats.core_image.svg_total_ms,
+                (unsigned long) g_nav_last_stats.core_image.svg_setup_ms,
+                (unsigned long) g_nav_last_stats.core_image.svg_parse_ms,
+                (unsigned long) g_nav_last_stats.core_image.svg_raster_ms,
+                image_other,
+                g_nav_last_stats.core_image.svg_creates);
         box_summary[sizeof(box_summary) - 1] = '\0';
         show_info(L"TEST 13 OK (overview)", summary);
         show_info(L"TEST 13 OK (box detail)", box_summary);
@@ -3970,10 +4326,14 @@ static BOOL test27_cached_svg_img(void)
     int vh;
     PCoreBoxStats first_box_stats;
     PCoreBoxStats second_box_stats;
+    PCoreImageDecodeStats image_stats;
+    unsigned long image_known;
     char msg[256];
 
     memset(&first_box_stats, 0, sizeof(first_box_stats));
     memset(&second_box_stats, 0, sizeof(second_box_stats));
+    memset(&image_stats, 0, sizeof(image_stats));
+    image_known = 0;
     ctx.calls = 0;
     ctx.matched = 0;
     ctx.frees = 0;
@@ -4025,14 +4385,28 @@ static BOOL test27_cached_svg_img(void)
     }
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_GetBoxStats(hDoc, &second_box_stats) != 0 ||
+            PCore_GetImageDecodeStats(hDoc, &image_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
             w != 120 || h != 60 ||
             second_box_stats.image_calls != 1 ||
             second_box_stats.image_reuses != 1 ||
+            image_stats.svg_creates != 1 ||
             ctx.calls != 1 || ctx.frees != 1) {
-        sprintf(msg, "reuse SVG=%dx%d calls/reuse=%u/%u fetch/free=%d/%d",
+        sprintf(msg, "reuse SVG=%dx%d calls/reuse/create=%u/%u/%u f/f=%d/%d",
                 w, h, second_box_stats.image_calls,
-                second_box_stats.image_reuses, ctx.calls, ctx.frees);
+                second_box_stats.image_reuses, image_stats.svg_creates,
+                ctx.calls, ctx.frees);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 27 FAIL", msg);
+        return FALSE;
+    }
+    image_known = image_stats.svg_setup_ms + image_stats.svg_parse_ms +
+            image_stats.svg_raster_ms;
+    if (image_known > image_stats.svg_total_ms) {
+        sprintf(msg, "SVG timing total=%lu setup/parse/raster=%lu/%lu/%lu",
+                image_stats.svg_total_ms, image_stats.svg_setup_ms,
+                image_stats.svg_parse_ms, image_stats.svg_raster_ms);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 27 FAIL", msg);
@@ -4091,11 +4465,14 @@ static BOOL test27_cached_svg_img(void)
     g_render_sheet = NULL;
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
-    show_info(L"TEST 27 OK",
-              "Cached SVG became a NetSurf replaced box and painted through\n"
-              "content_redraw -> plot_bitmap -> positron_image.dll.\n"
-              "SVG-first dispatch, retained reuse, fetch/free and\n"
-              "off-screen pixels passed.");
+    sprintf(msg,
+            "SVG-first + retained reuse passed.\n"
+            "create total/setup/parse/raster/other=\n"
+            "%lu/%lu/%lu/%lu/%lums",
+            image_stats.svg_total_ms, image_stats.svg_setup_ms,
+            image_stats.svg_parse_ms, image_stats.svg_raster_ms,
+            image_stats.svg_total_ms - image_known);
+    show_info(L"TEST 27 OK", msg);
     return TRUE;
 }
 
@@ -9494,6 +9871,141 @@ static BOOL test62_form_toggles(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 63 - decoded SVG ownership across overlapping documents          */
+/* -------------------------------------------------------------------- */
+static BOOL test63_shared_svg_lifetime(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<img alt=\"shared SVG\" src=\"/img/test.svg\">"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "img{width:120px;height:60px;}";
+    HANDLE first_doc = NULL;
+    HANDLE second_doc = NULL;
+    HANDLE first_sheet = NULL;
+    HANDLE second_sheet = NULL;
+    image_resource_test_ctx first_fetch;
+    image_resource_test_ctx second_fetch;
+    PCoreBoxStats first_box;
+    PCoreBoxStats second_box;
+    PCoreImageDecodeStats first_decode;
+    PCoreImageDecodeStats second_decode;
+    HDC screen_dc = NULL;
+    HDC memory_dc = NULL;
+    HBITMAP bitmap = NULL;
+    HBITMAP old_bitmap = NULL;
+    RECT rect;
+    COLORREF red;
+    COLORREF green;
+    int x;
+    int y;
+    int w;
+    int h;
+    int rc = 1;
+    char msg[256];
+
+    memset(&first_fetch, 0, sizeof(first_fetch));
+    memset(&second_fetch, 0, sizeof(second_fetch));
+    memset(&first_box, 0, sizeof(first_box));
+    memset(&second_box, 0, sizeof(second_box));
+    memset(&first_decode, 0, sizeof(first_decode));
+    memset(&second_decode, 0, sizeof(second_decode));
+    first_doc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    second_doc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    first_sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/shared-first.css");
+    second_sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/shared-second.css");
+    if (first_doc == NULL || second_doc == NULL ||
+            first_sheet == NULL || second_sheet == NULL ||
+            PCore_FetchImageResources(first_doc, image_svg_fetch,
+                image_resource_free, &first_fetch, NULL, NULL) != 0 ||
+            PCore_FetchImageResources(second_doc, image_svg_fetch,
+                image_resource_free, &second_fetch, NULL, NULL) != 0 ||
+            PCore_StyleDocument(first_doc, first_sheet) != 0 ||
+            PCore_StyleDocument(second_doc, second_sheet) != 0 ||
+            PCore_LayoutDocument(first_doc, 240, 120) != 0 ||
+            PCore_GetBoxStats(first_doc, &first_box) != 0 ||
+            PCore_GetImageDecodeStats(first_doc, &first_decode) != 0 ||
+            PCore_LayoutDocument(second_doc, 240, 120) != 0 ||
+            PCore_GetBoxStats(second_doc, &second_box) != 0 ||
+            PCore_GetImageDecodeStats(second_doc, &second_decode) != 0) {
+        show_error(L"TEST 63 FAIL", "two-document SVG setup failed");
+        goto cleanup;
+    }
+    if (first_decode.svg_creates != 1 ||
+            first_box.image_reuses != 0 ||
+            second_decode.svg_creates != 0 ||
+            second_box.image_reuses != 1 ||
+            first_fetch.calls != 1 || first_fetch.frees != 1 ||
+            second_fetch.calls != 1 || second_fetch.frees != 1) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "create=%u/%u reuse=%u/%u fetch/free=%d/%d,%d/%d",
+                first_decode.svg_creates, second_decode.svg_creates,
+                first_box.image_reuses, second_box.image_reuses,
+                first_fetch.calls, first_fetch.frees,
+                second_fetch.calls, second_fetch.frees);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 63 FAIL", msg);
+        goto cleanup;
+    }
+
+    PCore_FreeStylesheet(first_sheet);
+    first_sheet = NULL;
+    PCore_FreeDocument(first_doc);
+    first_doc = NULL;
+    if (PCore_LayoutDocument(second_doc, 240, 120) != 0 ||
+            PCore_NodeBox(second_doc, "img", &x, &y, &w, &h) != 0 ||
+            w != 120 || h != 60) {
+        show_error(L"TEST 63 FAIL",
+                "shared SVG did not survive first document release");
+        goto cleanup;
+    }
+
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 240, 120) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        show_error(L"TEST 63 FAIL", "could not create off-screen surface");
+        goto cleanup;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 240, 120);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(second_doc, memory_dc, 0, 0);
+    red = GetPixel(memory_dc, x + 20, y + 30);
+    green = GetPixel(memory_dc, x + 60, y + 30);
+    if (red != RGB(255, 0, 0) || green != RGB(0, 255, 0)) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "post-release pixels=%06lX/%06lX",
+                red & 0x00ffffffUL, green & 0x00ffffffUL);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 63 FAIL", msg);
+        goto cleanup;
+    }
+    show_info(L"TEST 63 OK",
+              "Two live documents shared one decoded SVG; releasing the\n"
+              "first owner left the second document drawable.");
+    rc = 0;
+
+cleanup:
+    if (old_bitmap != NULL && memory_dc != NULL) {
+        SelectObject(memory_dc, old_bitmap);
+    }
+    if (bitmap != NULL) { DeleteObject(bitmap); }
+    if (memory_dc != NULL) { DeleteDC(memory_dc); }
+    if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+    if (first_sheet != NULL) { PCore_FreeStylesheet(first_sheet); }
+    if (second_sheet != NULL) { PCore_FreeStylesheet(second_sheet); }
+    if (first_doc != NULL) { PCore_FreeDocument(first_doc); }
+    if (second_doc != NULL) { PCore_FreeDocument(second_doc); }
+    return rc == 0;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -9670,6 +10182,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 60: ok = test60_table_header_restyle(); break;
         case 61: ok = test61_nsoption_font_minimum(); break;
         case 62: ok = test62_form_toggles(); break;
+        case 63: ok = test63_shared_svg_lifetime(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -9696,6 +10209,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     unsigned char configured_tests[TEST_MAX_NUMBER + 1];
     int configured_7b;
     int configured_count;
+    int configured_auto;
     int configured_http;
     int core_active;
     int  rc;
@@ -9721,15 +10235,40 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                           GetSystemMetrics(SM_CYSCREEN), dpi);
     }
 
-    configured_count = test_config_load(configured_tests, &configured_7b);
+    configured_count = test_config_load(configured_tests, &configured_7b,
+            &configured_auto);
     if (configured_count < 0) {
         show_error(L"test_host.ini ignored",
                    "The file exists but is empty, unreadable or malformed.\n"
-                   "Use: tests=31,32 or tests=1-5 7b\n\n"
+                   "Use: tests=31,32 or tests=1-5 7b\n"
+                   "Optional: auto=1\n\n"
                    "TEST 23 is unavailable. Continuing with group selection.");
     } else if (configured_count > 0) {
-        test_config_prompt(configured_tests, configured_7b,
+        test_config_prompt(configured_tests, configured_7b, configured_auto,
                 config_prompt, sizeof(config_prompt));
+        if (configured_auto) {
+            g_testbench_auto = 1;
+            testbench_log_open();
+            show_info(L"Automated testbench", config_prompt);
+            configured_http = 0;
+            rc = run_configured_tests(configured_tests, configured_7b,
+                    &configured_http);
+            if (configured_http) {
+                PHttp_Cleanup();
+            }
+            PCore_Shutdown();
+            if (rc == 0) {
+                show_info(L"TESTBENCH PASS",
+                          "All tests selected by test_host.ini passed.");
+            } else {
+                _snprintf(summary, sizeof(summary) - 1,
+                        "Stopped after TEST %d returned failure.", rc);
+                summary[sizeof(summary) - 1] = '\0';
+                show_error(L"TESTBENCH FAIL", summary);
+            }
+            testbench_log_close();
+            return rc;
+        }
         if (ask_yesno(L"Configured tests", config_prompt)) {
             configured_http = 0;
             rc = run_configured_tests(configured_tests, configured_7b,
@@ -9840,7 +10379,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-63; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -9875,6 +10414,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test57_table_percentage_rows()){ rc = 13; goto done; }
         if (!test58_inline_author_style()){ rc = 13; goto done; }
         if (!test62_form_toggles()){ rc = 13; goto done; }
+        if (!test63_shared_svg_lifetime()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -9916,7 +10456,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-63)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
@@ -9924,7 +10464,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "    native SVG text, cached SVG gradients, coordinate transforms\n"
                "    radial gradients, inherited/alpha stops, cache reuse, and\n"
                "    IANA-style spacing, table normalisation, list markers and\n"
-               "    read-only checkbox/radio gadgets through formal redraw.\n"
+               "    read-only checkbox/radio gadgets and overlapping-document\n"
+               "    SVG reuse through formal redraw.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

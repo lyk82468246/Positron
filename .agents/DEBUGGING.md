@@ -24,9 +24,9 @@
 - WM6 SDK 没有桌面 Win32 `ShowScrollBar` 的声明或导出；需要动态隐藏标准滚动条时，使用 `GetWindowLong/SetWindowLong(GWL_STYLE, WS_VSCROLL)`，再用 `SetWindowPos(..., SWP_FRAMECHANGED)` 重算非客户区。
 - 设备上是否在跑旧的 VS Deploy 目录，例如 `\Program Files\test_host\`。
 
-## 没有 console，MessageBox 就是调试器
+## 没有 console：交互用 MessageBox，批量用同目录日志
 
-WinCE/WM6 上没有 stdout。定位崩溃/卡死时：
+WinCE/WM6 上没有 stdout。`auto=0` 时 MessageBox 仍是现场调试器；`auto=1` 时相同 `show_info/show_error` 内容写入 EXE 同目录 `test_host.log`，不再创建需要人工确认的结果框。自动可视测试只保证公共窗口至少绘制一帧并正常退出，不能替代字体、抗锯齿、边距和复杂版式的人工判断。定位崩溃/卡死时：
 
 - 用 `MessageBoxW`，不要用 `MessageBoxA`。
 - 一律带 `MB_TOPMOST | MB_SETFOREGROUND`。
@@ -208,5 +208,9 @@ next88 设备数据已定位到单张图片创建：IANA 起始页 tree/image=`5
 TEST13 遥测现拆成 `overview` 与 `box detail` 两个短 MessageBox。前者保留网络、提交阶段、资源和 layout breakdown，后者显示构盒热点、调用数及 image reuse/markup-first；不要再把所有字段塞回一个 WM 小屏弹窗。
 
 TEST13 的两个框读取导航完成时复制的 `g_nav_last_stats`。导航成功后再发生的 `WM_SIZE` 旋转布局不会回写该快照，所以“旋转后退出仍显示 reuse=0/markup-first=1”不能用来否定或证明旋转复用；同 document 复用由 TEST20/27 的显式二次 layout 断言负责。
+
+next90 候选只读细分首次 SVG 创建：`positron_image` ABI 1.5 在每个 retained SVG 对象内保存 total/setup/libsvgtiny parse/NanoSVG retained raster 四段 `GetTickCount`，由 `PImage_SvgGetCreateStats` 按句柄读取，不使用 DLL 全局 last-call 状态。core 将成功对象的统计随现有 document image cache 保存并通过独立 `PCore_GetImageDecodeStats` 汇总，避免扩展已提交的 `PCoreBoxStats`。TEST27 要求一次创建、二次布局 reuse 且三段之和不超过 total；TEST13 box detail 用同样行数替换旧 calls 行。该批只回答冷启动花在哪里，不预热、不跨 document 缓存，也不改解析/绘制结果。
+
+next91 无人值守日志确认 TEST27、IANA Example、Reserved 的 SVG 创建几乎都耗在 `svgtiny_parse`，但同类 IANA 资源在同进程内仍有 37ms 与 593ms 的巨大波动。next92 没有重写 parser，而是参考 NetSurf `hlcache` 的条目/使用者分离：旧页和新页同时存活时，URL、长度和双哈希一致的 SVG 共享 retained handle；每个 document 只持引用，归零立即释放。设备 Reserved 页为 `reuse=1, creates=0, image=2ms`，TEST63 又在释放首 document 后检查第二 document 的红绿像素。若以后该测试失败，先查 document user-data 析构是否重复释放或提前清空共享条目，不要改成无界全局缓存。
 
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。

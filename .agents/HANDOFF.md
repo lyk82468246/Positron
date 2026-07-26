@@ -1,8 +1,8 @@
 # Positron Current Handoff
 
-更新时间：2026-07-25
+更新时间：2026-07-26
 当前分支：`main`  
-当前设备基线：next89，已覆盖 TEST13/20/27/43/44/56/58-62。next88 先把 IANA 构盒热点定位到单张 retained image 创建；next89 随后拆分过长遥测弹窗，加入现有 SVG API 优先分派与 document-owned retained handle 复用。设备确认 TEST20/27 复用断言及其余默认门禁全部通过；TEST13 首次页面 image 仍为 `469ms`，随后 Reserved 页面降到 `37ms`。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next92，配置的 TEST13/20/27/43/44/56/58-63 已由无人值守设备日志确认全部 PASS。next92 排除了 TEST44 的伪 TEST13 ERROR，并让导航事务中同时存活、内容一致的文档共享 SVG retained handle；Reserved 页报告 `image reuse=1`、`svg creates=0`，图片阶段从前页的 523ms 降到 2ms。TEST63 进一步确认释放首文档后第二文档仍可像素级绘制。**next78 仍是已撤回的失败实验，不得使用**。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -96,11 +96,11 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,43,44,56,58-62`、`tests=1-5 7b` 一类语法。读取成功后 Yes 只跑这些编号，No 回到原四组路由；缺失/无效不会静默改变测试范围。TEST23 不可选。next86 一次运行 TEST13 遥测和已通过的事务/forms/layout 门禁。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,43,44,56,58-62`、`tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle 与具名 NetSurf option 默认，离线。TEST40-45、59、60 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-58、62，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、只读 checkbox/radio 与随包静态字体 fallback 正式 redraw；TEST48-58、62 已验收。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-58、62-63，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、同文档及重叠文档缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、只读 checkbox/radio 与随包静态字体 fallback 正式 redraw；TEST48-58、62-63 已验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -118,6 +118,9 @@ scripts\stage.bat
 - next88 设备数据已把两页热点缩到单张图片创建（518/474ms）。next89 用现有 `positron_image.dll` 做 XML-like 字节 SVG-first，避免先让 WM Imaging 失败；同一 document 的二次 layout 借用 image cache retained handle。TEST20/27 已通过 4/4、1/1 reuse，TEST27 也通过首次 markup-first。它不提供跨导航或跨线程句柄共享。
 - TEST13 关闭后依次显示两个短框：`overview` 与 `box detail`。后者的 `image reuse/markup-first` 用于区分重排复用和首次 SVG 分派；两个概念不能相互代替。
 - TEST13 显示的是导航完成快照；后续旋转布局不会回写 `g_nav_last_stats`。不要用旋转后弹窗的 reuse 值判断旋转路径，复用门禁在 TEST20/27。
+- next90 将 `positron_image` ABI minor 提到 1.5，新增按 SVG handle 查询 total/setup/parse/raster；core 用独立 `PCoreImageDecodeStats` 汇总，不扩大 `PCoreBoxStats`。TEST27 与 TEST13 只读显示该数据，不改变创建、layout 或 redraw。
+- next91 在 next90 只读候选上增加可选无人值守 testbench；不新增旁路测试实现，仍调用原 TEST 函数、公共 WndProc 和导航事务。失败保持 fail-fast，并以非零进程返回值及 `test_host.log` 的 `TESTBENCH FAIL` 收尾。
+- next92 只共享同时存活文档的 SVG：键包含 URL、长度和两种 32 位内容哈希，document cache 各持一份引用，最后一个引用释放时立即销毁句柄。它不缓存空闲对象、不跨线程，也不改变位图所有权。TEST63 覆盖第二文档复用、首文档释放及后续像素绘制。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步

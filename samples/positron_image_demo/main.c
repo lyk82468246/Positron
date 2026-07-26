@@ -291,7 +291,7 @@ static LRESULT CALLBACK demo_window_proc(HWND hwnd, UINT message,
             FillRect(hdc, &client, (HBRUSH) GetStockObject(WHITE_BRUSH));
             SetBkMode(hdc, TRANSPARENT);
             SetTextColor(hdc, RGB(0, 0, 0));
-            demo_text(hdc, 8, 6, L"positron_image ABI 1.4");
+            demo_text(hdc, 8, 6, L"positron_image ABI 1.5");
             demo_text(hdc, 8, 23, L"Raw pixels + codec round-trips");
 
             margin = 8;

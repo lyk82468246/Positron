@@ -18,7 +18,7 @@
 | Forms/widgets | next85 已按 NetSurf gadget 数据形态接入只读 checkbox/radio，并通过 1em geometry、selected redraw、hidden-input 和动态 `0.2em` 间距设备验收。 | 没有点击切换、radio 分组、键盘焦点、文本框/textarea/select、表单编码或提交，也没有把 WM 原生子窗口嵌入文档。 |
 | 列表 marker | next57/59 已确认基础 marker 与字体；next61/TEST50 已确认 libcss 上游 47 种 counter formatter、document-cache `list-style-image` 与失败类型回退；next62/TEST51、next63/TEST52 已确认 inline-first 及 block-first/空条目/嵌套/图片的 `list-style-position:inside`。 | 不代表 float 邻接 marker、自定义 `@counter-style` 或完整 CSS Lists。普通语言字体不属于当前 marker 工作范围。 |
 | 字体 fallback | next59 随包部署约 901 KiB 的三份静态 Positron Symbols/Emoji（来自 Noto OFL），精确 cmap 选择统一用于 GDI 测量、换行命中与绘制 run；设备确认箭头/marker/五个 emoji 可见且比 next58 稍平滑。当前范围明确只支持符号与单色 emoji fallback。 | 不计划在本阶段加入普通语言/多语种字体；也没有复杂 ZWJ/variation shaping、彩色 emoji、网页 `@font-face` 或字体下载。`ANTIALIASED_QUALITY` 最终效果仍依赖 OEM GDI。 |
-| 图片 | TEST19/20 已确认公共 retained 位图 ABI 与 WM Imaging 四格式；TEST25-37/13 已确认当前 SVG 链。next89 已由 TEST20/27 确认 document image cache retained handle 的二次布局复用。 | 复杂 SVG text、径向焦点/spread method、多层或可缩放 CSS 背景、跨文档/跨线程图片句柄仍未完成。 |
+| 图片 | TEST19/20 已确认公共 retained 位图 ABI 与 WM Imaging 四格式；TEST25-37/13 已确认当前 SVG 链。next89 已由 TEST20/27 确认同 document 二次布局复用；next92/TEST63 已确认两个同时存活且内容一致的 document 可共享 SVG，并在释放首文档后继续绘制。 | 复杂 SVG text、径向焦点/spread method、多层或可缩放 CSS 背景、空闲/持久缓存及跨线程图片句柄仍未完成。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认跨断点重选、无联网及滚动比例，真实 TEST13 横竖屏也保持同一阅读区域。 | 所有媒体语法和任意样式资源均已覆盖。 |
 
@@ -54,6 +54,9 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **已取得诊断结论**：next88 的 IANA 起始页 tree/image=`523/518ms`，Reserved 为 `481/474ms`；backgrounds 为 0，tree-other 仅 `4/1ms`。它定位到 SVG retained object 创建，并不说明整个页面或 box tree 已缓存。
 - **next89 已验收优化**：XML-like 图片字节先调用现有 SVG parser，避免 WM Imaging 的已知失败探测；成功/失败 retained 状态归 document image cache 所有，重排只新建轻量 carrier。TEST20/27 的 4/4 与 1/1 reuse 及全部默认门禁通过。TEST13 首次页面 image 仍为 `469ms`，随后 Reserved 降到 `37ms`；首屏冷启动未解决。对象仍在创建线程释放，不支持跨 document、跨导航或跨线程共享。
 - **遥测边界**：TEST13 只显示导航完成快照，导航后的旋转布局不回写该统计，因此旋转后退出仍会显示初始 layout 的 reuse/markup-first。
+- **next90 已取得设备诊断**：ABI 1.5 的 `PImage_SvgGetCreateStats` 与 core 的 `PCore_GetImageDecodeStats` 只记录成功 retained SVG 的 setup/parse/raster 创建时间。next91 日志中 TEST27 为 `59=0+58+1ms`，IANA Example 为 `37=0+37+0ms`，Reserved 为 `595=0+593+2ms`；当前冷创建成本几乎全在 `svgtiny_parse`，不是 wrapper setup 或 NanoSVG retained raster conversion。失败 SVG、后续 draw、字体 GDI 和布局不属于这四段；计时分辨率受 WM `GetTickCount` 限制。
+- **next91 testbench 已通过首轮设备运行**：`auto=1` 将断言、首帧绘制和三步真实导航无人值守化，配置的 TEST13/20/27/43/44/56/58-62 最终全部 PASS，结果成功写入同目录 `test_host.log`。它不会做截图像素基线比较，也不能判断抗锯齿、字体观感或复杂真实页是否“好看”；网络 worker 仍依赖现有 HTTP 超时，未加入强制终止线程。首轮日志把 TEST44 的预期离线失败也标成通用 TEST13 NAV ERROR，后续候选已将逐页记录严格限定在 TEST13 自动路由。
+- **next92 重叠文档 SVG 复用已验收**：实现沿用 NetSurf high-level cache 的“内容条目与使用者分离”原则，但范围刻意更小。只有 URL、长度和双内容哈希一致、且至少一个 document 仍持有引用的 SVG 才共享；引用归零立即释放，不设置任意 MiB 常驻预算。设备 TEST13 的 Reserved 页为 `image reuse=1`、`svg creates=0`、image=2ms，TEST63 也通过释放首 document 后的像素绘制。位图、空闲对象、跨线程和持久缓存均不在该机制内。
 - **资源预算**：`test_host` 最多暂存 64 个去重 URL、合计 2 MiB 原始字节，成功提交时 core 会复制所需数据后立刻释放事务。该值用于限制 WM 峰值，是可替换的宿主策略，不是 `positron_core` ABI 或最终页面的硬上限。
 - **后续实现**：单响应 `Content-Length`/progress 回调已实现并由 TEST3/13 确认；`@import` 事务已由 TEST45 确认。整页多资源聚合进度、web fonts、脚本及更广资源类型仍未实现。
 - **CSS import 边界**：最多追踪 16 层递归和本次样式 pass 的 64 个解析表；失败、循环和超深导入按 libcss 契约注册空表。成功导入复用每 document 最多 32 份/512 KiB 的 CSS 字节缓存；不含 HTTP 缓存失效、跨源安全策略或独立持久缓存。URL 合并由宿主回调负责，WM 宿主使用 `InternetCombineUrlA`，core 本身不绑定传输层。

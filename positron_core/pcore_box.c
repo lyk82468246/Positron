@@ -484,11 +484,15 @@ static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
     int markup_first = 0;
     void *cached_native = NULL;
     void *cached_svg = NULL;
+    PIMAGE_SVG_CREATE_STATS svg_create_stats;
+    PCoreImageDecodeStats decode_stats;
     PIMAGE_BITMAP native_image = NULL;
     PIMAGE_SVG svg = NULL;
     struct bitmap *bitmap;
     DWORD started = (stats != NULL) ? GetTickCount() : 0;
 
+    memset(&svg_create_stats, 0, sizeof(svg_create_stats));
+    memset(&decode_stats, 0, sizeof(decode_stats));
     if (doc == NULL || url == NULL || url[0] == '\0' ||
             pcore_image_resource_get(doc, url, &data, &len) != 0) {
         bitmap = NULL;
@@ -548,8 +552,17 @@ static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
         svg = NULL;
     }
 
+    if (kind == PCORE_BITMAP_SVG &&
+            PImage_SvgGetCreateStats(svg, &svg_create_stats) == PIMAGE_OK) {
+        decode_stats.svg_total_ms = svg_create_stats.total_ms;
+        decode_stats.svg_setup_ms = svg_create_stats.setup_ms;
+        decode_stats.svg_parse_ms = svg_create_stats.parse_ms;
+        decode_stats.svg_raster_ms = svg_create_stats.raster_ms;
+        decode_stats.svg_creates = 1;
+    }
     if (pcore_image_resource_retained_store(doc, url,
-            (void *) native_image, (void *) svg, width, height) == 0) {
+            (void *) native_image, (void *) svg, width, height,
+            &decode_stats) == 0) {
         cache_owns_retained = 1;
     }
 decoded:
