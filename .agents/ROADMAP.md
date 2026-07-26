@@ -1,7 +1,7 @@
 # Positron Roadmap
 
-更新时间：2026-07-25
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径及只读 checkbox/radio 已推进到 next85 / TEST62 的设备基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+更新时间：2026-07-26
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径及只读 checkbox/radio 已推进到 next92 / TEST63 的设备基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -10,10 +10,20 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - WM6 已经做得够用的部分，优先用系统能力：WinInet、GDI、WM Imaging API、coredll。
 - WM6 做不到现代要求的部分，才自研/移植：现代 TLS、现代 HTML/CSS 渲染、后续 JS runtime。
 - 页面还原度优先于“随便降级”：如果 GDI 没有 dashed pen，就手绘 dashed border；如果 WinInet 不能现代 TLS，就 mbedTLS 补上。
+- 2026-07-26 起采用“存在性优先”：尚不存在的主能力、崩溃和数据错误优先于已存在能力的速度、抗锯齿、视觉微调和高级边角语义。性能工作只在阻塞可用性或有明确设备热点证据时插队。
 
 ## 短期规划
 
-目标：把当前“已经能浏览真实网页”的 NetSurf 路径打磨到更可信、更像网页。
+目标：先补齐“能完成基本网页任务”的缺失纵向能力，再改善已经可用部分的观感和性能。
+
+当前新增功能优先级：
+
+1. **表单交互纵切**：checkbox/radio 点击与分组、焦点、文本 input、textarea、select/button，以及 GET/POST 提交；优先复用 NetSurf form 状态与 WM 原生输入能力。
+2. **事件与状态基础**：把指针/键盘命中转换为表单状态和最小 `:focus/:checked/:active` 重样式，为后续脚本事件铺路。
+3. **重大布局“有无”**：按真实页面价值及上游可移植程度，依次评估 positioned layout、float、基础 Grid 和背景尺寸/重复；每项单独接入上游实现并保留 TEST13 深链门禁。
+4. **资源类型补齐**：先建立脚本资源发现/下载/缓存接口，再由中期 JavaScript runtime 消费；网页字体不扩展为普通语言字体工程。
+
+短期暂不继续追逐首个 SVG 的冷解析毫秒数、渐变高级参数、抗锯齿微调或复杂表格边角；next92 已把重复解析造成的导航热点降到可接受范围。
 
 ### 0. next37 稳定基线与开发转向
 
@@ -214,14 +224,14 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 目标：从“能渲染网页”走向“能写 Positron 应用”。
 
-### 1. JavaScript runtime
+### 1. JavaScript runtime（首个可用纵切提前到中期）
 
 候选方向：
 
 - Duktape 更现实：C、轻量、老平台友好。
 - QuickJS 较现代，但工具链/体积/移植风险需评估。
 
-第一阶段不要追完整浏览器 JS：
+仓库已包含 NetSurf 3.11 的 Duktape backend、bindings 和 WebIDL 素材，因此不从零手写解释器。完成短期表单/事件基础后，立即进入中期最小纵切；长期再扩大兼容范围。第一阶段不要追完整浏览器 JS：
 
 - 简单 DOM 查询/修改。
 - 点击事件。
@@ -276,8 +286,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 从已通过并提交为 `210611d` 的 next86 基线继续；任何新布局/选择器改动仍须保留 TEST56/58/59/60，并走 TEST13 深层链接与旋转门禁。
-2. next81 的 TEST56/58-61 已通过；最低字号恢复未发现既有排版回归，JavaScript 仍保持关闭。继续保持 TEST13 冻结链，不重启 `codex/post-next37-experiments` 的失败方案。
-3. next85 的 TEST56/58-62 已通过；TEST62 只确认静态控件，不能把它写成完整表单交互。已撤回的 TEST23 float 方向暂不重启。
-4. next90/91 已确认 SVG retained 创建几乎全耗在 `svgtiny_parse`，且相同 IANA 资源在不同 document 间出现 37ms 与 593ms 的巨大差异。先用自动 testbench 重复采样，并对照 NetSurf 上游内容缓存/共享模型，再决定移植跨 document 复用还是细分 libsvgtiny/libdom XML；不要直接手写全局裸句柄缓存。继续观察释放和真实整页进度，不把 2 MiB 宿主预算误写成系统上限。
-5. 中期补 Grid/背景/SVG 高级能力；长期再做经过开源实现审计的 JavaScript runtime spike。
+1. 以已提交的 next92 / TEST63 为设备基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
+2. 下一短期主线是表单交互完整纵切，不再继续精修 SVG 冷解析。先审计 NetSurf `form_control`、事件路径和 WM 输入控件，再成批实现 checkbox/radio、文本输入、select/button 与提交。
+3. 表单基础稳定后，补事件/动态状态；随后按“一个上游能力一个批次”补 positioned layout、float、基础 Grid 或背景尺寸。撤回的 TEST23 实验不得原样恢复。
+4. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge。脚本资源接口可在此前短期阶段先建好，但 JavaScript 默认仍保持关闭直到设备门禁通过。
+5. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。
