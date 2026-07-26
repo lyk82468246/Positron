@@ -270,7 +270,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 63
+#define TEST_MAX_NUMBER 64
 
 static int test_config_space(char c)
 {
@@ -3340,6 +3340,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_LBUTTONDOWN: {
         int cx = (int) (short) LOWORD(lp);
         int cy = (int) (short) HIWORD(lp);
+        int dirty_x;
+        int dirty_y;
+        int dirty_w;
+        int dirty_h;
         char href[1024];
 
         if (g_render_doc != NULL &&
@@ -3348,6 +3352,20 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             g_overflow_pointer = 1;
             SetCapture(hwnd);
             pcore_invalidate_overflow(hwnd);
+            return 0;
+        }
+        if (g_render_doc != NULL &&
+                PCore_FormActivateAt(g_render_doc, cx, cy + g_scroll_y,
+                        &dirty_x, &dirty_y, &dirty_w, &dirty_h)) {
+            if (dirty_w > 0 && dirty_h > 0) {
+                RECT dirty;
+
+                dirty.left = dirty_x;
+                dirty.top = dirty_y - g_scroll_y;
+                dirty.right = dirty.left + dirty_w;
+                dirty.bottom = dirty.top + dirty_h;
+                InvalidateRect(hwnd, &dirty, FALSE);
+            }
             return 0;
         }
         /* Document-space point = client point + scroll (scroll_x is 0). If it
@@ -9646,7 +9664,7 @@ static BOOL test61_nsoption_font_minimum(void)
 }
 
 /* -------------------------------------------------------------------- */
-/* TEST 62 - read-only NetSurf checkbox/radio form gadgets              */
+/* TEST 62 - static NetSurf checkbox/radio form-gadget redraw baseline  */
 /* -------------------------------------------------------------------- */
 static int test62_toggle_probe(const char *type, int selected,
         int *out_w, int *out_h, int *out_darkness, int *out_state)
@@ -9740,7 +9758,7 @@ static BOOL test62_form_toggles(void)
 {
     static const char HTML[] =
         "<!doctype html><html><body>"
-        "<h1>Read-only form controls</h1>"
+        "<h1>Form control states</h1>"
         "<p><input type=checkbox> unchecked checkbox</p>"
         "<p><input type=checkbox checked> checked checkbox</p>"
         "<p><input type=radio name=choice> unselected radio</p>"
@@ -9848,8 +9866,8 @@ static BOOL test62_form_toggles(void)
     g_scroll_y = 0;
     show_info(L"TEST 62",
               "Expect unchecked/checked checkbox and radio pairs.\n"
-              "The hidden input leaves no visible row. Controls are\n"
-              "read-only in this first forms milestone.");
+              "The hidden input leaves no visible row. This test checks\n"
+              "static geometry/redraw; TEST 64 checks interaction.");
     g_render_doc = hDoc;
     g_render_sheet = hSheet;
     if (!show_render_window()) {
@@ -10003,6 +10021,172 @@ cleanup:
     if (first_doc != NULL) { PCore_FreeDocument(first_doc); }
     if (second_doc != NULL) { PCore_FreeDocument(second_doc); }
     return rc == 0;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 64 - interactive checkbox/radio state and relayout persistence  */
+/* -------------------------------------------------------------------- */
+static int test64_control_state(HANDLE hDoc, unsigned int index,
+        int *selected, int *disabled)
+{
+    return PCore_FormControlInfo(hDoc, index, NULL, NULL, NULL, NULL,
+            NULL, selected, disabled);
+}
+
+static int test64_activate(HANDLE hDoc, unsigned int index,
+        int *dirty_w, int *dirty_h)
+{
+    int x;
+    int y;
+    int w;
+    int h;
+    int dirty_x;
+    int dirty_y;
+
+    if (PCore_FormControlInfo(hDoc, index, &x, &y, &w, &h,
+            NULL, NULL, NULL) != 0 || w <= 0 || h <= 0) {
+        return 1;
+    }
+    return PCore_FormActivateAt(hDoc, x + w / 2, y + h / 2,
+            &dirty_x, &dirty_y, dirty_w, dirty_h) ? 0 : 1;
+}
+
+static BOOL test64_form_interaction(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<h1>Interactive form controls</h1>"
+        "<form id=first>"
+        "<p><input type=checkbox> checkbox toggled on</p>"
+        "<p><input type=checkbox disabled> disabled stays off</p>"
+        "<p><input type=radio name=main checked> first radio off</p>"
+        "<p><input type=radio name=main> second radio on</p>"
+        "<p><input type=radio name=other checked> other group stays on</p>"
+        "</form>"
+        "<form id=second>"
+        "<p><input type=radio name=main checked> other form stays on</p>"
+        "</form>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font-size:15px;line-height:20px;padding:9px;color:#111;}"
+        "h1{font-size:20px;line-height:24px;color:#8b0000;margin:0 0 6px;}"
+        "p{margin:4px 0;}input{font-size:18px;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    int selected[6];
+    int disabled;
+    int dirty_w;
+    int dirty_h;
+    int i;
+    char msg[256];
+
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/form-interaction.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 64 FAIL", "form interaction setup failed");
+        return FALSE;
+    }
+
+    dirty_w = 0;
+    dirty_h = 0;
+    if (test64_activate(hDoc, 0, &dirty_w, &dirty_h) != 0 ||
+            dirty_w <= 0 || dirty_h <= 0 ||
+            test64_control_state(hDoc, 0, &selected[0], NULL) != 0 ||
+            selected[0] != 1 ||
+            test64_activate(hDoc, 1, &dirty_w, &dirty_h) != 0 ||
+            dirty_w != 0 || dirty_h != 0 ||
+            test64_control_state(hDoc, 1, &selected[1], &disabled) != 0 ||
+            selected[1] != 0 || disabled != 1 ||
+            test64_activate(hDoc, 3, &dirty_w, &dirty_h) != 0 ||
+            dirty_w <= 0 || dirty_h <= 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 64 FAIL", "checkbox/disabled/radio activation failed");
+        return FALSE;
+    }
+
+    for (i = 0; i < 6; i++) {
+        if (test64_control_state(hDoc, (unsigned int) i, &selected[i],
+                NULL) != 0) {
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 64 FAIL", "control enumeration failed");
+            return FALSE;
+        }
+    }
+    if (selected[0] != 1 || selected[1] != 0 ||
+            selected[2] != 0 || selected[3] != 1 ||
+            selected[4] != 1 || selected[5] != 1) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "states=%d/%d/%d/%d/%d/%d",
+                selected[0], selected[1], selected[2],
+                selected[3], selected[4], selected[5]);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 64 FAIL", msg);
+        return FALSE;
+    }
+
+    dirty_w = -1;
+    dirty_h = -1;
+    if (test64_activate(hDoc, 3, &dirty_w, &dirty_h) != 0 ||
+            dirty_w != 0 || dirty_h != 0 ||
+            PCore_LayoutDocument(hDoc, 320, 240) != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 64 FAIL", "selected radio/re-layout failed");
+        return FALSE;
+    }
+    for (i = 0; i < 6; i++) {
+        if (test64_control_state(hDoc, (unsigned int) i, &selected[i],
+                NULL) != 0) {
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 64 FAIL", "post-layout enumeration failed");
+            return FALSE;
+        }
+    }
+    if (selected[0] != 1 || selected[1] != 0 ||
+            selected[2] != 0 || selected[3] != 1 ||
+            selected[4] != 1 || selected[5] != 1) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "post-layout=%d/%d/%d/%d/%d/%d",
+                selected[0], selected[1], selected[2],
+                selected[3], selected[4], selected[5]);
+        msg[sizeof(msg) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 64 FAIL", msg);
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 64 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 64 OK",
+              "Checkbox toggle, disabled control, radio group isolation,\n"
+              "DOM synchronisation and re-layout persistence passed.");
+    return TRUE;
 }
 
 /* -------------------------------------------------------------------- */
@@ -10183,6 +10367,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 61: ok = test61_nsoption_font_minimum(); break;
         case 62: ok = test62_form_toggles(); break;
         case 63: ok = test63_shared_svg_lifetime(); break;
+        case 64: ok = test64_form_interaction(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -10290,7 +10475,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-62)\n"
+                  "Yes = run all selected groups (TEST 1-64)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -10315,8 +10500,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "SVG draw/cache/fallback/text/gradients\n"
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list/\n"
-                               "inline CSS and read-only form redraw\n"
-                               "(TEST 46-58, 62).\n"
+                               "inline CSS and form controls\n"
+                               "(TEST 46-58, 62-64).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -10379,7 +10564,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-63; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-64; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -10415,6 +10600,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test58_inline_author_style()){ rc = 13; goto done; }
         if (!test62_form_toggles()){ rc = 13; goto done; }
         if (!test63_shared_svg_lifetime()){ rc = 13; goto done; }
+        if (!test64_form_interaction()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -10456,7 +10642,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-63)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-64)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
@@ -10464,8 +10650,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "    native SVG text, cached SVG gradients, coordinate transforms\n"
                "    radial gradients, inherited/alpha stops, cache reuse, and\n"
                "    IANA-style spacing, table normalisation, list markers and\n"
-               "    read-only checkbox/radio gadgets and overlapping-document\n"
-               "    SVG reuse through formal redraw.\n"
+               "    checkbox/radio redraw and interaction, plus overlapping-\n"
+               "    document SVG reuse through formal redraw.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

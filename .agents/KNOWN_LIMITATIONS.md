@@ -1,6 +1,6 @@
 # 已验证基线与待消除限制
 
-更新时间：2026-07-25
+更新时间：2026-07-26
 
 这份清单把“已经在设备上验证的最小链路”和“当前刻意保留的阶段性实现”分开记录。未被列为完成的项目不得在后续交接、README 或测试结论中表述为完整浏览器能力。
 
@@ -15,7 +15,7 @@
 | 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。next54 的 fixed-height 回归已在 next55 收窄，用户确认 auto-height 空间、箭头、短页纵条与色块页正常。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
 | table span/归一化/折叠边框 | NetSurf 3.11 span occupancy 与匿名 row/cell 已由 TEST46/47 验收。next64/TEST53 至 next68/TEST56 已覆盖常见 collapsed-border、cell alignment/empty-cells 与显式 table height；next73/TEST57 又确认 25/50/auto 百分比 row 分配及超约束缩放。 | 尚不覆盖任意 inline/float/form 畸形组合、caption/column 归一化、`col`/`colgroup` border 来源、百分比 cell/后代内容、跨行 baseline 或所有复杂表格边界。 |
 | author-level inline CSS | 外部 author stylesheet 正常参与 libcss 选择；TEST57 使用外部类规则通过。next75/TEST58 已确认 NetSurf 式声明列表解析、libcss inline cascade、继承、后代 class 选择与正式布局/重绘。next81 已把全零 `nsoption` shim 改成具名默认，未知读取会编译失败；TEST56/58-61 已由设备确认。 | 正式构盒不调用 NetSurf `box_construct.c`；旧缺口是 `pcore_style_subtree` 固定给 `css_select_style` 传 `NULL`。具名 option 不能被误写成 inline CSS 的直接开关。 |
-| Forms/widgets | next85 已按 NetSurf gadget 数据形态接入只读 checkbox/radio，并通过 1em geometry、selected redraw、hidden-input 和动态 `0.2em` 间距设备验收。 | 没有点击切换、radio 分组、键盘焦点、文本框/textarea/select、表单编码或提交，也没有把 WM 原生子窗口嵌入文档。 |
+| Forms/widgets | next85 已按 NetSurf gadget 数据形态接入 checkbox/radio 静态 redraw；next93/TEST64 又确认点击切换、disabled、同表单同名 radio 互斥、跨组隔离、DOM 同步和旋转重排保持。 | 没有焦点、label 激活、键盘、文本框/textarea/select/button、表单编码或提交，也没有把 WM 原生子窗口嵌入文档。 |
 | 列表 marker | next57/59 已确认基础 marker 与字体；next61/TEST50 已确认 libcss 上游 47 种 counter formatter、document-cache `list-style-image` 与失败类型回退；next62/TEST51、next63/TEST52 已确认 inline-first 及 block-first/空条目/嵌套/图片的 `list-style-position:inside`。 | 不代表 float 邻接 marker、自定义 `@counter-style` 或完整 CSS Lists。普通语言字体不属于当前 marker 工作范围。 |
 | 字体 fallback | next59 随包部署约 901 KiB 的三份静态 Positron Symbols/Emoji（来自 Noto OFL），精确 cmap 选择统一用于 GDI 测量、换行命中与绘制 run；设备确认箭头/marker/五个 emoji 可见且比 next58 稍平滑。当前范围明确只支持符号与单色 emoji fallback。 | 不计划在本阶段加入普通语言/多语种字体；也没有复杂 ZWJ/variation shaping、彩色 emoji、网页 `@font-face` 或字体下载。`ANTIALIASED_QUALITY` 最终效果仍依赖 OEM GDI。 |
 | 图片 | TEST19/20 已确认公共 retained 位图 ABI 与 WM Imaging 四格式；TEST25-37/13 已确认当前 SVG 链。next89 已由 TEST20/27 确认同 document 二次布局复用；next92/TEST63 已确认两个同时存活且内容一致的 document 可共享 SVG，并在释放首文档后继续绘制。 | 复杂 SVG text、径向焦点/spread method、多层或可缩放 CSS 背景、空闲/持久缓存及跨线程图片句柄仍未完成。 |
@@ -57,6 +57,7 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **next90 已取得设备诊断**：ABI 1.5 的 `PImage_SvgGetCreateStats` 与 core 的 `PCore_GetImageDecodeStats` 只记录成功 retained SVG 的 setup/parse/raster 创建时间。next91 日志中 TEST27 为 `59=0+58+1ms`，IANA Example 为 `37=0+37+0ms`，Reserved 为 `595=0+593+2ms`；当前冷创建成本几乎全在 `svgtiny_parse`，不是 wrapper setup 或 NanoSVG retained raster conversion。失败 SVG、后续 draw、字体 GDI 和布局不属于这四段；计时分辨率受 WM `GetTickCount` 限制。
 - **next91 testbench 已通过首轮设备运行**：`auto=1` 将断言、首帧绘制和三步真实导航无人值守化，配置的 TEST13/20/27/43/44/56/58-62 最终全部 PASS，结果成功写入同目录 `test_host.log`。它不会做截图像素基线比较，也不能判断抗锯齿、字体观感或复杂真实页是否“好看”；网络 worker 仍依赖现有 HTTP 超时，未加入强制终止线程。首轮日志把 TEST44 的预期离线失败也标成通用 TEST13 NAV ERROR，后续候选已将逐页记录严格限定在 TEST13 自动路由。
 - **next92 重叠文档 SVG 复用已验收**：实现沿用 NetSurf high-level cache 的“内容条目与使用者分离”原则，但范围刻意更小。只有 URL、长度和双内容哈希一致、且至少一个 document 仍持有引用的 SVG 才共享；引用归零立即释放，不设置任意 MiB 常驻预算。设备 TEST13 的 Reserved 页为 `image reuse=1`、`svg creates=0`、image=2ms，TEST63 也通过释放首 document 后的像素绘制。位图、空闲对象、跨线程和持久缓存均不在该机制内。
+- **next93 checkbox/radio 交互已验收**：`PCore_FormActivateAt` 与链接命中使用相同 document-space 坐标，状态写回 libdom；宿主仅失效发生变化的控件联合区域。TEST64 验证 checkbox、disabled、radio 分组隔离和纵横屏重排保持，同批 TEST13/20/27/43/44/56/58-64 全部 PASS。这不是完整表单、焦点或事件系统。
 - **资源预算**：`test_host` 最多暂存 64 个去重 URL、合计 2 MiB 原始字节，成功提交时 core 会复制所需数据后立刻释放事务。该值用于限制 WM 峰值，是可替换的宿主策略，不是 `positron_core` ABI 或最终页面的硬上限。
 - **后续实现**：单响应 `Content-Length`/progress 回调已实现并由 TEST3/13 确认；`@import` 事务已由 TEST45 确认。整页多资源聚合进度、web fonts、脚本及更广资源类型仍未实现。
 - **CSS import 边界**：最多追踪 16 层递归和本次样式 pass 的 64 个解析表；失败、循环和超深导入按 libcss 契约注册空表。成功导入复用每 document 最多 32 份/512 KiB 的 CSS 字节缓存；不含 HTTP 缓存失效、跨源安全策略或独立持久缓存。URL 合并由宿主回调负责，WM 宿主使用 `InternetCombineUrlA`，core 本身不绑定传输层。

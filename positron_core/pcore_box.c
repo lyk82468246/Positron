@@ -13,9 +13,10 @@
  *
  * Current scope: block/inline text, inline-block, flex, common table
  * structures, including NetSurf's table-span occupancy, plus cached <img>,
- * read-only checkbox/radio gadgets and CSS background-image resources decoded
- * by WM Imaging/libsvgtiny, are built for NetSurf's real layout/redraw path.
- * Editable/submittable forms and floats remain staged follow-ups.
+ * interactive checkbox/radio gadgets and CSS background-image resources
+ * decoded by WM Imaging/libsvgtiny, are built for NetSurf's real
+ * layout/redraw path. Editable/submittable forms and floats remain staged
+ * follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -334,7 +335,8 @@ static int pcore_node_has_attr(dom_node *node, const char *attr)
 /* NetSurf box_special.c attaches a form_control to checkbox/radio boxes and
  * lets the already-ported layout.c/redraw.c supply their 1em geometry and
  * platform-independent painting. Positron does not yet build NetSurf's full
- * form list, so retain only the fields those read-only paths consume. */
+ * form list, so retain the fields needed by redraw and the slim interaction
+ * path below. */
 static int pcore_form_toggle_type(dom_node *node)
 {
     if (!pcore_node_name_is(node, "input")) {
@@ -355,6 +357,7 @@ static struct box *pcore_make_form_toggle_box(dom_node *node,
     struct box *box;
     struct form_control *gadget;
     dom_html_input_element *input;
+    dom_string *name = NULL;
     bool selected = false;
     bool disabled = false;
 
@@ -377,6 +380,18 @@ static struct box *pcore_make_form_toggle_box(dom_node *node,
     gadget->type = (form_control_type) gadget_type;
     gadget->box = box;
     input = (dom_html_input_element *) node;
+    if (dom_html_input_element_get_name(input, &name) == DOM_NO_ERR &&
+            name != NULL) {
+        gadget->name = talloc_strndup(gadget, dom_string_data(name),
+                dom_string_byte_length(name));
+        dom_string_unref(name);
+    } else {
+        gadget->name = talloc_strdup(gadget, "");
+    }
+    if (gadget->name == NULL) {
+        talloc_free(box);
+        return NULL;
+    }
     if (dom_html_input_element_get_checked(input, &selected) != DOM_NO_ERR) {
         selected = pcore_node_has_attr(node, "checked") ? true : false;
     }
@@ -2703,6 +2718,74 @@ PCORE_API int PCore_NodeFormControlState(HANDLE hDoc, const char *tag,
     return 0;
 }
 
+static struct box *pcore_form_control_at(struct box *box,
+        unsigned int target, unsigned int *current)
+{
+    struct box *child;
+    struct box *found;
+
+    if (box == NULL) {
+        return NULL;
+    }
+    if (box->gadget != NULL &&
+            (box->gadget->type == GADGET_CHECKBOX ||
+             box->gadget->type == GADGET_RADIO)) {
+        if (*current == target) {
+            return box;
+        }
+        *current += 1;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        found = pcore_form_control_at(child, target, current);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
+        int *x, int *y, int *w, int *h, int *kind, int *selected,
+        int *disabled)
+{
+    pcore_render *st;
+    struct box *box;
+    unsigned int current;
+    int ax;
+    int ay;
+    int control_kind;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_form_control_at(st->root_box, index, &current) : NULL;
+    if (box == NULL || box->gadget == NULL) {
+        return 1;
+    }
+    if (box->gadget->type == GADGET_CHECKBOX) {
+        control_kind = 1;
+    } else if (box->gadget->type == GADGET_RADIO) {
+        control_kind = 2;
+    } else {
+        return 1;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    if (x != NULL) { *x = ax; }
+    if (y != NULL) { *y = ay; }
+    if (w != NULL) { *w = box->width; }
+    if (h != NULL) { *h = box->height; }
+    if (kind != NULL) { *kind = control_kind; }
+    if (selected != NULL) {
+        *selected = box->gadget->selected ? 1 : 0;
+    }
+    if (disabled != NULL) {
+        *disabled = box->gadget->disabled ? 1 : 0;
+    }
+    return 0;
+}
+
 static struct box *pcore_table_cell_at(struct box *box,
         unsigned int target, unsigned int *current)
 {
@@ -3090,6 +3173,151 @@ static struct box *pcore_hit(struct box *b, int px, int py)
         return b;
     }
     return NULL;
+}
+
+static void pcore_dirty_add_box(struct box *box, int *valid,
+        int *x0, int *y0, int *x1, int *y1)
+{
+    int x;
+    int y;
+    int right;
+    int bottom;
+
+    x = 0;
+    y = 0;
+    box_coords(box, &x, &y);
+    right = x + box->width;
+    bottom = y + box->height;
+    if (!*valid) {
+        *x0 = x;
+        *y0 = y;
+        *x1 = right;
+        *y1 = bottom;
+        *valid = 1;
+        return;
+    }
+    if (x < *x0) { *x0 = x; }
+    if (y < *y0) { *y0 = y; }
+    if (right > *x1) { *x1 = right; }
+    if (bottom > *y1) { *y1 = bottom; }
+}
+
+static int pcore_same_radio_group(struct form_control *left,
+        struct form_control *right)
+{
+    dom_html_form_element *left_form = NULL;
+    dom_html_form_element *right_form = NULL;
+    int same;
+
+    if (left == NULL || right == NULL || left->name == NULL ||
+            right->name == NULL || strcmp(left->name, right->name) != 0) {
+        return 0;
+    }
+    dom_html_input_element_get_form(
+            (dom_html_input_element *) left->node, &left_form);
+    dom_html_input_element_get_form(
+            (dom_html_input_element *) right->node, &right_form);
+    same = (left_form == right_form) ? 1 : 0;
+    if (left_form != NULL) {
+        dom_node_unref((dom_node *) left_form);
+    }
+    if (right_form != NULL) {
+        dom_node_unref((dom_node *) right_form);
+    }
+    return same;
+}
+
+static void pcore_radio_deselect_group(struct box *box,
+        struct form_control *radio, int *dirty_valid,
+        int *dirty_x0, int *dirty_y0, int *dirty_x1, int *dirty_y1)
+{
+    struct box *child;
+    struct form_control *control;
+
+    if (box == NULL) {
+        return;
+    }
+    control = box->gadget;
+    if (control != NULL && control != radio &&
+            control->type == GADGET_RADIO && control->selected &&
+            pcore_same_radio_group(control, radio)) {
+        control->selected = false;
+        dom_html_input_element_set_checked(
+                (dom_html_input_element *) control->node, false);
+        pcore_dirty_add_box(box, dirty_valid, dirty_x0, dirty_y0,
+                dirty_x1, dirty_y1);
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        pcore_radio_deselect_group(child, radio, dirty_valid,
+                dirty_x0, dirty_y0, dirty_x1, dirty_y1);
+    }
+}
+
+PCORE_API int PCore_FormActivateAt(HANDLE hDoc, int x, int y,
+        int *dirty_x, int *dirty_y, int *dirty_w, int *dirty_h)
+{
+    pcore_render *st;
+    struct box *hit;
+    struct box *box;
+    struct form_control *control;
+    int dirty_valid;
+    int x0;
+    int y0;
+    int x1;
+    int y1;
+
+    if (dirty_x != NULL) { *dirty_x = 0; }
+    if (dirty_y != NULL) { *dirty_y = 0; }
+    if (dirty_w != NULL) { *dirty_w = 0; }
+    if (dirty_h != NULL) { *dirty_h = 0; }
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL) {
+        return 0;
+    }
+    hit = pcore_hit(st->root_box, x, y);
+    for (box = hit; box != NULL && box->gadget == NULL;
+            box = box->parent) {
+        /* Find the nearest form gadget carried by the hit box or ancestor. */
+    }
+    if (box == NULL || box->gadget == NULL) {
+        return 0;
+    }
+    control = box->gadget;
+    if (control->type != GADGET_CHECKBOX &&
+            control->type != GADGET_RADIO) {
+        return 0;
+    }
+    if (control->disabled) {
+        return 1;
+    }
+
+    dirty_valid = 0;
+    x0 = 0;
+    y0 = 0;
+    x1 = 0;
+    y1 = 0;
+    if (control->type == GADGET_CHECKBOX) {
+        control->selected = !control->selected;
+        dom_html_input_element_set_checked(
+                (dom_html_input_element *) control->node,
+                control->selected);
+        pcore_dirty_add_box(box, &dirty_valid, &x0, &y0, &x1, &y1);
+    } else if (!control->selected) {
+        pcore_radio_deselect_group(st->root_box, control, &dirty_valid,
+                &x0, &y0, &x1, &y1);
+        control->selected = true;
+        dom_html_input_element_set_checked(
+                (dom_html_input_element *) control->node, true);
+        pcore_dirty_add_box(box, &dirty_valid, &x0, &y0, &x1, &y1);
+    }
+
+    if (dirty_valid) {
+        if (dirty_x != NULL) { *dirty_x = x0; }
+        if (dirty_y != NULL) { *dirty_y = y0; }
+        if (dirty_w != NULL) { *dirty_w = x1 - x0; }
+        if (dirty_h != NULL) { *dirty_h = y1 - y0; }
+    }
+    return 1;
 }
 
 PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)

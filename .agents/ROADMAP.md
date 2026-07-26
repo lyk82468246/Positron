@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-26
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径及只读 checkbox/radio 已推进到 next92 / TEST63 的设备基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径及 checkbox/radio 基础交互已推进到 next93 / TEST64 的设备基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -18,7 +18,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 当前新增功能优先级：
 
-1. **表单交互纵切**：checkbox/radio 点击与分组、焦点、文本 input、textarea、select/button，以及 GET/POST 提交；优先复用 NetSurf form 状态与 WM 原生输入能力。
+1. **表单交互纵切**：next93 已完成 checkbox/radio 点击、disabled、分组与重排保持；下一批推进焦点、文本 input/textarea，再扩展 select/button 与 GET/POST 提交，优先复用 NetSurf form 状态与 WM 原生输入能力。
 2. **事件与状态基础**：把指针/键盘命中转换为表单状态和最小 `:focus/:checked/:active` 重样式，为后续脚本事件铺路。
 3. **重大布局“有无”**：按真实页面价值及上游可移植程度，依次评估 positioned layout、float、基础 Grid 和背景尺寸/重复；每项单独接入上游实现并保留 TEST13 深链门禁。
 4. **资源类型补齐**：先建立脚本资源发现/下载/缓存接口，再由中期 JavaScript runtime 消费；网页字体不扩展为普通语言字体工程。
@@ -155,6 +155,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 54. **next90 首次 SVG 创建分段已取得设备结论**：`positron_image` ABI 1.5 在 retained SVG 内记录 wrapper/diagram setup、`svgtiny_parse`、`pimage_raster_create` 与 total；按句柄查询避免全局诊断状态。core 将数据挂在现有 document image cache，并用独立 API 汇总。next91 设备数据中 TEST27、IANA Example、Reserved 的 parse 分别占创建总时长的 `58/59`、`37/37`、`593/595ms`，raster 最多 2ms；下一优化目标是避免跨 document 重复解析相同 SVG，或定位 libsvgtiny/libdom XML 的巨大抖动，不是改绘制器。
 55. **next91 无人值守设备 testbench 已通过首轮验收**：`test_host.ini` 的 `auto=1` 直接执行配置编号、抑制所有选择/结果 MessageBox，并将原始 INFO/ERROR 覆盖写入 EXE 同目录 `test_host.log`。全部可视 TEST 复用公共窗口和原测试函数，首帧后走正常销毁；TEST13 通过既有导航事务依次加载 example.com、IANA Example Domains 和 Reserved Domains。配置的 TEST13/20/27/43/44/56/58-62 全部 PASS。自动首帧冒烟不冒充人工视觉验收；后续候选收紧导航日志作用域，避免把 TEST44 预期失败记成 TEST13 ERROR。
 56. **next92 重叠文档 SVG 复用已通过设备门禁**：参考 NetSurf `hlcache` 的内容条目/使用者分离，不引入完整浏览器缓存。相同 URL、长度与双哈希的 SVG 在旧页和待提交新页同时存活时共享 retained handle；document 析构减引用，最后一个引用释放时立即销毁。TEST13 Reserved 页从重新创建 `593ms parse` 变为 `image reuse=1, creates=0, image=2ms`；新增 TEST63 证明释放首文档后第二文档仍能得到正确红绿像素。TEST44 日志作用域也已修正，next92 配置的 TEST13/20/27/43/44/56/58-63 全部 PASS。
+57. **next93 checkbox/radio 基础交互已通过设备门禁**：`PCore_FormActivateAt` 沿正式盒树命中控件，checkbox 切换、disabled 消费但不改变；radio 按 libdom form owner 与 `name` 分组，取消同组旧选项并同步 checked 状态。宿主只失效变更控件的联合区域。TEST64 自动检查同组互斥、跨组/跨表单隔离、已选项幂等以及纵横屏重排保持；同批 TEST13/20/27/43/44/56/58-64 全部 PASS。该项不代表焦点、label 激活、键盘、文本编辑、select 或提交已经存在。
 
 验收：
 
@@ -206,7 +207,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `border-collapse` 的 col/colgroup 来源及更多复杂表边界；next64-65/TEST53-54 已覆盖基本冲突、span 终止边与 row-group 边界
 - overflow scrollbar 的惯性触摸、overlay 模式与更多嵌套组合
 - float 邻接 marker、自定义 `@counter-style` 与完整 CSS Lists
-- forms/widgets
+- forms/widgets 剩余部分：焦点、文本编辑、select/button 与提交
 
 建议按真实页面痛点推进，不一次性铺开。
 
@@ -286,8 +287,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以已提交的 next92 / TEST63 为设备基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
-2. 下一短期主线是表单交互完整纵切，不再继续精修 SVG 冷解析。先审计 NetSurf `form_control`、事件路径和 WM 输入控件，再成批实现 checkbox/radio、文本输入、select/button 与提交。
+1. 以 next93 / TEST64 为设备基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
+2. 下一短期主线继续表单交互纵切，不再重复精修已验收的 checkbox/radio 或 SVG 冷解析。先接焦点与 WM 文本输入，再成批实现 textarea、select/button 与提交。
 3. 表单基础稳定后，补事件/动态状态；随后按“一个上游能力一个批次”补 positioned layout、float、基础 Grid 或背景尺寸。撤回的 TEST23 实验不得原样恢复。
 4. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge。脚本资源接口可在此前短期阶段先建好，但 JavaScript 默认仍保持关闭直到设备门禁通过。
 5. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。

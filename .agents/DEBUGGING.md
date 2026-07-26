@@ -213,4 +213,6 @@ next90 候选只读细分首次 SVG 创建：`positron_image` ABI 1.5 在每个 
 
 next91 无人值守日志确认 TEST27、IANA Example、Reserved 的 SVG 创建几乎都耗在 `svgtiny_parse`，但同类 IANA 资源在同进程内仍有 37ms 与 593ms 的巨大波动。next92 没有重写 parser，而是参考 NetSurf `hlcache` 的条目/使用者分离：旧页和新页同时存活时，URL、长度和双哈希一致的 SVG 共享 retained handle；每个 document 只持引用，归零立即释放。设备 Reserved 页为 `reuse=1, creates=0, image=2ms`，TEST63 又在释放首 document 后检查第二 document 的红绿像素。若以后该测试失败，先查 document user-data 析构是否重复释放或提前清空共享条目，不要改成无界全局缓存。
 
+next93 设备无人值守日志确认 TEST13/20/27/43/44/56/58-64 全部 PASS。`PCore_FormActivateAt` 直接更新盒树 gadget 并调用 libdom `set_checked`，因此同一 document 旋转重排后状态仍在；radio 分组使用 `dom_html_input_element_get_form` 返回的 form owner 与 `name`，不要退化成全 document 同名互斥。disabled 或已选 radio 会消费点击但返回零尺寸 dirty rect。TEST62 继续只负责静态几何/暗度/hidden 基线，TEST64 才负责交互语义。
+
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。

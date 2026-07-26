@@ -242,11 +242,17 @@ PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,
 
 /* Inspect the first laid-out form control named `tag`. kind is 1 for a
  * checkbox and 2 for a radio button. `selected` and `disabled` receive 0/1.
- * This read-only diagnostics API verifies the DOM -> box gadget state carried
- * into NetSurf redraw without exposing the internal form_control structure. */
+ * This diagnostics API verifies the DOM -> box gadget state carried into
+ * NetSurf redraw without exposing the internal form_control structure. */
 PCORE_API int PCore_NodeFormControlState(HANDLE hDoc, const char *tag,
                                         int *kind, int *selected,
                                         int *disabled);
+
+/* Inspect a checkbox/radio in box-tree order. Geometry is in absolute
+ * document CSS px; kind is 1 for checkbox and 2 for radio. */
+PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
+                                   int *x, int *y, int *w, int *h,
+                                   int *kind, int *selected, int *disabled);
 
 /* Inspect one table cell's used border after collapsed-border conflict
  * resolution. Cells and sides are in document order; side uses CSS order
@@ -358,6 +364,15 @@ PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi);
  * application turn a tap into a navigation. */
 PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
                            char *out_href, int cap);
+
+/* Activate a checkbox/radio at a document-space point. The control consumes
+ * the click even when disabled or already-selected. Changed controls are
+ * synchronised to libdom so later re-layouts retain their state. A union
+ * dirty rectangle is returned in document CSS px; its width/height are zero
+ * when no pixels changed. Returns 1 when a form control consumed the point. */
+PCORE_API int PCore_FormActivateAt(HANDLE hDoc, int x, int y,
+                                  int *dirty_x, int *dirty_y,
+                                  int *dirty_w, int *dirty_h);
 
 /* Forward pointer input to a nested CSS overflow scrollbar. Coordinates use
  * the same document-space convention as PCore_LinkAt. DOWN performs arrow or

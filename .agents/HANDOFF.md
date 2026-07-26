@@ -2,7 +2,7 @@
 
 更新时间：2026-07-26
 当前分支：`main`  
-当前设备基线：next92，配置的 TEST13/20/27/43/44/56/58-63 已由无人值守设备日志确认全部 PASS。next92 排除了 TEST44 的伪 TEST13 ERROR，并让导航事务中同时存活、内容一致的文档共享 SVG retained handle；Reserved 页报告 `image reuse=1`、`svg creates=0`，图片阶段从前页的 523ms 降到 2ms。TEST63 进一步确认释放首文档后第二文档仍可像素级绘制。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next93，配置的 TEST13/20/27/43/44/56/58-64 已由无人值守设备日志确认全部 PASS。next92 的重叠文档 SVG 复用继续成立；next93 又新增 checkbox/radio 点击、disabled、同表单同名 radio 互斥、DOM checked 同步、局部 dirty rect 与重排状态保持。TEST64 覆盖上述交互，当前仍不包含焦点、label 激活、键盘、文本编辑、select 或提交。**next78 仍是已撤回的失败实验，不得使用**。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -96,11 +96,11 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,43,44,56,58-62`、`tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前使用 `tests=13,20,27,43,44,56,58-64`；也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle 与具名 NetSurf option 默认，离线。TEST40-45、59、60 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-58、62-63，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、同文档及重叠文档缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、只读 checkbox/radio 与随包静态字体 fallback 正式 redraw；TEST48-58、62-63 已验收。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-58、62-64，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、同文档及重叠文档缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、checkbox/radio 静态 redraw 与基础交互、随包静态字体 fallback；TEST48-58、62-64 已验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -111,7 +111,8 @@ scripts\stage.bat
 - TEST59：分别在 224px 和 320px viewport 建立无 Grid `overflow:auto` 宽表格夹具，必须保持 reversed-flex main 的 `x=25,width=viewport-50`。next78 的同 DOM 旋转/scrollbar 诊断版本已经撤回。
 - TEST60：同一 DOM 先按 224×320、再按 400×240 重做 style/layout；IANA 同型 `.dtable` 的首个 `<th>` 必须保留 18px/10px inset，并与第二个同文字表头保持同一粗体宽度。它同时覆盖 `thead th`、`:first-child` 和后续 `tbody > tr:first-child > th` 选择器。
 - TEST61：正式 NetSurf layout 中，同一串文本的 `1px` 与 `8.5pt` 必须测得相同宽度，证明 `font_min_size=85` 生效；`12pt` 控制组必须更宽。JavaScript 策略继续为 false。
-- TEST62：四个离屏探针确认 checkbox/radio 均采用 1em 几何，最终 gadget 的 checked 状态为 0/1，选中状态增加像素暗度，hidden input 不生成 box；随后显示四个只读控件。当前不包含点击、键盘、文本编辑、select 或提交。
+- TEST62：四个离屏探针确认 checkbox/radio 均采用 1em 几何，最终 gadget 的 checked 状态为 0/1，选中状态增加像素暗度，hidden input 不生成 box；它是静态 redraw 基线。
+- TEST64：按盒树坐标执行 checkbox 切换、disabled 点击、同表单同名 radio 互斥、跨组/跨表单隔离和已选项幂等，再从 240×320 重排到 320×240 并复核 DOM 状态；next93 自动设备日志已通过。
 - TEST13 next86 遥测：关闭 Browse 窗口后，既有 OK 框显示最后一次导航的 total/network/max-UI、parse/style/images/layout/paint、资源 queued/ok/fail、worker rounds、document/cache bytes 和 budget-rejected。style/images 是多轮累计，max-UI 才是单次消息循环最长阻塞。
 - next87 在同一 OK 框追加 core layout 的 box/first/settle/final/other 与 settling pass。`PCore_GetLayoutStats` 只复制每个 document 最近一次布局统计；未改变构盒、两轮布局判定、几何或重绘。设备已确认两类真实页面的构盒均约 500ms；该结论只确定下一步细分方向，不代表卡顿已经优化。
 - next88 新增独立 `PCoreBoxStats`/`PCore_GetBoxStats`，避免扩展 next87 已公开结构的大小。tree/backgrounds 互不重叠；tree 内 style/text/image/anonymous/table-normalise 互不重叠，`other` 为剩余 DOM 遍历、分支与分配时间。逐调用 `GetTickCount` 有轻微诊断开销，比较分布优先于比较 next87 的绝对毫秒。
@@ -121,13 +122,14 @@ scripts\stage.bat
 - next90 将 `positron_image` ABI minor 提到 1.5，新增按 SVG handle 查询 total/setup/parse/raster；core 用独立 `PCoreImageDecodeStats` 汇总，不扩大 `PCoreBoxStats`。TEST27 与 TEST13 只读显示该数据，不改变创建、layout 或 redraw。
 - next91 在 next90 只读候选上增加可选无人值守 testbench；不新增旁路测试实现，仍调用原 TEST 函数、公共 WndProc 和导航事务。失败保持 fail-fast，并以非零进程返回值及 `test_host.log` 的 `TESTBENCH FAIL` 收尾。
 - next92 只共享同时存活文档的 SVG：键包含 URL、长度和两种 32 位内容哈希，document cache 各持一份引用，最后一个引用释放时立即销毁句柄。它不缓存空闲对象、不跨线程，也不改变位图所有权。TEST63 覆盖第二文档复用、首文档释放及后续像素绘制。
+- next93 的 form 激活入口使用 document CSS px，与 `PCore_LinkAt` 相同；宿主先处理 overflow scrollbar，再处理 form control，最后才处理链接/空白关闭。控件状态同步回 libdom，因而 `WM_SIZE` 重建盒树后仍保留。下一批从焦点与文本 input 开始，不要重写 radio 分组逻辑。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步
 
 优先候选：
 
-> 2026-07-26 优先级调整：先解决“有没有”，再解决已有小范围“好不好”。下一主线是表单交互纵切，随后是事件/动态状态和重大布局缺口；已有 NetSurf Duktape backend 的 JavaScript 最小纵切提前到中期。首屏 SVG 冷解析、抗锯齿、渐变高级参数、视觉微调和全面性能优化后置，除非它们造成崩溃、数据错误或阻塞基本操作。
+> 2026-07-26 优先级调整：先解决“有没有”，再解决已有小范围“好不好”。checkbox/radio 已完成首个交互纵切；下一主线是焦点与文本输入，随后扩展 textarea、select/button、提交、事件/动态状态和重大布局缺口。已有 NetSurf Duktape backend 的 JavaScript 最小纵切提前到中期。首屏 SVG 冷解析、抗锯齿、渐变高级参数、视觉微调和全面性能优化后置，除非它们造成崩溃、数据错误或阻塞基本操作。
 
 1. 2026-07-11 用户真机确认 ENGINE 原整组至 TEST24 通过；2026-07-12 单独确认 TEST25 SVG parse。后续修改引擎路径时必须重跑当前整组。
 2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。TEST13 起始页正常不等于所有 IANA 子页正常；2026-07-24 `/domains/reserved` 已再次证明必须走深层链接和旋转验收。next80 已让 TEST60 与真实页横竖屏全部通过；next78 仍因扩大回归和系统异常保持撤回。后续 float 仍必须对照上游 box construction/normalisation。
