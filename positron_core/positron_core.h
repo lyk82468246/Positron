@@ -248,11 +248,39 @@ PCORE_API int PCore_NodeFormControlState(HANDLE hDoc, const char *tag,
                                         int *kind, int *selected,
                                         int *disabled);
 
-/* Inspect a checkbox/radio in box-tree order. Geometry is in absolute
- * document CSS px; kind is 1 for checkbox and 2 for radio. */
+/* Inspect a form control in box-tree order. Geometry is in absolute document
+ * CSS px; kind is 1 checkbox, 2 radio, 3 single-line text, 4 password. */
 PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
                                    int *x, int *y, int *w, int *h,
                                    int *kind, int *selected, int *disabled);
+
+typedef struct PCoreTextInputInfo {
+    int x;
+    int y;
+    int width;
+    int height;
+    int password;
+    int read_only;
+    int disabled;
+    int max_length;
+    int value_bytes;
+} PCoreTextInputInfo;
+
+/* Enumerate single-line text/password controls independently of other form
+ * controls. Geometry is the border box in absolute document CSS px. `value`
+ * receives UTF-8 and is always NUL-terminated when cap > 0. max_length is -1
+ * when the element has no limit. This is the platform bridge used by a WM
+ * embedder to place native EDIT children over NetSurf's retained box. */
+PCORE_API int PCore_TextInputInfo(HANDLE hDoc, unsigned int index,
+                                 PCoreTextInputInfo *out_info,
+                                 char *value, int cap);
+
+/* Replace one single-line input's live UTF-8 value and synchronise it to
+ * libdom. Returns 0 on success, 1 for a missing/non-text control, 2 when the
+ * control is disabled/read-only, and 3 for invalid UTF-8 or maxlength excess.
+ * The DOM value survives later style/layout passes. */
+PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
+                                     const char *value);
 
 /* Inspect one table cell's used border after collapsed-border conflict
  * resolution. Cells and sides are in document order; side uses CSS order

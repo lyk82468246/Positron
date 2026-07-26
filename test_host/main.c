@@ -27,6 +27,7 @@
  */
 
 #include <windows.h>
+#include <limits.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>     /* malloc / free for fetched-CSS buffers */
@@ -270,7 +271,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 64
+#define TEST_MAX_NUMBER 65
 
 static int test_config_space(char c)
 {
@@ -2112,6 +2113,219 @@ static char   g_cur_host[256] = "";
 static char   g_cur_path[1024] = "/";
 static int    g_cur_port = 443;
 
+typedef struct pcore_native_edit {
+    HWND hwnd;
+    unsigned int text_index;
+} pcore_native_edit;
+
+static pcore_native_edit *g_native_edits = NULL;
+static unsigned int g_native_edit_count = 0;
+static int g_native_edit_syncing = 0;
+static int g_native_edit_probe = 0;
+static int g_native_edit_probe_ok = 0;
+
+static void pcore_native_edits_destroy(void)
+{
+    unsigned int i;
+
+    g_native_edit_syncing = 1;
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd != NULL) {
+            DestroyWindow(g_native_edits[i].hwnd);
+            g_native_edits[i].hwnd = NULL;
+        }
+    }
+    free(g_native_edits);
+    g_native_edits = NULL;
+    g_native_edit_count = 0;
+    g_native_edit_syncing = 0;
+}
+
+static void pcore_native_edits_position(HWND parent)
+{
+    RECT client;
+    PCoreTextInputInfo info;
+    unsigned int i;
+    int top;
+    int left;
+    int width;
+    int height;
+
+    if (parent == NULL || g_render_doc == NULL) {
+        return;
+    }
+    GetClientRect(parent, &client);
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == NULL ||
+                PCore_TextInputInfo(g_render_doc,
+                        g_native_edits[i].text_index,
+                        &info, NULL, 0) != 0) {
+            continue;
+        }
+        left = info.x;
+        top = info.y - g_scroll_y;
+        width = (info.width > 0) ? info.width : 1;
+        height = (info.height > 0) ? info.height : 1;
+        MoveWindow(g_native_edits[i].hwnd, left, top,
+                width, height, TRUE);
+        if (left + width <= client.left || left >= client.right ||
+                top + height <= client.top || top >= client.bottom) {
+            ShowWindow(g_native_edits[i].hwnd, SW_HIDE);
+        } else {
+            ShowWindow(g_native_edits[i].hwnd, SW_SHOW);
+        }
+    }
+}
+
+static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
+{
+    pcore_native_edit *items;
+    PCoreTextInputInfo info;
+    HWND old_focus;
+    unsigned int focus_index;
+    unsigned int count;
+    unsigned int i;
+    WCHAR *wide_value;
+    char *value;
+    DWORD style;
+    int value_cap;
+
+    old_focus = preserve_focus ? GetFocus() : NULL;
+    focus_index = UINT_MAX;
+    if (old_focus != NULL) {
+        for (i = 0; i < g_native_edit_count; i++) {
+            if (g_native_edits[i].hwnd == old_focus) {
+                focus_index = g_native_edits[i].text_index;
+                break;
+            }
+        }
+    }
+    pcore_native_edits_destroy();
+    if (parent == NULL || g_render_doc == NULL) {
+        return;
+    }
+    count = 0;
+    while (PCore_TextInputInfo(g_render_doc, count,
+            NULL, NULL, 0) == 0) {
+        count++;
+    }
+    if (count == 0) {
+        return;
+    }
+    items = (pcore_native_edit *) calloc(count,
+            sizeof(pcore_native_edit));
+    if (items == NULL) {
+        return;
+    }
+    g_native_edits = items;
+    g_native_edit_count = count;
+    g_native_edit_syncing = 1;
+    for (i = 0; i < count; i++) {
+        memset(&info, 0, sizeof(info));
+        if (PCore_TextInputInfo(g_render_doc, i, &info,
+                NULL, 0) != 0) {
+            continue;
+        }
+        value_cap = info.value_bytes + 1;
+        if (value_cap < 1) {
+            value_cap = 1;
+        }
+        value = (char *) malloc((size_t) value_cap);
+        wide_value = (WCHAR *) malloc((size_t) value_cap *
+                sizeof(WCHAR));
+        if (value == NULL || wide_value == NULL ||
+                PCore_TextInputInfo(g_render_doc, i, NULL,
+                        value, value_cap) != 0) {
+            free(value);
+            free(wide_value);
+            continue;
+        }
+        utf8_to_wide(value, -1, wide_value, value_cap);
+        style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER |
+                ES_LEFT | ES_AUTOHSCROLL;
+        if (info.password) {
+            style |= ES_PASSWORD;
+        }
+        items[i].hwnd = CreateWindowW(L"EDIT", wide_value, style,
+                info.x, info.y - g_scroll_y,
+                (info.width > 0) ? info.width : 1,
+                (info.height > 0) ? info.height : 1,
+                parent, (HMENU) (INT_PTR) (1000 + i),
+                GetModuleHandle(NULL), NULL);
+        items[i].text_index = i;
+        free(value);
+        free(wide_value);
+        if (items[i].hwnd == NULL) {
+            continue;
+        }
+        SetWindowLong(items[i].hwnd, GWL_USERDATA, (LONG) (i + 1));
+        SendMessage(items[i].hwnd, WM_SETFONT,
+                (WPARAM) GetStockObject(SYSTEM_FONT), TRUE);
+        SendMessage(items[i].hwnd, EM_LIMITTEXT,
+                (WPARAM) ((info.max_length >= 0) ?
+                        info.max_length : 0), 0);
+        if (info.read_only) {
+            SendMessage(items[i].hwnd, EM_SETREADONLY, TRUE, 0);
+        }
+        if (info.disabled) {
+            EnableWindow(items[i].hwnd, FALSE);
+        }
+    }
+    g_native_edit_syncing = 0;
+    pcore_native_edits_position(parent);
+    if (focus_index != UINT_MAX && focus_index < count &&
+            items[focus_index].hwnd != NULL &&
+            IsWindowEnabled(items[focus_index].hwnd)) {
+        SetFocus(items[focus_index].hwnd);
+        SendMessage(items[focus_index].hwnd, EM_SETSEL,
+                0, (LPARAM) -1);
+    }
+}
+
+static void pcore_native_edit_changed(HWND edit)
+{
+    WCHAR *wide_value;
+    char *value;
+    LONG stored_index;
+    int wide_len;
+    int utf8_len;
+
+    if (g_native_edit_syncing || edit == NULL || g_render_doc == NULL) {
+        return;
+    }
+    stored_index = GetWindowLong(edit, GWL_USERDATA);
+    if (stored_index <= 0) {
+        return;
+    }
+    wide_len = GetWindowTextLengthW(edit);
+    wide_value = (WCHAR *) malloc((size_t) (wide_len + 1) *
+            sizeof(WCHAR));
+    if (wide_value == NULL) {
+        return;
+    }
+    GetWindowTextW(edit, wide_value, wide_len + 1);
+    utf8_len = WideCharToMultiByte(CP_UTF8, 0, wide_value, wide_len,
+            NULL, 0, NULL, NULL);
+    if (utf8_len < 0) {
+        free(wide_value);
+        return;
+    }
+    value = (char *) malloc((size_t) utf8_len + 1);
+    if (value == NULL) {
+        free(wide_value);
+        return;
+    }
+    if (utf8_len > 0) {
+        WideCharToMultiByte(CP_UTF8, 0, wide_value, wide_len,
+                value, utf8_len, NULL, NULL);
+    }
+    value[utf8_len] = '\0';
+    PCore_TextInputSetValue(g_render_doc,
+            (unsigned int) (stored_index - 1), value);
+    free(value);
+    free(wide_value);
+}
+
 static void testbench_log_navigation(
         const pcore_navigation_request *request)
 {
@@ -2237,6 +2451,7 @@ static void pcore_scroll_by(HWND hwnd, int dy)
         return;
     }
     SetScrollPos(hwnd, SB_VERT, g_scroll_y, TRUE);
+    pcore_native_edits_position(hwnd);
     /* Shift the existing pixels by -applied and invalidate only the newly
      * exposed strip; the following WM_PAINT repaints just that strip at the
      * new scroll offset. Far cheaper than repainting the whole client. */
@@ -2934,7 +3149,9 @@ static int pcore_navigation_commit_step(HWND hwnd,
             PCore_GetImageDecodeStats(request->document,
                     &request->stats.core_image) == 0;
 
-    /* Swap in the new document; free the one being replaced. */
+    /* Swap in the new document; native children must release their old DOM
+     * indices before the document they describe is freed. */
+    pcore_native_edits_destroy();
     if (g_render_doc != NULL) {
         PCore_FreeDocument(g_render_doc);
     }
@@ -2948,6 +3165,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     g_cur_port = request->port;
 
     pcore_set_scrollbar(hwnd);
+    pcore_native_edits_rebuild(hwnd, 0);
     started = GetTickCount();
     InvalidateRect(hwnd, NULL, TRUE);
     UpdateWindow(hwnd);
@@ -3183,6 +3401,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             MoveWindow(g_nav_bar, 0, 0, cw, g_nav_bar_h, TRUE);
         }
         pcore_set_scrollbar(hwnd);
+        pcore_native_edits_rebuild(hwnd, 1);
         SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);   /* keep SIP hidden on rotate */
         InvalidateRect(hwnd, NULL, TRUE);   /* full repaint after a resize */
         return 0;
@@ -3323,6 +3542,19 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         return 0;
     }
+    case WM_COMMAND:
+        if ((HWND) lp != NULL) {
+            if (HIWORD(wp) == EN_CHANGE) {
+                pcore_native_edit_changed((HWND) lp);
+                return 0;
+            }
+            if (HIWORD(wp) == EN_SETFOCUS) {
+                SHFullScreen(hwnd, SHFS_SHOWSIPBUTTON);
+                SHSipPreference(hwnd, SIP_UP);
+                return 0;
+            }
+        }
+        break;
     case WM_KEYDOWN:
         switch (wp) {
         case VK_UP:    pcore_scroll_by(hwnd, -16);   break;
@@ -3410,6 +3642,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_DESTROY:
         g_nav_generation++;
         g_overflow_pointer = 0;
+        pcore_native_edits_destroy();
+        SHSipPreference(hwnd, SIP_FORCEDOWN);
         pcore_navigation_set_loading(hwnd, 0);
         PostQuitMessage(0);
         return 0;
@@ -3449,6 +3683,17 @@ static BOOL show_render_window(void)
             CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInst, NULL);
     if (hwnd == NULL) {
         return FALSE;
+    }
+    pcore_native_edits_rebuild(hwnd, 0);
+    if (g_native_edit_probe && g_native_edit_count > 0 &&
+            g_native_edits[0].hwnd != NULL) {
+        char probe_value[32];
+
+        SetWindowTextW(g_native_edits[0].hwnd, L"wm-edit");
+        g_native_edit_probe_ok =
+                PCore_TextInputInfo(g_render_doc, 0, NULL,
+                        probe_value, sizeof(probe_value)) == 0 &&
+                strcmp(probe_value, "wm-edit") == 0;
     }
     g_testbench_render_paints = 0;
     ShowWindow(hwnd, SW_SHOW);
@@ -10190,6 +10435,120 @@ static BOOL test64_form_interaction(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 65 - WM native single-line input bridge and DOM persistence     */
+/* -------------------------------------------------------------------- */
+static BOOL test65_text_input(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<h1>Native text inputs</h1>"
+        "<p>Text <input name=plain value=alpha maxlength=8></p>"
+        "<p>Password <input type=password name=secret value=secret></p>"
+        "<p>Read only <input name=locked value=locked readonly></p>"
+        "<p>Disabled <input name=off value=off disabled></p>"
+        "<p>Tap an enabled field to use the WM input method.</p>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font-size:14px;line-height:19px;padding:8px;color:#111;}"
+        "h1{font-size:20px;line-height:24px;color:#8b0000;margin:0 0 5px;}"
+        "p{margin:5px 0;}input{font-size:14px;width:11em;height:1.6em;"
+        "border:1px solid #555;padding:1px 2px;background:#fff;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreTextInputInfo info[4];
+    char value[64];
+    int kind;
+    int i;
+
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/native-text-input.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 65 FAIL", "text input setup failed");
+        return FALSE;
+    }
+
+    for (i = 0; i < 4; i++) {
+        memset(&info[i], 0, sizeof(info[i]));
+        if (PCore_TextInputInfo(hDoc, (unsigned int) i, &info[i],
+                value, sizeof(value)) != 0 ||
+                info[i].width <= 0 || info[i].height <= 0 ||
+                PCore_FormControlInfo(hDoc, (unsigned int) i,
+                        NULL, NULL, NULL, NULL, &kind, NULL, NULL) != 0 ||
+                kind != ((i == 1) ? 4 : 3)) {
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 65 FAIL", "text input enumeration failed");
+            return FALSE;
+        }
+    }
+    if (info[0].max_length != 8 || info[0].password ||
+            !info[1].password || !info[2].read_only ||
+            !info[3].disabled ||
+            PCore_TextInputInfo(hDoc, 4, NULL, NULL, 0) == 0 ||
+            PCore_TextInputSetValue(hDoc, 0, "too-long-9") != 3 ||
+            PCore_TextInputSetValue(hDoc, 0, "\377") != 3 ||
+            PCore_TextInputSetValue(hDoc, 0, "beta42") != 0 ||
+            PCore_TextInputSetValue(hDoc, 1, "next-secret") != 0 ||
+            PCore_TextInputSetValue(hDoc, 2, "changed") != 2 ||
+            PCore_TextInputSetValue(hDoc, 3, "changed") != 2 ||
+            PCore_LayoutDocument(hDoc, 320, 240) != 0 ||
+            PCore_TextInputInfo(hDoc, 0, &info[0],
+                    value, sizeof(value)) != 0 ||
+            strcmp(value, "beta42") != 0 ||
+            PCore_TextInputInfo(hDoc, 1, &info[1],
+                    value, sizeof(value)) != 0 ||
+            strcmp(value, "next-secret") != 0 ||
+            PCore_TextInputInfo(hDoc, 2, &info[2],
+                    value, sizeof(value)) != 0 ||
+            strcmp(value, "locked") != 0 ||
+            PCore_TextInputInfo(hDoc, 3, &info[3],
+                    value, sizeof(value)) != 0 ||
+            strcmp(value, "off") != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 65 FAIL",
+                "value policy or re-layout persistence failed");
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    g_native_edit_probe = 1;
+    g_native_edit_probe_ok = 0;
+    if (!show_render_window()) {
+        g_native_edit_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 65 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_native_edit_probe = 0;
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    if (!g_native_edit_probe_ok) {
+        show_error(L"TEST 65 FAIL",
+                "WM EDIT EN_CHANGE did not reach the core DOM");
+        return FALSE;
+    }
+    show_info(L"TEST 65 OK",
+              "Native WM EDIT controls, password mode, readonly/disabled,\n"
+              "maxlength, UTF-8 validation and rotation persistence passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -10368,6 +10727,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 62: ok = test62_form_toggles(); break;
         case 63: ok = test63_shared_svg_lifetime(); break;
         case 64: ok = test64_form_interaction(); break;
+        case 65: ok = test65_text_input(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -10475,7 +10835,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-64)\n"
+                  "Yes = run all selected groups (TEST 1-65)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -10501,7 +10861,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list/\n"
                                "inline CSS and form controls\n"
-                               "(TEST 46-58, 62-64).\n"
+                               "(TEST 46-58, 62-65).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -10564,7 +10924,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-64; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-65; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -10601,6 +10961,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test62_form_toggles()){ rc = 13; goto done; }
         if (!test63_shared_svg_lifetime()){ rc = 13; goto done; }
         if (!test64_form_interaction()){ rc = 13; goto done; }
+        if (!test65_text_input()) { rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -10642,7 +11003,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-64)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-65)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

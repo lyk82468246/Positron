@@ -24,6 +24,7 @@
  */
 
 #include <windows.h>
+#include <limits.h>
 #include <stdlib.h>   /* malloc / free for the per-document render state */
 #include <string.h>
 
@@ -332,12 +333,11 @@ static int pcore_node_has_attr(dom_node *node, const char *attr)
     return present ? 1 : 0;
 }
 
-/* NetSurf box_special.c attaches a form_control to checkbox/radio boxes and
- * lets the already-ported layout.c/redraw.c supply their 1em geometry and
- * platform-independent painting. Positron does not yet build NetSurf's full
- * form list, so retain the fields needed by redraw and the slim interaction
- * path below. */
-static int pcore_form_toggle_type(dom_node *node)
+/* NetSurf box_special.c attaches a form_control to input boxes. The retained
+ * layout/redraw path paints checkbox/radio directly; text/password controls
+ * keep NetSurf's geometry but expose their state to a platform-native editor
+ * through the public PCore_TextInput* bridge below. */
+static int pcore_form_control_type(dom_node *node)
 {
     if (!pcore_node_name_is(node, "input")) {
         return 0;
@@ -348,20 +348,35 @@ static int pcore_form_toggle_type(dom_node *node)
     if (pcore_attr_value_is(node, "type", "radio")) {
         return GADGET_RADIO;
     }
-    return 0;
+    if (pcore_attr_value_is(node, "type", "password")) {
+        return GADGET_PASSWORD;
+    }
+    if (pcore_attr_value_is(node, "type", "hidden") ||
+            pcore_attr_value_is(node, "type", "button") ||
+            pcore_attr_value_is(node, "type", "submit") ||
+            pcore_attr_value_is(node, "type", "reset") ||
+            pcore_attr_value_is(node, "type", "image") ||
+            pcore_attr_value_is(node, "type", "file")) {
+        return 0;
+    }
+    return GADGET_TEXTBOX;
 }
 
-static struct box *pcore_make_form_toggle_box(dom_node *node,
+static struct box *pcore_make_form_control_box(dom_node *node,
         css_computed_style *style, void *ctx, int gadget_type)
 {
     struct box *box;
     struct form_control *gadget;
     dom_html_input_element *input;
     dom_string *name = NULL;
+    dom_string *value = NULL;
+    int32_t max_length;
     bool selected = false;
     bool disabled = false;
 
-    if (gadget_type != GADGET_CHECKBOX && gadget_type != GADGET_RADIO) {
+    if (gadget_type != GADGET_CHECKBOX && gadget_type != GADGET_RADIO &&
+            gadget_type != GADGET_TEXTBOX &&
+            gadget_type != GADGET_PASSWORD) {
         return NULL;
     }
     box = pcore_box_new(BOX_INLINE_BLOCK, style, ctx);
@@ -400,6 +415,37 @@ static struct box *pcore_make_form_toggle_box(dom_node *node,
     }
     gadget->selected = selected;
     gadget->disabled = disabled;
+    if (gadget_type == GADGET_TEXTBOX ||
+            gadget_type == GADGET_PASSWORD) {
+        if (dom_html_input_element_get_value(input, &value) == DOM_NO_ERR &&
+                value != NULL) {
+            gadget->value = talloc_strndup(gadget,
+                    dom_string_data(value),
+                    dom_string_byte_length(value));
+            dom_string_unref(value);
+        } else {
+            gadget->value = talloc_strdup(gadget, "");
+        }
+        if (gadget->value == NULL) {
+            talloc_free(box);
+            return NULL;
+        }
+        gadget->length = (unsigned int) strlen(gadget->value);
+        gadget->initial_value = talloc_strdup(gadget, gadget->value);
+        gadget->last_synced_value = talloc_strdup(gadget, gadget->value);
+        if (gadget->initial_value == NULL ||
+                gadget->last_synced_value == NULL) {
+            talloc_free(box);
+            return NULL;
+        }
+        gadget->maxlength = UINT_MAX;
+        if (pcore_node_has_attr(node, "maxlength") &&
+                dom_html_input_element_get_max_length(input,
+                        &max_length) == DOM_NO_ERR &&
+                max_length >= 0) {
+            gadget->maxlength = (unsigned int) max_length;
+        }
+    }
     return box;
 }
 
@@ -867,9 +913,9 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                 css_computed_style *cs = pcore_profile_style(child, stats);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
-                    int gadget_type = pcore_form_toggle_type(child);
+                    int gadget_type = pcore_form_control_type(child);
                     if (gadget_type != 0) {
-                        struct box *gadget = pcore_make_form_toggle_box(child,
+                        struct box *gadget = pcore_make_form_control_box(child,
                                 cs, ctx, gadget_type);
                         if (gadget != NULL) {
                             pcore_box_add_child(cont, gadget);
@@ -1050,7 +1096,7 @@ static struct box *pcore_construct_block(dom_node *node,
             } else if (type == DOM_ELEMENT_NODE) {
                 css_computed_style *cs = pcore_profile_style(child, stats);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
-                    int gadget_type = pcore_form_toggle_type(child);
+                    int gadget_type = pcore_form_control_type(child);
                     if (gadget_type != 0) {
                         struct box *gadget;
                         if (inline_cont == NULL) {
@@ -1058,7 +1104,7 @@ static struct box *pcore_construct_block(dom_node *node,
                                     NULL, ctx);
                             pcore_box_add_child(box, inline_cont);
                         }
-                        gadget = pcore_make_form_toggle_box(child, cs, ctx,
+                        gadget = pcore_make_form_control_box(child, cs, ctx,
                                 gadget_type);
                         if (gadget != NULL) {
                             pcore_box_add_child(inline_cont, gadget);
@@ -2729,7 +2775,9 @@ static struct box *pcore_form_control_at(struct box *box,
     }
     if (box->gadget != NULL &&
             (box->gadget->type == GADGET_CHECKBOX ||
-             box->gadget->type == GADGET_RADIO)) {
+             box->gadget->type == GADGET_RADIO ||
+             box->gadget->type == GADGET_TEXTBOX ||
+             box->gadget->type == GADGET_PASSWORD)) {
         if (*current == target) {
             return box;
         }
@@ -2766,6 +2814,10 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
         control_kind = 1;
     } else if (box->gadget->type == GADGET_RADIO) {
         control_kind = 2;
+    } else if (box->gadget->type == GADGET_TEXTBOX) {
+        control_kind = 3;
+    } else if (box->gadget->type == GADGET_PASSWORD) {
+        control_kind = 4;
     } else {
         return 1;
     }
@@ -2783,6 +2835,222 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
     if (disabled != NULL) {
         *disabled = box->gadget->disabled ? 1 : 0;
     }
+    return 0;
+}
+
+static struct box *pcore_text_input_at(struct box *box,
+        unsigned int target, unsigned int *current)
+{
+    struct box *child;
+    struct box *found;
+
+    if (box == NULL) {
+        return NULL;
+    }
+    if (box->gadget != NULL &&
+            (box->gadget->type == GADGET_TEXTBOX ||
+             box->gadget->type == GADGET_PASSWORD)) {
+        if (*current == target) {
+            return box;
+        }
+        *current += 1;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        found = pcore_text_input_at(child, target, current);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+static int pcore_utf8_character_count(const char *text,
+        unsigned int *out_count)
+{
+    const unsigned char *p;
+    unsigned int count;
+    unsigned int cp;
+    int need;
+    int i;
+
+    if (text == NULL || out_count == NULL) {
+        return 1;
+    }
+    p = (const unsigned char *) text;
+    count = 0;
+    while (*p != 0) {
+        if (*p < 0x80) {
+            p++;
+            count++;
+            continue;
+        }
+        if (*p >= 0xc2 && *p <= 0xdf) {
+            need = 1;
+            cp = *p & 0x1f;
+        } else if (*p >= 0xe0 && *p <= 0xef) {
+            need = 2;
+            cp = *p & 0x0f;
+        } else if (*p >= 0xf0 && *p <= 0xf4) {
+            need = 3;
+            cp = *p & 0x07;
+        } else {
+            return 1;
+        }
+        for (i = 1; i <= need; i++) {
+            if ((p[i] & 0xc0) != 0x80) {
+                return 1;
+            }
+            cp = (cp << 6) | (p[i] & 0x3f);
+        }
+        if ((need == 2 && cp < 0x800) ||
+                (need == 3 && cp < 0x10000) ||
+                (cp >= 0xd800 && cp <= 0xdfff) ||
+                cp > 0x10ffff) {
+            return 1;
+        }
+        p += need + 1;
+        count++;
+    }
+    *out_count = count;
+    return 0;
+}
+
+PCORE_API int PCore_TextInputInfo(HANDLE hDoc, unsigned int index,
+        PCoreTextInputInfo *out_info, char *value, int cap)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_control *control;
+    dom_html_input_element *input;
+    unsigned int current;
+    bool read_only;
+    int ax;
+    int ay;
+    size_t value_len;
+    size_t copy_len;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_text_input_at(st->root_box, index, &current) : NULL;
+    if (box == NULL || box->gadget == NULL) {
+        return 1;
+    }
+    control = box->gadget;
+    input = (dom_html_input_element *) control->node;
+    read_only = false;
+    if (dom_html_input_element_get_read_only(input, &read_only) !=
+            DOM_NO_ERR) {
+        read_only = pcore_node_has_attr(control->node, "readonly") ?
+                true : false;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    if (out_info != NULL) {
+        out_info->x = ax - box->border[LEFT].width;
+        out_info->y = ay - box->border[TOP].width;
+        out_info->width = box->border[LEFT].width +
+                box->padding[LEFT] + box->width + box->padding[RIGHT] +
+                box->border[RIGHT].width;
+        out_info->height = box->border[TOP].width +
+                box->padding[TOP] + box->height + box->padding[BOTTOM] +
+                box->border[BOTTOM].width;
+        out_info->password =
+                (control->type == GADGET_PASSWORD) ? 1 : 0;
+        out_info->read_only = read_only ? 1 : 0;
+        out_info->disabled = control->disabled ? 1 : 0;
+        out_info->max_length =
+                (control->maxlength == UINT_MAX ||
+                 control->maxlength > (unsigned int) INT_MAX) ?
+                -1 : (int) control->maxlength;
+        out_info->value_bytes = (control->value != NULL) ?
+                (int) strlen(control->value) : 0;
+    }
+    if (value != NULL && cap > 0) {
+        value_len = (control->value != NULL) ?
+                strlen(control->value) : 0;
+        copy_len = value_len;
+        if (copy_len > (size_t) (cap - 1)) {
+            copy_len = (size_t) (cap - 1);
+        }
+        if (copy_len > 0) {
+            memcpy(value, control->value, copy_len);
+        }
+        value[copy_len] = '\0';
+    }
+    return 0;
+}
+
+PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
+        const char *value)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_control *control;
+    dom_html_input_element *input;
+    dom_string *dom_value;
+    char *copy;
+    char *synced;
+    unsigned int current;
+    unsigned int characters;
+    bool read_only;
+    size_t value_len;
+
+    if (value == NULL ||
+            pcore_utf8_character_count(value, &characters) != 0) {
+        return 3;
+    }
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_text_input_at(st->root_box, index, &current) : NULL;
+    if (box == NULL || box->gadget == NULL) {
+        return 1;
+    }
+    control = box->gadget;
+    input = (dom_html_input_element *) control->node;
+    read_only = false;
+    if (dom_html_input_element_get_read_only(input, &read_only) !=
+            DOM_NO_ERR) {
+        read_only = pcore_node_has_attr(control->node, "readonly") ?
+                true : false;
+    }
+    if (control->disabled || read_only) {
+        return 2;
+    }
+    if (control->maxlength != UINT_MAX &&
+            characters > control->maxlength) {
+        return 3;
+    }
+    value_len = strlen(value);
+    copy = talloc_strdup(control, value);
+    synced = talloc_strdup(control, value);
+    if (copy == NULL || synced == NULL) {
+        if (copy != NULL) { talloc_free(copy); }
+        if (synced != NULL) { talloc_free(synced); }
+        return 1;
+    }
+    dom_value = NULL;
+    if (dom_string_create((const uint8_t *) value, value_len,
+            &dom_value) != DOM_NO_ERR ||
+            dom_html_input_element_set_value(input, dom_value) !=
+                    DOM_NO_ERR) {
+        if (dom_value != NULL) { dom_string_unref(dom_value); }
+        talloc_free(copy);
+        talloc_free(synced);
+        return 1;
+    }
+    dom_string_unref(dom_value);
+    if (control->value != NULL) {
+        talloc_free(control->value);
+    }
+    if (control->last_synced_value != NULL) {
+        talloc_free(control->last_synced_value);
+    }
+    control->value = copy;
+    control->last_synced_value = synced;
+    control->length = (unsigned int) value_len;
     return 0;
 }
 
