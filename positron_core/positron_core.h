@@ -196,6 +196,31 @@ typedef struct PCoreLayoutStats {
  * GetTickCount deltas and do not alter layout scheduling. */
 PCORE_API int PCore_GetLayoutStats(HANDLE hDoc, PCoreLayoutStats *out_stats);
 
+typedef struct PCoreBoxStats {
+    unsigned long tree_ms;
+    unsigned long backgrounds_ms;
+    unsigned long style_ms;
+    unsigned long text_ms;
+    unsigned long image_ms;
+    unsigned long anonymous_ms;
+    unsigned long table_normalise_ms;
+    unsigned int style_calls;
+    unsigned int text_calls;
+    unsigned int image_calls;
+    unsigned int anonymous_calls;
+    unsigned int table_calls;
+    unsigned int image_reuses;
+    unsigned int image_markup_first;
+} PCoreBoxStats;
+
+/* Read non-overlapping box-construction probes from the most recent layout.
+ * tree_ms excludes backgrounds_ms. The style/text/image/anonymous/table
+ * probes are exclusive work inside tree_ms, so callers may derive tree-other
+ * by subtracting them. image_reuses counts document-owned retained handles;
+ * image_markup_first counts XML-like bytes dispatched to the SVG service
+ * before WM Imaging. This diagnostic API does not alter box construction. */
+PCORE_API int PCore_GetBoxStats(HANDLE hDoc, PCoreBoxStats *out_stats);
+
 /* Read back the laid-out content-box (CSS px) of the first element named `tag`.
  * Any of the out pointers may be NULL. Returns 0 on success. */
 PCORE_API int PCore_NodeBox(HANDLE hDoc, const char *tag,

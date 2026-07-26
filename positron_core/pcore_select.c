@@ -30,6 +30,7 @@
 #include <libwapcaplet/libwapcaplet.h>
 
 #include "positron_core.h"
+#include "positron_image.h"
 #include "pcore_internal.h"
 
 /* Client data threaded through css_select_style into the handler. */
@@ -2231,6 +2232,11 @@ typedef struct pcore_image_resource {
     char *url;
     char *data;
     int len;
+    int retained_attempted;
+    void *native_image;
+    void *svg;
+    int width;
+    int height;
 } pcore_image_resource;
 
 typedef struct pcore_image_cache {
@@ -2264,6 +2270,12 @@ static void pcore_image_cache_free(pcore_image_cache *cache)
     while (entry != NULL) {
         pcore_image_resource *next = entry->next;
 
+        if (entry->native_image != NULL) {
+            PImage_FreeBitmap((PIMAGE_BITMAP) entry->native_image);
+        }
+        if (entry->svg != NULL) {
+            PImage_FreeSvg((PIMAGE_SVG) entry->svg);
+        }
         free(entry->url);
         free(entry->data);
         free(entry);
@@ -2354,6 +2366,11 @@ static int pcore_image_cache_store(pcore_image_cache *cache,
     entry->url = NULL;
     entry->data = NULL;
     entry->len = 0;
+    entry->retained_attempted = 0;
+    entry->native_image = NULL;
+    entry->svg = NULL;
+    entry->width = 0;
+    entry->height = 0;
 
     url_len = strlen(url);
     entry->url = (char *) malloc(url_len + 1);
@@ -2395,6 +2412,71 @@ int pcore_image_resource_get(dom_document *doc, const char *url,
     if (out_len != NULL) {
         *out_len = entry->len;
     }
+    return 0;
+}
+
+int pcore_image_resource_retained_get(dom_document *doc,
+        const char *url, int *out_attempted, void **out_native_image,
+        void **out_svg, int *out_width, int *out_height)
+{
+    pcore_image_cache *cache;
+    pcore_image_resource *entry;
+
+    if (out_attempted != NULL) {
+        *out_attempted = 0;
+    }
+    if (out_native_image != NULL) {
+        *out_native_image = NULL;
+    }
+    if (out_svg != NULL) {
+        *out_svg = NULL;
+    }
+    if (out_width != NULL) {
+        *out_width = 0;
+    }
+    if (out_height != NULL) {
+        *out_height = 0;
+    }
+    cache = pcore_image_cache_get(doc, 0);
+    entry = pcore_image_cache_find(cache, url);
+    if (entry == NULL) {
+        return 1;
+    }
+    if (out_attempted != NULL) {
+        *out_attempted = entry->retained_attempted;
+    }
+    if (out_native_image != NULL) {
+        *out_native_image = entry->native_image;
+    }
+    if (out_svg != NULL) {
+        *out_svg = entry->svg;
+    }
+    if (out_width != NULL) {
+        *out_width = entry->width;
+    }
+    if (out_height != NULL) {
+        *out_height = entry->height;
+    }
+    return 0;
+}
+
+int pcore_image_resource_retained_store(dom_document *doc,
+        const char *url, void *native_image, void *svg,
+        int width, int height)
+{
+    pcore_image_cache *cache;
+    pcore_image_resource *entry;
+
+    cache = pcore_image_cache_get(doc, 0);
+    entry = pcore_image_cache_find(cache, url);
+    if (entry == NULL || entry->retained_attempted) {
+        return 1;
+    }
+    entry->retained_attempted = 1;
+    entry->native_image = native_image;
+    entry->svg = svg;
+    entry->width = width;
+    entry->height = height;
     return 0;
 }
 

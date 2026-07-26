@@ -45,11 +45,19 @@ const css_unit_ctx *pcore_get_unit_ctx(void);
  * Returned data is borrowed and remains valid until the document is freed. */
 int pcore_image_resource_get(struct dom_document *doc, const char *url,
         const char **out_data, int *out_len);
+int pcore_image_resource_retained_get(struct dom_document *doc,
+        const char *url, int *out_attempted, void **out_native_image,
+        void **out_svg, int *out_width, int *out_height);
+int pcore_image_resource_retained_store(struct dom_document *doc,
+        const char *url, void *native_image, void *svg,
+        int width, int height);
 
 /* Build a NetSurf box tree (struct box) from the styled document element
  * `root`, allocating under talloc context `ctx`. Returns the root box, or NULL.
  * The tree is freed by talloc_free(ctx). Boxes borrow DOM node pointers. */
 struct box *pcore_box_construct(struct dom_node *root, void *ctx);
+struct box *pcore_box_construct_profile(struct dom_node *root, void *ctx,
+        PCoreBoxStats *stats);
 
 /* Overflow scrollbar helpers owned by pcore_box_inspect.c. */
 struct scrollbar;

@@ -201,4 +201,12 @@ next86 设备 TEST13 遥测为 total=6435ms、network=5503ms、max UI=673ms，pa
 
 next87 在 `PCore_LayoutDocument` 内仅用 `GetTickCount` 记录 box construction、首轮 NetSurf layout、overflow 检查及可选 settling 二次 layout、finalize 和 total，并通过只读 `PCore_GetLayoutStats` 交给 TEST13。`settling_pass=1` 表示本次确实执行了第二轮 layout；`other` 是 total 扣除四个已知阶段后的调度/计时余量。设备 IANA 起始页报告 `580=515+65+0ms, pass=0`；进入 Reserved 后最后一次导航报告 `662=495+124+43ms, pass=1`，其余门禁均 OK。构盒在两页都稳定占约 500ms，下一批先细分构盒，不得为了缩短数字跳过既有 settling pass、修改几何或放宽回归断言。
 
+next88 候选不改递归构盒语义：统计对象沿现有 block/inline/flex/table 调用显式传递，不使用 DLL 全局 profiler；旧 `pcore_box_construct` 保留为无统计包装。`tree` 与 background attachment 分开计时，tree 内再累计 computed-style lookup、text copy/whitespace、retained image decode、anonymous style compose 和 table span/gap normalisation；表格补空格的匿名样式只归 table，避免双重计时。`tree-other` 是 tree 扣除五项热点的余量。逐节点 `GetTickCount` 会增加少量观测开销，因此 next88 重点比较热点比例和调用数，不直接把总毫秒与 next87 当作性能回归。
+
+next88 设备数据已定位到单张图片创建：IANA 起始页 tree/image=`523/518ms`，Reserved 为 `481/474ms`，backgrounds 均为 0，tree-other 仅 `4/1ms`。旧路径对 SVG 先调用 WM Imaging，失败后才进入现有 `PImage_CreateSvgFromMemory`，因此这不是 DOM 遍历或表格归一化瓶颈。next89 按字节 BOM/空白后的首个 `<` 做保守 SVG-first 分派，并把成功或失败的 retained handle 状态挂在既有 document image cache；二次 layout 的轻量 carrier 借用 document-owned handle。设备确认 TEST20/27 的 4/4 与 1/1 retained reuse 自动断言及其余默认门禁全部通过。TEST13 首次页面 image 仍为 `469ms`，随后 Reserved 页面降到 `37ms`；首屏 SVG 冷启动仍是后续诊断项。句柄必须在创建线程随 document 释放；这不是跨文档、跨导航或跨线程缓存。
+
+TEST13 遥测现拆成 `overview` 与 `box detail` 两个短 MessageBox。前者保留网络、提交阶段、资源和 layout breakdown，后者显示构盒热点、调用数及 image reuse/markup-first；不要再把所有字段塞回一个 WM 小屏弹窗。
+
+TEST13 的两个框读取导航完成时复制的 `g_nav_last_stats`。导航成功后再发生的 `WM_SIZE` 旋转布局不会回写该快照，所以“旋转后退出仍显示 reuse=0/markup-first=1”不能用来否定或证明旋转复用；同 document 复用由 TEST20/27 的显式二次 layout 断言负责。
+
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。

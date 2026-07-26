@@ -1863,6 +1863,8 @@ typedef struct pcore_navigation_stats {
     int completed;
     PCoreLayoutStats core_layout;
     int core_layout_valid;
+    PCoreBoxStats core_box;
+    int core_box_valid;
 } pcore_navigation_stats;
 
 typedef struct pcore_navigation_request {
@@ -2648,6 +2650,9 @@ static int pcore_navigation_commit_step(HWND hwnd,
     request->stats.core_layout_valid =
             PCore_GetLayoutStats(request->document,
                     &request->stats.core_layout) == 0;
+    request->stats.core_box_valid =
+            PCore_GetBoxStats(request->document,
+                    &request->stats.core_box) == 0;
 
     /* Swap in the new document; free the one being replaced. */
     if (g_render_doc != NULL) {
@@ -3246,9 +3251,12 @@ static BOOL test_browse(void)
 
     HANDLE hDoc;
     int    vw, vh;
-    char   summary[768];
+    char   summary[640];
+    char   box_summary[512];
     unsigned long core_known;
     unsigned long core_other;
+    unsigned long box_known;
+    unsigned long box_other;
 
     /* Landing page is offline; the actual fetch happens when the user taps
      * the link (navigate_to), exercising the full click -> fetch -> render
@@ -3309,15 +3317,23 @@ static BOOL test_browse(void)
                 g_nav_last_stats.core_layout.finalize_ms;
         core_other = (g_nav_last_stats.core_layout.total_ms >= core_known) ?
                 g_nav_last_stats.core_layout.total_ms - core_known : 0;
+        box_known = g_nav_last_stats.core_box.style_ms +
+                g_nav_last_stats.core_box.text_ms +
+                g_nav_last_stats.core_box.image_ms +
+                g_nav_last_stats.core_box.anonymous_ms +
+                g_nav_last_stats.core_box.table_normalise_ms;
+        box_other = (g_nav_last_stats.core_box.tree_ms >= box_known) ?
+                g_nav_last_stats.core_box.tree_ms - box_known : 0;
         _snprintf(summary, sizeof(summary) - 1,
-                "Last navigation %s:\n"
-                "total=%lums network=%lums max UI=%lums\n"
-                "parse/style/images/layout/paint=%lu/%lu/%lu/%lu/%lums\n"
-                "resources queued/ok/fail=%d/%d/%d rounds=%d\n"
-                "bytes document/cache=%d/%d budget-rejected=%d\n"
-                "core layout total=%lums detail=%s\n"
-                "box/first/settle/final/other=%lu/%lu/%lu/%lu/%lums"
-                " pass=%d",
+                "Last navigation %s\n"
+                "total/net/maxUI=%lu/%lu/%lums\n"
+                "parse/style/img/layout/paint=\n"
+                "%lu/%lu/%lu/%lu/%lums\n"
+                "res q/ok/f/r=%d/%d/%d/%d\n"
+                "bytes doc/cache=%d/%d reject=%d\n"
+                "layout total=%lums pass=%d\n"
+                "box/first/settle/final/other=\n"
+                "%lu/%lu/%lu/%lu/%lums",
                 g_nav_last_stats.completed ? "completed" : "failed",
                 (unsigned long) g_nav_last_stats.total_ms,
                 (unsigned long) g_nav_last_stats.network_ms,
@@ -3335,17 +3351,43 @@ static BOOL test_browse(void)
                 g_nav_last_stats.resource_bytes,
                 g_nav_last_stats.budget_rejected,
                 (unsigned long) g_nav_last_stats.core_layout.total_ms,
-                g_nav_last_stats.core_layout_valid ? "ok" : "unavailable",
+                g_nav_last_stats.core_layout.settling_pass,
                 (unsigned long)
                         g_nav_last_stats.core_layout.box_construct_ms,
                 (unsigned long)
                         g_nav_last_stats.core_layout.first_layout_ms,
                 (unsigned long) g_nav_last_stats.core_layout.settling_ms,
                 (unsigned long) g_nav_last_stats.core_layout.finalize_ms,
-                core_other,
-                g_nav_last_stats.core_layout.settling_pass);
+                core_other);
         summary[sizeof(summary) - 1] = '\0';
-        show_info(L"TEST 13 OK (telemetry)", summary);
+        _snprintf(box_summary, sizeof(box_summary) - 1,
+                "Box detail: %s\n"
+                "tree/bg/other=%lu/%lu/%lums\n"
+                "hot style/text/image/anon/table=\n"
+                "%lu/%lu/%lu/%lu/%lums\n"
+                "calls style/text/image/anon/table=\n"
+                "%u/%u/%u/%u/%u\n"
+                "image reuse/markup-first=%u/%u",
+                g_nav_last_stats.core_box_valid ? "ok" : "unavailable",
+                (unsigned long) g_nav_last_stats.core_box.tree_ms,
+                (unsigned long) g_nav_last_stats.core_box.backgrounds_ms,
+                box_other,
+                (unsigned long) g_nav_last_stats.core_box.style_ms,
+                (unsigned long) g_nav_last_stats.core_box.text_ms,
+                (unsigned long) g_nav_last_stats.core_box.image_ms,
+                (unsigned long) g_nav_last_stats.core_box.anonymous_ms,
+                (unsigned long)
+                        g_nav_last_stats.core_box.table_normalise_ms,
+                g_nav_last_stats.core_box.style_calls,
+                g_nav_last_stats.core_box.text_calls,
+                g_nav_last_stats.core_box.image_calls,
+                g_nav_last_stats.core_box.anonymous_calls,
+                g_nav_last_stats.core_box.table_calls,
+                g_nav_last_stats.core_box.image_reuses,
+                g_nav_last_stats.core_box.image_markup_first);
+        box_summary[sizeof(box_summary) - 1] = '\0';
+        show_info(L"TEST 13 OK (overview)", summary);
+        show_info(L"TEST 13 OK (box detail)", box_summary);
     } else {
         show_info(L"TEST 13 OK",
                   "Browse window closed without a completed navigation.\n"
@@ -3765,8 +3807,12 @@ static BOOL test20_cached_img(void)
     int w = 0;
     int h = 0;
     int vw, vh;
+    PCoreBoxStats first_box_stats;
+    PCoreBoxStats second_box_stats;
     char msg[256];
 
+    memset(&first_box_stats, 0, sizeof(first_box_stats));
+    memset(&second_box_stats, 0, sizeof(second_box_stats));
     ctx.calls = 0;
     ctx.matched = 0;
     ctx.frees = 0;
@@ -3797,10 +3843,29 @@ static BOOL test20_cached_img(void)
     if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_GetBoxStats(hDoc, &first_box_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != 48 || h != 48) {
-        sprintf(msg, "first image box=(%d,%d) %dx%d; expect 48x48",
-                x, y, w, h);
+            w != 48 || h != 48 ||
+            first_box_stats.image_calls != 4 ||
+            first_box_stats.image_reuses != 0) {
+        sprintf(msg, "first box=%dx%d calls/reuse=%u/%u; expect 48x48 4/0",
+                w, h, first_box_stats.image_calls,
+                first_box_stats.image_reuses);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 20 FAIL", msg);
+        return FALSE;
+    }
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_GetBoxStats(hDoc, &second_box_stats) != 0 ||
+            PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
+            w != 48 || h != 48 ||
+            second_box_stats.image_calls != 4 ||
+            second_box_stats.image_reuses != 4 ||
+            ctx.calls != 4 || ctx.frees != 4) {
+        sprintf(msg, "reuse box=%dx%d calls/reuse=%u/%u fetch/free=%d/%d",
+                w, h, second_box_stats.image_calls,
+                second_box_stats.image_reuses, ctx.calls, ctx.frees);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 20 FAIL", msg);
@@ -3832,7 +3897,8 @@ static BOOL test20_cached_img(void)
     show_info(L"TEST 20 OK",
               "Cached BMP/PNG/JPEG/GIF became NetSurf replaced boxes\n"
               "and painted through content_redraw -> plot_bitmap ->\n"
-              "WM Imaging IImage::Draw; fetch/free stayed 4/4.");
+              "WM Imaging IImage::Draw; second layout reused 4/4\n"
+              "retained objects while fetch/free stayed 4/4.");
     return TRUE;
 }
 
@@ -3902,8 +3968,12 @@ static BOOL test27_cached_svg_img(void)
     int h;
     int vw;
     int vh;
+    PCoreBoxStats first_box_stats;
+    PCoreBoxStats second_box_stats;
     char msg[256];
 
+    memset(&first_box_stats, 0, sizeof(first_box_stats));
+    memset(&second_box_stats, 0, sizeof(second_box_stats));
     ctx.calls = 0;
     ctx.matched = 0;
     ctx.frees = 0;
@@ -3938,10 +4008,31 @@ static BOOL test27_cached_svg_img(void)
     if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_GetBoxStats(hDoc, &first_box_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != 120 || h != 60) {
-        sprintf(msg, "SVG image box=(%d,%d) %dx%d; expect 120x60",
-                x, y, w, h);
+            w != 120 || h != 60 ||
+            first_box_stats.image_calls != 1 ||
+            first_box_stats.image_reuses != 0 ||
+            first_box_stats.image_markup_first != 1) {
+        sprintf(msg, "first SVG=%dx%d calls/reuse/markup=%u/%u/%u",
+                w, h, first_box_stats.image_calls,
+                first_box_stats.image_reuses,
+                first_box_stats.image_markup_first);
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 27 FAIL", msg);
+        return FALSE;
+    }
+    if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
+            PCore_GetBoxStats(hDoc, &second_box_stats) != 0 ||
+            PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
+            w != 120 || h != 60 ||
+            second_box_stats.image_calls != 1 ||
+            second_box_stats.image_reuses != 1 ||
+            ctx.calls != 1 || ctx.frees != 1) {
+        sprintf(msg, "reuse SVG=%dx%d calls/reuse=%u/%u fetch/free=%d/%d",
+                w, h, second_box_stats.image_calls,
+                second_box_stats.image_reuses, ctx.calls, ctx.frees);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 27 FAIL", msg);
@@ -4003,7 +4094,8 @@ static BOOL test27_cached_svg_img(void)
     show_info(L"TEST 27 OK",
               "Cached SVG became a NetSurf replaced box and painted through\n"
               "content_redraw -> plot_bitmap -> positron_image.dll.\n"
-              "Layout, fetch/free and off-screen pixels passed.");
+              "SVG-first dispatch, retained reuse, fetch/free and\n"
+              "off-screen pixels passed.");
     return TRUE;
 }
 

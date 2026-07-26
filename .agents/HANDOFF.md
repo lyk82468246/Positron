@@ -2,7 +2,7 @@
 
 更新时间：2026-07-25
 当前分支：`main`  
-当前设备基线：next87，已覆盖 TEST13/43/44/56/58-62。设备确认其余门禁均 OK；IANA 起始页的 core layout 为 `580ms: box/first/settle=515/65/0, pass=0`，进入 Reserved 后最后一次导航为 `662ms: 495/124/43, pass=1`。构盒稳定占约 500ms，是下一步诊断目标；next86 的网络/提交阶段结论继续成立。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next89，已覆盖 TEST13/20/27/43/44/56/58-62。next88 先把 IANA 构盒热点定位到单张 retained image 创建；next89 随后拆分过长遥测弹窗，加入现有 SVG API 优先分派与 document-owned retained handle 复用。设备确认 TEST20/27 复用断言及其余默认门禁全部通过；TEST13 首次页面 image 仍为 `469ms`，随后 Reserved 页面降到 `37ms`。**next78 仍是已撤回的失败实验，不得使用**。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -114,6 +114,10 @@ scripts\stage.bat
 - TEST62：四个离屏探针确认 checkbox/radio 均采用 1em 几何，最终 gadget 的 checked 状态为 0/1，选中状态增加像素暗度，hidden input 不生成 box；随后显示四个只读控件。当前不包含点击、键盘、文本编辑、select 或提交。
 - TEST13 next86 遥测：关闭 Browse 窗口后，既有 OK 框显示最后一次导航的 total/network/max-UI、parse/style/images/layout/paint、资源 queued/ok/fail、worker rounds、document/cache bytes 和 budget-rejected。style/images 是多轮累计，max-UI 才是单次消息循环最长阻塞。
 - next87 在同一 OK 框追加 core layout 的 box/first/settle/final/other 与 settling pass。`PCore_GetLayoutStats` 只复制每个 document 最近一次布局统计；未改变构盒、两轮布局判定、几何或重绘。设备已确认两类真实页面的构盒均约 500ms；该结论只确定下一步细分方向，不代表卡顿已经优化。
+- next88 新增独立 `PCoreBoxStats`/`PCore_GetBoxStats`，避免扩展 next87 已公开结构的大小。tree/backgrounds 互不重叠；tree 内 style/text/image/anonymous/table-normalise 互不重叠，`other` 为剩余 DOM 遍历、分支与分配时间。逐调用 `GetTickCount` 有轻微诊断开销，比较分布优先于比较 next87 的绝对毫秒。
+- next88 设备数据已把两页热点缩到单张图片创建（518/474ms）。next89 用现有 `positron_image.dll` 做 XML-like 字节 SVG-first，避免先让 WM Imaging 失败；同一 document 的二次 layout 借用 image cache retained handle。TEST20/27 已通过 4/4、1/1 reuse，TEST27 也通过首次 markup-first。它不提供跨导航或跨线程句柄共享。
+- TEST13 关闭后依次显示两个短框：`overview` 与 `box detail`。后者的 `image reuse/markup-first` 用于区分重排复用和首次 SVG 分派；两个概念不能相互代替。
+- TEST13 显示的是导航完成快照；后续旋转布局不会回写 `g_nav_last_stats`。不要用旋转后弹窗的 reuse 值判断旋转路径，复用门禁在 TEST20/27。
 - TEST 13：Start page -> Open example.com -> 点击页面链接，走正式 Browse 路径。
 
 ## 当前限制 / 下一步

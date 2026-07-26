@@ -99,12 +99,14 @@ static int pcore_owned_style_destroy(pcore_owned_style *owned)
  * the parent. Keep the composed style as a talloc child of its box so the box
  * tree owns it without changing the borrowed-style contract of DOM boxes. */
 static struct box *pcore_make_anonymous_box(box_type type,
-        css_computed_style *parent_style, dom_node *source_node, void *ctx)
+        css_computed_style *parent_style, dom_node *source_node, void *ctx,
+        PCoreBoxStats *stats)
 {
     struct box *box;
     pcore_owned_style *owned;
     dom_document *doc = NULL;
     css_computed_style *base;
+    DWORD started = (stats != NULL) ? GetTickCount() : 0;
 
     if (parent_style == NULL || source_node == NULL ||
             dom_node_get_owner_document(source_node, &doc) != DOM_NO_ERR ||
@@ -112,31 +114,54 @@ static struct box *pcore_make_anonymous_box(box_type type,
         if (doc != NULL) {
             dom_node_unref((dom_node *) doc);
         }
-        return NULL;
+        box = NULL;
+        goto done;
     }
     base = pcore_document_default_style(doc);
     dom_node_unref((dom_node *) doc);
     if (base == NULL) {
-        return NULL;
+        box = NULL;
+        goto done;
     }
 
     box = pcore_box_new(type, NULL, ctx);
     if (box == NULL) {
-        return NULL;
+        goto done;
     }
     owned = talloc_zero(box, pcore_owned_style);
     if (owned == NULL) {
         talloc_free(box);
-        return NULL;
+        box = NULL;
+        goto done;
     }
     talloc_set_destructor(owned, pcore_owned_style_destroy);
     if (css_computed_style_compose(parent_style, base, pcore_get_unit_ctx(),
             &owned->style) != CSS_OK || owned->style == NULL) {
         talloc_free(box);
-        return NULL;
+        box = NULL;
+        goto done;
     }
     box->style = owned->style;
+done:
+    if (stats != NULL) {
+        stats->anonymous_ms += GetTickCount() - started;
+        stats->anonymous_calls++;
+    }
     return box;
+}
+
+static css_computed_style *pcore_profile_style(dom_node *node,
+        PCoreBoxStats *stats)
+{
+    css_computed_style *style;
+    DWORD started = (stats != NULL) ? GetTickCount() : 0;
+
+    style = pcore_node_computed_style(node);
+    if (stats != NULL) {
+        stats->style_ms += GetTickCount() - started;
+        stats->style_calls++;
+    }
+    return style;
 }
 
 /* Append `child` as the last child of `parent` (NetSurf box_add_child). */
@@ -406,12 +431,14 @@ static struct box *pcore_make_literal_text_box(dom_node *owner,
  * the caller can retain the established alt/src fallback. */
 static int pcore_bitmap_destroy(struct bitmap *bitmap)
 {
-    if (bitmap != NULL && bitmap->kind == PCORE_BITMAP_WM_IMAGE &&
+    if (bitmap != NULL && bitmap->owns_retained &&
+            bitmap->kind == PCORE_BITMAP_WM_IMAGE &&
             bitmap->native_image != NULL) {
         PImage_FreeBitmap((PIMAGE_BITMAP) bitmap->native_image);
         bitmap->native_image = NULL;
     }
-    if (bitmap != NULL && bitmap->kind == PCORE_BITMAP_SVG &&
+    if (bitmap != NULL && bitmap->owns_retained &&
+            bitmap->kind == PCORE_BITMAP_SVG &&
             bitmap->svg != NULL) {
         PImage_FreeSvg((PIMAGE_SVG) bitmap->svg);
         bitmap->svg = NULL;
@@ -419,24 +446,89 @@ static int pcore_bitmap_destroy(struct bitmap *bitmap)
     return 0;
 }
 
+static int pcore_image_bytes_are_markup(const char *data, int len)
+{
+    int offset = 0;
+    unsigned char c;
+
+    if (data == NULL || len <= 0) {
+        return 0;
+    }
+    if (len >= 3 &&
+            (unsigned char) data[0] == 0xef &&
+            (unsigned char) data[1] == 0xbb &&
+            (unsigned char) data[2] == 0xbf) {
+        offset = 3;
+    }
+    while (offset < len) {
+        c = (unsigned char) data[offset];
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n' &&
+                c != '\f') {
+            break;
+        }
+        offset++;
+    }
+    return offset < len && data[offset] == '<';
+}
+
 static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
-        const char *url, void *ctx)
+        const char *url, void *ctx, PCoreBoxStats *stats)
 {
     const char *data = NULL;
     int len = 0;
     int width = 0;
     int height = 0;
     int kind = 0;
+    int retained_attempted = 0;
+    int cache_owns_retained = 0;
+    int markup_first = 0;
+    void *cached_native = NULL;
+    void *cached_svg = NULL;
     PIMAGE_BITMAP native_image = NULL;
     PIMAGE_SVG svg = NULL;
     struct bitmap *bitmap;
+    DWORD started = (stats != NULL) ? GetTickCount() : 0;
 
     if (doc == NULL || url == NULL || url[0] == '\0' ||
             pcore_image_resource_get(doc, url, &data, &len) != 0) {
-        return NULL;
+        bitmap = NULL;
+        goto done;
     }
-    if (PImage_CreateBitmapFromMemory(data, len, &native_image) ==
-            PIMAGE_OK && native_image != NULL) {
+
+    if (pcore_image_resource_retained_get(doc, url,
+            &retained_attempted, &cached_native, &cached_svg,
+            &width, &height) == 0 && retained_attempted) {
+        native_image = (PIMAGE_BITMAP) cached_native;
+        svg = (PIMAGE_SVG) cached_svg;
+        if (native_image != NULL && width > 0 && height > 0) {
+            kind = PCORE_BITMAP_WM_IMAGE;
+        } else if (svg != NULL && width > 0 && height > 0) {
+            kind = PCORE_BITMAP_SVG;
+        }
+        if (kind != 0 && stats != NULL) {
+            stats->image_reuses++;
+        }
+        cache_owns_retained = 1;
+        goto decoded;
+    }
+
+    markup_first = pcore_image_bytes_are_markup(data, len);
+    if (markup_first) {
+        if (stats != NULL) {
+            stats->image_markup_first++;
+        }
+        if (PImage_CreateSvgFromMemory(data, len, 0, 0, &svg) ==
+                PIMAGE_OK && svg != NULL &&
+                PImage_SvgGetInfo(svg, &width, &height, NULL) ==
+                PIMAGE_OK && width > 0 && height > 0) {
+            kind = PCORE_BITMAP_SVG;
+        } else if (svg != NULL) {
+            PImage_FreeSvg(svg);
+            svg = NULL;
+        }
+    }
+    if (kind == 0 && PImage_CreateBitmapFromMemory(data, len,
+            &native_image) == PIMAGE_OK && native_image != NULL) {
         if (PImage_BitmapGetInfo(native_image, &width, &height) ==
                 PIMAGE_OK && width > 0 && height > 0) {
             kind = PCORE_BITMAP_WM_IMAGE;
@@ -445,31 +537,43 @@ static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
             native_image = NULL;
         }
     }
-    if (kind == 0 && PImage_CreateSvgFromMemory(data, len, 0, 0, &svg) ==
+    if (kind == 0 && !markup_first &&
+            PImage_CreateSvgFromMemory(data, len, 0, 0, &svg) ==
             PIMAGE_OK && svg != NULL &&
             PImage_SvgGetInfo(svg, &width, &height, NULL) == PIMAGE_OK &&
             width > 0 && height > 0) {
         kind = PCORE_BITMAP_SVG;
+    } else if (kind == 0 && svg != NULL) {
+        PImage_FreeSvg(svg);
+        svg = NULL;
     }
+
+    if (pcore_image_resource_retained_store(doc, url,
+            (void *) native_image, (void *) svg, width, height) == 0) {
+        cache_owns_retained = 1;
+    }
+decoded:
     if (kind == 0) {
-        if (native_image != NULL) {
+        if (!cache_owns_retained && native_image != NULL) {
             PImage_FreeBitmap(native_image);
         }
-        if (svg != NULL) {
+        if (!cache_owns_retained && svg != NULL) {
             PImage_FreeSvg(svg);
         }
-        return NULL;
+        bitmap = NULL;
+        goto done;
     }
 
     bitmap = talloc_zero(ctx, struct bitmap);
     if (bitmap == NULL) {
-        if (native_image != NULL) {
+        if (!cache_owns_retained && native_image != NULL) {
             PImage_FreeBitmap(native_image);
         }
-        if (svg != NULL) {
+        if (!cache_owns_retained && svg != NULL) {
             PImage_FreeSvg(svg);
         }
-        return NULL;
+        bitmap = NULL;
+        goto done;
     }
     bitmap->kind = kind;
     bitmap->data = data;
@@ -478,12 +582,18 @@ static struct bitmap *pcore_make_cached_bitmap(dom_document *doc,
     bitmap->height = height;
     bitmap->native_image = (void *) native_image;
     bitmap->svg = (void *) svg;
+    bitmap->owns_retained = !cache_owns_retained;
     talloc_set_destructor(bitmap, pcore_bitmap_destroy);
+done:
+    if (stats != NULL) {
+        stats->image_ms += GetTickCount() - started;
+        stats->image_calls++;
+    }
     return bitmap;
 }
 
 static struct box *pcore_make_cached_image_box(dom_node *node,
-        css_computed_style *style, void *ctx)
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats)
 {
     char *src = NULL;
     size_t src_len = 0;
@@ -511,7 +621,7 @@ static struct box *pcore_make_cached_image_box(dom_node *node,
         free(url);
         return NULL;
     }
-    bitmap = pcore_make_cached_bitmap(doc, url, ctx);
+    bitmap = pcore_make_cached_bitmap(doc, url, ctx, stats);
     dom_node_unref((dom_node *) doc);
     free(url);
     if (bitmap == NULL) {
@@ -551,7 +661,7 @@ static void pcore_attach_cached_backgrounds(struct box *box, void *ctx)
                 if (dom_node_get_owner_document(box->node, &doc) ==
                         DOM_NO_ERR && doc != NULL) {
                     box->background = (struct hlcache_handle *)
-                            pcore_make_cached_bitmap(doc, url, ctx);
+                            pcore_make_cached_bitmap(doc, url, ctx, NULL);
                     dom_node_unref((dom_node *) doc);
                 }
                 free(url);
@@ -587,13 +697,14 @@ static struct box *pcore_make_image_fallback_box(dom_node *node,
 /* Create a BOX_TEXT for a DOM text node, copying its UTF-8 into the talloc ctx.
  * Returns NULL for empty text. `style` is the governing inline style. */
 static struct box *pcore_make_text_box(dom_node *tnode,
-        css_computed_style *style, void *ctx)
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats)
 {
     dom_string *txt = NULL;
     struct box *b = NULL;
+    DWORD started = (stats != NULL) ? GetTickCount() : 0;
 
     if (dom_node_get_text_content(tnode, &txt) != DOM_NO_ERR || txt == NULL) {
-        return NULL;
+        goto done;
     }
     {
         const char *data = dom_string_data(txt);
@@ -642,6 +753,11 @@ static struct box *pcore_make_text_box(dom_node *tnode,
         }
     }
     dom_string_unref(txt);
+done:
+    if (stats != NULL) {
+        stats->text_ms += GetTickCount() - started;
+        stats->text_calls++;
+    }
     return b;
 }
 
@@ -681,24 +797,26 @@ static void pcore_box_add_text(struct box *parent, struct box *text)
 /* ------------------------------------------------------------------ */
 
 static struct box *pcore_construct_block(dom_node *node,
-        css_computed_style *style, int is_root, void *ctx);
+        css_computed_style *style, int is_root, void *ctx,
+        PCoreBoxStats *stats);
 static void pcore_construct_inline(dom_node *node, css_computed_style *style,
-        struct box *cont, void *ctx);
+        struct box *cont, void *ctx, PCoreBoxStats *stats);
 static struct box *pcore_construct_table(dom_node *node,
-        css_computed_style *style, void *ctx);
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats);
 static struct box *pcore_construct_flex(dom_node *node,
-        css_computed_style *style, int is_inline, void *ctx);
+        css_computed_style *style, int is_inline, void *ctx,
+        PCoreBoxStats *stats);
 static struct box *pcore_construct_row(dom_node *node,
-        css_computed_style *style, void *ctx);
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats);
 static struct box *pcore_construct_rowgroup(dom_node *node,
-        css_computed_style *style, void *ctx);
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats);
 
 /* Flatten the inline content of `node` into inline container `cont`: text
  * children become BOX_TEXT; inline element children emit BOX_INLINE ...
  * BOX_INLINE_END around their (recursively flattened) content; inline-block
  * children become an atomic BOX_INLINE_BLOCK holding a block subtree. */
 static void pcore_construct_inline(dom_node *node, css_computed_style *style,
-        struct box *cont, void *ctx)
+        struct box *cont, void *ctx, PCoreBoxStats *stats)
 {
     dom_node *child;
 
@@ -711,14 +829,14 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
 
         if (dom_node_get_node_type(child, &type) == DOM_NO_ERR) {
             if (type == DOM_TEXT_NODE) {
-                struct box *t = pcore_make_text_box(child, style, ctx);
+                struct box *t = pcore_make_text_box(child, style, ctx, stats);
                 if (t != NULL) {
                     t->node = node;   /* attribute text to its inline
                                        * element (e.g. <a>) for hit-testing */
                     pcore_box_add_text(cont, t);
                 }
             } else if (type == DOM_ELEMENT_NODE) {
-                css_computed_style *cs = pcore_node_computed_style(child);
+                css_computed_style *cs = pcore_profile_style(child, stats);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
                     int gadget_type = pcore_form_toggle_type(child);
@@ -730,7 +848,7 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                         }
                     } else if (pcore_node_name_is(child, "img")) {
                         struct box *img = pcore_make_cached_image_box(child,
-                                cs, ctx);
+                                cs, ctx, stats);
                         if (img == NULL) {
                             img = pcore_make_image_fallback_box(child, cs,
                                     ctx);
@@ -744,7 +862,7 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                             d == CSS_DISPLAY_INLINE_GRID) {
                         /* atomic inline: a block subtree typed inline-block */
                         struct box *ib = pcore_construct_block(child, cs, 0,
-                                ctx);
+                                ctx, stats);
                         if (ib != NULL) {
                             ib->type = BOX_INLINE_BLOCK;
                             pcore_box_add_child(cont, ib);
@@ -756,7 +874,8 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                         if (start != NULL) {
                             start->node = child;
                             pcore_box_add_child(cont, start);
-                            pcore_construct_inline(child, cs, cont, ctx);
+                            pcore_construct_inline(child, cs, cont, ctx,
+                                    stats);
                             end = pcore_box_new(BOX_INLINE_END, cs, ctx);
                             if (end != NULL) {
                                 start->inline_end = end;
@@ -782,7 +901,8 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
  * content are wrapped in anonymous BOX_INLINE_CONTAINER boxes; block-level
  * children are added directly. */
 static struct box *pcore_construct_block(dom_node *node,
-        css_computed_style *style, int is_root, void *ctx)
+        css_computed_style *style, int is_root, void *ctx,
+        PCoreBoxStats *stats)
 {
     struct box *box;
     struct box *inline_cont = NULL;
@@ -830,7 +950,7 @@ static struct box *pcore_construct_block(dom_node *node,
                 if (dom_node_get_owner_document(node, &doc) == DOM_NO_ERR &&
                         doc != NULL) {
                     marker->object = (struct hlcache_handle *)
-                            pcore_make_cached_bitmap(doc, url, ctx);
+                            pcore_make_cached_bitmap(doc, url, ctx, stats);
                     dom_node_unref((dom_node *) doc);
                 }
                 free(url);
@@ -888,7 +1008,8 @@ static struct box *pcore_construct_block(dom_node *node,
                     dom_string_unref(txt);
                 }
                 if (!skip) {
-                    struct box *t = pcore_make_text_box(child, style, ctx);
+                    struct box *t = pcore_make_text_box(child, style, ctx,
+                            stats);
                     if (t != NULL) {
                         if (inline_cont == NULL) {
                             inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
@@ -899,7 +1020,7 @@ static struct box *pcore_construct_block(dom_node *node,
                     }
                 }
             } else if (type == DOM_ELEMENT_NODE) {
-                css_computed_style *cs = pcore_node_computed_style(child);
+                css_computed_style *cs = pcore_profile_style(child, stats);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     int gadget_type = pcore_form_toggle_type(child);
                     if (gadget_type != 0) {
@@ -921,7 +1042,8 @@ static struct box *pcore_construct_block(dom_node *node,
                                     NULL, ctx);
                             pcore_box_add_child(box, inline_cont);
                         }
-                        img = pcore_make_cached_image_box(child, cs, ctx);
+                        img = pcore_make_cached_image_box(child, cs, ctx,
+                                stats);
                         if (img == NULL) {
                             img = pcore_make_image_fallback_box(child, cs,
                                     ctx);
@@ -941,7 +1063,7 @@ static struct box *pcore_construct_block(dom_node *node,
                                 d == CSS_DISPLAY_INLINE_FLEX ||
                                 d == CSS_DISPLAY_INLINE_GRID) {
                             struct box *ib = pcore_construct_block(child, cs,
-                                    0, ctx);
+                                    0, ctx, stats);
                             if (ib != NULL) {
                                 ib->type = BOX_INLINE_BLOCK;
                                 pcore_box_add_child(inline_cont, ib);
@@ -954,7 +1076,7 @@ static struct box *pcore_construct_block(dom_node *node,
                                 start->node = child;
                                 pcore_box_add_child(inline_cont, start);
                                 pcore_construct_inline(child, cs, inline_cont,
-                                        ctx);
+                                        ctx, stats);
                                 end = pcore_box_new(BOX_INLINE_END, cs, ctx);
                                 if (end != NULL) {
                                     start->inline_end = end;
@@ -971,12 +1093,15 @@ static struct box *pcore_construct_block(dom_node *node,
                         inline_cont = NULL;
                         if (css_computed_display(cs, false) ==
                                 CSS_DISPLAY_FLEX) {
-                            cbox = pcore_construct_flex(child, cs, 0, ctx);
+                            cbox = pcore_construct_flex(child, cs, 0, ctx,
+                                    stats);
                         } else if (css_computed_display(cs, false) ==
                                 CSS_DISPLAY_TABLE) {
-                            cbox = pcore_construct_table(child, cs, ctx);
+                            cbox = pcore_construct_table(child, cs, ctx,
+                                    stats);
                         } else {
-                            cbox = pcore_construct_block(child, cs, 0, ctx);
+                            cbox = pcore_construct_block(child, cs, 0, ctx,
+                                    stats);
                         }
                         if (cbox != NULL) {
                             pcore_box_add_child(box, cbox);
@@ -1004,7 +1129,8 @@ static struct box *pcore_construct_block(dom_node *node,
  * boxes through the ported layout_flex (M7). Bare text between items is dropped
  * (flex items are elements in the pages we target). */
 static struct box *pcore_construct_flex(dom_node *node,
-        css_computed_style *style, int is_inline, void *ctx)
+        css_computed_style *style, int is_inline, void *ctx,
+        PCoreBoxStats *stats)
 {
     struct box *box;
     dom_node *child;
@@ -1024,14 +1150,14 @@ static struct box *pcore_construct_flex(dom_node *node,
 
         if (dom_node_get_node_type(child, &type) == DOM_NO_ERR &&
                 type == DOM_ELEMENT_NODE) {
-            css_computed_style *cs = pcore_node_computed_style(child);
+            css_computed_style *cs = pcore_profile_style(child, stats);
             if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                 uint8_t d = css_computed_display(cs, false);
                 struct box *item;
                 if (d == CSS_DISPLAY_FLEX || d == CSS_DISPLAY_INLINE_FLEX) {
-                    item = pcore_construct_flex(child, cs, 0, ctx);
+                    item = pcore_construct_flex(child, cs, 0, ctx, stats);
                 } else {
-                    item = pcore_construct_block(child, cs, 0, ctx);
+                    item = pcore_construct_block(child, cs, 0, ctx, stats);
                 }
                 if (item != NULL) {
                     pcore_box_add_child(box, item);
@@ -1123,9 +1249,9 @@ static int pcore_disp_table_rowgroup(css_computed_style *s)
 /* A table cell holds ordinary block flow, so build it as a block then retype to
  * BOX_TABLE_CELL and record its colspan / rowspan. */
 static struct box *pcore_construct_cell(dom_node *node,
-        css_computed_style *style, void *ctx)
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats)
 {
-    struct box *cell = pcore_construct_block(node, style, 0, ctx);
+    struct box *cell = pcore_construct_block(node, style, 0, ctx, stats);
     if (cell != NULL) {
         cell->type = BOX_TABLE_CELL;
         cell->columns = pcore_span_attr(node, "colspan", 1,
@@ -1137,38 +1263,38 @@ static struct box *pcore_construct_cell(dom_node *node,
 }
 
 static struct box *pcore_construct_table_content(dom_node *node,
-        css_computed_style *style, void *ctx)
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats)
 {
     uint8_t display = css_computed_display(style, false);
 
     if (display == CSS_DISPLAY_TABLE) {
-        return pcore_construct_table(node, style, ctx);
+        return pcore_construct_table(node, style, ctx, stats);
     }
     if (pcore_disp_table_rowgroup(style)) {
-        return pcore_construct_rowgroup(node, style, ctx);
+        return pcore_construct_rowgroup(node, style, ctx, stats);
     }
     if (pcore_disp_table_row(style)) {
-        return pcore_construct_row(node, style, ctx);
+        return pcore_construct_row(node, style, ctx, stats);
     }
     if (pcore_disp_table_cell(style)) {
-        return pcore_construct_cell(node, style, ctx);
+        return pcore_construct_cell(node, style, ctx, stats);
     }
     if (display == CSS_DISPLAY_FLEX || display == CSS_DISPLAY_INLINE_FLEX) {
-        return pcore_construct_flex(node, style, 0, ctx);
+        return pcore_construct_flex(node, style, 0, ctx, stats);
     }
-    return pcore_construct_block(node, style, 0, ctx);
+    return pcore_construct_block(node, style, 0, ctx, stats);
 }
 
 /* Append one DOM child to a table row. Consecutive non-cell children share an
  * implied cell, matching box_normalise_table_row() in NetSurf 3.11. */
 static int pcore_row_append_element(struct box *row, dom_node *node,
         css_computed_style *style, dom_node *style_source, void *ctx,
-        struct box **implied_cell)
+        struct box **implied_cell, PCoreBoxStats *stats)
 {
     struct box *child_box;
 
     if (pcore_disp_table_cell(style)) {
-        child_box = pcore_construct_cell(node, style, ctx);
+        child_box = pcore_construct_cell(node, style, ctx, stats);
         *implied_cell = NULL;
         if (child_box == NULL) {
             return 0;
@@ -1179,13 +1305,13 @@ static int pcore_row_append_element(struct box *row, dom_node *node,
 
     if (*implied_cell == NULL) {
         *implied_cell = pcore_make_anonymous_box(BOX_TABLE_CELL, row->style,
-                style_source, ctx);
+                style_source, ctx, stats);
         if (*implied_cell == NULL) {
             return 0;
         }
         pcore_box_add_child(row, *implied_cell);
     }
-    child_box = pcore_construct_table_content(node, style, ctx);
+    child_box = pcore_construct_table_content(node, style, ctx, stats);
     if (child_box == NULL) {
         return 0;
     }
@@ -1209,7 +1335,8 @@ static int pcore_text_node_has_content(dom_node *node)
 }
 
 static int pcore_row_append_text(struct box *row, dom_node *node,
-        dom_node *style_source, void *ctx, struct box **implied_cell)
+        dom_node *style_source, void *ctx, struct box **implied_cell,
+        PCoreBoxStats *stats)
 {
     struct box *container;
     struct box *text;
@@ -1219,7 +1346,7 @@ static int pcore_row_append_text(struct box *row, dom_node *node,
     }
     if (*implied_cell == NULL) {
         *implied_cell = pcore_make_anonymous_box(BOX_TABLE_CELL, row->style,
-                style_source, ctx);
+                style_source, ctx, stats);
         if (*implied_cell == NULL) {
             return 0;
         }
@@ -1233,7 +1360,7 @@ static int pcore_row_append_text(struct box *row, dom_node *node,
         }
         pcore_box_add_child(*implied_cell, container);
     }
-    text = pcore_make_text_box(node, (*implied_cell)->style, ctx);
+    text = pcore_make_text_box(node, (*implied_cell)->style, ctx, stats);
     if (text == NULL) {
         return 0;
     }
@@ -1243,7 +1370,7 @@ static int pcore_row_append_text(struct box *row, dom_node *node,
 
 /* BOX_TABLE_ROW from a <tr>, including implied cells for malformed content. */
 static struct box *pcore_construct_row(dom_node *node,
-        css_computed_style *style, void *ctx)
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats)
 {
     struct box *row = pcore_box_new(BOX_TABLE_ROW, style, ctx);
     struct box *implied_cell = NULL;
@@ -1262,13 +1389,14 @@ static struct box *pcore_construct_row(dom_node *node,
 
         if (dom_node_get_node_type(child, &type) == DOM_NO_ERR) {
             if (type == DOM_ELEMENT_NODE) {
-                css_computed_style *cs = pcore_node_computed_style(child);
+                css_computed_style *cs = pcore_profile_style(child, stats);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     pcore_row_append_element(row, child, cs, node, ctx,
-                            &implied_cell);
+                            &implied_cell, stats);
                 }
             } else if (type == DOM_TEXT_NODE) {
-                pcore_row_append_text(row, child, node, ctx, &implied_cell);
+                pcore_row_append_text(row, child, node, ctx, &implied_cell,
+                        stats);
             }
         }
         if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
@@ -1283,7 +1411,7 @@ static struct box *pcore_construct_row(dom_node *node,
 
 /* BOX_TABLE_ROW_GROUP, including implied rows for non-row children. */
 static struct box *pcore_construct_rowgroup(dom_node *node,
-        css_computed_style *style, void *ctx)
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats)
 {
     struct box *rg = pcore_box_new(BOX_TABLE_ROW_GROUP, style, ctx);
     struct box *implied_row = NULL;
@@ -1303,10 +1431,11 @@ static struct box *pcore_construct_rowgroup(dom_node *node,
 
         if (dom_node_get_node_type(child, &type) == DOM_NO_ERR) {
             if (type == DOM_ELEMENT_NODE) {
-                css_computed_style *cs = pcore_node_computed_style(child);
+                css_computed_style *cs = pcore_profile_style(child, stats);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     if (pcore_disp_table_row(cs)) {
-                        struct box *row = pcore_construct_row(child, cs, ctx);
+                        struct box *row = pcore_construct_row(child, cs, ctx,
+                                stats);
                         if (row != NULL) {
                             pcore_box_add_child(rg, row);
                         }
@@ -1315,14 +1444,15 @@ static struct box *pcore_construct_rowgroup(dom_node *node,
                     } else {
                         if (implied_row == NULL) {
                             implied_row = pcore_make_anonymous_box(
-                                    BOX_TABLE_ROW, rg->style, node, ctx);
+                                    BOX_TABLE_ROW, rg->style, node, ctx,
+                                    stats);
                             if (implied_row != NULL) {
                                 pcore_box_add_child(rg, implied_row);
                             }
                         }
                         if (implied_row != NULL) {
                             pcore_row_append_element(implied_row, child, cs,
-                                    node, ctx, &implied_cell);
+                                    node, ctx, &implied_cell, stats);
                         }
                     }
                 }
@@ -1330,14 +1460,14 @@ static struct box *pcore_construct_rowgroup(dom_node *node,
                     pcore_text_node_has_content(child)) {
                 if (implied_row == NULL) {
                     implied_row = pcore_make_anonymous_box(BOX_TABLE_ROW,
-                            rg->style, node, ctx);
+                            rg->style, node, ctx, stats);
                     if (implied_row != NULL) {
                         pcore_box_add_child(rg, implied_row);
                     }
                 }
                 if (implied_row != NULL) {
                     pcore_row_append_text(implied_row, child, node, ctx,
-                            &implied_cell);
+                            &implied_cell, stats);
                 }
             }
         }
@@ -1350,7 +1480,7 @@ static struct box *pcore_construct_rowgroup(dom_node *node,
     }
     if (rg->children == NULL) {
         implied_row = pcore_make_anonymous_box(BOX_TABLE_ROW, rg->style,
-                node, ctx);
+                node, ctx, stats);
         if (implied_row != NULL) {
             pcore_box_add_child(rg, implied_row);
         }
@@ -1491,7 +1621,7 @@ static void pcore_insert_table_cell(struct box *row, struct box *cell)
 /* Complete gaps left by short rows and rowspans. Adapted from NetSurf 3.11's
  * box_normalise_table_spans(), with span state reset at row-group boundaries. */
 static int pcore_fill_empty_table_cells(struct box *table,
-        dom_node *style_source, void *ctx)
+        dom_node *style_source, void *ctx, PCoreBoxStats *stats)
 {
     unsigned int *spans;
     struct box *rg;
@@ -1526,7 +1656,7 @@ static int pcore_fill_empty_table_cells(struct box *table,
                         column++;
                     }
                     empty = pcore_make_anonymous_box(BOX_TABLE_CELL,
-                            row->style, style_source, ctx);
+                            row->style, style_source, ctx, stats);
                     if (empty == NULL) {
                         free(spans);
                         return 0;
@@ -1546,12 +1676,20 @@ static int pcore_fill_empty_table_cells(struct box *table,
     return 1;
 }
 
+static void pcore_finish_table_profile(PCoreBoxStats *stats, DWORD started)
+{
+    if (stats != NULL) {
+        stats->table_normalise_ms += GetTickCount() - started;
+        stats->table_calls++;
+    }
+}
+
 /* Build a BOX_TABLE tree (row-group > row > cell) from a display:table element.
  * Unexpected children receive NetSurf-style anonymous wrappers. Cell placement
  * uses NetSurf's span occupancy rules before table->columns / rows / col[] are
  * filled. Falls back to BOX_BLOCK if temporary normalisation state fails. */
 static struct box *pcore_construct_table(dom_node *node,
-        css_computed_style *style, void *ctx)
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats)
 {
     struct box *table = pcore_box_new(BOX_TABLE, style, ctx);
     struct box *anon_rg = NULL;
@@ -1562,6 +1700,7 @@ static struct box *pcore_construct_table(dom_node *node,
     struct box *cell;
     dom_node *child;
     pcore_table_columns info;
+    DWORD normalise_started;
 
     if (table == NULL) {
         return NULL;
@@ -1575,11 +1714,11 @@ static struct box *pcore_construct_table(dom_node *node,
 
             if (dom_node_get_node_type(child, &type) == DOM_NO_ERR) {
                 if (type == DOM_ELEMENT_NODE) {
-                    css_computed_style *cs = pcore_node_computed_style(child);
+                    css_computed_style *cs = pcore_profile_style(child, stats);
                     if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                         if (pcore_disp_table_rowgroup(cs)) {
                             struct box *g = pcore_construct_rowgroup(child,
-                                    cs, ctx);
+                                    cs, ctx, stats);
                             if (g != NULL) {
                                 pcore_box_add_child(table, g);
                             }
@@ -1590,14 +1729,14 @@ static struct box *pcore_construct_table(dom_node *node,
                             if (anon_rg == NULL) {
                                 anon_rg = pcore_make_anonymous_box(
                                         BOX_TABLE_ROW_GROUP, table->style,
-                                        node, ctx);
+                                        node, ctx, stats);
                                 if (anon_rg != NULL) {
                                     pcore_box_add_child(table, anon_rg);
                                 }
                             }
                             if (pcore_disp_table_row(cs)) {
                                 struct box *r = pcore_construct_row(child,
-                                        cs, ctx);
+                                        cs, ctx, stats);
                                 if (r != NULL && anon_rg != NULL) {
                                     pcore_box_add_child(anon_rg, r);
                                 }
@@ -1607,14 +1746,14 @@ static struct box *pcore_construct_table(dom_node *node,
                                 if (anon_row == NULL) {
                                     anon_row = pcore_make_anonymous_box(
                                             BOX_TABLE_ROW, anon_rg->style,
-                                            node, ctx);
+                                            node, ctx, stats);
                                     if (anon_row != NULL) {
                                         pcore_box_add_child(anon_rg, anon_row);
                                     }
                                 }
                                 if (anon_row != NULL) {
                                     pcore_row_append_element(anon_row, child,
-                                            cs, node, ctx, &anon_cell);
+                                            cs, node, ctx, &anon_cell, stats);
                                 }
                             }
                         }
@@ -1623,21 +1762,22 @@ static struct box *pcore_construct_table(dom_node *node,
                         pcore_text_node_has_content(child)) {
                     if (anon_rg == NULL) {
                         anon_rg = pcore_make_anonymous_box(
-                                BOX_TABLE_ROW_GROUP, table->style, node, ctx);
+                                BOX_TABLE_ROW_GROUP, table->style, node, ctx,
+                                stats);
                         if (anon_rg != NULL) {
                             pcore_box_add_child(table, anon_rg);
                         }
                     }
                     if (anon_row == NULL && anon_rg != NULL) {
                         anon_row = pcore_make_anonymous_box(BOX_TABLE_ROW,
-                                anon_rg->style, node, ctx);
+                                anon_rg->style, node, ctx, stats);
                         if (anon_row != NULL) {
                             pcore_box_add_child(anon_rg, anon_row);
                         }
                     }
                     if (anon_row != NULL) {
                         pcore_row_append_text(anon_row, child, node, ctx,
-                                &anon_cell);
+                                &anon_cell, stats);
                     }
                 }
             }
@@ -1652,20 +1792,22 @@ static struct box *pcore_construct_table(dom_node *node,
 
     if (table->children == NULL) {
         anon_rg = pcore_make_anonymous_box(BOX_TABLE_ROW_GROUP, table->style,
-                node, ctx);
+                node, ctx, stats);
         if (anon_rg != NULL) {
             pcore_box_add_child(table, anon_rg);
             anon_row = pcore_make_anonymous_box(BOX_TABLE_ROW,
-                    anon_rg->style, node, ctx);
+                    anon_rg->style, node, ctx, stats);
             if (anon_row != NULL) {
                 pcore_box_add_child(anon_rg, anon_row);
             }
         }
     }
 
+    normalise_started = (stats != NULL) ? GetTickCount() : 0;
     /* layout_table asserts table->children && children->children && columns. */
     if (table->children == NULL || table->children->children == NULL) {
         table->type = BOX_BLOCK;
+        pcore_finish_table_profile(stats, normalise_started);
         return table;
     }
 
@@ -1676,6 +1818,7 @@ static struct box *pcore_construct_table(dom_node *node,
             sizeof(*info.spans));
     if (info.spans == NULL) {
         table->type = BOX_BLOCK;
+        pcore_finish_table_profile(stats, normalise_started);
         return table;
     }
 
@@ -1687,6 +1830,7 @@ static struct box *pcore_construct_table(dom_node *node,
                 if (!pcore_place_table_cell(&info, cell)) {
                     free(info.spans);
                     table->type = BOX_BLOCK;
+                    pcore_finish_table_profile(stats, normalise_started);
                     return table;
                 }
             }
@@ -1698,6 +1842,7 @@ static struct box *pcore_construct_table(dom_node *node,
     if (info.num_columns == 0) {
         free(info.spans);
         table->type = BOX_BLOCK;
+        pcore_finish_table_profile(stats, normalise_started);
         return table;
     }
 
@@ -1705,37 +1850,62 @@ static struct box *pcore_construct_table(dom_node *node,
     table->rows = info.num_rows;
     pcore_finish_table_spans(table);
     free(info.spans);
-    if (!pcore_fill_empty_table_cells(table, node, ctx)) {
+    /* Gap-cell anonymous style work belongs to this normalisation timer. */
+    if (!pcore_fill_empty_table_cells(table, node, ctx, NULL)) {
         table->type = BOX_BLOCK;
+        pcore_finish_table_profile(stats, normalise_started);
         return table;
     }
     table->col = talloc_zero_array(ctx, struct column, table->columns);
     if (table->col == NULL) {
         table->type = BOX_BLOCK;
+        pcore_finish_table_profile(stats, normalise_started);
         return table;
     }
     /* col[].type stays COLUMN_WIDTH_UNKNOWN(0); table_calculate_column_types
      * recomputes the types from cell styles during layout_table. */
 
+    pcore_finish_table_profile(stats, normalise_started);
     return table;
+}
+
+struct box *pcore_box_construct_profile(struct dom_node *root, void *ctx,
+        PCoreBoxStats *stats)
+{
+    css_computed_style *style;
+    struct box *tree;
+    DWORD started;
+
+    if (stats != NULL) {
+        memset(stats, 0, sizeof(*stats));
+    }
+    if (root == NULL) {
+        return NULL;
+    }
+    started = (stats != NULL) ? GetTickCount() : 0;
+    style = pcore_profile_style(root, stats);
+    if (style == NULL) {
+        if (stats != NULL) {
+            stats->tree_ms = GetTickCount() - started;
+        }
+        return NULL;
+    }
+    tree = pcore_construct_block(root, style, 1, ctx, stats);
+    if (stats != NULL) {
+        stats->tree_ms = GetTickCount() - started;
+    }
+    started = (stats != NULL) ? GetTickCount() : 0;
+    pcore_attach_cached_backgrounds(tree, ctx);
+    if (stats != NULL) {
+        stats->backgrounds_ms = GetTickCount() - started;
+    }
+    return tree;
 }
 
 /* Internal (pcore_internal.h). */
 struct box *pcore_box_construct(struct dom_node *root, void *ctx)
 {
-    css_computed_style *style;
-    struct box *tree;
-
-    if (root == NULL) {
-        return NULL;
-    }
-    style = pcore_node_computed_style(root);
-    if (style == NULL) {
-        return NULL;
-    }
-    tree = pcore_construct_block(root, style, 1, ctx);
-    pcore_attach_cached_backgrounds(tree, ctx);
-    return tree;
+    return pcore_box_construct_profile(root, ctx, NULL);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2149,6 +2319,7 @@ typedef struct pcore_render {
     int           overflow_dirty_w;
     int           overflow_dirty_h;
     PCoreLayoutStats layout_stats;
+    PCoreBoxStats box_stats;
 } pcore_render;
 
 /* libdom user-data key under which the render state hangs on the document. */
@@ -2296,6 +2467,7 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     struct box   *tree;
     pcore_render *st;
     PCoreLayoutStats stats;
+    PCoreBoxStats stats_box;
     DWORD total_started;
     DWORD started;
 
@@ -2320,7 +2492,7 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
         return 1;
     }
     started = GetTickCount();
-    tree = pcore_box_construct(root, ctx);
+    tree = pcore_box_construct_profile(root, ctx, &stats_box);
     stats.box_construct_ms = GetTickCount() - started;
     dom_node_unref(root);
     if (tree == NULL) {
@@ -2377,6 +2549,7 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     stats.finalize_ms = GetTickCount() - started;
     stats.total_ms = GetTickCount() - total_started;
     st->layout_stats = stats;
+    st->box_stats = stats_box;
     return 0;
 }
 
@@ -2394,6 +2567,22 @@ PCORE_API int PCore_GetLayoutStats(HANDLE hDoc,
         return 1;
     }
     *out_stats = st->layout_stats;
+    return 0;
+}
+
+PCORE_API int PCore_GetBoxStats(HANDLE hDoc, PCoreBoxStats *out_stats)
+{
+    pcore_render *st;
+
+    if (out_stats == NULL) {
+        return 1;
+    }
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL) {
+        memset(out_stats, 0, sizeof(*out_stats));
+        return 1;
+    }
+    *out_stats = st->box_stats;
     return 0;
 }
 

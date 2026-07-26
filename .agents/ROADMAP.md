@@ -140,6 +140,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 49. **next82/83 暴露 TEST62 像素指标缺口，next84 修复，next85 完成间距验收**：参考 NetSurf `box_special.c::box_input` 的 gadget 绑定方式，在 Positron slim builder 中为 checkbox/radio 创建只读 `form_control`，让已移植的 NetSurf `layout.c` 和 `redraw.c` 原生处理 1em 几何、方框/圆框与 selected 状态。next84 以最终 gadget 状态和 RGB 暗度通过设备门禁，四种可视状态正确；next85 在上游默认 `0.1em` padding 之外追加动态 `0.2em` 右 margin。设备截图确认状态、间距和 hidden-input 行为基本符合预期，不使用固定设备像素。
 50. **next86 已建立并验收复杂页面完成阶段遥测**：不改变 next37 冻结导航控制流，只在 `test_host` 请求对象记录总/网络耗时、parse/style/image-discovery/layout/首帧、最大 UI slice，以及资源 queued/fetched/failed、worker rounds、document/cache bytes 和预算拒绝。设备实测 6435ms 总时长中网络 5503ms；最大 UI slice 与 layout 均为 673ms，style 182ms，其余阶段不超过 36ms；2 个资源和约 128KiB 原始字节没有触及预算。下一步细分 core layout 内部，而不是先改网络或扩大 2MiB 宿主预算。
 51. **next87 只读 core layout 阶段遥测已由设备验收**：`PCore_LayoutDocument` 记录 box construction、首轮 `layout_document`、overflow 检查/可选 settling 二次 layout、finalize 与 total；`PCore_GetLayoutStats` 只复制最近一次结果。IANA 起始页得到 `580=515+65+0ms, pass=0`，进入 Reserved 后最后一次导航得到 `662=495+124+43ms, pass=1`，同批其余门禁均 OK。该批未改变布局次数、几何、滚动条判定或导航控制流；下一步细分约 500ms 的构盒阶段。
+52. **next88 构盒热点已定位**：独立 `PCoreBoxStats` 把 box construction 分成 tree/backgrounds，并在 tree 内记录 style/text/image/anonymous/table-normalise 的互斥累计时间和调用数。设备上 IANA 起始页 tree/image=`523/518ms`，Reserved 为 `481/474ms`，backgrounds=0；热点是单张图片 retained object 创建，不是 DOM 遍历或表格归一化。
+53. **next89 图片分派与文档内 retained reuse 已验收**：不新增解码器；XML-like 字节先走已有 `PImage_CreateSvgFromMemory`，失败仍回退 WM Imaging。document image cache 除原始字节外接管 retained bitmap/SVG 或失败状态，重排 carrier 只借用句柄。设备确认 TEST20/27 二次 layout 的 4/4 与 1/1 reuse、TEST27 首次 SVG-first 及其余默认门禁全部通过；TEST13 首次/随后页面 image 为 `469/37ms`。首屏冷启动仍待细分，该优化不跨 document、导航或线程。
 
 验收：
 
@@ -274,5 +276,5 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 1. 从已通过并提交为 `210611d` 的 next86 基线继续；任何新布局/选择器改动仍须保留 TEST56/58/59/60，并走 TEST13 深层链接与旋转门禁。
 2. next81 的 TEST56/58-61 已通过；最低字号恢复未发现既有排版回归，JavaScript 仍保持关闭。继续保持 TEST13 冻结链，不重启 `codex/post-next37-experiments` 的失败方案。
 3. next85 的 TEST56/58-62 已通过；TEST62 只确认静态控件，不能把它写成完整表单交互。已撤回的 TEST23 float 方向暂不重启。
-4. next87 已把两类真实页面的布局瓶颈稳定定位到约 500ms 构盒；下一批只读细分 DOM/样式访问、主树构建、表格/inline 归一化与收尾，再决定优化点。继续观察缓存释放和真实整页进度，不把 2 MiB 宿主预算误写成系统上限。
+4. next89 已通过 document 内 retained reuse 门禁，并把同进程后续 Reserved 页 image 热点降到 `37ms`；首次 SVG 创建仍为 `469ms`。下一步只读细分 `svgtiny_parse` 与 `pimage_raster_create` 的冷启动，不先扩大为跨 document 全局缓存。继续观察释放和真实整页进度，不把 2 MiB 宿主预算误写成系统上限。
 5. 中期补 Grid/背景/SVG 高级能力；长期再做经过开源实现审计的 JavaScript runtime spike。
