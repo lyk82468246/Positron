@@ -13,10 +13,10 @@
  *
  * Current scope: block/inline text, inline-block, flex, common table
  * structures, including NetSurf's table-span occupancy, plus cached <img>,
- * interactive checkbox/radio gadgets and CSS background-image resources
- * decoded by WM Imaging/libsvgtiny, are built for NetSurf's real
- * layout/redraw path. Editable/submittable forms and floats remain staged
- * follow-ups.
+ * interactive checkbox/radio gadgets, native-hosted text/password/textarea
+ * controls and CSS background-image resources decoded by WM
+ * Imaging/libsvgtiny, are built for NetSurf's real layout/redraw path.
+ * Submittable forms and floats remain staged follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -333,12 +333,15 @@ static int pcore_node_has_attr(dom_node *node, const char *attr)
     return present ? 1 : 0;
 }
 
-/* NetSurf box_special.c attaches a form_control to input boxes. The retained
- * layout/redraw path paints checkbox/radio directly; text/password controls
- * keep NetSurf's geometry but expose their state to a platform-native editor
- * through the public PCore_TextInput* bridge below. */
+/* NetSurf box_special.c attaches a form_control to input/textarea boxes. The
+ * retained layout/redraw path paints checkbox/radio directly; editable text
+ * controls keep NetSurf's geometry but expose their state to a
+ * platform-native editor through the public PCore_TextInput* bridge below. */
 static int pcore_form_control_type(dom_node *node)
 {
+    if (pcore_node_name_is(node, "textarea")) {
+        return GADGET_TEXTAREA;
+    }
     if (!pcore_node_name_is(node, "input")) {
         return 0;
     }
@@ -368,6 +371,7 @@ static struct box *pcore_make_form_control_box(dom_node *node,
     struct box *box;
     struct form_control *gadget;
     dom_html_input_element *input;
+    dom_html_text_area_element *textarea;
     dom_string *name = NULL;
     dom_string *value = NULL;
     int32_t max_length;
@@ -376,7 +380,8 @@ static struct box *pcore_make_form_control_box(dom_node *node,
 
     if (gadget_type != GADGET_CHECKBOX && gadget_type != GADGET_RADIO &&
             gadget_type != GADGET_TEXTBOX &&
-            gadget_type != GADGET_PASSWORD) {
+            gadget_type != GADGET_PASSWORD &&
+            gadget_type != GADGET_TEXTAREA) {
         return NULL;
     }
     box = pcore_box_new(BOX_INLINE_BLOCK, style, ctx);
@@ -394,6 +399,51 @@ static struct box *pcore_make_form_control_box(dom_node *node,
     gadget->node = node;
     gadget->type = (form_control_type) gadget_type;
     gadget->box = box;
+    if (gadget_type == GADGET_TEXTAREA) {
+        textarea = (dom_html_text_area_element *) node;
+        if (dom_html_text_area_element_get_name(textarea, &name) ==
+                DOM_NO_ERR && name != NULL) {
+            gadget->name = talloc_strndup(gadget,
+                    dom_string_data(name),
+                    dom_string_byte_length(name));
+            dom_string_unref(name);
+        } else {
+            gadget->name = talloc_strdup(gadget, "");
+        }
+        if (gadget->name == NULL) {
+            talloc_free(box);
+            return NULL;
+        }
+        if (dom_html_text_area_element_get_disabled(textarea,
+                &disabled) != DOM_NO_ERR) {
+            disabled = pcore_node_has_attr(node, "disabled") ?
+                    true : false;
+        }
+        gadget->disabled = disabled;
+        if (dom_html_text_area_element_get_value(textarea, &value) ==
+                DOM_NO_ERR && value != NULL) {
+            gadget->value = talloc_strndup(gadget,
+                    dom_string_data(value),
+                    dom_string_byte_length(value));
+            dom_string_unref(value);
+        } else {
+            gadget->value = talloc_strdup(gadget, "");
+        }
+        if (gadget->value == NULL) {
+            talloc_free(box);
+            return NULL;
+        }
+        gadget->length = (unsigned int) strlen(gadget->value);
+        gadget->initial_value = talloc_strdup(gadget, gadget->value);
+        gadget->last_synced_value = talloc_strdup(gadget, gadget->value);
+        if (gadget->initial_value == NULL ||
+                gadget->last_synced_value == NULL) {
+            talloc_free(box);
+            return NULL;
+        }
+        gadget->maxlength = UINT_MAX;
+        return box;
+    }
     input = (dom_html_input_element *) node;
     if (dom_html_input_element_get_name(input, &name) == DOM_NO_ERR &&
             name != NULL) {
@@ -2777,7 +2827,8 @@ static struct box *pcore_form_control_at(struct box *box,
             (box->gadget->type == GADGET_CHECKBOX ||
              box->gadget->type == GADGET_RADIO ||
              box->gadget->type == GADGET_TEXTBOX ||
-             box->gadget->type == GADGET_PASSWORD)) {
+             box->gadget->type == GADGET_PASSWORD ||
+             box->gadget->type == GADGET_TEXTAREA)) {
         if (*current == target) {
             return box;
         }
@@ -2818,6 +2869,8 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
         control_kind = 3;
     } else if (box->gadget->type == GADGET_PASSWORD) {
         control_kind = 4;
+    } else if (box->gadget->type == GADGET_TEXTAREA) {
+        control_kind = 5;
     } else {
         return 1;
     }
@@ -2849,7 +2902,8 @@ static struct box *pcore_text_input_at(struct box *box,
     }
     if (box->gadget != NULL &&
             (box->gadget->type == GADGET_TEXTBOX ||
-             box->gadget->type == GADGET_PASSWORD)) {
+             box->gadget->type == GADGET_PASSWORD ||
+             box->gadget->type == GADGET_TEXTAREA)) {
         if (*current == target) {
             return box;
         }
@@ -2922,6 +2976,7 @@ PCORE_API int PCore_TextInputInfo(HANDLE hDoc, unsigned int index,
     struct box *box;
     struct form_control *control;
     dom_html_input_element *input;
+    dom_html_text_area_element *textarea;
     unsigned int current;
     bool read_only;
     int ax;
@@ -2937,12 +2992,21 @@ PCORE_API int PCore_TextInputInfo(HANDLE hDoc, unsigned int index,
         return 1;
     }
     control = box->gadget;
-    input = (dom_html_input_element *) control->node;
     read_only = false;
-    if (dom_html_input_element_get_read_only(input, &read_only) !=
-            DOM_NO_ERR) {
-        read_only = pcore_node_has_attr(control->node, "readonly") ?
-                true : false;
+    if (control->type == GADGET_TEXTAREA) {
+        textarea = (dom_html_text_area_element *) control->node;
+        if (dom_html_text_area_element_get_read_only(textarea,
+                &read_only) != DOM_NO_ERR) {
+            read_only = pcore_node_has_attr(control->node, "readonly") ?
+                    true : false;
+        }
+    } else {
+        input = (dom_html_input_element *) control->node;
+        if (dom_html_input_element_get_read_only(input, &read_only) !=
+                DOM_NO_ERR) {
+            read_only = pcore_node_has_attr(control->node, "readonly") ?
+                    true : false;
+        }
     }
     ax = 0;
     ay = 0;
@@ -2982,6 +3046,27 @@ PCORE_API int PCore_TextInputInfo(HANDLE hDoc, unsigned int index,
     return 0;
 }
 
+PCORE_API int PCore_TextInputIsMultiline(HANDLE hDoc,
+        unsigned int index, int *multiline)
+{
+    pcore_render *st;
+    struct box *box;
+    unsigned int current;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_text_input_at(st->root_box, index, &current) : NULL;
+    if (box == NULL || box->gadget == NULL) {
+        return 1;
+    }
+    if (multiline != NULL) {
+        *multiline =
+                (box->gadget->type == GADGET_TEXTAREA) ? 1 : 0;
+    }
+    return 0;
+}
+
 PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
         const char *value)
 {
@@ -2989,12 +3074,15 @@ PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
     struct box *box;
     struct form_control *control;
     dom_html_input_element *input;
+    dom_html_text_area_element *textarea;
     dom_string *dom_value;
     char *copy;
     char *synced;
     unsigned int current;
     unsigned int characters;
     bool read_only;
+    size_t source_index;
+    size_t target_index;
     size_t value_len;
 
     if (value == NULL ||
@@ -3009,12 +3097,21 @@ PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
         return 1;
     }
     control = box->gadget;
-    input = (dom_html_input_element *) control->node;
     read_only = false;
-    if (dom_html_input_element_get_read_only(input, &read_only) !=
-            DOM_NO_ERR) {
-        read_only = pcore_node_has_attr(control->node, "readonly") ?
-                true : false;
+    if (control->type == GADGET_TEXTAREA) {
+        textarea = (dom_html_text_area_element *) control->node;
+        if (dom_html_text_area_element_get_read_only(textarea,
+                &read_only) != DOM_NO_ERR) {
+            read_only = pcore_node_has_attr(control->node, "readonly") ?
+                    true : false;
+        }
+    } else {
+        input = (dom_html_input_element *) control->node;
+        if (dom_html_input_element_get_read_only(input, &read_only) !=
+                DOM_NO_ERR) {
+            read_only = pcore_node_has_attr(control->node, "readonly") ?
+                    true : false;
+        }
     }
     if (control->disabled || read_only) {
         return 2;
@@ -3024,22 +3121,61 @@ PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
         return 3;
     }
     value_len = strlen(value);
-    copy = talloc_strdup(control, value);
-    synced = talloc_strdup(control, value);
+    if (control->type == GADGET_TEXTAREA) {
+        copy = (char *) talloc_size(control, value_len + 1);
+        if (copy != NULL) {
+            source_index = 0;
+            target_index = 0;
+            while (source_index < value_len) {
+                if (value[source_index] == '\r') {
+                    copy[target_index++] = '\n';
+                    source_index++;
+                    if (source_index < value_len &&
+                            value[source_index] == '\n') {
+                        source_index++;
+                    }
+                } else {
+                    copy[target_index++] = value[source_index++];
+                }
+            }
+            copy[target_index] = '\0';
+            value_len = target_index;
+        }
+    } else {
+        copy = talloc_strdup(control, value);
+    }
+    synced = (copy != NULL) ? talloc_strdup(control, copy) : NULL;
     if (copy == NULL || synced == NULL) {
         if (copy != NULL) { talloc_free(copy); }
         if (synced != NULL) { talloc_free(synced); }
         return 1;
     }
     dom_value = NULL;
-    if (dom_string_create((const uint8_t *) value, value_len,
-            &dom_value) != DOM_NO_ERR ||
-            dom_html_input_element_set_value(input, dom_value) !=
-                    DOM_NO_ERR) {
+    if (dom_string_create((const uint8_t *) copy, value_len,
+            &dom_value) != DOM_NO_ERR) {
         if (dom_value != NULL) { dom_string_unref(dom_value); }
         talloc_free(copy);
         talloc_free(synced);
         return 1;
+    }
+    if (control->type == GADGET_TEXTAREA) {
+        textarea = (dom_html_text_area_element *) control->node;
+        if (dom_html_text_area_element_set_value(textarea, dom_value) !=
+                DOM_NO_ERR) {
+            dom_string_unref(dom_value);
+            talloc_free(copy);
+            talloc_free(synced);
+            return 1;
+        }
+    } else {
+        input = (dom_html_input_element *) control->node;
+        if (dom_html_input_element_set_value(input, dom_value) !=
+                DOM_NO_ERR) {
+            dom_string_unref(dom_value);
+            talloc_free(copy);
+            talloc_free(synced);
+            return 1;
+        }
     }
     dom_string_unref(dom_value);
     if (control->value != NULL) {

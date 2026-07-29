@@ -249,7 +249,8 @@ PCORE_API int PCore_NodeFormControlState(HANDLE hDoc, const char *tag,
                                         int *disabled);
 
 /* Inspect a form control in box-tree order. Geometry is in absolute document
- * CSS px; kind is 1 checkbox, 2 radio, 3 single-line text, 4 password. */
+ * CSS px; kind is 1 checkbox, 2 radio, 3 single-line text, 4 password and
+ * 5 textarea. */
 PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
                                    int *x, int *y, int *w, int *h,
                                    int *kind, int *selected, int *disabled);
@@ -266,7 +267,7 @@ typedef struct PCoreTextInputInfo {
     int value_bytes;
 } PCoreTextInputInfo;
 
-/* Enumerate single-line text/password controls independently of other form
+/* Enumerate text/password/textarea controls independently of other form
  * controls. Geometry is the border box in absolute document CSS px. `value`
  * receives UTF-8 and is always NUL-terminated when cap > 0. max_length is -1
  * when the element has no limit. This is the platform bridge used by a WM
@@ -275,10 +276,16 @@ PCORE_API int PCore_TextInputInfo(HANDLE hDoc, unsigned int index,
                                  PCoreTextInputInfo *out_info,
                                  char *value, int cap);
 
-/* Replace one single-line input's live UTF-8 value and synchronise it to
- * libdom. Returns 0 on success, 1 for a missing/non-text control, 2 when the
- * control is disabled/read-only, and 3 for invalid UTF-8 or maxlength excess.
- * The DOM value survives later style/layout passes. */
+/* Query whether an enumerated text control is a multiline textarea without
+ * changing the next94 PCoreTextInputInfo structure layout. */
+PCORE_API int PCore_TextInputIsMultiline(HANDLE hDoc, unsigned int index,
+                                        int *multiline);
+
+/* Replace one text control's live UTF-8 value and synchronise it to libdom.
+ * Textarea CRLF/CR is normalised to LF. Returns 0 on success, 1 for a
+ * missing/non-text control, 2 when the control is disabled/read-only, and 3
+ * for invalid UTF-8 or maxlength excess. The DOM value survives later
+ * style/layout passes. */
 PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
                                      const char *value);
 

@@ -271,7 +271,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 65
+#define TEST_MAX_NUMBER 66
 
 static int test_config_space(char c)
 {
@@ -2122,7 +2122,11 @@ static pcore_native_edit *g_native_edits = NULL;
 static unsigned int g_native_edit_count = 0;
 static int g_native_edit_syncing = 0;
 static int g_native_edit_probe = 0;
+static int g_native_edit_probe_multiline = 0;
 static int g_native_edit_probe_ok = 0;
+static int g_native_edit_probe_seen = 0;
+static int g_native_edit_probe_set_result = -1;
+static char g_native_edit_probe_value[32];
 
 static void pcore_native_edits_destroy(void)
 {
@@ -2187,8 +2191,14 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
     unsigned int i;
     WCHAR *wide_value;
     char *value;
+    char *edit_value;
     DWORD style;
+    int edit_value_cap;
+    int multiline;
+    int source_index;
+    int target_index;
     int value_cap;
+    int wide_cap;
 
     old_focus = preserve_focus ? GetFocus() : NULL;
     focus_index = UINT_MAX;
@@ -2223,7 +2233,9 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
     for (i = 0; i < count; i++) {
         memset(&info, 0, sizeof(info));
         if (PCore_TextInputInfo(g_render_doc, i, &info,
-                NULL, 0) != 0) {
+                NULL, 0) != 0 ||
+                PCore_TextInputIsMultiline(g_render_doc, i,
+                        &multiline) != 0) {
             continue;
         }
         value_cap = info.value_bytes + 1;
@@ -2231,18 +2243,48 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
             value_cap = 1;
         }
         value = (char *) malloc((size_t) value_cap);
-        wide_value = (WCHAR *) malloc((size_t) value_cap *
-                sizeof(WCHAR));
-        if (value == NULL || wide_value == NULL ||
-                PCore_TextInputInfo(g_render_doc, i, NULL,
-                        value, value_cap) != 0) {
+        if (value == NULL ||
+                PCore_TextInputInfo(g_render_doc, i, NULL, value,
+                        value_cap) != 0) {
             free(value);
-            free(wide_value);
             continue;
         }
-        utf8_to_wide(value, -1, wide_value, value_cap);
-        style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER |
-                ES_LEFT | ES_AUTOHSCROLL;
+        edit_value = value;
+        wide_cap = value_cap;
+        if (multiline && value_cap <= INT_MAX / 2) {
+            edit_value_cap = value_cap * 2;
+            edit_value = (char *) malloc((size_t) edit_value_cap);
+            if (edit_value != NULL) {
+                source_index = 0;
+                target_index = 0;
+                while (value[source_index] != '\0' &&
+                        target_index + 2 < edit_value_cap) {
+                    if (value[source_index] == '\n') {
+                        edit_value[target_index++] = '\r';
+                    }
+                    edit_value[target_index++] = value[source_index++];
+                }
+                edit_value[target_index] = '\0';
+                wide_cap = edit_value_cap;
+            } else {
+                edit_value = value;
+            }
+        }
+        wide_value = (WCHAR *) malloc((size_t) wide_cap *
+                sizeof(WCHAR));
+        if (wide_value == NULL) {
+            if (edit_value != value) { free(edit_value); }
+            free(value);
+            continue;
+        }
+        utf8_to_wide(edit_value, -1, wide_value, wide_cap);
+        style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_LEFT;
+        if (multiline) {
+            style |= ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN |
+                    WS_VSCROLL;
+        } else {
+            style |= ES_AUTOHSCROLL;
+        }
         if (info.password) {
             style |= ES_PASSWORD;
         }
@@ -2253,6 +2295,9 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
                 parent, (HMENU) (INT_PTR) (1000 + i),
                 GetModuleHandle(NULL), NULL);
         items[i].text_index = i;
+        if (edit_value != value) {
+            free(edit_value);
+        }
         free(value);
         free(wide_value);
         if (items[i].hwnd == NULL) {
@@ -2287,6 +2332,7 @@ static void pcore_native_edit_changed(HWND edit)
     WCHAR *wide_value;
     char *value;
     LONG stored_index;
+    int set_result;
     int wide_len;
     int utf8_len;
 
@@ -2297,6 +2343,7 @@ static void pcore_native_edit_changed(HWND edit)
     if (stored_index <= 0) {
         return;
     }
+    SendMessage(edit, EM_FMTLINES, FALSE, 0);
     wide_len = GetWindowTextLengthW(edit);
     wide_value = (WCHAR *) malloc((size_t) (wide_len + 1) *
             sizeof(WCHAR));
@@ -2320,8 +2367,21 @@ static void pcore_native_edit_changed(HWND edit)
                 value, utf8_len, NULL, NULL);
     }
     value[utf8_len] = '\0';
-    PCore_TextInputSetValue(g_render_doc,
+    set_result = PCore_TextInputSetValue(g_render_doc,
             (unsigned int) (stored_index - 1), value);
+    if (g_native_edit_probe && stored_index == 1) {
+        g_native_edit_probe_seen = 1;
+        g_native_edit_probe_set_result = set_result;
+        g_native_edit_probe_value[0] = '\0';
+        g_native_edit_probe_ok =
+                set_result == 0 &&
+                PCore_TextInputInfo(g_render_doc, 0, NULL,
+                        g_native_edit_probe_value,
+                        sizeof(g_native_edit_probe_value)) == 0 &&
+                strcmp(g_native_edit_probe_value,
+                        g_native_edit_probe_multiline ?
+                        "wm\ntextarea" : "wm-edit") == 0;
+    }
     free(value);
     free(wide_value);
 }
@@ -3687,13 +3747,14 @@ static BOOL show_render_window(void)
     pcore_native_edits_rebuild(hwnd, 0);
     if (g_native_edit_probe && g_native_edit_count > 0 &&
             g_native_edits[0].hwnd != NULL) {
-        char probe_value[32];
-
-        SetWindowTextW(g_native_edits[0].hwnd, L"wm-edit");
-        g_native_edit_probe_ok =
-                PCore_TextInputInfo(g_render_doc, 0, NULL,
-                        probe_value, sizeof(probe_value)) == 0 &&
-                strcmp(probe_value, "wm-edit") == 0;
+        if (g_native_edit_probe_multiline) {
+            SendMessage(g_native_edits[0].hwnd, EM_SETSEL,
+                    0, (LPARAM) -1);
+            SendMessage(g_native_edits[0].hwnd, EM_REPLACESEL,
+                    TRUE, (LPARAM) L"wm\r\ntextarea");
+        } else {
+            SetWindowTextW(g_native_edits[0].hwnd, L"wm-edit");
+        }
     }
     g_testbench_render_paints = 0;
     ShowWindow(hwnd, SW_SHOW);
@@ -10522,9 +10583,14 @@ static BOOL test65_text_input(void)
     g_render_doc = hDoc;
     g_render_sheet = hSheet;
     g_native_edit_probe = 1;
+    g_native_edit_probe_multiline = 0;
     g_native_edit_probe_ok = 0;
+    g_native_edit_probe_seen = 0;
+    g_native_edit_probe_set_result = -1;
+    g_native_edit_probe_value[0] = '\0';
     if (!show_render_window()) {
         g_native_edit_probe = 0;
+        g_native_edit_probe_multiline = 0;
         g_render_doc = NULL;
         g_render_sheet = NULL;
         PCore_FreeStylesheet(hSheet);
@@ -10533,6 +10599,7 @@ static BOOL test65_text_input(void)
         return FALSE;
     }
     g_native_edit_probe = 0;
+    g_native_edit_probe_multiline = 0;
     g_render_doc = NULL;
     g_render_sheet = NULL;
     PCore_FreeStylesheet(hSheet);
@@ -10545,6 +10612,150 @@ static BOOL test65_text_input(void)
     show_info(L"TEST 65 OK",
               "Native WM EDIT controls, password mode, readonly/disabled,\n"
               "maxlength, UTF-8 validation and rotation persistence passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 66 - WM native multiline textarea bridge and DOM persistence    */
+/* -------------------------------------------------------------------- */
+static BOOL test66_textarea(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<h1>Native textarea</h1>"
+        "<p>Editable</p><textarea name=notes>alpha\nbeta</textarea>"
+        "<p>Read only</p><textarea name=locked readonly>locked\ntext"
+        "</textarea>"
+        "<p>Disabled</p><textarea name=off disabled>off\ntext</textarea>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font-size:14px;line-height:19px;padding:8px;color:#111;}"
+        "h1{font-size:20px;line-height:24px;color:#8b0000;margin:0 0 5px;}"
+        "p{margin:4px 0 2px;}textarea{display:inline-block;"
+        "font-size:14px;width:13em;height:4.5em;border:1px solid #555;"
+        "padding:2px;background:#fff;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreTextInputInfo info[3];
+    char value[96];
+    char msg[192];
+    int kind;
+    int multiline;
+    int i;
+
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/native-textarea.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 66 FAIL", "textarea setup failed");
+        return FALSE;
+    }
+
+    for (i = 0; i < 3; i++) {
+        memset(&info[i], 0, sizeof(info[i]));
+        if (PCore_TextInputInfo(hDoc, (unsigned int) i, &info[i],
+                value, sizeof(value)) != 0 ||
+                info[i].width <= 0 || info[i].height <= 0 ||
+                PCore_TextInputIsMultiline(hDoc, (unsigned int) i,
+                        &multiline) != 0 || !multiline ||
+                info[i].password ||
+                PCore_FormControlInfo(hDoc, (unsigned int) i,
+                        NULL, NULL, NULL, NULL, &kind, NULL, NULL) != 0 ||
+                kind != 5) {
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 66 FAIL", "textarea enumeration failed");
+            return FALSE;
+        }
+    }
+    if (strcmp(value, "off\ntext") != 0 ||
+            info[0].max_length != -1 ||
+            info[0].read_only || info[0].disabled ||
+            !info[1].read_only || !info[2].disabled ||
+            PCore_TextInputInfo(hDoc, 3, NULL, NULL, 0) == 0 ||
+            PCore_TextInputSetValue(hDoc, 0, "\377") != 3 ||
+            PCore_TextInputSetValue(hDoc, 0,
+                    "first\r\nsecond\rthird") != 0 ||
+            PCore_TextInputSetValue(hDoc, 1, "changed") != 2 ||
+            PCore_TextInputSetValue(hDoc, 2, "changed") != 2 ||
+            PCore_LayoutDocument(hDoc, 320, 240) != 0 ||
+            PCore_TextInputInfo(hDoc, 0, &info[0],
+                    value, sizeof(value)) != 0 ||
+            strcmp(value, "first\nsecond\nthird") != 0 ||
+            PCore_TextInputInfo(hDoc, 1, &info[1],
+                    value, sizeof(value)) != 0 ||
+            strcmp(value, "locked\ntext") != 0 ||
+            PCore_TextInputInfo(hDoc, 2, &info[2],
+                    value, sizeof(value)) != 0 ||
+            strcmp(value, "off\ntext") != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 66 FAIL",
+                "textarea policy, newline or re-layout persistence failed");
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    g_native_edit_probe = 1;
+    g_native_edit_probe_multiline = 1;
+    g_native_edit_probe_ok = 0;
+    g_native_edit_probe_seen = 0;
+    g_native_edit_probe_set_result = -1;
+    g_native_edit_probe_value[0] = '\0';
+    if (!show_render_window()) {
+        g_native_edit_probe = 0;
+        g_native_edit_probe_multiline = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 66 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_native_edit_probe = 0;
+    g_native_edit_probe_multiline = 0;
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    if (!g_native_edit_probe_ok) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "WM multiline EDIT probe: seen=%d set=%d len=%u "
+                "bytes=%02X/%02X/%02X/%02X/%02X/%02X/%02X/%02X",
+                g_native_edit_probe_seen,
+                g_native_edit_probe_set_result,
+                (unsigned int) strlen(g_native_edit_probe_value),
+                (unsigned int) (unsigned char)
+                        g_native_edit_probe_value[0],
+                (unsigned int) (unsigned char)
+                        g_native_edit_probe_value[1],
+                (unsigned int) (unsigned char)
+                        g_native_edit_probe_value[2],
+                (unsigned int) (unsigned char)
+                        g_native_edit_probe_value[3],
+                (unsigned int) (unsigned char)
+                        g_native_edit_probe_value[4],
+                (unsigned int) (unsigned char)
+                        g_native_edit_probe_value[5],
+                (unsigned int) (unsigned char)
+                        g_native_edit_probe_value[6],
+                (unsigned int) (unsigned char)
+                        g_native_edit_probe_value[7]);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 66 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 66 OK",
+              "Native WM multiline EDIT, CRLF/LF normalisation,\n"
+              "readonly/disabled and rotation persistence passed.");
     return TRUE;
 }
 
@@ -10728,6 +10939,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 63: ok = test63_shared_svg_lifetime(); break;
         case 64: ok = test64_form_interaction(); break;
         case 65: ok = test65_text_input(); break;
+        case 66: ok = test66_textarea(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -10835,7 +11047,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-65)\n"
+                  "Yes = run all selected groups (TEST 1-66)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -10861,7 +11073,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list/\n"
                                "inline CSS and form controls\n"
-                               "(TEST 46-58, 62-65).\n"
+                               "(TEST 46-58, 62-66).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -10924,7 +11136,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-65; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-66; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -10962,6 +11174,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test63_shared_svg_lifetime()){ rc = 13; goto done; }
         if (!test64_form_interaction()){ rc = 13; goto done; }
         if (!test65_text_input()) { rc = 13; goto done; }
+        if (!test66_textarea())   { rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -11003,7 +11216,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-65)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-66)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
@@ -11011,8 +11224,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "    native SVG text, cached SVG gradients, coordinate transforms\n"
                "    radial gradients, inherited/alpha stops, cache reuse, and\n"
                "    IANA-style spacing, table normalisation, list markers and\n"
-               "    checkbox/radio redraw and interaction, plus overlapping-\n"
-               "    document SVG reuse through formal redraw.\n"
+               "    checkbox/radio interaction, native single/multiline EDIT,\n"
+               "    and overlapping-document SVG reuse through formal redraw.\n"
                "    Offline.\n\n");
     }
     if (run_browse) {

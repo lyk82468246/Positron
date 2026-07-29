@@ -4,11 +4,13 @@
  * in yet (iframes/objects, the textarea widget, selection/search,
  * and the box_dump debug dumper).
  *
- * Every one of these is only ever *called* on a path our slim box builder never
- * produces. The builder now creates read-only checkbox/radio gadgets, whose
- * layout and redraw are self-contained in the ported NetSurf sources; it still
- * does not produce textarea/select widgets, iframes or browser-window objects.
- * Table, flex, scrollbar and border redraw now come from real NetSurf sources.
+ * The builder creates checkbox/radio gadgets whose layout and redraw are
+ * self-contained in the ported NetSurf sources. Text/password/textarea boxes
+ * use NetSurf geometry but are covered by platform-native EDIT children, so
+ * their internal textarea widget pointer deliberately remains NULL and these
+ * layout/redraw calls remain no-ops. Select widgets, iframes and browser-window
+ * objects are not produced. Table, flex, scrollbar and border redraw now come
+ * from real NetSurf sources.
  *
  * Signatures match the real declarations so the (unused) calls stay ABI-correct.
  * C89.
