@@ -13,10 +13,11 @@
  *
  * Current scope: block/inline text, inline-block, flex, common table
  * structures, including NetSurf's table-span occupancy, plus cached <img>,
- * interactive checkbox/radio gadgets, native-hosted text/password/textarea
- * controls and CSS background-image resources decoded by WM
+ * interactive checkbox/radio/button gadgets, native-hosted
+ * text/password/textarea/select controls and CSS background-image resources
+ * decoded by WM
  * Imaging/libsvgtiny, are built for NetSurf's real layout/redraw path.
- * Submittable forms and floats remain staged follow-ups.
+ * Multipart/file submission and floats remain staged follow-ups.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -29,9 +30,14 @@
 #include <string.h>
 
 #include <dom/dom.h>
+#include <dom/html/html_button_element.h>
+#include <dom/html/html_collection.h>
+#include <dom/html/html_form_element.h>
+#include <dom/html/html_input_element.h>
 #include <dom/html/html_option_element.h>
 #include <dom/html/html_options_collection.h>
 #include <dom/html/html_select_element.h>
+#include <dom/html/html_text_area_element.h>
 #include <libcss/libcss.h>
 
 #include "utils/talloc.h"
@@ -342,6 +348,15 @@ static int pcore_node_has_attr(dom_node *node, const char *attr)
  * platform-native widgets through the public PCore_* bridges below. */
 static int pcore_form_control_type(dom_node *node)
 {
+    if (pcore_node_name_is(node, "button")) {
+        if (pcore_attr_value_is(node, "type", "reset")) {
+            return GADGET_RESET;
+        }
+        if (pcore_attr_value_is(node, "type", "button")) {
+            return GADGET_BUTTON;
+        }
+        return GADGET_SUBMIT;
+    }
     if (pcore_node_name_is(node, "select")) {
         return GADGET_SELECT;
     }
@@ -360,10 +375,16 @@ static int pcore_form_control_type(dom_node *node)
     if (pcore_attr_value_is(node, "type", "password")) {
         return GADGET_PASSWORD;
     }
+    if (pcore_attr_value_is(node, "type", "submit")) {
+        return GADGET_SUBMIT;
+    }
+    if (pcore_attr_value_is(node, "type", "reset")) {
+        return GADGET_RESET;
+    }
+    if (pcore_attr_value_is(node, "type", "button")) {
+        return GADGET_BUTTON;
+    }
     if (pcore_attr_value_is(node, "type", "hidden") ||
-            pcore_attr_value_is(node, "type", "button") ||
-            pcore_attr_value_is(node, "type", "submit") ||
-            pcore_attr_value_is(node, "type", "reset") ||
             pcore_attr_value_is(node, "type", "image") ||
             pcore_attr_value_is(node, "type", "file")) {
         return 0;
@@ -371,7 +392,7 @@ static int pcore_form_control_type(dom_node *node)
     return GADGET_TEXTBOX;
 }
 
-static char *pcore_squash_option_text(void *ctx, dom_string *text)
+static char *pcore_squash_text(void *ctx, dom_string *text)
 {
     const char *source;
     char *copy;
@@ -412,6 +433,114 @@ static char *pcore_squash_option_text(void *ctx, dom_string *text)
     return copy;
 }
 
+static int pcore_make_button_control(struct box *box,
+        struct form_control *gadget, dom_node *node, css_computed_style *style)
+{
+    dom_string *name;
+    dom_string *value;
+    dom_string *content;
+    struct box *inline_container;
+    struct box *inline_box;
+    const char *default_label;
+    char *label;
+    bool disabled;
+
+    name = NULL;
+    value = NULL;
+    content = NULL;
+    label = NULL;
+    disabled = false;
+    if (pcore_node_name_is(node, "button")) {
+        dom_html_button_element *button;
+
+        button = (dom_html_button_element *) node;
+        if (dom_html_button_element_get_name(button, &name) != DOM_NO_ERR) {
+            name = NULL;
+        }
+        if (dom_html_button_element_get_value(button, &value) != DOM_NO_ERR) {
+            value = NULL;
+        }
+        if (dom_html_button_element_get_disabled(button, &disabled) !=
+                DOM_NO_ERR) {
+            disabled = pcore_node_has_attr(node, "disabled") ? true : false;
+        }
+        if (dom_node_get_text_content(node, &content) == DOM_NO_ERR &&
+                content != NULL) {
+            label = pcore_squash_text(gadget, content);
+            dom_string_unref(content);
+        }
+    } else {
+        dom_html_input_element *input;
+
+        input = (dom_html_input_element *) node;
+        if (dom_html_input_element_get_name(input, &name) != DOM_NO_ERR) {
+            name = NULL;
+        }
+        if (dom_html_input_element_get_value(input, &value) != DOM_NO_ERR) {
+            value = NULL;
+        }
+        if (dom_html_input_element_get_disabled(input, &disabled) !=
+                DOM_NO_ERR) {
+            disabled = pcore_node_has_attr(node, "disabled") ? true : false;
+        }
+    }
+    gadget->name = (name != NULL) ?
+            talloc_strndup(gadget, dom_string_data(name),
+                    dom_string_byte_length(name)) :
+            talloc_strdup(gadget, "");
+    gadget->value = (value != NULL) ?
+            talloc_strndup(gadget, dom_string_data(value),
+                    dom_string_byte_length(value)) :
+            talloc_strdup(gadget, "");
+    if (name != NULL) {
+        dom_string_unref(name);
+    }
+    if (value != NULL) {
+        dom_string_unref(value);
+    }
+    if (gadget->name == NULL || gadget->value == NULL) {
+        return 0;
+    }
+    gadget->disabled = disabled;
+    gadget->length = (unsigned int) strlen(gadget->value);
+    default_label = (gadget->type == GADGET_SUBMIT) ? "Submit" :
+            ((gadget->type == GADGET_RESET) ? "Reset" : "Button");
+    if (label == NULL || label[0] == '\0') {
+        if (label != NULL) {
+            talloc_free(label);
+        }
+        if (!pcore_node_name_is(node, "button") &&
+                gadget->value[0] != '\0') {
+            label = talloc_strdup(gadget, gadget->value);
+        } else {
+            label = talloc_strdup(gadget, default_label);
+        }
+    }
+    if (label == NULL) {
+        return 0;
+    }
+    inline_container = pcore_box_new(BOX_INLINE_CONTAINER, NULL, box);
+    inline_box = pcore_box_new(BOX_TEXT, style, box);
+    if (inline_container == NULL || inline_box == NULL) {
+        if (inline_container != NULL) { talloc_free(inline_container); }
+        if (inline_box != NULL) { talloc_free(inline_box); }
+        talloc_free(label);
+        return 0;
+    }
+    inline_box->node = node;
+    inline_box->text = talloc_strdup(inline_box, label);
+    talloc_free(label);
+    if (inline_box->text == NULL) {
+        talloc_free(inline_container);
+        talloc_free(inline_box);
+        return 0;
+    }
+    inline_box->length = strlen(inline_box->text);
+    pcore_box_add_child(inline_container, inline_box);
+    pcore_box_add_child(box, inline_container);
+    return 1;
+}
+
 static int pcore_select_add_option(struct form_control *gadget,
         dom_node *node)
 {
@@ -432,7 +561,7 @@ static int pcore_select_add_option(struct form_control *gadget,
     option->node = node;
     if (dom_html_option_element_get_text(element, &text) == DOM_NO_ERR &&
             text != NULL) {
-        option->text = pcore_squash_option_text(option, text);
+        option->text = pcore_squash_text(option, text);
         dom_string_unref(text);
     } else {
         option->text = talloc_strdup(option, "");
@@ -595,7 +724,10 @@ static struct box *pcore_make_form_control_box(dom_node *node,
             gadget_type != GADGET_TEXTBOX &&
             gadget_type != GADGET_PASSWORD &&
             gadget_type != GADGET_TEXTAREA &&
-            gadget_type != GADGET_SELECT) {
+            gadget_type != GADGET_SELECT &&
+            gadget_type != GADGET_SUBMIT &&
+            gadget_type != GADGET_RESET &&
+            gadget_type != GADGET_BUTTON) {
         return NULL;
     }
     box = pcore_box_new(BOX_INLINE_BLOCK, style, ctx);
@@ -613,6 +745,15 @@ static struct box *pcore_make_form_control_box(dom_node *node,
     gadget->node = node;
     gadget->type = (form_control_type) gadget_type;
     gadget->box = box;
+    if (gadget_type == GADGET_SUBMIT ||
+            gadget_type == GADGET_RESET ||
+            gadget_type == GADGET_BUTTON) {
+        if (!pcore_make_button_control(box, gadget, node, style)) {
+            talloc_free(box);
+            return NULL;
+        }
+        return box;
+    }
     if (gadget_type == GADGET_SELECT) {
         if (!pcore_make_select_control(box, gadget, node, style)) {
             talloc_free(box);
@@ -3050,7 +3191,10 @@ static struct box *pcore_form_control_at(struct box *box,
              box->gadget->type == GADGET_TEXTBOX ||
              box->gadget->type == GADGET_PASSWORD ||
              box->gadget->type == GADGET_TEXTAREA ||
-             box->gadget->type == GADGET_SELECT)) {
+             box->gadget->type == GADGET_SELECT ||
+             box->gadget->type == GADGET_SUBMIT ||
+             box->gadget->type == GADGET_RESET ||
+             box->gadget->type == GADGET_BUTTON)) {
         if (*current == target) {
             return box;
         }
@@ -3095,6 +3239,12 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
         control_kind = 5;
     } else if (box->gadget->type == GADGET_SELECT) {
         control_kind = 6;
+    } else if (box->gadget->type == GADGET_SUBMIT) {
+        control_kind = 7;
+    } else if (box->gadget->type == GADGET_RESET) {
+        control_kind = 8;
+    } else if (box->gadget->type == GADGET_BUTTON) {
+        control_kind = 9;
     } else {
         return 1;
     }
@@ -4036,6 +4186,508 @@ static struct box *pcore_hit(struct box *b, int px, int py)
         return b;
     }
     return NULL;
+}
+
+#define PCORE_FORM_DATA_MAX 65535
+
+typedef struct pcore_form_buffer {
+    char *data;
+    size_t length;
+    size_t capacity;
+    int pairs;
+} pcore_form_buffer;
+
+static int pcore_form_buffer_reserve(pcore_form_buffer *buffer,
+        size_t additional)
+{
+    char *grown;
+    size_t needed;
+    size_t capacity;
+
+    if (buffer == NULL || additional >
+            PCORE_FORM_DATA_MAX - buffer->length) {
+        return 0;
+    }
+    needed = buffer->length + additional + 1;
+    if (needed <= buffer->capacity) {
+        return 1;
+    }
+    capacity = (buffer->capacity > 0) ? buffer->capacity : 64;
+    while (capacity < needed) {
+        if (capacity > PCORE_FORM_DATA_MAX / 2) {
+            capacity = PCORE_FORM_DATA_MAX + 1;
+            break;
+        }
+        capacity *= 2;
+    }
+    grown = (char *) realloc(buffer->data, capacity);
+    if (grown == NULL) {
+        return 0;
+    }
+    buffer->data = grown;
+    buffer->capacity = capacity;
+    return 1;
+}
+
+static int pcore_form_buffer_byte(pcore_form_buffer *buffer, char value)
+{
+    if (!pcore_form_buffer_reserve(buffer, 1)) {
+        return 0;
+    }
+    buffer->data[buffer->length++] = value;
+    buffer->data[buffer->length] = '\0';
+    return 1;
+}
+
+/* Port of NetSurf utils/url.c url_escape(..., sptoplus=true): form spaces
+ * become '+', '~' is escaped for compatibility, and UTF-8 is escaped byte by
+ * byte without pretending that a legacy document charset was transcoded. */
+static int pcore_form_buffer_encoded(pcore_form_buffer *buffer,
+        const char *text, size_t length)
+{
+    static const char HEX[] = "0123456789ABCDEF";
+    size_t i;
+
+    for (i = 0; i < length; i++) {
+        unsigned char c;
+        int plain;
+
+        c = (unsigned char) text[i];
+        plain = (c >= 'a' && c <= 'z') ||
+                (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') ||
+                c == '-' || c == '.' || c == '_';
+        if (plain) {
+            if (!pcore_form_buffer_byte(buffer, (char) c)) {
+                return 0;
+            }
+        } else if (c == ' ') {
+            if (!pcore_form_buffer_byte(buffer, '+')) {
+                return 0;
+            }
+        } else {
+            if (!pcore_form_buffer_reserve(buffer, 3)) {
+                return 0;
+            }
+            buffer->data[buffer->length++] = '%';
+            buffer->data[buffer->length++] = HEX[(c >> 4) & 15];
+            buffer->data[buffer->length++] = HEX[c & 15];
+            buffer->data[buffer->length] = '\0';
+        }
+    }
+    return 1;
+}
+
+static int pcore_form_append_pair(pcore_form_buffer *buffer,
+        dom_string *name, dom_string *value, const char *default_value)
+{
+    const char *name_data;
+    const char *value_data;
+    size_t name_length;
+    size_t value_length;
+
+    if (buffer == NULL || name == NULL) {
+        return 0;
+    }
+    name_data = dom_string_data(name);
+    name_length = dom_string_byte_length(name);
+    if (value != NULL) {
+        value_data = dom_string_data(value);
+        value_length = dom_string_byte_length(value);
+    } else {
+        value_data = (default_value != NULL) ? default_value : "";
+        value_length = strlen(value_data);
+    }
+    if (buffer->pairs > 0 && !pcore_form_buffer_byte(buffer, '&')) {
+        return 0;
+    }
+    if (!pcore_form_buffer_encoded(buffer, name_data, name_length) ||
+            !pcore_form_buffer_byte(buffer, '=') ||
+            !pcore_form_buffer_encoded(buffer, value_data, value_length)) {
+        return 0;
+    }
+    buffer->pairs++;
+    return 1;
+}
+
+static int pcore_form_append_input(pcore_form_buffer *buffer,
+        dom_html_input_element *input, dom_node *activated)
+{
+    dom_string *name;
+    dom_string *value;
+    bool disabled;
+    bool checked;
+    dom_node *node;
+    int append;
+
+    name = NULL;
+    value = NULL;
+    disabled = false;
+    checked = false;
+    append = 1;
+    node = (dom_node *) input;
+    if (dom_html_input_element_get_disabled(input, &disabled) !=
+            DOM_NO_ERR || disabled) {
+        return (disabled) ? 1 : 0;
+    }
+    if (dom_html_input_element_get_name(input, &name) != DOM_NO_ERR) {
+        return 0;
+    }
+    if (name == NULL) {
+        return 1;
+    }
+    if (pcore_attr_value_is(node, "type", "reset") ||
+            pcore_attr_value_is(node, "type", "button") ||
+            pcore_attr_value_is(node, "type", "file") ||
+            pcore_attr_value_is(node, "type", "image")) {
+        dom_string_unref(name);
+        return 1;
+    }
+    if (pcore_attr_value_is(node, "type", "submit") &&
+            node != activated) {
+        dom_string_unref(name);
+        return 1;
+    }
+    if (pcore_attr_value_is(node, "type", "checkbox") ||
+            pcore_attr_value_is(node, "type", "radio")) {
+        if (dom_html_input_element_get_checked(input, &checked) !=
+                DOM_NO_ERR) {
+            dom_string_unref(name);
+            return 0;
+        }
+        if (!checked) {
+            dom_string_unref(name);
+            return 1;
+        }
+    }
+    if (dom_html_input_element_get_value(input, &value) != DOM_NO_ERR) {
+        dom_string_unref(name);
+        return 0;
+    }
+    append = pcore_form_append_pair(buffer, name, value,
+            (pcore_attr_value_is(node, "type", "checkbox") ||
+             pcore_attr_value_is(node, "type", "radio")) ? "on" : "");
+    if (value != NULL) {
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return append;
+}
+
+static int pcore_form_append_textarea(pcore_form_buffer *buffer,
+        dom_html_text_area_element *textarea)
+{
+    dom_string *name;
+    dom_string *value;
+    bool disabled;
+    int append;
+
+    name = NULL;
+    value = NULL;
+    disabled = false;
+    if (dom_html_text_area_element_get_disabled(textarea, &disabled) !=
+            DOM_NO_ERR || disabled) {
+        return (disabled) ? 1 : 0;
+    }
+    if (dom_html_text_area_element_get_name(textarea, &name) != DOM_NO_ERR) {
+        return 0;
+    }
+    if (name == NULL) {
+        return 1;
+    }
+    if (dom_html_text_area_element_get_value(textarea, &value) !=
+            DOM_NO_ERR) {
+        dom_string_unref(name);
+        return 0;
+    }
+    append = pcore_form_append_pair(buffer, name, value, "");
+    if (value != NULL) {
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return append;
+}
+
+static int pcore_form_append_select(pcore_form_buffer *buffer,
+        dom_html_select_element *select)
+{
+    dom_html_options_collection *options;
+    dom_string *name;
+    dom_node *node;
+    dom_string *value;
+    uint32_t count;
+    uint32_t index;
+    bool disabled;
+    bool selected;
+    int append;
+
+    options = NULL;
+    name = NULL;
+    node = NULL;
+    value = NULL;
+    count = 0;
+    disabled = false;
+    if (dom_html_select_element_get_disabled(select, &disabled) !=
+            DOM_NO_ERR || disabled) {
+        return (disabled) ? 1 : 0;
+    }
+    if (dom_html_select_element_get_name(select, &name) != DOM_NO_ERR) {
+        return 0;
+    }
+    if (name == NULL) {
+        return 1;
+    }
+    if (dom_html_select_element_get_options(select, &options) != DOM_NO_ERR ||
+            options == NULL ||
+            dom_html_options_collection_get_length(options, &count) !=
+                    DOM_NO_ERR) {
+        if (options != NULL) {
+            dom_html_options_collection_unref(options);
+        }
+        dom_string_unref(name);
+        return 0;
+    }
+    append = 1;
+    for (index = 0; index < count && append; index++) {
+        node = NULL;
+        value = NULL;
+        selected = false;
+        if (dom_html_options_collection_item(options, index, &node) !=
+                DOM_NO_ERR || node == NULL ||
+                dom_html_option_element_get_selected(
+                        (dom_html_option_element *) node,
+                        &selected) != DOM_NO_ERR) {
+            append = 0;
+        } else if (selected) {
+            if (dom_html_option_element_get_value(
+                    (dom_html_option_element *) node, &value) !=
+                    DOM_NO_ERR) {
+                append = 0;
+            } else {
+                append = pcore_form_append_pair(buffer, name, value, "");
+            }
+        }
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        if (node != NULL) {
+            dom_node_unref(node);
+        }
+    }
+    dom_html_options_collection_unref(options);
+    dom_string_unref(name);
+    return append;
+}
+
+static int pcore_form_append_button(pcore_form_buffer *buffer,
+        dom_html_button_element *button, dom_node *activated)
+{
+    dom_node *node;
+    dom_string *name;
+    dom_string *value;
+    bool disabled;
+    int append;
+
+    node = (dom_node *) button;
+    name = NULL;
+    value = NULL;
+    disabled = false;
+    if (dom_html_button_element_get_disabled(button, &disabled) !=
+            DOM_NO_ERR || disabled) {
+        return (disabled) ? 1 : 0;
+    }
+    if (pcore_attr_value_is(node, "type", "reset") ||
+            pcore_attr_value_is(node, "type", "button") ||
+            node != activated) {
+        return 1;
+    }
+    if (dom_html_button_element_get_name(button, &name) != DOM_NO_ERR) {
+        return 0;
+    }
+    if (name == NULL) {
+        return 1;
+    }
+    if (dom_html_button_element_get_value(button, &value) != DOM_NO_ERR) {
+        dom_string_unref(name);
+        return 0;
+    }
+    append = pcore_form_append_pair(buffer, name, value, "");
+    if (value != NULL) {
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return append;
+}
+
+static int pcore_form_build_data(dom_html_form_element *form,
+        dom_node *activated, pcore_form_buffer *buffer)
+{
+    dom_html_collection *elements;
+    dom_node *node;
+    uint32_t count;
+    uint32_t index;
+    int result;
+
+    elements = NULL;
+    node = NULL;
+    count = 0;
+    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
+            elements == NULL ||
+            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
+        if (elements != NULL) {
+            dom_html_collection_unref(elements);
+        }
+        return 0;
+    }
+    result = 1;
+    for (index = 0; index < count && result; index++) {
+        node = NULL;
+        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
+                node == NULL) {
+            result = 0;
+        } else if (pcore_node_name_is(node, "input")) {
+            result = pcore_form_append_input(buffer,
+                    (dom_html_input_element *) node, activated);
+        } else if (pcore_node_name_is(node, "textarea")) {
+            result = pcore_form_append_textarea(buffer,
+                    (dom_html_text_area_element *) node);
+        } else if (pcore_node_name_is(node, "select")) {
+            result = pcore_form_append_select(buffer,
+                    (dom_html_select_element *) node);
+        } else if (pcore_node_name_is(node, "button")) {
+            result = pcore_form_append_button(buffer,
+                    (dom_html_button_element *) node, activated);
+        }
+        if (node != NULL) {
+            dom_node_unref(node);
+        }
+    }
+    dom_html_collection_unref(elements);
+    return result;
+}
+
+static dom_html_form_element *pcore_button_form(struct form_control *control)
+{
+    dom_html_form_element *form;
+
+    form = NULL;
+    if (control == NULL || control->node == NULL) {
+        return NULL;
+    }
+    if (pcore_node_name_is(control->node, "button")) {
+        dom_html_button_element_get_form(
+                (dom_html_button_element *) control->node, &form);
+    } else if (pcore_node_name_is(control->node, "input")) {
+        dom_html_input_element_get_form(
+                (dom_html_input_element *) control->node, &form);
+    }
+    return form;
+}
+
+PCORE_API int PCore_FormSubmissionAt(HANDLE hDoc, int x, int y,
+        PCoreFormSubmissionInfo *out_info, char *action, int action_capacity,
+        char *body, int body_capacity)
+{
+    pcore_render *st;
+    struct box *hit;
+    struct box *box;
+    struct form_control *control;
+    dom_html_form_element *form;
+    dom_string *action_string;
+    pcore_form_buffer buffer;
+    const char *action_data;
+    size_t action_length;
+    int method;
+    int result;
+
+    if (out_info != NULL) {
+        memset(out_info, 0, sizeof(*out_info));
+    }
+    if (action != NULL && action_capacity > 0) {
+        action[0] = '\0';
+    }
+    if (body != NULL && body_capacity > 0) {
+        body[0] = '\0';
+    }
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL) {
+        return 0;
+    }
+    hit = pcore_hit(st->root_box, x, y);
+    for (box = hit; box != NULL && box->gadget == NULL;
+            box = box->parent) {
+        /* The button's text child resolves to its gadget-bearing ancestor. */
+    }
+    if (box == NULL || box->gadget == NULL) {
+        return 0;
+    }
+    control = box->gadget;
+    if (control->type != GADGET_SUBMIT &&
+            control->type != GADGET_RESET &&
+            control->type != GADGET_BUTTON) {
+        return 0;
+    }
+    if (control->disabled || control->type != GADGET_SUBMIT) {
+        return 2;
+    }
+    form = pcore_button_form(control);
+    if (form == NULL) {
+        return 2;
+    }
+    action_string = NULL;
+    memset(&buffer, 0, sizeof(buffer));
+    method = 1;
+    result = 4;
+    if (dom_html_form_element_get_action(form, &action_string) !=
+            DOM_NO_ERR) {
+        goto form_submission_done;
+    }
+    if (pcore_attr_value_is((dom_node *) form, "method", "post")) {
+        method = 2;
+        if (pcore_attr_value_is((dom_node *) form, "enctype",
+                "multipart/form-data")) {
+            method = 3;
+        }
+    }
+    action_data = (action_string != NULL) ?
+            dom_string_data(action_string) : "";
+    action_length = (action_string != NULL) ?
+            dom_string_byte_length(action_string) : 0;
+    if (out_info != NULL) {
+        out_info->method = method;
+        out_info->action_bytes = (int) action_length;
+    }
+    if (method == 3) {
+        result = 3;
+        goto form_submission_done;
+    }
+    if (!pcore_form_build_data(form, control->node, &buffer)) {
+        goto form_submission_done;
+    }
+    if (out_info != NULL) {
+        out_info->body_bytes = (int) buffer.length;
+    }
+    if (action == NULL || action_capacity <= (int) action_length ||
+            body == NULL || body_capacity <= (int) buffer.length) {
+        goto form_submission_done;
+    }
+    if (action_length > 0) {
+        memcpy(action, action_data, action_length);
+    }
+    action[action_length] = '\0';
+    if (buffer.length > 0) {
+        memcpy(body, buffer.data, buffer.length);
+    }
+    body[buffer.length] = '\0';
+    result = 1;
+
+form_submission_done:
+    free(buffer.data);
+    if (action_string != NULL) {
+        dom_string_unref(action_string);
+    }
+    dom_node_unref((dom_node *) form);
+    return result;
 }
 
 static void pcore_dirty_add_box(struct box *box, int *valid,

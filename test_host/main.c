@@ -271,7 +271,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 67
+#define TEST_MAX_NUMBER 68
 
 static int test_config_space(char c)
 {
@@ -2070,6 +2070,9 @@ typedef struct pcore_navigation_request {
     char           host[256];
     char           path[1024];
     int            port;
+    int            method;
+    char          *request_body;
+    int            request_body_len;
     PHttpResponse *response;
     HANDLE         document;
     pcore_navigation_resource *resources;
@@ -3089,6 +3092,7 @@ static void pcore_navigation_request_free(
     if (request->document != NULL) {
         PCore_FreeDocument(request->document);
     }
+    free(request->request_body);
     entry = request->resources;
     while (entry != NULL) {
         pcore_navigation_resource *next;
@@ -3207,6 +3211,25 @@ static PHttpResponse *pcore_navigation_get(
             pcore_navigation_progress, request);
 }
 
+static PHttpResponse *pcore_navigation_fetch_document(
+        pcore_navigation_request *request)
+{
+    const char *headers[2];
+
+    if (request->method == 2) {
+        headers[0] = "Content-Type: application/x-www-form-urlencoded";
+        headers[1] = NULL;
+        request->progress_last_total = -2;
+        request->progress_last_percent = -2;
+        request->progress_last_received = -16384;
+        return PHttp_PostEx(request->host, request->port, request->path,
+                headers, request->request_body, request->request_body_len,
+                pcore_navigation_progress, request);
+    }
+    return pcore_navigation_get(request, request->host,
+            request->port, request->path);
+}
+
 static int pcore_navigation_response_error(
         const pcore_navigation_request *request, char *message, int capacity)
 {
@@ -3218,7 +3241,8 @@ static int pcore_navigation_response_error(
         return 0;
     }
     _snprintf(message, capacity - 1,
-              "GET %s://%s%s -> status=%d %s",
+              "%s %s://%s%s -> status=%d %s",
+              (request->method == 2) ? "POST" : "GET",
               (request->port == 80) ? "http" : "https",
               request->host, request->path,
               (resp != NULL) ? resp->status_code : 0,
@@ -3240,8 +3264,7 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
 
     request = (pcore_navigation_request *) param;
     if (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) {
-        request->response = pcore_navigation_get(request, request->host,
-                request->port, request->path);
+        request->response = pcore_navigation_fetch_document(request);
         if (request->response != NULL &&
                 request->response->status_code == 200 &&
                 request->response->body != NULL &&
@@ -3516,34 +3539,69 @@ static int pcore_navigation_post_continue(HWND hwnd,
     return SetTimer(hwnd, PCORE_NAV_COMMIT_TIMER, 1, NULL) != 0 ? 0 : 1;
 }
 
-/* Start the main-document stage. Later stages reuse this request for external
- * CSS/image GETs while the old visible document remains interactive. */
-static void navigate_to(HWND hwnd, const char *href)
+static pcore_navigation_request *pcore_navigation_request_create(
+        HWND hwnd, const char *href, int method, const char *body)
 {
     pcore_navigation_request *request;
+    size_t href_len;
+    size_t body_len;
 
-    if (g_nav_loading) {
-        return;
+    if (href == NULL) {
+        return NULL;
+    }
+    href_len = strlen(href);
+    if (href_len >= sizeof(request->path)) {
+        return NULL;
     }
     request = (pcore_navigation_request *) malloc(sizeof(*request));
     if (request == NULL) {
-        show_error(L"Navigation failed", "Out of memory");
-        return;
+        return NULL;
     }
     memset(request, 0, sizeof(*request));
     request->port = 443;
     if (!resolve_url(href, request->host, sizeof(request->host),
             request->path, sizeof(request->path), &request->port)) {
         free(request);
-        show_info(L"Link", "Only http(s) document links are followed for now.");
-        return;
+        return NULL;
     }
-
+    request->method = (method == 2) ? 2 : 1;
+    if (request->method == 2) {
+        body_len = (body != NULL) ? strlen(body) : 0;
+        request->request_body = (char *) malloc(body_len + 1);
+        if (request->request_body == NULL) {
+            free(request);
+            return NULL;
+        }
+        if (body_len > 0) {
+            memcpy(request->request_body, body, body_len);
+        }
+        request->request_body[body_len] = '\0';
+        request->request_body_len = (int) body_len;
+    }
     request->hwnd = hwnd;
-    request->generation = ++g_nav_generation;
     request->worker_stage = PCORE_NAV_STAGE_DOCUMENT;
     request->commit_stage = PCORE_NAV_COMMIT_NONE;
     request->stats.started_tick = GetTickCount();
+    return request;
+}
+
+/* Start the main-document stage. Later stages reuse this request for external
+ * CSS/image GETs while the old visible document remains interactive. */
+static void navigate_to_request(HWND hwnd, const char *href,
+        int method, const char *body)
+{
+    pcore_navigation_request *request;
+
+    if (g_nav_loading) {
+        return;
+    }
+    request = pcore_navigation_request_create(hwnd, href, method, body);
+    if (request == NULL) {
+        show_error(L"Navigation failed",
+                "Invalid URL, oversized form target, or out of memory");
+        return;
+    }
+    request->generation = ++g_nav_generation;
     g_nav_request = request;
     pcore_navigation_set_loading(hwnd, 1);
     if (pcore_navigation_start_worker(request) != 0) {
@@ -3552,6 +3610,137 @@ static void navigate_to(HWND hwnd, const char *href)
         pcore_navigation_request_free(request);
         show_error(L"Navigation failed", "CreateThread failed");
     }
+}
+
+static void navigate_to(HWND hwnd, const char *href)
+{
+    navigate_to_request(hwnd, href, 1, NULL);
+}
+
+static char *pcore_form_target_url(const char *action, const char *body,
+        int method)
+{
+    char current[1536];
+    const char *source;
+    size_t source_length;
+    size_t base_length;
+    size_t body_length;
+    size_t needed;
+    char *target;
+
+    source = action;
+    if (source == NULL || source[0] == '\0') {
+        if (pcore_document_url(g_cur_host, g_cur_path, g_cur_port,
+                current, sizeof(current)) != 0) {
+            return NULL;
+        }
+        source = current;
+    }
+    source_length = strlen(source);
+    base_length = 0;
+    while (base_length < source_length &&
+            source[base_length] != '?' && source[base_length] != '#') {
+        base_length++;
+    }
+    body_length = (body != NULL) ? strlen(body) : 0;
+    needed = (method == 1) ?
+            base_length + ((body_length > 0) ? body_length + 1 : 0) :
+            source_length;
+    if (needed >= 65535) {
+        return NULL;
+    }
+    target = (char *) malloc(needed + 1);
+    if (target == NULL) {
+        return NULL;
+    }
+    if (method == 1) {
+        if (base_length > 0) {
+            memcpy(target, source, base_length);
+        }
+        if (body_length > 0) {
+            target[base_length] = '?';
+            memcpy(target + base_length + 1, body, body_length);
+        }
+    } else if (source_length > 0) {
+        memcpy(target, source, source_length);
+    }
+    target[needed] = '\0';
+    return target;
+}
+
+static void navigate_form_submission(HWND hwnd, int method,
+        const char *action, const char *body)
+{
+    char *target;
+
+    target = pcore_form_target_url(action, body, method);
+    if (target == NULL) {
+        show_error(L"Form submission failed",
+                "The form target is invalid or too large");
+        return;
+    }
+    navigate_to_request(hwnd, target, method,
+            (method == 2) ? body : NULL);
+    free(target);
+}
+
+static int pcore_handle_form_button(HWND hwnd, int x, int y)
+{
+    PCoreFormSubmissionInfo info;
+    char action_probe[1];
+    char body_probe[1];
+    char *action;
+    char *body;
+    int result;
+
+    memset(&info, 0, sizeof(info));
+    action_probe[0] = '\0';
+    body_probe[0] = '\0';
+    result = PCore_FormSubmissionAt(g_render_doc, x, y, &info,
+            action_probe, sizeof(action_probe),
+            body_probe, sizeof(body_probe));
+    if (result == 0) {
+        return 0;
+    }
+    if (result == 2) {
+        return 1;
+    }
+    if (result == 3) {
+        show_info(L"Form submission",
+                "multipart/form-data is not implemented yet.");
+        return 1;
+    }
+    if (result == 1) {
+        navigate_form_submission(hwnd, info.method,
+                action_probe, body_probe);
+        return 1;
+    }
+    if (info.method == 0 || info.action_bytes < 0 ||
+            info.body_bytes < 0) {
+        show_error(L"Form submission failed",
+                "Could not enumerate successful form controls");
+        return 1;
+    }
+    action = (char *) malloc((size_t) info.action_bytes + 1);
+    body = (char *) malloc((size_t) info.body_bytes + 1);
+    if (action == NULL || body == NULL) {
+        free(action);
+        free(body);
+        show_error(L"Form submission failed", "Out of memory");
+        return 1;
+    }
+    result = PCore_FormSubmissionAt(g_render_doc, x, y, &info,
+            action, info.action_bytes + 1,
+            body, info.body_bytes + 1);
+    if (result == 1) {
+        navigate_form_submission(hwnd, info.method, action, body);
+    } else {
+        show_error(L"Form submission failed",
+                "The form changed while its data was being collected");
+    }
+    free(action);
+    free(body);
+    return 1;
 }
 
 static void pcore_navigation_cleanup(void)
@@ -3883,6 +4072,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             g_overflow_pointer = 1;
             SetCapture(hwnd);
             pcore_invalidate_overflow(hwnd);
+            return 0;
+        }
+        if (g_render_doc != NULL &&
+                pcore_handle_form_button(hwnd, cx, cy + g_scroll_y)) {
             return 0;
         }
         if (g_render_doc != NULL &&
@@ -11158,6 +11351,220 @@ static BOOL test67_select_control(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 68 - button controls and GET/urlencoded POST submission          */
+/* -------------------------------------------------------------------- */
+static int test68_control_center(HANDLE hDoc, int wanted_kind,
+        int wanted_ordinal, int *x, int *y)
+{
+    unsigned int index;
+    int ordinal;
+    int kind;
+    int left;
+    int top;
+    int width;
+    int height;
+
+    ordinal = 0;
+    for (index = 0;
+            PCore_FormControlInfo(hDoc, index, &left, &top,
+                    &width, &height, &kind, NULL, NULL) == 0;
+            index++) {
+        if (kind == wanted_kind) {
+            if (ordinal == wanted_ordinal) {
+                if (width <= 0 || height <= 0) {
+                    return 0;
+                }
+                *x = left + width / 2;
+                *y = top + height / 2;
+                return 1;
+            }
+            ordinal++;
+        }
+    }
+    return 0;
+}
+
+static BOOL test68_form_submission(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<h1>Form submission</h1>"
+        "<form action='/find?stale=1' method=get>"
+        "<input name=q value='alpha beta&amp;x'>"
+        "<input type=hidden name=token value='a/b'>"
+        "<input type=checkbox name=include value=yes checked>"
+        "<input type=checkbox name=skip value=no>"
+        "<input type=radio name=scope value=all checked>"
+        "<input type=radio name=scope value=none>"
+        "<textarea name=note>line one</textarea>"
+        "<select name=tag multiple>"
+        "<option value=x selected>X</option>"
+        "<option value='y z' selected>Y</option>"
+        "</select>"
+        "<input name=disabled value=no disabled>"
+        "<input type=submit name=go value=Find>"
+        "<input type=submit name=other value=Wrong>"
+        "</form>"
+        "<form action=/post method=POST "
+        "enctype='application/x-www-form-urlencoded'>"
+        "<input name=msg value='A+B'>"
+        "<button name=send value=yes>Send now</button>"
+        "</form>"
+        "<form action=/upload method=post "
+        "enctype='multipart/form-data'>"
+        "<button>Upload</button>"
+        "</form>"
+        "<button type=button>Plain</button>"
+        "<button type=reset>Reset</button>"
+        "<button disabled>Disabled</button>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "h1{font-size:20px}"
+        "form{margin:3px 0}"
+        "input,textarea,select,button{display:inline-block;"
+        "width:90px;height:24px;margin:2px}";
+    static const char EXPECT_GET[] =
+        "q=alpha+beta%26x&token=a%2Fb&include=yes&scope=all&"
+        "note=line+one&tag=x&tag=y+z&go=Find";
+    static const char EXPECT_POST[] = "msg=A%2BB&send=yes";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreFormSubmissionInfo info;
+    pcore_navigation_request *request;
+    char action[128];
+    char body[512];
+    char small_action[4];
+    char small_body[8];
+    char oversized_target[1025];
+    char old_host[256];
+    char old_path[1024];
+    char *target;
+    int old_port;
+    int x;
+    int y;
+    int result;
+    int ok;
+
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/form-submit.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 68 FAIL", "form setup failed");
+        return FALSE;
+    }
+    ok = test68_control_center(hDoc, 7, 0, &x, &y);
+    memset(&info, 0, sizeof(info));
+    result = ok ? PCore_FormSubmissionAt(hDoc, x, y, &info,
+            small_action, sizeof(small_action),
+            small_body, sizeof(small_body)) : 0;
+    if (!ok || result != 4 || info.method != 1 ||
+            info.action_bytes != (int) strlen("/find?stale=1") ||
+            info.body_bytes != (int) strlen(EXPECT_GET) ||
+            PCore_FormSubmissionAt(hDoc, x, y, &info,
+                    action, sizeof(action), body, sizeof(body)) != 1 ||
+            strcmp(action, "/find?stale=1") != 0 ||
+            strcmp(body, EXPECT_GET) != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 68 FAIL", "GET successful controls failed");
+        return FALSE;
+    }
+
+    if (!test68_control_center(hDoc, 7, 2, &x, &y) ||
+            PCore_FormSubmissionAt(hDoc, x, y, &info,
+                    action, sizeof(action), body, sizeof(body)) != 1 ||
+            info.method != 2 || strcmp(action, "/post") != 0 ||
+            strcmp(body, EXPECT_POST) != 0 ||
+            !test68_control_center(hDoc, 7, 3, &x, &y) ||
+            PCore_FormSubmissionAt(hDoc, x, y, &info,
+                    action, sizeof(action), body, sizeof(body)) != 3 ||
+            info.method != 3 ||
+            !test68_control_center(hDoc, 9, 0, &x, &y) ||
+            PCore_FormSubmissionAt(hDoc, x, y, &info,
+                    action, sizeof(action), body, sizeof(body)) != 2 ||
+            !test68_control_center(hDoc, 8, 0, &x, &y) ||
+            PCore_FormSubmissionAt(hDoc, x, y, &info,
+                    action, sizeof(action), body, sizeof(body)) != 2 ||
+            !test68_control_center(hDoc, 7, 4, &x, &y) ||
+            PCore_FormSubmissionAt(hDoc, x, y, &info,
+                    action, sizeof(action), body, sizeof(body)) != 2 ||
+            PCore_FormSubmissionAt(hDoc, 239, 319, &info,
+                    action, sizeof(action), body, sizeof(body)) != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 68 FAIL",
+                "POST/button/disabled/multipart policy failed");
+        return FALSE;
+    }
+
+    cstr_copy(old_host, sizeof(old_host), g_cur_host);
+    cstr_copy(old_path, sizeof(old_path), g_cur_path);
+    old_port = g_cur_port;
+    cstr_copy(g_cur_host, sizeof(g_cur_host), "fixture.invalid");
+    cstr_copy(g_cur_path, sizeof(g_cur_path), "/base/page");
+    g_cur_port = 443;
+    target = pcore_form_target_url("/find?stale=1", EXPECT_GET, 1);
+    request = (target != NULL) ?
+            pcore_navigation_request_create(NULL, target, 1, NULL) : NULL;
+    ok = request != NULL && request->method == 1 &&
+            strcmp(request->host, "fixture.invalid") == 0 &&
+            request->port == 443 &&
+            strcmp(request->path,
+                    "/find?q=alpha+beta%26x&token=a%2Fb&include=yes&"
+                    "scope=all&note=line+one&tag=x&tag=y+z&go=Find") == 0;
+    pcore_navigation_request_free(request);
+    free(target);
+    request = pcore_navigation_request_create(NULL, "/post", 2,
+            EXPECT_POST);
+    ok = ok && request != NULL && request->method == 2 &&
+            request->request_body_len == (int) strlen(EXPECT_POST) &&
+            strcmp(request->request_body, EXPECT_POST) == 0;
+    pcore_navigation_request_free(request);
+    memset(oversized_target, 'x', sizeof(oversized_target) - 1);
+    oversized_target[0] = '/';
+    oversized_target[sizeof(oversized_target) - 1] = '\0';
+    request = pcore_navigation_request_create(NULL, oversized_target,
+            1, NULL);
+    ok = ok && request == NULL;
+    pcore_navigation_request_free(request);
+    cstr_copy(g_cur_host, sizeof(g_cur_host), old_host);
+    cstr_copy(g_cur_path, sizeof(g_cur_path), old_path);
+    g_cur_port = old_port;
+    if (!ok || PCore_LayoutDocument(hDoc, 320, 240) != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 68 FAIL", "WM GET/POST request bridge failed");
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 68 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 68 OK",
+            "NetSurf button gadgets, successful controls, GET query,\n"
+            "urlencoded POST and WM request ownership passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -11339,6 +11746,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 65: ok = test65_text_input(); break;
         case 66: ok = test66_textarea(); break;
         case 67: ok = test67_select_control(); break;
+        case 68: ok = test68_form_submission(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -11472,7 +11880,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list/\n"
                                "inline CSS and form controls\n"
-                               "(TEST 46-58, 62-67).\n"
+                               "(TEST 46-58, 62-68).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -11535,7 +11943,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-67; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-68; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -11575,6 +11983,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test65_text_input()) { rc = 13; goto done; }
         if (!test66_textarea())   { rc = 13; goto done; }
         if (!test67_select_control()){ rc = 13; goto done; }
+        if (!test68_form_submission()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -11616,7 +12025,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-67)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-68)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

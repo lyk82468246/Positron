@@ -250,7 +250,7 @@ PCORE_API int PCore_NodeFormControlState(HANDLE hDoc, const char *tag,
 
 /* Inspect a form control in box-tree order. Geometry is in absolute document
  * CSS px; kind is 1 checkbox, 2 radio, 3 single-line text, 4 password,
- * 5 textarea and 6 select. */
+ * 5 textarea, 6 select, 7 submit, 8 reset and 9 ordinary button. */
 PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
                                    int *x, int *y, int *w, int *h,
                                    int *kind, int *selected, int *disabled);
@@ -444,6 +444,32 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
 PCORE_API int PCore_FormActivateAt(HANDLE hDoc, int x, int y,
                                   int *dirty_x, int *dirty_y,
                                   int *dirty_w, int *dirty_h);
+
+typedef struct PCoreFormSubmissionInfo {
+    int method;
+    int action_bytes;
+    int body_bytes;
+} PCoreFormSubmissionInfo;
+
+/* Build the application/x-www-form-urlencoded successful-control set for a
+ * submit button at a document-space point. method is 1 for GET, 2 for an
+ * urlencoded POST and 3 for unsupported multipart POST. action/body receive
+ * UTF-8 and are NUL-terminated when their capacities are positive.
+ *
+ * Return values:
+ *   0: no button at the point
+ *   1: submission is complete
+ *   2: a disabled/reset/ordinary button consumed the point
+ *   3: multipart/file submission is not implemented
+ *   4: DOM/allocation/output-buffer failure
+ *
+ * The successful-control policy follows NetSurf form.c: disabled or unnamed
+ * controls and unchecked checkbox/radio inputs are skipped, selected options
+ * produce one pair each, and only the activated submit button is included. */
+PCORE_API int PCore_FormSubmissionAt(HANDLE hDoc, int x, int y,
+                                    PCoreFormSubmissionInfo *out_info,
+                                    char *action, int action_capacity,
+                                    char *body, int body_capacity);
 
 /* Forward pointer input to a nested CSS overflow scrollbar. Coordinates use
  * the same document-space convention as PCore_LinkAt. DOWN performs arrow or

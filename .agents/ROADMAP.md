@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-30
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、checkbox/radio、单行/多行原生输入桥及 WM 单选下拉已推进到 next98 / TEST67 的设备自动化基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、checkbox/radio、单行/多行原生输入桥、WM 单选下拉、NetSurf button gadget 及 GET/URL-encoded POST 已推进到 next99 / TEST68 的设备自动化基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -18,7 +18,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 当前新增功能优先级：
 
-1. **表单交互纵切**：next93 已完成 checkbox/radio，next94/TEST65 已完成单行 text/password，next97/TEST66 已完成 textarea 与 WM 原生多行 `EDIT`，next98/TEST67 已完成 select core 状态和 WM 单选 `COMBOBOX`；均由设备无人值守日志确认。当前推进 button 与 GET/POST 提交。
+1. **表单交互纵切**：next93 已完成 checkbox/radio，next94/TEST65 已完成单行 text/password，next97/TEST66 已完成 textarea，next98/TEST67 已完成 select，next99/TEST68 已完成 button 与 GET/URL-encoded POST；均由设备无人值守日志确认。
 2. **事件与状态基础**：把指针/键盘命中转换为表单状态和最小 `:focus/:checked/:active` 重样式，为后续脚本事件铺路。
 3. **重大布局“有无”**：按真实页面价值及上游可移植程度，依次评估 positioned layout、float、基础 Grid 和背景尺寸/重复；每项单独接入上游实现并保留 TEST13 深链门禁。
 4. **资源类型补齐**：先建立脚本资源发现/下载/缓存接口，再由中期 JavaScript runtime 消费；网页字体不扩展为普通语言字体工程。
@@ -287,8 +287,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next98 / TEST67 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
-2. 下一批继续 button 与 GET/POST 提交。WM 多选列表、label 激活和真实触屏下拉视觉验收可在后续人工检查批次补齐。
+1. 以 next99 / TEST68 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
+2. 下一批继续 multipart/file、reset/隐式提交或事件状态基础。WM 多选列表、label 激活和真实触屏控件视觉验收可在后续人工检查批次补齐。
 3. 表单基础稳定后，补事件/动态状态；随后按“一个上游能力一个批次”补 positioned layout、float、基础 Grid 或背景尺寸。撤回的 TEST23 实验不得原样恢复。
 4. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge。脚本资源接口可在此前短期阶段先建好，但 JavaScript 默认仍保持关闭直到设备门禁通过。
 5. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。
