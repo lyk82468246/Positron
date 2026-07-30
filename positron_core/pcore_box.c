@@ -64,6 +64,7 @@
 extern const struct gui_layout_table pcore_gdi_layout;
 
 static struct box *pcore_hit(struct box *box, int px, int py);
+static struct box *pcore_box_for_node(struct box *box, dom_node *node);
 
 /* Referenced (extern) by content/handlers/css/utils.h; the device DPI in fixed
  * point. layout uses it for unit conversion. Set from PCore_SetViewport's dpi
@@ -3734,6 +3735,48 @@ PCORE_API int PCore_TextInputIsMultiline(HANDLE hDoc,
     return 0;
 }
 
+/* libdom 0.4.2 implements input.value by mutating the value attribute. When
+ * markup omitted that attribute, the first mutation also initialises its
+ * defaultValue slot to the new text. Freeze the pre-edit value first so form
+ * reset restores the parsed default rather than the first user edit. */
+static int pcore_input_preserve_default(dom_html_input_element *input)
+{
+    dom_string *default_value;
+    dom_string *current_value;
+    dom_string *empty;
+    dom_exception error;
+
+    default_value = NULL;
+    current_value = NULL;
+    empty = NULL;
+    if (dom_html_input_element_get_default_value(input,
+            &default_value) != DOM_NO_ERR) {
+        return 0;
+    }
+    if (default_value != NULL) {
+        dom_string_unref(default_value);
+        return 1;
+    }
+    if (dom_html_input_element_get_value(input, &current_value) !=
+            DOM_NO_ERR) {
+        return 0;
+    }
+    if (current_value == NULL &&
+            dom_string_create((const uint8_t *) "", 0, &empty) !=
+                    DOM_NO_ERR) {
+        return 0;
+    }
+    error = dom_html_input_element_set_default_value(input,
+            (current_value != NULL) ? current_value : empty);
+    if (current_value != NULL) {
+        dom_string_unref(current_value);
+    }
+    if (empty != NULL) {
+        dom_string_unref(empty);
+    }
+    return (error == DOM_NO_ERR) ? 1 : 0;
+}
+
 PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
         const char *value)
 {
@@ -3836,7 +3879,8 @@ PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
         }
     } else {
         input = (dom_html_input_element *) control->node;
-        if (dom_html_input_element_set_value(input, dom_value) !=
+        if (!pcore_input_preserve_default(input) ||
+                dom_html_input_element_set_value(input, dom_value) !=
                 DOM_NO_ERR) {
             dom_string_unref(dom_value);
             talloc_free(copy);
@@ -4947,6 +4991,439 @@ static dom_node *pcore_form_first_submit(dom_html_form_element *form,
     return node;
 }
 
+static int pcore_public_control_kind(int gadget_type)
+{
+    if (gadget_type == GADGET_CHECKBOX) { return 1; }
+    if (gadget_type == GADGET_RADIO) { return 2; }
+    if (gadget_type == GADGET_TEXTBOX) { return 3; }
+    if (gadget_type == GADGET_PASSWORD) { return 4; }
+    if (gadget_type == GADGET_TEXTAREA) { return 5; }
+    if (gadget_type == GADGET_SELECT) { return 6; }
+    if (gadget_type == GADGET_SUBMIT) { return 7; }
+    if (gadget_type == GADGET_RESET) { return 8; }
+    if (gadget_type == GADGET_BUTTON) { return 9; }
+    if (gadget_type == GADGET_FILE) { return 10; }
+    return 0;
+}
+
+static void pcore_form_validation_init(PCoreFormValidationInfo *info)
+{
+    if (info != NULL) {
+        memset(info, 0, sizeof(*info));
+        info->valid = 1;
+    }
+}
+
+static int pcore_radio_group_checked(dom_html_form_element *form,
+        dom_html_input_element *radio, int *checked_out)
+{
+    dom_html_collection *elements;
+    dom_node *node;
+    dom_string *name;
+    dom_string *other_name;
+    uint32_t count;
+    uint32_t index;
+    bool checked;
+    int result;
+
+    elements = NULL;
+    node = NULL;
+    name = NULL;
+    other_name = NULL;
+    count = 0;
+    checked = false;
+    *checked_out = 0;
+    if (dom_html_input_element_get_name(radio, &name) != DOM_NO_ERR ||
+            dom_html_input_element_get_checked(radio, &checked) !=
+                    DOM_NO_ERR) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 0;
+    }
+    if (name == NULL || dom_string_byte_length(name) == 0) {
+        *checked_out = checked ? 1 : 0;
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 1;
+    }
+    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
+            elements == NULL ||
+            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
+        if (elements != NULL) {
+            dom_html_collection_unref(elements);
+        }
+        dom_string_unref(name);
+        return 0;
+    }
+    result = 1;
+    for (index = 0; index < count && !*checked_out; index++) {
+        node = NULL;
+        other_name = NULL;
+        checked = false;
+        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
+                node == NULL) {
+            result = 0;
+        } else if (pcore_node_name_is(node, "input") &&
+                pcore_attr_value_is(node, "type", "radio")) {
+            if (dom_html_input_element_get_name(
+                    (dom_html_input_element *) node, &other_name) !=
+                            DOM_NO_ERR ||
+                    dom_html_input_element_get_checked(
+                    (dom_html_input_element *) node, &checked) !=
+                            DOM_NO_ERR) {
+                result = 0;
+            } else if (other_name != NULL &&
+                    dom_string_isequal(name, other_name) && checked) {
+                *checked_out = 1;
+            }
+        }
+        if (other_name != NULL) {
+            dom_string_unref(other_name);
+        }
+        if (node != NULL) {
+            dom_node_unref(node);
+        }
+        if (!result) {
+            break;
+        }
+    }
+    dom_html_collection_unref(elements);
+    dom_string_unref(name);
+    return result;
+}
+
+static int pcore_required_select_missing(dom_html_select_element *select,
+        int *missing)
+{
+    dom_html_options_collection *options;
+    dom_node *node;
+    dom_string *value;
+    uint32_t count;
+    uint32_t index;
+    bool selected;
+    int valid_selection;
+    int result;
+
+    options = NULL;
+    node = NULL;
+    value = NULL;
+    count = 0;
+    selected = false;
+    valid_selection = 0;
+    result = 1;
+    if (dom_html_select_element_get_options(select, &options) != DOM_NO_ERR ||
+            options == NULL ||
+            dom_html_options_collection_get_length(options, &count) !=
+                    DOM_NO_ERR) {
+        if (options != NULL) {
+            dom_html_options_collection_unref(options);
+        }
+        return 0;
+    }
+    for (index = 0; index < count && !valid_selection; index++) {
+        node = NULL;
+        value = NULL;
+        selected = false;
+        if (dom_html_options_collection_item(options, index, &node) !=
+                DOM_NO_ERR || node == NULL ||
+                dom_html_option_element_get_selected(
+                        (dom_html_option_element *) node, &selected) !=
+                                DOM_NO_ERR) {
+            result = 0;
+        } else if (selected) {
+            if (dom_html_option_element_get_value(
+                    (dom_html_option_element *) node, &value) != DOM_NO_ERR) {
+                result = 0;
+            } else if (value != NULL &&
+                    dom_string_byte_length(value) > 0) {
+                valid_selection = 1;
+            }
+        }
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        if (node != NULL) {
+            dom_node_unref(node);
+        }
+        if (!result) {
+            break;
+        }
+    }
+    dom_html_options_collection_unref(options);
+    *missing = valid_selection ? 0 : 1;
+    return result;
+}
+
+static int pcore_required_control_missing(dom_html_form_element *form,
+        dom_node *node, int *kind_out, int *missing_out)
+{
+    dom_string *value;
+    bool disabled;
+    bool read_only;
+    bool checked;
+    int gadget_type;
+    int group_checked;
+
+    value = NULL;
+    disabled = false;
+    read_only = false;
+    checked = false;
+    *kind_out = 0;
+    *missing_out = 0;
+    if (!pcore_node_has_attr(node, "required")) {
+        return 1;
+    }
+    gadget_type = pcore_form_control_type(node);
+    *kind_out = pcore_public_control_kind(gadget_type);
+    if (pcore_node_name_is(node, "input")) {
+        if (dom_html_input_element_get_disabled(
+                (dom_html_input_element *) node, &disabled) != DOM_NO_ERR) {
+            return 0;
+        }
+        if (disabled || gadget_type == 0 ||
+                gadget_type == GADGET_SUBMIT ||
+                gadget_type == GADGET_RESET ||
+                gadget_type == GADGET_BUTTON) {
+            return 1;
+        }
+        if (gadget_type == GADGET_TEXTBOX ||
+                gadget_type == GADGET_PASSWORD) {
+            if (dom_html_input_element_get_read_only(
+                    (dom_html_input_element *) node, &read_only) !=
+                            DOM_NO_ERR) {
+                return 0;
+            }
+            if (read_only) {
+                return 1;
+            }
+        }
+        if (gadget_type == GADGET_CHECKBOX) {
+            if (dom_html_input_element_get_checked(
+                    (dom_html_input_element *) node, &checked) !=
+                            DOM_NO_ERR) {
+                return 0;
+            }
+            *missing_out = checked ? 0 : 1;
+            return 1;
+        }
+        if (gadget_type == GADGET_RADIO) {
+            group_checked = 0;
+            if (!pcore_radio_group_checked(form,
+                    (dom_html_input_element *) node, &group_checked)) {
+                return 0;
+            }
+            *missing_out = group_checked ? 0 : 1;
+            return 1;
+        }
+        if (dom_html_input_element_get_value(
+                (dom_html_input_element *) node, &value) != DOM_NO_ERR) {
+            return 0;
+        }
+        *missing_out = (value == NULL ||
+                dom_string_byte_length(value) == 0) ? 1 : 0;
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        return 1;
+    }
+    if (pcore_node_name_is(node, "textarea")) {
+        if (dom_html_text_area_element_get_disabled(
+                (dom_html_text_area_element *) node, &disabled) !=
+                        DOM_NO_ERR ||
+                dom_html_text_area_element_get_read_only(
+                (dom_html_text_area_element *) node, &read_only) !=
+                        DOM_NO_ERR) {
+            return 0;
+        }
+        if (disabled || read_only) {
+            return 1;
+        }
+        if (dom_html_text_area_element_get_value(
+                (dom_html_text_area_element *) node, &value) != DOM_NO_ERR) {
+            return 0;
+        }
+        *missing_out = (value == NULL ||
+                dom_string_byte_length(value) == 0) ? 1 : 0;
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        return 1;
+    }
+    if (pcore_node_name_is(node, "select")) {
+        if (dom_html_select_element_get_disabled(
+                (dom_html_select_element *) node, &disabled) != DOM_NO_ERR) {
+            return 0;
+        }
+        if (disabled) {
+            return 1;
+        }
+        return pcore_required_select_missing(
+                (dom_html_select_element *) node, missing_out);
+    }
+    return 1;
+}
+
+static int pcore_form_validate(pcore_render *st,
+        dom_html_form_element *form, dom_node *activated,
+        PCoreFormValidationInfo *out_info)
+{
+    PCoreFormValidationInfo local_info;
+    PCoreFormValidationInfo *info;
+    dom_html_collection *elements;
+    dom_node *node;
+    struct box *box;
+    uint32_t count;
+    uint32_t index;
+    int kind;
+    int missing;
+    int x;
+    int y;
+
+    info = (out_info != NULL) ? out_info : &local_info;
+    pcore_form_validation_init(info);
+    if (st == NULL || form == NULL) {
+        return 0;
+    }
+    if (pcore_node_has_attr((dom_node *) form, "novalidate") ||
+            (activated != NULL &&
+             pcore_node_has_attr(activated, "formnovalidate"))) {
+        return 1;
+    }
+    elements = NULL;
+    node = NULL;
+    count = 0;
+    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
+            elements == NULL ||
+            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
+        if (elements != NULL) {
+            dom_html_collection_unref(elements);
+        }
+        return 0;
+    }
+    for (index = 0; index < count; index++) {
+        node = NULL;
+        kind = 0;
+        missing = 0;
+        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
+                node == NULL ||
+                !pcore_required_control_missing(form, node,
+                        &kind, &missing)) {
+            if (node != NULL) {
+                dom_node_unref(node);
+            }
+            dom_html_collection_unref(elements);
+            return 0;
+        }
+        if (missing) {
+            info->valid = 0;
+            info->invalid_count++;
+            if (info->invalid_count == 1) {
+                info->first_control_kind = kind;
+                info->first_flags = PCORE_VALIDITY_VALUE_MISSING;
+                box = pcore_box_for_node(st->root_box, node);
+                if (box != NULL) {
+                    x = 0;
+                    y = 0;
+                    box_coords(box, &x, &y);
+                    info->first_x = x;
+                    info->first_y = y;
+                    info->first_width = box->width;
+                    info->first_height = box->height;
+                }
+            }
+        }
+        dom_node_unref(node);
+    }
+    dom_html_collection_unref(elements);
+    return 1;
+}
+
+static int pcore_form_validate_default(pcore_render *st,
+        dom_html_form_element *form, PCoreFormValidationInfo *out_info)
+{
+    dom_node *default_submit;
+    int error;
+    int result;
+
+    error = 0;
+    default_submit = pcore_form_first_submit(form, &error);
+    if (error) {
+        return 0;
+    }
+    result = pcore_form_validate(st, form, default_submit, out_info);
+    if (default_submit != NULL) {
+        dom_node_unref(default_submit);
+    }
+    return result;
+}
+
+PCORE_API int PCore_FormValidationAt(HANDLE hDoc, int x, int y,
+        PCoreFormValidationInfo *out_info)
+{
+    pcore_render *st;
+    struct box *hit;
+    struct box *box;
+    struct form_control *control;
+    dom_html_form_element *form;
+    int result;
+
+    pcore_form_validation_init(out_info);
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL) {
+        return 0;
+    }
+    hit = pcore_hit(st->root_box, x, y);
+    for (box = hit; box != NULL && box->gadget == NULL;
+            box = box->parent) {
+        /* Resolve submit-button text to its gadget-bearing ancestor. */
+    }
+    control = (box != NULL) ? box->gadget : NULL;
+    if (control == NULL || control->type != GADGET_SUBMIT ||
+            control->disabled) {
+        return 0;
+    }
+    form = pcore_control_form(control);
+    if (form == NULL) {
+        return 0;
+    }
+    result = pcore_form_validate(st, form, control->node, out_info);
+    dom_node_unref((dom_node *) form);
+    return result;
+}
+
+PCORE_API int PCore_FormValidationForTextInput(HANDLE hDoc,
+        unsigned int text_index, PCoreFormValidationInfo *out_info)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_control *control;
+    dom_html_form_element *form;
+    unsigned int current;
+    int result;
+
+    pcore_form_validation_init(out_info);
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_text_input_at(st->root_box, text_index, &current) : NULL;
+    control = (box != NULL) ? box->gadget : NULL;
+    if (control == NULL ||
+            (control->type != GADGET_TEXTBOX &&
+             control->type != GADGET_PASSWORD) ||
+            control->disabled) {
+        return 0;
+    }
+    form = pcore_control_form(control);
+    if (form == NULL) {
+        return 0;
+    }
+    result = pcore_form_validate_default(st, form, out_info);
+    dom_node_unref((dom_node *) form);
+    return result;
+}
+
 typedef struct pcore_multipart_part {
     struct pcore_multipart_part *next;
     char *name;
@@ -5320,10 +5797,11 @@ static int pcore_multipart_build_parts(dom_html_form_element *form,
 }
 
 static pcore_multipart_submission *pcore_multipart_snapshot(
-        dom_html_form_element *form, dom_node *activated,
+        pcore_render *st, dom_html_form_element *form, dom_node *activated,
         int choose_default)
 {
     pcore_multipart_submission *submission;
+    PCoreFormValidationInfo validation;
     dom_string *action;
     dom_node *default_submit;
     int default_error;
@@ -5350,6 +5828,14 @@ static pcore_multipart_submission *pcore_multipart_snapshot(
         }
         activated = default_submit;
     }
+    if (!pcore_form_validate(st, form, activated, &validation) ||
+            !validation.valid) {
+        if (default_submit != NULL) {
+            dom_node_unref(default_submit);
+        }
+        pcore_multipart_free(submission);
+        return NULL;
+    }
     if (dom_html_form_element_get_action(form, &action) != DOM_NO_ERR) {
         if (default_submit != NULL) {
             dom_node_unref(default_submit);
@@ -5375,7 +5861,8 @@ static pcore_multipart_submission *pcore_multipart_snapshot(
     return submission;
 }
 
-static int pcore_form_submission(dom_html_form_element *form,
+static int pcore_form_submission(pcore_render *st,
+        dom_html_form_element *form,
         dom_node *activated, int choose_default,
         PCoreFormSubmissionInfo *out_info, char *action, int action_capacity,
         char *body, int body_capacity)
@@ -5388,6 +5875,7 @@ static int pcore_form_submission(dom_html_form_element *form,
     int default_error;
     int method;
     int result;
+    PCoreFormValidationInfo validation;
 
     if (out_info != NULL) {
         memset(out_info, 0, sizeof(*out_info));
@@ -5413,6 +5901,13 @@ static int pcore_form_submission(dom_html_form_element *form,
             goto form_submission_done;
         }
         activated = default_submit;
+    }
+    if (!pcore_form_validate(st, form, activated, &validation)) {
+        goto form_submission_done;
+    }
+    if (!validation.valid) {
+        result = 5;
+        goto form_submission_done;
     }
     if (dom_html_form_element_get_action(form, &action_string) !=
             DOM_NO_ERR) {
@@ -5504,7 +5999,7 @@ PCORE_API int PCore_FormSubmissionAt(HANDLE hDoc, int x, int y,
     if (form == NULL) {
         return 2;
     }
-    result = pcore_form_submission(form, control->node, 0, out_info,
+    result = pcore_form_submission(st, form, control->node, 0, out_info,
             action, action_capacity, body, body_capacity);
     dom_node_unref((dom_node *) form);
     return result;
@@ -5536,7 +6031,7 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
     if (form == NULL) {
         return 0;
     }
-    result = pcore_form_submission(form, NULL, 1, out_info,
+    result = pcore_form_submission(st, form, NULL, 1, out_info,
             action, action_capacity, body, body_capacity);
     dom_node_unref((dom_node *) form);
     return result;
@@ -5569,7 +6064,7 @@ PCORE_API HANDLE PCore_MultipartSubmissionAt(HANDLE hDoc, int x, int y)
     if (form == NULL) {
         return NULL;
     }
-    submission = pcore_multipart_snapshot(form, control->node, 0);
+    submission = pcore_multipart_snapshot(st, form, control->node, 0);
     dom_node_unref((dom_node *) form);
     return (HANDLE) submission;
 }
@@ -5599,7 +6094,7 @@ PCORE_API HANDLE PCore_MultipartSubmissionForTextInput(HANDLE hDoc,
     if (form == NULL) {
         return NULL;
     }
-    submission = pcore_multipart_snapshot(form, NULL, 1);
+    submission = pcore_multipart_snapshot(st, form, NULL, 1);
     dom_node_unref((dom_node *) form);
     return (HANDLE) submission;
 }

@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next104 基线使用 `tests=13,20,27,43,44,56,58-71`。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next106 基线使用 `tests=13,20,27,43,44,56,58-72`。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -230,5 +230,7 @@ next100 首次设备日志中 TEST13 深链和 TEST20/27/43/44/56/58-68 全部 P
 next102/TEST70 增加 file gadget 与 multipart；该包的 TEST13/20/27/43/44/56/58-69 全部 PASS，TEST70 仅在 reset 后仍见已选文件。根因是 libdom 对无初始 `value` 属性的 input 第一次 `set_value()` 会同步填入 `defaultValue`；next103 不改测试，而是在 file reset 时强制清空显示值和原始路径。设备日志确认 TEST13/20/27/43/44/56/58-70 全部 PASS，next103 已升级为基线。宿主仍必须以显式 body 长度调用 `PHttp_PostEx`；不可对 multipart 使用 `strlen`，也不可把原始本地路径写进 wire body。当前实现把整个请求体缓存在内存、文件 MIME 固定为 `application/octet-stream`。TEST70 不会自动点击 `GetOpenFileNameEx` 或验证公网 POST。
 
 next104/TEST71 为 multiple select 创建原生 `LISTBOX`，不要把它误改成 `COMBOBOX` 或 Core 自绘菜单。触屏切换采用 `LBS_MULTIPLESEL`，CSS 高度依靠 `LBS_NOINTEGRALHEIGHT` 保持；`pcore_native_select_changed` 必须逐项同步，并在 Core 对 disabled option 返回 2 时恢复该行原状态。TEST71 的程序化 `LB_SETSEL` 走同一同步函数并在销毁/重建后再次读取原生状态；它不替代真实手指和视觉验收。设备日志确认 TEST13/20/27/43/44/56/58-71 全部 PASS。
+
+next105/TEST72 首次接入 required 验证后，reset 只恢复 6 个 invalid。不要通过放宽计数断言掩盖它：libdom 0.4.2 会把无初始 `value` 属性的 text/password 第一次运行时 `set_value()` 误记为 `defaultValue`。next106 在 `PCore_TextInputSetValue` 写入前先读取并重写解析时默认值，使后续运行时编辑只改变 live value。设备日志确认八类 required、首个无效控件几何、显式提交/Enter 阻止、`novalidate/formnovalidate`、multipart 和 reset 全部通过。
 
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。

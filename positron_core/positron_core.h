@@ -490,6 +490,33 @@ typedef struct PCoreFormSubmissionInfo {
     int body_bytes;
 } PCoreFormSubmissionInfo;
 
+/* Constraint-validation result for one form submission target. The first
+ * invalid control uses PCore_FormControlInfo kind values and absolute
+ * document CSS-px geometry so a platform host can reveal and focus it. */
+#define PCORE_VALIDITY_VALUE_MISSING 0x0001u
+typedef struct PCoreFormValidationInfo {
+    int valid;
+    int invalid_count;
+    int first_control_kind;
+    int first_x;
+    int first_y;
+    int first_width;
+    int first_height;
+    unsigned int first_flags;
+} PCoreFormValidationInfo;
+
+/* Validate the form targeted by an explicit submit control or by Enter in an
+ * enumerated single-line text/password control. The current implementation
+ * covers required text/password/textarea/file, checkbox, radio groups and
+ * select controls, including disabled/read-only and no-validate bypasses.
+ * Returns 1 when a target form was checked and 0 when no qualifying target
+ * exists or the DOM could not be inspected. */
+PCORE_API int PCore_FormValidationAt(HANDLE hDoc, int x, int y,
+                                    PCoreFormValidationInfo *out_info);
+PCORE_API int PCore_FormValidationForTextInput(HANDLE hDoc,
+                                    unsigned int text_index,
+                                    PCoreFormValidationInfo *out_info);
+
 /* Build the application/x-www-form-urlencoded successful-control set for a
  * submit button at a document-space point. method is 1 for GET, 2 for an
  * urlencoded POST and 3 for unsupported multipart POST. action/body receive
@@ -501,6 +528,7 @@ typedef struct PCoreFormSubmissionInfo {
  *   2: a disabled/reset/ordinary button consumed the point
  *   3: multipart/file submission is not implemented
  *   4: DOM/allocation/output-buffer failure
+ *   5: constraint validation blocked submission
  *
  * The successful-control policy follows NetSurf form.c: disabled or unnamed
  * controls and unchecked checkbox/radio inputs are skipped, selected options

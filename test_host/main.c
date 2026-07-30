@@ -327,7 +327,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 71
+#define TEST_MAX_NUMBER 72
 
 static int test_config_space(char c)
 {
@@ -4310,9 +4310,13 @@ static int pcore_relayout_form_state(HWND hwnd)
     return 0;
 }
 
+static void pcore_handle_invalid_form(HWND hwnd,
+        const PCoreFormValidationInfo *validation);
+
 static int pcore_handle_form_button(HWND hwnd, int x, int y)
 {
     PCoreFormSubmissionInfo info;
+    PCoreFormValidationInfo validation;
     char action_probe[1];
     char body_probe[1];
     char *action;
@@ -4344,6 +4348,12 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
     if (result == 2) {
         return 1;
     }
+    if (result == 5) {
+        if (PCore_FormValidationAt(g_render_doc, x, y, &validation)) {
+            pcore_handle_invalid_form(hwnd, &validation);
+        }
+        return 1;
+    }
     if (result == 3) {
         navigate_multipart_submission(hwnd,
                 PCore_MultipartSubmissionAt(g_render_doc, x, y));
@@ -4373,6 +4383,9 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
             body, info.body_bytes + 1);
     if (result == 1) {
         navigate_form_submission(hwnd, info.method, action, body);
+    } else if (result == 5 &&
+            PCore_FormValidationAt(g_render_doc, x, y, &validation)) {
+        pcore_handle_invalid_form(hwnd, &validation);
     } else {
         show_error(L"Form submission failed",
                 "The form changed while its data was being collected");
@@ -4385,6 +4398,7 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
 static void pcore_handle_form_enter(HWND hwnd, unsigned int text_index)
 {
     PCoreFormSubmissionInfo info;
+    PCoreFormValidationInfo validation;
     char action_probe[1];
     char body_probe[1];
     char *action;
@@ -4398,6 +4412,13 @@ static void pcore_handle_form_enter(HWND hwnd, unsigned int text_index)
             &info, action_probe, sizeof(action_probe),
             body_probe, sizeof(body_probe));
     if (result == 0) {
+        return;
+    }
+    if (result == 5) {
+        if (PCore_FormValidationForTextInput(g_render_doc, text_index,
+                &validation)) {
+            pcore_handle_invalid_form(hwnd, &validation);
+        }
         return;
     }
     if (result == 3) {
@@ -4432,6 +4453,10 @@ static void pcore_handle_form_enter(HWND hwnd, unsigned int text_index)
         } else {
             navigate_form_submission(hwnd, info.method, action, body);
         }
+    } else if (result == 5 &&
+            PCore_FormValidationForTextInput(g_render_doc, text_index,
+                    &validation)) {
+        pcore_handle_invalid_form(hwnd, &validation);
     } else {
         show_error(L"Form submission failed",
                 "Could not collect the form after Enter");
@@ -4499,6 +4524,41 @@ static int pcore_focus_native_form_control(int kind, int x, int y)
         }
     }
     return 0;
+}
+
+static void pcore_handle_invalid_form(HWND hwnd,
+        const PCoreFormValidationInfo *validation)
+{
+    RECT client;
+    RECT dirty;
+    int client_height;
+    int target_scroll;
+    int top;
+    int bottom;
+
+    if (validation == NULL || validation->valid ||
+            validation->invalid_count <= 0) {
+        return;
+    }
+    GetClientRect(hwnd, &client);
+    client_height = client.bottom - client.top;
+    top = validation->first_y;
+    bottom = top + validation->first_height;
+    target_scroll = g_scroll_y;
+    if (top < g_scroll_y + 8) {
+        target_scroll = top - 8;
+    } else if (bottom > g_scroll_y + client_height - 8) {
+        target_scroll = bottom - client_height + 8;
+    }
+    pcore_scroll_by(hwnd, target_scroll - g_scroll_y);
+    pcore_focus_native_form_control(validation->first_control_kind,
+            validation->first_x, validation->first_y);
+    dirty.left = validation->first_x;
+    dirty.top = validation->first_y - g_scroll_y;
+    dirty.right = dirty.left + validation->first_width;
+    dirty.bottom = dirty.top + validation->first_height;
+    InvalidateRect(hwnd, &dirty, FALSE);
+    MessageBeep(MB_ICONEXCLAMATION);
 }
 
 static int pcore_handle_file_input(HWND hwnd, int x, int y)
@@ -13176,6 +13236,269 @@ static BOOL test71_native_multiselect(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 72 - required constraint validation and submission blocking     */
+/* -------------------------------------------------------------------- */
+static BOOL test72_form_validation(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Required controls</h1>"
+        "<form action=/valid method=get>"
+        "<input name=text required>"
+        "<input type=password name=password required>"
+        "<textarea name=notes required></textarea>"
+        "<input type=checkbox name=agree value=yes required>"
+        "<input type=radio name=mode value=a required>"
+        "<input type=radio name=mode value=b>"
+        "<select name=region required>"
+        "<option value='' selected>Choose</option>"
+        "<option value=us>United States</option></select>"
+        "<select name=tag multiple required>"
+        "<option value=x>One</option><option value=y>Two</option></select>"
+        "<input type=file name=upload required>"
+        "<input name=locked readonly required>"
+        "<input name=off disabled required>"
+        "<button type=submit name=go value=send>Send</button>"
+        "<button type=submit name=skip value=skip "
+        "formnovalidate>Skip validation</button>"
+        "<button type=reset>Reset</button></form>"
+        "<form action=/draft novalidate><input name=draft required>"
+        "<button type=submit name=save value=draft>Save draft</button></form>"
+        "<form action=/upload method=post enctype='multipart/form-data'>"
+        "<input type=file name=asset required>"
+        "<button type=submit name=upload value=yes>Upload</button></form>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "h1{font-size:20px;color:#800000;margin:0 0 6px}"
+        "input,textarea,select,button{display:block;margin:4px 0;"
+        "width:180px}textarea{height:42px}"
+        "select[multiple]{height:54px}";
+    static const char EXPECT_BODY[] =
+        "text=alpha&password=secret&notes=memo&agree=yes&mode=b&"
+        "region=us&tag=x&locked=&go=send";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE multipart;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    PCoreMultipartSubmissionInfo multipart_info;
+    PCoreTextInputInfo text_info;
+    PCoreFileInputInfo file_info;
+    char action[64];
+    char body[512];
+    char value[32];
+    char path[64];
+    char detail[192];
+    int submit_x[4];
+    int submit_y[4];
+    int reset_x;
+    int reset_y;
+    int checkbox_x;
+    int checkbox_y;
+    int radio_x;
+    int radio_y;
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
+    int stage;
+    int i;
+
+    document = NULL;
+    sheet = NULL;
+    multipart = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    memset(&multipart_info, 0, sizeof(multipart_info));
+    memset(&text_info, 0, sizeof(text_info));
+    memset(&file_info, 0, sizeof(file_info));
+    stage = 1;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/form-validation.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0) {
+        goto validation_failed;
+    }
+    for (i = 0; i < 4; i++) {
+        if (!test68_control_center(document, 7, i,
+                &submit_x[i], &submit_y[i])) {
+            stage = 2;
+            goto validation_failed;
+        }
+    }
+    if (!test68_control_center(document, 8, 0, &reset_x, &reset_y) ||
+            !test68_control_center(document, 1, 0,
+                    &checkbox_x, &checkbox_y) ||
+            !test68_control_center(document, 2, 1,
+                    &radio_x, &radio_y) ||
+            PCore_TextInputInfo(document, 0, &text_info, NULL, 0) != 0) {
+        stage = 3;
+        goto validation_failed;
+    }
+
+    stage = 4;
+    if (!PCore_FormValidationAt(document, submit_x[0], submit_y[0],
+            &validation) || validation.valid ||
+            validation.invalid_count != 8 ||
+            validation.first_control_kind != 3 ||
+            validation.first_flags != PCORE_VALIDITY_VALUE_MISSING ||
+            validation.first_x != text_info.x ||
+            validation.first_y != text_info.y ||
+            validation.first_width != text_info.width ||
+            validation.first_height != text_info.height ||
+            PCore_FormSubmissionAt(document, submit_x[0], submit_y[0],
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 5 ||
+            !PCore_FormValidationForTextInput(document, 0, &validation) ||
+            validation.valid || validation.invalid_count != 8 ||
+            PCore_FormSubmissionForTextInput(document, 0, &submission,
+                    action, sizeof(action), body, sizeof(body)) != 5) {
+        goto validation_failed;
+    }
+
+    stage = 5;
+    if (!PCore_FormValidationAt(document, submit_x[1], submit_y[1],
+            &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x[1], submit_y[1],
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            !PCore_FormValidationAt(document, submit_x[2], submit_y[2],
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x[2], submit_y[2],
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1) {
+        goto validation_failed;
+    }
+
+    stage = 6;
+    if (!PCore_FormValidationAt(document, submit_x[3], submit_y[3],
+            &validation) || validation.valid ||
+            validation.invalid_count != 1 ||
+            validation.first_control_kind != 10 ||
+            PCore_FormSubmissionAt(document, submit_x[3], submit_y[3],
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 5 ||
+            PCore_MultipartSubmissionAt(document,
+                    submit_x[3], submit_y[3]) != NULL) {
+        goto validation_failed;
+    }
+
+    stage = 7;
+    dirty_x = 0;
+    dirty_y = 0;
+    dirty_w = 0;
+    dirty_h = 0;
+    if (PCore_TextInputSetValue(document, 0, "alpha") != 0 ||
+            PCore_TextInputSetValue(document, 1, "secret") != 0 ||
+            PCore_TextInputSetValue(document, 2, "memo") != 0 ||
+            !PCore_FormActivateAt(document, checkbox_x, checkbox_y,
+                    &dirty_x, &dirty_y, &dirty_w, &dirty_h) ||
+            dirty_w <= 0 || dirty_h <= 0 ||
+            !PCore_FormActivateAt(document, radio_x, radio_y,
+                    &dirty_x, &dirty_y, &dirty_w, &dirty_h) ||
+            PCore_SelectSetOptionSelected(document, 0, 1, 1) != 0 ||
+            PCore_SelectSetOptionSelected(document, 1, 0, 1) != 0 ||
+            PCore_FileInputSetPath(document, 0,
+                    "proof.txt", "\\Storage Card\\proof.txt") != 0 ||
+            PCore_LayoutDocument(document, 320, 240) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0) {
+        goto validation_failed;
+    }
+    for (i = 0; i < 4; i++) {
+        if (!test68_control_center(document, 7, i,
+                &submit_x[i], &submit_y[i])) {
+            goto validation_failed;
+        }
+    }
+    if (!test68_control_center(document, 8, 0, &reset_x, &reset_y)) {
+        goto validation_failed;
+    }
+
+    stage = 8;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    action[0] = '\0';
+    body[0] = '\0';
+    if (!PCore_FormValidationAt(document, submit_x[0], submit_y[0],
+            &validation) || !validation.valid ||
+            validation.invalid_count != 0 ||
+            PCore_FormSubmissionForTextInput(document, 0, &submission,
+                    action, sizeof(action), body, sizeof(body)) != 1 ||
+            submission.method != 1 ||
+            strcmp(action, "/valid") != 0 ||
+            strcmp(body, EXPECT_BODY) != 0 ||
+            PCore_FormSubmissionAt(document, submit_x[0], submit_y[0],
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(body, EXPECT_BODY) != 0) {
+        goto validation_failed;
+    }
+
+    stage = 9;
+    if (PCore_FileInputSetPath(document, 1,
+            "asset.bin", "\\Storage Card\\asset.bin") != 0 ||
+            !PCore_FormValidationAt(document, submit_x[3], submit_y[3],
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x[3], submit_y[3],
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 3) {
+        goto validation_failed;
+    }
+    multipart = PCore_MultipartSubmissionAt(document,
+            submit_x[3], submit_y[3]);
+    if (multipart == NULL ||
+            !PCore_MultipartSubmissionInfo(multipart, &multipart_info,
+                    action, sizeof(action)) ||
+            strcmp(action, "/upload") != 0 ||
+            multipart_info.part_count != 2) {
+        goto validation_failed;
+    }
+    PCore_FreeMultipartSubmission(multipart);
+    multipart = NULL;
+
+    stage = 10;
+    if (PCore_FormResetAt(document, reset_x, reset_y) != 1 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            !PCore_FormValidationAt(document, submit_x[0], submit_y[0],
+                    &validation) || validation.valid ||
+            validation.invalid_count != 8 ||
+            PCore_FileInputInfo(document, 0, &file_info,
+                    value, sizeof(value), path, sizeof(path)) != 0 ||
+            value[0] != '\0' || path[0] != '\0') {
+        goto validation_failed;
+    }
+
+    PCore_FreeStylesheet(sheet);
+    PCore_FreeDocument(document);
+    show_info(L"TEST 72 OK",
+            "Required text/file/check/radio/select validation, first-invalid\n"
+            "geometry, submit/Enter blocking, bypass, multipart and reset passed.");
+    return TRUE;
+
+validation_failed:
+    if (multipart != NULL) {
+        PCore_FreeMultipartSubmission(multipart);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    _snprintf(detail, sizeof(detail) - 1,
+            "stage=%d valid=%d count=%d kind=%d flags=%lu",
+            stage, validation.valid, validation.invalid_count,
+            validation.first_control_kind,
+            (unsigned long) validation.first_flags);
+    detail[sizeof(detail) - 1] = '\0';
+    show_error(L"TEST 72 FAIL", detail);
+    return FALSE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -13361,6 +13684,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 69: ok = test69_form_defaults_and_labels(); break;
         case 70: ok = test70_multipart_file(); break;
         case 71: ok = test71_native_multiselect(); break;
+        case 72: ok = test72_form_validation(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -13468,7 +13792,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-71)\n"
+                  "Yes = run all selected groups (TEST 1-72)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -13494,7 +13818,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list/\n"
                                "inline CSS and form controls\n"
-                               "(TEST 46-58, 62-71).\n"
+                               "(TEST 46-58, 62-72).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -13557,7 +13881,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-71; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-72; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -13601,6 +13925,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test69_form_defaults_and_labels()){ rc = 13; goto done; }
         if (!test70_multipart_file()){ rc = 13; goto done; }
         if (!test71_native_multiselect()){ rc = 13; goto done; }
+        if (!test72_form_validation()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -13642,7 +13967,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-71)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-72)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
