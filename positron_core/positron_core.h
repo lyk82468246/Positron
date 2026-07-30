@@ -249,8 +249,8 @@ PCORE_API int PCore_NodeFormControlState(HANDLE hDoc, const char *tag,
                                         int *disabled);
 
 /* Inspect a form control in box-tree order. Geometry is in absolute document
- * CSS px; kind is 1 checkbox, 2 radio, 3 single-line text, 4 password and
- * 5 textarea. */
+ * CSS px; kind is 1 checkbox, 2 radio, 3 single-line text, 4 password,
+ * 5 textarea and 6 select. */
 PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
                                    int *x, int *y, int *w, int *h,
                                    int *kind, int *selected, int *disabled);
@@ -288,6 +288,42 @@ PCORE_API int PCore_TextInputIsMultiline(HANDLE hDoc, unsigned int index,
  * style/layout passes. */
 PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
                                      const char *value);
+
+typedef struct PCoreSelectInfo {
+    int x;
+    int y;
+    int width;
+    int height;
+    int disabled;
+    int multiple;
+    int option_count;
+    int selected_count;
+    int selected_index;
+} PCoreSelectInfo;
+
+/* Enumerate select controls independently of other form controls. Geometry
+ * is the border box in absolute document CSS px. selected_index is -1 when
+ * no option is selected or when a multiple select has more than one
+ * selection. */
+PCORE_API int PCore_SelectInfo(HANDLE hDoc, unsigned int index,
+                              PCoreSelectInfo *out_info);
+
+/* Inspect one option. Label and value are UTF-8 and NUL-terminated whenever
+ * the corresponding capacity is greater than zero. */
+PCORE_API int PCore_SelectOptionInfo(HANDLE hDoc, unsigned int select_index,
+                                    unsigned int option_index,
+                                    char *label, int label_cap,
+                                    char *value, int value_cap,
+                                    int *selected, int *disabled,
+                                    int *label_bytes, int *value_bytes);
+
+/* Set one option's selected state and synchronise it to libdom. A single
+ * select automatically clears its other options. Returns 0 on success,
+ * 1 for a missing select/option, and 2 for a disabled select/option. */
+PCORE_API int PCore_SelectSetOptionSelected(HANDLE hDoc,
+                                            unsigned int select_index,
+                                            unsigned int option_index,
+                                            int selected);
 
 /* Inspect one table cell's used border after collapsed-border conflict
  * resolution. Cells and sides are in document order; side uses CSS order

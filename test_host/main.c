@@ -271,7 +271,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 66
+#define TEST_MAX_NUMBER 67
 
 static int test_config_space(char c)
 {
@@ -2128,6 +2128,18 @@ static int g_native_edit_probe_seen = 0;
 static int g_native_edit_probe_set_result = -1;
 static char g_native_edit_probe_value[32];
 
+typedef struct pcore_native_select {
+    HWND hwnd;
+    unsigned int select_index;
+    int option_count;
+} pcore_native_select;
+
+static pcore_native_select *g_native_selects = NULL;
+static unsigned int g_native_select_count = 0;
+static int g_native_select_syncing = 0;
+static int g_native_select_probe = 0;
+static int g_native_select_probe_ok = 0;
+
 static void pcore_native_edits_destroy(void)
 {
     unsigned int i;
@@ -2386,6 +2398,225 @@ static void pcore_native_edit_changed(HWND edit)
     free(wide_value);
 }
 
+static void pcore_native_selects_destroy(void)
+{
+    unsigned int i;
+
+    g_native_select_syncing = 1;
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd != NULL) {
+            DestroyWindow(g_native_selects[i].hwnd);
+            g_native_selects[i].hwnd = NULL;
+        }
+    }
+    free(g_native_selects);
+    g_native_selects = NULL;
+    g_native_select_count = 0;
+    g_native_select_syncing = 0;
+}
+
+static int pcore_native_select_window_height(
+        const PCoreSelectInfo *info)
+{
+    int visible_items;
+    int height;
+
+    visible_items = info->option_count;
+    if (visible_items > 6) {
+        visible_items = 6;
+    }
+    if (visible_items < 1) {
+        visible_items = 1;
+    }
+    height = info->height * (visible_items + 1);
+    if (height < info->height + 1) {
+        height = info->height + 1;
+    }
+    return height;
+}
+
+static void pcore_native_selects_position(HWND parent)
+{
+    RECT client;
+    PCoreSelectInfo info;
+    unsigned int i;
+    int top;
+    int left;
+    int width;
+    int height;
+
+    if (parent == NULL || g_render_doc == NULL) {
+        return;
+    }
+    GetClientRect(parent, &client);
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd == NULL ||
+                PCore_SelectInfo(g_render_doc,
+                        g_native_selects[i].select_index,
+                        &info) != 0) {
+            continue;
+        }
+        left = info.x;
+        top = info.y - g_scroll_y;
+        width = (info.width > 0) ? info.width : 1;
+        height = pcore_native_select_window_height(&info);
+        MoveWindow(g_native_selects[i].hwnd, left, top,
+                width, height, TRUE);
+        if (left + width <= client.left || left >= client.right ||
+                top + info.height <= client.top || top >= client.bottom) {
+            ShowWindow(g_native_selects[i].hwnd, SW_HIDE);
+        } else {
+            ShowWindow(g_native_selects[i].hwnd, SW_SHOW);
+        }
+    }
+}
+
+static void pcore_native_selects_rebuild(HWND parent, int preserve_focus)
+{
+    pcore_native_select *items;
+    PCoreSelectInfo info;
+    HWND old_focus;
+    unsigned int focus_index;
+    unsigned int count;
+    unsigned int i;
+    unsigned int option_index;
+    WCHAR *wide_label;
+    char *label;
+    DWORD style;
+    int label_bytes;
+    int label_cap;
+
+    old_focus = preserve_focus ? GetFocus() : NULL;
+    focus_index = UINT_MAX;
+    if (old_focus != NULL) {
+        for (i = 0; i < g_native_select_count; i++) {
+            if (g_native_selects[i].hwnd == old_focus) {
+                focus_index = g_native_selects[i].select_index;
+                break;
+            }
+        }
+    }
+    pcore_native_selects_destroy();
+    if (parent == NULL || g_render_doc == NULL) {
+        return;
+    }
+    count = 0;
+    while (PCore_SelectInfo(g_render_doc, count, NULL) == 0) {
+        count++;
+    }
+    if (count == 0) {
+        return;
+    }
+    items = (pcore_native_select *) calloc(count,
+            sizeof(pcore_native_select));
+    if (items == NULL) {
+        return;
+    }
+    g_native_selects = items;
+    g_native_select_count = count;
+    g_native_select_syncing = 1;
+    for (i = 0; i < count; i++) {
+        memset(&info, 0, sizeof(info));
+        if (PCore_SelectInfo(g_render_doc, i, &info) != 0 ||
+                info.multiple) {
+            continue;
+        }
+        style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
+                CBS_DROPDOWNLIST;
+        items[i].hwnd = CreateWindowW(L"COMBOBOX", L"", style,
+                info.x, info.y - g_scroll_y,
+                (info.width > 0) ? info.width : 1,
+                pcore_native_select_window_height(&info),
+                parent, (HMENU) (INT_PTR) (2000 + i),
+                GetModuleHandle(NULL), NULL);
+        items[i].select_index = i;
+        items[i].option_count = info.option_count;
+        if (items[i].hwnd == NULL) {
+            continue;
+        }
+        SetWindowLong(items[i].hwnd, GWL_USERDATA, (LONG) (i + 1));
+        SendMessage(items[i].hwnd, WM_SETFONT,
+                (WPARAM) GetStockObject(SYSTEM_FONT), TRUE);
+        for (option_index = 0;
+                option_index < (unsigned int) info.option_count;
+                option_index++) {
+            label_bytes = 0;
+            if (PCore_SelectOptionInfo(g_render_doc, i, option_index,
+                    NULL, 0, NULL, 0, NULL, NULL,
+                    &label_bytes, NULL) != 0) {
+                continue;
+            }
+            label_cap = label_bytes + 1;
+            label = (char *) malloc((size_t) label_cap);
+            wide_label = (WCHAR *) malloc((size_t) label_cap *
+                    sizeof(WCHAR));
+            if (label == NULL || wide_label == NULL ||
+                    PCore_SelectOptionInfo(g_render_doc, i, option_index,
+                            label, label_cap, NULL, 0, NULL, NULL,
+                            NULL, NULL) != 0) {
+                free(label);
+                free(wide_label);
+                continue;
+            }
+            utf8_to_wide(label, -1, wide_label, label_cap);
+            SendMessage(items[i].hwnd, CB_ADDSTRING, 0,
+                    (LPARAM) wide_label);
+            free(label);
+            free(wide_label);
+        }
+        SendMessage(items[i].hwnd, CB_SETCURSEL,
+                (WPARAM) info.selected_index, 0);
+        if (info.disabled) {
+            EnableWindow(items[i].hwnd, FALSE);
+        }
+    }
+    g_native_select_syncing = 0;
+    pcore_native_selects_position(parent);
+    if (focus_index != UINT_MAX && focus_index < count &&
+            items[focus_index].hwnd != NULL &&
+            IsWindowEnabled(items[focus_index].hwnd)) {
+        SetFocus(items[focus_index].hwnd);
+    }
+}
+
+static void pcore_native_select_changed(HWND select_window)
+{
+    PCoreSelectInfo info;
+    LONG stored_index;
+    LRESULT selected_index;
+    int set_result;
+
+    if (g_native_select_syncing || select_window == NULL ||
+            g_render_doc == NULL) {
+        return;
+    }
+    stored_index = GetWindowLong(select_window, GWL_USERDATA);
+    if (stored_index <= 0) {
+        return;
+    }
+    selected_index = SendMessage(select_window, CB_GETCURSEL, 0, 0);
+    if (selected_index == CB_ERR) {
+        return;
+    }
+    set_result = PCore_SelectSetOptionSelected(g_render_doc,
+            (unsigned int) (stored_index - 1),
+            (unsigned int) selected_index, 1);
+    if (set_result != 0 &&
+            PCore_SelectInfo(g_render_doc,
+                    (unsigned int) (stored_index - 1), &info) == 0) {
+        g_native_select_syncing = 1;
+        SendMessage(select_window, CB_SETCURSEL,
+                (WPARAM) info.selected_index, 0);
+        g_native_select_syncing = 0;
+    }
+    if (g_native_select_probe && stored_index == 1) {
+        g_native_select_probe_ok =
+                set_result == 0 &&
+                PCore_SelectInfo(g_render_doc, 0, &info) == 0 &&
+                info.selected_index == (int) selected_index;
+    }
+}
+
 static void testbench_log_navigation(
         const pcore_navigation_request *request)
 {
@@ -2512,6 +2743,7 @@ static void pcore_scroll_by(HWND hwnd, int dy)
     }
     SetScrollPos(hwnd, SB_VERT, g_scroll_y, TRUE);
     pcore_native_edits_position(hwnd);
+    pcore_native_selects_position(hwnd);
     /* Shift the existing pixels by -applied and invalidate only the newly
      * exposed strip; the following WM_PAINT repaints just that strip at the
      * new scroll offset. Far cheaper than repainting the whole client. */
@@ -3212,6 +3444,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     /* Swap in the new document; native children must release their old DOM
      * indices before the document they describe is freed. */
     pcore_native_edits_destroy();
+    pcore_native_selects_destroy();
     if (g_render_doc != NULL) {
         PCore_FreeDocument(g_render_doc);
     }
@@ -3226,6 +3459,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
 
     pcore_set_scrollbar(hwnd);
     pcore_native_edits_rebuild(hwnd, 0);
+    pcore_native_selects_rebuild(hwnd, 0);
     started = GetTickCount();
     InvalidateRect(hwnd, NULL, TRUE);
     UpdateWindow(hwnd);
@@ -3462,6 +3696,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         pcore_set_scrollbar(hwnd);
         pcore_native_edits_rebuild(hwnd, 1);
+        pcore_native_selects_rebuild(hwnd, 1);
         SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);   /* keep SIP hidden on rotate */
         InvalidateRect(hwnd, NULL, TRUE);   /* full repaint after a resize */
         return 0;
@@ -3604,6 +3839,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     }
     case WM_COMMAND:
         if ((HWND) lp != NULL) {
+            if (HIWORD(wp) == CBN_SELCHANGE) {
+                pcore_native_select_changed((HWND) lp);
+                return 0;
+            }
             if (HIWORD(wp) == EN_CHANGE) {
                 pcore_native_edit_changed((HWND) lp);
                 return 0;
@@ -3703,6 +3942,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         g_nav_generation++;
         g_overflow_pointer = 0;
         pcore_native_edits_destroy();
+        pcore_native_selects_destroy();
         SHSipPreference(hwnd, SIP_FORCEDOWN);
         pcore_navigation_set_loading(hwnd, 0);
         PostQuitMessage(0);
@@ -3745,6 +3985,12 @@ static BOOL show_render_window(void)
         return FALSE;
     }
     pcore_native_edits_rebuild(hwnd, 0);
+    pcore_native_selects_rebuild(hwnd, 0);
+    if (g_native_select_probe && g_native_select_count > 0 &&
+            g_native_selects[0].hwnd != NULL) {
+        SendMessage(g_native_selects[0].hwnd, CB_SETCURSEL, 2, 0);
+        pcore_native_select_changed(g_native_selects[0].hwnd);
+    }
     if (g_native_edit_probe && g_native_edit_count > 0 &&
             g_native_edits[0].hwnd != NULL) {
         if (g_native_edit_probe_multiline) {
@@ -10760,6 +11006,158 @@ static BOOL test66_textarea(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 67 - select option state and WM native dropdown bridge          */
+/* -------------------------------------------------------------------- */
+static BOOL test67_select_control(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<h1>Native select</h1>"
+        "<select name=region>"
+        "<option value=n selected>  North   zone  </option>"
+        "<option value=x disabled>Blocked</option>"
+        "<option value=s selected>South</option>"
+        "</select>"
+        "<select name=locked disabled><option selected>Locked</option>"
+        "</select>"
+        "<select id=multi name=tags multiple>"
+        "<option value=a selected>Alpha</option>"
+        "<option value=b selected>Beta</option>"
+        "<option value=c>Gamma</option>"
+        "</select>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{font:16px sans-serif;margin:8px}"
+        "h1{font-size:22px;color:#800000}"
+        "select{display:inline-block;width:150px;margin:4px}"
+        "#multi{height:60px}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreSelectInfo info[3];
+    char label[64];
+    char value[32];
+    int kind;
+    int selected;
+    int disabled;
+    int label_bytes;
+    int value_bytes;
+    int i;
+
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/native-select.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 67 FAIL", "select setup failed");
+        return FALSE;
+    }
+    for (i = 0; i < 3; i++) {
+        memset(&info[i], 0, sizeof(info[i]));
+        if (PCore_SelectInfo(hDoc, (unsigned int) i, &info[i]) != 0 ||
+                info[i].width <= 0 || info[i].height <= 0 ||
+                PCore_FormControlInfo(hDoc, (unsigned int) i,
+                        NULL, NULL, NULL, NULL, &kind,
+                        NULL, NULL) != 0 || kind != 6) {
+            PCore_FreeStylesheet(hSheet);
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 67 FAIL", "select enumeration failed");
+            return FALSE;
+        }
+    }
+    if (info[0].disabled || info[0].multiple ||
+            info[0].option_count != 3 ||
+            info[0].selected_count != 1 ||
+            info[0].selected_index != 0 ||
+            !info[1].disabled || info[1].option_count != 1 ||
+            !info[2].multiple || info[2].option_count != 3 ||
+            info[2].selected_count != 2 ||
+            info[2].selected_index != -1 ||
+            PCore_SelectInfo(hDoc, 3, NULL) == 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 67 FAIL", "select initial state failed");
+        return FALSE;
+    }
+    memset(label, 0, sizeof(label));
+    memset(value, 0, sizeof(value));
+    if (PCore_SelectOptionInfo(hDoc, 0, 0,
+            label, sizeof(label), value, sizeof(value),
+            &selected, &disabled, &label_bytes, &value_bytes) != 0 ||
+            strcmp(label, "North zone") != 0 ||
+            strcmp(value, "n") != 0 || !selected || disabled ||
+            label_bytes != 10 || value_bytes != 1 ||
+            PCore_SelectOptionInfo(hDoc, 0, 2,
+                    NULL, 0, NULL, 0, &selected, NULL,
+                    NULL, NULL) != 0 || selected ||
+            PCore_SelectOptionInfo(hDoc, 0, 1,
+                    NULL, 0, NULL, 0, NULL, &disabled,
+                    NULL, NULL) != 0 || !disabled ||
+            PCore_SelectSetOptionSelected(hDoc, 0, 1, 1) != 2 ||
+            PCore_SelectSetOptionSelected(hDoc, 1, 0, 1) != 2 ||
+            PCore_SelectSetOptionSelected(hDoc, 0, 2, 1) != 0 ||
+            PCore_SelectSetOptionSelected(hDoc, 2, 2, 1) != 0 ||
+            PCore_SelectSetOptionSelected(hDoc, 2, 1, 0) != 0 ||
+            PCore_SelectSetOptionSelected(hDoc, 0, 9, 1) != 1 ||
+            PCore_LayoutDocument(hDoc, 320, 240) != 0 ||
+            PCore_SelectInfo(hDoc, 0, &info[0]) != 0 ||
+            info[0].selected_index != 2 ||
+            PCore_SelectInfo(hDoc, 2, &info[2]) != 0 ||
+            info[2].selected_count != 2 ||
+            PCore_SelectOptionInfo(hDoc, 2, 1,
+                    NULL, 0, NULL, 0, &selected, NULL,
+                    NULL, NULL) != 0 || selected) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 67 FAIL",
+                "option policy or re-layout persistence failed");
+        return FALSE;
+    }
+    if (PCore_SelectSetOptionSelected(hDoc, 0, 0, 1) != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 67 FAIL", "select probe reset failed");
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    g_native_select_probe = 1;
+    g_native_select_probe_ok = 0;
+    if (!show_render_window()) {
+        g_native_select_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 67 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_native_select_probe = 0;
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (PCore_SelectInfo(hDoc, 0, &info[0]) != 0 ||
+            info[0].selected_index != 2) {
+        g_native_select_probe_ok = 0;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    if (!g_native_select_probe_ok) {
+        show_error(L"TEST 67 FAIL",
+                "WM COMBOBOX selection did not reach the core DOM");
+        return FALSE;
+    }
+    show_info(L"TEST 67 OK",
+              "NetSurf select geometry/options, disabled policy,\n"
+              "multiple state, WM COMBOBOX bridge and rotation passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -10940,6 +11338,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 64: ok = test64_form_interaction(); break;
         case 65: ok = test65_text_input(); break;
         case 66: ok = test66_textarea(); break;
+        case 67: ok = test67_select_control(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -11073,7 +11472,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list/\n"
                                "inline CSS and form controls\n"
-                               "(TEST 46-58, 62-66).\n"
+                               "(TEST 46-58, 62-67).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -11136,7 +11535,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-66; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-67; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -11175,6 +11574,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test64_form_interaction()){ rc = 13; goto done; }
         if (!test65_text_input()) { rc = 13; goto done; }
         if (!test66_textarea())   { rc = 13; goto done; }
+        if (!test67_select_control()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -11216,7 +11616,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-66)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-67)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

@@ -29,6 +29,9 @@
 #include <string.h>
 
 #include <dom/dom.h>
+#include <dom/html/html_option_element.h>
+#include <dom/html/html_options_collection.h>
+#include <dom/html/html_select_element.h>
 #include <libcss/libcss.h>
 
 #include "utils/talloc.h"
@@ -333,12 +336,15 @@ static int pcore_node_has_attr(dom_node *node, const char *attr)
     return present ? 1 : 0;
 }
 
-/* NetSurf box_special.c attaches a form_control to input/textarea boxes. The
+/* NetSurf box_special.c attaches a form_control to form element boxes. The
  * retained layout/redraw path paints checkbox/radio directly; editable text
- * controls keep NetSurf's geometry but expose their state to a
- * platform-native editor through the public PCore_TextInput* bridge below. */
+ * and select controls keep NetSurf's geometry but expose their state to
+ * platform-native widgets through the public PCore_* bridges below. */
 static int pcore_form_control_type(dom_node *node)
 {
+    if (pcore_node_name_is(node, "select")) {
+        return GADGET_SELECT;
+    }
     if (pcore_node_name_is(node, "textarea")) {
         return GADGET_TEXTAREA;
     }
@@ -365,6 +371,213 @@ static int pcore_form_control_type(dom_node *node)
     return GADGET_TEXTBOX;
 }
 
+static char *pcore_squash_option_text(void *ctx, dom_string *text)
+{
+    const char *source;
+    char *copy;
+    size_t length;
+    size_t source_index;
+    size_t target_index;
+    int pending_space;
+
+    source = (text != NULL) ? dom_string_data(text) : NULL;
+    length = (text != NULL) ? dom_string_byte_length(text) : 0;
+    copy = (char *) talloc_size(ctx, length + 1);
+    if (copy == NULL) {
+        return NULL;
+    }
+    source_index = 0;
+    target_index = 0;
+    pending_space = 0;
+    while (source != NULL && source_index < length) {
+        char c;
+        int is_space;
+
+        c = source[source_index++];
+        is_space = (c == ' ' || c == '\t' || c == '\r' ||
+                c == '\n' || c == '\f');
+        if (is_space) {
+            if (target_index > 0) {
+                pending_space = 1;
+            }
+        } else {
+            if (pending_space) {
+                copy[target_index++] = ' ';
+                pending_space = 0;
+            }
+            copy[target_index++] = c;
+        }
+    }
+    copy[target_index] = '\0';
+    return copy;
+}
+
+static int pcore_select_add_option(struct form_control *gadget,
+        dom_node *node)
+{
+    struct form_option *option;
+    dom_html_option_element *element;
+    dom_string *text;
+    dom_string *value;
+    bool selected;
+
+    element = (dom_html_option_element *) node;
+    text = NULL;
+    value = NULL;
+    selected = false;
+    option = talloc_zero(gadget, struct form_option);
+    if (option == NULL) {
+        return 0;
+    }
+    option->node = node;
+    if (dom_html_option_element_get_text(element, &text) == DOM_NO_ERR &&
+            text != NULL) {
+        option->text = pcore_squash_option_text(option, text);
+        dom_string_unref(text);
+    } else {
+        option->text = talloc_strdup(option, "");
+    }
+    if (option->text == NULL) {
+        talloc_free(option);
+        return 0;
+    }
+    if (dom_html_option_element_get_value(element, &value) == DOM_NO_ERR &&
+            value != NULL) {
+        option->value = talloc_strndup(option, dom_string_data(value),
+                dom_string_byte_length(value));
+        dom_string_unref(value);
+    } else {
+        option->value = talloc_strdup(option, option->text);
+    }
+    if (option->value == NULL) {
+        talloc_free(option);
+        return 0;
+    }
+    if (dom_html_option_element_get_selected(element, &selected) !=
+            DOM_NO_ERR) {
+        selected = pcore_node_has_attr(node, "selected") ? true : false;
+    }
+    if (selected && (gadget->data.select.multiple ||
+            gadget->data.select.num_selected == 0)) {
+        option->selected = true;
+        option->initial_selected = true;
+        gadget->data.select.num_selected++;
+        gadget->data.select.current = option;
+    } else if (selected && !gadget->data.select.multiple) {
+        dom_html_option_element_set_selected(element, false);
+    }
+    if (gadget->data.select.items == NULL) {
+        gadget->data.select.items = option;
+    } else {
+        gadget->data.select.last_item->next = option;
+    }
+    gadget->data.select.last_item = option;
+    gadget->data.select.num_items++;
+    return 1;
+}
+
+static int pcore_make_select_control(struct box *box,
+        struct form_control *gadget, dom_node *node, css_computed_style *style)
+{
+    dom_html_select_element *select;
+    dom_html_options_collection *options;
+    dom_string *name;
+    dom_node *option_node;
+    struct form_option *option;
+    struct box *inline_container;
+    struct box *inline_box;
+    const char *display_text;
+    uint32_t option_count;
+    uint32_t option_index;
+    bool disabled;
+    bool multiple;
+
+    select = (dom_html_select_element *) node;
+    options = NULL;
+    name = NULL;
+    option_node = NULL;
+    option_count = 0;
+    disabled = false;
+    multiple = false;
+    if (dom_html_select_element_get_name(select, &name) == DOM_NO_ERR &&
+            name != NULL) {
+        gadget->name = talloc_strndup(gadget, dom_string_data(name),
+                dom_string_byte_length(name));
+        dom_string_unref(name);
+    } else {
+        gadget->name = talloc_strdup(gadget, "");
+    }
+    if (gadget->name == NULL) {
+        return 0;
+    }
+    if (dom_html_select_element_get_disabled(select, &disabled) !=
+            DOM_NO_ERR) {
+        disabled = pcore_node_has_attr(node, "disabled") ? true : false;
+    }
+    if (dom_html_select_element_get_multiple(select, &multiple) !=
+            DOM_NO_ERR) {
+        multiple = pcore_node_has_attr(node, "multiple") ? true : false;
+    }
+    gadget->disabled = disabled;
+    gadget->data.select.multiple = multiple;
+    if (dom_html_select_element_get_options(select, &options) != DOM_NO_ERR ||
+            options == NULL ||
+            dom_html_options_collection_get_length(options,
+                    &option_count) != DOM_NO_ERR) {
+        if (options != NULL) {
+            dom_html_options_collection_unref(options);
+        }
+        return 0;
+    }
+    for (option_index = 0; option_index < option_count; option_index++) {
+        option_node = NULL;
+        if (dom_html_options_collection_item(options, option_index,
+                &option_node) != DOM_NO_ERR || option_node == NULL ||
+                !pcore_select_add_option(gadget, option_node)) {
+            if (option_node != NULL) {
+                dom_node_unref(option_node);
+            }
+            dom_html_options_collection_unref(options);
+            return 0;
+        }
+        dom_node_unref(option_node);
+    }
+    dom_html_options_collection_unref(options);
+    if (gadget->data.select.num_items == 0) {
+        return 0;
+    }
+    if (!gadget->data.select.multiple &&
+            gadget->data.select.num_selected == 0) {
+        option = gadget->data.select.items;
+        option->selected = true;
+        option->initial_selected = true;
+        gadget->data.select.current = option;
+        gadget->data.select.num_selected = 1;
+        dom_html_option_element_set_selected(
+                (dom_html_option_element *) option->node, true);
+    }
+    display_text = (gadget->data.select.current != NULL) ?
+            gadget->data.select.current->text : "";
+    inline_container = pcore_box_new(BOX_INLINE_CONTAINER, NULL, box);
+    inline_box = pcore_box_new(BOX_TEXT, style, box);
+    if (inline_container == NULL || inline_box == NULL) {
+        if (inline_container != NULL) { talloc_free(inline_container); }
+        if (inline_box != NULL) { talloc_free(inline_box); }
+        return 0;
+    }
+    inline_box->node = node;
+    inline_box->text = talloc_strdup(inline_box, display_text);
+    if (inline_box->text == NULL) {
+        talloc_free(inline_container);
+        talloc_free(inline_box);
+        return 0;
+    }
+    inline_box->length = strlen(inline_box->text);
+    pcore_box_add_child(inline_container, inline_box);
+    pcore_box_add_child(box, inline_container);
+    return 1;
+}
+
 static struct box *pcore_make_form_control_box(dom_node *node,
         css_computed_style *style, void *ctx, int gadget_type)
 {
@@ -381,7 +594,8 @@ static struct box *pcore_make_form_control_box(dom_node *node,
     if (gadget_type != GADGET_CHECKBOX && gadget_type != GADGET_RADIO &&
             gadget_type != GADGET_TEXTBOX &&
             gadget_type != GADGET_PASSWORD &&
-            gadget_type != GADGET_TEXTAREA) {
+            gadget_type != GADGET_TEXTAREA &&
+            gadget_type != GADGET_SELECT) {
         return NULL;
     }
     box = pcore_box_new(BOX_INLINE_BLOCK, style, ctx);
@@ -399,6 +613,13 @@ static struct box *pcore_make_form_control_box(dom_node *node,
     gadget->node = node;
     gadget->type = (form_control_type) gadget_type;
     gadget->box = box;
+    if (gadget_type == GADGET_SELECT) {
+        if (!pcore_make_select_control(box, gadget, node, style)) {
+            talloc_free(box);
+            return NULL;
+        }
+        return box;
+    }
     if (gadget_type == GADGET_TEXTAREA) {
         textarea = (dom_html_text_area_element *) node;
         if (dom_html_text_area_element_get_name(textarea, &name) ==
@@ -2828,7 +3049,8 @@ static struct box *pcore_form_control_at(struct box *box,
              box->gadget->type == GADGET_RADIO ||
              box->gadget->type == GADGET_TEXTBOX ||
              box->gadget->type == GADGET_PASSWORD ||
-             box->gadget->type == GADGET_TEXTAREA)) {
+             box->gadget->type == GADGET_TEXTAREA ||
+             box->gadget->type == GADGET_SELECT)) {
         if (*current == target) {
             return box;
         }
@@ -2871,6 +3093,8 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
         control_kind = 4;
     } else if (box->gadget->type == GADGET_TEXTAREA) {
         control_kind = 5;
+    } else if (box->gadget->type == GADGET_SELECT) {
+        control_kind = 6;
     } else {
         return 1;
     }
@@ -2883,7 +3107,9 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
     if (h != NULL) { *h = box->height; }
     if (kind != NULL) { *kind = control_kind; }
     if (selected != NULL) {
-        *selected = box->gadget->selected ? 1 : 0;
+        *selected = (box->gadget->type == GADGET_SELECT) ?
+                ((box->gadget->data.select.num_selected > 0) ? 1 : 0) :
+                (box->gadget->selected ? 1 : 0);
     }
     if (disabled != NULL) {
         *disabled = box->gadget->disabled ? 1 : 0;
@@ -3187,6 +3413,239 @@ PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
     control->value = copy;
     control->last_synced_value = synced;
     control->length = (unsigned int) value_len;
+    return 0;
+}
+
+static struct box *pcore_select_control_at(struct box *box,
+        unsigned int target, unsigned int *current)
+{
+    struct box *child;
+    struct box *found;
+
+    if (box == NULL) {
+        return NULL;
+    }
+    if (box->gadget != NULL &&
+            box->gadget->type == GADGET_SELECT) {
+        if (*current == target) {
+            return box;
+        }
+        *current += 1;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        found = pcore_select_control_at(child, target, current);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+static struct form_option *pcore_select_option_at(
+        struct form_control *control, unsigned int index)
+{
+    struct form_option *option;
+
+    if (control == NULL || control->type != GADGET_SELECT) {
+        return NULL;
+    }
+    option = control->data.select.items;
+    while (option != NULL && index > 0) {
+        option = option->next;
+        index--;
+    }
+    return option;
+}
+
+static void pcore_copy_public_text(const char *source, char *target, int cap)
+{
+    size_t length;
+
+    if (target == NULL || cap <= 0) {
+        return;
+    }
+    length = (source != NULL) ? strlen(source) : 0;
+    if (length > (size_t) (cap - 1)) {
+        length = (size_t) (cap - 1);
+    }
+    if (length > 0) {
+        memcpy(target, source, length);
+    }
+    target[length] = '\0';
+}
+
+PCORE_API int PCore_SelectInfo(HANDLE hDoc, unsigned int index,
+        PCoreSelectInfo *out_info)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_control *control;
+    unsigned int current;
+    int ax;
+    int ay;
+    int selected_index;
+    int option_index;
+    struct form_option *option;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_select_control_at(st->root_box, index, &current) : NULL;
+    if (box == NULL || box->gadget == NULL) {
+        return 1;
+    }
+    if (out_info == NULL) {
+        return 0;
+    }
+    control = box->gadget;
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    selected_index = -1;
+    option_index = 0;
+    if (control->data.select.num_selected == 1) {
+        for (option = control->data.select.items; option != NULL;
+                option = option->next, option_index++) {
+            if (option->selected) {
+                selected_index = option_index;
+                break;
+            }
+        }
+    }
+    out_info->x = ax - box->border[LEFT].width;
+    out_info->y = ay - box->border[TOP].width;
+    out_info->width = box->border[LEFT].width +
+            box->padding[LEFT] + box->width + box->padding[RIGHT] +
+            box->border[RIGHT].width;
+    out_info->height = box->border[TOP].width +
+            box->padding[TOP] + box->height + box->padding[BOTTOM] +
+            box->border[BOTTOM].width;
+    out_info->disabled = control->disabled ? 1 : 0;
+    out_info->multiple = control->data.select.multiple ? 1 : 0;
+    out_info->option_count = control->data.select.num_items;
+    out_info->selected_count = control->data.select.num_selected;
+    out_info->selected_index = selected_index;
+    return 0;
+}
+
+PCORE_API int PCore_SelectOptionInfo(HANDLE hDoc,
+        unsigned int select_index, unsigned int option_index,
+        char *label, int label_cap, char *value, int value_cap,
+        int *selected, int *disabled, int *label_bytes, int *value_bytes)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_option *option;
+    unsigned int current;
+    bool option_disabled;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ? pcore_select_control_at(st->root_box,
+            select_index, &current) : NULL;
+    option = (box != NULL) ?
+            pcore_select_option_at(box->gadget, option_index) : NULL;
+    if (option == NULL) {
+        return 1;
+    }
+    pcore_copy_public_text(option->text, label, label_cap);
+    pcore_copy_public_text(option->value, value, value_cap);
+    if (selected != NULL) {
+        *selected = option->selected ? 1 : 0;
+    }
+    if (label_bytes != NULL) {
+        *label_bytes = (option->text != NULL) ?
+                (int) strlen(option->text) : 0;
+    }
+    if (value_bytes != NULL) {
+        *value_bytes = (option->value != NULL) ?
+                (int) strlen(option->value) : 0;
+    }
+    option_disabled = false;
+    if (dom_html_option_element_get_disabled(
+            (dom_html_option_element *) option->node,
+            &option_disabled) != DOM_NO_ERR) {
+        option_disabled = pcore_node_has_attr(option->node,
+                "disabled") ? true : false;
+    }
+    if (disabled != NULL) {
+        *disabled = option_disabled ? 1 : 0;
+    }
+    return 0;
+}
+
+PCORE_API int PCore_SelectSetOptionSelected(HANDLE hDoc,
+        unsigned int select_index, unsigned int option_index, int selected)
+{
+    pcore_render *st;
+    struct box *box;
+    struct box *inline_box;
+    struct form_control *control;
+    struct form_option *option;
+    struct form_option *target;
+    unsigned int current;
+    bool option_disabled;
+    const char *display_text;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ? pcore_select_control_at(st->root_box,
+            select_index, &current) : NULL;
+    control = (box != NULL) ? box->gadget : NULL;
+    target = pcore_select_option_at(control, option_index);
+    if (target == NULL) {
+        return 1;
+    }
+    option_disabled = false;
+    if (dom_html_option_element_get_disabled(
+            (dom_html_option_element *) target->node,
+            &option_disabled) != DOM_NO_ERR) {
+        option_disabled = pcore_node_has_attr(target->node,
+                "disabled") ? true : false;
+    }
+    if (control->disabled || option_disabled) {
+        return 2;
+    }
+    if (!control->data.select.multiple && selected) {
+        for (option = control->data.select.items; option != NULL;
+                option = option->next) {
+            option->selected = (option == target) ? true : false;
+            dom_html_option_element_set_selected(
+                    (dom_html_option_element *) option->node,
+                    option->selected);
+        }
+    } else {
+        target->selected = selected ? true : false;
+        dom_html_option_element_set_selected(
+                (dom_html_option_element *) target->node,
+                target->selected);
+    }
+    control->data.select.num_selected = 0;
+    control->data.select.current = NULL;
+    for (option = control->data.select.items; option != NULL;
+            option = option->next) {
+        if (option->selected) {
+            control->data.select.num_selected++;
+            if (control->data.select.current == NULL) {
+                control->data.select.current = option;
+            }
+        }
+    }
+    inline_box = (box->children != NULL) ?
+            box->children->children : NULL;
+    if (inline_box != NULL) {
+        display_text = (control->data.select.current != NULL) ?
+                control->data.select.current->text : "";
+        if (inline_box->text != NULL) {
+            talloc_free(inline_box->text);
+        }
+        inline_box->text = talloc_strdup(inline_box, display_text);
+        if (inline_box->text == NULL) {
+            inline_box->length = 0;
+            return 1;
+        }
+        inline_box->length = strlen(inline_box->text);
+    }
     return 0;
 }
 
