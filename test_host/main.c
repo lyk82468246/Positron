@@ -214,6 +214,62 @@ static void utf8_to_wide(const char* src, int src_len,
     dst[n] = L'\0';
 }
 
+static char *wide_to_utf8_alloc(const WCHAR *source)
+{
+    char *result;
+    int bytes;
+
+    if (source == NULL) {
+        return NULL;
+    }
+    bytes = WideCharToMultiByte(CP_UTF8, 0, source, -1,
+            NULL, 0, NULL, NULL);
+    if (bytes <= 0) {
+        return NULL;
+    }
+    result = (char *) malloc((size_t) bytes);
+    if (result == NULL ||
+            WideCharToMultiByte(CP_UTF8, 0, source, -1,
+                    result, bytes, NULL, NULL) != bytes) {
+        free(result);
+        return NULL;
+    }
+    return result;
+}
+
+static WCHAR *utf8_to_wide_alloc(const char *source)
+{
+    WCHAR *result;
+    int chars;
+
+    if (source == NULL) {
+        return NULL;
+    }
+    chars = MultiByteToWideChar(CP_UTF8, 0, source, -1, NULL, 0);
+    if (chars <= 0) {
+        chars = MultiByteToWideChar(CP_ACP, 0, source, -1, NULL, 0);
+        if (chars <= 0) {
+            return NULL;
+        }
+        result = (WCHAR *) malloc((size_t) chars * sizeof(WCHAR));
+        if (result == NULL ||
+                MultiByteToWideChar(CP_ACP, 0, source, -1,
+                        result, chars) != chars) {
+            free(result);
+            return NULL;
+        }
+        return result;
+    }
+    result = (WCHAR *) malloc((size_t) chars * sizeof(WCHAR));
+    if (result == NULL ||
+            MultiByteToWideChar(CP_UTF8, 0, source, -1,
+                    result, chars) != chars) {
+        free(result);
+        return NULL;
+    }
+    return result;
+}
+
 static void show_info(const WCHAR* title, const char* body)
 {
     WCHAR  wbuf[1536];
@@ -271,7 +327,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 69
+#define TEST_MAX_NUMBER 70
 
 static int test_config_space(char c)
 {
@@ -2074,6 +2130,7 @@ typedef struct pcore_navigation_request {
     int            method;
     char          *request_body;
     int            request_body_len;
+    char          *request_content_type;
     PHttpResponse *response;
     HANDLE         document;
     pcore_navigation_resource *resources;
@@ -3135,6 +3192,7 @@ static void pcore_navigation_request_free(
         PCore_FreeDocument(request->document);
     }
     free(request->request_body);
+    free(request->request_content_type);
     entry = request->resources;
     while (entry != NULL) {
         pcore_navigation_resource *next;
@@ -3258,8 +3316,10 @@ static PHttpResponse *pcore_navigation_fetch_document(
 {
     const char *headers[2];
 
-    if (request->method == 2) {
-        headers[0] = "Content-Type: application/x-www-form-urlencoded";
+    if (request->method == 2 || request->method == 3) {
+        headers[0] = (request->request_content_type != NULL) ?
+                request->request_content_type :
+                "Content-Type: application/x-www-form-urlencoded";
         headers[1] = NULL;
         request->progress_last_total = -2;
         request->progress_last_percent = -2;
@@ -3284,7 +3344,8 @@ static int pcore_navigation_response_error(
     }
     _snprintf(message, capacity - 1,
               "%s %s://%s%s -> status=%d %s",
-              (request->method == 2) ? "POST" : "GET",
+              (request->method == 2 || request->method == 3) ?
+                      "POST" : "GET",
               (request->port == 80) ? "http" : "https",
               request->host, request->path,
               (resp != NULL) ? resp->status_code : 0,
@@ -3581,12 +3642,13 @@ static int pcore_navigation_post_continue(HWND hwnd,
     return SetTimer(hwnd, PCORE_NAV_COMMIT_TIMER, 1, NULL) != 0 ? 0 : 1;
 }
 
-static pcore_navigation_request *pcore_navigation_request_create(
-        HWND hwnd, const char *href, int method, const char *body)
+static pcore_navigation_request *pcore_navigation_request_create_ex(
+        HWND hwnd, const char *href, int method, const void *body,
+        int body_len, const char *content_type)
 {
     pcore_navigation_request *request;
     size_t href_len;
-    size_t body_len;
+    size_t content_type_len;
 
     if (href == NULL) {
         return NULL;
@@ -3606,19 +3668,33 @@ static pcore_navigation_request *pcore_navigation_request_create(
         free(request);
         return NULL;
     }
-    request->method = (method == 2) ? 2 : 1;
-    if (request->method == 2) {
-        body_len = (body != NULL) ? strlen(body) : 0;
-        request->request_body = (char *) malloc(body_len + 1);
+    request->method = (method == 2 || method == 3) ? method : 1;
+    if (request->method == 2 || request->method == 3) {
+        if (body_len < 0 || (body_len > 0 && body == NULL)) {
+            free(request);
+            return NULL;
+        }
+        request->request_body = (char *) malloc((size_t) body_len + 1);
         if (request->request_body == NULL) {
             free(request);
             return NULL;
         }
         if (body_len > 0) {
-            memcpy(request->request_body, body, body_len);
+            memcpy(request->request_body, body, (size_t) body_len);
         }
         request->request_body[body_len] = '\0';
-        request->request_body_len = (int) body_len;
+        request->request_body_len = body_len;
+        if (content_type != NULL) {
+            content_type_len = strlen(content_type);
+            request->request_content_type = (char *) malloc(
+                    content_type_len + 1);
+            if (request->request_content_type == NULL) {
+                pcore_navigation_request_free(request);
+                return NULL;
+            }
+            memcpy(request->request_content_type, content_type,
+                    content_type_len + 1);
+        }
     }
     request->hwnd = hwnd;
     request->worker_stage = PCORE_NAV_STAGE_DOCUMENT;
@@ -3627,17 +3703,29 @@ static pcore_navigation_request *pcore_navigation_request_create(
     return request;
 }
 
+static pcore_navigation_request *pcore_navigation_request_create(
+        HWND hwnd, const char *href, int method, const char *body)
+{
+    int body_len;
+
+    body_len = (body != NULL) ? (int) strlen(body) : 0;
+    return pcore_navigation_request_create_ex(hwnd, href, method,
+            body, body_len, NULL);
+}
+
 /* Start the main-document stage. Later stages reuse this request for external
  * CSS/image GETs while the old visible document remains interactive. */
-static void navigate_to_request(HWND hwnd, const char *href,
-        int method, const char *body)
+static void navigate_to_request_ex(HWND hwnd, const char *href,
+        int method, const void *body, int body_len,
+        const char *content_type)
 {
     pcore_navigation_request *request;
 
     if (g_nav_loading) {
         return;
     }
-    request = pcore_navigation_request_create(hwnd, href, method, body);
+    request = pcore_navigation_request_create_ex(hwnd, href, method,
+            body, body_len, content_type);
     if (request == NULL) {
         show_error(L"Navigation failed",
                 "Invalid URL, oversized form target, or out of memory");
@@ -3654,9 +3742,259 @@ static void navigate_to_request(HWND hwnd, const char *href,
     }
 }
 
+static void navigate_to_request(HWND hwnd, const char *href,
+        int method, const char *body)
+{
+    int body_len;
+
+    body_len = (body != NULL) ? (int) strlen(body) : 0;
+    navigate_to_request_ex(hwnd, href, method, body, body_len, NULL);
+}
+
 static void navigate_to(HWND hwnd, const char *href)
 {
     navigate_to_request(hwnd, href, 1, NULL);
+}
+
+typedef struct pcore_multipart_buffer {
+    unsigned char *data;
+    size_t length;
+    size_t capacity;
+} pcore_multipart_buffer;
+
+static int pcore_multipart_buffer_reserve(pcore_multipart_buffer *buffer,
+        size_t additional)
+{
+    unsigned char *grown;
+    size_t needed;
+    size_t capacity;
+
+    if (buffer == NULL || additional > (size_t) INT_MAX - buffer->length) {
+        return 0;
+    }
+    needed = buffer->length + additional + 1;
+    if (needed <= buffer->capacity) {
+        return 1;
+    }
+    capacity = (buffer->capacity > 0) ? buffer->capacity : 512;
+    while (capacity < needed) {
+        if (capacity > ((size_t) INT_MAX + 1) / 2) {
+            capacity = (size_t) INT_MAX + 1;
+            break;
+        }
+        capacity *= 2;
+    }
+    grown = (unsigned char *) realloc(buffer->data, capacity);
+    if (grown == NULL) {
+        return 0;
+    }
+    buffer->data = grown;
+    buffer->capacity = capacity;
+    return 1;
+}
+
+static int pcore_multipart_buffer_append(pcore_multipart_buffer *buffer,
+        const void *data, size_t length)
+{
+    if ((length > 0 && data == NULL) ||
+            !pcore_multipart_buffer_reserve(buffer, length)) {
+        return 0;
+    }
+    if (length > 0) {
+        memcpy(buffer->data + buffer->length, data, length);
+    }
+    buffer->length += length;
+    buffer->data[buffer->length] = '\0';
+    return 1;
+}
+
+static int pcore_multipart_buffer_text(pcore_multipart_buffer *buffer,
+        const char *text)
+{
+    return pcore_multipart_buffer_append(buffer, text, strlen(text));
+}
+
+static int pcore_multipart_buffer_quoted(pcore_multipart_buffer *buffer,
+        const char *text)
+{
+    const unsigned char *cursor;
+    unsigned char value;
+    char escape[2];
+
+    cursor = (const unsigned char *) ((text != NULL) ? text : "");
+    while (*cursor != 0) {
+        value = *cursor++;
+        if (value == '\r' || value == '\n') {
+            value = ' ';
+        }
+        if (value == '"' || value == '\\') {
+            escape[0] = '\\';
+            escape[1] = (char) value;
+            if (!pcore_multipart_buffer_append(buffer, escape, 2)) {
+                return 0;
+            }
+        } else if (!pcore_multipart_buffer_append(buffer, &value, 1)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int pcore_multipart_buffer_file(pcore_multipart_buffer *buffer,
+        const char *path)
+{
+    WCHAR *wide_path;
+    HANDLE file;
+    DWORD high;
+    DWORD low;
+    DWORD read_count;
+    size_t offset;
+
+    if (path == NULL || path[0] == '\0') {
+        return 1;
+    }
+    wide_path = utf8_to_wide_alloc(path);
+    if (wide_path == NULL) {
+        return 0;
+    }
+    file = CreateFileW(wide_path, GENERIC_READ, FILE_SHARE_READ,
+            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    free(wide_path);
+    if (file == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    high = 0;
+    low = GetFileSize(file, &high);
+    if ((low == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) ||
+            high != 0 || low > (DWORD) INT_MAX ||
+            !pcore_multipart_buffer_reserve(buffer, (size_t) low)) {
+        CloseHandle(file);
+        return 0;
+    }
+    offset = 0;
+    while (offset < (size_t) low) {
+        read_count = 0;
+        if (!ReadFile(file, buffer->data + buffer->length + offset,
+                low - (DWORD) offset, &read_count, NULL) ||
+                read_count == 0) {
+            CloseHandle(file);
+            return 0;
+        }
+        offset += read_count;
+    }
+    CloseHandle(file);
+    buffer->length += (size_t) low;
+    buffer->data[buffer->length] = '\0';
+    return 1;
+}
+
+static int pcore_multipart_build(HANDLE submission,
+        char **out_body, int *out_body_len, char **out_content_type)
+{
+    static unsigned int boundary_sequence = 0;
+    PCoreMultipartSubmissionInfo submission_info;
+    PCoreMultipartPartInfo part_info;
+    pcore_multipart_buffer buffer;
+    char boundary[64];
+    char *content_type;
+    char *name;
+    char *value;
+    char *path;
+    unsigned int index;
+    int content_type_length;
+    int result;
+
+    if (submission == NULL || out_body == NULL ||
+            out_body_len == NULL || out_content_type == NULL ||
+            PCore_MultipartSubmissionInfo(submission, &submission_info,
+                    NULL, 0) != 1) {
+        return 0;
+    }
+    *out_body = NULL;
+    *out_body_len = 0;
+    *out_content_type = NULL;
+    memset(&buffer, 0, sizeof(buffer));
+    boundary_sequence++;
+    _snprintf(boundary, sizeof(boundary) - 1,
+            "----PositronWM6%08lX%04X",
+            GetTickCount(), boundary_sequence & 0xffff);
+    boundary[sizeof(boundary) - 1] = '\0';
+    for (index = 0; index < submission_info.part_count; index++) {
+        memset(&part_info, 0, sizeof(part_info));
+        if (PCore_MultipartPartInfo(submission, index, &part_info,
+                NULL, 0, NULL, 0, NULL, 0) != 1 ||
+                part_info.name_bytes < 0 ||
+                part_info.value_bytes < 0 ||
+                part_info.path_bytes < 0) {
+            free(buffer.data);
+            return 0;
+        }
+        name = (char *) malloc((size_t) part_info.name_bytes + 1);
+        value = (char *) malloc((size_t) part_info.value_bytes + 1);
+        path = (char *) malloc((size_t) part_info.path_bytes + 1);
+        if (name == NULL || value == NULL || path == NULL) {
+            free(name);
+            free(value);
+            free(path);
+            free(buffer.data);
+            return 0;
+        }
+        result = PCore_MultipartPartInfo(submission, index, &part_info,
+                name, part_info.name_bytes + 1,
+                value, part_info.value_bytes + 1,
+                path, part_info.path_bytes + 1);
+        if (result != 1 ||
+                !pcore_multipart_buffer_text(&buffer, "--") ||
+                !pcore_multipart_buffer_text(&buffer, boundary) ||
+                !pcore_multipart_buffer_text(&buffer,
+                    "\r\nContent-Disposition: form-data; name=\"") ||
+                !pcore_multipart_buffer_quoted(&buffer, name) ||
+                !pcore_multipart_buffer_text(&buffer, "\"")) {
+            free(name);
+            free(value);
+            free(path);
+            free(buffer.data);
+            return 0;
+        }
+        if (part_info.kind == 2) {
+            result = pcore_multipart_buffer_text(&buffer, "; filename=\"") &&
+                    pcore_multipart_buffer_quoted(&buffer, value) &&
+                    pcore_multipart_buffer_text(&buffer,
+                        "\"\r\nContent-Type: application/octet-stream"
+                        "\r\n\r\n") &&
+                    pcore_multipart_buffer_file(&buffer, path);
+        } else {
+            result = pcore_multipart_buffer_text(&buffer, "\r\n\r\n") &&
+                    pcore_multipart_buffer_append(&buffer, value,
+                            (size_t) part_info.value_bytes);
+        }
+        free(name);
+        free(value);
+        free(path);
+        if (!result || !pcore_multipart_buffer_text(&buffer, "\r\n")) {
+            free(buffer.data);
+            return 0;
+        }
+    }
+    if (!pcore_multipart_buffer_text(&buffer, "--") ||
+            !pcore_multipart_buffer_text(&buffer, boundary) ||
+            !pcore_multipart_buffer_text(&buffer, "--\r\n")) {
+        free(buffer.data);
+        return 0;
+    }
+    content_type_length = (int) strlen(boundary) + 48;
+    content_type = (char *) malloc((size_t) content_type_length);
+    if (content_type == NULL) {
+        free(buffer.data);
+        return 0;
+    }
+    _snprintf(content_type, content_type_length - 1,
+            "Content-Type: multipart/form-data; boundary=%s", boundary);
+    content_type[content_type_length - 1] = '\0';
+    *out_body = (char *) buffer.data;
+    *out_body_len = (int) buffer.length;
+    *out_content_type = content_type;
+    return 1;
 }
 
 static char *pcore_form_target_url(const char *action, const char *body,
@@ -3708,6 +4046,56 @@ static char *pcore_form_target_url(const char *action, const char *body,
     }
     target[needed] = '\0';
     return target;
+}
+
+static int navigate_multipart_submission(HWND hwnd, HANDLE submission)
+{
+    PCoreMultipartSubmissionInfo info;
+    char *action;
+    char *body;
+    char *content_type;
+    char *target;
+    int body_len;
+    int result;
+
+    memset(&info, 0, sizeof(info));
+    action = NULL;
+    body = NULL;
+    content_type = NULL;
+    target = NULL;
+    result = 0;
+    if (submission == NULL ||
+            PCore_MultipartSubmissionInfo(submission, &info,
+                    NULL, 0) != 1 ||
+            info.action_bytes < 0) {
+        goto done;
+    }
+    action = (char *) malloc((size_t) info.action_bytes + 1);
+    if (action == NULL ||
+            PCore_MultipartSubmissionInfo(submission, &info,
+                    action, info.action_bytes + 1) != 1 ||
+            !pcore_multipart_build(submission, &body, &body_len,
+                    &content_type)) {
+        goto done;
+    }
+    target = pcore_form_target_url(action, NULL, 3);
+    if (target == NULL) {
+        goto done;
+    }
+    navigate_to_request_ex(hwnd, target, 3, body, body_len, content_type);
+    result = 1;
+
+done:
+    free(target);
+    free(content_type);
+    free(body);
+    free(action);
+    PCore_FreeMultipartSubmission(submission);
+    if (!result) {
+        show_error(L"Form submission failed",
+                "Could not build the multipart/form-data request");
+    }
+    return result;
 }
 
 static void navigate_form_submission(HWND hwnd, int method,
@@ -3790,8 +4178,8 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
         return 1;
     }
     if (result == 3) {
-        show_info(L"Form submission",
-                "multipart/form-data is not implemented yet.");
+        navigate_multipart_submission(hwnd,
+                PCore_MultipartSubmissionAt(g_render_doc, x, y));
         return 1;
     }
     if (result == 1) {
@@ -3846,8 +4234,9 @@ static void pcore_handle_form_enter(HWND hwnd, unsigned int text_index)
         return;
     }
     if (result == 3) {
-        show_info(L"Form submission",
-                "multipart/form-data is not implemented yet.");
+        navigate_multipart_submission(hwnd,
+                PCore_MultipartSubmissionForTextInput(g_render_doc,
+                        text_index));
         return;
     }
     action = NULL;
@@ -3945,6 +4334,67 @@ static int pcore_focus_native_form_control(int kind, int x, int y)
     return 0;
 }
 
+static int pcore_handle_file_input(HWND hwnd, int x, int y)
+{
+    OPENFILENAMEEX picker;
+    PCoreFileInputInfo info;
+    WCHAR file_path[MAX_PATH];
+    WCHAR file_title[MAX_PATH];
+    char *path_utf8;
+    char *title_utf8;
+    unsigned int file_index;
+    int disabled;
+    RECT dirty;
+
+    file_index = 0;
+    disabled = 0;
+    if (!PCore_FileInputAt(g_render_doc, x, y,
+            &file_index, &disabled)) {
+        return 0;
+    }
+    if (disabled) {
+        return 1;
+    }
+    memset(&picker, 0, sizeof(picker));
+    memset(file_path, 0, sizeof(file_path));
+    memset(file_title, 0, sizeof(file_title));
+    picker.lStructSize = sizeof(picker);
+    picker.hwndOwner = hwnd;
+    picker.lpstrFilter = L"All files (*.*)\0*.*\0\0";
+    picker.lpstrFile = file_path;
+    picker.nMaxFile = MAX_PATH;
+    picker.lpstrFileTitle = file_title;
+    picker.nMaxFileTitle = MAX_PATH;
+    picker.lpstrTitle = L"Choose a file";
+    picker.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    picker.ExFlags = OFN_EXFLAG_NOFILECREATE;
+    if (!GetOpenFileNameEx(&picker)) {
+        return 1;
+    }
+    path_utf8 = wide_to_utf8_alloc(file_path);
+    title_utf8 = wide_to_utf8_alloc(
+            (file_title[0] != L'\0') ? file_title : file_path);
+    if (path_utf8 == NULL || title_utf8 == NULL ||
+            PCore_FileInputSetPath(g_render_doc, file_index,
+                    title_utf8, path_utf8) != 0 ||
+            PCore_FileInputInfo(g_render_doc, file_index, &info,
+                    NULL, 0, NULL, 0) != 0) {
+        free(path_utf8);
+        free(title_utf8);
+        show_error(L"File selection failed",
+                "Could not store the selected file in the form");
+        return 1;
+    }
+    free(path_utf8);
+    free(title_utf8);
+    dirty.left = info.x;
+    dirty.top = info.y - g_scroll_y;
+    dirty.right = info.x + info.width;
+    dirty.bottom = info.y - g_scroll_y + info.height;
+    InvalidateRect(hwnd, &dirty, TRUE);
+    return 1;
+}
+
 static int pcore_handle_label(HWND hwnd, int x, int y)
 {
     int target_x;
@@ -3961,6 +4411,8 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
     }
     if (kind >= 7 && kind <= 9) {
         pcore_handle_form_button(hwnd, target_x, target_y);
+    } else if (kind == 10) {
+        pcore_handle_file_input(hwnd, target_x, target_y);
     } else if (kind == 1 || kind == 2) {
         if (PCore_FormActivateAt(g_render_doc, target_x, target_y,
                 &dirty_x, &dirty_y, &dirty_w, &dirty_h)) {
@@ -4311,6 +4763,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         if (g_render_doc != NULL &&
                 pcore_handle_form_button(hwnd, cx, cy + g_scroll_y)) {
+            return 0;
+        }
+        if (g_render_doc != NULL &&
+                pcore_handle_file_input(hwnd, cx, cy + g_scroll_y)) {
             return 0;
         }
         if (g_render_doc != NULL &&
@@ -12058,6 +12514,324 @@ static BOOL test69_form_defaults_and_labels(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 70 - file gadget and multipart/form-data binary request          */
+/* -------------------------------------------------------------------- */
+static int test70_memory_contains(const unsigned char *data, int data_len,
+        const unsigned char *needle, int needle_len)
+{
+    int index;
+
+    if (data == NULL || needle == NULL || data_len < 0 ||
+            needle_len <= 0 || needle_len > data_len) {
+        return 0;
+    }
+    for (index = 0; index <= data_len - needle_len; index++) {
+        if (memcmp(data + index, needle, (size_t) needle_len) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int test70_control_center(HANDLE document, int wanted_kind,
+        int *center_x, int *center_y)
+{
+    unsigned int index;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+
+    for (index = 0; index < 32; index++) {
+        if (PCore_FormControlInfo(document, index, &x, &y,
+                &width, &height, &kind, NULL, NULL) != 0) {
+            break;
+        }
+        if (kind == wanted_kind) {
+            if (center_x != NULL) {
+                *center_x = x + width / 2;
+            }
+            if (center_y != NULL) {
+                *center_y = y + height / 2;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int test70_part_equals(HANDLE submission, unsigned int index,
+        int kind, const char *name, const char *value, const char *path)
+{
+    PCoreMultipartPartInfo info;
+    char actual_name[64];
+    char actual_value[96];
+    char actual_path[MAX_PATH * 3];
+
+    memset(&info, 0, sizeof(info));
+    actual_name[0] = '\0';
+    actual_value[0] = '\0';
+    actual_path[0] = '\0';
+    if (PCore_MultipartPartInfo(submission, index, &info,
+            actual_name, sizeof(actual_name),
+            actual_value, sizeof(actual_value),
+            actual_path, sizeof(actual_path)) != 1) {
+        return 0;
+    }
+    return info.kind == kind &&
+            strcmp(actual_name, name) == 0 &&
+            strcmp(actual_value, value) == 0 &&
+            strcmp(actual_path, path) == 0;
+}
+
+static BOOL test70_multipart_file(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Multipart upload</h1>"
+        "<form action='https://example.com/upload' method=post "
+        "enctype='multipart/form-data'>"
+        "<label>Title <input name=title value='Positron form'></label>"
+        "<label><input type=checkbox name=flag checked> Include flag</label>"
+        "<input type=checkbox name=skip>"
+        "<select name=choice multiple>"
+        "<option value=one selected>One</option>"
+        "<option value=two selected>Two</option></select>"
+        "<label>File <input type=file name=payload></label>"
+        "<button type=reset>Reset</button>"
+        "<button type=submit name=go value=send>Upload</button>"
+        "</form></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font-size:15px;line-height:20px;padding:10px;color:#111;}"
+        "h1{font-size:21px;line-height:25px;color:#8b0000;margin:0 0 8px;}"
+        "label,select,button{display:block;margin:6px 0;}"
+        "input[type=file]{width:190px;height:25px;border:1px solid #666;"
+        "background:#eef6ff;}";
+    static const unsigned char FILE_BYTES[] = {
+        0x50, 0x00, 0x6f, 0x73, 0x69, 0x74, 0x72, 0x6f, 0x6e, 0xff
+    };
+    static const unsigned char FILE_NEEDLE[] = {
+        0x0d, 0x0a, 0x0d, 0x0a,
+        0x50, 0x00, 0x6f, 0x73, 0x69, 0x74, 0x72, 0x6f, 0x6e, 0xff,
+        0x0d, 0x0a
+    };
+    static const char DISPOSITION_NEEDLE[] =
+        "Content-Disposition: form-data; name=\"payload\"; "
+        "filename=\"tiny\\\"file.bin\"";
+    static const char CONTENT_NEEDLE[] =
+        "Content-Type: application/octet-stream\r\n\r\n";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE file;
+    HANDLE submission;
+    HANDLE implicit_submission;
+    PCoreFileInputInfo file_info;
+    PCoreMultipartSubmissionInfo submission_info;
+    PCoreFormSubmissionInfo legacy_info;
+    pcore_navigation_request *request;
+    WCHAR fixture_path[MAX_PATH];
+    DWORD written;
+    char *fixture_utf8;
+    char *body;
+    char *content_type;
+    char action_probe[1];
+    char body_probe[1];
+    int body_len;
+    int submit_x;
+    int submit_y;
+    int reset_x;
+    int reset_y;
+    int legacy_result;
+    int ok;
+    char detail[256];
+
+    document = NULL;
+    sheet = NULL;
+    file = INVALID_HANDLE_VALUE;
+    submission = NULL;
+    implicit_submission = NULL;
+    request = NULL;
+    fixture_utf8 = NULL;
+    body = NULL;
+    content_type = NULL;
+    fixture_path[0] = L'\0';
+    ok = 0;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/multipart.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            !test70_control_center(document, 7, &submit_x, &submit_y) ||
+            !test70_control_center(document, 8, &reset_x, &reset_y) ||
+            test_host_sibling_path(L"test70-upload.bin",
+                    fixture_path) != 0) {
+        strcpy(detail, "multipart form setup failed");
+        goto done;
+    }
+    file = CreateFileW(fixture_path, GENERIC_WRITE, 0, NULL,
+            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    written = 0;
+    if (file == INVALID_HANDLE_VALUE ||
+            !WriteFile(file, FILE_BYTES, sizeof(FILE_BYTES),
+                    &written, NULL) ||
+            written != sizeof(FILE_BYTES)) {
+        strcpy(detail, "binary fixture write failed");
+        goto done;
+    }
+    CloseHandle(file);
+    file = INVALID_HANDLE_VALUE;
+    fixture_utf8 = wide_to_utf8_alloc(fixture_path);
+    if (fixture_utf8 == NULL ||
+            PCore_FileInputSetPath(document, 0,
+                    "tiny\"file.bin", fixture_utf8) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_FileInputInfo(document, 0, &file_info,
+                    NULL, 0, NULL, 0) != 0 ||
+            file_info.width <= 0 || file_info.height <= 0 ||
+            file_info.value_bytes != 13 ||
+            file_info.path_bytes != (int) strlen(fixture_utf8)) {
+        strcpy(detail, "file value did not survive layout");
+        goto done;
+    }
+    memset(&legacy_info, 0, sizeof(legacy_info));
+    action_probe[0] = '\0';
+    body_probe[0] = '\0';
+    legacy_result = PCore_FormSubmissionAt(document,
+            submit_x, submit_y, &legacy_info,
+            action_probe, sizeof(action_probe),
+            body_probe, sizeof(body_probe));
+    submission = PCore_MultipartSubmissionAt(document, submit_x, submit_y);
+    memset(&submission_info, 0, sizeof(submission_info));
+    if (legacy_result != 3 || legacy_info.method != 3 ||
+            submission == NULL ||
+            PCore_MultipartSubmissionInfo(submission, &submission_info,
+                    NULL, 0) != 1 ||
+            submission_info.part_count != 6 ||
+            !test70_part_equals(submission, 0, 1,
+                    "title", "Positron form", "") ||
+            !test70_part_equals(submission, 1, 1,
+                    "flag", "on", "") ||
+            !test70_part_equals(submission, 2, 1,
+                    "choice", "one", "") ||
+            !test70_part_equals(submission, 3, 1,
+                    "choice", "two", "") ||
+            !test70_part_equals(submission, 4, 2,
+                    "payload", "tiny\"file.bin", fixture_utf8) ||
+            !test70_part_equals(submission, 5, 1,
+                    "go", "send", "")) {
+        strcpy(detail, "successful multipart parts differ");
+        goto done;
+    }
+    implicit_submission =
+            PCore_MultipartSubmissionForTextInput(document, 0);
+    memset(&submission_info, 0, sizeof(submission_info));
+    if (implicit_submission == NULL ||
+            PCore_MultipartSubmissionInfo(implicit_submission,
+                    &submission_info, NULL, 0) != 1 ||
+            submission_info.part_count != 6 ||
+            !test70_part_equals(implicit_submission, 5, 1,
+                    "go", "send", "")) {
+        strcpy(detail, "implicit multipart submission failed");
+        goto done;
+    }
+    PCore_FreeMultipartSubmission(implicit_submission);
+    implicit_submission = NULL;
+    if (!pcore_multipart_build(submission, &body, &body_len,
+            &content_type) ||
+            body_len <= (int) sizeof(FILE_BYTES) ||
+            content_type == NULL ||
+            strstr(content_type,
+                    "Content-Type: multipart/form-data; boundary=") !=
+                    content_type ||
+            !test70_memory_contains((const unsigned char *) body, body_len,
+                    (const unsigned char *) DISPOSITION_NEEDLE,
+                    sizeof(DISPOSITION_NEEDLE) - 1) ||
+            !test70_memory_contains((const unsigned char *) body, body_len,
+                    (const unsigned char *) CONTENT_NEEDLE,
+                    sizeof(CONTENT_NEEDLE) - 1) ||
+            !test70_memory_contains((const unsigned char *) body, body_len,
+                    FILE_NEEDLE, sizeof(FILE_NEEDLE)) ||
+            test70_memory_contains((const unsigned char *) body, body_len,
+                    (const unsigned char *) fixture_utf8,
+                    (int) strlen(fixture_utf8))) {
+        strcpy(detail, "multipart wire body failed");
+        goto done;
+    }
+    request = pcore_navigation_request_create_ex(NULL,
+            "https://example.com/upload", 3,
+            body, body_len, content_type);
+    if (request == NULL || request->method != 3 ||
+            request->request_body_len != body_len ||
+            memcmp(request->request_body, body, (size_t) body_len) != 0 ||
+            request->request_content_type == NULL ||
+            strcmp(request->request_content_type, content_type) != 0) {
+        strcpy(detail, "binary navigation request failed");
+        goto done;
+    }
+    pcore_navigation_request_free(request);
+    request = NULL;
+    g_doc_h = PCore_DocumentHeight(document);
+    g_scroll_y = 0;
+    g_render_doc = document;
+    g_render_sheet = sheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        strcpy(detail, "file gadget render window failed");
+        goto done;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (PCore_LayoutDocument(document, 240, 320) != 0 ||
+            !test70_control_center(document, 8, &reset_x, &reset_y) ||
+            PCore_FormResetAt(document, reset_x, reset_y) != 1 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_FileInputInfo(document, 0, &file_info,
+                    NULL, 0, NULL, 0) != 0 ||
+            file_info.value_bytes != 0 || file_info.path_bytes != 0) {
+        strcpy(detail, "form reset retained the selected file");
+        goto done;
+    }
+    ok = 1;
+
+done:
+    if (file != INVALID_HANDLE_VALUE) {
+        CloseHandle(file);
+    }
+    if (request != NULL) {
+        pcore_navigation_request_free(request);
+    }
+    free(content_type);
+    free(body);
+    if (submission != NULL) {
+        PCore_FreeMultipartSubmission(submission);
+    }
+    if (implicit_submission != NULL) {
+        PCore_FreeMultipartSubmission(implicit_submission);
+    }
+    free(fixture_utf8);
+    if (fixture_path[0] != L'\0') {
+        DeleteFileW(fixture_path);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 70 FAIL", detail);
+        return FALSE;
+    }
+    show_info(L"TEST 70 OK",
+            "File gadget state, multipart successful controls, binary\n"
+            "wire body, request ownership and reset cleanup passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -12241,6 +13015,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 67: ok = test67_select_control(); break;
         case 68: ok = test68_form_submission(); break;
         case 69: ok = test69_form_defaults_and_labels(); break;
+        case 70: ok = test70_multipart_file(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -12374,7 +13149,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list/\n"
                                "inline CSS and form controls\n"
-                               "(TEST 46-58, 62-69).\n"
+                               "(TEST 46-58, 62-70).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -12437,7 +13212,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-69; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-70; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -12479,6 +13254,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test67_select_control()){ rc = 13; goto done; }
         if (!test68_form_submission()){ rc = 13; goto done; }
         if (!test69_form_defaults_and_labels()){ rc = 13; goto done; }
+        if (!test70_multipart_file()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -12520,7 +13296,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-69)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-70)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"

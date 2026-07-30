@@ -2,7 +2,7 @@
 
 更新时间：2026-07-30
 当前分支：`main`  
-当前设备基线：next101，配置的 TEST13/20/27/43/44/56/58-69 已由无人值守设备日志确认全部 PASS。该版本在 next99 的 button、successful-controls 与 WM GET/URL-encoded POST 上继续加入 reset 默认恢复、单行 Enter 隐式提交和显式/包裹式 label 激活；TEST13 的 example.com、IANA help 和 reserved 深链也完整通过。next100 曾因 libdom textarea 默认值缓存笔误导致 TEST69 失败，已由 next101 修复。multipart/file、WM 多选列表、约束验证和完整事件系统仍未实现。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next103，配置的 TEST13/20/27/43/44/56/58-70 已由无人值守设备日志确认全部 PASS。该版本加入 NetSurf file gadget、WM 原生文件选择器、multipart successful-controls、二进制 body 和 reset 清理。next102 的既有门禁全部通过但 TEST70 file reset 失败；根因是 libdom 将 file 第一次运行时 value 缓存为 defaultValue，next103 已在真实 reset 路径修复。WM 多选列表、约束验证和完整事件系统仍未实现。**next78 仍是已撤回的失败实验，不得使用**。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -96,11 +96,11 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前基线使用 `tests=13,20,27,43,44,56,58-69`；也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前基线使用 `tests=13,20,27,43,44,56,58-70`。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle 与具名 NetSurf option 默认，离线。TEST40-45、59、60 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
-- GDI Render：TEST 12、14、17、19、20、26-37、39、46-58、62-69，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、同文档及重叠文档缓存复用、table/list、HTML inline author CSS、checkbox/radio、WM 原生输入/select、button、基础提交、reset/Enter/label；TEST65-69 已验收。
+- GDI Render：TEST 12、14、17、19、20、26-37、39、46-58、62-70，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、同文档及重叠文档缓存复用、table/list、HTML inline author CSS、普通表单与 multipart/file；TEST65-70 已验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
 当前最关键验证：
@@ -129,7 +129,7 @@ scripts\stage.bat
 
 优先候选：
 
-> 2026-07-30 优先级调整：先解决“有没有”，再解决已有小范围“好不好”。普通表单已推进到 next101 / TEST69 设备自动化基线，覆盖 checkbox/radio、text/password、textarea、单选 select、button、GET/URL-encoded POST、reset、Enter 隐式提交与 label 激活。之后再补 multipart/file、WM 多选列表、约束验证、事件状态和重大布局缺口。已有 NetSurf Duktape backend 的 JavaScript 最小纵切提前到中期。首屏 SVG 冷解析、抗锯齿、渐变高级参数、视觉微调和全面性能优化后置，除非它们造成崩溃、数据错误或阻塞基本操作。
+> 2026-07-30 优先级调整：先解决“有没有”，再解决已有小范围“好不好”。普通表单与 multipart/file 已推进到 next103 / TEST70 设备自动化基线。下一步依次补 WM 多选列表、约束验证、事件状态和重大布局缺口。已有 NetSurf Duktape backend 的 JavaScript 最小纵切提前到中期。首屏 SVG 冷解析、抗锯齿、渐变高级参数、视觉微调和全面性能优化后置，除非它们造成崩溃、数据错误或阻塞基本操作。
 
 1. 2026-07-11 用户真机确认 ENGINE 原整组至 TEST24 通过；2026-07-12 单独确认 TEST25 SVG parse。后续修改引擎路径时必须重跑当前整组。
 2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。TEST13 起始页正常不等于所有 IANA 子页正常；2026-07-24 `/domains/reserved` 已再次证明必须走深层链接和旋转验收。next80 已让 TEST60 与真实页横竖屏全部通过；next78 仍因扩大回归和系统异常保持撤回。后续 float 仍必须对照上游 box construction/normalisation。

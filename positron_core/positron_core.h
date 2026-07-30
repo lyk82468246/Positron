@@ -250,10 +250,41 @@ PCORE_API int PCore_NodeFormControlState(HANDLE hDoc, const char *tag,
 
 /* Inspect a form control in box-tree order. Geometry is in absolute document
  * CSS px; kind is 1 checkbox, 2 radio, 3 single-line text, 4 password,
- * 5 textarea, 6 select, 7 submit, 8 reset and 9 ordinary button. */
+ * 5 textarea, 6 select, 7 submit, 8 reset, 9 ordinary button and 10 file. */
 PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
                                    int *x, int *y, int *w, int *h,
                                    int *kind, int *selected, int *disabled);
+
+/* Resolve a file gadget at a document-space point. `file_index` is the
+ * file-only index accepted by PCore_FileInputInfo/SetPath. A disabled gadget
+ * still consumes the point. Returns 1 for a file gadget and 0 otherwise. */
+PCORE_API int PCore_FileInputAt(HANDLE hDoc, int x, int y,
+                               unsigned int *file_index, int *disabled);
+
+typedef struct PCoreFileInputInfo {
+    int x;
+    int y;
+    int width;
+    int height;
+    int disabled;
+    int value_bytes;
+    int path_bytes;
+} PCoreFileInputInfo;
+
+/* Read one file input in file-only box-tree order. `value` is the UTF-8
+ * display filename and `path` is the retained UTF-8 local path. Returns 0 on
+ * success. Probe calls may pass NULL buffers; sizes exclude the terminating
+ * NUL. */
+PCORE_API int PCore_FileInputInfo(HANDLE hDoc, unsigned int file_index,
+                                 PCoreFileInputInfo *out_info,
+                                 char *value, int value_capacity,
+                                 char *path, int path_capacity);
+
+/* Store a selected file. The display value and raw local path are kept
+ * separately, following NetSurf's file-gadget model. Both strings are UTF-8.
+ * Returns 0 on success. */
+PCORE_API int PCore_FileInputSetPath(HANDLE hDoc, unsigned int file_index,
+                                    const char *value, const char *path);
 
 typedef struct PCoreTextInputInfo {
     int x;
@@ -489,6 +520,41 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
                                     PCoreFormSubmissionInfo *out_info,
                                     char *action, int action_capacity,
                                     char *body, int body_capacity);
+
+typedef struct PCoreMultipartSubmissionInfo {
+    int action_bytes;
+    unsigned int part_count;
+} PCoreMultipartSubmissionInfo;
+
+typedef struct PCoreMultipartPartInfo {
+    int kind;
+    int name_bytes;
+    int value_bytes;
+    int path_bytes;
+} PCoreMultipartPartInfo;
+
+/* Capture the successful-control set of a multipart/form-data POST without
+ * exposing NetSurf's fetch_multipart_data ABI. kind is 1 for a normal value
+ * and 2 for a file; file `value` is the submitted filename while `path` is
+ * the local file to read. The snapshot owns copied strings and remains valid
+ * until PCore_FreeMultipartSubmission.
+ *
+ * The At variant accepts an enabled submit button. The ForTextInput variant
+ * performs NetSurf's first-submit implicit selection for a single-line native
+ * EDIT. NULL means no qualifying multipart form or an allocation/DOM error. */
+PCORE_API HANDLE PCore_MultipartSubmissionAt(HANDLE hDoc, int x, int y);
+PCORE_API HANDLE PCore_MultipartSubmissionForTextInput(HANDLE hDoc,
+                                                       unsigned int text_index);
+PCORE_API int PCore_MultipartSubmissionInfo(HANDLE hSubmission,
+                                    PCoreMultipartSubmissionInfo *out_info,
+                                    char *action, int action_capacity);
+PCORE_API int PCore_MultipartPartInfo(HANDLE hSubmission,
+                                    unsigned int part_index,
+                                    PCoreMultipartPartInfo *out_info,
+                                    char *name, int name_capacity,
+                                    char *value, int value_capacity,
+                                    char *path, int path_capacity);
+PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission);
 
 /* Perform the default action for a reset button at a document-space point.
  * Initial values/checks/selections saved by libdom are restored in the DOM.

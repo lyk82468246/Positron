@@ -123,7 +123,9 @@ bool content_textsearch_ishighlighted(struct textsearch_context *textsearch,
 
 const char *messages_get(const char *key)
 {
-    (void) key;
+    if (key != NULL && strcmp(key, "Form_Drop") == 0) {
+        return "Choose file";
+    }
     return "";
 }
 

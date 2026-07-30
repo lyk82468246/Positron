@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-30
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径及普通表单纵切已推进到 next101 / TEST69 的设备自动化基线。next100 的既有门禁全部通过但 TEST69 reset 失败；next101 修正 libdom textarea 默认值缓存后，TEST13/20/27/43/44/56/58-69 全部通过。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径及表单纵切已推进到 next103 / TEST70 的设备自动化基线。next102 仅 file reset 失败；next103 修复后，TEST13/20/27/43/44/56/58-70 全部通过。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -287,8 +287,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next101 / TEST69 为设备自动化基线；next100 因 TEST69 reset 失败未升级。自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
-2. 下一批继续 multipart/file、WM 多选列表、约束验证或事件状态基础。真实触屏 label/Enter 和控件视觉验收放入后续人工检查批次。
+1. 以 next103 / TEST70 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
+2. 下一批继续 WM 多选列表、约束验证或事件状态基础。真实触屏 label/Enter、原生文件选择器和控件视觉验收放入后续人工检查批次。
 3. 表单基础稳定后，补事件/动态状态；随后按“一个上游能力一个批次”补 positioned layout、float、基础 Grid 或背景尺寸。撤回的 TEST23 实验不得原样恢复。
 4. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge。脚本资源接口可在此前短期阶段先建好，但 JavaScript 默认仍保持关闭直到设备门禁通过。
 5. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。

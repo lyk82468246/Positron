@@ -6,8 +6,9 @@
  * nsurl accessors, the `guit` operation table (its ->layout points at our GDI
  * font measurement table so redraw measures text exactly as layout did), and
  * the content_get_* object accessors. The image subset represents cached
- * native or SVG images as a small typed carrier; form/iframe/scrollbar/gadget and
- * selection paths remain constant defaults.
+ * native or SVG images as a small typed carrier. The small form surface used
+ * by layout/redraw is implemented; iframe and selection paths remain constant
+ * defaults.
  *
  * C89.
  */
@@ -51,6 +52,7 @@ dom_string *corestring_dom_reversed = NULL;
 dom_string *corestring_dom_value = NULL;
 dom_string *corestring_dom___ns_key_box_node_data = NULL;
 dom_string *corestring_dom___ns_key_canvas_node_data = NULL;
+dom_string *corestring_dom___ns_key_file_name_node_data = NULL;
 
 static void pcore_intern1(const char *s, dom_string **out)
 {
@@ -73,6 +75,8 @@ void pcore_nsshim_init(void)
             &corestring_dom___ns_key_box_node_data);
     pcore_intern1("__ns_key_canvas_node_data",
             &corestring_dom___ns_key_canvas_node_data);
+    pcore_intern1("__ns_key_file_name_node_data",
+            &corestring_dom___ns_key_file_name_node_data);
 }
 
 /* ---- nsurl: opaque, never constructed in our pipeline ------------ */
