@@ -227,7 +227,7 @@ dom_exception dom_html_text_area_element_get_value(
 		err = dom_node_get_text_content((dom_node *)ele,
 						&ele->value);
 		if (err == DOM_NO_ERR) {
-			ele->default_value_set = true;
+			ele->value_set = true;
 			if (ele->default_value_set == false) {
 				ele->default_value_set = true;
 				ele->default_value = ele->value;

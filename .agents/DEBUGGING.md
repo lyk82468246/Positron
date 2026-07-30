@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next99 基线使用 `tests=13,20,27,43,44,56,58-68`，包含 button/GET/POST 自动门禁。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next101 基线使用 `tests=13,20,27,43,44,56,58-69`，包含 reset/Enter/label 自动门禁。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -222,5 +222,9 @@ next97 将 textarea 纳入 `PCore_TextInput*` 枚举，并用新增只读 `PCore
 next98 按 NetSurf `form_option` 链建立 select 状态：option 文本折叠 ASCII 空白，value/selected/disabled 同步 libdom；错误的单选多 selected 归一化为首项，multiple 在 core ABI 中允许独立选择。WM 宿主只为单选创建原生 `COMBOBOX`，复用换页销毁、滚动定位和旋转重建。TEST67 的 WM 探针用 `CB_SETCURSEL` 选择第三项，再调用真实 `CBN_SELCHANGE` 所复用的 `pcore_native_select_changed`；它是自动宿主桥断言，不是手指展开下拉、视觉位置或 WM 多选列表验收。2026-07-30 设备日志确认 TEST13/20/27/43/44/56/58-67 全部 PASS，next98 已提升为自动化基线。
 
 next99 参考 NetSurf `box_special.c::box_input/box_button` 与 `form.c::form_dom_to_data/form_url_encode`：submit/reset/button 使用正式 gadget 和 CSS 盒；successful controls 直接从 libdom form collection 读取 live value/checked/selected，百分号编码 UTF-8 字节，空格转 `+`，只加入被点击的 submit。GET 替换旧 query，POST 请求对象复制 body 并由 worker 调 `PHttp_PostEx`；换页成功后的 CSS/图片仍走 GET。TEST68 只构造宿主请求而不访问网络，既避免依赖公网回显站，也不把 multipart/file 冒充已实现。2026-07-30 设备日志确认 TEST13/20/27/43/44/56/58-68 全部 PASS。
+
+next100 候选沿用 libdom 已保存的 `defaultValue/defaultChecked/defaultSelected` 做 reset，并在恢复后走正常重排来重建 NetSurf gadget 和 WM 控件；不要通过修改 TEST69 期望值掩盖 live/default 状态混淆。单行 WM `EDIT` 的 Enter 由子类窗口发送宿主消息，textarea 保留换行；无 submit 按钮的 form 仍提交其余 successful controls。label 解析只负责把显式/包裹式标签映射到现有控件，自动探针验证消息和焦点桥，不替代人工触屏/视觉验收。
+
+next100 首次设备日志中 TEST13 深链和 TEST20/27/43/44/56/58-68 全部 PASS，TEST69 唯一失败于 reset。根因在 vendored libdom 0.4.2 `html_text_area_element.c`：首次 `get_value()` 成功后误写 `default_value_set = true`，导致紧随其后的“若 default 尚未保存则复制初始 value”分支永远不可达，同时 `value_set` 仍为 false。next101 把该行恢复为语义上应有的 `value_set = true`，不改 TEST69 期望，并把失败日志细分为 query/textarea/checked/options/submission。设备日志确认 TEST13/20/27/43/44/56/58-69 全部 PASS，next101 已升级为基线。
 
 2026-07-11：为旋转跨断点新增 document-owned 外链 CSS 原始字节缓存。首次 `StyleDocumentEx` 成功 fetch 后复制数据；后续 restyle 只从缓存重新解析，`WM_SIZE` 传入的 callback 永远失败，作为“禁止联网”的防线。缓存上限为 32 份、单份 256 KiB、每 document 合计 512 KiB。重样式替换 node user-data 时还会显式释放旧 `css_computed_style`，因为 libdom 替换 user-data 不调用旧析构回调。用户已确认 TEST24：320px 首次 fetch 选绿色，299px cache-only restyle 选蓝色，fetch/free 计数都保持 1；真实 Browse 旋转也已验收。2026-07-14 的 `StyleDocumentEx2` 将成功 `@import` 字节纳入同一缓存，TEST45 覆盖导入树 cache-only 重选。

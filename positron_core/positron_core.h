@@ -445,6 +445,14 @@ PCORE_API int PCore_FormActivateAt(HANDLE hDoc, int x, int y,
                                   int *dirty_x, int *dirty_y,
                                   int *dirty_w, int *dirty_h);
 
+/* Resolve a click on an explicit for=id or wrapping <label> to its visible
+ * form gadget. The target point and kind use the same document coordinates
+ * and kind values as PCore_FormControlInfo. Returns 1 for a resolved label.
+ * The embedder performs the target's normal activation/focus action. */
+PCORE_API int PCore_LabelTargetAt(HANDLE hDoc, int x, int y,
+                                 int *target_x, int *target_y,
+                                 int *target_kind);
+
 typedef struct PCoreFormSubmissionInfo {
     int method;
     int action_bytes;
@@ -470,6 +478,25 @@ PCORE_API int PCore_FormSubmissionAt(HANDLE hDoc, int x, int y,
                                     PCoreFormSubmissionInfo *out_info,
                                     char *action, int action_capacity,
                                     char *body, int body_capacity);
+
+/* Build a submission for the form owning one enumerated single-line text or
+ * password control, as when that native EDIT receives Enter. NetSurf's policy
+ * is followed: the first enabled submit control is successful when no button
+ * was explicitly clicked. A textarea never triggers implicit submission.
+ * Return values and output-buffer rules match PCore_FormSubmissionAt. */
+PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
+                                    unsigned int text_index,
+                                    PCoreFormSubmissionInfo *out_info,
+                                    char *action, int action_capacity,
+                                    char *body, int body_capacity);
+
+/* Perform the default action for a reset button at a document-space point.
+ * Initial values/checks/selections saved by libdom are restored in the DOM.
+ * The embedder must re-layout afterward so NetSurf gadgets and native controls
+ * are rebuilt from that state. Returns 0 when no reset button was hit, 1 on
+ * reset, 2 when a disabled/unowned reset consumed the point, and 3 on a DOM
+ * failure. */
+PCORE_API int PCore_FormResetAt(HANDLE hDoc, int x, int y);
 
 /* Forward pointer input to a nested CSS overflow scrollbar. Coordinates use
  * the same document-space convention as PCore_LinkAt. DOWN performs arrow or

@@ -271,7 +271,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 68
+#define TEST_MAX_NUMBER 69
 
 static int test_config_space(char c)
 {
@@ -2012,6 +2012,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define WM_PCORE_NAV_PROGRESS (WM_APP + 2)
 #define WM_PCORE_NAV_CONTINUE (WM_APP + 3)
 #define WM_TESTBENCH_NAVIGATE (WM_APP + 4)
+#define WM_PCORE_FORM_ENTER (WM_APP + 5)
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_COMMIT_TIMER 25
 #define TESTBENCH_RENDER_TIMER 26
@@ -2119,6 +2120,8 @@ static int    g_cur_port = 443;
 typedef struct pcore_native_edit {
     HWND hwnd;
     unsigned int text_index;
+    int multiline;
+    WNDPROC original_proc;
 } pcore_native_edit;
 
 static pcore_native_edit *g_native_edits = NULL;
@@ -2130,6 +2133,42 @@ static int g_native_edit_probe_ok = 0;
 static int g_native_edit_probe_seen = 0;
 static int g_native_edit_probe_set_result = -1;
 static char g_native_edit_probe_value[32];
+static int g_native_form_enter_probe = 0;
+static int g_native_form_enter_probe_seen = 0;
+static int g_native_form_enter_probe_ok = 0;
+static char g_native_form_enter_expected[256];
+static int g_native_label_probe = 0;
+static int g_native_label_probe_ok = 0;
+
+static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
+        WPARAM wp, LPARAM lp)
+{
+    unsigned int i;
+    WNDPROC original;
+    LONG stored_index;
+    HWND parent;
+
+    original = NULL;
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == hwnd) {
+            original = g_native_edits[i].original_proc;
+            if (msg == WM_KEYDOWN && wp == VK_RETURN &&
+                    !g_native_edits[i].multiline) {
+                stored_index = GetWindowLong(hwnd, GWL_USERDATA);
+                parent = GetParent(hwnd);
+                if (stored_index > 0 && parent != NULL) {
+                    SendMessage(parent, WM_PCORE_FORM_ENTER,
+                            (WPARAM) (stored_index - 1), 0);
+                }
+                return 0;
+            }
+            break;
+        }
+    }
+    return (original != NULL) ?
+            CallWindowProc(original, hwnd, msg, wp, lp) :
+            DefWindowProc(hwnd, msg, wp, lp);
+}
 
 typedef struct pcore_native_select {
     HWND hwnd;
@@ -2310,6 +2349,7 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
                 parent, (HMENU) (INT_PTR) (1000 + i),
                 GetModuleHandle(NULL), NULL);
         items[i].text_index = i;
+        items[i].multiline = multiline;
         if (edit_value != value) {
             free(edit_value);
         }
@@ -2319,6 +2359,8 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
             continue;
         }
         SetWindowLong(items[i].hwnd, GWL_USERDATA, (LONG) (i + 1));
+        items[i].original_proc = (WNDPROC) SetWindowLong(items[i].hwnd,
+                GWL_WNDPROC, (LONG) pcore_native_edit_proc);
         SendMessage(items[i].hwnd, WM_SETFONT,
                 (WPARAM) GetStockObject(SYSTEM_FONT), TRUE);
         SendMessage(items[i].hwnd, EM_LIMITTEXT,
@@ -3684,6 +3726,35 @@ static void navigate_form_submission(HWND hwnd, int method,
     free(target);
 }
 
+static int pcore_relayout_form_state(HWND hwnd)
+{
+    RECT client;
+    int width;
+    int height;
+    int max_scroll;
+
+    if (hwnd == NULL || g_render_doc == NULL) {
+        return 1;
+    }
+    GetClientRect(hwnd, &client);
+    width = client.right - client.left;
+    height = client.bottom - client.top;
+    if (width <= 0 || height <= 0 ||
+            PCore_LayoutDocument(g_render_doc, width, height) != 0) {
+        return 1;
+    }
+    g_doc_h = PCore_DocumentHeight(g_render_doc);
+    max_scroll = (g_doc_h > height) ? g_doc_h - height : 0;
+    if (g_scroll_y > max_scroll) {
+        g_scroll_y = max_scroll;
+    }
+    pcore_set_scrollbar(hwnd);
+    pcore_native_edits_rebuild(hwnd, 0);
+    pcore_native_selects_rebuild(hwnd, 0);
+    InvalidateRect(hwnd, NULL, TRUE);
+    return 0;
+}
+
 static int pcore_handle_form_button(HWND hwnd, int x, int y)
 {
     PCoreFormSubmissionInfo info;
@@ -3693,6 +3764,19 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
     char *body;
     int result;
 
+    result = PCore_FormResetAt(g_render_doc, x, y);
+    if (result != 0) {
+        if (result == 1) {
+            if (pcore_relayout_form_state(hwnd) != 0) {
+                show_error(L"Form reset failed",
+                        "The form reset but could not be re-laid out");
+            }
+        } else if (result == 3) {
+            show_error(L"Form reset failed",
+                    "Could not restore the form's initial state");
+        }
+        return 1;
+    }
     memset(&info, 0, sizeof(info));
     action_probe[0] = '\0';
     body_probe[0] = '\0';
@@ -3740,6 +3824,152 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
     }
     free(action);
     free(body);
+    return 1;
+}
+
+static void pcore_handle_form_enter(HWND hwnd, unsigned int text_index)
+{
+    PCoreFormSubmissionInfo info;
+    char action_probe[1];
+    char body_probe[1];
+    char *action;
+    char *body;
+    int result;
+
+    memset(&info, 0, sizeof(info));
+    action_probe[0] = '\0';
+    body_probe[0] = '\0';
+    result = PCore_FormSubmissionForTextInput(g_render_doc, text_index,
+            &info, action_probe, sizeof(action_probe),
+            body_probe, sizeof(body_probe));
+    if (result == 0) {
+        return;
+    }
+    if (result == 3) {
+        show_info(L"Form submission",
+                "multipart/form-data is not implemented yet.");
+        return;
+    }
+    action = NULL;
+    body = NULL;
+    if (result == 4 && info.method != 0 &&
+            info.action_bytes >= 0 && info.body_bytes >= 0) {
+        action = (char *) malloc((size_t) info.action_bytes + 1);
+        body = (char *) malloc((size_t) info.body_bytes + 1);
+        if (action != NULL && body != NULL) {
+            result = PCore_FormSubmissionForTextInput(g_render_doc,
+                    text_index, &info,
+                    action, info.action_bytes + 1,
+                    body, info.body_bytes + 1);
+        }
+    } else if (result == 1) {
+        action = action_probe;
+        body = body_probe;
+    }
+    if (result == 1 && action != NULL && body != NULL) {
+        if (g_native_form_enter_probe) {
+            g_native_form_enter_probe_seen = 1;
+            g_native_form_enter_probe_ok =
+                    info.method == 1 &&
+                    strcmp(action, "/implicit") == 0 &&
+                    strcmp(body, g_native_form_enter_expected) == 0;
+        } else {
+            navigate_form_submission(hwnd, info.method, action, body);
+        }
+    } else {
+        show_error(L"Form submission failed",
+                "Could not collect the form after Enter");
+    }
+    if (action != action_probe) {
+        free(action);
+    }
+    if (body != body_probe) {
+        free(body);
+    }
+}
+
+static void pcore_invalidate_form_dirty(HWND hwnd,
+        int x, int y, int width, int height)
+{
+    RECT dirty;
+
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    dirty.left = x;
+    dirty.top = y - g_scroll_y;
+    dirty.right = dirty.left + width;
+    dirty.bottom = dirty.top + height;
+    InvalidateRect(hwnd, &dirty, FALSE);
+}
+
+static int pcore_focus_native_form_control(int kind, int x, int y)
+{
+    PCoreTextInputInfo text_info;
+    PCoreSelectInfo select_info;
+    unsigned int i;
+
+    if (kind >= 3 && kind <= 5) {
+        for (i = 0; i < g_native_edit_count; i++) {
+            if (g_native_edits[i].hwnd != NULL &&
+                    PCore_TextInputInfo(g_render_doc,
+                            g_native_edits[i].text_index,
+                            &text_info, NULL, 0) == 0 &&
+                    x >= text_info.x &&
+                    x < text_info.x + text_info.width &&
+                    y >= text_info.y &&
+                    y < text_info.y + text_info.height) {
+                if (IsWindowEnabled(g_native_edits[i].hwnd)) {
+                    SetFocus(g_native_edits[i].hwnd);
+                }
+                return 1;
+            }
+        }
+    } else if (kind == 6) {
+        for (i = 0; i < g_native_select_count; i++) {
+            if (g_native_selects[i].hwnd != NULL &&
+                    PCore_SelectInfo(g_render_doc,
+                            g_native_selects[i].select_index,
+                            &select_info) == 0 &&
+                    x >= select_info.x &&
+                    x < select_info.x + select_info.width &&
+                    y >= select_info.y &&
+                    y < select_info.y + select_info.height) {
+                if (IsWindowEnabled(g_native_selects[i].hwnd)) {
+                    SetFocus(g_native_selects[i].hwnd);
+                }
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int pcore_handle_label(HWND hwnd, int x, int y)
+{
+    int target_x;
+    int target_y;
+    int kind;
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
+
+    if (!PCore_LabelTargetAt(g_render_doc, x, y,
+            &target_x, &target_y, &kind)) {
+        return 0;
+    }
+    if (kind >= 7 && kind <= 9) {
+        pcore_handle_form_button(hwnd, target_x, target_y);
+    } else if (kind == 1 || kind == 2) {
+        if (PCore_FormActivateAt(g_render_doc, target_x, target_y,
+                &dirty_x, &dirty_y, &dirty_w, &dirty_h)) {
+            pcore_invalidate_form_dirty(hwnd, dirty_x, dirty_y,
+                    dirty_w, dirty_h);
+        }
+    } else {
+        pcore_focus_native_form_control(kind, target_x, target_y);
+    }
     return 1;
 }
 
@@ -4026,6 +4256,11 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         return 0;
     }
+    case WM_PCORE_FORM_ENTER:
+        if (g_render_doc != NULL) {
+            pcore_handle_form_enter(hwnd, (unsigned int) wp);
+        }
+        return 0;
     case WM_COMMAND:
         if ((HWND) lp != NULL) {
             if (HIWORD(wp) == CBN_SELCHANGE) {
@@ -4081,15 +4316,12 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         if (g_render_doc != NULL &&
                 PCore_FormActivateAt(g_render_doc, cx, cy + g_scroll_y,
                         &dirty_x, &dirty_y, &dirty_w, &dirty_h)) {
-            if (dirty_w > 0 && dirty_h > 0) {
-                RECT dirty;
-
-                dirty.left = dirty_x;
-                dirty.top = dirty_y - g_scroll_y;
-                dirty.right = dirty.left + dirty_w;
-                dirty.bottom = dirty.top + dirty_h;
-                InvalidateRect(hwnd, &dirty, FALSE);
-            }
+            pcore_invalidate_form_dirty(hwnd, dirty_x, dirty_y,
+                    dirty_w, dirty_h);
+            return 0;
+        }
+        if (g_render_doc != NULL &&
+                pcore_handle_label(hwnd, cx, cy + g_scroll_y)) {
             return 0;
         }
         /* Document-space point = client point + scroll (scroll_x is 0). If it
@@ -4195,10 +4427,29 @@ static BOOL show_render_window(void)
             SetWindowTextW(g_native_edits[0].hwnd, L"wm-edit");
         }
     }
+    if (g_native_form_enter_probe && g_native_edit_count > 0 &&
+            g_native_edits[0].hwnd != NULL) {
+        SendMessage(g_native_edits[0].hwnd, WM_KEYDOWN, VK_RETURN, 0);
+    }
     g_testbench_render_paints = 0;
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
     SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
+    if (g_native_label_probe && g_native_edit_count > 0 &&
+            g_native_edits[0].hwnd != NULL) {
+        int label_x;
+        int label_y;
+        int label_w;
+        int label_h;
+
+        g_native_label_probe_ok =
+                PCore_NodeBox(g_render_doc, "strong",
+                        &label_x, &label_y, &label_w, &label_h) == 0 &&
+                pcore_handle_label(hwnd,
+                        label_x + label_w / 2,
+                        label_y + label_h / 2) &&
+                GetFocus() == g_native_edits[0].hwnd;
+    }
     /* Read-only view: hide the SIP button and keep the keyboard down. */
     SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
     SHSipPreference(hwnd, SIP_FORCEDOWN);
@@ -11565,6 +11816,248 @@ static BOOL test68_form_submission(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 69 - label activation, form reset and native Enter submission    */
+/* -------------------------------------------------------------------- */
+static int test69_control_state(HANDLE hDoc, int wanted_kind,
+        int wanted_ordinal, int *selected, int *disabled)
+{
+    unsigned int index;
+    int ordinal;
+    int kind;
+
+    ordinal = 0;
+    for (index = 0;
+            PCore_FormControlInfo(hDoc, index, NULL, NULL, NULL, NULL,
+                    &kind, selected, disabled) == 0;
+            index++) {
+        if (kind == wanted_kind) {
+            if (ordinal == wanted_ordinal) {
+                return 1;
+            }
+            ordinal++;
+        }
+    }
+    return 0;
+}
+
+static BOOL test69_form_defaults_and_labels(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Form defaults</h1>"
+        "<form action=/implicit method=get>"
+        "<label for=query><strong>Query label</strong></label>"
+        "<input id=query name=q value=seed>"
+        "<label><input type=checkbox name=flag value=yes checked>"
+        "<span>Include label</span></label>"
+        "<textarea name=note>base</textarea>"
+        "<select name=pick>"
+        "<option value=a selected>Alpha</option>"
+        "<option value=b>Beta</option>"
+        "</select>"
+        "<input type=submit name=go value=Go>"
+        "<button type=reset>Restore defaults</button>"
+        "<button type=reset disabled>Disabled reset</button>"
+        "</form>"
+        "<form action=/plain><input name=solo value=only></form>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "h1{font-size:20px}"
+        "label,input,textarea,select,button{display:block;margin:3px}"
+        "input,textarea,select,button{width:150px;height:24px}";
+    static const char EXPECT_CHANGED[] =
+        "q=changed&note=changed+note&pick=b&go=Go";
+    static const char EXPECT_RESET[] =
+        "q=seed&flag=yes&note=base&pick=a&go=Go";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreFormSubmissionInfo info;
+    PCoreTextInputInfo text_info;
+    char action[128];
+    char body[512];
+    char query_value[64];
+    char textarea_value[64];
+    char detail[512];
+    int selected;
+    int disabled;
+    int label_x;
+    int label_y;
+    int label_w;
+    int label_h;
+    int target_x;
+    int target_y;
+    int target_kind;
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
+    int reset_x;
+    int reset_y;
+    int option_selected;
+    int option_disabled;
+    int query_result;
+    int textarea_result;
+    int control_result;
+    int option0_result;
+    int option0_selected;
+    int option1_result;
+    int option1_selected;
+    int submit_result;
+    int ok;
+
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/form-defaults.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 69 FAIL", "form defaults setup failed");
+        return FALSE;
+    }
+
+    ok = PCore_NodeBox(hDoc, "strong", &label_x, &label_y,
+            &label_w, &label_h) == 0 &&
+            PCore_LabelTargetAt(hDoc,
+                    label_x + label_w / 2, label_y + label_h / 2,
+                    &target_x, &target_y, &target_kind) == 1 &&
+            target_kind == 3;
+    if (!ok || PCore_NodeBox(hDoc, "span", &label_x, &label_y,
+            &label_w, &label_h) != 0 ||
+            PCore_LabelTargetAt(hDoc,
+                    label_x + label_w / 2, label_y + label_h / 2,
+                    &target_x, &target_y, &target_kind) != 1 ||
+            target_kind != 1 ||
+            !PCore_FormActivateAt(hDoc, target_x, target_y,
+                    &dirty_x, &dirty_y, &dirty_w, &dirty_h) ||
+            dirty_w <= 0 || dirty_h <= 0 ||
+            PCore_TextInputSetValue(hDoc, 0, "changed") != 0 ||
+            PCore_TextInputSetValue(hDoc, 1, "changed note") != 0 ||
+            PCore_SelectSetOptionSelected(hDoc, 0, 1, 1) != 0 ||
+            PCore_FormSubmissionForTextInput(hDoc, 0, &info,
+                    action, sizeof(action), body, sizeof(body)) != 1 ||
+            info.method != 1 || strcmp(action, "/implicit") != 0 ||
+            strcmp(body, EXPECT_CHANGED) != 0 ||
+            PCore_FormSubmissionForTextInput(hDoc, 1, &info,
+                    action, sizeof(action), body, sizeof(body)) != 0 ||
+            PCore_FormSubmissionForTextInput(hDoc, 2, &info,
+                    action, sizeof(action), body, sizeof(body)) != 1 ||
+            strcmp(action, "/plain") != 0 ||
+            strcmp(body, "solo=only") != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 69 FAIL",
+                "label or implicit submission semantics failed");
+        return FALSE;
+    }
+
+    if (!test68_control_center(hDoc, 8, 0, &reset_x, &reset_y) ||
+            PCore_FormResetAt(hDoc, reset_x, reset_y) != 1 ||
+            !test68_control_center(hDoc, 8, 1, &reset_x, &reset_y) ||
+            PCore_FormResetAt(hDoc, reset_x, reset_y) != 2 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 69 FAIL", "reset action or re-layout failed");
+        return FALSE;
+    }
+    query_value[0] = '\0';
+    textarea_value[0] = '\0';
+    detail[0] = '\0';
+    selected = 0;
+    disabled = 0;
+    option_selected = 0;
+    option_disabled = 0;
+    option0_selected = 0;
+    option1_selected = 0;
+    query_result = PCore_TextInputInfo(hDoc, 0, &text_info,
+            query_value, sizeof(query_value));
+    textarea_result = PCore_TextInputInfo(hDoc, 1, NULL,
+            textarea_value, sizeof(textarea_value));
+    control_result = test69_control_state(hDoc, 1, 0,
+            &selected, &disabled);
+    option0_result = PCore_SelectOptionInfo(hDoc, 0, 0,
+            NULL, 0, NULL, 0,
+            &option_selected, &option_disabled,
+            NULL, NULL);
+    option0_selected = option_selected;
+    option1_result = PCore_SelectOptionInfo(hDoc, 0, 1,
+            NULL, 0, NULL, 0,
+            &option_selected, &option_disabled,
+            NULL, NULL);
+    option1_selected = option_selected;
+    action[0] = '\0';
+    body[0] = '\0';
+    submit_result = PCore_FormSubmissionForTextInput(hDoc, 0, &info,
+            action, sizeof(action), body, sizeof(body));
+    ok = query_result == 0 && strcmp(query_value, "seed") == 0 &&
+            textarea_result == 0 &&
+            strcmp(textarea_value, "base") == 0 &&
+            control_result &&
+            selected == 1 && disabled == 0 &&
+            option0_result == 0 && option0_selected == 1 &&
+            option1_result == 0 && option1_selected == 0 &&
+            submit_result == 1 &&
+            strcmp(body, EXPECT_RESET) == 0;
+    if (!ok) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "q=%d:%s note=%d:%s check=%d:%d/%d\n"
+                "options=%d:%d/%d:%d submit=%d body=%s",
+                query_result, query_value,
+                textarea_result, textarea_value,
+                control_result, selected, disabled,
+                option0_result, option0_selected,
+                option1_result, option1_selected,
+                submit_result, body);
+        detail[sizeof(detail) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 69 FAIL", detail);
+        return FALSE;
+    }
+
+    cstr_copy(g_native_form_enter_expected,
+            sizeof(g_native_form_enter_expected), EXPECT_RESET);
+    g_native_form_enter_probe = 1;
+    g_native_form_enter_probe_seen = 0;
+    g_native_form_enter_probe_ok = 0;
+    g_native_label_probe = 1;
+    g_native_label_probe_ok = 0;
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_native_form_enter_probe = 0;
+        g_native_label_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 69 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_native_form_enter_probe = 0;
+    g_native_label_probe = 0;
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    if (!g_native_form_enter_probe_seen ||
+            !g_native_form_enter_probe_ok ||
+            !g_native_label_probe_ok) {
+        show_error(L"TEST 69 FAIL",
+                "WM Enter or label focus bridge failed");
+        return FALSE;
+    }
+    show_info(L"TEST 69 OK",
+            "Explicit/wrapping labels, reset defaults, first-submit\n"
+            "selection, no-button form and WM EDIT Enter passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -11747,6 +12240,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 66: ok = test66_textarea(); break;
         case 67: ok = test67_select_control(); break;
         case 68: ok = test68_form_submission(); break;
+        case 69: ok = test69_form_defaults_and_labels(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -11880,7 +12374,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list/\n"
                                "inline CSS and form controls\n"
-                               "(TEST 46-58, 62-68).\n"
+                               "(TEST 46-58, 62-69).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -11943,7 +12437,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-68; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-69; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -11984,6 +12478,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test66_textarea())   { rc = 13; goto done; }
         if (!test67_select_control()){ rc = 13; goto done; }
         if (!test68_form_submission()){ rc = 13; goto done; }
+        if (!test69_form_defaults_and_labels()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -12025,7 +12520,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-68)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-69)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
