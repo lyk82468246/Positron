@@ -41,6 +41,14 @@ css_computed_style *pcore_document_default_style(struct dom_document *doc);
  * layout's html_content.unit_len_ctx. Implemented in pcore_select.c. */
 const css_unit_ctx *pcore_get_unit_ctx(void);
 
+/* Dynamic selector state retained by the document. Nodes are referenced until
+ * replaced or the document is freed. Return 1 when state changed, 0 when it was
+ * already equal, and -1 on invalid input/allocation failure. */
+int pcore_interaction_set_node(struct dom_document *doc,
+        unsigned int state_flags, struct dom_node *node);
+void pcore_interaction_snapshot(struct dom_document *doc,
+        struct dom_node **focus_node, struct dom_node **active_node);
+
 /* Look up raw image bytes cached on `doc` by PCore_FetchImageResources.
  * Returned data is borrowed and remains valid until the document is freed. */
 int pcore_image_resource_get(struct dom_document *doc, const char *url,

@@ -327,7 +327,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 72
+#define TEST_MAX_NUMBER 73
 
 static int test_config_space(char c)
 {
@@ -2069,6 +2069,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define WM_PCORE_NAV_CONTINUE (WM_APP + 3)
 #define WM_TESTBENCH_NAVIGATE (WM_APP + 4)
 #define WM_PCORE_FORM_ENTER (WM_APP + 5)
+#define WM_PCORE_INTERACTION_RESTYLE (WM_APP + 6)
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_COMMIT_TIMER 25
 #define TESTBENCH_RENDER_TIMER 26
@@ -2241,6 +2242,17 @@ static int g_native_select_probe = 0;
 static int g_native_select_probe_ok = 0;
 static int g_native_multiselect_probe = 0;
 static int g_native_multiselect_probe_ok = 0;
+static int g_interaction_restyle_pending = 0;
+
+static void pcore_request_interaction_restyle(HWND hwnd)
+{
+    if (hwnd != NULL && !g_interaction_restyle_pending) {
+        g_interaction_restyle_pending = 1;
+        if (!PostMessage(hwnd, WM_PCORE_INTERACTION_RESTYLE, 0, 0)) {
+            g_interaction_restyle_pending = 0;
+        }
+    }
+}
 
 static void pcore_native_edits_destroy(void)
 {
@@ -2721,6 +2733,49 @@ static pcore_native_select *pcore_native_select_find(HWND select_window)
     return NULL;
 }
 
+static void pcore_native_focus_changed(HWND control)
+{
+    PCoreTextInputInfo text_info;
+    PCoreSelectInfo select_info;
+    unsigned int i;
+    int result;
+
+    if (control == NULL || g_render_doc == NULL ||
+            g_native_edit_syncing || g_native_select_syncing) {
+        return;
+    }
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == control &&
+                PCore_TextInputInfo(g_render_doc,
+                        g_native_edits[i].text_index,
+                        &text_info, NULL, 0) == 0) {
+            result = PCore_InteractionSetAt(g_render_doc,
+                    text_info.x + text_info.width / 2,
+                    text_info.y + text_info.height / 2,
+                    PCORE_INTERACTION_FOCUS);
+            if (result > 0) {
+                pcore_request_interaction_restyle(GetParent(control));
+            }
+            return;
+        }
+    }
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd == control &&
+                PCore_SelectInfo(g_render_doc,
+                        g_native_selects[i].select_index,
+                        &select_info) == 0) {
+            result = PCore_InteractionSetAt(g_render_doc,
+                    select_info.x + select_info.width / 2,
+                    select_info.y + select_info.height / 2,
+                    PCORE_INTERACTION_FOCUS);
+            if (result > 0) {
+                pcore_request_interaction_restyle(GetParent(control));
+            }
+            return;
+        }
+    }
+}
+
 static void pcore_native_select_changed(HWND select_window)
 {
     pcore_native_select *native_select;
@@ -2730,6 +2785,7 @@ static void pcore_native_select_changed(HWND select_window)
     LRESULT native_state;
     unsigned int option_index;
     int core_state;
+    int changed;
     int set_result;
 
     if (g_native_select_syncing || select_window == NULL ||
@@ -2745,6 +2801,7 @@ static void pcore_native_select_changed(HWND select_window)
         return;
     }
     if (native_select->multiple) {
+        changed = 0;
         g_native_select_syncing = 1;
         for (option_index = 0;
                 option_index < (unsigned int) native_select->option_count;
@@ -2767,10 +2824,15 @@ static void pcore_native_select_changed(HWND select_window)
                     SendMessage(select_window, LB_SETSEL,
                             (WPARAM) core_state,
                             (LPARAM) option_index);
+                } else {
+                    changed = 1;
                 }
             }
         }
         g_native_select_syncing = 0;
+        if (changed) {
+            pcore_request_interaction_restyle(GetParent(select_window));
+        }
         return;
     }
     selected_index = SendMessage(select_window, CB_GETCURSEL, 0, 0);
@@ -2793,6 +2855,9 @@ static void pcore_native_select_changed(HWND select_window)
                 set_result == 0 &&
                 PCore_SelectInfo(g_render_doc, 0, &info) == 0 &&
                 info.selected_index == (int) selected_index;
+    }
+    if (set_result == 0) {
+        pcore_request_interaction_restyle(GetParent(select_window));
     }
 }
 
@@ -4281,9 +4346,11 @@ static void navigate_form_submission(HWND hwnd, int method,
     free(target);
 }
 
-static int pcore_relayout_form_state(HWND hwnd)
+static int pcore_restyle_form_state(HWND hwnd, int preserve_focus)
 {
     RECT client;
+    char document_url[1536];
+    const char *document_base;
     int width;
     int height;
     int max_scroll;
@@ -4294,7 +4361,15 @@ static int pcore_relayout_form_state(HWND hwnd)
     GetClientRect(hwnd, &client);
     width = client.right - client.left;
     height = client.bottom - client.top;
+    document_base = NULL;
+    if (pcore_document_url(g_cur_host, g_cur_path, g_cur_port,
+            document_url, sizeof(document_url)) == 0) {
+        document_base = document_url;
+    }
     if (width <= 0 || height <= 0 ||
+            PCore_StyleDocumentEx2(g_render_doc, g_render_sheet,
+                    document_base, wm_combine_url,
+                    page_resource_cache_only_cb, NULL, NULL) != 0 ||
             PCore_LayoutDocument(g_render_doc, width, height) != 0) {
         return 1;
     }
@@ -4304,8 +4379,8 @@ static int pcore_relayout_form_state(HWND hwnd)
         g_scroll_y = max_scroll;
     }
     pcore_set_scrollbar(hwnd);
-    pcore_native_edits_rebuild(hwnd, 0);
-    pcore_native_selects_rebuild(hwnd, 0);
+    pcore_native_edits_rebuild(hwnd, preserve_focus);
+    pcore_native_selects_rebuild(hwnd, preserve_focus);
     InvalidateRect(hwnd, NULL, TRUE);
     return 0;
 }
@@ -4326,7 +4401,7 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
     result = PCore_FormResetAt(g_render_doc, x, y);
     if (result != 0) {
         if (result == 1) {
-            if (pcore_relayout_form_state(hwnd) != 0) {
+            if (pcore_restyle_form_state(hwnd, 0) != 0) {
                 show_error(L"Form reset failed",
                         "The form reset but could not be re-laid out");
             }
@@ -4636,6 +4711,10 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
             &target_x, &target_y, &kind)) {
         return 0;
     }
+    if (PCore_InteractionSetAt(g_render_doc, target_x, target_y,
+            PCORE_INTERACTION_FOCUS) > 0) {
+        pcore_request_interaction_restyle(hwnd);
+    }
     if (kind >= 7 && kind <= 9) {
         pcore_handle_form_button(hwnd, target_x, target_y);
     } else if (kind == 10) {
@@ -4645,6 +4724,7 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
                 &dirty_x, &dirty_y, &dirty_w, &dirty_h)) {
             pcore_invalidate_form_dirty(hwnd, dirty_x, dirty_y,
                     dirty_w, dirty_h);
+            pcore_request_interaction_restyle(hwnd);
         }
     } else {
         pcore_focus_native_form_control(kind, target_x, target_y);
@@ -4940,6 +5020,14 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             pcore_handle_form_enter(hwnd, (unsigned int) wp);
         }
         return 0;
+    case WM_PCORE_INTERACTION_RESTYLE:
+        g_interaction_restyle_pending = 0;
+        if (g_render_doc != NULL &&
+                pcore_restyle_form_state(hwnd, 1) != 0) {
+            show_error(L"Dynamic restyle failed",
+                    "Could not reselect styles after an interaction");
+        }
+        return 0;
     case WM_COMMAND:
         if ((HWND) lp != NULL) {
             if (HIWORD(wp) == CBN_SELCHANGE) {
@@ -4951,10 +5039,24 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                 return 0;
             }
             if (HIWORD(wp) == EN_SETFOCUS) {
+                pcore_native_focus_changed((HWND) lp);
                 SHFullScreen(hwnd, SHFS_SHOWSIPBUTTON);
                 SHSipPreference(hwnd, SIP_UP);
                 return 0;
             }
+            if (HIWORD(wp) == CBN_SETFOCUS ||
+                    HIWORD(wp) == LBN_SETFOCUS) {
+                pcore_native_focus_changed((HWND) lp);
+                return 0;
+            }
+        }
+        break;
+    case WM_ACTIVATE:
+        if (LOWORD(wp) == WA_INACTIVE && g_render_doc != NULL &&
+                PCore_InteractionClear(g_render_doc,
+                        PCORE_INTERACTION_FOCUS |
+                        PCORE_INTERACTION_ACTIVE) > 0) {
+            pcore_request_interaction_restyle(hwnd);
         }
         break;
     case WM_KEYDOWN:
@@ -4989,6 +5091,13 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             return 0;
         }
         if (g_render_doc != NULL &&
+                PCore_InteractionSetAt(g_render_doc,
+                        cx, cy + g_scroll_y,
+                        PCORE_INTERACTION_FOCUS |
+                        PCORE_INTERACTION_ACTIVE) > 0) {
+            pcore_request_interaction_restyle(hwnd);
+        }
+        if (g_render_doc != NULL &&
                 pcore_handle_form_button(hwnd, cx, cy + g_scroll_y)) {
             return 0;
         }
@@ -5001,6 +5110,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                         &dirty_x, &dirty_y, &dirty_w, &dirty_h)) {
             pcore_invalidate_form_dirty(hwnd, dirty_x, dirty_y,
                     dirty_w, dirty_h);
+            pcore_request_interaction_restyle(hwnd);
             return 0;
         }
         if (g_render_doc != NULL &&
@@ -5030,6 +5140,11 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         break;
     case WM_LBUTTONUP:
+        if (g_render_doc != NULL &&
+                PCore_InteractionClear(g_render_doc,
+                        PCORE_INTERACTION_ACTIVE) > 0) {
+            pcore_request_interaction_restyle(hwnd);
+        }
         if (g_overflow_pointer) {
             int cx = (int) (short) LOWORD(lp);
             int cy = (int) (short) HIWORD(lp);
@@ -5049,6 +5164,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_DESTROY:
         g_nav_generation++;
         g_overflow_pointer = 0;
+        g_interaction_restyle_pending = 0;
         pcore_native_edits_destroy();
         pcore_native_selects_destroy();
         SHSipPreference(hwnd, SIP_FORCEDOWN);
@@ -13499,6 +13615,223 @@ validation_failed:
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 73 - dynamic form pseudo-classes and WM interaction state       */
+/* -------------------------------------------------------------------- */
+static BOOL test73_dynamic_form_states(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Dynamic form states</h1>"
+        "<form>"
+        "<p><input type=checkbox name=flag><checkedmark>checked</checkedmark></p>"
+        "<p><input type=text name=focus><focusmark>focus</focusmark></p>"
+        "<p><input type=text name=off disabled><disabledmark>disabled</disabledmark></p>"
+        "<p><input type=text name=on><enabledmark>enabled</enabledmark></p>"
+        "<p><button type=button>Hold</button><activemark>active</activemark></p>"
+        "<select name=choice><option selected>Selected option</option>"
+        "<option>Other option</option></select>"
+        "<button type=reset>Reset</button>"
+        "</form></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "h1{font-size:20px;color:#800000;margin:0 0 6px}"
+        "p{margin:6px 0}"
+        "input[type=text]{width:80px;height:20px}"
+        "checkedmark,focusmark,disabledmark,enabledmark,activemark"
+        "{color:#111111;margin-left:6px}"
+        "input:checked+checkedmark{color:#0000ff}"
+        "input:focus+focusmark{color:#008080}"
+        "input:disabled+disabledmark{color:#808080}"
+        "input:enabled+enabledmark{color:#008000}"
+        "button:active+activemark{color:#ff0000}"
+        "option:checked{color:#800080}";
+    HANDLE document;
+    HANDLE sheet;
+    unsigned long checked_color;
+    unsigned long focus_color;
+    unsigned long disabled_color;
+    unsigned long enabled_color;
+    unsigned long active_color;
+    unsigned long option_color;
+    char detail[224];
+    int checkbox_x;
+    int checkbox_y;
+    int text_x;
+    int text_y;
+    int button_x;
+    int button_y;
+    int reset_x;
+    int reset_y;
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
+    int geometry_mask;
+    int stage;
+
+    document = NULL;
+    sheet = NULL;
+    checked_color = 0;
+    focus_color = 0;
+    disabled_color = 0;
+    enabled_color = 0;
+    active_color = 0;
+    option_color = 0;
+    geometry_mask = 0;
+    stage = 1;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/dynamic-form-states.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0) {
+        goto dynamic_failed;
+    }
+
+    stage = 2;
+    if (PCore_NodeComputedColor(document, "checkedmark",
+                &checked_color) != 0 ||
+            PCore_NodeComputedColor(document, "focusmark",
+                &focus_color) != 0 ||
+            PCore_NodeComputedColor(document, "disabledmark",
+                &disabled_color) != 0 ||
+            PCore_NodeComputedColor(document, "enabledmark",
+                &enabled_color) != 0 ||
+            PCore_NodeComputedColor(document, "activemark",
+                &active_color) != 0 ||
+            PCore_NodeComputedColor(document, "option",
+                &option_color) != 0 ||
+            checked_color != 0xff111111UL ||
+            focus_color != 0xff111111UL ||
+            disabled_color != 0xff808080UL ||
+            enabled_color != 0xff008000UL ||
+            active_color != 0xff111111UL ||
+            option_color != 0xff800080UL) {
+        goto dynamic_failed;
+    }
+    if (test68_control_center(document, 1, 0,
+            &checkbox_x, &checkbox_y)) {
+        geometry_mask |= 1;
+    }
+    if (test68_control_center(document, 3, 0, &text_x, &text_y)) {
+        geometry_mask |= 2;
+    }
+    if (test68_control_center(document, 9, 0, &button_x, &button_y)) {
+        geometry_mask |= 4;
+    }
+    if (test68_control_center(document, 8, 0, &reset_x, &reset_y)) {
+        geometry_mask |= 8;
+    }
+    if (geometry_mask != 15) {
+        stage = 20 + geometry_mask;
+        goto dynamic_failed;
+    }
+
+    stage = 3;
+    if (PCore_InteractionSetAt(document, text_x, text_y,
+                PCORE_INTERACTION_FOCUS) != 1 ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeComputedColor(document, "focusmark",
+                &focus_color) != 0 ||
+            focus_color != 0xff008080UL) {
+        goto dynamic_failed;
+    }
+
+    stage = 4;
+    dirty_x = 0;
+    dirty_y = 0;
+    dirty_w = 0;
+    dirty_h = 0;
+    if (PCore_InteractionSetAt(document, checkbox_x, checkbox_y,
+                PCORE_INTERACTION_FOCUS) != 1 ||
+            !PCore_FormActivateAt(document, checkbox_x, checkbox_y,
+                &dirty_x, &dirty_y, &dirty_w, &dirty_h) ||
+            dirty_w <= 0 || dirty_h <= 0 ||
+            PCore_InteractionSetAt(document, button_x, button_y,
+                PCORE_INTERACTION_ACTIVE) != 1 ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 320, 240) != 0 ||
+            PCore_NodeComputedColor(document, "checkedmark",
+                &checked_color) != 0 ||
+            PCore_NodeComputedColor(document, "activemark",
+                &active_color) != 0 ||
+            checked_color != 0xff0000ffUL ||
+            active_color != 0xffff0000UL) {
+        goto dynamic_failed;
+    }
+
+    stage = 5;
+    if (PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeComputedColor(document, "checkedmark",
+                &checked_color) != 0 ||
+            PCore_NodeComputedColor(document, "activemark",
+                &active_color) != 0 ||
+            checked_color != 0xff0000ffUL ||
+            active_color != 0xffff0000UL ||
+            !test68_control_center(document, 8, 0,
+                &reset_x, &reset_y)) {
+        goto dynamic_failed;
+    }
+
+    stage = 6;
+    if (PCore_InteractionClear(document,
+                PCORE_INTERACTION_FOCUS |
+                PCORE_INTERACTION_ACTIVE) != 1 ||
+            PCore_FormResetAt(document, reset_x, reset_y) != 1 ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeComputedColor(document, "checkedmark",
+                &checked_color) != 0 ||
+            PCore_NodeComputedColor(document, "focusmark",
+                &focus_color) != 0 ||
+            PCore_NodeComputedColor(document, "activemark",
+                &active_color) != 0 ||
+            checked_color != 0xff111111UL ||
+            focus_color != 0xff111111UL ||
+            active_color != 0xff111111UL) {
+        goto dynamic_failed;
+    }
+
+    g_doc_h = PCore_DocumentHeight(document);
+    g_scroll_y = 0;
+    g_render_doc = document;
+    g_render_sheet = sheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        stage = 7;
+        goto dynamic_failed;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(sheet);
+    PCore_FreeDocument(document);
+    show_info(L"TEST 73 OK",
+            "Dynamic :enabled/:disabled, checkbox/option :checked, focus,\n"
+            "active, cache-only restyle, rotation persistence and reset passed.");
+    return TRUE;
+
+dynamic_failed:
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    _snprintf(detail, sizeof(detail) - 1,
+            "stage=%d geom=%X colors=%08lX/%08lX/%08lX/%08lX/%08lX/%08lX",
+            stage, geometry_mask, checked_color, focus_color, disabled_color,
+            enabled_color, active_color, option_color);
+    detail[sizeof(detail) - 1] = '\0';
+    show_error(L"TEST 73 FAIL", detail);
+    return FALSE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -13685,6 +14018,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 70: ok = test70_multipart_file(); break;
         case 71: ok = test71_native_multiselect(); break;
         case 72: ok = test72_form_validation(); break;
+        case 73: ok = test73_dynamic_form_states(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -13792,7 +14126,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-72)\n"
+                  "Yes = run all selected groups (TEST 1-73)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -13818,7 +14152,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "(TEST 26-37), and responsive IANA-style\n"
                                "layout redraw (TEST 39), plus table/list/\n"
                                "inline CSS and form controls\n"
-                               "(TEST 46-58, 62-72).\n"
+                               "(TEST 46-58, 62-73).\n"
                                "Fully offline.");
         run_browse = ask_yesno(L"Select groups (4/4)",
                                "Run BROWSE test?\n\n"
@@ -13881,7 +14215,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (rc != 0)                 { goto done; }
     }
 
-    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-72; offline. */
+    /* GDI render: TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-73; offline. */
     if (run_render) {
         char fb[192];
         PCore_FontTest(fb, sizeof(fb));        /* M2: font-measure sanity */
@@ -13926,6 +14260,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test70_multipart_file()){ rc = 13; goto done; }
         if (!test71_native_multiselect()){ rc = 13; goto done; }
         if (!test72_form_validation()){ rc = 13; goto done; }
+        if (!test73_dynamic_form_states()){ rc = 13; goto done; }
         if (!test17_nsrender())    { rc = 13; goto done; }
         if (!test12_render())      { rc = 13; goto done; }
     }
@@ -13967,7 +14302,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_render) {
         strcat(summary,
-               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-72)\n"
+               "  GDI render (TEST 12, 14, 17, 19, 20, 26-37, 39, 46-58, 62-73)\n"
                "    HTML page painted to a window: background,\n"
                "    borders, padding, wrapped text, NetSurf redraw,\n"
                "    plus WM Imaging bitmaps, cached <img>, direct SVG and\n"
@@ -13977,6 +14312,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "    IANA-style spacing, table normalisation, list markers and\n"
                "    checkbox/radio interaction, native single/multiline EDIT,\n"
                "    native single/multiple select bridges and form values,\n"
+               "    dynamic checked/focus/active/enabled selector states,\n"
                "    and overlapping-document SVG reuse through formal redraw.\n"
                "    Offline.\n\n");
     }

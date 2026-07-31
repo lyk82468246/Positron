@@ -24,6 +24,11 @@
 #include <stdlib.h>   /* malloc / free (box geometry) */
 
 #include <dom/dom.h>
+#include <dom/html/html_button_element.h>
+#include <dom/html/html_input_element.h>
+#include <dom/html/html_option_element.h>
+#include <dom/html/html_select_element.h>
+#include <dom/html/html_text_area_element.h>
 
 #include <libcss/libcss.h>
 #include <libcss/fpmath.h>
@@ -36,11 +41,148 @@
 /* Client data threaded through css_select_style into the handler. */
 typedef struct pcore_select_pw {
     lwc_string *universal;   /* interned "*", for node_has_name */
+    dom_node *focus_node;     /* borrowed from document interaction state */
+    dom_node *active_node;
 } pcore_select_pw;
 
 /* libcss owns the value stored under this key. It must remain attached while
  * descendants are selected because their bloom filters borrow parent data. */
 static dom_string *pcore_libcss_node_data_key = NULL;
+
+typedef struct pcore_interaction_state {
+    dom_node *focus_node;
+    dom_node *active_node;
+} pcore_interaction_state;
+
+static dom_string *pcore_interaction_state_key = NULL;
+
+static int pcore_ensure_interaction_state_key(void)
+{
+    static const char *name = "__pcore_interaction_state__";
+
+    if (pcore_interaction_state_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) name, strlen(name),
+            &pcore_interaction_state_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_interaction_state_handler(dom_node_operation operation,
+        dom_string *key, void *data, dom_node *source, dom_node *target)
+{
+    pcore_interaction_state *state;
+
+    (void) key;
+    (void) source;
+    (void) target;
+    if (operation != DOM_NODE_DELETED || data == NULL) {
+        return;
+    }
+    state = (pcore_interaction_state *) data;
+    if (state->focus_node != NULL) {
+        dom_node_unref(state->focus_node);
+    }
+    if (state->active_node != NULL) {
+        dom_node_unref(state->active_node);
+    }
+    free(state);
+}
+
+static pcore_interaction_state *pcore_interaction_state_get(
+        dom_document *doc, int create)
+{
+    pcore_interaction_state *state;
+    void *data;
+    void *old;
+
+    if (doc == NULL || pcore_ensure_interaction_state_key() != 0) {
+        return NULL;
+    }
+    data = NULL;
+    if (dom_node_get_user_data((dom_node *) doc,
+            pcore_interaction_state_key, &data) != DOM_NO_ERR) {
+        return NULL;
+    }
+    if (data != NULL || !create) {
+        return (pcore_interaction_state *) data;
+    }
+    state = (pcore_interaction_state *) calloc(1, sizeof(*state));
+    if (state == NULL) {
+        return NULL;
+    }
+    old = NULL;
+    if (dom_node_set_user_data((dom_node *) doc,
+            pcore_interaction_state_key, state,
+            pcore_interaction_state_handler, &old) != DOM_NO_ERR) {
+        free(state);
+        return NULL;
+    }
+    if (old != NULL && old != state) {
+        pcore_interaction_state_handler(DOM_NODE_DELETED,
+                pcore_interaction_state_key, old,
+                (dom_node *) doc, NULL);
+    }
+    return state;
+}
+
+static int pcore_interaction_replace_node(dom_node **slot, dom_node *node)
+{
+    dom_node *old;
+
+    if (*slot == node) {
+        return 0;
+    }
+    old = *slot;
+    *slot = (node != NULL) ? dom_node_ref(node) : NULL;
+    if (old != NULL) {
+        dom_node_unref(old);
+    }
+    return 1;
+}
+
+int pcore_interaction_set_node(dom_document *doc,
+        unsigned int state_flags, dom_node *node)
+{
+    pcore_interaction_state *state;
+    int changed;
+
+    if (doc == NULL || state_flags == 0 ||
+            (state_flags & ~(PCORE_INTERACTION_FOCUS |
+                    PCORE_INTERACTION_ACTIVE)) != 0) {
+        return -1;
+    }
+    state = pcore_interaction_state_get(doc, node != NULL);
+    if (state == NULL) {
+        return (node == NULL) ? 0 : -1;
+    }
+    changed = 0;
+    if ((state_flags & PCORE_INTERACTION_FOCUS) != 0) {
+        changed |= pcore_interaction_replace_node(
+                &state->focus_node, node);
+    }
+    if ((state_flags & PCORE_INTERACTION_ACTIVE) != 0) {
+        changed |= pcore_interaction_replace_node(
+                &state->active_node, node);
+    }
+    return changed;
+}
+
+void pcore_interaction_snapshot(dom_document *doc,
+        dom_node **focus_node, dom_node **active_node)
+{
+    pcore_interaction_state *state;
+
+    state = pcore_interaction_state_get(doc, 0);
+    if (focus_node != NULL) {
+        *focus_node = (state != NULL) ? state->focus_node : NULL;
+    }
+    if (active_node != NULL) {
+        *active_node = (state != NULL) ? state->active_node : NULL;
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /* Handler callback forward declarations                               */
@@ -1017,15 +1159,97 @@ static css_error node_is_visited(void *pw, void *node, bool *match)
 static css_error node_is_hover(void *pw, void *node, bool *match)
 { (void) pw; (void) node; *match = false; return CSS_OK; }
 static css_error node_is_active(void *pw, void *node, bool *match)
-{ (void) pw; (void) node; *match = false; return CSS_OK; }
+{
+    pcore_select_pw *state;
+
+    state = (pcore_select_pw *) pw;
+    *match = (state != NULL && state->active_node == (dom_node *) node);
+    return CSS_OK;
+}
 static css_error node_is_focus(void *pw, void *node, bool *match)
-{ (void) pw; (void) node; *match = false; return CSS_OK; }
+{
+    pcore_select_pw *state;
+
+    state = (pcore_select_pw *) pw;
+    *match = (state != NULL && state->focus_node == (dom_node *) node);
+    return CSS_OK;
+}
+
+static int pcore_node_disabled(dom_node *node, bool *applies,
+        bool *disabled)
+{
+    dom_exception err;
+
+    *applies = true;
+    *disabled = false;
+    if (pcore_node_name_is(node, "input")) {
+        err = dom_html_input_element_get_disabled(
+                (dom_html_input_element *) node, disabled);
+    } else if (pcore_node_name_is(node, "button")) {
+        err = dom_html_button_element_get_disabled(
+                (dom_html_button_element *) node, disabled);
+    } else if (pcore_node_name_is(node, "select")) {
+        err = dom_html_select_element_get_disabled(
+                (dom_html_select_element *) node, disabled);
+    } else if (pcore_node_name_is(node, "textarea")) {
+        err = dom_html_text_area_element_get_disabled(
+                (dom_html_text_area_element *) node, disabled);
+    } else if (pcore_node_name_is(node, "option")) {
+        err = dom_html_option_element_get_disabled(
+                (dom_html_option_element *) node, disabled);
+    } else {
+        *applies = false;
+        return 0;
+    }
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
 static css_error node_is_enabled(void *pw, void *node, bool *match)
-{ (void) pw; (void) node; *match = false; return CSS_OK; }
+{
+    bool applies;
+    bool disabled;
+
+    (void) pw;
+    *match = false;
+    if (pcore_node_disabled((dom_node *) node, &applies, &disabled) == 0 &&
+            applies) {
+        *match = !disabled;
+    }
+    return CSS_OK;
+}
 static css_error node_is_disabled(void *pw, void *node, bool *match)
-{ (void) pw; (void) node; *match = false; return CSS_OK; }
+{
+    bool applies;
+    bool disabled;
+
+    (void) pw;
+    *match = false;
+    if (pcore_node_disabled((dom_node *) node, &applies, &disabled) == 0 &&
+            applies) {
+        *match = disabled;
+    }
+    return CSS_OK;
+}
 static css_error node_is_checked(void *pw, void *node, bool *match)
-{ (void) pw; (void) node; *match = false; return CSS_OK; }
+{
+    bool checked;
+
+    (void) pw;
+    *match = false;
+    checked = false;
+    if (pcore_node_name_is((dom_node *) node, "input")) {
+        if (dom_html_input_element_get_checked(
+                (dom_html_input_element *) node, &checked) == DOM_NO_ERR) {
+            *match = checked;
+        }
+    } else if (pcore_node_name_is((dom_node *) node, "option")) {
+        if (dom_html_option_element_get_selected(
+                (dom_html_option_element *) node, &checked) == DOM_NO_ERR) {
+            *match = checked;
+        }
+    }
+    return CSS_OK;
+}
 static css_error node_is_target(void *pw, void *node, bool *match)
 { (void) pw; (void) node; *match = false; return CSS_OK; }
 
@@ -1336,7 +1560,8 @@ PCORE_API int PCore_ComputeColor(HANDLE hDoc, HANDLE hSheet,
         return 1;
     }
 
-    pw.universal = NULL;
+    memset(&pw, 0, sizeof(pw));
+    pcore_interaction_snapshot(doc, &pw.focus_node, &pw.active_node);
     if (lwc_intern_string("*", 1, &pw.universal) != lwc_error_ok) {
         return 1;
     }
@@ -2122,7 +2347,8 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
         return 1;
     }
 
-    pw.universal = NULL;
+    memset(&pw, 0, sizeof(pw));
+    pcore_interaction_snapshot(doc, &pw.focus_node, &pw.active_node);
     if (lwc_intern_string("*", 1, &pw.universal) != lwc_error_ok) {
         return 1;
     }
