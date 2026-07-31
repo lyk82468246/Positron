@@ -489,6 +489,47 @@ PCORE_API int PCore_InteractionSetAt(HANDLE hDoc, int x, int y,
 PCORE_API int PCore_InteractionClear(HANDLE hDoc,
                                     unsigned int state_flags);
 
+/* DOM event bridge. Listener callbacks run synchronously on the dispatching
+ * thread and return a bitwise combination of PCORE_EVENT_ACTION_* values.
+ * Element ids and event types are UTF-8. The opaque listener handle remains
+ * owned by the document until explicitly removed or the document is freed.
+ * Phase values intentionally match DOM CAPTURING/AT_TARGET/BUBBLING. */
+#define PCORE_EVENT_PHASE_CAPTURING 1u
+#define PCORE_EVENT_PHASE_TARGET    2u
+#define PCORE_EVENT_PHASE_BUBBLING  3u
+#define PCORE_EVENT_ACTION_NONE              0x00u
+#define PCORE_EVENT_ACTION_PREVENT_DEFAULT   0x01u
+#define PCORE_EVENT_ACTION_STOP_PROPAGATION  0x02u
+#define PCORE_EVENT_ACTION_STOP_IMMEDIATE    0x04u
+typedef struct PCoreEventInfo {
+    unsigned int phase;
+    int bubbles;
+    int cancelable;
+    int trusted;
+    int default_prevented;
+} PCoreEventInfo;
+typedef unsigned int (*PCoreEventListenerFn)(void *pw,
+                                             const PCoreEventInfo *event_info);
+
+PCORE_API HANDLE PCore_EventListenerAdd(HANDLE hDoc,
+                                        const char *element_id,
+                                        const char *event_type,
+                                        int capture,
+                                        PCoreEventListenerFn callback,
+                                        void *pw);
+PCORE_API int PCore_EventListenerRemove(HANDLE hDoc, HANDLE hListener);
+
+/* Dispatch a trusted generic event either to an element id or to the nearest
+ * laid-out element at document coordinates. Return 1 when dispatched, 0 when
+ * no target exists and -1 on invalid input/DOM failure. default_allowed is
+ * initialised to 1 and becomes 0 only when a cancelable event was canceled. */
+PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
+                                     const char *event_type, int bubbles,
+                                     int cancelable, int *default_allowed);
+PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
+                                   const char *event_type, int bubbles,
+                                   int cancelable, int *default_allowed);
+
 /* Resolve a click on an explicit for=id or wrapping <label> to its visible
  * form gadget. The target point and kind use the same document coordinates
  * and kind values as PCore_FormControlInfo. Returns 1 for a resolved label.

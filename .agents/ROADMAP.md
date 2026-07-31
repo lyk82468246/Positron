@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-07-31
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径及表单纵切已推进到 next109 / TEST73 的设备自动化基线。next109 的 TEST13/20/27/43/44/56/58-73 全部通过；除首批 `required/valueMissing` 外，live `:checked/:enabled/:disabled` 与宿主馈送的 `:focus/:active` 已进入正式重样式。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单与最小 DOM Event 纵切已推进到 next110 / TEST74 的设备自动化基线。next110 的 TEST13/20/27/43/44/56/58-74 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -18,8 +18,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 当前新增功能优先级：
 
-1. **表单交互纵切**：next93 已完成 checkbox/radio，next94/TEST65 已完成单行 text/password，next97/TEST66 已完成 textarea，next98/TEST67 已完成单选，next99/TEST68 已完成 button 与 GET/URL-encoded POST，next101/TEST69 已完成 reset、Enter 和 label，next103/TEST70 已完成 multipart/file，next104/TEST71 已完成 WM multiple select，next106/TEST72 已完成首批 `required/valueMissing`，next109/TEST73 已完成动态 `:focus/:active/:checked/:enabled/:disabled`；均由设备无人值守日志确认。下一缺口是最小 DOM 事件纵切，高级约束验证随后扩展。
-2. **事件基础**：建立事件对象、目标链、捕获/冒泡、取消与 default-action 边界，让现有指针/键盘/表单状态可被后续脚本消费；不得把宿主直接改状态等同于 DOM 事件已完成。
+1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；均由设备无人值守日志确认。高级约束验证仍在后续扩展，不阻塞更大的“有无”缺口。
+2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
 3. **重大布局“有无”**：按真实页面价值及上游可移植程度，依次评估 positioned layout、float、基础 Grid 和背景尺寸/重复；每项单独接入上游实现并保留 TEST13 深链门禁。
 4. **资源类型补齐**：先建立脚本资源发现/下载/缓存接口，再由中期 JavaScript runtime 消费；网页字体不扩展为普通语言字体工程。
 
@@ -287,8 +287,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next109 / TEST73 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
-2. 下一批推进最小 DOM 事件对象、传播、取消与 default-action，再按实际站点价值补高级约束验证。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
-3. 事件基础稳定后，按“一个上游能力一个批次”补 positioned layout、float、基础 Grid 或背景尺寸。撤回的 TEST23 实验不得原样恢复。
+1. 以 next110 / TEST74 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
+2. 下一批按“一个上游能力一个批次”评估 positioned layout、float、基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23 实验不得原样恢复。
+3. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 4. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge。脚本资源接口可在此前短期阶段先建好，但 JavaScript 默认仍保持关闭直到设备门禁通过。
 5. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。

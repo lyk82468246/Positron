@@ -2422,7 +2422,10 @@ dom_exception _dom_node_dispatch_event(dom_event_target *et,
 		struct dom_event *evt, bool *success)
 {
 	dom_exception err, ret = DOM_NO_ERR;
-	dom_node_internal *target = (dom_node_internal *) et;
+	/* The target has its own AT_TARGET pass below.  Only ancestors belong in
+	 * the capture/bubble path; including `et` here invokes its listeners three
+	 * times (capture, target and bubble). */
+	dom_node_internal *target = ((dom_node_internal *) et)->parent;
 	dom_document *doc;
 	dom_document_event_internal *dei = NULL;
 	dom_event_target **targets;
@@ -2440,6 +2443,7 @@ dom_exception _dom_node_dispatch_event(dom_event_target *et,
 	}
 
 	if (evt->type == NULL || dom_string_byte_length(evt->type) == 0) {
+		evt->in_dispatch = false;
 		return DOM_UNSPECIFIED_EVENT_TYPE_ERR;
 	}
 
@@ -2447,6 +2451,7 @@ dom_exception _dom_node_dispatch_event(dom_event_target *et,
 	if (doc == NULL) {
 		/* TODO: In the progress of parsing, many Nodes in the DTD has
 		 * no document at all, do nothing for this kind of node */
+		evt->in_dispatch = false;
 		return DOM_NO_ERR;
 	}
 	
@@ -2541,19 +2546,21 @@ dom_exception _dom_node_dispatch_event(dom_event_target *et,
 	/* Bubbling phase */
 	evt->phase = DOM_BUBBLING_PHASE;
 
-	for (targetnr = 0; targetnr < ntargets; ++targetnr) {
-		dom_node_internal *node =
-			(dom_node_internal *) targets[targetnr];
-		err = _dom_event_target_dispatch(targets[targetnr],
-				&node->eti, evt, DOM_BUBBLING_PHASE, success);
-		if (err != DOM_NO_ERR) {
-			ret = err;
-			goto cleanup;
+	if (evt->bubble == true) {
+		for (targetnr = 0; targetnr < ntargets; ++targetnr) {
+			dom_node_internal *node =
+				(dom_node_internal *) targets[targetnr];
+			err = _dom_event_target_dispatch(targets[targetnr],
+					&node->eti, evt, DOM_BUBBLING_PHASE, success);
+			if (err != DOM_NO_ERR) {
+				ret = err;
+				goto cleanup;
+			}
+			/* If the stopImmediatePropagation or stopPropagation is
+			 * called, we should break */
+			if (evt->stop_now == true || evt->stop == true)
+				goto cleanup;
 		}
-		/* If the stopImmediatePropagation or stopPropagation is
-		 * called, we should break */
-		if (evt->stop_now == true || evt->stop == true)
-			goto cleanup;
 	}
 
 	if (dei->actions == NULL)
@@ -2590,6 +2597,13 @@ cleanup:
 			cb(evt, pw);
 		}
 	}
+
+	/* Clear dispatch-only state so the Event can be dispatched again. */
+	evt->current = NULL;
+	evt->phase = 0;
+	evt->stop = false;
+	evt->stop_now = false;
+	evt->in_dispatch = false;
 
 	return ret;
 }
@@ -2633,4 +2647,3 @@ dom_exception _dom_node_dispatch_node_change_event(dom_document *doc,
 
 	return DOM_NO_ERR;
 }
-

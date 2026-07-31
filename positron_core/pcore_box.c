@@ -39,6 +39,9 @@
 #include <dom/html/html_options_collection.h>
 #include <dom/html/html_select_element.h>
 #include <dom/html/html_text_area_element.h>
+#include <dom/events/event.h>
+#include <dom/events/event_listener.h>
+#include <dom/events/event_target.h>
 #include <libcss/libcss.h>
 
 #include "utils/talloc.h"
@@ -2904,6 +2907,387 @@ static pcore_render *pcore_get_render(dom_document *doc)
         return NULL;
     }
     return (pcore_render *) d;
+}
+
+/* ------------------------------------------------------------------ */
+/* DOM events                                                         */
+/* ------------------------------------------------------------------ */
+
+typedef struct pcore_event_binding pcore_event_binding;
+
+typedef struct pcore_event_state {
+    pcore_event_binding *head;
+} pcore_event_state;
+
+struct pcore_event_binding {
+    pcore_event_binding *next;
+    dom_node *target;
+    dom_string *type;
+    dom_event_listener *listener;
+    int capture;
+    PCoreEventListenerFn callback;
+    void *pw;
+};
+
+static dom_string *pcore_event_state_key = NULL;
+
+static int pcore_ensure_event_state_key(void)
+{
+    static const char KEY[] = "__pcore_events__";
+
+    if (pcore_event_state_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) KEY, sizeof(KEY) - 1,
+            &pcore_event_state_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_event_binding_free(pcore_event_binding *binding)
+{
+    if (binding == NULL) {
+        return;
+    }
+    if (binding->target != NULL && binding->type != NULL &&
+            binding->listener != NULL) {
+        dom_event_target_remove_event_listener(binding->target,
+                binding->type, binding->listener,
+                binding->capture ? true : false);
+    }
+    if (binding->listener != NULL) {
+        dom_event_listener_unref(binding->listener);
+    }
+    if (binding->type != NULL) {
+        dom_string_unref(binding->type);
+    }
+    if (binding->target != NULL) {
+        dom_node_unref(binding->target);
+    }
+    free(binding);
+}
+
+static void pcore_event_state_free(pcore_event_state *state)
+{
+    pcore_event_binding *binding;
+    pcore_event_binding *next;
+
+    if (state == NULL) {
+        return;
+    }
+    binding = state->head;
+    while (binding != NULL) {
+        next = binding->next;
+        pcore_event_binding_free(binding);
+        binding = next;
+    }
+    free(state);
+}
+
+static void pcore_event_state_ud_handler(dom_node_operation op,
+        dom_string *key, void *data, struct dom_node *src,
+        struct dom_node *dst)
+{
+    (void) key;
+    (void) src;
+    (void) dst;
+    if (op == DOM_NODE_DELETED && data != NULL) {
+        pcore_event_state_free((pcore_event_state *) data);
+    }
+}
+
+static pcore_event_state *pcore_event_state_get(dom_document *doc, int create)
+{
+    pcore_event_state *state;
+    void *data;
+    void *old;
+
+    if (doc == NULL || pcore_ensure_event_state_key() != 0) {
+        return NULL;
+    }
+    data = NULL;
+    if (dom_node_get_user_data((dom_node *) doc, pcore_event_state_key,
+            &data) != DOM_NO_ERR) {
+        return NULL;
+    }
+    if (data != NULL || !create) {
+        return (pcore_event_state *) data;
+    }
+    state = (pcore_event_state *) calloc(1, sizeof(*state));
+    if (state == NULL) {
+        return NULL;
+    }
+    old = NULL;
+    if (dom_node_set_user_data((dom_node *) doc, pcore_event_state_key,
+            state, pcore_event_state_ud_handler, &old) != DOM_NO_ERR) {
+        free(state);
+        return NULL;
+    }
+    if (old != NULL && old != state) {
+        pcore_event_state_free((pcore_event_state *) old);
+    }
+    return state;
+}
+
+static void pcore_event_listener_adapter(dom_event *event, void *pw)
+{
+    pcore_event_binding *binding;
+    PCoreEventInfo info;
+    dom_event_flow_phase phase;
+    bool value;
+    unsigned int actions;
+
+    binding = (pcore_event_binding *) pw;
+    if (binding == NULL || binding->callback == NULL) {
+        return;
+    }
+    memset(&info, 0, sizeof(info));
+    phase = DOM_AT_TARGET;
+    if (dom_event_get_event_phase(event, &phase) == DOM_NO_ERR) {
+        info.phase = (unsigned int) phase;
+    }
+    value = false;
+    if (dom_event_get_bubbles(event, &value) == DOM_NO_ERR) {
+        info.bubbles = value ? 1 : 0;
+    }
+    value = false;
+    if (dom_event_get_cancelable(event, &value) == DOM_NO_ERR) {
+        info.cancelable = value ? 1 : 0;
+    }
+    value = false;
+    if (dom_event_get_is_trusted(event, &value) == DOM_NO_ERR) {
+        info.trusted = value ? 1 : 0;
+    }
+    value = false;
+    if (dom_event_is_default_prevented(event, &value) == DOM_NO_ERR) {
+        info.default_prevented = value ? 1 : 0;
+    }
+    actions = binding->callback(binding->pw, &info);
+    if ((actions & PCORE_EVENT_ACTION_PREVENT_DEFAULT) != 0) {
+        dom_event_prevent_default(event);
+    }
+    if ((actions & PCORE_EVENT_ACTION_STOP_IMMEDIATE) != 0) {
+        dom_event_stop_immediate_propagation(event);
+    } else if ((actions & PCORE_EVENT_ACTION_STOP_PROPAGATION) != 0) {
+        dom_event_stop_propagation(event);
+    }
+}
+
+PCORE_API HANDLE PCore_EventListenerAdd(HANDLE hDoc,
+        const char *element_id, const char *event_type, int capture,
+        PCoreEventListenerFn callback, void *pw)
+{
+    dom_document *doc;
+    dom_element *element;
+    dom_string *id;
+    dom_string *type;
+    dom_event_listener *listener;
+    pcore_event_state *state;
+    pcore_event_binding *binding;
+
+    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0' ||
+            event_type == NULL || event_type[0] == '\0' || callback == NULL) {
+        return NULL;
+    }
+    doc = (dom_document *) hDoc;
+    state = pcore_event_state_get(doc, 1);
+    if (state == NULL) {
+        return NULL;
+    }
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) element_id, strlen(element_id),
+            &id) != DOM_NO_ERR || id == NULL) {
+        return NULL;
+    }
+    if (dom_document_get_element_by_id(doc, id, &element) != DOM_NO_ERR ||
+            element == NULL) {
+        dom_string_unref(id);
+        return NULL;
+    }
+    dom_string_unref(id);
+    type = NULL;
+    if (dom_string_create((const uint8_t *) event_type, strlen(event_type),
+            &type) != DOM_NO_ERR || type == NULL) {
+        dom_node_unref((dom_node *) element);
+        return NULL;
+    }
+    binding = (pcore_event_binding *) calloc(1, sizeof(*binding));
+    if (binding == NULL) {
+        dom_string_unref(type);
+        dom_node_unref((dom_node *) element);
+        return NULL;
+    }
+    binding->target = (dom_node *) element;
+    binding->type = type;
+    binding->capture = capture ? 1 : 0;
+    binding->callback = callback;
+    binding->pw = pw;
+    listener = NULL;
+    if (dom_event_listener_create(pcore_event_listener_adapter, binding,
+            &listener) != DOM_NO_ERR || listener == NULL) {
+        pcore_event_binding_free(binding);
+        return NULL;
+    }
+    binding->listener = listener;
+    if (dom_event_target_add_event_listener(binding->target, binding->type,
+            binding->listener, binding->capture ? true : false) != DOM_NO_ERR) {
+        pcore_event_binding_free(binding);
+        return NULL;
+    }
+    binding->next = state->head;
+    state->head = binding;
+    return (HANDLE) binding;
+}
+
+PCORE_API int PCore_EventListenerRemove(HANDLE hDoc, HANDLE hListener)
+{
+    pcore_event_state *state;
+    pcore_event_binding *binding;
+    pcore_event_binding *previous;
+
+    if (hDoc == NULL || hListener == NULL) {
+        return 0;
+    }
+    state = pcore_event_state_get((dom_document *) hDoc, 0);
+    if (state == NULL) {
+        return 0;
+    }
+    previous = NULL;
+    binding = state->head;
+    while (binding != NULL && binding != (pcore_event_binding *) hListener) {
+        previous = binding;
+        binding = binding->next;
+    }
+    if (binding == NULL) {
+        return 0;
+    }
+    if (previous != NULL) {
+        previous->next = binding->next;
+    } else {
+        state->head = binding->next;
+    }
+    pcore_event_binding_free(binding);
+    return 1;
+}
+
+static int pcore_event_dispatch_node(dom_node *target,
+        const char *event_type, int bubbles, int cancelable,
+        int *default_allowed)
+{
+    dom_string *type;
+    dom_event *event;
+    dom_exception err;
+    bool success;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (target == NULL || event_type == NULL || event_type[0] == '\0') {
+        return -1;
+    }
+    type = NULL;
+    event = NULL;
+    if (dom_string_create((const uint8_t *) event_type, strlen(event_type),
+            &type) != DOM_NO_ERR || type == NULL) {
+        return -1;
+    }
+    if (dom_event_create(&event) != DOM_NO_ERR || event == NULL) {
+        dom_string_unref(type);
+        return -1;
+    }
+    err = dom_event_init(event, type, bubbles ? true : false,
+            cancelable ? true : false);
+    if (err == DOM_NO_ERR) {
+        err = dom_event_set_is_trusted(event, true);
+    }
+    success = true;
+    if (err == DOM_NO_ERR) {
+        err = dom_event_target_dispatch_event(target, event, &success);
+    }
+    if (default_allowed != NULL && err == DOM_NO_ERR) {
+        *default_allowed = success ? 1 : 0;
+    }
+    dom_event_unref(event);
+    dom_string_unref(type);
+    return (err == DOM_NO_ERR) ? 1 : -1;
+}
+
+PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
+        const char *event_type, int bubbles, int cancelable,
+        int *default_allowed)
+{
+    dom_document *doc;
+    dom_element *element;
+    dom_string *id;
+    int result;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return -1;
+    }
+    doc = (dom_document *) hDoc;
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) element_id, strlen(element_id),
+            &id) != DOM_NO_ERR || id == NULL) {
+        return -1;
+    }
+    if (dom_document_get_element_by_id(doc, id, &element) != DOM_NO_ERR) {
+        dom_string_unref(id);
+        return -1;
+    }
+    dom_string_unref(id);
+    if (element == NULL) {
+        return 0;
+    }
+    result = pcore_event_dispatch_node((dom_node *) element, event_type,
+            bubbles, cancelable, default_allowed);
+    dom_node_unref((dom_node *) element);
+    return result;
+}
+
+PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
+        const char *event_type, int bubbles, int cancelable,
+        int *default_allowed)
+{
+    pcore_render *state;
+    struct box *box;
+    dom_node_type node_type;
+    dom_node *target;
+    int result;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || event_type == NULL || event_type[0] == '\0') {
+        return -1;
+    }
+    state = pcore_get_render((dom_document *) hDoc);
+    if (state == NULL) {
+        return 0;
+    }
+    target = NULL;
+    box = pcore_hit(state->root_box, x, y);
+    while (box != NULL) {
+        if (box->node != NULL &&
+                dom_node_get_node_type(box->node, &node_type) == DOM_NO_ERR &&
+                node_type == DOM_ELEMENT_NODE) {
+            target = dom_node_ref(box->node);
+            break;
+        }
+        box = box->parent;
+    }
+    if (target == NULL) {
+        return 0;
+    }
+    result = pcore_event_dispatch_node(target, event_type, bubbles,
+            cancelable, default_allowed);
+    dom_node_unref(target);
+    return result;
 }
 
 /* NetSurf normally reflows a retained box tree, so auto-overflow blocks can

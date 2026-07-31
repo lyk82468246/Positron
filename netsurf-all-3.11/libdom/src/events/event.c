@@ -235,7 +235,8 @@ dom_exception _dom_event_stop_propagation(dom_event *evt)
  */
 dom_exception _dom_event_prevent_default(dom_event *evt)
 {
-	evt->prevent_default = true;
+	if (evt->cancelable == true)
+		evt->prevent_default = true;
 	return DOM_NO_ERR;
 }
 

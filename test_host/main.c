@@ -327,7 +327,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 73
+#define TEST_MAX_NUMBER 74
 
 static int test_config_space(char c)
 {
@@ -5080,6 +5080,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int dirty_y;
         int dirty_w;
         int dirty_h;
+        int default_allowed;
         char href[1024];
 
         if (g_render_doc != NULL &&
@@ -5096,6 +5097,14 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                         PCORE_INTERACTION_FOCUS |
                         PCORE_INTERACTION_ACTIVE) > 0) {
             pcore_request_interaction_restyle(hwnd);
+        }
+        default_allowed = 1;
+        if (g_render_doc != NULL) {
+            PCore_EventDispatchAt(g_render_doc, cx, cy + g_scroll_y,
+                    "click", 1, 1, &default_allowed);
+            if (!default_allowed) {
+                return 0;
+            }
         }
         if (g_render_doc != NULL &&
                 pcore_handle_form_button(hwnd, cx, cy + g_scroll_y)) {
@@ -13832,6 +13841,231 @@ dynamic_failed:
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 74 - libdom event path, cancellation and host dispatch bridge    */
+/* -------------------------------------------------------------------- */
+
+typedef struct test74_trace {
+    int count;
+    int codes[32];
+    unsigned int phases[32];
+} test74_trace;
+
+typedef struct test74_listener_context {
+    test74_trace *trace;
+    int code;
+    unsigned int actions;
+} test74_listener_context;
+
+static unsigned int test74_listener(void *pw,
+        const PCoreEventInfo *event_info)
+{
+    test74_listener_context *context;
+    int index;
+
+    context = (test74_listener_context *) pw;
+    if (context == NULL || context->trace == NULL || event_info == NULL) {
+        return PCORE_EVENT_ACTION_NONE;
+    }
+    index = context->trace->count;
+    if (index < 32) {
+        context->trace->codes[index] = context->code;
+        context->trace->phases[index] = event_info->phase;
+    }
+    context->trace->count++;
+    return context->actions;
+}
+
+static int test74_trace_is(const test74_trace *trace, const int *codes,
+        const unsigned int *phases, int count)
+{
+    int i;
+
+    if (trace == NULL || trace->count != count) {
+        return 0;
+    }
+    for (i = 0; i < count; i++) {
+        if (trace->codes[i] != codes[i] ||
+                (phases != NULL && trace->phases[i] != phases[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static BOOL test74_dom_events(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id=outer><section id=parent>"
+        "<button id=target>dispatch target</button>"
+        "</section></div></body></html>";
+    static const int CLICK_CODES[] = { 1, 2, 3, 4, 5, 6 };
+    static const unsigned int CLICK_PHASES[] = {
+        PCORE_EVENT_PHASE_CAPTURING, PCORE_EVENT_PHASE_CAPTURING,
+        PCORE_EVENT_PHASE_TARGET, PCORE_EVENT_PHASE_TARGET,
+        PCORE_EVENT_PHASE_BUBBLING, PCORE_EVENT_PHASE_BUBBLING
+    };
+    static const int NONBUBBLE_CODES[] = { 1, 2, 3 };
+    static const unsigned int NONBUBBLE_PHASES[] = {
+        PCORE_EVENT_PHASE_CAPTURING, PCORE_EVENT_PHASE_CAPTURING,
+        PCORE_EVENT_PHASE_TARGET
+    };
+    static const int HALT_CODES[] = { 7, 8 };
+    static const unsigned int HALT_PHASES[] = {
+        PCORE_EVENT_PHASE_CAPTURING, PCORE_EVENT_PHASE_CAPTURING
+    };
+    static const int IMMEDIATE_CODES[] = { 10, 11 };
+    static const unsigned int IMMEDIATE_PHASES[] = {
+        PCORE_EVENT_PHASE_CAPTURING, PCORE_EVENT_PHASE_CAPTURING
+    };
+    HANDLE document;
+    HANDLE listeners[16];
+    test74_listener_context contexts[16];
+    test74_trace trace;
+    int listener_count;
+    int stage;
+    int default_allowed;
+    int x;
+    int y;
+    int width;
+    int height;
+    int i;
+    char detail[256];
+
+    document = NULL;
+    memset(listeners, 0, sizeof(listeners));
+    memset(contexts, 0, sizeof(contexts));
+    memset(&trace, 0, sizeof(trace));
+    listener_count = 0;
+    stage = 1;
+    default_allowed = 1;
+
+    document = PCore_ParseHTML(HTML, 0);
+    if (document == NULL || PCore_StyleDocument(document, NULL) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "button", &x, &y, &width, &height) != 0 ||
+            width <= 0 || height <= 0) {
+        goto event_failed;
+    }
+
+#define TEST74_ADD(ID, TYPE, CAPTURE, CODE, ACTIONS) \
+    contexts[listener_count].trace = &trace; \
+    contexts[listener_count].code = (CODE); \
+    contexts[listener_count].actions = (ACTIONS); \
+    listeners[listener_count] = PCore_EventListenerAdd(document, (ID), \
+            (TYPE), (CAPTURE), test74_listener, \
+            &contexts[listener_count]); \
+    if (listeners[listener_count] == NULL) { goto event_failed; } \
+    listener_count++
+
+    stage = 2;
+    TEST74_ADD("outer", "click", 1, 1, PCORE_EVENT_ACTION_NONE);
+    TEST74_ADD("parent", "click", 1, 2, PCORE_EVENT_ACTION_NONE);
+    TEST74_ADD("target", "click", 1, 3, PCORE_EVENT_ACTION_NONE);
+    TEST74_ADD("target", "click", 0, 4,
+            PCORE_EVENT_ACTION_PREVENT_DEFAULT);
+    TEST74_ADD("parent", "click", 0, 5, PCORE_EVENT_ACTION_NONE);
+    TEST74_ADD("outer", "click", 0, 6, PCORE_EVENT_ACTION_NONE);
+
+    stage = 3;
+    default_allowed = 1;
+    if (PCore_EventDispatchAt(document, x + width / 2, y + height / 2,
+            "click", 1, 1, &default_allowed) != 1 || default_allowed != 0 ||
+            !test74_trace_is(&trace, CLICK_CODES, CLICK_PHASES, 6)) {
+        goto event_failed;
+    }
+
+    stage = 4;
+    if (!PCore_EventListenerRemove(document, listeners[3])) {
+        goto event_failed;
+    }
+    listeners[3] = NULL;
+    memset(&trace, 0, sizeof(trace));
+    default_allowed = 0;
+    if (PCore_EventDispatchToId(document, "target", "click", 0, 1,
+            &default_allowed) != 1 || default_allowed != 1 ||
+            !test74_trace_is(&trace, NONBUBBLE_CODES, NONBUBBLE_PHASES, 3)) {
+        goto event_failed;
+    }
+
+    stage = 5;
+    contexts[3].trace = &trace;
+    contexts[3].code = 4;
+    contexts[3].actions = PCORE_EVENT_ACTION_PREVENT_DEFAULT;
+    listeners[3] = PCore_EventListenerAdd(document, "target", "click", 0,
+            test74_listener, &contexts[3]);
+    if (listeners[3] == NULL) {
+        goto event_failed;
+    }
+    memset(&trace, 0, sizeof(trace));
+    default_allowed = 0;
+    if (PCore_EventDispatchToId(document, "target", "click", 1, 0,
+            &default_allowed) != 1 || default_allowed != 1 ||
+            !test74_trace_is(&trace, CLICK_CODES, CLICK_PHASES, 6)) {
+        goto event_failed;
+    }
+
+    stage = 6;
+    TEST74_ADD("outer", "halt", 1, 7, PCORE_EVENT_ACTION_NONE);
+    TEST74_ADD("parent", "halt", 1, 8,
+            PCORE_EVENT_ACTION_STOP_PROPAGATION);
+    TEST74_ADD("target", "halt", 0, 9, PCORE_EVENT_ACTION_NONE);
+    memset(&trace, 0, sizeof(trace));
+    if (PCore_EventDispatchToId(document, "target", "halt", 1, 1,
+            &default_allowed) != 1 ||
+            !test74_trace_is(&trace, HALT_CODES, HALT_PHASES, 2)) {
+        goto event_failed;
+    }
+
+    stage = 7;
+    TEST74_ADD("outer", "instant", 1, 10, PCORE_EVENT_ACTION_NONE);
+    TEST74_ADD("parent", "instant", 1, 11,
+            PCORE_EVENT_ACTION_STOP_IMMEDIATE);
+    TEST74_ADD("parent", "instant", 1, 12, PCORE_EVENT_ACTION_NONE);
+    TEST74_ADD("target", "instant", 0, 13, PCORE_EVENT_ACTION_NONE);
+    memset(&trace, 0, sizeof(trace));
+    if (PCore_EventDispatchToId(document, "target", "instant", 1, 1,
+            &default_allowed) != 1 ||
+            !test74_trace_is(&trace, IMMEDIATE_CODES, IMMEDIATE_PHASES, 2)) {
+        goto event_failed;
+    }
+
+    stage = 8;
+    for (i = 0; i < listener_count; i++) {
+        if (listeners[i] != NULL &&
+                !PCore_EventListenerRemove(document, listeners[i])) {
+            goto event_failed;
+        }
+        listeners[i] = NULL;
+    }
+    PCore_FreeDocument(document);
+    show_info(L"TEST 74 OK",
+            "DOM event capture/target/bubble, non-bubbling dispatch,\n"
+            "cancellation, stop propagation and listener removal passed.");
+    return TRUE;
+
+event_failed:
+    for (i = 0; i < listener_count; i++) {
+        if (document != NULL && listeners[i] != NULL) {
+            PCore_EventListenerRemove(document, listeners[i]);
+        }
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    _snprintf(detail, sizeof(detail) - 1,
+            "stage=%d count=%d first=%d/%u default=%d listeners=%d",
+            stage, trace.count, trace.count > 0 ? trace.codes[0] : -1,
+            trace.count > 0 ? trace.phases[0] : 0, default_allowed,
+            listener_count);
+    detail[sizeof(detail) - 1] = '\0';
+    show_error(L"TEST 74 FAIL", detail);
+    return FALSE;
+
+#undef TEST74_ADD
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14019,6 +14253,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 71: ok = test71_native_multiselect(); break;
         case 72: ok = test72_form_validation(); break;
         case 73: ok = test73_dynamic_form_states(); break;
+        case 74: ok = test74_dom_events(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -14143,7 +14378,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40-45, 59-61). Offline.");
+                               "38, 40-45, 59-61, 74). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -14184,7 +14419,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61, 74. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -14206,6 +14441,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test59_flex_overflow_min_content()){ rc = 11; goto done; }
         if (!test60_table_header_restyle()){ rc = 11; goto done; }
         if (!test61_nsoption_font_minimum()){ rc = 11; goto done; }
+        if (!test74_dom_events()) { rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -14288,7 +14524,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61, 74)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
@@ -14298,6 +14534,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "    native libcss CSS import trees, and retained selector\n"
                "    node data across portrait/landscape restyle, and explicit\n"
                "    NetSurf option defaults with minimum-font clamping.\n"
+               "    DOM capture/target/bubble dispatch and cancellation.\n"
                "    Offline.\n\n");
     }
     if (run_render) {

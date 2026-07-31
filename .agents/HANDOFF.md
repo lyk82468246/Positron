@@ -2,7 +2,7 @@
 
 更新时间：2026-07-30
 当前分支：`main`  
-当前设备基线：next106，配置的 TEST13/20/27/43/44/56/58-72 已由无人值守设备日志确认全部 PASS。next104 已完成 WM 原生 multiple select；next106 又接通首批 `required/valueMissing` 约束验证、首个无效控件定位、提交/Enter 阻止、`novalidate/formnovalidate` 旁路、multipart 与 reset。`pattern`、类型语法、数值/长度范围、custom validity、`invalid` 事件、验证气泡和完整事件系统仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next110，配置的 TEST13/20/27/43/44/56/58-74 已由无人值守设备日志确认全部 PASS。next109 已完成五种动态表单伪类；next110 又接通通用 DOM Event 的捕获/目标/冒泡、取消、停止传播、监听器生命周期与宿主 click default-action 门。`pattern`、高级 validity、专用事件数据、完整 HTML activation 和 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -96,10 +96,10 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前基线使用 `tests=13,20,27,43,44,56,58-73`。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前基线使用 `tests=13,20,27,43,44,56,58-74`。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle 与具名 NetSurf option 默认，离线。TEST40-45、59、60 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
+- Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认与 DOM Event 传播/取消，离线。TEST40-45、59、60、74 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
 - GDI Render：TEST 12、14、17、19、20、26-37、39、46-58、62-73，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、同文档及重叠文档缓存复用、table/list、HTML inline author CSS、普通表单、multipart/file、WM multiple select、首批 required 验证与动态表单伪类；TEST65-73 已验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
@@ -129,7 +129,7 @@ scripts\stage.bat
 
 优先候选：
 
-> 2026-07-31 优先级调整：先解决“有没有”，再解决已有小范围“好不好”。普通表单、multipart/file、WM 多选列表、首批 `required/valueMissing` 与五种动态表单伪类已推进到 next109 / TEST73 设备自动化基线。下一步先补事件对象/传播/取消/default-action 的最小纵切，再评估重大布局缺口；高级约束验证随后扩展。已有 NetSurf Duktape backend 的 JavaScript 最小纵切保持中期。首屏 SVG 冷解析、抗锯齿、渐变高级参数、视觉微调和全面性能优化后置，除非它们造成崩溃、数据错误或阻塞基本操作。
+> 2026-07-31 优先级调整：先解决“有没有”，再解决已有小范围“好不好”。表单、动态伪类与通用 Event 传播/取消/default-action 已推进到 next110 / TEST74 设备自动化基线。下一步评估 positioned layout、float、基础 Grid、背景尺寸或脚本资源接口中的高价值缺口；高级约束验证与专用事件数据随后扩展。已有 NetSurf Duktape backend 的 JavaScript 最小纵切保持中期。首屏 SVG 冷解析、抗锯齿、渐变高级参数、视觉微调和全面性能优化后置，除非它们造成崩溃、数据错误或阻塞基本操作。
 
 1. 2026-07-11 用户真机确认 ENGINE 原整组至 TEST24 通过；2026-07-12 单独确认 TEST25 SVG parse。后续修改引擎路径时必须重跑当前整组。
 2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。TEST13 起始页正常不等于所有 IANA 子页正常；2026-07-24 `/domains/reserved` 已再次证明必须走深层链接和旋转验收。next80 已让 TEST60 与真实页横竖屏全部通过；next78 仍因扩大回归和系统异常保持撤回。后续 float 仍必须对照上游 box construction/normalisation。
@@ -164,6 +164,7 @@ scripts\stage.bat
 31. 2026-07-30 next104 在 next103 表单基线上接入 WM 原生 multiple LISTBOX。不要改成自绘菜单：`LBS_MULTIPLESEL` 允许手指逐项切换，`LBS_NOINTEGRALHEIGHT` 保证窗口高度不偏离 NetSurf border-box；宿主逐项比较 `LB_GETSEL` 与 Core 状态，disabled option 被拒绝时以 `LB_SETSEL` 回滚。TEST71 同时检查 disabled select、单选 COMBOBOX、原生重建、GET 重复字段和 reset。设备日志连同 TEST13 深链及 TEST20/27/43/44/56/58-70 全部 PASS。
 32. 2026-07-30 next105 首次接入提交前 required 验证，但 TEST72 reset 后仅恢复 6 个 invalid。根因不是断言，而是 libdom 0.4.2 会把无初始 `value` 属性的 text/password 第一次运行时写值记为 `defaultValue`。next106 在 `PCore_TextInputSetValue` 写入前冻结解析时默认值；设备日志确认 required text/password/textarea/file、checkbox、同名 radio、single/multiple select、首个无效控件几何、提交/Enter 阻止、两种 bypass、multipart 与 reset 全部通过，同批 TEST13/20/27/43/44/56/58-71 无回归。
 33. 2026-07-31 next109/TEST73 将 live `:checked/:enabled/:disabled` 和宿主命中状态 `:focus/:active` 接到 libcss callback；交互变化采用 posted/coalesced cache-only restyle，避免在原生控件通知栈内同步销毁重建控件。设备日志确认焦点、按压、checkbox/option、纵横屏保持与 reset，并且 TEST13 三段导航和 TEST20/27/43/44/56/58-72 全部通过。此批不包含 DOM Focus/Mouse 事件传播、取消/default-action；无 CSS 尺寸的空 text input 仍没有浏览器默认 intrinsic size。
+34. 2026-07-31 next110/TEST74 复用 libdom EventTarget 建立公共 C ABI，修正 target 重复传播、`bubbles/cancelable` 未生效和 dispatch-only 状态残留；Browse 宿主在既有 click 默认动作前派发可取消事件。设备日志确认 TEST74 及 TEST13/20/27/43/44/56/58-73 全部 PASS。专用事件类型数据、完整 HTML activation 与 JS binding 仍是后续边界。
 
 ## 开发纪律
 

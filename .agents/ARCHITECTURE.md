@@ -51,7 +51,7 @@ NetSurf、libdom、libcss、libsvgtiny 等上游源码按工程构建为静态 `
 
 ## 浏览器边界
 
-`positron_core.dll` 负责 transport-agnostic 的解析、样式、布局和绘制；网络由 embedder 通过 fetch callback 提供，URL 合并/安全策略由可选 resolve callback 提供。`PCore_StyleDocumentEx2` 只扩展旧 ABI，不把 WinINet 或具体传输层引入 core；WM 宿主可用 `InternetCombineUrlA`，其他调用者可替换自己的 URL 服务。浏览器宿主负责窗口、消息循环、导航事务和设备交互。
+`positron_core.dll` 负责 transport-agnostic 的解析、样式、布局、绘制和 DOM Event 传播；网络由 embedder 通过 fetch callback 提供，URL 合并/安全策略由可选 resolve callback 提供。`PCore_StyleDocumentEx2` 只扩展旧 ABI，不把 WinINet 或具体传输层引入 core；WM 宿主可用 `InternetCombineUrlA`，其他调用者可替换自己的 URL 服务。事件 ABI 同样只暴露 opaque listener handle、普通 C callback 与 phase/action 标志，不暴露 libdom 对象。浏览器宿主负责窗口、消息循环、导航事务、设备输入和被取消前的 HTML 默认动作。
 
 图片拆分后的目标调用关系：
 
