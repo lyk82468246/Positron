@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next111 基线使用 `tests=13,20,27,43,44,56,58-75`。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next113 基线使用 `tests=13,20,27,43,44,56,58-76`。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -22,6 +22,7 @@
 - 2026-07-21：next69/TEST57 首次设备运行得到错误的 `20/30/30`；切换多个共享目录包时又出现 TEST56 失败，后来由 next72 同包 TEST56 通过及失败文本版本不符证明这是 WM/CE 全局 DLL 复用造成的 EXE/DLL 混搭，不能归因于普通表高算法。next72 的 TEST57 返回 `styles=0:0`，说明测试中的 inline `style=` 未参与选择；next73 改用外部 author stylesheet 后确认 TEST55/56/57 通过。2026-07-22 重新审阅 vcproj 与调用图后确认，正式路径不编译/调用 NetSurf `box_construct.c`，所以全 false `nsoption` 并非直接根因；实际是 `pcore_style_subtree` 向 `css_select_style` 固定传了 `NULL`。切包前仍必须彻底结束所有 `test_host` 进程。
 - 2026-07-24：next74 接入 inline sheet 后，TEST56 报 `rows=35/35/35 35/35 sum=105/70 off=2/10/19 va=0/2/3/3`。行高、两表总高和后三个对齐值均正确，退化集中在 `.distributed .top`：移植层 `named_ancestor_node`/`named_parent_node` 把 class-only 复合选择器携带的 qname `*` 当成真实标签名。next75 统一改用已有的 universal-aware name matcher，并在 TEST58 加 `.scope .probe` 后代 class 断言；TEST56 原夹具和断言保持不变。设备随后确认 TEST56/58 均通过，TEST58 的 cascade 文本和 25/50/auto 可见布局符合预期；下一门禁是同二进制的 TEST13 全流程与完整冻结回归。
 - 2026-08-03：next111/TEST75 只改 slim box builder 的定位构盒分支，按 NetSurf 的 absolute inline 规则把 `position:absolute/fixed;display:inline` 构造成 `BOX_INLINE_BLOCK`；普通 block absolute 与 relative 复用已移植的 `layout_position_absolute/relative`。设备日志确认 TEST75 与 TEST13/20/27/43/44/56/58-74 全部 PASS。若后续扩展 float，不能把这个局部定位修复误当作 float 构盒已经安全。
+- 2026-08-03：next113/TEST76 首次失败为 `initial=0000FF hover=000000 clear=000000 box=0,0 0x20`。根因是 `PCore_InteractionSetAt` 的入口掩码漏掉新 `PCORE_INTERACTION_HOVER`，且测试直接读取普通 inline `<a>` 的零宽起始标记盒。修复入口校验，并让测试目标使用明确尺寸的 block link 后，ARMV4I 增量构建、staging 哈希和设备 `TESTBENCH PASS` 均通过。WM6 SDK 没有桌面 `TrackMouseEvent`/`WM_MOUSELEAVE` 依赖，宿主 hover 离开检测使用 250ms 定时器轮询；后续不要改回桌面 API。
 - WM6 SDK 没有桌面 Win32 `ShowScrollBar` 的声明或导出；需要动态隐藏标准滚动条时，使用 `GetWindowLong/SetWindowLong(GWL_STYLE, WS_VSCROLL)`，再用 `SetWindowPos(..., SWP_FRAMECHANGED)` 重算非客户区。
 - 设备上是否在跑旧的 VS Deploy 目录，例如 `\Program Files\test_host\`。
 

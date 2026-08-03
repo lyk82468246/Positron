@@ -47,7 +47,8 @@ const css_unit_ctx *pcore_get_unit_ctx(void);
 int pcore_interaction_set_node(struct dom_document *doc,
         unsigned int state_flags, struct dom_node *node);
 void pcore_interaction_snapshot(struct dom_document *doc,
-        struct dom_node **focus_node, struct dom_node **active_node);
+        struct dom_node **focus_node, struct dom_node **active_node,
+        struct dom_node **hover_node);
 
 /* Look up raw image bytes cached on `doc` by PCore_FetchImageResources.
  * Returned data is borrowed and remains valid until the document is freed. */

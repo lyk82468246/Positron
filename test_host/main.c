@@ -327,7 +327,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 75
+#define TEST_MAX_NUMBER 76
 
 static int test_config_space(char c)
 {
@@ -2058,6 +2058,7 @@ static int    g_svg_test = 0;     /* TEST 26: positron_image SVG draw */
 static int    g_svg_draw_rc = -1;
 static PIMAGE_SVG g_svg_handle = NULL;
 static int    g_overflow_pointer = 0;
+static int    g_mouse_tracking = 0;
 #define PCORE_IMAGE_FORMAT_COUNT 4
 static PIMAGE_BITMAP g_image_format_bitmap[PCORE_IMAGE_FORMAT_COUNT];
 static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
@@ -2073,6 +2074,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_COMMIT_TIMER 25
 #define TESTBENCH_RENDER_TIMER 26
+#define PCORE_HOVER_TIMER 27
 #define PCORE_NAV_STAGE_DOCUMENT 1
 #define PCORE_NAV_STAGE_RESOURCES 2
 #define PCORE_NAV_RESULT_MORE 0
@@ -4944,6 +4946,24 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             }
             return 0;
         }
+        if (wp == PCORE_HOVER_TIMER) {
+            POINT pt;
+            RECT client;
+
+            if (!GetCursorPos(&pt) || !ScreenToClient(hwnd, &pt) ||
+                    !GetClientRect(hwnd, &client) ||
+                    pt.x < client.left || pt.x >= client.right ||
+                    pt.y < client.top || pt.y >= client.bottom) {
+                KillTimer(hwnd, PCORE_HOVER_TIMER);
+                g_mouse_tracking = 0;
+                if (g_render_doc != NULL &&
+                        PCore_InteractionClear(g_render_doc,
+                                PCORE_INTERACTION_HOVER) > 0) {
+                    pcore_request_interaction_restyle(hwnd);
+                }
+            }
+            return 0;
+        }
         break;
     case WM_PCORE_NAV_PROGRESS:
         if (g_nav_loading && g_nav_bar != NULL) {
@@ -5055,7 +5075,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         if (LOWORD(wp) == WA_INACTIVE && g_render_doc != NULL &&
                 PCore_InteractionClear(g_render_doc,
                         PCORE_INTERACTION_FOCUS |
-                        PCORE_INTERACTION_ACTIVE) > 0) {
+                        PCORE_INTERACTION_ACTIVE |
+                        PCORE_INTERACTION_HOVER) > 0) {
+            KillTimer(hwnd, PCORE_HOVER_TIMER);
+            g_mouse_tracking = 0;
             pcore_request_interaction_restyle(hwnd);
         }
         break;
@@ -5147,7 +5170,19 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             pcore_invalidate_overflow(hwnd);
             return 0;
         }
-        break;
+        if (!g_mouse_tracking) {
+            if (SetTimer(hwnd, PCORE_HOVER_TIMER, 250, NULL) != 0) {
+                g_mouse_tracking = 1;
+            }
+        }
+        if (g_render_doc != NULL &&
+                PCore_InteractionSetAt(g_render_doc,
+                        (int) (short) LOWORD(lp),
+                        (int) (short) HIWORD(lp) + g_scroll_y,
+                        PCORE_INTERACTION_HOVER) > 0) {
+            pcore_request_interaction_restyle(hwnd);
+        }
+        return 0;
     case WM_LBUTTONUP:
         if (g_render_doc != NULL &&
                 PCore_InteractionClear(g_render_doc,
@@ -5173,6 +5208,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_DESTROY:
         g_nav_generation++;
         g_overflow_pointer = 0;
+        KillTimer(hwnd, PCORE_HOVER_TIMER);
+        g_mouse_tracking = 0;
         g_interaction_restyle_pending = 0;
         pcore_native_edits_destroy();
         pcore_native_selects_destroy();
@@ -14191,6 +14228,77 @@ static BOOL test75_positioned_layout(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 76 - dynamic :hover selection and WM interaction state           */
+/* -------------------------------------------------------------------- */
+
+static BOOL test76_hover_state(void)
+{
+    static const char *HTML =
+        "<!doctype html><html><body><a href='/hover'>Hover target</a>"
+        "<div>outside</div></body></html>";
+    static const char *CSS =
+        "html,body{margin:0;padding:0;}"
+        "a{display:block;width:120px;height:24px;color:#0000ff;}"
+        "a:hover{color:#ff0000;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    int x;
+    int y;
+    int w;
+    int h;
+    unsigned long initial_color;
+    unsigned long hover_color;
+    unsigned long clear_color;
+    char detail[256];
+
+    initial_color = 0;
+    hover_color = 0;
+    clear_color = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/hover.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 224, 320) != 0 ||
+            PCore_NodeBox(hDoc, "a", &x, &y, &w, &h) != 0 ||
+            PCore_NodeComputedColor(hDoc, "a", &initial_color) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 76 FAIL", "hover parse/style/layout failed");
+        return FALSE;
+    }
+    if ((initial_color & 0x00ffffffUL) != 0x000000ffUL ||
+            w <= 0 || h <= 0 ||
+            PCore_InteractionSetAt(hDoc, x + 1, y + 1,
+                    PCORE_INTERACTION_HOVER) != 1 ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_NodeComputedColor(hDoc, "a", &hover_color) != 0 ||
+            (hover_color & 0x00ffffffUL) != 0x00ff0000UL ||
+            PCore_InteractionClear(hDoc, PCORE_INTERACTION_HOVER) != 1 ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_NodeComputedColor(hDoc, "a", &clear_color) != 0 ||
+            (clear_color & 0x00ffffffUL) != 0x000000ffUL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "initial=%06lX hover=%06lX clear=%06lX box=%d,%d %dx%d",
+                initial_color & 0x00ffffffUL,
+                hover_color & 0x00ffffffUL,
+                clear_color & 0x00ffffffUL, x, y, w, h);
+        detail[sizeof(detail) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 76 FAIL", detail);
+        return FALSE;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 76 OK",
+            "CSS :hover state passed: pointer hit selects the nearest\n"
+            "element, style reselect turns the link red, and clearing\n"
+            "hover restores the blue rule.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14380,6 +14488,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 73: ok = test73_dynamic_form_states(); break;
         case 74: ok = test74_dom_events(); break;
         case 75: ok = test75_positioned_layout(); break;
+        case 76: ok = test76_hover_state(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

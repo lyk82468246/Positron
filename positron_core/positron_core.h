@@ -476,14 +476,16 @@ PCORE_API int PCore_FormActivateAt(HANDLE hDoc, int x, int y,
                                   int *dirty_x, int *dirty_y,
                                   int *dirty_w, int *dirty_h);
 
-/* Dynamic CSS selector state supplied by an embedder. Focus and active nodes
- * are document-owned references consumed by the normal libcss selector
+/* Dynamic CSS selector state supplied by an embedder. Focus, active and hover
+ * nodes are document-owned references consumed by the normal libcss selector
  * callbacks during the next PCore_StyleDocument[Ex] pass. SetAt resolves the
- * nearest enabled form control, link or label at document CSS coordinates.
- * Clear removes the requested state. Return 1 when state changed, 0 when it
- * was already equal/no interactive target existed, and -1 on invalid input. */
+ * nearest enabled form control, link or label for focus/active, and the
+ * nearest element for hover, at document CSS coordinates. Clear removes the
+ * requested state. Return 1 when state changed, 0 when it was already equal/
+ * no interactive target existed, and -1 on invalid input. */
 #define PCORE_INTERACTION_FOCUS  0x01
 #define PCORE_INTERACTION_ACTIVE 0x02
+#define PCORE_INTERACTION_HOVER  0x04
 PCORE_API int PCore_InteractionSetAt(HANDLE hDoc, int x, int y,
                                     unsigned int state_flags);
 PCORE_API int PCore_InteractionClear(HANDLE hDoc,

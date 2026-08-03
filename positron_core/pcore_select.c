@@ -11,8 +11,9 @@
  * The handler is modelled on NetSurf's content/handlers/css/select.c, but is
  * self-contained: it talks to libdom through core primitives only (no NetSurf
  * "corestring" table, no html-content structures). Selectors that need more
- * machinery than this first cut provides - dynamic pseudo-classes (:hover,
- * :visited, ...) - are stubbed to "no match"; type / class / id / attribute /
+ * machinery than this first cut provides - dynamic pseudo-classes (:visited,
+ * ...) - are stubbed to "no match"; :hover is backed by the document
+ * interaction state; type / class / id / attribute /
  * static pseudo-classes / descendant / sibling structure all work.
  *
  * C89 only.
@@ -43,6 +44,7 @@ typedef struct pcore_select_pw {
     lwc_string *universal;   /* interned "*", for node_has_name */
     dom_node *focus_node;     /* borrowed from document interaction state */
     dom_node *active_node;
+    dom_node *hover_node;
 } pcore_select_pw;
 
 /* libcss owns the value stored under this key. It must remain attached while
@@ -52,6 +54,7 @@ static dom_string *pcore_libcss_node_data_key = NULL;
 typedef struct pcore_interaction_state {
     dom_node *focus_node;
     dom_node *active_node;
+    dom_node *hover_node;
 } pcore_interaction_state;
 
 static dom_string *pcore_interaction_state_key = NULL;
@@ -87,6 +90,9 @@ static void pcore_interaction_state_handler(dom_node_operation operation,
     }
     if (state->active_node != NULL) {
         dom_node_unref(state->active_node);
+    }
+    if (state->hover_node != NULL) {
+        dom_node_unref(state->hover_node);
     }
     free(state);
 }
@@ -151,7 +157,8 @@ int pcore_interaction_set_node(dom_document *doc,
 
     if (doc == NULL || state_flags == 0 ||
             (state_flags & ~(PCORE_INTERACTION_FOCUS |
-                    PCORE_INTERACTION_ACTIVE)) != 0) {
+                    PCORE_INTERACTION_ACTIVE |
+                    PCORE_INTERACTION_HOVER)) != 0) {
         return -1;
     }
     state = pcore_interaction_state_get(doc, node != NULL);
@@ -167,11 +174,16 @@ int pcore_interaction_set_node(dom_document *doc,
         changed |= pcore_interaction_replace_node(
                 &state->active_node, node);
     }
+    if ((state_flags & PCORE_INTERACTION_HOVER) != 0) {
+        changed |= pcore_interaction_replace_node(
+                &state->hover_node, node);
+    }
     return changed;
 }
 
 void pcore_interaction_snapshot(dom_document *doc,
-        dom_node **focus_node, dom_node **active_node)
+        dom_node **focus_node, dom_node **active_node,
+        dom_node **hover_node)
 {
     pcore_interaction_state *state;
 
@@ -181,6 +193,9 @@ void pcore_interaction_snapshot(dom_document *doc,
     }
     if (active_node != NULL) {
         *active_node = (state != NULL) ? state->active_node : NULL;
+    }
+    if (hover_node != NULL) {
+        *hover_node = (state != NULL) ? state->hover_node : NULL;
     }
 }
 
@@ -1157,7 +1172,13 @@ static css_error node_is_link(void *pw, void *node, bool *match)
 static css_error node_is_visited(void *pw, void *node, bool *match)
 { (void) pw; (void) node; *match = false; return CSS_OK; }
 static css_error node_is_hover(void *pw, void *node, bool *match)
-{ (void) pw; (void) node; *match = false; return CSS_OK; }
+{
+    pcore_select_pw *state;
+
+    state = (pcore_select_pw *) pw;
+    *match = (state != NULL && state->hover_node == (dom_node *) node);
+    return CSS_OK;
+}
 static css_error node_is_active(void *pw, void *node, bool *match)
 {
     pcore_select_pw *state;
@@ -1561,7 +1582,8 @@ PCORE_API int PCore_ComputeColor(HANDLE hDoc, HANDLE hSheet,
     }
 
     memset(&pw, 0, sizeof(pw));
-    pcore_interaction_snapshot(doc, &pw.focus_node, &pw.active_node);
+    pcore_interaction_snapshot(doc, &pw.focus_node, &pw.active_node,
+            &pw.hover_node);
     if (lwc_intern_string("*", 1, &pw.universal) != lwc_error_ok) {
         return 1;
     }
@@ -2348,7 +2370,8 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     }
 
     memset(&pw, 0, sizeof(pw));
-    pcore_interaction_snapshot(doc, &pw.focus_node, &pw.active_node);
+    pcore_interaction_snapshot(doc, &pw.focus_node, &pw.active_node,
+            &pw.hover_node);
     if (lwc_intern_string("*", 1, &pw.universal) != lwc_error_ok) {
         return 1;
     }

@@ -6958,6 +6958,24 @@ static dom_node *pcore_interaction_node(struct box *hit, int focus)
     return NULL;
 }
 
+/* :hover applies to the nearest element under the pointer, not only to
+ * controls and links. Text/anonymous boxes carry the useful element on an
+ * ancestor, so walk the same retained hit chain used by click dispatch. */
+static dom_node *pcore_hover_node(struct box *hit)
+{
+    struct box *box;
+    dom_node_type type;
+
+    for (box = hit; box != NULL; box = box->parent) {
+        if (box->node != NULL &&
+                dom_node_get_node_type(box->node, &type) == DOM_NO_ERR &&
+                type == DOM_ELEMENT_NODE) {
+            return box->node;
+        }
+    }
+    return NULL;
+}
+
 PCORE_API int PCore_InteractionSetAt(HANDLE hDoc, int x, int y,
         unsigned int state_flags)
 {
@@ -6972,7 +6990,8 @@ PCORE_API int PCore_InteractionSetAt(HANDLE hDoc, int x, int y,
     st = pcore_get_render(doc);
     if (st == NULL || state_flags == 0 ||
             (state_flags & ~(PCORE_INTERACTION_FOCUS |
-                    PCORE_INTERACTION_ACTIVE)) != 0) {
+                    PCORE_INTERACTION_ACTIVE |
+                    PCORE_INTERACTION_HOVER)) != 0) {
         return -1;
     }
     hit = pcore_hit(st->root_box, x, y);
@@ -6990,6 +7009,15 @@ PCORE_API int PCore_InteractionSetAt(HANDLE hDoc, int x, int y,
         target = pcore_interaction_node(hit, 0);
         result = pcore_interaction_set_node(doc,
                 PCORE_INTERACTION_ACTIVE, target);
+        if (result < 0) {
+            return -1;
+        }
+        changed |= result;
+    }
+    if ((state_flags & PCORE_INTERACTION_HOVER) != 0) {
+        target = pcore_hover_node(hit);
+        result = pcore_interaction_set_node(doc,
+                PCORE_INTERACTION_HOVER, target);
         if (result < 0) {
             return -1;
         }

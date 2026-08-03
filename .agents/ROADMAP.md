@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-08-03
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切与基础 relative/absolute positioning 已推进到 next111 / TEST75 的设备自动化基线。next111 的 TEST13/20/27/43/44/56/58-75 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning 与动态 `:hover` 已推进到 next113 / TEST76 的设备自动化基线。next113 的 TEST13/20/27/43/44/56/58-76 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -20,7 +20,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；均由设备无人值守日志确认。高级约束验证仍在后续扩展，不阻塞更大的“有无”缺口。
 2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
-3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning；下一步按真实页面价值及上游可移植程度评估 float、基础 Grid 和背景尺寸/重复，每项单独接入上游实现并保留 TEST13 深链门禁。
+3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；下一步按真实页面价值及上游可移植程度评估 float、基础 Grid 和背景尺寸/重复，每项单独接入上游实现并保留 TEST13 深链门禁。
 4. **资源类型补齐**：先建立脚本资源发现/下载/缓存接口，再由中期 JavaScript runtime 消费；网页字体不扩展为普通语言字体工程。
 
 短期暂不继续追逐首个 SVG 的冷解析毫秒数、渐变高级参数、抗锯齿微调或复杂表格边角；next92 已把重复解析造成的导航热点降到可接受范围。
@@ -63,7 +63,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `:link` / `:lang()` 已实现。
 - TEST 9 已扩展为离线 computed-style 验收，覆盖 attribute + sibling + static pseudo selector 组合，并于 2026-07-10 真机通过。
 - 当前 IANA CSS 使用 MQ4 范围语法。2026-07-11 已在 `PCore_ParseCSS` 前加入保守兼容：仅把整数像素 `(width <= Npx)` / `(width < Npx)` 转为 libcss 3.11 可解析的 `max-width`；字符串、注释、其他单位和复杂范围不改写。扩展 TEST21 的 320/300/299px 边界已由用户真机确认通过。
-- 动态状态伪类仍 false。
+- 动态状态伪类中 `:focus/:active/:checked/:enabled/:disabled` 与 next113 的 `:hover` 已有状态来源；`:visited/:target/:indeterminate` 仍保持 false。
 
 优先级建议：
 
@@ -86,6 +86,13 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - slim `pcore_box.c` 按 NetSurf `box_construct.c` 的上游规则补齐 `position:absolute/fixed` 且 `display:inline` 的 blockification，输出 `BOX_INLINE_BLOCK`，交给既有 `layout_position_absolute()`；普通 block absolute 与 relative 继续复用 NetSurf `layout.c`。
 - TEST75 同时断言 static flow、relative top/left 偏移、positioned parent 下的 absolute block，以及 absolute inline 的几何和尺寸，并打开正式 layout/redraw 窗口做首帧冒烟。
 - 2026-08-03 设备日志确认 TEST75 与 TEST13/20/27/43/44/56/58-74 全部 PASS。float、sticky、复杂 containing-block 组合、Grid 轨道和背景尺寸不因本批自动获得支持。
+
+### 5. next113：动态 `:hover`
+
+- `positron_core` 增加 document-owned hover node，`PCore_InteractionSetAt` 可按命中盒设置/替换/清除 `PCORE_INTERACTION_HOVER`；libcss selector callback 在下一次 `PCore_StyleDocument`/`Ex` pass 中匹配 `:hover`。
+- WM6 host 在 `WM_MOUSEMOVE` 中桥接 document CSS 坐标，并以 250ms `WM_TIMER` 轮询光标离开客户区；不依赖桌面 Win32 的 `TrackMouseEvent` 或 `WM_MOUSELEAVE`。
+- TEST76 断言蓝色 → hover 红色 → 清除恢复蓝色，并与 TEST13/20/27/43/44/56/58-75 同批自动运行。2026-08-03 `C:\WMShare\Positron-next113\test_host.log` 以 `TESTBENCH PASS` 结束。
+- 该批只实现 CSS hover 状态桥，不宣称 `:visited/:target/:indeterminate`、专用 MouseEvent、触屏 hover、异步事件队列或 JavaScript。
 
 ## 中期规划
 
@@ -294,7 +301,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next111 / TEST75 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
+1. 以 next113 / TEST76 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
 2. 下一批按“一个上游能力一个批次”评估 float、基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23 实验不得原样恢复。
 3. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 4. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge。脚本资源接口可在此前短期阶段先建好，但 JavaScript 默认仍保持关闭直到设备门禁通过。
