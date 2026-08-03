@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-08-03
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning 与动态 `:hover` 已推进到 next113 / TEST76 的设备自动化基线。next113 的 TEST13/20/27/43/44/56/58-76 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning 与动态 `:hover` 已推进到 next113 / TEST76 的设备自动化基线；next114 又建立了独立的外部脚本资源发现/缓存 ABI。next113 的 TEST13/20/27/43/44/56/58-76 全部通过，next114 的 ARMV4I 构建已通过、TEST77 设备日志待确认；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -93,6 +93,12 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - WM6 host 在 `WM_MOUSEMOVE` 中桥接 document CSS 坐标，并以 250ms `WM_TIMER` 轮询光标离开客户区；不依赖桌面 Win32 的 `TrackMouseEvent` 或 `WM_MOUSELEAVE`。
 - TEST76 断言蓝色 → hover 红色 → 清除恢复蓝色，并与 TEST13/20/27/43/44/56/58-75 同批自动运行。2026-08-03 `C:\WMShare\Positron-next113\test_host.log` 以 `TESTBENCH PASS` 结束。
 - 该批只实现 CSS hover 状态桥，不宣称 `:visited/:target/:indeterminate`、专用 MouseEvent、触屏 hover、异步事件队列或 JavaScript。
+
+### 6. next114：脚本资源发现与 document 缓存接口
+
+- `positron_core.dll` 新增 `PCore_FetchScriptResources` 与基准 URL 感知的 `PCore_FetchScriptResourcesEx`；core 只扫描非空外部 `<script src>`，URL 解析由宿主 `PCoreResolveUrlFn` 负责，字节由 `PCoreFetchFn/PCoreFreeFn` 负责。
+- 成功字节按 document 生命周期去重缓存，`PCore_GetScriptResourceCount/PCore_GetScriptResource` 为未来脚本运行时提供只读枚举和借用数据指针；缓存最多 32 条、单条 512 KiB、合计 2 MiB，失败 body 不进入缓存。
+- TEST77 离线断言相对/root-relative/absolute URL、重复引用、cache-only 第二遍、枚举内容和 inline script 不执行。该批不解释 `type`、不执行 JavaScript，也不把脚本请求加入冻结的 TEST13 网络事务；设备日志确认仍待用户运行。
 
 ## 中期规划
 
@@ -301,8 +307,9 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next113 / TEST76 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
-2. 下一批按“一个上游能力一个批次”评估 float、基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23 实验不得原样恢复。
-3. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
-4. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge。脚本资源接口可在此前短期阶段先建好，但 JavaScript 默认仍保持关闭直到设备门禁通过。
-5. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。
+1. 以 next114 / TEST77 为当前代码基线；先在设备运行 TEST77，再以 TEST13 深层导航和旋转作为后续每批门禁。
+2. 脚本资源 ABI 通过设备门禁后，评估把它接入显式的脚本/Javascript 运行时开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
+3. 下一批按“一个上游能力一个批次”评估 float、基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23 实验不得原样恢复。
+4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
+5. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge；JavaScript 默认仍保持关闭直到设备门禁通过。
+6. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。

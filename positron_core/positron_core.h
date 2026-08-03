@@ -150,6 +150,47 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
 PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
         PCoreFreeFn freefn, void *pw, int *out_found, int *out_fetched);
 
+/* External script resource discovery is deliberately separate from JavaScript
+ * execution. Scan non-empty <script src> attributes, resolve references when
+ * a document URL and resolver are supplied, and invoke the embedder fetch
+ * callback for each distinct URL. Inline script text is not executed or
+ * cached, and the type attribute is not interpreted by this transport layer;
+ * a future script runtime owns those policy decisions. Successful bodies are
+ * copied into a per-document cache and repeated references do not fetch again.
+ * out_found counts eligible external references (including duplicates), while
+ * out_fetched counts references available from cache or a successful non-empty
+ * fetch. Either output pointer may be NULL. Returns 0 when the DOM was
+ * scanned. */
+PCORE_API int PCore_FetchScriptResources(HANDLE hDoc, PCoreFetchFn fetch,
+        PCoreFreeFn freefn, void *pw, int *out_found, int *out_fetched);
+
+/* Base-aware form of PCore_FetchScriptResources. document_url is the page URL
+ * and resolve is called for each relative reference. Passing NULL for both
+ * retains the raw-reference behavior of the legacy function. The resolver
+ * and fetch callback receive the same opaque pw. No JavaScript is run by
+ * either API. */
+PCORE_API int PCore_FetchScriptResourcesEx(HANDLE hDoc,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw,
+        int *out_found, int *out_fetched);
+
+typedef struct PCoreScriptResourceInfo {
+    int available;
+    int url_bytes;
+    int data_bytes;
+} PCoreScriptResourceInfo;
+
+/* Read the successful script bodies retained by the document cache. The count
+ * is in document discovery order and returns -1 for an invalid handle.
+ * PCore_GetScriptResource returns 0 for a valid index, copies the URL into
+ * url when capacity is positive, and returns out_data as a borrowed pointer
+ * valid until the document is freed. url_bytes/data_bytes exclude the URL
+ * terminator; failed fetches are not cached. */
+PCORE_API int PCore_GetScriptResourceCount(HANDLE hDoc);
+PCORE_API int PCore_GetScriptResource(HANDLE hDoc, unsigned int index,
+        PCoreScriptResourceInfo *out_info, char *url, int url_capacity,
+        const char **out_data);
+
 /* Legacy one-shot image helpers. New consumers should use positron_image.dll's
  * retained PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap API. These
  * exports remain ABI-compatible and forward to that public image service. */

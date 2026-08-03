@@ -327,7 +327,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 76
+#define TEST_MAX_NUMBER 77
 
 static int test_config_space(char c)
 {
@@ -14299,6 +14299,156 @@ static BOOL test76_hover_state(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 77 - external script discovery, URL resolution and cache ABI       */
+/* The transport callback is deliberately local: this test proves the core */
+/* contract without enabling JavaScript or changing the frozen Browse path. */
+/* -------------------------------------------------------------------- */
+
+typedef struct test77_script_ctx {
+    int calls;
+    int frees;
+    int matched;
+} test77_script_ctx;
+
+static int test77_script_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    test77_script_ctx *ctx;
+    const char *body;
+    char *data;
+    int len;
+
+    ctx = (test77_script_ctx *) pw;
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    body = NULL;
+    if (strcmp(url, "https://example.com/dir/app.js") == 0) {
+        body = "APP";
+    } else if (strcmp(url, "https://example.com/shared.js") == 0) {
+        body = "SHARED";
+    } else if (strcmp(url, "https://cdn.example.net/vendor.js") == 0) {
+        body = "VENDOR";
+    }
+    if (body == NULL) {
+        return 1;
+    }
+    len = (int) strlen(body);
+    data = (char *) malloc((size_t) len);
+    if (data == NULL) {
+        return 1;
+    }
+    memcpy(data, body, (size_t) len);
+    *out_data = data;
+    *out_len = len;
+    ctx->matched++;
+    return 0;
+}
+
+static void test77_script_free(void *pw, char *data)
+{
+    test77_script_ctx *ctx;
+
+    ctx = (test77_script_ctx *) pw;
+    ctx->frees++;
+    free(data);
+}
+
+static BOOL test77_script_resources(void)
+{
+    static const char *HTML =
+        "<!doctype html><html><head>"
+        "<script src='app.js'></script>"
+        "<script src='app.js'></script>"
+        "<script src='/shared.js'></script>"
+        "<script src='https://cdn.example.net/vendor.js'></script>"
+        "<script>window.must_not_run=1;</script>"
+        "</head><body>script cache probe</body></html>";
+    static const char *URLS[] = {
+        "https://example.com/dir/app.js",
+        "https://example.com/shared.js",
+        "https://cdn.example.net/vendor.js"
+    };
+    static const char *BODIES[] = { "APP", "SHARED", "VENDOR" };
+    HANDLE hDoc;
+    test77_script_ctx ctx;
+    PCoreScriptResourceInfo info;
+    const char *data;
+    int found;
+    int fetched;
+    int found_again;
+    int fetched_again;
+    int count;
+    int i;
+    char url[160];
+    char detail[320];
+
+    memset(&ctx, 0, sizeof(ctx));
+    found = 0;
+    fetched = 0;
+    found_again = 0;
+    fetched_again = 0;
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL ||
+            PCore_FetchScriptResourcesEx(hDoc,
+                    "https://example.com/dir/page.html",
+                    wm_combine_url, test77_script_fetch,
+                    test77_script_free, &ctx, &found, &fetched) != 0 ||
+            found != 4 || fetched != 3 || ctx.calls != 3 ||
+            ctx.matched != 3 || ctx.frees != 3) {
+        if (hDoc != NULL) {
+            PCore_FreeDocument(hDoc);
+        }
+        show_error(L"TEST 77 FAIL", "script resource discovery failed");
+        return FALSE;
+    }
+    if (PCore_FetchScriptResourcesEx(hDoc,
+            "https://example.com/dir/page.html", wm_combine_url,
+            NULL, NULL, NULL, &found_again, &fetched_again) != 0 ||
+            found_again != 4 || fetched_again != 4 ||
+            ctx.calls != 3 || ctx.frees != 3) {
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 77 FAIL", "script cache reuse failed");
+        return FALSE;
+    }
+    count = PCore_GetScriptResourceCount(hDoc);
+    if (count != 3) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "cache count=%d expected=3", count);
+        detail[sizeof(detail) - 1] = '\0';
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 77 FAIL", detail);
+        return FALSE;
+    }
+    for (i = 0; i < count; i++) {
+        memset(&info, 0, sizeof(info));
+        data = NULL;
+        memset(url, 0, sizeof(url));
+        if (PCore_GetScriptResource(hDoc, (unsigned int) i, &info,
+                url, sizeof(url), &data) != 0 ||
+                !info.available || strcmp(url, URLS[i]) != 0 ||
+                data == NULL || info.data_bytes != (int) strlen(BODIES[i]) ||
+                memcmp(data, BODIES[i], (size_t) info.data_bytes) != 0) {
+            _snprintf(detail, sizeof(detail) - 1,
+                    "entry=%d url=%s bytes=%d", i, url,
+                    info.data_bytes);
+            detail[sizeof(detail) - 1] = '\0';
+            PCore_FreeDocument(hDoc);
+            show_error(L"TEST 77 FAIL", detail);
+            return FALSE;
+        }
+    }
+    PCore_FreeDocument(hDoc);
+    _snprintf(detail, sizeof(detail) - 1,
+            "scripts found=%d/%d cache=%d calls=%d frees=%d; "
+            "inline script was not executed",
+            found, fetched, count, ctx.calls, ctx.frees);
+    detail[sizeof(detail) - 1] = '\0';
+    show_info(L"TEST 77 OK", detail);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14489,6 +14639,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 74: ok = test74_dom_events(); break;
         case 75: ok = test75_positioned_layout(); break;
         case 76: ok = test76_hover_state(); break;
+        case 77: ok = test77_script_resources(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

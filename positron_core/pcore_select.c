@@ -2515,6 +2515,29 @@ typedef struct pcore_image_cache {
 static dom_string *pcore_image_cache_key = NULL;
 static pcore_shared_svg *pcore_shared_svg_head = NULL;
 
+/* Script bytes are retained only by the owning document. This keeps the
+ * future JavaScript consumer independent from transport and avoids a global
+ * cache on a device with a small process budget. */
+#define PCORE_SCRIPT_CACHE_MAX 32
+#define PCORE_SCRIPT_CACHE_ENTRY_MAX (512 * 1024)
+#define PCORE_SCRIPT_CACHE_BYTES_MAX (2 * 1024 * 1024)
+
+typedef struct pcore_script_resource {
+    struct pcore_script_resource *next;
+    char *url;
+    char *data;
+    int len;
+} pcore_script_resource;
+
+typedef struct pcore_script_cache {
+    pcore_script_resource *head;
+    pcore_script_resource *tail;
+    int count;
+    int bytes;
+} pcore_script_cache;
+
+static dom_string *pcore_script_cache_key = NULL;
+
 static unsigned long pcore_image_hash_a(const char *data, int len)
 {
     unsigned long hash = 2166136261UL;
@@ -2779,6 +2802,167 @@ static int pcore_image_cache_store(pcore_image_cache *cache,
     entry->next = cache->head;
     cache->head = entry;
     return 0;
+}
+
+static int pcore_ensure_script_cache_key(void)
+{
+    static const char *name = "__pcore_script_cache__";
+
+    if (pcore_script_cache_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) name, strlen(name),
+            &pcore_script_cache_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_script_cache_free(pcore_script_cache *cache)
+{
+    pcore_script_resource *entry;
+
+    if (cache == NULL) {
+        return;
+    }
+    entry = cache->head;
+    while (entry != NULL) {
+        pcore_script_resource *next = entry->next;
+
+        free(entry->url);
+        free(entry->data);
+        free(entry);
+        entry = next;
+    }
+    free(cache);
+}
+
+static void pcore_script_cache_ud_handler(dom_node_operation op,
+        dom_string *key, void *data, struct dom_node *src,
+        struct dom_node *dst)
+{
+    (void) key;
+    (void) src;
+    (void) dst;
+    if (op == DOM_NODE_DELETED && data != NULL) {
+        pcore_script_cache_free((pcore_script_cache *) data);
+    }
+}
+
+static pcore_script_cache *pcore_script_cache_get(dom_document *doc,
+        int create)
+{
+    void *data = NULL;
+    void *old = NULL;
+    pcore_script_cache *cache;
+
+    if (doc == NULL || pcore_ensure_script_cache_key() != 0) {
+        return NULL;
+    }
+    if (dom_node_get_user_data((struct dom_node *) doc,
+            pcore_script_cache_key, &data) != DOM_NO_ERR) {
+        return NULL;
+    }
+    if (data != NULL) {
+        return (pcore_script_cache *) data;
+    }
+    if (!create) {
+        return NULL;
+    }
+
+    cache = (pcore_script_cache *) malloc(sizeof(*cache));
+    if (cache == NULL) {
+        return NULL;
+    }
+    cache->head = NULL;
+    cache->tail = NULL;
+    cache->count = 0;
+    cache->bytes = 0;
+    if (dom_node_set_user_data((struct dom_node *) doc,
+            pcore_script_cache_key, cache,
+            pcore_script_cache_ud_handler, &old) != DOM_NO_ERR) {
+        free(cache);
+        return NULL;
+    }
+    if (old != NULL && old != cache) {
+        pcore_script_cache_free((pcore_script_cache *) old);
+    }
+    return cache;
+}
+
+static pcore_script_resource *pcore_script_cache_find(
+        pcore_script_cache *cache, const char *url)
+{
+    pcore_script_resource *entry;
+
+    if (cache == NULL || url == NULL) {
+        return NULL;
+    }
+    for (entry = cache->head; entry != NULL; entry = entry->next) {
+        if (strcmp(entry->url, url) == 0) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+static int pcore_script_cache_store(pcore_script_cache *cache,
+        const char *url, const char *data, int len)
+{
+    pcore_script_resource *entry;
+    size_t url_len;
+
+    if (cache == NULL || url == NULL || data == NULL || len <= 0 ||
+            cache->count >= PCORE_SCRIPT_CACHE_MAX ||
+            len > PCORE_SCRIPT_CACHE_ENTRY_MAX ||
+            cache->bytes > PCORE_SCRIPT_CACHE_BYTES_MAX - len) {
+        return 1;
+    }
+    entry = (pcore_script_resource *) malloc(sizeof(*entry));
+    if (entry == NULL) {
+        return 1;
+    }
+    entry->next = NULL;
+    entry->url = NULL;
+    entry->data = NULL;
+    entry->len = 0;
+    url_len = strlen(url);
+    entry->url = (char *) malloc(url_len + 1);
+    entry->data = (char *) malloc((size_t) len);
+    if (entry->url == NULL || entry->data == NULL) {
+        free(entry->url);
+        free(entry->data);
+        free(entry);
+        return 1;
+    }
+    memcpy(entry->url, url, url_len + 1);
+    memcpy(entry->data, data, (size_t) len);
+    entry->len = len;
+    if (cache->tail != NULL) {
+        cache->tail->next = entry;
+    } else {
+        cache->head = entry;
+    }
+    cache->tail = entry;
+    cache->count++;
+    cache->bytes += len;
+    return 0;
+}
+
+static pcore_script_resource *pcore_script_cache_at(
+        pcore_script_cache *cache, unsigned int index)
+{
+    pcore_script_resource *entry;
+    unsigned int i;
+
+    if (cache == NULL) {
+        return NULL;
+    }
+    entry = cache->head;
+    for (i = 0; entry != NULL && i < index; i++) {
+        entry = entry->next;
+    }
+    return entry;
 }
 
 int pcore_image_resource_get(dom_document *doc, const char *url,
@@ -3085,6 +3269,250 @@ cleanup:
         dom_string_unref(ic.src_name);
     }
     return rc;
+}
+
+typedef struct pcore_script_fetch_ctx {
+    PCoreFetchFn fetch;
+    PCoreFreeFn freefn;
+    PCoreResolveUrlFn resolve;
+    void *pw;
+    const char *document_url;
+    pcore_script_cache *cache;
+    int found;
+    int fetched;
+    dom_string *script_name;
+    dom_string *src_name;
+} pcore_script_fetch_ctx;
+
+static void pcore_fetch_script_url(pcore_script_fetch_ctx *sc,
+        const char *reference_data, size_t reference_len)
+{
+    char reference[1024];
+    char url[2048];
+    char *data;
+    const char *resolved;
+    int len;
+    int copy_len;
+    pcore_script_resource *cached;
+
+    if (sc == NULL || reference_data == NULL || reference_len == 0) {
+        return;
+    }
+    sc->found++;
+    if (reference_len >= sizeof(reference)) {
+        return;
+    }
+    copy_len = (int) reference_len;
+    memcpy(reference, reference_data, (size_t) copy_len);
+    reference[copy_len] = '\0';
+    url[0] = '\0';
+    resolved = reference;
+    if (sc->resolve != NULL && sc->document_url != NULL) {
+        if (sc->resolve(sc->pw, sc->document_url, reference,
+                url, (int) sizeof(url)) != 0) {
+            return;
+        }
+        resolved = url;
+    }
+    if (resolved == NULL || resolved[0] == '\0') {
+        return;
+    }
+    cached = pcore_script_cache_find(sc->cache, resolved);
+    if (cached != NULL) {
+        sc->fetched++;
+        return;
+    }
+    data = NULL;
+    len = 0;
+    if (sc->fetch != NULL &&
+            sc->fetch(sc->pw, resolved, &data, &len) == 0 &&
+            data != NULL && len > 0) {
+        if (pcore_script_cache_store(sc->cache, resolved, data, len) == 0) {
+            sc->fetched++;
+        }
+    }
+    if (data != NULL && sc->freefn != NULL) {
+        sc->freefn(sc->pw, data);
+    }
+}
+
+static void pcore_fetch_scripts_walk(pcore_script_fetch_ctx *sc,
+        dom_node *node)
+{
+    dom_node_type type;
+    dom_exception err;
+    dom_node *child;
+    dom_node *next;
+    dom_string *name;
+    dom_string *src;
+    const char *src_data;
+    size_t src_len;
+    bool is_script;
+
+    name = NULL;
+    src = NULL;
+    is_script = false;
+    err = dom_node_get_node_type(node, &type);
+    if (err == DOM_NO_ERR && type == DOM_ELEMENT_NODE) {
+        err = dom_node_get_node_name(node, &name);
+        if (err == DOM_NO_ERR && name != NULL) {
+            is_script = dom_string_caseless_isequal(name,
+                    sc->script_name);
+            dom_string_unref(name);
+            name = NULL;
+        }
+        if (is_script) {
+            if (dom_element_get_attribute(node, sc->src_name, &src) ==
+                    DOM_NO_ERR && src != NULL) {
+                src_data = dom_string_data(src);
+                src_len = dom_string_byte_length(src);
+                if (src_data != NULL && src_len > 0) {
+                    pcore_fetch_script_url(sc, src_data, src_len);
+                }
+                dom_string_unref(src);
+            }
+            return;   /* Inline script text is not a resource. */
+        }
+    }
+
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return;
+    }
+    while (child != NULL) {
+        pcore_fetch_scripts_walk(sc, child);
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+}
+
+PCORE_API int PCore_FetchScriptResources(HANDLE hDoc, PCoreFetchFn fetch,
+        PCoreFreeFn freefn, void *pw_fetch, int *out_found, int *out_fetched)
+{
+    return PCore_FetchScriptResourcesEx(hDoc, NULL, NULL, fetch, freefn,
+            pw_fetch, out_found, out_fetched);
+}
+
+PCORE_API int PCore_FetchScriptResourcesEx(HANDLE hDoc,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
+        int *out_found, int *out_fetched)
+{
+    dom_document *doc;
+    dom_node *root;
+    pcore_script_fetch_ctx sc;
+    int rc;
+
+    if (out_found != NULL) {
+        *out_found = 0;
+    }
+    if (out_fetched != NULL) {
+        *out_fetched = 0;
+    }
+    doc = (dom_document *) hDoc;
+    if (doc == NULL) {
+        return 1;
+    }
+
+    memset(&sc, 0, sizeof(sc));
+    sc.fetch = fetch;
+    sc.freefn = freefn;
+    sc.resolve = resolve;
+    sc.pw = pw_fetch;
+    sc.document_url = document_url;
+    sc.cache = pcore_script_cache_get(doc, 1);
+    sc.script_name = NULL;
+    sc.src_name = NULL;
+    root = NULL;
+    rc = 1;
+    if (sc.cache == NULL) {
+        goto cleanup;
+    }
+    dom_string_create((const uint8_t *) "script", 6, &sc.script_name);
+    dom_string_create((const uint8_t *) "src", 3, &sc.src_name);
+    if (sc.script_name == NULL || sc.src_name == NULL) {
+        goto cleanup;
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        goto cleanup;
+    }
+    pcore_fetch_scripts_walk(&sc, root);
+    if (out_found != NULL) {
+        *out_found = sc.found;
+    }
+    if (out_fetched != NULL) {
+        *out_fetched = sc.fetched;
+    }
+    rc = 0;
+
+cleanup:
+    if (root != NULL) {
+        dom_node_unref(root);
+    }
+    if (sc.script_name != NULL) {
+        dom_string_unref(sc.script_name);
+    }
+    if (sc.src_name != NULL) {
+        dom_string_unref(sc.src_name);
+    }
+    return rc;
+}
+
+PCORE_API int PCore_GetScriptResourceCount(HANDLE hDoc)
+{
+    pcore_script_cache *cache;
+
+    if (hDoc == NULL) {
+        return -1;
+    }
+    cache = pcore_script_cache_get((dom_document *) hDoc, 0);
+    return (cache != NULL) ? cache->count : 0;
+}
+
+PCORE_API int PCore_GetScriptResource(HANDLE hDoc, unsigned int index,
+        PCoreScriptResourceInfo *out_info, char *url, int url_capacity,
+        const char **out_data)
+{
+    pcore_script_cache *cache;
+    pcore_script_resource *entry;
+    size_t url_len;
+    int copy_len;
+
+    if (out_info != NULL) {
+        memset(out_info, 0, sizeof(*out_info));
+    }
+    if (out_data != NULL) {
+        *out_data = NULL;
+    }
+    if (hDoc == NULL) {
+        return 1;
+    }
+    cache = pcore_script_cache_get((dom_document *) hDoc, 0);
+    entry = pcore_script_cache_at(cache, index);
+    if (entry == NULL) {
+        return 1;
+    }
+    url_len = strlen(entry->url);
+    if (url != NULL && url_capacity > 0) {
+        copy_len = (url_len < (size_t) (url_capacity - 1)) ?
+                (int) url_len : url_capacity - 1;
+        memcpy(url, entry->url, (size_t) copy_len);
+        url[copy_len] = '\0';
+    }
+    if (out_info != NULL) {
+        out_info->available = (entry->data != NULL && entry->len > 0);
+        out_info->url_bytes = (int) url_len;
+        out_info->data_bytes = entry->len;
+    }
+    if (out_data != NULL) {
+        *out_data = entry->data;
+    }
+    return 0;
 }
 
 PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
