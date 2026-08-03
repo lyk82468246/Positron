@@ -12,7 +12,8 @@
  * BOX_INLINE_CONTAINER), so the tree is layout-ready.
  *
  * Current scope: block/inline text, inline-block, flex, common table
- * structures, including NetSurf's table-span occupancy, plus cached <img>,
+ * structures, including NetSurf's table-span occupancy, plus basic relative
+ * and absolute positioning, cached <img>,
  * interactive checkbox/radio/button/file gadgets, native-hosted
  * text/password/textarea/select controls and CSS background-image resources
  * decoded by WM Imaging/libsvgtiny, are built for NetSurf's real
@@ -221,6 +222,21 @@ static int pcore_is_inline_level(css_computed_style *style, int is_root)
             d == CSS_DISPLAY_INLINE_TABLE ||
             d == CSS_DISPLAY_INLINE_FLEX ||
             d == CSS_DISPLAY_INLINE_GRID) ? 1 : 0;
+}
+
+/* NetSurf blockifies an out-of-flow inline into an inline-block. Without this
+ * conversion layout_position_absolute() cannot consume the box because its
+ * positioning path intentionally excludes BOX_INLINE markers. */
+static int pcore_is_positioned_inline(css_computed_style *style, uint8_t d)
+{
+    uint8_t position;
+
+    if (style == NULL || d != CSS_DISPLAY_INLINE) {
+        return 0;
+    }
+    position = css_computed_position(style);
+    return (position == CSS_POSITION_ABSOLUTE ||
+            position == CSS_POSITION_FIXED) ? 1 : 0;
 }
 
 /* True if display is none (box not generated). */
@@ -1354,7 +1370,14 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
                     int gadget_type = pcore_form_control_type(child);
-                    if (gadget_type != 0) {
+                    if (pcore_is_positioned_inline(cs, d)) {
+                        struct box *ib = pcore_construct_block(child, cs, 0,
+                                ctx, stats);
+                        if (ib != NULL) {
+                            ib->type = BOX_INLINE_BLOCK;
+                            pcore_box_add_child(cont, ib);
+                        }
+                    } else if (gadget_type != 0) {
                         struct box *gadget = pcore_make_form_control_box(child,
                                 cs, ctx, gadget_type);
                         if (gadget != NULL) {
@@ -1536,8 +1559,21 @@ static struct box *pcore_construct_block(dom_node *node,
             } else if (type == DOM_ELEMENT_NODE) {
                 css_computed_style *cs = pcore_profile_style(child, stats);
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
+                    uint8_t d = css_computed_display(cs, false);
                     int gadget_type = pcore_form_control_type(child);
-                    if (gadget_type != 0) {
+                    if (pcore_is_positioned_inline(cs, d)) {
+                        struct box *ib;
+                        if (inline_cont == NULL) {
+                            inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
+                                    NULL, ctx);
+                            pcore_box_add_child(box, inline_cont);
+                        }
+                        ib = pcore_construct_block(child, cs, 0, ctx, stats);
+                        if (ib != NULL) {
+                            ib->type = BOX_INLINE_BLOCK;
+                            pcore_box_add_child(inline_cont, ib);
+                        }
+                    } else if (gadget_type != 0) {
                         struct box *gadget;
                         if (inline_cont == NULL) {
                             inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
@@ -1566,7 +1602,6 @@ static struct box *pcore_construct_block(dom_node *node,
                             pcore_box_add_child(inline_cont, img);
                         }
                     } else if (pcore_is_inline_level(cs, 0)) {
-                        uint8_t d = css_computed_display(cs, false);
                         if (inline_cont == NULL) {
                             inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
                                     NULL, ctx);

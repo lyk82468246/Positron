@@ -1,7 +1,7 @@
 # Positron Roadmap
 
-更新时间：2026-07-31
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单与最小 DOM Event 纵切已推进到 next110 / TEST74 的设备自动化基线。next110 的 TEST13/20/27/43/44/56/58-74 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+更新时间：2026-08-03
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切与基础 relative/absolute positioning 已推进到 next111 / TEST75 的设备自动化基线。next111 的 TEST13/20/27/43/44/56/58-75 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -20,7 +20,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；均由设备无人值守日志确认。高级约束验证仍在后续扩展，不阻塞更大的“有无”缺口。
 2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
-3. **重大布局“有无”**：按真实页面价值及上游可移植程度，依次评估 positioned layout、float、基础 Grid 和背景尺寸/重复；每项单独接入上游实现并保留 TEST13 深链门禁。
+3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning；下一步按真实页面价值及上游可移植程度评估 float、基础 Grid 和背景尺寸/重复，每项单独接入上游实现并保留 TEST13 深链门禁。
 4. **资源类型补齐**：先建立脚本资源发现/下载/缓存接口，再由中期 JavaScript runtime 消费；网页字体不扩展为普通语言字体工程。
 
 短期暂不继续追逐首个 SVG 的冷解析毫秒数、渐变高级参数、抗锯齿微调或复杂表格边角；next92 已把重复解析造成的导航热点降到可接受范围。
@@ -80,6 +80,12 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - TEST 11 同时覆盖折叠组 `body.y=p.y=16` 和 `padding-top:1px` 阻断组 `body.y=8,p.y=25`，已由 2026-07-10 用户真机截图确认通过。
 - TEST 11/15/16/18 改为收集失败后继续执行，避免较早断言遮住后续结果。
 - 2026-07-11 用户真机截图确认完整 ENGINE 组 TEST 6-11、15、16、18、21、22 全部通过；该离线回归门槛已关闭。后续改动这些路径时，仍须重跑整组。
+
+### 4. next111：基础 positioned layout
+
+- slim `pcore_box.c` 按 NetSurf `box_construct.c` 的上游规则补齐 `position:absolute/fixed` 且 `display:inline` 的 blockification，输出 `BOX_INLINE_BLOCK`，交给既有 `layout_position_absolute()`；普通 block absolute 与 relative 继续复用 NetSurf `layout.c`。
+- TEST75 同时断言 static flow、relative top/left 偏移、positioned parent 下的 absolute block，以及 absolute inline 的几何和尺寸，并打开正式 layout/redraw 窗口做首帧冒烟。
+- 2026-08-03 设备日志确认 TEST75 与 TEST13/20/27/43/44/56/58-74 全部 PASS。float、sticky、复杂 containing-block 组合、Grid 轨道和背景尺寸不因本批自动获得支持。
 
 ## 中期规划
 
@@ -203,6 +209,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 仍缺或简化：
 
+- 基础 relative/absolute 已验收（TEST75）；float、sticky、复杂 containing-block 组合以及 Grid/flex/table 中全部定位交互仍缺
 - float
 - `border-collapse` 的 col/colgroup 来源及更多复杂表边界；next64-65/TEST53-54 已覆盖基本冲突、span 终止边与 row-group 边界
 - overflow scrollbar 的惯性触摸、overlay 模式与更多嵌套组合
@@ -287,8 +294,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next110 / TEST74 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
-2. 下一批按“一个上游能力一个批次”评估 positioned layout、float、基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23 实验不得原样恢复。
+1. 以 next111 / TEST75 为设备自动化基线；自动 testbench、TEST13 深层导航和旋转继续作为每批门禁。
+2. 下一批按“一个上游能力一个批次”评估 float、基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23 实验不得原样恢复。
 3. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 4. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge。脚本资源接口可在此前短期阶段先建好，但 JavaScript 默认仍保持关闭直到设备门禁通过。
 5. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。

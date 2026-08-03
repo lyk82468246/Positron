@@ -2,7 +2,7 @@
 
 面向 **Windows Mobile 6 Professional**（Windows CE 5.2, ARMv4i）的现代基础设施与应用运行时。
 
-Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制和点击导航都在 `positron_core.dll` 后面跑通；JavaScript 是长期必须实现的目标，但尚不是当前可用能力。
+Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制、基础定位和点击导航都在 `positron_core.dll` 后面跑通；JavaScript 是长期必须实现的目标，但尚不是当前可用能力。
 
 公共 DLL 是正式产品，不只是 `test_host.exe` 或浏览器的内部依赖。架构与 ABI 原则见 [.agents/ARCHITECTURE.md](.agents/ARCHITECTURE.md)。
 
@@ -34,9 +34,13 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 2026-07-31 的 next110/TEST74 已补上最小 DOM 事件纵切：Core 公开文档所有的 listener handle、按 id/布局坐标派发的可信通用事件、捕获/目标/冒泡、`preventDefault`、两种停止传播和显式移除；WM Browse 宿主在链接、表单、文件、label 等现有 click 默认动作之前检查取消结果。同步修正 vendored libdom 将 target 重复放入祖先路径、无视 `bubbles/cancelable` 及不清理 dispatch-only 状态的问题。设备日志确认 TEST74 和 TEST13 三段深链及 TEST20/27/43/44/56/58-73 全部 PASS。该批尚不是完整 MouseEvent/KeyboardEvent/FocusEvent/InputEvent，也未完成所有 HTML 激活细节或 JavaScript 绑定。
 
+2026-08-03 的 next111/TEST75 按 NetSurf 上游的绝对定位特例补齐 slim box builder：普通 `position:relative` 保持正常流并应用偏移，`position:absolute/fixed` 的 block 继续进入正式定位路径，`display:inline` 的脱流元素改为 `BOX_INLINE_BLOCK`。设备自动日志确认 TEST75 与 TEST13/20/27/43/44/56/58-74 全部 PASS。该批不等于 float、Grid 轨道或完整 positioned containing-block 组合已经实现。
+
 当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已由 TEST42/next55 验收，但不包含触摸惯性或 overlay scrollbar。CSS `@import` 的嵌套解析、失败空表回退和文档缓存已由 TEST45 验收；它尚不代表跨源策略、完整缓存失效或整页资源进度已完成。有效表格的 span 占位、匿名 row/cell、collapsed-border 冲突、cell vertical alignment、`empty-cells`、显式 table height 与百分比 row 第二遍已由 TEST46/47、TEST53-57 真机确认；`col`/`colgroup` border 来源、百分比 cell/后代内容和跨行 baseline 仍未覆盖。正式 Positron 构盒走 `pcore_select.c` + `pcore_box.c`，并不调用 NetSurf `box_construct.c`；此前 HTML `style=` 缺失的直接原因是 `pcore_style_subtree` 向 `css_select_style` 固定传入空 inline sheet，而不是 `nsoption_bool(author_level_css)`。next75/TEST58 已确认 NetSurf 式 inline stylesheet能通过 cascade、继承、`!important`、错误恢复、后代 class 选择及正式布局/重绘。next81 已将全零 `nsoption` shim 改为具名专家默认：当前实际读取的 `font_min_size=85`、`core_select_menu=false`、`remove_backgrounds=false` 对齐 NetSurf 3.11，JavaScript 继续显式关闭，未审计名称会直接编译失败；TEST56/58-61 已由设备确认无异常。列表 marker 的 47 种上游 counter formatter、缓存 `list-style-image`、失败回退和 inside 首行流已由 next61-63/TEST50-52 验收；float 邻接 marker 与自定义 `@counter-style` 仍未完成。表单与最小事件纵切已推进到 next110/TEST74 设备基线；仍缺高级 validity、专用 Mouse/Keyboard/Focus/Input 事件数据、完整 HTML activation/default-action 细节和 JS 绑定。自动桥也不等于真实触屏、多选控件/文件选择器视觉或公网上传验收。字体 fallback 的当前范围只包括符号和单色 emoji，不计划扩展普通语言/多语种字体。`background-size`、多层背景和脚本资源仍未实现。UI 提交已在 parse/style/image-discovery/layout 四个调用之间让出 WM 消息循环，单个不可重入调用仍可能短暂卡顿。复杂 SVG text、float 和其余 forms/widgets 仍不完整；JavaScript 尚未启用。路线采用“存在性优先”：下一步评估 positioned layout、float、基础 Grid 或背景尺寸中的高价值上游纵切；随后利用仓库已有 NetSurf Duktape backend 做中期 JavaScript 最小纵切。首屏 SVG 性能、抗锯齿和高级视觉边角后置。
 
-状态更正：动态状态伪类截至 next109 已有 `:focus/:active/:checked/:enabled/:disabled`，next110 又补上通用 Event 的传播/取消与宿主 click default-action 门。仍未完成的是 hover/visited/target/indeterminate、专用事件数据与完整 HTML/JS 事件语义，以及无 CSS 尺寸空 text input 的默认 intrinsic size。
+状态更正：动态状态伪类截至 next109 已有 `:focus/:active/:checked/:enabled/:disabled`，next110 又补上通用 Event 的传播/取消与宿主 click default-action 门，next111 补齐了 basic relative/absolute positioning。仍未完成的是 hover/visited/target/indeterminate、专用事件数据与完整 HTML/JS 事件语义，以及无 CSS 尺寸空 text input 的默认 intrinsic size。
+
+布局状态更正：basic relative/absolute 已由 next111/TEST75 通过；float、sticky、复杂 containing-block 组合、Grid 轨道和 `background-size` 仍是后续缺口。
 
 next59 的 TEST49 已确认四个箭头不再 tofu、marker 和五个单色 emoji 均可见，视觉比 next58 稍有改善。next60 首次 TEST50 显示 `found=4`，核查确认不是当前源码逻辑失败，而是 staging 在最后一次 Debug 增量编译后又修改了 `pcore_select.c`，最终错误地组合了新 `test_host.exe` 与旧 `positron_core.dll`。next61 重新增量编译后 TEST50 已通过；`stage.bat` 现会先执行同配置增量 Build，失败时不再复制任何产物。next62 的 TEST51 与 next63 的 TEST52 均已由横竖屏截图确认，inside 文本/图片 marker、悬挂换行、block-first、空条目和嵌套布局符合预期。
 

@@ -327,7 +327,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 74
+#define TEST_MAX_NUMBER 75
 
 static int test_config_space(char c)
 {
@@ -14066,6 +14066,131 @@ event_failed:
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 75 - positioned block and inline layout                         */
+/* -------------------------------------------------------------------- */
+
+static BOOL test75_positioned_layout(void)
+{
+    static const char *HTML =
+        "<!doctype html><html><body><main>"
+        "<section>static</section>"
+        "<article>relative</article>"
+        "<aside>absolute block</aside>"
+        "<span>absolute inline</span>"
+        "</main></body></html>";
+    static const char *CSS =
+        "html,body{margin:0;padding:0;}"
+        "main{position:relative;width:180px;height:120px;margin:0;"
+        "padding:0;background:#eeeeee;}"
+        "section{display:block;width:20px;height:20px;margin:0;padding:0;"
+        "background:#ff0000;}"
+        "article{display:block;position:relative;left:10px;top:7px;"
+        "width:30px;height:20px;margin:0;padding:0;background:#00ff00;}"
+        "aside{position:absolute;left:60px;top:30px;width:25px;height:15px;"
+        "margin:0;padding:0;background:#0000ff;}"
+        "span{position:absolute;left:100px;top:50px;width:20px;height:12px;"
+        "margin:0;padding:0;background:#ffff00;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    int main_x;
+    int main_y;
+    int main_w;
+    int main_h;
+    int section_x;
+    int section_y;
+    int section_w;
+    int section_h;
+    int article_x;
+    int article_y;
+    int article_w;
+    int article_h;
+    int aside_x;
+    int aside_y;
+    int aside_w;
+    int aside_h;
+    int span_x;
+    int span_y;
+    int span_w;
+    int span_h;
+    char detail[320];
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    hSheet = PCore_ParseCSS(CSS, 0,
+            "http://positron.local/positioned.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0 ||
+            PCore_NodeBox(hDoc, "main", &main_x, &main_y, &main_w,
+                    &main_h) != 0 ||
+            PCore_NodeBox(hDoc, "section", &section_x, &section_y,
+                    &section_w, &section_h) != 0 ||
+            PCore_NodeBox(hDoc, "article", &article_x, &article_y,
+                    &article_w, &article_h) != 0 ||
+            PCore_NodeBox(hDoc, "aside", &aside_x, &aside_y, &aside_w,
+                    &aside_h) != 0 ||
+            PCore_NodeBox(hDoc, "span", &span_x, &span_y, &span_w,
+                    &span_h) != 0) {
+        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+        show_error(L"TEST 75 FAIL",
+                "positioned parse/style/layout lookup failed");
+        return FALSE;
+    }
+
+    if (main_w != 180 || main_h != 120 ||
+            section_x != main_x || section_y != main_y ||
+            section_w != 20 || section_h != 20 ||
+            article_x != section_x + 10 ||
+            article_y != section_y + section_h + 7 ||
+            article_w != 30 || article_h != 20 ||
+            aside_x != main_x + 60 || aside_y != main_y + 30 ||
+            aside_w != 25 || aside_h != 15 ||
+            span_x != main_x + 100 || span_y != main_y + 50 ||
+            span_w != 20 || span_h != 12) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "main=%d,%d %dx%d static=%d,%d %dx%d "
+                "relative=%d,%d %dx%d absolute=%d,%d %dx%d "
+                "inline=%d,%d %dx%d",
+                main_x, main_y, main_w, main_h,
+                section_x, section_y, section_w, section_h,
+                article_x, article_y, article_w, article_h,
+                aside_x, aside_y, aside_w, aside_h,
+                span_x, span_y, span_w, span_h);
+        detail[sizeof(detail) - 1] = '\0';
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 75 FAIL", detail);
+        return FALSE;
+    }
+
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    show_info(L"TEST 75",
+            "Positioned layout fixture: red static flow, green relative\n"
+            "flow box shifted +10/+7, blue absolute block and yellow\n"
+            "absolute inline box. All four must stay inside the grey box.");
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    if (!show_render_window()) {
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 75 FAIL", "CreateWindow returned NULL");
+        return FALSE;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    show_info(L"TEST 75 OK",
+            "NetSurf positioned layout passed: relative offsets preserve\n"
+            "flow geometry, absolute block geometry is anchored to the\n"
+            "positioned parent, and inline absolute is blockified.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14254,6 +14379,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 72: ok = test72_form_validation(); break;
         case 73: ok = test73_dynamic_form_states(); break;
         case 74: ok = test74_dom_events(); break;
+        case 75: ok = test75_positioned_layout(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
