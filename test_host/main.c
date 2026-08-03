@@ -14376,9 +14376,11 @@ static BOOL test77_script_resources(void)
     const char *data;
     int found;
     int fetched;
+    int first_rc;
     int found_again;
     int fetched_again;
     int count;
+    int cache_count;
     int i;
     char url[160];
     char detail[320];
@@ -14386,20 +14388,30 @@ static BOOL test77_script_resources(void)
     memset(&ctx, 0, sizeof(ctx));
     found = 0;
     fetched = 0;
+    first_rc = -1;
     found_again = 0;
     fetched_again = 0;
     hDoc = PCore_ParseHTML(HTML, 0);
-    if (hDoc == NULL ||
-            PCore_FetchScriptResourcesEx(hDoc,
+    if (hDoc != NULL) {
+        first_rc = PCore_FetchScriptResourcesEx(hDoc,
                     "https://example.com/dir/page.html",
                     wm_combine_url, test77_script_fetch,
-                    test77_script_free, &ctx, &found, &fetched) != 0 ||
-            found != 4 || fetched != 3 || ctx.calls != 3 ||
-            ctx.matched != 3 || ctx.frees != 3) {
+                    test77_script_free, &ctx, &found, &fetched);
+    }
+    if (hDoc == NULL || first_rc != 0 || found != 4 || fetched != 3 ||
+            ctx.calls != 3 || ctx.matched != 3 || ctx.frees != 3) {
+        cache_count = (hDoc != NULL) ?
+                PCore_GetScriptResourceCount(hDoc) : -1;
+        _snprintf(detail, sizeof(detail) - 1,
+                "first rc=%d found=%d/4 fetched=%d/3 calls=%d "
+                "matched=%d frees=%d cache=%d",
+                first_rc, found, fetched, ctx.calls, ctx.matched,
+                ctx.frees, cache_count);
+        detail[sizeof(detail) - 1] = '\0';
         if (hDoc != NULL) {
             PCore_FreeDocument(hDoc);
         }
-        show_error(L"TEST 77 FAIL", "script resource discovery failed");
+        show_error(L"TEST 77 FAIL", detail);
         return FALSE;
     }
     if (PCore_FetchScriptResourcesEx(hDoc,
