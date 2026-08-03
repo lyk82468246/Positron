@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-08-03
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning 与动态 `:hover` 已推进到 next113 / TEST76 的设备自动化基线；next114 又建立了独立的外部脚本资源发现/缓存 ABI。next113 的 TEST13/20/27/43/44/56/58-76 全部通过，next114 的 ARMV4I 构建已通过、TEST77 设备日志待确认；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。next114 的 TEST13/20/27/43/44/56/58-77 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -98,7 +98,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 - `positron_core.dll` 新增 `PCore_FetchScriptResources` 与基准 URL 感知的 `PCore_FetchScriptResourcesEx`；core 只扫描非空外部 `<script src>`，URL 解析由宿主 `PCoreResolveUrlFn` 负责，字节由 `PCoreFetchFn/PCoreFreeFn` 负责。
 - 成功字节按 document 生命周期去重缓存，`PCore_GetScriptResourceCount/PCore_GetScriptResource` 为未来脚本运行时提供只读枚举和借用数据指针；缓存最多 32 条、单条 512 KiB、合计 2 MiB，失败 body 不进入缓存。
-- TEST77 离线断言相对/root-relative/absolute URL、重复引用、cache-only 第二遍、枚举内容和 inline script 不执行。该批不解释 `type`、不执行 JavaScript，也不把脚本请求加入冻结的 TEST13 网络事务；设备日志确认仍待用户运行。
+- TEST77 离线断言相对/root-relative/absolute URL、重复引用、cache-only 第二遍、枚举内容和 inline script 不执行。该批不解释 `type`、不执行 JavaScript，也不把脚本请求加入冻结的 TEST13 网络事务；ARMV4I 构建及设备 `TESTBENCH PASS` 已确认。
 
 ## 中期规划
 
@@ -307,8 +307,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next114 / TEST77 为当前代码基线；先在设备运行 TEST77，再以 TEST13 深层导航和旋转作为后续每批门禁。
-2. 脚本资源 ABI 通过设备门禁后，评估把它接入显式的脚本/Javascript 运行时开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
+1. 以 next114 / TEST77 为设备自动化基线；后续每批继续以 TEST13 深层导航和旋转作为门禁。
+2. 评估把已通过设备门禁的脚本资源 ABI 接入显式的脚本/JavaScript 运行时开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
 3. 下一批按“一个上游能力一个批次”评估 float、基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. 中期直接利用仓库已有 NetSurf Duktape backend 做 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge；JavaScript 默认仍保持关闭直到设备门禁通过。
