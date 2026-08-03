@@ -14398,12 +14398,12 @@ static BOOL test77_script_resources(void)
                     wm_combine_url, test77_script_fetch,
                     test77_script_free, &ctx, &found, &fetched);
     }
-    if (hDoc == NULL || first_rc != 0 || found != 4 || fetched != 3 ||
+    if (hDoc == NULL || first_rc != 0 || found != 4 || fetched != 4 ||
             ctx.calls != 3 || ctx.matched != 3 || ctx.frees != 3) {
         cache_count = (hDoc != NULL) ?
                 PCore_GetScriptResourceCount(hDoc) : -1;
         _snprintf(detail, sizeof(detail) - 1,
-                "first rc=%d found=%d/4 fetched=%d/3 calls=%d "
+                "first rc=%d found=%d/4 fetched=%d/4 calls=%d "
                 "matched=%d frees=%d cache=%d",
                 first_rc, found, fetched, ctx.calls, ctx.matched,
                 ctx.frees, cache_count);
