@@ -4,6 +4,8 @@
 当前分支：`main`  
 当前设备基线：next114，ARMV4I 增量构建已通过；配置的 TEST13/20/27/43/44/56/58-77 已由无人值守设备日志确认全部 PASS。next109 已完成五种动态表单伪类；next110 又接通通用 DOM Event 的捕获/目标/冒泡、取消、停止传播、监听器生命周期与宿主 click default-action 门；next111 补齐 basic relative/absolute positioning；next113/TEST76 接通宿主命中驱动的动态 `:hover`；next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、高级 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
 
+失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
+
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
 ## 项目目标

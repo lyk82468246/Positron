@@ -4,6 +4,10 @@
 
 **Float 方向暂挂（2026-08-04）**：next115 的普通 float 和 next116 的显式 block-level float 都未通过真实设备门禁。next116 的自动 TEST13 数值记录为 OK，但人工截图显示导航被扁平化、正文边界异常，且 TEST79 最终失败；因此 TEST79 已从默认配置和 ENGINE 组移除。不要把 TEST23/79 当作已支持的 CSS Floats，也不要在没有完整 box construction/normalisation 方案前继续扩大该方向。
 
+失败分支、环境误报、已替代实验和暂挂方向的总索引见 [`.agents/FAILED_EXPERIMENTS.md`](.agents/FAILED_EXPERIMENTS.md)；其中包括 next37 回退、next78 scrollbar 实验、next115/116 float 回退，以及当前“局部容器偏小、文本偏多”的开放视觉限制。
+
+失败分支、环境误报、已替代实验和暂挂方向的总索引见 [`.agents/FAILED_EXPERIMENTS.md`](<C:/Users/Joe/Documents/C#/Positron/.agents/FAILED_EXPERIMENTS.md>)；其中包括 next37 回退、next78 scrollbar 实验、next115/116 float 回退，以及当前“局部容器偏小、文本偏多”的开放视觉限制。
+
 面向 **Windows Mobile 6 Professional**（Windows CE 5.2, ARMv4i）的现代基础设施与应用运行时。
 
 Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制、基础定位、动态 `:hover`、点击导航和脚本资源缓存接口都在 `positron_core.dll` 后面推进；JavaScript 是长期必须实现的目标，但尚不是当前可用能力。

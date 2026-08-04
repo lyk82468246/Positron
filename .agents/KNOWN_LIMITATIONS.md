@@ -15,6 +15,7 @@
 | 普通浮动候选 | next115/next116 曾把 `float:left/right` 受控构盒路径和 TEST79 加入源码，但都已撤回。next116 的设备 TEST79 失败，且真实 TEST13 截图仍有导航/正文排版回归。 | Float 当前不支持；不能作为真实 IANA 页脚或完整 CSS Floats 证据。重新实现前必须先完成完整 box construction/normalisation，并通过 TEST79、TEST13 深链和旋转门禁。 |
 | 动态 `:hover` | next113/TEST76 已在设备确认：命中最近 DOM 元素后，样式重选会把链接从蓝色切为红色，清除状态后恢复；WM6 宿主用 `WM_MOUSEMOVE` 与 250ms 定时器轮询离开窗口。 | 不代表 `:visited`、`:target`、`:indeterminate`、专用 MouseEvent 数据、触屏 hover 语义或 JavaScript 绑定已实现。 |
 | IANA 窄屏页 | TEST13 起始页和 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。next80 已修复 libcss 父 bloom 节点数据过早销毁；TEST56/58/59/60 与真实 `/domains/reserved` 横竖屏均已通过，首个 `Domain` 表头恢复正常。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
+| 视觉容器与文本比例 | next117 人工复核确认主链路基本正常，但部分页面/测试存在容器或背景框偏小、文本量偏多导致的版式不协调。 | 尚未定位到单一 CSS 根因；不应通过放宽断言解决，也不代表核心解析/资源/导航失败。需要至少三个复现样例、computed style/box geometry 数据、针对性回归和竖横屏截图后才能关闭。 |
 | 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。next54 的 fixed-height 回归已在 next55 收窄，用户确认 auto-height 空间、箭头、短页纵条与色块页正常。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
 | table span/归一化/折叠边框 | NetSurf 3.11 span occupancy 与匿名 row/cell 已由 TEST46/47 验收。next64/TEST53 至 next68/TEST56 已覆盖常见 collapsed-border、cell alignment/empty-cells 与显式 table height；next73/TEST57 又确认 25/50/auto 百分比 row 分配及超约束缩放。 | 尚不覆盖任意 inline/float/form 畸形组合、caption/column 归一化、`col`/`colgroup` border 来源、百分比 cell/后代内容、跨行 baseline 或所有复杂表格边界。 |
 | Forms/widgets | next85/93 至 next104/TEST71 已完成 checkbox/radio、文本、textarea、single/multiple select、button、GET/POST、reset/Enter/label 与 multipart/file；next106/TEST72 已确认首批 `required/valueMissing`；next109/TEST73 已确认动态表单伪类；next110/TEST74 已建立通用 DOM Event 传播/取消和宿主 click default-action 门；next111/TEST75 未改变表单路径。 | multipart 仍整体缓冲且 MIME 固定；尚无流式上传、上传进度、MIME 推断、multiple file、`pattern`、类型/范围约束、custom validity、`invalid` 事件、验证气泡、专用 Mouse/Keyboard/Focus/Input 数据或完整 HTML activation。空且无 CSS 尺寸的 text input 也缺浏览器默认 intrinsic size。自动断言不等于真实手指、原生选择器或公网 POST 已人工验收。 |
@@ -98,3 +99,4 @@ WM Imaging 的 BMP/PNG/JPEG/GIF 均已在设备通过尺寸探测和 Draw 返回
 1. 每次真机截图改变结论时，同时更新本文件、`HANDOFF.md`、`ROADMAP.md` 和根目录 `README.md`。
 2. 测试名称后的“OK”只说明其明确断言成立；必须同时写出它没有覆盖的范围。
 3. 新增临时 stub、降级、硬编码测试尺寸或线程取舍时，先在此登记后续任务和完成条件。
+4. 新增失败分支或暂挂方向时，同时更新 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)；该索引必须写清状态、证据、是否可重试和重启门槛。
