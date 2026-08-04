@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="9.00"
+	Name="positron_script"
+	ProjectGUID="{D4B7E3A1-8D10-4C1E-9A6B-0F2E3D4C5B6A}"
+	RootNamespace="positron_script"
+	Keyword="Win32Proj"
+	TargetFrameworkVersion="196613"
+	>
+	<Platforms>
+		<Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" />
+	</Platforms>
+	<ToolFiles>
+	</ToolFiles>
+	<Configurations>
+		<Configuration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="2" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
+				AdditionalIncludeDirectories=".;..\compat;..\netsurf-all-3.11\netsurf;..\netsurf-all-3.11\netsurf\include;..\netsurf-all-3.11\netsurf\content\handlers\javascript\duktape"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_SCRIPT_EXPORTS;DUK_F_DLL_BUILD;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
+				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
+				WarningLevel="3" DebugInformationFormat="3" CompileAs="1"
+				ForcedIncludeFiles="positron_crt.h" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLinkerTool" AdditionalOptions=" /subsystem:windowsce,5.02"
+				OutputFile="$(OutDir)\positron_script.dll" LinkIncremental="2"
+				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)\positron_script.pdb" SubSystem="0"
+				StackReserveSize="65536" StackCommitSize="4096"
+				RandomizedBaseAddress="1" DataExecutionPrevention="0"
+				ImportLibrary="$(OutDir)\positron_script.lib" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory=""
+				RegisterOutput="0" AdditionalFiles="" />
+			<DebuggerTool />
+		</Configuration>
+		<Configuration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="2" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
+				FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories=".;..\compat;..\netsurf-all-3.11\netsurf;..\netsurf-all-3.11\netsurf\include;..\netsurf-all-3.11\netsurf\content\handlers\javascript\duktape"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_SCRIPT_EXPORTS;DUK_F_DLL_BUILD;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
+				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3"
+				DebugInformationFormat="3" CompileAs="1"
+				ForcedIncludeFiles="positron_crt.h" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLinkerTool" AdditionalOptions=" /subsystem:windowsce,5.02"
+				OutputFile="$(OutDir)\positron_script.dll" LinkIncremental="1"
+				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)\positron_script.pdb" SubSystem="0"
+				StackReserveSize="65536" StackCommitSize="4096"
+				OptimizeReferences="2" EnableCOMDATFolding="2"
+				RandomizedBaseAddress="1" DataExecutionPrevention="0"
+				ImportLibrary="$(OutDir)\positron_script.lib" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory=""
+				RegisterOutput="0" AdditionalFiles="" />
+			<DebuggerTool />
+		</Configuration>
+	</Configurations>
+	<References>
+	</References>
+	<Files>
+		<Filter Name="Source Files"
+			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
+			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}">
+			<File RelativePath=".\positron_script.c"></File>
+			<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\javascript\duktape\duktape.c"></File>
+			<File RelativePath="..\compat\positron_crt.c"></File>
+		</Filter>
+		<Filter Name="Header Files" Filter="h;hpp;hxx;hm;inl;inc;xsd"
+			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}">
+			<File RelativePath=".\positron_script.h"></File>
+			<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\javascript\duktape\duktape.h"></File>
+			<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\javascript\duktape\duk_config.h"></File>
+			<File RelativePath="..\netsurf-all-3.11\netsurf\content\handlers\javascript\duktape\duk_custom.h"></File>
+			<File RelativePath="..\compat\positron_crt.h"></File>
+		</Filter>
+		<Filter Name="Resource Files"
+			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav"
+			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}">
+		</Filter>
+	</Files>
+	<Globals>
+	</Globals>
+</VisualStudioProject>

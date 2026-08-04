@@ -22,6 +22,14 @@
 
 #include "utils/config.h"
 
+#if defined(_WIN32_WCE)
+/* Windows Mobile exposes the FILETIME conversion APIs used by Duktape but
+ * not SystemTimeToTzSpecificLocalTime. Use the existing no-DST provider;
+ * timezone-aware formatting is not part of this first standalone ABI. */
+#undef DUK_USE_DATE_TZO_WINDOWS
+#define DUK_USE_DATE_TZO_WINDOWS_NO_DST
+#endif
+
 #ifndef HAVE_STRPTIME
 #undef DUK_USE_DATE_PRS_STRPTIME
 #undef DUK_USE_DATE_PRS_GETDATE

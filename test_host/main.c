@@ -39,6 +39,7 @@
 #include "positron_json.h"
 #include "positron_http.h"
 #include "positron_image.h"
+#include "positron_script.h"
 
 #include <hubbub/parser.h>
 
@@ -327,7 +328,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 77
+#define TEST_MAX_NUMBER 80
 
 static int test_config_space(char c)
 {
@@ -336,7 +337,8 @@ static int test_config_space(char c)
 
 static int test_config_available(int number)
 {
-    return number >= 1 && number <= TEST_MAX_NUMBER && number != 23;
+    return number >= 1 && number <= TEST_MAX_NUMBER &&
+            number != 23 && number != 78 && number != 79;
 }
 
 static int test_config_parse_spec(char *spec,
@@ -14461,6 +14463,112 @@ static BOOL test77_script_resources(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 80 - standalone JavaScript runtime DLL                          */
+/* This deliberately does not initialise positron_core. It proves the    */
+/* public opaque-handle ABI, persistent evaluation state, error recovery, */
+/* and DLL-owned diagnostic storage using the bundled Duktape runtime.    */
+/* -------------------------------------------------------------------- */
+static BOOL test80_script_runtime(void)
+{
+    static const char *SOURCE_1 = "var answer = 40 + 2; answer;";
+    static const char *SOURCE_2 = "answer += 1; answer;";
+    static const char *SOURCE_3 = "throw new Error('expected');";
+    static const char *SOURCE_4 = "answer + 1;";
+    HANDLE hScript;
+    int rc;
+    unsigned long memory_used;
+    unsigned long evaluations;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    hScript = PScript_Create(0);
+    if (hScript == NULL) {
+        show_error(L"TEST 80 FAIL",
+                "PScript_Create returned NULL");
+        return FALSE;
+    }
+    if (PScript_AbiVersion() != PSCRIPT_ABI_VERSION) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "ABI=%08lx expected=%08lx",
+                PScript_AbiVersion(), PSCRIPT_ABI_VERSION);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 80 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_Evaluate(hScript, SOURCE_1, -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "first rc=%d result=%s expected=42",
+                rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 80 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_Evaluate(hScript, SOURCE_2, -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "43") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "persistent rc=%d result=%s expected=43",
+                rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 80 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_Evaluate(hScript, SOURCE_3, -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_EVALUATION ||
+            strstr(error, "expected") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "throw rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 80 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_Evaluate(hScript, SOURCE_4, -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "44") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "recovery rc=%d result=%s expected=44",
+                rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 80 FAIL", detail);
+        return FALSE;
+    }
+
+    memory_used = PScript_GetMemoryUsed(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (memory_used == 0 || evaluations != 4) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "memory=%lu evaluations=%lu/4",
+                memory_used, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 80 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    _snprintf(detail, sizeof(detail) - 1,
+            "standalone positron_script.dll: persistent values, thrown\n"
+            "error recovery and DLL-owned memory telemetry passed.\n\n"
+            "No DOM, window, network or browser-core binding is enabled.");
+    detail[sizeof(detail) - 1] = '\0';
+    show_info(L"TEST 80 OK", detail);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14552,7 +14660,7 @@ static int run_configured_tests(const unsigned char *selected,
     }
     needs_core = 0;
     for (number = 8; number <= TEST_MAX_NUMBER; number++) {
-        if (selected[number]) {
+        if (number != 80 && selected[number]) {
             needs_core = 1;
             break;
         }
@@ -14652,6 +14760,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 75: ok = test75_positioned_layout(); break;
         case 76: ok = test76_hover_state(); break;
         case 77: ok = test77_script_resources(); break;
+        case 80: ok = test80_script_runtime(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -14711,7 +14820,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                    "The file exists but is empty, unreadable or malformed.\n"
                    "Use: tests=31,32 or tests=1-5 7b\n"
                    "Optional: auto=1\n\n"
-                   "TEST 23 is unavailable. Continuing with group selection.");
+                   "TEST 23/78/79 are unavailable. Continuing with group selection.");
     } else if (configured_count > 0) {
         test_config_prompt(configured_tests, configured_7b, configured_auto,
                 config_prompt, sizeof(config_prompt));

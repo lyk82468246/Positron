@@ -1,6 +1,6 @@
 # Positron
 
-> **当前设备基线（2026-08-04）**：next114 增加了独立的外部 `<script src>` 资源发现、宿主 URL 解析、抓取回调、document 缓存和只读枚举 ABI，并新增 TEST77；ARMV4I 增量构建通过，next114 设备包的 TEST13/20/27/43/44/56/58-77 已由无人值守 testbench 确认 `TESTBENCH PASS`。JavaScript 执行仍关闭。`TrackMouseEvent` 等桌面 API 不属于 WM6 方案；宿主使用 `WM_MOUSEMOVE` 与定时器轮询离开窗口。next115 与 next116 的 float 候选均已撤回：设备 TEST79 失败，next116 的 TEST13 截图仍出现导航/正文排版回归；next114 恢复为当前可靠基线。
+> **当前构建候选（2026-08-04）**：next118 在 next117/next114 Browse 基线上新增独立 `positron_script.dll`，复用仓库内 NetSurf Duktape 2.7.0 单文件源，提供 opaque-handle、UTF-8 求值、持久上下文、错误恢复和内存/次数遥测 ABI；新增 TEST80。VS2008 的 Windows Mobile 6 Professional SDK（ARMV4I）Debug 增量构建已通过，TEST80 尚待设备执行，因此不能把 JavaScript 运行时写成已真机验收。默认 testbench 为 TEST13/20/27/43/44/56/58-77/80；浏览器核心仍不执行脚本。`TrackMouseEvent` 等桌面 API 不属于 WM6 方案；宿主使用 `WM_MOUSEMOVE` 与定时器轮询离开窗口。next115 与 next116 的 float 候选均已撤回：设备 TEST79 失败，next116 的 TEST13 截图仍出现导航/正文排版回归；next117/next114 保持为当前可靠 Browse 基线。
 
 **Float 方向暂挂（2026-08-04）**：next115 的普通 float 和 next116 的显式 block-level float 都未通过真实设备门禁。next116 的自动 TEST13 数值记录为 OK，但人工截图显示导航被扁平化、正文边界异常，且 TEST79 最终失败；因此 TEST79 已从默认配置和 ENGINE 组移除。不要把 TEST23/79 当作已支持的 CSS Floats，也不要在没有完整 box construction/normalisation 方案前继续扩大该方向。
 
@@ -10,7 +10,7 @@
 
 面向 **Windows Mobile 6 Professional**（Windows CE 5.2, ARMv4i）的现代基础设施与应用运行时。
 
-Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制、基础定位、动态 `:hover`、点击导航和脚本资源缓存接口都在 `positron_core.dll` 后面推进；JavaScript 是长期必须实现的目标，但尚不是当前可用能力。
+Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片、脚本运行时与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制、基础定位、动态 `:hover`、点击导航和脚本资源缓存接口都在 `positron_core.dll` 后面推进；`positron_script.dll` 已作为独立 Duktape 执行服务接入解决方案，但尚未接入浏览器 DOM、window、网络事务或 TEST13。
 
 公共 DLL 是正式产品，不只是 `test_host.exe` 或浏览器的内部依赖。架构与 ABI 原则见 [.agents/ARCHITECTURE.md](.agents/ARCHITECTURE.md)。
 
@@ -27,6 +27,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
 | **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、缓存图片链、CSS 背景图与 NetSurf overflow scrollbar 已真机验证，窄屏复杂布局仍待补 |
 | **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 retained 解码、SVG、PNG/JPEG/BMP/GIF 与原始像素入口均已真机闭环；当前 ABI 1.5 增加只读 SVG 创建阶段遥测，next52 原生标题栏 OK 真退出已真机确认 |
+| **6** | `positron_script.dll` — 独立 JavaScript 执行基础设施 | 🚧 Duktape 2.7.0 已封装为稳定 C ABI，TEST80 待设备验证；浏览器 DOM/网络绑定保持关闭 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
@@ -34,7 +35,7 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 当前 Browse 正式路径已经从早期手写块流布局切到 **NetSurf 真实布局/重绘引擎**：`PCore_LayoutDocument` / `PCore_PaintDocument` / `PCore_LinkAt` 走 `pcore_box_construct` → NetSurf `layout_document` → `html_redraw` → GDI plotter。M7-flex/table、M5f border、CSS attribute/sibling selector 与 `:link` / `:lang()` 已由 TEST 9/17 真机验证。TEST 11 的 margin collapse 与 `padding-top:1px` 阻断折叠成对断言已于 2026-07-10 真机通过。`<img>` alt fallback 已由 TEST 17 验证；TEST 18 的文档级资源缓存与 URL 去重、TEST 20 的 BMP/PNG/JPEG/GIF 缓存 replaced box/`content_redraw`/`plot_bitmap` 绘制均已真机通过。TEST 21 已验证运行时 viewport/DPI 及整数像素 MQ4 `(width <= Npx)` / `(width < Npx)` 的 320/300/299px 边界。TEST13 已确认 `white-space:normal/nowrap` 的源码换行被正确折叠、词间距正常；TEST15 又确认 `<pre>` 换行仍保留。TEST 22 已验证反向 flex 的 25px leading padding；TEST38-39 进一步关闭了 IANA 顶层根变量造成的窄屏间距问题，当前截图中的导航、正文和注册表列均已可读，但其他真实子页仍需持续观察。Browse host 在布局前使用同一 HTTP 获取器填充 `<img>` 缓存，失败仍保留 alt/src 回退。SVG parse/draw/cache/fallback 已由 TEST25-28 真机通过，TEST13 的 HTTPS HTML + 相对 SVG 网络 fixture 也已显示正确。详见 [PHASE4.md](PHASE4.md)、[.agents/ROADMAP.md](.agents/ROADMAP.md) 和 [.agents/KNOWN_LIMITATIONS.md](.agents/KNOWN_LIMITATIONS.md)。
 
-当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 的 BMP/PNG/JPEG/GIF 与缓存 `<img>` 链已真机验证。`positron_image.dll` 公共 C ABI 已接通 WM Imaging、Expat、libdom XML、libsvgtiny 与 NanoSVG rasterizer；`PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap/FreeBitmap` retained 位图对象会复制输入字节，NetSurf 图片载体也复用同一解码对象。2026-07-15 的 TEST19/20 已确认四格式颜色、清空调用方缓冲后重复绘制、损坏输入拒绝、旧核心 ABI 转发与正式缓存链；TEST26/27 和 TEST13 同批无回归。
+当前可用能力：TLS/HTTP/JSON 通信栈；HTML/CSS/DOM 解析；CSS select + computed style；整树样式；外链 CSS；NetSurf real layout/redraw；GDI plotter；滚动、viewport/DPI 自适应、点击链接导航；flex、常见 table、border、CSS attribute/sibling/static-pseudo selector、`<img>` alt fallback 与 `<img src>` 资源发现/fetch。WM Imaging 的 BMP/PNG/JPEG/GIF 与缓存 `<img>` 链已真机验证。`positron_image.dll` 公共 C ABI 已接通 WM Imaging、Expat、libdom XML、libsvgtiny 与 NanoSVG rasterizer；`positron_script.dll` 提供独立 UTF-8 JavaScript 求值、持久上下文、错误恢复和资源遥测，但不创建 DOM/window、不抓取网络。`PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap/FreeBitmap` retained 位图对象会复制输入字节，NetSurf 图片载体也复用同一解码对象。2026-07-15 的 TEST19/20 已确认四格式颜色、清空调用方缓冲后重复绘制、损坏输入拒绝、旧核心 ABI 转发与正式缓存链；TEST26/27 和 TEST13 同批无回归。
 
 最新设备反馈（2026-07-30）：next44 的 TEST13 全流程确认 next37 恢复点可作为 Browse 冻结基线；next45 又确认公共位图 ABI 的 TEST19 四格式、TEST20 缓存图片、TEST26/27 SVG 与 TEST13 全流程均正常。next46 的 ABI 1.0 独立 WM 示例也已在横竖屏确认，SVG 曲线缩放后的平滑观感略逊于先前大图但可接受。next47 已确认 ABI 1.1 的 PNG/JPEG 内存编码、DLL 配套释放及重新解码闭环；next48 证明 WM `EncoderQuality=100` 仍无法修复小图色度串扰。next49 已确认静态 libjpeg-turbo 1.5.3 的显式 quality JPEG 为正确 4:4:4，行方向、红绿蓝黄颜色与 PNG 一致，大面积色带消失。Debug DLL 相比 next48 增加 243,712 字节（约 238 KiB），设备不需额外 JPEG DLL；额外 CPU 与约 `width*height*3` 的主要中间像素内存只发生在显式 JPEG 编码。next50 的六项截图又确认 ABI 1.3 的 padded BGR24、straight-alpha BGRA32、RGB/alpha PNG、JPEG 与 SVG 一致。next51 进一步证明 ABI 1.4 的 BMP/GIF 隐藏编码、签名与回读检查通过，但也证明标题栏 X 是 Shell Smart Minimize，不保证发送 `WM_CLOSE`。next52 改用 WM/Pocket PC 原生 `SHDoneButton(SHDB_SHOW)` 标题栏 OK，并在 `WM_COMMAND/IDOK` 销毁窗口；用户已确认点击 OK 后进程消失且可以正常再次启动。next53 又确认 TEST46 四行三列表格 span 颜色/位置正确，TEST13/17/41/42 其余功能正常。next54 虽让 TEST41 的 auto-height 横条获得独立空间并去掉短页无效纵条，却因第二次整树 layout 同时改变 fixed-height overflow 几何而令 TEST42 自动断言失败；next55 已限制二次 layout 只影响 auto-height 容器并修正右箭头坐标，用户现已确认 TEST41/42、短页纵条与色块页全部正常。next56 的 TEST47 红/白、绿/蓝两行及同批其他测试现已确认正常。next57 的 TEST48 已确认列表层级和有序计数语义；next58/59 的随包字体最终让基础箭头、marker 与五个单色 emoji 可见。next61 的 TEST50 已确认 IV/z/aa/09 计数、绿色缓存 SVG marker 与圆形失败回退全部通过。next62/TEST51 与 next63/TEST52 又依次确认 inline-first 和 block-first/空条目/嵌套/图片的 inside marker 流在横竖屏符合预期。next64/TEST53 的纵横屏截图现已确认 collapsed border 的宽度、样式、hidden、来源 tie 与 separate 对照均符合预期；next65/TEST54 又确认 finite/auto rowspan、colspan 与 row-group 四组终止边正确。next106/TEST72 进一步确认首批 `required/valueMissing` 约束验证、提交/Enter 阻止、首个无效控件定位、`novalidate/formnovalidate`、multipart 与 reset；同包 TEST13 深链及 TEST20/27/43/44/56/58-71 全部 PASS。
 
@@ -46,9 +47,11 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 2026-08-03 的 next113/TEST76 接通动态 `:hover`：WM6 宿主用 `WM_MOUSEMOVE` 加 250ms 定时器轮询离开窗口，core 命中最近 DOM 元素并在下一次样式选择时应用 hover 状态。设备自动日志确认 TEST76 与 TEST13/20/27/43/44/56/58-75 全部 PASS。该批不等于 `:visited`、`:target`、`:indeterminate`、专用 MouseEvent 或 JavaScript 已实现。
 
-2026-08-03 的 next114/TEST77 建立了独立的脚本资源 ABI：core 扫描外部 `<script src>`，可通过 `PCoreResolveUrlFn` 使用宿主 URL 策略，调用 transport-agnostic fetch/free 回调，把成功字节按 document 生命周期缓存，并提供只读计数/枚举接口。该批不执行 inline 或 external JavaScript，也尚未接入 TEST13 的网络事务；ARMV4I 增量构建通过，TEST77 与整批设备自动 testbench 已确认 PASS。
+2026-08-03 的 next114/TEST77 建立了独立的脚本资源 ABI：core 扫描外部 `<script src>`，可通过 `PCoreResolveUrlFn` 使用宿主 URL 策略，调用 transport-agnostic fetch/free 回调，把成功字节按 document 生命周期缓存，并提供只读计数/枚举接口。该批不执行 inline 或 external JavaScript，也尚未接入 TEST13 的网络事务；ARMV4I 增量构建通过，TEST77 与整批设备自动 testbench 已确认 PASS。2026-08-04 的 next118 又把仓库已有 Duktape 2.7.0 封装成独立 `positron_script.dll`，TEST80 覆盖 ABI、持久求值、throw 后恢复和 DLL 内存遥测；该测试只完成编译级准备，设备结果待补。
 
 当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已由 TEST42/next55 验收，但不包含触摸惯性或 overlay scrollbar。CSS `@import` 的嵌套解析、失败空表回退和文档缓存已由 TEST45 验收；它尚不代表跨源策略、完整缓存失效或整页资源进度已完成。有效表格的 span 占位、匿名 row/cell、collapsed-border 冲突、cell vertical alignment、`empty-cells`、显式 table height 与百分比 row 第二遍已由 TEST46/47、TEST53-57 真机确认；`col`/`colgroup` border 来源、百分比 cell/后代内容和跨行 baseline 仍未覆盖。正式 Positron 构盒走 `pcore_select.c` + `pcore_box.c`，并不调用 NetSurf `box_construct.c`；此前 HTML `style=` 缺失的直接原因是 `pcore_style_subtree` 向 `css_select_style` 固定传入空 inline sheet，而不是 `nsoption_bool(author_level_css)`。next75/TEST58 已确认 NetSurf 式 inline stylesheet能通过 cascade、继承、`!important`、错误恢复、后代 class 选择及正式布局/重绘。next81 已将全零 `nsoption` shim 改为具名专家默认：当前实际读取的 `font_min_size=85`、`core_select_menu=false`、`remove_backgrounds=false` 对齐 NetSurf 3.11，JavaScript 继续显式关闭，未审计名称会直接编译失败；TEST56/58-61 已由设备确认无异常。列表 marker 的 47 种上游 counter formatter、缓存 `list-style-image`、失败回退和 inside 首行流已由 next61-63/TEST50-52 验收；float 邻接 marker 与自定义 `@counter-style` 仍未完成。表单与最小事件纵切已推进到 next110/TEST74 设备基线；仍缺高级 validity、专用 Mouse/Keyboard/Focus/Input 事件数据、完整 HTML activation/default-action 细节和 JS 绑定。自动桥也不等于真实触屏、多选控件/文件选择器视觉或公网上传验收。字体 fallback 的当前范围只包括符号和单色 emoji，不计划扩展普通语言/多语种字体。`background-size`、多层背景和脚本资源仍未实现。UI 提交已在 parse/style/image-discovery/layout 四个调用之间让出 WM 消息循环，单个不可重入调用仍可能短暂卡顿。复杂 SVG text、float 和其余 forms/widgets 仍不完整；JavaScript 尚未启用。路线采用“存在性优先”：下一步评估 positioned layout、float、基础 Grid 或背景尺寸中的高价值上游纵切；随后利用仓库已有 NetSurf Duktape backend 做中期 JavaScript 最小纵切。首屏 SVG 性能、抗锯齿和高级视觉边角后置。
+
+独立脚本边界补充：`positron_script.dll` 已提供可供其他 WM 程序调用的 Duktape 2.7.0 UTF-8 求值服务，但不改变浏览器 JavaScript 默认关闭的策略；TEST80 设备结果仍待补。
 
 状态更正：动态状态伪类截至 next109 已有 `:focus/:active/:checked/:enabled/:disabled`，next110 又补上通用 Event 的传播/取消与宿主 click default-action 门，next111 补齐了 basic relative/absolute positioning，next113/TEST76 又接通了由宿主命中状态驱动的 `:hover`。仍未完成的是 `:visited/:target/:indeterminate`、专用事件数据与完整 HTML/JS 事件语义，以及无 CSS 尺寸空 text input 的默认 intrinsic size。
 
@@ -139,6 +142,7 @@ Positron/
   positron_expat/               Expat 2.8.2 静态库及 WM/VS2008 适配
   positron_libsvgtiny/          NetSurf libsvgtiny 静态库
   positron_image/               可供任意 WM 程序调用的图片 DLL（WM 位图 + SVG retained C ABI）
+  positron_script/              可供任意 WM 程序调用的 JavaScript DLL（Duktape 2.7.0 C ABI）
 
   samples/positron_image_demo/  仅依赖 positron_image.dll 的独立 WM C 示例
 
@@ -151,7 +155,7 @@ Positron/
     inttypes.h
 
   scripts/
-    stage.bat                   增量构建并把 6 个二进制拷到 C:\WMShare\
+    stage.bat                   增量构建并把 7 个二进制拷到 C:\WMShare\
     stage_image_demo.bat        只打包图片 DLL 与独立示例
 
   .agents/                      Codex 接手交接、调试纪律、路线图
@@ -165,7 +169,7 @@ Positron/
 
 1. 安装 **VS2008 SP1** + **Windows Mobile 6 Professional SDK** + **WM6 Pro Emulator**。
 2. Clone 本仓库。mbedTLS、cJSON、NetSurf、Expat、libjpeg-turbo、NanoSVG 和字体源均已固定版本并随仓库提供，不需要额外下载源码。
-3. 可先运行 `python scripts\audit_repo.py`，确认 14 个 VS2008 工程引用的源码和关键许可证都存在且已被 Git 跟踪。
+3. 可先运行 `python scripts\audit_repo.py`，确认 15 个 VS2008 工程引用的源码和关键许可证都存在且已被 Git 跟踪。
 
 VS2008、WM6 SDK、模拟器和设备镜像是外部专有工具链，不能随本仓库再分发。第三方版本和许可证清单见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
@@ -196,6 +200,7 @@ scripts\build.bat Debug clean     :: 清理 Debug
 positron_tls/bin/Debug/positron_tls.dll
 positron_json/bin/Debug/positron_json.dll
 positron_http/bin/Debug/positron_http.dll
+positron_script/bin/Debug/positron_script.dll
 positron_core/bin/Debug/positron_core.dll
 test_host/bin/Debug/test_host.exe
 ```
@@ -224,7 +229,7 @@ scripts\stage.bat Release :: 或 Release
 scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 staging
 ```
 
-把 6 个二进制、测试配置及 `fonts` 子目录拷到 `C:\WMShare\`。
+把 7 个二进制、测试配置及 `fonts` 子目录拷到 `C:\WMShare\`。
 
 模拟器内 Start → File Explorer → **Storage Card** → 双击 `test_host.exe`。
 
@@ -237,7 +242,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77
+tests=13,20,27,43,44,56,58-77,80
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
@@ -245,6 +250,7 @@ tests=13,20,27,43,44,56,58-77
 测试交付默认按能力批次进行：先积累多项相关实现、自动像素/资源/安全断言和直绘/正式链两层回归，再请求一次设备验收。只有真实编译错误、高风险回归定位或设备特有故障才临时拆成单项包，避免每个微小改动都要求人工截图。
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
+- **Standalone script**：TEST 80，独立 positron_script.dll 的 ABI、持久上下文、错误恢复和 DLL 内存遥测；不初始化 positron_core，不连接 DOM/window/network，设备验证待补。
 - **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-76，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值、grid/overflow min-content 隔离、overflow scrollbar、分阶段导航资源事务、主文档失败回滚、CSS import tree、libcss 节点缓存纵横屏重选、具名 NetSurf option 默认、DOM Event 传播/取消、基础定位与动态 `:hover`，离线。TEST40-45、59、60、74-76 已真机通过；next78 已撤回。TEST23、TEST79 的 float 候选均因真实 Browse/设备门禁回归撤回。
 - **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-58、62-73，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、同文档及重叠文档缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、普通表单、multipart/file、WM multiple select、required 验证与动态表单伪类；TEST73 已由 next109 设备门禁确认。动态 `:hover` 的自动断言属于 Engine TEST76。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
