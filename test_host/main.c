@@ -328,7 +328,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 80
+#define TEST_MAX_NUMBER 81
 
 static int test_config_space(char c)
 {
@@ -14569,6 +14569,93 @@ static BOOL test80_script_runtime(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 81 - standalone JavaScript runtime safety boundaries             */
+/* This deliberately uses a separate context and a short budget. It     */
+/* proves timeout cancellation, source-size rejection, and recovery      */
+/* after both paths without touching positron_core or the browser host.   */
+/* -------------------------------------------------------------------- */
+static BOOL test81_script_safety(void)
+{
+    static const char *SOURCE_TIMEOUT = "while (true) {}";
+    static const char *SOURCE_OVERLIMIT = "x";
+    static const char *SOURCE_RECOVERY = "6 * 7;";
+    HANDLE hScript;
+    int rc;
+    unsigned long memory_used;
+    unsigned long evaluations;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    hScript = PScript_Create(50);
+    if (hScript == NULL) {
+        show_error(L"TEST 81 FAIL",
+                "PScript_Create returned NULL");
+        return FALSE;
+    }
+
+    rc = PScript_Evaluate(hScript, SOURCE_TIMEOUT, -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_TIMEOUT ||
+            strstr(error, "timeout") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "timeout rc=%d error=%s expected=%d",
+                rc, error, PSCRIPT_ERROR_TIMEOUT);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 81 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_Evaluate(hScript, SOURCE_OVERLIMIT,
+            (int) (PSCRIPT_MAX_SOURCE_BYTES + 1UL));
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_SOURCE_TOO_LARGE ||
+            strstr(error, "PSCRIPT_MAX_SOURCE_BYTES") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "limit rc=%d error=%s expected=%d",
+                rc, error, PSCRIPT_ERROR_SOURCE_TOO_LARGE);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 81 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_Evaluate(hScript, SOURCE_RECOVERY, -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "recovery rc=%d result=%s expected=42",
+                rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 81 FAIL", detail);
+        return FALSE;
+    }
+
+    memory_used = PScript_GetMemoryUsed(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (memory_used == 0 || evaluations != 2) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "memory=%lu evaluations=%lu/2",
+                memory_used, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 81 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    _snprintf(detail, sizeof(detail) - 1,
+            "timeout=%d limit=%d recovery=%s memory=%lu eval=%lu/2",
+            PSCRIPT_ERROR_TIMEOUT, PSCRIPT_ERROR_SOURCE_TOO_LARGE,
+            "42", memory_used, evaluations);
+    detail[sizeof(detail) - 1] = '\0';
+    show_info(L"TEST 81 OK", detail);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14660,7 +14747,7 @@ static int run_configured_tests(const unsigned char *selected,
     }
     needs_core = 0;
     for (number = 8; number <= TEST_MAX_NUMBER; number++) {
-        if (number != 80 && selected[number]) {
+        if (number != 80 && number != 81 && selected[number]) {
             needs_core = 1;
             break;
         }
@@ -14761,6 +14848,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 76: ok = test76_hover_state(); break;
         case 77: ok = test77_script_resources(); break;
         case 80: ok = test80_script_runtime(); break;
+        case 81: ok = test81_script_safety(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
