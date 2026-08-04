@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-08-04
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。当前源码候选 next118 又加入独立 `positron_script.dll`，本地 ARMV4I 构建已通过，TEST80 设备验证待补；它不改变浏览器 JS 默认关闭的基线。next114 的 TEST13/20/27/43/44/56/58-77 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 恢复为当前设备基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。当前源码候选 next118 又加入独立 `positron_script.dll`，本地 ARMV4I 构建及 TEST80 设备验证均已通过；它不改变浏览器 JS 默认关闭的基线。next118 配置的 TEST13/20/27/43/44/56/58-77/80 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -22,7 +22,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
 3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；next115 与 next116 的 float 候选均因 TEST79/TEST13 真实回归撤回。Float 方向暂挂，下一次重大布局实验改评估基础 Grid 或背景尺寸/重复，并继续保留 TEST13 深链门禁。
 4. **资源类型补齐**：脚本资源发现/下载/缓存接口已完成；next118 先把独立 JavaScript runtime DLL 做成其他 WM 程序可调用的最小产品面，再由后续批次评估浏览器消费；网页字体不扩展为普通语言字体工程。
-5. **独立 JavaScript 能力**：验证 `positron_script.dll` 的 ABI、持久求值、错误恢复、预算和资源计数；设备 TEST80 通过后，再设计显式的浏览器 JS 开关与 DOM/native bridge，避免把未验证绑定直接接入 TEST13。
+5. **独立 JavaScript 能力**：`positron_script.dll` 的 ABI、持久求值、错误恢复、预算和资源计数已由 TEST80 设备验收；下一步再设计显式的浏览器 JS 开关与 DOM/native bridge，避免把未验证绑定直接接入 TEST13。
 
 短期暂不继续追逐首个 SVG 的冷解析毫秒数、渐变高级参数、抗锯齿微调或复杂表格边角；next92 已把重复解析造成的导航热点降到可接受范围。
 
@@ -106,7 +106,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `positron_script/positron_script.vcproj` 以 VS2008 ARMV4I DLL 形式编译仓库内 NetSurf Duktape 2.7.0 单文件源，不让其他程序在构建时下载或自行拼装解释器。
 - `positron_script.h` 只暴露稳定 C ABI：ABI 查询、创建/销毁 opaque `HANDLE`、UTF-8 源码求值、结果/错误借用字符串、预算、DLL 内存使用量和求值计数。上下文、堆、返回字符串和错误字符串均由 DLL 管理。
 - TEST80 不初始化 `positron_core`，只验证 `40+2`、持久上下文、异常后恢复和遥测计数；这使“其他 WM 程序可以调用”先有可运行纵切，同时不把浏览器 TEST13 暴露给未验证的脚本网络/DOM 风险。
-- 当前本地 VS2008 ARMV4I Debug 增量构建为 0 错误/0 警告；设备 TEST80、长循环 timeout 门禁和未来 DOM/window/fetch/native bridge 仍待后续批次。浏览器 JS 默认继续关闭。
+- 当前本地 VS2008 ARMV4I Debug 增量构建为 0 错误/0 警告；TEST80 设备门禁已通过，长循环 timeout 压力边界和未来 DOM/window/fetch/native bridge 仍待后续批次。浏览器 JS 默认继续关闭。
 
 ### 7. next115：普通浮动构盒候选（已否决）
 
@@ -327,8 +327,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next114 / TEST77 作为当前已验证 Browse 自动化基线，同时对 next118 单独运行 TEST80；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 先完成独立 `positron_script.dll` 的 TEST80 设备验收和 timeout/内存边界，再评估把它接入显式的浏览器 JavaScript 开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
+1. 以 next118 / TEST80 加 next114 Browse 门禁作为当前已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+2. 在独立 `positron_script.dll` 已通过 TEST80 的基础上，补 timeout/内存压力边界，再评估把它接入显式的浏览器 JavaScript 开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
 3. 下一批按“一个上游能力一个批次”评估基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. 独立 DLL 通过设备门禁后，中期再利用仓库已有 NetSurf Duktape backend 做浏览器 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge；浏览器 JavaScript 默认仍保持关闭直到绑定路径逐项设备门禁通过。

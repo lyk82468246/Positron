@@ -2,7 +2,7 @@
 
 更新时间：2026-08-04
 当前分支：`main`  
-当前设备基线：next114，ARMV4I 增量构建已通过；配置的 TEST13/20/27/43/44/56/58-77 已由无人值守设备日志确认全部 PASS。当前源码候选 next118 新增独立 `positron_script.dll`，本地 VS2008 ARMV4I Debug 增量构建已通过，TEST80 设备验证待用户运行；它不接入冻结的浏览器 JS 路径。next109 已完成五种动态表单伪类；next110 又接通通用 DOM Event 的捕获/目标/冒泡、取消、停止传播、监听器生命周期与宿主 click default-action 门；next111 补齐 basic relative/absolute positioning；next113/TEST76 接通宿主命中驱动的动态 `:hover`；next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、高级 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next118（包含 next114 Browse 基线与独立脚本 DLL），ARMV4I 增量构建已通过；配置的 TEST13/20/27/43/44/56/58-77/80 已由无人值守设备日志确认全部 PASS。next118 的 `positron_script.dll` 不接入冻结的浏览器 JS 路径。next109 已完成五种动态表单伪类；next110 又接通通用 DOM Event 的捕获/目标/冒泡、取消、停止传播、监听器生命周期与宿主 click default-action 门；next111 补齐 basic relative/absolute positioning；next113/TEST76 接通宿主命中驱动的动态 `:hover`；next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、高级 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
@@ -113,7 +113,7 @@ scripts\stage.bat
 - TEST59：分别在 224px 和 320px viewport 建立无 Grid `overflow:auto` 宽表格夹具，必须保持 reversed-flex main 的 `x=25,width=viewport-50`。next78 的同 DOM 旋转/scrollbar 诊断版本已经撤回。
 - TEST60：同一 DOM 先按 224×320、再按 400×240 重做 style/layout；IANA 同型 `.dtable` 的首个 `<th>` 必须保留 18px/10px inset，并与第二个同文字表头保持同一粗体宽度。它同时覆盖 `thead th`、`:first-child` 和后续 `tbody > tr:first-child > th` 选择器。
 - TEST61：正式 NetSurf layout 中，同一串文本的 `1px` 与 `8.5pt` 必须测得相同宽度，证明 `font_min_size=85` 生效；`12pt` 控制组必须更宽。JavaScript 策略继续为 false。
-- TEST80：不初始化 `positron_core`，直接加载独立 `positron_script.dll`，验证 Duktape 求值、持久上下文、错误恢复、内存计数和执行计数；不代表浏览器 DOM/window/network binding 已实现。当前只完成 ARMV4I 构建，设备日志待补。
+- TEST80：不初始化 `positron_core`，直接加载独立 `positron_script.dll`，验证 Duktape 求值、持久上下文、错误恢复、内存计数和执行计数；不代表浏览器 DOM/window/network binding 已实现。设备日志已确认通过。
 - TEST62：四个离屏探针确认 checkbox/radio 均采用 1em 几何，最终 gadget 的 checked 状态为 0/1，选中状态增加像素暗度，hidden input 不生成 box；它是静态 redraw 基线。
 - TEST64：按盒树坐标执行 checkbox 切换、disabled 点击、同表单同名 radio 互斥、跨组/跨表单隔离和已选项幂等，再从 240×320 重排到 320×240 并复核 DOM 状态；next93 自动设备日志已通过。
 - TEST13 next86 遥测：关闭 Browse 窗口后，既有 OK 框显示最后一次导航的 total/network/max-UI、parse/style/images/layout/paint、资源 queued/ok/fail、worker rounds、document/cache bytes 和 budget-rejected。style/images 是多轮累计，max-UI 才是单次消息循环最长阻塞。
@@ -173,7 +173,7 @@ scripts\stage.bat
 37. 2026-08-03 next114/TEST77 建立脚本资源 ABI：core 扫描非空外部 `<script src>`，可经 `PCoreResolveUrlFn` 使用宿主 URL 解析，调用 `PCoreFetchFn/PCoreFreeFn`，将成功 body 按 document 生命周期去重缓存，并以 `PCore_GetScriptResourceCount/GetScriptResource` 提供只读枚举。TEST77 覆盖相对/root-relative/absolute URL、重复引用、第二次 cache-only 扫描和 inline script 不执行；ARMV4I 增量构建和设备 `TESTBENCH PASS` 均已确认。该批不解释 `type`、不执行 JS，也不接入 TEST13 的网络事务。
 38. 2026-08-04 next115 提交普通非替换 float 候选，但设备 TEST79 得到零宽 inline probe，TEST13 截图出现导航扁平化；该候选否决，不得作为设备基线。
 39. 2026-08-04 next116 收窄为显式 block-level float，仍产生真实 TEST13 导航/正文排版回归，设备 TEST79 最终失败；代码、配置和 ENGINE 接入已撤回，next114 恢复为设备基线，Float 方向暂挂。
-40. 2026-08-04 next118 接入独立 `positron_script.dll`：复用仓库内 NetSurf Duktape 2.7.0 单文件源，新增稳定 C ABI、DLL 自有堆/字符串所有权、持久上下文、预算、错误恢复和内存/执行计数；TEST80 不初始化 `positron_core`，只验证外部程序调用边界。VS2008 ARMV4I Debug 增量构建已通过，设备 TEST80 与 timeout 真实门禁待补；浏览器 inline/external JavaScript、DOM/window/fetch binding 仍关闭。
+40. 2026-08-04 next118 接入独立 `positron_script.dll`：复用仓库内 NetSurf Duktape 2.7.0 单文件源，新增稳定 C ABI、DLL 自有堆/字符串所有权、持久上下文、预算、错误恢复和内存/执行计数；TEST80 不初始化 `positron_core`，只验证外部程序调用边界。VS2008 ARMV4I Debug 增量构建和设备 TEST80 已通过；timeout 压力边界与浏览器 inline/external JavaScript、DOM/window/fetch binding 仍关闭或待后续批次。
 
 ## 开发纪律
 
