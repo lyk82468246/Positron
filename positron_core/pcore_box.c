@@ -18,8 +18,9 @@
  * text/password/textarea/select controls and CSS background-image resources
  * decoded by WM Imaging/libsvgtiny, are built for NetSurf's real
  * layout/redraw path. Multipart successful controls are exposed as an opaque
- * snapshot for the host transport; ordinary non-replaced floats are staged
- * through NetSurf's BOX_FLOAT_* layout path.
+ * snapshot for the host transport; explicit block-level non-replaced floats
+ * are staged through NetSurf's BOX_FLOAT_* layout path. Inline/list-marker
+ * float forms remain outside this guarded candidate until real-page review.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -1353,6 +1354,14 @@ static int pcore_is_float_style(css_computed_style *style)
     return (f == CSS_FLOAT_LEFT || f == CSS_FLOAT_RIGHT) ? 1 : 0;
 }
 
+static int pcore_is_block_float_style(css_computed_style *style)
+{
+    if (!pcore_is_float_style(style)) {
+        return 0;
+    }
+    return css_computed_display(style, false) == CSS_DISPLAY_BLOCK;
+}
+
 /* Float children are blockified by CSS before NetSurf's float layout sees
  * them. Preserve the special containers used by the existing builder. */
 static struct box *pcore_construct_flow_child(dom_node *node,
@@ -1617,7 +1626,7 @@ static struct box *pcore_construct_block(dom_node *node,
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
                     int gadget_type = pcore_form_control_type(child);
-                    if (pcore_is_float_style(cs) && gadget_type == 0 &&
+                    if (pcore_is_block_float_style(cs) && gadget_type == 0 &&
                             !pcore_node_name_is(child, "img")) {
                         struct box *item;
                         struct box *flt;

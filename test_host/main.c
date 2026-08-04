@@ -14462,10 +14462,10 @@ static BOOL test77_script_resources(void)
 }
 
 /* -------------------------------------------------------------------- */
-/* TEST 79 - ordinary float construction and clear/flex boundaries        */
-/* A left and right float must share a line, following inline content     */
-/* must use the remaining middle width, clear:both must start below both  */
-/* floats, and float on direct flex items must not create float wrappers.  */
+/* TEST 79 - block-level float construction and clear/flex boundaries       */
+/* A left and right block float must share a line, inline content must use  */
+/* the remaining middle width, clear:both must start below both floats, and */
+/* float on direct flex items must not create float wrappers.                */
 /* TEST 78 is reserved for the withdrawn historical float experiment.     */
 /* -------------------------------------------------------------------- */
 static BOOL test79_float_layout(void)
@@ -14473,7 +14473,8 @@ static BOOL test79_float_layout(void)
     static const char *HTML =
         "<!doctype html><html><body>"
         "<leftfloat>LEFT</leftfloat><rightfloat>RIGHT</rightfloat>"
-        "<flowblock><flowtext>Long flow text uses the space between both "
+        "<flowblock><flowprobe>FLOW</flowprobe><flowtext>Long flow text "
+        "uses the space between both "
         "floating blocks before the clear.</flowtext></flowblock>"
         "<clearblock>CLEAR</clearblock>"
         "<flexbox><flexleft>ONE</flexleft><flexright>TWO</flexright>"
@@ -14485,6 +14486,8 @@ static BOOL test79_float_layout(void)
         "leftfloat{float:left;background:#ff0000;}"
         "rightfloat{float:right;background:#0000ff;}"
         "flowblock{display:block;margin:0;padding:0;height:48px;}"
+        "flowprobe{display:inline-block;width:50px;height:20px;"
+        "margin:0;padding:0;background:#ffff00;}"
         "flowtext{display:inline;}"
         "clearblock{display:block;clear:both;height:12px;margin:0;"
         "padding:0;background:#00ff00;}"
@@ -14501,10 +14504,12 @@ static BOOL test79_float_layout(void)
     int right_y;
     int right_w;
     int right_h;
-    int flow_x;
-    int flow_y;
-    int flow_w;
-    int flow_h;
+    int flow_probe_x;
+    int flow_probe_y;
+    int flow_probe_w;
+    int flow_probe_h;
+    int flow_block_y;
+    int flow_block_h;
     int clear_x;
     int clear_y;
     int clear_w;
@@ -14534,8 +14539,10 @@ static BOOL test79_float_layout(void)
                     &left_w, &left_h) != 0 ||
             PCore_NodeBox(hDoc, "rightfloat", &right_x, &right_y,
                     &right_w, &right_h) != 0 ||
-            PCore_NodeBox(hDoc, "flowtext", &flow_x, &flow_y,
-                    &flow_w, &flow_h) != 0 ||
+            PCore_NodeBox(hDoc, "flowprobe", &flow_probe_x, &flow_probe_y,
+                    &flow_probe_w, &flow_probe_h) != 0 ||
+            PCore_NodeBox(hDoc, "flowblock", NULL, &flow_block_y,
+                    NULL, &flow_block_h) != 0 ||
             PCore_NodeBox(hDoc, "clearblock", &clear_x, &clear_y,
                     &clear_w, &clear_h) != 0 ||
             PCore_NodeBox(hDoc, "flexbox", &flex_x, &flex_y,
@@ -14556,8 +14563,11 @@ static BOOL test79_float_layout(void)
     }
     if (left_x >= right_x || left_y != right_y ||
             left_w != 70 || right_w != 70 ||
-            flow_x < left_x + left_w || flow_w <= 0 || flow_h <= 0 ||
-            clear_y < float_bottom || clear_y < flow_y + flow_h ||
+            flow_probe_x < left_x + left_w ||
+            flow_probe_x + flow_probe_w > right_x ||
+            flow_probe_w != 50 || flow_probe_h != 20 ||
+            flow_probe_y != left_y || clear_y < float_bottom ||
+            clear_y < flow_block_y + flow_block_h ||
             clear_w <= 0 || clear_h != 12 ||
             flex_w != 120 || flex_h != 24 ||
             flex_left_x != flex_x || flex_right_x <= flex_left_x ||
@@ -14566,10 +14576,12 @@ static BOOL test79_float_layout(void)
             flex_right_h != 20) {
         _snprintf(detail, sizeof(detail) - 1,
                 "float=(%d,%d %dx%d)/(%d,%d %dx%d) "
-                "flow=(%d,%d %dx%d) clear=(%d,%d %dx%d) "
+                "probe=(%d,%d %dx%d) flowblock=(y%d h%d) "
+                "clear=(%d,%d %dx%d) "
                 "flex=(%d,%d %dx%d) items=(%d,%d)/(%d,%d)",
                 left_x, left_y, left_w, left_h, right_x, right_y,
-                right_w, right_h, flow_x, flow_y, flow_w, flow_h,
+                right_w, right_h, flow_probe_x, flow_probe_y,
+                flow_probe_w, flow_probe_h, flow_block_y, flow_block_h,
                 clear_x, clear_y, clear_w, clear_h, flex_x, flex_y,
                 flex_w, flex_h, flex_left_x, flex_left_y, flex_right_x,
                 flex_right_y);
@@ -14583,9 +14595,9 @@ static BOOL test79_float_layout(void)
     g_doc_h = PCore_DocumentHeight(hDoc);
     g_scroll_y = 0;
     show_info(L"TEST 79",
-            "Ordinary float fixture: red left and blue right blocks share\n"
-            "a line; the text starts after the left float; green clear:both\n"
-            "starts below them; flex items remain a normal row.");
+            "Block float fixture: red left and blue right blocks share a\n"
+            "line; the yellow inline probe and following text use the middle\n"
+            "space; green clear:both starts below them; flex items remain a row.");
     g_render_doc = hDoc;
     g_render_sheet = hSheet;
     if (!show_render_window()) {

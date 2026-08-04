@@ -12,7 +12,7 @@
 | 现代 CSS 值 | TEST40 已在设备确认：数值型 `oklch()` 转裁剪 sRGB，并求值无需布局上下文的同单位 `calc()` 四则运算。 | 完整 gamut mapping、`none`/复杂角度、`color-mix()`、混合单位 calc 或 CSS Color/Values 均已实现。 |
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | 基础定位 | next111/TEST75 已在设备确认：relative box 保持正常流并应用 top/left 偏移，absolute block 使用 positioned parent，`display:inline` 的 absolute box 被 blockify 后进入 NetSurf 正式定位路径。 | 不代表 float、sticky、Grid/flex/table 中所有定位交互、复杂 containing-block 或完整 CSS Positioned Layout 已实现。 |
-| 普通浮动候选 | next115 已把普通非替换 `float:left/right` 的受控构盒路径和 TEST79 加入源码；ARMV4I 增量构建、C89 检查和独立 staging 已通过。 | 尚未设备验收，不能作为真实 IANA 页脚或完整 CSS Floats 证据；`img`/表单控件排除，若 TEST79 或 TEST13 回归则回退 next114。 |
+| 普通浮动候选 | next116 已把显式 `display:block` 的非替换 `float:left/right` 受控构盒路径和 TEST79 加入源码；ARMV4I 增量构建、C89 检查和独立 staging 已通过。 | 尚未设备验收，不能作为真实 IANA 页脚或完整 CSS Floats 证据；inline/list-marker float、`img`/表单控件排除，若 TEST79 或 TEST13 回归则回退 next114。 |
 | 动态 `:hover` | next113/TEST76 已在设备确认：命中最近 DOM 元素后，样式重选会把链接从蓝色切为红色，清除状态后恢复；WM6 宿主用 `WM_MOUSEMOVE` 与 250ms 定时器轮询离开窗口。 | 不代表 `:visited`、`:target`、`:indeterminate`、专用 MouseEvent 数据、触屏 hover 语义或 JavaScript 绑定已实现。 |
 | IANA 窄屏页 | TEST13 起始页和 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。next80 已修复 libcss 父 bloom 节点数据过早销毁；TEST56/58/59/60 与真实 `/domains/reserved` 横竖屏均已通过，首个 `Domain` 表头恢复正常。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
 | 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。next54 的 fixed-height 回归已在 next55 收窄，用户确认 auto-height 空间、箭头、短页纵条与色块页正常。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
@@ -35,7 +35,8 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 
 - **可能范围**：剩余 flex/table/inline/字体或未实现 CSS 特性的组合；尚未把单一原因当作结论。
 - **已撤回的一项**：IANA 页脚是 table cell 内 `display:inline; float:left` 列表。TEST23 曾在最小样例中确认两个浮动块同行及 `clear:both`，但将该构盒规则直接接入真实页面后，2026-07-11 Browse 截图出现严重错位和替代方框；实现已撤回。该测试不再参加 ENGINE 组，不能作为 float 支持证据。
-- **新的受控候选**：next115/TEST79 与 TEST23 不是同一实现。它只处理普通非替换 float，保留 flex、图片和表单的既有路径，覆盖左右同线、浮动旁文本和 `clear:both`；截至本次交接尚未设备验收，next114 仍是可靠基线。
+- **next115 已否决**：设备日志得到 `float=(0,0 70x36)/(154,0 70x36) flow=(70,0 0x20)`，说明 TEST79 查询到的是零宽 inline 起始盒；同包 TEST13 截图还出现导航扁平化。next115 不得作为基线。
+- **新的受控候选**：next116/TEST79 与 TEST23 不是同一实现。它只处理显式 block-level 的非替换 float，保留 inline/list-marker、flex、图片和表单的既有路径，覆盖左右同线、浮动旁 probe/文字和 `clear:both`；截至本次交接尚未设备验收，next114 仍是可靠基线。
 - **当前站点版本风险**：2026-07-13 重新读取到 IANA 的 `iana_website.80c103cc08b6.css`；除已确认的 `var(--space-*)` 外还有 22 处 `oklch()`、15 处 `calc()`、`color-mix()`、grid/gap 与 `:has()`。新兼容模块只处理数值型 OKLCH 和可完全求值的同单位 calc；混合单位及其他现代能力仍会降级。
 - **最新子页结论**：`/numbers` 使用 `display:grid`，其中 `.dtable-wrap { overflow:auto }` 包住宽表格，TEST41 已确认该路径。`/domains/reserved` 没有 Grid 包装层，但同样以 `.dtable-wrap { overflow:auto }` 包住宽表格。next77 已让 flex main 在竖屏保持正确 inset；旋转到横屏后，wrapper 本身位置正常，但第一格内容左移约 18px，恰好抵消作者的 `padding-left:18px`，导致 `Domain` 贴到 clip edge，视觉上连字体/样式也异常。非拉丁字符 tofu 与这个英文表头问题无关，并按项目范围保留。
 - **失败实验**：next78 在 layout 末尾递归 `scrollbar_set(...,0)` 后，真实页横屏从首个 `Domain` 异常扩大为全部表格单元格异常，TEST56 随后失败并触发系统级异常。该实验及其诊断 API/扩展 TEST59 已撤回，旧包已改名为 `C:\WMShare\Positron-next78-FAILED-DO-NOT-USE`。
@@ -75,7 +76,7 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **next110 最小 DOM Event 已通过设备门禁**：公开 ABI 只暴露 opaque listener handle 与普通 C callback，不泄露 libdom 类型；支持按 element id 或正式布局坐标派发 trusted generic Event。vendored libdom 的 target 重复传播、忽略 `bubbles/cancelable` 和 dispatch-only 状态残留已在本地按 DOM 语义修正。TEST74 覆盖 capture/target/bubble、非冒泡、取消、两种停止传播、移除监听器与坐标派发；TEST13 三段导航和 TEST20/27/43/44/56/58-73 同批全部 PASS。尚未实现专用事件数据、完整 HTML activation、异步事件队列或 JavaScript 绑定。
 - **next110 最小 DOM Event 已通过设备门禁**：公开 ABI 只暴露 opaque listener handle 与普通 C callback，不泄露 libdom 类型；支持按 element id 或正式布局坐标派发 trusted generic Event。vendored libdom 的 target 重复传播、忽略 `bubbles/cancelable` 和 dispatch-only 状态残留已在本地按 DOM 语义修正。TEST74 覆盖 capture/target/bubble、非冒泡、取消、两种停止传播、移除监听器与坐标派发；TEST13 三段导航和 TEST20/27/43/44/56/58-73 同批全部 PASS。尚未实现专用事件数据、完整 HTML activation、异步事件队列或 JavaScript 绑定。
 - **next111 基础定位已通过设备门禁**：TEST75 以四个不同标签的夹具断言正常流、relative 偏移、absolute block containing block 以及 absolute inline blockification，并打开正式 NetSurf layout/redraw 窗口做首帧冒烟；TEST13 三段导航和 TEST20/27/43/44/56/58-74 同批全部 PASS。该项只覆盖当前 slim builder 能安全接入的基础路径，float、sticky、复杂 containing-block 组合与 Grid/flex/table 定位交互仍保留。
-- **next115 浮动候选待设备门禁**：TEST79 断言左右普通 float、文本中间流、`clear:both` 与 flex 子项排除；源码已完成 C89/ARMV4I 增量构建和 staging，但在设备通过 TEST79 及完整冻结回归前，不得把 float 从未完成项移到已验证基线。
+- **next116 浮动候选待设备门禁**：TEST79 断言左右 block-level float、probe/文字中间流、`clear:both` 与 flex 子项排除；源码已完成 C89/ARMV4I 增量构建和 staging，但在设备通过 TEST79 及完整冻结回归前，不得把 float 从未完成项移到已验证基线。
 - **next113 动态 `:hover` 已通过设备门禁**：TEST76 断言 `PCore_InteractionSetAt(..., PCORE_INTERACTION_HOVER)` 命中最近元素，重选样式得到红色，清除后恢复蓝色；宿主使用 WM6 可用的 `WM_MOUSEMOVE` 与定时器轮询，不调用桌面 `TrackMouseEvent`。同包 TEST13/20/27/43/44/56/58-75 全部 PASS。该项只覆盖 CSS 状态选择和离开窗口清理，不代表专用 MouseEvent、触屏 hover 或 JavaScript。
 - **资源预算**：`test_host` 最多暂存 64 个去重 URL、合计 2 MiB 原始字节，成功提交时 core 会复制所需数据后立刻释放事务。该值用于限制 WM 峰值，是可替换的宿主策略，不是 `positron_core` ABI 或最终页面的硬上限。
 - **后续实现**：单响应 `Content-Length`/progress 回调已实现并由 TEST3/13 确认；`@import` 事务已由 TEST45 确认；next114/TEST77 已建立脚本资源发现/缓存 ABI，但尚未接入 TEST13 或 JavaScript。整页多资源聚合进度、web fonts、脚本执行及更广资源类型仍未实现。

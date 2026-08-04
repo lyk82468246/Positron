@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-08-04
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。next114 的 TEST13/20/27/43/44/56/58-77 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 提交了受控的普通非替换 float 候选和 TEST79，但尚未设备验收；在门禁通过前不改变 next114 基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。next114 的 TEST13/20/27/43/44/56/58-77 全部通过；通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 的普通 float 候选已被设备 TEST79 和 TEST13 视觉回归否决；next116 收窄为显式 block-level float，尚未设备验收，在门禁通过前不改变 next114 基线。正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -20,7 +20,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；均由设备无人值守日志确认。高级约束验证仍在后续扩展，不阻塞更大的“有无”缺口。
 2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
-3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；当前 next115/TEST79 正在验证普通非替换 float 的上游 `BOX_FLOAT_*` 构盒路径，覆盖左右浮动、文本绕排、`clear:both` 与 flex 排除。设备门禁通过前 next114 仍是基线；随后再评估基础 Grid 和背景尺寸/重复，每项单独接入并保留 TEST13 深链门禁。
+3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；next115 的普通 float 候选因 TEST79 几何失败和 TEST13 视觉回归撤回，当前 next116/TEST79 只验证显式 block-level float。设备门禁通过前 next114 仍是基线；随后再评估基础 Grid 和背景尺寸/重复，每项单独接入并保留 TEST13 深链门禁。
 4. **资源类型补齐**：先建立脚本资源发现/下载/缓存接口，再由中期 JavaScript runtime 消费；网页字体不扩展为普通语言字体工程。
 
 短期暂不继续追逐首个 SVG 的冷解析毫秒数、渐变高级参数、抗锯齿微调或复杂表格边角；next92 已把重复解析造成的导航热点降到可接受范围。
@@ -100,11 +100,17 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - 成功字节按 document 生命周期去重缓存，`PCore_GetScriptResourceCount/PCore_GetScriptResource` 为未来脚本运行时提供只读枚举和借用数据指针；缓存最多 32 条、单条 512 KiB、合计 2 MiB，失败 body 不进入缓存。
 - TEST77 离线断言相对/root-relative/absolute URL、重复引用、cache-only 第二遍、枚举内容和 inline script 不执行。该批不解释 `type`、不执行 JavaScript，也不把脚本请求加入冻结的 TEST13 网络事务；ARMV4I 构建及设备 `TESTBENCH PASS` 已确认。
 
-### 7. next115：普通浮动构盒候选（设备待验收）
+### 7. next115：普通浮动构盒候选（已否决）
 
 - `pcore_box.c` 只对普通非替换元素的 `float:left/right` 建立 style-less `BOX_FLOAT_LEFT/RIGHT` 包装，浮动子项先按 CSS blockification 构造成 block/flex/table，再交给 NetSurf 正式 float/clear 布局；`img` 与 form gadget 明确排除，现有替换元素和原生控件路径不改。
 - TEST79 是离线夹具，断言左右浮动同线、浮动旁文本使用中间空间、`clear:both` 位于两个浮动之后，以及 flex 容器直接子项不会误变为 float。TEST78 保留为撤回历史实验编号，不可运行。
-- ARMV4I 增量构建和 `C:\WMShare\Positron-next115` staging 已完成；设备 TEST79、TEST13 深层导航/旋转和冻结 TEST20/27/43/44/56/58-77 尚未验证。失败时回退 next114，不把历史 TEST23 原样恢复。
+- ARMV4I 增量构建和 `C:\WMShare\Positron-next115` staging 已完成；设备 TEST79 返回失败，且用户截图确认 TEST13 导航视觉回归。next114 保持基线，不把历史 TEST23 原样恢复。
+
+### 8. next116：收窄的 block-level 浮动候选（设备待验收）
+
+- next115 的设备日志显示 `flowtext` 被 `PCore_NodeBox` 找到的是零宽 inline 起始盒，且 TEST13 截图出现导航扁平化；该候选不再作为基线。
+- next116 只让显式 `display:block` 的非替换 float 进入 `BOX_FLOAT_LEFT/RIGHT`，暂不接管 inline/list-marker float；TEST79 改用有固定 `50x20` 几何的 inline probe，同时保留后续文字和 `clear:both` 断言。
+- ARMV4I 增量构建和 `C:\WMShare\Positron-next116` staging 已完成；设备 TEST79、TEST13 深层导航/旋转和冻结回归尚未验证，失败时回退 next114。
 
 ## 中期规划
 
@@ -126,7 +132,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 1. 最新 TEST13 已确认普通文本方框消失、词间距正确；补齐上游 `<pre>` UA 默认后，TEST15 也已由用户确认 `normal_ws=ok/pre_lf=kept`，文本空白闭环完成。页面整体仍未通过。
 2. 旋转验收已完成：扩展 TEST24 的缓存重选、无联网和 0%/50%/100% 滚动比例已由设备确认；真实 TEST13 横竖屏切换也保持在 `Further Reading / Domain Names` 同一阅读区域。
-3. next115 正在按上游 box construction/normalisation 重新建立普通 float 的整树结构和普通文流端到端回归；设备门禁未通过前仍按“float 未支持”对外表述，历史 TEST23 不恢复。
+3. next116 正在按上游 box construction/normalisation 重新建立受控 block-level float 的整树结构和普通文流端到端回归；设备门禁未通过前仍按“float 未支持”对外表述，历史 TEST23 不恢复。
 4. 导航异步化第二阶段已实现并通过 VS2008 ARM 增量构建：主文档 GET 后，UI 线程只负责 parse 与结构化资源发现，外链 CSS、`<img>` 和外链 CSS 应用后出现的背景 URL 分轮交给同一 worker；全部成功或失败后才在 UI 做最终 style/layout/swap。旧页与不定量进度条贯穿所有网络阶段，窗口关闭会等待并统一回收 request/document/resource。TEST43 已在设备确认显式 origin URL、去重、cache hit copy 与一次失败；冻结 TEST13 全流程也已在后续 next37 恢复基线及多批回归中通过。
 5. **已完成并真机验收**：Expat -> libdom XML -> libsvgtiny 内存 SVG 解析与 TEST25。
 6. **已完成并真机验收**：首版固定折线 cubic 因明显阶梯边缘判定视觉失败；替代实现保留 libsvgtiny 解析，使用固定提交的 NanoSVG 5 倍子像素栅格器及预乘 BGRA DIB + WM `AlphaBlend`。2026-07-13 增强 TEST26 的内部填充、部分覆盖边缘断言及设备截图均通过。
@@ -313,7 +319,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 先对 next115 / TEST79 做设备门禁，并在同包复跑 TEST13 深层导航/旋转与 TEST20/27/43/44/56/58-77；通过后才更新设备基线，否则回退 next114。
+1. 先对 next116 / TEST79 做设备门禁，并在同包复跑 TEST13 深层导航/旋转与 TEST20/27/43/44/56/58-77；通过后才更新设备基线，否则回退 next114。
 2. 以 next114 / TEST77 作为当前已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为门禁。
 3. 评估把已通过设备门禁的脚本资源 ABI 接入显式的脚本/JavaScript 运行时开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。float 候选未通过前不启动下一项重大布局实验。
 4. 下一批按“一个上游能力一个批次”评估基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23 实验不得原样恢复。
