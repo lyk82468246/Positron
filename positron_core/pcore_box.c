@@ -18,7 +18,8 @@
  * text/password/textarea/select controls and CSS background-image resources
  * decoded by WM Imaging/libsvgtiny, are built for NetSurf's real
  * layout/redraw path. Multipart successful controls are exposed as an opaque
- * snapshot for the host transport; floats remain a staged follow-up.
+ * snapshot for the host transport; ordinary non-replaced floats are staged
+ * through NetSurf's BOX_FLOAT_* layout path.
  * Boxes borrow DOM node pointers (the document outlives the box tree) and are
  * allocated under one talloc context, freed in a single talloc_free.
  *
@@ -1341,6 +1342,61 @@ static struct box *pcore_construct_row(dom_node *node,
 static struct box *pcore_construct_rowgroup(dom_node *node,
         css_computed_style *style, void *ctx, PCoreBoxStats *stats);
 
+static int pcore_is_float_style(css_computed_style *style)
+{
+    uint8_t f;
+
+    if (style == NULL) {
+        return 0;
+    }
+    f = css_computed_float(style);
+    return (f == CSS_FLOAT_LEFT || f == CSS_FLOAT_RIGHT) ? 1 : 0;
+}
+
+/* Float children are blockified by CSS before NetSurf's float layout sees
+ * them. Preserve the special containers used by the existing builder. */
+static struct box *pcore_construct_flow_child(dom_node *node,
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats)
+{
+    uint8_t d;
+
+    if (node == NULL || style == NULL) {
+        return NULL;
+    }
+    d = css_computed_display(style, false);
+    if (d == CSS_DISPLAY_FLEX || d == CSS_DISPLAY_INLINE_FLEX) {
+        return pcore_construct_flex(node, style, 0, ctx, stats);
+    }
+    if (d == CSS_DISPLAY_TABLE || d == CSS_DISPLAY_INLINE_TABLE) {
+        return pcore_construct_table(node, style, ctx, stats);
+    }
+    return pcore_construct_block(node, style, 0, ctx, stats);
+}
+
+/* NetSurf layout.c registers the anonymous wrapper as the float and lays out
+ * its styled child as the actual block. Keep the wrapper style-less so clear
+ * and float are read from the child, exactly as upstream does. */
+static struct box *pcore_wrap_float(struct box *item,
+        css_computed_style *style, void *ctx)
+{
+    uint8_t f;
+    struct box *flt;
+
+    if (item == NULL || style == NULL) {
+        return NULL;
+    }
+    f = css_computed_float(style);
+    if (f != CSS_FLOAT_LEFT && f != CSS_FLOAT_RIGHT) {
+        return NULL;
+    }
+    flt = pcore_box_new((f == CSS_FLOAT_LEFT) ? BOX_FLOAT_LEFT :
+            BOX_FLOAT_RIGHT, NULL, ctx);
+    if (flt != NULL) {
+        pcore_box_add_child(flt, item);
+    }
+    return flt;
+}
+
 /* Flatten the inline content of `node` into inline container `cont`: text
  * children become BOX_TEXT; inline element children emit BOX_INLINE ...
  * BOX_INLINE_END around their (recursively flattened) content; inline-block
@@ -1561,7 +1617,34 @@ static struct box *pcore_construct_block(dom_node *node,
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
                     int gadget_type = pcore_form_control_type(child);
-                    if (pcore_is_positioned_inline(cs, d)) {
+                    if (pcore_is_float_style(cs) && gadget_type == 0 &&
+                            !pcore_node_name_is(child, "img")) {
+                        struct box *item;
+                        struct box *flt;
+
+                        /* Floats participate in the current anonymous inline
+                         * run. If this is the first inline-level child after
+                         * a block, create the run before the wrapper. */
+                        if (inline_cont == NULL) {
+                            inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
+                                    NULL, ctx);
+                            if (inline_cont != NULL) {
+                                pcore_box_add_child(box, inline_cont);
+                            }
+                        }
+                        item = pcore_construct_flow_child(child, cs, ctx,
+                                stats);
+                        flt = pcore_wrap_float(item, cs, ctx);
+                        if (inline_cont != NULL && flt != NULL) {
+                            pcore_box_add_child(inline_cont, flt);
+                        } else {
+                            if (flt != NULL) {
+                                talloc_free(flt);
+                            } else if (item != NULL) {
+                                talloc_free(item);
+                            }
+                        }
+                    } else if (pcore_is_positioned_inline(cs, d)) {
                         struct box *ib;
                         if (inline_cont == NULL) {
                             inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,

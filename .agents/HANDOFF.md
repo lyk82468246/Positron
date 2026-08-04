@@ -1,8 +1,8 @@
 # Positron Current Handoff
 
-更新时间：2026-08-03
+更新时间：2026-08-04
 当前分支：`main`  
-当前设备基线：next114，ARMV4I 增量构建已通过；配置的 TEST13/20/27/43/44/56/58-77 已由无人值守设备日志确认全部 PASS。next109 已完成五种动态表单伪类；next110 又接通通用 DOM Event 的捕获/目标/冒泡、取消、停止传播、监听器生命周期与宿主 click default-action 门；next111 补齐 basic relative/absolute positioning；next113/TEST76 接通宿主命中驱动的动态 `:hover`；next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。`pattern`、高级 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next114，ARMV4I 增量构建已通过；配置的 TEST13/20/27/43/44/56/58-77 已由无人值守设备日志确认全部 PASS。next109 已完成五种动态表单伪类；next110 又接通通用 DOM Event 的捕获/目标/冒泡、取消、停止传播、监听器生命周期与宿主 click default-action 门；next111 补齐 basic relative/absolute positioning；next113/TEST76 接通宿主命中驱动的动态 `:hover`；next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 已提交普通非替换 float 候选和 TEST79，ARMV4I 构建/staging 已完成但设备门禁未跑，不能取代 next114。`pattern`、高级 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
@@ -96,10 +96,10 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前代码基线使用 `tests=13,20,27,43,44,56,58-77`。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前 next115 候选使用 `tests=13,20,27,43,44,56,58-77,79`；next114 的已验证基线仍是去掉 `,79` 的版本。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
-- Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-75，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消与基础 relative/absolute positioning，离线。TEST40-45、59、60、74-75 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行。
+- Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23 浮动最小样例已因真实 Browse 回归撤回，不运行；TEST79 属于 next115 待验收候选。
 - GDI Render：TEST 12、14、17、19、20、26-37、39、46-58、62-73，离线窗口渲染、WM Imaging 位图、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、同文档及重叠文档缓存复用、table/list、HTML inline author CSS、普通表单、multipart/file、WM multiple select、首批 required 验证与动态表单伪类；TEST65-73 已验收。
 - Browse：TEST 13，真实页面抓取 + 渲染，需要网络。
 
@@ -129,10 +129,10 @@ scripts\stage.bat
 
 优先候选：
 
-> 2026-08-03：先解决“有没有”，再解决已有小范围“好不好”。next111/TEST75 已完成并验收 basic relative/absolute positioning，next113/TEST76 又完成并验收基础动态 `:hover`，next114/TEST77 的脚本资源接口已通过设备门禁；下一步评估把接口接入显式 JavaScript 开关，或选择 float、基础 Grid、背景尺寸等高价值缺口。高级约束验证与专用事件数据随后扩展。已有 NetSurf Duktape backend 的 JavaScript 最小纵切保持中期。首屏 SVG 冷解析、抗锯齿、渐变高级参数、视觉微调和全面性能优化后置，除非它们造成崩溃、数据错误或阻塞基本操作。
+> 2026-08-04：先解决“有没有”，再解决已有小范围“好不好”。next111/TEST75 已完成并验收 basic relative/absolute positioning，next113/TEST76 又完成并验收基础动态 `:hover`，next114/TEST77 的脚本资源接口已通过设备门禁；当前先对 next115/TEST79 做普通非替换 float 的设备门禁，若失败回退 next114。通过后再评估显式 JavaScript 开关、基础 Grid 或背景尺寸等高价值缺口。高级约束验证与专用事件数据随后扩展。已有 NetSurf Duktape backend 的 JavaScript 最小纵切保持中期。首屏 SVG 冷解析、抗锯齿、渐变高级参数、视觉微调和全面性能优化后置，除非它们造成崩溃、数据错误或阻塞基本操作。
 
 1. 2026-07-11 用户真机确认 ENGINE 原整组至 TEST24 通过；2026-07-12 单独确认 TEST25 SVG parse。后续修改引擎路径时必须重跑当前整组。
-2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。TEST13 起始页正常不等于所有 IANA 子页正常；2026-07-24 `/domains/reserved` 已再次证明必须走深层链接和旋转验收。next80 已让 TEST60 与真实页横竖屏全部通过；next78 仍因扩大回归和系统异常保持撤回。后续 float 仍必须对照上游 box construction/normalisation。
+2. TEST23 的浮动构盒最小复现虽通过，但真实 Browse 严重回归，已撤回。next115/TEST79 是范围更窄的新候选，尚未设备验收；TEST13 起始页正常不等于所有 IANA 子页正常，后续 float 必须继续对照上游 box construction/normalisation，并通过深层导航和旋转门禁。2026-07-24 `/domains/reserved` 已再次证明这一点；next80 已让 TEST60 与真实页横竖屏全部通过；next78 仍因扩大回归和系统异常保持撤回。
 3. `WM_SIZE` 从 document-owned 外链 CSS 缓存 restyle + layout，且使用 cache-only callback。TEST24 与真实 Browse 旋转均已确认。
 4. 主文档、外链 CSS、CSS `@import`、`<img>` 和 CSS 背景 GET 已组成分阶段 worker 事务；DOM/style/layout 仍只在 UI。2026-07-14 设备已确认 TEST3 的真实单响应正文进度、TEST43 资源事务、TEST44 主文档失败回滚和 TEST13 IANA Browse 基线。UI 提交现由一次性 WM timer 拆成 parse/style/image-discovery/layout 四段，单个 NetSurf 调用仍可能卡顿。宿主暂存预算为 64 URL/2 MiB，不是 core ABI 限制；整页聚合进度、网页字体和脚本仍待处理。
 5. TEST30-37 已于 2026-07-13 真机通过：CSS 背景、基础 text、连续线性/径向渐变及坐标、继承/透明 stop、循环保护、径向 SVG 文档缓存以及 `<img>`/CSS 背景单次 fetch 复用均成立；复杂 shaping、`textPath`、逐字定位、任意 shear、径向焦点与 spread method 尚未实现。
@@ -168,6 +168,7 @@ scripts\stage.bat
 35. 2026-08-03 next111/TEST75 按 NetSurf `box_construct.c` 的 absolute inline 特例补齐 slim builder：普通 relative box 保持正常流并应用偏移，absolute/fixed block 进入既有正式定位路径，`display:inline` 脱流元素改为 `BOX_INLINE_BLOCK` 后由 `layout_position_absolute()` 消费。设备日志确认 TEST75 及 TEST13/20/27/43/44/56/58-74 全部 PASS。该批不代表 float、Grid 轨道、sticky 或所有复杂 containing-block 组合已经实现。
 36. 2026-08-03 next113/TEST76 接通动态 `:hover`：core 保存 hover DOM 元素并在下一次 libcss 选择时匹配，WM6 宿主用 `WM_MOUSEMOVE` 加 250ms 定时器轮询离开窗口；`TrackMouseEvent` 等桌面 API 不可依赖。设备日志确认 TEST76 及 TEST13/20/27/43/44/56/58-75 全部 PASS。该批不代表 `:visited/:target/:indeterminate`、专用 MouseEvent 或 JavaScript 已实现。
 37. 2026-08-03 next114/TEST77 建立脚本资源 ABI：core 扫描非空外部 `<script src>`，可经 `PCoreResolveUrlFn` 使用宿主 URL 解析，调用 `PCoreFetchFn/PCoreFreeFn`，将成功 body 按 document 生命周期去重缓存，并以 `PCore_GetScriptResourceCount/GetScriptResource` 提供只读枚举。TEST77 覆盖相对/root-relative/absolute URL、重复引用、第二次 cache-only 扫描和 inline script 不执行；ARMV4I 增量构建和设备 `TESTBENCH PASS` 均已确认。该批不解释 `type`、不执行 JS，也不接入 TEST13 的网络事务。
+38. 2026-08-04 next115 提交普通非替换 float 候选：`pcore_box.c` 建立 style-less `BOX_FLOAT_LEFT/RIGHT` 包装，保留 flex/table blockification，排除 `img`/form gadget，TEST79 覆盖左右同线、浮动旁文本、`clear:both` 与 flex 子项排除。C89、ARMV4I 增量构建和 `C:\WMShare\Positron-next115` staging 已通过；设备 TEST79 与完整冻结回归尚未跑，next114 仍是设备基线。若失败，回退该候选而不是恢复历史 TEST23。
 
 ## 开发纪律
 
