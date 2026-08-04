@@ -1,8 +1,8 @@
 # Positron
 
-> **当前设备基线（2026-08-03）**：next114 增加了独立的外部 `<script src>` 资源发现、宿主 URL 解析、抓取回调、document 缓存和只读枚举 ABI，并新增 TEST77；ARMV4I 增量构建通过，next114 设备包的 TEST13/20/27/43/44/56/58-77 已由无人值守 testbench 确认 `TESTBENCH PASS`。JavaScript 执行仍关闭。`TrackMouseEvent` 等桌面 API 不属于 WM6 方案；宿主使用 `WM_MOUSEMOVE` 与定时器轮询离开窗口。next115 的 float 候选已被设备日志判定失败：TEST79 中间 probe 为零宽，TEST13 视觉出现导航结构回归；next116 已收窄为显式 block-level float，ARMV4I 构建和 staging 完成但尚未设备验证，因此 next114 仍是当前可靠基线。
+> **当前设备基线（2026-08-04）**：next114 增加了独立的外部 `<script src>` 资源发现、宿主 URL 解析、抓取回调、document 缓存和只读枚举 ABI，并新增 TEST77；ARMV4I 增量构建通过，next114 设备包的 TEST13/20/27/43/44/56/58-77 已由无人值守 testbench 确认 `TESTBENCH PASS`。JavaScript 执行仍关闭。`TrackMouseEvent` 等桌面 API 不属于 WM6 方案；宿主使用 `WM_MOUSEMOVE` 与定时器轮询离开窗口。next115 与 next116 的 float 候选均已撤回：设备 TEST79 失败，next116 的 TEST13 截图仍出现导航/正文排版回归；next114 恢复为当前可靠基线。
 
-**next116 交接门槛（2026-08-04）**：next116/TEST79 只处理显式 `display:block` 的非替换 `float:left/right`，inline/list-marker float 暂不接管；测试覆盖左右同线、浮动旁 probe/文字、`clear:both` 与 flex 子项排除。ARMV4I 构建与 staging 已通过，但设备 TEST79、TEST13 深链/旋转和冻结回归尚未通过；在门禁完成前，这不是已支持能力，失败时回退 next114，也不能恢复历史 TEST23。
+**Float 方向暂挂（2026-08-04）**：next115 的普通 float 和 next116 的显式 block-level float 都未通过真实设备门禁。next116 的自动 TEST13 数值记录为 OK，但人工截图显示导航被扁平化、正文边界异常，且 TEST79 最终失败；因此 TEST79 已从默认配置和 ENGINE 组移除。不要把 TEST23/79 当作已支持的 CSS Floats，也不要在没有完整 box construction/normalisation 方案前继续扩大该方向。
 
 面向 **Windows Mobile 6 Professional**（Windows CE 5.2, ARMv4i）的现代基础设施与应用运行时。
 
@@ -233,15 +233,15 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,79
+tests=13,20,27,43,44,56,58-77
 ```
 
-`auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78 已撤回/保留不可用，配置中出现任一编号会被拒绝。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
+`auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
 
 测试交付默认按能力批次进行：先积累多项相关实现、自动像素/资源/安全断言和直绘/正式链两层回归，再请求一次设备验收。只有真实编译错误、高风险回归定位或设备特有故障才临时拆成单项包，避免每个微小改动都要求人工截图。
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
-- **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-76，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值、grid/overflow min-content 隔离、overflow scrollbar、分阶段导航资源事务、主文档失败回滚、CSS import tree、libcss 节点缓存纵横屏重选、具名 NetSurf option 默认、DOM Event 传播/取消、基础定位与动态 `:hover`，离线。TEST40-45、59、60、74-76 已真机通过；next78 已撤回。TEST23 float 最小样例已因真实 Browse 回归撤回。TEST79 属于 next116 的待验证候选，不计入已通过能力。
+- **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-76，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值、grid/overflow min-content 隔离、overflow scrollbar、分阶段导航资源事务、主文档失败回滚、CSS import tree、libcss 节点缓存纵横屏重选、具名 NetSurf option 默认、DOM Event 传播/取消、基础定位与动态 `:hover`，离线。TEST40-45、59、60、74-76 已真机通过；next78 已撤回。TEST23、TEST79 的 float 候选均因真实 Browse/设备门禁回归撤回。
 - **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-58、62-73，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、同文档及重叠文档缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、普通表单、multipart/file、WM multiple select、required 验证与动态表单伪类；TEST73 已由 next109 设备门禁确认。动态 `:hover` 的自动断言属于 Engine TEST76。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。
 
@@ -257,7 +257,6 @@ tests=13,20,27,43,44,56,58-77,79
 - TEST 73：验证 live checked/enabled/disabled、宿主 focus/active、cache-only 重样式、纵横屏保持与 reset；事件传播由 TEST74 单独验证。
 - TEST 74：验证通用 DOM Event 的 capture/target/bubble、非冒泡、cancelable/default-action、stop propagation、listener remove 与坐标命中派发；不代表专用事件数据或 JavaScript 已启用。
 - TEST 76：验证命中最近 DOM 元素后 `:hover` 样式重选为红色，清除 hover 后恢复蓝色；WM6 宿主离开窗口使用定时器轮询，不代表完整 MouseEvent。
-- TEST 79：验证显式 block-level 左右 float 的同线位置、浮动旁 probe/文字、`clear:both` 和 flex 子项排除；这是 next116 的设备待验证候选，不代表真实 IANA 页脚或完整 CSS Floats 已支持。
 
 > ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 

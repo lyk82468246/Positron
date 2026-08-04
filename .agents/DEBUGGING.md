@@ -11,7 +11,7 @@
 - 模拟器 IE Mobile 能否打开一个已知网站。
 - WM6 的 X 按钮只是最小化，不是关闭；是否有旧 `test_host.exe` 僵尸进程。
 - `scripts\stage.bat` 是否真的复制了新二进制到 `C:\WMShare`。该脚本现会先执行同配置增量 Build，构建失败不会开始复制。
-- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。next116 候选使用 `tests=13,20,27,43,44,56,58-77,79`，其中 TEST79 是 block-level float 离线断言；next114 的已验证设备基线仍使用去掉 `,79` 的 `tests=13,20,27,43,44,56,58-77`，TEST77 及整批日志已确认 `TESTBENCH PASS`。next115 已因 TEST79 几何失败和 TEST13 视觉回归否决。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
+- 快速复测时同时核对 EXE 同目录的 `test_host.ini`。当前恢复 next114 的已验证设备基线，使用 `tests=13,20,27,43,44,56,58-77`，TEST77 及整批日志已确认 `TESTBENCH PASS`；TEST79/float 候选已撤回。配置也支持 `tests=1-5 7b` 一类范围；启动提示选择 No 会回到原四组路由。`stage.bat` 会覆盖 staging 目录中的该配置文件。
 - 模拟器共享目录是否还挂载在 `\Storage Card`。
 - 是否 Rebuild whole Solution，尤其是改了静态库或 vendored NetSurf 代码时。
 - 首选用 `scripts\build.bat`；默认是 `Debug` 增量 Build，退出码和 `vs2008-build.log` 可供 agent 直接判定结果。改了工程依赖、生成规则或需要干净基线时运行 `scripts\build.bat Debug rebuild`。脚本使用 `devenv.com`，不要直接调用 ARM `cl.exe` 拼装整套工程。
@@ -23,8 +23,8 @@
 - 2026-07-24：next74 接入 inline sheet 后，TEST56 报 `rows=35/35/35 35/35 sum=105/70 off=2/10/19 va=0/2/3/3`。行高、两表总高和后三个对齐值均正确，退化集中在 `.distributed .top`：移植层 `named_ancestor_node`/`named_parent_node` 把 class-only 复合选择器携带的 qname `*` 当成真实标签名。next75 统一改用已有的 universal-aware name matcher，并在 TEST58 加 `.scope .probe` 后代 class 断言；TEST56 原夹具和断言保持不变。设备随后确认 TEST56/58 均通过，TEST58 的 cascade 文本和 25/50/auto 可见布局符合预期；下一门禁是同二进制的 TEST13 全流程与完整冻结回归。
 - 2026-08-03：next111/TEST75 只改 slim box builder 的定位构盒分支，按 NetSurf 的 absolute inline 规则把 `position:absolute/fixed;display:inline` 构造成 `BOX_INLINE_BLOCK`；普通 block absolute 与 relative 复用已移植的 `layout_position_absolute/relative`。设备日志确认 TEST75 与 TEST13/20/27/43/44/56/58-74 全部 PASS。若后续扩展 float，不能把这个局部定位修复误当作 float 构盒已经安全。
 - 2026-08-03：next113/TEST76 首次失败为 `initial=0000FF hover=000000 clear=000000 box=0,0 0x20`。根因是 `PCore_InteractionSetAt` 的入口掩码漏掉新 `PCORE_INTERACTION_HOVER`，且测试直接读取普通 inline `<a>` 的零宽起始标记盒。修复入口校验，并让测试目标使用明确尺寸的 block link 后，ARMV4I 增量构建、staging 哈希和设备 `TESTBENCH PASS` 均通过。WM6 SDK 没有桌面 `TrackMouseEvent`/`WM_MOUSELEAVE` 依赖，宿主 hover 离开检测使用 250ms 定时器轮询；后续不要改回桌面 API。
-- 2026-08-04：next115/TEST79 是新的受控 float 候选，不是 TEST23 的恢复；设备已证明它失败，不能继续使用。`pcore_box.c` 过宽地接管了 inline float，且 TEST79 查询到零宽 inline 起始盒；图片和表单控件排除并不能抵消真实 TEST13 的导航回归。next114 保持设备基线，next116 才是后续收窄候选。
-- 2026-08-04：next115 设备运行到 TEST79 时得到 `flow=(70,0 0x20)`，而截图中的 TEST13 导航已扁平化。前者是 `PCore_NodeBox` 选中了 inline 起始标记盒，后者说明 inline float 接管范围过宽；next115 不得继续使用。next116 收窄为显式 `display:block` float，并让 TEST79 查询固定尺寸 inline probe；设备门禁仍待执行。
+- 2026-08-04：next115/TEST79 是新的受控 float 候选，不是 TEST23 的恢复；设备已证明它失败，不能继续使用。`pcore_box.c` 过宽地接管了 inline float，且 TEST79 查询到零宽 inline 起始盒；图片和表单控件排除并不能抵消真实 TEST13 的导航回归。next114 保持设备基线。
+- 2026-08-04：next116 收窄为显式 `display:block` float 并改用固定尺寸 inline probe，但设备日志仍为 `TEST79 FAIL`，截图也显示 TEST13 导航/正文排版异常。自动 TEST13 的数值 OK 不能覆盖人工视觉门禁；next116 的源码、测试和配置已撤回，Float 方向暂挂。若重启，必须先设计完整 box construction/normalisation 方案。
 - WM6 SDK 没有桌面 Win32 `ShowScrollBar` 的声明或导出；需要动态隐藏标准滚动条时，使用 `GetWindowLong/SetWindowLong(GWL_STYLE, WS_VSCROLL)`，再用 `SetWindowPos(..., SWP_FRAMECHANGED)` 重算非客户区。
 - 设备上是否在跑旧的 VS Deploy 目录，例如 `\Program Files\test_host\`。
 

@@ -327,7 +327,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 79
+#define TEST_MAX_NUMBER 77
 
 static int test_config_space(char c)
 {
@@ -336,8 +336,7 @@ static int test_config_space(char c)
 
 static int test_config_available(int number)
 {
-    return number >= 1 && number <= TEST_MAX_NUMBER && number != 23 &&
-            number != 78;
+    return number >= 1 && number <= TEST_MAX_NUMBER && number != 23;
 }
 
 static int test_config_parse_spec(char *spec,
@@ -14462,163 +14461,6 @@ static BOOL test77_script_resources(void)
 }
 
 /* -------------------------------------------------------------------- */
-/* TEST 79 - block-level float construction and clear/flex boundaries       */
-/* A left and right block float must share a line, inline content must use  */
-/* the remaining middle width, clear:both must start below both floats, and */
-/* float on direct flex items must not create float wrappers.                */
-/* TEST 78 is reserved for the withdrawn historical float experiment.     */
-/* -------------------------------------------------------------------- */
-static BOOL test79_float_layout(void)
-{
-    static const char *HTML =
-        "<!doctype html><html><body>"
-        "<leftfloat>LEFT</leftfloat><rightfloat>RIGHT</rightfloat>"
-        "<flowblock><flowprobe>FLOW</flowprobe><flowtext>Long flow text "
-        "uses the space between both "
-        "floating blocks before the clear.</flowtext></flowblock>"
-        "<clearblock>CLEAR</clearblock>"
-        "<flexbox><flexleft>ONE</flexleft><flexright>TWO</flexright>"
-        "</flexbox></body></html>";
-    static const char *CSS =
-        "html,body{margin:0;padding:0;}"
-        "leftfloat,rightfloat{display:block;width:70px;height:36px;"
-        "margin:0;padding:0;}"
-        "leftfloat{float:left;background:#ff0000;}"
-        "rightfloat{float:right;background:#0000ff;}"
-        "flowblock{display:block;margin:0;padding:0;height:48px;}"
-        "flowprobe{display:inline-block;width:50px;height:20px;"
-        "margin:0;padding:0;background:#ffff00;}"
-        "flowtext{display:inline;}"
-        "clearblock{display:block;clear:both;height:12px;margin:0;"
-        "padding:0;background:#00ff00;}"
-        "flexbox{display:flex;width:120px;height:24px;margin:0;padding:0;}"
-        "flexleft,flexright{display:block;float:left;width:30px;"
-        "height:20px;margin:0;padding:0;}";
-    HANDLE hDoc;
-    HANDLE hSheet;
-    int left_x;
-    int left_y;
-    int left_w;
-    int left_h;
-    int right_x;
-    int right_y;
-    int right_w;
-    int right_h;
-    int flow_probe_x;
-    int flow_probe_y;
-    int flow_probe_w;
-    int flow_probe_h;
-    int flow_block_y;
-    int flow_block_h;
-    int clear_x;
-    int clear_y;
-    int clear_w;
-    int clear_h;
-    int flex_x;
-    int flex_y;
-    int flex_w;
-    int flex_h;
-    int flex_left_x;
-    int flex_left_y;
-    int flex_left_w;
-    int flex_left_h;
-    int flex_right_x;
-    int flex_right_y;
-    int flex_right_w;
-    int flex_right_h;
-    int float_bottom;
-    char detail[512];
-
-    hDoc = PCore_ParseHTML(HTML, 0);
-    hSheet = PCore_ParseCSS(CSS, 0,
-            "http://positron.local/float-boundaries.css");
-    if (hDoc == NULL || hSheet == NULL ||
-            PCore_StyleDocument(hDoc, hSheet) != 0 ||
-            PCore_LayoutDocument(hDoc, 224, 320) != 0 ||
-            PCore_NodeBox(hDoc, "leftfloat", &left_x, &left_y,
-                    &left_w, &left_h) != 0 ||
-            PCore_NodeBox(hDoc, "rightfloat", &right_x, &right_y,
-                    &right_w, &right_h) != 0 ||
-            PCore_NodeBox(hDoc, "flowprobe", &flow_probe_x, &flow_probe_y,
-                    &flow_probe_w, &flow_probe_h) != 0 ||
-            PCore_NodeBox(hDoc, "flowblock", NULL, &flow_block_y,
-                    NULL, &flow_block_h) != 0 ||
-            PCore_NodeBox(hDoc, "clearblock", &clear_x, &clear_y,
-                    &clear_w, &clear_h) != 0 ||
-            PCore_NodeBox(hDoc, "flexbox", &flex_x, &flex_y,
-                    &flex_w, &flex_h) != 0 ||
-            PCore_NodeBox(hDoc, "flexleft", &flex_left_x, &flex_left_y,
-                    &flex_left_w, &flex_left_h) != 0 ||
-            PCore_NodeBox(hDoc, "flexright", &flex_right_x, &flex_right_y,
-                    &flex_right_w, &flex_right_h) != 0) {
-        if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
-        if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
-        show_error(L"TEST 79 FAIL", "float parse/style/layout lookup failed");
-        return FALSE;
-    }
-
-    float_bottom = left_y + left_h;
-    if (right_y + right_h > float_bottom) {
-        float_bottom = right_y + right_h;
-    }
-    if (left_x >= right_x || left_y != right_y ||
-            left_w != 70 || right_w != 70 ||
-            flow_probe_x < left_x + left_w ||
-            flow_probe_x + flow_probe_w > right_x ||
-            flow_probe_w != 50 || flow_probe_h != 20 ||
-            flow_probe_y != left_y || clear_y < float_bottom ||
-            clear_y < flow_block_y + flow_block_h ||
-            clear_w <= 0 || clear_h != 12 ||
-            flex_w != 120 || flex_h != 24 ||
-            flex_left_x != flex_x || flex_right_x <= flex_left_x ||
-            flex_left_y != flex_right_y || flex_left_w != 30 ||
-            flex_right_w != 30 || flex_left_h != 20 ||
-            flex_right_h != 20) {
-        _snprintf(detail, sizeof(detail) - 1,
-                "float=(%d,%d %dx%d)/(%d,%d %dx%d) "
-                "probe=(%d,%d %dx%d) flowblock=(y%d h%d) "
-                "clear=(%d,%d %dx%d) "
-                "flex=(%d,%d %dx%d) items=(%d,%d)/(%d,%d)",
-                left_x, left_y, left_w, left_h, right_x, right_y,
-                right_w, right_h, flow_probe_x, flow_probe_y,
-                flow_probe_w, flow_probe_h, flow_block_y, flow_block_h,
-                clear_x, clear_y, clear_w, clear_h, flex_x, flex_y,
-                flex_w, flex_h, flex_left_x, flex_left_y, flex_right_x,
-                flex_right_y);
-        detail[sizeof(detail) - 1] = '\0';
-        PCore_FreeStylesheet(hSheet);
-        PCore_FreeDocument(hDoc);
-        show_error(L"TEST 79 FAIL", detail);
-        return FALSE;
-    }
-
-    g_doc_h = PCore_DocumentHeight(hDoc);
-    g_scroll_y = 0;
-    show_info(L"TEST 79",
-            "Block float fixture: red left and blue right blocks share a\n"
-            "line; the yellow inline probe and following text use the middle\n"
-            "space; green clear:both starts below them; flex items remain a row.");
-    g_render_doc = hDoc;
-    g_render_sheet = hSheet;
-    if (!show_render_window()) {
-        g_render_doc = NULL;
-        g_render_sheet = NULL;
-        PCore_FreeStylesheet(hSheet);
-        PCore_FreeDocument(hDoc);
-        show_error(L"TEST 79 FAIL", "CreateWindow returned NULL");
-        return FALSE;
-    }
-    g_render_doc = NULL;
-    g_render_sheet = NULL;
-    PCore_FreeStylesheet(hSheet);
-    PCore_FreeDocument(hDoc);
-    show_info(L"TEST 79 OK",
-            "NetSurf float layout passed: left/right placement, middle\n"
-            "text flow, clear:both clearance and flex-item exclusion.");
-    return TRUE;
-}
-
-/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14810,7 +14652,6 @@ static int run_configured_tests(const unsigned char *selected,
         case 75: ok = test75_positioned_layout(); break;
         case 76: ok = test76_hover_state(); break;
         case 77: ok = test77_script_resources(); break;
-        case 79: ok = test79_float_layout(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -14870,8 +14711,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                    "The file exists but is empty, unreadable or malformed.\n"
                    "Use: tests=31,32 or tests=1-5 7b\n"
                    "Optional: auto=1\n\n"
-                    "TEST 23 and TEST 78 are unavailable. "
-                    "Continuing with group selection.");
+                   "TEST 23 is unavailable. Continuing with group selection.");
     } else if (configured_count > 0) {
         test_config_prompt(configured_tests, configured_7b, configured_auto,
                 config_prompt, sizeof(config_prompt));
@@ -14919,7 +14759,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
      * rendering group when there is no network (no VPN needed). */
     if (ask_yesno(L"Positron test_host",
                   "Run ALL tests?\n\n"
-                  "Yes = run all selected groups (TEST 1-79)\n"
+                  "Yes = run all selected groups (TEST 1-77)\n"
                   "No  = choose which groups to run")) {
         run_comm = TRUE;
         run_engine = TRUE;
@@ -14936,7 +14776,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                                "layout, box tree, NetSurf layout,\n"
                                "image resource cache\n"
                                "(TEST 6-11, 15, 16, 18, 21, 22, 24, 25,\n"
-                               "38, 40-45, 59-61, 74, 79). Offline.");
+                               "38, 40-45, 59-61, 74). Offline.");
         run_render = ask_yesno(L"Select groups (3/4)",
                                "Run GDI RENDER tests?\n\n"
                                "NetSurf/GDI pages (TEST 12, 14, 17),\n"
@@ -14977,7 +14817,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test5_verified_tls()) { rc = 5; goto done; }
     }
 
-    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61, 74, 79. */
+    /* Engine: TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61, 74. */
     if (run_engine) {
         if (!test6_hubbub())       { rc = 6; goto done; }
         if (!test7_libcss())       { rc = 7; goto done; }
@@ -15000,7 +14840,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (!test60_table_header_restyle()){ rc = 11; goto done; }
         if (!test61_nsoption_font_minimum()){ rc = 11; goto done; }
         if (!test74_dom_events()) { rc = 11; goto done; }
-        if (!test79_float_layout()) { rc = 11; goto done; }
         /* These exercise separate views of the now-initialised engine. Run
          * all of them so one geometry assertion cannot hide later results. */
         if (!test11_layout())        { rc = 12; }
@@ -15083,7 +14922,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     }
     if (run_engine) {
         strcat(summary,
-               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61, 74, 79)\n"
+               "  Engine (TEST 6-11, 15, 16, 18, 21, 22, 24, 25, 38, 40-45, 59-61, 74)\n"
                "    libhubbub + libcss + libdom behind\n"
                "    positron_core.dll; parse, select, style,\n"
                "    layout, media-query viewport, reverse flex, cached CSS restyle, box tree, NetSurf layout, image\n"
@@ -15093,8 +14932,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                "    native libcss CSS import trees, and retained selector\n"
                "    node data across portrait/landscape restyle, and explicit\n"
                "    NetSurf option defaults with minimum-font clamping.\n"
-               "    DOM capture/target/bubble dispatch and cancellation;\n"
-               "    ordinary left/right floats with clear and flex boundaries.\n"
+               "    DOM capture/target/bubble dispatch and cancellation.\n"
                "    Offline.\n\n");
     }
     if (run_render) {
