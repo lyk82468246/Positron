@@ -22,10 +22,12 @@ extern "C" {
 #  define PSCRIPT_API __declspec(dllimport)
 #endif
 
-#define PSCRIPT_ABI_VERSION 0x00010001UL
+#define PSCRIPT_ABI_VERSION 0x00010002UL
 #define PSCRIPT_DEFAULT_BUDGET_MS 1000UL
 #define PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (512UL * 1024UL)
 #define PSCRIPT_MAX_SOURCE_BYTES (64UL * 1024UL)
+#define PSCRIPT_MAX_MODULE_NAME_BYTES 128UL
+#define PSCRIPT_MAX_MODULES 16UL
 
 #define PSCRIPT_OK 0
 #define PSCRIPT_ERROR_ARGUMENT (-1)
@@ -34,6 +36,8 @@ extern "C" {
 #define PSCRIPT_ERROR_TIMEOUT (-4)
 #define PSCRIPT_ERROR_FATAL (-5)
 #define PSCRIPT_ERROR_MEMORY_LIMIT (-6)
+#define PSCRIPT_ERROR_MODULE_NAME (-7)
+#define PSCRIPT_ERROR_MODULE_LIMIT (-8)
 
 /* Returns the major/minor ABI version encoded as 0xMMMMmmmm. */
 PSCRIPT_API unsigned long PScript_AbiVersion(void);
@@ -58,6 +62,20 @@ PSCRIPT_API void PScript_Destroy(HANDLE hScript);
 PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
         int source_len);
 
+/* Evaluate one CommonJS-style module. The module source receives the usual
+ * (module, exports, require) arguments. A successful name is cached for the
+ * lifetime of the context, so a repeated call does not execute it again.
+ * require() can return modules loaded by an earlier call, and a failed load
+ * removes its incomplete entry. This is a standalone module service: it does
+ * not resolve URLs, fetch files, or expose DOM/window objects. */
+PSCRIPT_API int PScript_EvaluateModule(HANDLE hScript,
+        const char *module_name, int module_name_len,
+        const char *source, int source_len);
+
+/* Drop all cached module exports. The context and its ordinary global state
+ * remain usable. The operation returns PSCRIPT_OK or an error code. */
+PSCRIPT_API int PScript_ClearModules(HANDLE hScript);
+
 /* Borrowed strings valid until the next evaluation or destruction. The
  * caller must not free or modify them. */
 PSCRIPT_API const char *PScript_GetResult(HANDLE hScript);
@@ -68,6 +86,7 @@ PSCRIPT_API unsigned long PScript_GetMemoryUsed(HANDLE hScript);
 PSCRIPT_API unsigned long PScript_GetPeakMemoryUsed(HANDLE hScript);
 PSCRIPT_API unsigned long PScript_GetMemoryLimit(HANDLE hScript);
 PSCRIPT_API unsigned long PScript_GetEvaluationCount(HANDLE hScript);
+PSCRIPT_API unsigned long PScript_GetModuleCount(HANDLE hScript);
 
 #ifdef __cplusplus
 }

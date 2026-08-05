@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-08-04
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。next118 已加入独立 `positron_script.dll`，next119 的 TEST80/81 已通过设备验证；next120 又加入 TEST82 的 512 KiB runtime heap 上限、峰值遥测和超限后恢复，ARMV4I 构建、staging 与设备验证均已通过，不改变浏览器 JS 默认关闭的基线。next120 默认配置 TEST13/20/27/43/44/56/58-77/80-82 全部通过，最终为 `TESTBENCH PASS`。通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。next118 已加入独立 `positron_script.dll`，next119 的 TEST80/81 已通过设备验证；next120 又加入 TEST82 的 512 KiB runtime heap 上限、峰值遥测和超限后恢复，ARMV4I 构建、staging 与设备验证均已通过，不改变浏览器 JS 默认关闭的基线。next121 新增 CommonJS 风格模块生命周期 ABI，ARMV4I Debug/Release 构建和 staging 已通过，TEST83 尚待设备验收，因此当前设备基线仍是 next120。通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -23,6 +23,13 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；next115 与 next116 的 float 候选均因 TEST79/TEST13 真实回归撤回。Float 方向暂挂，下一次重大布局实验改评估基础 Grid 或背景尺寸/重复，并继续保留 TEST13 深链门禁。
 4. **资源类型补齐**：脚本资源发现/下载/缓存接口已完成；next118 先把独立 JavaScript runtime DLL 做成其他 WM 程序可调用的最小产品面，再由后续批次评估浏览器消费；网页字体不扩展为普通语言字体工程。
 5. **独立 JavaScript 能力**：`positron_script.dll` 的 ABI、持久求值、错误恢复、预算和资源计数已由 TEST80 设备验收；下一步再设计显式的浏览器 JS 开关与 DOM/native bridge，避免把未验证绑定直接接入 TEST13。
+
+### 6d. next121：独立 JavaScript 模块生命周期（待设备验收）
+
+- `positron_script.h` ABI minor 升至 1.2，新增 `PScript_EvaluateModule`、`PScript_ClearModules`、`PScript_GetModuleCount`、模块名称/数量上限和专用错误码；旧 `PScript_Create`、`PScript_Evaluate` 和 80-82 行为保持兼容。
+- 模块采用小型 CommonJS 风格包装：源代码接收 `module`、`exports`、`require`，同一上下文同名模块只执行一次并缓存 `exports`；已加载模块可被后续模块 `require()`，失败会删除不完整条目；清空只替换模块注册表，不销毁普通脚本上下文。
+- TEST83 覆盖 `base=40`、`entry=require('base')+2`、重复加载不重新执行、失败回滚、清空和重新加载。它不读取 URL/文件、不提供网络、DOM、window 或浏览器脚本开关。
+- next121 已完成 VS2008 ARMV4I Debug/Release 增量构建和 `C:\WMShare\Positron-next121` staging；设备验收通过前，自动化已验证基线仍是 next120，TEST13 不因该批增加脚本请求。
 
 短期暂不继续追逐首个 SVG 的冷解析毫秒数、渐变高级参数、抗锯齿微调或复杂表格边角；next92 已把重复解析造成的导航热点降到可接受范围。
 
@@ -339,8 +346,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next120 / TEST80-82 加 next114 Browse 门禁作为当前已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 在 TEST82 已通过的基础上，评估脚本模块生命周期，再评估把独立 DLL 接入显式的浏览器 JavaScript 开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
+1. 以 next120 / TEST80-82 加 next114 Browse 门禁作为当前已验证自动化基线；next121 的 TEST83 设备验收完成后再提升基线，后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+2. 在 TEST83 通过的基础上，评估脚本模块的宿主源提供器，再评估把独立 DLL 接入显式的浏览器 JavaScript 开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
 3. 下一批按“一个上游能力一个批次”评估基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. 独立 DLL 通过设备门禁后，中期再利用仓库已有 NetSurf Duktape backend 做浏览器 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge；浏览器 JavaScript 默认仍保持关闭直到绑定路径逐项设备门禁通过。

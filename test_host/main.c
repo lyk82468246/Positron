@@ -328,7 +328,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 82
+#define TEST_MAX_NUMBER 83
 
 static int test_config_space(char c)
 {
@@ -14728,6 +14728,135 @@ static BOOL test82_script_memory_limit(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 83 - standalone JavaScript module lifecycle                     */
+/* The module ABI deliberately stays below browser JavaScript: modules are  */
+/* named CommonJS-style units in one isolated context, with no URL loader.  */
+/* This checks execute-once caching, require(), failed-load rollback and    */
+/* explicit cache clearing for other WM callers of positron_script.dll.    */
+/* -------------------------------------------------------------------- */
+static BOOL test83_script_modules(void)
+{
+    static const char *SOURCE_BASE = "module.exports = 40;";
+    static const char *SOURCE_ENTRY =
+            "module.exports = require('base') + 2;";
+    static const char *SOURCE_CACHED =
+            "throw new Error('cached module was executed twice');";
+    static const char *SOURCE_BROKEN =
+            "throw new Error('broken module');";
+    HANDLE hScript;
+    int rc;
+    unsigned long modules;
+    unsigned long evaluations;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 83 FAIL",
+                "PScript_Create returned NULL");
+        return FALSE;
+    }
+
+    rc = PScript_EvaluateModule(hScript, "base", -1,
+            SOURCE_BASE, -1);
+    result = PScript_GetResult(hScript);
+    modules = PScript_GetModuleCount(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "40") != 0 ||
+            modules != 1 || evaluations != 1) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "base rc=%d result=%s modules=%lu eval=%lu/1",
+                rc, result, modules, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 83 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_EvaluateModule(hScript, "entry", -1,
+            SOURCE_ENTRY, -1);
+    result = PScript_GetResult(hScript);
+    modules = PScript_GetModuleCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0 ||
+            modules != 2) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "entry rc=%d result=%s modules=%lu",
+                rc, result, modules);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 83 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_EvaluateModule(hScript, "base", -1,
+            SOURCE_CACHED, -1);
+    result = PScript_GetResult(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "40") != 0 ||
+            evaluations != 2) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "cache rc=%d result=%s eval=%lu/2",
+                rc, result, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 83 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_EvaluateModule(hScript, "broken", -1,
+            SOURCE_BROKEN, -1);
+    error = PScript_GetError(hScript);
+    modules = PScript_GetModuleCount(hScript);
+    if (rc != PSCRIPT_ERROR_EVALUATION ||
+            strstr(error, "broken module") == NULL || modules != 2) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "rollback rc=%d error=%s modules=%lu/2",
+                rc, error, modules);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 83 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_ClearModules(hScript);
+    modules = PScript_GetModuleCount(hScript);
+    if (rc != PSCRIPT_OK || modules != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "clear rc=%d modules=%lu/0",
+                rc, modules);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 83 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_EvaluateModule(hScript, "base", -1,
+            SOURCE_BASE, -1);
+    result = PScript_GetResult(hScript);
+    modules = PScript_GetModuleCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "40") != 0 ||
+            modules != 1) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "reload rc=%d result=%s modules=%lu/1",
+                rc, result, modules);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 83 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    _snprintf(detail, sizeof(detail) - 1,
+            "base=40 entry=require(base)+2=42 cache=ok rollback=ok "
+            "clear/reload=ok modules=%lu",
+            modules);
+    detail[sizeof(detail) - 1] = '\0';
+    show_info(L"TEST 83 OK", detail);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14819,7 +14948,7 @@ static int run_configured_tests(const unsigned char *selected,
     }
     needs_core = 0;
     for (number = 8; number <= TEST_MAX_NUMBER; number++) {
-        if (number != 80 && number != 81 && number != 82 &&
+        if (number != 80 && number != 81 && number != 82 && number != 83 &&
                 selected[number]) {
             needs_core = 1;
             break;
@@ -14923,6 +15052,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 80: ok = test80_script_runtime(); break;
         case 81: ok = test81_script_safety(); break;
         case 82: ok = test82_script_memory_limit(); break;
+        case 83: ok = test83_script_modules(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

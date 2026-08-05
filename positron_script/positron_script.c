@@ -17,11 +17,16 @@
 #include "duktape.h"
 #undef DUK_COMPILING_DUKTAPE
 
+#define PSCRIPT_MODULES_GLOBAL "__positron_internal_modules"
+#define PSCRIPT_REQUIRE_GLOBAL "__positron_internal_require"
+
 typedef struct pscript_alloc_header {
     size_t bytes;
 } pscript_alloc_header;
 
-typedef struct pscript_context {
+typedef struct pscript_context pscript_context;
+
+struct pscript_context {
     duk_context *duk;
     unsigned long budget_ms;
     unsigned long memory_limit;
@@ -32,11 +37,14 @@ typedef struct pscript_context {
     int timed_out;
     int memory_limited;
     int poisoned;
+    unsigned long module_count;
     int fatal_jmp_active;
     jmp_buf fatal_jmp;
     char result[256];
     char error[256];
-} pscript_context;
+};
+
+static duk_ret_t pscript_require(duk_context *duk);
 
 static void pscript_copy(char *out, int capacity, const char *value)
 {
@@ -55,6 +63,140 @@ static void pscript_copy(char *out, int capacity, const char *value)
     }
     memcpy(out, value, length);
     out[length] = '\0';
+}
+
+static int pscript_module_name_copy(const char *source, int source_len,
+        char *destination, size_t destination_size, size_t *out_length)
+{
+    size_t length;
+
+    if (source == NULL || destination == NULL || destination_size < 2) {
+        return 0;
+    }
+    if (source_len < 0) {
+        length = strlen(source);
+    } else {
+        length = (size_t) source_len;
+    }
+    if (length == 0 || length >= destination_size ||
+            length > PSCRIPT_MAX_MODULE_NAME_BYTES) {
+        return 0;
+    }
+    memcpy(destination, source, length);
+    destination[length] = '\0';
+    if (out_length != NULL) {
+        *out_length = length;
+    }
+    return 1;
+}
+
+static int pscript_module_wrapper(const char *source, size_t source_len,
+        char **out_source, size_t *out_length)
+{
+    static const char prefix[] =
+            "(function(module, exports, require) {\n";
+    static const char suffix[] = "\n})";
+    char *wrapper;
+    size_t prefix_len;
+    size_t suffix_len;
+    size_t total;
+
+    if (source == NULL || out_source == NULL || out_length == NULL) {
+        return 0;
+    }
+    prefix_len = sizeof(prefix) - 1;
+    suffix_len = sizeof(suffix) - 1;
+    if (source_len > (size_t) -1 - prefix_len ||
+            source_len + prefix_len > (size_t) -1 - suffix_len ||
+            source_len + prefix_len + suffix_len == (size_t) -1) {
+        return 0;
+    }
+    total = prefix_len + source_len + suffix_len;
+    wrapper = (char *) malloc(total + 1);
+    if (wrapper == NULL) {
+        return 0;
+    }
+    memcpy(wrapper, prefix, prefix_len);
+    memcpy(wrapper + prefix_len, source, source_len);
+    memcpy(wrapper + prefix_len + source_len, suffix, suffix_len);
+    wrapper[total] = '\0';
+    *out_source = wrapper;
+    *out_length = total;
+    return 1;
+}
+
+static int pscript_modules_ensure(pscript_context *ctx)
+{
+    duk_context *duk;
+
+    if (ctx == NULL || ctx->duk == NULL) {
+        return 0;
+    }
+    duk = ctx->duk;
+    duk_set_top(duk, 0);
+    duk_get_global_string(duk, PSCRIPT_MODULES_GLOBAL);
+    if (duk_is_object(duk, -1)) {
+        duk_pop(duk);
+        duk_get_global_string(duk, PSCRIPT_REQUIRE_GLOBAL);
+        if (!duk_is_callable(duk, -1)) {
+            duk_pop(duk);
+            duk_push_c_function(duk, pscript_require, 1);
+            duk_put_global_string(duk, PSCRIPT_REQUIRE_GLOBAL);
+        } else {
+            duk_pop(duk);
+        }
+        return 1;
+    }
+    duk_pop(duk);
+    duk_push_bare_object(duk);
+    duk_put_global_string(duk, PSCRIPT_MODULES_GLOBAL);
+    duk_push_c_function(duk, pscript_require, 1);
+    duk_put_global_string(duk, PSCRIPT_REQUIRE_GLOBAL);
+    return 1;
+}
+
+static void pscript_module_remove(pscript_context *ctx, const char *name)
+{
+    duk_context *duk;
+
+    if (ctx == NULL || ctx->duk == NULL || name == NULL) {
+        return;
+    }
+    duk = ctx->duk;
+    duk_set_top(duk, 0);
+    duk_get_global_string(duk, PSCRIPT_MODULES_GLOBAL);
+    if (duk_is_object(duk, -1)) {
+        duk_del_prop_string(duk, -1, name);
+    }
+    duk_set_top(duk, 0);
+    if (ctx->module_count > 0) {
+        ctx->module_count--;
+    }
+}
+
+static duk_ret_t pscript_require(duk_context *duk)
+{
+    const char *name;
+
+    if (duk == NULL || !duk_is_string(duk, 0)) {
+        return duk_error(duk, DUK_ERR_TYPE_ERROR,
+                "module name must be a string");
+    }
+    name = duk_get_string(duk, 0);
+    if (name == NULL || strlen(name) == 0 ||
+            strlen(name) > PSCRIPT_MAX_MODULE_NAME_BYTES) {
+        return duk_error(duk, DUK_ERR_ERROR, "invalid module name");
+    }
+    duk_get_global_string(duk, PSCRIPT_MODULES_GLOBAL);
+    if (!duk_is_object(duk, -1) ||
+            !duk_get_prop_string(duk, -1, name) ||
+            !duk_is_object(duk, -1)) {
+        return duk_error(duk, DUK_ERR_ERROR, "module is not loaded");
+    }
+    duk_get_prop_string(duk, -1, "exports");
+    duk_remove(duk, -3);
+    duk_remove(duk, -2);
+    return 1;
 }
 
 static int pscript_memory_reserve(pscript_context *ctx, size_t amount)
@@ -351,6 +493,189 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
     return PSCRIPT_OK;
 }
 
+static int pscript_module_eval_error(pscript_context *ctx, int rc)
+{
+    const char *text;
+
+    if (ctx->memory_limited) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JavaScript memory limit exceeded");
+        return PSCRIPT_ERROR_MEMORY_LIMIT;
+    }
+    text = duk_safe_to_string(ctx->duk, -1);
+    if (ctx->timed_out) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JavaScript execution timeout");
+        return PSCRIPT_ERROR_TIMEOUT;
+    }
+    pscript_copy(ctx->error, sizeof(ctx->error), text);
+    return (rc == 0) ? PSCRIPT_ERROR_EVALUATION :
+            PSCRIPT_ERROR_EVALUATION;
+}
+
+PSCRIPT_API int PScript_EvaluateModule(HANDLE hScript,
+        const char *module_name, int module_name_len,
+        const char *source, int source_len)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+    char name[PSCRIPT_MAX_MODULE_NAME_BYTES + 1];
+    char *wrapper;
+    size_t name_len;
+    size_t source_length;
+    size_t wrapper_length;
+    int rc;
+    const char *text;
+
+    ctx = (pscript_context *) hScript;
+    if (ctx == NULL || ctx->duk == NULL || ctx->poisoned ||
+            module_name == NULL || source == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (!pscript_module_name_copy(module_name, module_name_len,
+            name, sizeof(name), &name_len)) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "invalid module name");
+        return PSCRIPT_ERROR_MODULE_NAME;
+    }
+    if (source_len < 0) {
+        source_length = strlen(source);
+    } else {
+        source_length = (size_t) source_len;
+    }
+    if (source_length > PSCRIPT_MAX_SOURCE_BYTES) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "source exceeds PSCRIPT_MAX_SOURCE_BYTES");
+        return PSCRIPT_ERROR_SOURCE_TOO_LARGE;
+    }
+    if (!pscript_module_wrapper(source, source_length, &wrapper,
+            &wrapper_length)) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "module wrapper allocation failed");
+        return PSCRIPT_ERROR_EVALUATION;
+    }
+
+    ctx->result[0] = '\0';
+    ctx->error[0] = '\0';
+    ctx->timed_out = 0;
+    ctx->memory_limited = 0;
+    duk = ctx->duk;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        ctx->fatal_jmp_active = 0;
+        ctx->deadline = 0;
+        free(wrapper);
+        ctx->poisoned = 1;
+        ctx->duk = NULL;
+        if (ctx->memory_limited) {
+            pscript_copy(ctx->error, sizeof(ctx->error),
+                    "JavaScript memory limit exceeded");
+            return PSCRIPT_ERROR_MEMORY_LIMIT;
+        }
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "Duktape fatal error");
+        return PSCRIPT_ERROR_FATAL;
+    }
+
+    if (!pscript_modules_ensure(ctx)) {
+        ctx->fatal_jmp_active = 0;
+        free(wrapper);
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "module registry unavailable");
+        return PSCRIPT_ERROR_FATAL;
+    }
+    duk_set_top(duk, 0);
+    duk_get_global_string(duk, PSCRIPT_MODULES_GLOBAL);
+    if (duk_get_prop_string(duk, -1, name) &&
+            duk_is_object(duk, -1)) {
+        duk_get_prop_string(duk, -1, "exports");
+        text = duk_safe_to_string(duk, -1);
+        pscript_copy(ctx->result, sizeof(ctx->result), text);
+        duk_set_top(duk, 0);
+        ctx->fatal_jmp_active = 0;
+        free(wrapper);
+        return PSCRIPT_OK;
+    }
+    duk_pop(duk);
+    if (ctx->module_count >= PSCRIPT_MAX_MODULES) {
+        duk_set_top(duk, 0);
+        ctx->fatal_jmp_active = 0;
+        free(wrapper);
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "module cache limit exceeded");
+        return PSCRIPT_ERROR_MODULE_LIMIT;
+    }
+
+    duk_push_object(duk);
+    duk_push_object(duk);
+    duk_put_prop_string(duk, -2, "exports");
+    duk_dup(duk, -1);
+    duk_put_prop_string(duk, -3, name);
+    ctx->module_count++;
+    ctx->evaluations++;
+    ctx->deadline = (ctx->budget_ms == 0) ? 0 :
+            GetTickCount() + ctx->budget_ms;
+
+    rc = duk_peval_lstring(duk, wrapper, (duk_size_t) wrapper_length);
+    free(wrapper);
+    wrapper = NULL;
+    if (rc != 0) {
+        ctx->deadline = 0;
+        rc = pscript_module_eval_error(ctx, rc);
+        pscript_module_remove(ctx, name);
+        ctx->fatal_jmp_active = 0;
+        return rc;
+    }
+
+    duk_dup(duk, -2);
+    duk_get_prop_string(duk, -1, "exports");
+    duk_get_global_string(duk, PSCRIPT_REQUIRE_GLOBAL);
+    rc = duk_pcall(duk, 3);
+    ctx->deadline = 0;
+    if (rc != 0) {
+        rc = pscript_module_eval_error(ctx, rc);
+        pscript_module_remove(ctx, name);
+        ctx->fatal_jmp_active = 0;
+        return rc;
+    }
+
+    duk_get_prop_string(duk, -2, "exports");
+    text = duk_safe_to_string(duk, -1);
+    pscript_copy(ctx->result, sizeof(ctx->result), text);
+    duk_set_top(duk, 0);
+    ctx->fatal_jmp_active = 0;
+    return PSCRIPT_OK;
+}
+
+PSCRIPT_API int PScript_ClearModules(HANDLE hScript)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+
+    ctx = (pscript_context *) hScript;
+    if (ctx == NULL || ctx->duk == NULL || ctx->poisoned) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    duk = ctx->duk;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        ctx->fatal_jmp_active = 0;
+        ctx->poisoned = 1;
+        ctx->duk = NULL;
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "Duktape fatal error while clearing modules");
+        return PSCRIPT_ERROR_FATAL;
+    }
+    duk_set_top(duk, 0);
+    duk_push_bare_object(duk);
+    duk_put_global_string(duk, PSCRIPT_MODULES_GLOBAL);
+    ctx->module_count = 0;
+    ctx->result[0] = '\0';
+    ctx->error[0] = '\0';
+    ctx->fatal_jmp_active = 0;
+    return PSCRIPT_OK;
+}
+
 PSCRIPT_API const char *PScript_GetResult(HANDLE hScript)
 {
     pscript_context *ctx;
@@ -397,4 +722,12 @@ PSCRIPT_API unsigned long PScript_GetEvaluationCount(HANDLE hScript)
 
     ctx = (pscript_context *) hScript;
     return (ctx != NULL) ? ctx->evaluations : 0;
+}
+
+PSCRIPT_API unsigned long PScript_GetModuleCount(HANDLE hScript)
+{
+    pscript_context *ctx;
+
+    ctx = (pscript_context *) hScript;
+    return (ctx != NULL) ? ctx->module_count : 0;
 }
