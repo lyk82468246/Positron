@@ -1,7 +1,7 @@
 # Positron Roadmap
 
 更新时间：2026-08-04
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。next118 已加入独立 `positron_script.dll`，next119 的 TEST80/81 已通过设备验证；当前源码候选 next120 再加入 TEST82 的 512 KiB runtime heap 上限、峰值遥测和超限后恢复，ARMV4I 构建与 staging 已通过，设备待验，不改变浏览器 JS 默认关闭的基线。next119 默认配置 TEST13/20/27/43/44/56/58-77/80-81 全部通过，最终为 `TESTBENCH PASS`；next120 默认配置扩展到 TEST82。通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。next118 已加入独立 `positron_script.dll`，next119 的 TEST80/81 已通过设备验证；next120 又加入 TEST82 的 512 KiB runtime heap 上限、峰值遥测和超限后恢复，ARMV4I 构建、staging 与设备验证均已通过，不改变浏览器 JS 默认关闭的基线。next120 默认配置 TEST13/20/27/43/44/56/58-77/80-82 全部通过，最终为 `TESTBENCH PASS`。通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 ## 总原则
 
@@ -114,11 +114,11 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - 该断言同时检查上下文仍可用、执行计数只统计真正进入求值的两次调用、DLL 堆遥测非零；源码长度拒绝不伪造 64 KiB 缓冲区，也不代表已经有独立的总内存配额。
 - next119 已完成 VS2008 ARMV4I Debug 增量构建、staging 到 `C:\WMShare\Positron-next119` 和设备验收；TEST81 日志为 timeout=-4、limit=-2、recovery=42、eval=2/2、memory=64993。超时后的 UI 调度、脚本模块图、DOM/window/fetch/native bridge 仍不在此批次。
 
-### 6c. next120：独立 JavaScript 总内存配额（设备待验收）
+### 6c. next120：独立 JavaScript 总内存配额
 
 - `positron_script.h` ABI minor 升至 1.1；旧 `PScript_Create` 保持入口，新增 `PScript_CreateEx`、`PSCRIPT_ERROR_MEMORY_LIMIT`、`PScript_GetMemoryLimit` 和 `PScript_GetPeakMemoryUsed`。配额覆盖 Duktape 分配及 wrapper allocation header，不包含宿主进程其他内存。
 - TEST82 以 512 KiB 上限执行短生命周期数组压力，要求超限返回专用错误、峰值不超过上限，并在失败后继续求值 `42`。这验证 runtime heap 边界，不等于模块图、DOM/window/fetch 或浏览器 JS 接入。
-- next120 已完成 VS2008 ARMV4I Debug 增量构建并 staging 到 `C:\WMShare\Positron-next120`；设备日志确认前，TEST82 不计入已验收基线。
+- next120 已完成 VS2008 ARMV4I Debug 增量构建、staging 到 `C:\WMShare\Positron-next120` 和设备验收；TEST82 日志为 `rc=-6 used=70057 peak=496184 limit=524288 recovery=42 eval=2/2`。这仍只约束 DLL 的 Duktape heap，不约束宿主进程其他内存。
 
 ### 7. next115：普通浮动构盒候选（已否决）
 
@@ -339,8 +339,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next119 / TEST80-81 加 next114 Browse 门禁作为当前已验证自动化基线；先运行 next120 的 TEST82，确认硬内存配额设备边界，再把它纳入已验收基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 在 TEST82 通过后，评估脚本模块生命周期，再评估把独立 DLL 接入显式的浏览器 JavaScript 开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
+1. 以 next120 / TEST80-82 加 next114 Browse 门禁作为当前已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+2. 在 TEST82 已通过的基础上，评估脚本模块生命周期，再评估把独立 DLL 接入显式的浏览器 JavaScript 开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
 3. 下一批按“一个上游能力一个批次”评估基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. 独立 DLL 通过设备门禁后，中期再利用仓库已有 NetSurf Duktape backend 做浏览器 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge；浏览器 JavaScript 默认仍保持关闭直到绑定路径逐项设备门禁通过。
