@@ -15,7 +15,11 @@
 
 - `positron_script.c` wraps the engine behind a small opaque C ABI and keeps
   contexts, allocations, result strings and errors inside the DLL.
+- The ABI minor version adds `PScript_CreateEx` with a hard Duktape heap
+  limit, plus current/peak allocation telemetry and a dedicated memory-limit
+  error. The legacy `PScript_Create` entry selects the 512 KiB default.
 - The WM6 build selects Duktape's no-DST Windows date provider because the
   Windows Mobile SDK does not provide `SystemTimeToTzSpecificLocalTime`.
 - No DOM, `window`, network, fetch, or browser-core binding is added by this
-  first standalone layer. TEST80 is the consumer-boundary regression.
+  standalone layer. TEST80/81 cover evaluation and timeout/source limits;
+  TEST82 covers the DLL heap limit and recovery path.

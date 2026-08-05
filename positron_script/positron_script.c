@@ -24,10 +24,13 @@ typedef struct pscript_alloc_header {
 typedef struct pscript_context {
     duk_context *duk;
     unsigned long budget_ms;
+    unsigned long memory_limit;
     DWORD deadline;
     unsigned long memory_used;
+    unsigned long peak_memory_used;
     unsigned long evaluations;
     int timed_out;
+    int memory_limited;
     int poisoned;
     int fatal_jmp_active;
     jmp_buf fatal_jmp;
@@ -54,6 +57,23 @@ static void pscript_copy(char *out, int capacity, const char *value)
     out[length] = '\0';
 }
 
+static int pscript_memory_reserve(pscript_context *ctx, size_t amount)
+{
+    unsigned long add;
+
+    if (ctx == NULL) {
+        return 0;
+    }
+    add = (amount > 0xffffffffUL) ? 0xffffffffUL : (unsigned long) amount;
+    if (amount > 0xffffffffUL ||
+            ctx->memory_used > ctx->memory_limit ||
+            add > ctx->memory_limit - ctx->memory_used) {
+        ctx->memory_limited = 1;
+        return 0;
+    }
+    return 1;
+}
+
 static void pscript_add_memory(pscript_context *ctx, size_t amount)
 {
     unsigned long add;
@@ -66,6 +86,9 @@ static void pscript_add_memory(pscript_context *ctx, size_t amount)
         ctx->memory_used = 0xffffffffUL;
     } else {
         ctx->memory_used += add;
+    }
+    if (ctx->memory_used > ctx->peak_memory_used) {
+        ctx->peak_memory_used = ctx->memory_used;
     }
 }
 
@@ -89,18 +112,23 @@ static void *pscript_alloc(void *udata, duk_size_t size)
     pscript_context *ctx;
     pscript_alloc_header *header;
     size_t bytes;
+    size_t total;
 
     ctx = (pscript_context *) udata;
     bytes = (size_t) size;
     if (bytes > (size_t) -1 - sizeof(*header)) {
         return NULL;
     }
-    header = (pscript_alloc_header *) malloc(sizeof(*header) + bytes);
+    total = sizeof(*header) + bytes;
+    if (!pscript_memory_reserve(ctx, total)) {
+        return NULL;
+    }
+    header = (pscript_alloc_header *) malloc(total);
     if (header == NULL) {
         return NULL;
     }
     header->bytes = bytes;
-    pscript_add_memory(ctx, bytes);
+    pscript_add_memory(ctx, total);
     return (void *) (header + 1);
 }
 
@@ -111,6 +139,8 @@ static void *pscript_realloc(void *udata, void *ptr, duk_size_t size)
     pscript_alloc_header *new_header;
     size_t old_bytes;
     size_t new_bytes;
+    size_t old_total;
+    size_t new_total;
 
     ctx = (pscript_context *) udata;
     if (ptr == NULL) {
@@ -122,21 +152,27 @@ static void *pscript_realloc(void *udata, void *ptr, duk_size_t size)
     if (new_bytes > (size_t) -1 - sizeof(*new_header)) {
         return NULL;
     }
+    old_total = sizeof(*old_header) + old_bytes;
+    new_total = sizeof(*new_header) + new_bytes;
     if (new_bytes == 0) {
         free(old_header);
-        pscript_sub_memory(ctx, old_bytes);
+        pscript_sub_memory(ctx, old_total);
+        return NULL;
+    }
+    if (new_total > old_total &&
+            !pscript_memory_reserve(ctx, new_total - old_total)) {
         return NULL;
     }
     new_header = (pscript_alloc_header *) realloc(old_header,
-            sizeof(*new_header) + new_bytes);
+            new_total);
     if (new_header == NULL) {
         return NULL;
     }
     new_header->bytes = new_bytes;
-    if (new_bytes > old_bytes) {
-        pscript_add_memory(ctx, new_bytes - old_bytes);
-    } else {
-        pscript_sub_memory(ctx, old_bytes - new_bytes);
+    if (new_total > old_total) {
+        pscript_add_memory(ctx, new_total - old_total);
+    } else if (old_total > new_total) {
+        pscript_sub_memory(ctx, old_total - new_total);
     }
     return (void *) (new_header + 1);
 }
@@ -145,13 +181,15 @@ static void pscript_free(void *udata, void *ptr)
 {
     pscript_context *ctx;
     pscript_alloc_header *header;
+    size_t total;
 
     ctx = (pscript_context *) udata;
     if (ptr == NULL) {
         return;
     }
     header = ((pscript_alloc_header *) ptr) - 1;
-    pscript_sub_memory(ctx, header->bytes);
+    total = sizeof(*header) + header->bytes;
+    pscript_sub_memory(ctx, total);
     free(header);
 }
 
@@ -177,8 +215,13 @@ static void pscript_fatal(void *udata, const char *message)
 
     ctx = (pscript_context *) udata;
     if (ctx != NULL) {
-        pscript_copy(ctx->error, sizeof(ctx->error),
-                (message != NULL) ? message : "Duktape fatal error");
+        if (ctx->memory_limited) {
+            pscript_copy(ctx->error, sizeof(ctx->error),
+                    "JavaScript memory limit exceeded");
+        } else {
+            pscript_copy(ctx->error, sizeof(ctx->error),
+                    (message != NULL) ? message : "Duktape fatal error");
+        }
         if (ctx->fatal_jmp_active) {
             longjmp(ctx->fatal_jmp, 1);
         }
@@ -195,6 +238,12 @@ PSCRIPT_API unsigned long PScript_AbiVersion(void)
 
 PSCRIPT_API HANDLE PScript_Create(unsigned long budget_ms)
 {
+    return PScript_CreateEx(budget_ms, 0);
+}
+
+PSCRIPT_API HANDLE PScript_CreateEx(unsigned long budget_ms,
+        unsigned long memory_limit_bytes)
+{
     pscript_context *ctx;
 
     ctx = (pscript_context *) malloc(sizeof(*ctx));
@@ -203,6 +252,8 @@ PSCRIPT_API HANDLE PScript_Create(unsigned long budget_ms)
     }
     memset(ctx, 0, sizeof(*ctx));
     ctx->budget_ms = (budget_ms == 0) ? PSCRIPT_DEFAULT_BUDGET_MS : budget_ms;
+    ctx->memory_limit = (memory_limit_bytes == 0) ?
+            PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES : memory_limit_bytes;
     ctx->fatal_jmp_active = 1;
     if (setjmp(ctx->fatal_jmp) != 0) {
         ctx->fatal_jmp_active = 0;
@@ -260,6 +311,7 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
     ctx->result[0] = '\0';
     ctx->error[0] = '\0';
     ctx->timed_out = 0;
+    ctx->memory_limited = 0;
     ctx->evaluations++;
     ctx->deadline = (ctx->budget_ms == 0) ? 0 :
             GetTickCount() + ctx->budget_ms;
@@ -275,14 +327,20 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
     ctx->fatal_jmp_active = 0;
     ctx->deadline = 0;
     if (rc != 0) {
-        text = duk_safe_to_string(ctx->duk, -1);
-        if (ctx->timed_out) {
+        if (ctx->memory_limited) {
             pscript_copy(ctx->error, sizeof(ctx->error),
-                    "JavaScript execution timeout");
-            rc = PSCRIPT_ERROR_TIMEOUT;
+                    "JavaScript memory limit exceeded");
+            rc = PSCRIPT_ERROR_MEMORY_LIMIT;
         } else {
-            pscript_copy(ctx->error, sizeof(ctx->error), text);
-            rc = PSCRIPT_ERROR_EVALUATION;
+            text = duk_safe_to_string(ctx->duk, -1);
+            if (ctx->timed_out) {
+                pscript_copy(ctx->error, sizeof(ctx->error),
+                        "JavaScript execution timeout");
+                rc = PSCRIPT_ERROR_TIMEOUT;
+            } else {
+                pscript_copy(ctx->error, sizeof(ctx->error), text);
+                rc = PSCRIPT_ERROR_EVALUATION;
+            }
         }
         duk_set_top(ctx->duk, 0);
         return rc;
@@ -315,6 +373,22 @@ PSCRIPT_API unsigned long PScript_GetMemoryUsed(HANDLE hScript)
 
     ctx = (pscript_context *) hScript;
     return (ctx != NULL) ? ctx->memory_used : 0;
+}
+
+PSCRIPT_API unsigned long PScript_GetPeakMemoryUsed(HANDLE hScript)
+{
+    pscript_context *ctx;
+
+    ctx = (pscript_context *) hScript;
+    return (ctx != NULL) ? ctx->peak_memory_used : 0;
+}
+
+PSCRIPT_API unsigned long PScript_GetMemoryLimit(HANDLE hScript)
+{
+    pscript_context *ctx;
+
+    ctx = (pscript_context *) hScript;
+    return (ctx != NULL) ? ctx->memory_limit : 0;
 }
 
 PSCRIPT_API unsigned long PScript_GetEvaluationCount(HANDLE hScript)

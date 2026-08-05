@@ -22,8 +22,9 @@ extern "C" {
 #  define PSCRIPT_API __declspec(dllimport)
 #endif
 
-#define PSCRIPT_ABI_VERSION 0x00010000UL
+#define PSCRIPT_ABI_VERSION 0x00010001UL
 #define PSCRIPT_DEFAULT_BUDGET_MS 1000UL
+#define PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (512UL * 1024UL)
 #define PSCRIPT_MAX_SOURCE_BYTES (64UL * 1024UL)
 
 #define PSCRIPT_OK 0
@@ -32,6 +33,7 @@ extern "C" {
 #define PSCRIPT_ERROR_EVALUATION (-3)
 #define PSCRIPT_ERROR_TIMEOUT (-4)
 #define PSCRIPT_ERROR_FATAL (-5)
+#define PSCRIPT_ERROR_MEMORY_LIMIT (-6)
 
 /* Returns the major/minor ABI version encoded as 0xMMMMmmmm. */
 PSCRIPT_API unsigned long PScript_AbiVersion(void);
@@ -41,6 +43,12 @@ PSCRIPT_API unsigned long PScript_AbiVersion(void);
  * context is not safe for concurrent calls; the embedding program owns its
  * calling-thread discipline. */
 PSCRIPT_API HANDLE PScript_Create(unsigned long budget_ms);
+
+/* Create an isolated context with an explicit Duktape heap limit. A zero
+ * memory_limit_bytes selects PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES. The limit
+ * covers Duktape allocations plus the wrapper's allocation headers. */
+PSCRIPT_API HANDLE PScript_CreateEx(unsigned long budget_ms,
+        unsigned long memory_limit_bytes);
 
 /* Destroy a context and all values retained by it. NULL is accepted. */
 PSCRIPT_API void PScript_Destroy(HANDLE hScript);
@@ -57,6 +65,8 @@ PSCRIPT_API const char *PScript_GetError(HANDLE hScript);
 
 /* Diagnostic counters for embedders and device telemetry. */
 PSCRIPT_API unsigned long PScript_GetMemoryUsed(HANDLE hScript);
+PSCRIPT_API unsigned long PScript_GetPeakMemoryUsed(HANDLE hScript);
+PSCRIPT_API unsigned long PScript_GetMemoryLimit(HANDLE hScript);
 PSCRIPT_API unsigned long PScript_GetEvaluationCount(HANDLE hScript);
 
 #ifdef __cplusplus

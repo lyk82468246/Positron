@@ -328,7 +328,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 81
+#define TEST_MAX_NUMBER 82
 
 static int test_config_space(char c)
 {
@@ -14656,6 +14656,78 @@ static BOOL test81_script_safety(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 82 - standalone JavaScript runtime memory boundary              */
+/* This deliberately uses a short-lived allocation-heavy function so the */
+/* failed evaluation does not retain the partial array. It proves a hard */
+/* heap limit, peak telemetry, and recovery after a catchable OOM path.   */
+/* -------------------------------------------------------------------- */
+static BOOL test82_script_memory_limit(void)
+{
+    static const char *SOURCE_MEMORY =
+            "(function(){var values=[]; for (var i=0; i<50000; i++) {"
+            "values.push(i); } return values.length; }());";
+    static const char *SOURCE_RECOVERY = "7 * 6;";
+    HANDLE hScript;
+    int rc;
+    unsigned long memory_used;
+    unsigned long memory_peak;
+    unsigned long memory_limit;
+    unsigned long evaluations;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    hScript = PScript_CreateEx(2000, PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES);
+    if (hScript == NULL) {
+        show_error(L"TEST 82 FAIL",
+                "PScript_CreateEx returned NULL");
+        return FALSE;
+    }
+
+    memory_limit = PScript_GetMemoryLimit(hScript);
+    rc = PScript_Evaluate(hScript, SOURCE_MEMORY, -1);
+    error = PScript_GetError(hScript);
+    memory_used = PScript_GetMemoryUsed(hScript);
+    memory_peak = PScript_GetPeakMemoryUsed(hScript);
+    if (memory_limit != PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES ||
+            rc != PSCRIPT_ERROR_MEMORY_LIMIT ||
+            strstr(error, "memory limit") == NULL ||
+            memory_peak == 0 || memory_peak > memory_limit ||
+            memory_used > memory_limit) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "rc=%d error=%s used=%lu peak=%lu limit=%lu",
+                rc, error, memory_used, memory_peak, memory_limit);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 82 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_Evaluate(hScript, SOURCE_RECOVERY, -1);
+    result = PScript_GetResult(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0 ||
+            evaluations != 2) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "recovery rc=%d result=%s eval=%lu/2",
+                rc, result, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 82 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    _snprintf(detail, sizeof(detail) - 1,
+            "rc=%d used=%lu peak=%lu limit=%lu recovery=%s eval=%lu/2",
+            PSCRIPT_ERROR_MEMORY_LIMIT, memory_used, memory_peak,
+            memory_limit, "42", evaluations);
+    detail[sizeof(detail) - 1] = '\0';
+    show_info(L"TEST 82 OK", detail);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14747,7 +14819,8 @@ static int run_configured_tests(const unsigned char *selected,
     }
     needs_core = 0;
     for (number = 8; number <= TEST_MAX_NUMBER; number++) {
-        if (number != 80 && number != 81 && selected[number]) {
+        if (number != 80 && number != 81 && number != 82 &&
+                selected[number]) {
             needs_core = 1;
             break;
         }
@@ -14849,6 +14922,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 77: ok = test77_script_resources(); break;
         case 80: ok = test80_script_runtime(); break;
         case 81: ok = test81_script_safety(); break;
+        case 82: ok = test82_script_memory_limit(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
