@@ -28,5 +28,4 @@
 - No DOM, `window`, network, fetch, or browser-core binding is added by this
   standalone layer. TEST80/81 cover evaluation and timeout/source limits;
   TEST82 covers the DLL heap limit and recovery path; TEST83 covers the
-  module cache and lifecycle boundary (device verification pending for
-  next121).
+  module cache and lifecycle boundary; next121 device verification passed.
