@@ -22,7 +22,7 @@ extern "C" {
 #  define PSCRIPT_API __declspec(dllimport)
 #endif
 
-#define PSCRIPT_ABI_VERSION 0x00010002UL
+#define PSCRIPT_ABI_VERSION 0x00010003UL
 #define PSCRIPT_DEFAULT_BUDGET_MS 1000UL
 #define PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (512UL * 1024UL)
 #define PSCRIPT_MAX_SOURCE_BYTES (64UL * 1024UL)
@@ -38,6 +38,16 @@ extern "C" {
 #define PSCRIPT_ERROR_MEMORY_LIMIT (-6)
 #define PSCRIPT_ERROR_MODULE_NAME (-7)
 #define PSCRIPT_ERROR_MODULE_LIMIT (-8)
+#define PSCRIPT_ERROR_MODULE_SOURCE (-9)
+
+/* Synchronous host-owned module source callbacks. Return 0 when source is
+ * available and fill a byte buffer + non-negative byte count. The DLL calls
+ * freefn after the current module evaluation returns; a no-op freefn may be
+ * used for static storage. Callbacks run on the embedding thread and must
+ * not call back into this context or destroy it. */
+typedef int (*PScriptModuleSourceFn)(void *pw, const char *module_name,
+        char **out_source, int *out_len);
+typedef void (*PScriptModuleSourceFreeFn)(void *pw, char *source);
 
 /* Returns the major/minor ABI version encoded as 0xMMMMmmmm. */
 PSCRIPT_API unsigned long PScript_AbiVersion(void);
@@ -71,6 +81,19 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
 PSCRIPT_API int PScript_EvaluateModule(HANDLE hScript,
         const char *module_name, int module_name_len,
         const char *source, int source_len);
+
+/* Install or clear the optional synchronous source provider. Pass both
+ * callbacks as NULL to clear it. This is a host policy hook only: it does
+ * not perform URL resolution, file I/O, network access, or browser binding. */
+PSCRIPT_API int PScript_SetModuleSourceProvider(HANDLE hScript,
+        PScriptModuleSourceFn source_fn,
+        PScriptModuleSourceFreeFn free_fn, void *pw);
+
+/* Ask the installed provider for a root module by name. Dependencies may
+ * call require(), which consults the same provider on demand. A cached name
+ * does not invoke the provider or execute source again. */
+PSCRIPT_API int PScript_LoadModule(HANDLE hScript,
+        const char *module_name, int module_name_len);
 
 /* Drop all cached module exports. The context and its ordinary global state
  * remain usable. The operation returns PSCRIPT_OK or an error code. */

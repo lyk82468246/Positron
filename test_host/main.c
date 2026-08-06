@@ -328,7 +328,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 83
+#define TEST_MAX_NUMBER 84
 
 static int test_config_space(char c)
 {
@@ -14857,6 +14857,184 @@ static BOOL test83_script_modules(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 84 - host-provided JavaScript module source                     */
+/* The provider is deliberately a synchronous C callback. It supplies a  */
+/* root module and a dependency on demand, while the DLL owns execution,  */
+/* caching and rollback. Static strings plus a no-op free callback model    */
+/* firmware/resource-table storage commonly used by other WM programs.    */
+/* -------------------------------------------------------------------- */
+typedef struct test84_provider_state {
+    unsigned long entry_calls;
+    unsigned long base_calls;
+    unsigned long missing_calls;
+    unsigned long broken_calls;
+    unsigned long frees;
+} test84_provider_state;
+
+static int test84_module_source(void *pw, const char *module_name,
+        char **out_source, int *out_len)
+{
+    test84_provider_state *state;
+    const char *source;
+
+    state = (test84_provider_state *) pw;
+    if (state == NULL || module_name == NULL || out_source == NULL ||
+            out_len == NULL) {
+        return 1;
+    }
+    *out_source = NULL;
+    *out_len = 0;
+    source = NULL;
+    if (strcmp(module_name, "entry") == 0) {
+        state->entry_calls++;
+        source = "module.exports = require('base') + 2;";
+    } else if (strcmp(module_name, "base") == 0) {
+        state->base_calls++;
+        source = "module.exports = 40;";
+    } else if (strcmp(module_name, "broken") == 0) {
+        state->broken_calls++;
+        source = "throw new Error('provider broken');";
+    } else {
+        state->missing_calls++;
+        return 1;
+    }
+    *out_source = (char *) source;
+    *out_len = (int) strlen(source);
+    return 0;
+}
+
+static void test84_module_source_free(void *pw, char *source)
+{
+    test84_provider_state *state;
+
+    state = (test84_provider_state *) pw;
+    if (state != NULL && source != NULL) {
+        state->frees++;
+    }
+}
+
+static BOOL test84_script_module_provider(void)
+{
+    HANDLE hScript;
+    test84_provider_state state;
+    int rc;
+    unsigned long modules;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    memset(&state, 0, sizeof(state));
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 84 FAIL",
+                "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_SetModuleSourceProvider(hScript,
+            test84_module_source, test84_module_source_free, &state);
+    if (rc != PSCRIPT_OK) {
+        PScript_Destroy(hScript);
+        show_error(L"TEST 84 FAIL",
+                "PScript_SetModuleSourceProvider failed");
+        return FALSE;
+    }
+
+    rc = PScript_LoadModule(hScript, "entry", -1);
+    result = PScript_GetResult(hScript);
+    modules = PScript_GetModuleCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0 || modules != 2 ||
+            state.entry_calls != 1 || state.base_calls != 1 ||
+            state.frees != 2) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "entry rc=%d result=%s modules=%lu calls=%lu/%lu frees=%lu",
+                rc, result, modules, state.entry_calls, state.base_calls,
+                state.frees);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 84 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_LoadModule(hScript, "entry", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0 ||
+            state.entry_calls != 1 || state.base_calls != 1 ||
+            state.frees != 2) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "cache rc=%d result=%s calls=%lu/%lu frees=%lu",
+                rc, result, state.entry_calls, state.base_calls,
+                state.frees);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 84 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_LoadModule(hScript, "missing", -1);
+    error = PScript_GetError(hScript);
+    modules = PScript_GetModuleCount(hScript);
+    if (rc != PSCRIPT_ERROR_MODULE_SOURCE ||
+            strstr(error, "provider") == NULL || modules != 2 ||
+            state.missing_calls != 1) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "missing rc=%d error=%s modules=%lu calls=%lu",
+                rc, error, modules, state.missing_calls);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 84 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_LoadModule(hScript, "broken", -1);
+    error = PScript_GetError(hScript);
+    modules = PScript_GetModuleCount(hScript);
+    if (rc != PSCRIPT_ERROR_EVALUATION ||
+            strstr(error, "provider broken") == NULL || modules != 2 ||
+            state.broken_calls != 1 || state.frees != 3) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "rollback rc=%d error=%s modules=%lu frees=%lu",
+                rc, error, modules, state.frees);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 84 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_ClearModules(hScript);
+    if (rc != PSCRIPT_OK || PScript_GetModuleCount(hScript) != 0) {
+        PScript_Destroy(hScript);
+        show_error(L"TEST 84 FAIL",
+                "clear modules failed after provider rollback");
+        return FALSE;
+    }
+    rc = PScript_LoadModule(hScript, "entry", -1);
+    result = PScript_GetResult(hScript);
+    modules = PScript_GetModuleCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0 || modules != 2 ||
+            state.entry_calls != 2 || state.base_calls != 2 ||
+            state.frees != 5) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "reload rc=%d result=%s modules=%lu calls=%lu/%lu frees=%lu",
+                rc, result, modules, state.entry_calls, state.base_calls,
+                state.frees);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 84 FAIL", detail);
+        return FALSE;
+    }
+    PScript_SetModuleSourceProvider(hScript, NULL, NULL, NULL);
+    PScript_Destroy(hScript);
+
+    _snprintf(detail, sizeof(detail) - 1,
+            "entry=42 on-demand=ok cache=ok rollback=ok clear/reload=ok "
+            "calls=%lu/%lu frees=%lu",
+            state.entry_calls, state.base_calls, state.frees);
+    detail[sizeof(detail) - 1] = '\0';
+    show_info(L"TEST 84 OK", detail);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -14949,6 +15127,7 @@ static int run_configured_tests(const unsigned char *selected,
     needs_core = 0;
     for (number = 8; number <= TEST_MAX_NUMBER; number++) {
         if (number != 80 && number != 81 && number != 82 && number != 83 &&
+                number != 84 &&
                 selected[number]) {
             needs_core = 1;
             break;
@@ -15053,6 +15232,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 81: ok = test81_script_safety(); break;
         case 82: ok = test82_script_memory_limit(); break;
         case 83: ok = test83_script_modules(); break;
+        case 84: ok = test84_script_module_provider(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

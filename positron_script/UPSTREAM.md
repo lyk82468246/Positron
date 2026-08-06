@@ -18,14 +18,22 @@
 - The ABI minor version adds `PScript_CreateEx` with a hard Duktape heap
   limit, plus current/peak allocation telemetry and a dedicated memory-limit
   error. The legacy `PScript_Create` entry selects the 512 KiB default.
-- The next ABI minor adds a small CommonJS-style module boundary:
+- ABI minor 1.2 adds a small CommonJS-style module boundary:
   `PScript_EvaluateModule` executes a named source once, `require()` reads
   already loaded exports, failed loads are removed, and
   `PScript_ClearModules` drops the module registry. This is host-supplied
   source only; it does not add URL/file loading or browser bindings.
+- ABI minor 1.3 adds `PScript_SetModuleSourceProvider` and
+  `PScript_LoadModule`: a synchronous WM host callback can provide root and
+  dependency source on demand. The DLL releases each returned buffer after
+  evaluation, caches successful exports, and removes failed entries. TEST84
+  is the pending device gate for this provider path; it does not enable
+  browser JavaScript.
 - The WM6 build selects Duktape's no-DST Windows date provider because the
   Windows Mobile SDK does not provide `SystemTimeToTzSpecificLocalTime`.
 - No DOM, `window`, network, fetch, or browser-core binding is added by this
   standalone layer. TEST80/81 cover evaluation and timeout/source limits;
   TEST82 covers the DLL heap limit and recovery path; TEST83 covers the
-  module cache and lifecycle boundary; next121 device verification passed.
+  module cache and lifecycle boundary; TEST84 covers the host source provider
+  and on-demand dependency path. next122 build/staging passed; device
+  verification of TEST84 is pending.
