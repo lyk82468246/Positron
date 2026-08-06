@@ -35,5 +35,5 @@
   standalone layer. TEST80/81 cover evaluation and timeout/source limits;
   TEST82 covers the DLL heap limit and recovery path; TEST83 covers the
   module cache and lifecycle boundary; TEST84 covers the host source provider
-  and on-demand dependency path. next122 build/staging passed; device
-  verification of TEST84 is pending.
+  and on-demand dependency path. next123 ARMV4I build/staging passed; device
+  verification of TEST84 is pending together with the high-DPI Browse gate.

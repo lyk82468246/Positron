@@ -41,6 +41,10 @@ css_computed_style *pcore_document_default_style(struct dom_document *doc);
  * layout's html_content.unit_len_ctx. Implemented in pcore_select.c. */
 const css_unit_ctx *pcore_get_unit_ctx(void);
 
+/* True when the next public layout must preserve the CSS viewport installed
+ * by PCore_SetDeviceViewport while using its physical layout extent. */
+extern int pcore_device_viewport_pending;
+
 /* Dynamic selector state retained by the document. Nodes are referenced until
  * replaced or the document is freed. Return 1 when state changed, 0 when it was
  * already equal, and -1 on invalid input/allocation failure. */

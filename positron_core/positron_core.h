@@ -216,10 +216,13 @@ PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
 /* --- Block layout (engine layer 3, milestone B) --------------------- */
 
 /* Lay out the styled document through NetSurf's layout_document, given a
- * viewport of `viewport_w` x `viewport_h` CSS px. Must be called after
- * PCore_StyleDocument. The resulting NetSurf box tree supplies geometry,
- * margin collapse, inline wrapping, flex and common table layout. Returns 0
- * on success. */
+ * target extent of `viewport_w` x `viewport_h` device px. Must be called after
+ * PCore_StyleDocument. For a high-DPI host, call PCore_SetDeviceViewport
+ * before styling; the CSS viewport is then kept separately while this extent
+ * remains physical. Legacy callers that do not use that entry point retain
+ * the historical explicit-CSS-pixel compatibility behavior. The resulting
+ * NetSurf box tree supplies geometry, margin collapse, inline wrapping, flex
+ * and common table layout. Returns 0 on success. */
 PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h);
 
 typedef struct PCoreLayoutStats {
@@ -480,14 +483,14 @@ PCORE_API int PCore_ListItemGeometry(HANDLE hDoc, unsigned int index,
 
 /* Paint the laid-out document into a GDI device context through NetSurf's
  * html_redraw and the Positron GDI plotter. Must be called after
- * PCore_StyleDocument + PCore_LayoutDocument. scroll_x/scroll_y shift the page
- * beneath the viewport. The application owns the window and message loop and
- * calls this from its WM_PAINT handler. */
+ * PCore_StyleDocument + PCore_LayoutDocument. scroll_x/scroll_y are device
+ * pixel document offsets and shift the page beneath the viewport. The
+ * application owns the window and message loop and calls this from WM_PAINT. */
 PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
                                    int scroll_x, int scroll_y);
 
-/* Total laid-out document height in CSS px (the value is from the most recent
- * PCore_LayoutDocument). Lets the application size a scrollbar. */
+/* Total laid-out document height in device px (the value is from the most
+ * recent PCore_LayoutDocument). Lets the application size a scrollbar. */
 PCORE_API int PCore_DocumentHeight(HANDLE hDoc);
 
 /* Set the rendering viewport: CSS-px width/height (used for vw/vh units and
@@ -497,9 +500,19 @@ PCORE_API int PCore_DocumentHeight(HANDLE hDoc);
  * argument leaves that field unchanged. */
 PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi);
 
+/* Set a device-backed viewport. `device_width`/`device_height` are physical
+ * pixels supplied by the host window and `dpi` is the device DPI. The core
+ * derives the CSS viewport (device * 96 / dpi) for media queries and vw/vh,
+ * then the next PCore_LayoutDocument uses the original device extent for
+ * NetSurf layout and GDI painting. This is the correct entry point for a
+ * resizable WM window; PCore_SetViewport remains the explicit CSS-pixel API
+ * for engine tests and callers that already own the conversion. */
+PCORE_API void PCore_SetDeviceViewport(int device_width, int device_height,
+                                       int dpi);
+
 /* --- Links / navigation (engine layer 4, inline milestone) ---------- */
 
-/* Hit-test a document-space point (CSS px, i.e. client coordinate + the
+/* Hit-test a document-space point (device px, i.e. client coordinate + the
  * current scroll offset) against the laid-out inline link fragments. If a link
  * covers the point, writes its (UTF-8, NUL-terminated, possibly truncated to
  * `cap`) href into `out_href` and returns 1; otherwise returns 0 and leaves

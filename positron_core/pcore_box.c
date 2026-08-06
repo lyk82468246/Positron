@@ -71,8 +71,7 @@ static struct box *pcore_hit(struct box *box, int px, int py);
 static struct box *pcore_box_for_node(struct box *box, dom_node *node);
 
 /* Referenced (extern) by content/handlers/css/utils.h; the device DPI in fixed
- * point. layout uses it for unit conversion. Set from PCore_SetViewport's dpi
- * in a later milestone; 96dpi default for now. */
+ * point. Kept in sync by PCore_SetViewport / PCore_SetDeviceViewport. */
 css_fixed nscss_screen_dpi = 96 * (1 << CSS_RADIX_POINT);
 
 /* ------------------------------------------------------------------ */
@@ -3441,8 +3440,15 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     st->vw = viewport_w;
     st->vh = viewport_h;
 
-    /* Update the unit context (vw/vh CSS units) before copying it in. */
-    PCore_SetViewport(viewport_w, viewport_h, 0);
+    /* Legacy callers pass CSS viewport dimensions directly. The device-aware
+     * host path has already installed CSS dimensions through
+     * PCore_SetDeviceViewport; keep those dimensions while passing physical
+     * pixels to NetSurf's layout_document. */
+    if (pcore_device_viewport_pending != 0) {
+        pcore_device_viewport_pending = 0;
+    } else {
+        PCore_SetViewport(viewport_w, viewport_h, 0);
+    }
 
     memset(&st->content, 0, sizeof(st->content));
     st->content.layout = tree;

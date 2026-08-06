@@ -51,6 +51,15 @@ typedef struct pcore_select_pw {
  * descendants are selected because their bloom filters borrow parent data. */
 static dom_string *pcore_libcss_node_data_key = NULL;
 
+/* A device viewport is converted to CSS pixels before selection/layout, while
+ * layout_document still receives the original device-pixel extent. The flag
+ * is consumed by the next PCore_LayoutDocument call. Legacy PCore_SetViewport
+ * callers retain the existing explicit-CSS-pixel behaviour. */
+int pcore_device_viewport_pending = 0;
+
+/* Defined by the NetSurf HTML shim and used by widgets outside libcss. */
+extern css_fixed nscss_screen_dpi;
+
 typedef struct pcore_interaction_state {
     dom_node *focus_node;
     dom_node *active_node;
@@ -323,6 +332,7 @@ static css_unit_ctx pcore_unit_ctx = {
 
 PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi)
 {
+    pcore_device_viewport_pending = 0;
     if (css_width > 0) {
         pcore_unit_ctx.viewport_width = css_width * (1 << CSS_RADIX_POINT);
     }
@@ -331,7 +341,35 @@ PCORE_API void PCore_SetViewport(int css_width, int css_height, int dpi)
     }
     if (dpi > 0) {
         pcore_unit_ctx.device_dpi = dpi * (1 << CSS_RADIX_POINT);
+        nscss_screen_dpi = dpi * (1 << CSS_RADIX_POINT);
     }
+}
+
+PCORE_API void PCore_SetDeviceViewport(int device_width, int device_height,
+        int dpi)
+{
+    int css_width;
+    int css_height;
+
+    if (device_width <= 0 || device_height <= 0) {
+        return;
+    }
+    if (dpi <= 0) {
+        dpi = 96;
+    }
+    css_width = MulDiv(device_width, 96, dpi);
+    css_height = MulDiv(device_height, 96, dpi);
+    if (css_width < 1) {
+        css_width = 1;
+    }
+    if (css_height < 1) {
+        css_height = 1;
+    }
+    pcore_unit_ctx.viewport_width = css_width * (1 << CSS_RADIX_POINT);
+    pcore_unit_ctx.viewport_height = css_height * (1 << CSS_RADIX_POINT);
+    pcore_unit_ctx.device_dpi = dpi * (1 << CSS_RADIX_POINT);
+    nscss_screen_dpi = dpi * (1 << CSS_RADIX_POINT);
+    pcore_device_viewport_pending = 1;
 }
 
 /* Internal (pcore_internal.h): the engine's unit-conversion context (viewport +

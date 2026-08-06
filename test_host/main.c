@@ -108,6 +108,28 @@ static const char g_test_jpeg_16x16_b64[] =
 static int    g_testbench_auto = 0;
 static HANDLE g_testbench_log = INVALID_HANDLE_VALUE;
 
+static int test_host_device_dpi(void)
+{
+    HDC dc;
+    int dpi;
+
+    dpi = 96;
+    dc = GetDC(NULL);
+    if (dc != NULL) {
+        if (GetDeviceCaps(dc, LOGPIXELSY) > 0) {
+            dpi = GetDeviceCaps(dc, LOGPIXELSY);
+        }
+        ReleaseDC(NULL, dc);
+    }
+    return dpi;
+}
+
+static void test_host_set_device_viewport(int device_width, int device_height)
+{
+    PCore_SetDeviceViewport(device_width, device_height,
+            test_host_device_dpi());
+}
+
 static int test_host_sibling_path(const WCHAR *name,
         WCHAR path[MAX_PATH])
 {
@@ -182,6 +204,15 @@ static int testbench_log_open(void)
     testbench_log_bytes("Positron test_host automated run\r\n"
             "Log format: [INFO]/[ERROR], followed by the original "
             "test message.\r\n\r\n");
+    {
+        char environment[128];
+        _snprintf(environment, sizeof(environment) - 1,
+                "Device metrics: screen=%dx%d dpi=%d\r\n\r\n",
+                GetSystemMetrics(SM_CXSCREEN),
+                GetSystemMetrics(SM_CYSCREEN), test_host_device_dpi());
+        environment[sizeof(environment) - 1] = '\0';
+        testbench_log_bytes(environment);
+    }
     FlushFileBuffers(g_testbench_log);
     return 0;
 }
@@ -3719,7 +3750,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
         chh = rc.bottom - rc.top;
         if (cw <= 0) { cw = 224; }
         if (chh <= 0) { chh = 320; }
-        PCore_SetViewport(cw, chh, 0);
+        test_host_set_device_viewport(cw, chh);
         started = GetTickCount();
         if (pcore_document_url(request->host, request->path, request->port,
                 document_url, sizeof(document_url)) != 0 ||
@@ -4858,7 +4889,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
          * rotation). The callback is cache-only, so this message never
          * starts a network request. */
         if (g_render_doc != NULL && cw > 0 && chh > 0) {
-            PCore_SetViewport(cw, chh, 0);   /* dpi 0 = leave unchanged */
+            test_host_set_device_viewport(cw, chh);
             if (pcore_document_url(g_cur_host, g_cur_path, g_cur_port,
                     document_url, sizeof(document_url)) == 0) {
                 document_base = document_url;
@@ -5471,7 +5502,7 @@ static BOOL test_browse(void)
     vh = GetSystemMetrics(SM_CYSCREEN);
     if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
-    PCore_SetViewport(vw, vh, 0);
+    test_host_set_device_viewport(vw, vh);
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0) {
         show_error(L"TEST 13 FAIL", "PCore_LayoutDocument failed");
         PCore_FreeDocument(hDoc);
@@ -6027,6 +6058,7 @@ static BOOL test20_cached_img(void)
     int w = 0;
     int h = 0;
     int vw, vh;
+    int expected_box;
     PCoreBoxStats first_box_stats;
     PCoreBoxStats second_box_stats;
     char msg[256];
@@ -6062,14 +6094,18 @@ static BOOL test20_cached_img(void)
     vh = GetSystemMetrics(SM_CYSCREEN);
     if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
+    expected_box = MulDiv(48, test_host_device_dpi(), 96);
+    if (expected_box < 1) { expected_box = 48; }
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_GetBoxStats(hDoc, &first_box_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != 48 || h != 48 ||
+            w != expected_box || h != expected_box ||
             first_box_stats.image_calls != 4 ||
             first_box_stats.image_reuses != 0) {
-        sprintf(msg, "first box=%dx%d calls/reuse=%u/%u; expect 48x48 4/0",
-                w, h, first_box_stats.image_calls,
+        sprintf(msg, "first box=%dx%d calls/reuse=%u/%u; expect %dx%d "
+                "device px (48 CSS px) 4/0", w, h,
+                expected_box, expected_box,
+                first_box_stats.image_calls,
                 first_box_stats.image_reuses);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
@@ -6079,7 +6115,7 @@ static BOOL test20_cached_img(void)
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_GetBoxStats(hDoc, &second_box_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != 48 || h != 48 ||
+            w != expected_box || h != expected_box ||
             second_box_stats.image_calls != 4 ||
             second_box_stats.image_reuses != 4 ||
             ctx.calls != 4 || ctx.frees != 4) {
@@ -15273,17 +15309,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
 
     OutputDebugStringW(L"test_host (Phase 4): starting\r\n");
 
-    /* Tell positron_core the real device viewport + DPI so styling and layout
-     * adapt to this screen rather than a hardcoded default. */
-    {
-        HDC sdc = GetDC(NULL);
-        int dpi = (sdc != NULL) ? GetDeviceCaps(sdc, LOGPIXELSY) : 96;
-        if (sdc != NULL) {
-            ReleaseDC(NULL, sdc);
-        }
-        PCore_SetViewport(GetSystemMetrics(SM_CXSCREEN),
-                          GetSystemMetrics(SM_CYSCREEN), dpi);
-    }
+    /* Tell positron_core the real device viewport. The core derives the CSS
+     * viewport from physical pixels and DPI before styling/layout. */
+    test_host_set_device_viewport(GetSystemMetrics(SM_CXSCREEN),
+            GetSystemMetrics(SM_CYSCREEN));
 
     configured_count = test_config_load(configured_tests, &configured_7b,
             &configured_auto);
