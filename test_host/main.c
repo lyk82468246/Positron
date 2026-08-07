@@ -6230,6 +6230,9 @@ static BOOL test27_cached_svg_img(void)
     int h;
     int vw;
     int vh;
+    int dpi;
+    int expected_w;
+    int expected_h;
     PCoreBoxStats first_box_stats;
     PCoreBoxStats second_box_stats;
     PCoreImageDecodeStats image_stats;
@@ -6263,25 +6266,32 @@ static BOOL test27_cached_svg_img(void)
         return FALSE;
     }
     hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/svg.css");
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    dpi = test_host_device_dpi();
+    expected_w = MulDiv(120, dpi, 96);
+    expected_h = MulDiv(60, dpi, 96);
+    if (expected_w < 1) { expected_w = 120; }
+    if (expected_h < 1) { expected_h = 60; }
+    test_host_set_device_viewport(vw, vh);
     if (hSheet == NULL || PCore_StyleDocument(hDoc, hSheet) != 0) {
         if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 27 FAIL", "CSS styling failed");
         return FALSE;
     }
-    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
-    vh = GetSystemMetrics(SM_CYSCREEN);
-    if (vw <= 0) { vw = 224; }
-    if (vh <= 0) { vh = 320; }
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_GetBoxStats(hDoc, &first_box_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != 120 || h != 60 ||
+            w != expected_w || h != expected_h ||
             first_box_stats.image_calls != 1 ||
             first_box_stats.image_reuses != 0 ||
             first_box_stats.image_markup_first != 1) {
-        sprintf(msg, "first SVG=%dx%d calls/reuse/markup=%u/%u/%u",
-                w, h, first_box_stats.image_calls,
+        sprintf(msg, "first SVG=%dx%d expect=%dx%d at %d DPI "
+                "calls/reuse/markup=%u/%u/%u", w, h,
+                expected_w, expected_h, dpi, first_box_stats.image_calls,
                 first_box_stats.image_reuses,
                 first_box_stats.image_markup_first);
         PCore_FreeStylesheet(hSheet);
@@ -6293,13 +6303,14 @@ static BOOL test27_cached_svg_img(void)
             PCore_GetBoxStats(hDoc, &second_box_stats) != 0 ||
             PCore_GetImageDecodeStats(hDoc, &image_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != 120 || h != 60 ||
+            w != expected_w || h != expected_h ||
             second_box_stats.image_calls != 1 ||
             second_box_stats.image_reuses != 1 ||
             image_stats.svg_creates != 1 ||
             ctx.calls != 1 || ctx.frees != 1) {
-        sprintf(msg, "reuse SVG=%dx%d calls/reuse/create=%u/%u/%u f/f=%d/%d",
-                w, h, second_box_stats.image_calls,
+        sprintf(msg, "reuse SVG=%dx%d expect=%dx%d calls/reuse/create=%u/%u/%u "
+                "f/f=%d/%d", w, h, expected_w, expected_h,
+                second_box_stats.image_calls,
                 second_box_stats.image_reuses, image_stats.svg_creates,
                 ctx.calls, ctx.frees);
         PCore_FreeStylesheet(hSheet);
@@ -6336,8 +6347,10 @@ static BOOL test27_cached_svg_img(void)
     SetRect(&rect, 0, 0, vw, vh);
     FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
     PCore_PaintDocument(hDoc, memory_dc, 0, 0);
-    red = GetPixel(memory_dc, x + 20, y + 30);
-    green = GetPixel(memory_dc, x + 60, y + 30);
+    red = GetPixel(memory_dc, x + MulDiv(20, dpi, 96),
+            y + MulDiv(30, dpi, 96));
+    green = GetPixel(memory_dc, x + MulDiv(60, dpi, 96),
+            y + MulDiv(30, dpi, 96));
     SelectObject(memory_dc, old_bitmap);
     DeleteObject(bitmap);
     DeleteDC(memory_dc);
@@ -6362,6 +6375,7 @@ static BOOL test27_cached_svg_img(void)
     if (!show_render_window()) {
         g_render_doc = NULL;
         g_render_sheet = NULL;
+        test_host_set_device_viewport(vw, vh);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 27 FAIL", "CreateWindow returned NULL");
@@ -6369,6 +6383,7 @@ static BOOL test27_cached_svg_img(void)
     }
     g_render_doc = NULL;
     g_render_sheet = NULL;
+    test_host_set_device_viewport(vw, vh);
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
     sprintf(msg,

@@ -37,6 +37,11 @@ next128 的新设备日志为 `screen=240x240 dpi=96`，TEST13/20/27、TEST43-99
 `MulDiv(48, dpi, 96)` 检查物理盒尺寸。96 是 CSS 像素定义中的参考 DPI，不是设备
 锁定值；非 96 DPI 的设备仍需用 next129 实测验证。
 
+next129 的新设备日志为 `screen=480x640 dpi=192`：TEST13 与 TEST20 通过，TEST27
+发现 SVG 测试仍把 `120x60` CSS 尺寸当作物理尺寸比较，实际设备盒为 `240x120`。
+next130 已修正 TEST27 的设备视口安装、动态尺寸断言和离屏采样坐标；该批次尚未
+在设备上重跑。
+
 | 范围 | 已验证事实 | 不代表 |
 |---|---|---|
 | CSS 媒体查询与 token | TEST 21 已在设备确认运行时 viewport/DPI、旧式 min/max-width 及整数像素 MQ4 `width <=` / `width <`；TEST38-39 又确认同表顶层 `:root` token 语义与正式 redraw。 | 所有媒体特性、MQ4 范围、元素作用域或完整 custom properties 均已覆盖。 |

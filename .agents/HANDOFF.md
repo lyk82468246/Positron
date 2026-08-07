@@ -29,6 +29,11 @@ TEST13、TEST20、TEST27、TEST43-99。next129 将 TEST20 从临时的 96 DPI �
 视口改回真实 `PCore_SetDeviceViewport` 路径：48 CSS px 的期望值按当前设备 DPI
 换算为物理像素；96 只保留为 CSS 规范的参考基准，不再作为设备 DPI 强制值。
 
+next129 在 `screen=480x640 dpi=192` 下确认 TEST13 与 TEST20 的动态换算通过；
+TEST27 暴露同一类旧断言，要求 `120x60` CSS SVG 盒却直接比较设备像素，实际为
+`240x120`。next130 已让 TEST27 在 style/layout 前安装设备视口，按 DPI 检查盒尺寸，
+并按物理坐标采样 SVG 色块；非 96 DPI 的设备回归待继续验证。
+
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
 ## 项目目标
