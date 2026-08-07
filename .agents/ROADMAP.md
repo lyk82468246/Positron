@@ -1,11 +1,11 @@
 # Positron Roadmap
 
 更新时间：2026-08-07
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next134 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-99 通过。next135 又加入 text/password/textarea 的 `minlength`/`maxlength` validity 及 TEST100-104，ARMV4I 构建/staging 已通过、设备待验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next134 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-99 通过。next135 的表单长度约束与 next136 的 TEST59 CSS 参考上下文修复已完成 ARMV4I 构建/staging，设备复测待补。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
-**当前开发门禁（next135）**：next134 的 `screen=240x320 dpi=96` 全选配置已通过；
-next135 的 TEST100-104 需要在设备上运行，并与 TEST13/20/27/43/44/56/58-99 同批检查。
-不能把 96 DPI 当作产品固定值；下一人工批次应轮换分辨率或 DPI，并保留日志头部。
+**当前开发门禁（next136）**：next135 在 `screen=480x640 dpi=192` 下于 TEST59
+停止，next136 已隔离显式 CSS 几何夹具的 96-DPI 参考上下文。需要重新运行默认配置，
+确认 TEST59-77 和 TEST100-104 继续通过；不能把 96 DPI 当作产品固定值，并保留日志头部。
 
 ## 总原则
 
@@ -22,7 +22,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 当前新增功能优先级：
 
-1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；next135 又加入 `minlength`/`maxlength`，TEST100-104 待设备验收。`pattern`、类型/范围约束、custom validity 与 `invalid` 事件仍在后续扩展，不阻塞更大的“有无”缺口。
+1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；next135 又加入 `minlength`/`maxlength`，但需随 next136 设备复测。`pattern`、类型/范围约束、custom validity 与 `invalid` 事件仍在后续扩展，不阻塞更大的“有无”缺口。
 2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
 3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；next115 与 next116 的 float 候选均因 TEST79/TEST13 真实回归撤回。Float 方向暂挂，下一次重大布局实验改评估基础 Grid 或背景尺寸/重复，并继续保留 TEST13 深链门禁。
 4. **资源类型补齐**：脚本资源发现/下载/缓存接口已完成；next118 先把独立 JavaScript runtime DLL 做成其他 WM 程序可调用的最小产品面，再由后续批次评估浏览器消费；网页字体不扩展为普通语言字体工程。
@@ -64,6 +64,12 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `PCoreFormValidationInfo` 新增 `PCORE_VALIDITY_TOO_SHORT` 与 `PCORE_VALIDITY_TOO_LONG`，只对 text/password/textarea 读取有效的 HTML 非负整数 `minlength`/`maxlength`。约束按 UTF-8 字符数计算；坏属性、disabled 和 readonly 保守忽略，required、提交阻断和首个无效控件几何保持既有路径。
 - TEST100-104 覆盖静态 too-short/too-long、动态 `PCore_TextInputSetValue` 更新、textarea、边界值、禁用/只读/坏属性豁免、提交恢复和首个错误几何。它们不改 TEST13、布局引擎、浏览器 JS 或独立脚本执行路径。
 - ARMV4I Debug 增量构建和 `C:\WMShare\Positron-next135` staging 已通过；设备验收时运行默认配置，并与 TEST13/20/27/43/44/56/58-99 同批查看日志。
+
+### 6k. next136：隔离 TEST59 的 CSS 几何上下文（待设备复测）
+
+- next135 在 `screen=480x640 dpi=192` 下于 TEST59 停止：显式 `224/320` CSS 像素夹具继承前一个设备-backed render 的 192 DPI，固定 `25px` padding 被错误换算为 `50px`。
+- next136 在 TEST59 每个离线 pass 前显式调用 `PCore_SetViewport(width,240,96)`，保持 `x=25` 与 `w=width-50` 的 CSS 几何契约；测试结束后恢复运行时设备视口。该批不改 core flex/layout、不放宽断言，也不触碰 TEST13。
+- ARMV4I Debug 增量构建和 `C:\WMShare\Positron-next136` staging 已通过；设备验收时运行默认配置，重点确认 TEST59-77 与 TEST100-104 继续通过。
 
 ### 6d. next121：独立 JavaScript 模块生命周期（已设备验收）
 

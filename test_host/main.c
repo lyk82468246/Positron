@@ -11369,6 +11369,8 @@ static BOOL test59_flex_overflow_min_content(void)
     int w;
     int h;
     int i;
+    int screen_w;
+    int screen_h;
     char msg[256];
 
     msg[0] = '\0';
@@ -11380,6 +11382,10 @@ static BOOL test59_flex_overflow_min_content(void)
         y = 0;
         w = 0;
         h = 0;
+        /* This is an explicit CSS-pixel geometry probe. Keep its 224/320
+         * logical widths at the CSS 96-DPI reference so a preceding visible
+         * high-DPI render cannot convert the fixed 25px padding twice. */
+        PCore_SetViewport(widths[i], 240, 96);
         if (hDoc == NULL || hSheet == NULL ||
                 PCore_StyleDocument(hDoc, hSheet) != 0 ||
                 PCore_LayoutDocument(hDoc, widths[i], 240) != 0 ||
@@ -11396,6 +11402,11 @@ static BOOL test59_flex_overflow_min_content(void)
             break;
         }
     }
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    test_host_set_device_viewport(screen_w, screen_h);
     if (i != 2) {
         show_error(L"TEST 59 FAIL", msg);
         return FALSE;

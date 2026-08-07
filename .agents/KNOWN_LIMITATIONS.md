@@ -23,6 +23,12 @@ ARMV4I 构建/staging 通过，随后在 `screen=240x320 dpi=96` 设备日志中
 验收待补。`pattern`、email/url/number 类型约束、range/custom validity 和 `invalid`
 事件仍未实现，不能把这批表单长度检查表述为完整 HTML Constraint Validation。
 
+**当前状态更正（next136，2026-08-07）**：`screen=480x640 dpi=192` 日志中 TEST13/20/27/43/44/56/58
+通过后，TEST59 暴露离线 flex 几何夹具继承设备 DPI：固定 `25px` padding 被按 192 DPI
+换算为 `50px`。next136 只在 TEST59 的显式 CSS 几何 pass 前安装 96 DPI 参考上下文，
+再恢复运行时设备视口；ARMV4I 构建/staging 已通过，设备复测待补。该修复不改变
+NetSurf flex/layout，也不把 96 DPI 设为产品默认。
+
 ## 已验证基线（不是完整功能声明）
 
 ### 高 DPI / 大分辨率视口边界（next134，非 96 DPI 仍需继续轮换验收）

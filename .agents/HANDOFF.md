@@ -27,6 +27,13 @@ next133 曾用固定 230x260/96 DPI 隔离该段；因不符合项目的设备�
 边界、动态 native EDIT 更新、textarea、豁免项和首个长度错误；ARMV4I 增量构建与
 `C:\WMShare\Positron-next135` staging 已通过，设备 testbench 尚未验收。
 
+**next136（2026-08-07）**：设备日志在 `screen=480x640 dpi=192` 下于 TEST59 停止：
+`width=224 main=(50,50) 124x77; expect x=25 w=174`。该测试是显式 CSS 像素几何
+夹具，却继承了前一个设备-backed render 的 192 DPI 单位上下文；next136 在每个
+离线 pass 前安装 `PCore_SetViewport(width,240,96)`，结束后恢复运行时设备视口。
+这不是 core flex 回归，也没有放宽断言；ARMV4I 增量构建与
+`C:\WMShare\Positron-next136` staging 已通过，设备复测待进行。
+
 2026-08-07 的 next126 设备日志记录为 `screen=320x320 dpi=128`：TEST13 的
 `example.com`、IANA Example Domains、IANA Reserved Domains 三段导航均完成，随后
 TEST20 停止。TEST20 的失败是断言隔离错误：它走显式 CSS 视口的离线缓存图片路径，
