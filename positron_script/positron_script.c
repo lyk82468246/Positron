@@ -71,8 +71,9 @@ static void pscript_copy(char *out, int capacity, const char *value)
     out[length] = '\0';
 }
 
-static int pscript_module_name_copy(const char *source, int source_len,
-        char *destination, size_t destination_size, size_t *out_length)
+static int pscript_name_copy(const char *source, int source_len,
+        char *destination, size_t destination_size, size_t max_length,
+        size_t *out_length)
 {
     size_t length;
 
@@ -85,7 +86,7 @@ static int pscript_module_name_copy(const char *source, int source_len,
         length = (size_t) source_len;
     }
     if (length == 0 || length >= destination_size ||
-            length > PSCRIPT_MAX_MODULE_NAME_BYTES) {
+            length > max_length) {
         return 0;
     }
     memcpy(destination, source, length);
@@ -94,6 +95,20 @@ static int pscript_module_name_copy(const char *source, int source_len,
         *out_length = length;
     }
     return 1;
+}
+
+static int pscript_module_name_copy(const char *source, int source_len,
+        char *destination, size_t destination_size, size_t *out_length)
+{
+    return pscript_name_copy(source, source_len, destination,
+            destination_size, PSCRIPT_MAX_MODULE_NAME_BYTES, out_length);
+}
+
+static int pscript_global_name_copy(const char *source, int source_len,
+        char *destination, size_t destination_size, size_t *out_length)
+{
+    return pscript_name_copy(source, source_len, destination,
+            destination_size, PSCRIPT_MAX_GLOBAL_NAME_BYTES, out_length);
 }
 
 static int pscript_module_wrapper(const char *source, size_t source_len,
@@ -567,7 +582,7 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
     return PSCRIPT_OK;
 }
 
-static int pscript_module_eval_error(pscript_context *ctx)
+static int pscript_protected_error(pscript_context *ctx, int error_code)
 {
     const char *text;
 
@@ -583,7 +598,347 @@ static int pscript_module_eval_error(pscript_context *ctx)
         return PSCRIPT_ERROR_TIMEOUT;
     }
     pscript_copy(ctx->error, sizeof(ctx->error), text);
-    return PSCRIPT_ERROR_EVALUATION;
+    return error_code;
+}
+
+static int pscript_module_eval_error(pscript_context *ctx)
+{
+    return pscript_protected_error(ctx, PSCRIPT_ERROR_EVALUATION);
+}
+
+static duk_ret_t pscript_json_decode(duk_context *duk)
+{
+    duk_json_decode(duk, 0);
+    return 1;
+}
+
+static duk_ret_t pscript_json_encode(duk_context *duk)
+{
+    duk_json_encode(duk, 0);
+    return 1;
+}
+
+/* Encode through a protected Duktape call. JSON encoding can throw for a
+ * cyclic object, so calling duk_json_encode directly from an exported ABI
+ * function would turn a recoverable host error into a fatal context. */
+static int pscript_capture_json(pscript_context *ctx, duk_idx_t index)
+{
+    duk_context *duk;
+    duk_idx_t value_index;
+    duk_idx_t top;
+    int rc;
+    const char *text;
+    size_t length;
+
+    if (ctx == NULL || ctx->duk == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    duk = ctx->duk;
+    top = duk_get_top(duk);
+    value_index = index;
+    if (value_index < 0) {
+        value_index = top + value_index;
+    }
+    if (value_index < 0 || value_index >= top) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JSON value stack index is invalid");
+        return PSCRIPT_ERROR_JSON;
+    }
+    duk_push_c_function(duk, pscript_json_encode, 1);
+    duk_dup(duk, value_index);
+    rc = duk_pcall(duk, 1);
+    if (rc != 0) {
+        return pscript_protected_error(ctx, PSCRIPT_ERROR_JSON);
+    }
+    if (!duk_is_string(duk, -1)) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "value has no JSON representation");
+        return PSCRIPT_ERROR_JSON;
+    }
+    text = duk_get_string(duk, -1);
+    if (text == NULL) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JSON encoder returned no string");
+        return PSCRIPT_ERROR_JSON;
+    }
+    length = strlen(text);
+    if (length >= sizeof(ctx->result)) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JSON result exceeds DLL result buffer");
+        return PSCRIPT_ERROR_RESULT_TOO_LARGE;
+    }
+    memcpy(ctx->result, text, length + 1);
+    return PSCRIPT_OK;
+}
+
+static int pscript_global_prepare(pscript_context *ctx, const char *name,
+        int name_len, char *name_copy, size_t name_copy_size)
+{
+    if (ctx == NULL || ctx->duk == NULL || ctx->poisoned ||
+            name == NULL || name_copy == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (!pscript_global_name_copy(name, name_len, name_copy,
+            name_copy_size, NULL)) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "invalid global name");
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    ctx->result[0] = '\0';
+    ctx->error[0] = '\0';
+    duk_set_top(ctx->duk, 0);
+    return PSCRIPT_OK;
+}
+
+static int pscript_fatal_error(pscript_context *ctx, const char *fallback)
+{
+    ctx->fatal_jmp_active = 0;
+    ctx->poisoned = 1;
+    ctx->duk = NULL;
+    if (ctx->memory_limited) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JavaScript memory limit exceeded");
+        return PSCRIPT_ERROR_MEMORY_LIMIT;
+    }
+    pscript_copy(ctx->error, sizeof(ctx->error), fallback);
+    return PSCRIPT_ERROR_FATAL;
+}
+
+PSCRIPT_API int PScript_SetGlobalString(HANDLE hScript, const char *name,
+        int name_len, const char *value, int value_len)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+    char global_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    size_t length;
+    int rc;
+
+    ctx = (pscript_context *) hScript;
+    if (value == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (value_len < 0) {
+        length = strlen(value);
+    } else {
+        length = (size_t) value_len;
+    }
+    rc = pscript_global_prepare(ctx, name, name_len, global_name,
+            sizeof(global_name));
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    duk = ctx->duk;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        return pscript_fatal_error(ctx,
+                "Duktape fatal error while setting global string");
+    }
+    duk_push_lstring(duk, value, (duk_size_t) length);
+    duk_put_global_string(duk, global_name);
+    duk_set_top(duk, 0);
+    ctx->fatal_jmp_active = 0;
+    return PSCRIPT_OK;
+}
+
+PSCRIPT_API int PScript_SetGlobalNumber(HANDLE hScript, const char *name,
+        int name_len, double value)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+    char global_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    int rc;
+
+    ctx = (pscript_context *) hScript;
+    rc = pscript_global_prepare(ctx, name, name_len, global_name,
+            sizeof(global_name));
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    duk = ctx->duk;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        return pscript_fatal_error(ctx,
+                "Duktape fatal error while setting global number");
+    }
+    duk_push_number(duk, (duk_double_t) value);
+    duk_put_global_string(duk, global_name);
+    duk_set_top(duk, 0);
+    ctx->fatal_jmp_active = 0;
+    return PSCRIPT_OK;
+}
+
+PSCRIPT_API int PScript_SetGlobalBoolean(HANDLE hScript, const char *name,
+        int name_len, int value)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+    char global_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    int rc;
+
+    ctx = (pscript_context *) hScript;
+    rc = pscript_global_prepare(ctx, name, name_len, global_name,
+            sizeof(global_name));
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    duk = ctx->duk;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        return pscript_fatal_error(ctx,
+                "Duktape fatal error while setting global boolean");
+    }
+    duk_push_boolean(duk, (value != 0) ? 1 : 0);
+    duk_put_global_string(duk, global_name);
+    duk_set_top(duk, 0);
+    ctx->fatal_jmp_active = 0;
+    return PSCRIPT_OK;
+}
+
+PSCRIPT_API int PScript_GetGlobalJson(HANDLE hScript, const char *name,
+        int name_len)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+    char global_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    int rc;
+
+    ctx = (pscript_context *) hScript;
+    rc = pscript_global_prepare(ctx, name, name_len, global_name,
+            sizeof(global_name));
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    duk = ctx->duk;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        return pscript_fatal_error(ctx,
+                "Duktape fatal error while reading global");
+    }
+    duk_get_global_string(duk, global_name);
+    if (duk_is_undefined(duk, -1)) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "global is undefined");
+        duk_set_top(duk, 0);
+        ctx->fatal_jmp_active = 0;
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    rc = pscript_capture_json(ctx, -1);
+    duk_set_top(duk, 0);
+    ctx->fatal_jmp_active = 0;
+    return rc;
+}
+
+PSCRIPT_API int PScript_CallGlobalJson(HANDLE hScript, const char *name,
+        int name_len, const char *args_json, int args_len)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+    char global_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    size_t args_length;
+    duk_size_t array_length;
+    duk_uarridx_t i;
+    duk_idx_t nargs;
+    int rc;
+
+    ctx = (pscript_context *) hScript;
+    rc = pscript_global_prepare(ctx, name, name_len, global_name,
+            sizeof(global_name));
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    if (args_json == NULL) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JSON argument array is NULL");
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (args_len < 0) {
+        args_length = strlen(args_json);
+    } else {
+        args_length = (size_t) args_len;
+    }
+    if (args_length > PSCRIPT_MAX_SOURCE_BYTES) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JSON arguments exceed PSCRIPT_MAX_SOURCE_BYTES");
+        return PSCRIPT_ERROR_SOURCE_TOO_LARGE;
+    }
+
+    duk = ctx->duk;
+    ctx->timed_out = 0;
+    ctx->memory_limited = 0;
+    ctx->deadline = (ctx->budget_ms == 0) ? 0 :
+            GetTickCount() + ctx->budget_ms;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        return pscript_fatal_error(ctx,
+                "Duktape fatal error while calling global");
+    }
+
+    duk_get_global_string(duk, global_name);
+    if (duk_is_undefined(duk, -1)) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "global function is undefined");
+        duk_set_top(duk, 0);
+        ctx->deadline = 0;
+        ctx->fatal_jmp_active = 0;
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    if (!duk_is_callable(duk, -1)) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "global is not callable");
+        duk_set_top(duk, 0);
+        ctx->deadline = 0;
+        ctx->fatal_jmp_active = 0;
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+
+    /* The decoder is itself protected because invalid JSON is a normal
+     * caller error, not a reason to poison the Duktape context. */
+    duk_push_c_function(duk, pscript_json_decode, 1);
+    duk_push_lstring(duk, args_json, (duk_size_t) args_length);
+    rc = duk_pcall(duk, 1);
+    if (rc != 0) {
+        rc = pscript_protected_error(ctx, PSCRIPT_ERROR_JSON);
+        duk_set_top(duk, 0);
+        ctx->deadline = 0;
+        ctx->fatal_jmp_active = 0;
+        return rc;
+    }
+    if (!duk_is_array(duk, 1)) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JSON arguments must be an array");
+        duk_set_top(duk, 0);
+        ctx->deadline = 0;
+        ctx->fatal_jmp_active = 0;
+        return PSCRIPT_ERROR_JSON;
+    }
+    array_length = duk_get_length(duk, 1);
+    if (array_length > (duk_size_t) 0x7fffffffUL) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "JSON argument array is too large");
+        duk_set_top(duk, 0);
+        ctx->deadline = 0;
+        ctx->fatal_jmp_active = 0;
+        return PSCRIPT_ERROR_JSON;
+    }
+    nargs = (duk_idx_t) array_length;
+    for (i = 0; i < (duk_uarridx_t) array_length; i++) {
+        duk_get_prop_index(duk, 1, i);
+    }
+    duk_remove(duk, 1);
+    ctx->evaluations++;
+    rc = duk_pcall(duk, nargs);
+    if (rc != 0) {
+        rc = pscript_protected_error(ctx, PSCRIPT_ERROR_CALL);
+        duk_set_top(duk, 0);
+        ctx->deadline = 0;
+        ctx->fatal_jmp_active = 0;
+        return rc;
+    }
+    rc = pscript_capture_json(ctx, -1);
+    duk_set_top(duk, 0);
+    ctx->deadline = 0;
+    ctx->fatal_jmp_active = 0;
+    return rc;
 }
 
 /* Evaluate while preserving the caller's Duktape value stack. The public

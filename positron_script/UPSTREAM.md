@@ -29,11 +29,20 @@
   evaluation, caches successful exports, and removes failed entries. TEST84
   is the pending device gate for this provider path; it does not enable
   browser JavaScript.
+- ABI minor 1.4 adds persistent primitive global setters,
+  `PScript_GetGlobalJson`, and `PScript_CallGlobalJson`. These operations
+  keep the opaque-handle boundary, use JSON only at the host call boundary,
+  reject undefined/non-JSON values and results over the DLL's 255-byte result
+  payload instead of truncating, and classify malformed arguments or missing
+  functions as recoverable errors. TEST85-89 cover the bridge, persistence,
+  error recovery, and limits; this still does not enable browser JavaScript.
 - The WM6 build selects Duktape's no-DST Windows date provider because the
   Windows Mobile SDK does not provide `SystemTimeToTzSpecificLocalTime`.
 - No DOM, `window`, network, fetch, or browser-core binding is added by this
   standalone layer. TEST80/81 cover evaluation and timeout/source limits;
   TEST82 covers the DLL heap limit and recovery path; TEST83 covers the
   module cache and lifecycle boundary; TEST84 covers the host source provider
-  and on-demand dependency path. next123 ARMV4I build/staging passed; device
-  verification of TEST84 is pending together with the high-DPI Browse gate.
+  and on-demand dependency path; TEST85-89 cover persistent global values,
+  JSON calls and their limits. next123 ARMV4I build/staging passed; device
+  verification of TEST84/85-89 is pending together with the high-DPI Browse
+  gate.

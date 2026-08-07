@@ -359,7 +359,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 84
+#define TEST_MAX_NUMBER 89
 
 static int test_config_space(char c)
 {
@@ -15071,6 +15071,420 @@ static BOOL test84_script_module_provider(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 85 - standalone JavaScript global value bridge                  */
+/* Persistent primitive globals are useful to WM callers without making  */
+/* them depend on Duktape headers. The values also participate in later    */
+/* evaluations through the ordinary global object.                       */
+/* -------------------------------------------------------------------- */
+static BOOL test85_script_globals(void)
+{
+    HANDLE hScript;
+    int rc;
+    unsigned long evaluations;
+    const char *result;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 85 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_SetGlobalString(hScript, "site", -1, "wm6", 3);
+    if (rc != PSCRIPT_OK) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "string setter rc=%d", rc);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 85 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_SetGlobalNumber(hScript, "answer", -1, 40.5);
+    if (rc != PSCRIPT_OK) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "number setter rc=%d", rc);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 85 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_SetGlobalBoolean(hScript, "enabled", -1, 1);
+    if (rc != PSCRIPT_OK) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "boolean setter rc=%d", rc);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 85 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_GetGlobalJson(hScript, "site", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "\"wm6\"") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "site rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 85 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_GetGlobalJson(hScript, "answer", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "40.5") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "answer rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 85 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_GetGlobalJson(hScript, "enabled", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "true") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "enabled rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 85 FAIL", detail);
+        return FALSE;
+    }
+
+    rc = PScript_Evaluate(hScript,
+            "answer + (enabled ? 1.5 : 0);", -1);
+    result = PScript_GetResult(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0 ||
+            evaluations != 1) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "evaluation rc=%d result=%s eval=%lu/1",
+                rc, result, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 85 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 85 OK",
+            "global string/number/boolean setters, JSON getters and "
+            "persistent evaluation state passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 86 - JSON argument and result function calls                     */
+/* -------------------------------------------------------------------- */
+static BOOL test86_script_call_json(void)
+{
+    static const char *SOURCE =
+            "function pair(a,b){return {sum:a+b,ok:a<b};}";
+    HANDLE hScript;
+    int rc;
+    unsigned long evaluations;
+    const char *result;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 86 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_Evaluate(hScript, SOURCE, -1);
+    if (rc != PSCRIPT_OK) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "function evaluate rc=%d error=%s", rc,
+                PScript_GetError(hScript));
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 86 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "pair", -1, "[2,5]", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strstr(result, "\"sum\":7") == NULL ||
+            strstr(result, "\"ok\":true") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "first rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 86 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "pair", -1, "[7,2]", -1);
+    result = PScript_GetResult(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (rc != PSCRIPT_OK || strstr(result, "\"sum\":9") == NULL ||
+            strstr(result, "\"ok\":false") == NULL ||
+            evaluations != 3) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "second rc=%d result=%s eval=%lu/3",
+                rc, result, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 86 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 86 OK",
+            "persistent function call with JSON array arguments and "
+            "JSON object results passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 87 - repeated calls retain ordinary global state                 */
+/* -------------------------------------------------------------------- */
+static BOOL test87_script_call_persistence(void)
+{
+    static const char *SOURCE =
+            "var total=0; function add(n){total+=n;return total;}";
+    HANDLE hScript;
+    int rc;
+    unsigned long evaluations;
+    const char *result;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 87 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_Evaluate(hScript, SOURCE, -1);
+    if (rc != PSCRIPT_OK) {
+        PScript_Destroy(hScript);
+        show_error(L"TEST 87 FAIL", "function setup failed");
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "add", -1, "[3]", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "3") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "first rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 87 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "add", -1, "[4]", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "7") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "second rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 87 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_GetGlobalJson(hScript, "total", -1);
+    result = PScript_GetResult(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "7") != 0 ||
+            evaluations != 3) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "global rc=%d result=%s eval=%lu/3",
+                rc, result, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 87 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 87 OK",
+            "two JSON calls retained a mutable global counter and "
+            "reported the expected evaluation count.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 88 - malformed calls and missing globals recover                 */
+/* -------------------------------------------------------------------- */
+static BOOL test88_script_call_errors(void)
+{
+    static const char *SOURCE =
+            "function identity(value){return value;}";
+    HANDLE hScript;
+    int rc;
+    unsigned long evaluations;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 88 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_Evaluate(hScript, SOURCE, -1);
+    if (rc != PSCRIPT_OK) {
+        PScript_Destroy(hScript);
+        show_error(L"TEST 88 FAIL", "function setup failed");
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "identity", -1, "{}", -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_JSON ||
+            strstr(error, "array") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "object args rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 88 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "missing", -1, "[]", -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_GLOBAL ||
+            strstr(error, "undefined") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "missing rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 88 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_SetGlobalNumber(hScript, "notFunction", -1, 1);
+    if (rc != PSCRIPT_OK) {
+        PScript_Destroy(hScript);
+        show_error(L"TEST 88 FAIL", "non-callable setup failed");
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "notFunction", -1, "[]", -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_GLOBAL ||
+            strstr(error, "not callable") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "non-callable rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 88 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "identity", -1, "[9]", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "9") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "recovery call rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 88 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_GetGlobalJson(hScript, "identity", -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_JSON ||
+            strstr(error, "JSON") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "function JSON rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 88 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_Evaluate(hScript, "21 + 21;", -1);
+    result = PScript_GetResult(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0 ||
+            evaluations != 3) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "final recovery rc=%d result=%s eval=%lu/3",
+                rc, result, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 88 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 88 OK",
+            "invalid JSON, missing/non-callable globals and "
+            "non-JSON function reads recover without poisoning context.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 89 - global name and JSON result limits                          */
+/* -------------------------------------------------------------------- */
+static BOOL test89_script_limits(void)
+{
+    static const char *SOURCE =
+            "function longValue(){var s='';"
+            "for(var i=0;i<300;i++){s+='x';}return s;}";
+    static char long_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 2];
+    HANDLE hScript;
+    int rc;
+    unsigned long evaluations;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    memset(long_name, 'a', sizeof(long_name) - 1);
+    long_name[sizeof(long_name) - 1] = '\0';
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 89 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_SetGlobalNumber(hScript, long_name,
+            (int) (sizeof(long_name) - 1), 1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_GLOBAL ||
+            strstr(error, "global name") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "long name rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 89 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_Evaluate(hScript, SOURCE, -1);
+    if (rc != PSCRIPT_OK) {
+        PScript_Destroy(hScript);
+        show_error(L"TEST 89 FAIL", "long result setup failed");
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "longValue", -1, "[]", -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_RESULT_TOO_LARGE ||
+            strstr(error, "result") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "long result rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 89 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_GetGlobalJson(hScript, "missing", -1);
+    if (rc != PSCRIPT_ERROR_GLOBAL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "missing after limit rc=%d", rc);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 89 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_Evaluate(hScript, "2 + 2;", -1);
+    result = PScript_GetResult(hScript);
+    evaluations = PScript_GetEvaluationCount(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "4") != 0 ||
+            evaluations != 3) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "recovery rc=%d result=%s eval=%lu/3",
+                rc, result, evaluations);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 89 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 89 OK",
+            "global-name validation, explicit JSON result overflow and "
+            "post-error evaluation recovery passed.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -15163,7 +15577,8 @@ static int run_configured_tests(const unsigned char *selected,
     needs_core = 0;
     for (number = 8; number <= TEST_MAX_NUMBER; number++) {
         if (number != 80 && number != 81 && number != 82 && number != 83 &&
-                number != 84 &&
+                number != 84 && number != 85 && number != 86 &&
+                number != 87 && number != 88 && number != 89 &&
                 selected[number]) {
             needs_core = 1;
             break;
@@ -15269,6 +15684,11 @@ static int run_configured_tests(const unsigned char *selected,
         case 82: ok = test82_script_memory_limit(); break;
         case 83: ok = test83_script_modules(); break;
         case 84: ok = test84_script_module_provider(); break;
+        case 85: ok = test85_script_globals(); break;
+        case 86: ok = test86_script_call_json(); break;
+        case 87: ok = test87_script_call_persistence(); break;
+        case 88: ok = test88_script_call_errors(); break;
+        case 89: ok = test89_script_limits(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

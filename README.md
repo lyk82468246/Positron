@@ -1,6 +1,6 @@
 # Positron
 
-> **当前构建候选（2026-08-06）**：next123 在已验收的 next121/next114 Browse 基线上为独立 `positron_script.dll` 增加宿主模块源码 provider 与 TEST84，并修正 Browse 宿主在高 DPI/大分辨率设备上的 CSS 视口换算；ARMV4I Debug/Release 构建和 staging 已通过，TEST84 与新模拟器视觉验收待用户运行。next122 只完成了 provider 的构建/staging，设备日志在 TEST20 的 48 CSS px / 96 device px 断言处停止。配置的 TEST13/20/27/43/44/56/58-77/80-83 已在旧设备基线为 `TESTBENCH PASS`。浏览器核心仍不执行脚本。`TrackMouseEvent` 等桌面 API 不属于 WM6 方案；宿主使用 `WM_MOUSEMOVE` 与定时器轮询离开窗口。next115 与 next116 的 float 候选均已撤回：设备 TEST79 失败，next116 的 TEST13 截图仍出现导航/正文排版回归；next117/next114 保持为当前可靠 Browse 基线。
+> **当前构建候选（2026-08-07）**：next124 在已验收的 next121/next114 Browse 基线上为独立 `positron_script.dll` 增加 persistent global primitive、JSON getter/call 和五项 TEST85-89；ARMV4I Debug 构建已通过，Release/staging 与设备 testbench 待本批交付。next123 的高 DPI 视口修正与 TEST84 provider 仍待新分辨率模拟器验收；因此不要把本批脚本断言误写成高 DPI Browse 已通过。配置的 TEST13/20/27/43/44/56/58-77/80-83 已在旧设备基线为 `TESTBENCH PASS`。浏览器核心仍不执行脚本。`TrackMouseEvent` 等桌面 API 不属于 WM6 方案；宿主使用 `WM_MOUSEMOVE` 与定时器轮询离开窗口。next115 与 next116 的 float 候选均已撤回：设备 TEST79 失败，next116 的 TEST13 截图仍出现导航/正文排版回归；next117/next114 保持为当前可靠 Browse 基线。
 
 **Float 方向暂挂（2026-08-04）**：next115 的普通 float 和 next116 的显式 block-level float 都未通过真实设备门禁。next116 的自动 TEST13 数值记录为 OK，但人工截图显示导航被扁平化、正文边界异常，且 TEST79 最终失败；因此 TEST79 已从默认配置和 ENGINE 组移除。不要把 TEST23/79 当作已支持的 CSS Floats，也不要在没有完整 box construction/normalisation 方案前继续扩大该方向。
 
@@ -27,7 +27,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
 | **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、缓存图片链、CSS 背景图与 NetSurf overflow scrollbar 已真机验证，窄屏复杂布局仍待补 |
 | **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 retained 解码、SVG、PNG/JPEG/BMP/GIF 与原始像素入口均已真机闭环；当前 ABI 1.5 增加只读 SVG 创建阶段遥测，next52 原生标题栏 OK 真退出已真机确认 |
-| **6** | `positron_script.dll` — 独立 JavaScript 执行基础设施 | ✅ Duktape 2.7.0 稳定 C ABI、TEST80-83 安全边界与模块生命周期已由 ARMV4I 设备 testbench 验收；next123/TEST84 宿主源码 provider 与高 DPI Browse 入口待新设备验收；浏览器 DOM/网络绑定保持关闭 |
+| **6** | `positron_script.dll` — 独立 JavaScript 执行基础设施 | ✅ Duktape 2.7.0 稳定 C ABI、TEST80-83 安全边界与模块生命周期已由 ARMV4I 设备 testbench 验收；next123/TEST84 provider 与高 DPI Browse 入口、next124/TEST85-89 global/JSON bridge 待设备验收；浏览器 DOM/网络绑定保持关闭 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
@@ -47,11 +47,11 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 2026-08-03 的 next113/TEST76 接通动态 `:hover`：WM6 宿主用 `WM_MOUSEMOVE` 加 250ms 定时器轮询离开窗口，core 命中最近 DOM 元素并在下一次样式选择时应用 hover 状态。设备自动日志确认 TEST76 与 TEST13/20/27/43/44/56/58-75 全部 PASS。该批不等于 `:visited`、`:target`、`:indeterminate`、专用 MouseEvent 或 JavaScript 已实现。
 
-2026-08-03 的 next114/TEST77 建立了独立的脚本资源 ABI：core 扫描外部 `<script src>`，可通过 `PCoreResolveUrlFn` 使用宿主 URL 策略，调用 transport-agnostic fetch/free 回调，把成功字节按 document 生命周期缓存，并提供只读计数/枚举接口。该批不执行 inline 或 external JavaScript，也尚未接入 TEST13 的网络事务；ARMV4I 增量构建通过，TEST77 与整批设备自动 testbench 已确认 PASS。2026-08-04 的 next118 又把仓库已有 Duktape 2.7.0 封装成独立 `positron_script.dll`，TEST80 覆盖 ABI、持久求值、throw 后恢复和 DLL 内存遥测；next119 新增 TEST81，覆盖执行超时、源码长度上限和上下文恢复；next120 新增 TEST82 硬内存配额断言，设备确认峰值 496184/524288、恢复值 42。2026-08-05 的 next121 再增加 CommonJS 风格模块一次执行缓存、`require()`、失败回滚和清空 API；TEST13/20/27/43/44/56/58-77/80-83 全部设备通过，最终为 `TESTBENCH PASS`。浏览器核心仍不执行脚本。
+2026-08-03 的 next114/TEST77 建立了独立的脚本资源 ABI：core 扫描外部 `<script src>`，可通过 `PCoreResolveUrlFn` 使用宿主 URL 策略，调用 transport-agnostic fetch/free 回调，把成功字节按 document 生命周期缓存，并提供只读计数/枚举接口。该批不执行 inline 或 external JavaScript，也尚未接入 TEST13 的网络事务；ARMV4I 增量构建通过，TEST77 与整批设备自动 testbench 已确认 PASS。2026-08-04 的 next118 又把仓库已有 Duktape 2.7.0 封装成独立 `positron_script.dll`，TEST80 覆盖 ABI、持久求值、throw 后恢复和 DLL 内存遥测；next119 新增 TEST81，覆盖执行超时、源码长度上限和上下文恢复；next120 新增 TEST82 硬内存配额断言，设备确认峰值 496184/524288、恢复值 42。2026-08-05 的 next121 再增加 CommonJS 风格模块一次执行缓存、`require()`、失败回滚和清空 API；TEST13/20/27/43/44/56/58-77/80-83 全部设备通过，最终为 `TESTBENCH PASS`。2026-08-07 的 next124 再增加不依赖 Duktape 头文件的 global primitive setter、JSON getter、JSON-array function call、结果上限和错误恢复断言；TEST85-89 待设备 testbench。浏览器核心仍不执行脚本。
 
 当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已由 TEST42/next55 验收，但不包含触摸惯性或 overlay scrollbar。CSS `@import` 的嵌套解析、失败空表回退和文档缓存已由 TEST45 验收；它尚不代表跨源策略、完整缓存失效或整页资源进度已完成。有效表格的 span 占位、匿名 row/cell、collapsed-border 冲突、cell vertical alignment、`empty-cells`、显式 table height 与百分比 row 第二遍已由 TEST46/47、TEST53-57 真机确认；`col`/`colgroup` border 来源、百分比 cell/后代内容和跨行 baseline 仍未覆盖。正式 Positron 构盒走 `pcore_select.c` + `pcore_box.c`，并不调用 NetSurf `box_construct.c`；此前 HTML `style=` 缺失的直接原因是 `pcore_style_subtree` 向 `css_select_style` 固定传入空 inline sheet，而不是 `nsoption_bool(author_level_css)`。next75/TEST58 已确认 NetSurf 式 inline stylesheet能通过 cascade、继承、`!important`、错误恢复、后代 class 选择及正式布局/重绘。next81 已将全零 `nsoption` shim 改为具名专家默认：当前实际读取的 `font_min_size=85`、`core_select_menu=false`、`remove_backgrounds=false` 对齐 NetSurf 3.11，JavaScript 继续显式关闭，未审计名称会直接编译失败；TEST56/58-61 已由设备确认无异常。列表 marker 的 47 种上游 counter formatter、缓存 `list-style-image`、失败回退和 inside 首行流已由 next61-63/TEST50-52 验收；float 邻接 marker 与自定义 `@counter-style` 仍未完成。表单与最小事件纵切已推进到 next110/TEST74 设备基线；仍缺高级 validity、专用 Mouse/Keyboard/Focus/Input 事件数据、完整 HTML activation/default-action 细节和 JS 绑定。自动桥也不等于真实触屏、多选控件/文件选择器视觉或公网上传验收。字体 fallback 的当前范围只包括符号和单色 emoji，不计划扩展普通语言/多语种字体。`background-size`、多层背景和脚本资源仍未实现。UI 提交已在 parse/style/image-discovery/layout 四个调用之间让出 WM 消息循环，单个不可重入调用仍可能短暂卡顿。复杂 SVG text、float 和其余 forms/widgets 仍不完整；JavaScript 尚未启用。路线采用“存在性优先”：下一步评估 positioned layout、float、基础 Grid 或背景尺寸中的高价值上游纵切；随后利用仓库已有 NetSurf Duktape backend 做中期 JavaScript 最小纵切。首屏 SVG 性能、抗锯齿和高级视觉边角后置。
 
-独立脚本边界补充：`positron_script.dll` 已提供可供其他 WM 程序调用的 Duktape 2.7.0 UTF-8 求值服务，TEST80-83 已在设备通过；next123 保留 next122 新增的 `PScript_SetModuleSourceProvider`/`PScript_LoadModule`，TEST84 仍待设备验收；TEST83 的模块断言为 `base=40 entry=require(base)+2=42 cache=ok rollback=ok clear/reload=ok modules=1`；TEST82 日志为 `rc=-6 used=70057 peak=496184 limit=524288 recovery=42 eval=2/2`；这不改变浏览器 JavaScript 默认关闭的策略。
+独立脚本边界补充：`positron_script.dll` 已提供可供其他 WM 程序调用的 Duktape 2.7.0 UTF-8 求值服务，TEST80-83 已在设备通过；next123 保留 next122 新增的 `PScript_SetModuleSourceProvider`/`PScript_LoadModule`，TEST84 仍待设备验收；next124 的 `PScript_SetGlobalString/Number/Boolean`、`PScript_GetGlobalJson` 和 `PScript_CallGlobalJson` 将 persistent JSON-safe state 暴露给宿主，JSON 结果超过 DLL 的 255 字节有效载荷会显式失败而不截断，TEST85-89 待设备验收；这不改变浏览器 JavaScript 默认关闭的策略。
 
 状态更正：动态状态伪类截至 next109 已有 `:focus/:active/:checked/:enabled/:disabled`，next110 又补上通用 Event 的传播/取消与宿主 click default-action 门，next111 补齐了 basic relative/absolute positioning，next113/TEST76 又接通了由宿主命中状态驱动的 `:hover`。仍未完成的是 `:visited/:target/:indeterminate`、专用事件数据与完整 HTML/JS 事件语义，以及无 CSS 尺寸空 text input 的默认 intrinsic size。
 
@@ -242,7 +242,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-83
+tests=13,20,27,43,44,56,58-77,80-89
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
@@ -250,7 +250,7 @@ tests=13,20,27,43,44,56,58-77,80-83
 测试交付默认按能力批次进行：先积累多项相关实现、自动像素/资源/安全断言和直绘/正式链两层回归，再请求一次设备验收。只有真实编译错误、高风险回归定位或设备特有故障才临时拆成单项包，避免每个微小改动都要求人工截图。
 
 - **Communication**：TEST 1-5，TLS / HTTP / JSON，需要网络。
-- **Standalone script**：TEST 80-84，独立 positron_script.dll 的 ABI、持久上下文、错误恢复、DLL 内存遥测、执行超时/源码长度边界、硬内存配额、CommonJS 风格模块生命周期和宿主源码 provider；不初始化 positron_core，不连接 DOM/window/network。TEST80-83 已由 next121 设备 testbench 验收，TEST84 属于 next123 待验收项。
+- **Standalone script**：TEST 80-89，独立 positron_script.dll 的 ABI、持久上下文、错误恢复、DLL 内存遥测、执行超时/源码长度边界、硬内存配额、CommonJS 风格模块生命周期、宿主源码 provider、global primitive 注入和 JSON 函数调用；不初始化 positron_core，不连接 DOM/window/network。TEST80-83 已由 next121 设备 testbench 验收，TEST84 属于 next123 待验收项，TEST85-89 属于 next124 待验收项。
 - **Engine**：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-76，HTML/CSS/DOM/select/style/layout/box tree/image resource cache、responsive media viewport、row-reverse flex padding、cached CSS restyle、SVG parse、受约束的 `:root` token、现代 CSS 值、grid/overflow min-content 隔离、overflow scrollbar、分阶段导航资源事务、主文档失败回滚、CSS import tree、libcss 节点缓存纵横屏重选、具名 NetSurf option 默认、DOM Event 传播/取消、基础定位与动态 `:hover`，离线。TEST40-45、59、60、74-76 已真机通过；next78 已撤回。TEST23、TEST79 的 float 候选均因真实 Browse/设备门禁回归撤回。
 - **GDI Render**：TEST 12、14、17、19、20、26-37、39、46-58、62-73，覆盖 WM Imaging、SVG path/cache/fallback/fill-rule、CSS background-image、原生 GDI text、线性/径向渐变、继承/透明 stop、同文档及重叠文档缓存复用、IANA token 间距、table span/匿名归一化/collapsed border/cell alignment/height distribution、列表 marker/counter/image/inside flow、HTML inline author CSS、普通表单、multipart/file、WM multiple select、required 验证与动态表单伪类；TEST73 已由 next109 设备门禁确认。动态 `:hover` 的自动断言属于 Engine TEST76。
 - **Browse**：TEST 13，真实页面抓取 + 渲染，需要网络；HTTPS 走 mbedTLS verified，明文 HTTP 走 WinInet。

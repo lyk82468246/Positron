@@ -22,11 +22,12 @@ extern "C" {
 #  define PSCRIPT_API __declspec(dllimport)
 #endif
 
-#define PSCRIPT_ABI_VERSION 0x00010003UL
+#define PSCRIPT_ABI_VERSION 0x00010004UL
 #define PSCRIPT_DEFAULT_BUDGET_MS 1000UL
 #define PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (512UL * 1024UL)
 #define PSCRIPT_MAX_SOURCE_BYTES (64UL * 1024UL)
 #define PSCRIPT_MAX_MODULE_NAME_BYTES 128UL
+#define PSCRIPT_MAX_GLOBAL_NAME_BYTES 128UL
 #define PSCRIPT_MAX_MODULES 16UL
 
 #define PSCRIPT_OK 0
@@ -39,6 +40,10 @@ extern "C" {
 #define PSCRIPT_ERROR_MODULE_NAME (-7)
 #define PSCRIPT_ERROR_MODULE_LIMIT (-8)
 #define PSCRIPT_ERROR_MODULE_SOURCE (-9)
+#define PSCRIPT_ERROR_GLOBAL (-10)
+#define PSCRIPT_ERROR_CALL (-11)
+#define PSCRIPT_ERROR_RESULT_TOO_LARGE (-12)
+#define PSCRIPT_ERROR_JSON (-13)
 
 /* Synchronous host-owned module source callbacks. Return 0 when source is
  * available and fill a byte buffer + non-negative byte count. The DLL calls
@@ -71,6 +76,29 @@ PSCRIPT_API void PScript_Destroy(HANDLE hScript);
  * The final expression value is available through PScript_GetResult. */
 PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
         int source_len);
+
+/* Set persistent JSON-compatible values in the global object. Names and
+ * strings accept a negative length for NUL-terminated input. These values
+ * survive later evaluations and module calls. */
+PSCRIPT_API int PScript_SetGlobalString(HANDLE hScript, const char *name,
+        int name_len, const char *value, int value_len);
+PSCRIPT_API int PScript_SetGlobalNumber(HANDLE hScript, const char *name,
+        int name_len, double value);
+PSCRIPT_API int PScript_SetGlobalBoolean(HANDLE hScript, const char *name,
+        int name_len, int value);
+
+/* Return one persistent global as compact JSON through PScript_GetResult.
+ * Undefined/non-JSON values and encoded results over the DLL result buffer
+ * are reported instead of being silently truncated. */
+PSCRIPT_API int PScript_GetGlobalJson(HANDLE hScript, const char *name,
+        int name_len);
+
+/* Call a persistent global function with a JSON array of arguments, for
+ * example "[2,3]". The JSON-encoded return value is available through
+ * PScript_GetResult. This is a standalone embedding hook: it does not add
+ * DOM, window, network or browser event bindings. */
+PSCRIPT_API int PScript_CallGlobalJson(HANDLE hScript, const char *name,
+        int name_len, const char *args_json, int args_len);
 
 /* Evaluate one CommonJS-style module. The module source receives the usual
  * (module, exports, require) arguments. A successful name is cached for the
