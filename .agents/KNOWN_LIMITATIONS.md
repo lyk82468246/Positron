@@ -61,7 +61,13 @@ probe 与 hidden-input 检查安装固定 96 DPI；这不是可接受的动态 D
 **当前状态更正（next141，2026-08-07）**：TEST62 保留 `64x48 CSS px` 探针表面，使用
 设备实际 DPI，并将原本 96-DPI 的 `14..24px` 控件几何范围按 `dpi/96` 等比换算；控件
 状态、绘制和隐藏 input 断言未放宽。ARMV4I 构建与
-`C:\WMShare\Positron-next141` staging 已通过，设备复测待补。
+`C:\WMShare\Positron-next141` staging 已通过，设备日志确认 TEST62 及 TEST63-74
+通过，TEST75 停止。
+
+**当前状态更正（next142，2026-08-07）**：TEST75 的定位夹具保留 CSS 尺寸，断言将
+宽高、绝对偏移和 relative 偏移统一按实际设备 DPI 的 `dpi/96` 等比换算；定位构盒、
+绘制和可见页面路径未改变。ARMV4I 构建与
+`C:\WMShare\Positron-next142` staging 已通过，设备复测待补。
 
 ## 已验证基线（不是完整功能声明）
 

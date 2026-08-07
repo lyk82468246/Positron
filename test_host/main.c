@@ -14280,8 +14280,10 @@ static BOOL test75_positioned_layout(void)
     int span_y;
     int span_w;
     int span_h;
+    int dpi;
     char detail[320];
 
+    dpi = test_host_device_dpi();
     hDoc = PCore_ParseHTML(HTML, 0);
     hSheet = PCore_ParseCSS(CSS, 0,
             "http://positron.local/positioned.css");
@@ -14305,16 +14307,23 @@ static BOOL test75_positioned_layout(void)
         return FALSE;
     }
 
-    if (main_w != 180 || main_h != 120 ||
+    if (main_w != MulDiv(180, dpi, 96) ||
+            main_h != MulDiv(120, dpi, 96) ||
             section_x != main_x || section_y != main_y ||
-            section_w != 20 || section_h != 20 ||
-            article_x != section_x + 10 ||
-            article_y != section_y + section_h + 7 ||
-            article_w != 30 || article_h != 20 ||
-            aside_x != main_x + 60 || aside_y != main_y + 30 ||
-            aside_w != 25 || aside_h != 15 ||
-            span_x != main_x + 100 || span_y != main_y + 50 ||
-            span_w != 20 || span_h != 12) {
+            section_w != MulDiv(20, dpi, 96) ||
+            section_h != MulDiv(20, dpi, 96) ||
+            article_x != section_x + MulDiv(10, dpi, 96) ||
+            article_y != section_y + section_h + MulDiv(7, dpi, 96) ||
+            article_w != MulDiv(30, dpi, 96) ||
+            article_h != MulDiv(20, dpi, 96) ||
+            aside_x != main_x + MulDiv(60, dpi, 96) ||
+            aside_y != main_y + MulDiv(30, dpi, 96) ||
+            aside_w != MulDiv(25, dpi, 96) ||
+            aside_h != MulDiv(15, dpi, 96) ||
+            span_x != main_x + MulDiv(100, dpi, 96) ||
+            span_y != main_y + MulDiv(50, dpi, 96) ||
+            span_w != MulDiv(20, dpi, 96) ||
+            span_h != MulDiv(12, dpi, 96)) {
         _snprintf(detail, sizeof(detail) - 1,
                 "main=%d,%d %dx%d static=%d,%d %dx%d "
                 "relative=%d,%d %dx%d absolute=%d,%d %dx%d "
