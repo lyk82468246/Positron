@@ -12,6 +12,13 @@
 提前到正式构盒之前，并在 TEST20/27 的样式完成后重新绑定同一设备视口；VS2008
 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建已通过，待同设备复测。
 
+**状态更正（next133，2026-08-07）**：next132 在 `screen=480x640 dpi=192` 下的
+TEST13/20/27/43/44/56 均通过，但 TEST58 的离线几何段继承了前一个渲染测试留下的
+设备视口待布局状态，得到 `article=320 rows=40/80/40`，而不是该测试声明的
+230x260 CSS 像素契约。next133 让 TEST58 显式清除设备视口并固定其几何基线为
+96 DPI，同时在最终可见布局前重新绑定真实设备视口；ARMV4I 增量构建和 staging
+已通过，设备自动日志待复测。该修复只隔离测试视口，不放宽断言，也不修改布局引擎。
+
 2026-08-07 的 next126 设备日志记录为 `screen=320x320 dpi=128`：TEST13 的
 `example.com`、IANA Example Domains、IANA Reserved Domains 三段导航均完成，随后
 TEST20 停止。TEST20 的失败是断言隔离错误：它走显式 CSS 视口的离线缓存图片路径，

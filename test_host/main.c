@@ -11215,6 +11215,10 @@ static BOOL test58_inline_author_style(void)
     memset(row_kind, 0, sizeof(row_kind));
     memset(row_value, 0, sizeof(row_value));
     memset(colors, 0, sizeof(colors));
+    /* The geometry half is an explicit CSS-pixel contract. Clear any
+     * device-backed viewport left by a preceding render test so the 160px
+     * article and 25/50% rows stay comparable at every device DPI. */
+    PCore_SetViewport(230, 260, 96);
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(EXTRA_CSS, sizeof(EXTRA_CSS) - 1,
             "http://positron.local/inline-extra.css");
@@ -11290,6 +11294,7 @@ static BOOL test58_inline_author_style(void)
     screen_h = GetSystemMetrics(SM_CYSCREEN);
     if (screen_w <= 0) { screen_w = 240; }
     if (screen_h <= 0) { screen_h = 320; }
+    test_host_set_device_viewport(screen_w, screen_h);
     if (PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
