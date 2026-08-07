@@ -20,6 +20,7 @@ binary containing that code must be distributed in compliance with GPLv2.
 | libjpeg-turbo | 1.5.3, commit `bf6c774305c9feb30cff7b99e1a475df61bfa008` | `third_party/libjpeg-turbo/` | IJG, modified BSD and zlib terms; see `LICENSE.md`, `README.ijg` and `POSITRON_PORT.md`. Binary documentation must retain the IJG attribution recorded there. |
 | NanoSVG rasterizer | commit `9da543e8329fdd81b64eb48742d8ccb09377aed1` | `positron_image/third_party/nanosvg/` | zlib notice embedded in both headers; see `UPSTREAM.md`. |
 | Noto Sans Symbols / Symbols 2 / Noto Emoji | pinned files documented beside each source | `third_party/noto-symbols*`, `third_party/noto-emoji/` | SIL Open Font License 1.1. Each directory contains `OFL.txt`; generated renamed subsets are under `assets/fonts/`. |
+| tiny-regex-c | commit `f2632c6d9ed25272987471cdb8b70395c2460bdb` | `third_party/tiny-regex-c/` | Public domain / Unlicense; see `LICENSE` and `UPSTREAM.md`. Used only by the C89 `pattern` validity adapter. |
 | Mozilla CA trust data via curl | 121-certificate snapshot generated on 2026-06-10 | `positron_tls/ca_bundle.h` | Certificate trust data generated from `https://curl.se/ca/cacert.pem`; update with `positron_tls/gen_ca_bundle.py`. This is data, not an additional linked code library. |
 
 ## Vendoring policy

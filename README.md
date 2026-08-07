@@ -1,10 +1,15 @@
 # Positron
 
-**最新门禁（next142，2026-08-07）**：next142 在 `screen=240x320 dpi=96`
+**最新设备门禁（next142，2026-08-07）**：next142 在 `screen=240x320 dpi=96`
 设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-104 全部通过并记录
 `TESTBENCH PASS`。next141 已在 `screen=320x320 dpi=128` 下确认 TEST13/20/27/43/44/
 56/58-74 通过，TEST75 的等比几何断言随后由 next142 修正。ARMV4I Debug 增量构建、
 staging 和设备验收均已通过；后续仍需轮换分辨率/DPI，并人工复查 TEST13。
+
+**当前构建候选（next143，2026-08-07）**：新增 public-domain C89 regex adapter 和
+TEST105-109 的受限 ASCII `pattern` 表单约束；`scripts/test_c89ize.py`、仓库审计与
+VS2008 ARMV4I 增量构建已通过，设备验收待补。它不代表完整 JavaScript RegExp；浏览器
+JavaScript 仍默认关闭。
 
 > **当前构建候选（2026-08-07）**：next142 保留 next137 的非整数 DPI 设备像素换算，
 > 隔离 TEST60/63 的显式 CSS 几何上下文，并让 TEST62/75 的几何断言按实际 DPI 等比

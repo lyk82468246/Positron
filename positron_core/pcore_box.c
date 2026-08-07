@@ -52,6 +52,7 @@
 #include "positron_core.h"
 #include "positron_image.h"
 #include "pcore_internal.h"
+#include "pcore_pattern.h"
 
 #include "utils/errors.h"                    /* nserror (layout.h / private.h) */
 #include "content/handlers/html/form_internal.h"
@@ -5657,6 +5658,11 @@ static int pcore_required_select_missing(dom_html_select_element *select,
 static int pcore_text_constraint_flags(dom_node *node, dom_string *value,
         unsigned int *flags_out)
 {
+    const char *pattern_data;
+    size_t pattern_length;
+    dom_string *pattern_name;
+    dom_string *pattern_value;
+    int pattern_result;
     unsigned int minimum;
     unsigned int maximum;
     unsigned int length;
@@ -5675,6 +5681,31 @@ static int pcore_text_constraint_flags(dom_node *node, dom_string *value,
     if (pcore_node_attr_unsigned(node, "maxlength", &maximum) &&
             length > maximum) {
         *flags_out |= PCORE_VALIDITY_TOO_LONG;
+    }
+    if (pcore_node_name_is(node, "input") &&
+            pcore_node_has_attr(node, "pattern")) {
+        pattern_name = NULL;
+        pattern_value = NULL;
+        pattern_result = -1;
+        if (dom_string_create((const uint8_t *) "pattern", 7,
+                &pattern_name) == DOM_NO_ERR && pattern_name != NULL &&
+                dom_element_get_attribute(node, pattern_name,
+                &pattern_value) == DOM_NO_ERR && pattern_value != NULL) {
+            pattern_data = dom_string_data(pattern_value);
+            pattern_length = dom_string_byte_length(pattern_value);
+            pattern_result = pcore_pattern_match_full(pattern_data,
+                    pattern_length, dom_string_data(value),
+                    dom_string_byte_length(value));
+        }
+        if (pattern_value != NULL) {
+            dom_string_unref(pattern_value);
+        }
+        if (pattern_name != NULL) {
+            dom_string_unref(pattern_name);
+        }
+        if (pattern_result == 0) {
+            *flags_out |= PCORE_VALIDITY_PATTERN_MISMATCH;
+        }
     }
     return 1;
 }

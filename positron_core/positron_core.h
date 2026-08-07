@@ -606,6 +606,7 @@ typedef struct PCoreFormSubmissionInfo {
 #define PCORE_VALIDITY_VALUE_MISSING 0x0001u
 #define PCORE_VALIDITY_TOO_LONG     0x0002u
 #define PCORE_VALIDITY_TOO_SHORT    0x0004u
+#define PCORE_VALIDITY_PATTERN_MISMATCH 0x0008u
 typedef struct PCoreFormValidationInfo {
     int valid;
     int invalid_count;
@@ -619,10 +620,11 @@ typedef struct PCoreFormValidationInfo {
 
 /* Validate the form targeted by an explicit submit control or by Enter in an
  * enumerated single-line text/password control. The current implementation
- * covers required and length constraints for text/password/textarea/file,
+ * covers required, pattern and length constraints for text/password/textarea/file,
  * checkbox, radio groups and select controls, including disabled/read-only
  * and no-validate bypasses. Unsupported or malformed constraint attributes
- * are ignored conservatively.
+ * are ignored conservatively; pattern support is the documented ASCII subset
+ * in pcore_pattern.c.
  * Returns 1 when a target form was checked and 0 when no qualifying target
  * exists or the DOM could not be inspected. */
 PCORE_API int PCore_FormValidationAt(HANDLE hDoc, int x, int y,

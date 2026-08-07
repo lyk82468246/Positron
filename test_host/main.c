@@ -359,7 +359,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 104
+#define TEST_MAX_NUMBER 109
 
 static int test_config_space(char c)
 {
@@ -16593,6 +16593,221 @@ static BOOL test104_form_first_length_geometry(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 105-109 - HTML pattern constraint validation                     */
+/* -------------------------------------------------------------------- */
+static BOOL test105_form_pattern_constraints(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/pattern method=get>"
+        "<input name=digits value=123 pattern=\"[0-9]+\">"
+        "<input name=letters value=abc pattern=\"[A-Za-z]+\">"
+        "<input name=bad value=12x pattern=\"[0-9]+\">"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.invalid_count != 1 ||
+            validation.first_flags != PCORE_VALIDITY_PATTERN_MISMATCH ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 5 ||
+            PCore_TextInputSetValue(document, 2, "456") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(body, "digits=123&letters=abc&bad=456&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 105 FAIL", "pattern mismatch did not block and recover");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 105 OK",
+            "ASCII character classes and full-value pattern matching blocked "
+            "the bad control, then submission recovered after an edit.");
+    return TRUE;
+}
+
+static BOOL test106_form_pattern_update(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/case method=get>"
+        "<input name=code value=abc pattern=\"[A-Z]+\">"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_PATTERN_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "ABC") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "A1") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_PATTERN_MISMATCH) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 106 FAIL", "pattern validity did not follow live value");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 106 OK",
+            "pattern validity followed live native text updates in both "
+            "directions.");
+    return TRUE;
+}
+
+static BOOL test107_form_pattern_exemptions(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/exempt method=get>"
+        "<input name=off value=x pattern=\"[0-9]+\" disabled>"
+        "<input name=locked value=x pattern=\"[0-9]+\" readonly>"
+        "<input name=malformed value=abc pattern=\"[A-Z\">"
+        "<input name=empty value= pattern=\"[0-9]+\">"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            validation.invalid_count != 0 ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 107 FAIL", "pattern exemptions were not conservative");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 107 OK",
+            "disabled/read-only controls, malformed patterns and empty values "
+            "did not create false blocking errors.");
+    return TRUE;
+}
+
+static BOOL test108_form_pattern_escapes(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/escapes method=get>"
+        "<input name=digit value=42 pattern=\"\\d+\">"
+        "<input name=code value=AB-12 pattern=\"[A-Z0-9-]+\">"
+        "<input name=literal value=a.b pattern=\"a\\.b\">"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "4x") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_PATTERN_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "42") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 108 FAIL", "pattern escapes or literal matching failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 108 OK",
+            "digit escape, literal/range classes and escaped punctuation "
+            "matched full input values.");
+    return TRUE;
+}
+
+static BOOL test109_form_pattern_flags(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/flags method=get>"
+        "<input name=code value=abcde minlength=2 maxlength=4 "
+        "pattern=\"[0-9]+\">"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.invalid_count != 1 ||
+            validation.first_flags != (PCORE_VALIDITY_TOO_LONG |
+                    PCORE_VALIDITY_PATTERN_MISMATCH) ||
+            PCore_TextInputSetValue(document, 0, "1") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TOO_SHORT ||
+            PCore_TextInputSetValue(document, 0, "12") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 109 FAIL", "pattern and length flags did not compose");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 109 OK",
+            "patternMismatch composed with too-long/too-short flags and "
+            "cleared at the valid boundary.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -16816,6 +17031,11 @@ static int run_configured_tests(const unsigned char *selected,
         case 102: ok = test102_textarea_length(); break;
         case 103: ok = test103_form_length_exemptions(); break;
         case 104: ok = test104_form_first_length_geometry(); break;
+        case 105: ok = test105_form_pattern_constraints(); break;
+        case 106: ok = test106_form_pattern_update(); break;
+        case 107: ok = test107_form_pattern_exemptions(); break;
+        case 108: ok = test108_form_pattern_escapes(); break;
+        case 109: ok = test109_form_pattern_flags(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

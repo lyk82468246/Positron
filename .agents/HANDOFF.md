@@ -2,12 +2,12 @@
 
 更新时间：2026-08-07
 当前分支：`main`  
-当前开发候选：next137 已在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，
+当前开发候选：next143 已完成 ARMV4I 增量构建与默认 testbench 扩展；设备验收待补。next137 已在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，
 next138 隔离 TEST60 后通过，next139 隔离 TEST63 后通过；next141 在
 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58-74，next142 修正 TEST75
 后在 `screen=240x320 dpi=96` 默认配置下完成 TEST13/20/27/43/44/56/58-77/80-104，
 日志为 `TESTBENCH PASS`。next140 的固定 96-DPI 尝试仍标记为已替代。ARMV4I 构建、
-staging 和该设备验收均已通过；下一批应轮换分辨率/DPI。当前设备基线：next134 已在 `screen=240x320 dpi=96` 设备日志中通过 TEST13/20/27/43/44/56/58-77/80-99；next135 新增 TEST100-104 的 `minlength`/`maxlength` 表单约束，next136 隔离 TEST59 的 CSS 参考上下文，next137 在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，next138/139 又分别修正 TEST60/63 的离线 CSS 上下文，next140 的固定 DPI 方案已替代，next141 让 TEST62 动态等比并通过至 TEST74，next142 让 TEST75 动态等比并通过默认设备批次。next123/124/125/126/127/134/135 的 `positron_script.dll` 与表单扩展仍不接入冻结的浏览器 JS 路径。next123 以来 Browse 宿主使用物理像素/CSS 视口分离，并按设备报告的 DPI 换算；96 DPI 只是 CSS 规范基准，不是产品固定值。next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、类型/范围 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
+staging 和该设备验收均已通过；下一批应轮换分辨率/DPI。当前设备基线：next134 已在 `screen=240x320 dpi=96` 设备日志中通过 TEST13/20/27/43/44/56/58-77/80-99；next135 新增 TEST100-104 的 `minlength`/`maxlength` 表单约束，next136 隔离 TEST59 的 CSS 参考上下文，next137 在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，next138/139 又分别修正 TEST60/63 的离线 CSS 上下文，next140 的固定 DPI 方案已替代，next141 让 TEST62 动态等比并通过至 TEST74，next142 让 TEST75 动态等比并通过默认设备批次，next143 新增 TEST105-109 的受限 ASCII `pattern` validity。next123/124/125/126/127/134/135 的 `positron_script.dll` 与表单扩展仍不接入冻结的浏览器 JS 路径。next123 以来 Browse 宿主使用物理像素/CSS 视口分离，并按设备报告的 DPI 换算；96 DPI 只是 CSS 规范基准，不是产品固定值。next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。完整 JavaScript RegExp、类型/范围 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
@@ -212,7 +212,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前恢复为 next114 浏览器基线，并追加独立脚本 DLL 的 TEST80-99 与 next135 的 TEST100-104，使用 `tests=13,20,27,43,44,56,58-77,80-104`；next134 已由设备确认 TEST84-99，通过 next135 的 TEST100-104 仍待设备验收。TEST79/float 候选已撤回，next121 的 TEST83 已由设备确认通过。自动日志会在开头写入 screen/DPI；若 TEST20 仍显示 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前恢复为 next114 浏览器基线，并追加独立脚本 DLL 的 TEST80-99、表单长度 TEST100-104 与 next143 的 TEST105-109，使用 `tests=13,20,27,43,44,56,58-77,80-109`；next134 已由设备确认 TEST84-99，next135 的 TEST100-104 已随 next142 默认批次设备确认，next143 的 TEST105-109 仍待设备验收。TEST79/float 候选已撤回，next121 的 TEST83 已由设备确认通过。自动日志会在开头写入 screen/DPI；若 TEST20 仍显示 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。

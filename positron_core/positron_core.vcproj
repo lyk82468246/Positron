@@ -223,6 +223,8 @@
 				<File RelativePath=".\pcore_plot_gdi.c"></File>
 				<File RelativePath=".\pcore_talloc.c"></File>
 				<File RelativePath=".\pcore_box.c"></File>
+				<File RelativePath=".\pcore_pattern.c"></File>
+				<File RelativePath="..\third_party\tiny-regex-c\re.c"></File>
 				<File RelativePath=".\pcore_box_inspect.c"></File>
 				<File RelativePath=".\pcore_nsshim.c"></File>
 				<File RelativePath=".\pcore_layout_stubs.c"></File>
@@ -240,7 +242,8 @@
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
-			<File RelativePath=".\positron_core.h"></File>
+				<File RelativePath=".\positron_core.h"></File>
+				<File RelativePath=".\pcore_pattern.h"></File>
 			<File RelativePath=".\pcore_css_values.h"></File>
 		</Filter>
 		<Filter
