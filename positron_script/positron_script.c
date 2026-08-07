@@ -20,12 +20,20 @@
 #define PSCRIPT_MODULES_GLOBAL "__positron_internal_modules"
 #define PSCRIPT_REQUIRE_GLOBAL "__positron_internal_require"
 #define PSCRIPT_CONTEXT_STASH "__positron_internal_context"
+#define PSCRIPT_NATIVE_NAME_PROP "__positron_native_name"
 
 typedef struct pscript_alloc_header {
     size_t bytes;
 } pscript_alloc_header;
 
 typedef struct pscript_context pscript_context;
+
+typedef struct pscript_native_function {
+    int active;
+    char name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    PScriptJsonFunctionFn fn;
+    void *pw;
+} pscript_native_function;
 
 struct pscript_context {
     duk_context *duk;
@@ -42,6 +50,8 @@ struct pscript_context {
     PScriptModuleSourceFn source_fn;
     PScriptModuleSourceFreeFn source_free_fn;
     void *source_pw;
+    pscript_native_function native_functions[PSCRIPT_MAX_NATIVE_FUNCTIONS];
+    unsigned long native_count;
     int fatal_jmp_active;
     jmp_buf fatal_jmp;
     char result[256];
@@ -49,6 +59,7 @@ struct pscript_context {
 };
 
 static duk_ret_t pscript_require(duk_context *duk);
+static duk_ret_t pscript_native_dispatch(duk_context *duk);
 static int pscript_module_evaluate(pscript_context *ctx, const char *name,
         const char *source, size_t source_length);
 
@@ -109,6 +120,150 @@ static int pscript_global_name_copy(const char *source, int source_len,
 {
     return pscript_name_copy(source, source_len, destination,
             destination_size, PSCRIPT_MAX_GLOBAL_NAME_BYTES, out_length);
+}
+
+static int pscript_native_find(pscript_context *ctx, const char *name)
+{
+    int i;
+
+    if (ctx == NULL || name == NULL) {
+        return -1;
+    }
+    for (i = 0; i < (int) PSCRIPT_MAX_NATIVE_FUNCTIONS; i++) {
+        if (ctx->native_functions[i].active &&
+                strcmp(ctx->native_functions[i].name, name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int pscript_native_free_slot(pscript_context *ctx)
+{
+    int i;
+
+    if (ctx == NULL) {
+        return -1;
+    }
+    for (i = 0; i < (int) PSCRIPT_MAX_NATIVE_FUNCTIONS; i++) {
+        if (!ctx->native_functions[i].active) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int pscript_context_stash_set(pscript_context *ctx)
+{
+    duk_context *duk;
+
+    if (ctx == NULL || ctx->duk == NULL) {
+        return 0;
+    }
+    duk = ctx->duk;
+    duk_push_heap_stash(duk);
+    duk_push_pointer(duk, ctx);
+    duk_put_prop_string(duk, -2, PSCRIPT_CONTEXT_STASH);
+    duk_pop(duk);
+    return 1;
+}
+
+static duk_ret_t pscript_native_dispatch(duk_context *duk)
+{
+    pscript_context *ctx;
+    pscript_native_function *native;
+    duk_idx_t base;
+    const char *name;
+    const char *args_json;
+    char native_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    char output[256];
+    int native_index;
+    int args_len;
+    int out_len;
+    int callback_rc;
+    int i;
+
+    if (duk == NULL) {
+        return 0;
+    }
+    base = duk_get_top(duk);
+    native_name[0] = '\0';
+    duk_push_current_function(duk);
+    if (!duk_get_prop_string(duk, -1, PSCRIPT_NATIVE_NAME_PROP) ||
+            !duk_is_string(duk, -1)) {
+        duk_set_top(duk, base);
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback name is missing");
+    }
+    name = duk_get_string(duk, -1);
+    if (!pscript_global_name_copy(name, -1, native_name,
+            sizeof(native_name), NULL)) {
+        duk_set_top(duk, base);
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback name is invalid");
+    }
+    duk_set_top(duk, base);
+
+    duk_push_heap_stash(duk);
+    if (!duk_get_prop_string(duk, -1, PSCRIPT_CONTEXT_STASH)) {
+        duk_set_top(duk, base);
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback context is missing");
+    }
+    ctx = (pscript_context *) duk_get_pointer(duk, -1);
+    duk_set_top(duk, base);
+    if (ctx == NULL || ctx->duk != duk || ctx->poisoned) {
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback context is invalid");
+    }
+    native_index = pscript_native_find(ctx, native_name);
+    if (native_index < 0) {
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback is not registered");
+    }
+    native = &ctx->native_functions[native_index];
+    if (native->fn == NULL) {
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback is unavailable");
+    }
+
+    duk_push_array(duk);
+    for (i = 0; i < (int) base; i++) {
+        duk_dup(duk, i);
+        duk_put_prop_index(duk, base, (duk_uarridx_t) i);
+    }
+    duk_json_encode(duk, base);
+    if (!duk_is_string(duk, base)) {
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback arguments are not JSON");
+    }
+    args_json = duk_get_string(duk, base);
+    if (args_json == NULL) {
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback arguments are empty");
+    }
+    args_len = (int) strlen(args_json);
+    if (args_len < 0 || args_len > (int) PSCRIPT_MAX_SOURCE_BYTES) {
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback arguments are too large");
+    }
+
+    output[0] = '\0';
+    out_len = -1;
+    callback_rc = native->fn(native->pw, args_json, args_len, output,
+            (int) sizeof(output), &out_len);
+    if (callback_rc != 0) {
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback failed");
+    }
+    if (out_len < 0 || out_len >= (int) sizeof(output)) {
+        return duk_error(duk, DUK_ERR_ERROR,
+                "native callback JSON result is invalid");
+    }
+    output[out_len] = '\0';
+    duk_push_lstring(duk, output, (duk_size_t) out_len);
+    duk_json_decode(duk, -1);
+    return 1;
 }
 
 static int pscript_module_wrapper(const char *source, size_t source_len,
@@ -939,6 +1094,124 @@ PSCRIPT_API int PScript_CallGlobalJson(HANDLE hScript, const char *name,
     ctx->deadline = 0;
     ctx->fatal_jmp_active = 0;
     return rc;
+}
+
+PSCRIPT_API int PScript_RegisterGlobalJsonFunction(HANDLE hScript,
+        const char *name, int name_len, PScriptJsonFunctionFn fn, void *pw)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+    char global_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    int native_index;
+    int is_new;
+    int rc;
+
+    ctx = (pscript_context *) hScript;
+    if (fn == NULL) {
+        if (ctx != NULL) {
+            pscript_copy(ctx->error, sizeof(ctx->error),
+                    "native callback is NULL");
+        }
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    rc = pscript_global_prepare(ctx, name, name_len, global_name,
+            sizeof(global_name));
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    native_index = pscript_native_find(ctx, global_name);
+    is_new = (native_index < 0) ? 1 : 0;
+    if (is_new) {
+        if (ctx->native_count >= PSCRIPT_MAX_NATIVE_FUNCTIONS) {
+            pscript_copy(ctx->error, sizeof(ctx->error),
+                    "native function limit exceeded");
+            return PSCRIPT_ERROR_NATIVE_LIMIT;
+        }
+        native_index = pscript_native_free_slot(ctx);
+        if (native_index < 0) {
+            pscript_copy(ctx->error, sizeof(ctx->error),
+                    "native function table is full");
+            return PSCRIPT_ERROR_NATIVE_LIMIT;
+        }
+    }
+
+    duk = ctx->duk;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        return pscript_fatal_error(ctx,
+                "Duktape fatal error while registering native function");
+    }
+    if (!pscript_context_stash_set(ctx)) {
+        ctx->fatal_jmp_active = 0;
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "native callback context unavailable");
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    duk_push_c_function(duk, pscript_native_dispatch, DUK_VARARGS);
+    duk_push_string(duk, global_name);
+    duk_put_prop_string(duk, -2, PSCRIPT_NATIVE_NAME_PROP);
+    duk_put_global_string(duk, global_name);
+    duk_set_top(duk, 0);
+    ctx->fatal_jmp_active = 0;
+
+    ctx->native_functions[native_index].active = 1;
+    pscript_copy(ctx->native_functions[native_index].name,
+            sizeof(ctx->native_functions[native_index].name), global_name);
+    ctx->native_functions[native_index].fn = fn;
+    ctx->native_functions[native_index].pw = pw;
+    if (is_new) {
+        ctx->native_count++;
+    }
+    return PSCRIPT_OK;
+}
+
+PSCRIPT_API int PScript_UnregisterGlobalJsonFunction(HANDLE hScript,
+        const char *name, int name_len)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+    char global_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    int native_index;
+    int rc;
+
+    ctx = (pscript_context *) hScript;
+    rc = pscript_global_prepare(ctx, name, name_len, global_name,
+            sizeof(global_name));
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    native_index = pscript_native_find(ctx, global_name);
+    if (native_index < 0) {
+        pscript_copy(ctx->error, sizeof(ctx->error),
+                "native function is not registered");
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+
+    duk = ctx->duk;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        return pscript_fatal_error(ctx,
+                "Duktape fatal error while unregistering native function");
+    }
+    duk_push_undefined(duk);
+    duk_put_global_string(duk, global_name);
+    duk_set_top(duk, 0);
+    ctx->fatal_jmp_active = 0;
+
+    memset(&ctx->native_functions[native_index], 0,
+            sizeof(ctx->native_functions[native_index]));
+    if (ctx->native_count > 0) {
+        ctx->native_count--;
+    }
+    return PSCRIPT_OK;
+}
+
+PSCRIPT_API unsigned long PScript_GetNativeFunctionCount(HANDLE hScript)
+{
+    pscript_context *ctx;
+
+    ctx = (pscript_context *) hScript;
+    return (ctx != NULL) ? ctx->native_count : 0;
 }
 
 /* Evaluate while preserving the caller's Duktape value stack. The public

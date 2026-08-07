@@ -359,7 +359,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 89
+#define TEST_MAX_NUMBER 94
 
 static int test_config_space(char c)
 {
@@ -15485,6 +15485,442 @@ static BOOL test89_script_limits(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 90 - synchronous native JSON function                           */
+/* A WM host can expose one small operation without sharing Duktape      */
+/* headers or heap ownership. Arguments and the return value cross the   */
+/* boundary as compact JSON only.                                       */
+/* -------------------------------------------------------------------- */
+typedef struct test90_native_state {
+    int calls;
+    int bad_args;
+} test90_native_state;
+
+static int test90_native_add(void *pw, const char *args_json, int args_len,
+        char *out_json, int out_capacity, int *out_len)
+{
+    test90_native_state *state;
+    const char *value;
+
+    state = (test90_native_state *) pw;
+    if (state == NULL || args_json == NULL || out_json == NULL ||
+            out_len == NULL || out_capacity < 3) {
+        return 1;
+    }
+    state->calls++;
+    value = NULL;
+    if (args_len == 5 && memcmp(args_json, "[2,3]", 5) == 0) {
+        value = "5";
+    } else if (args_len == 5 && memcmp(args_json, "[4,6]", 5) == 0) {
+        value = "10";
+    }
+    if (value == NULL) {
+        state->bad_args++;
+        return 1;
+    }
+    out_json[0] = value[0];
+    if (value[1] != '\0') {
+        out_json[1] = value[1];
+        out_json[2] = '\0';
+        *out_len = 2;
+    } else {
+        out_json[1] = '\0';
+        *out_len = 1;
+    }
+    return 0;
+}
+
+static BOOL test90_script_native_call(void)
+{
+    HANDLE hScript;
+    test90_native_state state;
+    int rc;
+    unsigned long native_count;
+    const char *result;
+    char detail[320];
+
+    memset(&state, 0, sizeof(state));
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 90 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(hScript, "nativeAdd", -1,
+            test90_native_add, &state);
+    native_count = PScript_GetNativeFunctionCount(hScript);
+    if (rc != PSCRIPT_OK || native_count != 1) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "register rc=%d count=%lu", rc, native_count);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 90 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_Evaluate(hScript, "nativeAdd(2,3);", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "5") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "evaluate rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 90 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "nativeAdd", -1, "[4,6]", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "10") != 0 ||
+            state.calls != 2 || state.bad_args != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "call rc=%d result=%s calls=%d bad=%d",
+                rc, result, state.calls, state.bad_args);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 90 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 90 OK",
+            "native JSON callback received [2,3] and [4,6], then "
+            "returned 5 and 10 through both public call paths.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 91 - structured JSON crosses the native callback boundary        */
+/* -------------------------------------------------------------------- */
+static int test91_native_echo(void *pw, const char *args_json, int args_len,
+        char *out_json, int out_capacity, int *out_len)
+{
+    (void) pw;
+    if (args_json == NULL || out_json == NULL || out_len == NULL ||
+            args_len < 0 || args_len >= out_capacity) {
+        return 1;
+    }
+    memcpy(out_json, args_json, (size_t) args_len);
+    out_json[args_len] = '\0';
+    *out_len = args_len;
+    return 0;
+}
+
+static BOOL test91_script_native_json(void)
+{
+    HANDLE hScript;
+    int rc;
+    const char *result;
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 91 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(hScript, "nativeEcho", -1,
+            test91_native_echo, NULL);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_CallGlobalJson(hScript, "nativeEcho", -1,
+                "[{\"x\":1},true]", -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "[{\"x\":1},true]") != 0) {
+        char detail[320];
+
+        _snprintf(detail, sizeof(detail) - 1,
+                "rc=%d result=%s error=%s", rc, result,
+                PScript_GetError(hScript));
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 91 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 91 OK",
+            "object and boolean arguments crossed the callback as one "
+            "compact JSON array and round-tripped unchanged.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 92 - callback failure is recoverable                              */
+/* -------------------------------------------------------------------- */
+static int test92_native_fail(void *pw, const char *args_json, int args_len,
+        char *out_json, int out_capacity, int *out_len)
+{
+    (void) pw;
+    (void) args_json;
+    (void) args_len;
+    (void) out_json;
+    (void) out_capacity;
+    (void) out_len;
+    return 1;
+}
+
+static BOOL test92_script_native_failure(void)
+{
+    HANDLE hScript;
+    int rc;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 92 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(hScript, "nativeFail", -1,
+            test92_native_fail, NULL);
+    if (rc != PSCRIPT_OK) {
+        PScript_Destroy(hScript);
+        show_error(L"TEST 92 FAIL", "native failure registration failed");
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "nativeFail", -1, "[]", -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_CALL || strstr(error, "native callback") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "failure rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 92 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_Evaluate(hScript, "6 * 7;", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "recovery rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 92 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 92 OK",
+            "a host callback failure became a recoverable call error; "
+            "the same context then evaluated 6 * 7 as 42.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 93 - replace and unregister a native function                     */
+/* -------------------------------------------------------------------- */
+static int test93_native_one(void *pw, const char *args_json, int args_len,
+        char *out_json, int out_capacity, int *out_len)
+{
+    (void) pw;
+    (void) args_json;
+    (void) args_len;
+    if (out_json == NULL || out_len == NULL || out_capacity < 2) {
+        return 1;
+    }
+    out_json[0] = '1';
+    out_json[1] = '\0';
+    *out_len = 1;
+    return 0;
+}
+
+static int test93_native_two(void *pw, const char *args_json, int args_len,
+        char *out_json, int out_capacity, int *out_len)
+{
+    (void) pw;
+    (void) args_json;
+    (void) args_len;
+    if (out_json == NULL || out_len == NULL || out_capacity < 2) {
+        return 1;
+    }
+    out_json[0] = '2';
+    out_json[1] = '\0';
+    *out_len = 1;
+    return 0;
+}
+
+static BOOL test93_script_native_lifecycle(void)
+{
+    HANDLE hScript;
+    int rc;
+    unsigned long native_count;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 93 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(hScript, "mode", -1,
+            test93_native_one, NULL);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_CallGlobalJson(hScript, "mode", -1, "[]", -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "1") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "first rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 93 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(hScript, "mode", -1,
+            test93_native_two, NULL);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_CallGlobalJson(hScript, "mode", -1, "[]", -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "2") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "replace rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 93 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(hScript, "mode", -1);
+    native_count = PScript_GetNativeFunctionCount(hScript);
+    if (rc != PSCRIPT_OK || native_count != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "unregister rc=%d count=%lu", rc, native_count);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 93 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "mode", -1, "[]", -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_GLOBAL || strstr(error, "undefined") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "after unregister rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 93 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 93 OK",
+            "same global replaced callback 1 with callback 2, then "
+            "unregister removed it and released the native slot.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 94 - fixed native callback table limit                           */
+/* -------------------------------------------------------------------- */
+static int test94_native_zero(void *pw, const char *args_json, int args_len,
+        char *out_json, int out_capacity, int *out_len)
+{
+    (void) pw;
+    (void) args_json;
+    (void) args_len;
+    if (out_json == NULL || out_len == NULL || out_capacity < 2) {
+        return 1;
+    }
+    out_json[0] = '0';
+    out_json[1] = '\0';
+    *out_len = 1;
+    return 0;
+}
+
+static BOOL test94_script_native_limit(void)
+{
+    HANDLE hScript;
+    int rc;
+    int i;
+    char name[32];
+    char detail[320];
+    const char *result;
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 94 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    for (i = 0; i < (int) PSCRIPT_MAX_NATIVE_FUNCTIONS; i++) {
+        _snprintf(name, sizeof(name) - 1, "fn%d", i);
+        name[sizeof(name) - 1] = '\0';
+        rc = PScript_RegisterGlobalJsonFunction(hScript, name, -1,
+                test94_native_zero, NULL);
+        if (rc != PSCRIPT_OK) {
+            _snprintf(detail, sizeof(detail) - 1,
+                    "register %s rc=%d", name, rc);
+            detail[sizeof(detail) - 1] = '\0';
+            PScript_Destroy(hScript);
+            show_error(L"TEST 94 FAIL", detail);
+            return FALSE;
+        }
+    }
+    if (PScript_GetNativeFunctionCount(hScript) !=
+            PSCRIPT_MAX_NATIVE_FUNCTIONS) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "count=%lu/%lu",
+                PScript_GetNativeFunctionCount(hScript),
+                (unsigned long) PSCRIPT_MAX_NATIVE_FUNCTIONS);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 94 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(hScript, "overflow", -1,
+            test94_native_zero, NULL);
+    if (rc != PSCRIPT_ERROR_NATIVE_LIMIT) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "overflow rc=%d", rc);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 94 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(hScript, "fn0", -1);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_RegisterGlobalJsonFunction(hScript, "overflow", -1,
+                test94_native_zero, NULL);
+    }
+    if (rc != PSCRIPT_OK || PScript_GetNativeFunctionCount(hScript) !=
+            PSCRIPT_MAX_NATIVE_FUNCTIONS) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "reuse rc=%d count=%lu", rc,
+                PScript_GetNativeFunctionCount(hScript));
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 94 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_CallGlobalJson(hScript, "overflow", -1, "[]", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "0") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "reused call rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 94 FAIL", detail);
+        return FALSE;
+    }
+    for (i = 1; i < (int) PSCRIPT_MAX_NATIVE_FUNCTIONS; i++) {
+        _snprintf(name, sizeof(name) - 1, "fn%d", i);
+        name[sizeof(name) - 1] = '\0';
+        PScript_UnregisterGlobalJsonFunction(hScript, name, -1);
+    }
+    PScript_UnregisterGlobalJsonFunction(hScript, "overflow", -1);
+    if (PScript_GetNativeFunctionCount(hScript) != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "cleanup count=%lu",
+                PScript_GetNativeFunctionCount(hScript));
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 94 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 94 OK",
+            "filled all 16 fixed native slots, rejected the 17th, "
+            "reused a released slot, and cleaned up to zero.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -15579,6 +16015,8 @@ static int run_configured_tests(const unsigned char *selected,
         if (number != 80 && number != 81 && number != 82 && number != 83 &&
                 number != 84 && number != 85 && number != 86 &&
                 number != 87 && number != 88 && number != 89 &&
+                number != 90 && number != 91 && number != 92 &&
+                number != 93 && number != 94 &&
                 selected[number]) {
             needs_core = 1;
             break;
@@ -15689,6 +16127,11 @@ static int run_configured_tests(const unsigned char *selected,
         case 87: ok = test87_script_call_persistence(); break;
         case 88: ok = test88_script_call_errors(); break;
         case 89: ok = test89_script_limits(); break;
+        case 90: ok = test90_script_native_call(); break;
+        case 91: ok = test91_script_native_json(); break;
+        case 92: ok = test92_script_native_failure(); break;
+        case 93: ok = test93_script_native_lifecycle(); break;
+        case 94: ok = test94_script_native_limit(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

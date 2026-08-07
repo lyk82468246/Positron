@@ -22,13 +22,14 @@ extern "C" {
 #  define PSCRIPT_API __declspec(dllimport)
 #endif
 
-#define PSCRIPT_ABI_VERSION 0x00010004UL
+#define PSCRIPT_ABI_VERSION 0x00010005UL
 #define PSCRIPT_DEFAULT_BUDGET_MS 1000UL
 #define PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (512UL * 1024UL)
 #define PSCRIPT_MAX_SOURCE_BYTES (64UL * 1024UL)
 #define PSCRIPT_MAX_MODULE_NAME_BYTES 128UL
 #define PSCRIPT_MAX_GLOBAL_NAME_BYTES 128UL
 #define PSCRIPT_MAX_MODULES 16UL
+#define PSCRIPT_MAX_NATIVE_FUNCTIONS 16UL
 
 #define PSCRIPT_OK 0
 #define PSCRIPT_ERROR_ARGUMENT (-1)
@@ -44,6 +45,8 @@ extern "C" {
 #define PSCRIPT_ERROR_CALL (-11)
 #define PSCRIPT_ERROR_RESULT_TOO_LARGE (-12)
 #define PSCRIPT_ERROR_JSON (-13)
+#define PSCRIPT_ERROR_NATIVE (-14)
+#define PSCRIPT_ERROR_NATIVE_LIMIT (-15)
 
 /* Synchronous host-owned module source callbacks. Return 0 when source is
  * available and fill a byte buffer + non-negative byte count. The DLL calls
@@ -99,6 +102,18 @@ PSCRIPT_API int PScript_GetGlobalJson(HANDLE hScript, const char *name,
  * DOM, window, network or browser event bindings. */
 PSCRIPT_API int PScript_CallGlobalJson(HANDLE hScript, const char *name,
         int name_len, const char *args_json, int args_len);
+
+/* Synchronous host callback exposed as a global JavaScript function. The
+ * callback receives the compact JSON array of JS arguments and writes one
+ * JSON value to out_json. It must not re-enter or destroy hScript; pw is
+ * borrowed only for the duration of the callback. */
+typedef int (*PScriptJsonFunctionFn)(void *pw, const char *args_json,
+        int args_len, char *out_json, int out_capacity, int *out_len);
+PSCRIPT_API int PScript_RegisterGlobalJsonFunction(HANDLE hScript,
+        const char *name, int name_len, PScriptJsonFunctionFn fn, void *pw);
+PSCRIPT_API int PScript_UnregisterGlobalJsonFunction(HANDLE hScript,
+        const char *name, int name_len);
+PSCRIPT_API unsigned long PScript_GetNativeFunctionCount(HANDLE hScript);
 
 /* Evaluate one CommonJS-style module. The module source receives the usual
  * (module, exports, require) arguments. A successful name is cached for the

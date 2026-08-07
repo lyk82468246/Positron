@@ -36,6 +36,15 @@
   payload instead of truncating, and classify malformed arguments or missing
   functions as recoverable errors. TEST85-89 cover the bridge, persistence,
   error recovery, and limits; this still does not enable browser JavaScript.
+- ABI minor 1.5 adds `PScript_RegisterGlobalJsonFunction`,
+  `PScript_UnregisterGlobalJsonFunction`, and a native-function count query.
+  A fixed 16-slot table exposes synchronous host callbacks as JavaScript
+  globals; arguments and one return value cross the boundary as compact JSON.
+  Callbacks must not re-enter or destroy the context, and the DLL rejects
+  callback output at or above its 256-byte buffer instead of truncating.
+  TEST90-94 cover basic calls, structured JSON, callback failure recovery,
+  replacement/unregister, and the slot limit; this still does not enable
+  browser JavaScript.
 - The WM6 build selects Duktape's no-DST Windows date provider because the
   Windows Mobile SDK does not provide `SystemTimeToTzSpecificLocalTime`.
 - No DOM, `window`, network, fetch, or browser-core binding is added by this
@@ -43,6 +52,7 @@
   TEST82 covers the DLL heap limit and recovery path; TEST83 covers the
   module cache and lifecycle boundary; TEST84 covers the host source provider
   and on-demand dependency path; TEST85-89 cover persistent global values,
-  JSON calls and their limits. next123 ARMV4I build/staging passed; device
-  verification of TEST84/85-89 is pending together with the high-DPI Browse
-  gate.
+  JSON calls and their limits; TEST90-94 cover the synchronous native JSON
+  callback bridge. next123 ARMV4I build/staging passed; next124/125 ARMV4I
+  Debug builds passed; device verification of TEST84/85-94 is pending
+  together with the high-DPI Browse gate.
