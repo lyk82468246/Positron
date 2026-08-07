@@ -1,12 +1,12 @@
 # Positron Roadmap
 
 更新时间：2026-08-07
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next134 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-99 通过。next135 的表单长度约束、next136 的 TEST59 CSS 参考上下文修复和 next137 的非整数 DPI 设备像素换算均已完成 ARMV4I 构建/staging，设备复测待补。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next134 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-99 通过。next135 的表单长度约束、next136 的 TEST59 CSS 参考上下文修复、next137 的非整数 DPI 设备像素换算和 next138 的 TEST60 CSS 参考上下文隔离均已完成 ARMV4I 构建/staging，next138 设备复测待补。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
-**当前开发门禁（next137）**：next136 在 `screen=480x640 dpi=192` 下于 TEST59
-停止，next137 又在 `screen=320x320 dpi=128` 下定位并修正 `libcss` 设备像素比例
-先取整导致的 TEST20 `48->64` 错误。需要运行 `C:\WMShare\Positron-next137` 的
-默认配置，确认 TEST20/27 与 TEST59-77、TEST100-104 继续通过；不能把 96 DPI 当作
+**当前开发门禁（next138）**：next137 在 `screen=320x320 dpi=128` 下通过
+TEST13/20/27/43/44/56/58/59，TEST60 因离线 CSS 几何探针继承运行时 DPI 停止；
+next138 已隔离该探针并恢复真实设备视口。需要运行 `C:\WMShare\Positron-next138`
+的默认配置，确认 TEST60-77、TEST100-104 与 TEST13 继续通过；不能把 96 DPI 当作
 产品固定值，并保留日志头部。
 
 ## 总原则
@@ -24,7 +24,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 当前新增功能优先级：
 
-1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；next135 又加入 `minlength`/`maxlength`，但需随 next136 设备复测。`pattern`、类型/范围约束、custom validity 与 `invalid` 事件仍在后续扩展，不阻塞更大的“有无”缺口。
+1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；next135 又加入 `minlength`/`maxlength`，但需随 next138 设备复测。`pattern`、类型/范围约束、custom validity 与 `invalid` 事件仍在后续扩展，不阻塞更大的“有无”缺口。
 2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
 3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；next115 与 next116 的 float 候选均因 TEST79/TEST13 真实回归撤回。Float 方向暂挂，下一次重大布局实验改评估基础 Grid 或背景尺寸/重复，并继续保留 TEST13 深链门禁。
 4. **资源类型补齐**：脚本资源发现/下载/缓存接口已完成；next118 先把独立 JavaScript runtime DLL 做成其他 WM 程序可调用的最小产品面，再由后续批次评估浏览器消费；网页字体不扩展为普通语言字体工程。
@@ -46,6 +46,12 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - 根因是 vendored `libcss/src/select/unit.c` 的 `css_unit_len2device_px` 先把每 CSS 单位的设备比例取整；在 128 DPI，`1 CSS px * 128 / 96 = 1.333` 被截成 1。next137 保留固定点分数比例，完成整段长度换算后再做最终取整，因而同时覆盖图片、边框、字体、表格等所有设备像素长度。
 - 这批没有修改 TEST20/27 的动态断言，没有固定屏幕分辨率或 DPI；`scripts/test_c89ize.py` 四项回归通过，目标源 `c89ize.py` 报告 0 change，VS2008 ARMV4I 增量构建成功，仅保留既有 libcss `fpmath.h` 三条警告，staging 为 `C:\WMShare\Positron-next137`。
 - 设备复测要先确认运行目录使用同一包的 `positron_core.dll`/依赖 DLL，再检查 TEST13 三段页面、TEST20/27 图像尺寸和 TEST59-77/100-104；随后轮换另一种分辨率/DPI 做人工 Browse 视觉检查。
+
+### 6i. next138：隔离 TEST60 的 CSS 几何上下文（待设备验收）
+
+- next137 的 `screen=320x320 dpi=128` 日志在 TEST60 记录 `x=24/19/19/24`、`y=13/13/7/7`，正好是显式 CSS padding 在 `128/96` 设备比例下的换算结果；两列首段文字宽度仍相等，因此不是 selector、restyle 或 node-data 生命周期回归。
+- next138 在 TEST60 每个离线 style/layout pass 前显式使用 `PCore_SetViewport(width, height, 96)`，保留该测试的 CSS 像素契约；清理阶段调用真实设备视口恢复路径。产品 Browse、分辨率、设备 DPI 和 TEST60 断言均未被固定或放宽。
+- `scripts/test_c89ize.py` 四项回归、`scripts/audit_repo.py`、VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建与 staging 均通过，包为 `C:\WMShare\Positron-next138`；设备复测后再推进下一批“存在性优先”能力。
 
 ### 6g. next124：独立脚本 global/JSON 调用桥（已设备验收，纳入 next134）
 

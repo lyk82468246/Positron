@@ -2,7 +2,11 @@
 
 更新时间：2026-08-07
 当前分支：`main`  
-当前设备基线：next134 已在 `screen=240x320 dpi=96` 设备日志中通过 TEST13/20/27/43/44/56/58-77/80-99；next135 新增 TEST100-104 的 `minlength`/`maxlength` 表单约束，next136 隔离 TEST59 的 CSS 参考上下文，next137 修正非整数 DPI 的 `libcss` 设备像素换算，均已完成 ARMV4I 构建与 staging，设备验收待进行。next123/124/125/126/127/134/135 的 `positron_script.dll` 与表单扩展仍不接入冻结的浏览器 JS 路径。next123 以来 Browse 宿主使用物理像素/CSS 视口分离，并按设备报告的 DPI 换算；96 DPI 只是某次设备日志，不是产品固定值。next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、类型/范围 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
+当前开发候选：next137 已在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，
+随后 TEST60 因离线 CSS 几何夹具继承运行时 DPI 停止；next138 已让 TEST60 使用 96 DPI
+CSS 参考上下文，并在清理阶段恢复真实设备视口。ARMV4I 增量构建与
+`C:\WMShare\Positron-next138` staging 已通过，设备复测待进行。96 DPI 不是产品固定值。
+当前设备基线：next134 已在 `screen=240x320 dpi=96` 设备日志中通过 TEST13/20/27/43/44/56/58-77/80-99；next135 新增 TEST100-104 的 `minlength`/`maxlength` 表单约束，next136 隔离 TEST59 的 CSS 参考上下文，next137 在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，随后 TEST60 暴露独立离线夹具的 DPI 上下文问题；next138 已修正该夹具，均已完成 ARMV4I 构建与 staging，next138 设备验收待进行。next123/124/125/126/127/134/135 的 `positron_script.dll` 与表单扩展仍不接入冻结的浏览器 JS 路径。next123 以来 Browse 宿主使用物理像素/CSS 视口分离，并按设备报告的 DPI 换算；96 DPI 只是某次设备日志，不是产品固定值。next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、类型/范围 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
@@ -41,7 +45,16 @@ DLL 混装或 TEST20 断言隔离：`libcss/src/select/unit.c` 的通用
 所有非整数 DPI 比例的尺寸丢失。next137 保留分数比例，完成整段长度换算后才按最终
 设备像素取整；没有改成 48、没有固定 DPI，也没有修改 TEST20 断言。ARMV4I 增量
 构建成功（libcss 仅保留既有 3 条 fpmath 警告），包为
-`C:\WMShare\Positron-next137`，设备复测待进行。
+`C:\WMShare\Positron-next137`。设备复测确认 TEST13/20/27/43/44/56/58/59 通过，
+随后 TEST60 暴露独立离线夹具继承运行时 DPI 的问题。
+
+**next138（2026-08-07）**：TEST60 的断言检查显式 CSS 像素几何：首表头的
+`18px/10px`、普通表头的 `14px/10px`、正文 cell 的 `14px/5px`。next137 日志中
+出现 `x=24/19/19/24 y=13/13/7/7`，正好是 `128/96` 缩放后的值，而两列文本宽度
+仍相等，说明选择器、重选和 DOM node data 生命周期没有回归。next138 让该离线探针
+在每次 style/layout 前显式使用 `96 DPI` CSS 参考上下文，并在清理阶段恢复真实设备
+视口；没有放宽 TEST60 断言，也没有改变产品 DPI。ARMV4I 增量构建和
+`C:\WMShare\Positron-next138` staging 已通过，设备复测待进行。
 
 2026-08-07 的 next126 设备日志记录为 `screen=320x320 dpi=128`：TEST13 的
 `example.com`、IANA Example Domains、IANA Reserved Domains 三段导航均完成，随后

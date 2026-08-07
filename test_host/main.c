@@ -11449,10 +11449,8 @@ static BOOL test60_table_header_restyle(void)
     HANDLE hDoc;
     HANDLE hSheet;
     PCoreTableCellGeometry cells[4];
-    HDC screen_dc;
     int screen_w;
     int screen_h;
-    int dpi;
     int pass;
     int dx0;
     int dx1;
@@ -11473,12 +11471,6 @@ static BOOL test60_table_header_restyle(void)
     screen_h = GetSystemMetrics(SM_CYSCREEN);
     if (screen_w <= 0) { screen_w = 240; }
     if (screen_h <= 0) { screen_h = 320; }
-    screen_dc = GetDC(NULL);
-    dpi = (screen_dc != NULL) ?
-            GetDeviceCaps(screen_dc, LOGPIXELSY) : 96;
-    if (screen_dc != NULL) {
-        ReleaseDC(NULL, screen_dc);
-    }
 
     hDoc = PCore_ParseHTML(HTML, 0);
     hSheet = PCore_ParseCSS(CSS, 0,
@@ -11490,7 +11482,9 @@ static BOOL test60_table_header_restyle(void)
 
     for (pass = 0; pass < 2; pass++) {
         memset(cells, 0, sizeof(cells));
-        PCore_SetViewport(widths[pass], heights[pass], dpi);
+        /* This probe owns explicit CSS-pixel geometry. Keep its reference
+         * scale at 96 DPI; restore the real device context below. */
+        PCore_SetViewport(widths[pass], heights[pass], 96);
         if (PCore_StyleDocument(hDoc, hSheet) != 0 ||
                 PCore_LayoutDocument(hDoc, widths[pass],
                         heights[pass]) != 0 ||
@@ -11530,7 +11524,7 @@ static BOOL test60_table_header_restyle(void)
     ok = TRUE;
 
 cleanup:
-    PCore_SetViewport(screen_w, screen_h, dpi);
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
     if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
     if (!ok) {

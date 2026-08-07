@@ -34,7 +34,16 @@ NetSurf flex/layout，也不把 96 DPI 设为产品默认。
 vendored `libcss` 的 `css_unit_len2device_px`：它先把每 CSS 单位的设备比例取整，
 使 `128/96=1.333` 退化为 1。next137 改为保留固定点分数比例，乘完整 CSS 长度后再
 做最终正负向取整；这是通用设备像素修复，不是放宽断言或固定 96 DPI。ARMV4I
-构建/staging 已通过，`C:\WMShare\Positron-next137` 的设备复测待补。
+构建/staging 已通过；设备复测已确认 TEST13/20/27/43/44/56/58/59 通过，随后
+TEST60 停止。
+
+**当前状态更正（next138，2026-08-07）**：TEST60 的离线表格几何夹具仍把运行时
+`128 DPI` 传给 `PCore_SetViewport`，所以固定 CSS padding 被正确换算成设备像素后，
+断言看到 `24/19/19/24` 与 `13/13/7/7`，而不是预期的 CSS `18/14/14/18` 与
+`10/10/5/5`。文本宽度仍相等，未显示 selector/restyle 回归。next138 只为该显式
+CSS 像素探针安装 96 DPI 参考上下文，并在结束时恢复真实设备视口；ARMV4I
+构建/staging 已通过，`C:\WMShare\Positron-next138` 的设备复测待补。该修复不把
+96 DPI 变成产品默认，也不放宽 TEST60 断言。
 
 ## 已验证基线（不是完整功能声明）
 
