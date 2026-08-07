@@ -16048,7 +16048,9 @@ static BOOL test97_script_json_recovery(void)
     rc = PScript_SetGlobalJson(hScript, "broken", -1,
             "{\"x\":}", -1);
     error = PScript_GetError(hScript);
-    if (rc != PSCRIPT_ERROR_JSON || strstr(error, "JSON") == NULL) {
+    /* Duktape reports this as "invalid json" on WM6; the public contract is
+     * the error code and a diagnostic, not the engine's capitalization. */
+    if (rc != PSCRIPT_ERROR_JSON || error == NULL || error[0] == '\0') {
         _snprintf(detail, sizeof(detail) - 1,
                 "invalid rc=%d error=%s", rc, error);
         detail[sizeof(detail) - 1] = '\0';

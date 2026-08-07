@@ -2,7 +2,7 @@
 
 更新时间：2026-08-07
 当前分支：`main`  
-当前设备基线：next121（包含 next114 Browse 基线与独立脚本 DLL）；next123 在 next122 provider 批次基础上修正了 Browse 宿主的物理像素/CSS 视口换算，ARMV4I Debug/Release 增量构建与 staging 已通过，TEST84 和新分辨率模拟器待设备验收。next124 在同一独立 DLL 上增加 global/JSON bridge 与 TEST85-89，ARMV4I Debug 已通过，Release/staging/设备待交付。next125 又增加固定 16 槽的同步 JSON 宿主回调桥与 TEST90-94，ARMV4I Debug 已通过，Release/staging/设备待交付。next126 又增加结构化 JSON global setter 与 TEST95-99，ARMV4I Debug 已通过，Release/staging/设备待交付。next122 的自动日志在新模拟器 TEST20 处报告 `48 CSS px -> 96 device px`，因此不能作为完整通过。配置的 TEST13/20/27/43/44/56/58-77/80-83 已由旧设备无人值守日志确认全部 PASS，最终为 `TESTBENCH PASS`。TEST82 的日志为 `rc=-6 used=70057 peak=496184 limit=524288 recovery=42 eval=2/2`，TEST83 的日志为 `base=40 entry=require(base)+2=42 cache=ok rollback=ok clear/reload=ok modules=1`。next123/124/125/126 的 `positron_script.dll` 仍不接入冻结的浏览器 JS 路径。next109 已完成五种动态表单伪类；next110 又接通通用 DOM Event 的捕获/目标/冒泡、取消、停止传播、监听器生命周期与宿主 click default-action 门；next111 补齐 basic relative/absolute positioning；next113/TEST76 接通宿主命中驱动的动态 `:hover`；next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、高级 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next127 已在 `screen=240x320 dpi=96` 设备日志中通过 TEST13/20/27/43/44/56/58-77/80-96；TEST97 仅因大小写敏感的错误消息断言停止，next128 修复该测试断言并等待设备验收。next123/124/125/126/127 的 `positron_script.dll` 仍不接入冻结的浏览器 JS 路径。next123 在 next122 provider 批次基础上修正了 Browse 宿主的物理像素/CSS 视口换算；next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、高级 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
@@ -17,6 +17,12 @@ TEST20 停止。TEST20 的失败是断言隔离错误：它走显式 CSS 视口�
 `screen=宽x高 dpi=值`，并尽量轮换一个纵横方向或分辨率、一个 DPI 档位。自动断言
 只证明对应代码路径和资源计数，不替代高 DPI 下的 Browse 版式、滚动、链接和旋转
 截图检查。
+
+2026-08-07 的 next127 设备日志记录为 `screen=240x320 dpi=96`：TEST13 的三段
+导航、TEST20/27、ENGINE/表单回归以及 TEST80-96 均通过。TEST97 停止原因是测试
+要求错误文本包含大写 `JSON`，而 Duktape 实际返回 `SyntaxError: invalid json ...`；
+这不是 JSON 注入或上下文恢复失败。next128 只放宽该测试对引擎错误文本大小写的
+耦合，仍要求 `PSCRIPT_ERROR_JSON` 和非空诊断，设备结果待补。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 

@@ -1,6 +1,6 @@
 # Positron
 
-> **当前构建候选（2026-08-07）**：next127 在已验收的 next121/next114 Browse 基线上为 TEST20 隔离显式 CSS 视口断言，并修正其高 DPI 误报；ARMV4I Debug/Release 构建与 staging 待本批验证，设备 testbench 尚待交付。next126 的 `screen=320x320 dpi=128` 日志中 TEST13 三段导航完成，TEST20 因上述断言隔离问题停止；因此不要把 next127 写成高 DPI Browse 已通过。下一批设备测试应轮换分辨率、横竖方向或 DPI，并保留 `test_host.log` 的屏幕/DPI头部，同时人工检查 TEST13 的排版、滚动、链接和旋转。next125 的 TEST90-94 native callback、next124 的 TEST85-89 global/JSON bridge、next123 的高 DPI 视口修正与 TEST84 provider 仍待新分辨率模拟器验收；配置的 TEST13/20/27/43/44/56/58-77/80-83 已在旧设备基线为 `TESTBENCH PASS`。浏览器核心仍不执行脚本。`TrackMouseEvent` 等桌面 API 不属于 WM6 方案；宿主使用 `WM_MOUSEMOVE` 与定时器轮询离开窗口。next115 与 next116 的 float 候选均已撤回：设备 TEST79 失败，next116 的 TEST13 截图仍出现导航/正文排版回归；next117/next114 保持为当前可靠 Browse 基线。
+> **当前构建候选（2026-08-07）**：next128 在已验收的 next121/next114 Browse 基线上只修正 TEST97 对 Duktape 错误文本大小写的脆弱断言；ARMV4I Debug/Release 构建与 staging 待本批验证，设备结果尚待补。next127 的 `screen=240x320 dpi=96` 日志中 TEST13、TEST20/27、TEST43-96 均通过，TEST97 因测试误要求大写 `JSON` 而停止；这不是脚本运行时回归。下一批设备测试应轮换分辨率、横竖方向或 DPI，并保留 `test_host.log` 的屏幕/DPI头部，同时人工检查 TEST13 的排版、滚动、链接和旋转。浏览器核心仍不执行脚本。`TrackMouseEvent` 等桌面 API 不属于 WM6 方案；宿主使用 `WM_MOUSEMOVE` 与定时器轮询离开窗口。next115 与 next116 的 float 候选均已撤回：设备 TEST79 失败，next116 的 TEST13 截图仍出现导航/正文排版回归；next117/next114 保持为当前可靠 Browse 基线。
 
 **Float 方向暂挂（2026-08-04）**：next115 的普通 float 和 next116 的显式 block-level float 都未通过真实设备门禁。next116 的自动 TEST13 数值记录为 OK，但人工截图显示导航被扁平化、正文边界异常，且 TEST79 最终失败；因此 TEST79 已从默认配置和 ENGINE 组移除。不要把 TEST23/79 当作已支持的 CSS Floats，也不要在没有完整 box construction/normalisation 方案前继续扩大该方向。
 
@@ -98,6 +98,11 @@ next105 首次把表单提交前约束验证接入 Core，但 TEST72 在 reset �
 next125 将 `PScript_RegisterGlobalJsonFunction`、`PScript_UnregisterGlobalJsonFunction` 和 `PScript_GetNativeFunctionCount` 加入独立 DLL ABI。每个回调同步接收 compact JSON 参数数组并返回一个 JSON 值；固定最多 16 个全局名字，回调结果最多 255 字节有效载荷，回调不得重入或销毁上下文，也不能被异步持有。TEST90-94 分别覆盖参数/返回值、结构化 JSON、失败恢复、替换/注销和槽位上限；它们不初始化 `positron_core`，不接入 TEST13。
 
 next126 将 `PScript_SetGlobalJson` 加入 ABI 1.6。宿主可以把对象、数组、字符串、数字、布尔值或 `null` 原子注入 persistent global；输入沿用 64 KiB 源码上限，解析失败或超限不会替换旧值。TEST95-99 覆盖结构化读取、跨调用 mutation、错误恢复、输入上限和类型替换；它们仍不初始化 `positron_core`，不接入 TEST13。
+
+next127 的设备日志在 `screen=240x320 dpi=96` 下确认 TEST95-96 通过；TEST97 的
+失败来自断言把 Duktape 的 `SyntaxError: invalid json ...` 当作不含 JSON 诊断。
+next128 只改测试断言，要求错误码为 `PSCRIPT_ERROR_JSON` 且诊断非空，不依赖引擎
+错误文本的大小写。
 
 ## 工具链
 

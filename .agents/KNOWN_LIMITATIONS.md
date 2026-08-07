@@ -6,7 +6,7 @@
 
 ## 已验证基线（不是完整功能声明）
 
-### 高 DPI / 大分辨率视口边界（next123，待设备验收）
+### 高 DPI / 大分辨率视口边界（next127，非 96 DPI 仍待设备验收）
 
 NetSurf 的标准坐标约定是：CSS media/vw/vh 使用 CSS 像素视口，
 `layout_document` 与 GDI 重绘使用设备像素。next122 的新模拟器日志首次暴露
@@ -24,6 +24,12 @@ TEST20 停止；这不是图像缓存或脚本 provider 的失败。next123 增�
 隔离到 96 DPI CSS 视口，并修正了失败信息中的字段顺序。下一轮设备批次应轮换
 分辨率、横竖方向或 DPI，并保留日志头部的屏幕尺寸与 DPI；即使自动 testbench 全部
 通过，也必须人工检查 TEST13 的排版、滚动、链接和旋转。
+
+next127 随后的设备日志为 `screen=240x320 dpi=96`：TEST13、TEST20、TEST27、
+TEST43-96 均通过，TEST97 因测试把 Duktape 的小写 `invalid json` 错误文本误当成
+失败而停止。next128 已将 TEST97 改为验证 `PSCRIPT_ERROR_JSON` 与非空诊断，保留
+非法 JSON 后继续求值 `42` 及 JSON `null` 的后续恢复断言；这不改变 DLL 的运行时
+行为，也不等于高 DPI Browse 已验收。
 
 | 范围 | 已验证事实 | 不代表 |
 |---|---|---|
