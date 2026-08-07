@@ -949,6 +949,68 @@ PSCRIPT_API int PScript_SetGlobalBoolean(HANDLE hScript, const char *name,
     return PSCRIPT_OK;
 }
 
+PSCRIPT_API int PScript_SetGlobalJson(HANDLE hScript, const char *name,
+        int name_len, const char *value_json, int value_len)
+{
+    pscript_context *ctx;
+    duk_context *duk;
+    char global_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+    size_t value_length;
+    int rc;
+
+    ctx = (pscript_context *) hScript;
+    if (value_json == NULL) {
+        if (ctx != NULL) {
+            pscript_copy(ctx->error, sizeof(ctx->error),
+                    "JSON value is NULL");
+        }
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (value_len < 0) {
+        value_length = strlen(value_json);
+    } else {
+        value_length = (size_t) value_len;
+    }
+    if (value_length > PSCRIPT_MAX_SOURCE_BYTES) {
+        if (ctx != NULL) {
+            pscript_copy(ctx->error, sizeof(ctx->error),
+                    "JSON value exceeds PSCRIPT_MAX_SOURCE_BYTES");
+        }
+        return PSCRIPT_ERROR_SOURCE_TOO_LARGE;
+    }
+    rc = pscript_global_prepare(ctx, name, name_len, global_name,
+            sizeof(global_name));
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+
+    duk = ctx->duk;
+    ctx->timed_out = 0;
+    ctx->memory_limited = 0;
+    ctx->deadline = (ctx->budget_ms == 0) ? 0 :
+            GetTickCount() + ctx->budget_ms;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        return pscript_fatal_error(ctx,
+                "Duktape fatal error while setting JSON global");
+    }
+    duk_push_c_function(duk, pscript_json_decode, 1);
+    duk_push_lstring(duk, value_json, (duk_size_t) value_length);
+    rc = duk_pcall(duk, 1);
+    if (rc != 0) {
+        rc = pscript_protected_error(ctx, PSCRIPT_ERROR_JSON);
+        duk_set_top(duk, 0);
+        ctx->deadline = 0;
+        ctx->fatal_jmp_active = 0;
+        return rc;
+    }
+    duk_put_global_string(duk, global_name);
+    duk_set_top(duk, 0);
+    ctx->deadline = 0;
+    ctx->fatal_jmp_active = 0;
+    return PSCRIPT_OK;
+}
+
 PSCRIPT_API int PScript_GetGlobalJson(HANDLE hScript, const char *name,
         int name_len)
 {

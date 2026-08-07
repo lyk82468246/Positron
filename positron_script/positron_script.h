@@ -22,7 +22,7 @@ extern "C" {
 #  define PSCRIPT_API __declspec(dllimport)
 #endif
 
-#define PSCRIPT_ABI_VERSION 0x00010005UL
+#define PSCRIPT_ABI_VERSION 0x00010006UL
 #define PSCRIPT_DEFAULT_BUDGET_MS 1000UL
 #define PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (512UL * 1024UL)
 #define PSCRIPT_MAX_SOURCE_BYTES (64UL * 1024UL)
@@ -89,6 +89,12 @@ PSCRIPT_API int PScript_SetGlobalNumber(HANDLE hScript, const char *name,
         int name_len, double value);
 PSCRIPT_API int PScript_SetGlobalBoolean(HANDLE hScript, const char *name,
         int name_len, int value);
+/* Set one persistent JSON value. Objects and arrays are copied into the
+ * Duktape context; the input is consumed during this call and is not
+ * retained by the DLL. JSON input uses the same source-size limit as
+ * PScript_Evaluate. */
+PSCRIPT_API int PScript_SetGlobalJson(HANDLE hScript, const char *name,
+        int name_len, const char *value_json, int value_len);
 
 /* Return one persistent global as compact JSON through PScript_GetResult.
  * Undefined/non-JSON values and encoded results over the DLL result buffer

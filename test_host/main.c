@@ -359,7 +359,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 94
+#define TEST_MAX_NUMBER 99
 
 static int test_config_space(char c)
 {
@@ -15921,6 +15921,287 @@ static BOOL test94_script_native_limit(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 95 - structured JSON global injection                            */
+/* -------------------------------------------------------------------- */
+static BOOL test95_script_json_global(void)
+{
+    HANDLE hScript;
+    int rc;
+    const char *result;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 95 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_SetGlobalJson(hScript, "profile", -1,
+            "{\"name\":\"wm6\",\"flags\":[true,false],\"count\":7}",
+            -1);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_Evaluate(hScript,
+                "profile.name+':' + profile.flags[1] + ':' + profile.count;",
+                -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "wm6:false:7") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "evaluate rc=%d result=%s error=%s", rc, result,
+                PScript_GetError(hScript));
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 95 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_GetGlobalJson(hScript, "profile", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strstr(result, "\"name\":\"wm6\"") == NULL ||
+            strstr(result, "\"flags\":[true,false]") == NULL ||
+            strstr(result, "\"count\":7") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "get rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 95 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 95 OK",
+            "host injected one object with nested booleans; JavaScript "
+            "read it and JSON getter returned the structured value.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 96 - injected objects remain mutable across public calls          */
+/* -------------------------------------------------------------------- */
+static BOOL test96_script_json_persistence(void)
+{
+    static const char *SOURCE =
+            "function bump(){state.count+=3;"
+            "state.items.push('ok');return state.count;}";
+    HANDLE hScript;
+    int rc;
+    const char *result;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 96 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_SetGlobalJson(hScript, "state", -1,
+            "{\"count\":2,\"items\":[\"a\"]}", -1);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_Evaluate(hScript, SOURCE, -1);
+    }
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_CallGlobalJson(hScript, "bump", -1, "[]", -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "5") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "call rc=%d result=%s error=%s", rc, result,
+                PScript_GetError(hScript));
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 96 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_GetGlobalJson(hScript, "state", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strstr(result, "\"count\":5") == NULL ||
+            strstr(result, "\"items\":[\"a\",\"ok\"]") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "persist rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 96 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 96 OK",
+            "an injected object survived evaluation, a JSON function call "
+            "mutated it, and the later getter observed both changes.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 97 - malformed JSON, null, and context recovery                  */
+/* -------------------------------------------------------------------- */
+static BOOL test97_script_json_recovery(void)
+{
+    HANDLE hScript;
+    int rc;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 97 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_SetGlobalJson(hScript, "broken", -1,
+            "{\"x\":}", -1);
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_JSON || strstr(error, "JSON") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "invalid rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 97 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_Evaluate(hScript, "6 * 7;", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "42") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "recovery rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 97 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_SetGlobalJson(hScript, "nothing", -1, "null", -1);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_GetGlobalJson(hScript, "nothing", -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "null") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "null rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 97 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 97 OK",
+            "malformed JSON was rejected, the context still evaluated 42, "
+            "and JSON null remained a valid persistent global value.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 98 - input limit is rejected before replacing the old value      */
+/* -------------------------------------------------------------------- */
+static BOOL test98_script_json_limit(void)
+{
+    static char oversized[PSCRIPT_MAX_SOURCE_BYTES + 2];
+    HANDLE hScript;
+    int rc;
+    const char *result;
+    const char *error;
+    char detail[320];
+
+    memset(oversized, 'x', sizeof(oversized) - 1);
+    oversized[sizeof(oversized) - 1] = '\0';
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 98 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_SetGlobalNumber(hScript, "keep", -1, 1);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_SetGlobalJson(hScript, "keep", -1, oversized,
+                (int) (sizeof(oversized) - 1));
+    }
+    error = PScript_GetError(hScript);
+    if (rc != PSCRIPT_ERROR_SOURCE_TOO_LARGE ||
+            strstr(error, "PSCRIPT_MAX_SOURCE_BYTES") == NULL) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "oversized rc=%d error=%s", rc, error);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 98 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_GetGlobalJson(hScript, "keep", -1);
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "1") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "preserve rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 98 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 98 OK",
+            "an over-limit JSON input was rejected before Duktape and "
+            "the previous global value remained 1.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 99 - replace a persistent global across JSON types                */
+/* -------------------------------------------------------------------- */
+static BOOL test99_script_json_replace(void)
+{
+    HANDLE hScript;
+    int rc;
+    const char *result;
+    char detail[320];
+
+    hScript = PScript_Create(2000);
+    if (hScript == NULL) {
+        show_error(L"TEST 99 FAIL", "PScript_Create returned NULL");
+        return FALSE;
+    }
+    rc = PScript_SetGlobalJson(hScript, "value", -1, "[1,2,3]", -1);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_GetGlobalJson(hScript, "value", -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "[1,2,3]") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "array rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 99 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_SetGlobalJson(hScript, "value", -1,
+            "{\"left\":8,\"right\":9}", -1);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_Evaluate(hScript, "value.left + value.right;", -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "17") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "object rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 99 FAIL", detail);
+        return FALSE;
+    }
+    rc = PScript_SetGlobalJson(hScript, "value", -1, "\"done\"", -1);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_GetGlobalJson(hScript, "value", -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || strcmp(result, "\"done\"") != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "string rc=%d result=%s", rc, result);
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 99 FAIL", detail);
+        return FALSE;
+    }
+    PScript_Destroy(hScript);
+
+    show_info(L"TEST 99 OK",
+            "one global was replaced as array, object, then string; "
+            "each public read/evaluation saw the new JSON type.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -16016,7 +16297,9 @@ static int run_configured_tests(const unsigned char *selected,
                 number != 84 && number != 85 && number != 86 &&
                 number != 87 && number != 88 && number != 89 &&
                 number != 90 && number != 91 && number != 92 &&
-                number != 93 && number != 94 &&
+                number != 93 && number != 94 && number != 95 &&
+                number != 96 && number != 97 && number != 98 &&
+                number != 99 &&
                 selected[number]) {
             needs_core = 1;
             break;
@@ -16132,6 +16415,11 @@ static int run_configured_tests(const unsigned char *selected,
         case 92: ok = test92_script_native_failure(); break;
         case 93: ok = test93_script_native_lifecycle(); break;
         case 94: ok = test94_script_native_limit(); break;
+        case 95: ok = test95_script_json_global(); break;
+        case 96: ok = test96_script_json_persistence(); break;
+        case 97: ok = test97_script_json_recovery(); break;
+        case 98: ok = test98_script_json_limit(); break;
+        case 99: ok = test99_script_json_replace(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

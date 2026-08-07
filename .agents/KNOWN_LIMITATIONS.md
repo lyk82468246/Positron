@@ -42,7 +42,7 @@ TEST20 停止；这不是图像缓存或脚本 provider 的失败。next123 增�
 
 ### next125：独立脚本 JSON 宿主回调桥（待设备验收）
 
-`PScript_RegisterGlobalJsonFunction` 通过固定 16 槽表把宿主同步回调暴露成 JavaScript global。参数是 compact JSON 数组，回调写回一个 JSON 值；回调不得重入/销毁上下文，也不能异步保存指针。DLL 只接受小于 256 字节的返回缓冲，失败、非法 JSON 和调用异常会回到既有 recoverable error 路径。TEST90-94 覆盖这条 ABI，但 Debug 构建通过不等于设备/第三方程序验收；它仍不提供 DOM、window、fetch、网络或浏览器 JS 开关。
+`PScript_RegisterGlobalJsonFunction` 通过固定 16 槽表把宿主同步回调暴露成 JavaScript global。参数是 compact JSON 数组，回调写回一个 JSON 值；回调不得重入/销毁上下文，也不能异步保存指针。DLL 只接受小于 256 字节的返回缓冲，失败、非法 JSON 和调用异常会回到既有 recoverable error 路径。TEST90-94 覆盖这条 ABI；next126 又提供 `PScript_SetGlobalJson`，用受保护 decode 注入结构化 JSON，输入最多 64 KiB，失败/超限保持原 global。TEST95-99 覆盖该 setter，但 Debug 构建通过不等于设备/第三方程序验收；它仍不提供 DOM、window、fetch、网络或浏览器 JS 开关。
 
 ## 真实页面观察到的未完成项
 
@@ -98,6 +98,7 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **资源预算**：`test_host` 最多暂存 64 个去重 URL、合计 2 MiB 原始字节，成功提交时 core 会复制所需数据后立刻释放事务。该值用于限制 WM 峰值，是可替换的宿主策略，不是 `positron_core` ABI 或最终页面的硬上限。
 - **后续实现**：单响应 `Content-Length`/progress 回调已实现并由 TEST3/13 确认；`@import` 事务已由 TEST45 确认；next114/TEST77 已建立脚本资源发现/缓存 ABI，next118/TEST80 又提供不依赖浏览器的独立 `positron_script.dll`；next119/TEST81 的 timeout、源码长度拒绝和恢复断言已由设备日志确认；next120/TEST82 的 runtime heap 配额与 next121/TEST83 的模块生命周期均由设备日志确认，但尚未接入 TEST13。next123 的模块宿主源 provider 已实现但 TEST84 尚待设备确认；next124 的 global/JSON bridge 已实现但 TEST85-89 尚待设备确认；高 DPI Browse 也必须由新模拟器视觉复查；DOM/window/fetch/native bridge、整页多资源聚合进度、web fonts 和更广资源类型仍未实现。
 - **next125 待验收**：TEST90-94 已实现同步 JSON 宿主回调注册/注销、替换、失败恢复和固定槽位上限；Release/staging 与设备 testbench 仍待完成。它是独立 DLL 的 native operation 边界，不是浏览器 JavaScript 或异步 native bridge。
+- **next126 待验收**：TEST95-99 已实现 structured JSON global setter、跨调用 mutation、malformed/null 恢复、64 KiB 输入拒绝和 JSON 类型替换；Release/staging 与设备 testbench 仍待完成。setter 复制值进 context，不保留宿主输入指针，但仍受 Duktape heap 与 255 字节结果读取限制。
 - **CSS import 边界**：最多追踪 16 层递归和本次样式 pass 的 64 个解析表；失败、循环和超深导入按 libcss 契约注册空表。成功导入复用每 document 最多 32 份/512 KiB 的 CSS 字节缓存；不含 HTTP 缓存失效、跨源安全策略或独立持久缓存。URL 合并由宿主回调负责，WM 宿主使用 `InternetCombineUrlA`，core 本身不绑定传输层。
 - **并发约束**：在确认 libdom/libcss/NetSurf 移植层的线程安全前，不能让 worker 与 UI 同时操作同一 document 或共享全局 viewport context；过期请求只丢弃结果，不使用强制终止线程。
 - **第一阶段完成条件**：慢网主文档 GET 期间旧页可滚动，loading 可见；成功后才 swap，错误保留当前页面，关闭窗口不会遗留线程。

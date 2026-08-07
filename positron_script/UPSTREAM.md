@@ -45,6 +45,13 @@
   TEST90-94 cover basic calls, structured JSON, callback failure recovery,
   replacement/unregister, and the slot limit; this still does not enable
   browser JavaScript.
+- ABI minor 1.6 adds `PScript_SetGlobalJson`. The host can inject a copied
+  JSON object, array, string, number, boolean, or null without including
+  Duktape headers; input uses the existing 64 KiB source limit and malformed
+  or oversized input leaves the previous global untouched. TEST95-99 cover
+  structured reads, mutation across public calls, malformed/null recovery,
+  input-limit preservation, and type replacement; this still does not enable
+  browser JavaScript.
 - The WM6 build selects Duktape's no-DST Windows date provider because the
   Windows Mobile SDK does not provide `SystemTimeToTzSpecificLocalTime`.
 - No DOM, `window`, network, fetch, or browser-core binding is added by this
@@ -53,6 +60,7 @@
   module cache and lifecycle boundary; TEST84 covers the host source provider
   and on-demand dependency path; TEST85-89 cover persistent global values,
   JSON calls and their limits; TEST90-94 cover the synchronous native JSON
-  callback bridge. next123 ARMV4I build/staging passed; next124/125 ARMV4I
-  Debug builds passed; device verification of TEST84/85-94 is pending
+  callback bridge; TEST95-99 cover structured JSON global injection. next123
+  ARMV4I build/staging passed; next124/125/126 ARMV4I Debug builds passed;
+  device verification of TEST84/85-99 is pending
   together with the high-DPI Browse gate.
