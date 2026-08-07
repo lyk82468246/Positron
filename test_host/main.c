@@ -11208,6 +11208,12 @@ static BOOL test58_inline_author_style(void)
     int total_h;
     int screen_w;
     int screen_h;
+    int screen_dpi;
+    int expected_article_w;
+    int expected_row0;
+    int expected_row1;
+    int expected_row2;
+    int expected_total_h;
     int i;
     char msg[256];
 
@@ -11215,10 +11221,20 @@ static BOOL test58_inline_author_style(void)
     memset(row_kind, 0, sizeof(row_kind));
     memset(row_value, 0, sizeof(row_value));
     memset(colors, 0, sizeof(colors));
-    /* The geometry half is an explicit CSS-pixel contract. Clear any
-     * device-backed viewport left by a preceding render test so the 160px
-     * article and 25/50% rows stay comparable at every device DPI. */
-    PCore_SetViewport(230, 260, 96);
+    /* Use the real device viewport for this geometry probe. The fixture's
+     * CSS lengths remain fixed, while expected geometry is converted to
+     * physical pixels from the reported device DPI. */
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    screen_dpi = test_host_device_dpi();
+    expected_article_w = MulDiv(160, screen_dpi, 96);
+    expected_row0 = MulDiv(20, screen_dpi, 96);
+    expected_row1 = MulDiv(40, screen_dpi, 96);
+    expected_row2 = MulDiv(20, screen_dpi, 96);
+    expected_total_h = expected_row0 + expected_row1 + expected_row2;
+    test_host_set_device_viewport(screen_w, screen_h);
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(EXTRA_CSS, sizeof(EXTRA_CSS) - 1,
             "http://positron.local/inline-extra.css");
@@ -11255,7 +11271,7 @@ static BOOL test58_inline_author_style(void)
     if (PCore_StyleDocumentEx2(hDoc, hSheet,
             "http://positron.local/inline/page.html",
             wm_combine_url, NULL, NULL, NULL) != 0 ||
-            PCore_LayoutDocument(hDoc, 230, 260) != 0 ||
+            PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0 ||
             PCore_NodeBox(hDoc, "article", NULL, NULL, &article_w, NULL) != 0 ||
             PCore_NodeBox(hDoc, "nav", NULL, NULL, NULL, NULL) == 0) {
         PCore_FreeStylesheet(hSheet);
@@ -11271,18 +11287,21 @@ static BOOL test58_inline_author_style(void)
         }
     }
     total_h = rows[0].row_height + rows[1].row_height + rows[2].row_height;
-    if (i != 3 || article_w != 160 || row_kind[0] != 1 ||
+    if (i != 3 || abs(article_w - expected_article_w) > 1 ||
+            row_kind[0] != 1 ||
             row_value[0] != 25 || row_kind[1] != 1 ||
             row_value[1] != 50 || row_kind[2] != 0 ||
-            total_h < 79 || total_h > 81 ||
-            rows[0].row_height < 19 || rows[0].row_height > 21 ||
-            rows[1].row_height < 39 || rows[1].row_height > 41 ||
-            rows[2].row_height < 19 || rows[2].row_height > 21) {
+            abs(total_h - expected_total_h) > 2 ||
+            abs(rows[0].row_height - expected_row0) > 1 ||
+            abs(rows[1].row_height - expected_row1) > 1 ||
+            abs(rows[2].row_height - expected_row2) > 1) {
         _snprintf(msg, sizeof(msg) - 1,
-                "layout i=%d article=%d rows=%d/%d/%d kinds=%d:%d,%d:%d,%d",
-                i, article_w, rows[0].row_height, rows[1].row_height,
-                rows[2].row_height, row_kind[0], row_value[0],
-                row_kind[1], row_value[1], row_kind[2]);
+                "dpi=%d article=%d/%d rows=%d/%d/%d expect=%d/%d/%d kinds=%d:%d,%d:%d,%d",
+                screen_dpi, article_w, expected_article_w,
+                rows[0].row_height, rows[1].row_height,
+                rows[2].row_height, expected_row0, expected_row1,
+                expected_row2, row_kind[0], row_value[0], row_kind[1],
+                row_value[1], row_kind[2]);
         msg[sizeof(msg) - 1] = '\0';
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
@@ -11290,10 +11309,6 @@ static BOOL test58_inline_author_style(void)
         return FALSE;
     }
 
-    screen_w = GetSystemMetrics(SM_CXSCREEN);
-    screen_h = GetSystemMetrics(SM_CYSCREEN);
-    if (screen_w <= 0) { screen_w = 240; }
-    if (screen_h <= 0) { screen_h = 320; }
     test_host_set_device_viewport(screen_w, screen_h);
     if (PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
         PCore_FreeStylesheet(hSheet);
