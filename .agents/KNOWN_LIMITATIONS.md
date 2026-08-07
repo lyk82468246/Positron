@@ -31,6 +31,12 @@ TEST43-96 均通过，TEST97 因测试把 Duktape 的小写 `invalid json` 错�
 非法 JSON 后继续求值 `42` 及 JSON `null` 的后续恢复断言；这不改变 DLL 的运行时
 行为，也不等于高 DPI Browse 已验收。
 
+next128 的新设备日志为 `screen=240x240 dpi=96`，TEST13/20/27、TEST43-99 全部
+通过。next129 进一步撤销 TEST20 中临时的 `PCore_SetViewport(..., 96)`：该离线
+图片测试现在也通过 `PCore_SetDeviceViewport` 读取实际 DPI，并以
+`MulDiv(48, dpi, 96)` 检查物理盒尺寸。96 是 CSS 像素定义中的参考 DPI，不是设备
+锁定值；非 96 DPI 的设备仍需用 next129 实测验证。
+
 | 范围 | 已验证事实 | 不代表 |
 |---|---|---|
 | CSS 媒体查询与 token | TEST 21 已在设备确认运行时 viewport/DPI、旧式 min/max-width 及整数像素 MQ4 `width <=` / `width <`；TEST38-39 又确认同表顶层 `:root` token 语义与正式 redraw。 | 所有媒体特性、MQ4 范围、元素作用域或完整 custom properties 均已覆盖。 |

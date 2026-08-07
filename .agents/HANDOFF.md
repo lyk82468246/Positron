@@ -24,6 +24,11 @@ TEST20 停止。TEST20 的失败是断言隔离错误：它走显式 CSS 视口�
 这不是 JSON 注入或上下文恢复失败。next128 只放宽该测试对引擎错误文本大小写的
 耦合，仍要求 `PSCRIPT_ERROR_JSON` 和非空诊断，设备结果待补。
 
+next128 的设备日志随后在 `screen=240x240 dpi=96` 下完成 `TESTBENCH PASS`，覆盖
+TEST13、TEST20、TEST27、TEST43-99。next129 将 TEST20 从临时的 96 DPI 显式 CSS
+视口改回真实 `PCore_SetDeviceViewport` 路径：48 CSS px 的期望值按当前设备 DPI
+换算为物理像素；96 只保留为 CSS 规范的参考基准，不再作为设备 DPI 强制值。
+
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
 ## 项目目标
