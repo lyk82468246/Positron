@@ -3,6 +3,10 @@
 更新时间：2026-08-07
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。next118 已加入独立 `positron_script.dll`，next119 的 TEST80/81 已通过设备验证；next120 又加入 TEST82 的 512 KiB runtime heap 上限、峰值遥测和超限后恢复；next121 新增 CommonJS 风格模块生命周期 ABI 并通过设备验证；next122 又加入宿主模块源码 provider，构建/staging 已通过、TEST84 待设备验收；next123 又分离了 Browse 的设备像素与 CSS 视口，构建/staging 已通过、新模拟器待验收；next124 又加入 global primitive/JSON call ABI 与 TEST85-89，ARMV4I Debug 构建已通过、设备待验收；next125 又加入固定槽位的同步 JSON native callback 与 TEST90-94，ARMV4I Debug 构建已通过、设备待验收；next126 又加入结构化 JSON global setter 与 TEST95-99，ARMV4I Debug 构建已通过、设备待验收。已验证配置的 TEST13/20/27/43/44/56/58-77/80-83 最终为 `TESTBENCH PASS`，next121 现为旧设备基线，不改变浏览器 JS 默认关闭的基线。通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
+**当前开发门禁（next132）**：next131 在 `320x320 dpi=128` 的 TEST20 返回
+`48x48` 而动态期望为 `64x64`；next132 已固定布局入口的设备上下文快照并完成
+ARMV4I 增量构建，必须先用同设备日志复测，再推进其他高 DPI 或视觉目标。
+
 ## 总原则
 
 Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。

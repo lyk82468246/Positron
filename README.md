@@ -1,5 +1,10 @@
 # Positron
 
+**最新门禁（next132，2026-08-07）**：next131 在 `320x320 dpi=128` 设备上 TEST13
+三段导航通过，但 TEST20 动态 DPI 断言实际为 `48x48`、期望 `64x64`；next132 已将
+设备视口状态提前固定为布局上下文快照，并完成 VS2008 ARMV4I Debug 增量构建，
+待同设备复测。不能用自动 `OK` 或固定 96 DPI 替代高 DPI 验收。
+
 > **当前构建候选（2026-08-07）**：next131 在已验收的 next121/next114 Browse 基线上修正 TEST56 离线 CSS 几何段继承设备 DPI的问题；ARMV4I Debug/Release 构建与 staging 待本批验证。next130 的 `screen=480x480 dpi=192` 日志中 TEST13/20/27/43/44 通过，TEST56 暴露 `105 CSS px -> 210 device px` 的测试视口混用；下一批仍应轮换分辨率、横竖方向或 DPI，并保留 `test_host.log` 的屏幕/DPI头部，同时人工检查 TEST13 的排版、滚动、链接和旋转。96 只作为离线 CSS 契约的参考 DPI，Browse 与可见渲染路径使用设备回报 DPI。浏览器核心仍不执行脚本。`TrackMouseEvent` 等桌面 API 不属于 WM6 方案；宿主使用 `WM_MOUSEMOVE` 与定时器轮询离开窗口。next115 与 next116 的 float 候选均已撤回：设备 TEST79 失败，next116 的 TEST13 截图仍出现导航/正文排版回归；next117/next114 保持为当前可靠 Browse 基线。
 
 **Float 方向暂挂（2026-08-04）**：next115 的普通 float 和 next116 的显式 block-level float 都未通过真实设备门禁。next116 的自动 TEST13 数值记录为 OK，但人工截图显示导航被扁平化、正文边界异常，且 TEST79 最终失败；因此 TEST79 已从默认配置和 ENGINE 组移除。不要把 TEST23/79 当作已支持的 CSS Floats，也不要在没有完整 box construction/normalisation 方案前继续扩大该方向。

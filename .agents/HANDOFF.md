@@ -6,6 +6,12 @@
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
+**状态更正（next132，2026-08-07）**：next131 在 `screen=320x320 dpi=128` 下的 TEST13
+三段导航均完成，但 TEST20 动态 DPI 断言实际得到 `48x48`，期望 `64x64` device px，
+因此不能把 next131 记为该设备的全通过。next132 已将设备视口决定和单位上下文快照
+提前到正式构盒之前，并在 TEST20/27 的样式完成后重新绑定同一设备视口；VS2008
+`Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建已通过，待同设备复测。
+
 2026-08-07 的 next126 设备日志记录为 `screen=320x320 dpi=128`：TEST13 的
 `example.com`、IANA Example Domains、IANA Reserved Domains 三段导航均完成，随后
 TEST20 停止。TEST20 的失败是断言隔离错误：它走显式 CSS 视口的离线缓存图片路径，
@@ -38,6 +44,9 @@ next130 随后的日志为 `screen=480x480 dpi=192`：TEST13/20/27/43/44 通过�
 报告 `70/70/70` 与 `sum=210`。这是离线 TEST56 几何段继承 192 DPI 后把 105 CSS px
 换算为 210 设备 px，并非 table 算法回归。next131 已把该段显式设为 96 DPI CSS
 契约，同时让 TEST56 可见渲染段使用设备视口；58-99 的设备结果待补。
+
+next132 保留 TEST20/27 的严格物理尺寸断言，不固定设备 DPI；若 128 DPI 复测仍返回
+`48x48`，下一步先记录 core DLL 的实际加载版本并检查 WM6 全局 DLL 复用。
 
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 

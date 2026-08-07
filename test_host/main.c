@@ -6101,6 +6101,10 @@ static BOOL test20_cached_img(void)
         show_error(L"TEST 20 FAIL", "CSS styling failed");
         return FALSE;
     }
+    /* Reassert the device contract at the layout boundary. This is harmless
+     * for media selection and protects offline tests from a preceding
+     * document transaction changing the process-global viewport state. */
+    test_host_set_device_viewport(vw, vh);
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_GetBoxStats(hDoc, &first_box_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
@@ -6282,6 +6286,9 @@ static BOOL test27_cached_svg_img(void)
         show_error(L"TEST 27 FAIL", "CSS styling failed");
         return FALSE;
     }
+    /* Keep the explicit image geometry check tied to the same device
+     * viewport that the subsequent NetSurf layout consumes. */
+    test_host_set_device_viewport(vw, vh);
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_GetBoxStats(hDoc, &first_box_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||

@@ -3397,6 +3397,7 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     pcore_render *st;
     PCoreLayoutStats stats;
     PCoreBoxStats stats_box;
+    css_unit_ctx layout_unit_ctx;
     DWORD total_started;
     DWORD started;
 
@@ -3412,6 +3413,20 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
             root == NULL) {
         return 1;   /* PCore_StyleDocument must have run first (styles per node) */
     }
+
+    /* Freeze the viewport contract before building anonymous boxes. Device
+     * callers have already installed CSS dimensions with
+     * PCore_SetDeviceViewport; legacy callers still pass CSS dimensions
+     * directly. Anonymous style composition reads this context too, so
+     * delaying the decision until after construction can mix CSS and device
+     * pixels on a high-DPI relayout. */
+    if (pcore_device_viewport_pending != 0) {
+        pcore_device_viewport_pending = 0;
+    } else {
+        PCore_SetViewport(viewport_w, viewport_h, 0);
+    }
+    memcpy(&layout_unit_ctx, pcore_get_unit_ctx(),
+            sizeof(layout_unit_ctx));
 
     pcore_nsshim_init();
 
@@ -3440,21 +3455,11 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     st->vw = viewport_w;
     st->vh = viewport_h;
 
-    /* Legacy callers pass CSS viewport dimensions directly. The device-aware
-     * host path has already installed CSS dimensions through
-     * PCore_SetDeviceViewport; keep those dimensions while passing physical
-     * pixels to NetSurf's layout_document. */
-    if (pcore_device_viewport_pending != 0) {
-        pcore_device_viewport_pending = 0;
-    } else {
-        PCore_SetViewport(viewport_w, viewport_h, 0);
-    }
-
     memset(&st->content, 0, sizeof(st->content));
     st->content.layout = tree;
     st->content.bctx = (int *) ctx;
     st->content.font_func = &pcore_gdi_layout;
-    memcpy((void *) &st->content.unit_len_ctx, pcore_get_unit_ctx(),
+    memcpy((void *) &st->content.unit_len_ctx, &layout_unit_ctx,
             sizeof(st->content.unit_len_ctx));
     st->content.background_colour = 0x00ffffff;
 
