@@ -1,13 +1,12 @@
 # Positron Roadmap
 
 更新时间：2026-08-07
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next134 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-99 通过。next135 的表单长度约束、next136 的 TEST59 CSS 参考上下文修复、next137 的非整数 DPI 设备像素换算、next138 的 TEST60、next139 的 TEST63、next141 的 TEST62 和 next142 的 TEST75 均待最新设备复测。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next142 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-104 通过并记录 `TESTBENCH PASS`，next141 已在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58-74。next135 的表单长度约束、next136 的 TEST59 CSS 参考上下文修复、next137 的非整数 DPI 设备像素换算、next138 的 TEST60、next139 的 TEST63、next141 的 TEST62 和 next142 的 TEST75 均已有构建或设备结果。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
 **当前开发门禁（next142）**：next141 在 `screen=320x320 dpi=128` 下通过
-TEST13/20/27/43/44/56/58-74，TEST75 暴露定位布局断言没有等比缩放；next142 改为
-使用实际 DPI 和 `dpi/96` 换算定位夹具的宽高与偏移。需要运行
-`C:\WMShare\Positron-next142` 的默认配置，确认 TEST75-77、TEST100-104 与 TEST13
-继续通过；不能把 96 DPI 当作产品固定值，并保留日志头部。
+TEST13/20/27/43/44/56/58-74，next142 修正 TEST75 后在 `screen=240x320 dpi=96`
+默认配置下通过 TEST13/20/27/43/44/56/58-77/80-104，并记录 `TESTBENCH PASS`。
+下一批应轮换另一组分辨率/DPI；不能把 96 DPI 当作产品固定值，并保留日志头部。
 
 ## 总原则
 
@@ -70,11 +69,11 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - 控件状态、绘制路径、隐藏 input 抑制和可见 TEST62 设备视口均未改变；这次只修正测试断言的单位换算。
 - C89 回归、仓库审计、VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建与 staging 已通过，设备复测后再继续 TEST63-77/100-104。
 
-### 6n. next142：TEST75 定位几何按设备 DPI 等比换算（待设备验收）
+### 6n. next142：TEST75 定位几何按设备 DPI 等比换算（已设备验收）
 
 - next141 在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58-74，TEST75 返回 `main=0,0 240x160`、`relative=13,36 40x27`、`absolute=80,40 33x20`、`inline=133,67 27x16`；这些正是 CSS 几何按 `128/96` 换算后的正确设备像素，失败只来自 96-DPI 硬编码断言。
 - next142 只把 TEST75 的固定 `180/120/20/30/25/15/100/50/20/12px` 断言改为 `MulDiv(css_px, dpi, 96)`，保留定位构盒、绘制和可见页面路径。
-- C89 回归、仓库审计、VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建与 staging 已通过，设备复测后再继续 TEST76-77/100-104。
+- C89 回归、仓库审计、VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建、staging 和 `screen=240x320 dpi=96` 设备验收均通过；日志为 `TESTBENCH PASS`。下一批轮换分辨率/DPI 后再继续存在性优先的能力。
 
 ### 6g. next124：独立脚本 global/JSON 调用桥（已设备验收，纳入 next134）
 

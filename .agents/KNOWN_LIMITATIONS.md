@@ -67,7 +67,8 @@ probe 与 hidden-input 检查安装固定 96 DPI；这不是可接受的动态 D
 **当前状态更正（next142，2026-08-07）**：TEST75 的定位夹具保留 CSS 尺寸，断言将
 宽高、绝对偏移和 relative 偏移统一按实际设备 DPI 的 `dpi/96` 等比换算；定位构盒、
 绘制和可见页面路径未改变。ARMV4I 构建与
-`C:\WMShare\Positron-next142` staging 已通过，设备复测待补。
+`C:\WMShare\Positron-next142` staging 已通过；`screen=240x320 dpi=96` 设备日志确认
+TEST13、20、27、43、44、56、58-77、80-104 全部通过并记录 `TESTBENCH PASS`。
 
 ## 已验证基线（不是完整功能声明）
 
