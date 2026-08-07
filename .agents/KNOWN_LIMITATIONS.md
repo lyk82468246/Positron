@@ -29,6 +29,13 @@ ARMV4I 构建/staging 通过，随后在 `screen=240x320 dpi=96` 设备日志中
 再恢复运行时设备视口；ARMV4I 构建/staging 已通过，设备复测待补。该修复不改变
 NetSurf flex/layout，也不把 96 DPI 设为产品默认。
 
+**当前状态更正（next137，2026-08-07）**：next136 在 `screen=320x320 dpi=128` 下
+先通过 TEST13，随后 TEST20 报 `first box=48x48; expect 64x64 device px`。根因在
+vendored `libcss` 的 `css_unit_len2device_px`：它先把每 CSS 单位的设备比例取整，
+使 `128/96=1.333` 退化为 1。next137 改为保留固定点分数比例，乘完整 CSS 长度后再
+做最终正负向取整；这是通用设备像素修复，不是放宽断言或固定 96 DPI。ARMV4I
+构建/staging 已通过，`C:\WMShare\Positron-next137` 的设备复测待补。
+
 ## 已验证基线（不是完整功能声明）
 
 ### 高 DPI / 大分辨率视口边界（next134，非 96 DPI 仍需继续轮换验收）

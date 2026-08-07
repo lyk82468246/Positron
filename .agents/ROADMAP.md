@@ -1,11 +1,13 @@
 # Positron Roadmap
 
 更新时间：2026-08-07
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next134 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-99 通过。next135 的表单长度约束与 next136 的 TEST59 CSS 参考上下文修复已完成 ARMV4I 构建/staging，设备复测待补。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next134 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-99 通过。next135 的表单长度约束、next136 的 TEST59 CSS 参考上下文修复和 next137 的非整数 DPI 设备像素换算均已完成 ARMV4I 构建/staging，设备复测待补。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
-**当前开发门禁（next136）**：next135 在 `screen=480x640 dpi=192` 下于 TEST59
-停止，next136 已隔离显式 CSS 几何夹具的 96-DPI 参考上下文。需要重新运行默认配置，
-确认 TEST59-77 和 TEST100-104 继续通过；不能把 96 DPI 当作产品固定值，并保留日志头部。
+**当前开发门禁（next137）**：next136 在 `screen=480x640 dpi=192` 下于 TEST59
+停止，next137 又在 `screen=320x320 dpi=128` 下定位并修正 `libcss` 设备像素比例
+先取整导致的 TEST20 `48->64` 错误。需要运行 `C:\WMShare\Positron-next137` 的
+默认配置，确认 TEST20/27 与 TEST59-77、TEST100-104 继续通过；不能把 96 DPI 当作
+产品固定值，并保留日志头部。
 
 ## 总原则
 
@@ -37,6 +39,13 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - next127/128 的设备日志已分别在 `240x320 dpi=96` 与 `240x240 dpi=96` 完成 TEST13/20/27/43-99 的自动回归；next129 把 TEST20 的离线图片断言改回 `PCore_SetDeviceViewport` 与实际 DPI 物理尺寸换算，等待非 96 DPI 设备验收。
 - next129 在 `480x640 dpi=192` 下已验证 TEST13/20 的动态换算；TEST27 发现 SVG 离线测试仍有固定 `120x60` 设备像素断言，next130 已改为实际 DPI 尺寸与采样坐标，等待设备复测。
 - next130 在 `480x480 dpi=192` 下验证 TEST27/43/44 后，TEST56 暴露离线 CSS 几何段继承设备 DPI；next131 已隔离该段的 96 DPI CSS 契约，同时保留可见窗口的真实设备视口。
+
+### 6h. next137：非整数 DPI 的通用设备像素换算（待设备验收）
+
+- next136 在 `screen=320x320 dpi=128` 下的日志证明 TEST13 网络/导航路径完成，但 TEST20 的 48 CSS px 图片盒仍为 48 device px，动态期望为 64。该值不是断言错误，也不是把测试改回 96 DPI 能解决的测试隔离问题。
+- 根因是 vendored `libcss/src/select/unit.c` 的 `css_unit_len2device_px` 先把每 CSS 单位的设备比例取整；在 128 DPI，`1 CSS px * 128 / 96 = 1.333` 被截成 1。next137 保留固定点分数比例，完成整段长度换算后再做最终取整，因而同时覆盖图片、边框、字体、表格等所有设备像素长度。
+- 这批没有修改 TEST20/27 的动态断言，没有固定屏幕分辨率或 DPI；`scripts/test_c89ize.py` 四项回归通过，目标源 `c89ize.py` 报告 0 change，VS2008 ARMV4I 增量构建成功，仅保留既有 libcss `fpmath.h` 三条警告，staging 为 `C:\WMShare\Positron-next137`。
+- 设备复测要先确认运行目录使用同一包的 `positron_core.dll`/依赖 DLL，再检查 TEST13 三段页面、TEST20/27 图像尺寸和 TEST59-77/100-104；随后轮换另一种分辨率/DPI 做人工 Browse 视觉检查。
 
 ### 6g. next124：独立脚本 global/JSON 调用桥（已设备验收，纳入 next134）
 

@@ -347,15 +347,20 @@ css_fixed css_unit_len2device_px(
 			ctx->viewport_width,
 			unit,
 			ctx->pw);
+	css_fixed converted;
 
 	px_per_unit = css_unit_css2device_px(px_per_unit, ctx->device_dpi);
 
-	/* Ensure we round px_per_unit to the nearest whole number of pixels:
-	 * the use of FIXTOINT() below will truncate. */
-	px_per_unit += F_0_5;
-
-	/* Calculate total number of pixels */
-	return FMUL(length, TRUNCATEFIX(px_per_unit));
+	/* Keep fractional device-pixel scale until the complete length has been
+	 * converted. Rounding the scale before multiplying loses DPI information:
+	 * at 128 DPI, 1 CSS px is 1.333 device px and must not become 1 px. */
+	converted = FMUL(length, px_per_unit);
+	if (converted >= 0) {
+		converted += F_0_5;
+	} else {
+		converted -= F_0_5;
+	}
+	return converted;
 }
 
 /**

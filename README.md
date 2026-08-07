@@ -1,16 +1,18 @@
 # Positron
 
-**最新门禁（next136，2026-08-07）**：next134 在 `screen=240x320 dpi=96`
+**最新门禁（next137，2026-08-07）**：next134 在 `screen=240x320 dpi=96`
 设备上已确认 TEST13/20/27/43/44/56/58-77/80-99 全部通过。next135 在
 `screen=480x640 dpi=192` 运行时，TEST13/20/27/43/44/56/58 通过后，TEST59 暴露
 离线 CSS 几何夹具继承高 DPI 上下文的问题；next136 只隔离该测试的 CSS 96-DPI
-参考上下文并恢复设备视口，ARMV4I Debug 增量构建与 staging 已通过，等待设备复测。
+参考上下文并恢复设备视口，随后 next137 修正 `libcss` 设备像素比例先取整导致的
+非整数 DPI 尺寸丢失，ARMV4I Debug 增量构建与 staging 已通过，设备复测待进行。
 96 DPI 只是离线 CSS 参考，不是产品固定 DPI；仍需轮换分辨率/DPI，并人工复查 TEST13。
 
-> **当前构建候选（2026-08-07）**：next136 修复 TEST59 的测试上下文隔离，不改
-> NetSurf flex/layout 实现，也不放宽 `x=25,w=174/270` 断言。next135 的
-> `minlength`/`maxlength` 与 TEST100-104 仍需在本批设备运行；浏览器核心仍不执行脚本，
-> float 候选保持撤回，next37/next114 Browse 路径仍是回归基线。
+> **当前构建候选（2026-08-07）**：next137 修正 vendored `libcss` 的非整数 DPI
+> 设备像素换算，不放宽 TEST20 的动态物理尺寸断言，也不固定分辨率或 DPI。next136
+> 的 TEST59 上下文隔离和 next135 的 `minlength`/`maxlength`、TEST100-104 仍需在
+> 本批设备运行；浏览器核心仍不执行脚本，float 候选保持撤回，next37/next114 Browse
+> 路径仍是回归基线。
 
 **Float 方向暂挂（2026-08-04）**：next115 的普通 float 和 next116 的显式 block-level float 都未通过真实设备门禁。next116 的自动 TEST13 数值记录为 OK，但人工截图显示导航被扁平化、正文边界异常，且 TEST79 最终失败；因此 TEST79 已从默认配置和 ENGINE 组移除。不要把 TEST23/79 当作已支持的 CSS Floats，也不要在没有完整 box construction/normalisation 方案前继续扩大该方向。
 
