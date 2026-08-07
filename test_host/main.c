@@ -11606,7 +11606,7 @@ static BOOL test61_nsoption_font_minimum(void)
 /* -------------------------------------------------------------------- */
 /* TEST 62 - static NetSurf checkbox/radio form-gadget redraw baseline  */
 /* -------------------------------------------------------------------- */
-static int test62_toggle_probe(const char *type, int selected,
+static int test62_toggle_probe(const char *type, int selected, int dpi,
         int *out_w, int *out_h, int *out_darkness, int *out_state)
 {
     static const char *CSS =
@@ -11634,9 +11634,8 @@ static int test62_toggle_probe(const char *type, int selected,
             "<!doctype html><html><body><input type=%s%s></body></html>",
             type, selected ? " checked" : "");
     html[sizeof(html) - 1] = '\0';
-    /* This probe owns a 64x48 CSS-pixel surface; keep it independent from
-     * the device-backed viewport left by the preceding render test. */
-    PCore_SetViewport(64, 48, 96);
+    /* Keep the probe's CSS surface fixed, but preserve the device's scale. */
+    PCore_SetViewport(64, 48, dpi);
     hDoc = PCore_ParseHTML(html, 0);
     hSheet = PCore_ParseCSS(CSS, 0,
             "http://positron.local/form-toggle-probe.css");
@@ -11738,22 +11737,28 @@ static BOOL test62_form_toggles(void)
     HANDLE hSheet = NULL;
     int screen_w;
     int screen_h;
+    int screen_dpi;
+    int expected_min;
+    int expected_max;
     char msg[256];
 
     screen_w = GetSystemMetrics(SM_CXSCREEN);
     screen_h = GetSystemMetrics(SM_CYSCREEN);
+    screen_dpi = test_host_device_dpi();
     if (screen_w <= 0) { screen_w = 240; }
     if (screen_h <= 0) { screen_h = 320; }
+    expected_min = MulDiv(14, screen_dpi, 96);
+    expected_max = MulDiv(24, screen_dpi, 96);
 
-    if (test62_toggle_probe("checkbox", 0, &checkbox_off_w,
+    if (test62_toggle_probe("checkbox", 0, screen_dpi, &checkbox_off_w,
                 &checkbox_off_h, &checkbox_off_darkness,
                 &checkbox_off_state) != 0 ||
-            test62_toggle_probe("checkbox", 1, &checkbox_on_w,
+            test62_toggle_probe("checkbox", 1, screen_dpi, &checkbox_on_w,
                 &checkbox_on_h, &checkbox_on_darkness,
                 &checkbox_on_state) != 0 ||
-            test62_toggle_probe("radio", 0, &radio_off_w,
+            test62_toggle_probe("radio", 0, screen_dpi, &radio_off_w,
                 &radio_off_h, &radio_off_darkness, &radio_off_state) != 0 ||
-            test62_toggle_probe("radio", 1, &radio_on_w,
+            test62_toggle_probe("radio", 1, screen_dpi, &radio_on_w,
                 &radio_on_h, &radio_on_darkness, &radio_on_state) != 0) {
         test_host_set_device_viewport(screen_w, screen_h);
         show_error(L"TEST 62 FAIL", "toggle probe setup/redraw failed");
@@ -11763,22 +11768,24 @@ static BOOL test62_form_toggles(void)
             checkbox_off_h != checkbox_on_h ||
             radio_off_w != radio_on_w ||
             radio_off_h != radio_on_h ||
-            checkbox_off_w < 14 || checkbox_off_w > 24 ||
-            checkbox_off_h < 14 || checkbox_off_h > 24 ||
-            radio_off_w < 14 || radio_off_w > 24 ||
-            radio_off_h < 14 || radio_off_h > 24 ||
+            checkbox_off_w < expected_min || checkbox_off_w > expected_max ||
+            checkbox_off_h < expected_min || checkbox_off_h > expected_max ||
+            radio_off_w < expected_min || radio_off_w > expected_max ||
+            radio_off_h < expected_min || radio_off_h > expected_max ||
             checkbox_off_state != 0 || checkbox_on_state != 1 ||
             radio_off_state != 0 || radio_on_state != 1 ||
             checkbox_on_darkness <= checkbox_off_darkness ||
             radio_on_darkness <= radio_off_darkness) {
         _snprintf(msg, sizeof(msg) - 1,
                 "cb=%dx%d dark=%d/%d state=%d/%d\n"
-                "radio=%dx%d dark=%d/%d state=%d/%d",
+                "radio=%dx%d dark=%d/%d state=%d/%d\n"
+                "expect=%d..%d at %d DPI",
                 checkbox_off_w, checkbox_off_h, checkbox_off_darkness,
                 checkbox_on_darkness, checkbox_off_state, checkbox_on_state,
                 radio_off_w, radio_off_h, radio_off_darkness,
                 radio_on_darkness,
-                radio_off_state, radio_on_state);
+                radio_off_state, radio_on_state,
+                expected_min, expected_max, screen_dpi);
         msg[sizeof(msg) - 1] = '\0';
         test_host_set_device_viewport(screen_w, screen_h);
         show_error(L"TEST 62 FAIL", msg);
