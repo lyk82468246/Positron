@@ -359,7 +359,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 99
+#define TEST_MAX_NUMBER 104
 
 static int test_config_space(char c)
 {
@@ -16257,6 +16257,293 @@ static BOOL test99_script_json_replace(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* -------------------------------------------------------------------- */
+/* TEST 100-104 - text length constraint validation                      */
+/* -------------------------------------------------------------------- */
+static int test100_form_prepare(const char *html, HANDLE *document,
+        HANDLE *sheet, int *submit_x, int *submit_y)
+{
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "input,textarea,button{display:block;margin:4px 0;width:180px}"
+        "textarea{height:36px}";
+
+    *document = NULL;
+    *sheet = NULL;
+    *document = PCore_ParseHTML(html, strlen(html));
+    *sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/form-length.css");
+    if (*document == NULL || *sheet == NULL ||
+            PCore_StyleDocument(*document, *sheet) != 0 ||
+            PCore_LayoutDocument(*document, 240, 320) != 0 ||
+            !test68_control_center(*document, 7, 0, submit_x, submit_y)) {
+        if (*sheet != NULL) {
+            PCore_FreeStylesheet(*sheet);
+            *sheet = NULL;
+        }
+        if (*document != NULL) {
+            PCore_FreeDocument(*document);
+            *document = NULL;
+        }
+        return 0;
+    }
+    return 1;
+}
+
+static void test100_form_cleanup(HANDLE document, HANDLE sheet)
+{
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+}
+
+static BOOL test100_form_length_constraints(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><h1>Text length rules</h1>"
+        "<form action=/length method=get>"
+        "<input name=short value=ab minlength=3>"
+        "<input name=long value=abcdef maxlength=5>"
+        "<input name=exact value=abc minlength=3 maxlength=3>"
+        "<textarea name=notes minlength=2 maxlength=4>abcd</textarea>"
+        "<input name=locked value=x minlength=4 readonly>"
+        "<input name=off value=x minlength=4 disabled>"
+        "<button type=submit name=go value=send>Send</button></form>"
+        "</body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.invalid_count != 2 ||
+            validation.first_control_kind != 3 ||
+            validation.first_flags != PCORE_VALIDITY_TOO_SHORT ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 5) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 100 FAIL", "initial length flags or blocking failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 100 OK",
+            "minlength/maxlength covered text, textarea and "
+            "read-only/disabled exemptions.");
+    return TRUE;
+}
+
+static BOOL test101_form_length_update(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/update method=get>"
+        "<input name=value value=abc minlength=3 maxlength=5>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "ab") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TOO_SHORT ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 5 ||
+            PCore_TextInputSetValue(document, 0, "abcde") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "abcdef") != 3 ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/update") != 0 ||
+            strcmp(body, "value=abcde&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 101 FAIL", "dynamic text length update failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 101 OK",
+            "DOM text updates changed minlength validity; maxlength "
+            "blocked an over-limit native edit and submission recovered.");
+    return TRUE;
+}
+
+static BOOL test102_textarea_length(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/area method=get>"
+        "<textarea name=notes minlength=3 maxlength=5>ab</textarea>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TOO_SHORT ||
+            PCore_TextInputSetValue(document, 0, "abcdef") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TOO_LONG ||
+            PCore_TextInputSetValue(document, 0, "abcd") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(body, "notes=abcd&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 102 FAIL", "textarea length validation failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 102 OK",
+            "textarea minlength and maxlength covered too-short, too-long "
+            "and boundary values after native updates.");
+    return TRUE;
+}
+
+static BOOL test103_form_length_exemptions(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/exempt method=get>"
+        "<input name=locked value=x required minlength=4 readonly>"
+        "<input name=off value=x required maxlength=0 disabled>"
+        "<input name=ignored value=x minlength=bad maxlength=bad>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            validation.invalid_count != 0 ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/exempt") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 103 FAIL", "exemption or malformed attribute failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 103 OK",
+            "disabled/read-only controls stayed barred from validation and "
+            "malformed length attributes were ignored.");
+    return TRUE;
+}
+
+static BOOL test104_form_first_length_geometry(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/first method=get>"
+        "<input name=long value=abcdef maxlength=5>"
+        "<input name=short value=a minlength=2>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    PCoreTextInputInfo text_info;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    memset(&text_info, 0, sizeof(text_info));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            PCore_TextInputInfo(document, 0, &text_info, NULL, 0) != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.invalid_count != 2 ||
+            validation.first_flags != PCORE_VALIDITY_TOO_LONG ||
+            validation.first_x != text_info.x ||
+            validation.first_y != text_info.y ||
+            validation.first_width != text_info.width ||
+            validation.first_height != text_info.height ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 5 ||
+            PCore_TextInputSetValue(document, 0, "abc") != 0 ||
+            PCore_TextInputSetValue(document, 1, "ab") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(body, "long=abc&short=ab&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 104 FAIL", "first invalid length geometry failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 104 OK",
+            "first too-long control reported its geometry and flags; after "
+            "both edits the same form submitted successfully.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -16475,6 +16762,11 @@ static int run_configured_tests(const unsigned char *selected,
         case 97: ok = test97_script_json_recovery(); break;
         case 98: ok = test98_script_json_limit(); break;
         case 99: ok = test99_script_json_replace(); break;
+        case 100: ok = test100_form_length_constraints(); break;
+        case 101: ok = test101_form_length_update(); break;
+        case 102: ok = test102_textarea_length(); break;
+        case 103: ok = test103_form_length_exemptions(); break;
+        case 104: ok = test104_form_first_length_geometry(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

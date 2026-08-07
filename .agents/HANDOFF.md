@@ -2,7 +2,7 @@
 
 更新时间：2026-08-07
 当前分支：`main`  
-当前设备基线：next127 已在 `screen=240x320 dpi=96` 设备日志中通过 TEST13/20/27/43/44/56/58-77/80-96；TEST97 仅因大小写敏感的错误消息断言停止，next128 修复该测试断言并等待设备验收。next123/124/125/126/127 的 `positron_script.dll` 仍不接入冻结的浏览器 JS 路径。next123 在 next122 provider 批次基础上修正了 Browse 宿主的物理像素/CSS 视口换算；next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、高级 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
+当前设备基线：next134 已在 `screen=240x320 dpi=96` 设备日志中通过 TEST13/20/27/43/44/56/58-77/80-99；next135 新增 TEST100-104 的 `minlength`/`maxlength` 表单约束，ARMV4I 构建与 staging 已完成，设备验收待进行。next123/124/125/126/127/134/135 的 `positron_script.dll` 与表单扩展仍不接入冻结的浏览器 JS 路径。next123 以来 Browse 宿主使用物理像素/CSS 视口分离，并按设备报告的 DPI 换算；96 DPI 只是某次设备日志，不是产品固定值。next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、类型/范围 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
@@ -18,7 +18,14 @@ TEST13/20/27/43/44/56 均通过，但 TEST58 的离线几何段继承了前一�
 next133 曾用固定 230x260/96 DPI 隔离该段；因不符合项目的设备自适应原则，next134
 已改为让 TEST58 直接读取运行时屏幕宽高和设备 DPI，并按 CSS 96 DPI 规范基准换算
 物理断言；最终可见布局同样使用真实设备视口。ARMV4I 增量构建和 staging 已通过，
-设备自动日志待复测。该修复不放宽断言，也不修改布局引擎。
+随后在 `screen=240x320 dpi=96` 设备日志中确认通过。该修复不放宽断言，也不修改布局引擎。
+
+**next135（2026-08-07）**：表单校验新增 `PCORE_VALIDITY_TOO_SHORT` 与
+`PCORE_VALIDITY_TOO_LONG`。text/password/textarea 控件读取有效的 HTML 非负整数
+`minlength`/`maxlength`，按 UTF-8 字符数生成约束结果；required、disabled、readonly、
+提交阻断和首个无效控件几何保持既有语义，坏属性保守忽略。TEST100-104 覆盖静态
+边界、动态 native EDIT 更新、textarea、豁免项和首个长度错误；ARMV4I 增量构建与
+`C:\WMShare\Positron-next135` staging 已通过，设备 testbench 尚未验收。
 
 2026-08-07 的 next126 设备日志记录为 `screen=320x320 dpi=128`：TEST13 的
 `example.com`、IANA Example Domains、IANA Reserved Domains 三段导航均完成，随后
@@ -148,7 +155,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前恢复为 next114 浏览器基线，并追加独立脚本 DLL 的 TEST80-99，使用 `tests=13,20,27,43,44,56,58-77,80-99`；TEST84 是 next123 待设备验收项，TEST85-89 是 next124 待设备验收项，TEST90-94 是 next125 待设备验收项，TEST95-99 是 next126 待设备验收项，TEST79/float 候选已撤回，next121 的 TEST83 已由设备确认通过。自动日志会在开头写入 screen/DPI；若 TEST20 仍显示 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前恢复为 next114 浏览器基线，并追加独立脚本 DLL 的 TEST80-99 与 next135 的 TEST100-104，使用 `tests=13,20,27,43,44,56,58-77,80-104`；next134 已由设备确认 TEST84-99，通过 next135 的 TEST100-104 仍待设备验收。TEST79/float 候选已撤回，next121 的 TEST83 已由设备确认通过。自动日志会在开头写入 screen/DPI；若 TEST20 仍显示 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。
@@ -167,10 +174,10 @@ scripts\stage.bat
 - TEST81：不初始化 `positron_core`，在独立脚本上下文中验证 50 ms 执行预算能打断无限循环、超过 `PSCRIPT_MAX_SOURCE_BYTES` 的源码被拒绝，以及拒绝/超时后仍能求值 `42`；这是 timeout/source-boundary/recovery 断言，不是完整内存配额或浏览器 JS 验收。next119 设备日志已确认通过。
 - TEST82：不初始化 `positron_core`，以 `PScript_CreateEx` 建立 512 KiB Duktape heap 上限，执行短生命周期数组压力，要求返回 `PSCRIPT_ERROR_MEMORY_LIMIT`、峰值不超过上限，并在失败后求值 `42`；这是 runtime heap 边界，不是浏览器 JS 或模块生命周期验收。next120 设备日志已确认通过，峰值为 496184/524288。
 - TEST83：不初始化 `positron_core`，以 `PScript_EvaluateModule` 验证 CommonJS 风格模块一次执行缓存、`require()`、失败条目回滚、`PScript_ClearModules` 和清空后的重新加载；没有 URL、文件、网络、DOM 或 window 解析。next121 ARMV4I Debug/Release 构建、staging 与设备日志均已确认通过。
-- TEST84：不初始化 `positron_core`，以 `PScript_SetModuleSourceProvider`/`PScript_LoadModule` 验证宿主按名提供根模块和 `require()` 依赖、缓存命中不重复回调、provider 失败、执行失败回滚、buffer 释放和清空后的重新取源；没有 URL、文件、网络、DOM 或 window 解析。next123 ARMV4I Debug/Release 构建与 staging 已通过，设备待验收。
-- TEST85-89：不初始化 `positron_core`，以 ABI 1.4 的 primitive global setter、JSON getter、JSON-array function call、跨调用状态、错误恢复、非法全局名与 255 字节结果上限做五项断言；没有 URL、文件、网络、DOM 或 window 解析。next124 ARMV4I Debug 已通过，Release/staging 与设备待验收。
-- TEST90-94：不初始化 `positron_core`，以 ABI 1.5 的同步 JSON 宿主回调注册、compact JSON 参数/返回值、失败恢复、同名替换/注销和固定 16 槽上限做五项断言；回调不能重入或异步持有上下文，结果最多 255 字节有效载荷；没有 URL、文件、网络、DOM 或 window 解析。next125 ARMV4I Debug 已通过，Release/staging 与设备待验收。
-- TEST95-99：不初始化 `positron_core`，以 ABI 1.6 的 `PScript_SetGlobalJson` 注入 object/array/string/number/boolean/null，覆盖跨调用 mutation、malformed JSON 恢复、64 KiB 输入上限原值保留和类型替换；没有 URL、文件、网络、DOM 或 window 解析。next126 ARMV4I Debug 已通过，Release/staging 与设备待验收。
+- TEST84：不初始化 `positron_core`，以 `PScript_SetModuleSourceProvider`/`PScript_LoadModule` 验证宿主按名提供根模块和 `require()` 依赖、缓存命中不重复回调、provider 失败、执行失败回滚、buffer 释放和清空后的重新取源；没有 URL、文件、网络、DOM 或 window 解析。next134 的 `screen=240x320 dpi=96` 设备日志已确认通过。
+- TEST85-89：不初始化 `positron_core`，以 ABI 1.4 的 primitive global setter、JSON getter、JSON-array function call、跨调用状态、错误恢复、非法全局名与 255 字节结果上限做五项断言；没有 URL、文件、网络、DOM 或 window 解析。next134 的 `screen=240x320 dpi=96` 设备日志已确认通过。
+- TEST90-94：不初始化 `positron_core`，以 ABI 1.5 的同步 JSON 宿主回调注册、compact JSON 参数/返回值、失败恢复、同名替换/注销和固定 16 槽上限做五项断言；回调不能重入或异步持有上下文，结果最多 255 字节有效载荷；没有 URL、文件、网络、DOM 或 window 解析。next134 的 `screen=240x320 dpi=96` 设备日志已确认通过。
+- TEST95-99：不初始化 `positron_core`，以 ABI 1.6 的 `PScript_SetGlobalJson` 注入 object/array/string/number/boolean/null，覆盖跨调用 mutation、malformed JSON 恢复、64 KiB 输入上限原值保留和类型替换；没有 URL、文件、网络、DOM 或 window 解析。next134 的 `screen=240x320 dpi=96` 设备日志已确认通过。
 - TEST62：四个离屏探针确认 checkbox/radio 均采用 1em 几何，最终 gadget 的 checked 状态为 0/1，选中状态增加像素暗度，hidden input 不生成 box；它是静态 redraw 基线。
 - TEST64：按盒树坐标执行 checkbox 切换、disabled 点击、同表单同名 radio 互斥、跨组/跨表单隔离和已选项幂等，再从 240×320 重排到 320×240 并复核 DOM 状态；next93 自动设备日志已通过。
 - TEST13 next86 遥测：关闭 Browse 窗口后，既有 OK 框显示最后一次导航的 total/network/max-UI、parse/style/images/layout/paint、资源 queued/ok/fail、worker rounds、document/cache bytes 和 budget-rejected。style/images 是多轮累计，max-UI 才是单次消息循环最长阻塞。

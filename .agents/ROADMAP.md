@@ -1,11 +1,11 @@
 # Positron Roadmap
 
 更新时间：2026-08-07
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到 next114 / TEST77 的设备自动化基线。next118 已加入独立 `positron_script.dll`，next119 的 TEST80/81 已通过设备验证；next120 又加入 TEST82 的 512 KiB runtime heap 上限、峰值遥测和超限后恢复；next121 新增 CommonJS 风格模块生命周期 ABI 并通过设备验证；next122 又加入宿主模块源码 provider，构建/staging 已通过、TEST84 待设备验收；next123 又分离了 Browse 的设备像素与 CSS 视口，构建/staging 已通过、新模拟器待验收；next124 又加入 global primitive/JSON call ABI 与 TEST85-89，ARMV4I Debug 构建已通过、设备待验收；next125 又加入固定槽位的同步 JSON native callback 与 TEST90-94，ARMV4I Debug 构建已通过、设备待验收；next126 又加入结构化 JSON global setter 与 TEST95-99，ARMV4I Debug 构建已通过、设备待验收。已验证配置的 TEST13/20/27/43/44/56/58-77/80-83 最终为 `TESTBENCH PASS`，next121 现为旧设备基线，不改变浏览器 JS 默认关闭的基线。通用 Event 已有捕获/目标/冒泡、取消、停止传播、监听器生命周期和宿主 click default-action 门。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next134 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-99 通过。next135 又加入 text/password/textarea 的 `minlength`/`maxlength` validity 及 TEST100-104，ARMV4I 构建/staging 已通过、设备待验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
-**当前开发门禁（next132）**：next131 在 `320x320 dpi=128` 的 TEST20 返回
-`48x48` 而动态期望为 `64x64`；next132 已固定布局入口的设备上下文快照并完成
-ARMV4I 增量构建，必须先用同设备日志复测，再推进其他高 DPI 或视觉目标。
+**当前开发门禁（next135）**：next134 的 `screen=240x320 dpi=96` 全选配置已通过；
+next135 的 TEST100-104 需要在设备上运行，并与 TEST13/20/27/43/44/56/58-99 同批检查。
+不能把 96 DPI 当作产品固定值；下一人工批次应轮换分辨率或 DPI，并保留日志头部。
 
 ## 总原则
 
@@ -22,7 +22,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 当前新增功能优先级：
 
-1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；均由设备无人值守日志确认。高级约束验证仍在后续扩展，不阻塞更大的“有无”缺口。
+1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；next135 又加入 `minlength`/`maxlength`，TEST100-104 待设备验收。`pattern`、类型/范围约束、custom validity 与 `invalid` 事件仍在后续扩展，不阻塞更大的“有无”缺口。
 2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
 3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；next115 与 next116 的 float 候选均因 TEST79/TEST13 真实回归撤回。Float 方向暂挂，下一次重大布局实验改评估基础 Grid 或背景尺寸/重复，并继续保留 TEST13 深链门禁。
 4. **资源类型补齐**：脚本资源发现/下载/缓存接口已完成；next118 先把独立 JavaScript runtime DLL 做成其他 WM 程序可调用的最小产品面，再由后续批次评估浏览器消费；网页字体不扩展为普通语言字体工程。
@@ -38,26 +38,32 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - next129 在 `480x640 dpi=192` 下已验证 TEST13/20 的动态换算；TEST27 发现 SVG 离线测试仍有固定 `120x60` 设备像素断言，next130 已改为实际 DPI 尺寸与采样坐标，等待设备复测。
 - next130 在 `480x480 dpi=192` 下验证 TEST27/43/44 后，TEST56 暴露离线 CSS 几何段继承设备 DPI；next131 已隔离该段的 96 DPI CSS 契约，同时保留可见窗口的真实设备视口。
 
-### 6g. next124：独立脚本 global/JSON 调用桥（待设备验收）
+### 6g. next124：独立脚本 global/JSON 调用桥（已设备验收，纳入 next134）
 
 - `positron_script.h` ABI minor 升至 1.4，新增 `PScript_SetGlobalString`、`PScript_SetGlobalNumber`、`PScript_SetGlobalBoolean`、`PScript_GetGlobalJson` 和 `PScript_CallGlobalJson`。宿主只需要 `windows.h` 与公开头文件，不需要包含 Duktape；全局值在同一 opaque context 内跨求值和函数调用持久存在。
 - `PScript_CallGlobalJson` 只接受 JSON array 参数，函数返回值通过 JSON 编码进入既有 DLL-owned result buffer；未定义/不可 JSON 化的值、缺失/非函数 global、非法参数和超过 255 字节的结果都返回专用可诊断错误，不静默截断。调用仍受既有 Duktape timeout、heap limit 和 fatal recovery 边界约束。
 - TEST85-89 分别覆盖 primitive 注入/读取、JSON object 函数调用、跨调用可变状态、 malformed/missing/non-callable 错误恢复、全局名与结果长度限制。它们不初始化 `positron_core`，不接入 TEST13，也不启用浏览器 JavaScript。
-- ARMV4I Debug 已构建通过；Release、审计、staging 和设备 testbench 仍待本批完成。设备验收时一次运行 `80-89`，并与高 DPI next123 的 TEST13/20/27/43/44/56/58-77 一起判断，不把独立脚本自动 OK 当作 Browse 视觉验收。
+- ARMV4I Debug 已构建通过；next134 的 `screen=240x320 dpi=96` 设备日志确认 TEST80-89 通过，并与 Browse 门禁同批完成。独立脚本自动 OK 仍不替代 Browse 视觉验收。
 
-### 6h. next125：独立脚本 JSON 宿主回调桥（待设备验收）
+### 6h. next125：独立脚本 JSON 宿主回调桥（已设备验收，纳入 next134）
 
 - `positron_script.h` ABI minor 升至 1.5，新增 `PScript_RegisterGlobalJsonFunction`、`PScript_UnregisterGlobalJsonFunction` 和 `PScript_GetNativeFunctionCount`。宿主回调只跨越 compact JSON 数组/JSON 值，不需要 Duktape 头文件，也不获得 DOM/window/network 能力。
 - DLL 内部使用固定 16 槽表；同名注册会替换回调并恢复该 global，注销会写回 `undefined` 并释放槽位。回调是同步调用，不能重入或销毁上下文；返回缓冲最多 255 字节有效载荷，失败或非法 JSON 由外层调用以 recoverable call error 返回。
 - TEST90-94 分别覆盖基本调用、结构化 JSON、失败恢复、替换/注销和槽位上限；它们不初始化 `positron_core`，不改变 TEST13，也不打开浏览器 JavaScript。
-- ARMV4I Debug 已构建通过；Release、审计、staging 和设备 testbench 待完成。设备验收时一次运行 `80-94`，并与 next123 的高 DPI Browse 门禁一起判断。
+- ARMV4I Debug 已构建通过；next134 的 `screen=240x320 dpi=96` 设备日志确认 TEST80-94 通过，并与 Browse 门禁同批完成。
 
-### 6i. next126：独立脚本结构化 JSON global 注入（待设备验收）
+### 6i. next126：独立脚本结构化 JSON global 注入（已设备验收，纳入 next134）
 
 - `positron_script.h` ABI minor 升至 1.6，新增 `PScript_SetGlobalJson`。宿主可在不包含 Duktape 头文件的情况下注入 object、array、string、number、boolean 或 `null`；输入使用既有 64 KiB 源码上限，解析失败不会修改原 global。
 - setter 通过受保护 JSON decode 把值复制进 context；调用返回后不保留宿主输入指针，后续 `PScript_GetGlobalJson`、`PScript_Evaluate` 和 `PScript_CallGlobalJson` 都能观察或修改该值。它不改变 255 字节 DLL result buffer 的输出限制。
 - TEST95-99 分别覆盖结构化读取、跨公共调用的可变对象、 malformed/null 恢复、超限输入的原值保留和 array/object/string 类型替换；它们不初始化 `positron_core`，不改变 TEST13，也不打开浏览器 JavaScript。
-- ARMV4I Debug 已构建通过；Release、审计、staging 和设备 testbench 待完成。设备验收时一次运行 `80-99`。
+- ARMV4I Debug 已构建通过；next134 的 `screen=240x320 dpi=96` 设备日志确认 TEST80-99 通过。
+
+### 6j. next135：表单文本长度约束（待设备验收）
+
+- `PCoreFormValidationInfo` 新增 `PCORE_VALIDITY_TOO_SHORT` 与 `PCORE_VALIDITY_TOO_LONG`，只对 text/password/textarea 读取有效的 HTML 非负整数 `minlength`/`maxlength`。约束按 UTF-8 字符数计算；坏属性、disabled 和 readonly 保守忽略，required、提交阻断和首个无效控件几何保持既有路径。
+- TEST100-104 覆盖静态 too-short/too-long、动态 `PCore_TextInputSetValue` 更新、textarea、边界值、禁用/只读/坏属性豁免、提交恢复和首个错误几何。它们不改 TEST13、布局引擎、浏览器 JS 或独立脚本执行路径。
+- ARMV4I Debug 增量构建和 `C:\WMShare\Positron-next135` staging 已通过；设备验收时运行默认配置，并与 TEST13/20/27/43/44/56/58-99 同批查看日志。
 
 ### 6d. next121：独立 JavaScript 模块生命周期（已设备验收）
 
@@ -66,11 +72,11 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - TEST83 覆盖 `base=40`、`entry=require('base')+2`、重复加载不重新执行、失败回滚、清空和重新加载。它不读取 URL/文件、不提供网络、DOM、window 或浏览器脚本开关。
 - next121 已完成 VS2008 ARMV4I Debug/Release 增量构建、`C:\WMShare\Positron-next121` staging 和设备验收；TEST83 日志为 `base=40 entry=require(base)+2=42 cache=ok rollback=ok clear/reload=ok modules=1`，并与 TEST13/20/27/43/44/56/58-77/80-82 一起以 `TESTBENCH PASS` 收尾。TEST13 不因该批增加脚本请求。
 
-### 6e. next122：宿主模块源码 provider（待设备验收）
+### 6e. next122：宿主模块源码 provider（已设备验收，纳入 next134）
 
 - `positron_script.h` ABI minor 升至 1.3，新增 `PScript_SetModuleSourceProvider`、`PScript_LoadModule` 和 `PSCRIPT_ERROR_MODULE_SOURCE`；回调沿用 WM 宿主常见的 `fetch/free` 所有权约定，源码由宿主提供，DLL 在当前调用返回后释放。
 - 模块内部加载器改为保留外层 Duktape 栈，因而 `require('name')` 在执行模块时可以同步向宿主索取未缓存依赖；成功模块仍只执行一次，provider 失败、源码执行失败都不留下半成品。
-- TEST84 覆盖根模块与依赖按需回调、缓存不重复取源、缺源、执行失败回滚、清空后重新取源和 free 回调计数。next122 ARMV4I Debug/Release 构建与 `C:\WMShare\Positron-next122` staging 已通过，设备日志待补；这批仍不接入浏览器 JS。
+- TEST84 覆盖根模块与依赖按需回调、缓存不重复取源、缺源、执行失败回滚、清空后重新取源和 free 回调计数。next122 ARMV4I Debug/Release 构建与 `C:\WMShare\Positron-next122` staging 已通过，next134 的 `screen=240x320 dpi=96` 设备日志已确认通过；这批仍不接入浏览器 JS。
 
 短期暂不继续追逐首个 SVG 的冷解析毫秒数、渐变高级参数、抗锯齿微调或复杂表格边角；next92 已把重复解析造成的导航热点降到可接受范围。
 
@@ -387,8 +393,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next121 / TEST80-83 加 next114 Browse 门禁作为当前已验证自动化基线；next123 / TEST84 高 DPI 门禁、next124 / TEST85-89 global/JSON bridge、next125 / TEST90-94 native callback 和 next126 / TEST95-99 structured JSON setter 设备通过后，再将 provider、新视口入口、global/JSON ABI、native callback 与 structured setter 纳入已验证基线。后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 在 provider 设备验收后，评估把独立 DLL 接入显式的浏览器 JavaScript 开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
+1. 以 next134 的 TEST13/20/27/43/44/56/58-77/80-99 设备日志作为已验证自动化基线；先运行 next135 的 TEST100-104，再将长度约束纳入基线。后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+2. 在 next135 设备验收后，评估把独立 DLL 接入显式的浏览器 JavaScript 开关；在 JS 默认关闭期间不得让 TEST13 平白增加脚本网络请求。
 3. 下一批按“一个上游能力一个批次”评估基础 Grid 或背景尺寸，优先选择能让更多真实页面从“没有”变成“可用”的上游纵切。撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. 独立 DLL 通过设备门禁后，中期再利用仓库已有 NetSurf Duktape backend 做浏览器 JavaScript 最小纵切：脚本执行、DOM 查询/修改、点击事件和 native bridge；浏览器 JavaScript 默认仍保持关闭直到绑定路径逐项设备门禁通过。

@@ -69,6 +69,8 @@ extern const struct gui_layout_table pcore_gdi_layout;
 
 static struct box *pcore_hit(struct box *box, int px, int py);
 static struct box *pcore_box_for_node(struct box *box, dom_node *node);
+static int pcore_utf8_character_count(const char *text,
+        unsigned int *out_count);
 
 /* Referenced (extern) by content/handlers/css/utils.h; the device DPI in fixed
  * point. Kept in sync by PCore_SetViewport / PCore_SetDeviceViewport. */
@@ -362,6 +364,72 @@ static int pcore_node_has_attr(dom_node *node, const char *attr)
     }
     dom_string_unref(name);
     return present ? 1 : 0;
+}
+
+/* Parse a valid HTML non-negative integer attribute. Malformed values are
+ * ignored by constraint validation, matching the platform's conservative
+ * form behavior rather than inventing a value for the page. */
+static int pcore_node_attr_unsigned(dom_node *node, const char *attr,
+        unsigned int *out_value)
+{
+    dom_string *name;
+    dom_string *value;
+    const unsigned char *data;
+    size_t length;
+    size_t index;
+    unsigned int result;
+    unsigned int digit;
+
+    name = NULL;
+    value = NULL;
+    if (node == NULL || attr == NULL || out_value == NULL ||
+            dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+                    DOM_NO_ERR) {
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) != DOM_NO_ERR ||
+            value == NULL) {
+        dom_string_unref(name);
+        return 0;
+    }
+    data = (const unsigned char *) dom_string_data(value);
+    length = dom_string_byte_length(value);
+    index = 0;
+    while (index < length && (data[index] == ' ' || data[index] == '\t' ||
+            data[index] == '\r' || data[index] == '\n' ||
+            data[index] == '\f')) {
+        index++;
+    }
+    result = 0;
+    if (index == length || data[index] < '0' || data[index] > '9') {
+        dom_string_unref(value);
+        dom_string_unref(name);
+        return 0;
+    }
+    while (index < length && data[index] >= '0' && data[index] <= '9') {
+        digit = (unsigned int) (data[index] - '0');
+        if (result > (UINT_MAX - digit) / 10u) {
+            dom_string_unref(value);
+            dom_string_unref(name);
+            return 0;
+        }
+        result = result * 10u + digit;
+        index++;
+    }
+    while (index < length && (data[index] == ' ' || data[index] == '\t' ||
+            data[index] == '\r' || data[index] == '\n' ||
+            data[index] == '\f')) {
+        index++;
+    }
+    if (index != length) {
+        dom_string_unref(value);
+        dom_string_unref(name);
+        return 0;
+    }
+    *out_value = result;
+    dom_string_unref(value);
+    dom_string_unref(name);
+    return 1;
 }
 
 /* NetSurf box_special.c attaches a form_control to form element boxes. The
@@ -5586,8 +5654,34 @@ static int pcore_required_select_missing(dom_html_select_element *select,
     return result;
 }
 
+static int pcore_text_constraint_flags(dom_node *node, dom_string *value,
+        unsigned int *flags_out)
+{
+    unsigned int minimum;
+    unsigned int maximum;
+    unsigned int length;
+
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    if (pcore_utf8_character_count(dom_string_data(value), &length) != 0) {
+        return 0;
+    }
+    if (pcore_node_attr_unsigned(node, "minlength", &minimum) &&
+            length < minimum) {
+        *flags_out |= PCORE_VALIDITY_TOO_SHORT;
+    }
+    if (pcore_node_attr_unsigned(node, "maxlength", &maximum) &&
+            length > maximum) {
+        *flags_out |= PCORE_VALIDITY_TOO_LONG;
+    }
+    return 1;
+}
+
 static int pcore_required_control_missing(dom_html_form_element *form,
-        dom_node *node, int *kind_out, int *missing_out)
+        dom_node *node, int *kind_out, int *missing_out,
+        unsigned int *flags_out)
 {
     dom_string *value;
     bool disabled;
@@ -5595,6 +5689,7 @@ static int pcore_required_control_missing(dom_html_form_element *form,
     bool checked;
     int gadget_type;
     int group_checked;
+    int required;
 
     value = NULL;
     disabled = false;
@@ -5602,9 +5697,8 @@ static int pcore_required_control_missing(dom_html_form_element *form,
     checked = false;
     *kind_out = 0;
     *missing_out = 0;
-    if (!pcore_node_has_attr(node, "required")) {
-        return 1;
-    }
+    *flags_out = 0;
+    required = pcore_node_has_attr(node, "required");
     gadget_type = pcore_form_control_type(node);
     *kind_out = pcore_public_control_kind(gadget_type);
     if (pcore_node_name_is(node, "input")) {
@@ -5628,6 +5722,28 @@ static int pcore_required_control_missing(dom_html_form_element *form,
             if (read_only) {
                 return 1;
             }
+            if (dom_html_input_element_get_value(
+                    (dom_html_input_element *) node, &value) != DOM_NO_ERR) {
+                return 0;
+            }
+            if (required && (value == NULL ||
+                    dom_string_byte_length(value) == 0)) {
+                *flags_out = PCORE_VALIDITY_VALUE_MISSING;
+            } else if (!pcore_text_constraint_flags(node, value,
+                    flags_out)) {
+                if (value != NULL) {
+                    dom_string_unref(value);
+                }
+                return 0;
+            }
+            if (value != NULL) {
+                dom_string_unref(value);
+            }
+            *missing_out = (*flags_out != 0) ? 1 : 0;
+            return 1;
+        }
+        if (!required) {
+            return 1;
         }
         if (gadget_type == GADGET_CHECKBOX) {
             if (dom_html_input_element_get_checked(
@@ -5635,6 +5751,7 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                             DOM_NO_ERR) {
                 return 0;
             }
+            *flags_out = checked ? 0 : PCORE_VALIDITY_VALUE_MISSING;
             *missing_out = checked ? 0 : 1;
             return 1;
         }
@@ -5644,17 +5761,23 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     (dom_html_input_element *) node, &group_checked)) {
                 return 0;
             }
+            *flags_out = group_checked ? 0 : PCORE_VALIDITY_VALUE_MISSING;
             *missing_out = group_checked ? 0 : 1;
             return 1;
         }
-        if (dom_html_input_element_get_value(
+        if (gadget_type == GADGET_FILE &&
+                dom_html_input_element_get_value(
                 (dom_html_input_element *) node, &value) != DOM_NO_ERR) {
             return 0;
         }
-        *missing_out = (value == NULL ||
-                dom_string_byte_length(value) == 0) ? 1 : 0;
-        if (value != NULL) {
-            dom_string_unref(value);
+        if (gadget_type == GADGET_FILE) {
+            *flags_out = (value == NULL ||
+                    dom_string_byte_length(value) == 0) ?
+                    PCORE_VALIDITY_VALUE_MISSING : 0;
+            *missing_out = (*flags_out != 0) ? 1 : 0;
+            if (value != NULL) {
+                dom_string_unref(value);
+            }
         }
         return 1;
     }
@@ -5674,23 +5797,35 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                 (dom_html_text_area_element *) node, &value) != DOM_NO_ERR) {
             return 0;
         }
-        *missing_out = (value == NULL ||
-                dom_string_byte_length(value) == 0) ? 1 : 0;
+        if (required && (value == NULL ||
+                dom_string_byte_length(value) == 0)) {
+            *flags_out = PCORE_VALIDITY_VALUE_MISSING;
+        } else if (!pcore_text_constraint_flags(node, value, flags_out)) {
+            if (value != NULL) {
+                dom_string_unref(value);
+            }
+            return 0;
+        }
+        *missing_out = (*flags_out != 0) ? 1 : 0;
         if (value != NULL) {
             dom_string_unref(value);
         }
         return 1;
     }
     if (pcore_node_name_is(node, "select")) {
-        if (dom_html_select_element_get_disabled(
+        if (!required || dom_html_select_element_get_disabled(
                 (dom_html_select_element *) node, &disabled) != DOM_NO_ERR) {
-            return 0;
+            return required ? 0 : 1;
         }
         if (disabled) {
             return 1;
         }
-        return pcore_required_select_missing(
-                (dom_html_select_element *) node, missing_out);
+        if (!pcore_required_select_missing(
+                (dom_html_select_element *) node, missing_out)) {
+            return 0;
+        }
+        *flags_out = (*missing_out != 0) ? PCORE_VALIDITY_VALUE_MISSING : 0;
+        return 1;
     }
     return 1;
 }
@@ -5708,6 +5843,7 @@ static int pcore_form_validate(pcore_render *st,
     uint32_t index;
     int kind;
     int missing;
+    unsigned int flags;
     int x;
     int y;
 
@@ -5736,10 +5872,11 @@ static int pcore_form_validate(pcore_render *st,
         node = NULL;
         kind = 0;
         missing = 0;
+        flags = 0;
         if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
                 node == NULL ||
                 !pcore_required_control_missing(form, node,
-                        &kind, &missing)) {
+                        &kind, &missing, &flags)) {
             if (node != NULL) {
                 dom_node_unref(node);
             }
@@ -5751,7 +5888,7 @@ static int pcore_form_validate(pcore_render *st,
             info->invalid_count++;
             if (info->invalid_count == 1) {
                 info->first_control_kind = kind;
-                info->first_flags = PCORE_VALIDITY_VALUE_MISSING;
+                info->first_flags = flags;
                 box = pcore_box_for_node(st->root_box, node);
                 if (box != NULL) {
                     x = 0;

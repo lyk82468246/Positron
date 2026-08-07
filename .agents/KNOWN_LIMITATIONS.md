@@ -10,15 +10,22 @@ next132 已把设备视口决定和单位上下文快照提前到正式构盒之
 样式完成后重新绑定设备视口；ARMV4I 增量构建通过，设备复测仍待完成。不能用放宽
 断言或固定 96 DPI 宣称修复。
 
-**当前状态更正（next134，2026-08-07）**：next132 在 `480x640 dpi=192` 下于
+**历史状态更正（next134，2026-08-07）**：next132 在 `480x640 dpi=192` 下于
 TEST58 停止。失败值 `article=320 rows=40/80/40` 是该离线几何测试继承了前一个
 设备-backed render 的待布局上下文；next133 的固定 `230x260 @ 96 DPI` 隔离方案已
 撤销。next134 让 TEST58 直接使用运行时屏幕/DPI，并把固定 CSS 长度换算为物理断言；
-ARMV4I 构建/staging 通过，尚未获得设备日志；TEST58 的断言和布局实现均未放宽或改写。
+ARMV4I 构建/staging 通过，随后在 `screen=240x320 dpi=96` 设备日志中通过；TEST58
+的断言和布局实现均未放宽或改写。
+
+**当前状态更正（next135，2026-08-07）**：next134 的 TEST13/20/27/43/44/56/58-77/80-99
+已在 `screen=240x320 dpi=96` 设备日志中通过。next135 新增 text/password/textarea 的
+`minlength`/`maxlength` validity 及 TEST100-104；ARMV4I 构建/staging 已通过，设备
+验收待补。`pattern`、email/url/number 类型约束、range/custom validity 和 `invalid`
+事件仍未实现，不能把这批表单长度检查表述为完整 HTML Constraint Validation。
 
 ## 已验证基线（不是完整功能声明）
 
-### 高 DPI / 大分辨率视口边界（next127，非 96 DPI 仍待设备验收）
+### 高 DPI / 大分辨率视口边界（next134，非 96 DPI 仍需继续轮换验收）
 
 NetSurf 的标准坐标约定是：CSS media/vw/vh 使用 CSS 像素视口，
 `layout_document` 与 GDI 重绘使用设备像素。next122 的新模拟器日志首次暴露
@@ -71,13 +78,13 @@ next131 已将该离线段隔离为 96 DPI CSS 契约，并保留可见渲染段
 | 视觉容器与文本比例 | next117 人工复核确认主链路基本正常，但部分页面/测试存在容器或背景框偏小、文本量偏多导致的版式不协调。 | 尚未定位到单一 CSS 根因；不应通过放宽断言解决，也不代表核心解析/资源/导航失败。需要至少三个复现样例、computed style/box geometry 数据、针对性回归和竖横屏截图后才能关闭。 |
 | 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。next54 的 fixed-height 回归已在 next55 收窄，用户确认 auto-height 空间、箭头、短页纵条与色块页正常。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
 | table span/归一化/折叠边框 | NetSurf 3.11 span occupancy 与匿名 row/cell 已由 TEST46/47 验收。next64/TEST53 至 next68/TEST56 已覆盖常见 collapsed-border、cell alignment/empty-cells 与显式 table height；next73/TEST57 又确认 25/50/auto 百分比 row 分配及超约束缩放。 | 尚不覆盖任意 inline/float/form 畸形组合、caption/column 归一化、`col`/`colgroup` border 来源、百分比 cell/后代内容、跨行 baseline 或所有复杂表格边界。 |
-| Forms/widgets | next85/93 至 next104/TEST71 已完成 checkbox/radio、文本、textarea、single/multiple select、button、GET/POST、reset/Enter/label 与 multipart/file；next106/TEST72 已确认首批 `required/valueMissing`；next109/TEST73 已确认动态表单伪类；next110/TEST74 已建立通用 DOM Event 传播/取消和宿主 click default-action 门；next111/TEST75 未改变表单路径。 | multipart 仍整体缓冲且 MIME 固定；尚无流式上传、上传进度、MIME 推断、multiple file、`pattern`、类型/范围约束、custom validity、`invalid` 事件、验证气泡、专用 Mouse/Keyboard/Focus/Input 数据或完整 HTML activation。空且无 CSS 尺寸的 text input 也缺浏览器默认 intrinsic size。自动断言不等于真实手指、原生选择器或公网 POST 已人工验收。 |
+| Forms/widgets | next85/93 至 next104/TEST71 已完成 checkbox/radio、文本、textarea、single/multiple select、button、GET/POST、reset/Enter/label 与 multipart/file；next106/TEST72 已确认首批 `required/valueMissing`；next109/TEST73 已确认动态表单伪类；next110/TEST74 已建立通用 DOM Event 传播/取消和宿主 click default-action 门；next135/TEST100-104 又加入 text/password/textarea 的 `minlength`/`maxlength`、UTF-8 字符计数、动态值更新和首个长度错误几何。 | multipart 仍整体缓冲且 MIME 固定；尚无流式上传、上传进度、MIME 推断、multiple file、`pattern`、email/url/number 类型约束、range、custom validity、`invalid` 事件、验证气泡、专用 Mouse/Keyboard/Focus/Input 数据或完整 HTML activation。空且无 CSS 尺寸的 text input 也缺浏览器默认 intrinsic size。自动断言不等于真实手指、原生选择器或公网 POST 已人工验收；TEST100-104 仍待设备确认。 |
 | author-level inline CSS | 外部 author stylesheet 正常参与 libcss 选择；TEST57 使用外部类规则通过。next75/TEST58 已确认 NetSurf 式声明列表解析、libcss inline cascade、继承、后代 class 选择与正式布局/重绘。next81 已把全零 `nsoption` shim 改成具名默认，未知读取会编译失败；TEST56/58-61 已由设备确认。 | 正式构盒不调用 NetSurf `box_construct.c`；旧缺口是 `pcore_style_subtree` 固定给 `css_select_style` 传 `NULL`。具名 option 不能被误写成 inline CSS 的直接开关。 |
 | Forms/widgets 状态边界 | next109 把宿主维护的 focus/active 节点与 live checked/selected/disabled 状态交给 libcss callback；next110 的通用 Event 已有 capture/target/bubble、取消和停止传播，next113 又加入独立的 hover 状态，现有 click 默认动作尊重取消结果。 | 通用 Event 尚无 MouseEvent/KeyboardEvent/FocusEvent/InputEvent 专用字段，也未覆盖 `:visited/:target/:indeterminate`、所有 HTML activation 细节或所有控件的浏览器默认 intrinsic size。 |
 | 列表 marker | next57/59 已确认基础 marker 与字体；next61/TEST50 已确认 libcss 上游 47 种 counter formatter、document-cache `list-style-image` 与失败类型回退；next62/TEST51、next63/TEST52 已确认 inline-first 及 block-first/空条目/嵌套/图片的 `list-style-position:inside`。 | 不代表 float 邻接 marker、自定义 `@counter-style` 或完整 CSS Lists。普通语言字体不属于当前 marker 工作范围。 |
 | 字体 fallback | next59 随包部署约 901 KiB 的三份静态 Positron Symbols/Emoji（来自 Noto OFL），精确 cmap 选择统一用于 GDI 测量、换行命中与绘制 run；设备确认箭头/marker/五个 emoji 可见且比 next58 稍平滑。当前范围明确只支持符号与单色 emoji fallback。 | 不计划在本阶段加入普通语言/多语种字体；也没有复杂 ZWJ/variation shaping、彩色 emoji、网页 `@font-face` 或字体下载。`ANTIALIASED_QUALITY` 最终效果仍依赖 OEM GDI。 |
 | 图片 | TEST19/20 已确认公共 retained 位图 ABI 与 WM Imaging 四格式；TEST25-37/13 已确认当前 SVG 链。next89 已由 TEST20/27 确认同 document 二次布局复用；next92/TEST63 已确认两个同时存活且内容一致的 document 可共享 SVG，并在释放首文档后继续绘制。 | 复杂 SVG text、径向焦点/spread method、多层或可缩放 CSS 背景、空闲/持久缓存及跨线程图片句柄仍未完成。 |
-| 外部脚本资源与独立 JS DLL | next114/TEST77 在 core 中建立了非空 script-src 扫描、宿主 URL resolver/fetch/free 回调、document 生命周期缓存、重复引用去重和只读枚举 ABI；next118 又以仓库内 Duktape 2.7.0 接入独立 `positron_script.dll`，提供 UTF-8 求值、持久上下文、错误恢复和内存/执行计数；ARMV4I 构建及 TEST80 设备 testbench 已通过；next119/TEST81 增加 timeout、64 KiB 源码长度拒绝和恢复断言，设备 testbench 已通过；next120/TEST82 增加 512 KiB runtime heap 配额和峰值断言，设备 testbench 已通过；next121/TEST83 已加入 CommonJS 风格模块一次执行缓存、`require()`、失败回滚和显式清空，ARMV4I 构建/staging 与设备 testbench 已通过；next123/TEST84 保留同步宿主模块源码 provider 和按名加载入口，构建/staging 已通过，设备待验收；next124/TEST85-89 增加 global primitive、JSON getter/call、持久状态、错误恢复和结果限制，ARMV4I Debug 构建已通过，设备待验收。 | `positron_core` 不执行 inline/external JavaScript，`positron_script.dll` 也不自动提供 DOM/window/fetch/network binding；尚不解释 type，不把脚本抓取加入冻结的 TEST13 网络事务；总配额只约束 DLL 的 Duktape heap，不约束宿主进程其他内存；global/JSON bridge 只处理宿主显式提供的 primitive/JSON 值，结果缓冲最多 255 字节有效载荷，不能替代 DOM 或异步 bridge；模块 provider 是同步、宿主拥有的源码回调，不读取 URL 或文件，不提供异步依赖图、错误事件、CSP、跨源策略或持久 HTTP cache。 |
+| 外部脚本资源与独立 JS DLL | next114/TEST77 在 core 中建立了非空 script-src 扫描、宿主 URL resolver/fetch/free 回调、document 生命周期缓存、重复引用去重和只读枚举 ABI；next118 又以仓库内 Duktape 2.7.0 接入独立 `positron_script.dll`，提供 UTF-8 求值、持久上下文、错误恢复和内存/执行计数；ARMV4I 构建及 TEST80 设备 testbench 已通过；next119/TEST81 增加 timeout、64 KiB 源码长度拒绝和恢复断言，设备 testbench 已通过；next120/TEST82 增加 512 KiB runtime heap 配额和峰值断言，设备 testbench 已通过；next121/TEST83 已加入 CommonJS 风格模块一次执行缓存、`require()`、失败回滚和显式清空，ARMV4I 构建/staging 与设备 testbench 已通过；next122-126 的 TEST84-99 又加入 provider、global/JSON、native callback 与 structured setter，next134 的 `screen=240x320 dpi=96` 设备日志已确认通过。 | `positron_core` 不执行 inline/external JavaScript，`positron_script.dll` 也不自动提供 DOM/window/fetch/network binding；尚不解释 type，不把脚本抓取加入冻结的 TEST13 网络事务；总配额只约束 DLL 的 Duktape heap，不约束宿主进程其他内存；global/JSON bridge 只处理宿主显式提供的 primitive/JSON 值，结果缓冲最多 255 字节有效载荷，不能替代 DOM 或异步 bridge；模块 provider 是同步、宿主拥有的源码回调，不读取 URL 或文件，不提供异步依赖图、错误事件、CSP、跨源策略或持久 HTTP cache。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认跨断点重选、无联网及滚动比例，真实 TEST13 横竖屏也保持同一阅读区域。 | 所有媒体语法和任意样式资源均已覆盖。 |
 
@@ -137,9 +144,9 @@ TEST38-39 真机确认根变量语义及 25px inset 后，新的 TEST13 截图�
 - **next116 浮动候选已撤回**：设备日志为 `TEST79 FAIL`；即使自动 TEST13 记录了 OK，人工 Browse 截图仍显示导航和正文排版异常。源码、TEST79 默认配置和 ENGINE 接入已恢复到 next114，Float 方向暂挂。
 - **next113 动态 `:hover` 已通过设备门禁**：TEST76 断言 `PCore_InteractionSetAt(..., PCORE_INTERACTION_HOVER)` 命中最近元素，重选样式得到红色，清除后恢复蓝色；宿主使用 WM6 可用的 `WM_MOUSEMOVE` 与定时器轮询，不调用桌面 `TrackMouseEvent`。同包 TEST13/20/27/43/44/56/58-75 全部 PASS。该项只覆盖 CSS 状态选择和离开窗口清理，不代表专用 MouseEvent、触屏 hover 或 JavaScript。
 - **资源预算**：`test_host` 最多暂存 64 个去重 URL、合计 2 MiB 原始字节，成功提交时 core 会复制所需数据后立刻释放事务。该值用于限制 WM 峰值，是可替换的宿主策略，不是 `positron_core` ABI 或最终页面的硬上限。
-- **后续实现**：单响应 `Content-Length`/progress 回调已实现并由 TEST3/13 确认；`@import` 事务已由 TEST45 确认；next114/TEST77 已建立脚本资源发现/缓存 ABI，next118/TEST80 又提供不依赖浏览器的独立 `positron_script.dll`；next119/TEST81 的 timeout、源码长度拒绝和恢复断言已由设备日志确认；next120/TEST82 的 runtime heap 配额与 next121/TEST83 的模块生命周期均由设备日志确认，但尚未接入 TEST13。next123 的模块宿主源 provider 已实现但 TEST84 尚待设备确认；next124 的 global/JSON bridge 已实现但 TEST85-89 尚待设备确认；高 DPI Browse 也必须由新模拟器视觉复查；DOM/window/fetch/native bridge、整页多资源聚合进度、web fonts 和更广资源类型仍未实现。
-- **next125 待验收**：TEST90-94 已实现同步 JSON 宿主回调注册/注销、替换、失败恢复和固定槽位上限；Release/staging 与设备 testbench 仍待完成。它是独立 DLL 的 native operation 边界，不是浏览器 JavaScript 或异步 native bridge。
-- **next126 待验收**：TEST95-99 已实现 structured JSON global setter、跨调用 mutation、malformed/null 恢复、64 KiB 输入拒绝和 JSON 类型替换；Release/staging 与设备 testbench 仍待完成。setter 复制值进 context，不保留宿主输入指针，但仍受 Duktape heap 与 255 字节结果读取限制。
+- **后续实现**：单响应 `Content-Length`/progress 回调已实现并由 TEST3/13 确认；`@import` 事务已由 TEST45 确认；next114/TEST77 已建立脚本资源发现/缓存 ABI，next118-126 又提供不依赖浏览器的独立 `positron_script.dll` 能力。next134 的 `screen=240x320 dpi=96` 设备日志确认 TEST80-99 全部通过，但它们仍未接入 TEST13。高 DPI Browse 仍需在不同分辨率/DPI 下视觉复查；DOM/window/fetch/native bridge、整页多资源聚合进度、web fonts 和更广资源类型仍未实现。
+- **next125 已设备验收（next134）**：TEST90-94 已实现同步 JSON 宿主回调注册/注销、替换、失败恢复和固定槽位上限；它是独立 DLL 的 native operation 边界，不是浏览器 JavaScript 或异步 native bridge。
+- **next126 已设备验收（next134）**：TEST95-99 已实现 structured JSON global setter、跨调用 mutation、malformed/null 恢复、64 KiB 输入拒绝和 JSON 类型替换；setter 复制值进 context，不保留宿主输入指针，但仍受 Duktape heap 与 255 字节结果读取限制。
 - **CSS import 边界**：最多追踪 16 层递归和本次样式 pass 的 64 个解析表；失败、循环和超深导入按 libcss 契约注册空表。成功导入复用每 document 最多 32 份/512 KiB 的 CSS 字节缓存；不含 HTTP 缓存失效、跨源安全策略或独立持久缓存。URL 合并由宿主回调负责，WM 宿主使用 `InternetCombineUrlA`，core 本身不绑定传输层。
 - **并发约束**：在确认 libdom/libcss/NetSurf 移植层的线程安全前，不能让 worker 与 UI 同时操作同一 document 或共享全局 viewport context；过期请求只丢弃结果，不使用强制终止线程。
 - **第一阶段完成条件**：慢网主文档 GET 期间旧页可滚动，loading 可见；成功后才 swap，错误保留当前页面，关闭窗口不会遗留线程。
