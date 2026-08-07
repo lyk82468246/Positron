@@ -45,6 +45,13 @@ CSS 像素探针安装 96 DPI 参考上下文，并在结束时恢复真实设�
 构建/staging 已通过，`C:\WMShare\Positron-next138` 的设备复测待补。该修复不把
 96 DPI 变成产品默认，也不放宽 TEST60 断言。
 
+**当前状态更正（next139，2026-08-07）**：next138 在 `screen=320x320 dpi=128` 下
+通过 TEST60，随后 TEST63 报告 `shared SVG did not survive first document release`。
+TEST63 同样是固定 CSS `240x120`/`120x60` 的离线夹具，却继承了设备-backed DPI；next139
+只为该探针安装 96 DPI 参考上下文，清理时恢复真实设备视口，并把失败诊断拆成
+`layout/node/box` 值。共享 SVG 的跨文档 create/reuse/free 断言没有放宽，ARMV4I
+构建/staging 已通过，`C:\WMShare\Positron-next139` 的设备复测待补。
+
 ## 已验证基线（不是完整功能声明）
 
 ### 高 DPI / 大分辨率视口边界（next134，非 96 DPI 仍需继续轮换验收）

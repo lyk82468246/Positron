@@ -11861,6 +11861,10 @@ static BOOL test63_shared_svg_lifetime(void)
     int y;
     int w;
     int h;
+    int screen_w;
+    int screen_h;
+    int layout_rc;
+    int node_rc;
     int rc = 1;
     char msg[256];
 
@@ -11870,6 +11874,17 @@ static BOOL test63_shared_svg_lifetime(void)
     memset(&second_box, 0, sizeof(second_box));
     memset(&first_decode, 0, sizeof(first_decode));
     memset(&second_decode, 0, sizeof(second_decode));
+    x = 0;
+    y = 0;
+    w = 0;
+    h = 0;
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    /* This probe owns explicit CSS-pixel geometry; do not inherit the
+     * device-backed context left by the preceding render test. */
+    PCore_SetViewport(240, 120, 96);
     first_doc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     second_doc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     first_sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
@@ -11914,11 +11929,14 @@ static BOOL test63_shared_svg_lifetime(void)
     first_sheet = NULL;
     PCore_FreeDocument(first_doc);
     first_doc = NULL;
-    if (PCore_LayoutDocument(second_doc, 240, 120) != 0 ||
-            PCore_NodeBox(second_doc, "img", &x, &y, &w, &h) != 0 ||
-            w != 120 || h != 60) {
-        show_error(L"TEST 63 FAIL",
-                "shared SVG did not survive first document release");
+    layout_rc = PCore_LayoutDocument(second_doc, 240, 120);
+    node_rc = PCore_NodeBox(second_doc, "img", &x, &y, &w, &h);
+    if (layout_rc != 0 || node_rc != 0 || w != 120 || h != 60) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "post-release layout/node/box=%d/%d/%dx%d expect 120x60",
+                layout_rc, node_rc, w, h);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 63 FAIL", msg);
         goto cleanup;
     }
 
@@ -11950,6 +11968,7 @@ static BOOL test63_shared_svg_lifetime(void)
     rc = 0;
 
 cleanup:
+    test_host_set_device_viewport(screen_w, screen_h);
     if (old_bitmap != NULL && memory_dc != NULL) {
         SelectObject(memory_dc, old_bitmap);
     }
