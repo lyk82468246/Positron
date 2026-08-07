@@ -6,6 +6,18 @@
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
+2026-08-07 的 next126 设备日志记录为 `screen=320x320 dpi=128`：TEST13 的
+`example.com`、IANA Example Domains、IANA Reserved Domains 三段导航均完成，随后
+TEST20 停止。TEST20 的失败是断言隔离错误：它走显式 CSS 视口的离线缓存图片路径，
+却按设备 DPI 计算 `48px` 的期望物理尺寸；实际盒为 `48x48`。next127 将该测试固定
+到 96 DPI CSS 视口并修正失败诊断字段；这不等于高 DPI Browse 已验收，下一轮仍需
+在不同分辨率/DPI 下记录日志并人工检查 TEST13。
+
+设备验收记录要求：每次人工批次至少保留 `test_host.log` 开头的
+`screen=宽x高 dpi=值`，并尽量轮换一个纵横方向或分辨率、一个 DPI 档位。自动断言
+只证明对应代码路径和资源计数，不替代高 DPI 下的 Browse 版式、滚动、链接和旋转
+截图检查。
+
 > **接手前先读**：导航路径以用户确认正常的 `9c5c7c7`/next37 为冻结起点，此后 `main` 已继续叠加图片、字体、列表和表格能力。next37 后那组失败的导航实验保存在远端 `codex/post-next37-experiments`，不得直接合回；这不表示当前整个仓库仍停在 next37。冻结项、失败时间线和后续门槛见 `ROLLBACK_NEXT37.md`。
 
 ## 项目目标

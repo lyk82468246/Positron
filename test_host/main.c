@@ -6058,7 +6058,6 @@ static BOOL test20_cached_img(void)
     int w = 0;
     int h = 0;
     int vw, vh;
-    int expected_box;
     PCoreBoxStats first_box_stats;
     PCoreBoxStats second_box_stats;
     char msg[256];
@@ -6081,6 +6080,13 @@ static BOOL test20_cached_img(void)
         show_error(L"TEST 20 FAIL", "image cache setup failed");
         return FALSE;
     }
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    /* TEST20 is an offline CSS-pixel contract. Keep it independent from the
+     * preceding Browse window's device viewport and DPI state. */
+    PCore_SetViewport(vw, vh, 96);
     hSheet = PCore_ParseCSS(CSS, 0, "http://positron.local/img.css");
     if (hSheet == NULL || PCore_StyleDocument(hDoc, hSheet) != 0) {
         if (hSheet != NULL) {
@@ -6090,21 +6096,14 @@ static BOOL test20_cached_img(void)
         show_error(L"TEST 20 FAIL", "CSS styling failed");
         return FALSE;
     }
-    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
-    vh = GetSystemMetrics(SM_CYSCREEN);
-    if (vw <= 0) { vw = 224; }
-    if (vh <= 0) { vh = 320; }
-    expected_box = MulDiv(48, test_host_device_dpi(), 96);
-    if (expected_box < 1) { expected_box = 48; }
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_GetBoxStats(hDoc, &first_box_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != expected_box || h != expected_box ||
+            w != 48 || h != 48 ||
             first_box_stats.image_calls != 4 ||
             first_box_stats.image_reuses != 0) {
-        sprintf(msg, "first box=%dx%d calls/reuse=%u/%u; expect %dx%d "
-                "device px (48 CSS px) 4/0", w, h,
-                expected_box, expected_box,
+        sprintf(msg, "first box=%dx%d calls/reuse=%u/%u; expect "
+                "48x48 CSS px at 96 DPI, 4/0", w, h,
                 first_box_stats.image_calls,
                 first_box_stats.image_reuses);
         PCore_FreeStylesheet(hSheet);
@@ -6115,7 +6114,7 @@ static BOOL test20_cached_img(void)
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_GetBoxStats(hDoc, &second_box_stats) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != expected_box || h != expected_box ||
+            w != 48 || h != 48 ||
             second_box_stats.image_calls != 4 ||
             second_box_stats.image_reuses != 4 ||
             ctx.calls != 4 || ctx.frees != 4) {
@@ -6140,6 +6139,7 @@ static BOOL test20_cached_img(void)
     if (!show_render_window()) {
         g_render_doc = NULL;
         g_render_sheet = NULL;
+        PCore_SetViewport(vw, vh, 96);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 20 FAIL", "CreateWindow returned NULL");
@@ -6147,6 +6147,7 @@ static BOOL test20_cached_img(void)
     }
     g_render_doc = NULL;
     g_render_sheet = NULL;
+    PCore_SetViewport(vw, vh, 96);
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
 

@@ -18,6 +18,13 @@ TEST20 停止；这不是图像缓存或脚本 provider 的失败。next123 增�
 配置并人工检查 IANA、Example Domain、滚动、链接和旋转；在此之前不能宣称
 高 DPI Browse 已验收。
 
+2026-08-07 的 next126 日志为 `screen=320x320 dpi=128`：TEST13 的三段导航完成，
+但 TEST20 在离线缓存图片断言处停止。该失败不是 Browse 回归，而是 TEST20 沿用了
+显式 CSS 视口路径，却把 48 CSS px 按设备 DPI 放大后比较；next127 已将 TEST20
+隔离到 96 DPI CSS 视口，并修正了失败信息中的字段顺序。下一轮设备批次应轮换
+分辨率、横竖方向或 DPI，并保留日志头部的屏幕尺寸与 DPI；即使自动 testbench 全部
+通过，也必须人工检查 TEST13 的排版、滚动、链接和旋转。
+
 | 范围 | 已验证事实 | 不代表 |
 |---|---|---|
 | CSS 媒体查询与 token | TEST 21 已在设备确认运行时 viewport/DPI、旧式 min/max-width 及整数像素 MQ4 `width <=` / `width <`；TEST38-39 又确认同表顶层 `:root` token 语义与正式 redraw。 | 所有媒体特性、MQ4 范围、元素作用域或完整 custom properties 均已覆盖。 |
