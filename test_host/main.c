@@ -11634,6 +11634,9 @@ static int test62_toggle_probe(const char *type, int selected,
             "<!doctype html><html><body><input type=%s%s></body></html>",
             type, selected ? " checked" : "");
     html[sizeof(html) - 1] = '\0';
+    /* This probe owns a 64x48 CSS-pixel surface; keep it independent from
+     * the device-backed viewport left by the preceding render test. */
+    PCore_SetViewport(64, 48, 96);
     hDoc = PCore_ParseHTML(html, 0);
     hSheet = PCore_ParseCSS(CSS, 0,
             "http://positron.local/form-toggle-probe.css");
@@ -11737,6 +11740,11 @@ static BOOL test62_form_toggles(void)
     int screen_h;
     char msg[256];
 
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+
     if (test62_toggle_probe("checkbox", 0, &checkbox_off_w,
                 &checkbox_off_h, &checkbox_off_darkness,
                 &checkbox_off_state) != 0 ||
@@ -11747,6 +11755,7 @@ static BOOL test62_form_toggles(void)
                 &radio_off_h, &radio_off_darkness, &radio_off_state) != 0 ||
             test62_toggle_probe("radio", 1, &radio_on_w,
                 &radio_on_h, &radio_on_darkness, &radio_on_state) != 0) {
+        test_host_set_device_viewport(screen_w, screen_h);
         show_error(L"TEST 62 FAIL", "toggle probe setup/redraw failed");
         return FALSE;
     }
@@ -11771,6 +11780,7 @@ static BOOL test62_form_toggles(void)
                 radio_on_darkness,
                 radio_off_state, radio_on_state);
         msg[sizeof(msg) - 1] = '\0';
+        test_host_set_device_viewport(screen_w, screen_h);
         show_error(L"TEST 62 FAIL", msg);
         return FALSE;
     }
@@ -11782,15 +11792,14 @@ static BOOL test62_form_toggles(void)
         if (hidden_doc != NULL) {
             PCore_FreeDocument(hidden_doc);
         }
+        test_host_set_device_viewport(screen_w, screen_h);
         show_error(L"TEST 62 FAIL", "hidden input generated a visible box");
         return FALSE;
     }
     PCore_FreeDocument(hidden_doc);
 
-    screen_w = GetSystemMetrics(SM_CXSCREEN);
-    screen_h = GetSystemMetrics(SM_CYSCREEN);
-    if (screen_w <= 0) { screen_w = 240; }
-    if (screen_h <= 0) { screen_h = 320; }
+    /* The visible window is the real device-backed part of this test. */
+    test_host_set_device_viewport(screen_w, screen_h);
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/form-toggles.css");

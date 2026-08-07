@@ -52,6 +52,13 @@ TEST63 同样是固定 CSS `240x120`/`120x60` 的离线夹具，却继承了设�
 `layout/node/box` 值。共享 SVG 的跨文档 create/reuse/free 断言没有放宽，ARMV4I
 构建/staging 已通过，`C:\WMShare\Positron-next139` 的设备复测待补。
 
+**当前状态更正（next140，2026-08-07）**：next139 在 `screen=480x640 dpi=192` 下
+通过 TEST13/20/27/43/44/56/58/59/60/61，随后 TEST62 的离线 checkbox/radio probe
+返回 `36x36`，正好是 `192/96=2` 的 CSS 尺寸换算。next140 只为四个静态 toggle
+probe 与 hidden-input 检查安装 96 DPI 参考上下文，并在可见窗口前恢复真实设备视口；
+控件状态、绘制和 `14..24px` 断言均未放宽。ARMV4I 构建/staging 已通过，
+`C:\WMShare\Positron-next140` 的设备复测待补。
+
 ## 已验证基线（不是完整功能声明）
 
 ### 高 DPI / 大分辨率视口边界（next134，非 96 DPI 仍需继续轮换验收）

@@ -60,6 +60,12 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - next139 在 TEST63 前显式使用 `PCore_SetViewport(240,120,96)`，清理阶段恢复真实设备视口，并报告 post-release `layout/node/box` 值；共享 SVG 的 create/reuse/fetch/free 断言保持严格。
 - C89 回归、仓库审计、VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建与 staging 均通过，包为 `C:\WMShare\Positron-next139`；设备复测后再判断是否需要真正修改跨文档 SVG 生命周期。
 
+### 6l. next140：隔离 TEST62 的 CSS 控件探针上下文（待设备验收）
+
+- next139 在 `screen=480x640 dpi=192` 下通过 TEST13/20/27/43/44/56/58/59/60/61；TEST62 的离线 checkbox/radio probe 返回 `36x36`，正好是 `192/96=2` 的设备换算，不是控件状态或绘制回归。
+- next140 在四个静态 toggle probe 和 hidden-input 检查前显式使用 `PCore_SetViewport(64,48,96)`；可见 TEST62 页面在 probe 完成后调用真实 `test_host_set_device_viewport`。没有修改控件状态、绘制路径或 `14..24px` 断言。
+- C89 回归、仓库审计、VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建与 staging 均通过，包为 `C:\WMShare\Positron-next140`；设备复测后再继续 TEST63-77/100-104。
+
 ### 6g. next124：独立脚本 global/JSON 调用桥（已设备验收，纳入 next134）
 
 - `positron_script.h` ABI minor 升至 1.4，新增 `PScript_SetGlobalString`、`PScript_SetGlobalNumber`、`PScript_SetGlobalBoolean`、`PScript_GetGlobalJson` 和 `PScript_CallGlobalJson`。宿主只需要 `windows.h` 与公开头文件，不需要包含 Duktape；全局值在同一 opaque context 内跨求值和函数调用持久存在。

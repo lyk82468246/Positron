@@ -3,11 +3,12 @@
 更新时间：2026-08-07
 当前分支：`main`  
 当前开发候选：next137 已在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，
-next138 隔离 TEST60 后通过，TEST63 又暴露离线 SVG 几何夹具继承运行时 DPI；next139
-已让 TEST63 使用 96 DPI CSS 参考上下文并补充布局诊断，在清理阶段恢复真实设备视口。
-ARMV4I 增量构建与 `C:\WMShare\Positron-next139` staging 已通过，设备复测待进行。
-96 DPI 不是产品固定值。
-当前设备基线：next134 已在 `screen=240x320 dpi=96` 设备日志中通过 TEST13/20/27/43/44/56/58-77/80-99；next135 新增 TEST100-104 的 `minlength`/`maxlength` 表单约束，next136 隔离 TEST59 的 CSS 参考上下文，next137 在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，随后 TEST60 暴露独立离线夹具的 DPI 上下文问题；next138 已修正该夹具，均已完成 ARMV4I 构建与 staging，next138 设备验收待进行。next123/124/125/126/127/134/135 的 `positron_script.dll` 与表单扩展仍不接入冻结的浏览器 JS 路径。next123 以来 Browse 宿主使用物理像素/CSS 视口分离，并按设备报告的 DPI 换算；96 DPI 只是某次设备日志，不是产品固定值。next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、类型/范围 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
+next138 隔离 TEST60 后通过，next139 隔离 TEST63 后通过；在
+`screen=480x640 dpi=192` 下 TEST62 又暴露离线表单控件 probe 继承运行时 DPI，next140
+已让 TEST62 的 probe/hidden-input 段使用 96 DPI CSS 参考上下文，并在可见窗口前恢复
+真实设备视口。ARMV4I 增量构建与 `C:\WMShare\Positron-next140` staging 已通过，
+设备复测待进行。96 DPI 不是产品固定值。
+当前设备基线：next134 已在 `screen=240x320 dpi=96` 设备日志中通过 TEST13/20/27/43/44/56/58-77/80-99；next135 新增 TEST100-104 的 `minlength`/`maxlength` 表单约束，next136 隔离 TEST59 的 CSS 参考上下文，next137 在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，next138/139 又分别修正 TEST60/63 的离线 CSS 上下文，next140 修正 TEST62 的离线表单 probe，均已完成 ARMV4I 构建与 staging，next140 设备验收待进行。next123/124/125/126/127/134/135 的 `positron_script.dll` 与表单扩展仍不接入冻结的浏览器 JS 路径。next123 以来 Browse 宿主使用物理像素/CSS 视口分离，并按设备报告的 DPI 换算；96 DPI 只是某次设备日志，不是产品固定值。next114 建立外部 `<script src>` 的 transport-agnostic 发现/抓取/document 缓存 ABI，但没有执行 JavaScript。next115 与 next116 的 float 候选均已因 TEST79 失败和 TEST13 视觉回归否决，代码与默认配置已恢复 next114；Float 方向暂挂。`pattern`、类型/范围 validity、`:visited/:target/:indeterminate`、专用事件数据、完整 HTML activation 和浏览器 JS binding 仍未实现；真实触屏与视觉仍待累计人工检查。**next78 仍是已撤回的失败实验，不得使用**。
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
@@ -64,6 +65,13 @@ DLL 混装或 TEST20 断言隔离：`libcss/src/select/unit.c` 的通用
 参考上下文，清理时恢复真实设备视口，并记录 post-release layout/node/box 诊断；没有放宽
 共享 SVG 的 create/reuse/fetch/free 断言。ARMV4I 增量构建和
 `C:\WMShare\Positron-next139` staging 已通过，设备复测待进行。
+
+**next140（2026-08-07）**：next139 在 `screen=480x640 dpi=192` 下通过
+TEST13/20/27/43/44/56/58/59/60/61，随后 TEST62 报告 `cb=36x36`、`radio=36x36`，
+正好是设备 DPI 对离线 probe 尺寸的 `2x` 换算。next140 让四个静态 toggle probe 和
+hidden-input 检查使用 96 DPI CSS 参考上下文；可见 TEST62 窗口仍在 probe 完成后恢复
+真实设备视口。没有修改控件绘制、状态或尺寸断言。ARMV4I 增量构建和
+`C:\WMShare\Positron-next140` staging 已通过，设备复测待进行。
 
 2026-08-07 的 next126 设备日志记录为 `screen=320x320 dpi=128`：TEST13 的
 `example.com`、IANA Example Domains、IANA Reserved Domains 三段导航均完成，随后

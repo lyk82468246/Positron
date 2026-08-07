@@ -1,17 +1,17 @@
 # Positron
 
-**最新门禁（next139，2026-08-07）**：next134 在 `screen=240x320 dpi=96`
-设备上已确认 TEST13/20/27/43/44/56/58-77/80-99 全部通过。next137 在
-`screen=320x320 dpi=128` 下确认 TEST13/20/27/43/44/56/58/59/60 通过，TEST63
-随后暴露出另一个离线 SVG 夹具错误继承运行时 DPI；next138 隔离 TEST60，next139
-隔离 TEST63 并补充具体布局诊断。ARMV4I Debug 增量构建与 staging 已通过，设备复测
-待进行。96 DPI 只是离线 CSS 参考，不是产品固定 DPI；仍需轮换分辨率/DPI，并人工
-复查 TEST13。
+**最新门禁（next140，2026-08-07）**：next134 在 `screen=240x320 dpi=96`
+设备上已确认 TEST13/20/27/43/44/56/58-77/80-99 全部通过。next139 在
+`screen=480x640 dpi=192` 下确认 TEST13/20/27/43/44/56/58/59/60/61 通过，TEST62
+暴露出离线表单控件 probe 错误继承运行时 DPI；next140 隔离 TEST62 的 CSS 96-DPI
+probe，并在可见窗口前恢复真实设备视口。ARMV4I Debug 增量构建与 staging 已通过，
+设备复测待进行。96 DPI 只是离线 CSS 参考，不是产品固定 DPI；仍需轮换分辨率/DPI，
+并人工复查 TEST13。
 
-> **当前构建候选（2026-08-07）**：next139 保留 next137 的非整数 DPI 设备像素换算，
-> 并隔离 TEST60/63 的显式 CSS 几何上下文；没有放宽 TEST20/60/63 断言，也不固定
-> 分辨率或产品 DPI。next139 需要在 `screen=320x320 dpi=128` 及另一组分辨率/DPI
-> 上运行，重点确认 TEST63-77、TEST100-104 与 TEST13；浏览器核心仍不执行脚本，float 候选
+> **当前构建候选（2026-08-07）**：next140 保留 next137 的非整数 DPI 设备像素换算，
+> 并隔离 TEST60/62/63 的显式 CSS 几何上下文；没有放宽 TEST20/60/62/63 断言，也不
+> 固定分辨率或产品 DPI。next140 需要在 `screen=480x640 dpi=192` 及另一组分辨率/DPI
+> 上运行，重点确认 TEST62-77、TEST100-104 与 TEST13；浏览器核心仍不执行脚本，float 候选
 > 保持撤回，next37/next114 Browse 路径仍是回归基线。
 
 **Float 方向暂挂（2026-08-04）**：next115 的普通 float 和 next116 的显式 block-level float 都未通过真实设备门禁。next116 的自动 TEST13 数值记录为 OK，但人工截图显示导航被扁平化、正文边界异常，且 TEST79 最终失败；因此 TEST79 已从默认配置和 ENGINE 组移除。不要把 TEST23/79 当作已支持的 CSS Floats，也不要在没有完整 box construction/normalisation 方案前继续扩大该方向。
