@@ -10842,6 +10842,9 @@ static BOOL test56_table_height_distribution(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-height.css");
+    /* The geometry half is an explicit CSS-pixel contract. Do not let a
+     * preceding device-backed render carry its physical DPI into it. */
+    PCore_SetViewport(230, 260, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 230, 260) != 0) {
@@ -10921,6 +10924,7 @@ static BOOL test56_table_height_distribution(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-height.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -10947,6 +10951,7 @@ static BOOL test56_table_height_distribution(void)
     }
     g_render_doc = NULL;
     g_render_sheet = NULL;
+    test_host_set_device_viewport(screen_w, screen_h);
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
     show_info(L"TEST 56 OK",

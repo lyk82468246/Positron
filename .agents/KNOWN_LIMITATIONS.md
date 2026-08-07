@@ -42,6 +42,11 @@ next129 的新设备日志为 `screen=480x640 dpi=192`：TEST13 与 TEST20 通�
 next130 已修正 TEST27 的设备视口安装、动态尺寸断言和离屏采样坐标；该批次尚未
 在设备上重跑。
 
+next130 在 `screen=480x480 dpi=192` 下确认 TEST27/TEST43/44 通过后，TEST56 的
+离线表格几何段因继承物理 DPI得到 `105 CSS px -> 210 device px` 而误报失败。
+next131 已将该离线段隔离为 96 DPI CSS 契约，并保留可见渲染段的真实设备 DPI；
+这不改变 table layout 实现。
+
 | 范围 | 已验证事实 | 不代表 |
 |---|---|---|
 | CSS 媒体查询与 token | TEST 21 已在设备确认运行时 viewport/DPI、旧式 min/max-width 及整数像素 MQ4 `width <=` / `width <`；TEST38-39 又确认同表顶层 `:root` token 语义与正式 redraw。 | 所有媒体特性、MQ4 范围、元素作用域或完整 custom properties 均已覆盖。 |

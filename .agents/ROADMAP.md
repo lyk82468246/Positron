@@ -32,6 +32,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - ARMV4I Debug/Release 构建、审计和 `C:\WMShare\Positron-next123` staging 已通过；必须在新分辨率模拟器运行默认自动配置，并人工复查 IANA 与 Example Domain 的初始页、滚动、链接和旋转。若该批次仍有视觉回归，优先回到 next121/next114 的 Browse 代码，而不是放宽断言。
 - next127/128 的设备日志已分别在 `240x320 dpi=96` 与 `240x240 dpi=96` 完成 TEST13/20/27/43-99 的自动回归；next129 把 TEST20 的离线图片断言改回 `PCore_SetDeviceViewport` 与实际 DPI 物理尺寸换算，等待非 96 DPI 设备验收。
 - next129 在 `480x640 dpi=192` 下已验证 TEST13/20 的动态换算；TEST27 发现 SVG 离线测试仍有固定 `120x60` 设备像素断言，next130 已改为实际 DPI 尺寸与采样坐标，等待设备复测。
+- next130 在 `480x480 dpi=192` 下验证 TEST27/43/44 后，TEST56 暴露离线 CSS 几何段继承设备 DPI；next131 已隔离该段的 96 DPI CSS 契约，同时保留可见窗口的真实设备视口。
 
 ### 6g. next124：独立脚本 global/JSON 调用桥（待设备验收）
 
