@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 115
+#define TEST_MAX_NUMBER 116
 
 static int test_config_space(char c)
 {
@@ -3010,6 +3010,8 @@ static void pcore_native_focus_changed(HWND control)
             }
             pcore_browser_script_dispatch_control_event(control,
                     "focus", 0);
+            pcore_browser_script_dispatch_control_event(control,
+                    "focusin", 1);
             return;
         }
     }
@@ -3027,6 +3029,8 @@ static void pcore_native_focus_changed(HWND control)
             }
             pcore_browser_script_dispatch_control_event(control,
                     "focus", 0);
+            pcore_browser_script_dispatch_control_event(control,
+                    "focusin", 1);
             return;
         }
     }
@@ -3054,6 +3058,8 @@ static void pcore_native_focus_lost(HWND control)
             }
             pcore_browser_script_dispatch_control_event(control,
                     "blur", 0);
+            pcore_browser_script_dispatch_control_event(control,
+                    "focusout", 1);
             return;
         }
     }
@@ -3064,6 +3070,8 @@ static void pcore_native_focus_lost(HWND control)
                         &select_info) == 0) {
             pcore_browser_script_dispatch_control_event(control,
                     "blur", 0);
+            pcore_browser_script_dispatch_control_event(control,
+                    "focusout", 1);
             return;
         }
     }
@@ -18544,6 +18552,126 @@ static BOOL test115_browser_script_keyboard_events(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 116 - browser JavaScript bubbling focus event family             */
+/* -------------------------------------------------------------------- */
+static BOOL test116_browser_script_focus_events(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.events='';"
+        "window.record=function(e){window.events+="
+        "(window.events===''?'':'|')+e.type+':'+String(e.phase)+':'"
+        "+String(e.bubbles)+':'+String(e.cancelable)+':'"
+        "+String(e.trusted);"
+        "document.getElementById('result').textContent=window.events;};"
+        "window.target=document.getElementById('target');"
+        "window.container=document.getElementById('container');"
+        "window.target.addEventListener('focusin',window.record,false);"
+        "window.target.addEventListener('focusout',window.record,false);"
+        "window.container.addEventListener('focusin',window.record,false);"
+        "window.container.addEventListener('focusout',window.record,false);"
+        "</script></head><body>"
+        "<div id='container'><input id='target' value='x'></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "div{display:block;width:180px;height:28px}"
+        "p{display:block;width:220px;height:28px;color:#102040}";
+    static const char EXPECTED[] =
+        "focusin:2:true:false:true|focusin:3:true:false:true|"
+        "focusout:2:true:false:true|focusout:3:true:false:true";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[512];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    default_allowed = 1;
+    dispatch_result = -1;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        default_allowed = 0;
+        dispatch_result = PCore_EventDispatchToId(document, "target",
+                "focusin", 1, 0, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        dispatch_result = PCore_EventDispatchToId(document, "target",
+                "focusout", 1, 0, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1 ||
+                PCore_NodeTextContentById(document, "result", text,
+                        sizeof(text), &bytes) != 0 ||
+                strcmp(text, EXPECTED) != 0) {
+            ok = 0;
+        }
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-focus-events.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "p", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 116 FAIL", error[0] != '\0' ? error :
+                "focusin/focusout event bridge did not match");
+        return FALSE;
+    }
+    show_info(L"TEST 116 OK",
+            "Trusted focusin/focusout bubbled from the target to its\n"
+            "parent with the expected event metadata and layout remained\n"
+            "valid.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -18778,6 +18906,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 113: ok = test113_browser_script_events(); break;
         case 114: ok = test114_browser_script_form_events(); break;
         case 115: ok = test115_browser_script_keyboard_events(); break;
+        case 116: ok = test116_browser_script_focus_events(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

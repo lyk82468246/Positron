@@ -1,12 +1,12 @@
 # Positron
 
-**最新设备门禁（next148，2026-08-08）**：next148 在 `screen=320x320 dpi=128`
-设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-114 全部通过并记录
+**最新设备门禁（next149，2026-08-08）**：next149 在 `screen=320x320 dpi=128`
+设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-115 全部通过并记录
 `TESTBENCH PASS`。TEST13 的 example.com、IANA Example Domains、IANA Reserved
 Domains 三段导航均完成；TEST112 确认页面级 script context 的后续求值，TEST113 确认
-click 事件派发/取消默认动作，TEST114 确认原生表单事件元数据、冒泡和 DOM 更新。
-ARMV4I Debug 增量构建、staging 和设备验收均已通过；后续仍需轮换
-分辨率/DPI，并人工复查新增可见能力。
+click 事件派发/取消默认动作，TEST114 确认原生表单事件元数据、冒泡和 DOM 更新，
+TEST115 确认原生 EDIT 键盘事件元数据。ARMV4I Debug 增量构建、staging 和设备验收
+均已通过；后续仍需轮换分辨率/DPI，并人工复查新增可见能力。
 
 **next146 实现说明（2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
 网络路径不变的前提下，浏览器导航请求会把显式 `javascript=1` 的初始 classic-script
@@ -31,13 +31,21 @@ TEST114 离线覆盖事件元数据、父级冒泡和 DOM 更新；宿主接线�
 增量构建，并在 `screen=320x320 dpi=128` 设备上通过。默认 `javascript=0` 与 TEST13
 路径不变，仍不是完整 Keyboard/Focus/Input/Event API。
 
-**next149 实现候选（待设备验收，2026-08-08）**：在 next148 的表单事件桥上新增
+**next149 实现说明（设备已通过，2026-08-08）**：在 next148 的表单事件桥上新增
 `PCoreKeyEventData` 与键盘事件派发 ABI；显式 `javascript=1` 时，WM 原生 EDIT 的
 `keydown/keyup` 会把 `key/keyCode/charCode/repeat/shiftKey/ctrlKey/altKey` 传入页面
-事件对象。TEST115 离线覆盖 Enter 的可信事件元数据和默认动作结果；C89、ARMV4I
-增量构建与仓库审计已通过，staging 和设备验收待进行。默认 `javascript=0`、TEST13
-网络路径和已验收的表单行为不变；WM SELECT、`keypress`、`beforeinput`、
-`focusin/focusout` 和完整 Keyboard/Event API 仍未实现。
+事件对象。TEST115 离线与 `screen=320x320 dpi=128` 设备日志均覆盖 Enter 的可信事件
+元数据和默认动作结果；C89、ARMV4I 增量构建、仓库审计和 staging 均已通过。默认
+`javascript=0`、TEST13 网络路径和已验收的表单行为不变；WM SELECT、`keypress`、
+`beforeinput`、`focusin/focusout` 和完整 Keyboard/Event API 仍未实现。
+
+**next150 实现候选（待设备验收，2026-08-08）**：在 next148 的原生焦点桥上追加
+可冒泡的 `focusin/focusout`；现有非冒泡 `focus/blur` 顺序保持不变，显式
+`javascript=1` 时在对应生命周期点派发新事件。TEST116 离线覆盖目标/冒泡阶段、
+`bubbles/cancelable/trusted` 元数据及事件后 style/layout；C89 和 ARMV4I 增量构建
+已通过，staging 与设备验收待进行。默认 `javascript=0`、TEST13 网络路径和 next149
+键盘/表单行为保持不变；`beforeinput`、WM SELECT 键盘变化、字符输入/IME 和完整
+Keyboard/Event API 仍未实现。
 
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
@@ -326,7 +334,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-115
+tests=13,20,27,43,44,56,58-77,80-116
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
