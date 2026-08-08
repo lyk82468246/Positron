@@ -20085,6 +20085,7 @@ static BOOL test122_browser_script_surrogate_char(void)
     bridge = NULL;
     executed = -1;
     ignored = -1;
+    bytes = 0;
     ok = 1;
     memset(text, 0, sizeof(text));
     memset(error, 0, sizeof(error));
@@ -20128,8 +20129,16 @@ static BOOL test122_browser_script_surrogate_char(void)
         g_native_surrogate_probe = 0;
         g_render_doc = NULL;
         g_render_sheet = NULL;
-        if (ok && (PCore_NodeTextContentById(document, "result", text,
-                sizeof(text), &bytes) != 0 || strcmp(text, EXPECTED) != 0)) {
+        if (ok && PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "result text read failed");
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        } else if (ok && strcmp(text, EXPECTED) != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "actual[%d]=%s", bytes, text);
+            error[sizeof(error) - 1] = '\0';
             ok = 0;
         }
     }

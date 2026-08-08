@@ -116,12 +116,17 @@ JSON 字符串转义，保留合法 UTF-8 并转义 JSON 特殊字符；单个 B
 `screen=640x480 dpi=192` 设备日志均已通过并记录 `TESTBENCH PASS`；代理对、IME/composition、
 完整 Unicode 输入和字体覆盖仍未实现。默认 `javascript=0` 与 TEST13 网络路径不变。
 
-**next157 待设备验收（2026-08-08）**：显式脚本 context 中，原生 EDIT/SELECT 各自缓存
+**next157 设备失败（2026-08-08，不能作为基线）**：显式脚本 context 中，原生 EDIT/SELECT 各自缓存
 一个 high-surrogate；匹配 low-surrogate 后才向 Core 派发一次 Unicode 标量
 `keypress`，EDIT 再派发一次 `beforeinput(insertText)`，其 `data` 为完整 UTF-8 payload。
 TEST122 同时检查 JavaScript 的两个 UTF-16 code unit、标量 keyCode/charCode、target/bubble
-和取消 SELECT 默认动作。未配对代理项会回退原生窗口过程；该候选尚未获得设备确认，不能
-宣称实现 IME/composition、组合输入、剪贴板完整 Unicode、字体覆盖或完整 Keyboard/Event API。
+和取消 SELECT 默认动作。next157 的设备日志中 TEST122 失败，而既有回归通过；未配对代理项
+会回退原生窗口过程。不能宣称实现 IME/composition、组合输入、剪贴板完整 Unicode、字体
+覆盖或完整 Keyboard/Event API。
+
+**next158 待设备验收（2026-08-08）**：保持 next157 行为，只在 TEST122 结果不匹配时
+输出实际 result 文本长度和值；ARMV4I 构建、审计和 staging 已通过。诊断完成前不得修改
+断言或把代理对桥接入默认 `javascript=0` 的 TEST13。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

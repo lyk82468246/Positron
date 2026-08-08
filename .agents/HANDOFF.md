@@ -7,11 +7,11 @@
 UTF-8 的问题，新增单个 BMP `WM_CHAR` 的 UTF-8 `keypress`/EDIT `beforeinput.data` 桥，
 TEST121 已通过并记录 `TESTBENCH PASS`。代理对、IME/composition 未实现，默认
 `javascript=0` 与 TEST13 路径不变。
-当前待验收包：next157 在同一桥上加入每个原生 EDIT/SELECT 独立的 UTF-16 high-surrogate
-缓存；收到匹配 low-surrogate 后才派发一次 Unicode 标量事件，EDIT 的
-`beforeinput.data` 保留完整 payload，不完整代理项回退原生窗口过程。TEST122 是新的
-设备门禁，包为 `C:\WMShare\Positron-next157`；在用户回传 `test_host.log` 前不能称为
-设备通过，也不能把 IME/composition 视为已实现。
+next157 设备验收失败：同包 `C:\WMShare\Positron-next157\test_host.log` 中 TEST13 和
+TEST20/27/43/44/56/58-121 均通过，但 TEST122 未匹配，因此 next156 仍是设备基线。
+当前待验收包为 next158：保持每个原生 EDIT/SELECT 的 UTF-16 high-surrogate 合并行为，
+只增加 TEST122 result 文本长度/值诊断；包为 `C:\WMShare\Positron-next158`。在用户
+回传该包 `test_host.log` 前不能决定修复还是暂挂，也不能把 IME/composition 视为已实现。
 当前设备基线：next154 已完成 C89、仓库审计、VS2008 ARMV4I Debug 增量构建、staging
 和设备验收；
 新增显式脚本 context 下 EDIT/SELECT 的 `WM_SYSKEYDOWN/UP`、ASCII `WM_SYSCHAR` 和
@@ -341,7 +341,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-122`；next156 已在 `screen=640x480 dpi=192` 设备通过至 TEST121，next157 新增 TEST122 代理对门禁，设备验收待补。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、next149 的 EDIT 键盘 bridge、next150 的 focusin/focusout bridge、next151 的 beforeinput bridge、next152 的 SELECT keydown/keyup bridge、next153 的 WM_CHAR keypress bridge、next154 的 WM_SYSKEY/WM_SYSCHAR bridge、next156 的 BMP Unicode bridge 和 next157 的 surrogate-pair bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-122`；next156 已在 `screen=640x480 dpi=192` 设备通过至 TEST121，next157 的 TEST122 设备失败，next158 仅增加 result 诊断。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、next149 的 EDIT 键盘 bridge、next150 的 focusin/focusout bridge、next151 的 beforeinput bridge、next152 的 SELECT keydown/keyup bridge、next153 的 WM_CHAR keypress bridge、next154 的 WM_SYSKEY/WM_SYSCHAR bridge、next156 的 BMP Unicode bridge 和 next157 的 surrogate-pair bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。
@@ -432,7 +432,9 @@ scripts\stage.bat
     EDIT/SELECT 记录自己的 high-surrogate，匹配 low-surrogate 后以一个 Unicode 标量
     派发 `keypress`；EDIT 的 `beforeinput.data` 保留完整 UTF-16 data，未配对输入回退
     原生窗口过程。C89、仓库审计、VS2008 ARMV4I Debug 增量构建和 staging 已通过，
-    `C:\WMShare\Positron-next157` 已生成；TEST122 与完整 TEST13 设备门禁尚待用户日志。
+    但 `C:\WMShare\Positron-next157\test_host.log` 的 TEST122 失败；next156 保持基线。
+45. 2026-08-08 next158 只为 TEST122 增加 result 文本长度/值诊断，保持代理对行为和断言
+    不变；ARMV4I staging 已生成到 `C:\WMShare\Positron-next158`，等待用户回传日志。
 
 ## 开发纪律
 

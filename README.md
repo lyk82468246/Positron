@@ -9,14 +9,19 @@ UTF-8 key、beforeinput 数据和 target/bubble。C89、仓库审计、VS2008 AR
 `TESTBENCH PASS`，位于 `C:\WMShare\Positron-next156\test_host.log`。默认
 `javascript=0`、TEST13 网络路径不变。
 
-**next157 待设备验收（2026-08-08）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
+**next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
 还派发一次包含完整 UTF-16 数据的 `beforeinput(insertText)`。TEST122 检查
 `U+1F600/U+1F603` 的标量 keyCode/charCode、JavaScript UTF-16 code unit、data、
 target/bubble 和取消 SELECT 默认动作。不完整代理项回退到原生窗口过程；IME、
 composition、剪贴板完整 Unicode payload、字体覆盖和完整 Keyboard/Event API 仍未实现。
-包位于 `C:\WMShare\Positron-next157`，运行后必须以同包 `test_host.log` 的
-`TESTBENCH PASS` 和人工 TEST13 复查作为晋级条件。
+`C:\WMShare\Positron-next157\test_host.log` 中 TEST13 及 TEST20/27/43/44/56/58-121
+均通过，但 TEST122 失败；因此不能把该包或该实现写成设备基线。
+
+**next158 待设备验收（2026-08-08）**：行为保持 next157 不变，只为 TEST122 增加
+实际 result 文本长度和值诊断，以区分事件未派发、UTF-16 字符串不一致和断言序列差异。
+ARMV4I staging 包位于 `C:\WMShare\Positron-next158`；必须先回传同包日志，再决定
+修复代理对桥还是暂挂该方向。
 
 **next155 设备失败记录（已替代，2026-08-08）**：TEST13 以及 TEST120 之前的回归均
 通过，但 TEST121 失败。宿主侧 `pcore_browser_script_key_safe()` 把合法 UTF-8 的高位
@@ -432,7 +437,7 @@ tests=13,20,27,43,44,56,58-77,80-122
 - TEST 120/121：在显式 `javascript=1` 页面中验证 `WM_SYSKEY/WM_SYSCHAR` 的 system-key
   元数据，以及单个 BMP `WM_CHAR` 的 UTF-8 key/data 传递；next156 已设备通过。
 - TEST 122：在显式 `javascript=1` 页面中验证成对 UTF-16 代理项合并为一次 Unicode 标量
-  `keypress` 和完整 `beforeinput.data`；next157 已构建，设备验收待补。
+  `keypress` 和完整 `beforeinput.data`；next157 已失败，next158 仅增加诊断，设备验收待补。
 
 > ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 
