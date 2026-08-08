@@ -97,6 +97,13 @@ synthetic SELECT、真实 EDIT/SELECT WM 消息、target/bubble 元数据和取�
 均已通过；该桥只覆盖 ASCII，不覆盖 Unicode/IME、`WM_SYSCHAR` 或完整 Keyboard/Event
 API。
 
+**next154 候选（2026-08-08，设备待验收）**：新增原生 EDIT/SELECT
+`WM_SYSKEYDOWN/UP` 与 ASCII `WM_SYSCHAR` 的 system-key 事件桥，TEST120 覆盖
+`altKey`、target/bubble、取消 SELECT 默认动作和现有键盘元数据。该候选已通过 C89、
+仓库审计和 ARMV4I 增量构建，但尚未经过 staging、设备日志或人工视觉检查；它不实现
+IME/composition、Unicode 输入、Imm32 API 或完整 Keyboard/Event API。默认
+`javascript=0` 与 TEST13 网络路径不变。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM

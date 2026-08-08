@@ -1,5 +1,14 @@
 # Positron
 
+**next154 候选（设备待验收，2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
+网络路径不变的前提下，显式脚本 context 中的原生 EDIT/SELECT 新增
+`WM_SYSKEYDOWN/UP` 与 ASCII `WM_SYSCHAR` 事件桥；桥显式记录 system-key 的
+`altKey`，不依赖桌面线程的 `GetKeyState`，并沿用现有 target/bubble/cancel ABI。
+TEST120 覆盖 EDIT/SELECT 的 `keydown/keyup/keypress`、ArrowLeft/ArrowRight、Alt
+元数据和取消 SELECT 默认动作。C89、仓库审计和 VS2008 ARMV4I Debug 增量构建已通过，
+设备 staging/`screen` 与 DPI 轮换验收待用户运行；这不是 IME/composition 或完整
+Keyboard/Event API 的实现。候选包将位于 `C:\WMShare\Positron-next154`。
+
 **最新设备门禁（next153，2026-08-08）**：next153 在 `screen=640x480 dpi=192`
 设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-119 全部通过并记录
 `TESTBENCH PASS`。TEST13 的 example.com、IANA Example Domains、IANA Reserved
