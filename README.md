@@ -1,20 +1,21 @@
 # Positron
 
-**最新设备门禁（next151，2026-08-08）**：next151 在 `screen=320x320 dpi=128`
-设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-117 全部通过并记录
+**最新设备门禁（next152，2026-08-08）**：next152 在 `screen=480x640 dpi=192`
+设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-118 全部通过并记录
 `TESTBENCH PASS`。TEST13 的 example.com、IANA Example Domains、IANA Reserved
 Domains 三段导航均完成；TEST112 确认页面级 script context 的后续求值，TEST113 确认
 click 事件派发/取消默认动作，TEST114 确认原生表单事件元数据、冒泡和 DOM 更新，
 TEST115 确认原生 EDIT 键盘事件元数据，TEST116 确认可冒泡 focusin/focusout，
-TEST117 确认受限 beforeinput 的数据、冒泡与取消默认动作。
+TEST117 确认受限 beforeinput 的数据、冒泡与取消默认动作，TEST118 确认原生 SELECT
+键盘事件的 target/bubble 元数据和 WM 消息入口。
 ARMV4I Debug 增量构建、staging 和设备验收均已通过；后续仍需轮换分辨率/DPI，
-并人工复查新增可见能力。设备日志位于 `C:\\WMShare\\Positron-next151\\test_host.log`。
+并人工复查新增可见能力。设备日志位于 `C:\\WMShare\\Positron-next152\\test_host.log`。
 
-**当前开发候选（next152，设备待验收）**：显式 `javascript=1` 的页面新增原生
+**next152 实现说明（设备已通过，2026-08-08）**：显式 `javascript=1` 的页面新增原生
 `COMBOBOX/LISTBOX` 的 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用 `PCoreKeyEventData` 和
 `PCore_EventDispatchKeyAt`；TEST118 同时验证公开 SELECT 键盘事件传播与真实 WM
-`COMBOBOX` 消息。该候选已通过 C89、仓库审计和 VS2008 ARMV4I 增量构建，但尚未
-获得设备日志，不能替代 next151 基线；默认 `javascript=0`、TEST13 网络路径不变。
+`COMBOBOX` 消息。该批已通过 C89、仓库审计、VS2008 ARMV4I 增量构建、staging 和
+`screen=480x640 dpi=192` 设备 testbench；默认 `javascript=0`、TEST13 网络路径不变。
 
 **next146 实现说明（2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
 网络路径不变的前提下，浏览器导航请求会把显式 `javascript=1` 的初始 classic-script
@@ -65,12 +66,12 @@ TEST117 离线覆盖目标/冒泡监听器、可信元数据、`preventDefault()
 和完整 Input/Keyboard/Event API 仍未实现。默认 `javascript=0`、TEST13 网络路径和
 next150 行为不变。
 
-**next152 实现说明（设备待验收，2026-08-08）**：在同一键盘事件 ABI 上给原生
+**next152 实现说明（设备已通过，2026-08-08）**：在同一键盘事件 ABI 上给原生
 `COMBOBOX/LISTBOX` 保存原始窗口过程并做 WM 子类化；显式 `javascript=1` 时先派发
 `keydown/keyup`，仅在未被取消时继续执行系统控件默认处理。TEST118 覆盖 SELECT
 目标/冒泡、ArrowDown 元数据、可信标志、取消策略和真实 `WM_KEYDOWN/WM_KEYUP`
-入口。当前只完成本地构建和离线夹具，仍待设备验收；IME、`WM_SYSKEY*`、`keypress`
-与完整 Keyboard/Event API 不在本批范围内。
+入口。该批设备日志已通过；IME、`WM_SYSKEY*`、`keypress` 与完整 Keyboard/Event API
+不在本批范围内。
 
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
