@@ -1,13 +1,25 @@
 # Positron
 
-**当前设备基线（next156，2026-08-08）**：修正 next155 中事件回调 JSON 过滤器
-误删高位 UTF-8 字节的问题；显式脚本 context 中，EDIT/SELECT 可接收单个 BMP
-`WM_CHAR` 的 Unicode `keypress`，EDIT 的 `beforeinput.data` 同步携带 UTF-8 字符，
-取消 SELECT 仍会阻止原生默认动作。TEST121 使用 `→`/`★` 检查 key/keyCode/charCode、
-UTF-8 key、beforeinput 数据和 target/bubble。C89、仓库审计、VS2008 ARMV4I Debug
-增量构建、staging 和 `screen=640x480 dpi=192` 设备验收均通过，日志为
-`TESTBENCH PASS`，位于 `C:\WMShare\Positron-next156\test_host.log`。默认
+**当前设备基线（next160，2026-08-08）**：显式脚本 context 中，原生 EDIT/SELECT
+已能把成对 UTF-16 代理项合并为一个 Unicode 标量事件；TEST122 同时确认
+`U+1F600/U+1F603` 的 keyCode/charCode、ECMAScript UTF-16 pair、EDIT
+`beforeinput.data`、target/bubble 和取消 SELECT 默认动作。`screen=640x480 dpi=192`
+设备日志中 TEST13 三段导航、TEST20/27/43/44/56/58-77/80-122 全部通过并记录
+`TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next160\test_host.log`。默认
 `javascript=0`、TEST13 网络路径不变。
+
+**next161 待设备验收（2026-08-08）**：WM 原生 EDIT 子类接入
+`WM_IME_STARTCOMPOSITION/WM_IME_COMPOSITION/WM_IME_ENDCOMPOSITION`，通过 WM6
+`coredll` 的 `ImmGetContext/ImmGetCompositionStringW` 取得 UTF-16 组合串并转为 UTF-8；
+显式脚本 context 可收到 `compositionstart/update/end` 及不可取消的
+`beforeinput(insertCompositionText)`。TEST123 覆盖组合事件数据、顺序、冒泡、取消属性、
+可取消的 `compositionstart` 和 WM 消息入口。自动探针复用真实消息入口与正式数据发射器，
+但不伪造系统 IME context，因此真实 SIP 候选窗口输入仍需人工验收。默认 JavaScript 与
+TEST13 均不改变。C89 专家脚本、仓库审计、VS2008 ARMV4I Debug 增量构建和
+`C:\WMShare\Positron-next161` staging 已通过。实现依据 [Windows CE `ImmGetCompositionString`](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms906001%28v%3Dmsdn.10%29)、
+[Windows CE `WM_IME_COMPOSITION`](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms921476%28v%3Dmsdn.10%29)、
+[W3C UI Events](https://www.w3.org/TR/uievents/) 与
+[Input Events Level 2](https://www.w3.org/TR/input-events-2/)。
 
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
@@ -28,10 +40,9 @@ composition、剪贴板完整 Unicode payload、字体覆盖和完整 Keyboard/E
 通过，但 TEST122 的 target 监听器错误地预期后注册的取消监听器已经执行；实际 `false`
 比错误期望 `true` 多 1 字节，导致 testbench 停止。
 
-**next160 待设备验收（2026-08-08）**：只修正 TEST122 的事件顺序 oracle：SELECT 目标
-监听器必须看到 `defaultPrevented=false`，随后父级冒泡监听器必须看到 `true`。功能桥、
-默认 `javascript=0` 和 TEST13 均不改变。C89、仓库审计、VS2008 ARMV4I Debug 增量构建
-和 `C:\WMShare\Positron-next160` staging 已通过；完整设备日志通过前 next156 仍为基线。
+**next160 设备验收完成（2026-08-08）**：TEST122 的 SELECT 目标监听器先看到
+`defaultPrevented=false`，父级冒泡监听器随后看到 `true`；这与监听器注册/执行顺序一致。
+完整设备日志已通过，next157-159 的诊断包均由 next160 替代。
 
 **next155 设备失败记录（已替代，2026-08-08）**：TEST13 以及 TEST120 之前的回归均
 通过，但 TEST121 失败。宿主侧 `pcore_browser_script_key_safe()` 把合法 UTF-8 的高位
@@ -417,7 +428,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-122
+tests=13,20,27,43,44,56,58-77,80-123
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
@@ -447,7 +458,9 @@ tests=13,20,27,43,44,56,58-77,80-122
 - TEST 120/121：在显式 `javascript=1` 页面中验证 `WM_SYSKEY/WM_SYSCHAR` 的 system-key
   元数据，以及单个 BMP `WM_CHAR` 的 UTF-8 key/data 传递；next156 已设备通过。
 - TEST 122：在显式 `javascript=1` 页面中验证成对 UTF-16 代理项合并为一次 Unicode 标量
-  `keypress` 和完整 `beforeinput.data`；next159 已确认功能结果，next160 修正事件顺序 oracle 并待验收。
+  `keypress` 和完整 `beforeinput.data`；next160 已完成设备验收。
+- TEST 123：验证 WM IME start/end 消息入口及共享 UTF-8 composition update 发射路径；
+  自动 PASS 不等于真实 SIP 候选窗口、预编辑 UI 或完整 `isComposing` 语义已验收。
 
 > ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 

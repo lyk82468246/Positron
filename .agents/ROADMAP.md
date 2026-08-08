@@ -2,20 +2,12 @@
 
 更新时间：2026-08-08
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前设备基线为 next156：修正 next155 事件回调 JSON 过滤器误删合法 UTF-8 的问题，
-补齐单个 BMP WM_CHAR 的 UTF-16→UTF-8 事件数据，TEST121 已设备验收；默认
-`javascript=0`、TEST13 网络路径、代理对和 IME/composition 保持明确不变。next155 的
-首次设备包在 TEST121 失败，原因已记录并由 next156 替代。next156 已在
-`screen=640x480 dpi=192` 设备通过默认配置至 TEST121，并记录
-`TESTBENCH PASS`；显式脚本 context 的 WM_SYSKEYDOWN/UP 与 ASCII WM_SYSCHAR 事件桥
-已完成设备门禁，代理对和 IME/composition 仍未实现。
-next157 的设备验收失败：`C:\WMShare\Positron-next157\test_host.log` 中 TEST13 和
-TEST20/27/43/44/56/58-121 均通过，但 TEST122 失败，因此 next156 仍是设备基线。
-next158 已完成诊断：WM 代理对合并和标量代码正确，但 Duktape 将直接注入的四字节 UTF-8
-暴露成长度 1 的非标准 ECMAScript 字符。next159 把 non-BMP 标量改写成两个
-`\uXXXX` 后，设备实际序列已恢复 CESU-8/UTF-16 语义；TEST122 仍失败是因为 target
-监听器 oracle 错误地预期后注册的取消监听器已执行。当前待验收候选 next160 只修正该
-顺序断言，功能实现不变。
+当前设备基线为 next160：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-122 全部通过并记录 `TESTBENCH PASS`。TEST122 已确认
+WM UTF-16 代理对合并、ECMAScript UTF-16 pair、EDIT beforeinput 数据及 SELECT 取消
+顺序；next157-159 的失败/诊断包已由 next160 替代。默认 `javascript=0` 与 TEST13
+路径不变。当前 next161 候选继续按“存在性优先”接入 WM6 IME composition 纵切和
+TEST123；自动断言不等于真实 SIP 候选窗口输入验收。
 
 **next154 设备门禁（已通过）**：在 `screen=640x480 dpi=192` 默认配置下通过
 TEST13/20/27/43/44/56/58-77/80-120，并记录 `TESTBENCH PASS`；TEST13 三段导航、
@@ -24,13 +16,14 @@ TEST112 页面级 context、TEST113 click 事件桥、TEST114 原生表单事件
 键盘事件桥、TEST119 WM_CHAR keypress 桥和 TEST120 WM_SYSKEY/WM_SYSCHAR 桥均完成。下一批设备继续轮换分辨率/DPI；不能
 把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
 
-**当前阶段（next156 已通过设备门禁）**：unified script sequence ABI、external resource
+**当前阶段（next160 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
 TEST13 不会新增脚本网络请求；next146 的页面级持久 context、next147 的 click 事件桥、
 next148 的原生表单事件桥、next149 的 EDIT 键盘事件桥和 next150 的 focusin/focusout
 桥、next151 的 beforeinput 桥、next152 的 SELECT 键盘桥、next153 的 WM_CHAR keypress
-桥和 next154 的 WM_SYSKEY/WM_SYSCHAR 桥已在设备通过 TEST112-120，但不能把它与完整
-浏览器 JavaScript 混为一谈。IME/composition 和完整 Input/Event API 仍未实现。
+桥、next154 的 WM_SYSKEY/WM_SYSCHAR、next156 的 BMP Unicode 与 next160 的代理对桥
+已完成设备门禁，但不能把它与完整浏览器 JavaScript 混为一谈。next161 开始接入基础
+IME composition；`isComposing`、候选窗口/预编辑 UI 和完整 Input/Event API 仍未实现。
 
 **next153 设备验收（2026-08-08）**：在同一显式脚本 context 中把原生
 EDIT/SELECT 的可识别 `WM_CHAR` 接到可取消 `keypress`，复用 `PCoreKeyEventData` 暴露
@@ -283,14 +276,27 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   标量代码和事件传播均正确；失败来自 TEST122 把 SELECT target 的
   `defaultPrevented` 错写为 `true`。默认 `javascript=0` 与 TEST13 不变。
 
-### 6af. next160：TEST122 事件顺序 oracle 修正（待设备验收）
+### 6af. next160：TEST122 事件顺序 oracle 修正（设备已通过）
 
 - SELECT target 的记录监听器注册在取消监听器之前，因此 target 阶段必须先看到
   `defaultPrevented=false`；取消监听器执行后，父级 bubble 阶段必须看到 `true`。
 - 该顺序与已通过的 TEST121 相同，也符合 DOM 监听器按注册顺序执行的语义。只修正这一个
   oracle 字段，不改变代理对桥、默认动作、TEST13 或默认 `javascript=0`。
-- C89、仓库审计、VS2008 ARMV4I Debug 增量构建和 `C:\WMShare\Positron-next160`
-  staging 已通过；完整设备日志通过前 next156 仍是正式设备基线。
+- C89、仓库审计、VS2008 ARMV4I Debug 增量构建和 staging 已通过；完整设备日志在
+  `screen=640x480 dpi=192` 通过至 TEST122，next160 已成为正式设备基线。
+
+### 6ag. next161：WM6 IME composition 纵切（待设备验收）
+
+- 原生 EDIT 子类处理 `WM_IME_STARTCOMPOSITION/WM_IME_COMPOSITION/`
+  `WM_IME_ENDCOMPOSITION`，从 WM6 `coredll` 取得 UTF-16 组合串并复用现有 JSON/UTF-8
+  事件数据通路；不链接桌面 `imm32.lib`，也不增加新的公共 DLL ABI。
+- 显式脚本 context 派发 `compositionstart/update/end`，组合更新前派发不可取消的
+  `beforeinput(insertCompositionText)`；组合状态按每个 EDIT 独立持有并在销毁时释放。
+- TEST123 用真实 start/end 窗口消息和与 `ImmGetCompositionStringW` 共用的数据发射器检查
+  顺序、UTF-8 数据、target/bubble、cancelable/trusted 和 compositionstart 取消。自动环境
+  不伪造系统 IME context，因此设备日志 PASS 后仍需一次真实 SIP 组合输入人工验收。
+- C89 专家脚本、仓库审计、VS2008 ARMV4I Debug 增量构建和
+  `C:\WMShare\Positron-next161` staging 已通过；完整设备日志通过前仍以 next160 为基线。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -717,11 +723,11 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next156 的 TEST13/20/27/43/44/56/58-77/80-121 设备日志作为已验证自动化基线；
-   先验收 next160 的 TEST122 oracle 修正，后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+1. 以 next160 的 TEST13/20/27/43/44/56/58-77/80-122 设备日志作为已验证自动化基线；
+   先验收 next161 的 TEST123，后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
 2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
-   WM_SYSKEY/WM_SYSCHAR 和 next156 的 BMP 字符桥已完成设备门禁；先验收 next160，
-   再单独评估 IME/composition。
+   WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础
+   IME/composition，真实 SIP 与 `isComposing` 等完整语义另行验收。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。

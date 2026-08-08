@@ -34,6 +34,7 @@
 #include <aygshell.h>   /* SHFullScreen / SHSipPreference - control the SIP */
 #include <commctrl.h>   /* WM6 common-controls progress bar */
 #include <wininet.h>    /* InternetCombineUrlA - WM-native URL resolution */
+#include <imm.h>        /* WM6 input-method composition strings */
 
 #include "positron_tls.h"
 #include "positron_json.h"
@@ -360,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 122
+#define TEST_MAX_NUMBER 123
 
 static int test_config_space(char c)
 {
@@ -2292,6 +2293,9 @@ typedef struct pcore_native_edit {
     unsigned int pending_high_surrogate;
     UINT pending_high_message;
     LPARAM pending_high_lparam;
+    int composition_active;
+    int composition_committing;
+    char *composition_data;
     WNDPROC original_proc;
 } pcore_native_edit;
 
@@ -2321,6 +2325,10 @@ static int pcore_browser_script_dispatch_select_char_event(HWND control,
         int system_key);
 static int pcore_browser_script_dispatch_input_event(HWND control,
         const char *input_type, const char *data);
+static int pcore_browser_script_dispatch_input_event_ex(HWND control,
+        const char *input_type, const char *data, int cancelable);
+static int pcore_browser_script_dispatch_composition_event(HWND control,
+        const char *event_type, const char *data, int cancelable);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data);
 
@@ -2402,6 +2410,144 @@ static void pcore_native_edit_flush_surrogate(HWND hwnd,
     native_edit->pending_high_lparam = 0;
 }
 
+static void pcore_native_edit_clear_composition(
+        pcore_native_edit *native_edit)
+{
+    if (native_edit == NULL) {
+        return;
+    }
+    free(native_edit->composition_data);
+    native_edit->composition_data = NULL;
+    native_edit->composition_active = 0;
+}
+
+static int pcore_native_edit_store_composition(
+        pcore_native_edit *native_edit, const char *data)
+{
+    char *copy;
+    size_t length;
+
+    if (native_edit == NULL) {
+        return 0;
+    }
+    if (data == NULL) {
+        data = "";
+    }
+    length = strlen(data);
+    copy = (char *) malloc(length + 1);
+    if (copy == NULL) {
+        return 0;
+    }
+    memcpy(copy, data, length + 1);
+    free(native_edit->composition_data);
+    native_edit->composition_data = copy;
+    return 1;
+}
+
+static int pcore_native_ime_string(HWND hwnd, DWORD index,
+        char **out_utf8)
+{
+    HIMC context;
+    WCHAR *wide;
+    char *utf8;
+    LONG bytes;
+    LONG copied;
+
+    if (hwnd == NULL || out_utf8 == NULL) {
+        return 0;
+    }
+    *out_utf8 = NULL;
+    context = ImmGetContext(hwnd);
+    if (context == (HIMC) 0) {
+        return 0;
+    }
+    bytes = ImmGetCompositionStringW(context, index, NULL, 0);
+    if (bytes < 0 || (bytes % (LONG) sizeof(WCHAR)) != 0) {
+        ImmReleaseContext(hwnd, context);
+        return 0;
+    }
+    wide = (WCHAR *) malloc((size_t) bytes + sizeof(WCHAR));
+    if (wide == NULL) {
+        ImmReleaseContext(hwnd, context);
+        return 0;
+    }
+    copied = 0;
+    if (bytes > 0) {
+        copied = ImmGetCompositionStringW(context, index, wide,
+                (DWORD) bytes);
+    }
+    ImmReleaseContext(hwnd, context);
+    if (copied < 0 || copied > bytes ||
+            (copied % (LONG) sizeof(WCHAR)) != 0) {
+        free(wide);
+        return 0;
+    }
+    wide[copied / (LONG) sizeof(WCHAR)] = L'\0';
+    utf8 = wide_to_utf8_alloc(wide);
+    free(wide);
+    if (utf8 == NULL) {
+        return 0;
+    }
+    *out_utf8 = utf8;
+    return 1;
+}
+
+static int pcore_native_edit_start_composition(HWND hwnd,
+        pcore_native_edit *native_edit)
+{
+    int default_allowed;
+
+    if (native_edit == NULL) {
+        return 1;
+    }
+    pcore_native_edit_clear_composition(native_edit);
+    native_edit->composition_active = 1;
+    if (!pcore_native_edit_store_composition(native_edit, "")) {
+        native_edit->composition_active = 0;
+        return 1;
+    }
+    default_allowed = pcore_browser_script_dispatch_composition_event(hwnd,
+            "compositionstart", "", 1);
+    if (!default_allowed) {
+        pcore_native_edit_clear_composition(native_edit);
+    }
+    return default_allowed;
+}
+
+static void pcore_native_edit_update_composition(HWND hwnd,
+        pcore_native_edit *native_edit, const char *data)
+{
+    if (native_edit == NULL || !native_edit->composition_active) {
+        return;
+    }
+    if (data == NULL) {
+        data = "";
+    }
+    pcore_browser_script_dispatch_input_event_ex(hwnd,
+            "insertCompositionText", data, 0);
+    pcore_browser_script_dispatch_composition_event(hwnd,
+            "compositionupdate", data, 0);
+    pcore_native_edit_store_composition(native_edit, data);
+}
+
+static void pcore_native_edit_end_composition(HWND hwnd,
+        pcore_native_edit *native_edit, const char *data)
+{
+    const char *final_data;
+
+    if (native_edit == NULL || !native_edit->composition_active) {
+        return;
+    }
+    final_data = data;
+    if (final_data == NULL) {
+        final_data = (native_edit->composition_data != NULL) ?
+                native_edit->composition_data : "";
+    }
+    pcore_browser_script_dispatch_composition_event(hwnd,
+            "compositionend", final_data, 0);
+    pcore_native_edit_clear_composition(native_edit);
+}
+
 static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp)
 {
@@ -2415,12 +2561,14 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
     unsigned long value;
     unsigned long codepoint;
     LRESULT native_result;
+    char *ime_data;
 
     original = NULL;
     native_edit = NULL;
     value = 0;
     codepoint = 0;
     native_result = 0;
+    ime_data = NULL;
     input_type = NULL;
     input_char[0] = '\0';
     input_char[1] = '\0';
@@ -2428,6 +2576,63 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
         if (g_native_edits[i].hwnd == hwnd) {
             native_edit = &g_native_edits[i];
             original = g_native_edits[i].original_proc;
+            if (msg == WM_IME_STARTCOMPOSITION &&
+                    pcore_native_script_active()) {
+                pcore_native_edit_flush_surrogate(hwnd, native_edit);
+                if (!pcore_native_edit_start_composition(hwnd,
+                        native_edit)) {
+                    return 0;
+                }
+                break;
+            }
+            if (msg == WM_IME_COMPOSITION &&
+                    pcore_native_script_active()) {
+                pcore_native_edit_flush_surrogate(hwnd, native_edit);
+                if (!native_edit->composition_active &&
+                        !pcore_native_edit_start_composition(hwnd,
+                        native_edit)) {
+                    return 0;
+                }
+                if ((((DWORD) lp) & GCS_RESULTSTR) != 0 &&
+                        pcore_native_ime_string(hwnd, GCS_RESULTSTR,
+                        &ime_data)) {
+                    pcore_native_edit_update_composition(hwnd, native_edit,
+                            ime_data);
+                    native_edit->composition_committing = 1;
+                    native_result = (original != NULL) ?
+                            CallWindowProc(original, hwnd, msg, wp, lp) :
+                            DefWindowProc(hwnd, msg, wp, lp);
+                    native_edit->composition_committing = 0;
+                    pcore_native_edit_end_composition(hwnd, native_edit,
+                            ime_data);
+                    free(ime_data);
+                    return native_result;
+                }
+                if ((((DWORD) lp) & GCS_COMPSTR) != 0 &&
+                        pcore_native_ime_string(hwnd, GCS_COMPSTR,
+                        &ime_data)) {
+                    pcore_native_edit_update_composition(hwnd, native_edit,
+                            ime_data);
+                    free(ime_data);
+                    ime_data = NULL;
+                }
+                if (lp == 0) {
+                    native_result = (original != NULL) ?
+                            CallWindowProc(original, hwnd, msg, wp, lp) :
+                            DefWindowProc(hwnd, msg, wp, lp);
+                    pcore_native_edit_end_composition(hwnd, native_edit, "");
+                    return native_result;
+                }
+                break;
+            }
+            if (msg == WM_IME_ENDCOMPOSITION &&
+                    native_edit->composition_active) {
+                native_result = (original != NULL) ?
+                        CallWindowProc(original, hwnd, msg, wp, lp) :
+                        DefWindowProc(hwnd, msg, wp, lp);
+                pcore_native_edit_end_composition(hwnd, native_edit, NULL);
+                return native_result;
+            }
             if ((msg == WM_KEYDOWN || msg == WM_KEYUP ||
                     msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) &&
                     pcore_browser_script_dispatch_key_event(hwnd,
@@ -2457,6 +2662,9 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                 return 0;
             }
             if (msg == WM_CHAR || msg == WM_SYSCHAR) {
+                if (native_edit->composition_committing) {
+                    break;
+                }
                 value = (unsigned long) wp;
                 if (pcore_native_script_active()) {
                     if (value >= 0xd800UL && value <= 0xdbffUL) {
@@ -2573,6 +2781,7 @@ static int g_native_keypress_probe = 0;
 static int g_native_syskey_probe = 0;
 static int g_native_unicode_probe = 0;
 static int g_native_surrogate_probe = 0;
+static int g_native_ime_probe = 0;
 static int g_interaction_restyle_pending = 0;
 
 static void pcore_browser_script_dispatch_control_event(HWND control,
@@ -2823,8 +3032,9 @@ static int pcore_browser_script_dispatch_select_char_event(HWND control,
     return 1;
 }
 
-static int pcore_browser_script_dispatch_input_event(HWND control,
-        const char *input_type, const char *data)
+static int pcore_browser_script_dispatch_input_data_event(HWND control,
+        const char *event_type, const char *input_type, const char *data,
+        int cancelable)
 {
     PCoreTextInputInfo text_info;
     PCoreInputEventData input_data;
@@ -2834,7 +3044,8 @@ static int pcore_browser_script_dispatch_input_event(HWND control,
     int default_allowed;
     int result;
 
-    if (control == NULL || input_type == NULL || input_type[0] == '\0' ||
+    if (control == NULL || event_type == NULL || event_type[0] == '\0' ||
+            input_type == NULL ||
             g_render_doc == NULL ||
             g_browser_script_session.document != g_render_doc ||
             g_browser_script_session.runtime == NULL) {
@@ -2851,7 +3062,7 @@ static int pcore_browser_script_dispatch_input_event(HWND control,
             input_data.data = (data != NULL) ? data : "";
             default_allowed = 1;
             result = PCore_EventDispatchInputAt(g_render_doc, x, y,
-                    "beforeinput", 1, 1, &input_data,
+                    event_type, 1, cancelable, &input_data,
                     &default_allowed);
             if (result < 0) {
                 return 1;
@@ -2860,6 +3071,30 @@ static int pcore_browser_script_dispatch_input_event(HWND control,
         }
     }
     return 1;
+}
+
+static int pcore_browser_script_dispatch_input_event_ex(HWND control,
+        const char *input_type, const char *data, int cancelable)
+{
+    if (input_type == NULL || input_type[0] == '\0') {
+        return 1;
+    }
+    return pcore_browser_script_dispatch_input_data_event(control,
+            "beforeinput", input_type, data, cancelable);
+}
+
+static int pcore_browser_script_dispatch_input_event(HWND control,
+        const char *input_type, const char *data)
+{
+    return pcore_browser_script_dispatch_input_event_ex(control,
+            input_type, data, 1);
+}
+
+static int pcore_browser_script_dispatch_composition_event(HWND control,
+        const char *event_type, const char *data, int cancelable)
+{
+    return pcore_browser_script_dispatch_input_data_event(control,
+            event_type, "", data, cancelable);
 }
 
 static void pcore_request_interaction_restyle(HWND hwnd)
@@ -2882,6 +3117,7 @@ static void pcore_native_edits_destroy(void)
             DestroyWindow(g_native_edits[i].hwnd);
             g_native_edits[i].hwnd = NULL;
         }
+        pcore_native_edit_clear_composition(&g_native_edits[i]);
     }
     free(g_native_edits);
     g_native_edits = NULL;
@@ -6847,6 +7083,7 @@ static BOOL show_render_window(void)
     INITCOMMONCONTROLSEX icc;
     HWND      hwnd;
     MSG       m;
+    char      ime_probe_data[8];
 
     hInst = GetModuleHandle(NULL);
     memset(&icc, 0, sizeof(icc));
@@ -6937,6 +7174,17 @@ static BOOL show_render_window(void)
             SendMessage(g_native_selects[0].hwnd, WM_CHAR,
                     (WPARAM) 0xde03, 0);
         }
+    }
+    if (g_native_ime_probe && g_native_edit_count > 0 &&
+            g_native_edits[0].hwnd != NULL &&
+            pcore_native_codepoint_utf8(0x2192UL, ime_probe_data,
+                    sizeof(ime_probe_data)) > 0) {
+        SendMessage(g_native_edits[0].hwnd,
+                WM_IME_STARTCOMPOSITION, 0, 0);
+        pcore_native_edit_update_composition(g_native_edits[0].hwnd,
+                &g_native_edits[0], ime_probe_data);
+        SendMessage(g_native_edits[0].hwnd,
+                WM_IME_ENDCOMPOSITION, 0, 0);
     }
     if (g_native_multiselect_probe) {
         pcore_native_multiselect_probe_run(hwnd);
@@ -20198,6 +20446,163 @@ static BOOL test122_browser_script_surrogate_char(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 123 - WM input-method composition event bridge                  */
+/* -------------------------------------------------------------------- */
+static BOOL test123_browser_script_composition_events(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.events='';window.arrow=String.fromCharCode(0x2192);"
+        "window.record=function(e){var d=String(e.data||'');window.events+="
+        "(window.events===''?'':'|')+e.type+':'"
+        "+String(d.length)+':'+String(d.length?d.charCodeAt(0):0)+':'"
+        "+String(d===window.arrow)+':'+String(e.inputType||'')+':'"
+        "+String(e.phase)+':'+String(e.bubbles)+':'"
+        "+String(e.cancelable)+':'+String(e.trusted)+':'"
+        "+String(e.defaultPrevented);"
+        "document.getElementById('result').textContent=window.events;};"
+        "window.edit=document.getElementById('edit');"
+        "window.parent=document.getElementById('parent');"
+        "window.add=function(t){window.edit.addEventListener(t,window.record,false);"
+        "window.parent.addEventListener(t,window.record,false);};"
+        "window.add('compositionstart');window.add('beforeinput');"
+        "window.add('compositionupdate');window.add('compositionend');"
+        "document.getElementById('cancel').addEventListener('compositionstart',"
+        "function(e){e.preventDefault();document.getElementById('result').textContent="
+        "'cancel:'+String(e.defaultPrevented);},false);"
+        "</script></head><body><div id='parent'>"
+        "<input id='edit' value='x'></div><input id='cancel' value='y'>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "div{display:block;width:180px;height:32px}"
+        "input{display:block;width:160px;height:28px}"
+        "p{display:block;width:220px;height:180px;color:#102040}";
+    static const char EXPECTED[] =
+        "compositionstart:0:0:false::2:true:true:true:false|"
+        "compositionstart:0:0:false::3:true:true:true:false|"
+        "beforeinput:1:8594:true:insertCompositionText:2:true:false:true:false|"
+        "beforeinput:1:8594:true:insertCompositionText:3:true:false:true:false|"
+        "compositionupdate:1:8594:true::2:true:false:true:false|"
+        "compositionupdate:1:8594:true::3:true:false:true:false|"
+        "compositionend:1:8594:true::2:true:false:true:false|"
+        "compositionend:1:8594:true::3:true:false:true:false";
+    static const char RESET[] =
+        "window.events='';"
+        "document.getElementById('result').textContent='idle';";
+    static const PCoreInputEventData EMPTY_DATA = { "", "" };
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[4096];
+    char error[1024];
+    int bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    executed = -1;
+    ignored = -1;
+    bytes = 0;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-composition.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "input", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        default_allowed = 1;
+        dispatch_result = PCore_EventDispatchInputToId(document, "cancel",
+                "compositionstart", 1, 1, &EMPTY_DATA,
+                &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 0 ||
+                PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) != 0 ||
+                strcmp(text, "cancel:true") != 0 ||
+                pcore_browser_script_session_evaluate(RESET,
+                sizeof(RESET) - 1, error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        memset(text, 0, sizeof(text));
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_native_ime_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_ime_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        if (ok && PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "result text read failed");
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        } else if (ok && strcmp(text, EXPECTED) != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "actual[%d]=%s", bytes, text);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 123 FAIL", error[0] != '\0' ? error :
+                "WM composition event bridge did not match");
+        return FALSE;
+    }
+    show_info(L"TEST 123 OK",
+            "WM IME start/end plus the shared UTF-8 update path delivered "
+            "composition and non-cancelable insertCompositionText events.\n"
+            "A configured SIP/IME payload still requires manual testing.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -20439,6 +20844,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 120: ok = test120_browser_script_syskey_events(); break;
         case 121: ok = test121_browser_script_unicode_char(); break;
         case 122: ok = test122_browser_script_surrogate_char(); break;
+        case 123: ok = test123_browser_script_composition_events(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -131,8 +131,15 @@ ECMAScript UTF-16 代理对；TEST13 与 TEST20-121 通过。
 **next159/160 状态（2026-08-08）**：next159 的事件 JSON 把合法 non-BMP UTF-8 写成
 两个 `\uXXXX` 代理项，设备实际结果已得到正确 CESU-8/UTF-16、标量代码和事件传播。
 TEST122 失败来自测试把 SELECT target 的取消状态提前写为 `true`；next160 只修正为
-target `false`、bubble `true` 并待设备验收。默认 `javascript=0` 和 TEST13 不变；仍不能
-宣称 IME/composition、组合输入、剪贴板完整 Unicode 或字体覆盖已实现。
+target `false`、bubble `true`，完整设备日志已通过并成为基线。默认 `javascript=0` 和
+TEST13 不变；仍不能宣称剪贴板完整 Unicode 或字体覆盖已实现。
+
+**next161 IME composition 候选（2026-08-08）**：原生 EDIT 已接入 WM6 composition
+消息并用 `ImmGetCompositionStringW` 将 UTF-16 组合串转为 UTF-8，显式脚本 context 可收到
+`compositionstart/update/end` 与不可取消的 `beforeinput(insertCompositionText)`。TEST123
+只验证 WM start/end 消息入口和正式共享 update 发射路径；它不创建虚假的 IME context，
+所以不能证明任意 OEM SIP、候选窗口、预编辑 UI、`isComposing`、selection replacement、
+组合期间的全部 `input` 顺序或完整 CompositionEvent/InputEvent API 已兼容。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
@@ -244,7 +251,7 @@ next131 已将该离线段隔离为 96 DPI CSS 契约，并保留可见渲染段
 | table span/归一化/折叠边框 | NetSurf 3.11 span occupancy 与匿名 row/cell 已由 TEST46/47 验收。next64/TEST53 至 next68/TEST56 已覆盖常见 collapsed-border、cell alignment/empty-cells 与显式 table height；next73/TEST57 又确认 25/50/auto 百分比 row 分配及超约束缩放。 | 尚不覆盖任意 inline/float/form 畸形组合、caption/column 归一化、`col`/`colgroup` border 来源、百分比 cell/后代内容、跨行 baseline 或所有复杂表格边界。 |
 | Forms/widgets | next85/93 至 next104/TEST71 已完成 checkbox/radio、文本、textarea、single/multiple select、button、GET/POST、reset/Enter/label 与 multipart/file；next106/TEST72 已确认首批 `required/valueMissing`；next109/TEST73 已确认动态表单伪类；next110/TEST74 已建立通用 DOM Event 传播/取消和宿主 click default-action 门；next135/TEST100-104 又加入 text/password/textarea 的 `minlength`/`maxlength`、UTF-8 字符计数、动态值更新和首个长度错误几何；next143/TEST105-109 加入受限 ASCII `pattern` mismatch、动态更新、坏属性豁免和 flags 组合，并已在 `screen=480x640 dpi=192` 设备通过；next147-150/TEST113-116 又加入最小 click、原生表单、EDIT 键盘和 focusin/focusout 桥，next151/TEST117 的 beforeinput 也已在 `screen=320x320 dpi=128` 设备通过。 | multipart 仍整体缓冲且 MIME 固定；尚无流式上传、上传进度、MIME 推断、multiple file、完整 JavaScript RegExp（groups/alternation/brace quantifier/Unicode/inverted class）、email/url/number 类型约束、range、custom validity、`invalid` 事件、验证气泡、完整 MouseEvent/KeyboardEvent/FocusEvent/InputEvent 字段或完整 HTML activation。空且无 CSS 尺寸的 text input 也缺浏览器默认 intrinsic size。自动断言不等于真实手指、原生选择器或公网 POST 已人工验收。 |
 | author-level inline CSS | 外部 author stylesheet 正常参与 libcss 选择；TEST57 使用外部类规则通过。next75/TEST58 已确认 NetSurf 式声明列表解析、libcss inline cascade、继承、后代 class 选择与正式布局/重绘。next81 已把全零 `nsoption` shim 改成具名默认，未知读取会编译失败；TEST56/58-61 已由设备确认。 | 正式构盒不调用 NetSurf `box_construct.c`；旧缺口是 `pcore_style_subtree` 固定给 `css_select_style` 传 `NULL`。具名 option 不能被误写成 inline CSS 的直接开关。 |
-| Forms/widgets 状态边界 | next109 把宿主维护的 focus/active 节点与 live checked/selected/disabled 状态交给 libcss callback；next110 的通用 Event 已有 capture/target/bubble、取消和停止传播，next113 又加入独立的 hover 状态，现有 click 默认动作尊重取消结果；next147-150/TEST113-116 又接入 click、原生表单、EDIT 键盘和 focusin/focusout 的最小桥，next151/TEST117 仅在离线覆盖受限 beforeinput。 | 尚无完整 MouseEvent/KeyboardEvent/FocusEvent/InputEvent 专用字段和完整 HTML activation；当前数据桥只覆盖已记录的 key、焦点冒泡与 EDIT beforeinput 子集，也未覆盖 `:visited/:target/:indeterminate` 或所有控件的浏览器默认 intrinsic size。 |
+| Forms/widgets 状态边界 | next109 把宿主维护的 focus/active 节点与 live checked/selected/disabled 状态交给 libcss callback；next110 的通用 Event 已有 capture/target/bubble、取消和停止传播，next113 又加入独立的 hover 状态，现有 click 默认动作尊重取消结果；next147-160/TEST113-122 又接入 click、原生表单、EDIT/SELECT 键盘、focus、beforeinput 及 Unicode/代理对，next161/TEST123 候选增加基础 WM IME composition 纵切。 | 尚无完整 MouseEvent/KeyboardEvent/FocusEvent/InputEvent/CompositionEvent 专用字段和完整 HTML activation；IME 自动探针不等于真实 SIP 候选窗口/预编辑 UI 已验收，也未覆盖 `isComposing`、`:visited/:target/:indeterminate` 或所有控件的浏览器默认 intrinsic size。 |
 | 列表 marker | next57/59 已确认基础 marker 与字体；next61/TEST50 已确认 libcss 上游 47 种 counter formatter、document-cache `list-style-image` 与失败类型回退；next62/TEST51、next63/TEST52 已确认 inline-first 及 block-first/空条目/嵌套/图片的 `list-style-position:inside`。 | 不代表 float 邻接 marker、自定义 `@counter-style` 或完整 CSS Lists。普通语言字体不属于当前 marker 工作范围。 |
 | 字体 fallback | next59 随包部署约 901 KiB 的三份静态 Positron Symbols/Emoji（来自 Noto OFL），精确 cmap 选择统一用于 GDI 测量、换行命中与绘制 run；设备确认箭头/marker/五个 emoji 可见且比 next58 稍平滑。当前范围明确只支持符号与单色 emoji fallback。 | 不计划在本阶段加入普通语言/多语种字体；也没有复杂 ZWJ/variation shaping、彩色 emoji、网页 `@font-face` 或字体下载。`ANTIALIASED_QUALITY` 最终效果仍依赖 OEM GDI。 |
 | 图片 | TEST19/20 已确认公共 retained 位图 ABI 与 WM Imaging 四格式；TEST25-37/13 已确认当前 SVG 链。next89 已由 TEST20/27 确认同 document 二次布局复用；next92/TEST63 已确认两个同时存活且内容一致的 document 可共享 SVG，并在释放首文档后继续绘制。 | 复杂 SVG text、径向焦点/spread method、多层或可缩放 CSS 背景、空闲/持久缓存及跨线程图片句柄仍未完成。 |
