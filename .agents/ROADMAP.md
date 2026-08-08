@@ -1,16 +1,17 @@
 # Positron Roadmap
 
 更新时间：2026-08-08
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next145 在 `screen=320x320 dpi=128` 日志中确认 TEST13/20/27/43/44/56/58-77/80-111 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门，以及显式开启时 classic inline/external script 的 DOM 顺序执行和最小 DOM text bridge。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next146 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-112 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行和页面级 context 的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
-**最新设备门禁（next145）**：在 `screen=320x320 dpi=128` 默认配置下通过
-TEST13/20/27/43/44/56/58-77/80-111，并记录 `TESTBENCH PASS`。下一批设备继续轮换
+**最新设备门禁（next146）**：在 `screen=240x320 dpi=96` 默认配置下通过
+TEST13/20/27/43/44/56/58-77/80-112，并记录 `TESTBENCH PASS`；TEST13 三段导航和
+TEST112 页面级 context 均完成。下一批设备继续轮换
 分辨率/DPI；不能把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
 
-**当前阶段（next145 已通过设备门禁）**：unified script sequence ABI、external resource
+**当前阶段（next146 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
-TEST13 不会新增脚本网络请求；next146 已形成页面级持久 context 的候选实现，等待设备
-验收，不能把它与当前已验收的初始加载脚本纵切或完整浏览器 JavaScript 混为一谈。
+TEST13 不会新增脚本网络请求；next146 的页面级持久 context 已在 `240x320 dpi=96` 设备
+通过 TEST112，但不能把它与完整浏览器 JavaScript 混为一谈。
 
 ## 总原则
 
@@ -63,15 +64,16 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   DOM 顺序和 `textContent` 结果。C89 专家脚本、ARMV4I 增量构建、仓库审计和
   `screen=320x320 dpi=128` 设备验收均已通过；默认 `javascript=0` 的 TEST13 路径保持不变。
 
-### 6r. next146：页面级 browser script context 候选（待设备验收）
+### 6r. next146：页面级 browser script context（设备已通过）
 
 - 浏览器导航请求在显式 `javascript=1` 时保留初始 classic-script 的 runtime 与最小 DOM
   bridge，并把它绑定到待提交的 document；成功导航整体换入新页面，失败导航、旧文档
   释放和窗体关闭按同一所有权边界清理，避免 runtime/bridge 悬挂到下一页。
 - 默认 `javascript=0` 仍在 DOM 扫描前返回，TEST13 不新增脚本发现、网络请求或执行；
   没有开启事件、异步任务、getter、完整 window 生命周期或完整 DOM binding。
-- TEST112 离线验证初始脚本状态在后续求值中保持、`textContent` mutation 进入正式
-  style/layout，并验证 context 清理。C89 和 ARMV4I 构建已通过，设备验收待进行。
+- TEST112 离线与设备日志均验证初始脚本状态在后续求值中保持、`textContent` mutation
+  进入正式 style/layout，并验证 context 清理。C89、ARMV4I 构建和
+  `screen=240x320 dpi=96` 设备验收已通过。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -498,8 +500,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next145 的 TEST13/20/27/43/44/56/58-77/80-111 设备日志作为已验证自动化基线；next146 先在设备上验收 TEST112，再让后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；设备验收 next146 后再评估后续事件/交互如何消费页面级 context。
+1. 以 next146 的 TEST13/20/27/43/44/56/58-77/80-112 设备日志作为已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；下一步评估后续事件/交互如何消费已验收的页面级 context。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。
