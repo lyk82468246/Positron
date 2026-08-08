@@ -19277,12 +19277,12 @@ static BOOL test119_browser_script_keypress(void)
         "p{display:block;width:220px;height:64px;color:#102040}";
     static const char SYNTH_EXPECTED[] =
         "select:keypress:a:65:97:false:true:2:true:true:false|"
-        "select:keypress:a:65:97:false:true:3:true:true:false";
+        "select:keypress:a:65:97:false:true:3:true:true:true";
     static const char NATIVE_EXPECTED[] =
         "edit:keypress:a:97:97:false:true:2:true:true:false|"
         "edit:keypress:a:97:97:false:true:3:true:true:false|"
         "select:keypress:b:98:98:false:true:2:true:true:false|"
-        "select:keypress:b:98:98:false:true:3:true:true:false";
+        "select:keypress:b:98:98:false:true:3:true:true:true";
     static const char RESET[] =
         "window.events='';"
         "document.getElementById('result').textContent='idle';";
