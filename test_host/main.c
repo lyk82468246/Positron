@@ -20092,7 +20092,7 @@ static BOOL test122_browser_script_surrogate_char(void)
         "edit:keypress:128512:128512:2:55357:56832:true:false:false:3:true:false::0:0:0|"
         "edit:beforeinput:0:0:0:0:0:false:true:false:2:true:false:insertText:2:55357:56832|"
         "edit:beforeinput:0:0:0:0:0:false:true:false:3:true:false:insertText:2:55357:56832|"
-        "select:keypress:128515:128515:2:55357:56835:true:false:false:2:true:true::0:0:0|"
+        "select:keypress:128515:128515:2:55357:56835:true:false:false:2:true:false::0:0:0|"
         "select:keypress:128515:128515:2:55357:56835:true:false:false:3:true:true::0:0:0";
     static const char RESET[] =
         "window.events='';"

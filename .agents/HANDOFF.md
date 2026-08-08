@@ -10,9 +10,10 @@ TEST121 已通过并记录 `TESTBENCH PASS`。代理对、IME/composition 未实
 next157 设备验收失败：同包 `C:\WMShare\Positron-next157\test_host.log` 中 TEST13 和
 TEST20/27/43/44/56/58-121 均通过，但 TEST122 未匹配，因此 next156 仍是设备基线。
 next158 已完成诊断：每个原生 EDIT/SELECT 的 high-surrogate 合并和标量代码正确，
-但 Duktape 把直接注入的四字节 UTF-8 作为长度 1 的 ECMAScript 字符。当前待验收包为
-next159：事件 JSON 将 non-BMP 标量写成两个 `\uXXXX`，让 decoder 生成 CESU-8/UTF-16
-代理项；包为 `C:\WMShare\Positron-next159`。设备通过前 next156 仍是基线。
+但 Duktape 把直接注入的四字节 UTF-8 作为长度 1 的 ECMAScript 字符。next159 用两个
+`\uXXXX` 恢复 CESU-8/UTF-16 语义；设备实际事件正确，TEST122 失败来自错误的 target
+`defaultPrevented=true` oracle。当前待验收包 next160 只将 target 改为 `false`，仍要求
+bubble 为 `true`；包为 `C:\WMShare\Positron-next160`。设备通过前 next156 仍是基线。
 当前设备基线：next154 已完成 C89、仓库审计、VS2008 ARMV4I Debug 增量构建、staging
 和设备验收；
 新增显式脚本 context 下 EDIT/SELECT 的 `WM_SYSKEYDOWN/UP`、ASCII `WM_SYSCHAR` 和
@@ -437,8 +438,11 @@ scripts\stage.bat
 45. 2026-08-08 next158 只为 TEST122 增加 result 文本长度/值诊断；设备日志确认 WM
     代理对合并和标量代码正确，失败来自 Duktape 把四字节 UTF-8 暴露为长度 1 字符。
 46. 2026-08-08 next159 将事件 JSON 的合法 non-BMP UTF-8 改写为两个 `\uXXXX`，保持
-    BMP/ASCII、标量代码和 TEST122 断言不变；ARMV4I staging 位于
-    `C:\WMShare\Positron-next159`，等待设备日志。
+    BMP/ASCII 与标量代码不变。设备实际序列正确；TEST122 失败来自 target 监听器
+    oracle 错误地提前期望取消状态，不是代理对桥失败。
+47. 2026-08-08 next160 只修正 TEST122 的监听器顺序断言：先注册的 target 记录器看到
+    `defaultPrevented=false`，后注册的取消器执行后，父级 bubble 记录器看到 `true`。
+    C89、审计、ARMV4I 增量构建与 `C:\WMShare\Positron-next160` staging 已通过，待设备日志。
 
 ## 开发纪律
 

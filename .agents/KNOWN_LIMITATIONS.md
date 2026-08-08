@@ -128,10 +128,11 @@ TEST122 同时检查 JavaScript 的两个 UTF-16 code unit、标量 keyCode/char
 注入的四字节 UTF-8 在 Duktape 中得到 length 1 和 non-BMP `charCodeAt(0)`，没有形成
 ECMAScript UTF-16 代理对；TEST13 与 TEST20-121 通过。
 
-**next159 待设备验收（2026-08-08）**：事件 JSON 把合法 non-BMP UTF-8 写成两个
-`\uXXXX` 代理项，由 Duktape decoder 生成 CESU-8 字符串。BMP/ASCII、标量代码、默认
-`javascript=0` 和 TEST13 不变；ARMV4I 构建、审计和 staging 已通过。仍不能宣称
-IME/composition、组合输入、剪贴板完整 Unicode 或字体覆盖已实现。
+**next159/160 状态（2026-08-08）**：next159 的事件 JSON 把合法 non-BMP UTF-8 写成
+两个 `\uXXXX` 代理项，设备实际结果已得到正确 CESU-8/UTF-16、标量代码和事件传播。
+TEST122 失败来自测试把 SELECT target 的取消状态提前写为 `true`；next160 只修正为
+target `false`、bubble `true` 并待设备验收。默认 `javascript=0` 和 TEST13 不变；仍不能
+宣称 IME/composition、组合输入、剪贴板完整 Unicode 或字体覆盖已实现。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

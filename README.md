@@ -22,10 +22,16 @@ composition、剪贴板完整 Unicode payload、字体覆盖和完整 Keyboard/E
 事件显示标量 `keyCode/charCode` 正确，但四字节 UTF-8 的 `key/data` 在 Duktape 中成为
 长度 1 的非标准 ECMAScript 字符，而不是两个 UTF-16 code unit。问题不在 WM 代理对合并。
 
-**next159 待设备验收（2026-08-08）**：事件 JSON 现在把合法 non-BMP UTF-8 标量写成
+**next159 设备结果（2026-08-08，不能作为 PASS 基线）**：事件 JSON 现在把合法 non-BMP UTF-8 标量写成
 两个 `\uXXXX` 代理项，由 Duktape JSON decoder 生成 CESU-8/ECMAScript UTF-16 字符串；
-ASCII/BMP、标量代码、默认 `javascript=0` 和 TEST13 均不改变。ARMV4I staging 包位于
-`C:\WMShare\Positron-next159`，须以同包完整日志晋级。
+设备实际结果已得到两个 code unit、正确标量代码和正确事件顺序。TEST13 与 TEST20-121
+通过，但 TEST122 的 target 监听器错误地预期后注册的取消监听器已经执行；实际 `false`
+比错误期望 `true` 多 1 字节，导致 testbench 停止。
+
+**next160 待设备验收（2026-08-08）**：只修正 TEST122 的事件顺序 oracle：SELECT 目标
+监听器必须看到 `defaultPrevented=false`，随后父级冒泡监听器必须看到 `true`。功能桥、
+默认 `javascript=0` 和 TEST13 均不改变。C89、仓库审计、VS2008 ARMV4I Debug 增量构建
+和 `C:\WMShare\Positron-next160` staging 已通过；完整设备日志通过前 next156 仍为基线。
 
 **next155 设备失败记录（已替代，2026-08-08）**：TEST13 以及 TEST120 之前的回归均
 通过，但 TEST121 失败。宿主侧 `pcore_browser_script_key_safe()` 把合法 UTF-8 的高位
@@ -441,7 +447,7 @@ tests=13,20,27,43,44,56,58-77,80-122
 - TEST 120/121：在显式 `javascript=1` 页面中验证 `WM_SYSKEY/WM_SYSCHAR` 的 system-key
   元数据，以及单个 BMP `WM_CHAR` 的 UTF-8 key/data 传递；next156 已设备通过。
 - TEST 122：在显式 `javascript=1` 页面中验证成对 UTF-16 代理项合并为一次 Unicode 标量
-  `keypress` 和完整 `beforeinput.data`；next158 已定位 Duktape 字符串表示，next159 待验收。
+  `keypress` 和完整 `beforeinput.data`；next159 已确认功能结果，next160 修正事件顺序 oracle 并待验收。
 
 > ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 
