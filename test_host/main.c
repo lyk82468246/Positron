@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 117
+#define TEST_MAX_NUMBER 118
 
 static int test_config_space(char c)
 {
@@ -2398,7 +2398,11 @@ typedef struct pcore_native_select {
     unsigned int select_index;
     int option_count;
     int multiple;
+    WNDPROC original_proc;
 } pcore_native_select;
+
+static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
+        WPARAM wp, LPARAM lp);
 
 static pcore_native_select *g_native_selects = NULL;
 static unsigned int g_native_select_count = 0;
@@ -2407,6 +2411,7 @@ static int g_native_select_probe = 0;
 static int g_native_select_probe_ok = 0;
 static int g_native_multiselect_probe = 0;
 static int g_native_multiselect_probe_ok = 0;
+static int g_native_select_key_probe = 0;
 static int g_interaction_restyle_pending = 0;
 
 static void pcore_browser_script_dispatch_control_event(HWND control,
@@ -2485,16 +2490,43 @@ static const char *pcore_native_key_name(WPARAM wp)
     }
 }
 
+static int pcore_browser_script_dispatch_key_at(int x, int y,
+        const char *event_type, WPARAM wp, LPARAM lp)
+{
+    PCoreKeyEventData key_data;
+    int default_allowed;
+    int result;
+
+    if (event_type == NULL || g_render_doc == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.runtime == NULL) {
+        return 1;
+    }
+    key_data.key = pcore_native_key_name(wp);
+    key_data.key_code = (unsigned int) wp;
+    key_data.char_code = 0;
+    key_data.repeat = ((lp & 0x40000000L) != 0) ? 1 : 0;
+    key_data.shift = (GetKeyState(VK_SHIFT) < 0) ? 1 : 0;
+    key_data.ctrl = (GetKeyState(VK_CONTROL) < 0) ? 1 : 0;
+    key_data.alt = (GetKeyState(VK_MENU) < 0) ? 1 : 0;
+    default_allowed = 1;
+    result = PCore_EventDispatchKeyAt(g_render_doc, x, y,
+            event_type, 1,
+            (strcmp(event_type, "keydown") == 0) ? 1 : 0,
+            &key_data, &default_allowed);
+    if (result < 0) {
+        return 1;
+    }
+    return default_allowed ? 1 : 0;
+}
+
 static int pcore_browser_script_dispatch_key_event(HWND control,
         const char *event_type, WPARAM wp, LPARAM lp)
 {
     PCoreTextInputInfo text_info;
-    PCoreKeyEventData key_data;
     unsigned int i;
     int x;
     int y;
-    int default_allowed;
-    int result;
 
     if (control == NULL || event_type == NULL || g_render_doc == NULL ||
             g_browser_script_session.document != g_render_doc ||
@@ -2508,22 +2540,35 @@ static int pcore_browser_script_dispatch_key_event(HWND control,
                         NULL, 0) == 0) {
             x = text_info.x + text_info.width / 2;
             y = text_info.y + text_info.height / 2;
-            key_data.key = pcore_native_key_name(wp);
-            key_data.key_code = (unsigned int) wp;
-            key_data.char_code = 0;
-            key_data.repeat = ((lp & 0x40000000L) != 0) ? 1 : 0;
-            key_data.shift = (GetKeyState(VK_SHIFT) < 0) ? 1 : 0;
-            key_data.ctrl = (GetKeyState(VK_CONTROL) < 0) ? 1 : 0;
-            key_data.alt = (GetKeyState(VK_MENU) < 0) ? 1 : 0;
-            default_allowed = 1;
-            result = PCore_EventDispatchKeyAt(g_render_doc, x, y,
-                    event_type, 1,
-                    (strcmp(event_type, "keydown") == 0) ? 1 : 0,
-                    &key_data, &default_allowed);
-            if (result < 0) {
-                return 1;
-            }
-            return default_allowed ? 1 : 0;
+            return pcore_browser_script_dispatch_key_at(x, y,
+                    event_type, wp, lp);
+        }
+    }
+    return 1;
+}
+
+static int pcore_browser_script_dispatch_select_key_event(HWND control,
+        const char *event_type, WPARAM wp, LPARAM lp)
+{
+    PCoreSelectInfo select_info;
+    unsigned int i;
+    int x;
+    int y;
+
+    if (control == NULL || event_type == NULL || g_render_doc == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.runtime == NULL) {
+        return 1;
+    }
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd == control &&
+                PCore_SelectInfo(g_render_doc,
+                        g_native_selects[i].select_index,
+                        &select_info) == 0) {
+            x = select_info.x + select_info.width / 2;
+            y = select_info.y + select_info.height / 2;
+            return pcore_browser_script_dispatch_key_at(x, y,
+                    event_type, wp, lp);
         }
     }
     return 1;
@@ -3004,6 +3049,8 @@ static void pcore_native_selects_rebuild(HWND parent, int preserve_focus)
             continue;
         }
         SetWindowLong(items[i].hwnd, GWL_USERDATA, (LONG) (i + 1));
+        items[i].original_proc = (WNDPROC) SetWindowLong(items[i].hwnd,
+                GWL_WNDPROC, (LONG) pcore_native_select_proc);
         SendMessage(items[i].hwnd, WM_SETFONT,
                 (WPARAM) GetStockObject(SYSTEM_FONT), TRUE);
         for (option_index = 0;
@@ -3068,6 +3115,24 @@ static pcore_native_select *pcore_native_select_find(HWND select_window)
         }
     }
     return NULL;
+}
+
+static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
+        WPARAM wp, LPARAM lp)
+{
+    pcore_native_select *native_select;
+    WNDPROC original;
+
+    native_select = pcore_native_select_find(hwnd);
+    original = (native_select != NULL) ? native_select->original_proc : NULL;
+    if ((msg == WM_KEYDOWN || msg == WM_KEYUP) &&
+            pcore_browser_script_dispatch_select_key_event(hwnd,
+            (msg == WM_KEYDOWN) ? "keydown" : "keyup", wp, lp) == 0) {
+        return 0;
+    }
+    return (original != NULL) ?
+            CallWindowProc(original, hwnd, msg, wp, lp) :
+            DefWindowProc(hwnd, msg, wp, lp);
 }
 
 static void pcore_native_focus_changed(HWND control)
@@ -6409,6 +6474,11 @@ static BOOL show_render_window(void)
             g_native_selects[0].hwnd != NULL) {
         SendMessage(g_native_selects[0].hwnd, CB_SETCURSEL, 2, 0);
         pcore_native_select_changed(g_native_selects[0].hwnd);
+    }
+    if (g_native_select_key_probe && g_native_select_count > 0 &&
+            g_native_selects[0].hwnd != NULL) {
+        SendMessage(g_native_selects[0].hwnd, WM_KEYDOWN, VK_DOWN, 0);
+        SendMessage(g_native_selects[0].hwnd, WM_KEYUP, VK_DOWN, 0);
     }
     if (g_native_multiselect_probe) {
         pcore_native_multiselect_probe_run(hwnd);
@@ -18899,6 +18969,163 @@ static BOOL test117_browser_script_beforeinput(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 118 - native SELECT keyboard event bridge                        */
+/* -------------------------------------------------------------------- */
+static BOOL test118_browser_script_select_keyboard(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.events='';"
+        "window.record=function(e){window.events+="
+        "(window.events===''?'':'|')+e.type+':'+e.key+':'"
+        "+String(e.keyCode)+':'+String(e.repeat)+':'"
+        "+String(e.trusted)+':'+String(e.phase)+':'"
+        "+String(e.bubbles)+':'+String(e.cancelable)+':'"
+        "+String(e.defaultPrevented);"
+        "document.getElementById('result').textContent=window.events;};"
+        "window.target=document.getElementById('target');"
+        "window.container=document.getElementById('container');"
+        "window.target.addEventListener('keydown',window.record,false);"
+        "window.container.addEventListener('keydown',window.record,false);"
+        "window.target.addEventListener('keyup',window.record,false);"
+        "window.container.addEventListener('keyup',window.record,false);"
+        "</script></head><body>"
+        "<div id='container'><select id='target'>"
+        "<option>one</option><option>two</option></select></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "div{display:block;width:180px;height:32px}"
+        "select{display:block;width:160px;height:28px}"
+        "p{display:block;width:220px;height:64px;color:#102040}";
+    static const char EXPECTED[] =
+        "keydown:ArrowDown:40:false:true:2:true:true:false|"
+        "keydown:ArrowDown:40:false:true:3:true:true:false|"
+        "keyup:ArrowDown:40:false:true:2:true:false:false|"
+        "keyup:ArrowDown:40:false:true:3:true:false:false";
+    static const char RESET[] =
+        "window.events='';"
+        "document.getElementById('result').textContent='idle';";
+    static const PCoreKeyEventData ARROW_DOWN_KEY = {
+        "ArrowDown", 40u, 0u, 0, 0, 0, 0
+    };
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[768];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    default_allowed = 1;
+    dispatch_result = -1;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-select-keyboard.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "select", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        default_allowed = 0;
+        dispatch_result = PCore_EventDispatchKeyToId(document, "target",
+                "keydown", 1, 1, &ARROW_DOWN_KEY, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        dispatch_result = PCore_EventDispatchKeyToId(document, "target",
+                "keyup", 1, 0, &ARROW_DOWN_KEY, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1 ||
+                PCore_NodeTextContentById(document, "result", text,
+                        sizeof(text), &bytes) != 0 ||
+                strcmp(text, EXPECTED) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        memset(text, 0, sizeof(text));
+        if (pcore_browser_script_session_evaluate(RESET,
+                sizeof(RESET) - 1, error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_native_select_key_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_select_key_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        if (ok && (PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) != 0 ||
+                strcmp(text, EXPECTED) != 0)) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 118 FAIL", error[0] != '\0' ? error :
+                "SELECT keyboard event bridge did not match");
+        return FALSE;
+    }
+    show_info(L"TEST 118 OK",
+            "Native COMBOBOX keyboard messages and public SELECT key\n"
+            "dispatch carried ArrowDown metadata through target and\n"
+            "bubble listeners with the expected default policy.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -19135,6 +19362,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 115: ok = test115_browser_script_keyboard_events(); break;
         case 116: ok = test116_browser_script_focus_events(); break;
         case 117: ok = test117_browser_script_beforeinput(); break;
+        case 118: ok = test118_browser_script_select_keyboard(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

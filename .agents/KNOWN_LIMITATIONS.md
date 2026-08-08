@@ -90,6 +90,12 @@ staging 与 `screen=320x320 dpi=128` 真实设备验收均已通过，日志记�
 WM SELECT 键盘、IME/composition、完整 Unicode/剪贴板 payload、`keypress` 和完整
 Input/Keyboard/Event API 仍未实现；默认 `javascript=0` 与 TEST13 网络路径不变。
 
+**next152 当前候选（2026-08-08，设备待验收）**：原生 `COMBOBOX/LISTBOX` 已加入
+`WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
+TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM
+消息。当前只完成本地 C89/ARMV4I 构建和离线断言，尚无设备日志；因此 SELECT 键盘、
+IME/composition、`WM_SYSKEY*`、`keypress` 和完整 Keyboard/Event API 仍不能宣称已完成。
+
 **当前状态更正（next136，2026-08-07）**：`screen=480x640 dpi=192` 日志中 TEST13/20/27/43/44/56/58
 通过后，TEST59 暴露离线 flex 几何夹具继承设备 DPI：固定 `25px` padding 被按 192 DPI
 换算为 `50px`。next136 只在 TEST59 的显式 CSS 几何 pass 前安装 96 DPI 参考上下文，

@@ -10,6 +10,12 @@ TEST117 确认受限 beforeinput 的数据、冒泡与取消默认动作。
 ARMV4I Debug 增量构建、staging 和设备验收均已通过；后续仍需轮换分辨率/DPI，
 并人工复查新增可见能力。设备日志位于 `C:\\WMShare\\Positron-next151\\test_host.log`。
 
+**当前开发候选（next152，设备待验收）**：显式 `javascript=1` 的页面新增原生
+`COMBOBOX/LISTBOX` 的 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用 `PCoreKeyEventData` 和
+`PCore_EventDispatchKeyAt`；TEST118 同时验证公开 SELECT 键盘事件传播与真实 WM
+`COMBOBOX` 消息。该候选已通过 C89、仓库审计和 VS2008 ARMV4I 增量构建，但尚未
+获得设备日志，不能替代 next151 基线；默认 `javascript=0`、TEST13 网络路径不变。
+
 **next146 实现说明（2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
 网络路径不变的前提下，浏览器导航请求会把显式 `javascript=1` 的初始 classic-script
 runtime 与当前 document 一起保留；成功导航时整体换入新页面，失败导航、旧页面释放和
@@ -58,6 +64,13 @@ TEST117 离线覆盖目标/冒泡监听器、可信元数据、`preventDefault()
 验收均已通过；WM SELECT 键盘、IME/composition、完整 Unicode/剪贴板数据、`keypress`
 和完整 Input/Keyboard/Event API 仍未实现。默认 `javascript=0`、TEST13 网络路径和
 next150 行为不变。
+
+**next152 实现说明（设备待验收，2026-08-08）**：在同一键盘事件 ABI 上给原生
+`COMBOBOX/LISTBOX` 保存原始窗口过程并做 WM 子类化；显式 `javascript=1` 时先派发
+`keydown/keyup`，仅在未被取消时继续执行系统控件默认处理。TEST118 覆盖 SELECT
+目标/冒泡、ArrowDown 元数据、可信标志、取消策略和真实 `WM_KEYDOWN/WM_KEYUP`
+入口。当前只完成本地构建和离线夹具，仍待设备验收；IME、`WM_SYSKEY*`、`keypress`
+与完整 Keyboard/Event API 不在本批范围内。
 
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
@@ -346,7 +359,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-117
+tests=13,20,27,43,44,56,58-77,80-118
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
