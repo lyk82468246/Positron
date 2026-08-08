@@ -61,6 +61,12 @@ dispatch；handler 可以读取基础事件字段、更新 DOM，并调用 `prev
 Event 对象和完整 HTML activation 仍未实现。C89/ARMV4I 构建已通过；`screen=480x640 dpi=192`
 设备日志记录 TEST113 OK 与 `TESTBENCH PASS`。
 
+**next148 当前候选（待设备验收）**：显式 `javascript=1` 页面接入原生 EDIT/SELECT 的
+`focus`、`blur`、`input`、`change` 事件；input/change 可冒泡，focus/blur 不冒泡，四类
+事件不可取消。TEST114 已离线验证事件元数据、父级冒泡、可信标志和 DOM 更新；C89 与
+ARMV4I 增量构建已通过，设备真实交互仍待确认。键盘事件、focusin/focusout、异步任务、
+完整 Event 对象、完整 HTML activation 和完整 DOM binding 仍未实现。
+
 **当前状态更正（next136，2026-08-07）**：`screen=480x640 dpi=192` 日志中 TEST13/20/27/43/44/56/58
 通过后，TEST59 暴露离线 flex 几何夹具继承设备 DPI：固定 `25px` padding 被按 192 DPI
 换算为 `50px`。next136 只在 TEST59 的显式 CSS 几何 pass 前安装 96 DPI 参考上下文，

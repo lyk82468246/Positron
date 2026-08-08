@@ -94,6 +94,17 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   `screen=480x640 dpi=192` 设备验收已通过；键盘、焦点、输入、
   异步任务、事件对象完整字段和完整 HTML activation 仍未实现。
 
+### 6t. next148：原生表单事件接入页面级 JavaScript（待设备验收）
+
+- 显式 `javascript=1` 且当前页面保留 script context 时，WM 原生 EDIT/SELECT 的
+  获得焦点、失去焦点、值变化和选择变化分别派发 `focus`、`blur`、`input`、`change`；
+  `input/change` 设为可冒泡，`focus/blur` 保持非冒泡且四类事件不可取消。
+- EDIT 的值变化先同步到 Core DOM 再派发 `input`，失焦时对已变化值派发 `change` 后派发
+  `blur`；SELECT 选择变化派发 `input` 和 `change`。默认 `javascript=0` 不注册任何脚本
+  listener，也不改变 TEST13 网络事务。
+- TEST114 离线验证可信事件元数据、父级 input 冒泡、事件序列和 DOM 更新；C89 与
+  ARMV4I 增量构建已通过，下一步在轮换分辨率/DPI 设备上验收真实 native control 路径。
+
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
 - NetSurf 的标准约定是：CSS media/vw/vh 使用 CSS 像素视口，`layout_document` 和 GDI 重绘使用设备像素。next122 的新模拟器日志首次暴露两者被宿主混用：TEST20 的 48 CSS px 图像盒成为 96 device px，自动化因此停在 TEST20；这不是 provider 回归。
@@ -520,7 +531,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 ## 建议执行顺序
 
 1. 以 next147 的 TEST13/20/27/43/44/56/58-77/80-113 设备日志作为已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；next147 的 click listener 已验收，下一步评估键盘/焦点/输入事件如何消费页面级 context。
+2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；next147 的 click listener 已验收，先完成 next148 原生表单事件的设备门禁，再评估键盘/焦点/输入的更完整数据面。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。

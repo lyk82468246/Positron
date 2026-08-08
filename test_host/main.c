@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 113
+#define TEST_MAX_NUMBER 114
 
 static int test_config_space(char c)
 {
@@ -2288,6 +2288,7 @@ typedef struct pcore_native_edit {
     HWND hwnd;
     unsigned int text_index;
     int multiline;
+    int change_pending;
     WNDPROC original_proc;
 } pcore_native_edit;
 
@@ -2352,6 +2353,46 @@ static int g_native_select_probe_ok = 0;
 static int g_native_multiselect_probe = 0;
 static int g_native_multiselect_probe_ok = 0;
 static int g_interaction_restyle_pending = 0;
+
+static void pcore_browser_script_dispatch_control_event(HWND control,
+        const char *event_type, int bubbles)
+{
+    PCoreTextInputInfo text_info;
+    PCoreSelectInfo select_info;
+    unsigned int i;
+    int x;
+    int y;
+
+    if (control == NULL || event_type == NULL || g_render_doc == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.runtime == NULL) {
+        return;
+    }
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == control &&
+                PCore_TextInputInfo(g_render_doc,
+                        g_native_edits[i].text_index, &text_info,
+                        NULL, 0) == 0) {
+            x = text_info.x + text_info.width / 2;
+            y = text_info.y + text_info.height / 2;
+            PCore_EventDispatchAt(g_render_doc, x, y, event_type,
+                    bubbles, 0, NULL);
+            return;
+        }
+    }
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd == control &&
+                PCore_SelectInfo(g_render_doc,
+                        g_native_selects[i].select_index,
+                        &select_info) == 0) {
+            x = select_info.x + select_info.width / 2;
+            y = select_info.y + select_info.height / 2;
+            PCore_EventDispatchAt(g_render_doc, x, y, event_type,
+                    bubbles, 0, NULL);
+            return;
+        }
+    }
+}
 
 static void pcore_request_interaction_restyle(HWND hwnd)
 {
@@ -2567,12 +2608,14 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
 
 static void pcore_native_edit_changed(HWND edit)
 {
+    pcore_native_edit *native_edit;
     WCHAR *wide_value;
     char *value;
     LONG stored_index;
     int set_result;
     int wide_len;
     int utf8_len;
+    unsigned int i;
 
     if (g_native_edit_syncing || edit == NULL || g_render_doc == NULL) {
         return;
@@ -2580,6 +2623,13 @@ static void pcore_native_edit_changed(HWND edit)
     stored_index = GetWindowLong(edit, GWL_USERDATA);
     if (stored_index <= 0) {
         return;
+    }
+    native_edit = NULL;
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == edit) {
+            native_edit = &g_native_edits[i];
+            break;
+        }
     }
     SendMessage(edit, EM_FMTLINES, FALSE, 0);
     wide_len = GetWindowTextLengthW(edit);
@@ -2607,6 +2657,10 @@ static void pcore_native_edit_changed(HWND edit)
     value[utf8_len] = '\0';
     set_result = PCore_TextInputSetValue(g_render_doc,
             (unsigned int) (stored_index - 1), value);
+    if (set_result == 0 && native_edit != NULL) {
+        native_edit->change_pending = 1;
+        pcore_browser_script_dispatch_control_event(edit, "input", 1);
+    }
     if (g_native_edit_probe && stored_index == 1) {
         g_native_edit_probe_seen = 1;
         g_native_edit_probe_set_result = set_result;
@@ -2865,6 +2919,8 @@ static void pcore_native_focus_changed(HWND control)
             if (result > 0) {
                 pcore_request_interaction_restyle(GetParent(control));
             }
+            pcore_browser_script_dispatch_control_event(control,
+                    "focus", 0);
             return;
         }
     }
@@ -2880,6 +2936,45 @@ static void pcore_native_focus_changed(HWND control)
             if (result > 0) {
                 pcore_request_interaction_restyle(GetParent(control));
             }
+            pcore_browser_script_dispatch_control_event(control,
+                    "focus", 0);
+            return;
+        }
+    }
+}
+
+static void pcore_native_focus_lost(HWND control)
+{
+    PCoreTextInputInfo text_info;
+    PCoreSelectInfo select_info;
+    unsigned int i;
+
+    if (control == NULL || g_render_doc == NULL ||
+            g_native_edit_syncing || g_native_select_syncing) {
+        return;
+    }
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == control &&
+                PCore_TextInputInfo(g_render_doc,
+                        g_native_edits[i].text_index,
+                        &text_info, NULL, 0) == 0) {
+            if (g_native_edits[i].change_pending) {
+                pcore_browser_script_dispatch_control_event(control,
+                        "change", 1);
+                g_native_edits[i].change_pending = 0;
+            }
+            pcore_browser_script_dispatch_control_event(control,
+                    "blur", 0);
+            return;
+        }
+    }
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd == control &&
+                PCore_SelectInfo(g_render_doc,
+                        g_native_selects[i].select_index,
+                        &select_info) == 0) {
+            pcore_browser_script_dispatch_control_event(control,
+                    "blur", 0);
             return;
         }
     }
@@ -2941,6 +3036,10 @@ static void pcore_native_select_changed(HWND select_window)
         g_native_select_syncing = 0;
         if (changed) {
             pcore_request_interaction_restyle(GetParent(select_window));
+            pcore_browser_script_dispatch_control_event(select_window,
+                    "input", 1);
+            pcore_browser_script_dispatch_control_event(select_window,
+                    "change", 1);
         }
         return;
     }
@@ -2967,6 +3066,10 @@ static void pcore_native_select_changed(HWND select_window)
     }
     if (set_result == 0) {
         pcore_request_interaction_restyle(GetParent(select_window));
+        pcore_browser_script_dispatch_control_event(select_window,
+                "input", 1);
+        pcore_browser_script_dispatch_control_event(select_window,
+                "change", 1);
     }
 }
 
@@ -5870,9 +5973,18 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                 SHSipPreference(hwnd, SIP_UP);
                 return 0;
             }
+            if (HIWORD(wp) == EN_KILLFOCUS) {
+                pcore_native_focus_lost((HWND) lp);
+                return 0;
+            }
             if (HIWORD(wp) == CBN_SETFOCUS ||
                     HIWORD(wp) == LBN_SETFOCUS) {
                 pcore_native_focus_changed((HWND) lp);
+                return 0;
+            }
+            if (HIWORD(wp) == CBN_KILLFOCUS ||
+                    HIWORD(wp) == LBN_KILLFOCUS) {
+                pcore_native_focus_lost((HWND) lp);
                 return 0;
             }
         }
@@ -18052,6 +18164,142 @@ static BOOL test113_browser_script_events(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 114 - browser JavaScript form event family                       */
+/* -------------------------------------------------------------------- */
+static BOOL test114_browser_script_form_events(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.events='';"
+        "window.record=function(e){window.events+="
+        "(window.events===''?'':'|')+e.type+':'+String(e.phase)+':'"
+        "+String(e.bubbles)+':'+String(e.cancelable)+':'"
+        "+String(e.trusted);"
+        "document.getElementById('result').textContent=window.events;};"
+        "window.target=document.getElementById('target');"
+        "window.container=document.getElementById('container');"
+        "window.target.addEventListener('focus',window.record,false);"
+        "window.target.addEventListener('blur',window.record,false);"
+        "window.target.addEventListener('input',window.record,false);"
+        "window.target.addEventListener('change',window.record,false);"
+        "window.container.addEventListener('input',window.record,false);"
+        "</script></head><body>"
+        "<div id='container'><input id='target' value='x'></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "div{display:block;width:180px;height:28px}"
+        "p{display:block;width:220px;height:28px;color:#102040}";
+    static const char EXPECTED[] =
+        "focus:2:false:false:true|blur:2:false:false:true|"
+        "input:2:true:false:true|input:3:true:false:true|"
+        "change:2:true:false:true";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[256];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    default_allowed = 1;
+    dispatch_result = -1;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        default_allowed = 0;
+        dispatch_result = PCore_EventDispatchToId(document, "target",
+                "focus", 0, 0, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        dispatch_result = PCore_EventDispatchToId(document, "target",
+                "blur", 0, 0, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        dispatch_result = PCore_EventDispatchToId(document, "target",
+                "input", 1, 0, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        dispatch_result = PCore_EventDispatchToId(document, "target",
+                "change", 1, 0, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1 ||
+                PCore_NodeTextContentById(document, "result", text,
+                        sizeof(text), &bytes) != 0 ||
+                strcmp(text, EXPECTED) != 0) {
+            ok = 0;
+        }
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-form-events.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "p", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 114 FAIL", error[0] != '\0' ? error :
+                "focus/blur/input/change event bridge did not match");
+        return FALSE;
+    }
+    show_info(L"TEST 114 OK",
+            "focus and blur remained non-bubbling, input/change carried\n"
+            "their event metadata, input bubbled to the parent, and\n"
+            "the trusted form event sequence updated the DOM.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -18284,6 +18532,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 111: ok = test111_browser_external_order(); break;
         case 112: ok = test112_browser_script_persistence(); break;
         case 113: ok = test113_browser_script_events(); break;
+        case 114: ok = test114_browser_script_form_events(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

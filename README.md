@@ -24,6 +24,13 @@ DOM/window binding。
 ARMV4I 构建已通过，并已在 `480x640 dpi=192` 设备上通过 TEST113；这不代表完整
 Mouse/Keyboard/Event API。
 
+**next148 实现说明（2026-08-08）**：在 next147 的事件 bridge 之上，显式
+`javascript=1` 页面现在接收 WM 原生 EDIT/SELECT 的 `focus`、`blur`、`input` 和
+`change` 事件；`input/change` 允许冒泡，焦点事件保持非冒泡，事件仍是可信且不可取消。
+TEST114 离线覆盖事件元数据、父级冒泡和 DOM 更新；宿主接线已通过 C89 与 ARMV4I
+增量构建，设备门禁待执行。默认 `javascript=0` 与 TEST13 路径不变，仍不是完整
+Keyboard/Focus/Input/Event API。
+
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
 `positron_script.dll` 的最小 `document.getElementById(...).textContent=` bridge。
@@ -311,7 +318,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-99
+tests=13,20,27,43,44,56,58-77,80-114
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
