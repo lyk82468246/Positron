@@ -105,6 +105,12 @@ API。
 Keyboard/Event API。默认
 `javascript=0` 与 TEST13 网络路径不变。
 
+**next155 候选（2026-08-08，设备待验收）**：新增单个 BMP `WM_CHAR` 的 UTF-8
+`keypress` 与 EDIT `beforeinput.data` 桥，TEST121 覆盖 `→`/`★` 的 key/code、
+target/bubble 和取消 SELECT 默认动作。C89、仓库审计和 ARMV4I 增量构建已通过，尚未
+经过 staging、设备日志或人工视觉检查；代理对、IME/composition、完整 Unicode 输入
+和字体覆盖仍未实现。默认 `javascript=0` 与 TEST13 网络路径不变。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM

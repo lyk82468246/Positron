@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 120
+#define TEST_MAX_NUMBER 121
 
 static int test_config_space(char c)
 {
@@ -2319,6 +2319,42 @@ static int pcore_browser_script_dispatch_input_event(HWND control,
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data);
 
+static int pcore_native_char_utf8(WPARAM wp, char *out, int capacity)
+{
+    unsigned long value;
+
+    if (out == NULL || capacity < 2) {
+        return 0;
+    }
+    value = (unsigned long) wp;
+    if (value < 0x20UL || value > 0xffffUL ||
+            (value >= 0xd800UL && value <= 0xdfffUL)) {
+        return 0;
+    }
+    if (value <= 0x7fUL) {
+        out[0] = (char) value;
+        out[1] = '\0';
+        return 1;
+    }
+    if (value <= 0x7ffUL) {
+        if (capacity < 3) {
+            return 0;
+        }
+        out[0] = (char) (0xc0UL | (value >> 6));
+        out[1] = (char) (0x80UL | (value & 0x3fUL));
+        out[2] = '\0';
+        return 2;
+    }
+    if (capacity < 4) {
+        return 0;
+    }
+    out[0] = (char) (0xe0UL | (value >> 12));
+    out[1] = (char) (0x80UL | ((value >> 6) & 0x3fUL));
+    out[2] = (char) (0x80UL | (value & 0x3fUL));
+    out[3] = '\0';
+    return 3;
+}
+
 static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp)
 {
@@ -2327,7 +2363,7 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
     LONG stored_index;
     HWND parent;
     const char *input_type;
-    char input_char[2];
+    char input_char[8];
 
     original = NULL;
     input_type = NULL;
@@ -2365,7 +2401,8 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                 return 0;
             }
             if (msg == WM_CHAR || msg == WM_SYSCHAR) {
-                if (wp >= (WPARAM) 0x20 && wp <= (WPARAM) 0x7e &&
+                if (pcore_native_char_utf8(wp, input_char,
+                        sizeof(input_char)) > 0 &&
                         pcore_browser_script_dispatch_char_event(hwnd,
                         "keypress", wp, lp, msg == WM_SYSCHAR ? 1 : 0) == 0) {
                     return 0;
@@ -2373,10 +2410,10 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                 if (msg == WM_CHAR &&
                         (wp == (WPARAM) '\r' || wp == (WPARAM) '\n')) {
                     input_type = "insertLineBreak";
-                } else if (msg == WM_CHAR && wp >= (WPARAM) 0x20 &&
-                        wp <= (WPARAM) 0x7e) {
+                } else if (msg == WM_CHAR &&
+                        pcore_native_char_utf8(wp, input_char,
+                        sizeof(input_char)) > 0) {
                     input_type = "insertText";
-                    input_char[0] = (char) wp;
                 }
                 if (input_type != NULL &&
                         pcore_browser_script_dispatch_input_event(hwnd,
@@ -2428,6 +2465,7 @@ static int g_native_multiselect_probe_ok = 0;
 static int g_native_select_key_probe = 0;
 static int g_native_keypress_probe = 0;
 static int g_native_syskey_probe = 0;
+static int g_native_unicode_probe = 0;
 static int g_interaction_restyle_pending = 0;
 
 static void pcore_browser_script_dispatch_control_event(HWND control,
@@ -2549,13 +2587,11 @@ static int pcore_browser_script_dispatch_char_at(int x, int y,
         const char *event_type, WPARAM wp, LPARAM lp, int system_key)
 {
     PCoreKeyEventData key_data;
-    char key_name[2];
+    char key_name[8];
 
-    if (wp < (WPARAM) 0x20 || wp > (WPARAM) 0x7e) {
+    if (pcore_native_char_utf8(wp, key_name, sizeof(key_name)) <= 0) {
         return 1;
     }
-    key_name[0] = (char) wp;
-    key_name[1] = '\0';
     key_data.key = key_name;
     key_data.key_code = (unsigned int) wp;
     key_data.char_code = (unsigned int) wp;
@@ -3236,8 +3272,10 @@ static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
         return 0;
     }
     if ((msg == WM_CHAR || msg == WM_SYSCHAR) &&
-            wp >= (WPARAM) 0x20 &&
-            wp <= (WPARAM) 0x7e &&
+            (unsigned long) wp >= 0x20UL &&
+            (unsigned long) wp <= 0xffffUL &&
+            ((unsigned long) wp < 0xd800UL ||
+            (unsigned long) wp > 0xdfffUL) &&
             pcore_browser_script_dispatch_select_char_event(hwnd,
             "keypress", wp, lp, msg == WM_SYSCHAR ? 1 : 0) == 0) {
         return 0;
@@ -6620,6 +6658,17 @@ static BOOL show_render_window(void)
                     VK_RIGHT, 0);
             SendMessage(g_native_selects[0].hwnd, WM_SYSCHAR,
                     (WPARAM) 't', 0);
+        }
+    }
+    if (g_native_unicode_probe) {
+        if (g_native_edit_count > 0 && g_native_edits[0].hwnd != NULL) {
+            SendMessage(g_native_edits[0].hwnd, WM_CHAR,
+                    (WPARAM) 0x2192, 0);
+        }
+        if (g_native_select_count > 0 &&
+                g_native_selects[0].hwnd != NULL) {
+            SendMessage(g_native_selects[0].hwnd, WM_CHAR,
+                    (WPARAM) 0x2605, 0);
         }
     }
     if (g_native_multiselect_probe) {
@@ -19578,6 +19627,146 @@ static BOOL test120_browser_script_syskey_events(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 121 - native BMP WM_CHAR Unicode event bridge                    */
+/* -------------------------------------------------------------------- */
+static BOOL test121_browser_script_unicode_char(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.events='';"
+        "window.record=function(prefix,e){var k=String(e.key||'');"
+        "var d=String(e.data||'');window.events+="
+        "(window.events===''?'':'|')+prefix+':'+e.type+':'"
+        "+String(e.keyCode)+':'+String(e.charCode)+':'"
+        "+String(k.length)+':'+String(k.length?k.charCodeAt(0):0)+':'"
+        "+String(e.altKey)+':'+String(e.phase)+':'"
+        "+String(e.cancelable)+':'+String(e.defaultPrevented)+':'"
+        "+String(e.inputType||'')+':'+String(d.length?d.charCodeAt(0):0);"
+        "document.getElementById('result').textContent=window.events;};"
+        "window.cancel=function(e){e.preventDefault();};"
+        "window.edit=document.getElementById('edit');"
+        "window.editParent=document.getElementById('editParent');"
+        "window.target=document.getElementById('target');"
+        "window.selectParent=document.getElementById('selectParent');"
+        "window.edit.addEventListener('keypress',function(e){window.record('edit',e);},false);"
+        "window.editParent.addEventListener('keypress',function(e){window.record('edit',e);},false);"
+        "window.edit.addEventListener('beforeinput',function(e){window.record('edit',e);},false);"
+        "window.editParent.addEventListener('beforeinput',function(e){window.record('edit',e);},false);"
+        "window.target.addEventListener('keypress',function(e){window.record('select',e);},false);"
+        "window.selectParent.addEventListener('keypress',function(e){window.record('select',e);},false);"
+        "window.target.addEventListener('keypress',window.cancel,false);"
+        "</script></head><body>"
+        "<div id='editParent'><input id='edit' value='x'></div>"
+        "<div id='selectParent'><select id='target'>"
+        "<option>one</option><option>two</option></select></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "div{display:block;width:180px;height:32px}"
+        "input,select{display:block;width:160px;height:28px}"
+        "p{display:block;width:220px;height:128px;color:#102040}";
+    static const char EXPECTED[] =
+        "edit:keypress:8594:8594:1:8594:false:2:true:false::0|"
+        "edit:keypress:8594:8594:1:8594:false:3:true:false::0|"
+        "edit:beforeinput:0:0:0:0:false:2:true:false:insertText:8594|"
+        "edit:beforeinput:0:0:0:0:false:3:true:false:insertText:8594|"
+        "select:keypress:9733:9733:1:9733:false:2:true:false::0|"
+        "select:keypress:9733:9733:1:9733:false:3:true:true::0";
+    static const char RESET[] =
+        "window.events='';"
+        "document.getElementById('result').textContent='idle';";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[2048];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-unicode.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "select", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(RESET,
+                sizeof(RESET) - 1, error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_native_unicode_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_unicode_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        if (ok && (PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) != 0 || strcmp(text, EXPECTED) != 0)) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 121 FAIL", error[0] != '\0' ? error :
+                "BMP Unicode WM_CHAR event bridge did not match");
+        return FALSE;
+    }
+    show_info(L"TEST 121 OK",
+            "BMP WM_CHAR arrow/star events carried Unicode key and input data "
+            "through EDIT/SELECT target and bubble listeners; the cancelled\n"
+            "SELECT event kept native default handling off.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -19817,6 +20006,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 118: ok = test118_browser_script_select_keyboard(); break;
         case 119: ok = test119_browser_script_keypress(); break;
         case 120: ok = test120_browser_script_syskey_events(); break;
+        case 121: ok = test121_browser_script_unicode_char(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
