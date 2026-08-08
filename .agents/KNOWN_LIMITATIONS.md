@@ -61,10 +61,10 @@ dispatch；handler 可以读取基础事件字段、更新 DOM，并调用 `prev
 Event 对象和完整 HTML activation 仍未实现。C89/ARMV4I 构建已通过；`screen=480x640 dpi=192`
 设备日志记录 TEST113 OK 与 `TESTBENCH PASS`。
 
-**next148 当前候选（待设备验收）**：显式 `javascript=1` 页面接入原生 EDIT/SELECT 的
+**next148 设备验收（2026-08-08）**：显式 `javascript=1` 页面接入原生 EDIT/SELECT 的
 `focus`、`blur`、`input`、`change` 事件；input/change 可冒泡，focus/blur 不冒泡，四类
-事件不可取消。TEST114 已离线验证事件元数据、父级冒泡、可信标志和 DOM 更新；C89 与
-ARMV4I 增量构建已通过，设备真实交互仍待确认。键盘事件、focusin/focusout、异步任务、
+事件不可取消。TEST114 已离线与设备验证事件元数据、父级冒泡、可信标志和 DOM 更新；C89、
+ARMV4I 增量构建、staging 与 `screen=320x320 dpi=128` 设备验收均已通过。键盘事件、focusin/focusout、异步任务、
 完整 Event 对象、完整 HTML activation 和完整 DOM binding 仍未实现。
 
 **当前状态更正（next136，2026-08-07）**：`screen=480x640 dpi=192` 日志中 TEST13/20/27/43/44/56/58

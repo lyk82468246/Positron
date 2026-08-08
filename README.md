@@ -1,11 +1,11 @@
 # Positron
 
-**最新设备门禁（next147，2026-08-08）**：next147 在 `screen=480x640 dpi=192`
-设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-113 全部通过并记录
+**最新设备门禁（next148，2026-08-08）**：next148 在 `screen=320x320 dpi=128`
+设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-114 全部通过并记录
 `TESTBENCH PASS`。TEST13 的 example.com、IANA Example Domains、IANA Reserved
 Domains 三段导航均完成；TEST112 确认页面级 script context 的后续求值，TEST113 确认
-事件派发、取消默认动作、DOM 更新和 listener 清理。ARMV4I Debug 增量构建、staging 和
-设备验收均已通过；后续仍需轮换
+click 事件派发/取消默认动作，TEST114 确认原生表单事件元数据、冒泡和 DOM 更新。
+ARMV4I Debug 增量构建、staging 和设备验收均已通过；后续仍需轮换
 分辨率/DPI，并人工复查新增可见能力。
 
 **next146 实现说明（2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
@@ -27,9 +27,9 @@ Mouse/Keyboard/Event API。
 **next148 实现说明（2026-08-08）**：在 next147 的事件 bridge 之上，显式
 `javascript=1` 页面现在接收 WM 原生 EDIT/SELECT 的 `focus`、`blur`、`input` 和
 `change` 事件；`input/change` 允许冒泡，焦点事件保持非冒泡，事件仍是可信且不可取消。
-TEST114 离线覆盖事件元数据、父级冒泡和 DOM 更新；宿主接线已通过 C89 与 ARMV4I
-增量构建，设备门禁待执行。默认 `javascript=0` 与 TEST13 路径不变，仍不是完整
-Keyboard/Focus/Input/Event API。
+TEST114 离线覆盖事件元数据、父级冒泡和 DOM 更新；宿主接线已通过 C89、ARMV4I
+增量构建，并在 `screen=320x320 dpi=128` 设备上通过。默认 `javascript=0` 与 TEST13
+路径不变，仍不是完整 Keyboard/Focus/Input/Event API。
 
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
