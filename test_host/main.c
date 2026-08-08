@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 116
+#define TEST_MAX_NUMBER 117
 
 static int test_config_space(char c)
 {
@@ -2310,6 +2310,8 @@ static int g_native_label_probe_ok = 0;
 
 static int pcore_browser_script_dispatch_key_event(HWND control,
         const char *event_type, WPARAM wp, LPARAM lp);
+static int pcore_browser_script_dispatch_input_event(HWND control,
+        const char *input_type, const char *data);
 
 static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp)
@@ -2318,8 +2320,13 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
     WNDPROC original;
     LONG stored_index;
     HWND parent;
+    const char *input_type;
+    char input_char[2];
 
     original = NULL;
+    input_type = NULL;
+    input_char[0] = '\0';
+    input_char[1] = '\0';
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == hwnd) {
             original = g_native_edits[i].original_proc;
@@ -2327,6 +2334,16 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                     pcore_browser_script_dispatch_key_event(hwnd,
                     (msg == WM_KEYDOWN) ? "keydown" : "keyup",
                     wp, lp) == 0) {
+                return 0;
+            }
+            if (msg == WM_KEYDOWN && wp == VK_BACK &&
+                    pcore_browser_script_dispatch_input_event(hwnd,
+                    "deleteContentBackward", "") == 0) {
+                return 0;
+            }
+            if (msg == WM_KEYDOWN && wp == VK_DELETE &&
+                    pcore_browser_script_dispatch_input_event(hwnd,
+                    "deleteContentForward", "") == 0) {
                 return 0;
             }
             if (msg == WM_KEYDOWN && wp == VK_RETURN &&
@@ -2337,6 +2354,35 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                     SendMessage(parent, WM_PCORE_FORM_ENTER,
                             (WPARAM) (stored_index - 1), 0);
                 }
+                return 0;
+            }
+            if (msg == WM_CHAR) {
+                if (wp == (WPARAM) '\r' || wp == (WPARAM) '\n') {
+                    input_type = "insertLineBreak";
+                } else if (wp >= (WPARAM) 0x20 &&
+                        wp <= (WPARAM) 0x7e) {
+                    input_type = "insertText";
+                    input_char[0] = (char) wp;
+                }
+                if (input_type != NULL &&
+                        pcore_browser_script_dispatch_input_event(hwnd,
+                        input_type, input_char) == 0) {
+                    return 0;
+                }
+            }
+            if (msg == WM_PASTE &&
+                    pcore_browser_script_dispatch_input_event(hwnd,
+                    "insertFromPaste", "") == 0) {
+                return 0;
+            }
+            if (msg == WM_CUT &&
+                    pcore_browser_script_dispatch_input_event(hwnd,
+                    "deleteByCut", "") == 0) {
+                return 0;
+            }
+            if (msg == WM_CLEAR &&
+                    pcore_browser_script_dispatch_input_event(hwnd,
+                    "deleteContentBackward", "") == 0) {
                 return 0;
             }
             break;
@@ -2474,6 +2520,45 @@ static int pcore_browser_script_dispatch_key_event(HWND control,
                     event_type, 1,
                     (strcmp(event_type, "keydown") == 0) ? 1 : 0,
                     &key_data, &default_allowed);
+            if (result < 0) {
+                return 1;
+            }
+            return default_allowed ? 1 : 0;
+        }
+    }
+    return 1;
+}
+
+static int pcore_browser_script_dispatch_input_event(HWND control,
+        const char *input_type, const char *data)
+{
+    PCoreTextInputInfo text_info;
+    PCoreInputEventData input_data;
+    unsigned int i;
+    int x;
+    int y;
+    int default_allowed;
+    int result;
+
+    if (control == NULL || input_type == NULL || input_type[0] == '\0' ||
+            g_render_doc == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.runtime == NULL) {
+        return 1;
+    }
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == control &&
+                PCore_TextInputInfo(g_render_doc,
+                        g_native_edits[i].text_index, &text_info,
+                        NULL, 0) == 0) {
+            x = text_info.x + text_info.width / 2;
+            y = text_info.y + text_info.height / 2;
+            input_data.input_type = input_type;
+            input_data.data = (data != NULL) ? data : "";
+            default_allowed = 1;
+            result = PCore_EventDispatchInputAt(g_render_doc, x, y,
+                    "beforeinput", 1, 1, &input_data,
+                    &default_allowed);
             if (result < 0) {
                 return 1;
             }
@@ -4168,8 +4253,10 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
         const PCoreEventInfo *event_info)
 {
     pcore_browser_script_event_binding *binding;
-    char args[768];
+    char args[1024];
     const char *key;
+    const char *input_type;
+    const char *data;
     const char *result;
     int length;
 
@@ -4183,10 +4270,19 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
     if (!pcore_browser_script_key_safe(key)) {
         key = "";
     }
+    input_type = event_info->input_type;
+    if (!pcore_browser_script_key_safe(input_type)) {
+        input_type = "";
+    }
+    data = event_info->data;
+    if (!pcore_browser_script_key_safe(data)) {
+        data = "";
+    }
     length = _snprintf(args, sizeof(args) - 1,
             "[{\"listener\":%u,\"type\":\"%s\","
             "\"phase\":%u,\"bubbles\":%s,\"cancelable\":%s,"
             "\"trusted\":%s,\"defaultPrevented\":%s,"
+            "\"inputType\":\"%s\",\"data\":\"%s\","
             "\"key\":\"%s\",\"keyCode\":%u,"
             "\"charCode\":%u,\"repeat\":%s,\"shiftKey\":%s,"
             "\"ctrlKey\":%s,\"altKey\":%s}]",
@@ -4194,7 +4290,8 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
             event_info->bubbles ? "true" : "false",
             event_info->cancelable ? "true" : "false",
             event_info->trusted ? "true" : "false",
-            event_info->default_prevented ? "true" : "false", key,
+            event_info->default_prevented ? "true" : "false",
+            input_type, data, key,
             event_info->key_code, event_info->char_code,
             event_info->repeat ? "true" : "false",
             event_info->shift ? "true" : "false",
@@ -4467,6 +4564,7 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "var e={type:info.type,phase:info.phase,bubbles:!!info.bubbles,"
         "cancelable:!!info.cancelable,trusted:!!info.trusted,"
         "defaultPrevented:!!info.defaultPrevented,key:info.key||'',"
+        "inputType:info.inputType||'',data:info.data||'',"
         "keyCode:info.keyCode||0,charCode:info.charCode||0,"
         "repeat:!!info.repeat,shiftKey:!!info.shiftKey,"
         "ctrlKey:!!info.ctrlKey,altKey:!!info.altKey};"
@@ -18672,6 +18770,135 @@ static BOOL test116_browser_script_focus_events(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 117 - browser JavaScript beforeinput data and cancellation       */
+/* -------------------------------------------------------------------- */
+static BOOL test117_browser_script_beforeinput(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.events='';"
+        "window.record=function(e){"
+        "if(e.inputType==='insertText'){e.preventDefault();}"
+        "window.events+=(window.events===''?'':'|')+e.type+':'"
+        "+e.inputType+':'+e.data+':'+String(e.phase)+':'"
+        "+String(e.bubbles)+':'+String(e.cancelable)+':'"
+        "+String(e.trusted)+':'+String(e.defaultPrevented);"
+        "document.getElementById('result').textContent=window.events;};"
+        "window.target=document.getElementById('target');"
+        "window.container=document.getElementById('container');"
+        "window.target.addEventListener('beforeinput',window.record,false);"
+        "window.container.addEventListener('beforeinput',window.record,false);"
+        "</script></head><body>"
+        "<div id='container'><input id='target' value='x'></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "div{display:block;width:180px;height:28px}"
+        "p{display:block;width:220px;height:28px;color:#102040}";
+    static const char EXPECTED[] =
+        "beforeinput:insertText:x:2:true:true:true:true|"
+        "beforeinput:insertText:x:3:true:true:true:true|"
+        "beforeinput:deleteContentBackward::2:true:true:true:false|"
+        "beforeinput:deleteContentBackward::3:true:true:true:false";
+    static const PCoreInputEventData INSERT_TEXT = {
+        "insertText", "x"
+    };
+    static const PCoreInputEventData DELETE_BACKWARD = {
+        "deleteContentBackward", ""
+    };
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[768];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    default_allowed = 1;
+    dispatch_result = -1;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        default_allowed = 1;
+        dispatch_result = PCore_EventDispatchInputToId(document, "target",
+                "beforeinput", 1, 1, &INSERT_TEXT, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        dispatch_result = PCore_EventDispatchInputToId(document, "target",
+                "beforeinput", 1, 1, &DELETE_BACKWARD,
+                &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1 ||
+                PCore_NodeTextContentById(document, "result", text,
+                        sizeof(text), &bytes) != 0 ||
+                strcmp(text, EXPECTED) != 0) {
+            ok = 0;
+        }
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-beforeinput.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "p", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 117 FAIL", error[0] != '\0' ? error :
+                "beforeinput data or cancellation bridge did not match");
+        return FALSE;
+    }
+    show_info(L"TEST 117 OK",
+            "beforeinput carried inputType/data through target and bubble\n"
+            "listeners; preventDefault blocked the insert action while a\n"
+            "delete action remained allowed.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -18907,6 +19134,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 114: ok = test114_browser_script_form_events(); break;
         case 115: ok = test115_browser_script_keyboard_events(); break;
         case 116: ok = test116_browser_script_focus_events(); break;
+        case 117: ok = test117_browser_script_beforeinput(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

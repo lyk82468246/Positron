@@ -614,6 +614,10 @@ typedef struct PCoreKeyEventData {
     int ctrl;
     int alt;
 } PCoreKeyEventData;
+typedef struct PCoreInputEventData {
+    const char *input_type;
+    const char *data;
+} PCoreInputEventData;
 typedef struct PCoreEventInfo {
     unsigned int phase;
     int bubbles;
@@ -627,6 +631,8 @@ typedef struct PCoreEventInfo {
     int shift;
     int ctrl;
     int alt;
+    const char *input_type;
+    const char *data;
 } PCoreEventInfo;
 typedef unsigned int (*PCoreEventListenerFn)(void *pw,
                                              const PCoreEventInfo *event_info);
@@ -662,6 +668,19 @@ PCORE_API int PCore_EventDispatchKeyAt(HANDLE hDoc, int x, int y,
                                       int cancelable,
                                       const PCoreKeyEventData *key_data,
                                       int *default_allowed);
+/* Dispatch a trusted beforeinput-style event with host-provided input
+ * metadata. The metadata is valid only during synchronous listener callbacks. */
+PCORE_API int PCore_EventDispatchInputToId(HANDLE hDoc,
+                                          const char *element_id,
+                                          const char *event_type, int bubbles,
+                                          int cancelable,
+                                          const PCoreInputEventData *input_data,
+                                          int *default_allowed);
+PCORE_API int PCore_EventDispatchInputAt(HANDLE hDoc, int x, int y,
+                                        const char *event_type, int bubbles,
+                                        int cancelable,
+                                        const PCoreInputEventData *input_data,
+                                        int *default_allowed);
 
 /* Resolve a click on an explicit for=id or wrapping <label> to its visible
  * form gadget. The target point and kind use the same document coordinates

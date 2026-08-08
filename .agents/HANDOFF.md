@@ -2,8 +2,8 @@
 
 更新时间：2026-08-08
 当前分支：`main`  
-最新设备基线：next149 已在 `screen=320x320 dpi=128` 下完成默认 testbench，
-TEST13/20/27/43/44/56/58-77/80-115 全部通过并记录 `TESTBENCH PASS`。该批在默认关闭的
+最新设备基线：next150 已在 `screen=320x320 dpi=128` 下完成默认 testbench，
+TEST13/20/27/43/44/56/58-77/80-116 全部通过并记录 `TESTBENCH PASS`。该批在默认关闭的
 browser JavaScript 门之上新增 TEST111；TEST13 三段导航保持正常。TEST108 首轮
 设备运行定位到 vendored `tiny-regex-c` 对 `[A-Z0-9-]+` 末尾字面量连字符的错误处理；
 本地补丁不再在较早的范围连字符处提前返回，并由三个独立 pattern fixture 复验。
@@ -16,11 +16,11 @@ staging 和该设备验收均已通过；下一批应轮换分辨率/DPI。当�
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
-当前交接基线：next149 已完成统一 script sequence ABI、external resource worker round、
+当前交接基线：next150 已完成统一 script sequence ABI、external resource worker round、
 按 DOM 顺序执行 external/inline classic scripts、页面级 context、click/表单/EDIT 键盘
-事件桥和 TEST111-115；ARMV4I 增量构建、C89、仓库审计与
+事件桥、focusin/focusout 桥和 TEST111-116；ARMV4I 增量构建、C89、仓库审计与
 `screen=320x320 dpi=128` 设备验收均已通过。默认 `javascript=0`，因此不改变 TEST13
-的网络路径；next150 的 focusin/focusout 候选等待设备验收。
+的网络路径；next151 的 beforeinput 候选等待设备验收。
 
 **next146 设备验收（2026-08-08）**：显式 `javascript=1` 的导航请求现在把初始 classic-script
 runtime 与当前 document 绑定保留；成功导航换入新 context，失败导航、旧文档释放和窗体
@@ -50,10 +50,18 @@ TEST115 已通过离线断言和 `screen=320x320 dpi=128` 设备日志，C89、�
 ARMV4I 增量构建、staging 与设备验收均已通过。WM SELECT、`keypress`、`beforeinput`、
 `focusin/focusout` 和完整 Event API 仍未实现；默认 `javascript=0` 与 TEST13 路径不变。
 
-**next150 候选（待设备验收，2026-08-08）**：在原生 EDIT/SELECT 的既有 focus/blur
+**next150 设备验收（2026-08-08）**：在原生 EDIT/SELECT 的既有 focus/blur
 生命周期点追加可冒泡的 `focusin/focusout`，保留旧焦点事件的非冒泡语义和顺序。TEST116
-已通过离线断言；C89、仓库审计和 VS2008 ARMV4I 增量构建已通过，staging 与设备验收待
-进行。默认 `javascript=0`、TEST13 路径、next148 表单事件和 next149 键盘事件不变。
+已通过离线断言；C89、仓库审计、VS2008 ARMV4I 增量构建、`C:\WMShare\Positron-next150`
+staging 与 `screen=320x320 dpi=128` 设备验收均已通过。默认 `javascript=0`、TEST13
+路径、next148 表单事件和 next149 键盘事件不变。
+
+**next151 候选（待设备验收，2026-08-08）**：新增 `PCoreInputEventData` 与最小
+`beforeinput` 数据桥；显式 `javascript=1` 时，原生 EDIT 的字符、换行、退格、删除、
+粘贴、剪切和清除动作可在原生默认处理前被监听并取消，事件带 `inputType/data` 和冒泡
+元数据。TEST117 已通过离线断言；C89、仓库审计和 VS2008 ARMV4I 增量构建已通过，
+设备 staging 与真实设备验收待进行。WM SELECT 键盘、IME/composition、完整 Unicode/
+剪贴板数据、`keypress` 和完整 Input/Keyboard/Event API 仍未实现。
 
 **状态更正（next132，2026-08-07）**：next131 在 `screen=320x320 dpi=128` 下的 TEST13
 三段导航均完成，但 TEST20 动态 DPI 断言实际得到 `48x48`，期望 `64x64` device px，
@@ -280,7 +288,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-116`；next149 已在 `screen=320x320 dpi=128` 下完成整批设备验收，TEST116 属于 next150 待验收候选。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、next149 的 EDIT 键盘 bridge 和 next150 候选的 focusin/focusout bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+ - 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-117`；next150 已在 `screen=320x320 dpi=128` 下完成整批设备验收，TEST117 属于 next151 待验收候选。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、next149 的 EDIT 键盘 bridge、next150 的 focusin/focusout bridge 和 next151 的 beforeinput 候选；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。
