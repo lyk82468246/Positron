@@ -116,6 +116,13 @@ JSON 字符串转义，保留合法 UTF-8 并转义 JSON 特殊字符；单个 B
 `screen=640x480 dpi=192` 设备日志均已通过并记录 `TESTBENCH PASS`；代理对、IME/composition、
 完整 Unicode 输入和字体覆盖仍未实现。默认 `javascript=0` 与 TEST13 网络路径不变。
 
+**next157 待设备验收（2026-08-08）**：显式脚本 context 中，原生 EDIT/SELECT 各自缓存
+一个 high-surrogate；匹配 low-surrogate 后才向 Core 派发一次 Unicode 标量
+`keypress`，EDIT 再派发一次 `beforeinput(insertText)`，其 `data` 为完整 UTF-8 payload。
+TEST122 同时检查 JavaScript 的两个 UTF-16 code unit、标量 keyCode/charCode、target/bubble
+和取消 SELECT 默认动作。未配对代理项会回退原生窗口过程；该候选尚未获得设备确认，不能
+宣称实现 IME/composition、组合输入、剪贴板完整 Unicode、字体覆盖或完整 Keyboard/Event API。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM

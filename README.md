@@ -1,15 +1,22 @@
 # Positron
 
-**最新设备门禁（next156，2026-08-08）**：修正 next155 中事件回调 JSON 过滤器
-误删高位 UTF-8 字节的问题；现在用真正的 JSON 字符串转义保留合法 UTF-8，并继续补齐
-单个 BMP `WM_CHAR` 的 UTF-16→UTF-8 事件数据。显式脚本 context 中，EDIT/SELECT 可接收
-Unicode `keypress`，EDIT 的 `beforeinput.data` 同步携带 UTF-8 字符，取消 SELECT
-仍会阻止原生默认动作。TEST121 使用 `→`/`★` 检查 key/keyCode/charCode、UTF-8
-key、beforeinput 数据和 target/bubble。只覆盖单个 BMP code unit，不伪装支持代理对、
-IME/composition 或完整 Unicode 输入；默认 `javascript=0`、TEST13 网络路径不变。
-C89、仓库审计、VS2008 ARMV4I Debug 增量构建、staging 和
-`screen=640x480 dpi=192` 设备验收均通过，日志为 `TESTBENCH PASS`，位于
-`C:\WMShare\Positron-next156\test_host.log`。
+**当前设备基线（next156，2026-08-08）**：修正 next155 中事件回调 JSON 过滤器
+误删高位 UTF-8 字节的问题；显式脚本 context 中，EDIT/SELECT 可接收单个 BMP
+`WM_CHAR` 的 Unicode `keypress`，EDIT 的 `beforeinput.data` 同步携带 UTF-8 字符，
+取消 SELECT 仍会阻止原生默认动作。TEST121 使用 `→`/`★` 检查 key/keyCode/charCode、
+UTF-8 key、beforeinput 数据和 target/bubble。C89、仓库审计、VS2008 ARMV4I Debug
+增量构建、staging 和 `screen=640x480 dpi=192` 设备验收均通过，日志为
+`TESTBENCH PASS`，位于 `C:\WMShare\Positron-next156\test_host.log`。默认
+`javascript=0`、TEST13 网络路径不变。
+
+**next157 待设备验收（2026-08-08）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
+现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
+还派发一次包含完整 UTF-16 数据的 `beforeinput(insertText)`。TEST122 检查
+`U+1F600/U+1F603` 的标量 keyCode/charCode、JavaScript UTF-16 code unit、data、
+target/bubble 和取消 SELECT 默认动作。不完整代理项回退到原生窗口过程；IME、
+composition、剪贴板完整 Unicode payload、字体覆盖和完整 Keyboard/Event API 仍未实现。
+包位于 `C:\WMShare\Positron-next157`，运行后必须以同包 `test_host.log` 的
+`TESTBENCH PASS` 和人工 TEST13 复查作为晋级条件。
 
 **next155 设备失败记录（已替代，2026-08-08）**：TEST13 以及 TEST120 之前的回归均
 通过，但 TEST121 失败。宿主侧 `pcore_browser_script_key_safe()` 把合法 UTF-8 的高位
@@ -395,7 +402,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-121
+tests=13,20,27,43,44,56,58-77,80-122
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
@@ -422,6 +429,10 @@ tests=13,20,27,43,44,56,58-77,80-121
 - TEST 76：验证命中最近 DOM 元素后 `:hover` 样式重选为红色，清除 hover 后恢复蓝色；WM6 宿主离开窗口使用定时器轮询，不代表完整 MouseEvent。
 - TEST 119：在显式 `javascript=1` 页面中验证 EDIT/SELECT 的 `keypress` 元数据、target/bubble
   传播、可取消状态和真实 `WM_CHAR` 入口；设备自动 OK 仍需配合人工视觉检查。
+- TEST 120/121：在显式 `javascript=1` 页面中验证 `WM_SYSKEY/WM_SYSCHAR` 的 system-key
+  元数据，以及单个 BMP `WM_CHAR` 的 UTF-8 key/data 传递；next156 已设备通过。
+- TEST 122：在显式 `javascript=1` 页面中验证成对 UTF-16 代理项合并为一次 Unicode 标量
+  `keypress` 和完整 `beforeinput.data`；next157 已构建，设备验收待补。
 
 > ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 

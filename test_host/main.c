@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 121
+#define TEST_MAX_NUMBER 122
 
 static int test_config_space(char c)
 {
@@ -2289,6 +2289,9 @@ typedef struct pcore_native_edit {
     unsigned int text_index;
     int multiline;
     int change_pending;
+    unsigned int pending_high_surrogate;
+    UINT pending_high_message;
+    LPARAM pending_high_lparam;
     WNDPROC original_proc;
 } pcore_native_edit;
 
@@ -2311,23 +2314,28 @@ static int g_native_label_probe_ok = 0;
 static int pcore_browser_script_dispatch_key_event(HWND control,
         const char *event_type, WPARAM wp, LPARAM lp, int system_key);
 static int pcore_browser_script_dispatch_char_event(HWND control,
-        const char *event_type, WPARAM wp, LPARAM lp, int system_key);
+        const char *event_type, unsigned long codepoint, LPARAM lp,
+        int system_key);
 static int pcore_browser_script_dispatch_select_char_event(HWND control,
-        const char *event_type, WPARAM wp, LPARAM lp, int system_key);
+        const char *event_type, unsigned long codepoint, LPARAM lp,
+        int system_key);
 static int pcore_browser_script_dispatch_input_event(HWND control,
         const char *input_type, const char *data);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data);
 
-static int pcore_native_char_utf8(WPARAM wp, char *out, int capacity)
+static int pcore_native_script_active(void)
 {
-    unsigned long value;
+    return g_render_doc != NULL &&
+            g_browser_script_session.document == g_render_doc &&
+            g_browser_script_session.runtime != NULL;
+}
 
-    if (out == NULL || capacity < 2) {
-        return 0;
-    }
-    value = (unsigned long) wp;
-    if (value < 0x20UL || value > 0xffffUL ||
+static int pcore_native_codepoint_utf8(unsigned long value, char *out,
+        int capacity)
+{
+    if (out == NULL || capacity < 2 || value < 0x20UL ||
+            value > 0x10ffffUL ||
             (value >= 0xd800UL && value <= 0xdfffUL)) {
         return 0;
     }
@@ -2345,14 +2353,53 @@ static int pcore_native_char_utf8(WPARAM wp, char *out, int capacity)
         out[2] = '\0';
         return 2;
     }
-    if (capacity < 4) {
+    if (value <= 0xffffUL) {
+        if (capacity < 4) {
+            return 0;
+        }
+        out[0] = (char) (0xe0UL | (value >> 12));
+        out[1] = (char) (0x80UL | ((value >> 6) & 0x3fUL));
+        out[2] = (char) (0x80UL | (value & 0x3fUL));
+        out[3] = '\0';
+        return 3;
+    }
+    if (capacity < 5) {
         return 0;
     }
-    out[0] = (char) (0xe0UL | (value >> 12));
-    out[1] = (char) (0x80UL | ((value >> 6) & 0x3fUL));
-    out[2] = (char) (0x80UL | (value & 0x3fUL));
-    out[3] = '\0';
-    return 3;
+    out[0] = (char) (0xf0UL | (value >> 18));
+    out[1] = (char) (0x80UL | ((value >> 12) & 0x3fUL));
+    out[2] = (char) (0x80UL | ((value >> 6) & 0x3fUL));
+    out[3] = (char) (0x80UL | (value & 0x3fUL));
+    out[4] = '\0';
+    return 4;
+}
+
+static int pcore_native_char_utf8(WPARAM wp, char *out, int capacity)
+{
+    unsigned long value;
+
+    value = (unsigned long) wp;
+    if (value > 0xffffUL) {
+        return 0;
+    }
+    return pcore_native_codepoint_utf8(value, out, capacity);
+}
+
+static void pcore_native_edit_flush_surrogate(HWND hwnd,
+        pcore_native_edit *native_edit)
+{
+    if (native_edit == NULL || native_edit->pending_high_surrogate == 0) {
+        return;
+    }
+    if (native_edit->original_proc != NULL) {
+        CallWindowProc(native_edit->original_proc, hwnd,
+                native_edit->pending_high_message,
+                (WPARAM) native_edit->pending_high_surrogate,
+                native_edit->pending_high_lparam);
+    }
+    native_edit->pending_high_surrogate = 0;
+    native_edit->pending_high_message = 0;
+    native_edit->pending_high_lparam = 0;
 }
 
 static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
@@ -2364,13 +2411,22 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
     HWND parent;
     const char *input_type;
     char input_char[8];
+    pcore_native_edit *native_edit;
+    unsigned long value;
+    unsigned long codepoint;
+    LRESULT native_result;
 
     original = NULL;
+    native_edit = NULL;
+    value = 0;
+    codepoint = 0;
+    native_result = 0;
     input_type = NULL;
     input_char[0] = '\0';
     input_char[1] = '\0';
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == hwnd) {
+            native_edit = &g_native_edits[i];
             original = g_native_edits[i].original_proc;
             if ((msg == WM_KEYDOWN || msg == WM_KEYUP ||
                     msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) &&
@@ -2401,6 +2457,53 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                 return 0;
             }
             if (msg == WM_CHAR || msg == WM_SYSCHAR) {
+                value = (unsigned long) wp;
+                if (pcore_native_script_active()) {
+                    if (value >= 0xd800UL && value <= 0xdbffUL) {
+                        if (native_edit->pending_high_surrogate != 0) {
+                            pcore_native_edit_flush_surrogate(hwnd,
+                                    native_edit);
+                        }
+                        native_edit->pending_high_surrogate = (unsigned int) value;
+                        native_edit->pending_high_message = msg;
+                        native_edit->pending_high_lparam = lp;
+                        return 0;
+                    }
+                    if (value >= 0xdc00UL && value <= 0xdfffUL &&
+                            native_edit->pending_high_surrogate != 0 &&
+                            native_edit->pending_high_message == msg) {
+                        codepoint = 0x10000UL +
+                                ((unsigned long) native_edit->pending_high_surrogate -
+                                0xd800UL) * 0x400UL +
+                                (value - 0xdc00UL);
+                        native_edit->pending_high_surrogate = 0;
+                        native_edit->pending_high_message = 0;
+                        native_edit->pending_high_lparam = 0;
+                        if (pcore_browser_script_dispatch_char_event(hwnd,
+                                "keypress", codepoint, lp,
+                                msg == WM_SYSCHAR ? 1 : 0) == 0) {
+                            return 0;
+                        }
+                        if (pcore_native_codepoint_utf8(codepoint,
+                                input_char, sizeof(input_char)) > 0 &&
+                                pcore_browser_script_dispatch_input_event(hwnd,
+                                "insertText", input_char) == 0) {
+                            return 0;
+                        }
+                        if (original != NULL) {
+                            CallWindowProc(original, hwnd, msg,
+                                    (WPARAM) ((unsigned int) (codepoint >> 10) +
+                                    0xd7c0U), lp);
+                            native_result = CallWindowProc(original, hwnd,
+                                    msg, wp, lp);
+                            return native_result;
+                        }
+                        return DefWindowProc(hwnd, msg, wp, lp);
+                    }
+                }
+                if (native_edit->pending_high_surrogate != 0) {
+                    pcore_native_edit_flush_surrogate(hwnd, native_edit);
+                }
                 if (pcore_native_char_utf8(wp, input_char,
                         sizeof(input_char)) > 0 &&
                         pcore_browser_script_dispatch_char_event(hwnd,
@@ -2449,6 +2552,9 @@ typedef struct pcore_native_select {
     unsigned int select_index;
     int option_count;
     int multiple;
+    unsigned int pending_high_surrogate;
+    UINT pending_high_message;
+    LPARAM pending_high_lparam;
     WNDPROC original_proc;
 } pcore_native_select;
 
@@ -2466,6 +2572,7 @@ static int g_native_select_key_probe = 0;
 static int g_native_keypress_probe = 0;
 static int g_native_syskey_probe = 0;
 static int g_native_unicode_probe = 0;
+static int g_native_surrogate_probe = 0;
 static int g_interaction_restyle_pending = 0;
 
 static void pcore_browser_script_dispatch_control_event(HWND control,
@@ -2584,17 +2691,19 @@ static int pcore_browser_script_dispatch_key_at(int x, int y,
 }
 
 static int pcore_browser_script_dispatch_char_at(int x, int y,
-        const char *event_type, WPARAM wp, LPARAM lp, int system_key)
+        const char *event_type, unsigned long codepoint, LPARAM lp,
+        int system_key)
 {
     PCoreKeyEventData key_data;
     char key_name[8];
 
-    if (pcore_native_char_utf8(wp, key_name, sizeof(key_name)) <= 0) {
+    if (pcore_native_codepoint_utf8(codepoint, key_name,
+            sizeof(key_name)) <= 0) {
         return 1;
     }
     key_data.key = key_name;
-    key_data.key_code = (unsigned int) wp;
-    key_data.char_code = (unsigned int) wp;
+    key_data.key_code = (unsigned int) codepoint;
+    key_data.char_code = (unsigned int) codepoint;
     key_data.repeat = ((lp & 0x40000000L) != 0) ? 1 : 0;
     key_data.shift = (GetKeyState(VK_SHIFT) < 0) ? 1 : 0;
     key_data.ctrl = (GetKeyState(VK_CONTROL) < 0) ? 1 : 0;
@@ -2659,7 +2768,8 @@ static int pcore_browser_script_dispatch_select_key_event(HWND control,
 }
 
 static int pcore_browser_script_dispatch_char_event(HWND control,
-        const char *event_type, WPARAM wp, LPARAM lp, int system_key)
+        const char *event_type, unsigned long codepoint, LPARAM lp,
+        int system_key)
 {
     PCoreTextInputInfo text_info;
     unsigned int i;
@@ -2679,14 +2789,15 @@ static int pcore_browser_script_dispatch_char_event(HWND control,
             x = text_info.x + text_info.width / 2;
             y = text_info.y + text_info.height / 2;
             return pcore_browser_script_dispatch_char_at(x, y,
-                    event_type, wp, lp, system_key);
+                    event_type, codepoint, lp, system_key);
         }
     }
     return 1;
 }
 
 static int pcore_browser_script_dispatch_select_char_event(HWND control,
-        const char *event_type, WPARAM wp, LPARAM lp, int system_key)
+        const char *event_type, unsigned long codepoint, LPARAM lp,
+        int system_key)
 {
     PCoreSelectInfo select_info;
     unsigned int i;
@@ -2706,7 +2817,7 @@ static int pcore_browser_script_dispatch_select_char_event(HWND control,
             x = select_info.x + select_info.width / 2;
             y = select_info.y + select_info.height / 2;
             return pcore_browser_script_dispatch_char_at(x, y,
-                    event_type, wp, lp, system_key);
+                    event_type, codepoint, lp, system_key);
         }
     }
     return 1;
@@ -3255,14 +3366,38 @@ static pcore_native_select *pcore_native_select_find(HWND select_window)
     return NULL;
 }
 
+static void pcore_native_select_flush_surrogate(HWND hwnd,
+        pcore_native_select *native_select)
+{
+    if (native_select == NULL ||
+            native_select->pending_high_surrogate == 0) {
+        return;
+    }
+    if (native_select->original_proc != NULL) {
+        CallWindowProc(native_select->original_proc, hwnd,
+                native_select->pending_high_message,
+                (WPARAM) native_select->pending_high_surrogate,
+                native_select->pending_high_lparam);
+    }
+    native_select->pending_high_surrogate = 0;
+    native_select->pending_high_message = 0;
+    native_select->pending_high_lparam = 0;
+}
+
 static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp)
 {
     pcore_native_select *native_select;
     WNDPROC original;
+    unsigned long value;
+    unsigned long codepoint;
+    LRESULT native_result;
 
     native_select = pcore_native_select_find(hwnd);
     original = (native_select != NULL) ? native_select->original_proc : NULL;
+    value = (unsigned long) wp;
+    codepoint = 0;
+    native_result = 0;
     if ((msg == WM_KEYDOWN || msg == WM_KEYUP ||
             msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) &&
             pcore_browser_script_dispatch_select_key_event(hwnd,
@@ -3272,13 +3407,53 @@ static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
         return 0;
     }
     if ((msg == WM_CHAR || msg == WM_SYSCHAR) &&
-            (unsigned long) wp >= 0x20UL &&
-            (unsigned long) wp <= 0xffffUL &&
-            ((unsigned long) wp < 0xd800UL ||
-            (unsigned long) wp > 0xdfffUL) &&
-            pcore_browser_script_dispatch_select_char_event(hwnd,
-            "keypress", wp, lp, msg == WM_SYSCHAR ? 1 : 0) == 0) {
-        return 0;
+            native_select != NULL) {
+        if (pcore_native_script_active()) {
+            if (value >= 0xd800UL && value <= 0xdbffUL) {
+                if (native_select->pending_high_surrogate != 0) {
+                    pcore_native_select_flush_surrogate(hwnd,
+                            native_select);
+                }
+                native_select->pending_high_surrogate = (unsigned int) value;
+                native_select->pending_high_message = msg;
+                native_select->pending_high_lparam = lp;
+                return 0;
+            }
+            if (value >= 0xdc00UL && value <= 0xdfffUL &&
+                    native_select->pending_high_surrogate != 0 &&
+                    native_select->pending_high_message == msg) {
+                codepoint = 0x10000UL +
+                        ((unsigned long) native_select->pending_high_surrogate -
+                        0xd800UL) * 0x400UL +
+                        (value - 0xdc00UL);
+                native_select->pending_high_surrogate = 0;
+                native_select->pending_high_message = 0;
+                native_select->pending_high_lparam = 0;
+                if (pcore_browser_script_dispatch_select_char_event(hwnd,
+                        "keypress", codepoint, lp,
+                        msg == WM_SYSCHAR ? 1 : 0) == 0) {
+                    return 0;
+                }
+                if (original != NULL) {
+                    CallWindowProc(original, hwnd, msg,
+                            (WPARAM) ((unsigned int) (codepoint >> 10) +
+                            0xd7c0U), lp);
+                    native_result = CallWindowProc(original, hwnd, msg,
+                            wp, lp);
+                    return native_result;
+                }
+                return DefWindowProc(hwnd, msg, wp, lp);
+            }
+        }
+        if (native_select->pending_high_surrogate != 0) {
+            pcore_native_select_flush_surrogate(hwnd, native_select);
+        }
+        if (value >= 0x20UL && value <= 0xffffUL &&
+                (value < 0xd800UL || value > 0xdfffUL) &&
+                pcore_browser_script_dispatch_select_char_event(hwnd,
+                "keypress", value, lp, msg == WM_SYSCHAR ? 1 : 0) == 0) {
+            return 0;
+        }
     }
     return (original != NULL) ?
             CallWindowProc(original, hwnd, msg, wp, lp) :
@@ -6713,6 +6888,21 @@ static BOOL show_render_window(void)
                 g_native_selects[0].hwnd != NULL) {
             SendMessage(g_native_selects[0].hwnd, WM_CHAR,
                     (WPARAM) 0x2605, 0);
+        }
+    }
+    if (g_native_surrogate_probe) {
+        if (g_native_edit_count > 0 && g_native_edits[0].hwnd != NULL) {
+            SendMessage(g_native_edits[0].hwnd, WM_CHAR,
+                    (WPARAM) 0xd83d, 0);
+            SendMessage(g_native_edits[0].hwnd, WM_CHAR,
+                    (WPARAM) 0xde00, 0);
+        }
+        if (g_native_select_count > 0 &&
+                g_native_selects[0].hwnd != NULL) {
+            SendMessage(g_native_selects[0].hwnd, WM_CHAR,
+                    (WPARAM) 0xd83d, 0);
+            SendMessage(g_native_selects[0].hwnd, WM_CHAR,
+                    (WPARAM) 0xde03, 0);
         }
     }
     if (g_native_multiselect_probe) {
@@ -19819,6 +20009,153 @@ static BOOL test121_browser_script_unicode_char(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 122 - native UTF-16 surrogate-pair Unicode event bridge          */
+/* -------------------------------------------------------------------- */
+static BOOL test122_browser_script_surrogate_char(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.events='';"
+        "window.emoji=String.fromCharCode(0xd83d,0xde00);"
+        "window.smile=String.fromCharCode(0xd83d,0xde03);"
+        "window.record=function(prefix,e){var k=String(e.key||'');"
+        "var d=String(e.data||'');var expected=prefix==='edit'?"
+        "window.emoji:window.smile;window.events+="
+        "(window.events===''?'':'|')+prefix+':'+e.type+':'"
+        "+String(e.keyCode)+':'+String(e.charCode)+':'"
+        "+String(k.length)+':'+String(k.length?k.charCodeAt(0):0)+':'"
+        "+String(k.length>1?k.charCodeAt(1):0)+':'"
+        "+String(k===expected)+':'+String(d===expected)+':'"
+        "+String(e.altKey)+':'+String(e.phase)+':'"
+        "+String(e.cancelable)+':'+String(e.defaultPrevented)+':'"
+        "+String(e.inputType||'')+':'+String(d.length)+':'"
+        "+String(d.length?d.charCodeAt(0):0)+':'"
+        "+String(d.length>1?d.charCodeAt(1):0);"
+        "document.getElementById('result').textContent=window.events;};"
+        "window.cancel=function(e){e.preventDefault();};"
+        "window.edit=document.getElementById('edit');"
+        "window.editParent=document.getElementById('editParent');"
+        "window.target=document.getElementById('target');"
+        "window.selectParent=document.getElementById('selectParent');"
+        "window.edit.addEventListener('keypress',function(e){window.record('edit',e);},false);"
+        "window.editParent.addEventListener('keypress',function(e){window.record('edit',e);},false);"
+        "window.edit.addEventListener('beforeinput',function(e){window.record('edit',e);},false);"
+        "window.editParent.addEventListener('beforeinput',function(e){window.record('edit',e);},false);"
+        "window.target.addEventListener('keypress',function(e){window.record('select',e);},false);"
+        "window.selectParent.addEventListener('keypress',function(e){window.record('select',e);},false);"
+        "window.target.addEventListener('keypress',window.cancel,false);"
+        "</script></head><body>"
+        "<div id='editParent'><input id='edit' value='x'></div>"
+        "<div id='selectParent'><select id='target'>"
+        "<option>one</option><option>two</option></select></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "div{display:block;width:180px;height:32px}"
+        "input,select{display:block;width:160px;height:28px}"
+        "p{display:block;width:220px;height:180px;color:#102040}";
+    static const char EXPECTED[] =
+        "edit:keypress:128512:128512:2:55357:56832:true:false:false:2:true:false::0:0:0|"
+        "edit:keypress:128512:128512:2:55357:56832:true:false:false:3:true:false::0:0:0|"
+        "edit:beforeinput:0:0:0:0:0:false:true:false:2:true:false:insertText:2:55357:56832|"
+        "edit:beforeinput:0:0:0:0:0:false:true:false:3:true:false:insertText:2:55357:56832|"
+        "select:keypress:128515:128515:2:55357:56835:true:false:false:2:true:true::0:0:0|"
+        "select:keypress:128515:128515:2:55357:56835:true:false:false:3:true:true::0:0:0";
+    static const char RESET[] =
+        "window.events='';"
+        "document.getElementById('result').textContent='idle';";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[4096];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-surrogate.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "select", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(RESET,
+                sizeof(RESET) - 1, error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_native_surrogate_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_surrogate_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+        if (ok && (PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) != 0 || strcmp(text, EXPECTED) != 0)) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 122 FAIL", error[0] != '\0' ? error :
+                "UTF-16 surrogate-pair WM_CHAR event bridge did not match");
+        return FALSE;
+    }
+    show_info(L"TEST 122 OK",
+            "EDIT/SELECT surrogate pairs became one Unicode scalar key event;"
+            "\nEDIT beforeinput preserved the full UTF-16 data pair and the"
+            "\ncancelled SELECT event kept native default handling off.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -20059,6 +20396,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 119: ok = test119_browser_script_keypress(); break;
         case 120: ok = test120_browser_script_syskey_events(); break;
         case 121: ok = test121_browser_script_unicode_char(); break;
+        case 122: ok = test122_browser_script_surrogate_char(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
