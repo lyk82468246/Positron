@@ -13,6 +13,11 @@ worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `jav
 TEST13 不会新增脚本网络请求；next146 的页面级持久 context 已在 `240x320 dpi=96` 设备
 通过 TEST112，但不能把它与完整浏览器 JavaScript 混为一谈。
 
+**当前构建候选（next147，待设备验收）**：next147 在显式 `javascript=1` 的页面 context
+中接入最小 `addEventListener/removeEventListener` bridge，并把 WM 点击交给已有 Core
+DOM event dispatch；TEST113 离线覆盖 handler、可信事件信息、`preventDefault()`、DOM
+更新/布局和 listener 清理。默认 `javascript=0`、TEST13 网络路径和现有默认动作保持不变。
+
 ## 总原则
 
 Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
@@ -74,6 +79,18 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - TEST112 离线与设备日志均验证初始脚本状态在后续求值中保持、`textContent` mutation
   进入正式 style/layout，并验证 context 清理。C89、ARMV4I 构建和
   `screen=240x320 dpi=96` 设备验收已通过。
+
+### 6s. next147：页面级 JavaScript event listener 候选（待设备验收）
+
+- 在 next146 的 document-lifetime runtime/bridge 上新增最小
+  `element.addEventListener/removeEventListener`；WM 点击仍由 Core 的
+  `PCore_EventDispatchAt` 派发，JS handler 可读取 `type/phase/bubbles/cancelable/trusted`
+  基本字段，并通过 `preventDefault()` 取消现有宿主默认动作。
+- 监听器属于当前 document，失败导航、成功换页、旧文档释放和窗体关闭都会清理 Core
+  listener 与 bridge 所有权；默认 `javascript=0` 不注册任何事件。
+- TEST113 离线验证可信 click、取消、DOM mutation 进入 style/layout，以及移除 listener
+  后第二次派发不再回调。C89/ARMV4I 构建已通过，设备验收待进行；键盘、焦点、输入、
+  异步任务、事件对象完整字段和完整 HTML activation 仍未实现。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -501,7 +518,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 ## 建议执行顺序
 
 1. 以 next146 的 TEST13/20/27/43/44/56/58-77/80-112 设备日志作为已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；下一步评估后续事件/交互如何消费已验收的页面级 context。
+2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；先在设备上验收 next147 的 click listener，再评估键盘/焦点/输入事件如何消费页面级 context。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。

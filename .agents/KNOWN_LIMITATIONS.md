@@ -53,6 +53,13 @@ window 生命周期或完整 DOM binding；默认 `javascript=0` 及 TEST13 网�
 C89、ARMV4I 增量构建和仓库审计已通过；`screen=240x320 dpi=96` 设备日志记录 TEST112
 OK 与 `TESTBENCH PASS`。它仍不是完整浏览器 JavaScript 能力。
 
+**当前构建候选（next147，待设备验收）**：显式 `javascript=1` 页面新增最小
+`addEventListener/removeEventListener` bridge，WM 点击复用 Core 的可信 DOM event
+dispatch；handler 可以读取基础事件字段、更新 DOM，并调用 `preventDefault()` 阻止既有
+默认动作。TEST113 覆盖 listener、取消、重新布局和移除后的第二次派发。默认
+`javascript=0`、TEST13 网络路径和默认动作保持不变；键盘、焦点、输入、异步任务、完整
+Event 对象和完整 HTML activation 仍未实现。C89/ARMV4I 构建已通过，设备结果待验收。
+
 **当前状态更正（next136，2026-08-07）**：`screen=480x640 dpi=192` 日志中 TEST13/20/27/43/44/56/58
 通过后，TEST59 暴露离线 flex 几何夹具继承设备 DPI：固定 `25px` padding 被按 192 DPI
 换算为 `50px`。next136 只在 TEST59 的显式 CSS 几何 pass 前安装 96 DPI 参考上下文，

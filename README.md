@@ -15,6 +15,13 @@ bridge 更新文字后重新进入 style/layout。该候选已通过 C89、ARMV4
 并已在 `240x320 dpi=96` 设备上通过 TEST112；这不代表已实现事件、异步任务或完整
 DOM/window binding。
 
+**当前构建候选（next147，2026-08-08）**：在 next146 的页面级 context 之上，显式
+`javascript=1` 页面获得最小 `addEventListener/removeEventListener` bridge；WM 点击继续
+走已验收的 Core DOM event dispatch，JavaScript handler 可以读取可信 click 的基本信息、
+更新 DOM，并以 `preventDefault()` 阻止既有默认动作。TEST113 离线覆盖 listener、取消、
+重新布局和移除监听器后的第二次派发；默认 `javascript=0` 与 TEST13 路径不变。C89 和
+ARMV4I 构建已通过，next147 尚未设备验收，不代表完整 Mouse/Keyboard/Event API。
+
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
 `positron_script.dll` 的最小 `document.getElementById(...).textContent=` bridge。

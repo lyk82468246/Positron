@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 112
+#define TEST_MAX_NUMBER 113
 
 static int test_config_space(char c)
 {
@@ -2154,9 +2154,25 @@ typedef struct pcore_navigation_resource {
     int attempted;
 } pcore_navigation_resource;
 
-typedef struct pcore_browser_script_bridge {
+typedef struct pcore_browser_script_bridge pcore_browser_script_bridge;
+typedef struct pcore_browser_script_event_binding
+        pcore_browser_script_event_binding;
+
+struct pcore_browser_script_event_binding {
+    pcore_browser_script_event_binding *next;
+    pcore_browser_script_bridge *bridge;
+    HANDLE listener;
+    unsigned int id;
+    char *element_id;
+    char *event_type;
+};
+
+struct pcore_browser_script_bridge {
     HANDLE document;
-} pcore_browser_script_bridge;
+    HANDLE runtime;
+    unsigned int next_event_id;
+    pcore_browser_script_event_binding *events;
+};
 
 typedef struct pcore_browser_script_session {
     HANDLE document;
@@ -2168,8 +2184,14 @@ static pcore_browser_script_session g_browser_script_session = {
     NULL, NULL, NULL
 };
 
+static void pcore_browser_script_bridge_destroy(
+        pcore_browser_script_bridge *bridge);
+
 static void pcore_browser_script_session_destroy(void)
 {
+    if (g_browser_script_session.bridge != NULL) {
+        pcore_browser_script_bridge_destroy(g_browser_script_session.bridge);
+    }
     if (g_browser_script_session.runtime != NULL) {
         PScript_Destroy(g_browser_script_session.runtime);
     }
@@ -3507,6 +3529,9 @@ static void pcore_navigation_request_free(
     if (request->response != NULL) {
         PHttp_FreeResponse(request->response);
     }
+    if (request->script_bridge != NULL) {
+        pcore_browser_script_bridge_destroy(request->script_bridge);
+    }
     if (request->script_runtime != NULL) {
         PScript_Destroy(request->script_runtime);
     }
@@ -3864,6 +3889,246 @@ static int pcore_browser_script_set_text(void *pw,
             out_capacity, out_len);
 }
 
+static int pcore_browser_script_write_int(int value, char *out_json,
+        int out_capacity, int *out_len)
+{
+    char number[24];
+    int length;
+
+    if (out_json == NULL || out_len == NULL || out_capacity <= 0) {
+        return 1;
+    }
+    length = _snprintf(number, sizeof(number) - 1, "%d", value);
+    if (length < 0 || length >= (int) sizeof(number) - 1 ||
+            length >= out_capacity) {
+        return 1;
+    }
+    number[length] = '\0';
+    memcpy(out_json, number, (size_t) length + 1);
+    *out_len = length;
+    return 0;
+}
+
+static char *pcore_browser_script_copy_string(const char *value)
+{
+    char *copy;
+    size_t length;
+
+    if (value == NULL) {
+        return NULL;
+    }
+    length = strlen(value);
+    copy = (char *) malloc(length + 1);
+    if (copy == NULL) {
+        return NULL;
+    }
+    memcpy(copy, value, length + 1);
+    return copy;
+}
+
+static int pcore_browser_script_event_type_safe(const char *event_type)
+{
+    const char *p;
+    char c;
+
+    if (event_type == NULL || event_type[0] == '\0') {
+        return 0;
+    }
+    for (p = event_type; *p != '\0'; p++) {
+        c = *p;
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+                c == ':' || c == '.')) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static unsigned int pcore_browser_script_event_callback(void *pw,
+        const PCoreEventInfo *event_info)
+{
+    pcore_browser_script_event_binding *binding;
+    char args[384];
+    const char *result;
+    int length;
+
+    binding = (pcore_browser_script_event_binding *) pw;
+    if (binding == NULL || binding->bridge == NULL ||
+            binding->bridge->runtime == NULL || event_info == NULL ||
+            !pcore_browser_script_event_type_safe(binding->event_type)) {
+        return PCORE_EVENT_ACTION_NONE;
+    }
+    length = _snprintf(args, sizeof(args) - 1,
+            "[{\"listener\":%u,\"type\":\"%s\","
+            "\"phase\":%u,\"bubbles\":%s,\"cancelable\":%s,"
+            "\"trusted\":%s,\"defaultPrevented\":%s}]",
+            binding->id, binding->event_type, event_info->phase,
+            event_info->bubbles ? "true" : "false",
+            event_info->cancelable ? "true" : "false",
+            event_info->trusted ? "true" : "false",
+            event_info->default_prevented ? "true" : "false");
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PCORE_EVENT_ACTION_NONE;
+    }
+    args[length] = '\0';
+    if (PScript_CallGlobalJson(binding->bridge->runtime,
+            "__pcoreDispatchEvent", -1, args, length) != PSCRIPT_OK) {
+        return PCORE_EVENT_ACTION_NONE;
+    }
+    result = PScript_GetResult(binding->bridge->runtime);
+    if (result != NULL && strcmp(result, "true") == 0) {
+        return PCORE_EVENT_ACTION_PREVENT_DEFAULT;
+    }
+    return PCORE_EVENT_ACTION_NONE;
+}
+
+static int pcore_browser_script_add_event(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    pcore_browser_script_event_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    HANDLE listener;
+    const char *element_id;
+    const char *event_type;
+    int capture;
+    unsigned int id;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    if (bridge == NULL || bridge->document == NULL || root == NULL) {
+        PJson_Free(root);
+        return pcore_browser_script_write_int(0, out_json,
+                out_capacity, out_len);
+    }
+    element_id = PJson_GetString(object, "id");
+    event_type = PJson_GetString(object, "type");
+    capture = PJson_GetInt(object, "capture");
+    if (element_id == NULL || element_id[0] == '\0' ||
+            !pcore_browser_script_event_type_safe(event_type)) {
+        PJson_Free(root);
+        return pcore_browser_script_write_int(0, out_json,
+                out_capacity, out_len);
+    }
+    binding = (pcore_browser_script_event_binding *) calloc(1,
+            sizeof(*binding));
+    if (binding == NULL) {
+        PJson_Free(root);
+        return pcore_browser_script_write_int(0, out_json,
+                out_capacity, out_len);
+    }
+    binding->bridge = bridge;
+    binding->element_id = pcore_browser_script_copy_string(element_id);
+    binding->event_type = pcore_browser_script_copy_string(event_type);
+    if (binding->element_id == NULL || binding->event_type == NULL) {
+        free(binding->element_id);
+        free(binding->event_type);
+        free(binding);
+        PJson_Free(root);
+        return pcore_browser_script_write_int(0, out_json,
+                out_capacity, out_len);
+    }
+    id = bridge->next_event_id;
+    if (id == 0) {
+        id = 1;
+    }
+    bridge->next_event_id = id + 1;
+    binding->id = id;
+    listener = PCore_EventListenerAdd(bridge->document,
+            binding->element_id, binding->event_type, capture,
+            pcore_browser_script_event_callback, binding);
+    if (listener == NULL) {
+        free(binding->element_id);
+        free(binding->event_type);
+        free(binding);
+        PJson_Free(root);
+        return pcore_browser_script_write_int(0, out_json,
+                out_capacity, out_len);
+    }
+    binding->listener = listener;
+    binding->next = bridge->events;
+    bridge->events = binding;
+    PJson_Free(root);
+    return pcore_browser_script_write_int((int) id, out_json,
+            out_capacity, out_len);
+}
+
+static int pcore_browser_script_remove_event(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    pcore_browser_script_event_binding *binding;
+    pcore_browser_script_event_binding *previous;
+    HANDLE root;
+    HANDLE object;
+    int id;
+    int removed;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetInt(object, "listener") : 0;
+    if (bridge == NULL || bridge->document == NULL || root == NULL ||
+            id <= 0) {
+        PJson_Free(root);
+        return pcore_browser_script_write_bool(0, out_json,
+                out_capacity, out_len);
+    }
+    previous = NULL;
+    binding = bridge->events;
+    while (binding != NULL && (int) binding->id != id) {
+        previous = binding;
+        binding = binding->next;
+    }
+    if (binding == NULL) {
+        PJson_Free(root);
+        return pcore_browser_script_write_bool(0, out_json,
+                out_capacity, out_len);
+    }
+    if (previous != NULL) {
+        previous->next = binding->next;
+    } else {
+        bridge->events = binding->next;
+    }
+    removed = PCore_EventListenerRemove(bridge->document,
+            binding->listener);
+    free(binding->element_id);
+    free(binding->event_type);
+    free(binding);
+    PJson_Free(root);
+    return pcore_browser_script_write_bool(removed > 0, out_json,
+            out_capacity, out_len);
+}
+
+static void pcore_browser_script_bridge_destroy(
+        pcore_browser_script_bridge *bridge)
+{
+    pcore_browser_script_event_binding *binding;
+    pcore_browser_script_event_binding *next;
+
+    if (bridge == NULL) {
+        return;
+    }
+    binding = bridge->events;
+    while (binding != NULL) {
+        next = binding->next;
+        if (bridge->document != NULL && binding->listener != NULL) {
+            PCore_EventListenerRemove(bridge->document,
+                    binding->listener);
+        }
+        free(binding->element_id);
+        free(binding->event_type);
+        free(binding);
+        binding = next;
+    }
+    bridge->events = NULL;
+}
+
 static int pcore_browser_script_type_equal(const char *type, int length,
         const char *expected)
 {
@@ -3963,6 +4228,30 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "Object.defineProperty(PElement.prototype,'textContent',{"
         "set:function(v){if(!__pcoreSetText({id:this.__id,text:String(v)}))"
         "{throw new Error('textContent update failed');}}});"
+        "g.__pcoreHandlers={};"
+        "g.__pcoreDispatchEvent=function(info){"
+        "var fn=g.__pcoreHandlers[info.listener];"
+        "if(typeof fn!=='function'){return false;}"
+        "var e={type:info.type,phase:info.phase,bubbles:!!info.bubbles,"
+        "cancelable:!!info.cancelable,trusted:!!info.trusted,"
+        "defaultPrevented:!!info.defaultPrevented};"
+        "e.preventDefault=function(){if(e.cancelable){"
+        "e.defaultPrevented=true;}};"
+        "fn.call(null,e);return e.defaultPrevented;};"
+        "PElement.prototype.addEventListener=function(type,fn,capture){"
+        "var t=String(type);var c=!!capture;var n;"
+        "if(typeof fn!=='function'){return 0;}"
+        "n=__pcoreAddEvent({id:this.__id,type:t,capture:c?1:0});"
+        "if(n>0){g.__pcoreHandlers[n]=fn;"
+        "if(!this.__listeners){this.__listeners=[];}"
+        "this.__listeners.push({id:n,type:t,fn:fn,capture:c});}"
+        "return n;};"
+        "PElement.prototype.removeEventListener=function(type,fn,capture){"
+        "var t=String(type);var c=!!capture;var a=this.__listeners||[];"
+        "var i;"
+        "for(i=0;i<a.length;i++){if(a[i].type===t&&a[i].fn===fn&&"
+        "a[i].capture===c){__pcoreRemoveEvent({listener:a[i].id});"
+        "delete g.__pcoreHandlers[a[i].id];a.splice(i,1);return;}}};"
         "g.window=g;g.document={getElementById:function(id){id=String(id);"
         "return __pcoreHasElement({id:id})?new PElement(id):null;}};"
         "})(this);";
@@ -4025,13 +4314,21 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         bridge = &bridge_storage;
     }
     bridge->document = document;
+    bridge->runtime = runtime;
+    bridge->next_event_id = 1;
+    bridge->events = NULL;
     if (PScript_RegisterGlobalJsonFunction(runtime, "__pcoreHasElement", -1,
             pcore_browser_script_has_element, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreSetText", -1,
             pcore_browser_script_set_text, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime, "__pcoreAddEvent", -1,
+            pcore_browser_script_add_event, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime, "__pcoreRemoveEvent", -1,
+            pcore_browser_script_remove_event, bridge) != PSCRIPT_OK ||
             PScript_Evaluate(runtime, BOOTSTRAP, -1) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity, "DOM bootstrap",
                 PScript_GetError(runtime));
+        pcore_browser_script_bridge_destroy(bridge);
         PScript_Destroy(runtime);
         if (out_runtime != NULL) {
             free(bridge);
@@ -4109,6 +4406,7 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
             *out_bridge = bridge;
         }
     } else {
+        pcore_browser_script_bridge_destroy(bridge);
         PScript_Destroy(runtime);
     }
     if (out_executed != NULL) {
@@ -17634,6 +17932,126 @@ static BOOL test112_browser_script_persistence(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 113 - browser JavaScript event listener bridge                   */
+/* -------------------------------------------------------------------- */
+static BOOL test113_browser_script_events(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.count=0;"
+        "window.target=document.getElementById('target');"
+        "window.handler=function(event){window.count+=1;"
+        "document.getElementById('result').textContent="
+        "event.type+':'+String(event.phase)+':'+String(window.count);"
+        "event.preventDefault();};"
+        "window.target.addEventListener('click',window.handler,false);"
+        "</script></head><body>"
+        "<div id='target'>tap</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char CSS[] =
+        "p{display:block;width:160px;height:24px;color:#102040}";
+    static const char REMOVE[] =
+        "window.target.removeEventListener('click',window.handler,false);";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[64];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int dispatch_result;
+    int default_allowed;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    dispatch_result = -1;
+    default_allowed = 1;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        dispatch_result = PCore_EventDispatchToId(document, "target",
+                "click", 1, 1, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 0 ||
+                PCore_NodeTextContentById(document, "result", text,
+                        sizeof(text), &bytes) != 0 ||
+                strcmp(text, "click:2:1") != 0) {
+            ok = 0;
+        }
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-events.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "p", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    if (ok && pcore_browser_script_session_evaluate(REMOVE, -1,
+            error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        default_allowed = 0;
+        dispatch_result = PCore_EventDispatchToId(document, "target",
+                "click", 1, 1, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1 ||
+                PCore_NodeTextContentById(document, "result", text,
+                        sizeof(text), &bytes) != 0 ||
+                strcmp(text, "click:2:1") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 113 FAIL", error[0] != '\0' ? error :
+                "JavaScript event listener bridge did not dispatch");
+        return FALSE;
+    }
+    show_info(L"TEST 113 OK",
+            "addEventListener dispatched a trusted click through the\n"
+            "DOM event bridge, preventDefault blocked the default action,\n"
+            "and removeEventListener stopped the second callback.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -17865,6 +18283,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 110: ok = test110_browser_inline_script(); break;
         case 111: ok = test111_browser_external_order(); break;
         case 112: ok = test112_browser_script_persistence(); break;
+        case 113: ok = test113_browser_script_events(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
