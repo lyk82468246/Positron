@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 114
+#define TEST_MAX_NUMBER 115
 
 static int test_config_space(char c)
 {
@@ -2308,6 +2308,9 @@ static char g_native_form_enter_expected[256];
 static int g_native_label_probe = 0;
 static int g_native_label_probe_ok = 0;
 
+static int pcore_browser_script_dispatch_key_event(HWND control,
+        const char *event_type, WPARAM wp, LPARAM lp);
+
 static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp)
 {
@@ -2320,6 +2323,12 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == hwnd) {
             original = g_native_edits[i].original_proc;
+            if ((msg == WM_KEYDOWN || msg == WM_KEYUP) &&
+                    pcore_browser_script_dispatch_key_event(hwnd,
+                    (msg == WM_KEYDOWN) ? "keydown" : "keyup",
+                    wp, lp) == 0) {
+                return 0;
+            }
             if (msg == WM_KEYDOWN && wp == VK_RETURN &&
                     !g_native_edits[i].multiline) {
                 stored_index = GetWindowLong(hwnd, GWL_USERDATA);
@@ -2392,6 +2401,86 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
             return;
         }
     }
+}
+
+static const char *pcore_native_key_name(WPARAM wp)
+{
+    switch ((unsigned int) wp) {
+    case VK_RETURN:
+        return "Enter";
+    case VK_ESCAPE:
+        return "Escape";
+    case VK_TAB:
+        return "Tab";
+    case VK_BACK:
+        return "Backspace";
+    case VK_DELETE:
+        return "Delete";
+    case VK_LEFT:
+        return "ArrowLeft";
+    case VK_RIGHT:
+        return "ArrowRight";
+    case VK_UP:
+        return "ArrowUp";
+    case VK_DOWN:
+        return "ArrowDown";
+    case VK_HOME:
+        return "Home";
+    case VK_END:
+        return "End";
+    case VK_PRIOR:
+        return "PageUp";
+    case VK_NEXT:
+        return "PageDown";
+    case VK_SPACE:
+        return "Space";
+    default:
+        return "Unidentified";
+    }
+}
+
+static int pcore_browser_script_dispatch_key_event(HWND control,
+        const char *event_type, WPARAM wp, LPARAM lp)
+{
+    PCoreTextInputInfo text_info;
+    PCoreKeyEventData key_data;
+    unsigned int i;
+    int x;
+    int y;
+    int default_allowed;
+    int result;
+
+    if (control == NULL || event_type == NULL || g_render_doc == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.runtime == NULL) {
+        return 1;
+    }
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == control &&
+                PCore_TextInputInfo(g_render_doc,
+                        g_native_edits[i].text_index, &text_info,
+                        NULL, 0) == 0) {
+            x = text_info.x + text_info.width / 2;
+            y = text_info.y + text_info.height / 2;
+            key_data.key = pcore_native_key_name(wp);
+            key_data.key_code = (unsigned int) wp;
+            key_data.char_code = 0;
+            key_data.repeat = ((lp & 0x40000000L) != 0) ? 1 : 0;
+            key_data.shift = (GetKeyState(VK_SHIFT) < 0) ? 1 : 0;
+            key_data.ctrl = (GetKeyState(VK_CONTROL) < 0) ? 1 : 0;
+            key_data.alt = (GetKeyState(VK_MENU) < 0) ? 1 : 0;
+            default_allowed = 1;
+            result = PCore_EventDispatchKeyAt(g_render_doc, x, y,
+                    event_type, 1,
+                    (strcmp(event_type, "keydown") == 0) ? 1 : 0,
+                    &key_data, &default_allowed);
+            if (result < 0) {
+                return 1;
+            }
+            return default_allowed ? 1 : 0;
+        }
+    }
+    return 1;
 }
 
 static void pcore_request_interaction_restyle(HWND hwnd)
@@ -4048,11 +4137,31 @@ static int pcore_browser_script_event_type_safe(const char *event_type)
     return 1;
 }
 
+static int pcore_browser_script_key_safe(const char *key)
+{
+    const char *p;
+    char c;
+
+    if (key == NULL || key[0] == '\0') {
+        return 1;
+    }
+    for (p = key; *p != '\0'; p++) {
+        c = *p;
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+                c == ':' || c == '.' || c == ' ')) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static unsigned int pcore_browser_script_event_callback(void *pw,
         const PCoreEventInfo *event_info)
 {
     pcore_browser_script_event_binding *binding;
-    char args[384];
+    char args[768];
+    const char *key;
     const char *result;
     int length;
 
@@ -4062,15 +4171,27 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
             !pcore_browser_script_event_type_safe(binding->event_type)) {
         return PCORE_EVENT_ACTION_NONE;
     }
+    key = event_info->key;
+    if (!pcore_browser_script_key_safe(key)) {
+        key = "";
+    }
     length = _snprintf(args, sizeof(args) - 1,
             "[{\"listener\":%u,\"type\":\"%s\","
             "\"phase\":%u,\"bubbles\":%s,\"cancelable\":%s,"
-            "\"trusted\":%s,\"defaultPrevented\":%s}]",
+            "\"trusted\":%s,\"defaultPrevented\":%s,"
+            "\"key\":\"%s\",\"keyCode\":%u,"
+            "\"charCode\":%u,\"repeat\":%s,\"shiftKey\":%s,"
+            "\"ctrlKey\":%s,\"altKey\":%s}]",
             binding->id, binding->event_type, event_info->phase,
             event_info->bubbles ? "true" : "false",
             event_info->cancelable ? "true" : "false",
             event_info->trusted ? "true" : "false",
-            event_info->default_prevented ? "true" : "false");
+            event_info->default_prevented ? "true" : "false", key,
+            event_info->key_code, event_info->char_code,
+            event_info->repeat ? "true" : "false",
+            event_info->shift ? "true" : "false",
+            event_info->ctrl ? "true" : "false",
+            event_info->alt ? "true" : "false");
     if (length < 0 || length >= (int) sizeof(args) - 1) {
         return PCORE_EVENT_ACTION_NONE;
     }
@@ -4337,7 +4458,10 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "if(typeof fn!=='function'){return false;}"
         "var e={type:info.type,phase:info.phase,bubbles:!!info.bubbles,"
         "cancelable:!!info.cancelable,trusted:!!info.trusted,"
-        "defaultPrevented:!!info.defaultPrevented};"
+        "defaultPrevented:!!info.defaultPrevented,key:info.key||'',"
+        "keyCode:info.keyCode||0,charCode:info.charCode||0,"
+        "repeat:!!info.repeat,shiftKey:!!info.shiftKey,"
+        "ctrlKey:!!info.ctrlKey,altKey:!!info.altKey};"
         "e.preventDefault=function(){if(e.cancelable){"
         "e.defaultPrevented=true;}};"
         "fn.call(null,e);return e.defaultPrevented;};"
@@ -18300,6 +18424,126 @@ static BOOL test114_browser_script_form_events(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 115 - browser JavaScript keyboard event data                     */
+/* -------------------------------------------------------------------- */
+static BOOL test115_browser_script_keyboard_events(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.events='';"
+        "window.record=function(e){window.events+="
+        "(window.events===''?'':'|')+e.type+':'+e.key+':'"
+        "+String(e.keyCode)+':'+String(e.charCode)+':'"
+        "+String(e.repeat)+':'+String(e.shiftKey)+':'"
+        "+String(e.trusted);"
+        "document.getElementById('result').textContent=window.events;};"
+        "window.target=document.getElementById('target');"
+        "window.target.addEventListener('keydown',window.record,false);"
+        "window.target.addEventListener('keyup',window.record,false);"
+        "</script></head><body>"
+        "<input id='target' value='x'><p id='result'>idle</p>"
+        "</body></html>";
+    static const char CSS[] =
+        "input{display:block;width:180px;height:28px}"
+        "p{display:block;width:220px;height:28px;color:#102040}";
+    static const char EXPECTED[] =
+        "keydown:Enter:13:0:false:false:true|"
+        "keyup:Enter:13:0:false:false:true";
+    static const PCoreKeyEventData ENTER_KEY = {
+        "Enter", 13u, 0u, 0, 0, 0, 0
+    };
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[256];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    default_allowed = 1;
+    dispatch_result = -1;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        default_allowed = 0;
+        dispatch_result = PCore_EventDispatchKeyToId(document, "target",
+                "keydown", 1, 1, &ENTER_KEY, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        dispatch_result = PCore_EventDispatchKeyToId(document, "target",
+                "keyup", 1, 0, &ENTER_KEY, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1 ||
+                PCore_NodeTextContentById(document, "result", text,
+                        sizeof(text), &bytes) != 0 ||
+                strcmp(text, EXPECTED) != 0) {
+            ok = 0;
+        }
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-keyboard.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "p", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 115 FAIL", error[0] != '\0' ? error :
+                "keyboard event metadata bridge did not match");
+        return FALSE;
+    }
+    show_info(L"TEST 115 OK",
+            "Trusted keydown and keyup carried key/keyCode/charCode\n"
+            "and modifier metadata through the native event bridge.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -18533,6 +18777,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 112: ok = test112_browser_script_persistence(); break;
         case 113: ok = test113_browser_script_events(); break;
         case 114: ok = test114_browser_script_form_events(); break;
+        case 115: ok = test115_browser_script_keyboard_events(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

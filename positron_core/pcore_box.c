@@ -3020,6 +3020,7 @@ typedef struct pcore_event_binding pcore_event_binding;
 
 typedef struct pcore_event_state {
     pcore_event_binding *head;
+    const PCoreKeyEventData *key_data;
 } pcore_event_state;
 
 struct pcore_event_binding {
@@ -3030,6 +3031,7 @@ struct pcore_event_binding {
     int capture;
     PCoreEventListenerFn callback;
     void *pw;
+    pcore_event_state *state;
 };
 
 static dom_string *pcore_event_state_key = NULL;
@@ -3166,6 +3168,15 @@ static void pcore_event_listener_adapter(dom_event *event, void *pw)
     if (dom_event_is_default_prevented(event, &value) == DOM_NO_ERR) {
         info.default_prevented = value ? 1 : 0;
     }
+    if (binding->state != NULL && binding->state->key_data != NULL) {
+        info.key = binding->state->key_data->key;
+        info.key_code = binding->state->key_data->key_code;
+        info.char_code = binding->state->key_data->char_code;
+        info.repeat = binding->state->key_data->repeat ? 1 : 0;
+        info.shift = binding->state->key_data->shift ? 1 : 0;
+        info.ctrl = binding->state->key_data->ctrl ? 1 : 0;
+        info.alt = binding->state->key_data->alt ? 1 : 0;
+    }
     actions = binding->callback(binding->pw, &info);
     if ((actions & PCORE_EVENT_ACTION_PREVENT_DEFAULT) != 0) {
         dom_event_prevent_default(event);
@@ -3227,6 +3238,7 @@ PCORE_API HANDLE PCore_EventListenerAdd(HANDLE hDoc,
     binding->capture = capture ? 1 : 0;
     binding->callback = callback;
     binding->pw = pw;
+    binding->state = state;
     listener = NULL;
     if (dom_event_listener_create(pcore_event_listener_adapter, binding,
             &listener) != DOM_NO_ERR || listener == NULL) {
@@ -3277,12 +3289,14 @@ PCORE_API int PCore_EventListenerRemove(HANDLE hDoc, HANDLE hListener)
 
 static int pcore_event_dispatch_node(dom_node *target,
         const char *event_type, int bubbles, int cancelable,
+        pcore_event_state *state, const PCoreKeyEventData *key_data,
         int *default_allowed)
 {
     dom_string *type;
     dom_event *event;
     dom_exception err;
     bool success;
+    const PCoreKeyEventData *previous_key_data;
 
     if (default_allowed != NULL) {
         *default_allowed = 1;
@@ -3307,7 +3321,15 @@ static int pcore_event_dispatch_node(dom_node *target,
     }
     success = true;
     if (err == DOM_NO_ERR) {
+        previous_key_data = NULL;
+        if (state != NULL) {
+            previous_key_data = state->key_data;
+            state->key_data = key_data;
+        }
         err = dom_event_target_dispatch_event(target, event, &success);
+        if (state != NULL) {
+            state->key_data = previous_key_data;
+        }
     }
     if (default_allowed != NULL && err == DOM_NO_ERR) {
         *default_allowed = success ? 1 : 0;
@@ -3317,22 +3339,22 @@ static int pcore_event_dispatch_node(dom_node *target,
     return (err == DOM_NO_ERR) ? 1 : -1;
 }
 
-PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
-        const char *event_type, int bubbles, int cancelable,
+static int pcore_event_dispatch_to_id(dom_document *doc,
+        const char *element_id, const char *event_type, int bubbles,
+        int cancelable, const PCoreKeyEventData *key_data,
         int *default_allowed)
 {
-    dom_document *doc;
     dom_element *element;
     dom_string *id;
+    pcore_event_state *state;
     int result;
 
     if (default_allowed != NULL) {
         *default_allowed = 1;
     }
-    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0') {
+    if (doc == NULL || element_id == NULL || element_id[0] == '\0') {
         return -1;
     }
-    doc = (dom_document *) hDoc;
     id = NULL;
     element = NULL;
     if (dom_string_create((const uint8_t *) element_id, strlen(element_id),
@@ -3347,17 +3369,48 @@ PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
     if (element == NULL) {
         return 0;
     }
+    state = pcore_event_state_get(doc, 0);
     result = pcore_event_dispatch_node((dom_node *) element, event_type,
-            bubbles, cancelable, default_allowed);
+            bubbles, cancelable, state, key_data, default_allowed);
     dom_node_unref((dom_node *) element);
     return result;
 }
 
-PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
+PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
         const char *event_type, int bubbles, int cancelable,
         int *default_allowed)
 {
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return -1;
+    }
+    return pcore_event_dispatch_to_id((dom_document *) hDoc, element_id,
+            event_type, bubbles, cancelable, NULL, default_allowed);
+}
+
+PCORE_API int PCore_EventDispatchKeyToId(HANDLE hDoc,
+        const char *element_id, const char *event_type, int bubbles,
+        int cancelable, const PCoreKeyEventData *key_data,
+        int *default_allowed)
+{
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return -1;
+    }
+    return pcore_event_dispatch_to_id((dom_document *) hDoc, element_id,
+            event_type, bubbles, cancelable, key_data, default_allowed);
+}
+
+static int pcore_event_dispatch_at(dom_document *doc, int x, int y,
+        const char *event_type, int bubbles, int cancelable,
+        const PCoreKeyEventData *key_data, int *default_allowed)
+{
     pcore_render *state;
+    pcore_event_state *event_state;
     struct box *box;
     dom_node_type node_type;
     dom_node *target;
@@ -3366,10 +3419,10 @@ PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
     if (default_allowed != NULL) {
         *default_allowed = 1;
     }
-    if (hDoc == NULL || event_type == NULL || event_type[0] == '\0') {
+    if (doc == NULL || event_type == NULL || event_type[0] == '\0') {
         return -1;
     }
-    state = pcore_get_render((dom_document *) hDoc);
+    state = pcore_get_render(doc);
     if (state == NULL) {
         return 0;
     }
@@ -3387,10 +3440,39 @@ PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
     if (target == NULL) {
         return 0;
     }
+    event_state = pcore_event_state_get(doc, 0);
     result = pcore_event_dispatch_node(target, event_type, bubbles,
-            cancelable, default_allowed);
+            cancelable, event_state, key_data, default_allowed);
     dom_node_unref(target);
     return result;
+}
+
+PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
+        const char *event_type, int bubbles, int cancelable,
+        int *default_allowed)
+{
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || event_type == NULL || event_type[0] == '\0') {
+        return -1;
+    }
+    return pcore_event_dispatch_at((dom_document *) hDoc, x, y, event_type,
+            bubbles, cancelable, NULL, default_allowed);
+}
+
+PCORE_API int PCore_EventDispatchKeyAt(HANDLE hDoc, int x, int y,
+        const char *event_type, int bubbles, int cancelable,
+        const PCoreKeyEventData *key_data, int *default_allowed)
+{
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || event_type == NULL || event_type[0] == '\0') {
+        return -1;
+    }
+    return pcore_event_dispatch_at((dom_document *) hDoc, x, y,
+            event_type, bubbles, cancelable, key_data, default_allowed);
 }
 
 /* NetSurf normally reflows a retained box tree, so auto-overflow blocks can

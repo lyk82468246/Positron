@@ -31,6 +31,14 @@ TEST114 离线覆盖事件元数据、父级冒泡和 DOM 更新；宿主接线�
 增量构建，并在 `screen=320x320 dpi=128` 设备上通过。默认 `javascript=0` 与 TEST13
 路径不变，仍不是完整 Keyboard/Focus/Input/Event API。
 
+**next149 实现候选（待设备验收，2026-08-08）**：在 next148 的表单事件桥上新增
+`PCoreKeyEventData` 与键盘事件派发 ABI；显式 `javascript=1` 时，WM 原生 EDIT 的
+`keydown/keyup` 会把 `key/keyCode/charCode/repeat/shiftKey/ctrlKey/altKey` 传入页面
+事件对象。TEST115 离线覆盖 Enter 的可信事件元数据和默认动作结果；C89、ARMV4I
+增量构建与仓库审计已通过，staging 和设备验收待进行。默认 `javascript=0`、TEST13
+网络路径和已验收的表单行为不变；WM SELECT、`keypress`、`beforeinput`、
+`focusin/focusout` 和完整 Keyboard/Event API 仍未实现。
+
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
 `positron_script.dll` 的最小 `document.getElementById(...).textContent=` bridge。
@@ -65,7 +73,7 @@ body 共用一次初始 Duktape context。TEST111 覆盖成功/失败 external�
 
 面向 **Windows Mobile 6 Professional**（Windows CE 5.2, ARMv4i）的现代基础设施与应用运行时。
 
-Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片、脚本运行时与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制、基础定位、动态 `:hover`、点击导航和脚本资源缓存接口都在 `positron_core.dll` 后面推进；`positron_script.dll` 已作为独立 Duktape 执行服务接入解决方案，next145 在 next144 的默认关闭 inline-script 纵切之上增加了已通过设备门禁的 classic external-script 取回与 DOM 顺序执行，但仍没有事件回调或完整 DOM/window。
+Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片、脚本运行时与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制、基础定位、动态 `:hover`、点击导航和脚本资源缓存接口都在 `positron_core.dll` 后面推进；`positron_script.dll` 已作为独立 Duktape 执行服务接入解决方案，next145 在 next144 的默认关闭 inline-script 纵切之上增加了已通过设备门禁的 classic external-script 取回与 DOM 顺序执行，next147-149 又逐步加入页面级事件桥，但仍不是完整 DOM/window 或浏览器事件 API。
 
 公共 DLL 是正式产品，不只是 `test_host.exe` 或浏览器的内部依赖。架构与 ABI 原则见 [.agents/ARCHITECTURE.md](.agents/ARCHITECTURE.md)。
 
@@ -318,7 +326,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-114
+tests=13,20,27,43,44,56,58-77,80-115
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。

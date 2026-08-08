@@ -67,6 +67,13 @@ Event 对象和完整 HTML activation 仍未实现。C89/ARMV4I 构建已通过�
 ARMV4I 增量构建、staging 与 `screen=320x320 dpi=128` 设备验收均已通过。键盘事件、focusin/focusout、异步任务、
 完整 Event 对象、完整 HTML activation 和完整 DOM binding 仍未实现。
 
+**next149 实现候选（待设备验收，2026-08-08）**：公开 Core 键盘事件数据 ABI，并把
+WM 原生 EDIT 的 `WM_KEYDOWN/WM_KEYUP` 接入显式 `javascript=1` 页面；TEST115 离线验证
+`key/keyCode/charCode/repeat/shiftKey/ctrlKey/altKey` 和可信标志。该候选尚未纳入设备基线，
+也不覆盖 WM SELECT、`WM_SYSKEY*`、`keypress`、`beforeinput`、`focusin/focusout`、字符
+输入/IME 或完整 Keyboard/Event API。默认 `javascript=0`、TEST13 网络路径和 next148
+已验收的表单事件保持不变。
+
 **当前状态更正（next136，2026-08-07）**：`screen=480x640 dpi=192` 日志中 TEST13/20/27/43/44/56/58
 通过后，TEST59 暴露离线 flex 几何夹具继承设备 DPI：固定 `25px` padding 被按 192 DPI
 换算为 `50px`。next136 只在 TEST59 的显式 CSS 几何 pass 前安装 96 DPI 参考上下文，

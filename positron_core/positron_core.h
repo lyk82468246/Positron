@@ -605,12 +605,28 @@ PCORE_API int PCore_InteractionClear(HANDLE hDoc,
 #define PCORE_EVENT_ACTION_PREVENT_DEFAULT   0x01u
 #define PCORE_EVENT_ACTION_STOP_PROPAGATION  0x02u
 #define PCORE_EVENT_ACTION_STOP_IMMEDIATE    0x04u
+typedef struct PCoreKeyEventData {
+    const char *key;
+    unsigned int key_code;
+    unsigned int char_code;
+    int repeat;
+    int shift;
+    int ctrl;
+    int alt;
+} PCoreKeyEventData;
 typedef struct PCoreEventInfo {
     unsigned int phase;
     int bubbles;
     int cancelable;
     int trusted;
     int default_prevented;
+    const char *key;
+    unsigned int key_code;
+    unsigned int char_code;
+    int repeat;
+    int shift;
+    int ctrl;
+    int alt;
 } PCoreEventInfo;
 typedef unsigned int (*PCoreEventListenerFn)(void *pw,
                                              const PCoreEventInfo *event_info);
@@ -633,6 +649,19 @@ PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
 PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
                                    const char *event_type, int bubbles,
                                    int cancelable, int *default_allowed);
+/* Dispatch a trusted keyboard event with host-provided key metadata. The
+ * metadata is valid only during synchronous listener callbacks. */
+PCORE_API int PCore_EventDispatchKeyToId(HANDLE hDoc,
+                                        const char *element_id,
+                                        const char *event_type, int bubbles,
+                                        int cancelable,
+                                        const PCoreKeyEventData *key_data,
+                                        int *default_allowed);
+PCORE_API int PCore_EventDispatchKeyAt(HANDLE hDoc, int x, int y,
+                                      const char *event_type, int bubbles,
+                                      int cancelable,
+                                      const PCoreKeyEventData *key_data,
+                                      int *default_allowed);
 
 /* Resolve a click on an explicit for=id or wrapping <label> to its visible
  * form gadget. The target point and kind use the same document coordinates
