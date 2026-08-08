@@ -4445,23 +4445,65 @@ static int pcore_browser_script_event_type_safe(const char *event_type)
     return 1;
 }
 
-static int pcore_browser_script_key_safe(const char *key)
+static int pcore_browser_script_json_escape(const char *value, char *out,
+        int capacity)
 {
-    const char *p;
-    char c;
+    static const char HEX[] = "0123456789abcdef";
+    const unsigned char *p;
+    unsigned char c;
+    int used;
 
-    if (key == NULL || key[0] == '\0') {
-        return 1;
+    if (out == NULL || capacity <= 0) {
+        return -1;
     }
-    for (p = key; *p != '\0'; p++) {
+    if (value == NULL) {
+        value = "";
+    }
+    used = 0;
+    for (p = (const unsigned char *) value; *p != '\0'; p++) {
         c = *p;
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                (c >= '0' && c <= '9') || c == '-' || c == '_' ||
-                c == ':' || c == '.' || c == ' ')) {
-            return 0;
+        if (c == '"' || c == '\\') {
+            if (used + 2 >= capacity) {
+                return -1;
+            }
+            out[used++] = '\\';
+            out[used++] = (char) c;
+        } else if (c == '\b' || c == '\f' || c == '\n' ||
+                c == '\r' || c == '\t') {
+            if (used + 2 >= capacity) {
+                return -1;
+            }
+            out[used++] = '\\';
+            if (c == '\b') {
+                out[used++] = 'b';
+            } else if (c == '\f') {
+                out[used++] = 'f';
+            } else if (c == '\n') {
+                out[used++] = 'n';
+            } else if (c == '\r') {
+                out[used++] = 'r';
+            } else {
+                out[used++] = 't';
+            }
+        } else if (c < 0x20) {
+            if (used + 6 >= capacity) {
+                return -1;
+            }
+            out[used++] = '\\';
+            out[used++] = 'u';
+            out[used++] = '0';
+            out[used++] = '0';
+            out[used++] = HEX[c >> 4];
+            out[used++] = HEX[c & 0x0f];
+        } else {
+            if (used + 1 >= capacity) {
+                return -1;
+            }
+            out[used++] = (char) c;
         }
     }
-    return 1;
+    out[used] = '\0';
+    return used;
 }
 
 static unsigned int pcore_browser_script_event_callback(void *pw,
@@ -4469,9 +4511,12 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
 {
     pcore_browser_script_event_binding *binding;
     char args[1024];
+    char data_json[256];
+    char input_type_json[128];
     const char *key;
     const char *input_type;
     const char *data;
+    char key_json[256];
     const char *result;
     int length;
 
@@ -4482,16 +4527,15 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
         return PCORE_EVENT_ACTION_NONE;
     }
     key = event_info->key;
-    if (!pcore_browser_script_key_safe(key)) {
-        key = "";
-    }
     input_type = event_info->input_type;
-    if (!pcore_browser_script_key_safe(input_type)) {
-        input_type = "";
-    }
     data = event_info->data;
-    if (!pcore_browser_script_key_safe(data)) {
-        data = "";
+    if (pcore_browser_script_json_escape(key, key_json,
+            sizeof(key_json)) < 0 ||
+            pcore_browser_script_json_escape(input_type, input_type_json,
+            sizeof(input_type_json)) < 0 ||
+            pcore_browser_script_json_escape(data, data_json,
+            sizeof(data_json)) < 0) {
+        return PCORE_EVENT_ACTION_NONE;
     }
     length = _snprintf(args, sizeof(args) - 1,
             "[{\"listener\":%u,\"type\":\"%s\","
@@ -4506,7 +4550,7 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
             event_info->cancelable ? "true" : "false",
             event_info->trusted ? "true" : "false",
             event_info->default_prevented ? "true" : "false",
-            input_type, data, key,
+            input_type_json, data_json, key_json,
             event_info->key_code, event_info->char_code,
             event_info->repeat ? "true" : "false",
             event_info->shift ? "true" : "false",
@@ -19599,8 +19643,16 @@ static BOOL test120_browser_script_syskey_events(void)
         g_native_syskey_probe = 0;
         g_render_doc = NULL;
         g_render_sheet = NULL;
-        if (ok && (PCore_NodeTextContentById(document, "result", text,
-                sizeof(text), &bytes) != 0 || strcmp(text, EXPECTED) != 0)) {
+        if (ok && PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "TEST121 result text read failed");
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        } else if (ok && strcmp(text, EXPECTED) != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "TEST121 actual=%s", text);
+            error[sizeof(error) - 1] = '\0';
             ok = 0;
         }
     }

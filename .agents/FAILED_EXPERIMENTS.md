@@ -26,6 +26,7 @@
 | next54：固定高度 overflow 的滚动条预留/二次 layout | 已替代 | TEST42 读到 `used=0/0/0`，右箭头还偏移；二次布局改变了已验收几何。 | next55 收窄为只对 auto-height 路径预留空间并修正箭头坐标，已由设备验收。不要恢复 next54 的全局二次预留。 |
 | next60：counter/list marker 首次 staging | 环境误报，已替代 | 设备看到 `found=4 fetched=2`，原因是新 `test_host.exe` 与旧 `positron_core.dll` 混用，不是 marker 逻辑失败。 | `stage.bat` 现在先做同配置增量 Build，失败不复制；新实验必须核对 EXE/DLL 同包。 |
 | next69-next72：百分比 table-row 与 inline style 首轮 | 环境误报/已替代 | TEST56 在多个共享目录包之间结果不一致，TEST57 又暴露 inline `style=` 未进入正式选择。 | 先隔离包排除 WM 全局 DLL 复用，再由 next73-75 接入 inline sheet、修复 universal ancestor 匹配；不要放宽 TEST56/57 断言掩盖混包。 |
+| next155/TEST121：BMP WM_CHAR 首次设备包 | 已替代 | TEST13 与 TEST120 之前的回归通过，但 TEST121 失败；事件回调的旧安全过滤器把合法 UTF-8 高位字节清空，导致 `key`/`beforeinput.data` 丢失。 | next156 改用 JSON 字符串转义并保留 Unicode 断言；重新运行同一批完整回归后才能成为设备基线，不得使用 next155 失败包。 |
 | next140：TEST62 固定 96-DPI 离线控件探针 | 已替代 | `screen=480x640 dpi=192` 下，TEST62 的 checkbox/radio probe 返回 `36x36`；next140 把 probe 固定到 96 DPI，虽能绕过断言却违反动态 DPI 原则。 | next141 保留实际设备 DPI，并将原本 96-DPI 的 `14..24px` 几何范围按 `dpi/96` 等比换算；不得恢复固定 DPI。 |
 | next78：layout 后递归 `scrollbar_set(...,0)` | 已撤回，高风险 | 横屏 TEST13 从单个 `Domain` 异常扩大为全部表格单元格异常，TEST56 失败，并触发系统级 `test_host.exe` 异常。 | 实现、诊断 API 和扩展 TEST59 已删除；旧包为 `C:\WMShare\Positron-next78-FAILED-DO-NOT-USE`。禁止恢复“布局末尾统一清零 scrollbar 回调”的思路。详见 `KNOWN_LIMITATIONS.md` 和 `DEBUGGING.md`。 |
 | next105/next107-next108：required/reset 与空控件 geometry 首轮 | 已替代 | libdom 首次写值误记为 `defaultValue`，以及无 CSS 尺寸 text input 几何为 0，造成 TEST72/73 假失败。 | next106/next109 修复了默认值冻结和测试夹具前提；仍不宣称浏览器默认 intrinsic size 已完成。 |

@@ -2,9 +2,11 @@
 
 更新时间：2026-08-08
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前待验收候选为 next155：补齐单个 BMP WM_CHAR 的 UTF-16→UTF-8 事件数据，TEST121
-尚未设备验收；默认 `javascript=0`、TEST13 网络路径、代理对和 IME/composition 保持
-明确不变。next154 已在 `screen=640x480 dpi=192` 设备通过默认配置至 TEST120，并记录
+当前待验收候选为 next156：修正 next155 事件回调 JSON 过滤器误删合法 UTF-8 的问题，
+继续补齐单个 BMP WM_CHAR 的 UTF-16→UTF-8 事件数据，TEST121 尚未设备验收；默认
+`javascript=0`、TEST13 网络路径、代理对和 IME/composition 保持明确不变。next155 的
+首次设备包在 TEST121 失败，原因已记录并由 next156 替代。next154 已在
+`screen=640x480 dpi=192` 设备通过默认配置至 TEST120，并记录
 `TESTBENCH PASS`；显式脚本 context 的 WM_SYSKEYDOWN/UP 与 ASCII WM_SYSCHAR 事件桥
 已完成设备门禁，IME/composition 仍未实现。
 
@@ -15,7 +17,7 @@ TEST112 页面级 context、TEST113 click 事件桥、TEST114 原生表单事件
 键盘事件桥、TEST119 WM_CHAR keypress 桥和 TEST120 WM_SYSKEY/WM_SYSCHAR 桥均完成。下一批设备继续轮换分辨率/DPI；不能
 把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
 
-**当前阶段（next154 已通过设备门禁，next155 待验收）**：unified script sequence ABI、external resource
+**当前阶段（next154 已通过设备门禁，next156 待验收）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
 TEST13 不会新增脚本网络请求；next146 的页面级持久 context、next147 的 click 事件桥、
 next148 的原生表单事件桥、next149 的 EDIT 键盘事件桥和 next150 的 focusin/focusout
@@ -219,7 +221,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   通过，日志记录 `TESTBENCH PASS`。默认 `javascript=0`、TEST13 网络路径和 next153
   已验收行为保持不变。
 
-### 6aa. next155：BMP WM_CHAR Unicode 事件数据（设备待验收）
+### 6aa. next155：BMP WM_CHAR Unicode 事件数据（首次设备失败，已替代）
 
 - 宿主把单个 BMP `WM_CHAR` code unit 编码为 UTF-8，再复用现有
   `PCoreKeyEventData`/`PCoreInputEventData` 派发 `keypress` 和 EDIT
@@ -227,9 +229,20 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - TEST121 使用箭头和星号覆盖 EDIT/SELECT target/bubble、`keyCode/charCode`、UTF-8
   key、`beforeinput` 数据和取消 SELECT 默认动作。代理对、IME/composition、完整
   Unicode 输入和字体覆盖不在范围内。
-- C89、仓库审计和 VS2008 ARMV4I Debug 增量构建已通过；设备 staging 与
-  `screen`/DPI 验收待运行。默认 `javascript=0`、TEST13 网络路径和 next154 已验收
-  行为保持不变。
+- 首次 `next155` 设备日志在 `screen=640x480 dpi=192` 下通过 TEST13 与 TEST120，
+  但 TEST121 失败：事件回调的旧安全过滤器把合法 UTF-8 高位字节清空。该失败不是
+  Unicode 断言过严，也不是网络回归；不得把 `next155` 作为设备基线。
+
+### 6ab. next156：BMP WM_CHAR JSON UTF-8 桥修复（设备待验收）
+
+- 事件回调现在对 `inputType`、`data` 和 `key` 使用 JSON 字符串转义：保留合法 UTF-8，
+  同时转义引号、反斜杠和控制字符，避免为了防 JSON 注入而删除 Unicode 字符。
+- TEST121 使用箭头和星号覆盖 EDIT/SELECT target/bubble、`keyCode/charCode`、UTF-8
+  key、`beforeinput` 数据和取消 SELECT 默认动作；代理对、IME/composition、完整
+  Unicode 输入和字体覆盖不在范围内。
+- C89、仓库审计、VS2008 ARMV4I Debug 增量构建和 `C:\WMShare\Positron-next156`
+  staging 已通过，设备 `screen`/DPI 验收待运行。默认 `javascript=0`、TEST13 网络路径和
+  next154 已验收行为保持不变。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -659,7 +672,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 1. 以 next154 的 TEST13/20/27/43/44/56/58-77/80-120 设备日志作为已验证自动化基线；
    后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
 2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress 和
-   WM_SYSKEY/WM_SYSCHAR 已完成设备门禁，next155 的 BMP 字符桥先做设备确认，再评估
+   WM_SYSKEY/WM_SYSCHAR 已完成设备门禁，next156 的 BMP 字符桥先做设备确认，再评估
    代理对与 IME/composition。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
