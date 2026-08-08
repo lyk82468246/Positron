@@ -18,6 +18,13 @@ next148 的原生表单事件桥、next149 的 EDIT 键盘事件桥和 next150 �
 但不能把它与完整浏览器 JavaScript 混为一谈。IME/composition 和完整 Input/Event API
 仍未实现。
 
+**next153 当前候选（设备待验收，2026-08-08）**：在同一显式脚本 context 中把原生
+EDIT/SELECT 的可识别 `WM_CHAR` 接到可取消 `keypress`，复用 `PCoreKeyEventData` 暴露
+`key/keyCode/charCode/repeat`，并通过 TEST119 检查 target/bubble、可信/取消元数据、
+synthetic SELECT 和真实 WM 消息入口。C89、仓库审计和 ARMV4I 增量构建已通过；必须
+先在轮换分辨率/DPI 的设备上验收，再决定是否进入 IME/composition。默认 `javascript=0`
+和 TEST13 路径不变。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已在宿主侧保存
 原始窗口过程并接入 `WM_KEYDOWN/WM_KEYUP`，通过 `PCore_EventDispatchKeyAt` 复用
 `PCoreKeyEventData`；TEST118 同时覆盖公开 SELECT 事件传播和真实 WM 消息入口。
@@ -177,6 +184,19 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   `WM_SYSKEY*`、`keypress` 和完整 Keyboard/Event API 仍不在范围内。
 - `c89ize.py`、C89 回归、仓库审计、VS2008 ARMV4I 增量构建、`C:\\WMShare\\Positron-next152`
   staging 和 `screen=480x640 dpi=192` 设备验收均已通过，日志记录 `TESTBENCH PASS`。
+
+### 6y. next153：原生 WM_CHAR 的可取消 keypress（设备待验收）
+
+- 原生 EDIT/SELECT 子类窗口在收到可识别 ASCII `WM_CHAR` 时，先沿用当前控件几何
+  通过 `PCore_EventDispatchKeyAt` 派发 `keypress`；listener 取消时直接阻止原生默认
+  字符处理，未取消时继续现有 EDIT `beforeinput` 或 SELECT 控件过程。
+- 新增 TEST119：离线检查 synthetic SELECT 的取消结果、EDIT/SELECT target/bubble
+  的 `key/keyCode/charCode/repeat/trusted/phase/bubbles/cancelable/defaultPrevented`，
+  并在自动窗口创建时发送真实 `WM_CHAR`。只覆盖 ASCII 字符，不宣称 Unicode/IME、
+  `WM_SYSCHAR` 或完整 Keyboard/Event API。
+- `c89ize.py`、C89 回归、仓库审计和 VS2008 ARMV4I Debug 增量构建已通过；设备包
+  与轮换分辨率/DPI 验收待完成。默认 `javascript=0`、TEST13 网络路径和 next152
+  SELECT `keydown/keyup` 行为保持不变。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -603,8 +623,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next152 的 TEST13/20/27/43/44/56/58-77/80-118 设备日志作为已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；SELECT 键盘桥已完成设备门禁，下一步评估 IME/composition。
+1. 以 next152 的 TEST13/20/27/43/44/56/58-77/80-118 设备日志作为已验证自动化基线；先验收 next153/TEST119，再继续以 TEST13 深层导航和旋转作为浏览器门禁。
+2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；next153 通过设备后再评估 IME/composition。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。

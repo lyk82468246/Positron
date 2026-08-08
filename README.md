@@ -11,6 +11,13 @@ TEST117 确认受限 beforeinput 的数据、冒泡与取消默认动作，TEST1
 ARMV4I Debug 增量构建、staging 和设备验收均已通过；后续仍需轮换分辨率/DPI，
 并人工复查新增可见能力。设备日志位于 `C:\\WMShare\\Positron-next152\\test_host.log`。
 
+**next153 实现候选（设备待验收，2026-08-08）**：在显式 `javascript=1` 的页面 context
+中把原生 EDIT/SELECT 的可识别 `WM_CHAR` 映射为可取消的 `keypress`，复用
+`PCoreKeyEventData` 把 `key/keyCode/charCode/repeat` 送入 target/bubble listener；
+TEST119 同时检查 synthetic SELECT 派发、真实 EDIT/SELECT WM 消息入口，以及取消
+SELECT 默认动作。C89、仓库审计和 VS2008 ARMV4I 增量构建已通过，设备验收与 staging
+仍待完成；默认 `javascript=0`、TEST13 网络路径和 next152 设备基线不变。
+
 **next152 实现说明（设备已通过，2026-08-08）**：显式 `javascript=1` 的页面新增原生
 `COMBOBOX/LISTBOX` 的 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用 `PCoreKeyEventData` 和
 `PCore_EventDispatchKeyAt`；TEST118 同时验证公开 SELECT 键盘事件传播与真实 WM
@@ -360,7 +367,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-118
+tests=13,20,27,43,44,56,58-77,80-119
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
@@ -385,6 +392,8 @@ tests=13,20,27,43,44,56,58-77,80-118
 - TEST 73：验证 live checked/enabled/disabled、宿主 focus/active、cache-only 重样式、纵横屏保持与 reset；事件传播由 TEST74 单独验证。
 - TEST 74：验证通用 DOM Event 的 capture/target/bubble、非冒泡、cancelable/default-action、stop propagation、listener remove 与坐标命中派发；不代表专用事件数据或 JavaScript 已启用。
 - TEST 76：验证命中最近 DOM 元素后 `:hover` 样式重选为红色，清除 hover 后恢复蓝色；WM6 宿主离开窗口使用定时器轮询，不代表完整 MouseEvent。
+- TEST 119：在显式 `javascript=1` 页面中验证 EDIT/SELECT 的 `keypress` 元数据、target/bubble
+  传播、可取消状态和真实 `WM_CHAR` 入口；设备自动 OK 仍需配合人工视觉检查。
 
 > ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 
