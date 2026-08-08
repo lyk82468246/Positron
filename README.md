@@ -1,21 +1,22 @@
 # Positron
 
-**next156 候选（设备待验收，2026-08-08）**：修正 next155 中事件回调 JSON 过滤器
+**最新设备门禁（next156，2026-08-08）**：修正 next155 中事件回调 JSON 过滤器
 误删高位 UTF-8 字节的问题；现在用真正的 JSON 字符串转义保留合法 UTF-8，并继续补齐
 单个 BMP `WM_CHAR` 的 UTF-16→UTF-8 事件数据。显式脚本 context 中，EDIT/SELECT 可接收
 Unicode `keypress`，EDIT 的 `beforeinput.data` 同步携带 UTF-8 字符，取消 SELECT
 仍会阻止原生默认动作。TEST121 使用 `→`/`★` 检查 key/keyCode/charCode、UTF-8
 key、beforeinput 数据和 target/bubble。只覆盖单个 BMP code unit，不伪装支持代理对、
 IME/composition 或完整 Unicode 输入；默认 `javascript=0`、TEST13 网络路径不变。
-C89、仓库审计、VS2008 ARMV4I Debug 增量构建和 staging 已通过，设备包位于
-`C:\WMShare\Positron-next156`，等待设备日志验收。
+C89、仓库审计、VS2008 ARMV4I Debug 增量构建、staging 和
+`screen=640x480 dpi=192` 设备验收均通过，日志为 `TESTBENCH PASS`，位于
+`C:\WMShare\Positron-next156\test_host.log`。
 
 **next155 设备失败记录（已替代，2026-08-08）**：TEST13 以及 TEST120 之前的回归均
 通过，但 TEST121 失败。宿主侧 `pcore_browser_script_key_safe()` 把合法 UTF-8 的高位
 字节判为不安全，导致 `key`/`beforeinput.data` 被清空；不是 TEST13 网络或 BMP 编码
 断言应放宽。next156 已改为 JSON 转义并保留该断言，失败包不得作为基线。
 
-**最新设备门禁（next154，2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
+**next154 设备门禁（2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
 网络路径不变的前提下，显式脚本 context 中的原生 EDIT/SELECT 新增
 `WM_SYSKEYDOWN/UP` 与 ASCII `WM_SYSCHAR` 事件桥；桥显式记录 system-key 的
 `altKey`，不依赖桌面线程的 `GetKeyState`，并沿用现有 target/bubble/cancel ABI。
