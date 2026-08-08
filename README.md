@@ -1,13 +1,14 @@
 # Positron
 
-**最新设备门禁（next150，2026-08-08）**：next150 在 `screen=320x320 dpi=128`
-设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-116 全部通过并记录
+**最新设备门禁（next151，2026-08-08）**：next151 在 `screen=320x320 dpi=128`
+设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-117 全部通过并记录
 `TESTBENCH PASS`。TEST13 的 example.com、IANA Example Domains、IANA Reserved
 Domains 三段导航均完成；TEST112 确认页面级 script context 的后续求值，TEST113 确认
 click 事件派发/取消默认动作，TEST114 确认原生表单事件元数据、冒泡和 DOM 更新，
-TEST115 确认原生 EDIT 键盘事件元数据，TEST116 确认可冒泡 focusin/focusout。
+TEST115 确认原生 EDIT 键盘事件元数据，TEST116 确认可冒泡 focusin/focusout，
+TEST117 确认受限 beforeinput 的数据、冒泡与取消默认动作。
 ARMV4I Debug 增量构建、staging 和设备验收均已通过；后续仍需轮换分辨率/DPI，
-并人工复查新增可见能力。设备日志位于 `C:\\WMShare\\Positron-next150\\test_host.log`。
+并人工复查新增可见能力。设备日志位于 `C:\\WMShare\\Positron-next151\\test_host.log`。
 
 **next146 实现说明（2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
 网络路径不变的前提下，浏览器导航请求会把显式 `javascript=1` 的初始 classic-script
@@ -48,15 +49,15 @@ staging 和 `screen=320x320 dpi=128` 设备验收均已通过。默认 `javascri
 TEST13 网络路径和 next149 键盘/表单行为保持不变；`beforeinput`、WM SELECT 键盘
 变化、字符输入/IME 和完整 Keyboard/Event API 仍未实现。
 
-**next151 实现候选（待设备验收，2026-08-08）**：公开
+**next151 实现说明（设备已通过，2026-08-08）**：公开
 `PCoreInputEventData` 并把 `inputType/data` 传入最小 JavaScript 事件对象；显式
 `javascript=1` 时，原生 EDIT 对可识别的字符、换行、退格、删除、粘贴、剪切和清除
 操作派发可冒泡、可取消的 `beforeinput`。取消发生在原生 EDIT 默认动作之前。
 TEST117 离线覆盖目标/冒泡监听器、可信元数据、`preventDefault()` 阻止插入而允许删除、
-以及事件后的 style/layout。C89、仓库审计和 VS2008 ARMV4I 增量构建已通过，设备包与
-设备验收待进行；WM SELECT 键盘、IME/composition、完整 Unicode/剪贴板数据、
-`keypress` 和完整 Input/Keyboard/Event API 仍未实现。默认 `javascript=0`、
-TEST13 网络路径和 next150 行为不变。
+以及事件后的 style/layout。C89、仓库审计、VS2008 ARMV4I 增量构建、设备包与设备
+验收均已通过；WM SELECT 键盘、IME/composition、完整 Unicode/剪贴板数据、`keypress`
+和完整 Input/Keyboard/Event API 仍未实现。默认 `javascript=0`、TEST13 网络路径和
+next150 行为不变。
 
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
@@ -131,7 +132,7 @@ Phase 4 进展：vendoring NetSurf 3.11，五个底层库（libwapcaplet / libpa
 
 2026-08-03 的 next114/TEST77 建立了独立的脚本资源 ABI：core 扫描外部 `<script src>`，可通过 `PCoreResolveUrlFn` 使用宿主 URL 策略，调用 transport-agnostic fetch/free 回调，把成功字节按 document 生命周期缓存，并提供只读计数/枚举接口。该批不执行 inline 或 external JavaScript，也尚未接入 TEST13 的网络事务；ARMV4I 增量构建通过，TEST77 与整批设备自动 testbench 已确认 PASS。2026-08-04 的 next118 又把仓库已有 Duktape 2.7.0 封装成独立 `positron_script.dll`，TEST80 覆盖 ABI、持久求值、throw 后恢复和 DLL 内存遥测；next119 新增 TEST81，覆盖执行超时、源码长度上限和上下文恢复；next120 新增 TEST82 硬内存配额断言，设备确认峰值 496184/524288、恢复值 42。2026-08-05 的 next121 再增加 CommonJS 风格模块一次执行缓存、`require()`、失败回滚和清空 API；next124-126 继续增加 provider、global/JSON、native callback 与 structured setter。next134 在 `screen=240x320 dpi=96` 日志中确认 TEST80-99 全部通过。next144 把该独立 DLL 接到默认关闭的浏览器 classic inline-script 纵切，并已在 `screen=320x320 dpi=128` 完成 TEST110 与整批回归门禁。
 
-当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已由 TEST42/next55 验收，但不包含触摸惯性或 overlay scrollbar。CSS `@import` 的嵌套解析、失败空表回退和文档缓存已由 TEST45 验收；它尚不代表跨源策略、完整缓存失效或整页资源进度已完成。有效表格的 span 占位、匿名 row/cell、collapsed-border 冲突、cell vertical alignment、`empty-cells`、显式 table height 与百分比 row 第二遍已由 TEST46/47、TEST53-57 真机确认；`col`/`colgroup` border 来源、百分比 cell/后代内容和跨行 baseline 仍未覆盖。正式 Positron 构盒走 `pcore_select.c` + `pcore_box.c`，并不调用 NetSurf `box_construct.c`；此前 HTML `style=` 缺失的直接原因是 `pcore_style_subtree` 向 `css_select_style` 固定传入空 inline sheet，而不是 `nsoption_bool(author_level_css)`。next75/TEST58 已确认 NetSurf 式 inline stylesheet能通过 cascade、继承、`!important`、错误恢复、后代 class 选择及正式布局/重绘。next81 已将全零 `nsoption` shim 改为具名专家默认：当前实际读取的 `font_min_size=85`、`core_select_menu=false`、`remove_backgrounds=false` 对齐 NetSurf 3.11，JavaScript 默认继续显式关闭，未审计名称会直接编译失败；TEST56/58-61 已由设备确认无异常。列表 marker 的 47 种上游 counter formatter、缓存 `list-style-image`、失败回退和 inside 首行流已由 next61-63/TEST50-52 验收；float 邻接 marker 与自定义 `@counter-style` 仍未完成。表单与最小事件纵切已推进到 next150 设备基线，next151 又加入待验收的原生 EDIT `beforeinput` 候选；当前仍缺高级 validity、完整 MouseEvent/KeyboardEvent/FocusEvent/InputEvent 字段、完整 HTML activation/default-action 细节和完整 JS 绑定。自动桥也不等于真实触屏、多选控件/文件选择器视觉或公网上传验收。字体 fallback 的当前范围只包括符号和单色 emoji，不计划扩展普通语言/多语种字体。external classic script 的 DOM 顺序执行与异步取回已由 next145 设备验收；next146-150 的页面 context、click、表单、键盘和 focusin/focusout 也已分别门禁，仍未实现 `async/defer/module`、IME/composition、完整事件处理器、`background-size` 与多层背景。UI 提交已在 parse/script/style/image-discovery/layout 调用之间让出 WM 消息循环，单个不可重入调用仍可能短暂卡顿。复杂 SVG text、float 和其余 forms/widgets 仍不完整；浏览器脚本仍仅在显式 `javascript=1` 时运行并提供最小 DOM/event bridge。路线采用“存在性优先”：先完成 next151 的设备门禁，再评估 WM SELECT 键盘、基础 Grid 或背景尺寸。首屏 SVG 性能、抗锯齿和高级视觉边角后置。
+当前明确缺口：位图四格式与 SVG 网络/缓存/fallback/fill-rule/基础渐变缓存链已经闭环，但径向焦点 `fx/fy` 与 spread method 仍是 NanoSVG 光栅器的显式 TODO。CSS Variables 兼容层只替换同一 stylesheet 顶层精确 `:root` token，不支持元素作用域、跨 stylesheet cascade 或 `@property`。现代值兼容只处理数值型 `oklch()` 到裁剪 sRGB，以及无需布局上下文即可完全求值的同单位 `calc()`；混合单位、`color-mix()` 和完整 CSS Color/Values 仍未支持。CSS Grid 目前只是保持文档顺序的单列 block 降级，TEST41 只防止 grid 内宽表格推走整个 flex 页面，不代表网格轨道或 gap 已实现。标准 NetSurf overflow scrollbar 已由 TEST42/next55 验收，但不包含触摸惯性或 overlay scrollbar。CSS `@import` 的嵌套解析、失败空表回退和文档缓存已由 TEST45 验收；它尚不代表跨源策略、完整缓存失效或整页资源进度已完成。有效表格的 span 占位、匿名 row/cell、collapsed-border 冲突、cell vertical alignment、`empty-cells`、显式 table height 与百分比 row 第二遍已由 TEST46/47、TEST53-57 真机确认；`col`/`colgroup` border 来源、百分比 cell/后代内容和跨行 baseline 仍未覆盖。正式 Positron 构盒走 `pcore_select.c` + `pcore_box.c`，并不调用 NetSurf `box_construct.c`；此前 HTML `style=` 缺失的直接原因是 `pcore_style_subtree` 向 `css_select_style` 固定传入空 inline sheet，而不是 `nsoption_bool(author_level_css)`。next75/TEST58 已确认 NetSurf 式 inline stylesheet能通过 cascade、继承、`!important`、错误恢复、后代 class 选择及正式布局/重绘。next81 已将全零 `nsoption` shim 改为具名专家默认：当前实际读取的 `font_min_size=85`、`core_select_menu=false`、`remove_backgrounds=false` 对齐 NetSurf 3.11，JavaScript 默认继续显式关闭，未审计名称会直接编译失败；TEST56/58-61 已由设备确认无异常。列表 marker 的 47 种上游 counter formatter、缓存 `list-style-image`、失败回退和 inside 首行流已由 next61-63/TEST50-52 验收；float 邻接 marker 与自定义 `@counter-style` 仍未完成。表单与最小事件纵切已推进到 next151 设备基线，原生 EDIT `beforeinput` 已通过 TEST117 设备验收；当前仍缺高级 validity、完整 MouseEvent/KeyboardEvent/FocusEvent/InputEvent 字段、完整 HTML activation/default-action 细节和完整 JS 绑定。自动桥也不等于真实触屏、多选控件/文件选择器视觉或公网上传验收。字体 fallback 的当前范围只包括符号和单色 emoji，不计划扩展普通语言/多语种字体。external classic script 的 DOM 顺序执行与异步取回已由 next145 设备验收；next146-150 的页面 context、click、表单、键盘和 focusin/focusout 也已分别门禁，仍未实现 `async/defer/module`、IME/composition、完整事件处理器、`background-size` 与多层背景。UI 提交已在 parse/script/style/image-discovery/layout 调用之间让出 WM 消息循环，单个不可重入调用仍可能短暂卡顿。复杂 SVG text、float 和其余 forms/widgets 仍不完整；浏览器脚本仍仅在显式 `javascript=1` 时运行并提供最小 DOM/event bridge。路线采用“存在性优先”：继续评估 WM SELECT 键盘、基础 Grid 或背景尺寸。首屏 SVG 性能、抗锯齿和高级视觉边角后置。
 
 独立脚本边界补充：`positron_script.dll` 已提供可供其他 WM 程序调用的 Duktape 2.7.0 UTF-8 求值服务，TEST80-99 已在 next134 设备日志通过；模块/provider、global/JSON、native callback 与 structured setter 均保持独立 ABI，JSON 结果超过 DLL 的 255 字节有效载荷会显式失败而不截断。next145 保持浏览器 JavaScript 默认关闭的策略，只在显式开启时由宿主把已缓存的 external body 与 inline body按 DOM 顺序送入同一初始 context；它不提供 external async/defer/module、fetch/network、事件回调或完整 DOM binding。
 

@@ -1,20 +1,21 @@
 # Positron Roadmap
 
 更新时间：2026-08-08
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next150 在 `screen=320x320 dpi=128` 日志中确认 TEST13/20/27/43/44/56/58-77/80-116 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT 键盘事件和 focusin/focusout 的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next151 在 `screen=320x320 dpi=128` 日志中确认 TEST13/20/27/43/44/56/58-77/80-117 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT 键盘事件、focusin/focusout 和受限 beforeinput 的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
-**最新设备门禁（next150）**：在 `screen=320x320 dpi=128` 默认配置下通过
-TEST13/20/27/43/44/56/58-77/80-116，并记录 `TESTBENCH PASS`；TEST13 三段导航、
+**最新设备门禁（next151）**：在 `screen=320x320 dpi=128` 默认配置下通过
+TEST13/20/27/43/44/56/58-77/80-117，并记录 `TESTBENCH PASS`；TEST13 三段导航、
 TEST112 页面级 context、TEST113 click 事件桥、TEST114 原生表单事件桥、TEST115 EDIT
-键盘事件桥和 TEST116 focusin/focusout 桥均完成。下一批设备继续轮换分辨率/DPI；
-不能把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
+键盘事件桥、TEST116 focusin/focusout 桥和 TEST117 beforeinput 桥均完成。下一批设备
+继续轮换分辨率/DPI；不能把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
 
-**当前阶段（next150 已通过设备门禁）**：unified script sequence ABI、external resource
+**当前阶段（next151 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
 TEST13 不会新增脚本网络请求；next146 的页面级持久 context、next147 的 click 事件桥、
 next148 的原生表单事件桥、next149 的 EDIT 键盘事件桥和 next150 的 focusin/focusout
-桥已在 `320x320 dpi=128` 设备通过 TEST112-116，但不能把它与完整浏览器 JavaScript
-混为一谈。next151 的 beforeinput 候选仅完成离线与 ARM 构建验证，尚未进入设备基线。
+桥、next151 的 beforeinput 桥已在 `320x320 dpi=128` 设备通过 TEST112-117，但不能把它
+与完整浏览器 JavaScript 混为一谈。WM SELECT 键盘、IME/composition 和完整 Input/Event
+API 仍未进入设备基线。
 
 **next149 设备验收（2026-08-08）**：在同一页面级 context 中增加原生 EDIT 的
 `keydown/keyup` 数据桥，公开 `PCoreKeyEventData` 和按元素/命中点派发 ABI，并将键名、
@@ -45,7 +46,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 当前新增功能优先级：
 
 1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；next135 又加入 `minlength`/`maxlength`，next143 加入受限 ASCII `pattern` validity，均已通过设备门禁。完整 JavaScript 正则、类型/范围约束、custom validity 与 `invalid` 事件仍在后续扩展，不阻塞更大的“有无”缺口。
-2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界；next147-150 已加入 click、原生表单事件、EDIT 的 `keydown/keyup` 数据和 `focusin/focusout` 并完成设备门禁，next151 候选补齐受限原生 EDIT `beforeinput`。设备验收后，再评估 WM SELECT 键盘变化、IME/composition 和更完整的 Event/HTML activation 语义。
+2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界；next147-151 已加入 click、原生表单事件、EDIT 的 `keydown/keyup` 数据、`focusin/focusout` 和受限 `beforeinput` 并完成设备门禁。下一步评估 WM SELECT 键盘变化、IME/composition 和更完整的 Event/HTML activation 语义。
 3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；next115 与 next116 的 float 候选均因 TEST79/TEST13 真实回归撤回。Float 方向暂挂，下一次重大布局实验改评估基础 Grid 或背景尺寸/重复，并继续保留 TEST13 深链门禁。
 4. **资源类型补齐**：脚本资源发现/下载/缓存接口已完成；next118 先把独立 JavaScript runtime DLL 做成其他 WM 程序可调用的最小产品面，再由后续批次评估浏览器消费；网页字体不扩展为普通语言字体工程。
 5. **独立 JavaScript 能力**：`positron_script.dll` 的 ABI、持久求值、错误恢复、预算和资源计数已由 TEST80-99 设备验收；next144 的显式且默认关闭的浏览器 inline-script 开关和最小 DOM/native bridge 已通过 TEST110；next145 又通过按 DOM 顺序的 external/inline classic script 执行和异步资源取回 TEST111。后续再补页面级持久 context 与事件，不把未验证绑定默认接入 TEST13。
@@ -141,7 +142,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   均已完成。`beforeinput`、WM SELECT 键盘变化、字符输入/IME 和完整 Keyboard/Event API
   仍留在后续。
 
-### 6w. next151：原生 EDIT beforeinput 数据与取消（待设备验收）
+### 6w. next151：原生 EDIT beforeinput 数据与取消（设备已通过）
 
 - `positron_core` 新增 `PCoreInputEventData`，并在同步 listener 回调期间把
   `inputType/data` 作为借用的事件元数据传给宿主；页面脚本事件对象暴露同名只读快照。
@@ -152,8 +153,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   删除，以及事件后的 style/layout；默认 `javascript=0`、TEST13 网络路径和 next150
   行为不变。
 - C89、仓库审计和 VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建
-  已通过；设备 staging 与真实设备验收待进行。WM SELECT 键盘、IME/composition、
-  完整 Unicode/剪贴板 payload、`keypress` 和完整 Input/Keyboard/Event API 仍未实现。
+  已通过；`C:\WMShare\Positron-next151` staging 与 `screen=320x320 dpi=128` 设备验收
+  均已完成，日志记录 `TESTBENCH PASS`。WM SELECT 键盘、IME/composition、完整
+  Unicode/剪贴板 payload、`keypress` 和完整 Input/Keyboard/Event API 仍未实现。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -580,8 +582,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next150 的 TEST13/20/27/43/44/56/58-77/80-116 设备日志作为已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；next150 的 EDIT 键盘与 focusin/focusout 已完成设备门禁，先验收 next151 的受限 `beforeinput`，再评估 SELECT 键盘变化和 IME。
+1. 以 next151 的 TEST13/20/27/43/44/56/58-77/80-117 设备日志作为已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；next151 的受限 `beforeinput` 已完成设备门禁，下一步评估 SELECT 键盘变化和 IME。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。
