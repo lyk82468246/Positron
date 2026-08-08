@@ -1,29 +1,29 @@
 # Positron Roadmap
 
 更新时间：2026-08-08
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next152 在 `screen=480x640 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-118 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT 键盘事件、focusin/focusout、受限 beforeinput 和 SELECT 键盘事件桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
-**最新设备门禁（next152）**：在 `screen=480x640 dpi=192` 默认配置下通过
-TEST13/20/27/43/44/56/58-77/80-118，并记录 `TESTBENCH PASS`；TEST13 三段导航、
+**最新设备门禁（next153）**：在 `screen=640x480 dpi=192` 默认配置下通过
+TEST13/20/27/43/44/56/58-77/80-119，并记录 `TESTBENCH PASS`；TEST13 三段导航、
 TEST112 页面级 context、TEST113 click 事件桥、TEST114 原生表单事件桥、TEST115 EDIT
 键盘事件桥、TEST116 focusin/focusout 桥、TEST117 beforeinput 桥和 TEST118 SELECT
-键盘事件桥均完成。下一批设备
-继续轮换分辨率/DPI；不能把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
+键盘事件桥、TEST119 WM_CHAR keypress 桥均完成。下一批设备继续轮换分辨率/DPI；不能
+把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
 
-**当前阶段（next152 已通过设备门禁）**：unified script sequence ABI、external resource
+**当前阶段（next153 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
 TEST13 不会新增脚本网络请求；next146 的页面级持久 context、next147 的 click 事件桥、
 next148 的原生表单事件桥、next149 的 EDIT 键盘事件桥和 next150 的 focusin/focusout
-桥、next151 的 beforeinput 桥和 next152 的 SELECT 键盘桥已在设备通过 TEST112-118，
-但不能把它与完整浏览器 JavaScript 混为一谈。IME/composition 和完整 Input/Event API
-仍未实现。
+桥、next151 的 beforeinput 桥、next152 的 SELECT 键盘桥和 next153 的 WM_CHAR keypress
+桥已在设备通过 TEST112-119，但不能把它与完整浏览器 JavaScript 混为一谈。
+IME/composition 和完整 Input/Event API 仍未实现。
 
-**next153 当前候选（设备待验收，2026-08-08）**：在同一显式脚本 context 中把原生
+**next153 设备验收（2026-08-08）**：在同一显式脚本 context 中把原生
 EDIT/SELECT 的可识别 `WM_CHAR` 接到可取消 `keypress`，复用 `PCoreKeyEventData` 暴露
 `key/keyCode/charCode/repeat`，并通过 TEST119 检查 target/bubble、可信/取消元数据、
 synthetic SELECT 和真实 WM 消息入口。C89、仓库审计和 ARMV4I 增量构建已通过；必须
-先在轮换分辨率/DPI 的设备上验收，再决定是否进入 IME/composition。默认 `javascript=0`
-和 TEST13 路径不变。
+在 `screen=640x480 dpi=192` 设备上通过；C89、仓库审计、ARMV4I 增量构建和 staging
+均已通过。默认 `javascript=0` 和 TEST13 路径不变，下一步再评估 IME/composition。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已在宿主侧保存
 原始窗口过程并接入 `WM_KEYDOWN/WM_KEYUP`，通过 `PCore_EventDispatchKeyAt` 复用
@@ -185,7 +185,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `c89ize.py`、C89 回归、仓库审计、VS2008 ARMV4I 增量构建、`C:\\WMShare\\Positron-next152`
   staging 和 `screen=480x640 dpi=192` 设备验收均已通过，日志记录 `TESTBENCH PASS`。
 
-### 6y. next153：原生 WM_CHAR 的可取消 keypress（设备待验收）
+### 6y. next153：原生 WM_CHAR 的可取消 keypress（设备已通过）
 
 - 原生 EDIT/SELECT 子类窗口在收到可识别 ASCII `WM_CHAR` 时，先沿用当前控件几何
   通过 `PCore_EventDispatchKeyAt` 派发 `keypress`；listener 取消时直接阻止原生默认
@@ -194,8 +194,9 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   的 `key/keyCode/charCode/repeat/trusted/phase/bubbles/cancelable/defaultPrevented`，
   并在自动窗口创建时发送真实 `WM_CHAR`。只覆盖 ASCII 字符，不宣称 Unicode/IME、
   `WM_SYSCHAR` 或完整 Keyboard/Event API。
-- `c89ize.py`、C89 回归、仓库审计和 VS2008 ARMV4I Debug 增量构建已通过；设备包
-  与轮换分辨率/DPI 验收待完成。默认 `javascript=0`、TEST13 网络路径和 next152
+- `c89ize.py`、C89 回归、仓库审计、VS2008 ARMV4I Debug 增量构建、
+  `C:\\WMShare\\Positron-next153` staging 和 `screen=640x480 dpi=192` 设备验收均已
+  通过，日志记录 `TESTBENCH PASS`。默认 `javascript=0`、TEST13 网络路径和 next152
   SELECT `keydown/keyup` 行为保持不变。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
@@ -623,8 +624,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next152 的 TEST13/20/27/43/44/56/58-77/80-118 设备日志作为已验证自动化基线；先验收 next153/TEST119，再继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；next153 通过设备后再评估 IME/composition。
+1. 以 next153 的 TEST13/20/27/43/44/56/58-77/80-119 设备日志作为已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress 已完成设备门禁，下一步评估 IME/composition。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。

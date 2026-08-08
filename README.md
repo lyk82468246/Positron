@@ -1,22 +1,24 @@
 # Positron
 
-**最新设备门禁（next152，2026-08-08）**：next152 在 `screen=480x640 dpi=192`
-设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-118 全部通过并记录
+**最新设备门禁（next153，2026-08-08）**：next153 在 `screen=640x480 dpi=192`
+设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-119 全部通过并记录
 `TESTBENCH PASS`。TEST13 的 example.com、IANA Example Domains、IANA Reserved
 Domains 三段导航均完成；TEST112 确认页面级 script context 的后续求值，TEST113 确认
 click 事件派发/取消默认动作，TEST114 确认原生表单事件元数据、冒泡和 DOM 更新，
 TEST115 确认原生 EDIT 键盘事件元数据，TEST116 确认可冒泡 focusin/focusout，
 TEST117 确认受限 beforeinput 的数据、冒泡与取消默认动作，TEST118 确认原生 SELECT
-键盘事件的 target/bubble 元数据和 WM 消息入口。
-ARMV4I Debug 增量构建、staging 和设备验收均已通过；后续仍需轮换分辨率/DPI，
-并人工复查新增可见能力。设备日志位于 `C:\\WMShare\\Positron-next152\\test_host.log`。
+键盘事件的 target/bubble 元数据和 WM 消息入口，TEST119 确认 EDIT/SELECT 的
+`WM_CHAR -> keypress` 元数据、冒泡与取消 SELECT 默认动作。ARMV4I Debug 增量构建、
+staging 和设备验收均已通过；后续仍需轮换分辨率/DPI，并人工复查新增可见能力。设备
+日志位于 `C:\\WMShare\\Positron-next153\\test_host.log`。
 
-**next153 实现候选（设备待验收，2026-08-08）**：在显式 `javascript=1` 的页面 context
+**next153 实现说明（设备已通过，2026-08-08）**：在显式 `javascript=1` 的页面 context
 中把原生 EDIT/SELECT 的可识别 `WM_CHAR` 映射为可取消的 `keypress`，复用
 `PCoreKeyEventData` 把 `key/keyCode/charCode/repeat` 送入 target/bubble listener；
 TEST119 同时检查 synthetic SELECT 派发、真实 EDIT/SELECT WM 消息入口，以及取消
-SELECT 默认动作。C89、仓库审计和 VS2008 ARMV4I 增量构建已通过，设备验收与 staging
-仍待完成；默认 `javascript=0`、TEST13 网络路径和 next152 设备基线不变。
+SELECT 默认动作。C89、仓库审计、VS2008 ARMV4I 增量构建、staging 与
+`screen=640x480 dpi=192` 设备验收均已通过；默认 `javascript=0`、TEST13 网络路径和
+next152 已验收行为不变。
 
 **next152 实现说明（设备已通过，2026-08-08）**：显式 `javascript=1` 的页面新增原生
 `COMBOBOX/LISTBOX` 的 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用 `PCoreKeyEventData` 和

@@ -90,11 +90,12 @@ staging 与 `screen=320x320 dpi=128` 真实设备验收均已通过，日志记�
 WM SELECT 键盘、IME/composition、完整 Unicode/剪贴板 payload、`keypress` 和完整
 Input/Keyboard/Event API 仍未实现；默认 `javascript=0` 与 TEST13 网络路径不变。
 
-**next153 当前代码候选（设备待验收，2026-08-08）**：原生 EDIT/SELECT 的可识别
+**next153 设备验收（2026-08-08）**：原生 EDIT/SELECT 的可识别
 `WM_CHAR` 已在显式 `javascript=1` context 中接入可取消 `keypress`，TEST119 覆盖
 synthetic SELECT、真实 EDIT/SELECT WM 消息、target/bubble 元数据和取消 SELECT 默认
-动作。C89、仓库审计和 ARMV4I 增量构建已通过；在设备日志通过前不能把 ASCII keypress
-桥写成设备基线，也不覆盖 Unicode/IME、`WM_SYSCHAR` 或完整 Keyboard/Event API。
+动作。C89、仓库审计、ARMV4I 增量构建、staging 和 `screen=640x480 dpi=192` 设备日志
+均已通过；该桥只覆盖 ASCII，不覆盖 Unicode/IME、`WM_SYSCHAR` 或完整 Keyboard/Event
+API。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
