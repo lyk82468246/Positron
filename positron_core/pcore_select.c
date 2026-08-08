@@ -3762,6 +3762,287 @@ PCORE_API int PCore_GetInlineScript(HANDLE hDoc, unsigned int index,
     return 0;
 }
 
+typedef struct pcore_script_sequence_scan {
+    unsigned int target;
+    unsigned int count;
+    int found;
+    int kind;
+    dom_string *script_name;
+    dom_string *src_name;
+    dom_string *type_name;
+    dom_string *source;
+    dom_string *reference;
+    dom_string *mime_type;
+} pcore_script_sequence_scan;
+
+static void pcore_script_sequence_walk(
+        pcore_script_sequence_scan *scan, dom_node *node)
+{
+    dom_node_type node_type;
+    dom_node *child;
+    dom_node *next;
+    dom_string *name;
+    dom_string *src;
+    dom_string *body;
+    dom_string *selected;
+    int selected_kind;
+    bool is_script;
+
+    if (scan == NULL || node == NULL || scan->found) {
+        return;
+    }
+    name = NULL;
+    src = NULL;
+    body = NULL;
+    selected = NULL;
+    selected_kind = 0;
+    is_script = false;
+    if (dom_node_get_node_type(node, &node_type) == DOM_NO_ERR &&
+            node_type == DOM_ELEMENT_NODE &&
+            dom_node_get_node_name(node, &name) == DOM_NO_ERR &&
+            name != NULL) {
+        is_script = dom_string_caseless_isequal(name,
+                scan->script_name);
+        dom_string_unref(name);
+        name = NULL;
+    }
+    if (is_script) {
+        if (dom_element_get_attribute(node, scan->src_name, &src) ==
+                DOM_NO_ERR && src != NULL &&
+                dom_string_byte_length(src) > 0) {
+            selected = src;
+            src = NULL;
+            selected_kind = 2;
+        } else if (dom_node_get_text_content(node, &body) == DOM_NO_ERR &&
+                body != NULL && dom_string_byte_length(body) > 0) {
+            selected = body;
+            body = NULL;
+            selected_kind = 1;
+        }
+        if (selected != NULL) {
+            if (scan->count == scan->target) {
+                scan->kind = selected_kind;
+                if (selected_kind == 1) {
+                    scan->source = selected;
+                } else {
+                    scan->reference = selected;
+                }
+                selected = NULL;
+                if (dom_element_get_attribute(node, scan->type_name,
+                        &scan->mime_type) != DOM_NO_ERR) {
+                    scan->mime_type = NULL;
+                }
+                scan->found = 1;
+            }
+            scan->count++;
+        }
+        if (selected != NULL) {
+            dom_string_unref(selected);
+        }
+        if (src != NULL) {
+            dom_string_unref(src);
+        }
+        if (body != NULL) {
+            dom_string_unref(body);
+        }
+        return;
+    }
+
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return;
+    }
+    while (child != NULL) {
+        pcore_script_sequence_walk(scan, child);
+        if (scan->found) {
+            dom_node_unref(child);
+            return;
+        }
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+}
+
+static int pcore_script_sequence_scan_document(dom_document *doc,
+        unsigned int target, pcore_script_sequence_scan *scan)
+{
+    dom_node *root;
+    int rc;
+
+    if (doc == NULL || scan == NULL) {
+        return 1;
+    }
+    memset(scan, 0, sizeof(*scan));
+    scan->target = target;
+    root = NULL;
+    rc = 1;
+    dom_string_create((const uint8_t *) "script", 6, &scan->script_name);
+    dom_string_create((const uint8_t *) "src", 3, &scan->src_name);
+    dom_string_create((const uint8_t *) "type", 4, &scan->type_name);
+    if (scan->script_name == NULL || scan->src_name == NULL ||
+            scan->type_name == NULL) {
+        goto cleanup;
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        goto cleanup;
+    }
+    pcore_script_sequence_walk(scan, root);
+    rc = 0;
+
+cleanup:
+    if (root != NULL) {
+        dom_node_unref(root);
+    }
+    if (scan->script_name != NULL) {
+        dom_string_unref(scan->script_name);
+        scan->script_name = NULL;
+    }
+    if (scan->src_name != NULL) {
+        dom_string_unref(scan->src_name);
+        scan->src_name = NULL;
+    }
+    if (scan->type_name != NULL) {
+        dom_string_unref(scan->type_name);
+        scan->type_name = NULL;
+    }
+    return rc;
+}
+
+static void pcore_script_sequence_release(
+        pcore_script_sequence_scan *scan)
+{
+    if (scan == NULL) {
+        return;
+    }
+    if (scan->source != NULL) {
+        dom_string_unref(scan->source);
+        scan->source = NULL;
+    }
+    if (scan->reference != NULL) {
+        dom_string_unref(scan->reference);
+        scan->reference = NULL;
+    }
+    if (scan->mime_type != NULL) {
+        dom_string_unref(scan->mime_type);
+        scan->mime_type = NULL;
+    }
+}
+
+PCORE_API int PCore_GetScriptCount(HANDLE hDoc)
+{
+    pcore_script_sequence_scan scan;
+
+    if (pcore_script_sequence_scan_document((dom_document *) hDoc,
+            (unsigned int) -1, &scan) != 0) {
+        return -1;
+    }
+    return (int) scan.count;
+}
+
+PCORE_API int PCore_GetScript(HANDLE hDoc, unsigned int index,
+        const char *document_url, PCoreResolveUrlFn resolve, void *pw,
+        PCoreScriptInfo *out_info, char *source, int source_capacity,
+        char *url, int url_capacity, char *type, int type_capacity,
+        const char **out_data)
+{
+    pcore_script_sequence_scan scan;
+    pcore_script_cache *cache;
+    pcore_script_resource *entry;
+    const char *reference_data;
+    const char *resolved_url;
+    char *reference;
+    char resolved[2048];
+    size_t reference_len;
+    int source_bytes;
+    int url_bytes;
+    int type_bytes;
+
+    if (out_info != NULL) {
+        memset(out_info, 0, sizeof(*out_info));
+    }
+    if (source != NULL && source_capacity > 0) {
+        source[0] = '\0';
+    }
+    if (url != NULL && url_capacity > 0) {
+        url[0] = '\0';
+    }
+    if (type != NULL && type_capacity > 0) {
+        type[0] = '\0';
+    }
+    if (out_data != NULL) {
+        *out_data = NULL;
+    }
+    if (pcore_script_sequence_scan_document((dom_document *) hDoc,
+            index, &scan) != 0 || !scan.found) {
+        return 1;
+    }
+    source_bytes = 0;
+    url_bytes = 0;
+    type_bytes = 0;
+    cache = NULL;
+    entry = NULL;
+    reference = NULL;
+    if (scan.kind == 1) {
+        pcore_copy_dom_string(scan.source, source, source_capacity,
+                &source_bytes);
+    } else if (scan.reference != NULL) {
+        reference_data = dom_string_data(scan.reference);
+        reference_len = dom_string_byte_length(scan.reference);
+        reference = (char *) malloc(reference_len + 1);
+        if (reference == NULL) {
+            pcore_script_sequence_release(&scan);
+            return 1;
+        }
+        memcpy(reference, reference_data, reference_len);
+        reference[reference_len] = '\0';
+        resolved[0] = '\0';
+        resolved_url = reference;
+        if (resolve != NULL && document_url != NULL) {
+            if (resolve(pw, document_url, reference, resolved,
+                    (int) sizeof(resolved)) == 0) {
+                resolved_url = resolved;
+            }
+        }
+        url_bytes = (int) strlen(resolved_url);
+        if (url != NULL && url_capacity > 0) {
+            if (url_capacity - 1 < url_bytes) {
+                memcpy(url, resolved_url, (size_t) (url_capacity - 1));
+                url[url_capacity - 1] = '\0';
+            } else {
+                memcpy(url, resolved_url, (size_t) url_bytes);
+                url[url_bytes] = '\0';
+            }
+        }
+        cache = pcore_script_cache_get((dom_document *) hDoc, 0);
+        entry = pcore_script_cache_find(cache, resolved_url);
+        if (entry != NULL) {
+            if (out_data != NULL) {
+                *out_data = entry->data;
+            }
+        }
+        free(reference);
+    }
+    pcore_copy_dom_string(scan.mime_type, type, type_capacity,
+            &type_bytes);
+    if (out_info != NULL) {
+        out_info->kind = scan.kind;
+        out_info->available = (entry != NULL && entry->data != NULL &&
+                entry->len > 0);
+        out_info->source_bytes = source_bytes;
+        out_info->url_bytes = url_bytes;
+        out_info->type_bytes = type_bytes;
+        out_info->data_bytes = (entry != NULL) ? entry->len : 0;
+    }
+    pcore_script_sequence_release(&scan);
+    return 0;
+}
+
 static dom_element *pcore_element_by_id(dom_document *doc,
         const char *element_id)
 {

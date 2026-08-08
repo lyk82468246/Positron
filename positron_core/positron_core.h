@@ -207,6 +207,28 @@ PCORE_API int PCore_GetInlineScript(HANDLE hDoc, unsigned int index,
         PCoreInlineScriptInfo *out_info, char *source, int source_capacity,
         char *type, int type_capacity);
 
+typedef struct PCoreScriptInfo {
+    int kind;             /* 1 = inline body, 2 = external src */
+    int available;        /* external body is present in the document cache */
+    int source_bytes;     /* non-zero for inline scripts */
+    int url_bytes;        /* non-zero for external scripts */
+    int type_bytes;
+    int data_bytes;       /* cached external body bytes */
+} PCoreScriptInfo;
+
+/* Enumerate all non-empty classic script elements in DOM order. Inline bodies
+ * and external references are each returned once; an element with both src
+ * and text follows the HTML external-src rule and returns only the reference.
+ * The resolver arguments must match PCore_FetchScriptResourcesEx if external
+ * data should be found in that document cache. The returned external data is
+ * borrowed until the document is freed. */
+PCORE_API int PCore_GetScriptCount(HANDLE hDoc);
+PCORE_API int PCore_GetScript(HANDLE hDoc, unsigned int index,
+        const char *document_url, PCoreResolveUrlFn resolve, void *pw,
+        PCoreScriptInfo *out_info, char *source, int source_capacity,
+        char *url, int url_capacity, char *type, int type_capacity,
+        const char **out_data);
+
 /* Minimal DOM text boundary for an external script/runtime host. IDs and text
  * are UTF-8. The getter reports the full byte count even when the caller only
  * probes or supplies a smaller buffer. The setter mutates the DOM only; the

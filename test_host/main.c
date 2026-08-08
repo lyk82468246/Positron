@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 110
+#define TEST_MAX_NUMBER 111
 
 static int test_config_space(char c)
 {
@@ -2197,6 +2197,7 @@ typedef struct pcore_navigation_request {
     int            resource_count;
     int            resource_bytes;
     int            worker_stage;
+    int            worker_resume_stage;
     int            commit_stage;
     int            progress_last_total;
     int            progress_last_percent;
@@ -3901,9 +3902,10 @@ static void pcore_browser_script_error(char *error, int error_capacity,
     error[error_capacity - 1] = '\0';
 }
 
-static int pcore_browser_execute_inline_scripts(HANDLE document, int enabled,
-        int *out_executed, int *out_ignored, char *error,
-        int error_capacity)
+static int pcore_browser_execute_scripts(HANDLE document, int enabled,
+        int allow_external, const char *document_url,
+        PCoreResolveUrlFn resolve, void *resolve_pw, int *out_executed,
+        int *out_ignored, char *error, int error_capacity)
 {
     static const char BOOTSTRAP[] =
         "(function(g){"
@@ -3915,10 +3917,11 @@ static int pcore_browser_execute_inline_scripts(HANDLE document, int enabled,
         "return __pcoreHasElement({id:id})?new PElement(id):null;}};"
         "})(this);";
     pcore_browser_script_bridge bridge;
-    PCoreInlineScriptInfo info;
+    PCoreScriptInfo info;
     HANDLE runtime;
     char *source;
     char *type;
+    const char *data;
     const char *runtime_error;
     int count;
     int executed;
@@ -3938,7 +3941,7 @@ static int pcore_browser_execute_inline_scripts(HANDLE document, int enabled,
     if (!enabled) {
         return 0;
     }
-    count = PCore_GetInlineScriptCount(document);
+    count = PCore_GetScriptCount(document);
     if (count < 0) {
         pcore_browser_script_error(error, error_capacity,
                 "inline script enumeration", NULL);
@@ -3971,43 +3974,56 @@ static int pcore_browser_execute_inline_scripts(HANDLE document, int enabled,
     type = NULL;
     for (i = 0; i < count; i++) {
         memset(&info, 0, sizeof(info));
-        if (PCore_GetInlineScript(document, (unsigned int) i, &info,
-                NULL, 0, NULL, 0) != 0 || info.source_bytes < 0 ||
-                info.type_bytes < 0) {
+        data = NULL;
+        if (PCore_GetScript(document, (unsigned int) i, document_url,
+                resolve, resolve_pw, &info, NULL, 0, NULL, 0, NULL, 0,
+                &data) != 0 || info.source_bytes < 0 ||
+                info.type_bytes < 0 || info.url_bytes < 0 ||
+                info.data_bytes < 0) {
             pcore_browser_script_error(error, error_capacity,
-                    "inline script metadata", NULL);
+                    "script metadata", NULL);
             rc = 1;
             break;
         }
-        source = (char *) malloc((size_t) info.source_bytes + 1);
+        if (info.kind == 2 && !allow_external) {
+            ignored++;
+            continue;
+        }
+        if (info.kind == 2 && !info.available) {
+            ignored++;
+            continue;
+        }
+        source = (info.kind == 1) ?
+                (char *) malloc((size_t) info.source_bytes + 1) : NULL;
         type = (char *) malloc((size_t) info.type_bytes + 1);
-        if (source == NULL || type == NULL ||
-                PCore_GetInlineScript(document, (unsigned int) i, &info,
-                        source, info.source_bytes + 1,
-                        type, info.type_bytes + 1) != 0) {
+        if ((info.kind == 1 && source == NULL) || type == NULL ||
+                PCore_GetScript(document, (unsigned int) i, document_url,
+                        resolve, resolve_pw, &info, source,
+                        info.source_bytes + 1, NULL, 0, type,
+                        info.type_bytes + 1, &data) != 0) {
             free(source);
             free(type);
             source = NULL;
             type = NULL;
-            pcore_browser_script_error(error, error_capacity,
-                    "inline script copy", NULL);
+            pcore_browser_script_error(error, error_capacity, "script copy",
+                    NULL);
             rc = 1;
             break;
         }
-        if (pcore_browser_script_type_supported(type)) {
-            if (PScript_Evaluate(runtime, source, info.source_bytes) !=
+        if (pcore_browser_script_type_supported(type) &&
+                ((info.kind == 1 && source != NULL) ||
+                (info.kind == 2 && data != NULL))) {
+            if (PScript_Evaluate(runtime,
+                    (info.kind == 1) ? source : data,
+                    (info.kind == 1) ? info.source_bytes : info.data_bytes) !=
                     PSCRIPT_OK) {
                 runtime_error = PScript_GetError(runtime);
                 pcore_browser_script_error(error, error_capacity,
-                        "inline script evaluation", runtime_error);
+                        "script evaluation", runtime_error);
                 rc = 1;
-                free(source);
-                free(type);
-                source = NULL;
-                type = NULL;
-                break;
+            } else {
+                executed++;
             }
-            executed++;
         } else {
             ignored++;
         }
@@ -4024,6 +4040,14 @@ static int pcore_browser_execute_inline_scripts(HANDLE document, int enabled,
         *out_ignored = ignored;
     }
     return rc;
+}
+
+static int pcore_browser_execute_inline_scripts(HANDLE document, int enabled,
+        int *out_executed, int *out_ignored, char *error,
+        int error_capacity)
+{
+    return pcore_browser_execute_scripts(document, enabled, 0, NULL, NULL,
+            NULL, out_executed, out_ignored, error, error_capacity);
 }
 
 /* Run one UI-owned commit phase, then yield to the WM message queue. A missing
@@ -4074,9 +4098,27 @@ static int pcore_navigation_commit_step(HWND hwnd,
     if (request->commit_stage == PCORE_NAV_COMMIT_SCRIPT) {
         script_executed = 0;
         script_ignored = 0;
-        if (pcore_browser_execute_inline_scripts(request->document,
-                g_browser_javascript_enabled, &script_executed,
-                &script_ignored, emsg, sizeof(emsg)) != 0) {
+        document_url[0] = '\0';
+        if (g_browser_javascript_enabled &&
+                pcore_document_url(request->host, request->path,
+                request->port, document_url, sizeof(document_url)) == 0 &&
+                PCore_FetchScriptResourcesEx(request->document, document_url,
+                wm_combine_url, pcore_navigation_resource_cb,
+                page_resource_free_cb, request, NULL, NULL) != 0) {
+            pcore_browser_script_error(emsg, sizeof(emsg),
+                    "script resource discovery", NULL);
+        }
+        if (g_browser_javascript_enabled &&
+                pcore_navigation_pending_count(request) > 0) {
+            request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
+            request->worker_resume_stage = PCORE_NAV_COMMIT_SCRIPT;
+            return PCORE_NAV_RESULT_MORE;
+        }
+        if (pcore_browser_execute_scripts(request->document,
+                g_browser_javascript_enabled, 1,
+                document_url[0] != '\0' ? document_url : NULL,
+                wm_combine_url, request, &script_executed, &script_ignored,
+                emsg, sizeof(emsg)) != 0) {
             utf8_to_wide(emsg, -1, script_debug,
                     sizeof(script_debug) / sizeof(script_debug[0]));
             OutputDebugStringW(L"Positron inline script error: ");
@@ -5379,7 +5421,11 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                 request->generation == g_nav_generation) {
             request->commit_stage =
                     (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) ?
-                    PCORE_NAV_COMMIT_PARSE : PCORE_NAV_COMMIT_STYLE;
+                    PCORE_NAV_COMMIT_PARSE :
+                    ((request->worker_resume_stage !=
+                            PCORE_NAV_COMMIT_NONE) ?
+                    request->worker_resume_stage : PCORE_NAV_COMMIT_STYLE);
+            request->worker_resume_stage = PCORE_NAV_COMMIT_NONE;
             if (pcore_navigation_post_continue(hwnd, request) != 0) {
                 pcore_navigation_finish(hwnd, request);
             }
@@ -17257,7 +17303,7 @@ static BOOL test110_browser_inline_script(void)
     }
     if (pcore_browser_execute_inline_scripts(document, 1,
             &executed, &ignored, error, sizeof(error)) != 0 ||
-            executed != 2 || ignored != 1 ||
+            executed != 2 || ignored != 2 ||
             PCore_NodeTextContentById(document, "result", text,
                     sizeof(text), &bytes) != 0 || bytes != 2 ||
             strcmp(text, "42") != 0) {
@@ -17287,6 +17333,124 @@ static BOOL test110_browser_inline_script(void)
             "browser JavaScript stayed inert while disabled; when enabled, "
             "two classic inline scripts shared one context, skipped JSON/src, "
             "updated textContent and reached NetSurf layout.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 111 - external script execution keeps DOM order                  */
+/* -------------------------------------------------------------------- */
+typedef struct test111_script_ctx {
+    int calls;
+    int frees;
+} test111_script_ctx;
+
+static int test111_script_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    test111_script_ctx *ctx;
+    static const char BODY[] = "window.total+=10;";
+    char *data;
+
+    ctx = (test111_script_ctx *) pw;
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "https://example.com/dir/ext.js") != 0) {
+        return 1;
+    }
+    data = (char *) malloc(sizeof(BODY) - 1);
+    if (data == NULL) {
+        return 1;
+    }
+    memcpy(data, BODY, sizeof(BODY) - 1);
+    *out_data = data;
+    *out_len = sizeof(BODY) - 1;
+    return 0;
+}
+
+static void test111_script_free(void *pw, char *data)
+{
+    test111_script_ctx *ctx;
+
+    ctx = (test111_script_ctx *) pw;
+    ctx->frees++;
+    free(data);
+}
+
+static BOOL test111_browser_external_order(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<script>window.total=1;</script>"
+        "<script src='ext.js'></script>"
+        "<script type='application/json'>{\"ignored\":true}</script>"
+        "<script src='missing.js'></script>"
+        "<script>document.getElementById('result').textContent="
+        "String(window.total);</script>"
+        "</head><body><p id='result'>pending</p></body></html>";
+    static const char URL[] = "https://example.com/dir/page.html";
+    HANDLE document;
+    test111_script_ctx ctx;
+    PCoreScriptInfo info;
+    const char *data;
+    char type[64];
+    char text[32];
+    char error[320];
+    int found;
+    int fetched;
+    int executed;
+    int ignored;
+    int bytes;
+    int count;
+
+    memset(&ctx, 0, sizeof(ctx));
+    memset(&info, 0, sizeof(info));
+    memset(type, 0, sizeof(type));
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    count = (document != NULL) ? PCore_GetScriptCount(document) : -1;
+    if (document == NULL || count != 5 ||
+            PCore_FetchScriptResourcesEx(document, URL, wm_combine_url,
+            test111_script_fetch, test111_script_free, &ctx, &found,
+            &fetched) != 0 || found != 2 || fetched != 1 ||
+            ctx.calls != 2 || ctx.frees != 1) {
+        if (document != NULL) {
+            PCore_FreeDocument(document);
+        }
+        show_error(L"TEST 111 FAIL",
+                "external resource discovery/cache did not match");
+        return FALSE;
+    }
+    data = NULL;
+    if (PCore_GetScript(document, 1, URL, wm_combine_url, &ctx, &info,
+            NULL, 0, NULL, 0, type, sizeof(type), &data) != 0 ||
+            info.kind != 2 || !info.available || data == NULL ||
+            info.data_bytes != 17 ||
+            memcmp(data, "window.total+=10;", 17) != 0 ||
+            strcmp(type, "") != 0) {
+        PCore_FreeDocument(document);
+        show_error(L"TEST 111 FAIL",
+                "external script cache was not mapped to DOM order");
+        return FALSE;
+    }
+    executed = -1;
+    ignored = -1;
+    if (pcore_browser_execute_scripts(document, 1, 1, URL, wm_combine_url,
+            &ctx, &executed, &ignored, error, sizeof(error)) != 0 ||
+            executed != 3 || ignored != 2 ||
+            PCore_NodeTextContentById(document, "result", text,
+                    sizeof(text), &bytes) != 0 || bytes != 2 ||
+            strcmp(text, "11") != 0) {
+        PCore_FreeDocument(document);
+        show_error(L"TEST 111 FAIL", error[0] != '\0' ? error :
+                "external and inline scripts did not share DOM order");
+        return FALSE;
+    }
+    PCore_FreeDocument(document);
+    show_info(L"TEST 111 OK",
+            "external script cache was fetched once, missing src was skipped, "
+            "and inline/external scripts shared one context in DOM order.");
     return TRUE;
 }
 
@@ -17519,6 +17683,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 108: ok = test108_form_pattern_escapes(); break;
         case 109: ok = test109_form_pattern_flags(); break;
         case 110: ok = test110_browser_inline_script(); break;
+        case 111: ok = test111_browser_external_order(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

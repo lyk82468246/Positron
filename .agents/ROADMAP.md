@@ -7,6 +7,10 @@
 TEST13/20/27/43/44/56/58-77/80-110，并记录 `TESTBENCH PASS`。下一批设备继续轮换
 分辨率/DPI；不能把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
 
+**当前构建候选（next145）**：新增 unified script sequence ABI、external resource worker
+round 和 DOM 顺序执行的 TEST111；ARMV4I 增量构建已通过，设备验收待补。默认配置仍为
+`javascript=0`，因此 TEST13 不会新增脚本网络请求。
+
 ## 总原则
 
 Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
@@ -26,7 +30,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
 3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；next115 与 next116 的 float 候选均因 TEST79/TEST13 真实回归撤回。Float 方向暂挂，下一次重大布局实验改评估基础 Grid 或背景尺寸/重复，并继续保留 TEST13 深链门禁。
 4. **资源类型补齐**：脚本资源发现/下载/缓存接口已完成；next118 先把独立 JavaScript runtime DLL 做成其他 WM 程序可调用的最小产品面，再由后续批次评估浏览器消费；网页字体不扩展为普通语言字体工程。
-5. **独立 JavaScript 能力**：`positron_script.dll` 的 ABI、持久求值、错误恢复、预算和资源计数已由 TEST80-99 设备验收；next144 的显式且默认关闭的浏览器 inline-script 开关和最小 DOM/native bridge 已通过 TEST110。后续再补 external script 顺序、页面级持久 context 与事件，不把未验证绑定默认接入 TEST13。
+5. **独立 JavaScript 能力**：`positron_script.dll` 的 ABI、持久求值、错误恢复、预算和资源计数已由 TEST80-99 设备验收；next144 的显式且默认关闭的浏览器 inline-script 开关和最小 DOM/native bridge 已通过 TEST110；next145 候选补齐按 DOM 顺序的 external/inline script 执行和异步资源取回，TEST111 待设备验收。后续再补页面级持久 context 与事件，不把未验证绑定默认接入 TEST13。
 
 ### 6p. next144：显式浏览器 inline JavaScript 纵切（设备已通过）
 
@@ -44,6 +48,18 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   `window.total`、跳过一个 `application/json` 和一个 external `src`，把文本改成 `42`
   并进入正式 NetSurf style/layout。C89 专家脚本为 0 change，ARMV4I 增量构建已通过；
   `screen=320x320 dpi=128` 默认设备批次至 TEST110 全部 PASS。
+
+### 6q. next145：external/inline script DOM 顺序纵切（待设备验收）
+
+- `positron_core` 新增 `PCore_GetScriptCount/PCore_GetScript`，按 DOM 顺序返回非空
+  inline 与 external script；external 项使用与资源抓取相同的 resolver 查找 document cache，
+  返回 borrowed body，不把 libdom 类型暴露给宿主。
+- Browse 宿主在 `javascript=1` 时先通过已有 worker resource round 异步取回 external
+  body，再让 external 与 inline 共用一个初始 Duktape context；`javascript=0` 不扫描、不抓取、
+  不执行，已有 TEST13 默认路径不变。失败 external 和 JSON/module 等非 classic type 被跳过，
+  不撤销页面导航。
+- TEST111 使用离线 fetch fixture 断言成功/失败 external、JSON 跳过、`1 → +10 → 11` 的
+  DOM 顺序和 `textContent` 结果。C89 专家脚本、ARMV4I 增量构建和仓库审计已通过，设备待验收。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -470,8 +486,8 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next144 的 TEST13/20/27/43/44/56/58-77/80-110 设备日志作为已验证自动化基线；后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
-2. 优先补齐 external classic script 的 DOM 顺序执行与页面级持久 context；在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求。
+1. 以 next144 的 TEST13/20/27/43/44/56/58-77/80-110 设备日志作为已验证自动化基线；先验收 next145 的 TEST111，后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+2. next145 设备通过后再补页面级持久 context；在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144 已开始利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改和 native bridge；中期再加入点击事件与长期 context。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。
