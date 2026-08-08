@@ -27,6 +27,13 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
+**当前构建候选（next144，2026-08-08）**：新增显式 `javascript=0/1` 浏览器门和
+TEST110。默认 `0` 时不会扫描、抓取或执行脚本；开启后也只执行初次加载的经典 inline
+script，并在执行结束后销毁 Duktape context。最小 bridge 只有
+`document.getElementById()` 存在性查询与 `textContent` setter；external script、事件、
+异步任务、getter、长期 window/context、CSP/同源策略与完整 DOM binding 均未实现。
+ARMV4I 构建已通过，设备验收待补。
+
 **当前状态更正（next136，2026-08-07）**：`screen=480x640 dpi=192` 日志中 TEST13/20/27/43/44/56/58
 通过后，TEST59 暴露离线 flex 几何夹具继承设备 DPI：固定 `25px` padding 被按 192 DPI
 换算为 `50px`。next136 只在 TEST59 的显式 CSS 几何 pass 前安装 96 DPI 参考上下文，
@@ -135,7 +142,7 @@ next131 已将该离线段隔离为 96 DPI CSS 契约，并保留可见渲染段
 | 列表 marker | next57/59 已确认基础 marker 与字体；next61/TEST50 已确认 libcss 上游 47 种 counter formatter、document-cache `list-style-image` 与失败类型回退；next62/TEST51、next63/TEST52 已确认 inline-first 及 block-first/空条目/嵌套/图片的 `list-style-position:inside`。 | 不代表 float 邻接 marker、自定义 `@counter-style` 或完整 CSS Lists。普通语言字体不属于当前 marker 工作范围。 |
 | 字体 fallback | next59 随包部署约 901 KiB 的三份静态 Positron Symbols/Emoji（来自 Noto OFL），精确 cmap 选择统一用于 GDI 测量、换行命中与绘制 run；设备确认箭头/marker/五个 emoji 可见且比 next58 稍平滑。当前范围明确只支持符号与单色 emoji fallback。 | 不计划在本阶段加入普通语言/多语种字体；也没有复杂 ZWJ/variation shaping、彩色 emoji、网页 `@font-face` 或字体下载。`ANTIALIASED_QUALITY` 最终效果仍依赖 OEM GDI。 |
 | 图片 | TEST19/20 已确认公共 retained 位图 ABI 与 WM Imaging 四格式；TEST25-37/13 已确认当前 SVG 链。next89 已由 TEST20/27 确认同 document 二次布局复用；next92/TEST63 已确认两个同时存活且内容一致的 document 可共享 SVG，并在释放首文档后继续绘制。 | 复杂 SVG text、径向焦点/spread method、多层或可缩放 CSS 背景、空闲/持久缓存及跨线程图片句柄仍未完成。 |
-| 外部脚本资源与独立 JS DLL | next114/TEST77 在 core 中建立了非空 script-src 扫描、宿主 URL resolver/fetch/free 回调、document 生命周期缓存、重复引用去重和只读枚举 ABI；next118 又以仓库内 Duktape 2.7.0 接入独立 `positron_script.dll`，提供 UTF-8 求值、持久上下文、错误恢复和内存/执行计数；ARMV4I 构建及 TEST80 设备 testbench 已通过；next119/TEST81 增加 timeout、64 KiB 源码长度拒绝和恢复断言，设备 testbench 已通过；next120/TEST82 增加 512 KiB runtime heap 配额和峰值断言，设备 testbench 已通过；next121/TEST83 已加入 CommonJS 风格模块一次执行缓存、`require()`、失败回滚和显式清空，ARMV4I 构建/staging 与设备 testbench 已通过；next122-126 的 TEST84-99 又加入 provider、global/JSON、native callback 与 structured setter，next134 的 `screen=240x320 dpi=96` 设备日志已确认通过。 | `positron_core` 不执行 inline/external JavaScript，`positron_script.dll` 也不自动提供 DOM/window/fetch/network binding；尚不解释 type，不把脚本抓取加入冻结的 TEST13 网络事务；总配额只约束 DLL 的 Duktape heap，不约束宿主进程其他内存；global/JSON bridge 只处理宿主显式提供的 primitive/JSON 值，结果缓冲最多 255 字节有效载荷，不能替代 DOM 或异步 bridge；模块 provider 是同步、宿主拥有的源码回调，不读取 URL 或文件，不提供异步依赖图、错误事件、CSP、跨源策略或持久 HTTP cache。 |
+| 外部脚本资源与独立 JS DLL | next114/TEST77 在 core 中建立了非空 script-src 扫描、宿主 URL resolver/fetch/free 回调、document 生命周期缓存、重复引用去重和只读枚举 ABI；next118-126/TEST80-99 又以仓库内 Duktape 2.7.0 完成独立 `positron_script.dll` 的求值、预算、heap 配额、模块、provider、global/JSON、native callback 与 structured setter，设备日志已确认。next144 再加入默认关闭的 browser inline-script 枚举/执行与最小 `getElementById`/`textContent` bridge，TEST110 待设备验收。 | next144 只执行经典 inline script，初次执行后销毁 context；external script cache 尚未接入执行顺序，也没有事件、异步任务、完整 DOM/window/fetch/network binding、CSP 或跨源策略。脚本错误不撤销导航。DLL heap 配额不约束宿主进程其他内存；global/JSON 结果缓冲最多 255 字节有效载荷，模块 provider 仍是同步宿主回调。默认 `javascript=0` 时 TEST13 不扫描、抓取或执行脚本。 |
 | ENGINE 离线回归 | 2026-07-11 用户确认原整组至 TEST24 通过；2026-07-12 又单独确认 TEST25 SVG parse。TEST23 的浮动实现已因真实 Browse 回归撤回。 | 网络 Browse、GDI Render 组，或未被这些测试覆盖的真实页面兼容性均已通过。 |
 | 旋转尺寸 | `WM_SIZE` 以新 client 宽高从 document CSS 缓存 restyle + layout；TEST24 已确认跨断点重选、无联网及滚动比例，真实 TEST13 横竖屏也保持同一阅读区域。 | 所有媒体语法和任意样式资源均已覆盖。 |
 

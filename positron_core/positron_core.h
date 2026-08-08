@@ -191,6 +191,32 @@ PCORE_API int PCore_GetScriptResource(HANDLE hDoc, unsigned int index,
         PCoreScriptResourceInfo *out_info, char *url, int url_capacity,
         const char **out_data);
 
+typedef struct PCoreInlineScriptInfo {
+    int source_bytes;
+    int type_bytes;
+} PCoreInlineScriptInfo;
+
+/* Enumerate non-empty inline <script> bodies in document order. Elements with
+ * a non-empty src attribute are excluded because their bytes belong to the
+ * external resource cache above. The raw type attribute is returned for the
+ * embedding runtime to interpret; core does not claim JavaScript execution.
+ * Probe calls may pass NULL buffers and use the byte counts to allocate exact
+ * UTF-8 storage. A valid index returns 0. */
+PCORE_API int PCore_GetInlineScriptCount(HANDLE hDoc);
+PCORE_API int PCore_GetInlineScript(HANDLE hDoc, unsigned int index,
+        PCoreInlineScriptInfo *out_info, char *source, int source_capacity,
+        char *type, int type_capacity);
+
+/* Minimal DOM text boundary for an external script/runtime host. IDs and text
+ * are UTF-8. The getter reports the full byte count even when the caller only
+ * probes or supplies a smaller buffer. The setter mutates the DOM only; the
+ * caller must run style/layout again before painting an already styled page. */
+PCORE_API int PCore_NodeExistsById(HANDLE hDoc, const char *element_id);
+PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
+        char *text, int text_capacity, int *out_bytes);
+PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
+        const char *element_id, const char *text);
+
 /* Legacy one-shot image helpers. New consumers should use positron_image.dll's
  * retained PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap API. These
  * exports remain ABI-compatible and forward to that public image service. */

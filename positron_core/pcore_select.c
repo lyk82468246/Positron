@@ -3553,6 +3553,303 @@ PCORE_API int PCore_GetScriptResource(HANDLE hDoc, unsigned int index,
     return 0;
 }
 
+typedef struct pcore_inline_script_scan {
+    unsigned int target;
+    unsigned int count;
+    int found;
+    dom_string *script_name;
+    dom_string *src_name;
+    dom_string *type_name;
+    dom_string *source;
+    dom_string *mime_type;
+} pcore_inline_script_scan;
+
+static void pcore_inline_script_walk(pcore_inline_script_scan *scan,
+        dom_node *node)
+{
+    dom_node_type node_type;
+    dom_node *child;
+    dom_node *next;
+    dom_string *name;
+    dom_string *src;
+    dom_string *body;
+    bool is_script;
+
+    if (scan == NULL || node == NULL || scan->found) {
+        return;
+    }
+    name = NULL;
+    src = NULL;
+    body = NULL;
+    is_script = false;
+    if (dom_node_get_node_type(node, &node_type) == DOM_NO_ERR &&
+            node_type == DOM_ELEMENT_NODE &&
+            dom_node_get_node_name(node, &name) == DOM_NO_ERR &&
+            name != NULL) {
+        is_script = dom_string_caseless_isequal(name, scan->script_name);
+        dom_string_unref(name);
+        name = NULL;
+    }
+    if (is_script) {
+        if (dom_element_get_attribute(node, scan->src_name, &src) ==
+                DOM_NO_ERR && src != NULL) {
+            if (dom_string_byte_length(src) > 0) {
+                dom_string_unref(src);
+                return;
+            }
+            dom_string_unref(src);
+            src = NULL;
+        }
+        if (dom_node_get_text_content(node, &body) == DOM_NO_ERR &&
+                body != NULL && dom_string_byte_length(body) > 0) {
+            if (scan->count == scan->target) {
+                scan->source = body;
+                body = NULL;
+                if (dom_element_get_attribute(node, scan->type_name,
+                        &scan->mime_type) != DOM_NO_ERR) {
+                    scan->mime_type = NULL;
+                }
+                scan->found = 1;
+            }
+            scan->count++;
+        }
+        if (body != NULL) {
+            dom_string_unref(body);
+        }
+        return;
+    }
+
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return;
+    }
+    while (child != NULL) {
+        pcore_inline_script_walk(scan, child);
+        if (scan->found) {
+            dom_node_unref(child);
+            return;
+        }
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+}
+
+static int pcore_inline_script_scan_document(dom_document *doc,
+        unsigned int target, pcore_inline_script_scan *scan)
+{
+    dom_node *root;
+    int rc;
+
+    if (doc == NULL || scan == NULL) {
+        return 1;
+    }
+    memset(scan, 0, sizeof(*scan));
+    scan->target = target;
+    root = NULL;
+    rc = 1;
+    dom_string_create((const uint8_t *) "script", 6, &scan->script_name);
+    dom_string_create((const uint8_t *) "src", 3, &scan->src_name);
+    dom_string_create((const uint8_t *) "type", 4, &scan->type_name);
+    if (scan->script_name == NULL || scan->src_name == NULL ||
+            scan->type_name == NULL) {
+        goto cleanup;
+    }
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        goto cleanup;
+    }
+    pcore_inline_script_walk(scan, root);
+    rc = 0;
+
+cleanup:
+    if (root != NULL) {
+        dom_node_unref(root);
+    }
+    if (scan->script_name != NULL) {
+        dom_string_unref(scan->script_name);
+        scan->script_name = NULL;
+    }
+    if (scan->src_name != NULL) {
+        dom_string_unref(scan->src_name);
+        scan->src_name = NULL;
+    }
+    if (scan->type_name != NULL) {
+        dom_string_unref(scan->type_name);
+        scan->type_name = NULL;
+    }
+    return rc;
+}
+
+static void pcore_copy_dom_string(dom_string *value, char *buffer,
+        int capacity, int *out_bytes)
+{
+    const char *data;
+    size_t length;
+    size_t copy_length;
+
+    data = NULL;
+    length = 0;
+    if (value != NULL) {
+        data = dom_string_data(value);
+        length = dom_string_byte_length(value);
+    }
+    if (out_bytes != NULL) {
+        *out_bytes = (int) length;
+    }
+    if (buffer == NULL || capacity <= 0) {
+        return;
+    }
+    copy_length = length;
+    if (copy_length > (size_t) (capacity - 1)) {
+        copy_length = (size_t) (capacity - 1);
+    }
+    if (copy_length > 0 && data != NULL) {
+        memcpy(buffer, data, copy_length);
+    }
+    buffer[copy_length] = '\0';
+}
+
+PCORE_API int PCore_GetInlineScriptCount(HANDLE hDoc)
+{
+    pcore_inline_script_scan scan;
+
+    if (pcore_inline_script_scan_document((dom_document *) hDoc,
+            (unsigned int) -1, &scan) != 0) {
+        return -1;
+    }
+    return (int) scan.count;
+}
+
+PCORE_API int PCore_GetInlineScript(HANDLE hDoc, unsigned int index,
+        PCoreInlineScriptInfo *out_info, char *source, int source_capacity,
+        char *type, int type_capacity)
+{
+    pcore_inline_script_scan scan;
+    int source_bytes;
+    int type_bytes;
+
+    if (out_info != NULL) {
+        memset(out_info, 0, sizeof(*out_info));
+    }
+    if (source != NULL && source_capacity > 0) {
+        source[0] = '\0';
+    }
+    if (type != NULL && type_capacity > 0) {
+        type[0] = '\0';
+    }
+    if (pcore_inline_script_scan_document((dom_document *) hDoc,
+            index, &scan) != 0 || !scan.found || scan.source == NULL) {
+        return 1;
+    }
+    source_bytes = 0;
+    type_bytes = 0;
+    pcore_copy_dom_string(scan.source, source, source_capacity,
+            &source_bytes);
+    pcore_copy_dom_string(scan.mime_type, type, type_capacity, &type_bytes);
+    if (out_info != NULL) {
+        out_info->source_bytes = source_bytes;
+        out_info->type_bytes = type_bytes;
+    }
+    dom_string_unref(scan.source);
+    if (scan.mime_type != NULL) {
+        dom_string_unref(scan.mime_type);
+    }
+    return 0;
+}
+
+static dom_element *pcore_element_by_id(dom_document *doc,
+        const char *element_id)
+{
+    dom_string *id;
+    dom_element *element;
+
+    if (doc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return NULL;
+    }
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) element_id, strlen(element_id),
+            &id) != DOM_NO_ERR || id == NULL) {
+        return NULL;
+    }
+    if (dom_document_get_element_by_id(doc, id, &element) != DOM_NO_ERR) {
+        element = NULL;
+    }
+    dom_string_unref(id);
+    return element;
+}
+
+PCORE_API int PCore_NodeExistsById(HANDLE hDoc, const char *element_id)
+{
+    dom_element *element;
+
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 0;
+    }
+    dom_node_unref((dom_node *) element);
+    return 1;
+}
+
+PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
+        char *text, int text_capacity, int *out_bytes)
+{
+    dom_element *element;
+    dom_string *content;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (text != NULL && text_capacity > 0) {
+        text[0] = '\0';
+    }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    content = NULL;
+    if (dom_node_get_text_content((dom_node *) element, &content) !=
+            DOM_NO_ERR || content == NULL) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    pcore_copy_dom_string(content, text, text_capacity, out_bytes);
+    dom_string_unref(content);
+    dom_node_unref((dom_node *) element);
+    return 0;
+}
+
+PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
+        const char *element_id, const char *text)
+{
+    dom_element *element;
+    dom_string *content;
+    dom_exception err;
+
+    if (text == NULL) {
+        return 1;
+    }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    content = NULL;
+    if (dom_string_create((const uint8_t *) text, strlen(text), &content) !=
+            DOM_NO_ERR || content == NULL) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    err = dom_node_set_text_content((dom_node *) element, content);
+    dom_string_unref(content);
+    dom_node_unref((dom_node *) element);
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
 PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,
         unsigned long *out_argb)
 {
