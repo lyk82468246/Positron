@@ -7,6 +7,13 @@ Domains 三段导航均完成；TEST111 还确认显式开启时 external/inline
 按 DOM 顺序取回、执行和更新 DOM，JSON/失败资源会跳过。ARMV4I Debug 增量构建、
 staging 和设备验收均已通过；后续仍需轮换分辨率/DPI，并人工复查新增可见能力。
 
+**当前构建候选（next146，2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
+网络路径不变的前提下，浏览器导航请求会把显式 `javascript=1` 的初始 classic-script
+runtime 与当前 document 一起保留；成功导航时整体换入新页面，失败导航、旧页面释放和
+窗体关闭时一起清理。TEST112 离线确认初始脚本状态可被后续求值复用，并能通过最小 DOM
+bridge 更新文字后重新进入 style/layout。该候选已通过 C89、ARMV4I 增量构建和仓库审计，
+尚未完成设备验收，不代表已实现事件、异步任务或完整 DOM/window binding。
+
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
 `positron_script.dll` 的最小 `document.getElementById(...).textContent=` bridge。

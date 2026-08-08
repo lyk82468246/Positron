@@ -45,6 +45,13 @@ cache 的资源 worker round 取回，再与 inline body 共用一次初始 Dukt
 `screen=320x320 dpi=128` 设备验收均已通过。默认 `javascript=0` 时该路径完全不扫描、
 不抓取、不执行。
 
+**当前构建候选（next146，待设备验收）**：显式 `javascript=1` 时，导航请求会把初始
+classic-script runtime 和最小 DOM bridge 绑定到待提交 document；成功导航整体换入，
+失败导航、旧文档释放和窗体关闭清理。TEST112 离线确认后续求值可复用脚本状态、修改
+`textContent` 并重新进入 style/layout。这个候选没有开启事件、异步任务、getter、完整
+window 生命周期或完整 DOM binding；默认 `javascript=0` 及 TEST13 网络路径保持不变。
+C89、ARMV4I 增量构建和仓库审计已通过，设备结果不得提前写成已验证。
+
 **当前状态更正（next136，2026-08-07）**：`screen=480x640 dpi=192` 日志中 TEST13/20/27/43/44/56/58
 通过后，TEST59 暴露离线 flex 几何夹具继承设备 DPI：固定 `25px` padding 被按 192 DPI
 换算为 `50px`。next136 只在 TEST59 的显式 CSS 几何 pass 前安装 96 DPI 参考上下文，

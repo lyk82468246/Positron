@@ -360,7 +360,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 111
+#define TEST_MAX_NUMBER 112
 
 static int test_config_space(char c)
 {
@@ -2154,6 +2154,31 @@ typedef struct pcore_navigation_resource {
     int attempted;
 } pcore_navigation_resource;
 
+typedef struct pcore_browser_script_bridge {
+    HANDLE document;
+} pcore_browser_script_bridge;
+
+typedef struct pcore_browser_script_session {
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+} pcore_browser_script_session;
+
+static pcore_browser_script_session g_browser_script_session = {
+    NULL, NULL, NULL
+};
+
+static void pcore_browser_script_session_destroy(void)
+{
+    if (g_browser_script_session.runtime != NULL) {
+        PScript_Destroy(g_browser_script_session.runtime);
+    }
+    free(g_browser_script_session.bridge);
+    g_browser_script_session.document = NULL;
+    g_browser_script_session.runtime = NULL;
+    g_browser_script_session.bridge = NULL;
+}
+
 typedef struct pcore_navigation_stats {
     DWORD started_tick;
     DWORD worker_started_tick;
@@ -2193,6 +2218,8 @@ typedef struct pcore_navigation_request {
     char          *request_content_type;
     PHttpResponse *response;
     HANDLE         document;
+    HANDLE         script_runtime;
+    pcore_browser_script_bridge *script_bridge;
     pcore_navigation_resource *resources;
     int            resource_count;
     int            resource_bytes;
@@ -3480,6 +3507,10 @@ static void pcore_navigation_request_free(
     if (request->response != NULL) {
         PHttp_FreeResponse(request->response);
     }
+    if (request->script_runtime != NULL) {
+        PScript_Destroy(request->script_runtime);
+    }
+    free(request->script_bridge);
     if (request->document != NULL) {
         PCore_FreeDocument(request->document);
     }
@@ -3727,10 +3758,6 @@ static int pcore_navigation_start_worker(
     return (g_nav_thread != NULL) ? 0 : 1;
 }
 
-typedef struct pcore_browser_script_bridge {
-    HANDLE document;
-} pcore_browser_script_bridge;
-
 static HANDLE pcore_browser_script_args_object(const char *args_json,
         int args_len, HANDLE *out_object)
 {
@@ -3902,10 +3929,33 @@ static void pcore_browser_script_error(char *error, int error_capacity,
     error[error_capacity - 1] = '\0';
 }
 
+static int pcore_browser_script_session_evaluate(const char *source,
+        int source_len, char *error, int error_capacity)
+{
+    if (g_browser_script_session.document == NULL ||
+            g_browser_script_session.runtime == NULL ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->document !=
+                    g_browser_script_session.document) {
+        pcore_browser_script_error(error, error_capacity,
+                "persistent script context", "not available");
+        return 1;
+    }
+    if (PScript_Evaluate(g_browser_script_session.runtime, source,
+            source_len) != PSCRIPT_OK) {
+        pcore_browser_script_error(error, error_capacity,
+                "persistent script evaluation",
+                PScript_GetError(g_browser_script_session.runtime));
+        return 1;
+    }
+    return 0;
+}
+
 static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         int allow_external, const char *document_url,
         PCoreResolveUrlFn resolve, void *resolve_pw, int *out_executed,
-        int *out_ignored, char *error, int error_capacity)
+        int *out_ignored, char *error, int error_capacity,
+        HANDLE *out_runtime, pcore_browser_script_bridge **out_bridge)
 {
     static const char BOOTSTRAP[] =
         "(function(g){"
@@ -3916,7 +3966,8 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "g.window=g;g.document={getElementById:function(id){id=String(id);"
         "return __pcoreHasElement({id:id})?new PElement(id):null;}};"
         "})(this);";
-    pcore_browser_script_bridge bridge;
+    pcore_browser_script_bridge bridge_storage;
+    pcore_browser_script_bridge *bridge;
     PCoreScriptInfo info;
     HANDLE runtime;
     char *source;
@@ -3938,6 +3989,12 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
     if (error != NULL && error_capacity > 0) {
         error[0] = '\0';
     }
+    if (out_runtime != NULL) {
+        *out_runtime = NULL;
+    }
+    if (out_bridge != NULL) {
+        *out_bridge = NULL;
+    }
     if (!enabled) {
         return 0;
     }
@@ -3956,15 +4013,29 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
                 "runtime creation", NULL);
         return 1;
     }
-    bridge.document = document;
+    if (out_runtime != NULL) {
+        bridge = (pcore_browser_script_bridge *) malloc(sizeof(*bridge));
+        if (bridge == NULL) {
+            PScript_Destroy(runtime);
+            pcore_browser_script_error(error, error_capacity,
+                    "script bridge allocation", NULL);
+            return 1;
+        }
+    } else {
+        bridge = &bridge_storage;
+    }
+    bridge->document = document;
     if (PScript_RegisterGlobalJsonFunction(runtime, "__pcoreHasElement", -1,
-            pcore_browser_script_has_element, &bridge) != PSCRIPT_OK ||
+            pcore_browser_script_has_element, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreSetText", -1,
-            pcore_browser_script_set_text, &bridge) != PSCRIPT_OK ||
+            pcore_browser_script_set_text, bridge) != PSCRIPT_OK ||
             PScript_Evaluate(runtime, BOOTSTRAP, -1) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity, "DOM bootstrap",
                 PScript_GetError(runtime));
         PScript_Destroy(runtime);
+        if (out_runtime != NULL) {
+            free(bridge);
+        }
         return 1;
     }
     executed = 0;
@@ -4032,7 +4103,14 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         source = NULL;
         type = NULL;
     }
-    PScript_Destroy(runtime);
+    if (out_runtime != NULL) {
+        *out_runtime = runtime;
+        if (out_bridge != NULL) {
+            *out_bridge = bridge;
+        }
+    } else {
+        PScript_Destroy(runtime);
+    }
     if (out_executed != NULL) {
         *out_executed = executed;
     }
@@ -4047,7 +4125,8 @@ static int pcore_browser_execute_inline_scripts(HANDLE document, int enabled,
         int error_capacity)
 {
     return pcore_browser_execute_scripts(document, enabled, 0, NULL, NULL,
-            NULL, out_executed, out_ignored, error, error_capacity);
+            NULL, out_executed, out_ignored, error, error_capacity,
+            NULL, NULL);
 }
 
 /* Run one UI-owned commit phase, then yield to the WM message queue. A missing
@@ -4118,7 +4197,8 @@ static int pcore_navigation_commit_step(HWND hwnd,
                 g_browser_javascript_enabled, 1,
                 document_url[0] != '\0' ? document_url : NULL,
                 wm_combine_url, request, &script_executed, &script_ignored,
-                emsg, sizeof(emsg)) != 0) {
+                emsg, sizeof(emsg), &request->script_runtime,
+                &request->script_bridge) != 0) {
             utf8_to_wide(emsg, -1, script_debug,
                     sizeof(script_debug) / sizeof(script_debug[0]));
             OutputDebugStringW(L"Positron inline script error: ");
@@ -4223,11 +4303,17 @@ static int pcore_navigation_commit_step(HWND hwnd,
      * indices before the document they describe is freed. */
     pcore_native_edits_destroy();
     pcore_native_selects_destroy();
+    pcore_browser_script_session_destroy();
     if (g_render_doc != NULL) {
         PCore_FreeDocument(g_render_doc);
     }
     g_render_doc = request->document;
     request->document = NULL;
+    g_browser_script_session.document = g_render_doc;
+    g_browser_script_session.runtime = request->script_runtime;
+    g_browser_script_session.bridge = request->script_bridge;
+    request->script_runtime = NULL;
+    request->script_bridge = NULL;
     g_render_sheet = NULL;
     g_doc_h = PCore_DocumentHeight(g_render_doc);
     g_scroll_y = 0;
@@ -5635,6 +5721,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         g_interaction_restyle_pending = 0;
         pcore_native_edits_destroy();
         pcore_native_selects_destroy();
+        pcore_browser_script_session_destroy();
         SHSipPreference(hwnd, SIP_FORCEDOWN);
         pcore_navigation_set_loading(hwnd, 0);
         PostQuitMessage(0);
@@ -17437,7 +17524,7 @@ static BOOL test111_browser_external_order(void)
     executed = -1;
     ignored = -1;
     if (pcore_browser_execute_scripts(document, 1, 1, URL, wm_combine_url,
-            &ctx, &executed, &ignored, error, sizeof(error)) != 0 ||
+            &ctx, &executed, &ignored, error, sizeof(error), NULL, NULL) != 0 ||
             executed != 3 || ignored != 2 ||
             PCore_NodeTextContentById(document, "result", text,
                     sizeof(text), &bytes) != 0 || bytes != 2 ||
@@ -17451,6 +17538,99 @@ static BOOL test111_browser_external_order(void)
     show_info(L"TEST 111 OK",
             "external script cache was fetched once, missing src was skipped, "
             "and inline/external scripts shared one context in DOM order.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 112 - browser script context survives initial document scripts   */
+/* -------------------------------------------------------------------- */
+static BOOL test112_browser_script_persistence(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<script>window.total=7;</script>"
+        "</head><body><p id='result'>pending</p></body></html>";
+    static const char CSS[] =
+        "p{display:block;width:120px;height:24px;color:#102040}";
+    static const char CONTINUATION[] =
+        "window.total+=5;"
+        "document.getElementById('result').textContent=String(window.total);";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[32];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int x;
+    int y;
+    int w;
+    int h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(CONTINUATION, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", text,
+                        sizeof(text), &bytes) != 0 || bytes != 2 ||
+                strcmp(text, "12") != 0) {
+            ok = 0;
+        }
+    }
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/browser-script-persist.css");
+    if (ok && (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeBox(document, "p", &x, &y, &w, &h) != 0 ||
+            w <= 0 || h <= 0)) {
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 112 FAIL", error[0] != '\0' ? error :
+                "persistent script context or post-load mutation failed");
+        return FALSE;
+    }
+    show_info(L"TEST 112 OK",
+            "Initial script state survived into a later evaluation, the\n"
+            "DOM bridge updated textContent, layout saw the mutation, and\n"
+            "context cleanup completed.");
     return TRUE;
 }
 
@@ -17684,6 +17864,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 109: ok = test109_form_pattern_flags(); break;
         case 110: ok = test110_browser_inline_script(); break;
         case 111: ok = test111_browser_external_order(); break;
+        case 112: ok = test112_browser_script_persistence(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
