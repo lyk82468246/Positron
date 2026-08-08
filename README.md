@@ -1,12 +1,11 @@
 # Positron
 
-**最新设备门禁（next144，2026-08-08）**：next144 在 `screen=320x320 dpi=128`
-设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-110 全部通过并记录
+**最新设备门禁（next145，2026-08-08）**：next145 在 `screen=320x320 dpi=128`
+设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-111 全部通过并记录
 `TESTBENCH PASS`。TEST13 的 example.com、IANA Example Domains、IANA Reserved
-Domains 三段导航均完成；TEST110 同时确认浏览器 JavaScript 默认关闭时保持惰性，
-以及隔离开启后 classic inline scripts 共享 context、跳过 JSON/external src、更新 DOM
-并进入 NetSurf layout。ARMV4I Debug 增量构建、staging 和设备验收均已通过；后续仍需
-轮换分辨率/DPI，并人工复查新增可见能力。
+Domains 三段导航均完成；TEST111 还确认显式开启时 external/inline classic scripts
+按 DOM 顺序取回、执行和更新 DOM，JSON/失败资源会跳过。ARMV4I Debug 增量构建、
+staging 和设备验收均已通过；后续仍需轮换分辨率/DPI，并人工复查新增可见能力。
 
 **浏览器脚本门禁（next144，2026-08-08）**：新增默认关闭的 `javascript=0/1` 浏览器
 开关、按文档顺序枚举经典 inline script 的 core ABI，以及基于独立
@@ -17,16 +16,17 @@ ARMV4I 增量构建与 `screen=320x320 dpi=128` 设备验收均已通过；默�
 抓取或执行 JavaScript。
 该批没有外部脚本执行、事件回调、持久 context 或完整 DOM binding。
 
-**当前构建候选（next145，2026-08-08）**：新增统一的 `PCore_GetScriptCount/
-PCore_GetScript` 序列 ABI，按 DOM 顺序映射 inline 与 external script；开启浏览器脚本时，
-external body 通过已有 document cache 异步抓取，再与 inline body 共用一次初始 Duktape
-context。TEST111 覆盖成功/失败 external、JSON 跳过、执行顺序和 DOM 结果；ARMV4I 增量
-构建、C89 与仓库审计已通过，设备验收待补。默认 `javascript=0` 和 TEST13 路径不变。
+**浏览器脚本顺序门禁（next145，2026-08-08）**：新增统一的
+`PCore_GetScriptCount/PCore_GetScript` 序列 ABI，按 DOM 顺序映射 inline 与 external
+script；开启浏览器脚本时，external body 通过已有 document cache 异步抓取，再与 inline
+body 共用一次初始 Duktape context。TEST111 覆盖成功/失败 external、JSON 跳过、执行顺序
+和 DOM 结果；ARMV4I 增量构建、C89、仓库审计与 `screen=320x320 dpi=128` 设备验收均已
+通过。默认 `javascript=0`，因此 TEST13 默认路径不变。
 
 > **动态 DPI 基线（2026-08-08）**：next143 保留 next137 的非整数 DPI 设备像素换算，
 > 隔离 TEST60/63 的显式 CSS 几何上下文，并让 TEST62/75 的几何断言按实际 DPI 等比
 > 换算；没有固定 96 DPI、放宽断言或固定分辨率。`screen=480x640 dpi=192` 默认配置已
-> 全部通过，next144 又在 `screen=320x320 dpi=128` 完成至 TEST110；下一批应继续轮换
+> 全部通过，next145 又在 `screen=320x320 dpi=128` 完成至 TEST111；下一批应继续轮换
 > 分辨率/DPI，并人工复查 TEST13。next144 只在显式
 > `javascript=1` 时执行初次加载的 classic inline scripts，默认关闭，float 候选保持撤回，
 > next37/next114 Browse 路径仍是回归基线。
@@ -35,9 +35,13 @@ context。TEST111 覆盖成功/失败 external、JSON 跳过、执行顺序和 D
 
 失败分支、环境误报、已替代实验和暂挂方向的总索引见 [`.agents/FAILED_EXPERIMENTS.md`](.agents/FAILED_EXPERIMENTS.md)；其中包括 next37 回退、next78 scrollbar 实验、next115/116 float 回退，以及当前“局部容器偏小、文本偏多”的开放视觉限制。
 
+**状态更正（next145，2026-08-08）**：TEST111 已在 `screen=320x320 dpi=128` 设备通过，
+因此 external classic script 的 DOM 顺序执行与异步取回已从“待验收”进入设备基线。它仍只在
+显式 `javascript=1` 时生效；默认 `javascript=0` 的 TEST13 不扫描、抓取或执行脚本。
+
 面向 **Windows Mobile 6 Professional**（Windows CE 5.2, ARMv4i）的现代基础设施与应用运行时。
 
-Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片、脚本运行时与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制、基础定位、动态 `:hover`、点击导航和脚本资源缓存接口都在 `positron_core.dll` 后面推进；`positron_script.dll` 已作为独立 Duktape 执行服务接入解决方案，next144 首次提供已通过设备门禁且默认关闭的 classic inline-script 与最小 DOM text bridge，但尚未接入外部脚本、浏览器网络事务、事件回调或完整 DOM/window。
+Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合，包括 TLS、HTTP、JSON、图片、脚本运行时与渲染核心等能力；另一方面在这些基础设施上建设自带浏览器内核和 Electron-like 应用运行时。当前主线已经进入 HTML/CSS 真实渲染：NetSurf 3.11 的解析、样式、layout/redraw、GDI 绘制、基础定位、动态 `:hover`、点击导航和脚本资源缓存接口都在 `positron_core.dll` 后面推进；`positron_script.dll` 已作为独立 Duktape 执行服务接入解决方案，next145 在 next144 的默认关闭 inline-script 纵切之上增加了已通过设备门禁的 classic external-script 取回与 DOM 顺序执行，但仍没有事件回调或完整 DOM/window。
 
 公共 DLL 是正式产品，不只是 `test_host.exe` 或浏览器的内部依赖。架构与 ABI 原则见 [.agents/ARCHITECTURE.md](.agents/ARCHITECTURE.md)。
 
@@ -54,7 +58,7 @@ Positron 一方面提供可被任意 WM 程序独立调用的现代 DLL 集合�
 | **3** | 嵌入式 CA bundle + verified TLS (`PTls_ConnectVerified`) + CryptGenRandom 熵源 | ✅ 完成，WM6 Emulator 验证 |
 | **4** | `positron_core.dll` — NetSurf 内核移植（HTML/CSS 渲染层） | 🚧 正式 Browse 路径已走 NetSurf `layout.c/redraw.c`；flex、table、border、selector、缓存图片链、CSS 背景图与 NetSurf overflow scrollbar 已真机验证，窄屏复杂布局仍待补 |
 | **5** | `positron_image.dll` — 可复用图片基础设施 | 🚧 retained 解码、SVG、PNG/JPEG/BMP/GIF 与原始像素入口均已真机闭环；当前 ABI 1.5 增加只读 SVG 创建阶段遥测，next52 原生标题栏 OK 真退出已真机确认 |
-| **6** | `positron_script.dll` — 独立 JavaScript 执行基础设施 | ✅ Duktape 2.7.0 稳定 C ABI、模块/provider、global/JSON、native callback 与 structured JSON setter 已完成构建；next134 日志中的 TEST80-99 已通过。next144 已通过默认关闭的最小浏览器 DOM text bridge 门禁，外部脚本/网络/事件绑定仍未开放 |
+| **6** | `positron_script.dll` — 独立 JavaScript 执行基础设施 | ✅ Duktape 2.7.0 稳定 C ABI、模块/provider、global/JSON、native callback 与 structured JSON setter 已完成构建；next134 日志中的 TEST80-99 已通过。next145 又通过默认关闭、显式开启才生效的浏览器 classic inline/external script 顺序门禁；事件、异步任务、网络/完整 DOM binding 仍未开放 |
 
 Phase 3 验证：`test_host.exe` 的通信组——HTTPS GET（`checkip.amazonaws.com`，大陆直连纯文本 IP）、POST（postman-echo）、badssl.com 正样本 + expired + self-signed 三连测，全部真机通过。详见 [PHASE3.md](PHASE3.md)。
 
