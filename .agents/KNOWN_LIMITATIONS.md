@@ -141,6 +141,12 @@ TEST13 不变；仍不能宣称剪贴板完整 Unicode 或字体覆盖已实现�
 所以不能证明任意 OEM SIP、候选窗口、预编辑 UI、`isComposing`、selection replacement、
 组合期间的全部 `input` 顺序或完整 CompositionEvent/InputEvent API 已兼容。
 
+**next161/162 网络验收边界（2026-08-09）**：next161 首轮设备运行在 TEST13 第三段
+Reserved Domains 的主文档 TLS 握手阶段收到 peer EOF，因而 TEST123 未执行。next162
+只对此类幂等 GET 的 `status=0 + empty body + ssl_handshake EOF` 做最多一次重试；它不是
+通用网络恢复、断点续传或无限重连，不覆盖 POST、DNS、HTTP 状态失败、子资源请求，也不
+掩盖第二次失败。日志的 retry 计数用于暴露恢复事实，而不是把网络失败当作功能断言通过。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM

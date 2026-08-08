@@ -8,7 +8,7 @@
 `TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next160\test_host.log`。默认
 `javascript=0`、TEST13 网络路径不变。
 
-**next161 待设备验收（2026-08-08）**：WM 原生 EDIT 子类接入
+**next161 设备运行未完成（2026-08-09，不能作为基线）**：WM 原生 EDIT 子类接入
 `WM_IME_STARTCOMPOSITION/WM_IME_COMPOSITION/WM_IME_ENDCOMPOSITION`，通过 WM6
 `coredll` 的 `ImmGetContext/ImmGetCompositionStringW` 取得 UTF-16 组合串并转为 UTF-8；
 显式脚本 context 可收到 `compositionstart/update/end` 及不可取消的
@@ -16,10 +16,20 @@
 可取消的 `compositionstart` 和 WM 消息入口。自动探针复用真实消息入口与正式数据发射器，
 但不伪造系统 IME context，因此真实 SIP 候选窗口输入仍需人工验收。默认 JavaScript 与
 TEST13 均不改变。C89 专家脚本、仓库审计、VS2008 ARMV4I Debug 增量构建和
-`C:\WMShare\Positron-next161` staging 已通过。实现依据 [Windows CE `ImmGetCompositionString`](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms906001%28v%3Dmsdn.10%29)、
+`C:\WMShare\Positron-next161` staging 已通过；但设备日志只完成 example.com 与 IANA
+Example Domains，Reserved Domains 在收到 HTTP 状态前遇到 TLS 握手 EOF，TEST13 以
+`2/3` 停止，TEST123 没有执行。因此该日志既不能验收、也不能否定 IME 纵切。实现依据
+[Windows CE `ImmGetCompositionString`](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms906001%28v%3Dmsdn.10%29)、
 [Windows CE `WM_IME_COMPOSITION`](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms921476%28v%3Dmsdn.10%29)、
 [W3C UI Events](https://www.w3.org/TR/uievents/) 与
 [Input Events Level 2](https://www.w3.org/TR/input-events-2/)。
+
+**next162 待设备验收（2026-08-09）**：保留 next161 的 IME/TEST123，在 worker 线程中只对
+主文档幂等 GET 的 `status=0 + empty body + ssl_handshake EOF` 做一次 250ms 后重试，并把
+`document_retries` 写入 TEST13 日志和遥测。POST、DNS、HTTP 4xx/5xx、页面子资源及其他
+错误均不自动重试；TEST43 离线固定该边界。C89、仓库审计和 VS2008 ARMV4I Debug
+增量构建及 `C:\WMShare\Positron-next162` staging/哈希核对已通过，完整设备日志通过前
+仍以 next160 为基线。
 
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT

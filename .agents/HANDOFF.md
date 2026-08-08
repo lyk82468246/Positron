@@ -1,6 +1,6 @@
 # Positron Current Handoff
 
-更新时间：2026-08-08
+更新时间：2026-08-09
 当前分支：`main`  
 当前设备基线：next160 已在 `screen=640x480 dpi=192` 下完成 TEST13 三段导航及
 TEST20/27/43/44/56/58-77/80-122，日志 `C:\WMShare\Positron-next160\test_host.log`
@@ -8,14 +8,22 @@ TEST20/27/43/44/56/58-77/80-122，日志 `C:\WMShare\Positron-next160\test_host.
 ECMAScript UTF-16 pair、EDIT beforeinput 数据和 SELECT 取消顺序。next157-159 是该功能
 的失败/诊断包，均已由 next160 替代。默认 `javascript=0` 与 TEST13 路径不变。
 
-当前待验收候选：next161 接入 WM6 EDIT 的原生 IME composition 消息，使用 SDK
+next161 已接入 WM6 EDIT 的原生 IME composition 消息，使用 SDK
 `<imm.h>` 和设备 `coredll` 中的 `ImmGetContext/ImmGetCompositionStringW/ImmReleaseContext`，
 不链接桌面 `imm32.lib`。显式脚本 context 新增 `compositionstart/update/end` 与不可取消的
 `beforeinput(insertCompositionText)`；TEST123 验证 WM start/end 入口、共享 UTF-8 update
-发射路径、事件顺序/数据/冒泡/取消属性。自动探针没有配置真实 SIP/IME context，设备包通过
-后仍须另做一次人工 SIP 组合输入验收；不得把 TEST123 单独表述为候选窗口、预编辑 UI 或
-完整 InputEvent/CompositionEvent API 已完成。C89、仓库审计、ARMV4I Debug 增量构建和
-`C:\WMShare\Positron-next161` staging 已通过。
+发射路径、事件顺序/数据/冒泡/取消属性。`C:\WMShare\Positron-next161\test_host.log` 中
+example.com 与 IANA Example Domains 已通过，Reserved Domains 在 HTTP 状态前遇到
+`ssl_handshake -0x7280`/peer EOF，TEST13 仅完成 `2/3` 并终止整个 testbench，因此
+TEST123 没有执行；不能把这次运行写成 IME PASS 或 FAIL。
+
+当前待验收候选：next162 保留上述 IME 纵切，并仅为主文档幂等 GET 增加一次受限重试：
+响应必须同时满足 `status=0`、空 body、错误属于 TLS 握手 peer EOF，worker 才等待 250ms
+重发一次。POST、DNS、HTTP 状态失败、子资源及其他错误不重试；TEST43 离线固定分类，
+TEST13 日志/遥测增加 retry 计数。自动探针没有配置真实 SIP/IME context，设备包通过后仍须
+人工验证一次 SIP 组合输入；不得宣称候选窗口、预编辑 UI 或完整 InputEvent/CompositionEvent
+API 已完成。C89、仓库审计和 ARMV4I Debug 增量构建已通过，next160 仍是正式设备基线。
+`C:\WMShare\Positron-next162` staging 已完成，七个 ARMV4I EXE/DLL 与构建产物哈希一致。
 上一设备基线：next153 已在 `screen=640x480 dpi=192` 下完成默认 testbench，
 TEST13/20/27/43/44/56/58-77/80-119 全部通过并记录 `TESTBENCH PASS`。该批在默认关闭的
 browser JavaScript 门之上新增 TEST111；TEST13 三段导航保持正常。TEST108 首轮

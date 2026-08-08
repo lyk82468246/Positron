@@ -1,13 +1,14 @@
 # Positron Roadmap
 
-更新时间：2026-08-08
+更新时间：2026-08-09
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 当前设备基线为 next160：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
 TEST20/27/43/44/56/58-77/80-122 全部通过并记录 `TESTBENCH PASS`。TEST122 已确认
 WM UTF-16 代理对合并、ECMAScript UTF-16 pair、EDIT beforeinput 数据及 SELECT 取消
 顺序；next157-159 的失败/诊断包已由 next160 替代。默认 `javascript=0` 与 TEST13
-路径不变。当前 next161 候选继续按“存在性优先”接入 WM6 IME composition 纵切和
-TEST123；自动断言不等于真实 SIP 候选窗口输入验收。
+路径不变。next161 已接入 WM6 IME composition 纵切和 TEST123，但首轮设备运行在
+TEST13 第三段主文档 TLS 握手 EOF 时停止，TEST123 未执行。当前 next162 只为这类幂等
+主文档 GET 增加一次受限重试；自动断言不等于真实 SIP 候选窗口输入验收。
 
 **next154 设备门禁（已通过）**：在 `screen=640x480 dpi=192` 默认配置下通过
 TEST13/20/27/43/44/56/58-77/80-120，并记录 `TESTBENCH PASS`；TEST13 三段导航、
@@ -22,7 +23,7 @@ TEST13 不会新增脚本网络请求；next146 的页面级持久 context、nex
 next148 的原生表单事件桥、next149 的 EDIT 键盘事件桥和 next150 的 focusin/focusout
 桥、next151 的 beforeinput 桥、next152 的 SELECT 键盘桥、next153 的 WM_CHAR keypress
 桥、next154 的 WM_SYSKEY/WM_SYSCHAR、next156 的 BMP Unicode 与 next160 的代理对桥
-已完成设备门禁，但不能把它与完整浏览器 JavaScript 混为一谈。next161 开始接入基础
+已完成设备门禁，但不能把它与完整浏览器 JavaScript 混为一谈。next161/162 开始接入基础
 IME composition；`isComposing`、候选窗口/预编辑 UI 和完整 Input/Event API 仍未实现。
 
 **next153 设备验收（2026-08-08）**：在同一显式脚本 context 中把原生
@@ -296,7 +297,21 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   顺序、UTF-8 数据、target/bubble、cancelable/trusted 和 compositionstart 取消。自动环境
   不伪造系统 IME context，因此设备日志 PASS 后仍需一次真实 SIP 组合输入人工验收。
 - C89 专家脚本、仓库审计、VS2008 ARMV4I Debug 增量构建和
-  `C:\WMShare\Positron-next161` staging 已通过；完整设备日志通过前仍以 next160 为基线。
+  `C:\WMShare\Positron-next161` staging 已通过。首轮设备日志中 TEST13 前两段通过，第三段
+  Reserved Domains 在 HTTP 状态前被 peer 关闭 TLS 握手，TEST13 `2/3` 后停止；TEST123
+  根本未执行，故不能据此判定 IME 纵切。完整设备日志通过前仍以 next160 为基线。
+
+### 6ah. next162：主文档 TLS 握手 EOF 单次重试（待设备验收）
+
+- 只在 worker 线程为 `method=GET` 的主文档响应分类：`status=0`、空 body、错误包含
+  `ssl_handshake` 且属于 peer closed/EOF 时，释放失败响应、等待 250ms 并重发一次。
+- 明确不重试 POST、未知方法、DNS、HTTP 4xx/5xx、子资源和其他失败，避免扩大请求语义或
+  重放非幂等操作；TEST43 用离线探针固定允许/拒绝分类。
+- TEST13 自动日志和 UI 遥测新增 `document_retries`，便于区分“首发成功”和“受限恢复”；
+  现有网络、布局和 TEST123 断言均不放宽。
+- C89 专家脚本、脚本单测、仓库/文档审计、VS2008 ARMV4I Debug 增量构建及
+  `C:\WMShare\Positron-next162` staging/哈希核对已通过；待完整设备日志确认 TEST13
+  三段及 TEST123，之后仍需真实 SIP 人工验收。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 

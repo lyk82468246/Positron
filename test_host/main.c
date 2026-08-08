@@ -2214,6 +2214,7 @@ typedef struct pcore_navigation_stats {
     DWORD first_paint_ms;
     DWORD max_ui_slice_ms;
     int worker_rounds;
+    int document_retries;
     int document_bytes;
     int resources_queued;
     int resources_fetched;
@@ -3997,7 +3998,7 @@ static void testbench_log_navigation(
     _snprintf(body, sizeof(body) - 1,
             "completed=%d total/net/maxUI=%lu/%lu/%lums\n"
             "parse/style/images/layout/paint=%lu/%lu/%lu/%lu/%lums\n"
-            "resources queued/ok/fail/rounds=%d/%d/%d/%d bytes=%d\n"
+            "resources queued/ok/fail/rounds=%d/%d/%d/%d bytes=%d retry=%d\n"
             "core layout total=%lums box/first/settle/final="
             "%lu/%lu/%lu/%lums pass=%d\n"
             "box tree/image/reuse/markup-first=%lu/%lu/%u/%u\n"
@@ -4017,6 +4018,7 @@ static void testbench_log_navigation(
             request->stats.resources_failed,
             request->stats.worker_rounds,
             request->stats.resource_bytes,
+            request->stats.document_retries,
             (unsigned long) request->stats.core_layout.total_ms,
             (unsigned long) request->stats.core_layout.box_construct_ms,
             (unsigned long) request->stats.core_layout.first_layout_ms,
@@ -4570,10 +4572,29 @@ static PHttpResponse *pcore_navigation_get(
             pcore_navigation_progress, request);
 }
 
+static int pcore_navigation_retryable_document_response(
+        const pcore_navigation_request *request,
+        const PHttpResponse *response)
+{
+    const char *error;
+
+    if (request == NULL || response == NULL || request->method != 1 ||
+            response->status_code != 0 || response->body_len != 0) {
+        return 0;
+    }
+    error = response->error_msg;
+    if (strstr(error, "ssl_handshake:") == NULL) {
+        return 0;
+    }
+    return strstr(error, "peer closed mid-handshake") != NULL ||
+            strstr(error, "connection indicated an EOF") != NULL;
+}
+
 static PHttpResponse *pcore_navigation_fetch_document(
         pcore_navigation_request *request)
 {
     const char *headers[2];
+    PHttpResponse *response;
 
     if (request->method == 2 || request->method == 3) {
         headers[0] = (request->request_content_type != NULL) ?
@@ -4587,8 +4608,16 @@ static PHttpResponse *pcore_navigation_fetch_document(
                 headers, request->request_body, request->request_body_len,
                 pcore_navigation_progress, request);
     }
-    return pcore_navigation_get(request, request->host,
+    response = pcore_navigation_get(request, request->host,
             request->port, request->path);
+    if (pcore_navigation_retryable_document_response(request, response)) {
+        PHttp_FreeResponse(response);
+        request->stats.document_retries++;
+        Sleep(250);
+        response = pcore_navigation_get(request, request->host,
+                request->port, request->path);
+    }
+    return response;
 }
 
 static int pcore_navigation_response_error(
@@ -7470,7 +7499,7 @@ static BOOL test_browse(void)
                 "total/net/maxUI=%lu/%lu/%lums\n"
                 "parse/style/img/layout/paint=\n"
                 "%lu/%lu/%lu/%lu/%lums\n"
-                "res q/ok/f/r=%d/%d/%d/%d\n"
+                "res q/ok/f/r=%d/%d/%d/%d retry=%d\n"
                 "bytes doc/cache=%d/%d reject=%d\n"
                 "layout total=%lums pass=%d\n"
                 "box/first/settle/final/other=\n"
@@ -7488,6 +7517,7 @@ static BOOL test_browse(void)
                 g_nav_last_stats.resources_fetched,
                 g_nav_last_stats.resources_failed,
                 g_nav_last_stats.worker_rounds,
+                g_nav_last_stats.document_retries,
                 g_nav_last_stats.document_bytes,
                 g_nav_last_stats.resource_bytes,
                 g_nav_last_stats.budget_rejected,
@@ -10839,6 +10869,7 @@ static BOOL test43_navigation_resource_transaction(void)
 {
     pcore_navigation_request *request;
     pcore_navigation_resource *entry;
+    PHttpResponse retry_probe;
     char host[256];
     char path[1024];
     char *data;
@@ -10851,6 +10882,10 @@ static BOOL test43_navigation_resource_transaction(void)
     int hit_rc;
     int root_ok;
     int absolute_ok;
+    int retry_eof_ok;
+    int retry_dns_ok;
+    int retry_http_ok;
+    int retry_post_ok;
     char msg[256];
 
     request = (pcore_navigation_request *) malloc(sizeof(*request));
@@ -10862,6 +10897,27 @@ static BOOL test43_navigation_resource_transaction(void)
     cstr_copy(request->host, sizeof(request->host), "example.test");
     cstr_copy(request->path, sizeof(request->path), "/dir/page.html");
     request->port = 443;
+    request->method = 1;
+
+    memset(&retry_probe, 0, sizeof(retry_probe));
+    cstr_copy(retry_probe.error_msg, sizeof(retry_probe.error_msg),
+            "ssl_handshake: -0x7280 (peer closed mid-handshake)");
+    retry_eof_ok = pcore_navigation_retryable_document_response(request,
+            &retry_probe) == 1;
+    cstr_copy(retry_probe.error_msg, sizeof(retry_probe.error_msg),
+            "dns lookup failed");
+    retry_dns_ok = pcore_navigation_retryable_document_response(request,
+            &retry_probe) == 0;
+    retry_probe.status_code = 503;
+    retry_http_ok = pcore_navigation_retryable_document_response(request,
+            &retry_probe) == 0;
+    retry_probe.status_code = 0;
+    cstr_copy(retry_probe.error_msg, sizeof(retry_probe.error_msg),
+            "ssl_handshake: connection indicated an EOF");
+    request->method = 2;
+    retry_post_ok = pcore_navigation_retryable_document_response(request,
+            &retry_probe) == 0;
+    request->method = 1;
 
     port = 0;
     root_ok = resolve_url_from(request->host, request->path, request->port,
@@ -10919,14 +10975,18 @@ static BOOL test43_navigation_resource_transaction(void)
         entry->attempted = 1;   /* model one failed worker attempt */
     }
 
-    if (!root_ok || !absolute_ok || first_rc != 1 || duplicate_rc != 1 ||
+    if (!root_ok || !absolute_ok || !retry_eof_ok || !retry_dns_ok ||
+            !retry_http_ok || !retry_post_ok ||
+            first_rc != 1 || duplicate_rc != 1 ||
             request->resource_count != 2 || hit_rc != 0 ||
             hit_data == NULL || hit_len != 3 ||
             memcmp(hit_data, "css", 3) != 0 || entry == NULL ||
             pcore_navigation_pending_count(request) != 0) {
         _snprintf(msg, sizeof(msg) - 1,
-                "url=%d/%d rc=%d/%d/%d count=%d len=%d pending=%d",
-                root_ok, absolute_ok, first_rc, duplicate_rc, hit_rc,
+                "url=%d/%d retry=%d/%d/%d/%d rc=%d/%d/%d c=%d l=%d p=%d",
+                root_ok, absolute_ok, retry_eof_ok, retry_dns_ok,
+                retry_http_ok, retry_post_ok,
+                first_rc, duplicate_rc, hit_rc,
                 request->resource_count, hit_len,
                 pcore_navigation_pending_count(request));
         msg[sizeof(msg) - 1] = '\0';
@@ -10940,7 +11000,8 @@ static BOOL test43_navigation_resource_transaction(void)
     pcore_navigation_request_free(request);
     show_info(L"TEST 43 OK",
               "Navigation resource transaction: explicit origin URL resolve,\n"
-              "dedupe, copied cache hit and one-shot failure all passed.");
+              "dedupe, copied cache hit, one-shot failure and narrow idempotent\n"
+              "TLS handshake-EOF retry classification all passed.");
     return TRUE;
 }
 
