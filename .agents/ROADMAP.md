@@ -11,8 +11,9 @@
 已完成设备门禁，代理对和 IME/composition 仍未实现。
 next157 的设备验收失败：`C:\WMShare\Positron-next157\test_host.log` 中 TEST13 和
 TEST20/27/43/44/56/58-121 均通过，但 TEST122 失败，因此 next156 仍是设备基线。
-当前待验收候选为 next158：行为不变，只为 TEST122 输出实际 result 文本长度和值；包必须
-先通过同包日志和 TEST13 人工复查，不能把自动断言放宽成“通过”。
+next158 已完成诊断：WM 代理对合并和标量代码正确，但 Duktape 将直接注入的四字节 UTF-8
+暴露成长度 1 的非标准 ECMAScript 字符。当前待验收候选为 next159：只在事件 JSON 中把
+non-BMP 标量改写成两个 `\uXXXX`，由 Duktape 恢复 CESU-8/UTF-16 语义；断言不放宽。
 
 **next154 设备门禁（已通过）**：在 `screen=640x480 dpi=192` 默认配置下通过
 TEST13/20/27/43/44/56/58-77/80-120，并记录 `TESTBENCH PASS`；TEST13 三段导航、
@@ -262,13 +263,21 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   TEST122 失败；TEST13 与 TEST20/27/43/44/56/58-121 通过。next157 不能写成设备
   基线，也不能宣称完成完整 Unicode/IME/Keyboard API。
 
-### 6ad. next158：TEST122 结果诊断（待设备验收）
+### 6ad. next158：TEST122 结果诊断（已完成）
 
 - 保持 next157 的事件桥和断言不变，只在 result 读取失败或内容不匹配时记录实际 UTF-8
   文本长度及前缀，先确认失败发生在 native 消息入口、Duktape UTF-16 语义还是期望序列。
-- C89、仓库审计、VS2008 ARMV4I Debug 增量构建和 `C:\WMShare\Positron-next158`
-  staging 已通过；等待设备日志。诊断完成前不修改 TEST122 期望值，不接入默认
-  `javascript=0` 的 TEST13。
+- 设备日志显示实际 `keyCode/charCode` 为正确标量，但 `key/data` 的 length 为 1，
+  `charCodeAt(0)` 直接返回 non-BMP 标量；这与 ECMAScript UTF-16 语义不符。TEST13 与
+  TEST20-121 通过，next156 继续作为基线。
+
+### 6ae. next159：事件 JSON non-BMP CESU-8 适配（待设备验收）
+
+- 事件 JSON 转义器识别合法四字节 UTF-8 标量，将其写成一对 JSON `\uXXXX`；Duktape
+  decoder 因而建立两个 CESU-8 代理项。BMP/ASCII 原样保留，标量 keyCode/charCode、
+  原生默认动作和 TEST122 期望值均不变。
+- C89 专家脚本为 `0 change(s)`；仓库审计、VS2008 ARMV4I Debug 增量构建和
+  `C:\WMShare\Positron-next159` staging 已通过。默认 `javascript=0` 与 TEST13 不变。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -696,10 +705,10 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 ## 建议执行顺序
 
 1. 以 next156 的 TEST13/20/27/43/44/56/58-77/80-121 设备日志作为已验证自动化基线；
-   先检查 next158 的 TEST122 诊断，后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+   先验收 next159 的 TEST122 修复，后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
 2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
-   WM_SYSKEY/WM_SYSCHAR 和 next156 的 BMP 字符桥已完成设备门禁；先验收 next157
-   的代理对桥；若 next158 仍失败，则记录为暂挂方向，再单独评估 IME/composition。
+   WM_SYSKEY/WM_SYSCHAR 和 next156 的 BMP 字符桥已完成设备门禁；先验收 next159
+   修复后的代理对桥，再单独评估 IME/composition。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。

@@ -4626,6 +4626,9 @@ static int pcore_browser_script_json_escape(const char *value, char *out,
     static const char HEX[] = "0123456789abcdef";
     const unsigned char *p;
     unsigned char c;
+    unsigned int codepoint;
+    unsigned int high;
+    unsigned int low;
     int used;
 
     if (out == NULL || capacity <= 0) {
@@ -4670,6 +4673,36 @@ static int pcore_browser_script_json_escape(const char *value, char *out,
             out[used++] = '0';
             out[used++] = HEX[c >> 4];
             out[used++] = HEX[c & 0x0f];
+        } else if (c >= 0xf0 && c <= 0xf4 && p[1] != '\0' &&
+                p[2] != '\0' && p[3] != '\0' &&
+                (p[1] & 0xc0) == 0x80 &&
+                (p[2] & 0xc0) == 0x80 &&
+                (p[3] & 0xc0) == 0x80 &&
+                !(c == 0xf0 && p[1] < 0x90) &&
+                !(c == 0xf4 && p[1] > 0x8f)) {
+            if (used + 12 >= capacity) {
+                return -1;
+            }
+            codepoint = ((unsigned int) (c & 0x07) << 18) |
+                    ((unsigned int) (p[1] & 0x3f) << 12) |
+                    ((unsigned int) (p[2] & 0x3f) << 6) |
+                    (unsigned int) (p[3] & 0x3f);
+            codepoint -= 0x10000U;
+            high = 0xd800U + (codepoint >> 10);
+            low = 0xdc00U + (codepoint & 0x3ffU);
+            out[used++] = '\\';
+            out[used++] = 'u';
+            out[used++] = HEX[(high >> 12) & 0x0f];
+            out[used++] = HEX[(high >> 8) & 0x0f];
+            out[used++] = HEX[(high >> 4) & 0x0f];
+            out[used++] = HEX[high & 0x0f];
+            out[used++] = '\\';
+            out[used++] = 'u';
+            out[used++] = HEX[(low >> 12) & 0x0f];
+            out[used++] = HEX[(low >> 8) & 0x0f];
+            out[used++] = HEX[(low >> 4) & 0x0f];
+            out[used++] = HEX[low & 0x0f];
+            p += 3;
         } else {
             if (used + 1 >= capacity) {
                 return -1;
