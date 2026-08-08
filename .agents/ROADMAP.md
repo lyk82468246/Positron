@@ -1,13 +1,11 @@
 # Positron Roadmap
 
-更新时间：2026-08-07
-基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next142 在 `screen=240x320 dpi=96` 日志中确认 TEST13/20/27/43/44/56/58-77/80-104 通过并记录 `TESTBENCH PASS`，next141 已在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58-74。next143 又加入独立 public-domain C89 regex adapter 与 TEST105-109 的 ASCII `pattern` validity，当前只有 ARMV4I 构建结果，设备验收待补。next135 的表单长度约束、next136 的 TEST59 CSS 参考上下文修复、next137 的非整数 DPI 设备像素换算、next138 的 TEST60、next139 的 TEST63、next141 的 TEST62 和 next142 的 TEST75 均已有构建或设备结果。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
+更新时间：2026-08-08
+基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next143 在 `screen=480x640 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-109 通过并记录 `TESTBENCH PASS`。该批包含独立 public-domain C89 regex adapter 与 TEST105-109 的 ASCII `pattern` validity，并修复 TEST108 暴露的字符类末尾字面量连字符问题。next135 的表单长度约束、next136 的 TEST59 CSS 参考上下文修复、next137 的非整数 DPI 设备像素换算、next138 的 TEST60、next139 的 TEST63、next141 的 TEST62 和 next142 的 TEST75 均已有构建或设备结果。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
 
-**当前开发门禁（next143）**：next141 在 `screen=320x320 dpi=128` 下通过
-TEST13/20/27/43/44/56/58-74，next142 修正 TEST75 后在 `screen=240x320 dpi=96`
-默认配置下通过 TEST13/20/27/43/44/56/58-77/80-104，并记录 `TESTBENCH PASS`。
-next143 的默认配置已扩展到 TEST109，设备运行前不能把 pattern 结果记为通过。
-下一批设备应轮换另一组分辨率/DPI；不能把 96 DPI 当作产品固定值，并保留日志头部。
+**当前开发门禁（next143）**：在 `screen=480x640 dpi=192` 默认配置下通过
+TEST13/20/27/43/44/56/58-77/80-109，并记录 `TESTBENCH PASS`。下一批设备继续轮换
+分辨率/DPI；不能把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
 
 ## 总原则
 
@@ -24,7 +22,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 当前新增功能优先级：
 
-1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；next135 又加入 `minlength`/`maxlength`，并已随 next142 在 `screen=240x320 dpi=96` 设备确认；next143 加入受限 ASCII `pattern` validity，设备验收待补。完整 JavaScript 正则、类型/范围约束、custom validity 与 `invalid` 事件仍在后续扩展，不阻塞更大的“有无”缺口。
+1. **表单交互纵切**：next93 至 next109 已依次完成 checkbox/radio、text/password、textarea、single/multiple select、button、提交/reset/Enter/label、multipart/file、首批 `required/valueMissing` 与动态表单伪类；next135 又加入 `minlength`/`maxlength`，next143 加入受限 ASCII `pattern` validity，均已通过设备门禁。完整 JavaScript 正则、类型/范围约束、custom validity 与 `invalid` 事件仍在后续扩展，不阻塞更大的“有无”缺口。
 2. **事件基础**：next110/TEST74 已建立通用事件对象的目标链、捕获/目标/冒泡、取消、停止传播、listener 生命周期与宿主 click default-action 边界。下一步不是继续雕刻事件边角，而是在专用 Mouse/Keyboard/Focus/Input 数据与 JS 绑定之前先推进重大布局或脚本资源接口。
 3. **重大布局“有无”**：next111/TEST75 已接入基础 relative/absolute positioning，next113/TEST76 又补齐 CSS `:hover` 的宿主状态桥；next115 与 next116 的 float 候选均因 TEST79/TEST13 真实回归撤回。Float 方向暂挂，下一次重大布局实验改评估基础 Grid 或背景尺寸/重复，并继续保留 TEST13 深链门禁。
 4. **资源类型补齐**：脚本资源发现/下载/缓存接口已完成；next118 先把独立 JavaScript runtime DLL 做成其他 WM 程序可调用的最小产品面，再由后续批次评估浏览器消费；网页字体不扩展为普通语言字体工程。
@@ -76,7 +74,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - next142 只把 TEST75 的固定 `180/120/20/30/25/15/100/50/20/12px` 断言改为 `MulDiv(css_px, dpi, 96)`，保留定位构盒、绘制和可见页面路径。
 - C89 回归、仓库审计、VS2008 `Debug|Windows Mobile 6 Professional SDK (ARMV4I)` 增量构建、staging 和 `screen=240x320 dpi=96` 设备验收均通过；日志为 `TESTBENCH PASS`。下一批轮换分辨率/DPI 后再继续存在性优先的能力。
 
-### 6o. next143：表单 pattern 约束（待设备验收）
+### 6o. next143：表单 pattern 约束（已设备验收）
 
 - `PCoreFormValidationInfo` 新增 `PCORE_VALIDITY_PATTERN_MISMATCH`；text/password
   input 的非空值现在参与 `pattern` constraint validation，动态
@@ -86,10 +84,13 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   只接受 ASCII literals、`.`、anchors、`* + ?`、literal/range classes 及
   `\\d/\\D/\\s/\\S/\\w/\\W`；非法或超范围 pattern 保守忽略，不伪装成完整 JavaScript
   RegExp。textarea、empty value、disabled、readonly 的既有例外保持不变。
-- TEST105-109 覆盖静态 mismatch、动态更新、豁免/坏属性、转义与长度 flags 组合；
-  `scripts/test_c89ize.py`、`scripts/audit_repo.py` 和 VS2008 ARMV4I 增量构建已通过。
-  设备验收时运行默认 `tests=...80-109`，先确认 TEST13/20/27/43/44/56/58-104 无回归，
-  再检查 TEST105-109 的 flags 与提交恢复。
+- TEST105-109 覆盖静态 mismatch、动态更新、豁免/坏属性、转义与长度 flags 组合。
+  首轮 TEST108 将 digit、range/literal class 和 escaped punctuation 拆成独立 fixture 后，
+  定位到 `tiny-regex-c` 在 `[A-Z0-9-]+` 中遇到较早的范围连字符便错误返回；本地补丁让
+  扫描继续到字符类末尾的字面量连字符，未放宽 pattern 断言。
+- `scripts/test_c89ize.py`、`scripts/audit_repo.py`、VS2008 ARMV4I 增量构建与 staging
+  通过；最终 `screen=480x640 dpi=192` 默认设备批次通过 TEST13/20/27/43/44/56/
+  58-77/80-109，并记录 `TESTBENCH PASS`。
 
 ### 6g. next124：独立脚本 global/JSON 调用桥（已设备验收，纳入 next134）
 
@@ -372,7 +373,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - `border-collapse` 的 col/colgroup 来源及更多复杂表边界；next64-65/TEST53-54 已覆盖基本冲突、span 终止边与 row-group 边界
 - overflow scrollbar 的惯性触摸、overlay 模式与更多嵌套组合
 - float 邻接 marker、自定义 `@counter-style` 与完整 CSS Lists
-- forms/widgets 剩余部分：`pattern`、类型语法、min/max/step/minlength、custom validity、`invalid` 事件、验证气泡、完整事件取消/传播与焦点状态；multipart/file、WM 多选列表与首批 required 已由 TEST70-72 通过设备门禁
+- forms/widgets 剩余部分：完整 JavaScript RegExp、类型语法、min/max/step、custom validity、`invalid` 事件、验证气泡、专用事件数据与完整 HTML activation；multipart/file、WM 多选列表、首批 required、minlength/maxlength 与受限 ASCII pattern 已通过设备门禁
 
 建议按真实页面痛点推进，不一次性铺开。
 

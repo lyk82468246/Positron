@@ -16726,40 +16726,83 @@ static BOOL test107_form_pattern_exemptions(void)
     return TRUE;
 }
 
-static BOOL test108_form_pattern_escapes(void)
+static int test108_pattern_case(const char *html, const char *bad_value,
+        const char *good_value)
 {
-    static const char HTML[] =
-        "<!doctype html><html><body><form action=/escapes method=get>"
-        "<input name=digit value=42 pattern=\"\\d+\">"
-        "<input name=code value=AB-12 pattern=\"[A-Z0-9-]+\">"
-        "<input name=literal value=a.b pattern=\"a\\.b\">"
-        "<button type=submit name=go value=send>Send</button>"
-        "</form></body></html>";
     HANDLE document;
     HANDLE sheet;
     PCoreFormValidationInfo validation;
     int submit_x;
     int submit_y;
+    int result;
 
     document = NULL;
     sheet = NULL;
+    result = 0;
     memset(&validation, 0, sizeof(validation));
-    if (!test100_form_prepare(HTML, &document, &sheet,
-            &submit_x, &submit_y) ||
-            !PCore_FormValidationAt(document, submit_x, submit_y,
-                    &validation) || !validation.valid ||
-            PCore_TextInputSetValue(document, 0, "4x") != 0 ||
+    if (!test100_form_prepare(html, &document, &sheet,
+            &submit_x, &submit_y)) {
+        result = 1;
+    } else if (!PCore_FormValidationAt(document, submit_x, submit_y,
+            &validation) || !validation.valid) {
+        result = 2;
+    } else if (PCore_TextInputSetValue(document, 0, bad_value) != 0 ||
             !PCore_FormValidationAt(document, submit_x, submit_y,
                     &validation) || validation.valid ||
             validation.first_flags != PCORE_VALIDITY_PATTERN_MISMATCH ||
-            PCore_TextInputSetValue(document, 0, "42") != 0 ||
+            PCore_TextInputSetValue(document, 0, good_value) != 0 ||
             !PCore_FormValidationAt(document, submit_x, submit_y,
                     &validation) || !validation.valid) {
-        test100_form_cleanup(document, sheet);
-        show_error(L"TEST 108 FAIL", "pattern escapes or literal matching failed");
-        return FALSE;
+        result = 3;
     }
     test100_form_cleanup(document, sheet);
+    return result;
+}
+
+static BOOL test108_form_pattern_escapes(void)
+{
+    static const char DIGIT_HTML[] =
+        "<!doctype html><html><body><form action=/digit method=get>"
+        "<input name=digit value=42 pattern=\"\\d+\">"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    static const char RANGE_HTML[] =
+        "<!doctype html><html><body><form action=/range method=get>"
+        "<input name=code value=AB-12 pattern=\"[A-Z0-9-]+\">"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    static const char LITERAL_HTML[] =
+        "<!doctype html><html><body><form action=/literal method=get>"
+        "<input name=literal value=a.b pattern=\"a\\.b\">"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    char detail[128];
+    int result;
+
+    result = test108_pattern_case(DIGIT_HTML, "4x", "42");
+    if (result != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "digit escape case failed at stage %d", result);
+        detail[sizeof(detail) - 1] = '\0';
+        show_error(L"TEST 108 FAIL", detail);
+        return FALSE;
+    }
+    result = test108_pattern_case(RANGE_HTML, "AB_X", "AB-12");
+    if (result != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "range class case failed at stage %d", result);
+        detail[sizeof(detail) - 1] = '\0';
+        show_error(L"TEST 108 FAIL", detail);
+        return FALSE;
+    }
+    result = test108_pattern_case(LITERAL_HTML, "axb", "a.b");
+    if (result != 0) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "escaped punctuation case failed at stage %d", result);
+        detail[sizeof(detail) - 1] = '\0';
+        show_error(L"TEST 108 FAIL", detail);
+        return FALSE;
+    }
     show_info(L"TEST 108 OK",
             "digit escape, literal/range classes and escaped punctuation "
             "matched full input values.");

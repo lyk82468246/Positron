@@ -1,8 +1,12 @@
 # Positron Current Handoff
 
-更新时间：2026-08-07
+更新时间：2026-08-08
 当前分支：`main`  
-当前开发候选：next143 已完成 ARMV4I 增量构建与默认 testbench 扩展；设备验收待补。next137 已在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，
+当前开发基线：next143 已在 `screen=480x640 dpi=192` 下完成默认 testbench，
+TEST13/20/27/43/44/56/58-77/80-109 全部通过并记录 `TESTBENCH PASS`。TEST108 首轮
+设备运行定位到 vendored `tiny-regex-c` 对 `[A-Z0-9-]+` 末尾字面量连字符的错误处理；
+本地补丁不再在较早的范围连字符处提前返回，并由三个独立 pattern fixture 复验。
+next137 已在 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58/59，
 next138 隔离 TEST60 后通过，next139 隔离 TEST63 后通过；next141 在
 `screen=320x320 dpi=128` 下通过 TEST13/20/27/43/44/56/58-74，next142 修正 TEST75
 后在 `screen=240x320 dpi=96` 默认配置下完成 TEST13/20/27/43/44/56/58-77/80-104，
@@ -82,6 +86,13 @@ DPI，并把原本 96-DPI 的 `14..24px` 控件基准用 `MulDiv(..., dpi, 96)` 
 偏移和相对定位结果；定位构盒与可见渲染路径未改变。ARMV4I 构建、
 `C:\WMShare\Positron-next142` staging 和 `screen=240x320 dpi=96` 设备验收均已通过，
 TESTBENCH 通过。
+
+**next143（2026-08-08）**：`PCoreFormValidationInfo` 新增受限 ASCII
+`patternMismatch`，TEST105-109 覆盖静态/动态 mismatch、豁免与坏属性、digit escape、
+literal/range class、escaped punctuation 以及长度 flags 组合。首轮 TEST108 暴露
+`tiny-regex-c` 在字符类中匹配 `-` 时会在第一个范围运算符处提前失败；本地补丁让扫描
+继续寻找末尾字面量。VS2008 ARMV4I 构建和 `C:\WMShare\Positron-next143` staging
+通过，最终 `screen=480x640 dpi=192` 默认设备批次全部 PASS。
 
 2026-08-07 的 next126 设备日志记录为 `screen=320x320 dpi=128`：TEST13 的
 `example.com`、IANA Example Domains、IANA Reserved Domains 三段导航均完成，随后
@@ -212,7 +223,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前恢复为 next114 浏览器基线，并追加独立脚本 DLL 的 TEST80-99、表单长度 TEST100-104 与 next143 的 TEST105-109，使用 `tests=13,20,27,43,44,56,58-77,80-109`；next134 已由设备确认 TEST84-99，next135 的 TEST100-104 已随 next142 默认批次设备确认，next143 的 TEST105-109 仍待设备验收。TEST79/float 候选已撤回，next121 的 TEST83 已由设备确认通过。自动日志会在开头写入 screen/DPI；若 TEST20 仍显示 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 当前恢复为 next114 浏览器基线，并追加独立脚本 DLL 的 TEST80-99、表单长度 TEST100-104 与 next143 的 TEST105-109，使用 `tests=13,20,27,43,44,56,58-77,80-109`；next143 已在 `screen=480x640 dpi=192` 下完成整个默认批次。TEST79/float 候选已撤回，next121 的 TEST83 已由设备确认通过。自动日志会在开头写入 screen/DPI；若 TEST20 仍显示 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。
