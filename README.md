@@ -1,15 +1,16 @@
 # Positron
 
-**next154 候选（设备待验收，2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
+**最新设备门禁（next154，2026-08-08）**：在保持默认 `javascript=0` 和 TEST13
 网络路径不变的前提下，显式脚本 context 中的原生 EDIT/SELECT 新增
 `WM_SYSKEYDOWN/UP` 与 ASCII `WM_SYSCHAR` 事件桥；桥显式记录 system-key 的
 `altKey`，不依赖桌面线程的 `GetKeyState`，并沿用现有 target/bubble/cancel ABI。
 TEST120 覆盖 EDIT/SELECT 的 `keydown/keyup/keypress`、ArrowLeft/ArrowRight、Alt
-元数据和取消 SELECT 默认动作。C89、仓库审计和 VS2008 ARMV4I Debug 增量构建已通过，
-设备 staging/`screen` 与 DPI 轮换验收待用户运行；这不是 IME/composition 或完整
-Keyboard/Event API 的实现。候选包将位于 `C:\WMShare\Positron-next154`。
+元数据和取消 SELECT 默认动作。C89、仓库审计、VS2008 ARMV4I Debug 增量构建、staging
+和 `screen=640x480 dpi=192` 设备验收均通过，日志为 `TESTBENCH PASS`，位于
+`C:\WMShare\Positron-next154\test_host.log`。这不是 IME/composition 或完整
+Keyboard/Event API 的实现。
 
-**最新设备门禁（next153，2026-08-08）**：next153 在 `screen=640x480 dpi=192`
+**next153 设备门禁（2026-08-08）**：next153 在 `screen=640x480 dpi=192`
 设备上完成默认配置，TEST13、20、27、43、44、56、58-77、80-119 全部通过并记录
 `TESTBENCH PASS`。TEST13 的 example.com、IANA Example Domains、IANA Reserved
 Domains 三段导航均完成；TEST112 确认页面级 script context 的后续求值，TEST113 确认
@@ -378,7 +379,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-119
+tests=13,20,27,43,44,56,58-77,80-120
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。

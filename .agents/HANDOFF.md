@@ -2,11 +2,12 @@
 
 更新时间：2026-08-08
 当前分支：`main`  
-当前候选：next154 已完成 C89、仓库审计和 VS2008 ARMV4I Debug 增量构建，设备验收待运行；
+当前设备基线：next154 已完成 C89、仓库审计、VS2008 ARMV4I Debug 增量构建、staging
+和设备验收；
 新增显式脚本 context 下 EDIT/SELECT 的 `WM_SYSKEYDOWN/UP`、ASCII `WM_SYSCHAR` 和
-`altKey` 事件元数据桥，TEST120 待设备确认。IME/composition 未实现，默认
+`altKey` 事件元数据桥，TEST120 已通过。IME/composition 未实现，默认
 `javascript=0` 与 TEST13 路径不变。
-最新设备基线：next153 已在 `screen=640x480 dpi=192` 下完成默认 testbench，
+上一设备基线：next153 已在 `screen=640x480 dpi=192` 下完成默认 testbench，
 TEST13/20/27/43/44/56/58-77/80-119 全部通过并记录 `TESTBENCH PASS`。该批在默认关闭的
 browser JavaScript 门之上新增 TEST111；TEST13 三段导航保持正常。TEST108 首轮
 设备运行定位到 vendored `tiny-regex-c` 对 `[A-Z0-9-]+` 末尾字面量连字符的错误处理；
@@ -20,12 +21,12 @@ staging 和该设备验收均已通过；下一批应轮换分辨率/DPI。当�
 
 失败/暂挂总索引见 [`FAILED_EXPERIMENTS.md`](./FAILED_EXPERIMENTS.md)。接手时先查该索引，再查本文件的当前基线；不要只依据某个旧包里的自动 `OK`。
 
-当前交接基线：next153 已完成统一 script sequence ABI、external resource worker round、
+当前交接基线：next154 已完成统一 script sequence ABI、external resource worker round、
 按 DOM 顺序执行 external/inline classic scripts、页面级 context、click/表单/EDIT 键盘
-事件桥、focusin/focusout 桥、beforeinput 桥、SELECT 键盘桥、WM_CHAR keypress 桥和
-TEST111-119；ARMV4I 增量构建、C89、仓库审计与 `screen=640x480 dpi=192` 设备验收均已
-通过。默认 `javascript=0`，因此不改变 TEST13 的网络路径。next154 仅是待验收候选，
-其 WM_SYSKEY/WM_SYSCHAR 桥不应在设备日志通过前写成已完成能力。
+事件桥、focusin/focusout 桥、beforeinput 桥、SELECT 键盘桥、WM_CHAR keypress 桥、
+WM_SYSKEY/WM_SYSCHAR 桥和 TEST111-120；ARMV4I 增量构建、C89、仓库审计与
+`screen=640x480 dpi=192` 设备验收均已通过。默认 `javascript=0`，因此不改变 TEST13
+的网络路径。
 
 **next153 设备验收（2026-08-08）**：新增原生 EDIT/SELECT `WM_CHAR -> keypress` 桥，
 TEST119 覆盖 synthetic SELECT、真实 EDIT/SELECT WM 消息、target/bubble 元数据和
@@ -33,11 +34,12 @@ TEST119 覆盖 synthetic SELECT、真实 EDIT/SELECT WM 消息、target/bubble �
 `screen=640x480 dpi=192` 设备验收均已通过。默认 `javascript=0`、TEST13 路径及
 next152 已验收的 SELECT keydown/keyup 行为不变。
 
-**next154 候选（2026-08-08，设备待验收）**：新增原生 EDIT/SELECT
+**next154 设备验收（2026-08-08）**：新增原生 EDIT/SELECT
 `WM_SYSKEYDOWN/UP`、ASCII `WM_SYSCHAR` 的显式 system-key 事件入口，沿用
 `PCoreKeyEventData` 并明确 `altKey=true`；TEST120 覆盖 target/bubble、取消 SELECT
-默认动作和事件元数据。C89、仓库审计、ARMV4I 增量构建已通过，待 staging 后在轮换
-分辨率/DPI 的设备上执行；不要把它表述为 IME/composition 或完整 Keyboard/Event API。
+默认动作和事件元数据。C89、仓库审计、ARMV4I 增量构建、staging 与
+`screen=640x480 dpi=192` 设备日志均已通过；日志为 `TESTBENCH PASS`。不要把它表述为
+IME/composition 或完整 Keyboard/Event API。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 的 WM 键盘消息已
 加入宿主侧子类桥，TEST118 同时覆盖公开 SELECT 键盘事件 ABI 与真实 `WM_KEYDOWN/UP`
@@ -318,7 +320,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-120`；next153 是 `screen=640x480 dpi=192` 的已验收基线，next154 的 TEST120 仍待设备验收。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、next149 的 EDIT 键盘 bridge、next150 的 focusin/focusout bridge、next151 的 beforeinput bridge、next152 的 SELECT keydown/keyup bridge、next153 的 WM_CHAR keypress bridge 和 next154 候选的 WM_SYSKEY/WM_SYSCHAR bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-120`；next154 已在 `screen=640x480 dpi=192` 下完成设备验收并记录 `TESTBENCH PASS`。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、next149 的 EDIT 键盘 bridge、next150 的 focusin/focusout bridge、next151 的 beforeinput bridge、next152 的 SELECT keydown/keyup bridge、next153 的 WM_CHAR keypress bridge 和 next154 的 WM_SYSKEY/WM_SYSCHAR bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。
