@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 143
+#define TEST_MAX_NUMBER 144
 
 static int test_config_space(char c)
 {
@@ -6279,7 +6279,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "if(!isFinite(n)||Math.floor(n)!==n||n < -15||n > 15){return;}"
         "__pcoreNavigation({op:'go',delta:n});}};"
         "Object.defineProperty(phistory,'length',{get:function(){"
-        "return phistoryLength;},enumerable:true});g.history=phistory;"
+        "return phistoryLength;},enumerable:true});"
+        "Object.defineProperty(phistory,'state',{get:function(){"
+        "return null;},enumerable:true});g.history=phistory;"
         "})(this);";
     pcore_browser_script_bridge bridge_storage;
     pcore_browser_script_bridge *bridge;
@@ -23733,6 +23735,82 @@ static BOOL test143_browser_script_history_length(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 144 - read-only initial browser script history.state            */
+/* -------------------------------------------------------------------- */
+static BOOL test144_browser_script_history_state(void)
+{
+    static const char URL[] = "https://example.com/";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var before=history.state;history.state={x:1};"
+        "var descriptor=Object.getOwnPropertyDescriptor(history,'state');"
+        "var returned=history.go(0);"
+        "document.getElementById('result').textContent="
+        "String(before===null)+'|'+String(history.state===null)+'|'"
+        "+String(typeof descriptor.set==='undefined')+'|'"
+        "+String(returned);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] = "true|true|true|undefined";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[128];
+    char error[256];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browse_history_reset();
+    pcore_browse_history_commit_navigation(URL, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0 || result_bytes != 24 ||
+            bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_GO ||
+            bridge->navigation_delta != 0 ||
+            bridge->navigation_url != NULL ||
+            g_browse_history.count != 1 || g_browse_history.index != 0 ||
+            PScript_GetNativeFunctionCount(runtime) != 14) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 144 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 144 OK",
+            "history.state is a read-only null value for documents\n"
+            "without state mutation support, and synchronous go(0)\n"
+            "does not change the exposed state or history entry.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -23995,6 +24073,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 141: ok = test141_browser_script_history_forward(); break;
         case 142: ok = test142_browser_script_history_go(); break;
         case 143: ok = test143_browser_script_history_length(); break;
+        case 144: ok = test144_browser_script_history_state(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
