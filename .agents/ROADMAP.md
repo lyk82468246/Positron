@@ -2,14 +2,14 @@
 
 更新时间：2026-08-09
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前设备基线为 next164：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-132 全部通过并记录 `TESTBENCH PASS`。TEST122 已确认
-WM UTF-16 代理对合并、ECMAScript UTF-16 pair、EDIT beforeinput 数据及 SELECT 取消
-顺序；TEST124-128 又确认 isComposing Ex ABI、DOM text/attribute、表单 value 和 live
-checked；TEST129-132 又确认脚本事件 target/currentTarget、id/className、classList 和
-style。next157-163 的失败/诊断/网络恢复候选已由 next164 替代。默认 `javascript=0`
-与 TEST13 路径不变；自动断言不等于真实 SIP 候选窗口输入或视觉验收。next164 已设备
-验收。
+当前自动化设备基线为 next168：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-136 全部通过，计 84 条 OK、零 ERROR，并记录
+`TESTBENCH PASS`。next167 的高 DPI interaction restyle 修复和 Learn More/SIP 定向
+人工结果继续有效；next168 新增成功-GET URL 历史和左键后退。人工视觉/交互改为累计
+若干可能产生异常的批次后集中验收，不再逐批阻塞自动基线。默认 `javascript=0` 与
+TEST13 目标不变；TEST123 本身仍只覆盖自动共享路径。崩溃、数据错误、严重版式破坏或
+阻塞核心交互不等待累计窗口。自动设备基线通过后提交并推送 scoped tracked 改动，始终
+排除本地 `tmp/` 截图。
 
 **next154 设备门禁（已通过）**：在 `screen=640x480 dpi=192` 默认配置下通过
 TEST13/20/27/43/44/56/58-77/80-120，并记录 `TESTBENCH PASS`；TEST13 三段导航、
@@ -32,11 +32,19 @@ TESTBENCH PASS 结束，人工视觉检查仍是独立门槛。
 next165 设备验收在 TEST110 的 DOM bootstrap 阶段失败：六个新增 JS 原生入口
 超过既有 16 槽位上限，TEST133-135 没有执行，因此 next165 不能成为基线。
 
-当前待验收候选是 next166：保留 TEST133-135 的 input/textarea defaultValue、
+next166 已通过设备验收：保留 TEST133-135 的 input/textarea defaultValue、
 input defaultChecked 和 select.selectedIndex 读写、-1 清空及越界拒绝，只把
 六个 JS bridge 入口合并为一个按操作分发的入口。它不改变默认 javascript=0
-或 TEST13 网络路径；C89、ARMV4I Debug 增量构建和 staging 已通过，等待设备
-自动日志与人工检查。
+或 TEST13 网络路径；320x320/128 DPI 自动日志以 TESTBENCH PASS 结束。
+
+next167 已通过设备验收：interaction/form restyle 统一重申设备物理宽高和 DPI，
+避免高 DPI 后续 layout 退回 legacy CSS viewport。TEST76 增加两次交互重排几何回归，
+用户人工确认真实 Learn More 点击的离开页边距，随后 480x640/192 DPI 全自动门禁通过。
+
+next168 已通过自动设备门：在不改 core ABI 的前提下给 Browse 宿主增加有界成功-GET URL 历史，
+左方向键重载上一项；TEST136 固定成功提交、失败不移动、POST 豁免与 forward branch
+截断。它不实现页面缓存、前进 UI、持久历史或 JavaScript History API；人工左键路径
+进入累计人工检查清单。
 
 **当前阶段（next163 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
@@ -369,15 +377,38 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   PSCRIPT_MAX_NATIVE_FUNCTIONS=16，所以设备在 TEST110 停止，TEST133-135
   没有执行；next165 不能作为基线。
 
-### 6al. next166：表单属性 bridge 槽位合并（待设备验收）
+### 6al. next166：表单属性 bridge 槽位合并（设备验收通过）
 
 - 保留 input/textarea defaultValue、input defaultChecked、select
   selectedIndex 以及 TEST133-135 的边界断言。
 - JS bridge 将六个新增入口合并为一个按操作分发的原生函数，继续保留脚本
   引擎的 16 槽位限制，并让既有 TEST110-132 bootstrap 正常注册事件入口。
-- 默认 javascript=0、TEST13 网络路径和 next164 Browse 基线不变；C89、审计、
-  ARMV4I 增量构建与 C:\WMShare\Positron-next166 staging 已完成，等待设备自动
-  日志和人工检查。
+- 默认 javascript=0、TEST13 网络路径不变；C89、审计、ARMV4I 构建和 staging
+  已完成。`screen=320x320 dpi=128` 自动日志中 TEST110、TEST133-135 及完整选定门禁
+  均通过，最终为 `TESTBENCH PASS`。
+
+### 6am. next167：高 DPI 交互重排保持设备视口（设备验收通过）
+
+- 真实点击 Learn More 会先设置 focus/active 并触发 cache-only restyle；旧宿主在随后
+  layout 时可能退回 legacy `PCore_SetViewport(physical width)`，把高 DPI 物理像素宽度
+  当成 CSS 视口，使离开页短暂贴左并溢出。TEST13 的 direct navigation 不经过该路径。
+- `pcore_restyle_form_state` 现在通过统一 helper 重申物理客户区与设备 DPI，再执行
+  style/layout；core ABI、默认脚本开关和导航事务不变。
+- TEST76 在 640x480/192 DPI 夹具上连续模拟 active 与 clear 两次重排，断言 25 CSS px
+  inset 始终对应 x=50、width=540。用户人工确认真实 Learn More 点击后离开页仍居中；
+  `screen=480x640 dpi=192` 的 next167 自动日志 83 OK、零 ERROR、最终 PASS；同包真实
+  SIP 候选词点击也已由用户人工确认可完整键入候选词。
+
+### 6an. next168：Browse 有界成功-GET 后退历史（自动设备验收通过）
+
+- 宿主保存最多 16 个成功换入的 GET URL；导航请求创建或网络/解析/style/layout 失败时
+  不移动历史位置，POST/multipart 不入栈，同 URL 不重复，回退后新链接截断前向分支。
+- 无 native EDIT/SELECT 焦点时，渲染窗口的左方向键重载上一 URL。旧 document 在新页
+  完成前仍保留，符合既有导航事务；没有增加页面对象缓存、前进键、持久化或 History API。
+- TEST136 离线覆盖 A→B→C、失败回退保持 C、提交到 B、B→D 截断 C、继续退到 A 和
+  POST 豁免。默认 javascript=0、TEST13 三段网络序列与 core DLL 均不变；C89、审计、
+  ARMV4I Debug 构建、next168 staging 和源/包哈希一致性已通过；640x480/192 DPI 日志
+  得到 TEST136 OK、84 OK、零 ERROR 与最终 PASS。真实左键后退留到累计人工批次。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -804,11 +835,12 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next160 的 TEST13/20/27/43/44/56/58-77/80-122 设备日志作为已验证自动化基线；
-   先验收 next161 的 TEST123，后续每批继续以 TEST13 深层导航和旋转作为浏览器门禁。
+1. 以 next167 的 TEST13/20/27/43/44/56/58-77/80-135 设备日志作为已验证自动化基线；
+   后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
 2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
    WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础
-   IME/composition，真实 SIP 与 `isComposing` 等完整语义另行验收。
+   IME/composition；next167 已人工通过报告中的真实 SIP 候选词完整输入，任意 OEM IME
+   与完整 `isComposing`/预编辑语义仍按独立能力逐项验收。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
 5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。

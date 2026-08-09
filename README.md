@@ -1,14 +1,13 @@
 # Positron
 
-**当前设备基线（next163，2026-08-09）**：显式脚本 context 中，原生 EDIT/SELECT
-已能把成对 UTF-16 代理项合并为一个 Unicode 标量事件；TEST122 同时确认
-`U+1F600/U+1F603` 的 keyCode/charCode、ECMAScript UTF-16 pair、EDIT
-`beforeinput.data`、target/bubble 和取消 SELECT 默认动作。next163 又通过
-TEST124-128，补齐 size-tagged `isComposing` Ex ABI、最小 DOM text/attribute、
-input/textarea/select value 与 live checkbox/radio checked。`screen=640x480 dpi=192`
-设备日志中 TEST13 三段导航、TEST20/27/43/44/56/58-77/80-128 全部通过并记录
-`TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next163\test_host.log`。默认
-`javascript=0`、TEST13 网络路径不变；真实 SIP/IME 与视觉效果仍需人工检查。
+**当前自动化设备基线（next168，2026-08-09）**：保留 next167 的高 DPI interaction
+restyle 修复，新增 Browse 宿主最多 16 项成功 GET URL 历史和左方向键后退重载。
+`screen=640x480 dpi=192` 日志中 TEST13 三段导航、TEST20/27/43/44/56/58-77/80-136
+全部通过：84 条 `TEST ... OK`、零条 `[ERROR]`、最终 `TESTBENCH PASS`，日志为
+`C:\WMShare\Positron-next168\test_host.log`。最近一次定向人工门仍是 next167：用户确认
+Learn More 离开页保持居中边距，真实 SIP 候选词点击可完整键入。后续人工视觉/交互检查
+改为累计若干可能产生回归的批次后集中进行，不再逐个自动批次阻塞开发。默认
+`javascript=0`；TEST123 仍只代表自动共享路径，不外推为任意 OEM IME。
 
 **next161 设备运行未完成（2026-08-09，不能作为基线）**：WM 原生 EDIT 子类接入
 `WM_IME_STARTCOMPOSITION/WM_IME_COMPOSITION/WM_IME_ENDCOMPOSITION`，通过 WM6
@@ -57,12 +56,26 @@ selectedIndex 读写；但设备自动运行在 TEST110 的 DOM bootstrap 阶段
 因为新增六个独立 JS 原生入口超过了既有 16 槽位上限，后续 TEST133-135
 没有执行。该失败是桥接集成错误，不是放宽断言或改变脚本槽位上限的理由。
 
-**next166 待设备验收（2026-08-09）**：保留上述六个属性和 TEST133-135
+**next166 设备验收通过（2026-08-09）**：保留上述六个属性和 TEST133-135
 断言，只把 JS bridge 合并为一个按操作分发的原生入口，使 bootstrap 继续
 容纳事件入口并保持 PSCRIPT_MAX_NATIVE_FUNCTIONS=16。默认 javascript=0、
-TEST13 网络路径和 next164 Browse 基线不变。C89、ARMV4I Debug 增量构建、
-审计与 C:\WMShare\Positron-next166 staging 已通过，等待设备自动日志和
-人工检查。
+TEST13 网络路径不变。`screen=320x320 dpi=128` 自动日志包含 83 条 OK、零 ERROR
+并以 `TESTBENCH PASS` 结束；人工视觉和真实 SIP/IME 仍不由该日志证明。
+
+**next167 设备验收通过（2026-08-09）**：针对真实 Learn More 点击触发的高 DPI
+交互重排回归，`test_host` 在 form/interaction restyle 前重新调用
+`PCore_SetDeviceViewport`，避免后续 layout 退回物理像素宽度的 CSS 视口。TEST76
+增加 640x480/192 DPI 的两次交互重排几何断言；用户人工确认离开页边距恢复，随后
+480x640/192 DPI 全自动回归通过。该修复不改变 core ABI、默认脚本开关或 TEST13
+导航目标；同包真实 SIP 候选词点击已由用户人工确认通过。
+
+**next168 自动设备验收通过（2026-08-09，人工后退纳入累计批次）**：新增仅限 Browse 宿主的 16 项成功 GET URL
+历史；页面只有在成功换入后才提交历史位置，失败的后退重载不移动当前位置，POST 不入栈，
+回退后再打开新链接会截断前向分支。渲染窗口无表单焦点时按左方向键重新加载上一项；
+不加入页面缓存、前进按钮、持久历史或 JavaScript History API。TEST136 离线固定状态机，
+默认自动配置扩展到 TEST136，TEST13 三段网络序列不变。C89、审计、ARMV4I Debug 构建和
+`C:\WMShare\Positron-next168\test_host.log` 已在 640x480/192 DPI 得到 84 OK、零 ERROR
+与最终 PASS。左键真实后退、失败网络和页面状态观感留到下一次累计人工检查。
 
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
@@ -471,7 +484,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-135
+tests=13,20,27,43,44,56,58-77,80-136
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
@@ -506,7 +519,8 @@ tests=13,20,27,43,44,56,58-77,80-135
   isComposing 和短结构拒绝；TEST126–128 验证脚本 DOM 文本/属性、表单 value
   以及 live checked 状态，均在首次 style/layout 前执行。
 - TEST 123：验证 WM IME start/end 消息入口及共享 UTF-8 composition update 发射路径；
-  自动 PASS 不等于真实 SIP 候选窗口、预编辑 UI 或完整 `isComposing` 语义已验收。
+  自动 PASS 本身不等于真实 SIP；next167 已另行人工确认候选词点击可完整键入，仍不
+  外推为任意 OEM 候选窗口、预编辑 UI 或完整 `isComposing` 语义均已验收。
 
 > ⚠ **跑 TEST 5 之前先把模拟器系统时钟设到当前**（开始 → 设置 → 系统 → Clock & Alarms）。WM6 Emulator 默认是 2005-2007 年某个时间，会让所有现役证书都看着像"尚未生效"。
 

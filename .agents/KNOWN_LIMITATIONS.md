@@ -1,6 +1,6 @@
 # 已验证基线与待消除限制
 
-更新时间：2026-08-08
+更新时间：2026-08-09
 
 这份清单把“已经在设备上验证的最小链路”和“当前刻意保留的阶段性实现”分开记录。未被列为完成的项目不得在后续交接、README 或测试结论中表述为完整浏览器能力。
 
@@ -31,12 +31,11 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前设备基线（next145，2026-08-08）**：新增显式 `javascript=0/1` 浏览器门和
-TEST110/111。默认 `0` 时不会扫描、抓取或执行脚本；开启后执行初次加载的经典 inline
-与 external script，按 DOM 顺序共用一个初始 Duktape context，并在执行结束后销毁。
-最小 bridge 只有 `document.getElementById()` 存在性查询与 `textContent` setter；事件、
-异步任务、getter、长期 window/context、CSP/同源策略与完整 DOM binding 均未实现。
-ARMV4I 构建已通过，并在 `screen=320x320 dpi=128` 默认批次完成至 TEST111 的设备验收。
+**当前自动化设备基线（next168，2026-08-09）**：`screen=640x480 dpi=192` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-136，计 84 条 OK、零 ERROR、最终 TESTBENCH PASS。
+next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
+新增成功-GET URL 历史与左键后退。人工视觉/交互门改为累计若干风险批次后集中执行。
+默认 `javascript=0`；完整 DOM/window、任意 OEM IME 和全站视觉仍未实现。
 
 **next145 设备验收记录（2026-08-08）**：`PCore_GetScriptCount/PCore_GetScript` 按 DOM
 顺序统一枚举 inline/external script；开启浏览器脚本时，external body 通过已有 document
@@ -167,13 +166,27 @@ libdom 的 checked live-state 修正已完成设备自动回归；`C:\WMShare\Po
 priority、CSSOM、computed style 或布局自动重排。新桥仍只按 getElementById 工作，
 只在显式 javascript=1 的 classic context 注册；next164 日志以 TESTBENCH PASS 结束。
 
-**next165 脚本表单默认属性（设备失败，已修复候选）**：TEST133-135 增加
+**next165 脚本表单默认属性（设备失败，已由 next166 修复）**：TEST133-135 增加
 defaultValue/defaultChecked 和 selectedIndex 的读写、-1 清空与越界拒绝；
 但六个新增 JS 原生入口使 TEST110 的 DOM bootstrap 超过既有 16 槽位上限，
 因此这些测试没有在该包中执行。next166 将它们合并到一个按操作分发的 bridge
 入口；属性仍按 getElementById 工作，不要求 style/layout box，selectedIndex
-写入只更新 DOM option 状态，已有 styled box 不会自动重排。next166 设备回归
-尚未完成。
+写入只更新 DOM option 状态，已有 styled box 不会自动重排。next166 的
+320x320/128 DPI 设备自动回归已通过。
+
+**next167 高 DPI 交互重排边界（设备及定向人工验收通过）**：真实链接点击会经过
+focus/active restyle，而 TEST13 的 direct navigation 不经过这段；旧宿主可能在后续
+layout 把物理宽度退化成 CSS 视口，造成 example.com 离开页贴左/溢出。宿主现于交互
+restyle 前重申设备宽高和 DPI，TEST76 覆盖 640x480/192 DPI 的两次连续重排；用户人工
+确认 Learn More 点击后离开页仍保持居中边距，next167 480x640/192 DPI 自动门禁也通过。
+同包真实 SIP 候选词点击也已由用户人工确认可完整键入候选词。这仍不代表任意站点、
+旋转时刻、所有视觉细节或任意 OEM IME 行为均已验收。
+
+**next168 Browse 后退边界（自动设备验收通过，人工检查已累计）**：宿主只保存最多 16 个成功 GET URL，
+按左方向键会重新联网加载上一项；失败不移动位置，POST 不入栈，回退后新导航截断前向
+分支。当前没有页面/document 缓存、前进 UI、滚动/表单状态恢复、重载确认、持久历史、
+重定向历史语义或 JavaScript `history/location` API。TEST136 已在设备自动通过；真实
+公网后退交互与失败网络条件仍在累计人工检查清单中。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
@@ -278,8 +291,8 @@ next131 已将该离线段隔离为 96 DPI CSS 契约，并保留可见渲染段
 | 反向 flex 内边距 | TEST 22 已在设备上确认：224px viewport 下，`row-reverse`、左右 25px padding、隐藏侧栏时，主内容为 `x=25,width=174`。 | 完整 Flexbox 规范或任意真实站点的复杂 flex 均已兼容。 |
 | 基础定位 | next111/TEST75 已在设备确认：relative box 保持正常流并应用 top/left 偏移，absolute block 使用 positioned parent，`display:inline` 的 absolute box 被 blockify 后进入 NetSurf 正式定位路径。 | 不代表 float、sticky、Grid/flex/table 中所有定位交互、复杂 containing-block 或完整 CSS Positioned Layout 已实现。 |
 | 普通浮动候选 | next115/next116 曾把 `float:left/right` 受控构盒路径和 TEST79 加入源码，但都已撤回。next116 的设备 TEST79 失败，且真实 TEST13 截图仍有导航/正文排版回归。 | Float 当前不支持；不能作为真实 IANA 页脚或完整 CSS Floats 证据。重新实现前必须先完成完整 box construction/normalisation，并通过 TEST79、TEST13 深链和旋转门禁。 |
-| 动态 `:hover` | next113/TEST76 已在设备确认：命中最近 DOM 元素后，样式重选会把链接从蓝色切为红色，清除状态后恢复；WM6 宿主用 `WM_MOUSEMOVE` 与 250ms 定时器轮询离开窗口。 | 不代表 `:visited`、`:target`、`:indeterminate`、专用 MouseEvent 数据、触屏 hover 语义或 JavaScript 绑定已实现。 |
-| IANA 窄屏页 | TEST13 起始页和 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。next80 已修复 libcss 父 bloom 节点数据过早销毁；TEST56/58/59/60 与真实 `/domains/reserved` 横竖屏均已通过，首个 `Domain` 表头恢复正常。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
+| 动态 `:hover` 与交互重排 | next113/TEST76 已在设备确认 hover 切换；next167 又让 TEST76 覆盖 640x480/192 DPI 下 active/clear 两次重排仍保持 25 CSS px inset，真实 Learn More 点击的离开页边距也由用户确认。 | 不代表 `:visited`、`:target`、`:indeterminate`、专用 MouseEvent 数据、触屏 hover 语义、JavaScript 绑定或任意页面交互重排均已实现。 |
+| IANA 窄屏页 | TEST13 起始页和 `Example Domains` 已可读；TEST41 的竖横屏截图确认 `/numbers` grid 宽表格不再把主内容推到左边界外。next80 已修复 libcss 父 bloom 节点数据过早销毁；TEST56/58/59/60 与真实 `/domains/reserved` 横竖屏均已通过。next167 自动三段导航通过，且人工点击 Learn More 后离开页仍居中。 | 任意 IANA 子页版式通过，或页面已达到现代浏览器还原度。 |
 | 视觉容器与文本比例 | next117 人工复核确认主链路基本正常，但部分页面/测试存在容器或背景框偏小、文本量偏多导致的版式不协调。 | 尚未定位到单一 CSS 根因；不应通过放宽断言解决，也不代表核心解析/资源/导航失败。需要至少三个复现样例、computed style/box geometry 数据、针对性回归和竖横屏截图后才能关闭。 |
 | 嵌套 overflow | NetSurf 3.11 scrollbar 已接入；TEST42 的离屏步进断言及真机箭头/thumb 交互通过，host 拖动只重绘对应 overflow viewport。next54 的 fixed-height 回归已在 next55 收窄，用户确认 auto-height 空间、箭头、短页纵条与色块页正常。 | 不代表惯性触摸、overlay scrollbar 或任意嵌套组合均已覆盖。 |
 | table span/归一化/折叠边框 | NetSurf 3.11 span occupancy 与匿名 row/cell 已由 TEST46/47 验收。next64/TEST53 至 next68/TEST56 已覆盖常见 collapsed-border、cell alignment/empty-cells 与显式 table height；next73/TEST57 又确认 25/50/auto 百分比 row 分配及超约束缩放。 | 尚不覆盖任意 inline/float/form 畸形组合、caption/column 归一化、`col`/`colgroup` border 来源、百分比 cell/后代内容、跨行 baseline 或所有复杂表格边界。 |

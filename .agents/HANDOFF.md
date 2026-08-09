@@ -2,14 +2,17 @@
 
 更新时间：2026-08-09
 当前分支：`main`  
-当前设备基线：next164 已在 `screen=640x480 dpi=192` 下完成 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-132，日志 `C:\WMShare\Positron-next164\test_host.log`
-以 `TESTBENCH PASS` 结束。TEST122 已确认原生 EDIT/SELECT 的 UTF-16 代理对合并、
-ECMAScript UTF-16 pair、EDIT beforeinput 数据和 SELECT 取消顺序；TEST124-128 又确认
-isComposing Ex ABI、DOM text/attribute、表单 value 和 live checked；TEST129-132 又确认
-脚本 Event target/currentTarget、id/className、classList 和受控 style。next157-162 是
-此前的失败/诊断/网络恢复候选，均已由 next164 设备包替代。默认 `javascript=0` 与
-TEST13 路径不变；真实 SIP/IME 与视觉效果仍需人工检查。
+当前自动化设备基线：next168 已在 `screen=640x480 dpi=192` 下完成 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-136，日志 `C:\WMShare\Positron-next168\test_host.log`
+包含 84 条 `TEST ... OK`、零条 `[ERROR]` 并以 `TESTBENCH PASS` 结束。next167 的高 DPI
+交互重排修复与定向人工结果保持有效：Learn More 离开页居中，真实 SIP 候选词可完整
+键入。next168 新增成功-GET URL 历史和左键后退；其人工交互与后续高风险批次集中验收。
+默认 `javascript=0` 与 TEST13 目标不变。
+
+当前验收/集成节奏：每个能力批次继续跑自动设备门；可能影响视觉、真实触摸、SIP、旋转
+或网络失败交互的项目加入累计人工清单，若干批次后一次性检查。崩溃、数据损坏、严重布局
+崩坏或核心交互阻塞仍立即人工复核。自动设备基线通过后应提交并推送其 scoped tracked
+改动；`tmp/` 截图目录永远不加入 Git。
 
 next163 已设备验收：它保留 next162 的主文档 GET 握手 EOF 单次重试，并加入
 TEST124/125 的 size-tagged Input/Keyboard Ex isComposing ABI、TEST126 的
@@ -30,11 +33,22 @@ input defaultChecked 和 select.selectedIndex 读写、清空及越界拒绝，�
 新增 JS 原生入口耗尽既有 16 槽位，TEST110 在 DOM bootstrap 阶段停止，TEST133-135
 尚未执行；next165 不能作为基线。
 
-当前待验收候选：next166 保留上述属性和断言，只把六个新增 JS bridge 入口合并为
-一个按操作分发的入口，继续保持 PSCRIPT_MAX_NATIVE_FUNCTIONS=16。它只在显式
-javascript=1 的 classic script context 中注册；默认 javascript=0，TEST13
-路径不变。C89、仓库审计、VS2008 ARMV4I Debug 增量构建和
-C:\WMShare\Positron-next166 staging 已完成，设备自动日志与人工检查待进行。
+next166 已设备验收：它保留上述属性和断言，只把六个新增 JS bridge 操作合并为
+一个按操作分发的入口，继续保持 PSCRIPT_MAX_NATIVE_FUNCTIONS=16；320x320/128 DPI
+自动日志的 TEST110、TEST133-135 和整批门禁均通过。
+
+next167 已设备验收：真实点击 Learn More 会先设置 focus/active 并重选样式，旧宿主
+随后 layout 时可能把物理像素宽度误当 CSS 视口，导致高 DPI 离开页贴左/溢出。
+`pcore_restyle_form_state` 现在经统一 helper 重申物理客户区与 DPI，再执行 cache-only
+style/layout；TEST76 覆盖两次交互重排，480x640/192 DPI 全自动日志通过。用户已确认
+640x480/192 DPI 下离开页保持居中边距；真实 SIP 候选词点击也已另行人工通过。
+
+next168 已通过自动设备门：Browse 宿主维护最多 16 个成功 GET URL；只有新 document
+成功换入才提交，失败后退不移动 index，POST 不入栈，回退后新导航截断 forward branch。
+无原生表单控件获得焦点时按左方向键重新加载上一 URL。TEST136 离线覆盖提交/失败/
+截断边界；默认脚本、core ABI 和 TEST13 三段网络目标不变。ARMV4I Debug 构建与
+`C:\WMShare\Positron-next168\test_host.log` 已以 TEST136 OK 和最终 PASS 结束；人工后退
+不再单独阻塞该批，而是和后续可能影响交互/视觉的改动一起集中检查。
 
 next161 已接入 WM6 EDIT 的原生 IME composition 消息，使用 SDK
 `<imm.h>` 和设备 `coredll` 中的 `ImmGetContext/ImmGetCompositionStringW/ImmReleaseContext`，
@@ -376,7 +390,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-135`；next164 已在 `screen=640x480 dpi=192` 设备通过至 TEST132，TEST133-135 为当前待验收脚本表单 DOM 扩展。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、EDIT/SELECT 键盘、focus、beforeinput、Unicode/代理对、composition、event target/currentTarget、classList、style 和 form default bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图或真实 SIP 输入验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+- 快速配置：当前 next168 候选的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-136`；next167 已在 `screen=480x640 dpi=192` 通过至 TEST135，新增 TEST136 是成功-GET 历史状态机门。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、EDIT/SELECT 键盘、focus、beforeinput、Unicode/代理对、composition、event target/currentTarget、classList、style 和 form default bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图；next167 已另行人工确认 Learn More 边距与真实 SIP 候选词完整输入。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。

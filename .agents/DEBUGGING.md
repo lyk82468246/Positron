@@ -1,10 +1,16 @@
 # WM6 / Positron Debugging Notes
 
-最近设备验收包为 C:\WMShare\Positron-next166，默认配置应运行到 TEST135。
-next165 在 TEST110 的 DOM bootstrap 阶段因新增 JS 原生入口超过 16 槽位而失败，
-TEST133-135 未执行，不能用 next165 排查属性行为。next166 将六个新增属性操作
-合并为一个 bridge 入口；测试前确认启动的是 next166 目录，避免与旧包的 DLL 混用。
-next164 的设备日志已以 TESTBENCH PASS 结束；next166 的设备日志和人工视觉仍待验收。
+最近自动化设备基线为 C:\WMShare\Positron-next168，默认配置运行到 TEST136；
+640x480/192 DPI 日志为 84 OK、零 ERROR、最终 TESTBENCH PASS。
+next165 在 TEST110 因 16 槽位耗尽而失败；next166 的 bridge 合并已通过设备门禁。
+next166 随后的真实 Learn More 点击曾暴露高 DPI interaction restyle 后离开页贴左/溢出，
+next167 重申设备 viewport/DPI 并由 TEST76 固定回归。用户已人工确认离开页边距恢复，
+next167 480x640/192 DPI 自动日志为 83 OK、零 ERROR、最终 TESTBENCH PASS。排查时确认
+启动的是 next167 目录并彻底结束旧进程，避免全局 DLL 复用造成混包。同包真实 SIP
+候选词点击已由用户人工确认可完整键入候选词；TEST65/123 仍不是任意 OEM IME 的证明。
+next168 只新增 Browse 宿主 URL 历史与左方向键后退；真实左键路径已进入累计人工清单。
+届时若左键无反应，先确认当前页之前已有至少两个成功 GET、native EDIT/SELECT 没有
+焦点且未在加载。
 
 ## 先查环境，再查代码
 

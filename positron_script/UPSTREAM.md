@@ -27,8 +27,7 @@
   `PScript_LoadModule`: a synchronous WM host callback can provide root and
   dependency source on demand. The DLL releases each returned buffer after
   evaluation, caches successful exports, and removes failed entries. TEST84
-  is the pending device gate for this provider path; it does not enable
-  browser JavaScript.
+  has passed the ARMV4I device gate; it does not enable browser JavaScript.
 - ABI minor 1.4 adds persistent primitive global setters,
   `PScript_GetGlobalJson`, and `PScript_CallGlobalJson`. These operations
   keep the opaque-handle boundary, use JSON only at the host call boundary,
@@ -62,5 +61,5 @@
   JSON calls and their limits; TEST90-94 cover the synchronous native JSON
   callback bridge; TEST95-99 cover structured JSON global injection. next123
   ARMV4I build/staging passed; next124/125/126 ARMV4I Debug builds passed;
-  device verification of TEST84/85-99 is pending
-  together with the high-DPI Browse gate.
+  TEST84/85-99 have since passed the selected ARMV4I device regression,
+  including the next167 `screen=480x640 dpi=192` high-DPI Browse gate.

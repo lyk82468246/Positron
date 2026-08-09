@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 135
+#define TEST_MAX_NUMBER 136
 
 static int test_config_space(char c)
 {
@@ -2250,6 +2250,7 @@ typedef struct pcore_navigation_request {
     int            worker_stage;
     int            worker_resume_stage;
     int            commit_stage;
+    int            history_target_index;
     int            progress_last_total;
     int            progress_last_percent;
     int            progress_last_received;
@@ -2285,6 +2286,97 @@ static const char *g_testbench_browse_urls[] = {
 static char   g_cur_host[256] = "";
 static char   g_cur_path[1024] = "/";
 static int    g_cur_port = 443;
+
+#define PCORE_BROWSE_HISTORY_MAX 16
+#define PCORE_BROWSE_HISTORY_URL_MAX 1024
+
+typedef struct pcore_browse_history {
+    char entries[PCORE_BROWSE_HISTORY_MAX][PCORE_BROWSE_HISTORY_URL_MAX];
+    int count;
+    int index;
+} pcore_browse_history;
+
+static pcore_browse_history g_browse_history;
+
+static void pcore_browse_history_reset(void)
+{
+    memset(&g_browse_history, 0, sizeof(g_browse_history));
+    g_browse_history.index = -1;
+}
+
+static const char *pcore_browse_history_current(void)
+{
+    if (g_browse_history.index < 0 ||
+            g_browse_history.index >= g_browse_history.count) {
+        return NULL;
+    }
+    return g_browse_history.entries[g_browse_history.index];
+}
+
+static int pcore_browse_history_commit_new(const char *url)
+{
+    int i;
+
+    if (url == NULL || url[0] == '\0' ||
+            strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX) {
+        return 1;
+    }
+    if (pcore_browse_history_current() != NULL &&
+            strcmp(pcore_browse_history_current(), url) == 0) {
+        return 0;
+    }
+    if (g_browse_history.index + 1 < g_browse_history.count) {
+        g_browse_history.count = g_browse_history.index + 1;
+    }
+    if (g_browse_history.count >= PCORE_BROWSE_HISTORY_MAX) {
+        for (i = 1; i < g_browse_history.count; i++) {
+            memcpy(g_browse_history.entries[i - 1],
+                    g_browse_history.entries[i],
+                    PCORE_BROWSE_HISTORY_URL_MAX);
+        }
+        g_browse_history.count--;
+        g_browse_history.index--;
+    }
+    strcpy(g_browse_history.entries[g_browse_history.count], url);
+    g_browse_history.count++;
+    g_browse_history.index = g_browse_history.count - 1;
+    return 0;
+}
+
+static const char *pcore_browse_history_back_target(int *target_index)
+{
+    int target;
+
+    if (target_index == NULL || g_browse_history.index <= 0 ||
+            g_browse_history.index >= g_browse_history.count) {
+        return NULL;
+    }
+    target = g_browse_history.index - 1;
+    *target_index = target;
+    return g_browse_history.entries[target];
+}
+
+static int pcore_browse_history_commit_target(int target_index)
+{
+    if (target_index < 0 || target_index >= g_browse_history.count) {
+        return 1;
+    }
+    g_browse_history.index = target_index;
+    return 0;
+}
+
+static void pcore_browse_history_commit_navigation(const char *url,
+        int method, int target_index)
+{
+    if (method != 1) {
+        return;
+    }
+    if (target_index >= 0) {
+        (void) pcore_browse_history_commit_target(target_index);
+    } else {
+        (void) pcore_browse_history_commit_new(url);
+    }
+}
 
 typedef struct pcore_native_edit {
     HWND hwnd;
@@ -6368,6 +6460,13 @@ static int pcore_navigation_commit_step(HWND hwnd,
     cstr_copy(g_cur_host, sizeof(g_cur_host), request->host);
     cstr_copy(g_cur_path, sizeof(g_cur_path), request->path);
     g_cur_port = request->port;
+    if (request->method == 1 &&
+            pcore_document_url(request->host, request->path,
+                    request->port, document_url,
+                    sizeof(document_url)) == 0) {
+        pcore_browse_history_commit_navigation(document_url,
+                request->method, request->history_target_index);
+    }
 
     pcore_set_scrollbar(hwnd);
     pcore_native_edits_rebuild(hwnd, 0);
@@ -6449,6 +6548,7 @@ static pcore_navigation_request *pcore_navigation_request_create_ex(
     }
     memset(request, 0, sizeof(*request));
     request->port = 443;
+    request->history_target_index = -1;
     if (!resolve_url(href, request->host, sizeof(request->host),
             request->path, sizeof(request->path), &request->port)) {
         free(request);
@@ -6501,22 +6601,23 @@ static pcore_navigation_request *pcore_navigation_request_create(
 
 /* Start the main-document stage. Later stages reuse this request for external
  * CSS/image GETs while the old visible document remains interactive. */
-static void navigate_to_request_ex(HWND hwnd, const char *href,
+static int navigate_to_request_ex(HWND hwnd, const char *href,
         int method, const void *body, int body_len,
-        const char *content_type)
+        const char *content_type, int history_target_index)
 {
     pcore_navigation_request *request;
 
     if (g_nav_loading) {
-        return;
+        return 1;
     }
     request = pcore_navigation_request_create_ex(hwnd, href, method,
             body, body_len, content_type);
     if (request == NULL) {
         show_error(L"Navigation failed",
                 "Invalid URL, oversized form target, or out of memory");
-        return;
+        return 1;
     }
+    request->history_target_index = history_target_index;
     request->generation = ++g_nav_generation;
     g_nav_request = request;
     pcore_navigation_set_loading(hwnd, 1);
@@ -6525,7 +6626,9 @@ static void navigate_to_request_ex(HWND hwnd, const char *href,
         g_nav_request = NULL;
         pcore_navigation_request_free(request);
         show_error(L"Navigation failed", "CreateThread failed");
+        return 1;
     }
+    return 0;
 }
 
 static void navigate_to_request(HWND hwnd, const char *href,
@@ -6534,12 +6637,29 @@ static void navigate_to_request(HWND hwnd, const char *href,
     int body_len;
 
     body_len = (body != NULL) ? (int) strlen(body) : 0;
-    navigate_to_request_ex(hwnd, href, method, body, body_len, NULL);
+    (void) navigate_to_request_ex(hwnd, href, method, body, body_len,
+            NULL, -1);
 }
 
 static void navigate_to(HWND hwnd, const char *href)
 {
     navigate_to_request(hwnd, href, 1, NULL);
+}
+
+static int pcore_browse_navigate_back(HWND hwnd)
+{
+    const char *target;
+    int target_index;
+
+    if (g_nav_loading) {
+        return 0;
+    }
+    target = pcore_browse_history_back_target(&target_index);
+    if (target == NULL) {
+        return 0;
+    }
+    return navigate_to_request_ex(hwnd, target, 1, NULL, 0, NULL,
+            target_index) == 0;
 }
 
 typedef struct pcore_multipart_buffer {
@@ -6868,7 +6988,8 @@ static int navigate_multipart_submission(HWND hwnd, HANDLE submission)
     if (target == NULL) {
         goto done;
     }
-    navigate_to_request_ex(hwnd, target, 3, body, body_len, content_type);
+    (void) navigate_to_request_ex(hwnd, target, 3, body, body_len,
+            content_type, -1);
     result = 1;
 
 done:
@@ -6900,6 +7021,26 @@ static void navigate_form_submission(HWND hwnd, int method,
     free(target);
 }
 
+/* Every WM re-style must reassert the physical-pixel/DPI contract before
+ * both selection and layout. Otherwise PCore_LayoutDocument consumes the
+ * previous device viewport, falls back to the legacy CSS-pixel path, and a
+ * following :active/:hover reselect can treat a high-DPI physical width as
+ * the CSS viewport width. */
+static int pcore_style_layout_device_document(HANDLE document, HANDLE sheet,
+        const char *document_base, int width, int height, int dpi)
+{
+    if (document == NULL || width <= 0 || height <= 0 || dpi <= 0) {
+        return 1;
+    }
+    PCore_SetDeviceViewport(width, height, dpi);
+    if (PCore_StyleDocumentEx2(document, sheet, document_base,
+            wm_combine_url, page_resource_cache_only_cb, NULL, NULL) != 0 ||
+            PCore_LayoutDocument(document, width, height) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
 static int pcore_restyle_form_state(HWND hwnd, int preserve_focus)
 {
     RECT client;
@@ -6920,11 +7061,8 @@ static int pcore_restyle_form_state(HWND hwnd, int preserve_focus)
             document_url, sizeof(document_url)) == 0) {
         document_base = document_url;
     }
-    if (width <= 0 || height <= 0 ||
-            PCore_StyleDocumentEx2(g_render_doc, g_render_sheet,
-                    document_base, wm_combine_url,
-                    page_resource_cache_only_cb, NULL, NULL) != 0 ||
-            PCore_LayoutDocument(g_render_doc, width, height) != 0) {
+    if (pcore_style_layout_device_document(g_render_doc, g_render_sheet,
+            document_base, width, height, test_host_device_dpi()) != 0) {
         return 1;
     }
     g_doc_h = PCore_DocumentHeight(g_render_doc);
@@ -7649,6 +7787,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         break;
     case WM_KEYDOWN:
         switch (wp) {
+        case VK_LEFT:
+            (void) pcore_browse_navigate_back(hwnd);
+            break;
         case VK_UP:    pcore_scroll_by(hwnd, -16);   break;
         case VK_DOWN:  pcore_scroll_by(hwnd, 16);    break;
         case VK_PRIOR: pcore_scroll_by(hwnd, -120);  break;
@@ -7798,6 +7939,7 @@ static BOOL show_render_window(void)
     HWND      hwnd;
     MSG       m;
     char      ime_probe_data[8];
+    char      history_url[PCORE_BROWSE_HISTORY_URL_MAX];
 
     hInst = GetModuleHandle(NULL);
     memset(&icc, 0, sizeof(icc));
@@ -7820,6 +7962,12 @@ static BOOL show_render_window(void)
             CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInst, NULL);
     if (hwnd == NULL) {
         return FALSE;
+    }
+    pcore_browse_history_reset();
+    if (g_cur_host[0] != '\0' &&
+            pcore_document_url(g_cur_host, g_cur_path, g_cur_port,
+                    history_url, sizeof(history_url)) == 0) {
+        (void) pcore_browse_history_commit_new(history_url);
     }
     pcore_native_edits_rebuild(hwnd, 0);
     pcore_native_selects_rebuild(hwnd, 0);
@@ -8129,6 +8277,7 @@ static BOOL test_browse(void)
     show_info(L"TEST 13",
               "A start page opens. Open example.com for general Browse,\n"
               "or open the network SVG fixture for HTML + relative SVG.\n\n"
+              "Press Left to reload the previous successful GET page.\n"
               "Tap empty space or press Esc to close.");
 
     g_render_doc = hDoc;
@@ -17014,6 +17163,104 @@ static BOOL test75_positioned_layout(void)
 /* TEST 76 - dynamic :hover selection and WM interaction state           */
 /* -------------------------------------------------------------------- */
 
+static int test76_device_viewport_restyle(char *detail, int capacity)
+{
+    static const char *HTML =
+        "<!doctype html><html><body><main>"
+        "<a href='/hover'>Hover target</a><div>outside</div>"
+        "</main></body></html>";
+    static const char *CSS =
+        "html,body{margin:0;padding:0;}"
+        "main{display:block;width:600px;margin:0;padding:0;}"
+        "@media (max-width:400px){main{width:auto;margin:0 25px;}}"
+        "a{display:block;width:120px;height:24px;color:#0000ff;}"
+        "a:hover{color:#ff0000;}";
+    static const char *URL = "http://positron.local/hover-device.css";
+    HANDLE document;
+    HANDLE sheet;
+    int link_x;
+    int link_y;
+    int link_w;
+    int link_h;
+    int initial_x;
+    int initial_w;
+    int active_x;
+    int active_w;
+    int clear_x;
+    int clear_w;
+    int device_dpi;
+    int device_width;
+    int device_height;
+    int css_width;
+    int css_height;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    link_x = 0;
+    link_y = 0;
+    link_w = 0;
+    link_h = 0;
+    initial_x = 0;
+    initial_w = 0;
+    active_x = 0;
+    active_w = 0;
+    clear_x = 0;
+    clear_w = 0;
+    device_dpi = 96;
+    device_width = 0;
+    device_height = 0;
+    css_width = 0;
+    css_height = 0;
+    ok = 0;
+    document = PCore_ParseHTML(HTML, 0);
+    sheet = PCore_ParseCSS(CSS, 0, URL);
+    if (document != NULL && sheet != NULL &&
+            pcore_style_layout_device_document(document, sheet, URL,
+                    640, 480, 192) == 0 &&
+            PCore_NodeBox(document, "main", &initial_x, NULL,
+                    &initial_w, NULL) == 0 &&
+            PCore_NodeBox(document, "a", &link_x, &link_y,
+                    &link_w, &link_h) == 0 &&
+            PCore_InteractionSetAt(document, link_x + 1, link_y + 1,
+                    PCORE_INTERACTION_FOCUS |
+                    PCORE_INTERACTION_ACTIVE) == 1 &&
+            pcore_style_layout_device_document(document, sheet, URL,
+                    640, 480, 192) == 0 &&
+            PCore_NodeBox(document, "main", &active_x, NULL,
+                    &active_w, NULL) == 0 &&
+            PCore_InteractionClear(document,
+                    PCORE_INTERACTION_ACTIVE) == 1 &&
+            pcore_style_layout_device_document(document, sheet, URL,
+                    640, 480, 192) == 0 &&
+            PCore_NodeBox(document, "main", &clear_x, NULL,
+                    &clear_w, NULL) == 0 &&
+            initial_x == 50 && initial_w == 540 &&
+            active_x == initial_x && active_w == initial_w &&
+            clear_x == initial_x && clear_w == initial_w) {
+        ok = 1;
+    }
+    if (!ok) {
+        _snprintf(detail, capacity - 1,
+                "device restyle initial=%d/%d active=%d/%d "
+                "clear=%d/%d link=%d,%d %dx%d",
+                initial_x, initial_w, active_x, active_w,
+                clear_x, clear_w, link_x, link_y, link_w, link_h);
+        detail[capacity - 1] = '\0';
+    }
+    if (sheet != NULL) { PCore_FreeStylesheet(sheet); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    device_dpi = test_host_device_dpi();
+    device_width = GetSystemMetrics(SM_CXSCREEN);
+    device_height = GetSystemMetrics(SM_CYSCREEN);
+    css_width = MulDiv(device_width, 96, device_dpi);
+    css_height = MulDiv(device_height, 96, device_dpi);
+    if (css_width < 1) { css_width = 1; }
+    if (css_height < 1) { css_height = 1; }
+    PCore_SetViewport(css_width, css_height, device_dpi);
+    return ok;
+}
+
 static BOOL test76_hover_state(void)
 {
     static const char *HTML =
@@ -17072,12 +17319,19 @@ static BOOL test76_hover_state(void)
         show_error(L"TEST 76 FAIL", detail);
         return FALSE;
     }
+    if (!test76_device_viewport_restyle(detail, sizeof(detail))) {
+        PCore_FreeStylesheet(hSheet);
+        PCore_FreeDocument(hDoc);
+        show_error(L"TEST 76 FAIL", detail);
+        return FALSE;
+    }
     PCore_FreeStylesheet(hSheet);
     PCore_FreeDocument(hDoc);
     show_info(L"TEST 76 OK",
             "CSS :hover state passed: pointer hit selects the nearest\n"
             "element, style reselect turns the link red, and clearing\n"
-            "hover restores the blue rule.");
+            "hover restores the blue rule. Two 192-DPI interaction\n"
+            "relayouts retained the 320-CSS-px media viewport.");
     return TRUE;
 }
 
@@ -22390,6 +22644,90 @@ static BOOL test135_browser_script_selected_index_edges(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 136 - bounded successful-GET Browse history and back state       */
+/* -------------------------------------------------------------------- */
+static BOOL test136_browse_history_back(void)
+{
+    static const char URL_A[] = "https://example.com/";
+    static const char URL_B[] = "https://www.iana.org/help/example-domains";
+    static const char URL_C[] = "https://www.iana.org/domains/reserved";
+    static const char URL_D[] = "https://www.iana.org/domains";
+    const char *target;
+    const char *current;
+    int target_index;
+    int ok;
+    char error[256];
+
+    ok = 1;
+    target_index = -1;
+    pcore_browse_history_reset();
+    pcore_browse_history_commit_navigation(URL_A, 1, -1);
+    pcore_browse_history_commit_navigation(URL_B, 1, -1);
+    pcore_browse_history_commit_navigation(URL_C, 1, -1);
+    pcore_browse_history_commit_navigation("https://post.invalid/", 2, -1);
+    target = pcore_browse_history_back_target(&target_index);
+    current = pcore_browse_history_current();
+    if (g_browse_history.count != 3 || g_browse_history.index != 2 ||
+            target == NULL || strcmp(target, URL_B) != 0 ||
+            target_index != 1 || current == NULL ||
+            strcmp(current, URL_C) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        /* Merely asking for a back target models a failed reload: the
+         * committed position must remain on C until success is reported. */
+        current = pcore_browse_history_current();
+        if (current == NULL || strcmp(current, URL_C) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        pcore_browse_history_commit_navigation(target, 1, target_index);
+        pcore_browse_history_commit_navigation(URL_D, 1, -1);
+        current = pcore_browse_history_current();
+        if (g_browse_history.count != 3 || g_browse_history.index != 2 ||
+                strcmp(g_browse_history.entries[0], URL_A) != 0 ||
+                strcmp(g_browse_history.entries[1], URL_B) != 0 ||
+                strcmp(g_browse_history.entries[2], URL_D) != 0 ||
+                current == NULL || strcmp(current, URL_D) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        target = pcore_browse_history_back_target(&target_index);
+        if (target == NULL || strcmp(target, URL_B) != 0 ||
+                pcore_browse_history_commit_target(target_index) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        target = pcore_browse_history_back_target(&target_index);
+        if (target == NULL || strcmp(target, URL_A) != 0 ||
+                pcore_browse_history_commit_target(target_index) != 0 ||
+                pcore_browse_history_back_target(&target_index) != NULL) {
+            ok = 0;
+        }
+    }
+    current = pcore_browse_history_current();
+    if (!ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "count/index=%d/%d target=%d current=%s",
+                g_browse_history.count, g_browse_history.index,
+                target_index, (current != NULL) ? current : "(null)");
+        error[sizeof(error) - 1] = '\0';
+        pcore_browse_history_reset();
+        show_error(L"TEST 136 FAIL", error);
+        return FALSE;
+    }
+    pcore_browse_history_reset();
+    show_info(L"TEST 136 OK",
+            "Browse history records only successful GET commits, leaves\n"
+            "the position unchanged on a failed back reload, and truncates\n"
+            "the forward branch after a new navigation.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -22644,6 +22982,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 133: ok = test133_browser_script_form_defaults(); break;
         case 134: ok = test134_browser_script_form_default_setters(); break;
         case 135: ok = test135_browser_script_selected_index_edges(); break;
+        case 136: ok = test136_browse_history_back(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
