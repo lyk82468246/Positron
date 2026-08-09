@@ -281,6 +281,15 @@ go(0) 排除以及 reload/跨 document 隔离。本批不派发 popstate，也�
 非当前 URL、POST state 或跨 document 页面缓存。320x320/128 DPI 日志已得到 TEST147 OK、
 95 条 OK、零 ERROR、零 FAIL 与最终 PASS，next179 已成为自动设备基线。
 
+**next180 minimal popstate 基线（2026-08-09 已设备验收）**：同 document traversal 在切换 index/state
+后派发 popstate；支持 window.onpopstate 以及仅面向 popstate 的 window add/removeEventListener。
+事件 state 是独立 JSON clone，target/currentTarget 为 window，bubbles/cancelable 为 false，
+handler 异常被隔离；pushState/replaceState 本身不派发。TEST148 离线覆盖异步 back 边界、
+state-before-event、属性/listener、重复去重、remove、clone/异常隔离、元数据和 push/replace
+静默。本批不是完整 Window EventTarget 或 PopStateEvent 构造器，跨 document traversal 仍
+不派发，也不实现逐项滚动/表单恢复、非当前 URL、POST state 或页面缓存。320x320/128 DPI
+日志已得到 TEST148 OK、96 条 OK、零 ERROR、零 FAIL 与最终 PASS，next180 已成为自动设备基线。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM

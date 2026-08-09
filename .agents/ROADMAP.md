@@ -565,6 +565,20 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   缓存不在本批。320x320/128 DPI 日志得到 TEST147 OK、95 条 OK、零 ERROR、零 FAIL 与
   最终 PASS，next179 已成为自动设备基线。
 
+### 6az. next180：JavaScript minimal popstate（已设备验收）
+
+- 同 document traversal 在切换 index/state 后派发最小 popstate；支持 window.onpopstate 以及
+  仅面向 popstate 的 window add/removeEventListener。事件 state 为独立 JSON clone，target/
+  currentTarget 为 window，bubbles/cancelable 为 false，handler 异常不会撤销遍历。
+- pushState/replaceState 本身不派发。TEST148 离线断言异步 back 边界、state-before-event、
+  属性/listener、重复去重、remove、clone/异常隔离、元数据、push/replace 静默和 14/16
+  callback 槽位。
+- 默认 javascript=0、TEST13、core ABI 与 next179 已验收行为不变；C89 回归及 ARMV4I Debug
+  增量构建已通过；`C:\WMShare\Positron-next180` staging 的七个 ARMV4I 二进制与构建产物
+  SHA-256 一致。完整 Window EventTarget/PopStateEvent、跨 document popstate、逐项滚动/
+  表单恢复、非当前 URL、POST state 和页面缓存不在本批。320x320/128 DPI 日志得到 TEST148
+  OK、96 条 OK、零 ERROR、零 FAIL 与最终 PASS，next180 已成为自动设备基线。
+
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
 - NetSurf 的标准约定是：CSS media/vw/vh 使用 CSS 像素视口，`layout_document` 和 GDI 重绘使用设备像素。next122 的新模拟器日志首次暴露两者被宿主混用：TEST20 的 48 CSS px 图像盒成为 96 device px，自动化因此停在 TEST20；这不是 provider 回归。
@@ -990,13 +1004,15 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next179 的 TEST13/20/27/43/44/56/58-77/80-147 设备日志作为已验证自动化基线；
+1. 以 next180 的 TEST13/20/27/43/44/56/58-77/80-148 设备日志作为已验证自动化基线；
    后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
-2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
+2. 下一批浏览器 JS 绑定仍只推进一个可离线断言的纵切，并继续保持默认 javascript=0、
+   TEST13 网络行为与 core ABI 不变。
+3. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
    WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础
    IME/composition；next167 已人工通过报告中的真实 SIP 候选词完整输入，任意 OEM IME
    与完整 `isComposing`/预编辑语义仍按独立能力逐项验收。
-3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
-4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
-5. next144-179 已利用同一个 Duktape DLL 逐项完成脚本执行、DOM 查询/修改、页面级 context、事件/表单/输入桥和最小 location/history 导航、受控 replace/pushState 及同 document traversal；后续绑定仍按一个纵切一个设备门推进，浏览器 JavaScript 默认保持关闭。
-6. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。
+4. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
+5. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
+6. next144-180 已利用同一个 Duktape DLL 逐项完成脚本执行、DOM 查询/修改、页面级 context、事件/表单/输入桥和最小 location/history 导航、受控 replace/pushState、同 document traversal 及最小 popstate；后续绑定仍按一个纵切一个设备门推进，浏览器 JavaScript 默认保持关闭。
+7. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。

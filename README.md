@@ -204,6 +204,19 @@ DOM/runtime 身份、state/length、go(0) 排除以及 reload/跨 document 隔�
 构建产物 SHA-256 一致。320x320/128 DPI 日志得到 TEST147 OK、95 条 OK、零 ERROR、
 零 FAIL 与最终 PASS，next179 已成为自动设备基线。
 
+**next180 自动设备基线（2026-08-09）**：next179 的同 document traversal 在切换 index
+和 history.state 后派发最小 `popstate`。支持 `window.onpopstate` 以及仅面向 popstate 的
+window `addEventListener/removeEventListener`；事件 state 是独立 JSON clone，target/
+currentTarget 为 window，bubbles/cancelable 为 false，handler 异常不会撤销遍历。
+pushState/replaceState 本身不派发。TEST148 离线固定异步 back 边界、state-before-event、
+属性/listener 回调、重复 listener 去重、remove、clone/异常隔离、事件元数据以及 push/replace
+静默。默认 `javascript=0`、TEST13、core ABI 与 next179 基线不变；这不是完整 Window
+EventTarget 或 PopStateEvent 构造器，跨 document traversal 仍不派发，逐项滚动/表单恢复、
+非当前 URL、POST state 和页面缓存仍未实现。C89 回归及 ARMV4I Debug 增量构建已通过；
+`C:\WMShare\Positron-next180` 已隔离 staging，七个 ARMV4I 二进制与构建产物 SHA-256
+一致。320x320/128 DPI 日志得到 TEST148 OK、96 条 OK、零 ERROR、零 FAIL 与最终 PASS，
+next180 已成为自动设备基线。
+
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
 还派发一次包含完整 UTF-16 数据的 `beforeinput(insertText)`。TEST122 检查
@@ -611,7 +624,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-147
+tests=13,20,27,43,44,56,58-77,80-148
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
