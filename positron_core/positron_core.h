@@ -675,6 +675,10 @@ typedef struct PCoreEventInfo {
     const char *input_type;
     const char *data;
     int is_composing;
+    /* UTF-8 IDs are borrowed for the synchronous callback only. They are
+     * NULL when the DOM event target has no element id. */
+    const char *target_id;
+    const char *current_target_id;
 } PCoreEventInfo;
 typedef unsigned int (*PCoreEventListenerFn)(void *pw,
                                              const PCoreEventInfo *event_info);

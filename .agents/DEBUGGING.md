@@ -1,9 +1,10 @@
 # WM6 / Positron Debugging Notes
 
-本次设备候选为 C:\WMShare\Positron-next163，默认配置运行到 TEST128。
-TEST124/125 检查事件 Ex ABI 的 isComposing，TEST126-128 检查脚本 DOM
+最近设备验收包为 C:\WMShare\Positron-next164，默认配置运行到 TEST132。
+TEST129-132 检查事件 target/currentTarget、id/className、classList 和 style
 text/attribute/form properties；它们只在 javascript=1 的离线测试函数中显式启用，
-TEST13 默认不执行脚本。测试前确认启动的是 next163 目录，避免与旧包的 DLL 混用。
+TEST13 默认不执行脚本；日志以 `TESTBENCH PASS` 结束。测试前确认启动的是
+next163 目录，避免与旧包的 DLL 混用。真实 SIP/IME 与视觉仍需人工验收。
 
 ## 先查环境，再查代码
 

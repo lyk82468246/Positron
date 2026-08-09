@@ -2,13 +2,13 @@
 
 更新时间：2026-08-09
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前设备基线为 next160：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-122 全部通过并记录 `TESTBENCH PASS`。TEST122 已确认
+当前设备基线为 next163：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-128 全部通过并记录 `TESTBENCH PASS`。TEST122 已确认
 WM UTF-16 代理对合并、ECMAScript UTF-16 pair、EDIT beforeinput 数据及 SELECT 取消
-顺序；next157-159 的失败/诊断包已由 next160 替代。默认 `javascript=0` 与 TEST13
-路径不变。next161 已接入 WM6 IME composition 纵切和 TEST123，但首轮设备运行在
-TEST13 第三段主文档 TLS 握手 EOF 时停止，TEST123 未执行。当前 next162 只为这类幂等
-主文档 GET 增加一次受限重试；自动断言不等于真实 SIP 候选窗口输入验收。
+顺序；TEST124-128 又确认 isComposing Ex ABI、DOM text/attribute、表单 value 和 live
+checked。next157-162 的失败/诊断/网络恢复候选已由 next163 替代。默认 `javascript=0`
+与 TEST13 路径不变；自动断言不等于真实 SIP 候选窗口输入或视觉验收。next163 已设备
+验收。
 
 **next154 设备门禁（已通过）**：在 `screen=640x480 dpi=192` 默认配置下通过
 TEST13/20/27/43/44/56/58-77/80-120，并记录 `TESTBENCH PASS`；TEST13 三段导航、
@@ -17,13 +17,18 @@ TEST112 页面级 context、TEST113 click 事件桥、TEST114 原生表单事件
 键盘事件桥、TEST119 WM_CHAR keypress 桥和 TEST120 WM_SYSKEY/WM_SYSCHAR 桥均完成。下一批设备继续轮换分辨率/DPI；不能
 把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
 
-当前待验收候选是 next163：在不改变默认 Browse 脚本关闭状态的前提下，补齐
+next163 在不改变默认 Browse 脚本关闭状态的前提下补齐
 Input/Keyboard isComposing 的 size-tagged Ex ABI、DOM text/attribute bridge、
 input/textarea/select value 和 live checkbox/radio checked 的最小脚本绑定。
 TEST124-128 均在首次 style/layout 前运行；ARMV4I、C89、审计与 staging 已通过，
-设备日志及人工视觉检查待进行。
+设备日志已以 `TESTBENCH PASS` 结束；真实 SIP/IME 与人工视觉检查仍是后续边界。
 
-**当前阶段（next160 已通过设备门禁）**：unified script sequence ABI、external resource
+当前待验收候选是 next164：TEST129-132 在现有脚本 Event/DOM bridge 上增加
+Event.target/currentTarget、id/className、classList token 操作和受控 style
+declaration 方法。它不改变默认 javascript=0 或 TEST13 网络路径；设备自动日志与
+人工视觉检查待进行。
+
+**当前阶段（next163 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
 TEST13 不会新增脚本网络请求；next146 的页面级持久 context、next147 的 click 事件桥、
 next148 的原生表单事件桥、next149 的 EDIT 键盘事件桥和 next150 的 focusin/focusout
@@ -319,7 +324,7 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   `C:\WMShare\Positron-next162` staging/哈希核对已通过；待完整设备日志确认 TEST13
   三段及 TEST123，之后仍需真实 SIP 人工验收。
 
-### 6ai. next163：基础脚本 DOM 表单属性（待设备验收）
+### 6ai. next163：基础脚本 DOM 表单属性（已设备验收）
 
 - InputEvent/KeyboardEvent 的新增 isComposing 通过带 struct_size 的 Ex 数据结构
   和新导出函数提供；旧 ABI 继续传递 false，短结构不会被部分读取。
@@ -329,8 +334,19 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   checked/defaultChecked 分离；这是为保持属性反射语义，不是修改 TEST 断言。
 - TEST124-128 覆盖旧/新事件 ABI、DOM 文本/属性、三种 value 控件、live checked
   与 markup 不变；默认 javascript=0 及 TEST13 网络流程保持不变。
-- C89、仓库/文档审计、VS2008 ARMV4I 增量构建和
-  C:\WMShare\Positron-next163 staging 已通过；待设备自动日志与人工视觉验收。
+- C89、仓库/文档审计、VS2008 ARMV4I 增量构建、C:\WMShare\Positron-next163 staging
+  与设备自动日志已通过；日志以 `TESTBENCH PASS` 结束。真实 SIP/IME 与人工视觉
+  检查仍不能由自动断言替代。
+
+### 6aj. next164：脚本 Event target 与 DOM token/style（待设备验收）
+
+- PCoreEventInfo 现在在同步 listener callback 中提供 target/currentTarget 的
+  UTF-8 element ID；事件 JSON 只复制短时有效的 ID，不暴露 libdom 指针。
+- 脚本 PElement 增加 id/className 反射、classList 的 token 操作，以及受控 style
+  对象的 cssText、getPropertyValue、setProperty、removeProperty；style priority、
+  完整 CSSOM 与 computed style 仍明确不在本批范围。
+- TEST129-132 全部在首次 style/layout 前运行；C89、审计、ARMV4I 增量构建和
+  C:\WMShare\Positron-next164 staging 已通过，等待设备自动日志与人工视觉验收。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 

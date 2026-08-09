@@ -2,19 +2,28 @@
 
 更新时间：2026-08-09
 当前分支：`main`  
-当前设备基线：next160 已在 `screen=640x480 dpi=192` 下完成 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-122，日志 `C:\WMShare\Positron-next160\test_host.log`
+当前设备基线：next163 已在 `screen=640x480 dpi=192` 下完成 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-128，日志 `C:\WMShare\Positron-next163\test_host.log`
 以 `TESTBENCH PASS` 结束。TEST122 已确认原生 EDIT/SELECT 的 UTF-16 代理对合并、
-ECMAScript UTF-16 pair、EDIT beforeinput 数据和 SELECT 取消顺序。next157-159 是该功能
-的失败/诊断包，均已由 next160 替代。默认 `javascript=0` 与 TEST13 路径不变。
+ECMAScript UTF-16 pair、EDIT beforeinput 数据和 SELECT 取消顺序；TEST124-128 又确认
+isComposing Ex ABI、DOM text/attribute、表单 value 和 live checked。next157-162 是
+此前的失败/诊断/网络恢复候选，均已由 next163 设备包替代。默认 `javascript=0` 与
+TEST13 路径不变；真实 SIP/IME 与视觉效果仍需人工检查。
 
-当前待验收候选：next163 保留 next162 的主文档 GET 握手 EOF 单次重试，并加入
+next163 已设备验收：它保留 next162 的主文档 GET 握手 EOF 单次重试，并加入
 TEST124/125 的 size-tagged Input/Keyboard Ex isComposing ABI、TEST126 的
 DOM text/attribute bridge、TEST127 的 input/textarea/select value 和 TEST128
 的 live checkbox/radio checked。libdom 的 checked setter 已修正为不改写 parsed
 checked attribute；默认 javascript=0，TEST13 不执行脚本。C89、仓库审计、VS2008
-ARMV4I Debug 增量构建和 C:\WMShare\Positron-next163 staging 已完成，关键文件
-哈希与 Debug 产物一致；本候选尚未设备验收。
+ARMV4I Debug 增量构建、关键文件哈希、staging 与设备日志均已完成；日志以
+`TESTBENCH PASS` 结束。自动日志不覆盖真实 SIP/IME 候选窗口或视觉验收。
+
+当前待验收候选：next164 在 next163 的脚本表单属性桥之上加入 TEST129-132：
+Event.target/currentTarget ID、PElement.id/className、classList token 方法和受控
+style declaration 方法。它只在显式 javascript=1 的 classic script context 中
+注册；默认 javascript=0，TEST13 不执行脚本。C89、仓库审计、VS2008 ARMV4I
+Debug 增量构建和 C:\WMShare\Positron-next164 staging 已完成，设备自动日志与
+人工视觉检查待进行。
 
 next161 已接入 WM6 EDIT 的原生 IME composition 消息，使用 SDK
 `<imm.h>` 和设备 `coredll` 中的 `ImmGetContext/ImmGetCompositionStringW/ImmReleaseContext`，
@@ -356,7 +365,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-123`；next160 已在 `screen=640x480 dpi=192` 设备通过至 TEST122，next161 新增待验收 TEST123。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、EDIT/SELECT 键盘、focus、beforeinput、Unicode/代理对和 composition bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图或真实 SIP 输入验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+- 快速配置：`test_host.exe` 同目录的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-132`；next163 已在 `screen=640x480 dpi=192` 设备通过至 TEST128，TEST129-132 为当前待验收脚本 DOM 扩展。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、EDIT/SELECT 键盘、focus、beforeinput、Unicode/代理对、composition、event target/currentTarget、classList 和 style bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图或真实 SIP 输入验收。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。

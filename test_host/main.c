@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 128
+#define TEST_MAX_NUMBER 132
 
 static int test_config_space(char c)
 {
@@ -5304,6 +5304,8 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
     const char *input_type;
     const char *data;
     char key_json[256];
+    char target_id_json[256];
+    char current_target_id_json[256];
     const char *result;
     int length;
 
@@ -5321,7 +5323,11 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
             pcore_browser_script_json_escape(input_type, input_type_json,
             sizeof(input_type_json)) < 0 ||
             pcore_browser_script_json_escape(data, data_json,
-            sizeof(data_json)) < 0) {
+            sizeof(data_json)) < 0 ||
+            pcore_browser_script_json_escape(event_info->target_id,
+            target_id_json, sizeof(target_id_json)) < 0 ||
+            pcore_browser_script_json_escape(event_info->current_target_id,
+            current_target_id_json, sizeof(current_target_id_json)) < 0) {
         return PCORE_EVENT_ACTION_NONE;
     }
     length = _snprintf(args, sizeof(args) - 1,
@@ -5331,7 +5337,8 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
             "\"inputType\":\"%s\",\"data\":\"%s\","
             "\"isComposing\":%s,\"key\":\"%s\",\"keyCode\":%u,"
             "\"charCode\":%u,\"repeat\":%s,\"shiftKey\":%s,"
-            "\"ctrlKey\":%s,\"altKey\":%s}]",
+            "\"ctrlKey\":%s,\"altKey\":%s,"
+            "\"targetId\":\"%s\",\"currentTargetId\":\"%s\"}]",
             binding->id, binding->event_type, event_info->phase,
             event_info->bubbles ? "true" : "false",
             event_info->cancelable ? "true" : "false",
@@ -5343,7 +5350,8 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
             event_info->repeat ? "true" : "false",
             event_info->shift ? "true" : "false",
             event_info->ctrl ? "true" : "false",
-            event_info->alt ? "true" : "false");
+            event_info->alt ? "true" : "false",
+            target_id_json, current_target_id_json);
     if (length < 0 || length >= (int) sizeof(args) - 1) {
         return PCORE_EVENT_ACTION_NONE;
     }
@@ -5623,6 +5631,86 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "get:function(){return __pcoreGetChecked({id:this.__id});},"
         "set:function(v){if(!__pcoreSetChecked({id:this.__id,"
         "checked:v?1:0})){throw new Error('checked update failed');}}});"
+        "Object.defineProperty(PElement.prototype,'id',{"
+        "get:function(){var v=this.getAttribute('id');"
+        "return v===null?'':v;},"
+        "set:function(v){var s=String(v);"
+        "if(!__pcoreSetAttribute({id:this.__id,name:'id',value:s}))"
+        "{throw new Error('id update failed');}this.__id=s;}});"
+        "Object.defineProperty(PElement.prototype,'className',{"
+        "get:function(){var v=this.getAttribute('class');"
+        "return v===null?'':v;},"
+        "set:function(v){if(!__pcoreSetAttribute({id:this.__id,"
+        "name:'class',value:String(v)})){throw new Error("
+        "'className update failed');}}});"
+        "function PClassList(owner){this.__owner=owner;}"
+        "PClassList.prototype._tokens=function(){"
+        "var s=this.__owner.className;var a;"
+        "if(s===''){return [];}s=s.replace(/\\s+/g,' ');"
+        "if(s.charAt(0)===' '){s=s.substring(1);}"
+        "if(s.charAt(s.length-1)===' '){s=s.substring(0,s.length-1);}"
+        "return s===''?[]:s.split(' ');};"
+        "PClassList.prototype._write=function(a){"
+        "var s='';var i;"
+        "for(i=0;i<a.length;i++){if(a[i]===''){continue;}"
+        "if(s!==''){s+=' ';}s+=a[i];}"
+        "this.__owner.className=s;};"
+        "PClassList.prototype.contains=function(token){"
+        "var t=String(token);var a=this._tokens();var i;"
+        "for(i=0;i<a.length;i++){if(a[i]===t){return true;}}"
+        "return false;};"
+        "PClassList.prototype.add=function(){"
+        "var a=this._tokens();var t;var i;var j;var found;"
+        "for(i=0;i<arguments.length;i++){t=String(arguments[i]);"
+        "if(t===''){continue;}found=false;"
+        "for(j=0;j<a.length;j++){if(a[j]===t){found=true;break;}}"
+        "if(!found){a.push(t);}}this._write(a);};"
+        "PClassList.prototype.remove=function(){"
+        "var a=this._tokens();var t;var i;var j;"
+        "for(i=0;i<arguments.length;i++){t=String(arguments[i]);"
+        "for(j=a.length-1;j>=0;j--){if(a[j]===t){a.splice(j,1);}}}"
+        "this._write(a);};"
+        "PClassList.prototype.toggle=function(token,force){"
+        "var t=String(token);var present=this.contains(t);"
+        "if(arguments.length>1){if(force===true&&!present){this.add(t);return true;}"
+        "if(force===false&&present){this.remove(t);return false;}"
+        "return present;}"
+        "if(present){this.remove(t);return false;}this.add(t);return true;};"
+        "PClassList.prototype.toString=function(){return this.__owner.className;};"
+        "Object.defineProperty(PElement.prototype,'classList',{"
+        "get:function(){return new PClassList(this);}});"
+        "function PTrim(s){return String(s).replace(/^\\s+|\\s+$/g,'');}"
+        "function PStyle(owner){this.__owner=owner;}"
+        "PStyle.prototype._parse=function(){"
+        "var raw=this.__owner.getAttribute('style')||'';var parts=raw.split(';');"
+        "var a=[];var i;var p;var k;var n;"
+        "for(i=0;i<parts.length;i++){p=parts[i];n=p.indexOf(':');"
+        "if(n<=0){continue;}k=PTrim(p.substring(0,n)).toLowerCase();"
+        "if(k!==''){a.push([k,PTrim(p.substring(n+1))]);}}return a;};"
+        "PStyle.prototype._write=function(a){"
+        "var s='';var i;"
+        "for(i=0;i<a.length;i++){if(i>0){s+='; ';}"
+        "s+=a[i][0]+': '+a[i][1];}"
+        "this.__owner.setAttribute('style',s);};"
+        "PStyle.prototype.getPropertyValue=function(name){"
+        "var n=PTrim(name).toLowerCase();var a=this._parse();var i;"
+        "for(i=0;i<a.length;i++){if(a[i][0]===n){return a[i][1];}}return '';};"
+        "PStyle.prototype.setProperty=function(name,value,priority){"
+        "var n=PTrim(name).toLowerCase();var v=PTrim(value);var a=this._parse();"
+        "var i;var found=false;(void priority);if(n===''){return;}"
+        "if(v===''){this.removeProperty(n);return;}"
+        "for(i=0;i<a.length;i++){if(a[i][0]===n){a[i][1]=v;found=true;break;}}"
+        "if(!found){a.push([n,v]);}this._write(a);};"
+        "PStyle.prototype.removeProperty=function(name){"
+        "var n=PTrim(name).toLowerCase();var a=this._parse();var old='';var b=[];"
+        "var i;for(i=0;i<a.length;i++){if(a[i][0]===n){old=a[i][1];}"
+        "else{b.push(a[i]);}}this._write(b);return old;};"
+        "Object.defineProperty(PStyle.prototype,'cssText',{"
+        "get:function(){return this.__owner.getAttribute('style')||'';},"
+        "set:function(v){if(!__pcoreSetAttribute({id:this.__owner.__id,"
+        "name:'style',value:String(v)})){throw new Error('cssText update failed');}}});"
+        "Object.defineProperty(PElement.prototype,'style',{"
+        "get:function(){return new PStyle(this);}});"
         "g.__pcoreHandlers={};"
         "g.__pcoreDispatchEvent=function(info){"
         "var fn=g.__pcoreHandlers[info.listener];"
@@ -5634,7 +5722,10 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "isComposing:!!info.isComposing,"
         "keyCode:info.keyCode||0,charCode:info.charCode||0,"
         "repeat:!!info.repeat,shiftKey:!!info.shiftKey,"
-        "ctrlKey:!!info.ctrlKey,altKey:!!info.altKey};"
+        "ctrlKey:!!info.ctrlKey,altKey:!!info.altKey,"
+        "target:info.targetId?new PElement(info.targetId):null,"
+        "currentTarget:info.currentTargetId?"
+        "new PElement(info.currentTargetId):null};"
         "e.preventDefault=function(){if(e.cancelable){"
         "e.defaultPrevented=true;}};"
         "fn.call(null,e);return e.defaultPrevented;};"
@@ -21540,6 +21631,304 @@ static BOOL test128_browser_script_checked(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 129 - browser event target and currentTarget                     */
+/* -------------------------------------------------------------------- */
+static BOOL test129_browser_script_event_targets(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var events='';"
+        "function record(e){events+=(events===''?'':'|')+e.type+':'"
+        "+String(e.phase)+':'+e.target.id+':'+e.currentTarget.id;"
+        "document.getElementById('result').textContent=events;}"
+        "var target=document.getElementById('target');"
+        "var parent=document.getElementById('parent');"
+        "target.addEventListener('click',record,false);"
+        "parent.addEventListener('click',record,false);"
+        "</script></head><body>"
+        "<div id='parent'><button id='target'>tap</button></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] =
+        "click:2:target:target|click:3:target:parent";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[256];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    default_allowed = 1;
+    dispatch_result = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        dispatch_result = PCore_EventDispatchToId(document, "target",
+                "click", 1, 0, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, EXPECTED) != 0) {
+            ok = 0;
+        }
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s dispatch=%d/%d",
+                    result_bytes, result, dispatch_result, default_allowed);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 129 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 129 OK",
+            "Browser event objects expose the dispatched target and the\n"
+            "listener's currentTarget through PElement wrappers during\n"
+            "target and bubbling phases.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 130 - browser element id and className reflection                */
+/* -------------------------------------------------------------------- */
+static BOOL test130_browser_script_element_names(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var e=document.getElementById('target');"
+        "var before=e.id+'|'+e.className;"
+        "e.id='renamed';e.className='a b';"
+        "var again=document.getElementById('renamed');"
+        "document.getElementById('result').textContent=before+'|'"
+        "+e.id+'|'+e.className+'|'+String(again!==null)+'|'"
+        "+again.getAttribute('class');"
+        "</script></head><body>"
+        "<div id='target' class='old'>x</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char EXPECTED[] =
+        "target|old|renamed|a b|true|a b";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[256];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int renamed_exists;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    renamed_exists = 0;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0 ||
+            PCore_NodeExistsById(document, "renamed") != 1) {
+        ok = 0;
+    }
+    if (document != NULL) {
+        renamed_exists = PCore_NodeExistsById(document, "renamed");
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s renamed=%d exec/ignore=%d/%d",
+                    result_bytes, result, renamed_exists, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 130 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 130 OK",
+            "PElement id and className reflect the DOM id/class\n"
+            "attributes, and an id change is visible to later lookup.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 131 - browser classList token operations                         */
+/* -------------------------------------------------------------------- */
+static BOOL test131_browser_script_class_list(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var e=document.getElementById('target');var list=e.classList;"
+        "var before=String(list.contains('a'))+'|'+String(list.contains('z'));"
+        "list.add('c','b');list.remove('a');"
+        "var on=list.toggle('d');var off=list.toggle('b',false);"
+        "document.getElementById('result').textContent=before+'|'"
+        "+e.className+'|'+String(on)+'|'+String(off)+'|'"
+        "+String(list.contains('b'));"
+        "</script></head><body>"
+        "<div id='target' class='a b'>x</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char EXPECTED[] = "true|false|c d|true|false|false";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[256];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 131 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 131 OK",
+            "classList contains/add/remove/toggle update the class\n"
+            "attribute without duplicating existing tokens.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 132 - browser style declaration methods                          */
+/* -------------------------------------------------------------------- */
+static BOOL test132_browser_script_style(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var e=document.getElementById('target');"
+        "var before=e.style.getPropertyValue('color')+'|'"
+        "+e.style.getPropertyValue('width');"
+        "e.style.setProperty('color','blue');"
+        "e.style.setProperty('height','20px');"
+        "var old=e.style.removeProperty('width');"
+        "var middle=e.style.getPropertyValue('color')+'|'"
+        "+e.style.getPropertyValue('height')+'|'"
+        "+e.style.getPropertyValue('width')+'|'+old;"
+        "e.style.cssText='color: green; margin: 2px';"
+        "document.getElementById('result').textContent=before+'|'"
+        "+middle+'|'+e.style.getPropertyValue('color')+'|'"
+        "+e.style.getPropertyValue('margin')+'|'+e.style.cssText;"
+        "</script></head><body>"
+        "<div id='target' style='color: red; width: 10px'>x</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] =
+        "red|10px|blue|20px||10px|green|2px|color: green; margin: 2px";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[512];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 132 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 132 OK",
+            "The script style bridge supports cssText and simple\n"
+            "get/set/removeProperty operations through the DOM style\n"
+            "attribute.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -21787,6 +22176,10 @@ static int run_configured_tests(const unsigned char *selected,
         case 126: ok = test126_browser_script_dom_attributes(); break;
         case 127: ok = test127_browser_script_form_values(); break;
         case 128: ok = test128_browser_script_checked(); break;
+        case 129: ok = test129_browser_script_event_targets(); break;
+        case 130: ok = test130_browser_script_element_names(); break;
+        case 131: ok = test131_browser_script_class_list(); break;
+        case 132: ok = test132_browser_script_style(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -3137,11 +3137,41 @@ static pcore_event_state *pcore_event_state_get(dom_document *doc, int create)
     return state;
 }
 
+static dom_string *pcore_event_element_id(dom_event_target *target)
+{
+    dom_node_type node_type;
+    dom_string *name;
+    dom_string *value;
+
+    if (target == NULL ||
+            dom_node_get_node_type((dom_node *) target, &node_type) !=
+                    DOM_NO_ERR ||
+            node_type != DOM_ELEMENT_NODE) {
+        return NULL;
+    }
+    name = NULL;
+    if (dom_string_create((const uint8_t *) "id", 2, &name) !=
+            DOM_NO_ERR || name == NULL) {
+        return NULL;
+    }
+    value = NULL;
+    if (dom_element_get_attribute((dom_element *) target, name, &value) !=
+            DOM_NO_ERR) {
+        value = NULL;
+    }
+    dom_string_unref(name);
+    return value;
+}
+
 static void pcore_event_listener_adapter(dom_event *event, void *pw)
 {
     pcore_event_binding *binding;
     PCoreEventInfo info;
     dom_event_flow_phase phase;
+    dom_event_target *target;
+    dom_event_target *current_target;
+    dom_string *target_id;
+    dom_string *current_target_id;
     bool value;
     unsigned int actions;
 
@@ -3150,6 +3180,20 @@ static void pcore_event_listener_adapter(dom_event *event, void *pw)
         return;
     }
     memset(&info, 0, sizeof(info));
+    target = NULL;
+    current_target = NULL;
+    target_id = NULL;
+    current_target_id = NULL;
+    (void) dom_event_get_target(event, &target);
+    (void) dom_event_get_current_target(event, &current_target);
+    target_id = pcore_event_element_id(target);
+    current_target_id = pcore_event_element_id(current_target);
+    if (target_id != NULL) {
+        info.target_id = dom_string_data(target_id);
+    }
+    if (current_target_id != NULL) {
+        info.current_target_id = dom_string_data(current_target_id);
+    }
     phase = DOM_AT_TARGET;
     if (dom_event_get_event_phase(event, &phase) == DOM_NO_ERR) {
         info.phase = (unsigned int) phase;
@@ -3193,6 +3237,18 @@ static void pcore_event_listener_adapter(dom_event *event, void *pw)
         dom_event_stop_immediate_propagation(event);
     } else if ((actions & PCORE_EVENT_ACTION_STOP_PROPAGATION) != 0) {
         dom_event_stop_propagation(event);
+    }
+    if (target_id != NULL) {
+        dom_string_unref(target_id);
+    }
+    if (current_target_id != NULL) {
+        dom_string_unref(current_target_id);
+    }
+    if (target != NULL) {
+        dom_node_unref((dom_node *) target);
+    }
+    if (current_target != NULL) {
+        dom_node_unref((dom_node *) current_target);
     }
 }
 
