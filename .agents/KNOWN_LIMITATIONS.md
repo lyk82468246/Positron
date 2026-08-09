@@ -31,8 +31,8 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next177，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-145，计 93 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
+**当前自动化设备基线（next178，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-146，计 94 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -261,6 +261,16 @@ structured clone、跨 document state、popstate、同文档 URL 历史或页面
 本批不是完整 structured clone，也不实现 pushState、非当前 URL 改写、popstate、POST state
 或页面缓存。320x320/128 DPI 日志已得到 TEST145 OK、93 条 OK、零 ERROR、零 FAIL 与最终
 PASS，next177 已成为自动设备基线。
+
+**next178 same-URL JSON-only history.pushState（自动设备验收通过）**：新增不联网的受控
+`history.pushState(state, title)`。state 仍须序列化为小于 1024 字节的 JSON，title 忽略，
+第三个 URL 只允许省略、空串或当前绝对 URL；调用同步追加条目、更新 length/state、截断
+forward 分支，最多保留 16 项。初始 GET 脚本的多次 push/replace 只记录在候选 bridge，
+document 最终成功后才按顺序提交，活动页立即提交。TEST146 离线覆盖成功提交隔离、多次
+操作顺序、clone、URL 拒绝、同步 length、活动追加、前向截断、逐项恢复和 14/16 callback
+槽位。本批遍历仍走现有 GET 重载，不是完整 structured clone，也不实现非当前 URL、POST
+state、同 document 生命周期、popstate 或页面缓存。320x320/128 DPI 日志已得到 TEST146 OK、
+94 条 OK、零 ERROR、零 FAIL 与最终 PASS，next178 已成为自动设备基线。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

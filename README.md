@@ -1,12 +1,12 @@
 # Positron
 
-**当前自动化设备基线（next177，2026-08-09）**：保留 next168 的 16 项成功 GET URL
+**当前自动化设备基线（next178，2026-08-09）**：保留 next168 的 16 项成功 GET URL
 历史和左方向键后退重载，并为同一个 Duktape 页面 context 增加最小 location/history bridge
 及异步 location 赋值/重载/替换、history 前进、有界偏移导航、只读长度、逐项 state 和
-受控 replaceState。`screen=320x320 dpi=128` 日志中 TEST13 三段导航、
-TEST20/27/43/44/56/58-77/80-145 全部通过：93 条 `TEST ... OK`、
+受控 replaceState 和同 URL pushState。`screen=320x320 dpi=128` 日志中 TEST13 三段导航、
+TEST20/27/43/44/56/58-77/80-146 全部通过：94 条 `TEST ... OK`、
 零条 `[ERROR]`、零 FAIL、最终 `TESTBENCH PASS`，日志为
-`C:\WMShare\Positron-next177\test_host.log`。最近一次定向人工门
+`C:\WMShare\Positron-next178\test_host.log`。最近一次定向人工门
 仍是 next167：用户确认
 Learn More 离开页保持居中边距，真实 SIP 候选词点击可完整键入。后续人工视觉/交互检查
 改为累计若干可能产生回归的批次后集中进行，不再逐个自动批次阻塞开发。默认
@@ -178,6 +178,19 @@ title 忽略，第三个 URL 仅允许省略、空串或当前绝对 URL。gette
 `C:\WMShare\Positron-next177` 已隔离 staging，七个 ARMV4I 二进制与构建产物 SHA-256
 一致。320x320/128 DPI 日志得到 TEST145 OK、93 条 OK、零 ERROR、零 FAIL 与最终 PASS，
 next177 已成为自动设备基线。
+
+**next178 自动设备验收通过（2026-08-09）**：在 next177 的逐项 JSON state 上新增同 URL、
+不联网的受控 `history.pushState(state, title)`。state 仍须序列化为小于 1024 字节的 JSON，
+title 忽略，第三个 URL 只允许省略、空串或当前绝对 URL；调用同步追加条目并更新只读
+length/state，截断 forward 分支，最多保留 16 项。初始 GET 脚本的多次 push/replace 先按
+顺序留在候选 bridge，document 最终成功后才提交；活动页立即提交。TEST146 离线固定
+成功提交隔离、多次操作顺序、clone、URL 拒绝、同步 length、活动追加、前向截断、逐项
+恢复和 14/16 native callback 槽位。默认 `javascript=0`、TEST13、core ABI 与 next177
+基线不变；遍历仍复用现有 GET 重载，不实现完整 structured clone、非当前 URL、POST state、
+同 document 生命周期、`popstate` 或页面缓存。C89 回归及 ARMV4I Debug 增量构建已通过；
+`C:\WMShare\Positron-next178` 已隔离 staging，七个 ARMV4I 二进制与构建产物 SHA-256
+一致。320x320/128 DPI 日志得到 TEST146 OK、94 条 OK、零 ERROR、零 FAIL 与最终 PASS，
+next178 已成为自动设备基线。
 
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
@@ -586,7 +599,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-145
+tests=13,20,27,43,44,56,58-77,80-146
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
