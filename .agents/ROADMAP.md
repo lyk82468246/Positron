@@ -29,10 +29,14 @@ Event.target/currentTarget、id/className、classList token 操作和受控 styl
 declaration 方法。它不改变默认 javascript=0 或 TEST13 网络路径；日志以
 TESTBENCH PASS 结束，人工视觉检查仍是独立门槛。
 
-当前待验收候选是 next165：TEST133-135 增加 input/textarea defaultValue、input
-defaultChecked 和 select.selectedIndex 读写、-1 清空及越界拒绝。它不改变默认
-javascript=0 或 TEST13 网络路径；C89、ARMV4I Debug 增量构建和 staging 已通过，
-等待设备自动日志与人工检查。
+next165 设备验收在 TEST110 的 DOM bootstrap 阶段失败：六个新增 JS 原生入口
+超过既有 16 槽位上限，TEST133-135 没有执行，因此 next165 不能成为基线。
+
+当前待验收候选是 next166：保留 TEST133-135 的 input/textarea defaultValue、
+input defaultChecked 和 select.selectedIndex 读写、-1 清空及越界拒绝，只把
+六个 JS bridge 入口合并为一个按操作分发的入口。它不改变默认 javascript=0
+或 TEST13 网络路径；C89、ARMV4I Debug 增量构建和 staging 已通过，等待设备
+自动日志与人工检查。
 
 **当前阶段（next163 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
@@ -355,14 +359,24 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   C:\WMShare\Positron-next164 staging 和设备自动日志已通过，日志以 TESTBENCH PASS
   结束。人工视觉验收仍不由自动断言替代。
 
-### 6ak. next165：脚本表单默认属性与 selectedIndex（待设备验收）
+### 6ak. next165：脚本表单默认属性与 selectedIndex（设备失败）
 
 - PElement 增加 input/textarea defaultValue、input defaultChecked，以及 select
   selectedIndex 的 DOM 读写；这些属性不要求已有 style/layout box。
 - selectedIndex=-1 显式清空选项，越界写入返回失败；TEST133-135 覆盖 live/default
   状态分离、默认值 setter、选择清空和边界行为。
+- 六个新增 JS 原生入口让 TEST110 的 DOM bootstrap 超过
+  PSCRIPT_MAX_NATIVE_FUNCTIONS=16，所以设备在 TEST110 停止，TEST133-135
+  没有执行；next165 不能作为基线。
+
+### 6al. next166：表单属性 bridge 槽位合并（待设备验收）
+
+- 保留 input/textarea defaultValue、input defaultChecked、select
+  selectedIndex 以及 TEST133-135 的边界断言。
+- JS bridge 将六个新增入口合并为一个按操作分发的原生函数，继续保留脚本
+  引擎的 16 槽位限制，并让既有 TEST110-132 bootstrap 正常注册事件入口。
 - 默认 javascript=0、TEST13 网络路径和 next164 Browse 基线不变；C89、审计、
-  ARMV4I 增量构建与 C:\WMShare\Positron-next165 staging 已完成，等待设备自动
+  ARMV4I 增量构建与 C:\WMShare\Positron-next166 staging 已完成，等待设备自动
   日志和人工检查。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）

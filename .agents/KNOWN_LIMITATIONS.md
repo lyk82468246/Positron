@@ -167,11 +167,13 @@ libdom 的 checked live-state 修正已完成设备自动回归；`C:\WMShare\Po
 priority、CSSOM、computed style 或布局自动重排。新桥仍只按 getElementById 工作，
 只在显式 javascript=1 的 classic context 注册；next164 日志以 TESTBENCH PASS 结束。
 
-**next165 脚本表单默认属性（待设备验收）**：TEST133-135 增加
-defaultValue/defaultChecked 和 selectedIndex 的读写、-1 清空与越界拒绝。
-它们仍按 getElementById 工作，不要求 style/layout box；selectedIndex 的写入只
-更新 DOM option 状态，已有 styled box 不会自动重排。C89/ARMV4I/staging 已通过，
-设备回归尚未完成。
+**next165 脚本表单默认属性（设备失败，已修复候选）**：TEST133-135 增加
+defaultValue/defaultChecked 和 selectedIndex 的读写、-1 清空与越界拒绝；
+但六个新增 JS 原生入口使 TEST110 的 DOM bootstrap 超过既有 16 槽位上限，
+因此这些测试没有在该包中执行。next166 将它们合并到一个按操作分发的 bridge
+入口；属性仍按 getElementById 工作，不要求 style/layout box，selectedIndex
+写入只更新 DOM option 状态，已有 styled box 不会自动重排。next166 设备回归
+尚未完成。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

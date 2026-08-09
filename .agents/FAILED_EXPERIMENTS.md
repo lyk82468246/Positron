@@ -1,6 +1,6 @@
 # 失败实验与暂挂方向索引
 
-更新时间：2026-08-08
+更新时间：2026-08-09
 
 这份索引集中记录曾经导致真实页面回归、设备断言失败、环境混包误报，或因风险暂时停止的工作。它不是“所有已修复 bug”的替代品：完整实现边界仍见 `KNOWN_LIMITATIONS.md`，逐版本交接见 `HANDOFF.md`，按时间排列的开发记录见 `ROADMAP.md`。
 
@@ -22,6 +22,7 @@
 
 | 范围 | 状态 | 发生的问题 | 当前决定与重启门槛 |
 |---|---|---|---|
+| next165/TEST110：脚本表单默认属性 bridge 槽位回归 | 已替代 | 为 TEST133-135 注册六个独立 JS 原生入口后，bootstrap 从既有 16 槽位增长到 18 个，设备在 TEST110 报 native function limit exceeded，后续新测试未执行。 | next166 将六个属性操作合并为一个按 op 分发的入口，保留脚本引擎 16 槽位约束；必须先通过 TEST110-135，再成为候选基线。 |
 | next38-next43：stylesheet metadata、`<base>`/URL 别名、redirect final origin、WinInet/TLS deadline 与加载预算 | 暂挂 | next37 之后 TEST13 无法完成，无法安全归因到单一 HTTP 或样式改动。 | 整批保存在远端 `codex/post-next37-experiments`，不得直接合并；重启时每个方向单独分支，并完整通过 `Start -> Open example -> Learn more`、旋转、滚动和失败回滚。详见 [`ROLLBACK_NEXT37.md`](./ROLLBACK_NEXT37.md)。 |
 | next54：固定高度 overflow 的滚动条预留/二次 layout | 已替代 | TEST42 读到 `used=0/0/0`，右箭头还偏移；二次布局改变了已验收几何。 | next55 收窄为只对 auto-height 路径预留空间并修正箭头坐标，已由设备验收。不要恢复 next54 的全局二次预留。 |
 | next60：counter/list marker 首次 staging | 环境误报，已替代 | 设备看到 `found=4 fetched=2`，原因是新 `test_host.exe` 与旧 `positron_core.dll` 混用，不是 marker 逻辑失败。 | `stage.bat` 现在先做同配置增量 Build，失败不复制；新实验必须核对 EXE/DLL 同包。 |

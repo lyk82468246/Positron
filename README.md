@@ -51,11 +51,18 @@ classic script context 中可见；默认 javascript=0、TEST13 网络路径和 
 Browse 基线不变。C:\WMShare\Positron-next164\test_host.log 已以
 `TESTBENCH PASS` 结束；自动断言仍不替代人工视觉检查。
 
-**next165 待设备验收（2026-08-09）**：TEST133-134 增加 input/textarea 的
-defaultValue、input 的 defaultChecked，以及 select 的 selectedIndex 读写；
-TEST135 覆盖 selectedIndex=-1 清空和越界拒绝。默认 javascript=0、TEST13 网络
-路径和 next164 Browse 基线不变。C89、ARMV4I Debug 增量构建、审计与
-C:\WMShare\Positron-next165 staging 已通过，等待设备自动日志和人工检查。
+**next165 设备失败（2026-08-09，不能作为基线）**：TEST133-135 增加
+input/textarea 的 defaultValue、input 的 defaultChecked，以及 select 的
+selectedIndex 读写；但设备自动运行在 TEST110 的 DOM bootstrap 阶段停止，
+因为新增六个独立 JS 原生入口超过了既有 16 槽位上限，后续 TEST133-135
+没有执行。该失败是桥接集成错误，不是放宽断言或改变脚本槽位上限的理由。
+
+**next166 待设备验收（2026-08-09）**：保留上述六个属性和 TEST133-135
+断言，只把 JS bridge 合并为一个按操作分发的原生入口，使 bootstrap 继续
+容纳事件入口并保持 PSCRIPT_MAX_NATIVE_FUNCTIONS=16。默认 javascript=0、
+TEST13 网络路径和 next164 Browse 基线不变。C89、ARMV4I Debug 增量构建、
+审计与 C:\WMShare\Positron-next166 staging 已通过，等待设备自动日志和
+人工检查。
 
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT

@@ -25,11 +25,16 @@ style declaration 方法；默认 javascript=0，TEST13 不执行脚本。C89、
 VS2008 ARMV4I Debug 增量构建、staging 与设备日志均已完成并以 TESTBENCH PASS
 结束，人工视觉检查仍是独立门槛。
 
-当前待验收候选：next165 加入 TEST133-135 的 input/textarea defaultValue、
-input defaultChecked 和 select.selectedIndex 读写、清空及越界拒绝。它只在显式
-javascript=1 的 classic script context 中注册；默认 javascript=0，TEST13 路径不变。
-C89、仓库审计、VS2008 ARMV4I Debug 增量构建和 C:\WMShare\Positron-next165
-staging 已完成，设备自动日志与人工检查待进行。
+next165 设备验收失败：它加入 TEST133-135 的 input/textarea defaultValue、
+input defaultChecked 和 select.selectedIndex 读写、清空及越界拒绝，但六个
+新增 JS 原生入口耗尽既有 16 槽位，TEST110 在 DOM bootstrap 阶段停止，TEST133-135
+尚未执行；next165 不能作为基线。
+
+当前待验收候选：next166 保留上述属性和断言，只把六个新增 JS bridge 入口合并为
+一个按操作分发的入口，继续保持 PSCRIPT_MAX_NATIVE_FUNCTIONS=16。它只在显式
+javascript=1 的 classic script context 中注册；默认 javascript=0，TEST13
+路径不变。C89、仓库审计、VS2008 ARMV4I Debug 增量构建和
+C:\WMShare\Positron-next166 staging 已完成，设备自动日志与人工检查待进行。
 
 next161 已接入 WM6 EDIT 的原生 IME composition 消息，使用 SDK
 `<imm.h>` 和设备 `coredll` 中的 `ImmGetContext/ImmGetCompositionStringW/ImmReleaseContext`，

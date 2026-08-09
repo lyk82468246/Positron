@@ -1,10 +1,10 @@
 # WM6 / Positron Debugging Notes
 
-最近设备验收包为 C:\WMShare\Positron-next165，默认配置运行到 TEST135。
-TEST133-135 检查 defaultValue/defaultChecked、selectedIndex 读写、清空与越界；
-它们只在 javascript=1 的离线测试函数中显式启用，TEST13 默认不执行脚本。
-测试前确认启动的是 next165 目录，避免与旧包的 DLL 混用。next164 的设备日志已
-以 TESTBENCH PASS 结束；next165 的设备日志和人工视觉仍待验收。
+最近设备验收包为 C:\WMShare\Positron-next166，默认配置应运行到 TEST135。
+next165 在 TEST110 的 DOM bootstrap 阶段因新增 JS 原生入口超过 16 槽位而失败，
+TEST133-135 未执行，不能用 next165 排查属性行为。next166 将六个新增属性操作
+合并为一个 bridge 入口；测试前确认启动的是 next166 目录，避免与旧包的 DLL 混用。
+next164 的设备日志已以 TESTBENCH PASS 结束；next166 的设备日志和人工视觉仍待验收。
 
 ## 先查环境，再查代码
 

@@ -5457,6 +5457,55 @@ static int pcore_browser_script_set_selected_index(void *pw,
             out_capacity, out_len);
 }
 
+static int pcore_browser_script_form_property(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    HANDLE root;
+    HANDLE object;
+    const char *op;
+
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
+    if (op == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    if (strcmp(op, "getDefaultValue") == 0) {
+        PJson_Free(root);
+        return pcore_browser_script_get_default_value(pw, args_json,
+                args_len, out_json, out_capacity, out_len);
+    }
+    if (strcmp(op, "setDefaultValue") == 0) {
+        PJson_Free(root);
+        return pcore_browser_script_set_default_value(pw, args_json,
+                args_len, out_json, out_capacity, out_len);
+    }
+    if (strcmp(op, "getDefaultChecked") == 0) {
+        PJson_Free(root);
+        return pcore_browser_script_get_default_checked(pw, args_json,
+                args_len, out_json, out_capacity, out_len);
+    }
+    if (strcmp(op, "setDefaultChecked") == 0) {
+        PJson_Free(root);
+        return pcore_browser_script_set_default_checked(pw, args_json,
+                args_len, out_json, out_capacity, out_len);
+    }
+    if (strcmp(op, "getSelectedIndex") == 0) {
+        PJson_Free(root);
+        return pcore_browser_script_get_selected_index(pw, args_json,
+                args_len, out_json, out_capacity, out_len);
+    }
+    if (strcmp(op, "setSelectedIndex") == 0) {
+        PJson_Free(root);
+        return pcore_browser_script_set_selected_index(pw, args_json,
+                args_len, out_json, out_capacity, out_len);
+    }
+    PJson_Free(root);
+    return 1;
+}
+
 static unsigned int pcore_browser_script_event_callback(void *pw,
         const PCoreEventInfo *event_info)
 {
@@ -5792,22 +5841,28 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "set:function(v){if(!__pcoreSetValue({id:this.__id,value:String(v)}))"
         "{throw new Error('value update failed');}}});"
         "Object.defineProperty(PElement.prototype,'defaultValue',{"
-        "get:function(){return __pcoreGetDefaultValue({id:this.__id});},"
-        "set:function(v){if(!__pcoreSetDefaultValue({id:this.__id,"
-        "value:String(v)})){throw new Error('defaultValue update failed');}}});"
+        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "op:'getDefaultValue'});},"
+        "set:function(v){if(!__pcoreFormProperty({id:this.__id,"
+        "op:'setDefaultValue',value:String(v)})){throw new Error("
+        "'defaultValue update failed');}}});"
         "Object.defineProperty(PElement.prototype,'checked',{"
         "get:function(){return __pcoreGetChecked({id:this.__id});},"
         "set:function(v){if(!__pcoreSetChecked({id:this.__id,"
         "checked:v?1:0})){throw new Error('checked update failed');}}});"
         "Object.defineProperty(PElement.prototype,'defaultChecked',{"
-        "get:function(){return __pcoreGetDefaultChecked({id:this.__id});},"
-        "set:function(v){if(!__pcoreSetDefaultChecked({id:this.__id,"
-        "checked:v?1:0})){throw new Error('defaultChecked update failed');}}});"
+        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "op:'getDefaultChecked'});},"
+        "set:function(v){if(!__pcoreFormProperty({id:this.__id,"
+        "op:'setDefaultChecked',checked:v?1:0})){throw new Error("
+        "'defaultChecked update failed');}}});"
         "Object.defineProperty(PElement.prototype,'selectedIndex',{"
-        "get:function(){return __pcoreGetSelectedIndex({id:this.__id});},"
+        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "op:'getSelectedIndex'});},"
         "set:function(v){var n=Number(v);"
         "if(n!==n||n!==Math.floor(n)){throw new Error('selectedIndex value');}"
-        "if(!__pcoreSetSelectedIndex({id:this.__id,index:n}))"
+        "if(!__pcoreFormProperty({id:this.__id,op:'setSelectedIndex',"
+        "index:n}))"
         "{throw new Error('selectedIndex update failed');}}});"
         "Object.defineProperty(PElement.prototype,'id',{"
         "get:function(){var v=this.getAttribute('id');"
@@ -6008,29 +6063,14 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
             "__pcoreSetValue", -1,
             pcore_browser_script_set_value, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreGetDefaultValue", -1,
-            pcore_browser_script_get_default_value, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreSetDefaultValue", -1,
-            pcore_browser_script_set_default_value, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
             "__pcoreGetChecked", -1,
             pcore_browser_script_get_checked, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime,
             "__pcoreSetChecked", -1,
             pcore_browser_script_set_checked, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreGetDefaultChecked", -1,
-            pcore_browser_script_get_default_checked, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreSetDefaultChecked", -1,
-            pcore_browser_script_set_default_checked, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreGetSelectedIndex", -1,
-            pcore_browser_script_get_selected_index, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreSetSelectedIndex", -1,
-            pcore_browser_script_set_selected_index, bridge) != PSCRIPT_OK ||
+            "__pcoreFormProperty", -1,
+            pcore_browser_script_form_property, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreAddEvent", -1,
             pcore_browser_script_add_event, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreRemoveEvent", -1,
