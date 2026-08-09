@@ -17,6 +17,12 @@ TEST112 页面级 context、TEST113 click 事件桥、TEST114 原生表单事件
 键盘事件桥、TEST119 WM_CHAR keypress 桥和 TEST120 WM_SYSKEY/WM_SYSCHAR 桥均完成。下一批设备继续轮换分辨率/DPI；不能
 把 96 DPI 当作产品固定值，并保留日志头部与 TEST13 人工视觉复查。
 
+当前待验收候选是 next163：在不改变默认 Browse 脚本关闭状态的前提下，补齐
+Input/Keyboard isComposing 的 size-tagged Ex ABI、DOM text/attribute bridge、
+input/textarea/select value 和 live checkbox/radio checked 的最小脚本绑定。
+TEST124-128 均在首次 style/layout 前运行；ARMV4I、C89、审计与 staging 已通过，
+设备日志及人工视觉检查待进行。
+
 **当前阶段（next160 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
 TEST13 不会新增脚本网络请求；next146 的页面级持久 context、next147 的 click 事件桥、
@@ -312,6 +318,19 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - C89 专家脚本、脚本单测、仓库/文档审计、VS2008 ARMV4I Debug 增量构建及
   `C:\WMShare\Positron-next162` staging/哈希核对已通过；待完整设备日志确认 TEST13
   三段及 TEST123，之后仍需真实 SIP 人工验收。
+
+### 6ai. next163：基础脚本 DOM 表单属性（待设备验收）
+
+- InputEvent/KeyboardEvent 的新增 isComposing 通过带 struct_size 的 Ex 数据结构
+  和新导出函数提供；旧 ABI 继续传递 false，短结构不会被部分读取。
+- 浏览器脚本最小 PElement 新增 value、checked、既有 text/attribute 方法；
+  core 通过 DOM id 查找 input/textarea/select，不要求已有 style/layout box。
+- vendored libdom 的 input checked setter 修正为 live IDL state，与 parsed
+  checked/defaultChecked 分离；这是为保持属性反射语义，不是修改 TEST 断言。
+- TEST124-128 覆盖旧/新事件 ABI、DOM 文本/属性、三种 value 控件、live checked
+  与 markup 不变；默认 javascript=0 及 TEST13 网络流程保持不变。
+- C89、仓库/文档审计、VS2008 ARMV4I 增量构建和
+  C:\WMShare\Positron-next163 staging 已通过；待设备自动日志与人工视觉验收。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 

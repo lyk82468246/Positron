@@ -147,6 +147,17 @@ Reserved Domains 的主文档 TLS 握手阶段收到 peer EOF，因而 TEST123 �
 通用网络恢复、断点续传或无限重连，不覆盖 POST、DNS、HTTP 状态失败、子资源请求，也不
 掩盖第二次失败。日志的 retry 计数用于暴露恢复事实，而不是把网络失败当作功能断言通过。
 
+**next163 脚本表单属性候选（待设备验收）**：TEST124/125 的 size-tagged Ex ABI
+补充 InputEvent/KeyboardEvent.isComposing，TEST126-128 又补充最小 DOM text/
+attribute、input/textarea/select.value 和 live checkbox/radio.checked。
+这些桥只在显式 javascript=1 的 classic script context 中注册，仍是同步、按
+getElementById 的窄 ABI；getter 结果仍受脚本 JSON 回调的 255 字节有效载荷限制，
+大文本/大属性可能读取失败。value/checked 修改发生在 DOM 层，已有 styled box 不会
+自动重排；浏览器宿主需要随后重新 style/layout。完整 HTMLFormElement、files、
+selectedOptions、defaultValue/defaultChecked、change/input 自动事件、activation、
+focus、异步脚本、window/fetch/network binding、CSP 和完整 DOM 均未实现。vendored
+libdom 的 checked live-state 修正已进入候选，但尚未做设备回归。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM

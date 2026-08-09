@@ -4065,6 +4065,67 @@ static dom_element *pcore_element_by_id(dom_document *doc,
     return element;
 }
 
+static int pcore_element_name_is(dom_element *element, const char *name)
+{
+    dom_string *actual;
+    dom_string *expected;
+    int same;
+
+    actual = NULL;
+    expected = NULL;
+    same = 0;
+    if (element == NULL || name == NULL ||
+            dom_node_get_node_name((dom_node *) element, &actual) !=
+                    DOM_NO_ERR || actual == NULL ||
+            dom_string_create((const uint8_t *) name, strlen(name),
+                    &expected) != DOM_NO_ERR || expected == NULL) {
+        if (actual != NULL) { dom_string_unref(actual); }
+        if (expected != NULL) { dom_string_unref(expected); }
+        return 0;
+    }
+    same = dom_string_caseless_isequal(actual, expected) ? 1 : 0;
+    dom_string_unref(expected);
+    dom_string_unref(actual);
+    return same;
+}
+
+/* libdom 0.4.2 stores input.value in the value attribute. Freeze the parsed
+ * default before the first live-value write so reset keeps browser semantics. */
+static int pcore_dom_input_preserve_default(
+        dom_html_input_element *input)
+{
+    dom_string *default_value;
+    dom_string *current_value;
+    dom_string *empty;
+    dom_exception error;
+
+    default_value = NULL;
+    current_value = NULL;
+    empty = NULL;
+    if (dom_html_input_element_get_default_value(input,
+            &default_value) != DOM_NO_ERR) {
+        return 0;
+    }
+    if (default_value != NULL) {
+        dom_string_unref(default_value);
+        return 1;
+    }
+    if (dom_html_input_element_get_value(input, &current_value) !=
+            DOM_NO_ERR) {
+        return 0;
+    }
+    if (current_value == NULL &&
+            dom_string_create((const uint8_t *) "", 0, &empty) !=
+                    DOM_NO_ERR) {
+        return 0;
+    }
+    error = dom_html_input_element_set_default_value(input,
+            (current_value != NULL) ? current_value : empty);
+    if (current_value != NULL) { dom_string_unref(current_value); }
+    if (empty != NULL) { dom_string_unref(empty); }
+    return (error == DOM_NO_ERR) ? 1 : 0;
+}
+
 PCORE_API int PCore_NodeExistsById(HANDLE hDoc, const char *element_id)
 {
     dom_element *element;
@@ -4127,6 +4188,275 @@ PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
     }
     err = dom_node_set_text_content((dom_node *) element, content);
     dom_string_unref(content);
+    dom_node_unref((dom_node *) element);
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
+PCORE_API int PCore_NodeAttributeById(HANDLE hDoc, const char *element_id,
+        const char *name, char *value, int value_capacity, int *out_bytes)
+{
+    dom_element *element;
+    dom_string *dom_name;
+    dom_string *dom_value;
+    dom_exception err;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    if (name == NULL || name[0] == '\0') {
+        return 1;
+    }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    dom_name = NULL;
+    dom_value = NULL;
+    if (dom_string_create((const uint8_t *) name, strlen(name),
+            &dom_name) != DOM_NO_ERR || dom_name == NULL) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    err = dom_element_get_attribute(element, dom_name, &dom_value);
+    dom_string_unref(dom_name);
+    if (err != DOM_NO_ERR) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    if (dom_value == NULL) {
+        dom_node_unref((dom_node *) element);
+        return 2;
+    }
+    pcore_copy_dom_string(dom_value, value, value_capacity, out_bytes);
+    dom_string_unref(dom_value);
+    dom_node_unref((dom_node *) element);
+    return 0;
+}
+
+PCORE_API int PCore_NodeSetAttributeById(HANDLE hDoc,
+        const char *element_id, const char *name, const char *value)
+{
+    dom_element *element;
+    dom_string *dom_name;
+    dom_string *dom_value;
+    dom_exception err;
+
+    if (name == NULL || name[0] == '\0' || value == NULL) {
+        return 1;
+    }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    dom_name = NULL;
+    dom_value = NULL;
+    if (dom_string_create((const uint8_t *) name, strlen(name),
+            &dom_name) != DOM_NO_ERR || dom_name == NULL ||
+            dom_string_create((const uint8_t *) value, strlen(value),
+            &dom_value) != DOM_NO_ERR || dom_value == NULL) {
+        if (dom_name != NULL) { dom_string_unref(dom_name); }
+        if (dom_value != NULL) { dom_string_unref(dom_value); }
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    err = dom_element_set_attribute(element, dom_name, dom_value);
+    dom_string_unref(dom_value);
+    dom_string_unref(dom_name);
+    dom_node_unref((dom_node *) element);
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
+PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
+        const char *element_id, const char *name)
+{
+    dom_element *element;
+    dom_string *dom_name;
+    dom_exception err;
+
+    if (name == NULL || name[0] == '\0') {
+        return 1;
+    }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    dom_name = NULL;
+    if (dom_string_create((const uint8_t *) name, strlen(name),
+            &dom_name) != DOM_NO_ERR || dom_name == NULL) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    err = dom_element_remove_attribute(element, dom_name);
+    dom_string_unref(dom_name);
+    dom_node_unref((dom_node *) element);
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
+PCORE_API int PCore_NodeValueById(HANDLE hDoc, const char *element_id,
+        char *value, int value_capacity, int *out_bytes)
+{
+    dom_element *element;
+    dom_string *dom_value;
+    dom_exception err;
+
+    if (out_bytes != NULL) { *out_bytes = 0; }
+    if (value != NULL && value_capacity > 0) { value[0] = '\0'; }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    dom_value = NULL;
+    if (pcore_element_name_is(element, "input")) {
+        err = dom_html_input_element_get_value(
+                (dom_html_input_element *) element, &dom_value);
+    } else if (pcore_element_name_is(element, "textarea")) {
+        err = dom_html_text_area_element_get_value(
+                (dom_html_text_area_element *) element, &dom_value);
+    } else if (pcore_element_name_is(element, "select")) {
+        err = dom_html_select_element_get_value(
+                (dom_html_select_element *) element, &dom_value);
+    } else {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    if (err != DOM_NO_ERR) {
+        if (dom_value != NULL) { dom_string_unref(dom_value); }
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    pcore_copy_dom_string(dom_value, value, value_capacity, out_bytes);
+    if (dom_value != NULL) { dom_string_unref(dom_value); }
+    dom_node_unref((dom_node *) element);
+    return 0;
+}
+
+PCORE_API int PCore_NodeSetValueById(HANDLE hDoc, const char *element_id,
+        const char *value)
+{
+    dom_element *element;
+    dom_string *dom_value;
+    dom_exception err;
+    char *normalised;
+    size_t source;
+    size_t target;
+    size_t length;
+
+    if (value == NULL) {
+        return 1;
+    }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    normalised = NULL;
+    length = strlen(value);
+    if (pcore_element_name_is(element, "textarea")) {
+        normalised = (char *) malloc(length + 1);
+        if (normalised == NULL) {
+            dom_node_unref((dom_node *) element);
+            return 1;
+        }
+        source = 0;
+        target = 0;
+        while (source < length) {
+            if (value[source] == '\r') {
+                normalised[target++] = '\n';
+                source++;
+                if (source < length && value[source] == '\n') {
+                    source++;
+                }
+            } else {
+                normalised[target++] = value[source++];
+            }
+        }
+        normalised[target] = '\0';
+        value = normalised;
+        length = target;
+    }
+    dom_value = NULL;
+    if (dom_string_create((const uint8_t *) value, length,
+            &dom_value) != DOM_NO_ERR || dom_value == NULL) {
+        free(normalised);
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    if (pcore_element_name_is(element, "input")) {
+        if (!pcore_dom_input_preserve_default(
+                (dom_html_input_element *) element)) {
+            err = DOM_NO_MEM_ERR;
+        } else {
+            err = dom_html_input_element_set_value(
+                    (dom_html_input_element *) element, dom_value);
+        }
+    } else if (pcore_element_name_is(element, "textarea")) {
+        err = dom_html_text_area_element_set_value(
+                (dom_html_text_area_element *) element, dom_value);
+    } else if (pcore_element_name_is(element, "select")) {
+        err = dom_html_select_element_set_value(
+                (dom_html_select_element *) element, dom_value);
+    } else {
+        err = DOM_NOT_SUPPORTED_ERR;
+    }
+    dom_string_unref(dom_value);
+    free(normalised);
+    dom_node_unref((dom_node *) element);
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
+PCORE_API int PCore_NodeCheckedById(HANDLE hDoc, const char *element_id,
+        int *out_checked)
+{
+    dom_element *element;
+    bool checked;
+    dom_exception err;
+
+    if (out_checked == NULL) {
+        return 1;
+    }
+    *out_checked = 0;
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "input")) {
+        if (element != NULL) { dom_node_unref((dom_node *) element); }
+        return 1;
+    }
+    checked = false;
+    err = dom_html_input_element_get_checked(
+            (dom_html_input_element *) element, &checked);
+    dom_node_unref((dom_node *) element);
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    *out_checked = checked ? 1 : 0;
+    return 0;
+}
+
+PCORE_API int PCore_NodeSetCheckedById(HANDLE hDoc,
+        const char *element_id, int checked)
+{
+    dom_element *element;
+    dom_html_input_element *input;
+    bool default_checked;
+    dom_exception err;
+
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "input")) {
+        if (element != NULL) { dom_node_unref((dom_node *) element); }
+        return 1;
+    }
+    input = (dom_html_input_element *) element;
+    default_checked = false;
+    if (dom_html_input_element_get_default_checked(input,
+            &default_checked) != DOM_NO_ERR ||
+            dom_html_input_element_set_default_checked(input,
+                    default_checked) != DOM_NO_ERR) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    err = dom_html_input_element_set_checked(input,
+            checked ? true : false);
     dom_node_unref((dom_node *) element);
     return (err == DOM_NO_ERR) ? 0 : 1;
 }

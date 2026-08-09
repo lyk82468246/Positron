@@ -1,5 +1,10 @@
 # WM6 / Positron Debugging Notes
 
+本次设备候选为 C:\WMShare\Positron-next163，默认配置运行到 TEST128。
+TEST124/125 检查事件 Ex ABI 的 isComposing，TEST126-128 检查脚本 DOM
+text/attribute/form properties；它们只在 javascript=1 的离线测试函数中显式启用，
+TEST13 默认不执行脚本。测试前确认启动的是 next163 目录，避免与旧包的 DLL 混用。
+
 ## 先查环境，再查代码
 
 这个项目里大量“故障”最终都是环境问题。用户已经多次纠正过：不要一听失败就直接改源码。

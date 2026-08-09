@@ -238,6 +238,28 @@ PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
         char *text, int text_capacity, int *out_bytes);
 PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
         const char *element_id, const char *text);
+/* Minimal UTF-8 attribute boundary for script/runtime hosts. The getter
+ * returns 0 when present, 2 when the element exists but the attribute does
+ * not, and 1 for invalid input/DOM failure. out_bytes excludes the NUL. */
+PCORE_API int PCore_NodeAttributeById(HANDLE hDoc, const char *element_id,
+        const char *name, char *value, int value_capacity, int *out_bytes);
+PCORE_API int PCore_NodeSetAttributeById(HANDLE hDoc,
+        const char *element_id, const char *name, const char *value);
+PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
+        const char *element_id, const char *name);
+/* DOM-level form properties for script/runtime hosts. Value supports input,
+ * textarea and select; checked supports input. These functions do not require
+ * a styled/layout box tree, so parser-complete scripts may use them before the
+ * first layout. String getters use the same probe/truncation contract as
+ * PCore_NodeTextContentById. */
+PCORE_API int PCore_NodeValueById(HANDLE hDoc, const char *element_id,
+        char *value, int value_capacity, int *out_bytes);
+PCORE_API int PCore_NodeSetValueById(HANDLE hDoc, const char *element_id,
+        const char *value);
+PCORE_API int PCore_NodeCheckedById(HANDLE hDoc, const char *element_id,
+        int *out_checked);
+PCORE_API int PCore_NodeSetCheckedById(HANDLE hDoc,
+        const char *element_id, int checked);
 
 /* Legacy one-shot image helpers. New consumers should use positron_image.dll's
  * retained PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap API. These
@@ -614,10 +636,29 @@ typedef struct PCoreKeyEventData {
     int ctrl;
     int alt;
 } PCoreKeyEventData;
+typedef struct PCoreKeyEventDataEx {
+    unsigned int struct_size;
+    const char *key;
+    unsigned int key_code;
+    unsigned int char_code;
+    int repeat;
+    int shift;
+    int ctrl;
+    int alt;
+    int is_composing;
+} PCoreKeyEventDataEx;
 typedef struct PCoreInputEventData {
     const char *input_type;
     const char *data;
 } PCoreInputEventData;
+/* Size-tagged extension for callers that need composition state without
+ * changing the ABI of PCoreInputEventData. Set struct_size to sizeof(*data). */
+typedef struct PCoreInputEventDataEx {
+    unsigned int struct_size;
+    const char *input_type;
+    const char *data;
+    int is_composing;
+} PCoreInputEventDataEx;
 typedef struct PCoreEventInfo {
     unsigned int phase;
     int bubbles;
@@ -633,6 +674,7 @@ typedef struct PCoreEventInfo {
     int alt;
     const char *input_type;
     const char *data;
+    int is_composing;
 } PCoreEventInfo;
 typedef unsigned int (*PCoreEventListenerFn)(void *pw,
                                              const PCoreEventInfo *event_info);
@@ -668,6 +710,17 @@ PCORE_API int PCore_EventDispatchKeyAt(HANDLE hDoc, int x, int y,
                                       int cancelable,
                                       const PCoreKeyEventData *key_data,
                                       int *default_allowed);
+PCORE_API int PCore_EventDispatchKeyExToId(HANDLE hDoc,
+                                          const char *element_id,
+                                          const char *event_type,
+                                          int bubbles, int cancelable,
+                                          const PCoreKeyEventDataEx *data,
+                                          int *default_allowed);
+PCORE_API int PCore_EventDispatchKeyExAt(HANDLE hDoc, int x, int y,
+                                        const char *event_type,
+                                        int bubbles, int cancelable,
+                                        const PCoreKeyEventDataEx *data,
+                                        int *default_allowed);
 /* Dispatch a trusted beforeinput-style event with host-provided input
  * metadata. The metadata is valid only during synchronous listener callbacks. */
 PCORE_API int PCore_EventDispatchInputToId(HANDLE hDoc,
@@ -681,6 +734,19 @@ PCORE_API int PCore_EventDispatchInputAt(HANDLE hDoc, int x, int y,
                                         int cancelable,
                                         const PCoreInputEventData *input_data,
                                         int *default_allowed);
+/* Extended input dispatch. Old callers keep using the ABI-stable functions
+ * above and observe is_composing == 0 in listener callbacks. */
+PCORE_API int PCore_EventDispatchInputExToId(HANDLE hDoc,
+                                            const char *element_id,
+                                            const char *event_type,
+                                            int bubbles, int cancelable,
+                                            const PCoreInputEventDataEx *data,
+                                            int *default_allowed);
+PCORE_API int PCore_EventDispatchInputExAt(HANDLE hDoc, int x, int y,
+                                          const char *event_type,
+                                          int bubbles, int cancelable,
+                                          const PCoreInputEventDataEx *data,
+                                          int *default_allowed);
 
 /* Resolve a click on an explicit for=id or wrapping <label> to its visible
  * form gadget. The target point and kind use the same document coordinates

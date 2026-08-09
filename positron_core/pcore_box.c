@@ -3022,6 +3022,7 @@ typedef struct pcore_event_state {
     pcore_event_binding *head;
     const PCoreKeyEventData *key_data;
     const PCoreInputEventData *input_data;
+    int is_composing;
 } pcore_event_state;
 
 struct pcore_event_binding {
@@ -3177,10 +3178,12 @@ static void pcore_event_listener_adapter(dom_event *event, void *pw)
         info.shift = binding->state->key_data->shift ? 1 : 0;
         info.ctrl = binding->state->key_data->ctrl ? 1 : 0;
         info.alt = binding->state->key_data->alt ? 1 : 0;
+        info.is_composing = binding->state->is_composing ? 1 : 0;
     }
     if (binding->state != NULL && binding->state->input_data != NULL) {
         info.input_type = binding->state->input_data->input_type;
         info.data = binding->state->input_data->data;
+        info.is_composing = binding->state->is_composing ? 1 : 0;
     }
     actions = binding->callback(binding->pw, &info);
     if ((actions & PCORE_EVENT_ACTION_PREVENT_DEFAULT) != 0) {
@@ -3295,7 +3298,7 @@ PCORE_API int PCore_EventListenerRemove(HANDLE hDoc, HANDLE hListener)
 static int pcore_event_dispatch_node(dom_node *target,
         const char *event_type, int bubbles, int cancelable,
         pcore_event_state *state, const PCoreKeyEventData *key_data,
-        const PCoreInputEventData *input_data,
+        const PCoreInputEventData *input_data, int is_composing,
         int *default_allowed)
 {
     dom_string *type;
@@ -3304,6 +3307,7 @@ static int pcore_event_dispatch_node(dom_node *target,
     bool success;
     const PCoreKeyEventData *previous_key_data;
     const PCoreInputEventData *previous_input_data;
+    int previous_is_composing;
 
     if (default_allowed != NULL) {
         *default_allowed = 1;
@@ -3330,16 +3334,20 @@ static int pcore_event_dispatch_node(dom_node *target,
     if (err == DOM_NO_ERR) {
         previous_key_data = NULL;
         previous_input_data = NULL;
+        previous_is_composing = 0;
         if (state != NULL) {
             previous_key_data = state->key_data;
             previous_input_data = state->input_data;
+            previous_is_composing = state->is_composing;
             state->key_data = key_data;
             state->input_data = input_data;
+            state->is_composing = is_composing ? 1 : 0;
         }
         err = dom_event_target_dispatch_event(target, event, &success);
         if (state != NULL) {
             state->key_data = previous_key_data;
             state->input_data = previous_input_data;
+            state->is_composing = previous_is_composing;
         }
     }
     if (default_allowed != NULL && err == DOM_NO_ERR) {
@@ -3353,7 +3361,7 @@ static int pcore_event_dispatch_node(dom_node *target,
 static int pcore_event_dispatch_to_id(dom_document *doc,
         const char *element_id, const char *event_type, int bubbles,
         int cancelable, const PCoreKeyEventData *key_data,
-        const PCoreInputEventData *input_data,
+        const PCoreInputEventData *input_data, int is_composing,
         int *default_allowed)
 {
     dom_element *element;
@@ -3384,6 +3392,7 @@ static int pcore_event_dispatch_to_id(dom_document *doc,
     state = pcore_event_state_get(doc, 0);
     result = pcore_event_dispatch_node((dom_node *) element, event_type,
             bubbles, cancelable, state, key_data, input_data,
+            is_composing,
             default_allowed);
     dom_node_unref((dom_node *) element);
     return result;
@@ -3400,7 +3409,8 @@ PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
         return -1;
     }
     return pcore_event_dispatch_to_id((dom_document *) hDoc, element_id,
-            event_type, bubbles, cancelable, NULL, NULL, default_allowed);
+            event_type, bubbles, cancelable, NULL, NULL, 0,
+            default_allowed);
 }
 
 PCORE_API int PCore_EventDispatchKeyToId(HANDLE hDoc,
@@ -3415,8 +3425,34 @@ PCORE_API int PCore_EventDispatchKeyToId(HANDLE hDoc,
         return -1;
     }
     return pcore_event_dispatch_to_id((dom_document *) hDoc, element_id,
-            event_type, bubbles, cancelable, key_data, NULL,
+            event_type, bubbles, cancelable, key_data, NULL, 0,
             default_allowed);
+}
+
+PCORE_API int PCore_EventDispatchKeyExToId(HANDLE hDoc,
+        const char *element_id, const char *event_type, int bubbles,
+        int cancelable, const PCoreKeyEventDataEx *data,
+        int *default_allowed)
+{
+    PCoreKeyEventData legacy;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0' ||
+            data == NULL || data->struct_size < sizeof(*data)) {
+        return -1;
+    }
+    legacy.key = data->key;
+    legacy.key_code = data->key_code;
+    legacy.char_code = data->char_code;
+    legacy.repeat = data->repeat;
+    legacy.shift = data->shift;
+    legacy.ctrl = data->ctrl;
+    legacy.alt = data->alt;
+    return pcore_event_dispatch_to_id((dom_document *) hDoc, element_id,
+            event_type, bubbles, cancelable, &legacy, NULL,
+            data->is_composing, default_allowed);
 }
 
 PCORE_API int PCore_EventDispatchInputToId(HANDLE hDoc,
@@ -3431,14 +3467,36 @@ PCORE_API int PCore_EventDispatchInputToId(HANDLE hDoc,
         return -1;
     }
     return pcore_event_dispatch_to_id((dom_document *) hDoc, element_id,
-            event_type, bubbles, cancelable, NULL, input_data,
+            event_type, bubbles, cancelable, NULL, input_data, 0,
             default_allowed);
+}
+
+PCORE_API int PCore_EventDispatchInputExToId(HANDLE hDoc,
+        const char *element_id, const char *event_type, int bubbles,
+        int cancelable, const PCoreInputEventDataEx *data,
+        int *default_allowed)
+{
+    PCoreInputEventData legacy;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0' ||
+            data == NULL || data->struct_size < sizeof(*data)) {
+        return -1;
+    }
+    legacy.input_type = data->input_type;
+    legacy.data = data->data;
+    return pcore_event_dispatch_to_id((dom_document *) hDoc, element_id,
+            event_type, bubbles, cancelable, NULL, &legacy,
+            data->is_composing, default_allowed);
 }
 
 static int pcore_event_dispatch_at(dom_document *doc, int x, int y,
         const char *event_type, int bubbles, int cancelable,
         const PCoreKeyEventData *key_data,
-        const PCoreInputEventData *input_data, int *default_allowed)
+        const PCoreInputEventData *input_data, int input_is_composing,
+        int *default_allowed)
 {
     pcore_render *state;
     pcore_event_state *event_state;
@@ -3474,6 +3532,7 @@ static int pcore_event_dispatch_at(dom_document *doc, int x, int y,
     event_state = pcore_event_state_get(doc, 0);
     result = pcore_event_dispatch_node(target, event_type, bubbles,
             cancelable, event_state, key_data, input_data,
+            input_is_composing,
             default_allowed);
     dom_node_unref(target);
     return result;
@@ -3490,7 +3549,7 @@ PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
         return -1;
     }
     return pcore_event_dispatch_at((dom_document *) hDoc, x, y, event_type,
-            bubbles, cancelable, NULL, NULL, default_allowed);
+            bubbles, cancelable, NULL, NULL, 0, default_allowed);
 }
 
 PCORE_API int PCore_EventDispatchKeyAt(HANDLE hDoc, int x, int y,
@@ -3504,8 +3563,33 @@ PCORE_API int PCore_EventDispatchKeyAt(HANDLE hDoc, int x, int y,
         return -1;
     }
     return pcore_event_dispatch_at((dom_document *) hDoc, x, y,
-            event_type, bubbles, cancelable, key_data, NULL,
+            event_type, bubbles, cancelable, key_data, NULL, 0,
             default_allowed);
+}
+
+PCORE_API int PCore_EventDispatchKeyExAt(HANDLE hDoc, int x, int y,
+        const char *event_type, int bubbles, int cancelable,
+        const PCoreKeyEventDataEx *data, int *default_allowed)
+{
+    PCoreKeyEventData legacy;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || data == NULL ||
+            data->struct_size < sizeof(*data)) {
+        return -1;
+    }
+    legacy.key = data->key;
+    legacy.key_code = data->key_code;
+    legacy.char_code = data->char_code;
+    legacy.repeat = data->repeat;
+    legacy.shift = data->shift;
+    legacy.ctrl = data->ctrl;
+    legacy.alt = data->alt;
+    return pcore_event_dispatch_at((dom_document *) hDoc, x, y,
+            event_type, bubbles, cancelable, &legacy, NULL,
+            data->is_composing, default_allowed);
 }
 
 PCORE_API int PCore_EventDispatchInputAt(HANDLE hDoc, int x, int y,
@@ -3519,8 +3603,28 @@ PCORE_API int PCore_EventDispatchInputAt(HANDLE hDoc, int x, int y,
         return -1;
     }
     return pcore_event_dispatch_at((dom_document *) hDoc, x, y,
-            event_type, bubbles, cancelable, NULL, input_data,
+            event_type, bubbles, cancelable, NULL, input_data, 0,
             default_allowed);
+}
+
+PCORE_API int PCore_EventDispatchInputExAt(HANDLE hDoc, int x, int y,
+        const char *event_type, int bubbles, int cancelable,
+        const PCoreInputEventDataEx *data, int *default_allowed)
+{
+    PCoreInputEventData legacy;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || data == NULL ||
+            data->struct_size < sizeof(*data)) {
+        return -1;
+    }
+    legacy.input_type = data->input_type;
+    legacy.data = data->data;
+    return pcore_event_dispatch_at((dom_document *) hDoc, x, y,
+            event_type, bubbles, cancelable, NULL, &legacy,
+            data->is_composing, default_allowed);
 }
 
 /* NetSurf normally reflows a retained box tree, so auto-overflow blocks can

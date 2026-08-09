@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 123
+#define TEST_MAX_NUMBER 128
 
 static int test_config_space(char c)
 {
@@ -2327,11 +2327,13 @@ static int pcore_browser_script_dispatch_select_char_event(HWND control,
 static int pcore_browser_script_dispatch_input_event(HWND control,
         const char *input_type, const char *data);
 static int pcore_browser_script_dispatch_input_event_ex(HWND control,
-        const char *input_type, const char *data, int cancelable);
+        const char *event_type, const char *input_type, const char *data,
+        int cancelable, int is_composing);
 static int pcore_browser_script_dispatch_composition_event(HWND control,
         const char *event_type, const char *data, int cancelable);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
-        const char *event_type, const PCoreKeyEventData *key_data);
+        const char *event_type, const PCoreKeyEventData *key_data,
+        int is_composing);
 
 static int pcore_native_script_active(void)
 {
@@ -2525,7 +2527,7 @@ static void pcore_native_edit_update_composition(HWND hwnd,
         data = "";
     }
     pcore_browser_script_dispatch_input_event_ex(hwnd,
-            "insertCompositionText", data, 0);
+            "beforeinput", "insertCompositionText", data, 0, 1);
     pcore_browser_script_dispatch_composition_event(hwnd,
             "compositionupdate", data, 0);
     pcore_native_edit_store_composition(native_edit, data);
@@ -2862,8 +2864,10 @@ static const char *pcore_native_key_name(WPARAM wp)
 }
 
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
-        const char *event_type, const PCoreKeyEventData *key_data)
+        const char *event_type, const PCoreKeyEventData *key_data,
+        int is_composing)
 {
+    PCoreKeyEventDataEx extended;
     int default_allowed;
     int result;
 
@@ -2872,11 +2876,21 @@ static int pcore_browser_script_dispatch_key_data_at(int x, int y,
             g_browser_script_session.runtime == NULL) {
         return 1;
     }
+    memset(&extended, 0, sizeof(extended));
+    extended.struct_size = sizeof(extended);
+    extended.key = key_data->key;
+    extended.key_code = key_data->key_code;
+    extended.char_code = key_data->char_code;
+    extended.repeat = key_data->repeat;
+    extended.shift = key_data->shift;
+    extended.ctrl = key_data->ctrl;
+    extended.alt = key_data->alt;
+    extended.is_composing = is_composing ? 1 : 0;
     default_allowed = 1;
-    result = PCore_EventDispatchKeyAt(g_render_doc, x, y,
+    result = PCore_EventDispatchKeyExAt(g_render_doc, x, y,
             event_type, 1,
             (strcmp(event_type, "keyup") == 0) ? 0 : 1,
-            key_data, &default_allowed);
+            &extended, &default_allowed);
     if (result < 0) {
         return 1;
     }
@@ -2884,7 +2898,8 @@ static int pcore_browser_script_dispatch_key_data_at(int x, int y,
 }
 
 static int pcore_browser_script_dispatch_key_at(int x, int y,
-        const char *event_type, WPARAM wp, LPARAM lp, int system_key)
+        const char *event_type, WPARAM wp, LPARAM lp, int system_key,
+        int is_composing)
 {
     PCoreKeyEventData key_data;
 
@@ -2897,12 +2912,12 @@ static int pcore_browser_script_dispatch_key_at(int x, int y,
     key_data.alt = system_key ? 1 :
             ((GetKeyState(VK_MENU) < 0) ? 1 : 0);
     return pcore_browser_script_dispatch_key_data_at(x, y,
-            event_type, &key_data);
+            event_type, &key_data, is_composing);
 }
 
 static int pcore_browser_script_dispatch_char_at(int x, int y,
         const char *event_type, unsigned long codepoint, LPARAM lp,
-        int system_key)
+        int system_key, int is_composing)
 {
     PCoreKeyEventData key_data;
     char key_name[8];
@@ -2920,7 +2935,7 @@ static int pcore_browser_script_dispatch_char_at(int x, int y,
     key_data.alt = system_key ? 1 :
             ((GetKeyState(VK_MENU) < 0) ? 1 : 0);
     return pcore_browser_script_dispatch_key_data_at(x, y,
-            event_type, &key_data);
+            event_type, &key_data, is_composing);
 }
 
 static int pcore_browser_script_dispatch_key_event(HWND control,
@@ -2944,7 +2959,8 @@ static int pcore_browser_script_dispatch_key_event(HWND control,
             x = text_info.x + text_info.width / 2;
             y = text_info.y + text_info.height / 2;
             return pcore_browser_script_dispatch_key_at(x, y,
-                    event_type, wp, lp, system_key);
+                    event_type, wp, lp, system_key,
+                    g_native_edits[i].composition_active);
         }
     }
     return 1;
@@ -2971,7 +2987,7 @@ static int pcore_browser_script_dispatch_select_key_event(HWND control,
             x = select_info.x + select_info.width / 2;
             y = select_info.y + select_info.height / 2;
             return pcore_browser_script_dispatch_key_at(x, y,
-                    event_type, wp, lp, system_key);
+                    event_type, wp, lp, system_key, 0);
         }
     }
     return 1;
@@ -2999,7 +3015,8 @@ static int pcore_browser_script_dispatch_char_event(HWND control,
             x = text_info.x + text_info.width / 2;
             y = text_info.y + text_info.height / 2;
             return pcore_browser_script_dispatch_char_at(x, y,
-                    event_type, codepoint, lp, system_key);
+                    event_type, codepoint, lp, system_key,
+                    g_native_edits[i].composition_active);
         }
     }
     return 1;
@@ -3027,7 +3044,7 @@ static int pcore_browser_script_dispatch_select_char_event(HWND control,
             x = select_info.x + select_info.width / 2;
             y = select_info.y + select_info.height / 2;
             return pcore_browser_script_dispatch_char_at(x, y,
-                    event_type, codepoint, lp, system_key);
+                    event_type, codepoint, lp, system_key, 0);
         }
     }
     return 1;
@@ -3035,10 +3052,10 @@ static int pcore_browser_script_dispatch_select_char_event(HWND control,
 
 static int pcore_browser_script_dispatch_input_data_event(HWND control,
         const char *event_type, const char *input_type, const char *data,
-        int cancelable)
+        int cancelable, int is_composing)
 {
     PCoreTextInputInfo text_info;
-    PCoreInputEventData input_data;
+    PCoreInputEventDataEx input_data;
     unsigned int i;
     int x;
     int y;
@@ -3059,10 +3076,13 @@ static int pcore_browser_script_dispatch_input_data_event(HWND control,
                         NULL, 0) == 0) {
             x = text_info.x + text_info.width / 2;
             y = text_info.y + text_info.height / 2;
+            memset(&input_data, 0, sizeof(input_data));
+            input_data.struct_size = sizeof(input_data);
             input_data.input_type = input_type;
             input_data.data = (data != NULL) ? data : "";
+            input_data.is_composing = is_composing ? 1 : 0;
             default_allowed = 1;
-            result = PCore_EventDispatchInputAt(g_render_doc, x, y,
+            result = PCore_EventDispatchInputExAt(g_render_doc, x, y,
                     event_type, 1, cancelable, &input_data,
                     &default_allowed);
             if (result < 0) {
@@ -3075,27 +3095,29 @@ static int pcore_browser_script_dispatch_input_data_event(HWND control,
 }
 
 static int pcore_browser_script_dispatch_input_event_ex(HWND control,
-        const char *input_type, const char *data, int cancelable)
+        const char *event_type, const char *input_type, const char *data,
+        int cancelable, int is_composing)
 {
-    if (input_type == NULL || input_type[0] == '\0') {
+    if (event_type == NULL || event_type[0] == '\0' ||
+            input_type == NULL || input_type[0] == '\0') {
         return 1;
     }
     return pcore_browser_script_dispatch_input_data_event(control,
-            "beforeinput", input_type, data, cancelable);
+            event_type, input_type, data, cancelable, is_composing);
 }
 
 static int pcore_browser_script_dispatch_input_event(HWND control,
         const char *input_type, const char *data)
 {
     return pcore_browser_script_dispatch_input_event_ex(control,
-            input_type, data, 1);
+            "beforeinput", input_type, data, 1, 0);
 }
 
 static int pcore_browser_script_dispatch_composition_event(HWND control,
         const char *event_type, const char *data, int cancelable)
 {
     return pcore_browser_script_dispatch_input_data_event(control,
-            event_type, "", data, cancelable);
+            event_type, "", data, cancelable, 0);
 }
 
 static void pcore_request_interaction_restyle(HWND hwnd)
@@ -3364,7 +3386,14 @@ static void pcore_native_edit_changed(HWND edit)
             (unsigned int) (stored_index - 1), value);
     if (set_result == 0 && native_edit != NULL) {
         native_edit->change_pending = 1;
-        pcore_browser_script_dispatch_control_event(edit, "input", 1);
+        if (native_edit->composition_active) {
+            pcore_browser_script_dispatch_input_event_ex(edit, "input",
+                    "insertCompositionText",
+                    native_edit->composition_data != NULL ?
+                    native_edit->composition_data : "", 0, 1);
+        } else {
+            pcore_browser_script_dispatch_control_event(edit, "input", 1);
+        }
     }
     if (g_native_edit_probe && stored_index == 1) {
         g_native_edit_probe_seen = 1;
@@ -4979,6 +5008,291 @@ static int pcore_browser_script_json_escape(const char *value, char *out,
     return used;
 }
 
+static int pcore_browser_script_write_string(const char *value,
+        char *out_json, int out_capacity, int *out_len)
+{
+    int escaped;
+
+    if (value == NULL || out_json == NULL || out_len == NULL ||
+            out_capacity < 3) {
+        return 1;
+    }
+    out_json[0] = '"';
+    escaped = pcore_browser_script_json_escape(value, out_json + 1,
+            out_capacity - 2);
+    if (escaped < 0 || escaped + 2 >= out_capacity) {
+        return 1;
+    }
+    out_json[escaped + 1] = '"';
+    out_json[escaped + 2] = '\0';
+    *out_len = escaped + 2;
+    return 0;
+}
+
+static int pcore_browser_script_write_null(char *out_json,
+        int out_capacity, int *out_len)
+{
+    if (out_json == NULL || out_len == NULL || out_capacity < 5) {
+        return 1;
+    }
+    memcpy(out_json, "null", 5);
+    *out_len = 4;
+    return 0;
+}
+
+static int pcore_browser_script_get_text(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    char *text;
+    int bytes;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    bytes = 0;
+    text = NULL;
+    if (bridge == NULL || bridge->document == NULL || root == NULL ||
+            id == NULL || PCore_NodeTextContentById(bridge->document, id,
+            NULL, 0, &bytes) != 0 || bytes < 0 || bytes > 65535) {
+        PJson_Free(root);
+        return 1;
+    }
+    text = (char *) malloc((size_t) bytes + 1);
+    if (text == NULL || PCore_NodeTextContentById(bridge->document, id,
+            text, bytes + 1, &bytes) != 0) {
+        free(text);
+        PJson_Free(root);
+        return 1;
+    }
+    result = pcore_browser_script_write_string(text, out_json,
+            out_capacity, out_len);
+    free(text);
+    PJson_Free(root);
+    return result;
+}
+
+static int pcore_browser_script_get_attribute(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *name;
+    char *value;
+    int bytes;
+    int status;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
+    bytes = 0;
+    value = NULL;
+    if (bridge == NULL || bridge->document == NULL || root == NULL ||
+            id == NULL || name == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    status = PCore_NodeAttributeById(bridge->document, id, name,
+            NULL, 0, &bytes);
+    if (status == 2) {
+        PJson_Free(root);
+        return pcore_browser_script_write_null(out_json, out_capacity,
+                out_len);
+    }
+    if (status != 0 || bytes < 0 || bytes > 65535) {
+        PJson_Free(root);
+        return 1;
+    }
+    value = (char *) malloc((size_t) bytes + 1);
+    if (value == NULL || PCore_NodeAttributeById(bridge->document, id,
+            name, value, bytes + 1, &bytes) != 0) {
+        free(value);
+        PJson_Free(root);
+        return 1;
+    }
+    result = pcore_browser_script_write_string(value, out_json,
+            out_capacity, out_len);
+    free(value);
+    PJson_Free(root);
+    return result;
+}
+
+static int pcore_browser_script_set_attribute(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *name;
+    const char *value;
+    int changed;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
+    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
+    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && name != NULL && value != NULL &&
+            PCore_NodeSetAttributeById(bridge->document, id, name,
+            value) == 0;
+    PJson_Free(root);
+    return pcore_browser_script_write_bool(changed, out_json,
+            out_capacity, out_len);
+}
+
+static int pcore_browser_script_remove_attribute(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *name;
+    int changed;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
+    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && name != NULL &&
+            PCore_NodeRemoveAttributeById(bridge->document, id, name) == 0;
+    PJson_Free(root);
+    return pcore_browser_script_write_bool(changed, out_json,
+            out_capacity, out_len);
+}
+
+static int pcore_browser_script_get_value(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    char *value;
+    int bytes;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    bytes = 0;
+    value = NULL;
+    if (bridge == NULL || bridge->document == NULL || root == NULL ||
+            id == NULL || PCore_NodeValueById(bridge->document, id,
+            NULL, 0, &bytes) != 0 || bytes < 0 || bytes > 65535) {
+        PJson_Free(root);
+        return 1;
+    }
+    value = (char *) malloc((size_t) bytes + 1);
+    if (value == NULL || PCore_NodeValueById(bridge->document, id,
+            value, bytes + 1, &bytes) != 0) {
+        free(value);
+        PJson_Free(root);
+        return 1;
+    }
+    result = pcore_browser_script_write_string(value, out_json,
+            out_capacity, out_len);
+    free(value);
+    PJson_Free(root);
+    return result;
+}
+
+static int pcore_browser_script_set_value(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *value;
+    int changed;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
+    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && value != NULL &&
+            PCore_NodeSetValueById(bridge->document, id, value) == 0;
+    PJson_Free(root);
+    return pcore_browser_script_write_bool(changed, out_json,
+            out_capacity, out_len);
+}
+
+static int pcore_browser_script_get_checked(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int checked;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = 0;
+    result = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && PCore_NodeCheckedById(bridge->document, id,
+            &checked) == 0;
+    PJson_Free(root);
+    if (!result) {
+        return 1;
+    }
+    return pcore_browser_script_write_bool(checked, out_json,
+            out_capacity, out_len);
+}
+
+static int pcore_browser_script_set_checked(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int checked;
+    int changed;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = (object != NULL) ? PJson_GetInt(object, "checked") : 0;
+    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && PCore_NodeSetCheckedById(bridge->document, id,
+            checked) == 0;
+    PJson_Free(root);
+    return pcore_browser_script_write_bool(changed, out_json,
+            out_capacity, out_len);
+}
+
 static unsigned int pcore_browser_script_event_callback(void *pw,
         const PCoreEventInfo *event_info)
 {
@@ -5015,7 +5329,7 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
             "\"phase\":%u,\"bubbles\":%s,\"cancelable\":%s,"
             "\"trusted\":%s,\"defaultPrevented\":%s,"
             "\"inputType\":\"%s\",\"data\":\"%s\","
-            "\"key\":\"%s\",\"keyCode\":%u,"
+            "\"isComposing\":%s,\"key\":\"%s\",\"keyCode\":%u,"
             "\"charCode\":%u,\"repeat\":%s,\"shiftKey\":%s,"
             "\"ctrlKey\":%s,\"altKey\":%s}]",
             binding->id, binding->event_type, event_info->phase,
@@ -5023,7 +5337,8 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
             event_info->cancelable ? "true" : "false",
             event_info->trusted ? "true" : "false",
             event_info->default_prevented ? "true" : "false",
-            input_type_json, data_json, key_json,
+            input_type_json, data_json,
+            event_info->is_composing ? "true" : "false", key_json,
             event_info->key_code, event_info->char_code,
             event_info->repeat ? "true" : "false",
             event_info->shift ? "true" : "false",
@@ -5287,8 +5602,27 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "(function(g){"
         "function PElement(id){this.__id=id;}"
         "Object.defineProperty(PElement.prototype,'textContent',{"
+        "get:function(){return __pcoreGetText({id:this.__id});},"
         "set:function(v){if(!__pcoreSetText({id:this.__id,text:String(v)}))"
         "{throw new Error('textContent update failed');}}});"
+        "PElement.prototype.getAttribute=function(name){"
+        "return __pcoreGetAttribute({id:this.__id,name:String(name)});};"
+        "PElement.prototype.hasAttribute=function(name){"
+        "return this.getAttribute(name)!==null;};"
+        "PElement.prototype.setAttribute=function(name,value){"
+        "if(!__pcoreSetAttribute({id:this.__id,name:String(name),"
+        "value:String(value)})){throw new Error('setAttribute failed');}};"
+        "PElement.prototype.removeAttribute=function(name){"
+        "if(!__pcoreRemoveAttribute({id:this.__id,name:String(name)}))"
+        "{throw new Error('removeAttribute failed');}};"
+        "Object.defineProperty(PElement.prototype,'value',{"
+        "get:function(){return __pcoreGetValue({id:this.__id});},"
+        "set:function(v){if(!__pcoreSetValue({id:this.__id,value:String(v)}))"
+        "{throw new Error('value update failed');}}});"
+        "Object.defineProperty(PElement.prototype,'checked',{"
+        "get:function(){return __pcoreGetChecked({id:this.__id});},"
+        "set:function(v){if(!__pcoreSetChecked({id:this.__id,"
+        "checked:v?1:0})){throw new Error('checked update failed');}}});"
         "g.__pcoreHandlers={};"
         "g.__pcoreDispatchEvent=function(info){"
         "var fn=g.__pcoreHandlers[info.listener];"
@@ -5297,6 +5631,7 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "cancelable:!!info.cancelable,trusted:!!info.trusted,"
         "defaultPrevented:!!info.defaultPrevented,key:info.key||'',"
         "inputType:info.inputType||'',data:info.data||'',"
+        "isComposing:!!info.isComposing,"
         "keyCode:info.keyCode||0,charCode:info.charCode||0,"
         "repeat:!!info.repeat,shiftKey:!!info.shiftKey,"
         "ctrlKey:!!info.ctrlKey,altKey:!!info.altKey};"
@@ -5384,8 +5719,31 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
     bridge->events = NULL;
     if (PScript_RegisterGlobalJsonFunction(runtime, "__pcoreHasElement", -1,
             pcore_browser_script_has_element, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime, "__pcoreGetText", -1,
+            pcore_browser_script_get_text, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreSetText", -1,
             pcore_browser_script_set_text, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreGetAttribute", -1,
+            pcore_browser_script_get_attribute, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreSetAttribute", -1,
+            pcore_browser_script_set_attribute, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreRemoveAttribute", -1,
+            pcore_browser_script_remove_attribute, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreGetValue", -1,
+            pcore_browser_script_get_value, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreSetValue", -1,
+            pcore_browser_script_set_value, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreGetChecked", -1,
+            pcore_browser_script_get_checked, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreSetChecked", -1,
+            pcore_browser_script_set_checked, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreAddEvent", -1,
             pcore_browser_script_add_event, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreRemoveEvent", -1,
@@ -7210,8 +7568,13 @@ static BOOL show_render_window(void)
                     sizeof(ime_probe_data)) > 0) {
         SendMessage(g_native_edits[0].hwnd,
                 WM_IME_STARTCOMPOSITION, 0, 0);
+        SendMessage(g_native_edits[0].hwnd, WM_KEYDOWN, VK_LEFT, 0);
+        SendMessage(g_native_edits[0].hwnd, WM_KEYUP, VK_LEFT, 0);
         pcore_native_edit_update_composition(g_native_edits[0].hwnd,
                 &g_native_edits[0], ime_probe_data);
+        SendMessage(g_native_edits[0].hwnd, EM_SETSEL, 0, (LPARAM) -1);
+        SendMessage(g_native_edits[0].hwnd, EM_REPLACESEL,
+                TRUE, (LPARAM) L"\x2192");
         SendMessage(g_native_edits[0].hwnd,
                 WM_IME_ENDCOMPOSITION, 0, 0);
     }
@@ -20521,14 +20884,16 @@ static BOOL test123_browser_script_composition_events(void)
         "+String(d===window.arrow)+':'+String(e.inputType||'')+':'"
         "+String(e.phase)+':'+String(e.bubbles)+':'"
         "+String(e.cancelable)+':'+String(e.trusted)+':'"
-        "+String(e.defaultPrevented);"
+        "+String(e.defaultPrevented)+':'+String(e.isComposing);"
         "document.getElementById('result').textContent=window.events;};"
         "window.edit=document.getElementById('edit');"
         "window.parent=document.getElementById('parent');"
         "window.add=function(t){window.edit.addEventListener(t,window.record,false);"
         "window.parent.addEventListener(t,window.record,false);};"
-        "window.add('compositionstart');window.add('beforeinput');"
-        "window.add('compositionupdate');window.add('compositionend');"
+        "window.add('compositionstart');window.add('keydown');"
+        "window.add('keyup');window.add('beforeinput');"
+        "window.add('compositionupdate');window.add('input');"
+        "window.add('compositionend');"
         "document.getElementById('cancel').addEventListener('compositionstart',"
         "function(e){e.preventDefault();document.getElementById('result').textContent="
         "'cancel:'+String(e.defaultPrevented);},false);"
@@ -20540,14 +20905,20 @@ static BOOL test123_browser_script_composition_events(void)
         "input{display:block;width:160px;height:28px}"
         "p{display:block;width:220px;height:180px;color:#102040}";
     static const char EXPECTED[] =
-        "compositionstart:0:0:false::2:true:true:true:false|"
-        "compositionstart:0:0:false::3:true:true:true:false|"
-        "beforeinput:1:8594:true:insertCompositionText:2:true:false:true:false|"
-        "beforeinput:1:8594:true:insertCompositionText:3:true:false:true:false|"
-        "compositionupdate:1:8594:true::2:true:false:true:false|"
-        "compositionupdate:1:8594:true::3:true:false:true:false|"
-        "compositionend:1:8594:true::2:true:false:true:false|"
-        "compositionend:1:8594:true::3:true:false:true:false";
+        "compositionstart:0:0:false::2:true:true:true:false:false|"
+        "compositionstart:0:0:false::3:true:true:true:false:false|"
+        "keydown:0:0:false::2:true:true:true:false:true|"
+        "keydown:0:0:false::3:true:true:true:false:true|"
+        "keyup:0:0:false::2:true:false:true:false:true|"
+        "keyup:0:0:false::3:true:false:true:false:true|"
+        "beforeinput:1:8594:true:insertCompositionText:2:true:false:true:false:true|"
+        "beforeinput:1:8594:true:insertCompositionText:3:true:false:true:false:true|"
+        "compositionupdate:1:8594:true::2:true:false:true:false:false|"
+        "compositionupdate:1:8594:true::3:true:false:true:false:false|"
+        "input:1:8594:true:insertCompositionText:2:true:false:true:false:true|"
+        "input:1:8594:true:insertCompositionText:3:true:false:true:false:true|"
+        "compositionend:1:8594:true::2:true:false:true:false:false|"
+        "compositionend:1:8594:true::3:true:false:true:false:false";
     static const char RESET[] =
         "window.events='';"
         "document.getElementById('result').textContent='idle';";
@@ -20661,6 +21032,511 @@ static BOOL test123_browser_script_composition_events(void)
             "WM IME start/end plus the shared UTF-8 update path delivered "
             "composition and non-cancelable insertCompositionText events.\n"
             "A configured SIP/IME payload still requires manual testing.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 124 - size-tagged InputEvent composition metadata               */
+/* -------------------------------------------------------------------- */
+static BOOL test124_browser_script_input_composing(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.events='';window.record=function(e){window.events+="
+        "(window.events===''?'':'|')+e.type+':'+e.inputType+':'+e.data+':'"
+        "+String(e.isComposing)+':'+String(e.phase)+':'"
+        "+String(e.cancelable);"
+        "document.getElementById('result').textContent=window.events;};"
+        "document.getElementById('edit').addEventListener('beforeinput',"
+        "window.record,false);"
+        "document.getElementById('parent').addEventListener('beforeinput',"
+        "window.record,false);"
+        "document.getElementById('edit').addEventListener('input',"
+        "window.record,false);"
+        "document.getElementById('parent').addEventListener('input',"
+        "window.record,false);"
+        "</script></head><body><div id='parent'>"
+        "<input id='edit' value='x'></div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char EXPECTED[] =
+        "beforeinput:insertText:x:false:2:true|"
+        "beforeinput:insertText:x:false:3:true|"
+        "input:insertCompositionText:y:true:2:false|"
+        "input:insertCompositionText:y:true:3:false";
+    static const PCoreInputEventData LEGACY = { "insertText", "x" };
+    PCoreInputEventDataEx extended;
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[1024];
+    char error[1024];
+    int bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int short_result;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    dispatch_result = -1;
+    short_result = 0;
+    ok = 1;
+    memset(&extended, 0, sizeof(extended));
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        default_allowed = 1;
+        dispatch_result = PCore_EventDispatchInputToId(document, "edit",
+                "beforeinput", 1, 1, &LEGACY, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        extended.struct_size = sizeof(extended);
+        extended.input_type = "insertCompositionText";
+        extended.data = "y";
+        extended.is_composing = 1;
+        default_allowed = 1;
+        dispatch_result = PCore_EventDispatchInputExToId(document, "edit",
+                "input", 1, 0, &extended, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        extended.struct_size = sizeof(extended) - 1;
+        default_allowed = 0;
+        short_result = PCore_EventDispatchInputExToId(document, "edit",
+                "input", 1, 0, &extended, &default_allowed);
+        if (short_result != -1 || default_allowed != 1 ||
+                PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) != 0 || strcmp(text, EXPECTED) != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "dispatch=%d short=%d allowed=%d actual[%d]=%s",
+                    dispatch_result, short_result, default_allowed,
+                    bytes, text);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 124 FAIL", error[0] != '\0' ? error :
+                "InputEvent composition metadata did not match");
+        return FALSE;
+    }
+    show_info(L"TEST 124 OK",
+            "The ABI-stable input path defaulted isComposing to false;\n"
+            "the size-tagged Ex path delivered true and rejected a short\n"
+            "structure without dispatching an event.");
+    return TRUE;
+}
+
+typedef struct test125_key_trace {
+    int count;
+    int composing[4];
+    unsigned int phases[4];
+    unsigned int key_codes[4];
+} test125_key_trace;
+
+static unsigned int test125_key_listener(void *pw,
+        const PCoreEventInfo *event_info)
+{
+    test125_key_trace *trace;
+    int index;
+
+    trace = (test125_key_trace *) pw;
+    if (trace == NULL || event_info == NULL) {
+        return PCORE_EVENT_ACTION_NONE;
+    }
+    index = trace->count;
+    if (index < 4) {
+        trace->composing[index] = event_info->is_composing ? 1 : 0;
+        trace->phases[index] = event_info->phase;
+        trace->key_codes[index] = event_info->key_code;
+    }
+    trace->count++;
+    return PCORE_EVENT_ACTION_NONE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 125 - size-tagged KeyboardEvent composition metadata            */
+/* -------------------------------------------------------------------- */
+static BOOL test125_browser_script_key_composing(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><div id='parent'>"
+        "<input id='edit' value='x'></div></body></html>";
+    static const PCoreKeyEventData LEGACY = {
+        "ArrowLeft", VK_LEFT, 0, 0, 0, 0, 0
+    };
+    PCoreKeyEventDataEx extended;
+    test125_key_trace trace;
+    HANDLE document;
+    HANDLE target_listener;
+    HANDLE parent_listener;
+    int default_allowed;
+    int old_result;
+    int ex_result;
+    int short_result;
+    int ok;
+    char detail[256];
+
+    document = NULL;
+    target_listener = NULL;
+    parent_listener = NULL;
+    old_result = -1;
+    ex_result = -1;
+    short_result = 0;
+    ok = 1;
+    memset(&extended, 0, sizeof(extended));
+    memset(&trace, 0, sizeof(trace));
+    memset(detail, 0, sizeof(detail));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        target_listener = PCore_EventListenerAdd(document, "edit",
+                "keydown", 0, test125_key_listener, &trace);
+        parent_listener = PCore_EventListenerAdd(document, "parent",
+                "keydown", 0, test125_key_listener, &trace);
+        if (target_listener == NULL || parent_listener == NULL) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        default_allowed = 1;
+        old_result = PCore_EventDispatchKeyToId(document, "edit",
+                "keydown", 1, 1, &LEGACY, &default_allowed);
+        if (old_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        extended.struct_size = sizeof(extended);
+        extended.key = "ArrowLeft";
+        extended.key_code = VK_LEFT;
+        extended.is_composing = 1;
+        default_allowed = 1;
+        ex_result = PCore_EventDispatchKeyExToId(document, "edit",
+                "keydown", 1, 1, &extended, &default_allowed);
+        if (ex_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        extended.struct_size = sizeof(extended) - 1;
+        default_allowed = 0;
+        short_result = PCore_EventDispatchKeyExToId(document, "edit",
+                "keydown", 1, 1, &extended, &default_allowed);
+        if (short_result != -1 || default_allowed != 1 ||
+                trace.count != 4 || trace.composing[0] != 0 ||
+                trace.composing[1] != 0 || trace.composing[2] != 1 ||
+                trace.composing[3] != 1 ||
+                trace.phases[0] != PCORE_EVENT_PHASE_TARGET ||
+                trace.phases[1] != PCORE_EVENT_PHASE_BUBBLING ||
+                trace.phases[2] != PCORE_EVENT_PHASE_TARGET ||
+                trace.phases[3] != PCORE_EVENT_PHASE_BUBBLING ||
+                trace.key_codes[0] != VK_LEFT ||
+                trace.key_codes[3] != VK_LEFT) {
+            ok = 0;
+        }
+    }
+    if (target_listener != NULL) {
+        PCore_EventListenerRemove(document, target_listener);
+    }
+    if (parent_listener != NULL) {
+        PCore_EventListenerRemove(document, parent_listener);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "old/ex/short=%d/%d/%d count=%d comp=%d/%d/%d/%d",
+                old_result, ex_result, short_result, trace.count,
+                trace.composing[0], trace.composing[1],
+                trace.composing[2], trace.composing[3]);
+        detail[sizeof(detail) - 1] = '\0';
+        show_error(L"TEST 125 FAIL", detail);
+        return FALSE;
+    }
+    show_info(L"TEST 125 OK",
+            "The legacy keyboard ABI defaulted isComposing to false;\n"
+            "the size-tagged Ex dispatch delivered true through target and\n"
+            "bubble listeners and rejected a short structure.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 126 - browser DOM text getter and attribute methods             */
+/* -------------------------------------------------------------------- */
+static BOOL test126_browser_script_dom_attributes(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var e=document.getElementById('target');"
+        "var before=e.textContent;var x=e.getAttribute('data-x');"
+        "var missing=e.getAttribute('missing')===null;"
+        "e.setAttribute('data-y','two');var y=e.getAttribute('data-y');"
+        "e.removeAttribute('data-x');"
+        "document.getElementById('result').textContent=before+'|'+x+'|'"
+        "+String(missing)+'|'+y+'|'+String(e.hasAttribute('data-x'));"
+        "</script></head><body>"
+        "<div id='target' data-x='one'>Hello<span>world</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] = "Helloworld|one|true|two|false";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[256];
+    char attribute[64];
+    char error[512];
+    int text_bytes;
+    int attribute_bytes;
+    int executed;
+    int ignored;
+    int missing_status;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    text_bytes = 0;
+    attribute_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    missing_status = 0;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(attribute, 0, sizeof(attribute));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL ||
+            PCore_NodeTextContentById(document, "result", text,
+            sizeof(text), &text_bytes) != 0 || strcmp(text, EXPECTED) != 0 ||
+            PCore_NodeAttributeById(document, "target", "data-y",
+            attribute, sizeof(attribute), &attribute_bytes) != 0 ||
+            strcmp(attribute, "two") != 0 || attribute_bytes != 3) {
+        ok = 0;
+    }
+    if (document != NULL) {
+        missing_status = PCore_NodeAttributeById(document, "target",
+                "data-x", attribute, sizeof(attribute), &attribute_bytes);
+        if (ok && (missing_status != 2 || attribute_bytes != 0)) {
+            ok = 0;
+        }
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "text[%d]=%s attr[%d]=%s missing=%d",
+                    text_bytes, text, attribute_bytes, attribute,
+                    missing_status);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 126 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 126 OK",
+            "Browser scripts read textContent and used get/has/set/remove\n"
+            "attribute methods before style/layout; the public core DOM ABI\n"
+            "reported present and missing attributes distinctly.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 127 - browser form value properties before layout                */
+/* -------------------------------------------------------------------- */
+static BOOL test127_browser_script_form_values(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var a=document.getElementById('text');"
+        "var b=document.getElementById('area');"
+        "var c=document.getElementById('choice');"
+        "var before=a.value+'|'+b.value+'|'+c.value;"
+        "a.value='live';b.value='changed';c.value='a';"
+        "document.getElementById('result').textContent=before+'|'"
+        "+a.value+'|'+b.value+'|'+c.value;"
+        "</script></head><body>"
+        "<input id='text' value='seed'>"
+        "<textarea id='area'>area</textarea>"
+        "<select id='choice'><option value='a'>A</option>"
+        "<option value='b' selected>B</option></select>"
+        "<p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] = "seed|area|b|live|changed|a";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[256];
+    char value[64];
+    char error[512];
+    int result_bytes;
+    int value_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    value_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(value, 0, sizeof(value));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0 ||
+            PCore_NodeValueById(document, "text", value, sizeof(value),
+            &value_bytes) != 0 || strcmp(value, "live") != 0 ||
+            value_bytes != 4) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s value[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, value_bytes, value,
+                    executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 127 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 127 OK",
+            "Browser scripts read and wrote input, textarea and select\n"
+            "value properties before style/layout; the DOM ABI retained\n"
+            "the live values for later host access.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 128 - browser checkbox live checked state                         */
+/* -------------------------------------------------------------------- */
+static BOOL test128_browser_script_checked(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var c=document.getElementById('check');"
+        "var r=document.getElementById('radio');"
+        "var before=String(c.checked)+'|'+String(r.checked)+'|'"
+        "+String(c.hasAttribute('checked'))+'|'"
+        "+String(r.hasAttribute('checked'));"
+        "c.checked=true;r.checked=false;"
+        "document.getElementById('result').textContent=before+'|'"
+        "+String(c.checked)+'|'+String(r.checked)+'|'"
+        "+String(c.hasAttribute('checked'))+'|'"
+        "+String(r.hasAttribute('checked'));"
+        "</script></head><body>"
+        "<input id='check' type='checkbox'>"
+        "<input id='radio' type='radio' checked>"
+        "<p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] =
+        "false|true|false|true|true|false|false|true";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[256];
+    char error[512];
+    int result_bytes;
+    int checked;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    checked = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0 ||
+            PCore_NodeCheckedById(document, "check", &checked) != 0 ||
+            checked != 1) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s checked=%d exec/ignore=%d/%d",
+                    result_bytes, result, checked, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 128 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 128 OK",
+            "Checkbox and radio checked properties are live state;\n"
+            "setters leave the parsed checked attributes unchanged and\n"
+            "remain available before style/layout.");
     return TRUE;
 }
 
@@ -20906,6 +21782,11 @@ static int run_configured_tests(const unsigned char *selected,
         case 121: ok = test121_browser_script_unicode_char(); break;
         case 122: ok = test122_browser_script_surrogate_char(); break;
         case 123: ok = test123_browser_script_composition_events(); break;
+        case 124: ok = test124_browser_script_input_composing(); break;
+        case 125: ok = test125_browser_script_key_composing(); break;
+        case 126: ok = test126_browser_script_dom_attributes(); break;
+        case 127: ok = test127_browser_script_form_values(); break;
+        case 128: ok = test128_browser_script_checked(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

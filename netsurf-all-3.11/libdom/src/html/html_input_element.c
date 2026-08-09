@@ -185,8 +185,12 @@ dom_exception dom_html_input_element_get_checked(dom_html_input_element *ele,
 dom_exception dom_html_input_element_set_checked(dom_html_input_element *ele,
 		bool checked)
 {
-	return dom_html_element_set_bool_property(&ele->base, "checked",
-			SLEN("checked"), checked);
+	/* checked is a live IDL property. Keep it separate from the parsed
+	 * checked attribute (defaultChecked); changing the property must not
+	 * rewrite markup or alter the form reset baseline. */
+	ele->checked = checked;
+	ele->checked_set = true;
+	return DOM_NO_ERR;
 }
 
 /**
@@ -548,4 +552,3 @@ dom_exception dom_html_input_element_click(dom_html_input_element *ele)
 
 	return DOM_NO_ERR;
 }
-

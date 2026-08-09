@@ -31,6 +31,16 @@ Example Domains，Reserved Domains 在收到 HTTP 状态前遇到 TLS 握手 EOF
 增量构建及 `C:\WMShare\Positron-next162` staging/哈希核对已通过，完整设备日志通过前
 仍以 next160 为基线。
 
+**next163 待设备验收（2026-08-09）**：在 next162 的受限主文档握手 EOF 重试之上，
+TEST124/125 为 InputEvent 与 KeyboardEvent 增加 size-tagged Ex ABI 的 isComposing，
+TEST126 增加脚本 textContent/attribute bridge，TEST127 增加 input/textarea/select
+的 value，TEST128 增加不改写 markup 的 live checkbox/radio checked。
+为修正 libdom 0.4.2 的 checked 属性误当 live property 问题，vendored
+html_input_element.c 现在把 checked 状态与 parsed checked attribute 分开。
+默认 javascript=0、TEST13 网络路径和已验收 next160 Browse 基线不变；ARMV4I
+增量构建、C89、审计和 C:\WMShare\Positron-next163 staging 已通过，但本批
+仍等待设备日志与真实视觉验收。
+
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
 还派发一次包含完整 UTF-16 数据的 `beforeinput(insertText)`。TEST122 检查
@@ -438,7 +448,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-123
+tests=13,20,27,43,44,56,58-77,80-128
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
@@ -469,6 +479,9 @@ tests=13,20,27,43,44,56,58-77,80-123
   元数据，以及单个 BMP `WM_CHAR` 的 UTF-8 key/data 传递；next156 已设备通过。
 - TEST 122：在显式 `javascript=1` 页面中验证成对 UTF-16 代理项合并为一次 Unicode 标量
   `keypress` 和完整 `beforeinput.data`；next160 已完成设备验收。
+- TEST 124/125：验证旧 Input/Keyboard ABI 的默认值、size-tagged Ex ABI 的
+  isComposing 和短结构拒绝；TEST126–128 验证脚本 DOM 文本/属性、表单 value
+  以及 live checked 状态，均在首次 style/layout 前执行。
 - TEST 123：验证 WM IME start/end 消息入口及共享 UTF-8 composition update 发射路径；
   自动 PASS 不等于真实 SIP 候选窗口、预编辑 UI 或完整 `isComposing` 语义已验收。
 
