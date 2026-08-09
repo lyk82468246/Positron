@@ -2,10 +2,11 @@
 
 更新时间：2026-08-09
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前自动化设备基线为 next168：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-136 全部通过，计 84 条 OK、零 ERROR，并记录
+当前自动化设备基线为 next169：`screen=320x320 dpi=128` 默认日志中 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-137 全部通过，计 85 条 OK、零 ERROR，并记录
 `TESTBENCH PASS`。next167 的高 DPI interaction restyle 修复和 Learn More/SIP 定向
-人工结果继续有效；next168 新增成功-GET URL 历史和左键后退。人工视觉/交互改为累计
+人工结果继续有效；next168 新增成功-GET URL 历史和左键后退，next169 增加最小脚本
+location/history 后退桥。人工视觉/交互改为累计
 若干可能产生异常的批次后集中验收，不再逐批阻塞自动基线。默认 `javascript=0` 与
 TEST13 目标不变；TEST123 本身仍只覆盖自动共享路径。崩溃、数据错误、严重版式破坏或
 阻塞核心交互不等待累计窗口。自动设备基线通过后提交并推送 scoped tracked 改动，始终
@@ -45,6 +46,11 @@ next168 已通过自动设备门：在不改 core ABI 的前提下给 Browse 宿
 左方向键重载上一项；TEST136 固定成功提交、失败不移动、POST 豁免与 forward branch
 截断。它不实现页面缓存、前进 UI、持久历史或 JavaScript History API；人工左键路径
 进入累计人工检查清单。
+
+next169 已通过自动设备门：同一 Duktape 页面 context 暴露只读 location/document URL
+和最小 `history.back()`；后退只排队，退出脚本调用栈后才复用 next168 状态机。TEST137
+覆盖 URL 身份、请求延迟和同步历史不变；320x320/128 DPI 日志得到 85 OK、零 ERROR 与
+最终 PASS。默认 javascript=0、TEST13 与 core ABI 不变。
 
 **当前阶段（next163 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
@@ -409,6 +415,22 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   POST 豁免。默认 javascript=0、TEST13 三段网络序列与 core DLL 均不变；C89、审计、
   ARMV4I Debug 构建、next168 staging 和源/包哈希一致性已通过；640x480/192 DPI 日志
   得到 TEST136 OK、84 OK、零 ERROR 与最终 PASS。真实左键后退留到累计人工批次。
+
+### 6ao. next169：最小 JavaScript location/history 后退桥（自动设备验收通过）
+
+- 继续使用 `positron_script.dll` 中唯一的 Duktape 2.7.0 runtime；宿主在页面 bootstrap 前
+  注入 canonical document URL，bootstrap 将其藏入闭包并以只读 `location.href`、
+  `document.URL`、`document.documentURI` 和 `document.location` 暴露。
+- `history.back()` 只设置 bridge 请求并投递窗口消息。native callback 不重入导航；只有
+  当前脚本调用栈退出、当前页面成功换入且导航空闲后，才调用 next168 的后退加载入口。
+  初始脚本之后的事件 handler 也走相同异步入口。
+- TEST137 离线断言 URL/对象身份、`String(location)`、后退请求已排队且已提交历史 index
+  未同步变化。默认 javascript=0、TEST13 网络路径和 core ABI 不变；C89 回归、仓库/文档
+  审计与 ARMV4I Debug 增量构建已通过，bootstrap 使用 14/16 个 native callback 槽位。
+  `C:\WMShare\Positron-next169` staging 的七个 ARMV4I 二进制与构建产物哈希一致。
+  320x320/128 DPI 设备日志得到 TEST137 OK、85 OK、零 ERROR 与最终 PASS。
+  尚无完整 Location/History API、href 赋值、
+  go/forward、replace/pushState、页面缓存或滚动/表单状态恢复。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
@@ -835,7 +857,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next167 的 TEST13/20/27/43/44/56/58-77/80-135 设备日志作为已验证自动化基线；
+1. 以 next169 的 TEST13/20/27/43/44/56/58-77/80-137 设备日志作为已验证自动化基线；
    后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
 2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
    WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础
@@ -843,5 +865,5 @@ WM6/ARMV4I 资源紧，后续必须持续做：
    与完整 `isComposing`/预编辑语义仍按独立能力逐项验收。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
-5. next144/145/146 已依次利用独立 Duktape DLL 做浏览器脚本执行、DOM 查询/修改、native bridge 和页面级 context 候选；中期再加入点击事件与长期交互。浏览器 JavaScript 默认仍保持关闭，直到绑定路径逐项设备门禁通过。
+5. next144-169 已利用同一个 Duktape DLL 逐项完成脚本执行、DOM 查询/修改、页面级 context、事件/表单/输入桥和最小 location/history 后退；后续绑定仍按一个纵切一个设备门推进，浏览器 JavaScript 默认保持关闭。
 6. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。

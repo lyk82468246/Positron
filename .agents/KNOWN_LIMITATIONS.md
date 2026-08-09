@@ -31,10 +31,11 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next168，2026-08-09）**：`screen=640x480 dpi=192` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-136，计 84 条 OK、零 ERROR、最终 TESTBENCH PASS。
+**当前自动化设备基线（next169，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-137，计 85 条 OK、零 ERROR、最终 TESTBENCH PASS。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
-新增成功-GET URL 历史与左键后退。人工视觉/交互门改为累计若干风险批次后集中执行。
+新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
+人工视觉/交互门改为累计若干风险批次后集中执行。
 默认 `javascript=0`；完整 DOM/window、任意 OEM IME 和全站视觉仍未实现。
 
 **next145 设备验收记录（2026-08-08）**：`PCore_GetScriptCount/PCore_GetScript` 按 DOM
@@ -184,9 +185,18 @@ restyle 前重申设备宽高和 DPI，TEST76 覆盖 640x480/192 DPI 的两次�
 
 **next168 Browse 后退边界（自动设备验收通过，人工检查已累计）**：宿主只保存最多 16 个成功 GET URL，
 按左方向键会重新联网加载上一项；失败不移动位置，POST 不入栈，回退后新导航截断前向
-分支。当前没有页面/document 缓存、前进 UI、滚动/表单状态恢复、重载确认、持久历史、
-重定向历史语义或 JavaScript `history/location` API。TEST136 已在设备自动通过；真实
+分支。next168 自身没有页面/document 缓存、前进 UI、滚动/表单状态恢复、重载确认、
+持久历史、重定向历史语义或 JavaScript API；next169 只补最小读取/后退桥。TEST136 已在设备自动通过；真实
 公网后退交互与失败网络条件仍在累计人工检查清单中。
+
+**next169 最小脚本导航桥（自动设备验收通过）**：显式 `javascript=1` 的同一页面 Duktape
+context 现在可读取 `location.href`、`document.URL/documentURI/location`，并调用
+`history.back()` 请求 next168 的后退加载。URL 是 bootstrap 时固定的当前 document URL；
+back 经窗口消息延迟到 JS callback 返回和导航空闲之后，调用本身不立即修改 history index。
+TEST137 已在 320x320/128 DPI 自动日志中通过，整批为 85 OK、零 ERROR 与最终 PASS；
+它只证明 URL 身份和延迟请求边界。尚无 href/location 赋值、URL 分量、reload、
+go/forward、length/state、replaceState/pushState/popstate、重定向历史、页面缓存、滚动/
+表单状态恢复或持久历史。默认 `javascript=0` 与 TEST13 网络路径不变。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
