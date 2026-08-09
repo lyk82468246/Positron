@@ -31,8 +31,8 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next169，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-137，计 85 条 OK、零 ERROR、最终 TESTBENCH PASS。
+**当前自动化设备基线（next170，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-138，计 86 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -194,9 +194,17 @@ context 现在可读取 `location.href`、`document.URL/documentURI/location`，
 `history.back()` 请求 next168 的后退加载。URL 是 bootstrap 时固定的当前 document URL；
 back 经窗口消息延迟到 JS callback 返回和导航空闲之后，调用本身不立即修改 history index。
 TEST137 已在 320x320/128 DPI 自动日志中通过，整批为 85 OK、零 ERROR 与最终 PASS；
-它只证明 URL 身份和延迟请求边界。尚无 href/location 赋值、URL 分量、reload、
+它只证明 URL 身份和延迟请求边界。next170 已验收的纵切补充赋值；仍无 URL 分量、reload、
 go/forward、length/state、replaceState/pushState/popstate、重定向历史、页面缓存、滚动/
 表单状态恢复或持久历史。默认 `javascript=0` 与 TEST13 网络路径不变。
+
+**next170 location 赋值桥（自动设备验收通过）**：`location.assign()`、`location.href=`、
+`window.location=` 和 `document.location=` 共用一个 native callback，把最后一个非空、少于
+1024 字节的 URL 请求保存在页面 bridge 中。窗口消息只在导航空闲时取出请求并调用现有 GET
+入口，避免从 Duktape callback 同步重入；连续赋值是 last-request-wins，当前 URL/history
+在赋值时保持不变。TEST138 是离线 bridge 门，不证明 URL 解析、网络成功、重定向或页面状态
+恢复；`location.replace/reload`、URL 分量 setter、`history.go/forward` 等仍未实现。
+320x320/128 DPI 日志已得到 TEST138 OK、86 条 OK、零 ERROR、零 FAIL 与最终 PASS。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

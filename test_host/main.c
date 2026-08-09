@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 137
+#define TEST_MAX_NUMBER 138
 
 static int test_config_space(char c)
 {
@@ -2128,7 +2128,11 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define WM_TESTBENCH_NAVIGATE (WM_APP + 4)
 #define WM_PCORE_FORM_ENTER (WM_APP + 5)
 #define WM_PCORE_INTERACTION_RESTYLE (WM_APP + 6)
-#define WM_PCORE_SCRIPT_HISTORY_BACK (WM_APP + 7)
+#define WM_PCORE_SCRIPT_NAVIGATE (WM_APP + 7)
+#define PCORE_SCRIPT_NAVIGATION_NONE 0
+#define PCORE_SCRIPT_NAVIGATION_BACK 1
+#define PCORE_SCRIPT_NAVIGATION_ASSIGN 2
+#define PCORE_SCRIPT_NAVIGATION_URL_MAX 1024
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_COMMIT_TIMER 25
 #define TESTBENCH_RENDER_TIMER 26
@@ -2173,7 +2177,8 @@ struct pcore_browser_script_bridge {
     HANDLE document;
     HANDLE runtime;
     HWND hwnd;
-    int history_back_requested;
+    int navigation_kind;
+    char *navigation_url;
     unsigned int next_event_id;
     pcore_browser_script_event_binding *events;
 };
@@ -5609,19 +5614,46 @@ static int pcore_browser_script_navigation(void *pw,
     HANDLE root;
     HANDLE object;
     const char *op;
+    const char *url;
+    char *url_copy;
+    int kind;
 
     bridge = (pcore_browser_script_bridge *) pw;
     object = NULL;
+    url_copy = NULL;
     root = pcore_browser_script_args_object(args_json, args_len, &object);
     op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
-    if (bridge == NULL || root == NULL || op == NULL ||
-            strcmp(op, "back") != 0) {
+    if (bridge == NULL || root == NULL || op == NULL) {
         PJson_Free(root);
         return 1;
     }
-    bridge->history_back_requested = 1;
+    kind = PCORE_SCRIPT_NAVIGATION_NONE;
+    if (strcmp(op, "back") == 0) {
+        kind = PCORE_SCRIPT_NAVIGATION_BACK;
+    } else if (strcmp(op, "assign") == 0) {
+        url = PJson_GetString(object, "url");
+        if (url == NULL || url[0] == '\0' ||
+                strlen(url) >= PCORE_SCRIPT_NAVIGATION_URL_MAX) {
+            PJson_Free(root);
+            return pcore_browser_script_write_bool(0, out_json,
+                    out_capacity, out_len);
+        }
+        url_copy = pcore_browser_script_copy_string(url);
+        if (url_copy == NULL) {
+            PJson_Free(root);
+            return pcore_browser_script_write_bool(0, out_json,
+                    out_capacity, out_len);
+        }
+        kind = PCORE_SCRIPT_NAVIGATION_ASSIGN;
+    } else {
+        PJson_Free(root);
+        return 1;
+    }
+    free(bridge->navigation_url);
+    bridge->navigation_url = url_copy;
+    bridge->navigation_kind = kind;
     if (bridge->hwnd != NULL) {
-        (void) PostMessage(bridge->hwnd, WM_PCORE_SCRIPT_HISTORY_BACK,
+        (void) PostMessage(bridge->hwnd, WM_PCORE_SCRIPT_NAVIGATE,
                 0, 0);
     }
     PJson_Free(root);
@@ -5847,6 +5879,8 @@ static void pcore_browser_script_bridge_destroy(
         binding = next;
     }
     bridge->events = NULL;
+    free(bridge->navigation_url);
+    bridge->navigation_url = NULL;
 }
 
 static int pcore_browser_script_type_equal(const char *type, int length,
@@ -6101,9 +6135,12 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "delete g.__pcoreHandlers[a[i].id];a.splice(i,1);return;}}};"
         "var purl=String(g.__pcoreDocumentUrl||'');"
         "try{delete g.__pcoreDocumentUrl;}catch(purlerror){}"
+        "function pnavigate(v){if(!__pcoreNavigation({op:'assign',"
+        "url:String(v)})){throw new Error('location navigation failed');}}"
         "var plocation={};"
         "Object.defineProperty(plocation,'href',{get:function(){"
-        "return purl;}});"
+        "return purl;},set:pnavigate});"
+        "plocation.assign=pnavigate;"
         "plocation.toString=function(){return this.href;};"
         "var pdocument={getElementById:function(id){id=String(id);"
         "return __pcoreHasElement({id:id})?new PElement(id):null;}};"
@@ -6112,8 +6149,10 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "Object.defineProperty(pdocument,'documentURI',{get:function(){"
         "return plocation.href;}});"
         "Object.defineProperty(pdocument,'location',{get:function(){"
-        "return plocation;}});"
-        "g.window=g;g.location=plocation;g.document=pdocument;"
+        "return plocation;},set:pnavigate});"
+        "g.window=g;g.document=pdocument;"
+        "Object.defineProperty(g,'location',{get:function(){"
+        "return plocation;},set:pnavigate});"
         "g.history={back:function(){__pcoreNavigation({op:'back'});}};"
         "})(this);";
     pcore_browser_script_bridge bridge_storage;
@@ -6177,7 +6216,8 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
     bridge->document = document;
     bridge->runtime = runtime;
     bridge->hwnd = NULL;
-    bridge->history_back_requested = 0;
+    bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
+    bridge->navigation_url = NULL;
     bridge->next_event_id = 1;
     bridge->events = NULL;
     if (PScript_SetGlobalString(runtime, "__pcoreDocumentUrl", -1,
@@ -6560,8 +6600,9 @@ static void pcore_navigation_finish(HWND hwnd,
         g_nav_determinate = 0;
     }
     if (hwnd != NULL && g_browser_script_session.bridge != NULL &&
-            g_browser_script_session.bridge->history_back_requested) {
-        (void) PostMessage(hwnd, WM_PCORE_SCRIPT_HISTORY_BACK, 0, 0);
+            g_browser_script_session.bridge->navigation_kind !=
+                    PCORE_SCRIPT_NAVIGATION_NONE) {
+        (void) PostMessage(hwnd, WM_PCORE_SCRIPT_NAVIGATE, 0, 0);
     }
     if (request == g_nav_request) {
         g_nav_request = NULL;
@@ -7800,13 +7841,28 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     "Could not reselect styles after an interaction");
         }
         return 0;
-    case WM_PCORE_SCRIPT_HISTORY_BACK:
-        if (!g_nav_loading && g_browser_script_session.bridge != NULL &&
-                g_browser_script_session.bridge->history_back_requested) {
-            g_browser_script_session.bridge->history_back_requested = 0;
-            (void) pcore_browse_navigate_back(hwnd);
+    case WM_PCORE_SCRIPT_NAVIGATE: {
+        pcore_browser_script_bridge *bridge;
+        char *url;
+        int kind;
+
+        bridge = g_browser_script_session.bridge;
+        if (!g_nav_loading && bridge != NULL &&
+                bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE) {
+            kind = bridge->navigation_kind;
+            url = bridge->navigation_url;
+            bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
+            bridge->navigation_url = NULL;
+            if (kind == PCORE_SCRIPT_NAVIGATION_BACK) {
+                (void) pcore_browse_navigate_back(hwnd);
+            } else if (kind == PCORE_SCRIPT_NAVIGATION_ASSIGN &&
+                    url != NULL) {
+                navigate_to(hwnd, url);
+            }
+            free(url);
         }
         return 0;
+    }
     case WM_COMMAND:
         if ((HWND) lp != NULL) {
             if (HIWORD(wp) == CBN_SELCHANGE) {
@@ -22849,7 +22905,8 @@ static BOOL test137_browser_script_navigation(void)
             PCore_NodeTextContentById(document, "result", result,
             sizeof(result), &result_bytes) != 0 ||
             strcmp(result, expected) != 0 || bridge == NULL ||
-            !bridge->history_back_requested ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_BACK ||
+            bridge->navigation_url != NULL ||
             PScript_GetNativeFunctionCount(runtime) != 14) {
         ok = 0;
     }
@@ -22877,6 +22934,88 @@ static BOOL test137_browser_script_navigation(void)
             "The page context exposes one canonical URL through location\n"
             "and document, while history.back queues navigation without\n"
             "mutating the committed history position synchronously.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 138 - deferred browser script location assignment               */
+/* -------------------------------------------------------------------- */
+static BOOL test138_browser_script_location_assign(void)
+{
+    static const char URL_A[] = "https://example.com/";
+    static const char URL_B[] = "https://www.iana.org/help/example-domains";
+    static const char TARGET[] = "next.html?from=script#target";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var before=location.href;"
+        "location.assign('/first');"
+        "window.location='relative/second';"
+        "document.location='/third';"
+        "location.href='next.html?from=script#target';"
+        "document.getElementById('result').textContent=before+'|'"
+        "+location.href+'|'+String(document.location===location);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char expected[512];
+    char result[512];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(expected, 0, sizeof(expected));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browse_history_reset();
+    pcore_browse_history_commit_navigation(URL_A, 1, -1);
+    pcore_browse_history_commit_navigation(URL_B, 1, -1);
+    _snprintf(expected, sizeof(expected) - 1, "%s|%s|true", URL_B,
+            URL_B);
+    expected[sizeof(expected) - 1] = '\0';
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_B,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, expected) != 0 || bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+            bridge->navigation_url == NULL ||
+            strcmp(bridge->navigation_url, TARGET) != 0 ||
+            g_browse_history.count != 2 || g_browse_history.index != 1 ||
+            PScript_GetNativeFunctionCount(runtime) != 14) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 138 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 138 OK",
+            "location.assign, window/document.location assignment and\n"
+            "location.href queue one final GET without mutating the\n"
+            "current URL or committed history synchronously.");
     return TRUE;
 }
 
@@ -23136,6 +23275,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 135: ok = test135_browser_script_selected_index_edges(); break;
         case 136: ok = test136_browse_history_back(); break;
         case 137: ok = test137_browser_script_navigation(); break;
+        case 138: ok = test138_browser_script_location_assign(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
