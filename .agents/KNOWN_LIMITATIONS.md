@@ -31,8 +31,8 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next173，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-141，计 89 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
+**当前自动化设备基线（next174，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-142，计 90 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -204,7 +204,7 @@ go/forward、length/state、replaceState/pushState/popstate、重定向历史、
 入口，避免从 Duktape callback 同步重入；连续赋值是 last-request-wins，当前 URL/history
 在赋值时保持不变。TEST138 是离线 bridge 门，不证明 URL 解析、网络成功、重定向或页面状态
 恢复；next171 已验收纵切补充 reload，next172 已验收纵切补充 replace；URL 分量 setter、
-next173 已验收纵切补充 `history.forward()`；`history.go()` 等仍未实现。
+next173 已验收纵切补充 `history.forward()`；next174 已验收纵切补充有界 `history.go()`。
 320x320/128 DPI 日志已得到 TEST138 OK、86 条 OK、零 ERROR、零 FAIL 与最终 PASS。
 
 **next171 GET-only location reload（自动设备验收通过）**：`location.reload()` 把
@@ -227,6 +227,12 @@ replace、重定向历史、POST replace、页面缓存或滚动/表单状态恢
 失败保持当前项。TEST141 是离线 bridge/history 门，不证明真实网络前进、右方向键 UI、
 页面缓存、滚动/表单状态恢复、`history.go/length/state` 或 popstate 语义。320x320/128 DPI
 日志已得到 TEST141 OK、89 条 OK、零 ERROR、零 FAIL 与最终 PASS。
+
+**next174 bounded history.go（自动设备验收通过）**：只接受整数 `-15…15`；非有限、
+小数和越界输入无操作，合法偏移经既有异步桥排队。delta 0 指向当前 GET 条目，其他偏移
+只在目标存在时导航，成功 document 提交后才移动 index。TEST142 是离线 target/bridge 门，
+不证明真实网络 go、POST 重提交、页面缓存、状态恢复、history length/state 或 popstate。
+320x320/128 DPI 日志已得到 TEST142 OK、90 条 OK、零 ERROR、零 FAIL 与最终 PASS。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
