@@ -31,8 +31,8 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next178，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-146，计 94 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
+**当前自动化设备基线（next179，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-147，计 95 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -271,6 +271,15 @@ document 最终成功后才按顺序提交，活动页立即提交。TEST146 离
 槽位。本批遍历仍走现有 GET 重载，不是完整 structured clone，也不实现非当前 URL、POST
 state、同 document 生命周期、popstate 或页面缓存。320x320/128 DPI 日志已得到 TEST146 OK、
 94 条 OK、零 ERROR、零 FAIL 与最终 PASS，next178 已成为自动设备基线。
+
+**next179 same-document traversal（自动设备验收通过）**：成功网络 document 获得内部
+identity，pushState 条目继承当前 identity。back/forward 和非零 history.go 命中同一
+identity 的 pushed sibling 时，在现有 DOM/runtime 中切换 index 和逐项 JSON state，不启动
+GET，length 不变。go(0)、reload 和跨 identity 条目仍走网络路径，成功网络 document 获得
+新 identity。TEST147 离线覆盖 back/forward/go 无 GET 切换、DOM/runtime 身份、state/length、
+go(0) 排除以及 reload/跨 document 隔离。本批不派发 popstate，也不实现逐项滚动/表单恢复、
+非当前 URL、POST state 或跨 document 页面缓存。320x320/128 DPI 日志已得到 TEST147 OK、
+95 条 OK、零 ERROR、零 FAIL 与最终 PASS，next179 已成为自动设备基线。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

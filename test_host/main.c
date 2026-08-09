@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 146
+#define TEST_MAX_NUMBER 147
 
 static int test_config_space(char c)
 {
@@ -2317,6 +2317,8 @@ static int    g_cur_port = 443;
 typedef struct pcore_browse_history {
     char entries[PCORE_BROWSE_HISTORY_MAX][PCORE_BROWSE_HISTORY_URL_MAX];
     char states[PCORE_BROWSE_HISTORY_MAX][PCORE_BROWSE_HISTORY_STATE_MAX];
+    unsigned long document_ids[PCORE_BROWSE_HISTORY_MAX];
+    unsigned long next_document_id;
     int count;
     int index;
 } pcore_browse_history;
@@ -2350,6 +2352,28 @@ static const char *pcore_browse_history_state_at(int index)
 static const char *pcore_browse_history_current_state(void)
 {
     return pcore_browse_history_state_at(g_browse_history.index);
+}
+
+static unsigned long pcore_browse_history_new_document_id(void)
+{
+    g_browse_history.next_document_id++;
+    if (g_browse_history.next_document_id == 0) {
+        g_browse_history.next_document_id++;
+    }
+    return g_browse_history.next_document_id;
+}
+
+static int pcore_browse_history_same_document_target(int target_index)
+{
+    if (target_index < 0 || target_index >= g_browse_history.count ||
+            target_index == g_browse_history.index ||
+            g_browse_history.index < 0 ||
+            g_browse_history.index >= g_browse_history.count ||
+            g_browse_history.document_ids[target_index] == 0) {
+        return 0;
+    }
+    return g_browse_history.document_ids[target_index] ==
+            g_browse_history.document_ids[g_browse_history.index];
 }
 
 static int pcore_browse_history_replace_state(const char *state_json)
@@ -2399,12 +2423,16 @@ static int pcore_browse_history_push_state(const char *url,
             memcpy(g_browse_history.states[i - 1],
                     g_browse_history.states[i],
                     PCORE_BROWSE_HISTORY_STATE_MAX);
+            g_browse_history.document_ids[i - 1] =
+                    g_browse_history.document_ids[i];
         }
         g_browse_history.count--;
         g_browse_history.index--;
     }
     strcpy(g_browse_history.entries[g_browse_history.count], url);
     strcpy(g_browse_history.states[g_browse_history.count], state_json);
+    g_browse_history.document_ids[g_browse_history.count] =
+            g_browse_history.document_ids[g_browse_history.index];
     g_browse_history.count++;
     g_browse_history.index = g_browse_history.count - 1;
     return 0;
@@ -2420,6 +2448,8 @@ static int pcore_browse_history_commit_new(const char *url)
     }
     if (pcore_browse_history_current() != NULL &&
             strcmp(pcore_browse_history_current(), url) == 0) {
+        g_browse_history.document_ids[g_browse_history.index] =
+                pcore_browse_history_new_document_id();
         return 0;
     }
     if (g_browse_history.index + 1 < g_browse_history.count) {
@@ -2433,12 +2463,16 @@ static int pcore_browse_history_commit_new(const char *url)
             memcpy(g_browse_history.states[i - 1],
                     g_browse_history.states[i],
                     PCORE_BROWSE_HISTORY_STATE_MAX);
+            g_browse_history.document_ids[i - 1] =
+                    g_browse_history.document_ids[i];
         }
         g_browse_history.count--;
         g_browse_history.index--;
     }
     strcpy(g_browse_history.entries[g_browse_history.count], url);
     strcpy(g_browse_history.states[g_browse_history.count], "null");
+    g_browse_history.document_ids[g_browse_history.count] =
+            pcore_browse_history_new_document_id();
     g_browse_history.count++;
     g_browse_history.index = g_browse_history.count - 1;
     return 0;
@@ -2498,6 +2532,16 @@ static int pcore_browse_history_commit_target(int target_index)
     return 0;
 }
 
+static int pcore_browse_history_commit_target_document(int target_index)
+{
+    if (pcore_browse_history_commit_target(target_index) != 0) {
+        return 1;
+    }
+    g_browse_history.document_ids[target_index] =
+            pcore_browse_history_new_document_id();
+    return 0;
+}
+
 static int pcore_browse_history_replace_current(const char *url)
 {
     if (url == NULL || url[0] == '\0' ||
@@ -2509,6 +2553,8 @@ static int pcore_browse_history_replace_current(const char *url)
     }
     strcpy(g_browse_history.entries[g_browse_history.index], url);
     strcpy(g_browse_history.states[g_browse_history.index], "null");
+    g_browse_history.document_ids[g_browse_history.index] =
+            pcore_browse_history_new_document_id();
     return 0;
 }
 
@@ -2522,7 +2568,7 @@ static int pcore_browse_history_commit_navigation(const char *url,
         return pcore_browse_history_replace_current(url);
     }
     if (target_index >= 0) {
-        return pcore_browse_history_commit_target(target_index);
+        return pcore_browse_history_commit_target_document(target_index);
     }
     return pcore_browse_history_commit_new(url);
 }
@@ -6361,6 +6407,44 @@ static int pcore_browser_script_session_evaluate(const char *source,
     return 0;
 }
 
+static int pcore_browser_script_session_traverse_history(int target_index)
+{
+    pcore_browser_script_bridge *bridge;
+    const char *state_json;
+    char *state_copy;
+    char error[128];
+
+    bridge = g_browser_script_session.bridge;
+    if (!pcore_browse_history_same_document_target(target_index) ||
+            g_browser_script_session.runtime == NULL || bridge == NULL) {
+        return 1;
+    }
+    state_json = pcore_browse_history_state_at(target_index);
+    state_copy = pcore_browser_script_copy_string(state_json);
+    if (state_copy == NULL ||
+            PScript_SetGlobalJson(g_browser_script_session.runtime,
+            "__pcoreHistoryTraversalState", -1, state_json, -1) !=
+            PSCRIPT_OK) {
+        free(state_copy);
+        return 1;
+    }
+    memset(error, 0, sizeof(error));
+    if (pcore_browser_script_session_evaluate(
+            "__pcoreHistoryTraverse(__pcoreHistoryTraversalState);"
+            "delete this.__pcoreHistoryTraversalState;", -1,
+            error, sizeof(error)) != 0 ||
+            pcore_browse_history_commit_target(target_index) != 0) {
+        free(state_copy);
+        return 1;
+    }
+    free(bridge->history_state_json);
+    bridge->history_state_json = state_copy;
+    bridge->history_state_changed = 1;
+    bridge->history_length = g_browse_history.count;
+    bridge->history_index = g_browse_history.index;
+    return 0;
+}
+
 static int pcore_browser_execute_scripts_with_history(HANDLE document,
         int enabled, int allow_external, const char *document_url,
         int history_length, int history_index, int history_can_commit,
@@ -6555,6 +6639,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "if(!isFinite(n)||Math.floor(n)!==n||n<1||n>16){"
         "throw new Error('history push state failed');}"
         "phistoryStateJson=s;phistoryLength=n;}"
+        "g.__pcoreHistoryTraverse=function(state){var s=JSON.stringify(state);"
+        "if(typeof s!=='string'){s='null';}phistoryStateJson=s;};"
         "var plocation={};"
         "Object.defineProperty(plocation,'href',{get:function(){"
         "return purl;},set:pnavigate});"
@@ -7246,6 +7332,10 @@ static int pcore_browse_navigate_back(HWND hwnd)
     if (target == NULL) {
         return 0;
     }
+    if (pcore_browse_history_same_document_target(target_index)) {
+        return pcore_browser_script_session_traverse_history(
+                target_index) == 0;
+    }
     return navigate_to_request_ex(hwnd, target, 1, NULL, 0, NULL,
             target_index) == 0;
 }
@@ -7262,6 +7352,10 @@ static int pcore_browse_navigate_forward(HWND hwnd)
     if (target == NULL) {
         return 0;
     }
+    if (pcore_browse_history_same_document_target(target_index)) {
+        return pcore_browser_script_session_traverse_history(
+                target_index) == 0;
+    }
     return navigate_to_request_ex(hwnd, target, 1, NULL, 0, NULL,
             target_index) == 0;
 }
@@ -7277,6 +7371,10 @@ static int pcore_browse_navigate_go(HWND hwnd, int delta)
     target = pcore_browse_history_go_target(delta, &target_index);
     if (target == NULL) {
         return 0;
+    }
+    if (pcore_browse_history_same_document_target(target_index)) {
+        return pcore_browser_script_session_traverse_history(
+                target_index) == 0;
     }
     return navigate_to_request_ex(hwnd, target, 1, NULL, 0, NULL,
             target_index) == 0;
@@ -24540,6 +24638,173 @@ static BOOL test146_browser_script_history_push_state(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 147 - same-document traversal for pushed history entries        */
+/* -------------------------------------------------------------------- */
+static BOOL test147_browser_script_history_same_document_traversal(void)
+{
+    static const char URL_A[] = "https://example.com/";
+    static const char URL_B[] =
+        "https://www.iana.org/help/example-domains";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "history.replaceState({page:0},'');"
+        "history.pushState({page:1},'');"
+        "history.pushState({page:2},'');"
+        "document.getElementById('result').textContent="
+        "history.length+'|'+history.state.page;"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    HANDLE document;
+    HANDLE runtime;
+    HANDLE session_runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *evaluation_result;
+    unsigned long document_id;
+    unsigned long reloaded_id;
+    char result[64];
+    char error[256];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    session_runtime = NULL;
+    bridge = NULL;
+    evaluation_result = NULL;
+    document_id = 0;
+    reloaded_id = 0;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    (void) pcore_browse_history_commit_navigation(URL_A, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_A,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, "3|2") != 0 || result_bytes != 3 ||
+            bridge == NULL || bridge->history_push_count != 2 ||
+            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            pcore_browse_history_commit_navigation_with_bridge(URL_A,
+            1, -1, bridge) != 0 || g_browse_history.count != 3 ||
+            g_browse_history.index != 2) {
+        ok = 0;
+    }
+    if (ok) {
+        document_id = g_browse_history.document_ids[0];
+        if (document_id == 0 ||
+                g_browse_history.document_ids[1] != document_id ||
+                g_browse_history.document_ids[2] != document_id ||
+                !pcore_browse_history_same_document_target(1) ||
+                pcore_browse_history_same_document_target(2)) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        bridge->hwnd = (HWND) 1;
+        session_runtime = runtime;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (!pcore_browse_navigate_back((HWND) 1) ||
+                g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.index != 1 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":1}") != 0 ||
+                g_browser_script_session.document != document ||
+                g_browser_script_session.runtime != session_runtime ||
+                PScript_Evaluate(session_runtime,
+                "history.length+'|'+history.state.page;", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        } else {
+            evaluation_result = PScript_GetResult(session_runtime);
+            if (evaluation_result == NULL ||
+                    strcmp(evaluation_result, "3|1") != 0) {
+                ok = 0;
+            }
+        }
+    }
+    if (ok && (!pcore_browse_navigate_forward((HWND) 1) ||
+            g_nav_loading || g_nav_request != NULL ||
+            g_browse_history.index != 2 ||
+            strcmp(pcore_browse_history_current_state(),
+            "{\"page\":2}") != 0 ||
+            PScript_Evaluate(session_runtime,
+            "history.length+'|'+history.state.page;", -1) !=
+            PSCRIPT_OK)) {
+        ok = 0;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, "3|2") != 0 ||
+                !pcore_browse_navigate_go((HWND) 1, -2) ||
+                g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.index != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":0}") != 0 ||
+                pcore_browse_history_same_document_target(0) ||
+                PScript_Evaluate(session_runtime,
+                "history.length+'|'+history.state.page;", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, "3|0") != 0 ||
+                pcore_browse_history_commit_new(URL_B) != 0 ||
+                pcore_browse_history_same_document_target(0)) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        reloaded_id = g_browse_history.document_ids[1];
+        if (reloaded_id == 0 || reloaded_id == document_id ||
+                pcore_browse_history_commit_new(URL_B) != 0 ||
+                g_browse_history.document_ids[1] == reloaded_id) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s index=%d count=%d runtime=%p",
+                    result_bytes, result, g_browse_history.index,
+                    g_browse_history.count, session_runtime);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 147 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 147 OK",
+            "back, forward, and nonzero go traverse pushed entries in the\n"
+            "existing document/runtime, update history.state, and avoid\n"
+            "starting a GET; reload and cross-document entries stay distinct.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -24805,6 +25070,9 @@ static int run_configured_tests(const unsigned char *selected,
         case 144: ok = test144_browser_script_history_state(); break;
         case 145: ok = test145_browser_script_history_replace_state(); break;
         case 146: ok = test146_browser_script_history_push_state(); break;
+        case 147: ok =
+                test147_browser_script_history_same_document_traversal();
+                break;
         default: ok = FALSE; break;
         }
         if (!ok) {
