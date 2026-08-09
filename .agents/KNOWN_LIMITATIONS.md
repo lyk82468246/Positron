@@ -314,6 +314,14 @@ location 片段导航及其他 scheme 不在范围内。配置读取上限已由
 320x320/128 DPI 日志已得到 TEST151 OK、99 条 OK、零 ERROR、零 FAIL 与最终 PASS，next183
 已成为自动设备基线。
 
+**next184 location.hash 导航基线（2026-08-09）**：hash setter 排队执行同 document 片段
+导航，新增 null-state history entry 并派发 hashchange；相同值不新增历史或事件，空字符串
+清除片段，导航不发起 GET/popstate。TEST152 覆盖异步边界、history.length/state、事件与后退。
+本批不含 location.href/assign/replace 相对片段、百分号编码/标准化、锚点滚动、跨 document
+片段导航及其他 location 组件 setter。320x320/128 DPI 日志得到 TEST152 OK、配置所选 99 项
+全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13 的成功行是 `OK (overview)`，其余 98 项
+使用标准数字 OK 行。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM
