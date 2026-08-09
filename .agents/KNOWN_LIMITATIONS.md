@@ -31,8 +31,8 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next170，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-138，计 86 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
+**当前自动化设备基线（next171，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-139，计 87 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -203,8 +203,17 @@ go/forward、length/state、replaceState/pushState/popstate、重定向历史、
 1024 字节的 URL 请求保存在页面 bridge 中。窗口消息只在导航空闲时取出请求并调用现有 GET
 入口，避免从 Duktape callback 同步重入；连续赋值是 last-request-wins，当前 URL/history
 在赋值时保持不变。TEST138 是离线 bridge 门，不证明 URL 解析、网络成功、重定向或页面状态
-恢复；`location.replace/reload`、URL 分量 setter、`history.go/forward` 等仍未实现。
+恢复；next171 已验收纵切补充 reload，`location.replace`、URL 分量 setter、
+`history.go/forward` 等仍未实现。
 320x320/128 DPI 日志已得到 TEST138 OK、86 条 OK、零 ERROR、零 FAIL 与最终 PASS。
+
+**next171 GET-only location reload（自动设备验收通过）**：`location.reload()` 把
+bootstrap 闭包中的 canonical document URL 复制进既有异步导航 bridge；窗口消息在导航
+空闲后复用普通 GET 入口。callback 返回前不修改 URL/history，同一当前 URL 成功提交时
+既有 duplicate-current guard 保留 count/index 与 forward branch。TEST139 是离线 bridge/
+history 门，不证明真实网络重载、缓存验证、POST 重提交、表单/滚动状态恢复或完整 Reload
+语义；`forceGet` 参数也未实现。320x320/128 DPI 日志已得到 TEST139 OK、87 条 OK、
+零 ERROR、零 FAIL 与最终 PASS。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
