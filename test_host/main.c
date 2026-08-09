@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 139
+#define TEST_MAX_NUMBER 140
 
 static int test_config_space(char c)
 {
@@ -2133,6 +2133,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_SCRIPT_NAVIGATION_BACK 1
 #define PCORE_SCRIPT_NAVIGATION_ASSIGN 2
 #define PCORE_SCRIPT_NAVIGATION_RELOAD 3
+#define PCORE_SCRIPT_NAVIGATION_REPLACE 4
 #define PCORE_SCRIPT_NAVIGATION_URL_MAX 1024
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_COMMIT_TIMER 25
@@ -2298,6 +2299,8 @@ static int    g_cur_port = 443;
 
 #define PCORE_BROWSE_HISTORY_MAX 16
 #define PCORE_BROWSE_HISTORY_URL_MAX 1024
+#define PCORE_BROWSE_HISTORY_TARGET_NEW (-1)
+#define PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT (-2)
 
 typedef struct pcore_browse_history {
     char entries[PCORE_BROWSE_HISTORY_MAX][PCORE_BROWSE_HISTORY_URL_MAX];
@@ -2374,13 +2377,28 @@ static int pcore_browse_history_commit_target(int target_index)
     return 0;
 }
 
+static int pcore_browse_history_replace_current(const char *url)
+{
+    if (url == NULL || url[0] == '\0' ||
+            strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX) {
+        return 1;
+    }
+    if (pcore_browse_history_current() == NULL) {
+        return pcore_browse_history_commit_new(url);
+    }
+    strcpy(g_browse_history.entries[g_browse_history.index], url);
+    return 0;
+}
+
 static void pcore_browse_history_commit_navigation(const char *url,
         int method, int target_index)
 {
     if (method != 1) {
         return;
     }
-    if (target_index >= 0) {
+    if (target_index == PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT) {
+        (void) pcore_browse_history_replace_current(url);
+    } else if (target_index >= 0) {
         (void) pcore_browse_history_commit_target(target_index);
     } else {
         (void) pcore_browse_history_commit_new(url);
@@ -5632,7 +5650,8 @@ static int pcore_browser_script_navigation(void *pw,
     if (strcmp(op, "back") == 0) {
         kind = PCORE_SCRIPT_NAVIGATION_BACK;
     } else if (strcmp(op, "assign") == 0 ||
-            strcmp(op, "reload") == 0) {
+            strcmp(op, "reload") == 0 ||
+            strcmp(op, "replace") == 0) {
         url = PJson_GetString(object, "url");
         if (url == NULL || url[0] == '\0' ||
                 strlen(url) >= PCORE_SCRIPT_NAVIGATION_URL_MAX) {
@@ -5646,9 +5665,13 @@ static int pcore_browser_script_navigation(void *pw,
             return pcore_browser_script_write_bool(0, out_json,
                     out_capacity, out_len);
         }
-        kind = (strcmp(op, "assign") == 0) ?
-                PCORE_SCRIPT_NAVIGATION_ASSIGN :
-                PCORE_SCRIPT_NAVIGATION_RELOAD;
+        if (strcmp(op, "assign") == 0) {
+            kind = PCORE_SCRIPT_NAVIGATION_ASSIGN;
+        } else if (strcmp(op, "reload") == 0) {
+            kind = PCORE_SCRIPT_NAVIGATION_RELOAD;
+        } else {
+            kind = PCORE_SCRIPT_NAVIGATION_REPLACE;
+        }
     } else {
         PJson_Free(root);
         return 1;
@@ -6143,11 +6166,14 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "url:String(v)})){throw new Error('location navigation failed');}}"
         "function preload(){if(!__pcoreNavigation({op:'reload',url:purl}))"
         "{throw new Error('location reload failed');}}"
+        "function preplace(v){if(!__pcoreNavigation({op:'replace',"
+        "url:String(v)})){throw new Error('location replace failed');}}"
         "var plocation={};"
         "Object.defineProperty(plocation,'href',{get:function(){"
         "return purl;},set:pnavigate});"
         "plocation.assign=pnavigate;"
         "plocation.reload=preload;"
+        "plocation.replace=preplace;"
         "plocation.toString=function(){return this.href;};"
         "var pdocument={getElementById:function(id){id=String(id);"
         "return __pcoreHasElement({id:id})?new PElement(id):null;}};"
@@ -6654,7 +6680,7 @@ static pcore_navigation_request *pcore_navigation_request_create_ex(
     }
     memset(request, 0, sizeof(*request));
     request->port = 443;
-    request->history_target_index = -1;
+    request->history_target_index = PCORE_BROWSE_HISTORY_TARGET_NEW;
     if (!resolve_url(href, request->host, sizeof(request->host),
             request->path, sizeof(request->path), &request->port)) {
         free(request);
@@ -6744,12 +6770,18 @@ static void navigate_to_request(HWND hwnd, const char *href,
 
     body_len = (body != NULL) ? (int) strlen(body) : 0;
     (void) navigate_to_request_ex(hwnd, href, method, body, body_len,
-            NULL, -1);
+            NULL, PCORE_BROWSE_HISTORY_TARGET_NEW);
 }
 
 static void navigate_to(HWND hwnd, const char *href)
 {
     navigate_to_request(hwnd, href, 1, NULL);
+}
+
+static void navigate_replace(HWND hwnd, const char *href)
+{
+    (void) navigate_to_request_ex(hwnd, href, 1, NULL, 0, NULL,
+            PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT);
 }
 
 static int pcore_browse_navigate_back(HWND hwnd)
@@ -7095,7 +7127,7 @@ static int navigate_multipart_submission(HWND hwnd, HANDLE submission)
         goto done;
     }
     (void) navigate_to_request_ex(hwnd, target, 3, body, body_len,
-            content_type, -1);
+            content_type, PCORE_BROWSE_HISTORY_TARGET_NEW);
     result = 1;
 
 done:
@@ -7866,6 +7898,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     kind == PCORE_SCRIPT_NAVIGATION_RELOAD) &&
                     url != NULL) {
                 navigate_to(hwnd, url);
+            } else if (kind == PCORE_SCRIPT_NAVIGATION_REPLACE &&
+                    url != NULL) {
+                navigate_replace(hwnd, url);
             }
             free(url);
         }
@@ -23119,6 +23154,104 @@ static BOOL test139_browser_script_location_reload(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 140 - deferred browser script location.replace                  */
+/* -------------------------------------------------------------------- */
+static BOOL test140_browser_script_location_replace(void)
+{
+    static const char URL_A[] = "https://example.com/";
+    static const char URL_B[] =
+        "https://www.iana.org/help/example-domains";
+    static const char URL_C[] = "https://www.iana.org/domains/reserved";
+    static const char URL_D[] = "https://www.iana.org/domains/replaced";
+    static const char TARGET[] = "/domains/replaced";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var before=location.href;var returned=location.replace("
+        "'/domains/replaced');"
+        "document.getElementById('result').textContent=before+'|'"
+        "+location.href+'|'+String(returned);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] =
+        "https://www.iana.org/help/example-domains|"
+        "https://www.iana.org/help/example-domains|undefined";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[512];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browse_history_reset();
+    pcore_browse_history_commit_navigation(URL_A, 1, -1);
+    pcore_browse_history_commit_navigation(URL_B, 1, -1);
+    pcore_browse_history_commit_navigation(URL_C, 1, -1);
+    if (pcore_browse_history_commit_target(1) != 0) {
+        ok = 0;
+    }
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_B,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0 || bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_REPLACE ||
+            bridge->navigation_url == NULL ||
+            strcmp(bridge->navigation_url, TARGET) != 0 ||
+            g_browse_history.count != 3 || g_browse_history.index != 1 ||
+            strcmp(g_browse_history.entries[0], URL_A) != 0 ||
+            strcmp(g_browse_history.entries[1], URL_B) != 0 ||
+            strcmp(g_browse_history.entries[2], URL_C) != 0 ||
+            PScript_GetNativeFunctionCount(runtime) != 14) {
+        ok = 0;
+    }
+    if (ok) {
+        pcore_browse_history_commit_navigation(URL_D, 1,
+                PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT);
+        if (g_browse_history.count != 3 ||
+                g_browse_history.index != 1 ||
+                strcmp(g_browse_history.entries[0], URL_A) != 0 ||
+                strcmp(g_browse_history.entries[1], URL_D) != 0 ||
+                strcmp(g_browse_history.entries[2], URL_C) != 0) {
+            ok = 0;
+        }
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 140 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 140 OK",
+            "location.replace queues one GET and replaces only the\n"
+            "current history URL after success, preserving the index\n"
+            "and surrounding back/forward entries.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -23377,6 +23510,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 137: ok = test137_browser_script_navigation(); break;
         case 138: ok = test138_browser_script_location_assign(); break;
         case 139: ok = test139_browser_script_location_reload(); break;
+        case 140: ok = test140_browser_script_location_replace(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
