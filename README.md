@@ -43,13 +43,19 @@ html_input_element.c 现在把 checked 状态与 parsed checked attribute 分开
 C89、审计、staging 与设备自动日志均已通过。`test_host.log` 以 `TESTBENCH PASS`
 结束；自动断言不替代真实 SIP/IME 输入和视觉检查。
 
-**next164 待设备验收（2026-08-09）**：在 next163 的脚本表单属性桥之上，TEST129
+**next164 设备验收通过（2026-08-09）**：在 next163 的脚本表单属性桥之上，TEST129
 增加 Event.target/currentTarget 的 DOM ID 映射，TEST130 增加 PElement.id/className
 反射，TEST131 增加 classList 的 contains/add/remove/toggle，TEST132 增加受控的
 style.cssText 与简单 get/set/removeProperty。新接口只在显式 javascript=1 的
 classic script context 中可见；默认 javascript=0、TEST13 网络路径和 next163
-Browse 基线不变。C89、ARMV4I Debug 增量构建、审计与
-C:\WMShare\Positron-next164 staging 已通过，等待设备自动日志与人工视觉检查。
+Browse 基线不变。C:\WMShare\Positron-next164\test_host.log 已以
+`TESTBENCH PASS` 结束；自动断言仍不替代人工视觉检查。
+
+**next165 待设备验收（2026-08-09）**：TEST133-134 增加 input/textarea 的
+defaultValue、input 的 defaultChecked，以及 select 的 selectedIndex 读写；
+TEST135 覆盖 selectedIndex=-1 清空和越界拒绝。默认 javascript=0、TEST13 网络
+路径和 next164 Browse 基线不变。C89、ARMV4I Debug 增量构建、审计与
+C:\WMShare\Positron-next165 staging 已通过，等待设备自动日志和人工检查。
 
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
@@ -458,7 +464,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-132
+tests=13,20,27,43,44,56,58-77,80-135
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。

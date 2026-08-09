@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 132
+#define TEST_MAX_NUMBER 135
 
 static int test_config_space(char c)
 {
@@ -5242,6 +5242,68 @@ static int pcore_browser_script_set_value(void *pw,
             out_capacity, out_len);
 }
 
+static int pcore_browser_script_get_default_value(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    char *value;
+    int bytes;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    bytes = 0;
+    value = NULL;
+    if (bridge == NULL || bridge->document == NULL || root == NULL ||
+            id == NULL || PCore_NodeDefaultValueById(bridge->document, id,
+            NULL, 0, &bytes) != 0 || bytes < 0 || bytes > 65535) {
+        PJson_Free(root);
+        return 1;
+    }
+    value = (char *) malloc((size_t) bytes + 1);
+    if (value == NULL || PCore_NodeDefaultValueById(bridge->document, id,
+            value, bytes + 1, &bytes) != 0) {
+        free(value);
+        PJson_Free(root);
+        return 1;
+    }
+    result = pcore_browser_script_write_string(value, out_json,
+            out_capacity, out_len);
+    free(value);
+    PJson_Free(root);
+    return result;
+}
+
+static int pcore_browser_script_set_default_value(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *value;
+    int changed;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
+    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && value != NULL &&
+            PCore_NodeSetDefaultValueById(bridge->document, id, value) == 0;
+    PJson_Free(root);
+    return pcore_browser_script_write_bool(changed, out_json,
+            out_capacity, out_len);
+}
+
 static int pcore_browser_script_get_checked(void *pw,
         const char *args_json, int args_len, char *out_json,
         int out_capacity, int *out_len)
@@ -5288,6 +5350,108 @@ static int pcore_browser_script_set_checked(void *pw,
     changed = bridge != NULL && bridge->document != NULL && root != NULL &&
             id != NULL && PCore_NodeSetCheckedById(bridge->document, id,
             checked) == 0;
+    PJson_Free(root);
+    return pcore_browser_script_write_bool(changed, out_json,
+            out_capacity, out_len);
+}
+
+static int pcore_browser_script_get_default_checked(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int checked;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = 0;
+    result = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && PCore_NodeDefaultCheckedById(bridge->document, id,
+            &checked) == 0;
+    PJson_Free(root);
+    if (!result) {
+        return 1;
+    }
+    return pcore_browser_script_write_bool(checked, out_json,
+            out_capacity, out_len);
+}
+
+static int pcore_browser_script_set_default_checked(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int checked;
+    int changed;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = (object != NULL) ? PJson_GetInt(object, "checked") : 0;
+    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && PCore_NodeSetDefaultCheckedById(
+            bridge->document, id, checked) == 0;
+    PJson_Free(root);
+    return pcore_browser_script_write_bool(changed, out_json,
+            out_capacity, out_len);
+}
+
+static int pcore_browser_script_get_selected_index(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int index;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    index = -1;
+    result = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && PCore_NodeSelectedIndexById(bridge->document, id,
+            &index) == 0;
+    PJson_Free(root);
+    if (!result) {
+        return 1;
+    }
+    return pcore_browser_script_write_int(index, out_json,
+            out_capacity, out_len);
+}
+
+static int pcore_browser_script_set_selected_index(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int index;
+    int changed;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    object = NULL;
+    root = pcore_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    index = (object != NULL) ? PJson_GetInt(object, "index") : -2;
+    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
+            id != NULL && PCore_NodeSetSelectedIndexById(
+            bridge->document, id, index) == 0;
     PJson_Free(root);
     return pcore_browser_script_write_bool(changed, out_json,
             out_capacity, out_len);
@@ -5627,10 +5791,24 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "get:function(){return __pcoreGetValue({id:this.__id});},"
         "set:function(v){if(!__pcoreSetValue({id:this.__id,value:String(v)}))"
         "{throw new Error('value update failed');}}});"
+        "Object.defineProperty(PElement.prototype,'defaultValue',{"
+        "get:function(){return __pcoreGetDefaultValue({id:this.__id});},"
+        "set:function(v){if(!__pcoreSetDefaultValue({id:this.__id,"
+        "value:String(v)})){throw new Error('defaultValue update failed');}}});"
         "Object.defineProperty(PElement.prototype,'checked',{"
         "get:function(){return __pcoreGetChecked({id:this.__id});},"
         "set:function(v){if(!__pcoreSetChecked({id:this.__id,"
         "checked:v?1:0})){throw new Error('checked update failed');}}});"
+        "Object.defineProperty(PElement.prototype,'defaultChecked',{"
+        "get:function(){return __pcoreGetDefaultChecked({id:this.__id});},"
+        "set:function(v){if(!__pcoreSetDefaultChecked({id:this.__id,"
+        "checked:v?1:0})){throw new Error('defaultChecked update failed');}}});"
+        "Object.defineProperty(PElement.prototype,'selectedIndex',{"
+        "get:function(){return __pcoreGetSelectedIndex({id:this.__id});},"
+        "set:function(v){var n=Number(v);"
+        "if(n!==n||n!==Math.floor(n)){throw new Error('selectedIndex value');}"
+        "if(!__pcoreSetSelectedIndex({id:this.__id,index:n}))"
+        "{throw new Error('selectedIndex update failed');}}});"
         "Object.defineProperty(PElement.prototype,'id',{"
         "get:function(){var v=this.getAttribute('id');"
         "return v===null?'':v;},"
@@ -5830,11 +6008,29 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
             "__pcoreSetValue", -1,
             pcore_browser_script_set_value, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreGetDefaultValue", -1,
+            pcore_browser_script_get_default_value, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreSetDefaultValue", -1,
+            pcore_browser_script_set_default_value, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
             "__pcoreGetChecked", -1,
             pcore_browser_script_get_checked, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime,
             "__pcoreSetChecked", -1,
             pcore_browser_script_set_checked, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreGetDefaultChecked", -1,
+            pcore_browser_script_get_default_checked, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreSetDefaultChecked", -1,
+            pcore_browser_script_set_default_checked, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreGetSelectedIndex", -1,
+            pcore_browser_script_get_selected_index, bridge) != PSCRIPT_OK ||
+            PScript_RegisterGlobalJsonFunction(runtime,
+            "__pcoreSetSelectedIndex", -1,
+            pcore_browser_script_set_selected_index, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreAddEvent", -1,
             pcore_browser_script_add_event, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreRemoveEvent", -1,
@@ -21929,6 +22125,231 @@ static BOOL test132_browser_script_style(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 133 - browser form default properties                            */
+/* -------------------------------------------------------------------- */
+static BOOL test133_browser_script_form_defaults(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var t=document.getElementById('text');"
+        "var a=document.getElementById('area');"
+        "var c=document.getElementById('check');"
+        "var s=document.getElementById('choice');"
+        "var before=t.defaultValue+'|'+a.defaultValue+'|'"
+        "+String(c.defaultChecked)+'|'+s.selectedIndex;"
+        "t.value='live';a.value='changed';c.checked=false;s.selectedIndex=0;"
+        "document.getElementById('result').textContent=before+'|'"
+        "+t.defaultValue+'|'+a.defaultValue+'|'"
+        "+String(c.defaultChecked)+'|'+s.selectedIndex+'|'"
+        "+t.value+'|'+a.value+'|'+String(c.checked);"
+        "</script></head><body>"
+        "<input id='text' value='seed'>"
+        "<textarea id='area'>area</textarea>"
+        "<input id='check' type='checkbox' checked>"
+        "<select id='choice'><option>one</option>"
+        "<option selected>two</option></select>"
+        "<p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] =
+        "seed|area|true|1|seed|area|true|0|live|changed|false";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[512];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 133 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 133 OK",
+            "Scripts expose input/textarea defaultValue and input\n"
+            "defaultChecked separately from live value/checked state;\n"
+            "select.selectedIndex remains usable before layout.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 134 - browser form default property setters                      */
+/* -------------------------------------------------------------------- */
+static BOOL test134_browser_script_form_default_setters(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var t=document.getElementById('text');"
+        "var a=document.getElementById('area');"
+        "var c=document.getElementById('check');"
+        "var s=document.getElementById('choice');"
+        "t.defaultValue='new';a.defaultValue='note';"
+        "c.defaultChecked=false;s.selectedIndex=1;"
+        "document.getElementById('result').textContent="
+        "t.defaultValue+'|'+t.value+'|'+a.defaultValue+'|'+a.value+'|'"
+        "+String(c.defaultChecked)+'|'+String(c.checked)+'|'"
+        "+s.selectedIndex+'|'+String(c.hasAttribute('checked'));"
+        "</script></head><body>"
+        "<input id='text' value='seed'>"
+        "<textarea id='area'>area</textarea>"
+        "<input id='check' type='checkbox' checked>"
+        "<select id='choice'><option>one</option>"
+        "<option>two</option></select>"
+        "<p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] =
+        "new|seed|note|area|false|true|1|true";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[512];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 134 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 134 OK",
+            "defaultValue/defaultChecked setters update the reset\n"
+            "baseline without changing live value/checked state;\n"
+            "selectedIndex selects the requested option.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 135 - browser selectedIndex clearing and bounds                  */
+/* -------------------------------------------------------------------- */
+static BOOL test135_browser_script_selected_index_edges(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var s=document.getElementById('choice');"
+        "var before=s.selectedIndex;s.selectedIndex=-1;"
+        "var empty=String(s.selectedIndex)+'|'+s.value;"
+        "s.selectedIndex=1;"
+        "var chosen=String(s.selectedIndex)+'|'+s.value;"
+        "var rejected=false;"
+        "try{s.selectedIndex=3;}catch(e){rejected=true;}"
+        "document.getElementById('result').textContent=before+'|'"
+        "+empty+'|'+chosen+'|'+String(rejected)+'|'"
+        "+s.selectedIndex;"
+        "</script></head><body>"
+        "<select id='choice'><option selected>one</option>"
+        "<option>two</option></select>"
+        "<p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] = "0|-1||1|two|true|1";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[256];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 135 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 135 OK",
+            "selectedIndex=-1 clears the select, valid indexes choose\n"
+            "one option, and out-of-range writes fail instead of selecting\n"
+            "an unintended option.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -22180,6 +22601,9 @@ static int run_configured_tests(const unsigned char *selected,
         case 130: ok = test130_browser_script_element_names(); break;
         case 131: ok = test131_browser_script_class_list(); break;
         case 132: ok = test132_browser_script_style(); break;
+        case 133: ok = test133_browser_script_form_defaults(); break;
+        case 134: ok = test134_browser_script_form_default_setters(); break;
+        case 135: ok = test135_browser_script_selected_index_edges(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

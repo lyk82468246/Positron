@@ -2,12 +2,13 @@
 
 更新时间：2026-08-09
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前设备基线为 next163：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-128 全部通过并记录 `TESTBENCH PASS`。TEST122 已确认
+当前设备基线为 next164：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-132 全部通过并记录 `TESTBENCH PASS`。TEST122 已确认
 WM UTF-16 代理对合并、ECMAScript UTF-16 pair、EDIT beforeinput 数据及 SELECT 取消
 顺序；TEST124-128 又确认 isComposing Ex ABI、DOM text/attribute、表单 value 和 live
-checked。next157-162 的失败/诊断/网络恢复候选已由 next163 替代。默认 `javascript=0`
-与 TEST13 路径不变；自动断言不等于真实 SIP 候选窗口输入或视觉验收。next163 已设备
+checked；TEST129-132 又确认脚本事件 target/currentTarget、id/className、classList 和
+style。next157-163 的失败/诊断/网络恢复候选已由 next164 替代。默认 `javascript=0`
+与 TEST13 路径不变；自动断言不等于真实 SIP 候选窗口输入或视觉验收。next164 已设备
 验收。
 
 **next154 设备门禁（已通过）**：在 `screen=640x480 dpi=192` 默认配置下通过
@@ -23,10 +24,15 @@ input/textarea/select value 和 live checkbox/radio checked 的最小脚本绑�
 TEST124-128 均在首次 style/layout 前运行；ARMV4I、C89、审计与 staging 已通过，
 设备日志已以 `TESTBENCH PASS` 结束；真实 SIP/IME 与人工视觉检查仍是后续边界。
 
-当前待验收候选是 next164：TEST129-132 在现有脚本 Event/DOM bridge 上增加
+next164 已通过设备门禁：TEST129-132 在现有脚本 Event/DOM bridge 上增加
 Event.target/currentTarget、id/className、classList token 操作和受控 style
-declaration 方法。它不改变默认 javascript=0 或 TEST13 网络路径；设备自动日志与
-人工视觉检查待进行。
+declaration 方法。它不改变默认 javascript=0 或 TEST13 网络路径；日志以
+TESTBENCH PASS 结束，人工视觉检查仍是独立门槛。
+
+当前待验收候选是 next165：TEST133-135 增加 input/textarea defaultValue、input
+defaultChecked 和 select.selectedIndex 读写、-1 清空及越界拒绝。它不改变默认
+javascript=0 或 TEST13 网络路径；C89、ARMV4I Debug 增量构建和 staging 已通过，
+等待设备自动日志与人工检查。
 
 **当前阶段（next163 已通过设备门禁）**：unified script sequence ABI、external resource
 worker round 和 DOM 顺序执行的 TEST111 已完成。默认配置仍为 `javascript=0`，因此
@@ -338,15 +344,26 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   与设备自动日志已通过；日志以 `TESTBENCH PASS` 结束。真实 SIP/IME 与人工视觉
   检查仍不能由自动断言替代。
 
-### 6aj. next164：脚本 Event target 与 DOM token/style（待设备验收）
+### 6aj. next164：脚本 Event target 与 DOM token/style（设备验收通过）
 
 - PCoreEventInfo 现在在同步 listener callback 中提供 target/currentTarget 的
   UTF-8 element ID；事件 JSON 只复制短时有效的 ID，不暴露 libdom 指针。
 - 脚本 PElement 增加 id/className 反射、classList 的 token 操作，以及受控 style
   对象的 cssText、getPropertyValue、setProperty、removeProperty；style priority、
   完整 CSSOM 与 computed style 仍明确不在本批范围。
-- TEST129-132 全部在首次 style/layout 前运行；C89、审计、ARMV4I 增量构建和
-  C:\WMShare\Positron-next164 staging 已通过，等待设备自动日志与人工视觉验收。
+- TEST129-132 全部在首次 style/layout 前运行；C89、审计、ARMV4I 增量构建、
+  C:\WMShare\Positron-next164 staging 和设备自动日志已通过，日志以 TESTBENCH PASS
+  结束。人工视觉验收仍不由自动断言替代。
+
+### 6ak. next165：脚本表单默认属性与 selectedIndex（待设备验收）
+
+- PElement 增加 input/textarea defaultValue、input defaultChecked，以及 select
+  selectedIndex 的 DOM 读写；这些属性不要求已有 style/layout box。
+- selectedIndex=-1 显式清空选项，越界写入返回失败；TEST133-135 覆盖 live/default
+  状态分离、默认值 setter、选择清空和边界行为。
+- 默认 javascript=0、TEST13 网络路径和 next164 Browse 基线不变；C89、审计、
+  ARMV4I 增量构建与 C:\WMShare\Positron-next165 staging 已完成，等待设备自动
+  日志和人工检查。
 
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 

@@ -28,6 +28,7 @@
 #include <dom/html/html_button_element.h>
 #include <dom/html/html_input_element.h>
 #include <dom/html/html_option_element.h>
+#include <dom/html/html_options_collection.h>
 #include <dom/html/html_select_element.h>
 #include <dom/html/html_text_area_element.h>
 
@@ -4406,6 +4407,76 @@ PCORE_API int PCore_NodeSetValueById(HANDLE hDoc, const char *element_id,
     return (err == DOM_NO_ERR) ? 0 : 1;
 }
 
+PCORE_API int PCore_NodeDefaultValueById(HANDLE hDoc,
+        const char *element_id, char *value, int value_capacity,
+        int *out_bytes)
+{
+    dom_element *element;
+    dom_string *dom_value;
+    dom_exception err;
+
+    if (out_bytes != NULL) { *out_bytes = 0; }
+    if (value != NULL && value_capacity > 0) { value[0] = '\0'; }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    dom_value = NULL;
+    if (pcore_element_name_is(element, "input")) {
+        err = dom_html_input_element_get_default_value(
+                (dom_html_input_element *) element, &dom_value);
+    } else if (pcore_element_name_is(element, "textarea")) {
+        err = dom_html_text_area_element_get_default_value(
+                (dom_html_text_area_element *) element, &dom_value);
+    } else {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    if (err != DOM_NO_ERR) {
+        if (dom_value != NULL) { dom_string_unref(dom_value); }
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    pcore_copy_dom_string(dom_value, value, value_capacity, out_bytes);
+    if (dom_value != NULL) { dom_string_unref(dom_value); }
+    dom_node_unref((dom_node *) element);
+    return 0;
+}
+
+PCORE_API int PCore_NodeSetDefaultValueById(HANDLE hDoc,
+        const char *element_id, const char *value)
+{
+    dom_element *element;
+    dom_string *dom_value;
+    dom_exception err;
+
+    if (value == NULL) {
+        return 1;
+    }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    dom_value = NULL;
+    if (dom_string_create((const uint8_t *) value, strlen(value),
+            &dom_value) != DOM_NO_ERR || dom_value == NULL) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    if (pcore_element_name_is(element, "input")) {
+        err = dom_html_input_element_set_default_value(
+                (dom_html_input_element *) element, dom_value);
+    } else if (pcore_element_name_is(element, "textarea")) {
+        err = dom_html_text_area_element_set_default_value(
+                (dom_html_text_area_element *) element, dom_value);
+    } else {
+        err = DOM_NOT_SUPPORTED_ERR;
+    }
+    dom_string_unref(dom_value);
+    dom_node_unref((dom_node *) element);
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
 PCORE_API int PCore_NodeCheckedById(HANDLE hDoc, const char *element_id,
         int *out_checked)
 {
@@ -4459,6 +4530,137 @@ PCORE_API int PCore_NodeSetCheckedById(HANDLE hDoc,
             checked ? true : false);
     dom_node_unref((dom_node *) element);
     return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
+PCORE_API int PCore_NodeDefaultCheckedById(HANDLE hDoc,
+        const char *element_id, int *out_checked)
+{
+    dom_element *element;
+    bool checked;
+    dom_exception err;
+
+    if (out_checked == NULL) {
+        return 1;
+    }
+    *out_checked = 0;
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "input")) {
+        if (element != NULL) { dom_node_unref((dom_node *) element); }
+        return 1;
+    }
+    checked = false;
+    err = dom_html_input_element_get_default_checked(
+            (dom_html_input_element *) element, &checked);
+    dom_node_unref((dom_node *) element);
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    *out_checked = checked ? 1 : 0;
+    return 0;
+}
+
+PCORE_API int PCore_NodeSetDefaultCheckedById(HANDLE hDoc,
+        const char *element_id, int checked)
+{
+    dom_element *element;
+    dom_exception err;
+
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "input")) {
+        if (element != NULL) { dom_node_unref((dom_node *) element); }
+        return 1;
+    }
+    err = dom_html_input_element_set_default_checked(
+            (dom_html_input_element *) element, checked ? true : false);
+    dom_node_unref((dom_node *) element);
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
+PCORE_API int PCore_NodeSelectedIndexById(HANDLE hDoc,
+        const char *element_id, int *out_index)
+{
+    dom_element *element;
+    int32_t index;
+    dom_exception err;
+
+    if (out_index == NULL) {
+        return 1;
+    }
+    *out_index = -1;
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "select")) {
+        if (element != NULL) { dom_node_unref((dom_node *) element); }
+        return 1;
+    }
+    index = -1;
+    err = dom_html_select_element_get_selected_index(
+            (dom_html_select_element *) element, &index);
+    dom_node_unref((dom_node *) element);
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    *out_index = (int) index;
+    return 0;
+}
+
+static int pcore_select_set_selected_index_dom(
+        dom_html_select_element *select, int index)
+{
+    dom_html_options_collection *options;
+    dom_node *node;
+    dom_exception err;
+    uint32_t length;
+    uint32_t i;
+    int ok;
+
+    options = NULL;
+    if (dom_html_select_element_get_options(select, &options) !=
+            DOM_NO_ERR || options == NULL) {
+        return 1;
+    }
+    length = 0;
+    if (dom_html_options_collection_get_length(options, &length) !=
+            DOM_NO_ERR || (index < -1 ||
+            (index >= 0 && (uint32_t) index >= length))) {
+        dom_html_options_collection_unref(options);
+        return 1;
+    }
+    ok = 1;
+    for (i = 0; i < length; i++) {
+        node = NULL;
+        err = dom_html_options_collection_item(options, i, &node);
+        if (err != DOM_NO_ERR || node == NULL) {
+            ok = 0;
+            break;
+        }
+        err = dom_html_option_element_set_selected(
+                (dom_html_option_element *) node,
+                index >= 0 && i == (uint32_t) index);
+        dom_node_unref(node);
+        if (err != DOM_NO_ERR) {
+            ok = 0;
+            break;
+        }
+    }
+    dom_html_options_collection_unref(options);
+    return ok ? 0 : 1;
+}
+
+PCORE_API int PCore_NodeSetSelectedIndexById(HANDLE hDoc,
+        const char *element_id, int index)
+{
+    dom_element *element;
+    int result;
+
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "select")) {
+        if (element != NULL) { dom_node_unref((dom_node *) element); }
+        return 1;
+    }
+    result = pcore_select_set_selected_index_dom(
+            (dom_html_select_element *) element, index);
+    dom_node_unref((dom_node *) element);
+    return result;
 }
 
 PCORE_API int PCore_NodeComputedColor(HANDLE hDoc, const char *tag,

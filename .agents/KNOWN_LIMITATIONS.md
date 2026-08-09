@@ -154,16 +154,24 @@ attribute、input/textarea/select.value 和 live checkbox/radio.checked。
 getElementById 的窄 ABI；getter 结果仍受脚本 JSON 回调的 255 字节有效载荷限制，
 大文本/大属性可能读取失败。value/checked 修改发生在 DOM 层，已有 styled box 不会
 自动重排；浏览器宿主需要随后重新 style/layout。完整 HTMLFormElement、files、
-selectedOptions、defaultValue/defaultChecked、change/input 自动事件、activation、
-focus、异步脚本、window/fetch/network binding、CSP 和完整 DOM 均未实现。vendored
+selectedOptions、change/input 自动事件、activation、focus、异步脚本、
+window/fetch/network binding、CSP 和完整 DOM 均未实现。defaultValue/defaultChecked
+现在仅有 TEST133-134 覆盖的 input/textarea/input 最小桥；它们仍不是完整
+HTMLFormElement reset、change/input 事件或 activation 实现。vendored
 libdom 的 checked live-state 修正已完成设备自动回归；`C:\WMShare\Positron-next163\test_host.log`
 以 `TESTBENCH PASS` 结束。该日志不等于真实 SIP/IME 候选窗口或视觉效果已人工验收。
 
-**next164 脚本 Event/DOM token/style 候选（待设备验收）**：TEST129-132 增加
+**next164 脚本 Event/DOM token/style（设备验收通过）**：TEST129-132 增加
 同步事件的 target/currentTarget ID、id/className、classList 以及受控 style 声明
 方法。事件 ID 在 callback 返回前有效；style 只处理简单分号/冒号声明，不实现
 priority、CSSOM、computed style 或布局自动重排。新桥仍只按 getElementById 工作，
-只在显式 javascript=1 的 classic context 注册；设备回归尚未完成。
+只在显式 javascript=1 的 classic context 注册；next164 日志以 TESTBENCH PASS 结束。
+
+**next165 脚本表单默认属性（待设备验收）**：TEST133-135 增加
+defaultValue/defaultChecked 和 selectedIndex 的读写、-1 清空与越界拒绝。
+它们仍按 getElementById 工作，不要求 style/layout box；selectedIndex 的写入只
+更新 DOM option 状态，已有 styled box 不会自动重排。C89/ARMV4I/staging 已通过，
+设备回归尚未完成。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

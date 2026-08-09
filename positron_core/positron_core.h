@@ -247,19 +247,33 @@ PCORE_API int PCore_NodeSetAttributeById(HANDLE hDoc,
         const char *element_id, const char *name, const char *value);
 PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
         const char *element_id, const char *name);
-/* DOM-level form properties for script/runtime hosts. Value supports input,
- * textarea and select; checked supports input. These functions do not require
- * a styled/layout box tree, so parser-complete scripts may use them before the
+/* DOM-level form properties for script/runtime hosts. Value/defaultValue
+ * support input, textarea and select.value; checked/defaultChecked support
+ * input; selectedIndex supports select. These functions do not require a
+ * styled/layout box tree, so parser-complete scripts may use them before the
  * first layout. String getters use the same probe/truncation contract as
  * PCore_NodeTextContentById. */
 PCORE_API int PCore_NodeValueById(HANDLE hDoc, const char *element_id,
         char *value, int value_capacity, int *out_bytes);
 PCORE_API int PCore_NodeSetValueById(HANDLE hDoc, const char *element_id,
         const char *value);
+PCORE_API int PCore_NodeDefaultValueById(HANDLE hDoc,
+        const char *element_id, char *value, int value_capacity,
+        int *out_bytes);
+PCORE_API int PCore_NodeSetDefaultValueById(HANDLE hDoc,
+        const char *element_id, const char *value);
 PCORE_API int PCore_NodeCheckedById(HANDLE hDoc, const char *element_id,
         int *out_checked);
 PCORE_API int PCore_NodeSetCheckedById(HANDLE hDoc,
         const char *element_id, int checked);
+PCORE_API int PCore_NodeDefaultCheckedById(HANDLE hDoc,
+        const char *element_id, int *out_checked);
+PCORE_API int PCore_NodeSetDefaultCheckedById(HANDLE hDoc,
+        const char *element_id, int checked);
+PCORE_API int PCore_NodeSelectedIndexById(HANDLE hDoc,
+        const char *element_id, int *out_index);
+PCORE_API int PCore_NodeSetSelectedIndexById(HANDLE hDoc,
+        const char *element_id, int index);
 
 /* Legacy one-shot image helpers. New consumers should use positron_image.dll's
  * retained PImage_CreateBitmapFromMemory/BitmapGetInfo/DrawBitmap API. These
