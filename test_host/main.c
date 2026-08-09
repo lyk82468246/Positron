@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 149
+#define TEST_MAX_NUMBER 150
 
 static int test_config_space(char c)
 {
@@ -6757,26 +6757,39 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "if(!isFinite(n)||Math.floor(n)!==n||n<1||n>16){"
         "throw new Error('history push state failed');}"
         "phistoryStateJson=s;phistoryLength=n;purl=u;}"
-        "var ppopListeners=[];g.onpopstate=null;"
-        "g.addEventListener=function(type,fn,capture){var i;"
-        "if(String(type)!=='popstate'||typeof fn!=='function'){return;}"
-        "for(i=0;i<ppopListeners.length;i++){"
-        "if(ppopListeners[i]===fn){return;}}ppopListeners.push(fn);};"
-        "g.removeEventListener=function(type,fn,capture){var i;"
-        "if(String(type)!=='popstate'){return;}"
-        "for(i=ppopListeners.length-1;i>=0;i--){"
-        "if(ppopListeners[i]===fn){ppopListeners.splice(i,1);}}};"
+        "var pwindowListeners={popstate:[],hashchange:[]};"
+        "g.onpopstate=null;g.onhashchange=null;"
+        "g.addEventListener=function(type,fn,capture){var t=String(type);"
+        "var a;var i;if((t!=='popstate'&&t!=='hashchange')||"
+        "typeof fn!=='function'){return;}a=pwindowListeners[t];"
+        "for(i=0;i<a.length;i++){if(a[i]===fn){return;}}a.push(fn);};"
+        "g.removeEventListener=function(type,fn,capture){var t=String(type);"
+        "var a;var i;if(t!=='popstate'&&t!=='hashchange'){return;}"
+        "a=pwindowListeners[t];for(i=a.length-1;i>=0;i--){"
+        "if(a[i]===fn){a.splice(i,1);}}};"
+        "function pdispatchWindow(type,e){var h=g['on'+type];"
+        "var a=pwindowListeners[type].slice(0);var i;"
+        "if(typeof h==='function'){try{h.call(g,e);}catch(handlerError){}}"
+        "for(i=0;i<a.length;i++){try{a[i].call(g,e);}"
+        "catch(listenerError){}}}"
         "function pdispatchPopState(s){var e={type:'popstate',"
         "state:JSON.parse(s),target:g,currentTarget:g,bubbles:false,"
         "cancelable:false,defaultPrevented:false,isTrusted:true};"
-        "var h=g.onpopstate;var a;var i;e.preventDefault=function(){};"
-        "if(typeof h==='function'){try{h.call(g,e);}catch(handlerError){}}"
-        "a=ppopListeners.slice(0);for(i=0;i<a.length;i++){"
-        "try{a[i].call(g,e);}catch(listenerError){}}}"
+        "e.preventDefault=function(){};pdispatchWindow('popstate',e);}"
+        "function pfragment(u){var h=u.indexOf('#');"
+        "return h<0?'':u.substring(h);}"
+        "function pdispatchHashChange(oldUrl,newUrl){var e={"
+        "type:'hashchange',oldURL:oldUrl,newURL:newUrl,target:g,"
+        "currentTarget:g,bubbles:false,cancelable:false,"
+        "defaultPrevented:false,isTrusted:true};e.preventDefault=function(){};"
+        "pdispatchWindow('hashchange',e);}"
         "Object.defineProperty(g,'__pcoreHistoryTraverse',{"
-        "value:function(state,url){var s=JSON.stringify(state);"
-        "if(typeof s!=='string'){s='null';}purl=String(url);phistoryStateJson=s;"
-        "pdispatchPopState(s);},writable:false,configurable:false});"
+        "value:function(state,url){var s=JSON.stringify(state);var oldUrl=purl;"
+        "var newUrl=String(url);if(typeof s!=='string'){s='null';}"
+        "purl=newUrl;phistoryStateJson=s;pdispatchPopState(s);"
+        "if(pfragment(oldUrl)!==pfragment(newUrl)){"
+        "pdispatchHashChange(oldUrl,newUrl);}},"
+        "writable:false,configurable:false});"
         "var plocation={};"
         "Object.defineProperty(plocation,'href',{get:function(){"
         "return purl;},set:pnavigate});"
@@ -25283,6 +25296,193 @@ static BOOL test149_browser_script_history_fragment_url(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 150 - minimal hashchange after fragment history traversal       */
+/* -------------------------------------------------------------------- */
+static BOOL test150_browser_script_history_hashchange(void)
+{
+    static const char URL[] = "https://example.com/page";
+    static const char URL_ZERO[] = "https://example.com/page#zero";
+    static const char URL_ONE[] = "https://example.com/page#one";
+    static const char URL_TWO[] = "https://example.com/page#two";
+    static const char URL_SAME[] = "https://example.com/page#same";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var seen=[];function hashListener(e){e.preventDefault();"
+        "seen.push('L'+e.oldURL+'>'+e.newURL+':'+e.type+':'"
+        "+e.bubbles+':'+e.cancelable+':'"
+        "+(e.target===window)+':'+(e.currentTarget===window)+':'"
+        "+e.isTrusted+':'+e.defaultPrevented);}"
+        "addEventListener('hashchange',hashListener);"
+        "addEventListener('hashchange',hashListener);"
+        "onhashchange=function(e){seen.push('H'+e.oldURL+'>'+e.newURL);"
+        "throw new Error('ignored hash handler failure');};"
+        "onpopstate=function(e){seen.push('P'+e.state.page+':'"
+        "+location.href);};history.replaceState({page:0},'','#zero');"
+        "history.pushState({page:1},'','#one');"
+        "history.pushState({page:2},'','#two');history.back();"
+        "document.getElementById('result').textContent="
+        "seen.length+'|'+history.state.page+'|'+location.href;"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char INITIAL_RESULT[] =
+        "0|2|https://example.com/page#two";
+    static const char BACK_RESULT[] =
+        "P1:https://example.com/page#one|"
+        "Hhttps://example.com/page#two>https://example.com/page#one|"
+        "Lhttps://example.com/page#two>https://example.com/page#one:"
+        "hashchange:false:false:true:true:true:false|1";
+    static const char FORWARD_RESULT[] =
+        "P2:https://example.com/page#two|"
+        "Hhttps://example.com/page#one>https://example.com/page#two|2";
+    static const char SILENT_RESULT[] =
+        "5|https://example.com/page#same|3|4";
+    static const char FINAL_RESULT[] =
+        "P22:https://example.com/page#same|"
+        "https://example.com/page#same|22";
+    HANDLE document;
+    HANDLE runtime;
+    HANDLE session_runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *evaluation_result;
+    char result[128];
+    char error[256];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    session_runtime = NULL;
+    bridge = NULL;
+    evaluation_result = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    (void) pcore_browse_history_commit_navigation(URL, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, INITIAL_RESULT) != 0 ||
+            result_bytes != (int) sizeof(INITIAL_RESULT) - 1 ||
+            bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_BACK ||
+            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            pcore_browse_history_commit_navigation_with_bridge(URL,
+            1, -1, bridge) != 0 || g_browse_history.count != 3 ||
+            g_browse_history.index != 2 ||
+            strcmp(g_browse_history.entries[0], URL_ZERO) != 0 ||
+            strcmp(g_browse_history.entries[1], URL_ONE) != 0 ||
+            strcmp(g_browse_history.entries[2], URL_TWO) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        bridge->hwnd = (HWND) 1;
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
+        session_runtime = runtime;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (!pcore_browse_navigate_back((HWND) 1) ||
+                g_nav_loading || g_nav_request != NULL ||
+                PScript_Evaluate(session_runtime,
+                "seen.join('|')+'|'+history.state.page;", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        } else {
+            evaluation_result = PScript_GetResult(session_runtime);
+            if (evaluation_result == NULL ||
+                    strcmp(evaluation_result, BACK_RESULT) != 0) {
+                ok = 0;
+            }
+        }
+    }
+    if (ok && (PScript_Evaluate(session_runtime,
+            "removeEventListener('hashchange',hashListener);", -1) !=
+            PSCRIPT_OK || !pcore_browse_navigate_forward((HWND) 1) ||
+            g_nav_loading || g_nav_request != NULL ||
+            PScript_Evaluate(session_runtime,
+            "seen.slice(3).join('|')+'|'+history.state.page;", -1) !=
+            PSCRIPT_OK)) {
+        ok = 0;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, FORWARD_RESULT) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "history.replaceState({page:22},'','#same');"
+                "history.pushState({page:3},'','#same');"
+                "seen.length+'|'+location.href+'|'"
+                "+history.state.page+'|'+history.length;", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, SILENT_RESULT) != 0 ||
+                g_browse_history.count != 4 ||
+                g_browse_history.index != 3 ||
+                strcmp(g_browse_history.entries[2], URL_SAME) != 0 ||
+                strcmp(g_browse_history.entries[3], URL_SAME) != 0 ||
+                !pcore_browse_navigate_back((HWND) 1) ||
+                g_nav_loading || g_nav_request != NULL ||
+                PScript_Evaluate(session_runtime,
+                "seen.slice(5).join('|')+'|'"
+                "+location.href+'|'+history.state.page;", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, FINAL_RESULT) != 0 ||
+                g_browse_history.index != 2 ||
+                strcmp(pcore_browse_history_current(), URL_SAME) != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":22}") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 150 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 150 OK",
+            "fragment-changing traversal dispatches hashchange after\n"
+            "popstate with stable URL metadata and isolated handlers;\n"
+            "push/replace and same-fragment traversal stay silent.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -25554,6 +25754,9 @@ static int run_configured_tests(const unsigned char *selected,
         case 148: ok = test148_browser_script_history_popstate(); break;
         case 149: ok =
                 test149_browser_script_history_fragment_url();
+                break;
+        case 150: ok =
+                test150_browser_script_history_hashchange();
                 break;
         default: ok = FALSE; break;
         }

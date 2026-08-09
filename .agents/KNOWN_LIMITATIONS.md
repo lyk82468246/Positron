@@ -298,6 +298,14 @@ document.URL/documentURI 与 history entry；同 document traversal 在 popstate
 POST state 及跨 document 页面缓存不在范围内。320x320/128 DPI 日志已得到 TEST149 OK、
 97 条 OK、零 ERROR、零 FAIL 与最终 PASS，next181 已成为自动设备基线。
 
+**next182 minimal hashchange 基线（2026-08-09 已设备验收）**：片段发生变化的同 document history
+traversal 在 popstate 后派发 hashchange；支持 onhashchange 与 window hashchange listener，
+oldURL/newURL 和基础事件元数据已填充，handler 异常被隔离。pushState/replaceState 与相同
+片段 traversal 不派发。TEST150 覆盖顺序、重复/remove、不可取消语义与静默边界。本批不含
+location.hash/片段赋值、跨 document hashchange、HashChangeEvent 构造器、完整 Window
+EventTarget、逐项滚动/表单恢复或页面缓存。320x320/128 DPI 日志已得到 TEST150 OK、
+98 条 OK、零 ERROR、零 FAIL 与最终 PASS，next182 已成为自动设备基线。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM
