@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 140
+#define TEST_MAX_NUMBER 141
 
 static int test_config_space(char c)
 {
@@ -2134,6 +2134,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_SCRIPT_NAVIGATION_ASSIGN 2
 #define PCORE_SCRIPT_NAVIGATION_RELOAD 3
 #define PCORE_SCRIPT_NAVIGATION_REPLACE 4
+#define PCORE_SCRIPT_NAVIGATION_FORWARD 5
 #define PCORE_SCRIPT_NAVIGATION_URL_MAX 1024
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_COMMIT_TIMER 25
@@ -2364,6 +2365,19 @@ static const char *pcore_browse_history_back_target(int *target_index)
         return NULL;
     }
     target = g_browse_history.index - 1;
+    *target_index = target;
+    return g_browse_history.entries[target];
+}
+
+static const char *pcore_browse_history_forward_target(int *target_index)
+{
+    int target;
+
+    if (target_index == NULL || g_browse_history.index < 0 ||
+            g_browse_history.index + 1 >= g_browse_history.count) {
+        return NULL;
+    }
+    target = g_browse_history.index + 1;
     *target_index = target;
     return g_browse_history.entries[target];
 }
@@ -5649,6 +5663,8 @@ static int pcore_browser_script_navigation(void *pw,
     kind = PCORE_SCRIPT_NAVIGATION_NONE;
     if (strcmp(op, "back") == 0) {
         kind = PCORE_SCRIPT_NAVIGATION_BACK;
+    } else if (strcmp(op, "forward") == 0) {
+        kind = PCORE_SCRIPT_NAVIGATION_FORWARD;
     } else if (strcmp(op, "assign") == 0 ||
             strcmp(op, "reload") == 0 ||
             strcmp(op, "replace") == 0) {
@@ -6186,7 +6202,8 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "g.window=g;g.document=pdocument;"
         "Object.defineProperty(g,'location',{get:function(){"
         "return plocation;},set:pnavigate});"
-        "g.history={back:function(){__pcoreNavigation({op:'back'});}};"
+        "g.history={back:function(){__pcoreNavigation({op:'back'});},"
+        "forward:function(){__pcoreNavigation({op:'forward'});}};"
         "})(this);";
     pcore_browser_script_bridge bridge_storage;
     pcore_browser_script_bridge *bridge;
@@ -6793,6 +6810,22 @@ static int pcore_browse_navigate_back(HWND hwnd)
         return 0;
     }
     target = pcore_browse_history_back_target(&target_index);
+    if (target == NULL) {
+        return 0;
+    }
+    return navigate_to_request_ex(hwnd, target, 1, NULL, 0, NULL,
+            target_index) == 0;
+}
+
+static int pcore_browse_navigate_forward(HWND hwnd)
+{
+    const char *target;
+    int target_index;
+
+    if (g_nav_loading) {
+        return 0;
+    }
+    target = pcore_browse_history_forward_target(&target_index);
     if (target == NULL) {
         return 0;
     }
@@ -7894,6 +7927,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             bridge->navigation_url = NULL;
             if (kind == PCORE_SCRIPT_NAVIGATION_BACK) {
                 (void) pcore_browse_navigate_back(hwnd);
+            } else if (kind == PCORE_SCRIPT_NAVIGATION_FORWARD) {
+                (void) pcore_browse_navigate_forward(hwnd);
             } else if ((kind == PCORE_SCRIPT_NAVIGATION_ASSIGN ||
                     kind == PCORE_SCRIPT_NAVIGATION_RELOAD) &&
                     url != NULL) {
@@ -23252,6 +23287,107 @@ static BOOL test140_browser_script_location_replace(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 141 - deferred browser script history.forward                   */
+/* -------------------------------------------------------------------- */
+static BOOL test141_browser_script_history_forward(void)
+{
+    static const char URL_A[] = "https://example.com/";
+    static const char URL_B[] =
+        "https://www.iana.org/help/example-domains";
+    static const char URL_C[] = "https://www.iana.org/domains/reserved";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var before=location.href;var returned=history.forward();"
+        "document.getElementById('result').textContent=before+'|'"
+        "+location.href+'|'+String(returned);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] =
+        "https://www.iana.org/help/example-domains|"
+        "https://www.iana.org/help/example-domains|undefined";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *target;
+    const char *current;
+    char result[512];
+    char error[512];
+    int result_bytes;
+    int target_index;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    target = NULL;
+    current = NULL;
+    result_bytes = 0;
+    target_index = -1;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browse_history_reset();
+    pcore_browse_history_commit_navigation(URL_A, 1, -1);
+    pcore_browse_history_commit_navigation(URL_B, 1, -1);
+    pcore_browse_history_commit_navigation(URL_C, 1, -1);
+    if (pcore_browse_history_commit_target(1) != 0) {
+        ok = 0;
+    }
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_B,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0 || bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FORWARD ||
+            bridge->navigation_url != NULL ||
+            g_browse_history.count != 3 || g_browse_history.index != 1 ||
+            PScript_GetNativeFunctionCount(runtime) != 14) {
+        ok = 0;
+    }
+    target = pcore_browse_history_forward_target(&target_index);
+    if (target == NULL || strcmp(target, URL_C) != 0 ||
+            target_index != 2 || g_browse_history.index != 1) {
+        ok = 0;
+    }
+    if (ok) {
+        pcore_browse_history_commit_navigation(target, 1, target_index);
+        current = pcore_browse_history_current();
+        if (g_browse_history.count != 3 ||
+                g_browse_history.index != 2 || current == NULL ||
+                strcmp(current, URL_C) != 0 ||
+                pcore_browse_history_forward_target(&target_index) != NULL) {
+            ok = 0;
+        }
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d target=%d",
+                    result_bytes, result, executed, ignored, target_index);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 141 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 141 OK",
+            "history.forward queues the existing next URL without\n"
+            "moving the index synchronously; only a successful GET\n"
+            "commits the forward target.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -23511,6 +23647,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 138: ok = test138_browser_script_location_assign(); break;
         case 139: ok = test139_browser_script_location_reload(); break;
         case 140: ok = test140_browser_script_location_replace(); break;
+        case 141: ok = test141_browser_script_history_forward(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
