@@ -306,6 +306,14 @@ location.hash/片段赋值、跨 document hashchange、HashChangeEvent 构造器
 EventTarget、逐项滚动/表单恢复或页面缓存。320x320/128 DPI 日志已得到 TEST150 OK、
 98 条 OK、零 ERROR、零 FAIL 与最终 PASS，next182 已成为自动设备基线。
 
+**next183 location URL 组件基线（2026-08-09 已设备验收）**：location 暴露动态只读 protocol、host、
+hostname、port、pathname、search、hash 和 origin，并随 history 片段 entry 同步。TEST151
+覆盖绝对 HTTPS URL 的显式端口、路径/查询/片段、origin、只读 descriptor 与遍历。本批解析器
+不等价于完整 URL 标准：组件 setter、username/password、默认端口归一化、通用相对 URL、
+location 片段导航及其他 scheme 不在范围内。配置读取上限已由 2048 提升到 4096 字节；
+320x320/128 DPI 日志已得到 TEST151 OK、99 条 OK、零 ERROR、零 FAIL 与最终 PASS，next183
+已成为自动设备基线。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM

@@ -240,6 +240,18 @@ C89 回归及 ARMV4I Debug 增量构建已通过；`C:\WMShare\Positron-next182`
 七个 ARMV4I 二进制与构建产物 SHA-256 一致。320x320/128 DPI 日志得到 TEST150 OK、
 98 条 OK、零 ERROR、零 FAIL 与最终 PASS，next182 已成为自动设备基线。
 
+**next183 自动设备基线（2026-08-09）**：`location` 新增动态只读 `protocol`、`host`、
+`hostname`、`port`、`pathname`、`search`、`hash` 与 `origin`。getter 每次解析当前绝对
+HTTP(S) `href`，因此 replaceState/pushState 与同 document traversal 后会与
+`document.URL` 同步；TEST151 离线固定显式端口、路径/查询/片段/origin、只读 descriptor、
+replace/push/back/forward 和 14/16 callback 槽位。默认 `javascript=0`、TEST13 与 core ABI
+不变；组件 setter、username/password、完整 URL 标准化、通用相对导航和 location 片段导航
+仍未实现。C89 回归及 ARMV4I Debug 增量构建已通过；`C:\WMShare\Positron-next183` 已
+隔离 staging，七个 ARMV4I 二进制与构建产物 SHA-256 一致。首次设备启动暴露 2079 字节
+ini 超过旧 2048 字节读取上限，测试未执行；候选现已把有界上限提升到 4096 字节并重新
+构建/staging。修复后的 320x320/128 DPI 日志正确选择配置并得到 TEST151 OK、99 条 OK、
+零 ERROR、零 FAIL 与最终 PASS，next183 已成为自动设备基线。
+
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
 还派发一次包含完整 UTF-16 数据的 `beforeinput(insertText)`。TEST122 检查
@@ -647,7 +659,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-150
+tests=13,20,27,43,44,56,58-77,80-151
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。

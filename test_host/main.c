@@ -360,8 +360,8 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
            == IDYES;
 }
 
-#define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 150
+#define TEST_CONFIG_MAX_BYTES 4096
+#define TEST_MAX_NUMBER 151
 
 static int test_config_space(char c)
 {
@@ -6790,9 +6790,31 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "if(pfragment(oldUrl)!==pfragment(newUrl)){"
         "pdispatchHashChange(oldUrl,newUrl);}},"
         "writable:false,configurable:false});"
+        "function purlParts(){var m=/^([A-Za-z][A-Za-z0-9+.-]*:)"
+        "(?:\\/\\/([^\\/?#]*))?([^?#]*)(\\?[^#]*)?(#.*)?$/.exec(purl);"
+        "var protocol='';var host='';var hostname='';var port='';"
+        "var pathname='';var search='';var hash='';var origin='null';"
+        "var colon;var close;if(m){protocol=m[1]||'';host=m[2]||'';"
+        "pathname=m[3]||'';search=m[4]||'';hash=m[5]||'';}"
+        "if(pathname===''){pathname='/';}if(host.charAt(0)==='['){"
+        "close=host.indexOf(']');if(close>=0){hostname=host.substring(0,"
+        "close+1);if(host.charAt(close+1)===':'){"
+        "port=host.substring(close+2);}}}else{colon=host.lastIndexOf(':');"
+        "if(colon>=0&&host.indexOf(':')===colon){hostname=host.substring(0,"
+        "colon);port=host.substring(colon+1);}else{hostname=host;}}"
+        "if((protocol==='http:'||protocol==='https:')&&host!==''){"
+        "origin=protocol+'//'+host;}return {protocol:protocol,host:host,"
+        "hostname:hostname,port:port,pathname:pathname,search:search,"
+        "hash:hash,origin:origin};}"
         "var plocation={};"
         "Object.defineProperty(plocation,'href',{get:function(){"
         "return purl;},set:pnavigate});"
+        "function pdefineLocationPart(name){Object.defineProperty(plocation,"
+        "name,{get:function(){return purlParts()[name];}});}"
+        "pdefineLocationPart('protocol');pdefineLocationPart('host');"
+        "pdefineLocationPart('hostname');pdefineLocationPart('port');"
+        "pdefineLocationPart('pathname');pdefineLocationPart('search');"
+        "pdefineLocationPart('hash');pdefineLocationPart('origin');"
         "plocation.assign=pnavigate;"
         "plocation.reload=preload;"
         "plocation.replace=preplace;"
@@ -25483,6 +25505,177 @@ static BOOL test150_browser_script_history_hashchange(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 151 - dynamic read-only browser script location URL components  */
+/* -------------------------------------------------------------------- */
+static BOOL test151_browser_script_location_components(void)
+{
+    static const char URL_OLD[] =
+        "https://example.com:8443/a/b?q=1#old";
+    static const char URL_ZERO[] =
+        "https://example.com:8443/a/b?q=1#zero";
+    static const char URL_BASE[] =
+        "https://example.com:8443/a/b?q=1";
+    static const char URL_TAIL[] =
+        "https://example.com:8443/a/b?q=1#tail";
+    static const char SNAP_OLD[] =
+        "https:|example.com:8443|example.com|8443|/a/b|?q=1|#old|"
+        "https://example.com:8443|"
+        "https://example.com:8443/a/b?q=1#old|true";
+    static const char SNAP_ZERO[] =
+        "https:|example.com:8443|example.com|8443|/a/b|?q=1|#zero|"
+        "https://example.com:8443|"
+        "https://example.com:8443/a/b?q=1#zero|true";
+    static const char SNAP_BASE[] =
+        "https:|example.com:8443|example.com|8443|/a/b|?q=1||"
+        "https://example.com:8443|"
+        "https://example.com:8443/a/b?q=1|true";
+    static const char SNAP_TAIL[] =
+        "https:|example.com:8443|example.com|8443|/a/b|?q=1|#tail|"
+        "https://example.com:8443|"
+        "https://example.com:8443/a/b?q=1#tail|true";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "function snap(){return location.protocol+'|'+location.host+'|'"
+        "+location.hostname+'|'+location.port+'|'+location.pathname+'|'"
+        "+location.search+'|'+location.hash+'|'+location.origin+'|'"
+        "+String(location)+'|'+(location.href===document.URL);}"
+        "var first=snap();history.replaceState({page:0},'','#zero');"
+        "var second=snap();history.pushState({page:1},'',"
+        "'https://example.com:8443/a/b?q=1');var third=snap();"
+        "var descriptor=Object.getOwnPropertyDescriptor(location,'hash');"
+        "history.back();document.getElementById('result').textContent="
+        "first+'~'+second+'~'+third+'~'+typeof descriptor.get+','"
+        "+typeof descriptor.set+','+history.state.page+','+history.length;"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    HANDLE document;
+    HANDLE runtime;
+    HANDLE session_runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *evaluation_result;
+    char result[768];
+    char expected[768];
+    char error[256];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    session_runtime = NULL;
+    bridge = NULL;
+    evaluation_result = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(expected, 0, sizeof(expected));
+    memset(error, 0, sizeof(error));
+    _snprintf(expected, sizeof(expected) - 1, "%s~%s~%s~%s",
+            SNAP_OLD, SNAP_ZERO, SNAP_BASE, "function,undefined,1,2");
+    expected[sizeof(expected) - 1] = '\0';
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    (void) pcore_browse_history_commit_navigation(URL_OLD, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_OLD,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, expected) != 0 ||
+            result_bytes != (int) strlen(expected) || bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_BACK ||
+            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
+            1, -1, bridge) != 0 || g_browse_history.count != 2 ||
+            g_browse_history.index != 1 ||
+            strcmp(g_browse_history.entries[0], URL_ZERO) != 0 ||
+            strcmp(g_browse_history.entries[1], URL_BASE) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        bridge->hwnd = (HWND) 1;
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
+        session_runtime = runtime;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (!pcore_browse_navigate_back((HWND) 1) ||
+                g_nav_loading || g_nav_request != NULL ||
+                PScript_Evaluate(session_runtime,
+                "snap()+'|'+history.state.page;", -1) != PSCRIPT_OK) {
+            ok = 0;
+        } else {
+            evaluation_result = PScript_GetResult(session_runtime);
+            _snprintf(expected, sizeof(expected) - 1, "%s|0", SNAP_ZERO);
+            expected[sizeof(expected) - 1] = '\0';
+            if (evaluation_result == NULL ||
+                    strcmp(evaluation_result, expected) != 0) {
+                ok = 0;
+            }
+        }
+    }
+    if (ok && (!pcore_browse_navigate_forward((HWND) 1) ||
+            g_nav_loading || g_nav_request != NULL ||
+            PScript_Evaluate(session_runtime,
+            "snap()+'|'+history.state.page;", -1) != PSCRIPT_OK)) {
+        ok = 0;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        _snprintf(expected, sizeof(expected) - 1, "%s|1", SNAP_BASE);
+        expected[sizeof(expected) - 1] = '\0';
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, expected) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "history.replaceState({page:2},'','#tail');"
+                "snap()+'|'+history.state.page;", -1) != PSCRIPT_OK) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        _snprintf(expected, sizeof(expected) - 1, "%s|2", SNAP_TAIL);
+        expected[sizeof(expected) - 1] = '\0';
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, expected) != 0 ||
+                strcmp(pcore_browse_history_current(), URL_TAIL) != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":2}") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 151 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 151 OK",
+            "read-only location URL components parse the active absolute\n"
+            "URL and stay synchronized across replace, push, and traversal\n"
+            "without adding native callbacks or component setters.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -25757,6 +25950,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 150: ok =
                 test150_browser_script_history_hashchange();
+                break;
+        case 151: ok =
+                test151_browser_script_location_components();
                 break;
         default: ok = FALSE; break;
         }

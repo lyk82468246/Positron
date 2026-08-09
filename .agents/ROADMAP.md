@@ -606,6 +606,21 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   320x320/128 DPI 日志得到 TEST150 OK、98 条 OK、零 ERROR、零 FAIL 与最终 PASS，
   next182 已成为自动设备基线。
 
+### 6bc. next183：JavaScript location URL 组件（已设备验收）
+
+- location 新增动态只读 protocol/host/hostname/port/pathname/search/hash/origin；每次读取解析
+  当前绝对 HTTP(S) href，replaceState/pushState 和同 document traversal 后与 document.URL
+  保持同步。
+- TEST151 离线断言显式端口、路径/查询/片段、origin、String(location)、只读 descriptor、
+  replace/push/back/forward 与 14/16 callback 槽位。
+- 默认 javascript=0、TEST13、core ABI 与 next182 已验收行为不变；组件 setter、username/
+  password、完整 URL 标准化、通用相对导航、location 片段导航及其他 scheme 不在本批。
+  C89 回归及 ARMV4I Debug 增量构建已通过；`C:\WMShare\Positron-next183` staging 的七个
+  ARMV4I 二进制与构建产物 SHA-256 一致。首次设备启动因 2079 字节 ini 超过旧 2048 字节
+  上限而在测试前停止；候选已把有界读取上限提升到 4096 字节并重新构建/staging。修复后的
+  320x320/128 DPI 日志正确选择配置并得到 TEST151 OK、
+  99 条 OK、零 ERROR、零 FAIL 与最终 PASS，next183 已成为自动设备基线。
+
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
 - NetSurf 的标准约定是：CSS media/vw/vh 使用 CSS 像素视口，`layout_document` 和 GDI 重绘使用设备像素。next122 的新模拟器日志首次暴露两者被宿主混用：TEST20 的 48 CSS px 图像盒成为 96 device px，自动化因此停在 TEST20；这不是 provider 回归。
@@ -1031,7 +1046,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next182 的 TEST13/20/27/43/44/56/58-77/80-150 设备日志作为已验证自动化基线；
+1. 以 next183 的 TEST13/20/27/43/44/56/58-77/80-151 设备日志作为已验证自动化基线；
    后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
 2. 下一批浏览器 JS 绑定仍只推进一个可离线断言的纵切，并继续保持默认 javascript=0、
    TEST13 网络行为与 core ABI 不变。
@@ -1041,5 +1056,5 @@ WM6/ARMV4I 资源紧，后续必须持续做：
    与完整 `isComposing`/预编辑语义仍按独立能力逐项验收。
 4. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 5. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
-6. next144-182 已利用同一个 Duktape DLL 逐项完成脚本执行、DOM 查询/修改、页面级 context、事件/表单/输入桥和最小 location/history 导航、受控 replace/pushState、同 document traversal、最小 popstate、history 片段 URL 及最小 hashchange；后续绑定仍按一个纵切一个设备门推进，浏览器 JavaScript 默认保持关闭。
+6. next144-183 已利用同一个 Duktape DLL 逐项完成脚本执行、DOM 查询/修改、页面级 context、事件/表单/输入桥和最小 location/history 导航、受控 replace/pushState、同 document traversal、最小 popstate、history 片段 URL、最小 hashchange 及动态只读 location URL 组件；后续绑定仍按一个纵切一个设备门推进，浏览器 JavaScript 默认保持关闭。
 7. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。
