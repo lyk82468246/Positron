@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 148
+#define TEST_MAX_NUMBER 149
 
 static int test_config_space(char c)
 {
@@ -2191,8 +2191,10 @@ struct pcore_browser_script_bridge {
     int navigation_delta;
     char *navigation_url;
     char *history_url;
+    char *history_entry_url;
     char *history_state_json;
     int history_state_changed;
+    char *history_push_urls[PCORE_BROWSE_HISTORY_MAX];
     char *history_push_states[PCORE_BROWSE_HISTORY_MAX];
     int history_push_count;
     int history_length;
@@ -2376,11 +2378,38 @@ static int pcore_browse_history_same_document_target(int target_index)
             g_browse_history.document_ids[g_browse_history.index];
 }
 
-static int pcore_browse_history_replace_state(const char *state_json)
+static int pcore_browse_history_same_base_url(const char *left,
+        const char *right)
+{
+    const char *left_hash;
+    const char *right_hash;
+    size_t left_length;
+    size_t right_length;
+
+    if (left == NULL || right == NULL || left[0] == '\0' ||
+            right[0] == '\0') {
+        return 0;
+    }
+    left_hash = strchr(left, '#');
+    right_hash = strchr(right, '#');
+    left_length = (left_hash != NULL) ?
+            (size_t) (left_hash - left) : strlen(left);
+    right_length = (right_hash != NULL) ?
+            (size_t) (right_hash - right) : strlen(right);
+    return left_length == right_length &&
+            memcmp(left, right, left_length) == 0;
+}
+
+static int pcore_browse_history_replace_state_url(const char *url,
+        const char *state_json)
 {
     HANDLE parsed;
 
-    if (pcore_browse_history_current() == NULL || state_json == NULL ||
+    if (pcore_browse_history_current() == NULL || url == NULL ||
+            url[0] == '\0' ||
+            strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
+            !pcore_browse_history_same_base_url(
+            pcore_browse_history_current(), url) || state_json == NULL ||
             state_json[0] == '\0' ||
             strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
         return 1;
@@ -2390,8 +2419,15 @@ static int pcore_browse_history_replace_state(const char *state_json)
         return 1;
     }
     PJson_Free(parsed);
+    strcpy(g_browse_history.entries[g_browse_history.index], url);
     strcpy(g_browse_history.states[g_browse_history.index], state_json);
     return 0;
+}
+
+static int pcore_browse_history_replace_state(const char *state_json)
+{
+    return pcore_browse_history_replace_state_url(
+            pcore_browse_history_current(), state_json);
 }
 
 static int pcore_browse_history_push_state(const char *url,
@@ -2402,7 +2438,8 @@ static int pcore_browse_history_push_state(const char *url,
 
     if (pcore_browse_history_current() == NULL || url == NULL ||
             url[0] == '\0' || strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
-            strcmp(pcore_browse_history_current(), url) != 0 ||
+            !pcore_browse_history_same_base_url(
+            pcore_browse_history_current(), url) ||
             state_json == NULL || state_json[0] == '\0' ||
             strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
         return 1;
@@ -2592,20 +2629,22 @@ static int pcore_browse_history_commit_navigation_with_bridge(
         const char *url, int method, int target_index,
         const pcore_browser_script_bridge *bridge)
 {
-    const char *state_json;
     int i;
 
-    state_json = bridge != NULL && bridge->history_state_changed ?
-            bridge->history_state_json : NULL;
-    if (pcore_browse_history_commit_navigation_with_state(url, method,
-            target_index, state_json) != 0) {
+    if (pcore_browse_history_commit_navigation(url, method,
+            target_index) != 0) {
         return 1;
     }
     if (bridge == NULL) {
         return 0;
     }
+    if (bridge->history_state_changed &&
+            pcore_browse_history_replace_state_url(
+            bridge->history_entry_url, bridge->history_state_json) != 0) {
+        return 1;
+    }
     for (i = 0; i < bridge->history_push_count; i++) {
-        if (pcore_browse_history_push_state(url,
+        if (pcore_browse_history_push_state(bridge->history_push_urls[i],
                 bridge->history_push_states[i]) != 0) {
             return 1;
         }
@@ -5920,6 +5959,7 @@ static int pcore_browser_script_navigation(void *pw,
     const char *op;
     const char *url;
     char *url_copy;
+    char *target_url_copy;
     char *state_json;
     char *state_copy;
     int delta;
@@ -5929,6 +5969,7 @@ static int pcore_browser_script_navigation(void *pw,
     bridge = (pcore_browser_script_bridge *) pw;
     object = NULL;
     url_copy = NULL;
+    target_url_copy = NULL;
     state_json = NULL;
     state_copy = NULL;
     delta = 0;
@@ -5940,8 +5981,14 @@ static int pcore_browser_script_navigation(void *pw,
     }
     if (strcmp(op, "replaceState") == 0) {
         state = PJson_GetObject(object, "state");
+        url = PJson_GetString(object, "url");
         state_json = PJson_Serialize(state);
-        if (state_json == NULL || state_json[0] == '\0' ||
+        if (bridge->history_url == NULL || url == NULL ||
+                url[0] == '\0' ||
+                strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
+                !pcore_browse_history_same_base_url(
+                bridge->history_url, url) || state_json == NULL ||
+                state_json[0] == '\0' ||
                 strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
             PJson_FreeString(state_json);
             PJson_Free(root);
@@ -5949,9 +5996,18 @@ static int pcore_browser_script_navigation(void *pw,
                     out_capacity, out_len);
         }
         state_copy = pcore_browser_script_copy_string(state_json);
-        if (state_copy == NULL || (bridge->hwnd != NULL &&
-                pcore_browse_history_replace_state(state_json) != 0)) {
+        url_copy = pcore_browser_script_copy_string(url);
+        if (bridge->hwnd == NULL) {
+            target_url_copy = pcore_browser_script_copy_string(url);
+        }
+        if (state_copy == NULL || url_copy == NULL ||
+                (bridge->hwnd == NULL && target_url_copy == NULL) ||
+                (bridge->hwnd != NULL &&
+                pcore_browse_history_replace_state_url(url,
+                state_json) != 0)) {
             free(state_copy);
+            free(url_copy);
+            free(target_url_copy);
             PJson_FreeString(state_json);
             PJson_Free(root);
             return pcore_browser_script_write_bool(0, out_json,
@@ -5959,13 +6015,21 @@ static int pcore_browser_script_navigation(void *pw,
         }
         if (bridge->hwnd == NULL && bridge->history_push_count > 0) {
             i = bridge->history_push_count - 1;
+            free(bridge->history_push_urls[i]);
+            bridge->history_push_urls[i] = target_url_copy;
             free(bridge->history_push_states[i]);
             bridge->history_push_states[i] = state_copy;
         } else {
+            if (bridge->hwnd == NULL) {
+                free(bridge->history_entry_url);
+                bridge->history_entry_url = target_url_copy;
+            }
             free(bridge->history_state_json);
             bridge->history_state_json = state_copy;
             bridge->history_state_changed = 1;
         }
+        free(bridge->history_url);
+        bridge->history_url = url_copy;
         PJson_FreeString(state_json);
         PJson_Free(root);
         return pcore_browser_script_write_bool(1, out_json, out_capacity,
@@ -5978,7 +6042,8 @@ static int pcore_browser_script_navigation(void *pw,
         if (!bridge->history_can_commit || bridge->history_url == NULL ||
                 url == NULL || url[0] == '\0' ||
                 strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
-                strcmp(url, bridge->history_url) != 0 ||
+                !pcore_browse_history_same_base_url(
+                url, bridge->history_url) ||
                 state_json == NULL || state_json[0] == '\0' ||
                 strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
             PJson_FreeString(state_json);
@@ -5987,7 +6052,15 @@ static int pcore_browser_script_navigation(void *pw,
                     out_capacity, out_len);
         }
         state_copy = pcore_browser_script_copy_string(state_json);
-        if (state_copy == NULL) {
+        url_copy = pcore_browser_script_copy_string(url);
+        if (bridge->hwnd == NULL) {
+            target_url_copy = pcore_browser_script_copy_string(url);
+        }
+        if (state_copy == NULL || url_copy == NULL ||
+                (bridge->hwnd == NULL && target_url_copy == NULL)) {
+            free(state_copy);
+            free(url_copy);
+            free(target_url_copy);
             PJson_FreeString(state_json);
             PJson_Free(root);
             return pcore_browser_script_write_int(0, out_json,
@@ -5996,6 +6069,7 @@ static int pcore_browser_script_navigation(void *pw,
         if (bridge->hwnd != NULL) {
             if (pcore_browse_history_push_state(url, state_json) != 0) {
                 free(state_copy);
+                free(url_copy);
                 PJson_FreeString(state_json);
                 PJson_Free(root);
                 return pcore_browser_script_write_int(0, out_json,
@@ -6008,13 +6082,18 @@ static int pcore_browser_script_navigation(void *pw,
             bridge->history_state_changed = 1;
         } else {
             if (bridge->history_push_count >= PCORE_BROWSE_HISTORY_MAX) {
+                free(bridge->history_push_urls[0]);
                 free(bridge->history_push_states[0]);
                 for (i = 1; i < bridge->history_push_count; i++) {
+                    bridge->history_push_urls[i - 1] =
+                            bridge->history_push_urls[i];
                     bridge->history_push_states[i - 1] =
                             bridge->history_push_states[i];
                 }
                 bridge->history_push_count--;
             }
+            bridge->history_push_urls[bridge->history_push_count] =
+                    target_url_copy;
             bridge->history_push_states[bridge->history_push_count] =
                     state_copy;
             bridge->history_push_count++;
@@ -6028,6 +6107,8 @@ static int pcore_browser_script_navigation(void *pw,
             bridge->history_length++;
             bridge->history_index = bridge->history_length - 1;
         }
+        free(bridge->history_url);
+        bridge->history_url = url_copy;
         PJson_FreeString(state_json);
         PJson_Free(root);
         return pcore_browser_script_write_int(bridge->history_length,
@@ -6310,10 +6391,14 @@ static void pcore_browser_script_bridge_destroy(
     bridge->navigation_url = NULL;
     free(bridge->history_url);
     bridge->history_url = NULL;
+    free(bridge->history_entry_url);
+    bridge->history_entry_url = NULL;
     free(bridge->history_state_json);
     bridge->history_state_json = NULL;
     bridge->history_state_changed = 0;
     for (i = 0; i < bridge->history_push_count; i++) {
+        free(bridge->history_push_urls[i]);
+        bridge->history_push_urls[i] = NULL;
         free(bridge->history_push_states[i]);
         bridge->history_push_states[i] = NULL;
     }
@@ -6411,8 +6496,11 @@ static int pcore_browser_script_session_traverse_history(int target_index)
 {
     pcore_browser_script_bridge *bridge;
     const char *state_json;
+    const char *target_url;
     char *state_copy;
     char *final_copy;
+    char *target_copy;
+    char *old_url;
     char error[128];
     int old_index;
 
@@ -6422,28 +6510,42 @@ static int pcore_browser_script_session_traverse_history(int target_index)
         return 1;
     }
     state_json = pcore_browse_history_state_at(target_index);
+    target_url = g_browse_history.entries[target_index];
     state_copy = pcore_browser_script_copy_string(state_json);
-    if (state_copy == NULL ||
+    target_copy = pcore_browser_script_copy_string(target_url);
+    if (state_copy == NULL || target_copy == NULL ||
             PScript_SetGlobalJson(g_browser_script_session.runtime,
             "__pcoreHistoryTraversalState", -1, state_json, -1) !=
+            PSCRIPT_OK || PScript_SetGlobalString(
+            g_browser_script_session.runtime,
+            "__pcoreHistoryTraversalUrl", -1, target_url, -1) !=
             PSCRIPT_OK) {
         free(state_copy);
+        free(target_copy);
         return 1;
     }
     old_index = g_browse_history.index;
     if (pcore_browse_history_commit_target(target_index) != 0) {
         free(state_copy);
+        free(target_copy);
         return 1;
     }
+    old_url = bridge->history_url;
+    bridge->history_url = target_copy;
     memset(error, 0, sizeof(error));
     if (pcore_browser_script_session_evaluate(
-            "__pcoreHistoryTraverse(__pcoreHistoryTraversalState);"
-            "delete this.__pcoreHistoryTraversalState;", -1,
+            "__pcoreHistoryTraverse(__pcoreHistoryTraversalState,"
+            "__pcoreHistoryTraversalUrl);"
+            "delete this.__pcoreHistoryTraversalState;"
+            "delete this.__pcoreHistoryTraversalUrl;", -1,
             error, sizeof(error)) != 0) {
         (void) pcore_browse_history_commit_target(old_index);
+        free(bridge->history_url);
+        bridge->history_url = old_url;
         free(state_copy);
         return 1;
     }
+    free(old_url);
     final_copy = pcore_browser_script_copy_string(
             pcore_browse_history_current_state());
     if (final_copy != NULL) {
@@ -6636,22 +6738,25 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "{throw new Error('location reload failed');}}"
         "function preplace(v){if(!__pcoreNavigation({op:'replace',"
         "url:String(v)})){throw new Error('location replace failed');}}"
-        "function preplaceState(state,title,url){var u=arguments.length>2?"
-        "String(url):'';var s;var clone;if(u!==''&&u!==purl){"
+        "function phistoryUrl(url,provided){var u=provided?String(url):'';"
+        "var h;var b;if(u===''){return purl;}h=purl.indexOf('#');"
+        "b=h>=0?purl.substring(0,h):purl;if(u.charAt(0)==='#'){return b+u;}"
+        "if(u===b||u.indexOf(b+'#')===0){return u;}"
         "throw new Error('history state URL unsupported');}"
+        "function preplaceState(state,title,url){var u=phistoryUrl(url,"
+        "arguments.length>2);var s;var clone;"
         "s=JSON.stringify(state);if(typeof s!=='string'||s.length>=1024){"
         "throw new Error('history state unsupported');}clone=JSON.parse(s);"
-        "if(!__pcoreNavigation({op:'replaceState',state:clone})){"
-        "throw new Error('history state failed');}phistoryStateJson=s;}"
-        "function ppushState(state,title,url){var u=arguments.length>2?"
-        "String(url):'';var s;var clone;var n;if(u!==''&&u!==purl){"
-        "throw new Error('history state URL unsupported');}"
+        "if(!__pcoreNavigation({op:'replaceState',state:clone,url:u})){"
+        "throw new Error('history state failed');}phistoryStateJson=s;purl=u;}"
+        "function ppushState(state,title,url){var u=phistoryUrl(url,"
+        "arguments.length>2);var s;var clone;var n;"
         "s=JSON.stringify(state);if(typeof s!=='string'||s.length>=1024){"
         "throw new Error('history state unsupported');}clone=JSON.parse(s);"
-        "n=Number(__pcoreNavigation({op:'pushState',state:clone,url:purl}));"
+        "n=Number(__pcoreNavigation({op:'pushState',state:clone,url:u}));"
         "if(!isFinite(n)||Math.floor(n)!==n||n<1||n>16){"
         "throw new Error('history push state failed');}"
-        "phistoryStateJson=s;phistoryLength=n;}"
+        "phistoryStateJson=s;phistoryLength=n;purl=u;}"
         "var ppopListeners=[];g.onpopstate=null;"
         "g.addEventListener=function(type,fn,capture){var i;"
         "if(String(type)!=='popstate'||typeof fn!=='function'){return;}"
@@ -6669,8 +6774,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "a=ppopListeners.slice(0);for(i=0;i<a.length;i++){"
         "try{a[i].call(g,e);}catch(listenerError){}}}"
         "Object.defineProperty(g,'__pcoreHistoryTraverse',{"
-        "value:function(state){var s=JSON.stringify(state);"
-        "if(typeof s!=='string'){s='null';}phistoryStateJson=s;"
+        "value:function(state,url){var s=JSON.stringify(state);"
+        "if(typeof s!=='string'){s='null';}purl=String(url);phistoryStateJson=s;"
         "pdispatchPopState(s);},writable:false,configurable:false});"
         "var plocation={};"
         "Object.defineProperty(plocation,'href',{get:function(){"
@@ -6768,10 +6873,13 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     bridge->navigation_url = NULL;
     bridge->history_url = pcore_browser_script_copy_string(
             (document_url != NULL) ? document_url : "");
+    bridge->history_entry_url = pcore_browser_script_copy_string(
+            (document_url != NULL) ? document_url : "");
     bridge->history_state_json = NULL;
     bridge->history_state_changed = 0;
     bridge->history_push_count = 0;
     for (i = 0; i < PCORE_BROWSE_HISTORY_MAX; i++) {
+        bridge->history_push_urls[i] = NULL;
         bridge->history_push_states[i] = NULL;
     }
     bridge->next_event_id = 1;
@@ -6788,7 +6896,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     if (history_state_json == NULL) {
         history_state_json = "null";
     }
-    if (bridge->history_url == NULL ||
+    if (bridge->history_url == NULL || bridge->history_entry_url == NULL ||
             PScript_SetGlobalString(runtime, "__pcoreDocumentUrl", -1,
             (document_url != NULL) ? document_url : "", -1) != PSCRIPT_OK ||
             PScript_SetGlobalNumber(runtime, "__pcoreHistoryLength", -1,
@@ -24990,6 +25098,191 @@ static BOOL test148_browser_script_history_popstate(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 149 - fragment URLs for browser script history state entries    */
+/* -------------------------------------------------------------------- */
+static BOOL test149_browser_script_history_fragment_url(void)
+{
+    static const char URL[] = "https://example.com/path?q=1";
+    static const char URL_ZERO[] = "https://example.com/path?q=1#zero";
+    static const char URL_ONE[] = "https://example.com/path?q=1#one";
+    static const char URL_TWO[] = "https://example.com/path?q=1#two";
+    static const char URL_TAIL[] = "https://example.com/path?q=1#tail";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var seen=[];onpopstate=function(e){seen.push(location.href+','"
+        "+document.URL+','+e.state.page);};var rejected=0;"
+        "history.replaceState({page:0},'','#zero');"
+        "history.pushState({page:1},'','#one');"
+        "history.pushState({page:2},'',"
+        "'https://example.com/path?q=1#two');"
+        "try{history.pushState({bad:1},'',"
+        "'https://example.com/other#x');}catch(e){rejected++;}"
+        "try{history.replaceState({bad:2},'',"
+        "'https://example.com/path?q=2#x');}catch(e){rejected++;}"
+        "try{history.pushState({bad:3},'',"
+        "'https://other.invalid/path?q=1#x');}catch(e){rejected++;}"
+        "history.back();document.getElementById('result').textContent="
+        "location.href+'|'+document.URL+'|'+document.documentURI+'|'"
+        "+history.state.page+'|'+history.length+'|'+rejected+'|'"
+        "+seen.length;"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char INITIAL_RESULT[] =
+        "https://example.com/path?q=1#two|"
+        "https://example.com/path?q=1#two|"
+        "https://example.com/path?q=1#two|2|3|3|0";
+    static const char BACK_RESULT[] =
+        "https://example.com/path?q=1#one,"
+        "https://example.com/path?q=1#one,1|"
+        "https://example.com/path?q=1#one|1";
+    static const char TAIL_RESULT[] =
+        "https://example.com/path?q=1#tail|"
+        "https://example.com/path?q=1#tail|12|1";
+    static const char FINAL_RESULT[] =
+        "https://example.com/path?q=1,"
+        "https://example.com/path?q=1,11|"
+        "https://example.com/path?q=1|11";
+    HANDLE document;
+    HANDLE runtime;
+    HANDLE session_runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *evaluation_result;
+    char result[256];
+    char error[256];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    session_runtime = NULL;
+    bridge = NULL;
+    evaluation_result = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    (void) pcore_browse_history_commit_navigation(URL, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, INITIAL_RESULT) != 0 ||
+            result_bytes != (int) sizeof(INITIAL_RESULT) - 1 ||
+            bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_BACK ||
+            bridge->history_entry_url == NULL ||
+            strcmp(bridge->history_entry_url, URL_ZERO) != 0 ||
+            bridge->history_push_count != 2 ||
+            bridge->history_push_urls[0] == NULL ||
+            strcmp(bridge->history_push_urls[0], URL_ONE) != 0 ||
+            bridge->history_push_urls[1] == NULL ||
+            strcmp(bridge->history_push_urls[1], URL_TWO) != 0 ||
+            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            pcore_browse_history_commit_navigation_with_bridge(URL,
+            1, -1, bridge) != 0 || g_browse_history.count != 3 ||
+            g_browse_history.index != 2 ||
+            strcmp(g_browse_history.entries[0], URL_ZERO) != 0 ||
+            strcmp(g_browse_history.entries[1], URL_ONE) != 0 ||
+            strcmp(g_browse_history.entries[2], URL_TWO) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        bridge->hwnd = (HWND) 1;
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
+        session_runtime = runtime;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (!pcore_browse_navigate_back((HWND) 1) ||
+                g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.index != 1 ||
+                strcmp(pcore_browse_history_current(), URL_ONE) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "seen[0]+'|'+location.href+'|'+history.state.page;",
+                -1) != PSCRIPT_OK) {
+            ok = 0;
+        } else {
+            evaluation_result = PScript_GetResult(session_runtime);
+            if (evaluation_result == NULL ||
+                    strcmp(evaluation_result, BACK_RESULT) != 0) {
+                ok = 0;
+            }
+        }
+    }
+    if (ok && PScript_Evaluate(session_runtime,
+            "history.replaceState({page:11},'',"
+            "'https://example.com/path?q=1');"
+            "history.pushState({page:12},'','#tail');"
+            "location.href+'|'+document.URL+'|'"
+            "+history.state.page+'|'+seen.length;", -1) != PSCRIPT_OK) {
+        ok = 0;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, TAIL_RESULT) != 0 ||
+                g_browse_history.count != 3 ||
+                g_browse_history.index != 2 ||
+                strcmp(g_browse_history.entries[1], URL) != 0 ||
+                strcmp(pcore_browse_history_state_at(1),
+                "{\"page\":11}") != 0 ||
+                strcmp(g_browse_history.entries[2], URL_TAIL) != 0 ||
+                strcmp(pcore_browse_history_state_at(2),
+                "{\"page\":12}") != 0 ||
+                !pcore_browse_navigate_back((HWND) 1) ||
+                g_nav_loading || g_nav_request != NULL ||
+                PScript_Evaluate(session_runtime,
+                "seen[1]+'|'+location.href+'|'+history.state.page;",
+                -1) != PSCRIPT_OK) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, FINAL_RESULT) != 0 ||
+                strcmp(pcore_browse_history_current(), URL) != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":11}") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 149 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 149 OK",
+            "fragment-only history state URLs update location/document.URL\n"
+            "without a GET, persist per entry, and are restored before\n"
+            "popstate; path, query, and origin changes remain rejected.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -25259,6 +25552,9 @@ static int run_configured_tests(const unsigned char *selected,
                 test147_browser_script_history_same_document_traversal();
                 break;
         case 148: ok = test148_browser_script_history_popstate(); break;
+        case 149: ok =
+                test149_browser_script_history_fragment_url();
+                break;
         default: ok = FALSE; break;
         }
         if (!ok) {

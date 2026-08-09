@@ -170,6 +170,17 @@ Window EventTarget 或 PopStateEvent 构造器，跨 document traversal 仍不�
 SHA-256 一致。320x320/128 DPI 日志包含 TEST148 OK、96 条 OK、零 ERROR、零 FAIL 与最终
 PASS，next180 已成为自动设备基线。
 
+next181 已通过设备自动门：history.replaceState/pushState 接受当前 document 基础 URL 上的
+片段 URL（#fragment、无片段基础 URL 或同基础 URL 的绝对形式），同步更新 location.href、
+document.URL/documentURI 与逐项 history URL；同 document traversal 在 popstate 前恢复目标
+URL，不发起 GET。TEST149 离线固定初始/运行期 replace/push、前向分支截断、片段清除/恢复、
+URL-before-popstate 及路径/查询/跨源拒绝。默认 javascript=0、TEST13、core ABI、14/16
+callback 槽位与 next180 基线不变；普通相对 URL、路径/查询变化、hashchange、逐项滚动/表单
+恢复及跨 document 页面缓存仍未实现。C89 回归及 ARMV4I Debug 增量构建已通过；
+`C:\WMShare\Positron-next181` 已隔离 staging，七个 ARMV4I 二进制与构建产物 SHA-256
+一致。320x320/128 DPI 日志包含 TEST149 OK、97 条 OK、零 ERROR、零 FAIL 与最终 PASS，
+next181 已成为自动设备基线。
+
 next161 已接入 WM6 EDIT 的原生 IME composition 消息，使用 SDK
 `<imm.h>` 和设备 `coredll` 中的 `ImmGetContext/ImmGetCompositionStringW/ImmReleaseContext`，
 不链接桌面 `imm32.lib`。显式脚本 context 新增 `compositionstart/update/end` 与不可取消的
@@ -510,7 +521,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：当前 next180 基线的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-148`；已验证基线在 `screen=320x320 dpi=128` 通过至 TEST148。TEST137 是只读 location/document URL 与延迟 `history.back()` 门，TEST138 是已通过的延迟 location 赋值门，TEST139 是已通过的 `location.reload()` 门，TEST140 是已通过的 `location.replace()` 门，TEST141 是已通过的 `history.forward()` 门，TEST142 是已通过的 `history.go()` 门，TEST143 是已通过的只读 `history.length` 门，TEST144 是已通过的初始 `history.state` 门，TEST145 是已通过的受控 `history.replaceState()` 门，TEST146 是已通过的同 URL `history.pushState()` 门，TEST147 是已通过的同 document traversal 门，TEST148 是已通过的最小 popstate 门。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、EDIT/SELECT 键盘、focus、beforeinput、Unicode/代理对、composition、event target/currentTarget、classList、style、form default 和最小 location/history bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图；next167 已另行人工确认 Learn More 边距与真实 SIP 候选词完整输入。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+- 快速配置：当前 next181 基线的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-149`；已验证基线在 `screen=320x320 dpi=128` 通过至 TEST149。TEST137 是只读 location/document URL 与延迟 `history.back()` 门，TEST138 是已通过的延迟 location 赋值门，TEST139 是已通过的 `location.reload()` 门，TEST140 是已通过的 `location.replace()` 门，TEST141 是已通过的 `history.forward()` 门，TEST142 是已通过的 `history.go()` 门，TEST143 是已通过的只读 `history.length` 门，TEST144 是已通过的初始 `history.state` 门，TEST145 是已通过的受控 `history.replaceState()` 门，TEST146 是已通过的同 URL `history.pushState()` 门，TEST147 是已通过的同 document traversal 门，TEST148 是已通过的最小 popstate 门，TEST149 是已通过的 history 片段 URL 门。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、EDIT/SELECT 键盘、focus、beforeinput、Unicode/代理对、composition、event target/currentTarget、classList、style、form default 和最小 location/history bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b` 一类语法。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图；next167 已另行人工确认 Learn More 边距与真实 SIP 候选词完整输入。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。

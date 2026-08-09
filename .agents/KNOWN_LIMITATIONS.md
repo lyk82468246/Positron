@@ -290,6 +290,14 @@ state-before-event、属性/listener、重复去重、remove、clone/异常隔�
 不派发，也不实现逐项滚动/表单恢复、非当前 URL、POST state 或页面缓存。320x320/128 DPI
 日志已得到 TEST148 OK、96 条 OK、零 ERROR、零 FAIL 与最终 PASS，next180 已成为自动设备基线。
 
+**next181 history 片段 URL 基线（2026-08-09 已设备验收）**：replaceState/pushState 可接受当前 document
+基础 URL 上的 #fragment、无片段基础 URL 或同基础 URL 绝对形式，并同步 location.href、
+document.URL/documentURI 与 history entry；同 document traversal 在 popstate 前恢复 URL，
+不会启动 GET。TEST149 覆盖初始/运行期状态、前向分支截断、片段清除/恢复和路径/查询/跨源
+拒绝。本批仍不是通用 URL 解析器：普通相对 URL、路径/查询变化、hashchange、滚动/表单恢复、
+POST state 及跨 document 页面缓存不在范围内。320x320/128 DPI 日志已得到 TEST149 OK、
+97 条 OK、零 ERROR、零 FAIL 与最终 PASS，next181 已成为自动设备基线。
+
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
 TEST118 覆盖 SELECT 的 target/bubble 与 ArrowDown 元数据，并在窗口创建时发送真实 WM
