@@ -31,8 +31,8 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next174，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-142，计 90 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
+**当前自动化设备基线（next175，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-143，计 91 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -194,9 +194,10 @@ context 现在可读取 `location.href`、`document.URL/documentURI/location`，
 `history.back()` 请求 next168 的后退加载。URL 是 bootstrap 时固定的当前 document URL；
 back 经窗口消息延迟到 JS callback 返回和导航空闲之后，调用本身不立即修改 history index。
 TEST137 已在 320x320/128 DPI 自动日志中通过，整批为 85 OK、零 ERROR 与最终 PASS；
-它只证明 URL 身份和延迟请求边界。next170 已验收的纵切补充赋值；仍无 URL 分量、reload、
-go/forward、length/state、replaceState/pushState/popstate、重定向历史、页面缓存、滚动/
-表单状态恢复或持久历史。默认 `javascript=0` 与 TEST13 网络路径不变。
+它只证明 URL 身份和延迟请求边界。next170-174 已验收赋值、reload、replace、forward 和
+有界 go 纵切；next175 已验收补充只读 length。仍无 URL 分量、state、replaceState/
+pushState/popstate、重定向历史、页面缓存、滚动/表单状态恢复或持久历史。默认
+`javascript=0` 与 TEST13 网络路径不变。
 
 **next170 location 赋值桥（自动设备验收通过）**：`location.assign()`、`location.href=`、
 `window.location=` 和 `document.location=` 共用一个 native callback，把最后一个非空、少于
@@ -204,7 +205,8 @@ go/forward、length/state、replaceState/pushState/popstate、重定向历史、
 入口，避免从 Duktape callback 同步重入；连续赋值是 last-request-wins，当前 URL/history
 在赋值时保持不变。TEST138 是离线 bridge 门，不证明 URL 解析、网络成功、重定向或页面状态
 恢复；next171 已验收纵切补充 reload，next172 已验收纵切补充 replace；URL 分量 setter、
-next173 已验收纵切补充 `history.forward()`；next174 已验收纵切补充有界 `history.go()`。
+next173 已验收纵切补充 `history.forward()`；next174 已验收纵切补充有界 `history.go()`；
+next175 已验收补充只读 `history.length`。
 320x320/128 DPI 日志已得到 TEST138 OK、86 条 OK、零 ERROR、零 FAIL 与最终 PASS。
 
 **next171 GET-only location reload（自动设备验收通过）**：`location.reload()` 把
@@ -233,6 +235,14 @@ replace、重定向历史、POST replace、页面缓存或滚动/表单状态恢
 只在目标存在时导航，成功 document 提交后才移动 index。TEST142 是离线 target/bridge 门，
 不证明真实网络 go、POST 重提交、页面缓存、状态恢复、history length/state 或 popstate。
 320x320/128 DPI 日志已得到 TEST142 OK、90 条 OK、零 ERROR、零 FAIL 与最终 PASS。
+
+**next175 read-only history.length（自动设备验收通过）**：bootstrap 暴露当前 document
+成功提交后的预期历史长度快照，首次 document 至少为 1、最多为现有宿主的 16 项。
+普通成功 GET 预先反映新增条目和 forward 分支截断；back/forward/go、replace、POST、
+失败提交或脚本同步赋值不增加长度。TEST143 是离线 projection/bootstrap 门，不证明
+真实网络遍历、POST 历史、跨 document 状态、history state/push/replaceState、popstate、
+页面缓存或滚动/表单恢复。
+320x320/128 DPI 日志已得到 TEST143 OK、91 条 OK、零 ERROR、零 FAIL 与最终 PASS。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

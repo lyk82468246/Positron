@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 2048
-#define TEST_MAX_NUMBER 142
+#define TEST_MAX_NUMBER 143
 
 static int test_config_space(char c)
 {
@@ -2438,6 +2438,41 @@ static void pcore_browse_history_commit_navigation(const char *url,
     } else {
         (void) pcore_browse_history_commit_new(url);
     }
+}
+
+static int pcore_browse_history_exposed_length(void)
+{
+    return (g_browse_history.count > 0) ? g_browse_history.count : 1;
+}
+
+static int pcore_browse_history_navigation_length(const char *url,
+        int method, int target_index)
+{
+    int count;
+
+    count = g_browse_history.count;
+    if (method != 1) {
+        return (count > 0) ? count : 1;
+    }
+    if (target_index == PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT ||
+            target_index >= 0) {
+        return (count > 0) ? count : 1;
+    }
+    if (url == NULL || url[0] == '\0' ||
+            strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX) {
+        return (count > 0) ? count : 1;
+    }
+    if (pcore_browse_history_current() != NULL &&
+            strcmp(pcore_browse_history_current(), url) == 0) {
+        return (count > 0) ? count : 1;
+    }
+    if (g_browse_history.index + 1 < count) {
+        count = g_browse_history.index + 1;
+    }
+    if (count < PCORE_BROWSE_HISTORY_MAX) {
+        count++;
+    }
+    return (count > 0) ? count : 1;
 }
 
 typedef struct pcore_native_edit {
@@ -6046,8 +6081,9 @@ static int pcore_browser_script_session_evaluate(const char *source,
     return 0;
 }
 
-static int pcore_browser_execute_scripts(HANDLE document, int enabled,
-        int allow_external, const char *document_url,
+static int pcore_browser_execute_scripts_with_history(HANDLE document,
+        int enabled, int allow_external, const char *document_url,
+        int history_length,
         PCoreResolveUrlFn resolve, void *resolve_pw, int *out_executed,
         int *out_ignored, char *error, int error_capacity,
         HANDLE *out_runtime, pcore_browser_script_bridge **out_bridge)
@@ -6210,7 +6246,9 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "a[i].capture===c){__pcoreRemoveEvent({listener:a[i].id});"
         "delete g.__pcoreHandlers[a[i].id];a.splice(i,1);return;}}};"
         "var purl=String(g.__pcoreDocumentUrl||'');"
+        "var phistoryLength=Number(g.__pcoreHistoryLength||1);"
         "try{delete g.__pcoreDocumentUrl;}catch(purlerror){}"
+        "try{delete g.__pcoreHistoryLength;}catch(phistoryerror){}"
         "function pnavigate(v){if(!__pcoreNavigation({op:'assign',"
         "url:String(v)})){throw new Error('location navigation failed');}}"
         "function preload(){if(!__pcoreNavigation({op:'reload',url:purl}))"
@@ -6235,11 +6273,13 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
         "g.window=g;g.document=pdocument;"
         "Object.defineProperty(g,'location',{get:function(){"
         "return plocation;},set:pnavigate});"
-        "g.history={back:function(){__pcoreNavigation({op:'back'});},"
+        "var phistory={back:function(){__pcoreNavigation({op:'back'});},"
         "forward:function(){__pcoreNavigation({op:'forward'});},"
         "go:function(delta){var n=Number(arguments.length?delta:0);"
         "if(!isFinite(n)||Math.floor(n)!==n||n < -15||n > 15){return;}"
         "__pcoreNavigation({op:'go',delta:n});}};"
+        "Object.defineProperty(phistory,'length',{get:function(){"
+        "return phistoryLength;},enumerable:true});g.history=phistory;"
         "})(this);";
     pcore_browser_script_bridge bridge_storage;
     pcore_browser_script_bridge *bridge;
@@ -6307,8 +6347,13 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
     bridge->navigation_url = NULL;
     bridge->next_event_id = 1;
     bridge->events = NULL;
+    if (history_length < 1 || history_length > PCORE_BROWSE_HISTORY_MAX) {
+        history_length = 1;
+    }
     if (PScript_SetGlobalString(runtime, "__pcoreDocumentUrl", -1,
             (document_url != NULL) ? document_url : "", -1) != PSCRIPT_OK ||
+            PScript_SetGlobalNumber(runtime, "__pcoreHistoryLength", -1,
+            (double) history_length) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreHasElement", -1,
             pcore_browser_script_has_element, bridge) != PSCRIPT_OK ||
             PScript_RegisterGlobalJsonFunction(runtime, "__pcoreGetText", -1,
@@ -6438,6 +6483,19 @@ static int pcore_browser_execute_scripts(HANDLE document, int enabled,
     return rc;
 }
 
+static int pcore_browser_execute_scripts(HANDLE document, int enabled,
+        int allow_external, const char *document_url,
+        PCoreResolveUrlFn resolve, void *resolve_pw, int *out_executed,
+        int *out_ignored, char *error, int error_capacity,
+        HANDLE *out_runtime, pcore_browser_script_bridge **out_bridge)
+{
+    return pcore_browser_execute_scripts_with_history(document, enabled,
+            allow_external, document_url,
+            pcore_browse_history_exposed_length(), resolve, resolve_pw,
+            out_executed, out_ignored, error, error_capacity, out_runtime,
+            out_bridge);
+}
+
 static int pcore_browser_execute_inline_scripts(HANDLE document, int enabled,
         int *out_executed, int *out_ignored, char *error,
         int error_capacity)
@@ -6511,9 +6569,12 @@ static int pcore_navigation_commit_step(HWND hwnd,
             request->worker_resume_stage = PCORE_NAV_COMMIT_SCRIPT;
             return PCORE_NAV_RESULT_MORE;
         }
-        if (pcore_browser_execute_scripts(request->document,
+        if (pcore_browser_execute_scripts_with_history(request->document,
                 g_browser_javascript_enabled, 1,
                 document_url[0] != '\0' ? document_url : NULL,
+                pcore_browse_history_navigation_length(
+                document_url[0] != '\0' ? document_url : NULL,
+                request->method, request->history_target_index),
                 wm_combine_url, request, &script_executed, &script_ignored,
                 emsg, sizeof(emsg), &request->script_runtime,
                 &request->script_bridge) != 0) {
@@ -23569,6 +23630,109 @@ static BOOL test142_browser_script_history_go(void)
     return TRUE;
 }
 
+/* -------------------------------------------------------------------- */
+/* TEST 143 - read-only browser script history.length                   */
+/* -------------------------------------------------------------------- */
+static BOOL test143_browser_script_history_length(void)
+{
+    static const char URL_A[] = "https://example.com/";
+    static const char URL_B[] =
+        "https://www.iana.org/help/example-domains";
+    static const char URL_C[] = "https://www.iana.org/domains/reserved";
+    static const char URL_D[] = "https://www.iana.org/domains/root";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var before=history.length;history.length=99;"
+        "var returned=history.forward();"
+        "document.getElementById('result').textContent=before+'|'"
+        "+history.length+'|'+String(returned);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] = "3|3|undefined";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[128];
+    char error[256];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int first_length;
+    int append_length;
+    int branch_length;
+    int replace_length;
+    int target_length;
+    int post_length;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browse_history_reset();
+    first_length = pcore_browse_history_navigation_length(URL_A, 1, -1);
+    pcore_browse_history_commit_navigation(URL_A, 1, -1);
+    pcore_browse_history_commit_navigation(URL_B, 1, -1);
+    pcore_browse_history_commit_navigation(URL_C, 1, -1);
+    if (pcore_browse_history_commit_target(2) != 0) {
+        ok = 0;
+    }
+    append_length = pcore_browse_history_navigation_length(URL_D, 1, -1);
+    if (pcore_browse_history_commit_target(1) != 0) {
+        ok = 0;
+    }
+    branch_length = pcore_browse_history_navigation_length(URL_D, 1, -1);
+    replace_length = pcore_browse_history_navigation_length(URL_D, 1,
+            PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT);
+    target_length = pcore_browse_history_navigation_length(URL_C, 1, 2);
+    post_length = pcore_browse_history_navigation_length(URL_D, 2, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_B,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0 || result_bytes != 13 ||
+            bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FORWARD ||
+            bridge->navigation_delta != 0 ||
+            bridge->navigation_url != NULL ||
+            g_browse_history.count != 3 || g_browse_history.index != 1 ||
+            first_length != 1 || append_length != 4 ||
+            branch_length != 3 || replace_length != 3 ||
+            target_length != 3 || post_length != 3 ||
+            PScript_GetNativeFunctionCount(runtime) != 14) {
+        ok = 0;
+    }
+    if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
+    free(bridge);
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d lengths=%d/%d/%d/%d/%d/%d",
+                    result_bytes, result, executed, ignored, first_length,
+                    append_length, branch_length, replace_length,
+                    target_length, post_length);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 143 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 143 OK",
+            "history.length exposes the projected successful-GET count\n"
+            "as a read-only document snapshot; queued traversal and\n"
+            "failed or replace-only commits do not change it.");
+    return TRUE;
+}
+
 /* TEST 14 - milestone H/M1: GDI plotter table self-test                  */
 /* Opens a window and paints via PCore_PlotTest - the NetSurf plotter      */
 /* interface backed by GDI - with NO layout engine involved. Confirms the  */
@@ -23830,6 +23994,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 140: ok = test140_browser_script_location_replace(); break;
         case 141: ok = test141_browser_script_history_forward(); break;
         case 142: ok = test142_browser_script_history_go(); break;
+        case 143: ok = test143_browser_script_history_length(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
