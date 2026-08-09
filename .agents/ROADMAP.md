@@ -2,8 +2,8 @@
 
 更新时间：2026-08-09
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前自动化设备基线为 next176：`screen=320x320 dpi=128` 默认日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-144 全部通过，计 92 条 OK、零 ERROR、零 FAIL，并记录
+当前自动化设备基线为 next177：`screen=320x320 dpi=128` 默认日志中 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-145 全部通过，计 93 条 OK、零 ERROR、零 FAIL，并记录
 `TESTBENCH PASS`。next167 的高 DPI interaction restyle 修复和 Learn More/SIP 定向
 人工结果继续有效；next168 新增成功-GET URL 历史和左键后退，next169 增加最小脚本
 location/history 后退桥。人工视觉/交互改为累计
@@ -523,6 +523,20 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   历史和页面状态恢复不在本批。320x320/128 DPI 日志得到 TEST144 OK、92 条 OK、零 ERROR、
   零 FAIL 与最终 PASS，next176 已成为自动设备基线。
 
+### 6aw. next177：JavaScript controlled history.replaceState 纵切（自动设备验收通过）
+
+- 为现有最多 16 个成功 GET 条目保存小于 1024 字节的 JSON state；新增不改 URL 的受控
+  `history.replaceState(state, title)`，title 忽略，URL 只允许省略、空串或当前绝对 URL，
+  getter 每次返回 JSON clone。
+- 初始脚本只更新候选 bridge，document 最终成功提交才落入对应条目；活动页面同步替换
+  当前条目，back/forward/go/reload 按条目恢复且不增加 length。TEST145 离线断言 URL 拒绝、
+  clone 隔离、成功提交、活动替换、逐项恢复和 14/16 callback 槽位。
+- 默认 javascript=0、TEST13、core ABI 与 next176 已验收行为不变；C89 回归及 ARMV4I Debug
+  增量构建已通过；`C:\WMShare\Positron-next177` staging 的七个 ARMV4I 二进制与构建产物
+  SHA-256 一致。完整 structured clone、pushState、非当前 URL 改写、popstate、POST state
+  和页面缓存不在本批。320x320/128 DPI 日志得到 TEST145 OK、93 条 OK、零 ERROR、零 FAIL
+  与最终 PASS，next177 已成为自动设备基线。
+
 ### 6f. next123：高 DPI 设备视口换算（待设备验收）
 
 - NetSurf 的标准约定是：CSS media/vw/vh 使用 CSS 像素视口，`layout_document` 和 GDI 重绘使用设备像素。next122 的新模拟器日志首次暴露两者被宿主混用：TEST20 的 48 CSS px 图像盒成为 96 device px，自动化因此停在 TEST20；这不是 provider 回归。
@@ -948,7 +962,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next176 的 TEST13/20/27/43/44/56/58-77/80-144 设备日志作为已验证自动化基线；
+1. 以 next177 的 TEST13/20/27/43/44/56/58-77/80-145 设备日志作为已验证自动化基线；
    后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
 2. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
    WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础
@@ -956,5 +970,5 @@ WM6/ARMV4I 资源紧，后续必须持续做：
    与完整 `isComposing`/预编辑语义仍按独立能力逐项验收。
 3. 浏览器 JS 的加载执行链稳定后，再按“一个上游能力一个批次”评估基础 Grid 或背景尺寸。当前 NetSurf/libcss 上游仍没有 Grid 轨道布局器或 `background-size` computed property，不能用大段私有猜测替代标准数据流；撤回的 TEST23/79 实验不得原样恢复。
 4. 高级约束验证、专用事件数据与完整 HTML activation 继续保留，但不先于重大布局/资源缺口。真实触屏 label/Enter/multiple select、原生文件选择器、首个无效控件反馈和控件视觉验收放入后续人工检查批次。
-5. next144-176 已利用同一个 Duktape DLL 逐项完成脚本执行、DOM 查询/修改、页面级 context、事件/表单/输入桥和最小 location/history 导航；后续绑定仍按一个纵切一个设备门推进，浏览器 JavaScript 默认保持关闭。
+5. next144-177 已利用同一个 Duktape DLL 逐项完成脚本执行、DOM 查询/修改、页面级 context、事件/表单/输入桥和最小 location/history 导航及受控 replaceState；后续绑定仍按一个纵切一个设备门推进，浏览器 JavaScript 默认保持关闭。
 6. 再扩展 cookies/history/storage 等浏览器与公共 DLL 基础设施。首屏 SVG 冷启动、整页聚合进度、视觉微调、高级 SVG/CSS 边角和全面性能优化后置；崩溃、数据错误或阻塞交互仍随时提到最高优先级。

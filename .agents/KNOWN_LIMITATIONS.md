@@ -31,8 +31,8 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next176，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-144，计 92 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
+**当前自动化设备基线（next177，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-145，计 93 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -195,8 +195,9 @@ context 现在可读取 `location.href`、`document.URL/documentURI/location`，
 back 经窗口消息延迟到 JS callback 返回和导航空闲之后，调用本身不立即修改 history index。
 TEST137 已在 320x320/128 DPI 自动日志中通过，整批为 85 OK、零 ERROR 与最终 PASS；
 它只证明 URL 身份和延迟请求边界。next170-174 已验收赋值、reload、replace、forward 和
-有界 go 纵切；next175 已验收补充只读 length；next176 已验收补充初始 null state。
-仍无 URL 分量、replaceState/pushState/popstate、重定向历史、页面缓存、滚动/表单状态
+有界 go 纵切；next175 已验收补充只读 length；next176 已验收补充初始 null state；next177
+已验收受控 JSON-only replaceState。仍无 URL 分量、pushState、完整 structured clone、
+非当前 URL 改写、popstate、重定向历史、页面缓存、滚动/表单状态
 恢复或持久历史。默认 `javascript=0` 与 TEST13 网络路径不变。
 
 **next170 location 赋值桥（自动设备验收通过）**：`location.assign()`、`location.href=`、
@@ -206,7 +207,8 @@ TEST137 已在 320x320/128 DPI 自动日志中通过，整批为 85 OK、零 ERR
 在赋值时保持不变。TEST138 是离线 bridge 门，不证明 URL 解析、网络成功、重定向或页面状态
 恢复；next171 已验收纵切补充 reload，next172 已验收纵切补充 replace；URL 分量 setter、
 next173 已验收纵切补充 `history.forward()`；next174 已验收纵切补充有界 `history.go()`；
-next175 已验收补充只读 `history.length`；next176 已验收补充初始只读 null state。
+next175 已验收补充只读 `history.length`；next176 已验收补充初始只读 null state；next177
+已验收受控 JSON-only `history.replaceState()`。
 320x320/128 DPI 日志已得到 TEST138 OK、86 条 OK、零 ERROR、零 FAIL 与最终 PASS。
 
 **next171 GET-only location reload（自动设备验收通过）**：`location.reload()` 把
@@ -249,6 +251,16 @@ bootstrap 为初始/网络 document 暴露只读 null；脚本赋值与同步 go
 或当前 history 条目。TEST144 是离线 bootstrap/bridge 门，不证明 pushState、replaceState、
 structured clone、跨 document state、popstate、同文档 URL 历史或页面状态恢复。
 320x320/128 DPI 日志已得到 TEST144 OK、92 条 OK、零 ERROR、零 FAIL 与最终 PASS。
+
+**next177 JSON-only history.replaceState（自动设备验收通过）**：新增不改 URL 的受控
+`history.replaceState(state, title)`。state 必须能序列化为小于 1024 字节的 JSON，title
+忽略，第三个 URL 只允许省略、空串或当前绝对 URL；getter 每次返回 JSON clone，修改返回
+对象不会回写。初始脚本只把 state 留在候选 bridge，document 最终成功提交后才写入对应
+成功 GET 条目；活动页面同步替换当前条目，遍历/重载按条目恢复且不增加 length。TEST145
+离线覆盖 clone 隔离、URL 拒绝、成功提交、活动替换、逐项恢复和 14/16 callback 槽位。
+本批不是完整 structured clone，也不实现 pushState、非当前 URL 改写、popstate、POST state
+或页面缓存。320x320/128 DPI 日志已得到 TEST145 OK、93 条 OK、零 ERROR、零 FAIL 与最终
+PASS，next177 已成为自动设备基线。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
