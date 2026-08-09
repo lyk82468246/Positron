@@ -31,8 +31,9 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next179，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-147，计 95 条 OK、零 ERROR、零 FAIL、最终 TESTBENCH PASS。
+**当前自动化设备基线（next185，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-153，配置所选 100 项全部 OK、零 ERROR、零 FAIL、最终
+TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 99 项使用标准数字 OK 行。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -321,6 +322,14 @@ location 片段导航及其他 scheme 不在范围内。配置读取上限已由
 片段导航及其他 location 组件 setter。320x320/128 DPI 日志得到 TEST152 OK、配置所选 99 项
 全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13 的成功行是 `OK (overview)`，其余 98 项
 使用标准数字 OK 行。
+
+**next185 href/assign/replace 片段引用基线（2026-08-09）**：以 `#` 开头的 href setter 与
+assign 调用排队新增 null-state 同 document entry，replace 调用排队替换当前 entry；它们延迟
+更新 location/history，仅派发 hashchange，不发起 GET/popstate，相同目标静默。TEST153 覆盖
+三入口、replace 后 length/document identity/state、后退事件顺序及无网络。其他相对/绝对 URL
+仍走既有跨 document 导航；百分号编码/标准化、锚点滚动、跨 document 片段导航与其他组件
+setter 不在本批。320x320/128 DPI 日志得到 TEST153 OK、配置所选 100 项全部 OK、零 ERROR、
+零 FAIL 与最终 PASS；TEST13 使用 `OK (overview)`，其余 99 项使用标准数字 OK 行。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

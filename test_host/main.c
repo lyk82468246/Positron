@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 152
+#define TEST_MAX_NUMBER 153
 
 static int test_config_space(char c)
 {
@@ -2137,6 +2137,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_SCRIPT_NAVIGATION_FORWARD 5
 #define PCORE_SCRIPT_NAVIGATION_GO 6
 #define PCORE_SCRIPT_NAVIGATION_FRAGMENT 7
+#define PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE 8
 #define PCORE_SCRIPT_NAVIGATION_URL_MAX 1024
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_COMMIT_TIMER 25
@@ -6132,7 +6133,8 @@ static int pcore_browser_script_navigation(void *pw,
     } else if (strcmp(op, "assign") == 0 ||
             strcmp(op, "reload") == 0 ||
             strcmp(op, "replace") == 0 ||
-            strcmp(op, "fragment") == 0) {
+            strcmp(op, "fragment") == 0 ||
+            strcmp(op, "fragmentReplace") == 0) {
         url = PJson_GetString(object, "url");
         if (url == NULL || url[0] == '\0' ||
                 strlen(url) >= PCORE_SCRIPT_NAVIGATION_URL_MAX) {
@@ -6140,7 +6142,8 @@ static int pcore_browser_script_navigation(void *pw,
             return pcore_browser_script_write_bool(0, out_json,
                     out_capacity, out_len);
         }
-        if (strcmp(op, "fragment") == 0 &&
+        if ((strcmp(op, "fragment") == 0 ||
+                strcmp(op, "fragmentReplace") == 0) &&
                 (!bridge->history_can_commit ||
                 bridge->history_url == NULL ||
                 !pcore_browse_history_same_base_url(
@@ -6161,8 +6164,10 @@ static int pcore_browser_script_navigation(void *pw,
             kind = PCORE_SCRIPT_NAVIGATION_RELOAD;
         } else if (strcmp(op, "replace") == 0) {
             kind = PCORE_SCRIPT_NAVIGATION_REPLACE;
-        } else {
+        } else if (strcmp(op, "fragment") == 0) {
             kind = PCORE_SCRIPT_NAVIGATION_FRAGMENT;
+        } else {
+            kind = PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE;
         }
     } else {
         PJson_Free(root);
@@ -6573,7 +6578,8 @@ static int pcore_browser_script_session_traverse_history(int target_index)
     return 0;
 }
 
-static int pcore_browser_script_session_navigate_fragment(const char *url)
+static int pcore_browser_script_session_navigate_fragment(const char *url,
+        int replace_current)
 {
     pcore_browser_script_bridge *bridge;
     char *url_copy;
@@ -6601,19 +6607,23 @@ static int pcore_browser_script_session_navigate_fragment(const char *url)
         return 1;
     }
     new_length = g_browse_history.count;
-    if (g_browse_history.index + 1 < new_length) {
-        new_length = g_browse_history.index + 1;
+    if (!replace_current) {
+        if (g_browse_history.index + 1 < new_length) {
+            new_length = g_browse_history.index + 1;
+        }
+        if (new_length >= PCORE_BROWSE_HISTORY_MAX) {
+            new_length--;
+        }
+        new_length++;
     }
-    if (new_length >= PCORE_BROWSE_HISTORY_MAX) {
-        new_length--;
-    }
-    new_length++;
     if (PScript_SetGlobalString(g_browser_script_session.runtime,
             "__pcoreHashNavigationUrl", -1, url, -1) != PSCRIPT_OK ||
             PScript_SetGlobalNumber(g_browser_script_session.runtime,
             "__pcoreHashNavigationLength", -1,
             (double) new_length) != PSCRIPT_OK ||
-            pcore_browse_history_push_state(url, "null") != 0) {
+            (replace_current ?
+            pcore_browse_history_replace_state_url(url, "null") :
+            pcore_browse_history_push_state(url, "null")) != 0) {
         free(url_copy);
         free(state_copy);
         return 1;
@@ -6809,12 +6819,22 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "try{delete g.__pcoreDocumentUrl;}catch(purlerror){}"
         "try{delete g.__pcoreHistoryLength;}catch(phistoryerror){}"
         "try{delete g.__pcoreHistoryState;}catch(phistorystateerror){}"
-        "function pnavigate(v){if(!__pcoreNavigation({op:'assign',"
-        "url:String(v)})){throw new Error('location navigation failed');}}"
+        "function pfragmentReference(v){var h;var b;if(v.charAt(0)!=='#')"
+        "{return null;}h=purl.indexOf('#');b=h>=0?purl.substring(0,h):purl;"
+        "return b+v;}"
+        "function pqueueFragment(v,replace){var u=pfragmentReference(v);"
+        "if(u===null){return false;}if(u===purl){return true;}"
+        "if(!__pcoreNavigation({op:replace?'fragmentReplace':'fragment',"
+        "url:u})){throw new Error('location fragment navigation failed');}"
+        "return true;}"
+        "function pnavigate(v){var s=String(v);if(pqueueFragment(s,false))"
+        "{return;}if(!__pcoreNavigation({op:'assign',url:s})){"
+        "throw new Error('location navigation failed');}}"
         "function preload(){if(!__pcoreNavigation({op:'reload',url:purl}))"
         "{throw new Error('location reload failed');}}"
-        "function preplace(v){if(!__pcoreNavigation({op:'replace',"
-        "url:String(v)})){throw new Error('location replace failed');}}"
+        "function preplace(v){var s=String(v);if(pqueueFragment(s,true))"
+        "{return;}if(!__pcoreNavigation({op:'replace',url:s})){"
+        "throw new Error('location replace failed');}}"
         "function phistoryUrl(url,provided){var u=provided?String(url):'';"
         "var h;var b;if(u===''){return purl;}h=purl.indexOf('#');"
         "b=h>=0?purl.substring(0,h):purl;if(u.charAt(0)==='#'){return b+u;}"
@@ -8754,7 +8774,13 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                 navigate_replace(hwnd, url);
             } else if (kind == PCORE_SCRIPT_NAVIGATION_FRAGMENT &&
                     url != NULL) {
-                (void) pcore_browser_script_session_navigate_fragment(url);
+                (void) pcore_browser_script_session_navigate_fragment(url,
+                        0);
+            } else if (kind ==
+                    PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE &&
+                    url != NULL) {
+                (void) pcore_browser_script_session_navigate_fragment(url,
+                        1);
             }
             free(url);
         }
@@ -25856,7 +25882,8 @@ static BOOL test152_browser_script_location_hash_navigation(void)
         g_browser_script_session.bridge = bridge;
         runtime = NULL;
         bridge = NULL;
-        if (pcore_browser_script_session_navigate_fragment(queued_url) != 0 ||
+        if (pcore_browser_script_session_navigate_fragment(queued_url,
+                0) != 0 ||
                 g_nav_loading || g_nav_request != NULL ||
                 g_browse_history.count != 2 ||
                 g_browse_history.index != 1 ||
@@ -25907,7 +25934,7 @@ static BOOL test152_browser_script_location_hash_navigation(void)
         if (evaluation_result == NULL ||
                 strcmp(evaluation_result, "1|#next") != 0 ||
                 pcore_browser_script_session_navigate_fragment(
-                queued_url) != 0 || g_browse_history.count != 3 ||
+                queued_url, 0) != 0 || g_browse_history.count != 3 ||
                 g_browse_history.index != 2 ||
                 strcmp(pcore_browse_history_current(), URL_BASE) != 0 ||
                 PScript_Evaluate(session_runtime,
@@ -25964,6 +25991,255 @@ static BOOL test152_browser_script_location_hash_navigation(void)
             "location.hash queues same-document fragment navigation, adds\n"
             "a null-state history entry without a GET, and dispatches only\n"
             "hashchange; same values stay silent and traversal still works.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 153 - fragment references through href/assign/replace            */
+/* -------------------------------------------------------------------- */
+static BOOL test153_browser_script_location_fragment_methods(void)
+{
+    static const char URL_OLD[] = "https://example.com/page#old";
+    static const char URL_HREF[] = "https://example.com/page#href";
+    static const char URL_ASSIGN[] = "https://example.com/page#assign";
+    static const char URL_REPLACE[] = "https://example.com/page#replace";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var seen=[];onpopstate=function(e){seen.push('P'+String(e.state)"
+        "+':'+location.hash);};onhashchange=function(e){"
+        "seen.push('H'+e.oldURL+'>'+e.newURL+':'"
+        "+String(history.state)+':'+location.hash);};"
+        "var returned=(location.href='#href');"
+        "document.getElementById('result').textContent="
+        "returned+'|'+location.hash+'|'+seen.length+'|'"
+        "+history.length+'|'+String(history.state);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char INITIAL_RESULT[] = "#href|#old|0|1|null";
+    static const char HREF_RESULT[] =
+        "#href|2|null|Hhttps://example.com/page#old>"
+        "https://example.com/page#href:null:#href";
+    static const char ASSIGN_RESULT[] =
+        "#assign|3|null|Hhttps://example.com/page#href>"
+        "https://example.com/page#assign:null:#assign";
+    static const char REPLACE_RESULT[] =
+        "#replace|3|null|Hhttps://example.com/page#assign>"
+        "https://example.com/page#replace:null:#replace";
+    static const char BACK_RESULT[] =
+        "Pnull:#href~Hhttps://example.com/page#replace>"
+        "https://example.com/page#href:null:#href|3|null";
+    HANDLE document;
+    HANDLE runtime;
+    HANDLE session_runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *evaluation_result;
+    char *queued_url;
+    char result[128];
+    char error[256];
+    unsigned long document_id;
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    session_runtime = NULL;
+    bridge = NULL;
+    evaluation_result = NULL;
+    queued_url = NULL;
+    document_id = 0;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    (void) pcore_browse_history_commit_navigation(URL_OLD, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_OLD,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, INITIAL_RESULT) != 0 ||
+            result_bytes != (int) sizeof(INITIAL_RESULT) - 1 ||
+            bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
+            bridge->navigation_url == NULL ||
+            strcmp(bridge->navigation_url, URL_HREF) != 0 ||
+            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
+            1, -1, bridge) != 0 || g_browse_history.count != 1 ||
+            g_browse_history.index != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        bridge->hwnd = (HWND) 1;
+        queued_url = bridge->navigation_url;
+        bridge->navigation_url = NULL;
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
+        session_runtime = runtime;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_navigate_fragment(queued_url,
+                0) != 0 || g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.count != 2 ||
+                g_browse_history.index != 1 ||
+                strcmp(pcore_browse_history_current(), URL_HREF) != 0 ||
+                strcmp(pcore_browse_history_current_state(), "null") != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.hash+'|'+history.length+'|'"
+                "+String(history.state)+'|'+seen[0];", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        } else {
+            evaluation_result = PScript_GetResult(session_runtime);
+            if (evaluation_result == NULL ||
+                    strcmp(evaluation_result, HREF_RESULT) != 0) {
+                ok = 0;
+            }
+        }
+        free(queued_url);
+        queued_url = NULL;
+    }
+    if (ok && (PScript_Evaluate(session_runtime,
+            "location.assign('#assign');location.hash+'|'"
+            "+history.length+'|'+seen.length;", -1) != PSCRIPT_OK ||
+            g_browser_script_session.bridge->navigation_kind !=
+            PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
+            g_browser_script_session.bridge->navigation_url == NULL ||
+            strcmp(g_browser_script_session.bridge->navigation_url,
+            URL_ASSIGN) != 0)) {
+        ok = 0;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        queued_url = g_browser_script_session.bridge->navigation_url;
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, "#href|2|1") != 0 ||
+                pcore_browser_script_session_navigate_fragment(queued_url,
+                0) != 0 || g_browse_history.count != 3 ||
+                g_browse_history.index != 2 ||
+                strcmp(pcore_browse_history_current(), URL_ASSIGN) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.hash+'|'+history.length+'|'"
+                "+String(history.state)+'|'+seen[1];", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        free(queued_url);
+        queued_url = NULL;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, ASSIGN_RESULT) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "history.replaceState({keep:1},'',location.href);"
+                "location.replace('#replace');location.hash+'|'"
+                "+history.length+'|'+JSON.stringify(history.state)+'|'"
+                "+seen.length;", -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                URL_REPLACE) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        queued_url = g_browser_script_session.bridge->navigation_url;
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        document_id = g_browse_history.document_ids[2];
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, "#assign|3|{\"keep\":1}|2") != 0 ||
+                pcore_browser_script_session_navigate_fragment(queued_url,
+                1) != 0 || g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.count != 3 ||
+                g_browse_history.index != 2 || document_id == 0 ||
+                g_browse_history.document_ids[2] != document_id ||
+                strcmp(pcore_browse_history_current(), URL_REPLACE) != 0 ||
+                strcmp(pcore_browse_history_current_state(), "null") != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.hash+'|'+history.length+'|'"
+                "+String(history.state)+'|'+seen[2];", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        free(queued_url);
+        queued_url = NULL;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, REPLACE_RESULT) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.replace('#replace');seen.length+'|'"
+                "+location.hash+'|'+history.length;", -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_NONE) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, "3|#replace|3") != 0 ||
+                !pcore_browse_navigate_back((HWND) 1) ||
+                g_nav_loading || g_nav_request != NULL ||
+                PScript_Evaluate(session_runtime,
+                "seen.slice(3).join('~')+'|'"
+                "+history.length+'|'+String(history.state);", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, BACK_RESULT) != 0 ||
+                g_browse_history.index != 1 ||
+                strcmp(pcore_browse_history_current(), URL_HREF) != 0 ||
+                strcmp(pcore_browse_history_current_state(), "null") != 0 ||
+                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+            ok = 0;
+        }
+    }
+    free(queued_url);
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 153 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 153 OK",
+            "fragment-only location.href/assign add same-document history\n"
+            "entries, while replace updates the current entry; all defer,\n"
+            "stay network-free, reset state, and dispatch only hashchange.");
     return TRUE;
 }
 
@@ -26247,6 +26523,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 152: ok =
                 test152_browser_script_location_hash_navigation();
+                break;
+        case 153: ok =
+                test153_browser_script_location_fragment_methods();
                 break;
         default: ok = FALSE; break;
         }

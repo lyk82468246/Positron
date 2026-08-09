@@ -1,12 +1,11 @@
 # Positron
 
-**当前自动化设备基线（next179，2026-08-09）**：保留 next168 的 16 项成功 GET URL
-历史和左方向键后退重载，并为同一个 Duktape 页面 context 增加最小 location/history bridge
-及异步 location 赋值/重载/替换、history 前进、有界偏移导航、只读长度、逐项 state 和
-受控 replace/pushState 及 pushed entries 的同 document traversal。`screen=320x320 dpi=128`
-日志中 TEST13 三段导航、TEST20/27/43/44/56/58-77/80-147 全部通过：95 条 `TEST ... OK`、
-零条 `[ERROR]`、零 FAIL、最终 `TESTBENCH PASS`，日志为
-`C:\WMShare\Positron-next179\test_host.log`。最近一次定向人工门
+**当前自动化设备基线（next185，2026-08-09）**：同一个 Duktape 页面 context 已具备最小
+location/history bridge、受控 state、同 document traversal、popstate/hashchange、动态 URL
+组件与 `location.hash` 导航。`screen=320x320 dpi=128` 日志中 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-153 全部通过：配置所选 100 项全部 OK、零条 `[ERROR]`、零 FAIL、
+最终 `TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next185\test_host.log`；TEST13 使用
+`OK (overview)`，其余 99 项使用标准数字 OK 行。最近一次定向人工门
 仍是 next167：用户确认
 Learn More 离开页保持居中边距，真实 SIP 候选词点击可完整键入。后续人工视觉/交互检查
 改为累计若干可能产生回归的批次后集中进行，不再逐个自动批次阻塞开发。默认
@@ -262,6 +261,18 @@ state/length、事件顺序、无网络与 14/16 callback 槽位。默认 `javas
 ARMV4I 二进制与构建产物 SHA-256 一致。320x320/128 DPI 设备日志得到 TEST152 OK、配置
 所选 99 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；其中 TEST13 使用 `OK (overview)` 行，
 其余 98 项使用标准数字 OK 行。
+
+**next185 自动设备基线（2026-08-09）**：`location.href='#...'`、`location.assign('#...')`
+与 `location.replace('#...')` 现在复用同文档片段队列；前两者新增 null-state history entry，
+replace 替换当前 entry 且不增加 history.length。三种入口都保持延迟提交、无 GET/popstate、
+仅派发 hashchange，相同目标静默，后退仍为 popstate→hashchange。TEST153 固定三入口的
+异步边界、state/length、replace 文档身份、事件与无网络行为；其他相对/绝对 URL 仍走既有
+跨文档路径。百分号编码/URL 标准化、锚点滚动、跨 document 片段导航和其他组件 setter 不在
+本批；默认 `javascript=0`、TEST13、core ABI 与 14/16 callback 槽位保持不变。
+C89 回归、仓库审计和 ARMV4I Debug 增量构建已通过；`C:\WMShare\Positron-next185` 的七个
+ARMV4I 二进制与构建产物 SHA-256 一致。320x320/128 DPI 日志得到 TEST153 OK、配置所选
+100 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13 使用 `OK (overview)`，其余 99 项
+使用标准数字 OK 行。
 
 **next157 设备失败（2026-08-08，不能作为基线）**：在 next156 的 BMP 桥之上，原生 EDIT/SELECT
 现在把成对 UTF-16 代理项合并为一个 Unicode 标量，再分别派发一次 `keypress`；EDIT
@@ -670,7 +681,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-152
+tests=13,20,27,43,44,56,58-77,80-153
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
