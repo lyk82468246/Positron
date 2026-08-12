@@ -101,6 +101,12 @@ double-dot、`.%2e`/`%2e.` 拼写，以及规范化后不同 query/path 仍不�
 宣称完整 URL Standard parser。C89、ARMV4I Debug 构建和 staging 哈希已通过，33 项定向
 设备日志得到零 ERROR/FAIL 与最终 PASS；ini 保持 1357 字节。
 
+**next215 基线边界（2026-08-12）**：只新增根相对 URL path 末尾的单个完整 `/%2e%2e`
+segment，且只在存在一个非空前驱目录时连同该目录折叠并保留 `/`。重复或混合 double-dot、
+`.%2e`/`%2e.` 拼写，以及规范化后不同 query/path 仍不进入同文档队列。本批不宣称完整 URL
+Standard parser。C89、ARMV4I Debug 构建和 staging 哈希已通过，34 项定向设备日志得到零
+ERROR/FAIL 与最终 PASS；ini 保持 1357 字节。
+
 默认 `javascript=0`；完整 DOM/window、任意 OEM IME 和全站视觉仍未实现。
 
 **next145 设备验收记录（2026-08-08）**：`PCore_GetScriptCount/PCore_GetScript` 按 DOM
@@ -652,6 +658,14 @@ hashchange、无 GET、不同 query/path、混合 single/double、重复 double-
 core ABI 和 callback 数不变；C89、ARMV4I Debug 构建与 `C:\WMShare\Positron-next214` 七个
 二进制哈希已通过。定向门选择 TEST13/151-181/999，共 33 项；ini 为 1357 字节且设备日志
 全部通过，next211 仍是最近全量检查点。
+
+**next215 根相对 URL 末尾编码双点段基线（2026-08-12）**：片段分类器新增根相对 path 末尾
+`%2e%2e` segment 的前驱目录折叠；TEST182 覆盖三入口、清除、same-value、state/length、
+hashchange、无 GET、不同 query/path、混合 single/double、重复 double-dot、字面父目录和
+14/16 callback 槽位。`.%2e`/`%2e.` 仍不支持。默认 javascript=0、TEST13、core ABI 和
+callback 数不变；C89、ARMV4I Debug 构建与 `C:\WMShare\Positron-next215` 七个二进制哈希
+已通过。定向门选择 TEST13/151-182/999，共 34 项；ini 为 1357 字节，设备日志全部通过，
+next211 仍是最近全量检查点。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
