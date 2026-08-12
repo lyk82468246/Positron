@@ -1,15 +1,23 @@
 # Positron
 
-**当前自动化设备基线（next203，2026-08-12）**：同一个 Duktape 页面 context 已具备最小
+**当前自动化设备基线（next204，2026-08-12）**：同一个 Duktape 页面 context 已具备最小
 location/history bridge、受控 state、同 document traversal、popstate/hashchange、动态 URL
 组件与 `location.hash` 导航。`screen=640x480 dpi=192` 日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-171 全部通过：配置所选 118 项全部 OK、零条 `[ERROR]`、零 FAIL、
-最终 `TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next203\test_host.log`；TEST13 使用
-`OK (overview)`，其余 117 项使用标准数字 OK 行。最近一次定向人工门
+TEST20/27/43/44/56/58-77/80-171/999 全部通过：配置所选 119 项全部 OK、零条 `[ERROR]`、
+零 FAIL、最终 `TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next204\test_host.log`；TEST13
+使用 `OK (overview)`，其余 118 项使用标准数字 OK 行，用户确认 TEST999 在序列末尾实际响
+了一次。最近一次定向人工门
 仍是 next167：用户确认
 Learn More 离开页保持居中边距，真实 SIP 候选词点击可完整键入。后续人工视觉/交互检查
 改为累计若干可能产生回归的批次后集中进行，不再逐个自动批次阻塞开发。默认
 `javascript=0`；TEST123 仍只代表自动共享路径，不外推为任意 OEM IME。
+
+**next204 自动设备与提示音门通过（2026-08-12）**：`test_host.ini` 可把专用 `TEST999` 放在所选
+测试末尾；只有前序所选测试全部完成并运行到该项时，宿主才调用一次
+`MessageBeep(MB_OK)`，随后记录 `TEST 999 OK`。这不是所有退出路径的全局钩子，前序失败或
+未选择 999 都不会响。C89 回归和 ARMV4I Debug 增量构建已通过；
+`C:\WMShare\Positron-next204` 的七个二进制与构建产物 SHA-256 一致。设备日志得到配置所选
+119 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；用户确认测试序列末尾实际听到一次提示音。
 
 **next161 设备运行未完成（2026-08-09，不能作为基线）**：WM 原生 EDIT 子类接入
 `WM_IME_STARTCOMPOSITION/WM_IME_COMPOSITION/WM_IME_ENDCOMPOSITION`，通过 WM6
@@ -476,6 +484,13 @@ state、事件、无网络和分类边界；绝对 URL 多位置点段、内嵌�
 产物 SHA-256 一致。640x480/192 DPI 日志得到 TEST70、TEST170 与 TEST171 OK、配置所选 118 项
 全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13 使用 `OK (overview)`，其余 117 项使用标准数字
 OK 行。
+
+**next204 自动设备基线（2026-08-12）**：新增独立、可选的 `TEST999` 完成提示音门。
+配置解析只把精确编号 999 视为特殊测试，不开放 172-998；TEST999 在所有普通所选测试之后
+调用一次 `MessageBeep(MB_OK)` 并记录标准 `TEST 999 OK`。它不是全局退出钩子，因此前序失败
+不会响。默认候选配置在 next203 的 118 项后追加 999；正式构建、C89 检查和 staging 哈希已
+通过；设备日志得到 118 条标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS，
+用户确认序列末尾实际响了一次，next204 已替代 next203 成为基线。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对

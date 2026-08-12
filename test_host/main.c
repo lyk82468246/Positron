@@ -362,6 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 
 #define TEST_CONFIG_MAX_BYTES 4096
 #define TEST_MAX_NUMBER 171
+#define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
 {
@@ -375,7 +376,8 @@ static int test_config_available(int number)
 }
 
 static int test_config_parse_spec(char *spec,
-        unsigned char selected[TEST_MAX_NUMBER + 1], int *selected_7b)
+        unsigned char selected[TEST_MAX_NUMBER + 1], int *selected_7b,
+        int *selected_999)
 {
     char *p;
     int start;
@@ -430,11 +432,15 @@ static int test_config_parse_spec(char *spec,
         if (end < start) {
             return 0;
         }
-        for (number = start; number <= end; number++) {
-            if (!test_config_available(number)) {
-                return 0;
+        if (start == TEST_COMPLETION_BEEP_NUMBER && end == start) {
+            *selected_999 = 1;
+        } else {
+            for (number = start; number <= end; number++) {
+                if (!test_config_available(number)) {
+                    return 0;
+                }
+                selected[number] = 1;
             }
-            selected[number] = 1;
         }
         while (test_config_space(*p)) {
             separator_space = 1;
@@ -532,7 +538,8 @@ static int test_config_key_value(char *line, const char *key,
 /* Return >0 for a valid selection, 0 when no file exists, and -1 when the
  * file exists but is unreadable or malformed. */
 static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
-        int *selected_7b, int *auto_run, int *javascript_enabled)
+        int *selected_7b, int *selected_999, int *auto_run,
+        int *javascript_enabled)
 {
     WCHAR path[MAX_PATH];
     DWORD size;
@@ -552,6 +559,7 @@ static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
 
     memset(selected, 0, TEST_MAX_NUMBER + 1);
     *selected_7b = 0;
+    *selected_999 = 0;
     *auto_run = 0;
     *javascript_enabled = 0;
     if (test_host_sibling_path(L"test_host.ini", path) != 0) {
@@ -614,7 +622,8 @@ static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
                 if (tests_found) {
                     return -1;
                 }
-                if (!test_config_parse_spec(value, selected, selected_7b)) {
+                if (!test_config_parse_spec(value, selected, selected_7b,
+                        selected_999)) {
                     return -1;
                 }
                 tests_found = 1;
@@ -646,7 +655,7 @@ static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
                         javascript_found = 1;
                     } else if (!tests_found) {
                         if (!test_config_parse_spec(line, selected,
-                                selected_7b)) {
+                                selected_7b, selected_999)) {
                             return -1;
                         }
                         tests_found = 1;
@@ -662,6 +671,9 @@ static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
         return -1;
     }
     count = *selected_7b ? 1 : 0;
+    if (*selected_999) {
+        count++;
+    }
     for (i = 1; i <= TEST_MAX_NUMBER; i++) {
         if (selected[i]) {
             count++;
@@ -671,8 +683,8 @@ static int test_config_load(unsigned char selected[TEST_MAX_NUMBER + 1],
 }
 
 static void test_config_prompt(const unsigned char *selected,
-        int selected_7b, int automated, int javascript_enabled,
-        char *buffer, int capacity)
+        int selected_7b, int selected_999, int automated,
+        int javascript_enabled, char *buffer, int capacity)
 {
     char item[24];
     int i;
@@ -696,6 +708,10 @@ static void test_config_prompt(const unsigned char *selected,
                     (size_t) (capacity - 1 - strlen(buffer)));
             first = 0;
         }
+    }
+    if (selected_999) {
+        strncat(buffer, first ? "999" : ", 999",
+                (size_t) (capacity - 1 - strlen(buffer)));
     }
     if (automated) {
         strncat(buffer,
@@ -31477,8 +31493,22 @@ static BOOL test17_nsrender(void)
     return TRUE;
 }
 
+static BOOL test999_completion_beep(void)
+{
+    if (!MessageBeep(MB_OK)) {
+        OutputDebugStringW(L"TEST 999 FAIL: MessageBeep(MB_OK) failed\r\n");
+        testbench_log_message("ERROR", L"TEST 999 FAIL",
+                "MessageBeep(MB_OK) returned FALSE.");
+        return FALSE;
+    }
+    OutputDebugStringW(L"TEST 999 OK: completion beep requested\r\n");
+    testbench_log_message("INFO", L"TEST 999 OK",
+            "The final completion system beep was requested exactly once.");
+    return TRUE;
+}
+
 static int run_configured_tests(const unsigned char *selected,
-        int selected_7b, int *http_active)
+        int selected_7b, int selected_999, int *http_active)
 {
     BOOL ok;
     int number;
@@ -31750,6 +31780,9 @@ static int run_configured_tests(const unsigned char *selected,
             *http_active = 1;
         }
     }
+    if (selected_999 && !test999_completion_beep()) {
+        return TEST_COMPLETION_BEEP_NUMBER;
+    }
     return 0;
 }
 
@@ -31766,6 +31799,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     BOOL run_browse;
     unsigned char configured_tests[TEST_MAX_NUMBER + 1];
     int configured_7b;
+    int configured_999;
     int configured_count;
     int configured_auto;
     int configured_javascript;
@@ -31788,24 +31822,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
             GetSystemMetrics(SM_CYSCREEN));
 
     configured_count = test_config_load(configured_tests, &configured_7b,
-            &configured_auto, &configured_javascript);
+            &configured_999, &configured_auto, &configured_javascript);
     if (configured_count < 0) {
         show_error(L"test_host.ini ignored",
                    "The file exists but is empty, unreadable or malformed.\n"
-                   "Use: tests=31,32 or tests=1-5 7b\n"
+                   "Use: tests=31,32 or tests=1-5 7b 999\n"
                    "Optional: auto=1 and javascript=0\n\n"
                    "TEST 23/78/79 are unavailable. Continuing with group selection.");
     } else if (configured_count > 0) {
         g_browser_javascript_enabled = configured_javascript;
-        test_config_prompt(configured_tests, configured_7b, configured_auto,
-                configured_javascript, config_prompt, sizeof(config_prompt));
+        test_config_prompt(configured_tests, configured_7b, configured_999,
+                configured_auto, configured_javascript, config_prompt,
+                sizeof(config_prompt));
         if (configured_auto) {
             g_testbench_auto = 1;
             testbench_log_open();
             show_info(L"Automated testbench", config_prompt);
             configured_http = 0;
             rc = run_configured_tests(configured_tests, configured_7b,
-                    &configured_http);
+                    configured_999, &configured_http);
             if (configured_http) {
                 PHttp_Cleanup();
             }
@@ -31825,7 +31860,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         if (ask_yesno(L"Configured tests", config_prompt)) {
             configured_http = 0;
             rc = run_configured_tests(configured_tests, configured_7b,
-                    &configured_http);
+                    configured_999, &configured_http);
             if (configured_http) {
                 PHttp_Cleanup();
             }
