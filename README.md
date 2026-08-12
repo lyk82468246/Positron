@@ -95,6 +95,14 @@ Debug 构建和七个 staging 哈希已通过；定向门为 TEST13/151-179/999�
 首包的 ini 因 4120 字节超过既有 4096 字节读取上限而在测试前被忽略；测试能力与配置值未改，
 修正版只精简注释至 1357 字节，并已正式暂存到 `C:\WMShare\Positron-next213-fix`。
 
+**next214 定向自动设备基线（2026-08-12）**：绝对 href/assign/replace URL 的 path 末尾 segment
+若完整匹配 `%2E%2E`，可连同前一个非空目录折叠并保留结尾 `/`；规范化后仍要求
+origin/path/query 与当前文档匹配。TEST181 覆盖大小写、三入口、清除、same-value、
+history/state、hashchange、无 GET、不同 query/path，以及混合 single/double、重复 double-dot
+和字面父目录边界。根相对末尾与 `.%2e`/`%2e.` 拼写保持普通导航。C89、ARMV4I Debug 构建
+和七个 staging 哈希已通过；ini 保持 1357 字节，定向门为 TEST13/151-181/999，共 33 项；
+日志得到 32 条标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
+
 自动设备门从本批起分层：低风险、局部变更运行“本批测试 + 直接共享路径 + TEST13 +
 TEST999”；每累计约 5 个低风险批次，以及触及公共 DLL/ABI、布局/重绘、网络、输入基础设施、
 里程碑交付或出现异常时，再运行全量门。next211 的 126 项日志是当前最近一次全量证据。
@@ -640,6 +648,13 @@ TEST13/151-180/999（32 项），修正版设备日志全部通过；next211 仍
 首个 `C:\WMShare\Positron-next213` 包的 4120 字节 ini 被既有 4096 字节上限拒绝，未执行任何
 候选测试；修正版保持 `auto=1`、`javascript=0` 和测试选择不变，只把注释精简至 1357 字节，
 并已在 `C:\WMShare\Positron-next213-fix` 重新暂存和核对哈希。
+
+**next214 定向自动设备基线（2026-08-12）**：绝对 URL 分类器新增 path 末尾、位于
+query/fragment 或 URL 结尾前的 `%2e%2e` segment，并折叠其前驱目录。TEST181 保持
+href/assign/replace、清除、same-value、state/length、hashchange、无 GET、不同 query/path、
+混合 single/double、重复 double-dot、字面父目录和 14/16 callback 槽位。根相对末尾、
+`.%2e` 与 `%2e.` 仍不支持。正式构建、C89 与 staging 哈希已通过；默认定向配置为
+TEST13/151-181/999（33 项），ini 为 1357 字节，设备日志全部通过；next211 仍是最近全量检查点。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对
