@@ -2,8 +2,8 @@
 
 更新时间：2026-08-12
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前自动化设备基线为 next193：`screen=240x240 dpi=96` 默认日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-161 全部通过，配置所选 108 项全部 OK、零 ERROR、零 FAIL，并记录
+当前自动化设备基线为 next194：`screen=240x240 dpi=96` 默认日志中 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-162 全部通过，配置所选 109 项全部 OK、零 ERROR、零 FAIL，并记录
 `TESTBENCH PASS`。next167 的高 DPI interaction restyle 修复和 Learn More/SIP 定向
 人工结果继续有效；next168 新增成功-GET URL 历史和左键后退，next169 增加最小脚本
 location/history 后退桥。人工视觉/交互改为累计
@@ -748,6 +748,20 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   DPI 日志得到 TEST161 OK、配置所选 108 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13
   使用 `OK (overview)`，其余 107 项使用标准数字 OK 行。
 
+### 6bn. next194：JavaScript 父目录后连续 `./` 片段 URL（已完成）
+
+- 连续前导 `../` 之后允许连续多个 `./` 的 href/assign/replace URL，先逐级上移目录、再移除这些
+  单点段，解析后与当前 path/query 完全相同且仅改变 fragment 时复用同 document 队列；当前
+  确有 fragment 时也可用匹配目标清除。href/assign push，replace 替换当前 entry。
+- 三入口保持延迟提交、无 GET/popstate、只派发 hashchange；当前无 fragment 的同 URL、不同
+  path/query 和路径中部 `segment/../` 目标仍走普通导航。TEST162 固定三入口、清除、
+  same-value、state/length、事件、无网络、分类边界和 14/16 callback 槽位。
+- 任意内嵌点段归一化、百分号标准化、锚点滚动和其他组件 setter 不在本批；默认 javascript=0、
+  TEST13 与 core ABI 不变。C89 和 ARMV4I Debug 增量构建已通过；
+  `C:\WMShare\Positron-next194` staging 的七个 ARMV4I 二进制 SHA-256 全部匹配。240x240/96
+  DPI 日志得到 TEST162 OK、配置所选 109 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13
+  使用 `OK (overview)`，其余 108 项使用标准数字 OK 行。
+
 ### 6be. next185：JavaScript location 片段引用入口（已完成）
 
 - `location.href='#...'` 与 `location.assign('#...')` 复用片段队列新增 null-state 同 document
@@ -1187,10 +1201,10 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next193 的 TEST13/20/27/43/44/56/58-77/80-161 设备日志作为已验证自动化基线；
+1. 以 next194 的 TEST13/20/27/43/44/56/58-77/80-162 设备日志作为已验证自动化基线；
    后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
-2. 下一个浏览器 JavaScript 绑定仍按一个纵切一个设备门推进；每批必须得到新增 TEST OK、
-   配置所选测试全部 OK、零 ERROR、零 FAIL 与最终 PASS，才能升级基线并提交。
+2. next194 的 TEST162 设备门已通过并升级基线；后续浏览器 JavaScript 绑定仍按一个纵切一个
+   设备门推进。
 3. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
    WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础
    IME/composition；next167 已人工通过报告中的真实 SIP 候选词完整输入，任意 OEM IME
