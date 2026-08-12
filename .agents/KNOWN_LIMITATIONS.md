@@ -31,9 +31,9 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next191，2026-08-12）**：`screen=240x240 dpi=96` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-159，配置所选 106 项全部 OK、零 ERROR、零 FAIL、最终
-TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 105 项使用标准数字 OK 行。
+**当前自动化设备基线（next192，2026-08-12）**：`screen=240x240 dpi=96` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-160，配置所选 107 项全部 OK、零 ERROR、零 FAIL、最终
+TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 106 项使用标准数字 OK 行。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -383,6 +383,16 @@ hashchange、无网络与分类边界。重复/混合点段归一化、百分号
 不在本批。C89、ARMV4I Debug 构建及 `C:\WMShare\Positron-next191` 七个二进制 SHA-256 核对
 已通过。240x240/96 DPI 日志得到 TEST159 OK、配置所选 106 项全部 OK、零 ERROR、零 FAIL 与
 最终 PASS；TEST13 使用 `OK (overview)`，其余 105 项使用标准数字 OK 行。
+
+**next192 连续前导父目录片段 URL 基线（2026-08-12）**：连续多个前导 `../` 的 href/assign/replace
+URL，只有逐级上移目录并解析后 path/query 与当前基址完全相同且改变 fragment，或当前确有
+fragment 时用匹配目标清除它，才走同 document 队列；越过 origin 根的额外父目录段钳制在根。
+当前无 fragment 的同 URL、不同 path/query 和混合 `.././` 目标保持普通导航。TEST160 覆盖三
+入口、清除、same-value、history/state、hashchange、无网络与分类边界。混合/内嵌点段归一化、
+百分号标准化、锚点滚动和其他组件 setter 不在本批。C89、ARMV4I Debug 构建及
+`C:\WMShare\Positron-next192` 七个二进制 SHA-256 核对已通过。240x240/96 DPI 日志得到 TEST160
+OK、配置所选 107 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13 使用 `OK (overview)`，
+其余 106 项使用标准数字 OK 行。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
