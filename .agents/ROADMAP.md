@@ -959,6 +959,16 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - 本批是 full checkpoint 后第 3 个低风险定向批次，门为 TEST13/151-176/999（28 项）。C89、
   ARMV4I Debug 构建、`C:\WMShare\Positron-next209` 七个哈希和设备日志均已通过。
 
+### 6cd. next210：JavaScript 绝对 URL 重复编码单点段片段导航（已完成）
+
+- 绝对 href/assign/replace URL 中多个内嵌完整 `%2e` segment 依次按 single-dot 移除；同文档
+  判定继续要求 origin/path/query 匹配且 fragment 改变或清除。
+- TEST177 固定三入口、清除、same-value、history/state、hashchange、无网络、不同 query/path、
+  父目录排除边界和 14/16 callback 槽位。TEST173 的重复编码旧反向断言已移除；`%2E%2E`、
+  混合内嵌/末尾编码与根相对重复编码仍不规范化。
+- 本批是 full checkpoint 后第 4 个低风险定向批次，门为 TEST13/151-177/999（29 项）。C89、
+  ARMV4I Debug 构建、`C:\WMShare\Positron-next210` 七个哈希和设备日志均已通过。
+
 ### 6be. next185：JavaScript location 片段引用入口（已完成）
 
 - `location.href='#...'` 与 `location.assign('#...')` 复用片段队列新增 null-state 同 document
@@ -1399,10 +1409,10 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 ## 建议执行顺序
 
 1. 以 next206 的 TEST13/20/27/43/44/56/58-77/80-173/999 设备日志作为已验证全量检查点，
-   next207 的 TEST13/151-174/999 日志作为当前定向能力基线；
+   next210 的 TEST13/151-177/999 日志作为当前定向能力基线；
    后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
-2. 从 multiple single-dot、double-dot 编码形式或父目录折叠中选择一个独立纵切。低风险批次
-   采用风险相关
+2. 推进根相对重复编码点段，并在该第 5 个低风险批次运行全量回归。随后再选 double-dot 编码形式
+   或父目录折叠。低风险批次采用风险相关
    定向门；累计约 5 批、触及共享高风险基础设施、里程碑交付或出现异常时运行全量回归。
 3. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
    WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础

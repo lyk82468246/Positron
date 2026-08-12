@@ -32,8 +32,9 @@ overview、零 ERROR/FAIL 与最终 PASS，next205 已成为基线。
 **next206 自动设备基线（2026-08-12）**：按 WHATWG URL Standard 的 single-dot segment
 定义，绝对 href/assign/replace URL 中内嵌的整个 segment 恰为 `%2E` 或 `%2e` 时，可移除该单个
 编码点段并在 path/query 匹配时进入既有同文档片段队列。TEST173 覆盖大小写、三入口、清除、
-same-value、history/state、hashchange、无 GET，并排除多个编码点段、`%2E%2E`、不同
-query/path 与 `..`。默认 `javascript=0`、TEST13、core ABI 和 14/16 callback 槽位不变。
+same-value、history/state、hashchange、无 GET；next206 日志当时还排除多个编码点段，
+`%2E%2E`、不同 query/path 与 `..`。next210 基线只用 TEST177 取代前一条旧排除断言。
+默认 `javascript=0`、TEST13、core ABI 和 14/16 callback 槽位不变。
 C89 与 ARMV4I Debug 构建、七个二进制 SHA-256 和设备门均已通过；日志得到 120 条标准数字
 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
 
@@ -60,6 +61,13 @@ same-value、history/state、hashchange、无 GET，并排除混合内嵌/末尾
 不同 query/path 与 `..`。C89、ARMV4I Debug 构建和七个 staging 哈希已通过；定向门为
 TEST13/151-176/999，共 28 项；日志得到 27 条标准数字 OK、1 条 TEST13 overview、零
 ERROR/FAIL 与最终 PASS。
+
+**next210 定向自动设备基线（2026-08-12）**：绝对 href/assign/replace URL 中多个内嵌完整
+`%2E`/`%2e` single-dot segment 可依次移除。TEST177 覆盖三入口、清除、same-value、
+history/state、hashchange、无 GET、不同 query/path 与父目录排除；TEST173 中“重复编码点段
+必须普通导航”的旧断言已由本测试取代，`%2E%2E` 和根相对重复编码边界不变。C89、ARMV4I
+Debug 构建与七个 staging 哈希已通过；定向门为 TEST13/151-177/999，共 29 项；日志得到
+28 条标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
 
 自动设备门从本批起分层：低风险、局部变更运行“本批测试 + 直接共享路径 + TEST13 +
 TEST999”；每累计约 5 个低风险批次，以及触及公共 DLL/ABI、布局/重绘、网络、输入基础设施、
@@ -551,8 +559,9 @@ TEST13、core ABI 和 14/16 callback 槽位不变。正式构建、C89 与 stagi
 **next206 自动设备基线（2026-08-12）**：绝对 URL 片段分类器新增单个、内嵌完整 segment 的
 ASCII 大小写不敏感 `%2e` 识别，对齐 [WHATWG URL Standard 的 single-dot 定义](https://url.spec.whatwg.org/#url-path-segment)。
 TEST173 固定 href/assign/replace、清除、same-value、state/length、hashchange、无 GET 和
-14/16 callback 槽位；多个 `%2e` segment、`%2E%2E`、不同 query/path 与字面 `..` 仍走普通
-导航。121 项设备日志已全部通过。该批不实现 double-dot 的 `.%2e`/`%2e.`/`%2e%2e` 折叠、混合字面/编码点段、锚点
+14/16 callback 槽位；next206 日志当时还把多个 `%2e` segment 与 `%2E%2E`、不同 query/path、
+字面 `..` 一并留在普通导航。next210 基线只取代多个 single-dot 的旧排除断言。121 项设备日志
+已全部通过。该批不实现 double-dot 的 `.%2e`/`%2e.`/`%2e%2e` 折叠、混合字面/编码点段、锚点
 滚动或其他 location setter。正式构建、C89、staging 哈希和设备门均已通过。
 
 **next207 定向自动设备基线（2026-08-12）**：同一绝对 URL 分类器继续识别 path 末尾、位于
@@ -574,6 +583,13 @@ query/fragment 或 URL 结尾前的单个 `%2e` segment。TEST176 固定 href/as
 same-value、state/length、hashchange、无 GET 和 14/16 callback 槽位；混合编码点段、
 `%2E%2E`、不同 query/path 与字面 `..` 留在普通导航。正式构建、C89 和 staging 哈希已通过；
 默认定向配置 TEST13/151-176/999 的 28 项日志全部通过；next206 仍是最近全量检查点。
+
+**next210 定向自动设备基线（2026-08-12）**：绝对 URL 分类器从单个扩展为多个内嵌 `%2e`
+segment，并在移除全部点段后执行既有同文档比较。TEST177 保持 href/assign/replace、清除、
+same-value、state/length、hashchange、无 GET、不同 query/path、父目录和 14/16 callback 槽位。
+TEST173 的重复编码反向断言已撤掉；`%2E%2E`、内嵌+末尾混合与根相对重复编码仍不支持。
+正式构建、C89 与 staging 哈希已通过；默认定向配置 TEST13/151-177/999 的 29 项日志全部
+通过；next206 仍是最近全量检查点。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对
