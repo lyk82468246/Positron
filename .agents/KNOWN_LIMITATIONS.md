@@ -61,6 +61,11 @@ C89、ARMV4I Debug 构建和 staging 哈希；修正版 26 项定向设备日志
 首轮日志在 TEST174 初始 href 停止；根因是把 4 字符 `/%2e` 误按 5 字符 `/%2e/` 计算。
 修正版仅更正边界判断和截取偏移；首包不能作为基线，覆盖包已通过设备复测。
 
+**next208 基线边界（2026-08-12）**：根相对 URL 只新增单个内嵌完整 `/%2e/` segment；末尾
+编码点段、多个编码点段、`%2E%2E`、字面/编码 double-dot 与混合字面/编码点段仍不规范化。
+这不代表完整 root-relative URL Standard parser。C89、ARMV4I Debug 构建和 staging 哈希
+已通过，27 项定向设备日志得到零 ERROR/FAIL 与最终 PASS。
+
 默认 `javascript=0`；完整 DOM/window、任意 OEM IME 和全站视觉仍未实现。
 
 **next145 设备验收记录（2026-08-08）**：`PCore_GetScriptCount/PCore_GetScript` 按 DOM
@@ -560,6 +565,13 @@ TEST13、core ABI 和 callback 数不变；C89、ARMV4I Debug 构建与
 `C:\WMShare\Positron-next207` 七个二进制哈希已通过。定向门选择 TEST13/151-174/999，
 共 26 项；next206 的 121 项日志仍是最近全量检查点。
 next207 首包在 TEST174 停止；修正版已修正 `/%2e` 长度 off-by-one，26 项设备日志全部通过。
+
+**next208 根相对 URL 编码单点段基线（2026-08-12）**：片段分类器新增根相对单个内嵌
+`%2e` segment；TEST175 覆盖三入口、清除、same-value、state/length、hashchange、无 GET、
+重复编码点段、`%2E%2E`、不同 query/path 与 `..` 排除边界。默认 javascript=0、TEST13、
+core ABI 和 callback 数不变；C89、ARMV4I Debug 构建与 `C:\WMShare\Positron-next208` 七个
+二进制哈希已通过。定向门 TEST13/151-175/999 的 27 项日志全部通过；next206 仍是最近全量
+检查点。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

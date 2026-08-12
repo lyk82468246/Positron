@@ -46,6 +46,14 @@ TEST174 覆盖大小写、三入口、清除、same-value、history/state、hash
 修正版只把边界判断和截取长度改为 4，不修改断言或支持范围；覆盖构建后的 26 项门得到
 25 条标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
 
+**next208 定向自动设备基线（2026-08-12）**：根相对 href/assign/replace URL 中单个、内嵌完整
+segment 恰为 `%2E`/`%2e` 时，按 single-dot 移除后再与当前 origin/path/query 比较。TEST175
+覆盖大小写、三入口、清除、same-value、history/state、hashchange、无 GET，并排除多个编码
+点段、`%2E%2E`、不同 query/path 与 `..`。默认 `javascript=0`、TEST13、core ABI 和 callback
+槽位不变；C89、ARMV4I Debug 构建与七个 staging 哈希已通过，定向门为
+TEST13/151-175/999，共 27 项；日志得到 26 条标准数字 OK、1 条 TEST13 overview、零
+ERROR/FAIL 与最终 PASS。
+
 自动设备门从本批起分层：低风险、局部变更运行“本批测试 + 直接共享路径 + TEST13 +
 TEST999”；每累计约 5 个低风险批次，以及触及公共 DLL/ABI、布局/重绘、网络、输入基础设施、
 里程碑交付或出现异常时，再运行全量门。next206 的 121 项日志是当前最近一次全量证据。
@@ -547,6 +555,12 @@ same-value、state/length、hashchange、无 GET 和 14/16 callback 槽位，并
 默认候选只选择 TEST13/151-174/999（26 项）；next206 的 121 项日志作为最近全量检查点。
 首轮 TEST174 的初始 href 因 `/%2e` 长度 off-by-one 未分类；修正版仅修正 5→4 的边界与截取，
 随后 26 项定向设备门全部通过。
+
+**next208 定向自动设备基线（2026-08-12）**：同文档片段分类器把单个根相对内嵌 `%2e`
+segment 接到既有 root-relative 规范化路径。TEST175 保持 href/assign/replace、清除、same-value、
+state/length、hashchange、无 GET 和 14/16 callback 槽位；多个编码点段、`%2E%2E`、不同
+query/path 与字面 `..` 仍走普通导航。正式构建、C89 和 staging 哈希已通过；默认定向配置为
+TEST13/151-175/999（27 项），设备日志全部通过；next206 仍是最近全量检查点。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对
