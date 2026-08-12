@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 185
+#define TEST_MAX_NUMBER 186
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6835,6 +6835,20 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "try{delete g.__pcoreDocumentUrl;}catch(purlerror){}"
         "try{delete g.__pcoreHistoryLength;}catch(phistoryerror){}"
         "try{delete g.__pcoreHistoryState;}catch(phistorystateerror){}"
+        "function ppartial(v,min){var u=String(v);var l=u.toLowerCase();"
+        "var q=u.indexOf('?');var h=u.indexOf('#');var a;var n;var z;var s;"
+        "if(q<0||(h>=0&&h<q)){q=h;}a=l.indexOf('/.%2e');"
+        "n=l.indexOf('/%2e.');if(a<0||(n>=0&&n<a)){a=n;}"
+        "if(a<=min||(q>=0&&a>=q)||u.indexOf('/./')>=0||"
+        "u.indexOf('/../')>=0||l.indexOf('/%2e/')>=0||"
+        "l.indexOf('/%2e%2e')>=0){return null;}z=a+5;"
+        "if(!((l.charAt(z)==='/'&&(q<0||z<q))||"
+        "(q>=0&&z===q)||(q<0&&z===u.length))){return null;}"
+        "s=l.indexOf('/.%2e',z);n=l.indexOf('/%2e.',z);"
+        "if(s<0||(n>=0&&n<s)){s=n;}"
+        "if(s>=0&&(q<0||s<q)){return null;}s=u.lastIndexOf('/',a-1);"
+        "if(s<min||s+1>=a){return null;}return u.substring(0,s+1)+"
+        "u.substring(z+(l.charAt(z)==='/'?1:0));}"
         "function pfragmentReference(v){var h=purl.indexOf('#');"
         "var b=h>=0?purl.substring(0,h):purl;var s;var ps;var q;var ls;"
         "var u;var lower;var next;"
@@ -6875,31 +6889,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "u=u.substring(0,ls+1)+u.substring(ls+4);"
         "if(u.indexOf(b+'#')===0){return u;}"
         "if(h>=0&&u===b){return u;}}"
-        "u=v;q=u.indexOf('?');ls=u.indexOf('#');"
-        "if(q<0||(ls>=0&&ls<q)){q=ls;}lower=u.toLowerCase();"
-        "ls=lower.indexOf('/.%2e/');next=lower.indexOf('/%2e./');"
-        "if(ls<0||(next>=0&&next<ls)){ls=next;}"
-        "if(v.indexOf('/./')<0&&v.indexOf('/../')<0&&"
-        "lower.indexOf('/%2e/')<0&&lower.indexOf('/%2e%2e')<0&&"
-        "ls>ps&&(q<0||ls<q)){s=lower.indexOf('/.%2e',ls+6);"
-        "next=lower.indexOf('/%2e.',ls+6);"
-        "if(s<0||(next>=0&&next<s)){s=next;}"
-        "if(s<0||(q>=0&&s>=q)){s=u.lastIndexOf('/',ls-1);"
-        "if(s>=ps&&s+1<ls){if(q>=0){q-=ls-s+5;}"
-        "u=u.substring(0,s+1)+u.substring(ls+6);"
+        "u=ppartial(v,ps);if(u!==null){"
         "if(u.indexOf(b+'#')===0){return u;}"
-        "if(h>=0&&u===b){return u;}}}}"
-        "u=v;q=u.indexOf('?');ls=u.indexOf('#');"
-        "if(q<0||(ls>=0&&ls<q)){q=ls;}lower=u.toLowerCase();"
-        "ls=lower.indexOf('/.%2e');next=lower.indexOf('/%2e.');"
-        "if(ls<0||(next>=0&&next<ls)){ls=next;}"
-        "if(v.indexOf('/./')<0&&v.indexOf('/../')<0&&"
-        "lower.indexOf('/%2e/')<0&&lower.indexOf('/%2e%2e')<0&&"
-        "ls>ps&&((q>=0&&ls+5===q)||(q<0&&ls+5===u.length))){"
-        "s=u.lastIndexOf('/',ls-1);if(s>=ps&&s+1<ls){"
-        "if(q>=0){q-=ls-s+4;}u=u.substring(0,s+1)+u.substring(ls+5);"
-        "if(u.indexOf(b+'#')===0){return u;}"
-        "if(h>=0&&u===b){return u;}}}}"
+        "if(h>=0&&u===b){return u;}}}"
         "if(v.charAt(0)==='/'){"
         "s=b.indexOf('://');ps=s>=0?b.indexOf('/',s+3):-1;"
         "if(ps>=0){u=v;q=u.indexOf('?');ls=u.indexOf('#');"
@@ -6929,19 +6921,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "if(v.indexOf('/./')<0&&ls>=0&&"
         "((q>=0&&ls+4===q)||(q<0&&ls+4===u.length))){"
         "u=u.substring(0,ls+1)+u.substring(ls+4);}"
-        "lower=String(v).toLowerCase();ls=lower.indexOf('/.%2e/');"
-        "next=lower.indexOf('/%2e./');"
-        "if(ls<0||(next>=0&&next<ls)){ls=next;}if(ls>=0){"
-        "u=v;q=u.indexOf('?');next=u.indexOf('#');"
-        "if(q<0||(next>=0&&next<q)){q=next;}lower=u.toLowerCase();"
-        "if(v.indexOf('/./')<0&&v.indexOf('/../')<0&&"
-        "lower.indexOf('/%2e/')<0&&lower.indexOf('/%2e%2e')<0&&"
-        "ls>0&&(q<0||ls<q)){s=lower.indexOf('/.%2e',ls+6);"
-        "next=lower.indexOf('/%2e.',ls+6);"
-        "if(s<0||(next>=0&&next<s)){s=next;}"
-        "if(s<0||(q>=0&&s>=q)){s=u.lastIndexOf('/',ls-1);"
-        "if(s>=0&&s+1<ls){if(q>=0){q-=ls-s+5;}"
-        "u=u.substring(0,s+1)+u.substring(ls+6);}}}}"
+        "lower=String(v).toLowerCase();if(lower.indexOf('/.%2e')>=0||"
+        "lower.indexOf('/%2e.')>=0){next=ppartial(v,0);"
+        "u=next===null?v:next;}"
         "u=b.substring(0,ps)+u;if(u.indexOf(b+'#')===0)"
         "{return u;}if(h>=0&&u===b){return u;}}}if(v.charAt(0)==='?'){"
         "q=b.indexOf('?');u=(q>=0?b.substring(0,q):b)+v;"
@@ -32686,6 +32668,329 @@ static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_do
 
 /* -------------------------------------------------------------------- */
 
+/* TEST 186 - root-relative terminal partial double-dot fragment URLs   */
+/* -------------------------------------------------------------------- */
+static BOOL test186_browser_script_location_root_terminal_partial_encoded_double_dot_fragment(void)
+{
+    static const char URL_OLD[] =
+        "https://example.com/a/b/?x=1#old";
+    static const char URL_HREF[] =
+        "https://example.com/a/b/?x=1#href";
+    static const char URL_BASE[] =
+        "https://example.com/a/b/?x=1";
+    static const char URL_REPLACE[] =
+        "https://example.com/a/b/?x=1#replace";
+    static const char ROOT_BASE[] =
+        "/a/b/tmp/.%2E?x=1";
+    static const char ROOT_QUERY[] =
+        "/a/b/tmp/%2E.?x=2#network";
+    static const char ROOT_OTHER[] =
+        "/a/c/tmp/.%2E?x=1#network";
+    static const char MIXED_DOUBLE[] =
+        "/a/b/tmp/%2E%2E/tmp/.%2E?x=1#network";
+    static const char REPEATED_PARTIAL[] =
+        "/a/tmp/.%2E/b/tmp/.%2E?x=1#network";
+    static const char INNER_PARENT[] =
+        "/a/b/c/../?x=1#network";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var seen=[];onhashchange=function(e){"
+        "seen.push('H'+e.oldURL+'>'+e.newURL);};"
+        "location.href='/a/b/tmp/.%2E?x=1#href';"
+        "document.getElementById('result').textContent="
+        "location.hash+'|'+history.length+'|'+seen.length+'|'"
+        "+String(history.state);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char INITIAL_RESULT[] = "#old|1|0|null";
+    static const char HREF_RESULT[] =
+        "#href|2|null|Hhttps://example.com/a/b/?x=1#old>"
+        "https://example.com/a/b/?x=1#href";
+    static const char CLEAR_RESULT[] =
+        "|3|null|Hhttps://example.com/a/b/?x=1#href>"
+        "https://example.com/a/b/?x=1";
+    static const char REPLACE_RESULT[] =
+        "#replace|3|null|Hhttps://example.com/a/b/?x=1>"
+        "https://example.com/a/b/?x=1#replace";
+    HANDLE document;
+    HANDLE runtime;
+    HANDLE session_runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *evaluation_result;
+    char *queued_url;
+    char result[128];
+    char error[256];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    session_runtime = NULL;
+    bridge = NULL;
+    evaluation_result = NULL;
+    queued_url = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    (void) pcore_browse_history_commit_navigation(URL_OLD, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_OLD,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, INITIAL_RESULT) != 0 ||
+            result_bytes != (int) sizeof(INITIAL_RESULT) - 1 ||
+            bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
+            bridge->navigation_url == NULL ||
+            strcmp(bridge->navigation_url, URL_HREF) != 0 ||
+            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
+            1, -1, bridge) != 0 || g_browse_history.count != 1 ||
+            g_browse_history.index != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        bridge->hwnd = (HWND) 1;
+        queued_url = bridge->navigation_url;
+        bridge->navigation_url = NULL;
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
+        session_runtime = runtime;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_navigate_fragment(queued_url,
+                0) != 0 || g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.count != 2 ||
+                g_browse_history.index != 1 ||
+                strcmp(pcore_browse_history_current(), URL_HREF) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.hash+'|'+history.length+'|'"
+                "+String(history.state)+'|'+seen[0];", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        free(queued_url);
+        queued_url = NULL;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, HREF_RESULT) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.assign('/a/b/tmp/%2e.?x=1');"
+                "location.hash+'|'+history.length+'|'+seen.length;", -1) !=
+                PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                URL_BASE) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        queued_url = g_browser_script_session.bridge->navigation_url;
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, "#href|2|1") != 0 ||
+                pcore_browser_script_session_navigate_fragment(queued_url,
+                0) != 0 || g_browse_history.count != 3 ||
+                g_browse_history.index != 2 ||
+                strcmp(pcore_browse_history_current(), URL_BASE) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.hash+'|'+history.length+'|'"
+                "+String(history.state)+'|'+seen[1];", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        free(queued_url);
+        queued_url = NULL;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, CLEAR_RESULT) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.assign('/a/b/tmp/.%2E?x=1');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                ROOT_BASE) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.replace('/a/b/tmp/%2E.?x=1#replace');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                URL_REPLACE) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        queued_url = g_browser_script_session.bridge->navigation_url;
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (pcore_browser_script_session_navigate_fragment(queued_url,
+                1) != 0 || g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.count != 3 ||
+                g_browse_history.index != 2 ||
+                strcmp(pcore_browse_history_current(), URL_REPLACE) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.hash+'|'+history.length+'|'"
+                "+String(history.state)+'|'+seen[2];", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        free(queued_url);
+        queued_url = NULL;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, REPLACE_RESULT) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.replace('/a/b/tmp/.%2E?x=1#replace');"
+                "seen.length+'|'+location.hash;", -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_NONE) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, "3|#replace") != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.assign('/a/b/tmp/%2E.?x=2#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                ROOT_QUERY) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.replace('/a/c/tmp/.%2E?x=1#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_REPLACE ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                ROOT_OTHER) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.assign('/a/b/tmp/%2E%2E/tmp/.%2E?x=1#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                MIXED_DOUBLE) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.assign('/a/tmp/.%2E/b/tmp/.%2E?x=1#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                REPEATED_PARTIAL) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.assign('/a/b/c/../?x=1#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                INNER_PARENT) != 0 ||
+                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+            ok = 0;
+        }
+    }
+    free(queued_url);
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 186 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 186 OK",
+            "one terminal partially encoded double-dot segment in a\n"
+            "root-relative URL folds its preceding directory into the fragment\n"
+            "queue; both spellings work; other paths stay normal.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+
+
 /* TEST 182 - root-relative terminal encoded double-dot fragment URLs  */
 /* -------------------------------------------------------------------- */
 static BOOL test182_browser_script_location_root_encoded_terminal_double_dot_fragment(void)
@@ -36111,6 +36416,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 185: ok =
                 test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment();
+                break;
+        case 186: ok =
+                test186_browser_script_location_root_terminal_partial_encoded_double_dot_fragment();
                 break;
         default: ok = FALSE; break;
         }

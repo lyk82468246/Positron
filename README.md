@@ -140,6 +140,19 @@ ARMV4I Debug 构建和 `C:\WMShare\Positron-next218` 七个 staging 哈希已通
 作为 next216 后第 2 个低风险批次，定向门为 TEST13/151-185/999，共 37 项；日志得到 36 条
 标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
 
+**next219 定向自动设备基线（2026-08-12）**：根相对 href/assign/replace URL 的 path 末尾
+segment 若完整匹配 `.%2E` 或 `%2E.`，也可连同前一个非空目录折叠并保留结尾 `/`；补回当前
+origin 后仍要求 path/query 与当前文档匹配。TEST186 覆盖两种拼写、大小写、三入口、清除、
+same-value、history/state、hashchange、无 GET、不同 query/path、混合完整/半编码 double-dot、
+重复半编码 double-dot 和字面父目录边界。C89、实际 JavaScript 探针、ARMV4I Debug 构建和
+`C:\WMShare\Positron-next219-fix` 七个 staging 哈希已通过；ini 为 1278 字节。作为 next216 后
+第 3 个低风险批次，定向门为 TEST13/151-186/999，共 38 项；修正版设备日志得到 37 条
+标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
+首包 `C:\WMShare\Positron-next219` 的 20,991 字符 DOM bootstrap 在 TEST162 触发 1000ms
+执行超时；未运行 TEST186/999，不能作为候选结果。修正版不放宽预算，而是把四份重复的
+半编码双点段分类合并为 `ppartial` helper，bootstrap 降至 19,735 字符，并通过 14 组新旧
+行为探针。
+
 自动设备门从本批起分层：低风险、局部变更运行“本批测试 + 直接共享路径 + TEST13 +
 TEST999”；每累计约 5 个低风险批次，以及触及公共 DLL/ABI、布局/重绘、网络、输入基础设施、
 里程碑交付或出现异常时，再运行全量门。next216 的 131 项日志是当前最近一次全量证据。
@@ -722,6 +735,16 @@ same-value、state/length、hashchange、无 GET、不同 query/path、混合完
 重复半编码 double-dot、字面父目录和 14/16 callback 槽位。根相对末尾半编码 double-dot 仍
 不支持。正式构建、C89、实际 JavaScript 探针与 staging 哈希已通过；默认定向配置为
 TEST13/151-185/999（37 项），ini 为 1278 字节；设备日志全部通过，next216 仍是最近全量检查点。
+
+**next219 定向自动设备基线（2026-08-12）**：根相对 URL 分类器新增 path 末尾的完整 `.%2e`
+或 `%2e.` segment 前驱目录折叠，补回当前 origin 后保留结尾 `/` 并执行同文档比较。TEST186
+保持 href/assign/replace、清除、same-value、state/length、hashchange、无 GET、不同
+query/path、混合完整/半编码 double-dot、重复半编码 double-dot、字面父目录和 14/16 callback
+槽位。首包因 20,991 字符 bootstrap 在 TEST162 超过既有 1000ms 预算而失败；修正版合并重复
+分类逻辑，降至 19,735 字符，不改变预算。正式构建、C89、14 组实际 JavaScript 探针与
+`C:\WMShare\Positron-next219-fix` staging 哈希已通过；默认定向配置为
+TEST13/151-186/999（38 项），ini 为 1278 字节；修正版设备日志得到 37 条标准数字 OK、
+1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS，next216 仍是最近全量检查点。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对
