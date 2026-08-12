@@ -1048,6 +1048,17 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   （36 项）。C89、ARMV4I Debug 构建和 `C:\WMShare\Positron-next217` 七个哈希已通过；ini
   为 1278 字节，设备日志已全部通过。
 
+### 6cl. next218：JavaScript 绝对 URL 末尾半编码双点段片段导航（已完成）
+
+- 绝对 href/assign/replace URL 的 path 末尾 segment 若完整匹配 `.%2e` 或 `%2e.`，连同前一个
+  非空目录折叠并保留 `/`；同文档判定继续要求 origin/path/query 匹配且 fragment 改变或清除。
+- TEST185 固定两种拼写、大小写、三入口、清除、same-value、history/state、hashchange、无
+  网络、不同 query/path、混合完整/半编码 double-dot、重复半编码 double-dot、字面父目录和
+  14/16 callback 槽位。根相对末尾半编码 double-dot 仍不规范化。
+- 本批是 next216 full checkpoint 后第 2 个低风险定向批次，门为 TEST13/151-185/999
+  （37 项）。C89、实际 JavaScript 探针、ARMV4I Debug 构建和
+  `C:\WMShare\Positron-next218` 七个哈希已通过；ini 为 1278 字节，设备日志已全部通过。
+
 ### 6be. next185：JavaScript location 片段引用入口（已完成）
 
 - `location.href='#...'` 与 `location.assign('#...')` 复用片段队列新增 null-state 同 document
