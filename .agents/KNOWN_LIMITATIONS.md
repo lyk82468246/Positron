@@ -1,6 +1,6 @@
 # 已验证基线与待消除限制
 
-更新时间：2026-08-09
+更新时间：2026-08-12
 
 这份清单把“已经在设备上验证的最小链路”和“当前刻意保留的阶段性实现”分开记录。未被列为完成的项目不得在后续交接、README 或测试结论中表述为完整浏览器能力。
 
@@ -31,9 +31,9 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next185，2026-08-09）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-153，配置所选 100 项全部 OK、零 ERROR、零 FAIL、最终
-TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 99 项使用标准数字 OK 行。
+**当前自动化设备基线（next186，2026-08-12）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-154，配置所选 101 项全部 OK、零 ERROR、零 FAIL、最终
+TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 100 项使用标准数字 OK 行。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -330,6 +330,14 @@ assign 调用排队新增 null-state 同 document entry，replace 调用排队�
 仍走既有跨 document 导航；百分号编码/标准化、锚点滚动、跨 document 片段导航与其他组件
 setter 不在本批。320x320/128 DPI 日志得到 TEST153 OK、配置所选 100 项全部 OK、零 ERROR、
 零 FAIL 与最终 PASS；TEST13 使用 `OK (overview)`，其余 99 项使用标准数字 OK 行。
+
+**next186 绝对同文档片段 URL 基线（2026-08-12）**：href/assign/replace 的绝对 URL 只有
+在基址与当前 URL 完全相同且改变 fragment，或当前确有 fragment 时以绝对基址清除它，才走
+同 document 队列。当前无 fragment 的同 URL 导航及 query/path/origin 不同目标保持普通导航。
+TEST154 覆盖三入口、清除、history/state、hashchange、无网络与分类边界。相对 path+fragment、
+百分号编码/标准化、锚点滚动和其他组件 setter 不在本批。320x320/128 DPI 日志得到 TEST154
+OK、配置所选 101 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13 使用 `OK (overview)`，
+其余 100 项使用标准数字 OK 行。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
