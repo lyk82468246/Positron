@@ -2,7 +2,7 @@
 
 更新时间：2026-08-12
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前自动化设备基线为 next206：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
+当前全量自动设备检查点为 next206：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
 TEST20/27/43/44/56/58-77/80-173/999 全部通过，配置所选 121 项全部 OK、零 ERROR、零 FAIL，
 并记录 `TESTBENCH PASS`。next167 的高 DPI
 interaction restyle 修复和 Learn More/SIP 定向
@@ -928,6 +928,18 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   `C:\WMShare\Positron-next206` 七个二进制 SHA-256 与构建产物一致；设备门得到 121 项全部
   OK、零 ERROR/FAIL 与最终 PASS。
 
+### 6ca. next207：JavaScript 绝对 URL 末尾编码单点段片段导航（已完成）
+
+- 绝对 href/assign/replace URL 的 path 末尾 segment 若 ASCII 大小写不敏感匹配 `%2e`，且
+  正好终止于 query/fragment 或 URL 结尾，则按 single-dot 移除；同文档判定继续要求
+  origin/path/query 匹配且 fragment 改变或清除。
+- TEST174 固定三入口、清除、same-value、history/state、hashchange、无网络、混合编码点段、
+  `%2E%2E`、不同 query/path、`..` 排除边界和 14/16 callback 槽位。
+- 本批采用分层后的定向门 TEST13/151-174/999（26 项）；next206 的 121 项日志保留为最近全量
+  检查点。C89、ARMV4I Debug 构建和 `C:\WMShare\Positron-next207` 七个哈希已通过。
+- 首轮日志在 TEST174 初始 href 停止，根因是把末尾 `/%2e` 的 4 字符长度误写为 5；修正版
+  只更正终止判断和截取偏移，不放宽断言；覆盖构建后的 26 项门得到零 ERROR/FAIL 与最终 PASS。
+
 ### 6be. next185：JavaScript location 片段引用入口（已完成）
 
 - `location.href='#...'` 与 `location.assign('#...')` 复用片段队列新增 null-state 同 document
@@ -1367,10 +1379,12 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next206 的 TEST13/20/27/43/44/56/58-77/80-173/999 设备日志作为已验证自动化基线；
+1. 以 next206 的 TEST13/20/27/43/44/56/58-77/80-173/999 设备日志作为已验证全量检查点，
+   next207 的 TEST13/151-174/999 日志作为当前定向能力基线；
    后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
-2. 从 double-dot 编码形式或父目录折叠中选择一个独立纵切；每批采用风险相关的定向设备门，
-   全量回归改为高风险变更或阶段性检查。
+2. 从 root-relative、multiple single-dot、double-dot 编码形式或父目录折叠中选择一个独立
+   纵切。低风险批次采用风险相关
+   定向门；累计约 5 批、触及共享高风险基础设施、里程碑交付或出现异常时运行全量回归。
 3. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
    WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础
    IME/composition；next167 已人工通过报告中的真实 SIP 候选词完整输入，任意 OEM IME

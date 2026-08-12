@@ -31,7 +31,7 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next206，2026-08-12）**：`screen=640x480 dpi=192` 自动日志完成
+**当前全量自动设备检查点（next206，2026-08-12）**：`screen=640x480 dpi=192` 自动日志完成
 TEST13/20/27/43/44/56/58-77/80-173/999，配置所选 121 项全部 OK、零 ERROR、零 FAIL、最终
 TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 120 项使用标准数字 OK 行。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
@@ -53,6 +53,13 @@ parser。只有规范化后 path/query 与当前文档相同且 fragment 改变�
 **next206 基线边界（2026-08-12）**：只识别绝对 URL 中单个、内嵌完整 segment 的 `%2E`/`%2e`
 （即 `/%2e/`）；末尾编码点段、多个编码点段、`%2E%2E`、字面 `..`、混合字面/编码点段不规范化。该范围对齐 single-dot 的
 最小纵切，不宣称完整 URL parser 或 double-dot 支持。构建、staging 与设备日志均已通过。
+
+**next207 基线边界（2026-08-12）**：新增的末尾编码单点段只适用于绝对 URL path，并要求
+`/%2e` 正好终止于 query/fragment 或 URL 结尾；多个或混合编码点段、`%2E%2E`、字面/编码
+double-dot、根相对编码点段仍不规范化。本批不宣称完整 URL Standard parser。候选已通过
+C89、ARMV4I Debug 构建和 staging 哈希；修正版 26 项定向设备日志已完整通过。
+首轮日志在 TEST174 初始 href 停止；根因是把 4 字符 `/%2e` 误按 5 字符 `/%2e/` 计算。
+修正版仅更正边界判断和截取偏移；首包不能作为基线，覆盖包已通过设备复测。
 
 默认 `javascript=0`；完整 DOM/window、任意 OEM IME 和全站视觉仍未实现。
 
@@ -545,6 +552,14 @@ hashchange、无 GET、重复编码点段、`%2E%2E`、不同 query/path 与 `..
 javascript=0、TEST13、core ABI 和 callback 数不变；C89、ARMV4I Debug 构建与
 `C:\WMShare\Positron-next206` 七个二进制哈希已通过。121 项设备日志得到零 ERROR/FAIL 与
 最终 PASS，因此 next206 已成为当前基线。
+
+**next207 绝对 URL 末尾编码单点段基线（2026-08-12）**：片段分类器继续识别 path 末尾的
+单个 `%2e` segment；TEST174 覆盖三入口、清除、same-value、state/length、hashchange、
+无 GET 及混合编码点段、`%2E%2E`、不同 query/path、`..` 排除边界。默认 javascript=0、
+TEST13、core ABI 和 callback 数不变；C89、ARMV4I Debug 构建与
+`C:\WMShare\Positron-next207` 七个二进制哈希已通过。定向门选择 TEST13/151-174/999，
+共 26 项；next206 的 121 项日志仍是最近全量检查点。
+next207 首包在 TEST174 停止；修正版已修正 `/%2e` 长度 off-by-one，26 项设备日志全部通过。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；

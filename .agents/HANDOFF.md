@@ -2,7 +2,7 @@
 
 更新时间：2026-08-12
 当前分支：`main`  
-当前自动化设备基线：next206 已在 `screen=640x480 dpi=192` 下完成 TEST13 三段导航及
+当前全量自动设备检查点：next206 已在 `screen=640x480 dpi=192` 下完成 TEST13 三段导航及
 TEST20/27/43/44/56/58-77/80-173/999，日志 `C:\WMShare\Positron-next206\test_host.log`
 包含配置所选 121 项全部 OK、零条 `[ERROR]`、零条 FAIL 并以 `TESTBENCH PASS` 结束；TEST13
 使用 `OK (overview)`，其余 120 项使用标准数字 OK 行。next167 的高 DPI
@@ -35,7 +35,19 @@ ABI 和 14/16 callback 槽位不变。C89、ARMV4I Debug 构建与
 `C:\WMShare\Positron-next206` 七个二进制哈希已通过；设备门得到 121 项全部 OK、零
 ERROR/FAIL 与最终 PASS。
 
-当前验收/集成节奏：每个能力批次继续跑自动设备门；可能影响视觉、真实触摸、SIP、旋转
+当前定向自动设备基线 next207：同一绝对 URL 分类器新增 path 末尾 `%2E`/`%2e` single-dot segment，覆盖
+query/fragment 或 URL 结尾前的形式。TEST174 固定大小写、三入口、清除、same-value、
+state/length、hashchange、无 GET，并排除混合内嵌/末尾编码点段、`%2E%2E`、不同 query/path
+与 `..`。C89、ARMV4I Debug 构建及 `C:\WMShare\Positron-next207` 七个二进制哈希已通过；
+定向设备门为 TEST13/151-174/999，共 26 项。
+首轮日志在 TEST174 停止：实现把末尾 `/%2e` 误按内嵌 `/%2e/` 的 5 字符长度判断，初始 href
+因此保持 `#old`。修正版只把终止位置和截取偏移从 5 改为 4；覆盖 staging 后的 26 项日志
+得到 25 条标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
+
+当前验收/集成节奏：每个能力批次继续跑风险相关的自动设备门。低风险局部变更选择本批测试、
+直接共享路径、TEST13 与 TEST999；累计约 5 个低风险批次，或触及公共 DLL/ABI、布局/重绘、
+网络、输入基础设施、里程碑交付及任何异常时运行全量门。next206 的 121 项日志是最近全量
+检查点。可能影响视觉、真实触摸、SIP、旋转
 或网络失败交互的项目加入累计人工清单，若干批次后一次性检查。崩溃、数据损坏、严重布局
 崩坏或核心交互阻塞仍立即人工复核。自动设备基线通过后应提交并推送其 scoped tracked
 改动；`tmp/` 截图目录永远不加入 Git。
@@ -477,6 +489,14 @@ same-value、state/length、hashchange、无 GET、多个编码点段、`%2E%2E`
 滚动和其他 location setter 不在本批。C89、ARMV4I Debug 构建和
 `C:\WMShare\Positron-next206` 七个二进制哈希核对和 121 项设备日志门均已通过。
 
+next207 已成为定向设备基线：绝对 URL 分类器在 next206 的内嵌编码单点段之外，继续识别 path
+末尾、位于 query/fragment 或 URL 结尾前的单个 `%2e` segment。TEST174 覆盖三入口、清除、
+same-value、state/length、hashchange、无 GET、混合编码点段、`%2E%2E`、不同 query/path、
+`..` 排除边界和 14/16 callback 槽位。C89、ARMV4I Debug 构建与七个 staging 哈希已通过；
+默认选择 TEST13/151-174/999（26 项），next206 保持最近全量检查点。
+首轮 TEST174 失败已定位为末尾 token 长度 off-by-one；修正版不放宽任何断言，26 项日志已
+完整通过。
+
 next185 已成为自动设备基线：`location.href='#...'`、`location.assign('#...')` 与
 `location.replace('#...')` 复用同 document 片段队列；href/assign 新增 null-state entry，
 replace 替换当前 entry 且不增加 length。三者都延迟提交、无 GET/popstate、只派发 hashchange，
@@ -828,7 +848,7 @@ scripts\stage.bat
 
 启动时可选择：
 
-- 快速配置：next206 基线的 `test_host.ini` 使用 `tests=13,20,27,43,44,56,58-77,80-173,999`；next206 已在 `screen=640x480 dpi=192` 通过至 TEST173 和 TEST999；TEST173 是已通过的绝对 URL 百分号编码单点段门。TEST137 是只读 location/document URL 与延迟 `history.back()` 门，TEST138 是已通过的延迟 location 赋值门，TEST139 是已通过的 `location.reload()` 门，TEST140 是已通过的 `location.replace()` 门，TEST141 是已通过的 `history.forward()` 门，TEST142 是已通过的 `history.go()` 门，TEST143 是已通过的只读 `history.length` 门，TEST144 是已通过的初始 `history.state` 门，TEST145 是已通过的受控 `history.replaceState()` 门，TEST146 是已通过的同 URL `history.pushState()` 门，TEST147 是已通过的同 document traversal 门，TEST148 是已通过的最小 popstate 门，TEST149 是已通过的 history 片段 URL 门，TEST150 是已通过的最小 hashchange 门，TEST151 是已通过的 location URL 组件门，TEST152 是已通过的 location.hash 导航门，TEST153 是已通过的 href/assign/replace 片段引用门，TEST154 是已通过的绝对同文档片段 URL 门，TEST155 是已通过的根相对同文档片段 URL 门，TEST156 是已通过的 query-relative 同文档片段 URL 门，TEST157 是已通过的同目录 path-relative 同文档片段 URL 门，TEST158 是已通过的单个 `./` 同目录片段 URL 门，TEST159 是已通过的单个 `../` 父目录片段 URL 门，TEST160 是已通过的连续前导父目录片段 URL 门，TEST161 是已通过的父目录后单个 `./` 片段 URL 门，TEST162 是已通过的父目录后连续 `./` 片段 URL 门，TEST163 是已通过的连续前导 `./` 同目录片段 URL 门，TEST164 是已通过的父目录后单个内嵌 `./` 片段 URL 门，TEST165 是已通过的父目录后连续内嵌 `./` 片段 URL 门，TEST166 是已通过的父目录后多位置内嵌 `./` 片段 URL 门，TEST167 是已通过的根相对单个内嵌 `./` 片段 URL 门，TEST168 是已通过的根相对连续内嵌 `././` 片段 URL 门，TEST169 是已通过的根相对多位置内嵌 `./` 片段 URL 门，TEST170 是已通过的绝对 URL 单个内嵌 `./` 片段导航门，TEST171 是已通过的绝对 URL 连续内嵌 `././` 片段导航门，TEST172 是已通过的绝对 URL 多位置内嵌 `/./` 片段导航门，TEST173 是已通过的绝对 URL 百分号编码单点段片段导航门。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、EDIT/SELECT 键盘、focus、beforeinput、Unicode/代理对、composition、event target/currentTarget、classList、style、form default 和最小 location/history bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b 999` 一类语法；999 只有被显式选中且前序通过时才响。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图；next167 已另行人工确认 Learn More 边距与真实 SIP 候选词完整输入。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
+- 快速配置：next207 定向基线的 `test_host.ini` 使用 `tests=13,151-174,999`；最近全量检查点 next206 已在 `screen=640x480 dpi=192` 通过 121 项；TEST174 是已通过的绝对 URL 末尾百分号编码单点段门。TEST137 是只读 location/document URL 与延迟 `history.back()` 门，TEST138 是已通过的延迟 location 赋值门，TEST139 是已通过的 `location.reload()` 门，TEST140 是已通过的 `location.replace()` 门，TEST141 是已通过的 `history.forward()` 门，TEST142 是已通过的 `history.go()` 门，TEST143 是已通过的只读 `history.length` 门，TEST144 是已通过的初始 `history.state` 门，TEST145 是已通过的受控 `history.replaceState()` 门，TEST146 是已通过的同 URL `history.pushState()` 门，TEST147 是已通过的同 document traversal 门，TEST148 是已通过的最小 popstate 门，TEST149 是已通过的 history 片段 URL 门，TEST150 是已通过的最小 hashchange 门，TEST151 是已通过的 location URL 组件门，TEST152 是已通过的 location.hash 导航门，TEST153 是已通过的 href/assign/replace 片段引用门，TEST154 是已通过的绝对同文档片段 URL 门，TEST155 是已通过的根相对同文档片段 URL 门，TEST156 是已通过的 query-relative 同文档片段 URL 门，TEST157 是已通过的同目录 path-relative 同文档片段 URL 门，TEST158 是已通过的单个 `./` 同目录片段 URL 门，TEST159 是已通过的单个 `../` 父目录片段 URL 门，TEST160 是已通过的连续前导父目录片段 URL 门，TEST161 是已通过的父目录后单个 `./` 片段 URL 门，TEST162 是已通过的父目录后连续 `./` 片段 URL 门，TEST163 是已通过的连续前导 `./` 同目录片段 URL 门，TEST164 是已通过的父目录后单个内嵌 `./` 片段 URL 门，TEST165 是已通过的父目录后连续内嵌 `./` 片段 URL 门，TEST166 是已通过的父目录后多位置内嵌 `./` 片段 URL 门，TEST167 是已通过的根相对单个内嵌 `./` 片段 URL 门，TEST168 是已通过的根相对连续内嵌 `././` 片段 URL 门，TEST169 是已通过的根相对多位置内嵌 `./` 片段 URL 门，TEST170 是已通过的绝对 URL 单个内嵌 `./` 片段导航门，TEST171 是已通过的绝对 URL 连续内嵌 `././` 片段导航门，TEST172 是已通过的绝对 URL 多位置内嵌 `/./` 片段导航门，TEST173 是已通过的绝对 URL 内嵌百分号编码单点段片段导航门，TEST174 是已通过的绝对 URL 末尾编码单点段门。`javascript=0` 是默认产品门，只有显式改为 `1` 才执行初次加载的 classic inline/external scripts，并保留页面 context、click listener、原生表单事件、EDIT/SELECT 键盘、focus、beforeinput、Unicode/代理对、composition、event target/currentTarget、classList、style、form default 和最小 location/history bridge；未成功抓取或不支持类型的 external 会跳过。TEST79/float 候选已撤回。自动日志会在开头写入 screen/DPI；若 TEST20 的 48 CSS px 被换算成异常物理尺寸，先记录设备指标，不要放宽断言。也支持 `tests=1-5 7b 999` 一类语法；999 只有被显式选中且前序通过时才响。`auto=1` 时不弹 Yes/No/OK，窗口首帧后自动关闭，TEST13 自动跑 example.com → IANA Example Domains → Reserved Domains，并把每个原始结果和逐页遥测覆盖写入同目录 `test_host.log`；`auto=0` 保留 Yes/No 与原四组路由。自动首帧冒烟不替代新视觉能力的人工截图；next167 已另行人工确认 Learn More 边距与真实 SIP 候选词完整输入。缺失/无效配置不会静默改变测试范围，TEST23/78/79 不可选。
 
 - Communication：TEST 1-5，TLS/HTTP/JSON，需要网络。
 - Engine：TEST 6-11、15、16、18、21、22、24、25、38、40-45、59-61、74-77，解析/选择/样式/layout/box tree/image resource cache、responsive media viewport、reverse flex、cached CSS restyle、SVG parse、受约束的 `:root` token、数值型 OKLCH/可求值 calc、grid/overflow min-content 隔离、overflow scrollbar、分阶段资源事务、失败回滚、CSS import tree、selector node-data restyle、具名 NetSurf option 默认、DOM Event 传播/取消、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI，离线。TEST40-45、59、60、74-77 已真机确认；next78 扩展测试及其 core 行为已经撤回。TEST23/79 浮动候选均因真实 Browse/设备回归撤回，不运行。

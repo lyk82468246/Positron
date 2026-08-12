@@ -1,6 +1,6 @@
 # Positron
 
-**当前自动化设备基线（next206，2026-08-12）**：同一个 Duktape 页面 context 已具备最小
+**当前全量自动设备检查点（next206，2026-08-12）**：同一个 Duktape 页面 context 已具备最小
 location/history bridge、受控 state、同 document traversal、popstate/hashchange、动态 URL
 组件与 `location.hash` 导航。`screen=640x480 dpi=192` 日志中 TEST13 三段导航及
 TEST20/27/43/44/56/58-77/80-173/999 全部通过：配置所选 121 项全部 OK、零条 `[ERROR]`、
@@ -36,6 +36,19 @@ same-value、history/state、hashchange、无 GET，并排除多个编码点段�
 query/path 与 `..`。默认 `javascript=0`、TEST13、core ABI 和 14/16 callback 槽位不变。
 C89 与 ARMV4I Debug 构建、七个二进制 SHA-256 和设备门均已通过；日志得到 120 条标准数字
 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
+
+**next207 定向自动设备基线（2026-08-12）**：绝对 href/assign/replace URL 的 path 末尾
+segment 恰为 `%2E`/`%2e`（位于 query/fragment 或 URL 结尾前）时，也按 single-dot 移除。
+TEST174 覆盖大小写、三入口、清除、same-value、history/state、hashchange、无 GET，以及
+混合内嵌/末尾编码段、`%2E%2E`、不同 query/path 和 `..` 排除边界。正式 ARMV4I Debug 构建
+与七个 staging 哈希已通过；本批默认设备门缩为 TEST13/151-174/999，共 26 项。
+首轮设备日志在 TEST174 停止，原因是末尾 `/%2e` 的长度被误按内嵌 `/%2e/` 的 5 字符计算；
+修正版只把边界判断和截取长度改为 4，不修改断言或支持范围；覆盖构建后的 26 项门得到
+25 条标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
+
+自动设备门从本批起分层：低风险、局部变更运行“本批测试 + 直接共享路径 + TEST13 +
+TEST999”；每累计约 5 个低风险批次，以及触及公共 DLL/ABI、布局/重绘、网络、输入基础设施、
+里程碑交付或出现异常时，再运行全量门。next206 的 121 项日志是当前最近一次全量证据。
 
 **next161 设备运行未完成（2026-08-09，不能作为基线）**：WM 原生 EDIT 子类接入
 `WM_IME_STARTCOMPOSITION/WM_IME_COMPOSITION/WM_IME_ENDCOMPOSITION`，通过 WM6
@@ -526,6 +539,14 @@ TEST173 固定 href/assign/replace、清除、same-value、state/length、hashch
 14/16 callback 槽位；多个 `%2e` segment、`%2E%2E`、不同 query/path 与字面 `..` 仍走普通
 导航。121 项设备日志已全部通过。该批不实现 double-dot 的 `.%2e`/`%2e.`/`%2e%2e` 折叠、混合字面/编码点段、锚点
 滚动或其他 location setter。正式构建、C89、staging 哈希和设备门均已通过。
+
+**next207 定向自动设备基线（2026-08-12）**：同一绝对 URL 分类器继续识别 path 末尾、位于
+query/fragment 或 URL 结尾前的单个 `%2e` segment；TEST174 保持 href/assign/replace、清除、
+same-value、state/length、hashchange、无 GET 和 14/16 callback 槽位，并把混合编码点段、
+`%2E%2E`、不同 query/path 与字面 `..` 留在普通导航。正式构建、C89 和 staging 哈希已通过。
+默认候选只选择 TEST13/151-174/999（26 项）；next206 的 121 项日志作为最近全量检查点。
+首轮 TEST174 的初始 href 因 `/%2e` 长度 off-by-one 未分类；修正版仅修正 5→4 的边界与截取，
+随后 26 项定向设备门全部通过。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对
