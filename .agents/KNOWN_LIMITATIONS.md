@@ -31,9 +31,9 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next186，2026-08-12）**：`screen=320x320 dpi=128` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-154，配置所选 101 项全部 OK、零 ERROR、零 FAIL、最终
-TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 100 项使用标准数字 OK 行。
+**当前自动化设备基线（next187，2026-08-12）**：`screen=320x320 dpi=128` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-155，配置所选 102 项全部 OK、零 ERROR、零 FAIL、最终
+TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 101 项使用标准数字 OK 行。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -338,6 +338,14 @@ TEST154 覆盖三入口、清除、history/state、hashchange、无网络与分�
 百分号编码/标准化、锚点滚动和其他组件 setter 不在本批。320x320/128 DPI 日志得到 TEST154
 OK、配置所选 101 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13 使用 `OK (overview)`，
 其余 100 项使用标准数字 OK 行。
+
+**next187 根相对同文档片段 URL 基线（2026-08-12）**：根相对 href/assign/replace URL 只有
+在解析后 path/query 与当前基址完全相同且改变 fragment，或当前确有 fragment 时以匹配根相对
+基址清除它，才走同 document 队列。当前无 fragment 的同 URL 根相对导航及 query/path 不同
+目标保持普通导航。TEST155 覆盖三入口、清除、same-value、history/state、hashchange、无网络
+与分类边界。query-only、普通 path-relative、dot-segment、百分号标准化、锚点滚动和其他组件
+setter 不在本批。320x320/128 DPI 日志得到 TEST155 OK、配置所选 102 项全部 OK、零 ERROR、
+零 FAIL 与最终 PASS；TEST13 使用 `OK (overview)`，其余 101 项使用标准数字 OK 行。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
