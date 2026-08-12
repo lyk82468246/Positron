@@ -1,11 +1,11 @@
 # Positron
 
-**当前自动化设备基线（next188，2026-08-12）**：同一个 Duktape 页面 context 已具备最小
+**当前自动化设备基线（next189，2026-08-12）**：同一个 Duktape 页面 context 已具备最小
 location/history bridge、受控 state、同 document traversal、popstate/hashchange、动态 URL
 组件与 `location.hash` 导航。`screen=240x240 dpi=96` 日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-156 全部通过：配置所选 103 项全部 OK、零条 `[ERROR]`、零 FAIL、
-最终 `TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next188\test_host.log`；TEST13 使用
-`OK (overview)`，其余 102 项使用标准数字 OK 行。最近一次定向人工门
+TEST20/27/43/44/56/58-77/80-157 全部通过：配置所选 104 项全部 OK、零条 `[ERROR]`、零 FAIL、
+最终 `TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next189\test_host.log`；TEST13 使用
+`OK (overview)`，其余 103 项使用标准数字 OK 行。最近一次定向人工门
 仍是 next167：用户确认
 Learn More 离开页保持居中边距，真实 SIP 候选词点击可完整键入。后续人工视觉/交互检查
 改为累计若干可能产生回归的批次后集中进行，不再逐个自动批次阻塞开发。默认
@@ -296,6 +296,17 @@ popstate、只派发 hashchange。当前无 fragment 的同 query 导航、不�
 增量构建已通过；`C:\WMShare\Positron-next188` 的七个 ARMV4I 二进制与构建产物 SHA-256
 一致。240x240/96 DPI 日志得到 TEST156 OK、配置所选 103 项全部 OK、零 ERROR、零 FAIL 与
 最终 PASS；TEST13 使用 `OK (overview)`，其余 102 项使用标准数字 OK 行。
+
+**next189 自动设备基线（2026-08-12）**：不带 `./` 或 `../` 前缀的同目录 path-relative
+`location.href/assign/replace` URL，在解析后与当前 path/query 完全相同且仅改变 fragment 时复用
+同文档片段队列；当前确有 fragment 时也可用匹配的相对文件名清除它。href/assign push，replace
+替换当前 entry，保持延迟提交、无 GET/popstate、只派发 hashchange。当前无 fragment 的同 URL、
+不同 path/query，以及带点段前缀的目标仍走普通导航。TEST157 固定三入口、清除、same-value、
+history/state、事件、无网络和分类边界；点段归一化、百分号标准化、锚点滚动及其他组件 setter
+不在本批。默认 `javascript=0`、TEST13、core ABI 与 14/16 callback 槽位不变。C89 回归和
+ARMV4I Debug 增量构建已通过；`C:\WMShare\Positron-next189` 的七个 ARMV4I 二进制与构建
+产物 SHA-256 一致。240x240/96 DPI 修复后日志得到 TEST156/157 OK、配置所选 104 项全部 OK、
+零 ERROR、零 FAIL 与最终 PASS；TEST13 使用 `OK (overview)`，其余 103 项使用标准数字 OK 行。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对
@@ -716,7 +727,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-next :: 旧进程锁文件时隔离 
 ```ini
 # 支持逗号、空格、范围，以及特殊编号 7b
 auto=1
-tests=13,20,27,43,44,56,58-77,80-156
+tests=13,20,27,43,44,56,58-77,80-157
 ```
 
 `auto=1` 启用无人值守 testbench：不显示 Yes/No/OK，按编号升序运行，所有原始 INFO/ERROR 与 TEST13 每次导航遥测写入 EXE 同目录的 `test_host.log`（每次启动覆盖）。可视测试窗口至少完成一次 `WM_PAINT` 后正常关闭；TEST13 自动经过 example.com、IANA Example Domains 和 IANA Reserved Domains。自动模式验证已有断言、资源计数和首帧可绘制性，**不等价于人工检查字体、抗锯齿和版式观感**；最近一次 next116 已证明“自动 OK”不能取代 Browse 人工门禁。设为 `auto=0` 时仍先提示是否只运行配置项；选 No 完整保留原 All/四组流程。文件缺失时直接走旧流程，文件存在但无效时提示并忽略。TEST23 与 TEST78/79 不可选。`scripts\stage.bat` 会先调用同配置的 VS2008 增量 Build，再复制配置及三份静态 symbol/emoji fallback 字体；构建失败不会留下混合版本包。
