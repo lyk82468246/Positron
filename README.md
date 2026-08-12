@@ -69,6 +69,14 @@ history/state、hashchange、无 GET、不同 query/path 与父目录排除；TE
 Debug 构建与七个 staging 哈希已通过；定向门为 TEST13/151-177/999，共 29 项；日志得到
 28 条标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
 
+**next211 全量自动设备基线（2026-08-12）**：根相对 href/assign/replace URL 中多个内嵌完整
+`%2E`/`%2e` single-dot segment 也可依次移除。TEST178 覆盖三入口、清除、same-value、
+history/state、hashchange、无 GET、不同 query/path 与父目录排除；TEST175 中“重复编码点段
+必须普通导航”的旧断言已由本测试取代，`%2E%2E`、内嵌+末尾混合和绝对/根相对边界不变。
+C89、ARMV4I Debug 构建与七个 staging 哈希已通过；这是 next206 后第 5 个低风险批次，设备门
+恢复为 TEST13/20/27/43/44/56/58-77/80-178/999，共 126 项；日志得到 125 条标准数字 OK、
+1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS，成为新的最近全量检查点。
+
 自动设备门从本批起分层：低风险、局部变更运行“本批测试 + 直接共享路径 + TEST13 +
 TEST999”；每累计约 5 个低风险批次，以及触及公共 DLL/ABI、布局/重绘、网络、输入基础设施、
 里程碑交付或出现异常时，再运行全量门。next206 的 121 项日志是当前最近一次全量证据。
@@ -590,6 +598,13 @@ same-value、state/length、hashchange、无 GET、不同 query/path、父目录
 TEST173 的重复编码反向断言已撤掉；`%2E%2E`、内嵌+末尾混合与根相对重复编码仍不支持。
 正式构建、C89 与 staging 哈希已通过；默认定向配置 TEST13/151-177/999 的 29 项日志全部
 通过；next206 仍是最近全量检查点。
+
+**next211 全量自动设备基线（2026-08-12）**：根相对 URL 分类器从单个扩展为多个内嵌 `%2e`
+segment，并在移除全部点段后执行既有同文档比较。TEST178 保持 href/assign/replace、清除、
+same-value、state/length、hashchange、无 GET、不同 query/path、父目录和 14/16 callback 槽位。
+TEST175 的重复编码反向断言已撤掉；`%2E%2E`、内嵌+末尾混合仍不支持。正式构建、C89 与
+staging 哈希已通过；默认全量配置 TEST13/20/27/43/44/56/58-77/80-178/999 的 126 项日志
+全部通过，next211 已替代 next206 成为最近全量检查点。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对

@@ -76,6 +76,11 @@ query/fragment 或 URL 结尾；多个或混合编码点段、`%2E%2E`、字面/
 重复编码的旧排除断言已由 TEST177 正向门取代。C89、ARMV4I Debug 构建和 staging 哈希已
 通过，29 项定向设备日志得到零 ERROR/FAIL 与最终 PASS。
 
+**next211 基线边界（2026-08-12）**：只新增根相对 URL 中多个内嵌完整 `/%2e/` segment；末尾
+混合编码点段、`%2E%2E` 与字面/编码 double-dot 仍不规范化。TEST175 中重复编码的旧排除
+断言已由 TEST178 正向门取代。C89、ARMV4I Debug 构建和 staging 哈希已通过，126 项全量
+设备日志得到零 ERROR/FAIL 与最终 PASS。
+
 默认 `javascript=0`；完整 DOM/window、任意 OEM IME 和全站视觉仍未实现。
 
 **next145 设备验收记录（2026-08-08）**：`PCore_GetScriptCount/PCore_GetScript` 按 DOM
@@ -597,6 +602,13 @@ query/path 与父目录排除边界。TEST173 不再反向断言重复编码；`
 根相对重复编码仍不支持。默认 javascript=0、TEST13、core ABI 和 callback 数不变；C89、
 ARMV4I Debug 构建与 `C:\WMShare\Positron-next210` 七个二进制哈希已通过。定向门选择
 TEST13/151-177/999，共 29 项且日志全部通过；next206 仍是最近全量检查点。
+
+**next211 根相对 URL 重复编码单点段基线（2026-08-12）**：片段分类器遍历多个内嵌 `%2e`
+segment；TEST178 覆盖三入口、清除、same-value、state/length、hashchange、无 GET、不同
+query/path 与父目录排除边界。TEST175 不再反向断言重复编码；`%2E%2E` 和混合内嵌/末尾编码
+仍不支持。默认 javascript=0、TEST13、core ABI 和 callback 数不变；C89、ARMV4I Debug 构建
+与 `C:\WMShare\Positron-next211` 七个二进制哈希已通过。全量门选择
+TEST13/20/27/43/44/56/58-77/80-178/999，共 126 项且日志全部通过；next211 是最近全量检查点。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
