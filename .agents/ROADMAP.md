@@ -2,9 +2,9 @@
 
 更新时间：2026-08-12
 基线：正式 Browse 路径走 NetSurf `layout_document` + `html_redraw`；TEST13 深层导航保持 next37 冻结语义。图片/SVG、字体 fallback、列表 marker/counter/inside flow、table 常见路径、表单、最小 DOM Event 纵切、基础 relative/absolute positioning、动态 `:hover` 与脚本资源发现/缓存 ABI 已推进到设备自动化基线。next118-126 已把独立 `positron_script.dll` 的 ABI、预算、模块、provider、global/JSON、native callback 与 structured setter 分批完成；next153 在 `screen=640x480 dpi=192` 日志中确认 TEST13/20/27/43/44/56/58-77/80-119 通过并记录 `TESTBENCH PASS`。该基线包含 next143 的 ASCII `pattern` validity、默认关闭的浏览器脚本门、显式开启时 classic inline/external script 的 DOM 顺序执行、页面级 context、最小 click listener、原生表单事件、EDIT/SELECT 键盘事件、focusin/focusout、受限 beforeinput 和 WM_CHAR keypress 桥的设备验收。浏览器 JS 默认关闭，96 DPI 不是产品固定值。next115 与 next116 的 float 候选均已因 TEST79/TEST13 真实回归否决，next114 的 Browse 路径保持为浏览器回归基线。失败/暂挂方向总索引见 `FAILED_EXPERIMENTS.md`；正文按时间保留已完成工作的来龙去脉，末尾“建议执行顺序”才是当前优先级；详细边界见 `KNOWN_LIMITATIONS.md`。
-当前自动化设备基线为 next205：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-172/999 全部通过，配置所选 120 项全部 OK、零 ERROR、零 FAIL，
-并记录 `TESTBENCH PASS`；用户确认 TEST999 在序列末尾实际响了一次。next167 的高 DPI
+当前自动化设备基线为 next206：`screen=640x480 dpi=192` 默认日志中 TEST13 三段导航及
+TEST20/27/43/44/56/58-77/80-173/999 全部通过，配置所选 121 项全部 OK、零 ERROR、零 FAIL，
+并记录 `TESTBENCH PASS`。next167 的高 DPI
 interaction restyle 修复和 Learn More/SIP 定向
 人工结果继续有效；next168 新增成功-GET URL 历史和左键后退，next169 增加最小脚本
 location/history 后退桥。人工视觉/交互改为累计
@@ -893,8 +893,8 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 
 ### 6bx. next204：test_host 专用完成提示音（已完成）
 
-- 配置解析器只额外接受精确编号 999；该批尚未开放 172-998，next205 将 172 变为正式测试
-  编号后 173-998 仍无效。TEST999 排在普通所选测试与 TEST7b 之后，只调用一次
+- 配置解析器只额外接受精确编号 999；该批尚未开放 172-998，next205/206 后续将 172/173
+  变为正式测试编号，当前 174-998 仍无效。TEST999 排在普通所选测试与 TEST7b 之后，只调用一次
   `MessageBeep(MB_OK)` 并记录标准 `TEST 999 OK`。
 - 这不是全局退出钩子：前序 fail-fast、未选择 999 或其他退出路径不会响；日志不能替代
   实际听音，本次设备运行已由用户确认序列末尾实际响了一次。
@@ -915,6 +915,18 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
 - 首轮设备运行在 TEST167 停止，根因是 TEST167-169 仍保留“绝对多位置 `/./` 必须普通导航”
   的旧排除断言。修正版只撤掉这三条已被本批能力取代的断言，query/path、`%2E` 与 `..`
   边界不变；同一路径重新构建、staging 并核对哈希后完整复测通过。
+
+### 6bz. next206：JavaScript 绝对 URL 百分号编码单点段片段导航（已完成）
+
+- 绝对 href/assign/replace URL 中，单个完整 segment 若 ASCII 大小写不敏感匹配 `%2e`，则按
+  single-dot 移除；规范化后与当前 origin/path/query 相同且 fragment 改变或清除时复用同文档
+  队列。实现依据 WHATWG URL Standard 的 single-dot URL path segment 定义。
+- TEST173 固定 `%2E`/`%2e`、三入口、清除、same-value、history/state、hashchange、无网络、
+  多个编码点段、`%2E%2E`、不同 query/path、`..` 排除边界和 14/16 callback 槽位。
+- double-dot 的 `.%2e`/`%2e.`/`%2e%2e`、混合字面/编码点段、锚点滚动和其他组件 setter
+  不在本批。默认 javascript=0、TEST13 与 core ABI 不变。C89 和 ARMV4I Debug 构建已通过，
+  `C:\WMShare\Positron-next206` 七个二进制 SHA-256 与构建产物一致；设备门得到 121 项全部
+  OK、零 ERROR/FAIL 与最终 PASS。
 
 ### 6be. next185：JavaScript location 片段引用入口（已完成）
 
@@ -1355,10 +1367,10 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 
 ## 建议执行顺序
 
-1. 以 next205 的 TEST13/20/27/43/44/56/58-77/80-172/999 设备日志作为已验证自动化基线；
+1. 以 next206 的 TEST13/20/27/43/44/56/58-77/80-173/999 设备日志作为已验证自动化基线；
    后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
-2. 下一批只推进绝对 URL 的单个百分号编码点段 `%2E`/`%2e` 同文档片段分类；父目录折叠、
-   双点编码、锚点滚动与其他 URL 标准化继续分批处理。
+2. 从 double-dot 编码形式或父目录折叠中选择一个独立纵切；每批采用风险相关的定向设备门，
+   全量回归改为高风险变更或阶段性检查。
 3. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
    WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础
    IME/composition；next167 已人工通过报告中的真实 SIP 候选词完整输入，任意 OEM IME

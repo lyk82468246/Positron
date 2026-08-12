@@ -31,10 +31,9 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next205，2026-08-12）**：`screen=640x480 dpi=192` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-172/999，配置所选 120 项全部 OK、零 ERROR、零 FAIL、最终
-TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 119 项使用标准数字 OK 行，用户确认
-TEST999 在序列末尾实际响了一次。
+**当前自动化设备基线（next206，2026-08-12）**：`screen=640x480 dpi=192` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-173/999，配置所选 121 项全部 OK、零 ERROR、零 FAIL、最终
+TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 120 项使用标准数字 OK 行。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -50,6 +49,10 @@ parser。只有规范化后 path/query 与当前文档相同且 fragment 改变�
 不同 query/path 仍是普通导航。候选已构建/staging，修正版设备日志完整通过。
 首轮设备日志在 TEST167 停止，因为 TEST167-169 的历史夹具仍把现已支持的绝对多位置 `/./`
 作为排除项；修正版只移除这三条旧断言，保留本段列出的实际限制，并在重新构建后通过设备门。
+
+**next206 基线边界（2026-08-12）**：只识别绝对 URL 中单个、内嵌完整 segment 的 `%2E`/`%2e`
+（即 `/%2e/`）；末尾编码点段、多个编码点段、`%2E%2E`、字面 `..`、混合字面/编码点段不规范化。该范围对齐 single-dot 的
+最小纵切，不宣称完整 URL parser 或 double-dot 支持。构建、staging 与设备日志均已通过。
 
 默认 `javascript=0`；完整 DOM/window、任意 OEM IME 和全站视觉仍未实现。
 
@@ -535,6 +538,13 @@ ARMV4I Debug 构建与 `C:\WMShare\Positron-next205` 七个二进制哈希已通
 得到零 ERROR/FAIL 与最终 PASS，因此 next205 已替代 next204 成为当前基线。
 首轮运行暴露的是 TEST167-169 的过时反向断言，不是父目录、编码点段或 query/path 被误接纳；
 修正版覆盖 staging 后已完成完整设备复测。
+
+**next206 绝对 URL 编码单点段基线（2026-08-12）**：片段分类器按 ASCII 大小写不敏感
+方式识别单个完整 `%2e` segment，TEST173 覆盖三入口、清除、same-value、state/length、
+hashchange、无 GET、重复编码点段、`%2E%2E`、不同 query/path 与 `..` 排除边界。默认
+javascript=0、TEST13、core ABI 和 callback 数不变；C89、ARMV4I Debug 构建与
+`C:\WMShare\Positron-next206` 七个二进制哈希已通过。121 项设备日志得到零 ERROR/FAIL 与
+最终 PASS，因此 next206 已成为当前基线。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
