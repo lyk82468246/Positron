@@ -1,11 +1,11 @@
 # Positron
 
-**当前自动化设备基线（next204，2026-08-12）**：同一个 Duktape 页面 context 已具备最小
+**当前自动化设备基线（next205，2026-08-12）**：同一个 Duktape 页面 context 已具备最小
 location/history bridge、受控 state、同 document traversal、popstate/hashchange、动态 URL
 组件与 `location.hash` 导航。`screen=640x480 dpi=192` 日志中 TEST13 三段导航及
-TEST20/27/43/44/56/58-77/80-171/999 全部通过：配置所选 119 项全部 OK、零条 `[ERROR]`、
-零 FAIL、最终 `TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next204\test_host.log`；TEST13
-使用 `OK (overview)`，其余 118 项使用标准数字 OK 行，用户确认 TEST999 在序列末尾实际响
+TEST20/27/43/44/56/58-77/80-172/999 全部通过：配置所选 120 项全部 OK、零条 `[ERROR]`、
+零 FAIL、最终 `TESTBENCH PASS`，日志为 `C:\WMShare\Positron-next205\test_host.log`；TEST13
+使用 `OK (overview)`，其余 119 项使用标准数字 OK 行，用户确认 TEST999 在序列末尾实际响
 了一次。最近一次定向人工门
 仍是 next167：用户确认
 Learn More 离开页保持居中边距，真实 SIP 候选词点击可完整键入。后续人工视觉/交互检查
@@ -18,6 +18,17 @@ Learn More 离开页保持居中边距，真实 SIP 候选词点击可完整键�
 未选择 999 都不会响。C89 回归和 ARMV4I Debug 增量构建已通过；
 `C:\WMShare\Positron-next204` 的七个二进制与构建产物 SHA-256 一致。设备日志得到配置所选
 119 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；用户确认测试序列末尾实际听到一次提示音。
+
+**next205 自动设备基线（2026-08-12）**：绝对 href/assign/replace URL 现在会移除查询或
+fragment 前所有分离的字面 `/./` 段；规范化后仅 path/query 与当前文档相同且 fragment 改变
+或清除时，才复用同文档队列。TEST172 固定三入口、清除、same-value、history/state、
+hashchange、无网络以及不同 query/path、`%2E` 和 `..` 排除边界。默认 `javascript=0`、
+TEST13、core ABI 与 14/16 callback 槽位不变。C89 与 ARMV4I Debug 构建已通过，
+`C:\WMShare\Positron-next205` 七个二进制与构建产物 SHA-256 一致。首轮设备运行在 TEST167
+停止，原因是 TEST167-169 仍把
+本批新增支持的同一个绝对多位置输入断言为普通导航；修正版只移除这三条过时排除断言，
+保留 query/path、`%2E` 与 `..` 边界。修正版设备日志得到 119 条标准数字 OK、1 条 TEST13
+overview、零 ERROR/FAIL 与最终 PASS，next205 已成为基线。
 
 **next161 设备运行未完成（2026-08-09，不能作为基线）**：WM 原生 EDIT 子类接入
 `WM_IME_STARTCOMPOSITION/WM_IME_COMPOSITION/WM_IME_ENDCOMPOSITION`，通过 WM6
@@ -486,11 +497,21 @@ state、事件、无网络和分类边界；绝对 URL 多位置点段、内嵌�
 OK 行。
 
 **next204 自动设备基线（2026-08-12）**：新增独立、可选的 `TEST999` 完成提示音门。
-配置解析只把精确编号 999 视为特殊测试，不开放 172-998；TEST999 在所有普通所选测试之后
+配置解析只把精确编号 999 视为特殊测试；该批尚未开放 172-998，next205 将 172 变为正式
+测试编号后 173-998 仍无效。TEST999 在所有普通所选测试之后
 调用一次 `MessageBeep(MB_OK)` 并记录标准 `TEST 999 OK`。它不是全局退出钩子，因此前序失败
 不会响。默认候选配置在 next203 的 118 项后追加 999；正式构建、C89 检查和 staging 哈希已
 通过；设备日志得到 118 条标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS，
 用户确认序列末尾实际响了一次，next204 已替代 next203 成为基线。
+
+**next205 自动设备基线（2026-08-12）**：绝对 URL 的片段分类器从“只继续处理同一位置的
+连续 `/./`”收敛为“遍历查询/fragment 前所有字面 `/./`”。TEST172 让多个分离位置通过
+href/assign/replace 进入同文档队列并验证清除、same-value、history/state、hashchange 与无
+GET；不同 query/path、百分号编码 `%2E` 和任何 `..` 仍走普通导航。默认 `javascript=0`、
+TEST13、core ABI 和 14/16 callback 槽位不变。正式构建、C89 与 staging 哈希已通过，
+`C:\WMShare\Positron-next205` 的 120 项设备日志门已通过，next205 已替代 next204 成为基线。
+首轮日志在 TEST167 暴露 TEST167-169 的旧绝对多位置排除断言；修正版未放宽其他边界，已
+覆盖重建同一 staging 并完整通过。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对

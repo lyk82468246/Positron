@@ -31,9 +31,9 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next204，2026-08-12）**：`screen=640x480 dpi=192` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-171/999，配置所选 119 项全部 OK、零 ERROR、零 FAIL、最终
-TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 118 项使用标准数字 OK 行，用户确认
+**当前自动化设备基线（next205，2026-08-12）**：`screen=640x480 dpi=192` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-172/999，配置所选 120 项全部 OK、零 ERROR、零 FAIL、最终
+TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 119 项使用标准数字 OK 行，用户确认
 TEST999 在序列末尾实际响了一次。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
@@ -43,6 +43,13 @@ next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继�
 所有退出路径的钩子。它只在前序所选测试全部完成后调用一次 `MessageBeep(MB_OK)`；如果
 fail-fast 提前返回、配置没有 999，或程序从其他路径退出，都不会响。日志只能证明调用成功并
 记录 `TEST 999 OK`；本次设备运行已由用户确认实际听到一次。
+
+**next205 已验收边界（2026-08-12）**：绝对 URL 只规范化查询/fragment 前字面形式的 `/./`；
+TEST172 覆盖多个分离位置，但 `%2E`/`%2e` 不解码，`..` 不折叠，不提供完整 URL Standard
+parser。只有规范化后 path/query 与当前文档相同且 fragment 改变或清除时才走同文档队列，
+不同 query/path 仍是普通导航。候选已构建/staging，修正版设备日志完整通过。
+首轮设备日志在 TEST167 停止，因为 TEST167-169 的历史夹具仍把现已支持的绝对多位置 `/./`
+作为排除项；修正版只移除这三条旧断言，保留本段列出的实际限制，并在重新构建后通过设备门。
 
 默认 `javascript=0`；完整 DOM/window、任意 OEM IME 和全站视觉仍未实现。
 
@@ -513,12 +520,21 @@ fragment，或当前确有 fragment 时用匹配目标清除它，才走同 docu
 TEST170 与 TEST171 OK、配置所选 118 项全部 OK、零 ERROR、零 FAIL 与最终 PASS；TEST13 使用
 `OK (overview)`，其余 117 项使用标准数字 OK 行。
 
-**next204 单次完成提示音基线（2026-08-12）**：配置解析器仅额外接受精确的 999，
+**next204 单次完成提示音基线（2026-08-12）**：配置解析器当时仅额外接受精确的 999，
 TEST999 在其他所选测试之后调用一次 `MessageBeep(MB_OK)` 并写标准 OK 日志；不使用
 `show_info`/MessageBox，避免宿主额外制造提示音。它不覆盖前序失败或其他退出路径。
 候选的 C89、ARMV4I Debug 构建及 `C:\WMShare\Positron-next204` 七个二进制 SHA-256 核对
 已通过；设备日志得到 119 项全部 OK、零 ERROR/FAIL 与最终 PASS，用户确认一次可闻提示音，
 next204 已替代 next203 成为当前基线。
+
+**next205 绝对 URL 多位置内嵌 `/./` 基线（2026-08-12）**：绝对 href/assign/replace 的
+片段分类器遍历查询/fragment 前所有字面 `/./`，规范化后复用既有同文档历史和 hashchange
+路径。TEST172 固定三入口、清除、same-value、state/length、无 GET、不同 query/path、
+`%2E` 和 `..` 排除边界。默认 javascript=0、TEST13、core ABI 和 callback 数不变；C89、
+ARMV4I Debug 构建与 `C:\WMShare\Positron-next205` 七个二进制哈希已通过。120 项设备日志
+得到零 ERROR/FAIL 与最终 PASS，因此 next205 已替代 next204 成为当前基线。
+首轮运行暴露的是 TEST167-169 的过时反向断言，不是父目录、编码点段或 query/path 被误接纳；
+修正版覆盖 staging 后已完成完整设备复测。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
