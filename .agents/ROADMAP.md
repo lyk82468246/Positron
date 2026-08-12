@@ -980,6 +980,16 @@ Positron 是给 WM6 打补丁，不是拆掉 WM6 重建。
   TEST13/20/27/43/44/56/58-77/80-178/999（126 项）。C89、ARMV4I Debug 构建和
   `C:\WMShare\Positron-next211` 七个哈希和设备日志均已通过，next211 成为最近全量检查点。
 
+### 6cf. next212：JavaScript 绝对 URL 编码双点段片段导航（已完成）
+
+- 绝对 href/assign/replace URL 中单个内嵌完整 `%2e%2e` segment 连同前一个非空目录折叠；
+  同文档判定继续要求 origin/path/query 匹配且 fragment 改变或清除。
+- TEST179 固定大小写、三入口、清除、same-value、history/state、hashchange、无网络、不同
+  query/path、额外父目录边界和 14/16 callback 槽位。根相对、末尾、重复、混合点段以及
+  `.%2e`/`%2e.` 拼写仍不规范化。
+- 本批是 next211 full checkpoint 后第 1 个低风险定向批次，门为 TEST13/151-179/999
+  （31 项）。C89、ARMV4I Debug 构建、`C:\WMShare\Positron-next212` 七个哈希和设备日志均已通过。
+
 ### 6be. next185：JavaScript location 片段引用入口（已完成）
 
 - `location.href='#...'` 与 `location.assign('#...')` 复用片段队列新增 null-state 同 document
@@ -1422,7 +1432,7 @@ WM6/ARMV4I 资源紧，后续必须持续做：
 1. 以 next211 的 TEST13/20/27/43/44/56/58-77/80-178/999 设备日志作为已验证全量检查点，
    next211 同时作为当前定向能力基线；
    后续每批继续以 TEST13 深层导航、动态 DPI 和定期旋转/真实点击作为浏览器门禁。
-2. 继续选择一个 double-dot 编码形式或父目录折叠纵切。低风险批次采用风险相关
+2. 继续根相对编码 double-dot 纵切；随后再选择末尾或其他 double-dot 拼写。低风险批次采用风险相关
    定向门；累计约 5 批、触及共享高风险基础设施、里程碑交付或出现异常时运行全量回归。
 3. 在显式开关默认关闭期间不得让 TEST13 平白增加脚本网络请求；WM_CHAR keypress、
    WM_SYSKEY/WM_SYSCHAR、BMP 字符和代理对桥已完成设备门禁；next161 只推进基础

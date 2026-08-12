@@ -77,9 +77,17 @@ C89、ARMV4I Debug 构建与七个 staging 哈希已通过；这是 next206 后�
 恢复为 TEST13/20/27/43/44/56/58-77/80-178/999，共 126 项；日志得到 125 条标准数字 OK、
 1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS，成为新的最近全量检查点。
 
+**next212 定向自动设备基线（2026-08-12）**：绝对 href/assign/replace URL 中单个内嵌完整
+`%2E%2E` double-dot segment 可连同前一个非空目录折叠；规范化后仍要求 path/query 与当前
+文档匹配。TEST179 覆盖大小写、三入口、清除、same-value、history/state、hashchange、无
+GET、不同 query/path 与额外父目录边界；TEST173 中规范化后指向不同 path 的旧 double-dot
+断言仍有效。根相对、末尾、重复、混合点段及 `.%2e`/`%2e.` 拼写保持普通导航。C89、ARMV4I
+Debug 构建和七个 staging 哈希已通过；定向门为 TEST13/151-179/999，共 31 项；日志得到
+30 条标准数字 OK、1 条 TEST13 overview、零 ERROR/FAIL 与最终 PASS。
+
 自动设备门从本批起分层：低风险、局部变更运行“本批测试 + 直接共享路径 + TEST13 +
 TEST999”；每累计约 5 个低风险批次，以及触及公共 DLL/ABI、布局/重绘、网络、输入基础设施、
-里程碑交付或出现异常时，再运行全量门。next206 的 121 项日志是当前最近一次全量证据。
+里程碑交付或出现异常时，再运行全量门。next211 的 126 项日志是当前最近一次全量证据。
 
 **next161 设备运行未完成（2026-08-09，不能作为基线）**：WM 原生 EDIT 子类接入
 `WM_IME_STARTCOMPOSITION/WM_IME_COMPOSITION/WM_IME_ENDCOMPOSITION`，通过 WM6
@@ -605,6 +613,13 @@ same-value、state/length、hashchange、无 GET、不同 query/path、父目录
 TEST175 的重复编码反向断言已撤掉；`%2E%2E`、内嵌+末尾混合仍不支持。正式构建、C89 与
 staging 哈希已通过；默认全量配置 TEST13/20/27/43/44/56/58-77/80-178/999 的 126 项日志
 全部通过，next211 已替代 next206 成为最近全量检查点。
+
+**next212 定向自动设备基线（2026-08-12）**：绝对 URL 分类器新增单个、内嵌完整 `%2e%2e`
+segment 的前驱目录折叠，并在结果 path/query 匹配后复用既有同文档片段队列。TEST179 保持
+href/assign/replace、清除、same-value、state/length、hashchange、无 GET、不同 query/path、
+额外父目录和 14/16 callback 槽位。根相对、末尾或多个 double-dot segment，以及 `.%2e`、
+`%2e.` 和混合点段仍不支持。正式构建、C89 与 staging 哈希已通过；默认定向配置为
+TEST13/151-179/999（31 项），设备日志全部通过；next211 仍是最近全量检查点。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对
