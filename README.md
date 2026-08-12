@@ -54,6 +54,13 @@ segment 恰为 `%2E`/`%2e` 时，按 single-dot 移除后再与当前 origin/pat
 TEST13/151-175/999，共 27 项；日志得到 26 条标准数字 OK、1 条 TEST13 overview、零
 ERROR/FAIL 与最终 PASS。
 
+**next209 定向自动设备基线（2026-08-12）**：根相对 href/assign/replace URL 的 path 末尾
+segment 恰为 `%2E`/`%2e` 时，也按 single-dot 移除。TEST176 覆盖大小写、三入口、清除、
+same-value、history/state、hashchange、无 GET，并排除混合内嵌/末尾编码段、`%2E%2E`、
+不同 query/path 与 `..`。C89、ARMV4I Debug 构建和七个 staging 哈希已通过；定向门为
+TEST13/151-176/999，共 28 项；日志得到 27 条标准数字 OK、1 条 TEST13 overview、零
+ERROR/FAIL 与最终 PASS。
+
 自动设备门从本批起分层：低风险、局部变更运行“本批测试 + 直接共享路径 + TEST13 +
 TEST999”；每累计约 5 个低风险批次，以及触及公共 DLL/ABI、布局/重绘、网络、输入基础设施、
 里程碑交付或出现异常时，再运行全量门。next206 的 121 项日志是当前最近一次全量证据。
@@ -561,6 +568,12 @@ segment 接到既有 root-relative 规范化路径。TEST175 保持 href/assign/
 state/length、hashchange、无 GET 和 14/16 callback 槽位；多个编码点段、`%2E%2E`、不同
 query/path 与字面 `..` 仍走普通导航。正式构建、C89 和 staging 哈希已通过；默认定向配置为
 TEST13/151-175/999（27 项），设备日志全部通过；next206 仍是最近全量检查点。
+
+**next209 定向自动设备基线（2026-08-12）**：同一根相对分类器继续识别 path 末尾、位于
+query/fragment 或 URL 结尾前的单个 `%2e` segment。TEST176 固定 href/assign/replace、清除、
+same-value、state/length、hashchange、无 GET 和 14/16 callback 槽位；混合编码点段、
+`%2E%2E`、不同 query/path 与字面 `..` 留在普通导航。正式构建、C89 和 staging 哈希已通过；
+默认定向配置 TEST13/151-176/999 的 28 项日志全部通过；next206 仍是最近全量检查点。
 
 **next186 自动设备基线（2026-08-12）**：`location.href/assign/replace` 现在把与当前绝对
 基址相同、仅改变 fragment 的 URL 识别为同文档导航，并允许在当前确有 fragment 时用绝对
