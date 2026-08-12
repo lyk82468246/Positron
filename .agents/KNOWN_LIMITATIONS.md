@@ -31,9 +31,9 @@ TEST108 暴露并修复了 `tiny-regex-c` 对字符类末尾字面量连字符�
 email/url/number 类型约束、range/custom validity 和 `invalid` 事件仍未实现，不能把这批
 表单检查表述为完整 HTML Constraint Validation。
 
-**当前自动化设备基线（next200，2026-08-12）**：`screen=640x480 dpi=192` 自动日志完成
-TEST13/20/27/43/44/56/58-77/80-168，配置所选 115 项全部 OK、零 ERROR、零 FAIL、最终
-TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 114 项使用标准数字 OK 行。
+**当前自动化设备基线（next201，2026-08-12）**：`screen=640x480 dpi=192` 自动日志完成
+TEST13/20/27/43/44/56/58-77/80-169，配置所选 116 项全部 OK、零 ERROR、零 FAIL、最终
+TESTBENCH PASS；TEST13 使用 `OK (overview)`，其余 115 项使用标准数字 OK 行。
 next167 的高 DPI interaction restyle 修复和 Learn More/SIP 人工结果继续有效；next168
 新增成功-GET URL 历史与左键后退，next169 新增最小脚本 location/history 后退桥。
 人工视觉/交互门改为累计若干风险批次后集中执行。
@@ -475,6 +475,17 @@ fragment，或当前确有 fragment 时用匹配目标清除它，才走同 docu
 Debug 构建及 `C:\WMShare\Positron-next200` 七个二进制 SHA-256 核对已通过。640x480/192 DPI
 日志得到 TEST70、TEST167 与 TEST168 OK、配置所选 115 项全部 OK、零 ERROR、零 FAIL 与最终
 PASS；TEST13 使用 `OK (overview)`，其余 114 项使用标准数字 OK 行。
+
+**next201 根相对多位置内嵌 `./` 片段 URL 基线（2026-08-12）**：根相对 href/assign/replace URL 允许
+多个分离路径位置出现内嵌 `./`；只有移除这些点段并解析后 path/query 与当前基址完全相同且改变
+fragment，或当前确有 fragment 时用匹配目标清除它，才走同 document 队列。当前无 fragment 的
+同 URL、不同 path/query、绝对 URL 点段和内嵌 `../` 目标保持普通导航。TEST169 覆盖三入口、
+清除、same-value、history/state、hashchange、无网络与分类边界。绝对 URL 点段、内嵌父目录、
+百分号标准化、锚点滚动和其他组件 setter 不在本批。首包因 TEST167 的过期负边界停止；修正版
+保持 TEST169 正向断言并把 TEST167 负边界换成绝对 URL 点段。C89、ARMV4I Debug 构建及
+`C:\WMShare\Positron-next201-fix` 七个二进制 SHA-256 核对已通过。640x480/192 DPI 日志得到
+TEST70、TEST167、TEST168 与 TEST169 OK、配置所选 116 项全部 OK、零 ERROR、零 FAIL 与最终
+PASS；TEST13 使用 `OK (overview)`，其余 115 项使用标准数字 OK 行。
 
 **next152 设备验收（2026-08-08）**：原生 `COMBOBOX/LISTBOX` 已加入
 `WM_KEYDOWN/WM_KEYUP` 子类桥，复用公开 `PCoreKeyEventData` 和按命中点派发 ABI；
