@@ -90,7 +90,9 @@ scripts\repair_wmdc_rapi.bat
 ```
 
 该脚本自行请求 UAC，只把 5 个已知 WMDC/RAPI COM 类的旧 `%windir%` 注册改为现有
-32/64 位 DLL 绝对路径；DLL、注册键或原值不符合预期时会拒绝修改。
+32/64 位 DLL 绝对路径；DLL、注册键或原值不符合预期时会拒绝修改。旧 CoreCon gate 为何
+无需该修复、WMDC 已连接为何仍不能由 CoreCon 活动连接枚举发现，以及 `0x8007007E` 的完整
+取证见[故障排查](TROUBLESHOOTING.md#wmdc-自动设备门不要混淆-corecon-与-rapi)。
 
 ### 手工设备门
 

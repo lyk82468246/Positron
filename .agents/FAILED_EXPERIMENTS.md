@@ -92,6 +92,20 @@ TEST13 深链、旋转和人工截图。
 决定：使用共享 `ppartial` 后降到 19,735 字符并通过。禁止把超时首包写成结果，也禁止提高
 预算代替去重。
 
+### next222 前置 gate：只枚举活动 CoreCon 连接 — 已替代
+
+问题：为了取消 emulator VMID 绑定和显式 CoreCon `Connect()`，曾尝试只消费
+`ConManClass.EnumerateConnections2()` 返回的现有连接。WMDC 已有可用 DMA 会话时该枚举仍
+为空，因为 WMDC 当前 RAPI 会话不等于活动 CoreCon `ICcConnection`。旧 next221 gate 的成功
+来自“VMID 匹配 datastore 后主动建立 CoreCon 通道”，不能作为活动连接可枚举的证据。
+
+决定：正式 gate 改用 RAPI 1 直接消费 WMDC 当前唯一会话。禁止把 CoreCon 枚举为空报告成
+“WMDC 未连接”，也禁止为绕过空枚举恢复默认 VMID 绑定、自动选择设备或隐式
+Connect/Cradle。若未来重启 CoreCon 方向，必须先证明同一个接口能在不绑定设备身份、不改变
+GUI 连接状态的情况下同时复用 USB 真机和 DMA emulator 当前会话；仅在 emulator 上成功不算
+通过。完整通道区别和 RAPI 环境修复见
+[`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md)。
+
 ### 早期 loading 条 — 已替代/部分暂挂
 
 问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。

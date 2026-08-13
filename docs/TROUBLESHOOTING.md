@@ -39,6 +39,56 @@ stage 目录，必要时重启模拟器。
 - 如果设备仍加载旧 DLL，重启模拟器后再运行隔离目录。
 - 比较二进制时应比较同一配置和同一批构建，不以文件时间单独判定。
 
+## WMDC 自动设备门：不要混淆 CoreCon 与 RAPI
+
+WMDC 显示 USB 真机或 DMA emulator 已连接，只能证明 WMDC 当前会话可用；它不保证
+VS2008 Core Connectivity（CoreCon）已经存在一个可由 `EnumerateConnections2()` 枚举的
+活动 `ICcConnection`。两者是不同的主机端通道，不能用 CoreCon 枚举为空推断“设备未连接”，
+也不应要求用户因此重新 Cradle 或重启已经正常的 WMDC 会话。
+
+next221 使用的旧 gate 能工作，是因为它没有复用 WMDC 当前会话：脚本从正在运行的
+`DeviceEmulator.exe` 命令行读取 VMID，在 CoreCon datastore 中匹配目标，然后显式调用
+CoreCon `Connect()`，结束时再 `Disconnect()`。这条路径完全没有调用 RAPI，所以当时无需
+修复 RAPI COM 注册，也无需管理员权限。它只证明“按 emulator VMID 主动建立 CoreCon
+部署通道”可行，不能证明 WMDC 当前连接能够被 CoreCon 直接枚举；它也不满足随意更换当前
+USB/DMA 设备且不绑定目标身份的要求。
+
+next222 起的正式 gate 改用 32 位 RAPI 1。`CeRapiInit()` 只是让本地客户端打开 WMDC 已有的
+当前会话；gate 不选择设备、不读取 VMID，也不执行启动、Cradle、断开或重置。更换设备时，
+只需先在 GUI 中让所需设备成为 WMDC 当前连接，再运行：
+
+```bat
+scripts\device_gate.bat -Candidate nextNNN
+```
+
+### `CeRapiInit` 报 `0x8007007E`
+
+2026-08-13 的本机取证确认：WMDC UI、DMA 会话、`RapiMgr` 和 `WcesComm` 服务都可以正常，
+但旧 WMDC 安装写入的五个 RAPI 相关 COM 类仍把 DLL 路径保存为字面量
+`%windir%\system32\...`。现代 Windows 的 32 位 COM 加载路径没有按旧安装器的预期展开这些
+值，Process Monitor 可见进程在 SysWOW64 路径下继续寻找含字面 `%windir%` 的不存在文件，
+最终使 `CeRapiInit()` 返回 `0x8007007E`。因此，这个错误不等于设备没有连接。
+
+正式修复入口是：
+
+```bat
+scripts\repair_wmdc_rapi.bat
+```
+
+脚本会自行请求真正的 Windows UAC 管理员令牌，核对 DLL、注册键和原值，只修复已知的
+`wcescommproxy.dll`、`rapistub.dll`、`rapi.dll`、`rapiproxystub.dll` 相关五个 COM 类，并同时
+验证 32/64 位注册视图。它是幂等的一次性主机修复：正常设备门本身不需要提权，复跑修复脚本
+应得到 `changed=0` 和 `status=PASS`。自动化宿主的“退出沙箱”不等于取得 Windows 管理员
+令牌；HKLM 写入必须由实际 UAC 提升完成。
+
+只在错误确为 `0x8007007E` 且脚本的严格前置检查通过时使用该修复。其他 HRESULT、未知注册
+值或缺失 DLL 必须继续取证，不能手工套用注册表修改。WMDC 重装或系统更新若恢复旧式路径，
+可以在同一错误再次出现时重跑正式脚本。
+
+本次迁移前尝试过“既不绑定 VMID，也不调用 CoreCon `Connect()`，只消费
+`EnumerateConnections2()` 的现有连接”；即使 WMDC 已连接，该枚举仍为空。该方案已经撤回，
+禁止恢复边界见[失败实验索引](../.agents/FAILED_EXPERIMENTS.md)。
+
 ## 日志没有通过
 
 按最早异常分类：
