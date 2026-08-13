@@ -122,16 +122,23 @@ DNS/TCP/TLS/HTTP/页面提交阶段取证。
 - 真实网站是集成哨兵，其远端内容和网络状态可能变化；稳定语义还需要离线 fixture。
 - 96 DPI 不是产品常量。每次 viewport、旋转或 interaction restyle 都要保留真实设备 DPI。
 - `test_host.exe` 是消费者，不能把只适合宿主的私有接口伪装成公共 DLL 能力。
+- WMDC RAPI 1 不暴露可靠远端退出码/等待/终止；自动 gate 以完整日志标记判定完成，超时后
+  不会杀死设备进程，需要人工确认进程状态。
 
 ## 当前 URL 分类边界
 
 绝对和根相对 URL path 中多个完整 `%2E%2E` segment 的受控折叠已由 next221 全量设备门
-验证。以下仍按普通导航或不支持处理：
+验证；history state 的根相对 path/query/fragment 与 query-relative 写法已由 next222 验证。
+以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；
 - 字面 `..` 与编码 segment 混合；
 - 规范化后 query/path 不同的 URL；
 - 越过 origin 根或没有非空前驱目录的折叠。
+- document-relative sibling、`./` 和 `../` history state URL；
+- protocol-relative history state URL；
+- 同源 absolute history URL 的 path 变化（当前 bootstrap 只允许既有 base/fragment）；
+- 默认端口归一、IDN、userinfo 和其他完整 URL Standard origin 规范化。
 
 ## 不得用限制掩盖回归
 

@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 188
+#define TEST_MAX_NUMBER 189
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -2418,6 +2418,44 @@ static int pcore_browse_history_same_base_url(const char *left,
             memcmp(left, right, left_length) == 0;
 }
 
+/* History state URLs may change the path/query, but must remain same-origin.
+ * This intentionally compares the textual scheme/authority boundary only;
+ * it is a narrow browser-script bridge rule, not a complete URL parser. */
+static int pcore_browse_history_same_origin_url(const char *left,
+        const char *right)
+{
+    const char *left_scheme;
+    const char *right_scheme;
+    const char *left_end;
+    const char *right_end;
+    size_t left_length;
+    size_t right_length;
+
+    if (left == NULL || right == NULL || left[0] == '\0' ||
+            right[0] == '\0') {
+        return 0;
+    }
+    left_scheme = strstr(left, "://");
+    right_scheme = strstr(right, "://");
+    if (left_scheme == NULL || right_scheme == NULL) {
+        return 0;
+    }
+    left_end = left_scheme + 3;
+    while (*left_end != '\0' && *left_end != '/' &&
+            *left_end != '?' && *left_end != '#') {
+        left_end++;
+    }
+    right_end = right_scheme + 3;
+    while (*right_end != '\0' && *right_end != '/' &&
+            *right_end != '?' && *right_end != '#') {
+        right_end++;
+    }
+    left_length = (size_t) (left_end - left);
+    right_length = (size_t) (right_end - right);
+    return left_length == right_length &&
+            _strnicmp(left, right, left_length) == 0;
+}
+
 static int pcore_browse_history_replace_state_url(const char *url,
         const char *state_json)
 {
@@ -2426,7 +2464,7 @@ static int pcore_browse_history_replace_state_url(const char *url,
     if (pcore_browse_history_current() == NULL || url == NULL ||
             url[0] == '\0' ||
             strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
-            !pcore_browse_history_same_base_url(
+            !pcore_browse_history_same_origin_url(
             pcore_browse_history_current(), url) || state_json == NULL ||
             state_json[0] == '\0' ||
             strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
@@ -2456,7 +2494,7 @@ static int pcore_browse_history_push_state(const char *url,
 
     if (pcore_browse_history_current() == NULL || url == NULL ||
             url[0] == '\0' || strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
-            !pcore_browse_history_same_base_url(
+            !pcore_browse_history_same_origin_url(
             pcore_browse_history_current(), url) ||
             state_json == NULL || state_json[0] == '\0' ||
             strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
@@ -6004,7 +6042,7 @@ static int pcore_browser_script_navigation(void *pw,
         if (bridge->history_url == NULL || url == NULL ||
                 url[0] == '\0' ||
                 strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
-                !pcore_browse_history_same_base_url(
+                !pcore_browse_history_same_origin_url(
                 bridge->history_url, url) || state_json == NULL ||
                 state_json[0] == '\0' ||
                 strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
@@ -6060,7 +6098,7 @@ static int pcore_browser_script_navigation(void *pw,
         if (!bridge->history_can_commit || bridge->history_url == NULL ||
                 url == NULL || url[0] == '\0' ||
                 strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
-                !pcore_browse_history_same_base_url(
+                !pcore_browse_history_same_origin_url(
                 url, bridge->history_url) ||
                 state_json == NULL || state_json[0] == '\0' ||
                 strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
@@ -6954,9 +6992,26 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "function preplace(v){var s=String(v);if(pqueueFragment(s,true))"
         "{return;}if(!__pcoreNavigation({op:'replace',url:s})){"
         "throw new Error('location replace failed');}}"
+        "function phistoryOrigin(v){var s=String(v);var i=s.indexOf('://');"
+        "var p;var q;var h;if(i<0){return '';}i+=3;p=s.indexOf('/',i);"
+        "q=s.indexOf('?',i);h=s.indexOf('#',i);"
+        "if(p<0||(q>=0&&q<p)){p=q;}if(p<0||(h>=0&&h<p)){p=h;}"
+        "return s.substring(0,p<0?s.length:p);}"
         "function phistoryUrl(url,provided){var u=provided?String(url):'';"
-        "var h;var b;if(u===''){return purl;}h=purl.indexOf('#');"
-        "b=h>=0?purl.substring(0,h):purl;if(u.charAt(0)==='#'){return b+u;}"
+        "var h;var b;var q;var origin;if(u===''){return purl;}"
+        "h=purl.indexOf('#');b=h>=0?purl.substring(0,h):purl;"
+        "if(u.charAt(0)==='#'){return b+u;}"
+        "if(u.charAt(0)==='?'){q=b.indexOf('?');"
+        "return(q>=0?b.substring(0,q):b)+u;}"
+        "if(u.substring(0,2)==='//'){throw new Error('history state URL unsupported');}"
+        "if(u.charAt(0)==='/'){origin=phistoryOrigin(purl);"
+        "if(origin===''){throw new Error('history state URL unsupported');}"
+        "return origin+u;}"
+        "if(u.indexOf('://')>=0){origin=phistoryOrigin(purl);"
+        "if(origin===''||phistoryOrigin(u).toLowerCase()!==origin.toLowerCase())"
+        "{throw new Error('history state URL unsupported');}"
+        "if(u===b||u.indexOf(b+'#')===0){return u;}"
+        "throw new Error('history state URL unsupported');}"
         "if(u===b||u.indexOf(b+'#')===0){return u;}"
         "throw new Error('history state URL unsupported');}"
         "function preplaceState(state,title,url){var u=phistoryUrl(url,"
@@ -32959,6 +33014,226 @@ static BOOL test188_browser_script_location_root_repeated_encoded_double_dots_fr
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 189 - root-relative browser history state URLs                   */
+/* -------------------------------------------------------------------- */
+static BOOL test189_browser_script_history_root_relative_url(void)
+{
+    static const char URL_OLD[] =
+        "https://example.com/app/start?x=0#seed";
+    static const char URL_REPLACE[] =
+        "https://example.com/app/start?x=1#base";
+    static const char URL_PUSH[] =
+        "https://example.com/app/next?x=2#root";
+    static const char URL_FINAL[] =
+        "https://example.com/app/final?x=3#abs";
+    static const char URL_OTHER[] =
+        "https://example.com/app/other?x=5#next";
+    static const char URL_QUERY[] =
+        "https://example.com/app/other?x=6#query";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var seen=[];var rejected=0;"
+        "onpopstate=function(e){seen.push('P'+e.state.page+'|'"
+        "+location.href);};"
+        "onhashchange=function(e){seen.push('H'+e.oldURL+'>'+e.newURL);};"
+        "history.replaceState({page:0},'',"
+        "'/app/start?x=1#base');"
+        "history.pushState({page:1},'',"
+        "'/app/next?x=2#root');"
+        "history.pushState({page:2},'',"
+        "'/app/final?x=3#abs');"
+        "try{history.pushState({bad:1},'',"
+        "'https://other.invalid/app/final#cross');}catch(e){rejected++;}"
+        "try{history.replaceState({bad:2},'',"
+        "'https://example.com/other#absolute');}catch(e){rejected++;}"
+        "document.getElementById('result').textContent="
+        "location.href+'|'+document.URL+'|'+history.length+'|'"
+        "+history.state.page+'|'+rejected+'|'+seen.length;"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char INITIAL_RESULT[] =
+        "https://example.com/app/final?x=3#abs|"
+        "https://example.com/app/final?x=3#abs|3|2|2|0";
+    static const char BACK_RESULT[] =
+        "P1|https://example.com/app/next?x=2#root|"
+        "Hhttps://example.com/app/final?x=3#abs>"
+        "https://example.com/app/next?x=2#root|"
+        "https://example.com/app/next?x=2#root|1|3";
+    static const char FORWARD_RESULT[] =
+        "P2|https://example.com/app/final?x=3#abs|"
+        "Hhttps://example.com/app/next?x=2#root>"
+        "https://example.com/app/final?x=3#abs|"
+        "https://example.com/app/final?x=3#abs|2|3";
+    static const char QUERY_RESULT[] =
+        "https://example.com/app/other?x=6#query|"
+        "https://example.com/app/other?x=6#query|4|12|4";
+    HANDLE document;
+    HANDLE runtime;
+    HANDLE session_runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *evaluation_result;
+    char result[256];
+    char error[768];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+    int failure_stage;
+
+    document = NULL;
+    runtime = NULL;
+    session_runtime = NULL;
+    bridge = NULL;
+    evaluation_result = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    failure_stage = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    (void) pcore_browse_history_commit_navigation(URL_OLD, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_OLD,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, INITIAL_RESULT) != 0 ||
+            result_bytes != (int) sizeof(INITIAL_RESULT) - 1 ||
+            bridge == NULL || bridge->history_entry_url == NULL ||
+            strcmp(bridge->history_entry_url, URL_REPLACE) != 0 ||
+            bridge->history_push_count != 2 ||
+            bridge->history_push_urls[0] == NULL ||
+            strcmp(bridge->history_push_urls[0], URL_PUSH) != 0 ||
+            bridge->history_push_urls[1] == NULL ||
+            strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
+            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
+            1, -1, bridge) != 0 || g_browse_history.count != 3 ||
+            g_browse_history.index != 2 ||
+            strcmp(g_browse_history.entries[0], URL_REPLACE) != 0 ||
+            strcmp(g_browse_history.entries[1], URL_PUSH) != 0 ||
+            strcmp(g_browse_history.entries[2], URL_FINAL) != 0 ||
+            !pcore_browse_history_same_document_target(1)) {
+        ok = 0;
+    }
+    if (ok) {
+        failure_stage = 2;
+        bridge->hwnd = (HWND) 1;
+        session_runtime = runtime;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (!pcore_browse_navigate_back((HWND) 1) || g_nav_loading ||
+                g_nav_request != NULL || g_browse_history.index != 1 ||
+                strcmp(pcore_browse_history_current(), URL_PUSH) != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":1}") != 0 ||
+                PScript_Evaluate(session_runtime,
+                "seen.join('|')+'|'+location.href+'|'"
+                "+history.state.page+'|'+history.length;", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        } else {
+            evaluation_result = PScript_GetResult(session_runtime);
+            if (evaluation_result == NULL ||
+                    strcmp(evaluation_result, BACK_RESULT) != 0) {
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        failure_stage = 3;
+        if (!pcore_browse_navigate_forward((HWND) 1) ||
+                g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.index != 2 ||
+                strcmp(pcore_browse_history_current(), URL_FINAL) != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":2}") != 0 ||
+                PScript_Evaluate(session_runtime,
+                "seen.slice(2).join('|')+'|'+location.href+'|'"
+                "+history.state.page+'|'+history.length;", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        failure_stage = 4;
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, FORWARD_RESULT) != 0) {
+            ok = 0;
+        } else {
+            failure_stage = 5;
+            if (PScript_Evaluate(session_runtime,
+                    "history.replaceState({page:11},'',"
+                    "'/app/other?x=5#next');"
+                    "history.pushState({page:12},'','?x=6#query');"
+                    "location.href+'|'+document.URL+'|'"
+                    "+history.length+'|'+history.state.page+'|'"
+                    "+seen.length;", -1) != PSCRIPT_OK) {
+                pcore_browser_script_error(error, sizeof(error),
+                        "stage 5 evaluation",
+                        PScript_GetError(session_runtime));
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        failure_stage = 6;
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, QUERY_RESULT) != 0 ||
+                g_browse_history.count != 4 ||
+                g_browse_history.index != 3 || g_nav_loading ||
+                g_nav_request != NULL ||
+                strcmp(g_browse_history.entries[2], URL_OTHER) != 0 ||
+                strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":12}") != 0 ||
+                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+            ok = 0;
+        }
+    }
+    if (!ok && error[0] == '\0') {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%d history=%d/%d current=%s state=%s eval=%s",
+                failure_stage, g_browse_history.index,
+                g_browse_history.count,
+                pcore_browse_history_current() != NULL ?
+                pcore_browse_history_current() : "(null)",
+                pcore_browse_history_current_state() != NULL ?
+                pcore_browse_history_current_state() : "(null)",
+                evaluation_result != NULL ? evaluation_result : "(null)");
+        error[sizeof(error) - 1] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        show_error(L"TEST 189 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 189 OK",
+            "root-relative and query-relative history state URLs update\n"
+            "location/document metadata without a GET; same-origin path\n"
+            "changes remain intentionally unsupported for absolute URLs,\n"
+            "while traversal preserves state and hashchange ordering.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -37038,6 +37313,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 188: ok =
                 test188_browser_script_location_root_repeated_encoded_double_dots_fragment();
+                break;
+        case 189: ok =
+                test189_browser_script_history_root_relative_url();
                 break;
         default: ok = FALSE; break;
         }

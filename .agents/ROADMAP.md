@@ -32,16 +32,17 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ## 短期目标
 
-### 1. 收束同文档导航分类
+### 1. 补齐一种 document-relative history state URL
 
-绝对和根相对重复完整编码 double-dot 已由 next221 验证。下一批先整理受支持/拒绝矩阵，
-再选择一个有真实页面价值、可独立验收的上游同文档导航语义。必须保持：
+根相对 path/query/fragment 与 query-relative `pushState`/`replaceState` 已由 next222 验证。
+下一批优先选择同目录单段 sibling（例如 `next?x=1#tail`），只补这一种常见解析。必须保持：
 
-- 绝对/根相对、完整/半编码、字面父目录、不同 query/path 和 origin 根边界都有明确分类；
-- 只有 origin/path/query 匹配后才进入同文档 fragment 队列；
-- 完整/半编码混合、字面父目录、不同 query/path 保持反例；
-- href/assign/replace、clear、same-value、state/length、hashchange 和无 GET 同时覆盖；
-- 不得顺便加入其他 URL 拼写、DOM API、布局或性能重构。
+- sibling 相对当前 document 目录解析并继续受 same-origin 门约束；
+- 空段、fragment-only、query-relative 和 root-relative 旧路径不回归；
+- `./`、`../`、protocol-relative、cross-origin 和同源 absolute path 变化不借机扩展；
+- replace/push、无 GET、state/length、traversal、popstate/hashchange 同时覆盖；
+- 结果断言不得再次超过 `PScript_GetResult` 255 字符边界；
+- 不得顺便加入 location URL 拼写、DOM API、布局或性能重构。
 
 ### 2. 累计人工门
 

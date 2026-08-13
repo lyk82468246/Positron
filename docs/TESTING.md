@@ -55,29 +55,42 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 ### 一键设备门
 
-先通过 Device Emulator Manager、WMDC 或设备工具的 GUI 建立且只保留一个目标连接；脚本
-不会启动、选择、Cradle 或重置设备：
+先在 WMDC/Device Emulator GUI 中建立当前设备连接。USB 真机和 DMA emulator 均可；
+RAPI 1 只暴露 WMDC 当前会话，因此 gate 不枚举设备、不绑定 VMID，也不会连接、选择、
+启动、Cradle、断开或重置设备：
 
 ```bat
 scripts\device_gate.bat -Candidate nextNNN
 ```
 
-脚本使用 VS2008 官方 32 位 Core Connectivity 通道，并完成正式增量构建、隔离 staging、
-整包部署、`test_host.exe` 启动、有限等待、日志回收和自动判门。每次运行使用唯一的设备端
-`\Temp\Positron-device-gate\<candidate>-<timestamp>`，不会读取旧日志，也不会杀死并非由
-本次运行启动的进程。完整证据保存在本地 `tmp/device-runs/`。
+脚本使用 WMDC 官方 32 位 RAPI 通道，并完成正式增量构建、隔离 staging、整包部署、
+`test_host.exe` 启动、有限等待、日志回收和自动判门。每次运行使用唯一的设备端
+`\Temp\Positron-device-gate\<candidate>-<timestamp>`，不会读取旧日志。下一次运行只回收
+这个 gate 根目录中符合自身命名规则的旧候选目录；未知目录一律保留。完整证据保存在本地
+`tmp/device-runs/`。
 
-默认要求主机上恰好有一个已经运行的 Device Emulator，并从其 VMID 精确匹配 CoreCon
-datastore；不会尝试错误目标。真机可显式指定 datastore 项，例如：
+默认测试选择来自 tracked `test_host/test_host.ini`。调试或批次定向门可只改本次隔离
+staging 的 `tests=` 值，不修改 tracked ini：
 
 ```bat
-scripts\device_gate.bat -Candidate nextNNN ^
-  -PlatformName "Windows Mobile 6 Professional SDK" ^
-  -DeviceName "Windows Mobile 6 Professional Device"
+scripts\device_gate.bat -Candidate nextNNN-debug ^
+  -TestSelection "189,999"
 ```
 
-连接缺失、目标不唯一、已有 `test_host.exe`、部署失败、运行超时、日志缺失或任一判门条件
-失败都会返回非零退出码。自动门仍不替代下文列出的人工视觉和输入检查。
+`-PlatformName`/`-DeviceName` 不用于 RAPI gate；更换设备只需先在 GUI 中切换 WMDC 当前连接。
+RAPI 1 没有安全的远端等待/终止接口，因此 gate 以完整 `TESTBENCH PASS/FAIL` 日志作为完成
+标记；超时会保存可取得的部分日志并返回非零，但不会杀死设备进程。连接缺失、部署失败、
+运行超时、日志缺失或任一判门条件失败也都会返回非零。自动门仍不替代下文列出的人工视觉
+和输入检查。
+
+如果 `CeRapiInit` 报 `0x8007007E`，先运行：
+
+```bat
+scripts\repair_wmdc_rapi.bat
+```
+
+该脚本自行请求 UAC，只把 5 个已知 WMDC/RAPI COM 类的旧 `%windir%` 注册改为现有
+32/64 位 DLL 绝对路径；DLL、注册键或原值不符合预期时会拒绝修改。
 
 ### 手工设备门
 

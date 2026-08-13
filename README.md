@@ -85,21 +85,29 @@ scripts\stage.bat Debug C:\WMShare\Positron-candidate
 
 ### 自动设备门
 
-先通过 Device Emulator Manager、WMDC 或设备工具的 GUI 连接设备，并确保只保留一个目标。
-自动脚本不会启动、选择、Cradle 或重置设备。连接完成后，在仓库根目录运行：
+先在 WMDC/Device Emulator GUI 中连接一个设备；USB 真机和 DMA emulator 均可，当前连接
+必须已经可用。gate 通过 32 位 RAPI 直接消费 WMDC 的当前设备，不枚举或绑定 VMID，也不会
+连接、选择、启动、Cradle、断开或重置设备。连接完成后，在仓库根目录运行：
 
 ```bat
 scripts\device_gate.bat -Candidate nextNNN
 ```
 
-脚本会使用正式工程配置增量构建，创建隔离 staging，精确匹配当前唯一运行的模拟器，部署
-完整候选包，启动 `test_host.exe`，有限等待并回收日志，最后检查所选测试、设备指标、
-`ERROR`/`FAIL`、TEST13 导航和 `TESTBENCH PASS`。完整本地证据保存在被 Git 忽略的
-`tmp/device-runs/`。
+脚本会使用正式工程配置增量构建，创建隔离 staging，部署完整候选包，启动
+`test_host.exe`，有限等待并回收日志，最后检查所选测试、设备指标、`ERROR`/`FAIL`、
+TEST13 导航和 `TESTBENCH PASS`。每次运行前只回收设备端由 gate 自己命名的旧候选目录；
+完整本地证据保存在被 Git 忽略的 `tmp/device-runs/`。
+
+如果 RAPI 初始化报告 `0x8007007E`，WMDC 的旧式 COM 路径可能未被现代 Windows 正确展开。
+运行一次下列脚本并确认 UAC；脚本只修复已知 WMDC/RAPI COM 注册，遇到未知值会拒绝修改：
+
+```bat
+scripts\repair_wmdc_rapi.bat
+```
 
 `-Candidate` 只命名本次设备端目录和证据目录；它不会切换 Git 版本，也不会改变测试选择。
-实际代码来自当前工作区，实际测试选择来自当前 `test_host/test_host.ini`。真机的显式目标参数、
-失败行为和人工验收边界见[测试指南](docs/TESTING.md)。
+实际代码来自当前工作区，实际测试选择来自当前 `test_host/test_host.ini`。定向测试、失败行为
+和人工验收边界见[测试指南](docs/TESTING.md)。
 
 ## 仓库结构
 

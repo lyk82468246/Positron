@@ -1,9 +1,10 @@
 param(
-    [string] $Candidate = "next220",
+    [string] $Candidate = "next222",
     [ValidateSet("Debug", "Release")]
     [string] $Configuration = "Debug",
     [int] $TimeoutSeconds = 1200,
     [string] $RemoteBase = "\Temp\Positron-device-gate",
+    [string] $TestSelection = "",
     [string] $PlatformName = "",
     [string] $DeviceName = ""
 )
@@ -13,11 +14,6 @@ $ErrorActionPreference = "Stop"
 function Write-Stage([string] $message)
 {
     Write-Host ("[device-gate] " + $message)
-}
-
-function Normalize-GuidText([string] $value)
-{
-    return $value.Trim().TrimStart("{").TrimEnd("}").ToUpperInvariant()
 }
 
 function Get-ConfiguredTests([string] $iniPath)
@@ -89,7 +85,7 @@ function Write-ResultFile(
         [string] $status,
         [string] $target,
         [string] $remoteRoot,
-        [int] $exitCode,
+        [string] $exitCode,
         [string[]] $checks)
 {
     $lines = @(
@@ -108,16 +104,20 @@ if ($Candidate -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]*$") {
 if ($TimeoutSeconds -lt 30) {
     throw "TimeoutSeconds must be at least 30."
 }
+if ($RemoteBase -notmatch "^\\[^\\]+\\[^\\]+" -or
+        $RemoteBase -match "(^|\\)\.\.?($|\\)") {
+    throw "RemoteBase must be an absolute device path with at least two non-dot segments."
+}
 if (![Environment]::Is64BitOperatingSystem -or
         [Environment]::Is64BitProcess) {
-    throw "Run scripts\device_gate.bat so the 32-bit CoreCon client is used."
+    throw "Run scripts\device_gate.bat so the 32-bit WMDC RAPI client is used."
+}
+if (![string]::IsNullOrEmpty($PlatformName) -or
+        ![string]::IsNullOrEmpty($DeviceName)) {
+    throw "-PlatformName and -DeviceName are not valid for the RAPI gate. RAPI always consumes WMDC's current connected device and never selects a VMID or target."
 }
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $stageScript = Join-Path $PSScriptRoot "stage.bat"
-$coreConPath = "C:\Program Files (x86)\Common Files\Microsoft Shared\CoreCon\1.0\Bin\Microsoft.Smartdevice.Connectivity.dll"
-if (!(Test-Path -LiteralPath $coreConPath)) {
-    throw "VS2008 CoreCon was not found at $coreConPath."
-}
 
 $runStamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $runRoot = Join-Path $repoRoot ("tmp\device-runs\" + $runStamp + "-" + $Candidate)
@@ -152,7 +152,23 @@ foreach ($relative in $required) {
     }
 }
 
-$expectedTests = Get-ConfiguredTests (Join-Path $localStage "test_host.ini")
+$stagedIni = Join-Path $localStage "test_host.ini"
+if (![string]::IsNullOrEmpty($TestSelection)) {
+    if ($TestSelection -match "[\r\n]") {
+        throw "TestSelection must be a single tests= value."
+    }
+    $iniText = [IO.File]::ReadAllText($stagedIni, [Text.Encoding]::UTF8)
+    if ($iniText -notmatch "(?m)^\s*tests\s*=.*$") {
+        throw "The staged test_host.ini has no tests= line to override."
+    }
+    $iniText = [regex]::Replace($iniText,
+            "(?m)^\s*tests\s*=.*$", "tests=" + $TestSelection, 1)
+    [IO.File]::WriteAllText($stagedIni, $iniText,
+            (New-Object Text.UTF8Encoding($false)))
+    Write-Stage "staged test override: $TestSelection"
+}
+
+$expectedTests = Get-ConfiguredTests $stagedIni
 $payloadFiles = @(Get-ChildItem -LiteralPath $localStage -Recurse -File)
 $manifest = foreach ($file in ($payloadFiles | Sort-Object FullName)) {
     $relative = Get-RelativePath $localStage $file.FullName
@@ -161,184 +177,469 @@ $manifest = foreach ($file in ($payloadFiles | Sort-Object FullName)) {
 }
 Set-Content -LiteralPath $manifestPath -Value $manifest -Encoding ASCII
 
-Add-Type -TypeDefinition @"
+$rapiSource = @'
 using System;
-using System.ComponentModel;
+using System.Collections.Generic;
+using System.IO;
 using System.Runtime.InteropServices;
 
-public static class PositronProcessCommandLine
+public static class PositronDeviceRapi
 {
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(uint access, bool inherit, uint id);
-    [DllImport("kernel32.dll")]
-    private static extern bool CloseHandle(IntPtr handle);
-    [DllImport("ntdll.dll")]
-    private static extern int NtQueryInformationProcess(IntPtr handle,
-            int infoClass, IntPtr info, int length, out int returned);
+    private const uint GENERIC_READ = 0x80000000;
+    private const uint GENERIC_WRITE = 0x40000000;
+    private const uint FILE_SHARE_READ = 0x00000001;
+    private const uint FILE_SHARE_WRITE = 0x00000002;
+    private const uint CREATE_ALWAYS = 2;
+    private const uint OPEN_EXISTING = 3;
+    private const uint FILE_ATTRIBUTE_DIRECTORY = 0x00000010;
+    private const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
+    private const uint INVALID_FILE_ATTRIBUTES = 0xffffffff;
 
-    public static string Read(uint processId)
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StartupInfo
     {
-        IntPtr handle = OpenProcess(0x1000, false, processId);
-        if (handle == IntPtr.Zero) {
-            throw new Win32Exception();
+        public uint cb;
+        public IntPtr lpReserved;
+        public IntPtr lpDesktop;
+        public IntPtr lpTitle;
+        public uint dwX;
+        public uint dwY;
+        public uint dwXSize;
+        public uint dwYSize;
+        public uint dwXCountChars;
+        public uint dwYCountChars;
+        public uint dwFillAttribute;
+        public uint dwFlags;
+        public ushort wShowWindow;
+        public ushort cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput;
+        public IntPtr hStdOutput;
+        public IntPtr hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessInformation
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public uint dwProcessId;
+        public uint dwThreadId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileTime
+    {
+        public uint dwLowDateTime;
+        public uint dwHighDateTime;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct CeFindData
+    {
+        public uint dwFileAttributes;
+        public FileTime ftCreationTime;
+        public FileTime ftLastAccessTime;
+        public FileTime ftLastWriteTime;
+        public uint nFileSizeHigh;
+        public uint nFileSizeLow;
+        public uint dwOID;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string cFileName;
+    }
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    private static extern int CeRapiInit();
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    private static extern int CeRapiUninit();
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    private static extern int CeRapiGetError();
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    private static extern uint CeGetLastError();
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeCreateDirectory(
+        string pathName, IntPtr securityAttributes);
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern uint CeGetFileAttributes(string fileName);
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern IntPtr CeCreateFile(
+        string fileName, uint desiredAccess, uint shareMode,
+        IntPtr securityAttributes, uint creationDisposition,
+        uint flagsAndAttributes, IntPtr templateFile);
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeReadFile(
+        IntPtr file, [Out] byte[] buffer, uint bytesToRead,
+        out uint bytesRead, IntPtr overlapped);
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeWriteFile(
+        IntPtr file, byte[] buffer, uint bytesToWrite,
+        out uint bytesWritten, IntPtr overlapped);
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeCloseHandle(IntPtr handle);
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern IntPtr CeFindFirstFile(
+        string fileName, out CeFindData findData);
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeFindNextFile(
+        IntPtr findHandle, out CeFindData findData);
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeFindClose(IntPtr findHandle);
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeDeleteFile(string fileName);
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeRemoveDirectory(string pathName);
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeCreateProcess(
+        string imageName, string commandLine,
+        IntPtr processAttributes, IntPtr threadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool inheritHandles,
+        uint creationFlags, IntPtr environment, string currentDirectory,
+        ref StartupInfo startupInfo,
+        out ProcessInformation processInformation);
+
+    private static bool IsInvalidHandle(IntPtr handle)
+    {
+        return handle == new IntPtr(-1);
+    }
+
+    private static IOException CreateRemoteException(string operation)
+    {
+        uint deviceError = CeGetLastError();
+        uint rapiError = unchecked((uint) CeRapiGetError());
+        return new IOException(String.Format(
+            "{0} failed (RAPI=0x{1:x8}, device={2}).",
+            operation, rapiError, deviceError));
+    }
+
+    public static void Connect()
+    {
+        int result = CeRapiInit();
+        if (result < 0) {
+            throw new InvalidOperationException(String.Format(
+                "CeRapiInit failed (HRESULT=0x{0:x8}).",
+                unchecked((uint) result)));
+        }
+    }
+
+    public static void Disconnect()
+    {
+        CeRapiUninit();
+    }
+
+    public static void EnsureDirectory(string path)
+    {
+        if (CeCreateDirectory(path, IntPtr.Zero)) {
+            return;
+        }
+        uint attributes = CeGetFileAttributes(path);
+        if (attributes != INVALID_FILE_ATTRIBUTES &&
+                (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+            return;
+        }
+        throw CreateRemoteException("CeCreateDirectory(" + path + ")");
+    }
+
+    public static void CopyFileToDevice(string localPath, string remotePath)
+    {
+        IntPtr remote = CeCreateFile(remotePath, GENERIC_WRITE, 0,
+            IntPtr.Zero, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, IntPtr.Zero);
+        if (IsInvalidHandle(remote)) {
+            throw CreateRemoteException("CeCreateFile(" + remotePath + ")");
         }
         try {
-            int needed;
-            int status = NtQueryInformationProcess(handle, 60,
-                    IntPtr.Zero, 0, out needed);
-            if (needed <= 0) {
-                throw new InvalidOperationException(String.Format(
-                        "Command-line size query failed: 0x{0:X8}", status));
-            }
-            IntPtr buffer = Marshal.AllocHGlobal(needed);
-            try {
-                status = NtQueryInformationProcess(handle, 60,
-                        buffer, needed, out needed);
-                if (status < 0) {
-                    throw new InvalidOperationException(String.Format(
-                            "Command-line query failed: 0x{0:X8}", status));
+            using (FileStream local = new FileStream(localPath, FileMode.Open,
+                    FileAccess.Read, FileShare.Read)) {
+                byte[] buffer = new byte[32768];
+                int count;
+                while ((count = local.Read(buffer, 0, buffer.Length)) > 0) {
+                    uint written;
+                    if (!CeWriteFile(remote, buffer, (uint) count,
+                            out written, IntPtr.Zero) || written != (uint) count) {
+                        throw CreateRemoteException(
+                            "CeWriteFile(" + remotePath + ")");
+                    }
                 }
-                ushort bytes = (ushort) Marshal.ReadInt16(buffer, 0);
-                IntPtr text = Marshal.ReadIntPtr(buffer,
-                        IntPtr.Size == 8 ? 8 : 4);
-                return Marshal.PtrToStringUni(text, bytes / 2);
-            } finally {
-                Marshal.FreeHGlobal(buffer);
             }
-        } finally {
-            CloseHandle(handle);
+        }
+        finally {
+            CeCloseHandle(remote);
+        }
+    }
+
+    public static bool TryCopyFileFromDevice(
+        string remotePath, string localPath)
+    {
+        IntPtr remote = CeCreateFile(remotePath, GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero, OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL, IntPtr.Zero);
+        if (IsInvalidHandle(remote)) {
+            return false;
+        }
+        try {
+            using (FileStream local = new FileStream(localPath,
+                    FileMode.Create, FileAccess.Write, FileShare.Read)) {
+                byte[] buffer = new byte[32768];
+                while (true) {
+                    uint read;
+                    if (!CeReadFile(remote, buffer, (uint) buffer.Length,
+                            out read, IntPtr.Zero)) {
+                        throw CreateRemoteException(
+                            "CeReadFile(" + remotePath + ")");
+                    }
+                    if (read == 0) {
+                        break;
+                    }
+                    local.Write(buffer, 0, (int) read);
+                }
+            }
+            return true;
+        }
+        finally {
+            CeCloseHandle(remote);
+        }
+    }
+
+    public static uint LaunchProcess(
+        string imageName, string currentDirectory)
+    {
+        StartupInfo startupInfo = new StartupInfo();
+        startupInfo.cb = (uint) Marshal.SizeOf(typeof(StartupInfo));
+        ProcessInformation processInformation;
+        if (!CeCreateProcess(imageName, null, IntPtr.Zero, IntPtr.Zero,
+                false, 0, IntPtr.Zero, currentDirectory,
+                ref startupInfo, out processInformation)) {
+            throw CreateRemoteException("CeCreateProcess(" + imageName + ")");
+        }
+        try {
+            return processInformation.dwProcessId;
+        }
+        finally {
+            if (processInformation.hThread != IntPtr.Zero) {
+                CeCloseHandle(processInformation.hThread);
+            }
+            if (processInformation.hProcess != IntPtr.Zero) {
+                CeCloseHandle(processInformation.hProcess);
+            }
+        }
+    }
+
+    private static List<CeFindData> FindChildren(string directory)
+    {
+        List<CeFindData> children = new List<CeFindData>();
+        CeFindData data;
+        IntPtr find = CeFindFirstFile(
+            directory.TrimEnd('\\') + "\\*", out data);
+        if (IsInvalidHandle(find)) {
+            uint error = CeGetLastError();
+            if (error == 2 || error == 18) {
+                return children;
+            }
+            throw CreateRemoteException(
+                "CeFindFirstFile(" + directory + ")");
+        }
+        try {
+            do {
+                if (data.cFileName != "." && data.cFileName != "..") {
+                    children.Add(data);
+                }
+            } while (CeFindNextFile(find, out data));
+        }
+        finally {
+            CeFindClose(find);
+        }
+        return children;
+    }
+
+    public static string[] ListSubdirectories(string directory)
+    {
+        List<string> names = new List<string>();
+        foreach (CeFindData child in FindChildren(directory)) {
+            if ((child.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+                names.Add(child.cFileName);
+            }
+        }
+        return names.ToArray();
+    }
+
+    public static void DeleteDirectoryTree(string directory)
+    {
+        foreach (CeFindData child in FindChildren(directory)) {
+            string path = directory.TrimEnd('\\') + "\\" + child.cFileName;
+            if ((child.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+                DeleteDirectoryTree(path);
+            } else if (!CeDeleteFile(path)) {
+                throw CreateRemoteException("CeDeleteFile(" + path + ")");
+            }
+        }
+        if (!CeRemoveDirectory(directory)) {
+            throw CreateRemoteException("CeRemoveDirectory(" + directory + ")");
         }
     }
 }
-"@
+'@
+Add-Type -TypeDefinition $rapiSource -Language CSharp
 
-[void] [Reflection.Assembly]::LoadFile($coreConPath)
-$manager = New-Object Microsoft.SmartDevice.Connectivity.DatastoreManager 1033
-$targetDevice = $null
-$targetDescription = ""
-$emulatorPid = 0
-
-if (![string]::IsNullOrEmpty($DeviceName)) {
-    $matches = @()
-    foreach ($platform in $manager.GetPlatforms()) {
-        if (![string]::IsNullOrEmpty($PlatformName) -and
-                $platform.Name -ne $PlatformName) {
-            continue
-        }
-        foreach ($device in $platform.GetDevices()) {
-            if ($device.Name -eq $DeviceName) {
-                $matches += $device
-            }
-        }
+$targetDescription = "WMDC current RAPI connection"
+try {
+    $wmdc = Get-ItemProperty -LiteralPath `
+            "HKCU:\Software\Microsoft\Windows CE Services" -ErrorAction Stop
+    if (![string]::IsNullOrEmpty([string] $wmdc.DeviceOemInfo)) {
+        $targetDescription += " / " + [string] $wmdc.DeviceOemInfo
     }
-    if ($matches.Count -ne 1) {
-        throw "Expected exactly one datastore device named '$DeviceName'; found $($matches.Count). Supply -PlatformName when names are ambiguous."
-    }
-    $targetDevice = $matches[0]
-    $targetDescription = $targetDevice.Name
-} else {
-    $emulators = @(Get-Process -Name DeviceEmulator -ErrorAction SilentlyContinue)
-    if ($emulators.Count -ne 1) {
-        throw "Expected exactly one already-running DeviceEmulator; found $($emulators.Count). This script never starts or selects a device."
-    }
-    $emulatorPid = $emulators[0].Id
-    $commandLine = [PositronProcessCommandLine]::Read([uint32] $emulatorPid)
-    if ($commandLine -notmatch "(?i)/VMID\s+\{?([0-9a-f-]{36})\}?") {
-        throw "The running emulator command line has no VMID."
-    }
-    $targetId = Normalize-GuidText $Matches[1]
-    foreach ($platform in $manager.GetPlatforms()) {
-        foreach ($device in $platform.GetDevices()) {
-            if ((Normalize-GuidText $device.Id.ToString()) -eq $targetId) {
-                $targetDevice = $device
-                $targetDescription = $device.Name + " [" + $targetId + "]"
-                break
-            }
-        }
-        if ($null -ne $targetDevice) {
-            break
-        }
-    }
-    if ($null -eq $targetDevice) {
-        throw "The running emulator VMID $targetId is absent from the CoreCon datastore."
-    }
+} catch {
+    Write-Stage "WMDC target metadata is unavailable; RAPI remains authoritative"
 }
 
 $remoteRoot = $RemoteBase.TrimEnd("\") + "\" + $Candidate + "-" + $runStamp
 $remoteExe = $remoteRoot + "\test_host.exe"
 $remoteLog = $remoteRoot + "\test_host.log"
-$remoteProcess = $null
-$connected = $false
+$remoteProcessId = 0
 $timedOut = $false
-$remoteExitCode = -1
+$remoteExitCode = "not_exposed_by_rapi"
+$completionMarker = "none"
 $checkLines = @()
+$rapiConnected = $false
 
 try {
-    Write-Stage "opening CoreCon channel to existing target: $targetDescription"
-    $targetDevice.Connect()
-    $connected = $targetDevice.IsConnected()
-    if (!$connected) {
-        throw "CoreCon did not connect to the existing target."
-    }
-    if ($emulatorPid -ne 0) {
-        $now = @(Get-Process -Name DeviceEmulator -ErrorAction SilentlyContinue)
-        if ($now.Count -ne 1 -or $now[0].Id -ne $emulatorPid) {
-            throw "The emulator set changed while opening CoreCon. Refusing to continue."
+    Write-Stage "opening the current GUI-connected WMDC target"
+    try {
+        [PositronDeviceRapi]::Connect()
+        $rapiConnected = $true
+    } catch {
+        if ($_.Exception.ToString() -match "8007007e") {
+            throw "WMDC is present, but its 32-bit RAPI COM proxy registration is broken (0x8007007E). Run scripts\repair_wmdc_rapi.bat once from this repository, approve UAC, then retry."
         }
+        throw "Could not open WMDC's current RAPI connection. Confirm that exactly one device is already connected in the GUI; the gate never connects, selects, cradles, starts or resets a device. $($_.Exception.Message)"
     }
+    Write-Stage "using existing target: $targetDescription"
 
-    $oldHosts = @($targetDevice.GetRunningProcesses() |
-            Where-Object { $_.FileName -match "(?i)(^|\\)test_host\.exe$" })
-    if ($oldHosts.Count -ne 0) {
-        throw "A test_host.exe process is already running on the target. Close it and retry; the gate never kills a process it did not start."
-    }
-
-    $deployer = $targetDevice.GetFileDeployer()
     $orderedPayload = @($payloadFiles | Sort-Object @{Expression = {
         if ($_.Name -eq "test_host.exe") { 2 }
         elseif ($_.Name -eq "test_host.ini") { 1 }
         else { 0 }
     }}, FullName)
+    $remoteDirectories = New-Object "System.Collections.Generic.HashSet[string]"
+    [void] $remoteDirectories.Add($remoteRoot)
+    foreach ($file in $orderedPayload) {
+        $relative = Get-RelativePath $localStage $file.FullName
+        $remotePath = $remoteRoot + "\" + $relative
+        $remoteDirectory = Split-Path -Parent $remotePath
+        if (![string]::IsNullOrEmpty($remoteDirectory)) {
+            $currentDirectory = ""
+            foreach ($segment in ($remoteDirectory.Trim("\") -split "\\")) {
+                if (![string]::IsNullOrEmpty($segment)) {
+                    $currentDirectory += "\" + $segment
+                    [void] $remoteDirectories.Add($currentDirectory)
+                }
+            }
+        }
+    }
+    $remoteOwnerRoot = $RemoteBase.TrimEnd("\")
+    $ownerDirectory = ""
+    foreach ($segment in ($remoteOwnerRoot.Trim("\") -split "\\")) {
+        if (![string]::IsNullOrEmpty($segment)) {
+            $ownerDirectory += "\" + $segment
+            Write-Stage "ensuring remote owner directory: $ownerDirectory"
+            [PositronDeviceRapi]::EnsureDirectory($ownerDirectory)
+        }
+    }
+    if ([string]::Equals($remoteOwnerRoot,
+            "\Temp\Positron-device-gate",
+            [StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($oldName in [PositronDeviceRapi]::ListSubdirectories(
+                $remoteOwnerRoot)) {
+            $oldPath = $remoteOwnerRoot + "\" + $oldName
+            if ($oldPath -eq $remoteRoot) {
+                continue
+            }
+            if ($oldName -notmatch
+                    "^[A-Za-z0-9][A-Za-z0-9._-]*-\d{8}-\d{6}$") {
+                Write-Stage "preserving unrecognized remote directory: $oldPath"
+                continue
+            }
+            Write-Stage "reclaiming prior gate directory: $oldPath"
+            [PositronDeviceRapi]::DeleteDirectoryTree($oldPath)
+        }
+    } else {
+        Write-Stage "custom RemoteBase: preserving all prior directories"
+    }
+    foreach ($remoteDirectory in ($remoteDirectories | Sort-Object Length)) {
+        Write-Stage "creating remote directory: $remoteDirectory"
+        [PositronDeviceRapi]::EnsureDirectory($remoteDirectory)
+    }
     $index = 0
     foreach ($file in $orderedPayload) {
         $index++
         $relative = Get-RelativePath $localStage $file.FullName
         $remotePath = $remoteRoot + "\" + $relative
         Write-Stage "deploying $index/$($orderedPayload.Count): $relative"
-        $deployer.SendFile($file.FullName, $remotePath, $true, $false)
+        [PositronDeviceRapi]::CopyFileToDevice($file.FullName, $remotePath)
     }
 
     Write-Stage "starting $remoteExe"
-    $remoteProcess = $targetDevice.GetRemoteProcess()
-    if (!$remoteProcess.Start($remoteExe, "")) {
-        throw "RemoteProcess.Start returned false for $remoteExe."
-    }
+    $remoteProcessId = [PositronDeviceRapi]::LaunchProcess(
+            $remoteExe, $remoteRoot)
+    Write-Stage "started remote process id $remoteProcessId"
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while (!$remoteProcess.HasExited()) {
+    while ($completionMarker -eq "none") {
         if ((Get-Date) -ge $deadline) {
             $timedOut = $true
             break
         }
-        Start-Sleep -Seconds 1
+        if ([PositronDeviceRapi]::TryCopyFileFromDevice(
+                $remoteLog, $localLog)) {
+            $partialLog = Get-Content -LiteralPath $localLog -Raw -Encoding UTF8
+            if ($partialLog -match "(?m)^\[INFO\] TESTBENCH PASS\s*$") {
+                $completionMarker = "PASS"
+            } elseif ($partialLog -match
+                    "(?m)^\[ERROR\] TESTBENCH FAIL\s*$") {
+                $completionMarker = "FAIL"
+            }
+        }
+        if ($completionMarker -eq "none") {
+            Start-Sleep -Seconds 1
+        }
     }
     if ($timedOut) {
-        try {
-            $deployer.ReceiveFile($remoteLog, $localLog, $true)
-        } catch {
-            Write-Stage "partial log was not available after timeout"
-        }
-        $remoteProcess.Kill()
-        throw "The device gate timed out after $TimeoutSeconds seconds; only the process started by this run was killed."
+        [void] [PositronDeviceRapi]::TryCopyFileFromDevice(
+                $remoteLog, $localLog)
+        throw "The device gate timed out after $TimeoutSeconds seconds. RAPI 1 does not expose a safe remote wait/terminate API, so the gate did not kill any device process."
     }
 
-    $remoteExitCode = $remoteProcess.GetExitCode()
     Start-Sleep -Milliseconds 500
     Write-Stage "receiving complete test_host.log"
-    $deployer.ReceiveFile($remoteLog, $localLog, $true)
+    if (![PositronDeviceRapi]::TryCopyFileFromDevice(
+            $remoteLog, $localLog)) {
+        throw "The completed remote test_host.log could not be received."
+    }
 } finally {
-    if ($connected -and $targetDevice.IsConnected()) {
-        $targetDevice.Disconnect()
+    if ($rapiConnected) {
+        [PositronDeviceRapi]::Disconnect()
     }
 }
 
@@ -382,8 +683,9 @@ $checkLines += "error_count=$errorCount"
 $checkLines += "fail_count=$failCount"
 $checkLines += "testbench_pass_count=$passCount"
 $checkLines += "test13_route_ok=$routeOk"
+$checkLines += "completion_marker=$completionMarker"
 
-$passed = $remoteExitCode -eq 0 -and $metricOk -and
+$passed = $completionMarker -eq "PASS" -and $metricOk -and
         $missing.Count -eq 0 -and $unexpected.Count -eq 0 -and
         $errorCount -eq 0 -and $failCount -eq 0 -and
         $passCount -eq 1 -and $routeOk
