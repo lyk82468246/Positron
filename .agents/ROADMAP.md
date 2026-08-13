@@ -32,19 +32,7 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ## 短期目标
 
-### 1. 补齐一种 document-relative history state URL
-
-根相对 path/query/fragment 与 query-relative `pushState`/`replaceState` 已由 next222 验证。
-下一批优先选择同目录单段 sibling（例如 `next?x=1#tail`），只补这一种常见解析。必须保持：
-
-- sibling 相对当前 document 目录解析并继续受 same-origin 门约束；
-- 空段、fragment-only、query-relative 和 root-relative 旧路径不回归；
-- `./`、`../`、protocol-relative、cross-origin 和同源 absolute path 变化不借机扩展；
-- replace/push、无 GET、state/length、traversal、popstate/hashchange 同时覆盖；
-- 结果断言不得再次超过 `PScript_GetResult` 255 字符边界；
-- 不得顺便加入 location URL 拼写、DOM API、布局或性能重构。
-
-### 2. 累计人工门
+### 1. 累计人工门
 
 在下一次触及布局、真实触摸、SIP、旋转或失败网络之前，整理尚未人工复核的低风险批次。
 若出现严重视觉或交互异常，立即验收，不等累计数量。

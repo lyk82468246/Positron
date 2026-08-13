@@ -74,7 +74,7 @@ staging 的 `tests=` 值，不修改 tracked ini：
 
 ```bat
 scripts\device_gate.bat -Candidate nextNNN-debug ^
-  -TestSelection "189,999"
+  -TestSelection "189,190,999"
 ```
 
 `-PlatformName`/`-DeviceName` 不用于 RAPI gate；更换设备只需先在 GUI 中切换 WMDC 当前连接。
