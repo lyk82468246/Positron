@@ -65,7 +65,7 @@ Debug|Windows Mobile 6 Professional SDK (ARMV4I)
 不要绕过解决方案直接拼装工具链。完整参数、输出位置和常见故障见
 [构建与部署](docs/BUILDING.md)。
 
-### 部署到模拟器共享目录
+### 手工部署到模拟器共享目录
 
 关闭仍在运行的 `test_host.exe`，然后运行：
 
@@ -83,8 +83,23 @@ Storage Card 路径启动 `test_host.exe`。
 scripts\stage.bat Debug C:\WMShare\Positron-candidate
 ```
 
-测试选择、自动日志、完成提示音和人工验收方法见
-[测试指南](docs/TESTING.md)。
+### 自动设备门
+
+先通过 Device Emulator Manager、WMDC 或设备工具的 GUI 连接设备，并确保只保留一个目标。
+自动脚本不会启动、选择、Cradle 或重置设备。连接完成后，在仓库根目录运行：
+
+```bat
+scripts\device_gate.bat -Candidate nextNNN
+```
+
+脚本会使用正式工程配置增量构建，创建隔离 staging，精确匹配当前唯一运行的模拟器，部署
+完整候选包，启动 `test_host.exe`，有限等待并回收日志，最后检查所选测试、设备指标、
+`ERROR`/`FAIL`、TEST13 导航和 `TESTBENCH PASS`。完整本地证据保存在被 Git 忽略的
+`tmp/device-runs/`。
+
+`-Candidate` 只命名本次设备端目录和证据目录；它不会切换 Git 版本，也不会改变测试选择。
+实际代码来自当前工作区，实际测试选择来自当前 `test_host/test_host.ini`。真机的显式目标参数、
+失败行为和人工验收边界见[测试指南](docs/TESTING.md)。
 
 ## 仓库结构
 
