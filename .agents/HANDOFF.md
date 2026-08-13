@@ -13,6 +13,9 @@
 - next224 批次包含 `test_host/main.c`、`test_host/test_host.ini`，以及改用当前 WMDC/RAPI
   会话的 `scripts/device_gate.bat`、`scripts/device_gate.ps1` 自动设备门和
   `scripts/repair_wmdc_rapi.*` 环境修复脚本。
+- 当前工作区的 `test_host/test_host.ini` 已暂时切换为人工验收包：`auto=0`、
+  `javascript=0`、`tests=13,20,27,56,58,62,64-67,73,75,999`。这不是新的自动基线；
+  上一节记录的 139 项自动 next224 证据仍然有效，人工验收结束后要恢复完整自动三行配置。
 - 本地设备证据位于 `tmp/device-runs/20260813-153637-next224/`；定向证据位于
   `tmp/device-runs/20260813-153602-next224-dot-retry/`。`tmp/` 不跟踪，干净 clone
   中没有该日志，不能据此假定新环境也已经连接或通过。
@@ -99,11 +102,17 @@ length、popstate/hashchange 行为。
 
 ## 唯一下一步
 
-执行下一轮允许累计的低风险人工门，优先复核尚未覆盖的视觉、真实触摸、SIP、旋转和失败
-网络批次；本轮不改变代码边界。
+按 `docs/TESTING.md` 的“当前人工验收包（next224）”执行一次低风险人工门，优先复核
+example.com 深层导航的居中边距、真实触摸、SIP 候选词、native 表单、旋转和失败网络
+反馈；本轮不改变代码边界。
 
 完成标准：
 
-- 每个累计批次都有对应截图、操作记录和完整设备日志；日志通过后再提升为人工证据；
+- 13 个选择项按提示完成；TEST13 至少保留 example.com 初始页、Learn More 后页面和
+  IANA 页面截图，并记录 viewport/DPI/方向；
+- TEST65 记录一次完整 SIP 候选词提交，TEST64/66/67/73 至少记录一次实际控件操作；
+- TEST999 只响一次，随后出现 `Configured tests passed`；
+- `auto=0` 不会创建 `test_host.log`，所以人工截图和操作记录必须放入 `tmp/`；若需要机器
+  判定日志，人工记录后恢复自动配置再另跑 gate；
 - 若出现崩溃、数据损坏、严重布局破坏或核心交互阻塞，立即停止累计并进入 debug；
-- 人工门结束后覆写本文件，并从路线图中选择下一个单一代码能力。
+- 人工门结束后恢复完整自动配置、覆写本文件，并从路线图中选择下一个单一代码能力。

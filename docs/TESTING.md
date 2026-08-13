@@ -51,6 +51,40 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
+### 当前人工验收包（next224）
+
+为了集中检查视觉、真实触摸和输入，工作区当前的 `test_host/test_host.ini` 已配置为：
+
+```ini
+auto=0
+javascript=0
+tests=13,20,27,56,58,62,64-67,73,75,999
+```
+
+这是人工验收用的窄选择，不是完整自动回归基线。自动 next224 基线仍是
+`auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-191,999`；人工检查结束后，
+下一次自动 gate 前必须恢复这三行。
+
+每项的观察目标如下：
+
+| 测试 | 人工观察目标 |
+| --- | --- |
+| 13 | 从起始页打开 example.com；点击 `Learn More` 后内容仍在居中的虚拟容器内，左右边距存在，不能贴到屏幕边缘。继续进入 IANA Example Domains 和 `IANA-managed Reserved Domains`，页面不应崩坏。 |
+| 20 | BMP、PNG、JPEG、GIF 四个有边框图片都显示，不能出现 fallback 文本。 |
+| 27 | SVG 红块、绿块和光滑蓝色曲线显示，不能出现 SVG fallback 文本。 |
+| 56 | 三个等高彩色行按 top/middle/bottom 对齐；下面两行等高，橙色 rowspan 文本在底部；不应出现垂直滚动条。 |
+| 58 | 蓝色标题、160px 着色内容带、级联示例和红/绿/蓝表格显示；隐藏导航文字不可见。 |
+| 62 | 复选框/单选框的选中与未选中外观正确；隐藏 input 不占可见行。 |
+| 64 | 复选框可切换；禁用项保持不变；同一 radio 组互斥，不同 form/组不串状态。 |
+| 65 | 四个 native EDIT 可见；首个输入框启动时可能显示 `wm-edit`（桥接探针的预置值）。点击它，用 SIP 输入并选中一个多字候选词，字段必须出现完整候选词而不是只出现下一个字母；密码框遮罩，readonly/disabled 不可修改，maxlength 生效。 |
+| 66 | 可编辑 textarea 能输入多行；readonly/disabled 两个 textarea 不可修改；SIP 收起后布局不应错位。 |
+| 67 | 第一个下拉框可打开并改选；禁用下拉框不能改；multiple 列表保留两个选中项并可切换第三项。 |
+| 73 | checkbox、focus、disabled/enabled、button active 和 option:checked 的颜色/状态随操作变化；Reset 后回到初始状态。 |
+| 75 | 灰色父框内依次看到红色 static、偏移后的绿色 relative、蓝色 absolute block、黄色 absolute inline；四个都不能跑出灰框。 |
+| 999 | 所有项目完成后只听到一次系统提示音。 |
+
+TEST190/191 是自动 history-state 断言，不属于这次需要肉眼观察的包。
+
 ## 运行自动设备门
 
 ### 一键设备门
@@ -96,14 +130,36 @@ scripts\repair_wmdc_rapi.bat
 
 ### 手工设备门
 
-1. 使用 [`scripts\stage.bat`](../scripts/stage.bat) 构建并整体复制候选包。
-2. 确认设备上没有旧 `test_host.exe` 进程。
-3. 核对候选目录中的 `test_host.ini`。
-4. 从该目录运行 `test_host.exe`。
-5. 等待窗口自行关闭；若选中 TEST999，应在末尾听到一次提示音。
-6. 把同目录 `test_host.log` 保存到本地诊断目录，检查完整结果。
+人工包不是自动跑完即退出：每个 render 测试会停在屏幕上，必须由验收者看完并按
+`Esc`（或点空白处）关闭。推荐按下面的顺序执行：
 
-通过日志至少应满足：
+1. 先在 WMDC/Device Emulator GUI 中确认当前只有一个已连接设备；不要让脚本替你连接、
+   选择或重置设备。
+2. 关闭设备上已有的 `test_host.exe`，在仓库根目录执行：
+
+   ```bat
+   scripts\stage.bat Debug C:\WMShare\Positron-manual-next224
+   ```
+
+3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next224`（或共享目录映射的
+   对应路径），确认 `test_host.exe` 与上表配置的 `test_host.ini` 在同一目录，然后运行
+   `test_host.exe`。
+4. 启动确认框必须显示这 13 个选择：
+   `13, 20, 27, 56, 58, 62, 64, 65, 66, 67, 73, 75, 999`，并显示
+   `Browser JavaScript: disabled.`。点击 **Yes**；点 **No** 会退回普通分组选择，不是本次流程。
+5. 每项开始时先读 TEST 提示框，再点 OK 看 render 窗口。按照上表操作和观察，必要时截图；
+   render 窗口用 `Esc` 或空白处关闭后才会进入下一项。TEST13 先截取 example.com
+   初始页，再截取 `Learn More` 后和 IANA 页面，便于比较左右边距与居中容器。
+6. TEST65/66/67 中实际点击控件；SIP 候选词必须选中完整词后再记录字段内容。若设备支持
+   旋转，可在输入控件仍有值时旋转一次，确认控件没有漂移、值没有丢失，然后再关闭窗口。
+7. 最后一项 TEST999 应只触发一次系统提示音，随后出现 `Configured tests passed`。如果
+   出现 `FAIL`/`ERROR`、崩溃、黑屏、严重布局破坏或核心控件无法操作，立即停止，不要把
+   后续项目当作通过。
+8. `auto=0` 的交互路径不会创建 `test_host.log`；请保存截图、设备型号/viewport/DPI、
+   操作步骤和异常描述到本地 `tmp/`。若还需要机器可判定的完整日志，应在人工记录完成后
+   恢复自动三行配置，再单独运行自动 gate；自动日志不能替代人工截图。
+
+若另行运行自动配置，日志至少应满足：
 
 - 开头记录实际 screen 和 DPI；
 - 所选测试都有预期的 `OK` 或明确的汇总记录；
