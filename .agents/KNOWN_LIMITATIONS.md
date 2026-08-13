@@ -41,7 +41,7 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 - 没有页面缓存和持久历史；
 - 没有滚动/表单恢复；
 - 没有完整跨文档 state 生命周期或 POST 恢复；
-- 绝对和根相对 URL 中多个完整编码 double-dot segment 尚未支持。
+- 根相对 URL 中多个完整编码 double-dot segment 尚未支持。
 
 完成方法：每种规范化语义都要有正反例、无 GET、state/length 和事件门；设备全量通过后
 才能提升基线。
@@ -123,18 +123,16 @@ DNS/TCP/TLS/HTTP/页面提交阶段取证。
 - 96 DPI 不是产品常量。每次 viewport、旋转或 interaction restyle 都要保留真实设备 DPI。
 - `test_host.exe` 是消费者，不能把只适合宿主的私有接口伪装成公共 DLL 能力。
 
-## 当前 URL 分类缺口
+## 当前 URL 分类边界
 
-以下仍按普通导航或不支持处理：
+绝对 URL path 中多个完整 `%2E%2E` segment 的受控折叠已由 next220 全量设备门验证。以下
+仍按普通导航或不支持处理：
 
-- 绝对 URL 中重复完整编码 double-dot segment；
 - 根相对 URL 中重复完整编码 double-dot segment；
 - 完整与半编码 double-dot 混合；
 - 字面 `..` 与编码 segment 混合；
 - 规范化后 query/path 不同的 URL；
 - 越过 origin 根或没有非空前驱目录的折叠。
-
-下一批只选择其中一个边界，并按 [`HANDOFF.md`](HANDOFF.md) 的完成标准验收。
 
 ## 不得用限制掩盖回归
 

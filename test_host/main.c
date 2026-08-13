@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 186
+#define TEST_MAX_NUMBER 187
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6849,6 +6849,16 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "if(s>=0&&(q<0||s<q)){return null;}s=u.lastIndexOf('/',a-1);"
         "if(s<min||s+1>=a){return null;}return u.substring(0,s+1)+"
         "u.substring(z+(l.charAt(z)==='/'?1:0));}"
+        "function pdouble(v,min,many){var u=String(v);var l=u.toLowerCase();"
+        "var q=u.indexOf('?');var h=u.indexOf('#');var a;var s;var z;var n=0;"
+        "if(q<0||(h>=0&&h<q)){q=h;}if(u.indexOf('/./')>=0){return null;}"
+        "for(;;){a=l.indexOf('/%2e%2e');if(a<0||(q>=0&&a>=q)){break;}"
+        "z=a+7;if(a<=min||!((l.charAt(z)==='/'&&(q<0||z<q))||"
+        "(q>=0&&z===q)||(q<0&&z===u.length))){return null;}"
+        "n++;if(!many&&n>1){return null;}s=u.lastIndexOf('/',a-1);"
+        "if(s<min||s+1>=a){return null;}if(l.charAt(z)==='/'){z++;}"
+        "if(q>=0){q-=z-s-1;}u=u.substring(0,s+1)+u.substring(z);"
+        "l=u.toLowerCase();}return n>0?u:null;}"
         "function pfragmentReference(v){var h=purl.indexOf('#');"
         "var b=h>=0?purl.substring(0,h):purl;var s;var ps;var q;var ls;"
         "var u;var lower;var next;"
@@ -6869,21 +6879,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "lower=u.toLowerCase();ls=lower.indexOf('/%2e/');}"
         "if(u.indexOf(b+'#')===0){return u;}"
         "if(h>=0&&u===b){return u;}}}"
-        "lower=u.toLowerCase();ls=lower.indexOf('/%2e%2e/');"
-        "if(v.indexOf('/./')<0&&ls>ps&&(q<0||ls<q)){"
-        "next=lower.indexOf('/%2e%2e',ls+8);"
-        "if(next<0||(q>=0&&next>=q)){s=u.lastIndexOf('/',ls-1);"
-        "if(s>=ps&&s+1<ls){if(q>=0){q-=ls-s+7;}"
-        "u=u.substring(0,s+1)+u.substring(ls+8);"
+        "next=pdouble(v,ps,true);if(next!==null){u=next;q=u.indexOf('?');"
+        "ls=u.indexOf('#');if(q<0||(ls>=0&&ls<q)){q=ls;}"
         "if(u.indexOf(b+'#')===0){return u;}"
-        "if(h>=0&&u===b){return u;}}}}"
-        "lower=u.toLowerCase();ls=lower.indexOf('/%2e%2e');"
-        "if(v.indexOf('/./')<0&&ls>ps&&"
-        "((q>=0&&ls+7===q)||(q<0&&ls+7===u.length))){"
-        "s=u.lastIndexOf('/',ls-1);if(s>=ps&&s+1<ls){"
-        "if(q>=0){q-=ls-s+6;}u=u.substring(0,s+1)+u.substring(ls+7);"
-        "if(u.indexOf(b+'#')===0){return u;}"
-        "if(h>=0&&u===b){return u;}}}lower=u.toLowerCase();"
+        "if(h>=0&&u===b){return u;}}lower=u.toLowerCase();"
         "ls=lower.indexOf('/%2e');if(v.indexOf('/./')<0&&ls>=0&&"
         "((q>=0&&ls+4===q)||(q<0&&ls+4===u.length))){"
         "u=u.substring(0,ls+1)+u.substring(ls+4);"
@@ -6906,17 +6905,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "if(next<0||(q>=0&&next>=q)){while(ls>=0&&(q<0||ls<q)){"
         "u=u.substring(0,ls+1)+u.substring(ls+5);if(q>=0){q-=4;}"
         "lower=u.toLowerCase();ls=lower.indexOf('/%2e/');}}}"
-        "lower=u.toLowerCase();ls=lower.indexOf('/%2e%2e/');"
-        "if(v.indexOf('/./')<0&&ls>0&&(q<0||ls<q)){"
-        "next=lower.indexOf('/%2e%2e',ls+8);"
-        "if(next<0||(q>=0&&next>=q)){s=u.lastIndexOf('/',ls-1);"
-        "if(s>=0&&s+1<ls){if(q>=0){q-=ls-s+7;}"
-        "u=u.substring(0,s+1)+u.substring(ls+8);}}}"
-        "lower=u.toLowerCase();ls=lower.indexOf('/%2e%2e');"
-        "if(v.indexOf('/./')<0&&ls>0&&"
-        "((q>=0&&ls+7===q)||(q<0&&ls+7===u.length))){"
-        "s=u.lastIndexOf('/',ls-1);if(s>=0&&s+1<ls){"
-        "if(q>=0){q-=ls-s+6;}u=u.substring(0,s+1)+u.substring(ls+7);}}"
+        "next=pdouble(v,0,false);if(next!==null){u=next;q=u.indexOf('?');"
+        "ls=u.indexOf('#');if(q<0||(ls>=0&&ls<q)){q=ls;}}"
         "lower=u.toLowerCase();ls=lower.indexOf('/%2e');"
         "if(v.indexOf('/./')<0&&ls>=0&&"
         "((q>=0&&ls+4===q)||(q<0&&ls+4===u.length))){"
@@ -32045,8 +32035,8 @@ static BOOL test181_browser_script_location_absolute_encoded_terminal_double_dot
         "https://example.com/a/c/tmp/%2E%2E?x=1#network";
     static const char MIXED_ENCODED[] =
         "https://example.com/a/%2E/b/tmp/%2e%2e?x=1#network";
-    static const char REPEATED_DOUBLE[] =
-        "https://example.com/a/tmp/%2E%2E/b/tmp/%2E%2E?x=1#network";
+    static const char ROOT_REPEATED_DOUBLE[] =
+        "/a/tmp/%2E%2E/b/tmp/%2E%2E?x=1#network";
     static const char INNER_PARENT[] =
         "https://example.com/a/b/c/../?x=1#network";
     static const char HTML[] =
@@ -32292,13 +32282,13 @@ static BOOL test181_browser_script_location_absolute_encoded_terminal_double_dot
         g_browser_script_session.bridge->navigation_kind =
                 PCORE_SCRIPT_NAVIGATION_NONE;
         if (PScript_Evaluate(session_runtime,
-                "location.assign('https://example.com/a/tmp/%2E%2E/b/tmp/%2E%2E?x=1#network');",
+                "location.assign('/a/tmp/%2E%2E/b/tmp/%2E%2E?x=1#network');",
                 -1) != PSCRIPT_OK ||
                 g_browser_script_session.bridge->navigation_kind !=
                 PCORE_SCRIPT_NAVIGATION_ASSIGN ||
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
-                REPEATED_DOUBLE) != 0) {
+                ROOT_REPEATED_DOUBLE) != 0) {
             ok = 0;
         }
     }
@@ -32341,7 +32331,328 @@ static BOOL test181_browser_script_location_absolute_encoded_terminal_double_dot
     show_info(L"TEST 181 OK",
             "one terminal percent-encoded double-dot segment in an\n"
             "absolute URL folds its preceding directory into the fragment\n"
-            "queue; different, repeated, and parent paths stay normal.");
+            "queue; different, root-repeated, and parent paths stay normal.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 187 - absolute repeated encoded double-dot fragment URLs        */
+/* -------------------------------------------------------------------- */
+static BOOL test187_browser_script_location_absolute_repeated_encoded_double_dots_fragment(void)
+{
+    static const char URL_OLD[] =
+        "https://example.com/a/b/?x=1#old";
+    static const char URL_HREF[] =
+        "https://example.com/a/b/?x=1#href";
+    static const char URL_BASE[] =
+        "https://example.com/a/b/?x=1";
+    static const char URL_REPLACE[] =
+        "https://example.com/a/b/?x=1#replace";
+    static const char ABS_BASE[] =
+        "https://example.com/a/tmp/%2E%2e/b/tmp/%2e%2E?x=1";
+    static const char ABS_QUERY[] =
+        "https://example.com/a/tmp/%2E%2E/b/tmp/%2e%2e?x=2#network";
+    static const char ABS_OTHER[] =
+        "https://example.com/a/tmp/%2e%2e/c/tmp/%2E%2E?x=1#network";
+    static const char ROOT_REPEATED[] =
+        "/a/tmp/%2E%2E/b/tmp/%2e%2e?x=1#network";
+    static const char MIXED_PARTIAL[] =
+        "https://example.com/a/tmp/%2E%2E/b/tmp/.%2e?x=1#network";
+    static const char INNER_PARENT[] =
+        "https://example.com/a/tmp/%2E%2E/b/tmp/%2e%2e/c/../?x=1#network";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var seen=[];onhashchange=function(e){"
+        "seen.push('H'+e.oldURL+'>'+e.newURL);};"
+        "location.href='https://example.com/a/tmp/%2E%2e/b/tmp/%2e%2E?x=1#href';"
+        "document.getElementById('result').textContent="
+        "location.hash+'|'+history.length+'|'+seen.length+'|'"
+        "+String(history.state);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char INITIAL_RESULT[] = "#old|1|0|null";
+    static const char HREF_RESULT[] =
+        "#href|2|null|Hhttps://example.com/a/b/?x=1#old>"
+        "https://example.com/a/b/?x=1#href";
+    static const char CLEAR_RESULT[] =
+        "|3|null|Hhttps://example.com/a/b/?x=1#href>"
+        "https://example.com/a/b/?x=1";
+    static const char REPLACE_RESULT[] =
+        "#replace|3|null|Hhttps://example.com/a/b/?x=1>"
+        "https://example.com/a/b/?x=1#replace";
+    HANDLE document;
+    HANDLE runtime;
+    HANDLE session_runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *evaluation_result;
+    char *queued_url;
+    char result[128];
+    char error[256];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    session_runtime = NULL;
+    bridge = NULL;
+    evaluation_result = NULL;
+    queued_url = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    (void) pcore_browse_history_commit_navigation(URL_OLD, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_OLD,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, INITIAL_RESULT) != 0 ||
+            result_bytes != (int) sizeof(INITIAL_RESULT) - 1 ||
+            bridge == NULL ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
+            bridge->navigation_url == NULL ||
+            strcmp(bridge->navigation_url, URL_HREF) != 0 ||
+            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
+            1, -1, bridge) != 0 || g_browse_history.count != 1 ||
+            g_browse_history.index != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        bridge->hwnd = (HWND) 1;
+        queued_url = bridge->navigation_url;
+        bridge->navigation_url = NULL;
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
+        session_runtime = runtime;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_navigate_fragment(queued_url,
+                0) != 0 || g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.count != 2 ||
+                g_browse_history.index != 1 ||
+                strcmp(pcore_browse_history_current(), URL_HREF) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.hash+'|'+history.length+'|'"
+                "+String(history.state)+'|'+seen[0];", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        free(queued_url);
+        queued_url = NULL;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, HREF_RESULT) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.assign('https://example.com/a/tmp/%2e%2E/b/tmp/%2E%2e?x=1');"
+                "location.hash+'|'+history.length+'|'+seen.length;", -1) !=
+                PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                URL_BASE) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        queued_url = g_browser_script_session.bridge->navigation_url;
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, "#href|2|1") != 0 ||
+                pcore_browser_script_session_navigate_fragment(queued_url,
+                0) != 0 || g_browse_history.count != 3 ||
+                g_browse_history.index != 2 ||
+                strcmp(pcore_browse_history_current(), URL_BASE) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.hash+'|'+history.length+'|'"
+                "+String(history.state)+'|'+seen[1];", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        free(queued_url);
+        queued_url = NULL;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, CLEAR_RESULT) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.assign('https://example.com/a/tmp/%2E%2e/b/tmp/%2e%2E?x=1');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                ABS_BASE) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.replace('https://example.com/a/tmp/%2E%2E/b/tmp/%2e%2e?x=1#replace');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                URL_REPLACE) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        queued_url = g_browser_script_session.bridge->navigation_url;
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (pcore_browser_script_session_navigate_fragment(queued_url,
+                1) != 0 || g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.count != 3 ||
+                g_browse_history.index != 2 ||
+                strcmp(pcore_browse_history_current(), URL_REPLACE) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.hash+'|'+history.length+'|'"
+                "+String(history.state)+'|'+seen[2];", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        free(queued_url);
+        queued_url = NULL;
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, REPLACE_RESULT) != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.replace('https://example.com/a/tmp/%2E%2E/b/tmp/%2e%2e?x=1#replace');"
+                "seen.length+'|'+location.hash;", -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_NONE) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strcmp(evaluation_result, "3|#replace") != 0 ||
+                PScript_Evaluate(session_runtime,
+                "location.assign('https://example.com/a/tmp/%2E%2E/b/tmp/%2e%2e?x=2#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                ABS_QUERY) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.replace('https://example.com/a/tmp/%2e%2e/c/tmp/%2E%2E?x=1#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_REPLACE ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                ABS_OTHER) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.assign('/a/tmp/%2E%2E/b/tmp/%2e%2e?x=1#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                ROOT_REPEATED) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.assign('https://example.com/a/tmp/%2E%2E/b/tmp/.%2e?x=1#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                MIXED_PARTIAL) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (PScript_Evaluate(session_runtime,
+                "location.assign('https://example.com/a/tmp/%2E%2E/b/tmp/%2e%2e/c/../?x=1#network');",
+                -1) != PSCRIPT_OK ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                INNER_PARENT) != 0 ||
+                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+            ok = 0;
+        }
+    }
+    free(queued_url);
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 187 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 187 OK",
+            "repeated percent-encoded double-dot segments in an absolute\n"
+            "URL fold each preceding directory into the fragment queue;\n"
+            "root-relative, mixed, different, and parent paths stay normal.");
     return TRUE;
 }
 
@@ -36419,6 +36730,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 186: ok =
                 test186_browser_script_location_root_terminal_partial_encoded_double_dot_fragment();
+                break;
+        case 187: ok =
+                test187_browser_script_location_absolute_repeated_encoded_double_dots_fragment();
                 break;
         default: ok = FALSE; break;
         }

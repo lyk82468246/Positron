@@ -53,6 +53,34 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 ## 运行自动设备门
 
+### 一键设备门
+
+先通过 Device Emulator Manager、WMDC 或设备工具的 GUI 建立且只保留一个目标连接；脚本
+不会启动、选择、Cradle 或重置设备：
+
+```bat
+scripts\device_gate.bat -Candidate next220
+```
+
+脚本使用 VS2008 官方 32 位 Core Connectivity 通道，并完成正式增量构建、隔离 staging、
+整包部署、`test_host.exe` 启动、有限等待、日志回收和自动判门。每次运行使用唯一的设备端
+`\Temp\Positron-device-gate\<candidate>-<timestamp>`，不会读取旧日志，也不会杀死并非由
+本次运行启动的进程。完整证据保存在本地 `tmp/device-runs/`。
+
+默认要求主机上恰好有一个已经运行的 Device Emulator，并从其 VMID 精确匹配 CoreCon
+datastore；不会尝试错误目标。真机可显式指定 datastore 项，例如：
+
+```bat
+scripts\device_gate.bat -Candidate next220 ^
+  -PlatformName "Windows Mobile 6 Professional SDK" ^
+  -DeviceName "Windows Mobile 6 Professional Device"
+```
+
+连接缺失、目标不唯一、已有 `test_host.exe`、部署失败、运行超时、日志缺失或任一判门条件
+失败都会返回非零退出码。自动门仍不替代下文列出的人工视觉和输入检查。
+
+### 手工设备门
+
 1. 使用 [`scripts\stage.bat`](../scripts/stage.bat) 构建并整体复制候选包。
 2. 确认设备上没有旧 `test_host.exe` 进程。
 3. 核对候选目录中的 `test_host.ini`。

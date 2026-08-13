@@ -32,15 +32,9 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ## 短期目标
 
-### 1. 绝对 URL 重复完整编码 double-dot
+### 1. 根相对重复完整编码 double-dot
 
-实现 href/assign/replace 中多个完整 `%2E%2E` segment 的顺序折叠，同时保留
-origin/path/query、根边界、state/length、hashchange 和无 GET 断言。因上一批曾发生
-bootstrap timeout，本批完成后运行全量设备门。
-
-### 2. 根相对重复完整编码 double-dot
-
-在 next220 通过后，评估根相对 href/assign/replace 中多个完整 `%2E%2E` segment。必须保持：
+评估根相对 href/assign/replace 中多个完整 `%2E%2E` segment。必须保持：
 
 - origin 根不可越过；
 - 每段有非空前驱目录；
@@ -50,12 +44,12 @@ bootstrap timeout，本批完成后运行全量设备门。
 
 该目标不得顺便加入其他 URL 拼写、DOM API、布局或性能重构。
 
-### 3. 收束同文档导航分类
+### 2. 收束同文档导航分类
 
 完成绝对与根相对重复 double-dot 后，先整理当前受支持/拒绝矩阵并寻找最大的实际缺口，再选择
 一个上游语义。优先标准可验证性和真实页面价值，不按 next 编号机械扩展所有字符串组合。
 
-### 4. 累计人工门
+### 3. 累计人工门
 
 在下一次触及布局、真实触摸、SIP、旋转或失败网络之前，整理尚未人工复核的低风险批次。
 若出现严重视觉或交互异常，立即验收，不等累计数量。
