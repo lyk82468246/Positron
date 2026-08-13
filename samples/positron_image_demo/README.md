@@ -1,34 +1,50 @@
-# positron_image_demo
+# `positron_image_demo`
 
-Minimal Windows Mobile 6 C consumer for `positron_image.dll`.
+Minimal Windows Mobile 6 consumer of the public `positron_image.dll` C API.
+It does not include or link `positron_core`, NetSurf, libdom or `test_host`.
 
-The project links the product library `positron_image.lib` plus the Windows
-Mobile system shell library `aygshell.lib`; it does not include or link
-`positron_core`, NetSurf, libdom, or `test_host`. At startup it accepts a
-compatible ABI (the same major and a sufficient minor), creates retained
-bitmaps from padded top-down BGR24 and straight-alpha BGRA32 rows, clears the
-caller buffers, encodes RGB and alpha PNG through native WM Imaging and a
-quality-100 4:4:4 JPEG through the bundled libjpeg-turbo compressor, decodes
-those results after freeing the encoded buffers, and also draws a retained SVG
-through the public C API. A deliberately short pixel buffer must be rejected
-before the visible sample starts. ABI 1.4 also performs native WM Imaging BMP
-and GIF encode/signature/decode checks before creating the window.
+## What it demonstrates
 
-Build with the root solution, then stage with:
+- ABI-major/minor compatibility checking;
+- retained bitmaps from padded top-down BGR24 pixels;
+- retained bitmaps from straight-alpha BGRA32 pixels;
+- PNG, JPEG, BMP and GIF encode/decode through public APIs;
+- quality-100 4:4:4 JPEG output through the bundled libjpeg-turbo backend;
+- retained SVG drawing;
+- caller-buffer lifetime, stride and short-buffer validation;
+- repeated drawing after input and encoded buffers have been released.
 
-```cmd
-scripts\stage_image_demo.bat Debug C:\WMShare\Positron-next52
+The project links `positron_image.lib` and the WM shell library `aygshell.lib`.
+
+## Build and stage
+
+Build the root solution, then run:
+
+```bat
+scripts\stage_image_demo.bat Debug C:\WMShare\Positron-image-demo
 ```
 
-Expected display: six responsive cells in portrait or landscape: saturated
-raw BGR24, lighter half-alpha raw BGRA32, saturated RGB PNG, matching lighter
-alpha PNG, quality-100 JPEG 4:4:4 and the retained red/green/blue SVG. The demo
-parses the JPEG SOF marker and refuses to start unless all three sampling
-factors are 1x1. Any length, stride, copy lifetime, alpha, signature, sampling,
-re-decode or drawing failure produces an error message or a visible mismatch.
-The native Windows Mobile title-bar OK button is enabled with
-`SHDoneButton(SHDB_SHOW)`. Its `WM_COMMAND/IDOK` destroys the window and ends
-the process; next52 device testing confirmed the process disappears and the
-demo can be launched again. The shell's X is Smart Minimize and does not promise `WM_CLOSE`,
-which is why next51 remained in the Running Programs list. No softkey bar is
-added, so the image client area remains unchanged.
+Configure the emulator shared folder and launch the staged executable from its
+Storage Card path.
+
+## Expected result
+
+The window shows six cells in portrait and landscape:
+
+1. saturated raw BGR24;
+2. lighter half-alpha raw BGRA32;
+3. saturated RGB PNG;
+4. matching lighter alpha PNG;
+5. quality-100 JPEG 4:4:4;
+6. red/green/blue retained SVG.
+
+The demo parses the JPEG SOF marker and refuses to start unless all three
+sampling factors are 1x1. Length, stride, copy lifetime, alpha, signature,
+sampling, re-decode or drawing failures produce an error or visible mismatch.
+
+Use the native title-bar OK button to destroy the window and end the process.
+The shell X button performs Smart Minimize on WM6 and does not guarantee
+`WM_CLOSE`.
+
+Public ownership and thread-affinity rules are defined in
+[`../../positron_image/positron_image.h`](../../positron_image/positron_image.h).

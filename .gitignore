@@ -28,6 +28,9 @@ vs2008-build.log
 # Local staging dir for shared-folder deploy
 WMShare/
 
+# Local screenshots, device logs and diagnostic scratch files
+tmp/
+
 # Phase 4 throwaway spike (mingw32ce experiment + cygwin crash dumps)
 spike_phase4/
 *.stackdump

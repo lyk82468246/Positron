@@ -1,49 +1,111 @@
-# 失败实验与暂挂方向索引
+# 失败实验与禁止恢复边界
 
-更新时间：2026-08-09
+更新时间：2026-08-13
 
-这份索引集中记录曾经导致真实页面回归、设备断言失败、环境混包误报，或因风险暂时停止的工作。它不是“所有已修复 bug”的替代品：完整实现边界仍见 `KNOWN_LIMITATIONS.md`，逐版本交接见 `HANDOFF.md`，按时间排列的开发记录见 `ROADMAP.md`。
+这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；
+当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 状态约定
+## 状态
 
-- **已撤回**：代码、默认配置或主线行为已经删除；不能直接从旧包或旧提交拷贝回来。
-- **暂挂**：方向仍有价值，但当前方案不再继续；重启前必须满足本条记录的门槛。
-- **已替代**：实验失败或不完整，但后续方案已经解决原问题；保留记录用于防止重复踩坑。
-- **环境误报**：功能代码不一定错误，失败来自旧 DLL、共享目录或工具链混用；仍要保留流程护栏。
-- **开放限制**：不是一次失败分支，而是当前仍可观察、尚未达到产品完成条件的问题。
+- **已撤回**：默认代码或配置已删除，不能从旧包直接恢复。
+- **暂挂**：方向可能有价值，但旧方案停止；只有满足门槛才可重启。
+- **已替代**：后续方案已解决原问题，记录用于防止回退。
+- **环境误报**：失败来自旧进程、DLL 混用或设备环境，仍需保留流程护栏。
 
-## 总原则
+## 失败与暂挂
 
-1. 真实 TEST13 的深层导航、旋转和人工截图优先于离线几何断言；自动 `OK` 不能覆盖明显视觉回归。
-2. 恢复工作必须在独立 staging 目录完成，使用同一套 ARMV4I EXE/DLL；不得从失败包直接拷贝单个文件。
-3. 重新启动暂挂方向时，一次只改变一个变量，并同时保留原有冻结回归；失败包只用于取证，不作为新的基线。
+### next38-next43：Browse 稳定性实验 — 暂挂
 
-## 失败与暂挂清单
+问题：stylesheet metadata、`<base>`/URL alias、redirect origin、deadline 和预算整批进入后，
+TEST13 无法完成，不能安全归因到单一 HTTP 或样式改动。
 
-| 范围 | 状态 | 发生的问题 | 当前决定与重启门槛 |
-|---|---|---|---|
-| next165/TEST110：脚本表单默认属性 bridge 槽位回归 | 已替代 | 为 TEST133-135 注册六个独立 JS 原生入口后，bootstrap 从既有 16 槽位增长到 18 个，设备在 TEST110 报 native function limit exceeded，后续新测试未执行。 | next166 将六个属性操作合并为一个按 op 分发的入口，保留脚本引擎 16 槽位约束；必须先通过 TEST110-135，再成为候选基线。 |
-| next38-next43：stylesheet metadata、`<base>`/URL 别名、redirect final origin、WinInet/TLS deadline 与加载预算 | 暂挂 | next37 之后 TEST13 无法完成，无法安全归因到单一 HTTP 或样式改动。 | 整批保存在远端 `codex/post-next37-experiments`，不得直接合并；重启时每个方向单独分支，并完整通过 `Start -> Open example -> Learn more`、旋转、滚动和失败回滚。详见 [`ROLLBACK_NEXT37.md`](./ROLLBACK_NEXT37.md)。 |
-| next54：固定高度 overflow 的滚动条预留/二次 layout | 已替代 | TEST42 读到 `used=0/0/0`，右箭头还偏移；二次布局改变了已验收几何。 | next55 收窄为只对 auto-height 路径预留空间并修正箭头坐标，已由设备验收。不要恢复 next54 的全局二次预留。 |
-| next60：counter/list marker 首次 staging | 环境误报，已替代 | 设备看到 `found=4 fetched=2`，原因是新 `test_host.exe` 与旧 `positron_core.dll` 混用，不是 marker 逻辑失败。 | `stage.bat` 现在先做同配置增量 Build，失败不复制；新实验必须核对 EXE/DLL 同包。 |
-| next69-next72：百分比 table-row 与 inline style 首轮 | 环境误报/已替代 | TEST56 在多个共享目录包之间结果不一致，TEST57 又暴露 inline `style=` 未进入正式选择。 | 先隔离包排除 WM 全局 DLL 复用，再由 next73-75 接入 inline sheet、修复 universal ancestor 匹配；不要放宽 TEST56/57 断言掩盖混包。 |
-| next155/TEST121：BMP WM_CHAR 首次设备包 | 已替代 | TEST13 与 TEST120 之前的回归通过，但 TEST121 失败；事件回调的旧安全过滤器把合法 UTF-8 高位字节清空，导致 `key`/`beforeinput.data` 丢失。 | next156 改用 JSON 字符串转义并保留 Unicode 断言；重新运行同一批完整回归后才能成为设备基线，不得使用 next155 失败包。 |
-| next157-159 TEST122：UTF-16 代理对输入桥首次设备包 | 已替代 | next158 证明 WM 合并和标量代码正确；next159 又恢复两个 UTF-16 code unit，但测试 oracle 把先注册的 SELECT target 记录器错误地预期为已取消。 | next160 只修正事件顺序 oracle：target `false`、bubble `true`，完整设备日志已 PASS 并成为基线；不得回退 non-BMP JSON 代理项修复。 |
-| next140：TEST62 固定 96-DPI 离线控件探针 | 已替代 | `screen=480x640 dpi=192` 下，TEST62 的 checkbox/radio probe 返回 `36x36`；next140 把 probe 固定到 96 DPI，虽能绕过断言却违反动态 DPI 原则。 | next141 保留实际设备 DPI，并将原本 96-DPI 的 `14..24px` 几何范围按 `dpi/96` 等比换算；不得恢复固定 DPI。 |
-| next78：layout 后递归 `scrollbar_set(...,0)` | 已撤回，高风险 | 横屏 TEST13 从单个 `Domain` 异常扩大为全部表格单元格异常，TEST56 失败，并触发系统级 `test_host.exe` 异常。 | 实现、诊断 API 和扩展 TEST59 已删除；旧包为 `C:\WMShare\Positron-next78-FAILED-DO-NOT-USE`。禁止恢复“布局末尾统一清零 scrollbar 回调”的思路。详见 `KNOWN_LIMITATIONS.md` 和 `DEBUGGING.md`。 |
-| next105/next107-next108：required/reset 与空控件 geometry 首轮 | 已替代 | libdom 首次写值误记为 `defaultValue`，以及无 CSS 尺寸 text input 几何为 0，造成 TEST72/73 假失败。 | next106/next109 修复了默认值冻结和测试夹具前提；仍不宣称浏览器默认 intrinsic size 已完成。 |
-| loading 条早期绘制方案：父窗口 `WM_PAINT`/`ScrollWindowEx` 复制残影、独立 `STATIC` 不可见 | 已替代/部分暂挂 | 滚动时进度条残影、轻微卡顿；`STATIC` 子窗口在 WM6 设备上不可见。 | 已改为 WM6 Common Controls `PROGRESS_CLASS`。当前真实百分比只对单响应有长度时成立，整页聚合进度与首屏 layout 卡顿暂后置，不阻塞资源事务主线。 |
-| next115/next116：普通与显式 block-level float 构盒 | 已撤回，方向暂挂 | next115 的 inline probe 为零宽且 TEST13 导航扁平化；next116 收窄后仍出现导航/正文排版回归，设备 TEST79 最终失败。 | 已恢复 next114，删除 float 构盒、TEST79 和默认配置。重新启动前必须先完成完整 box construction/normalisation，并通过 TEST79、TEST13 深链和旋转人工门禁。详见 `ROADMAP.md` 第 7/8 节。 |
+决定：旧实验保留在远端 `codex/post-next37-experiments`，不得整体合并。每项必须独立重启，
+并通过 TEST13 三段导航、旋转、滚动和失败回滚。详见
+[`NEXT37_ROLLBACK.md`](../docs/history/NEXT37_ROLLBACK.md)。
 
-## 当前开放的视觉布局限制
+### next54：固定高度 overflow 全局预留 — 已替代
 
-next117 的人工复核表明主链路基本正常，剩余问题主要是局部版式：某些容器/背景框的几何尺寸偏小，但其中的文本量或换行高度较多，因而出现框与内容比例不协调。这不应通过修改断言解决，也暂时不能归因到单一 CSS 特性。
+问题：TEST42 几何为零、箭头偏移，二次 layout 改变旧几何。
 
-后续完成条件：收集至少三个可重复页面/测试例，记录 viewport、DPI、元素 computed style 和实际 box geometry，先定位是 intrinsic size、padding/margin、字体测量还是 normalisation，再用一个针对性回归测试和竖横屏截图修复。修复前保持 next114/next117 Browse 基线，不重新打开 float 方向。
+决定：只保留后续 auto-height 收窄方案；禁止恢复全局二次预留。
 
-## 复查入口
+### next60：counter/list marker 首次 staging — 环境误报
 
-- 当前限制与“不代表什么”：[`KNOWN_LIMITATIONS.md`](./KNOWN_LIMITATIONS.md)
-- 当前基线、交接和下一步：[`HANDOFF.md`](./HANDOFF.md)
-- 按时间排列的路线与失败记录：[`ROADMAP.md`](./ROADMAP.md)
-- next37 大回退的独立说明：[`ROLLBACK_NEXT37.md`](./ROLLBACK_NEXT37.md)
+问题：新 `test_host.exe` 与旧 `positron_core.dll` 混用，设备误报资源计数。
+
+决定：`stage.bat` 必须先同配置构建再整体复制；使用隔离目录，不手工拼包。
+
+### next69-next72：table-row 百分比与 inline style — 环境误报/已替代
+
+问题：多个共享目录导致 TEST56 结果漂移，随后又暴露 inline `style=` 未进入正式选择。
+
+决定：先排除 WM 全局 DLL 复用；保留后续 inline sheet 和 universal ancestor 修复，
+不放宽 TEST56/57。
+
+### next78：布局末尾统一清零 scrollbar callback — 已撤回，高风险
+
+问题：横屏 TEST13 从局部偏移扩大为整表异常，TEST56 失败并触发系统异常。
+
+决定：禁止恢复 `scrollbar_set(...,0)` 的全局递归方案；必须从真实 overflow 所有权定位。
+
+### next105/107/108：required/reset 与空控件 geometry — 已替代
+
+问题：默认值冻结和无 CSS 尺寸夹具造成 TEST72/73 假失败。
+
+决定：保留后续默认值和测试前提修复；不能据此宣称完整 intrinsic size。
+
+### next115/116：普通与 block-level float 构盒 — 已撤回，方向暂挂
+
+问题：inline probe 零宽、TEST13 导航扁平化、正文回归，TEST79 最终失败。
+
+决定：重启前必须完成完整 box construction/normalisation，并同时通过 TEST79、
+TEST13 深链、旋转和人工截图。
+
+### next140：把 TEST62 强制为 96 DPI — 已替代
+
+问题：在 192 DPI 设备上用固定 96 DPI 绕过控件几何断言，违反动态 DPI 原则。
+
+决定：必须使用实际设备 DPI，范围按 `dpi/96` 换算；禁止恢复固定 DPI。
+
+### next155：BMP `WM_CHAR` 首包 — 已替代
+
+问题：旧安全过滤器清空合法 UTF-8 高位字节，`key` 和 `beforeinput.data` 丢失。
+
+决定：保留 JSON 字符串转义和 Unicode 断言；不能恢复 ASCII-only 过滤。
+
+### next157-next159：代理对输入桥首轮 — 已替代
+
+问题：标量合并正确，但测试 oracle 把先注册的 target listener 错认为已经取消。
+
+决定：保留 target `false`、bubble `true` 的事件次序和 non-BMP JSON 修复。
+
+### next165：六个表单属性 native bridge — 已替代
+
+问题：注册入口从 16 增到 18，TEST110 报 native function limit，后续测试没有运行。
+
+决定：保留 next166 的单入口 op 分发；16 槽位上限不能靠提高配额绕过。
+
+### next219 首包：重复 URL classifier bootstrap — 已替代
+
+问题：20,991 字符 bootstrap 在 TEST162 超过 1000ms，后续 TEST186/999 没有运行。
+
+决定：使用共享 `ppartial` 后降到 19,735 字符并通过。禁止把超时首包写成结果，也禁止提高
+预算代替去重。
+
+### 早期 loading 条 — 已替代/部分暂挂
+
+问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。
+
+决定：保留 `PROGRESS_CLASS`。整页聚合进度和首屏 layout 卡顿只在实际遥测证明需要时处理。
+
+## 重启暂挂方向的共同门槛
+
+1. 在独立分支或独立 stage 目录一次只改变一个变量。
+2. 使用同一次 ARMV4I 构建的完整 EXE/DLL 集合。
+3. 保留导致旧失败的测试和真实 TEST13 深层导航。
+4. 涉及布局、滚动或输入时加入旋转和人工观察。
+5. 失败即撤回候选默认路径，不通过删测试、扩大预算或放宽断言继续推进。
+
+旧的按日期调试流水见
+[`../docs/history/DEBUGGING_INCIDENTS.md`](../docs/history/DEBUGGING_INCIDENTS.md)。它只用于追查历史，
+其中的基线和“下一步”均已过期。

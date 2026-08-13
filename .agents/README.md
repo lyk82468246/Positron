@@ -1,20 +1,35 @@
-# Positron Agent Handoff
+# Positron Agent 交接索引
 
-这个目录是给后续 agent 接手用的项目交接层。先读这里，再读根目录文档和源码。
+`.agents/` 只保存 agent 续接开发所需的动态状态。稳定架构、构建、测试和排错方法统一放在
+`docs/`，不要把它们再次复制到本目录。
 
-## 阅读顺序
+## 接管顺序
 
-1. `ARCHITECTURE.md`：项目定位、公共 DLL、内部静态库、ABI/所有权和开源移植原则。
-2. `HANDOFF.md`：当前真实状态、构建/运行方式、下一步。
-3. `KNOWN_LIMITATIONS.md`：已验证基线、明确的阶段性取舍、未完成项及完成条件。
-4. `ROADMAP.md`：短期 / 中期 / 长期规划，以及建议执行顺序。
-5. `CLAUDE_LAST_CONTEXT.md`：Claude Code 网络出错前最后几段对话的整理，包含 M7-flex/M7-table 的真实过程。
-6. `DEBUGGING.md`：WM6/WinCE 设备调试纪律，尤其是先查环境再改代码。
-7. 根目录 `PHASE*.md` / `README.md`：阶段脉络和面向使用者的现状摘要。
+1. [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)：使命、产品分层、公共 ABI 和所有权。
+2. [`HANDOFF.md`](HANDOFF.md)：当前分支、已验收基线、未验收候选和唯一下一步。
+3. [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)：当前仍存在的能力边界与解除条件。
+4. [`ROADMAP.md`](ROADMAP.md)：短期、中期、长期目标；只保留未来工作。
+5. [`FAILED_EXPERIMENTS.md`](FAILED_EXPERIMENTS.md)：若任务触及旧失败方向，先查禁止恢复边界。
+6. [`DEBUGGING.md`](DEBUGGING.md)：agent 取证纪律；通用操作见
+   [`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md)。
 
-## 权威性
+随后检查 `git status`、未提交 diff、最近提交、源码、正式构建和设备日志。任何文档中的
+“当前”都必须与工作区交叉验证。
 
-- 最新代码状态以 `git log`、源码和本目录为准。
-- `README.md` 是面向使用者的现状摘要；`PHASE1.md` 至 `PHASE4.md` 都是阶段历史，其中的“当前/待实现”只对当时有效。详细限制以 `KNOWN_LIMITATIONS.md` 为准。
-- 第三方版本、vendored 路径和许可证边界以根目录 `THIRD_PARTY.md` 为准；新 clone 的源码完整性用 `python scripts/audit_repo.py` 检查。
-- Claude Code 本地 transcript 在 `C:\Users\Joe\.claude\projects\c--Users-Joe-Documents-C--Positron\`，但以后应优先维护本目录，避免下一位 agent 找不到交接信息。
+## 文件职责
+
+- `HANDOFF.md`：一页式动态快照。候选通过或工作区变化时覆写，不追加历史。
+- `KNOWN_LIMITATIONS.md`：只保留现在仍未完成的边界；能力完成后删除或收窄对应项。
+- `ROADMAP.md`：只写尚未完成的目标；已完成批次退出路线图。
+- `FAILED_EXPERIMENTS.md`：保留未来可能重复踩坑的失败和重启门槛。
+- `DEBUGGING.md`：只写 agent 取证和状态更新纪律，不积累日期流水。
+
+不要创建 `.agent/`、`PROJECT_STATE.md`、工具专属 last-context 文件或第二份架构文档。
+
+## 其他权威来源
+
+- 人类可读项目入口：[`../README.md`](../README.md)
+- 构建与部署：[`../docs/BUILDING.md`](../docs/BUILDING.md)
+- 测试与验收：[`../docs/TESTING.md`](../docs/TESTING.md)
+- 第三方版本和许可证：[`../THIRD_PARTY.md`](../THIRD_PARTY.md)
+- 历史记录：[`../docs/history/README.md`](../docs/history/README.md) 和 Git 历史

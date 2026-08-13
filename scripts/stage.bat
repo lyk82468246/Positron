@@ -2,7 +2,8 @@
 REM Phase 2 staging: copy built artifacts to the WM6 emulator shared
 REM folder C:\WMShare\.
 REM
-REM VS2008 Smart Device deploy is broken for this project (see PHASE1.md).
+REM VS2008 Smart Device deploy is broken for this project
+REM (see docs\history\PHASE1.md).
 REM Workaround: use the emulator's shared folder. This script collects
 REM the seven binaries and optional test selection file we need. Optional arg 2
 REM selects an alternate folder.

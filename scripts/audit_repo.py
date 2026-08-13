@@ -70,6 +70,29 @@ def load_tracked():
     return set(item.replace("\\", "/") for item in data.split("\0") if item)
 
 
+def load_worktree_files():
+    """Return visible tracked/untracked files, excluding deletions and ignores."""
+    try:
+        data = subprocess.check_output(
+            ["git", "-C", ROOT, "ls-files", "--cached", "--others",
+             "--exclude-standard", "-z"],
+            stderr=subprocess.STDOUT)
+        deleted_data = subprocess.check_output(
+            ["git", "-C", ROOT, "ls-files", "--deleted", "-z"],
+            stderr=subprocess.STDOUT)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    if not isinstance(data, str):
+        data = data.decode("utf-8", "replace")
+    if not isinstance(deleted_data, str):
+        deleted_data = deleted_data.decode("utf-8", "replace")
+    visible = set(item.replace("\\", "/")
+                  for item in data.split("\0") if item)
+    deleted = set(item.replace("\\", "/")
+                  for item in deleted_data.split("\0") if item)
+    return visible - deleted
+
+
 def iter_projects():
     for base, dirs, files in os.walk(ROOT):
         parts = set(relpath(base).split("/"))
@@ -144,13 +167,13 @@ def audit_versions(errors):
                               (spec[0], macro, expected, actual))
 
 
-def audit_markdown_links(tracked, errors):
-    if tracked is None:
+def audit_markdown_links(documents, errors):
+    if documents is None:
         return 0, 0
     document_count = 0
     link_count = 0
     link_re = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
-    for name in sorted(tracked):
+    for name in sorted(documents):
         if not name.lower().endswith(".md"):
             continue
         if (name.startswith(DOC_EXCLUDES) and
@@ -182,6 +205,7 @@ def audit_markdown_links(tracked, errors):
 def main():
     errors = []
     tracked = load_tracked()
+    worktree_files = load_worktree_files()
 
     for name in REQUIRED:
         path = os.path.join(ROOT, name.replace("/", os.sep))
@@ -197,7 +221,7 @@ def main():
         source_count += audit_project(project, tracked, errors)
 
     audit_versions(errors)
-    document_count, link_count = audit_markdown_links(tracked, errors)
+    document_count, link_count = audit_markdown_links(worktree_files, errors)
 
     if errors:
         print("Repository audit FAILED (%d issue(s)):" % len(errors))
