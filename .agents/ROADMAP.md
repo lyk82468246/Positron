@@ -32,24 +32,18 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ## 短期目标
 
-### 1. 根相对重复完整编码 double-dot
+### 1. 收束同文档导航分类
 
-评估根相对 href/assign/replace 中多个完整 `%2E%2E` segment。必须保持：
+绝对和根相对重复完整编码 double-dot 已由 next221 验证。下一批先整理受支持/拒绝矩阵，
+再选择一个有真实页面价值、可独立验收的上游同文档导航语义。必须保持：
 
-- origin 根不可越过；
-- 每段有非空前驱目录；
-- origin/path/query 匹配后才进入同文档 fragment 队列；
+- 绝对/根相对、完整/半编码、字面父目录、不同 query/path 和 origin 根边界都有明确分类；
+- 只有 origin/path/query 匹配后才进入同文档 fragment 队列；
 - 完整/半编码混合、字面父目录、不同 query/path 保持反例；
-- href/assign/replace、clear、same-value、state/length、hashchange 和无 GET 同时覆盖。
+- href/assign/replace、clear、same-value、state/length、hashchange 和无 GET 同时覆盖；
+- 不得顺便加入其他 URL 拼写、DOM API、布局或性能重构。
 
-该目标不得顺便加入其他 URL 拼写、DOM API、布局或性能重构。
-
-### 2. 收束同文档导航分类
-
-完成绝对与根相对重复 double-dot 后，先整理当前受支持/拒绝矩阵并寻找最大的实际缺口，再选择
-一个上游语义。优先标准可验证性和真实页面价值，不按 next 编号机械扩展所有字符串组合。
-
-### 3. 累计人工门
+### 2. 累计人工门
 
 在下一次触及布局、真实触摸、SIP、旋转或失败网络之前，整理尚未人工复核的低风险批次。
 若出现严重视觉或交互异常，立即验收，不等累计数量。

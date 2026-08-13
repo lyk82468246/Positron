@@ -59,7 +59,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 不会启动、选择、Cradle 或重置设备：
 
 ```bat
-scripts\device_gate.bat -Candidate next220
+scripts\device_gate.bat -Candidate nextNNN
 ```
 
 脚本使用 VS2008 官方 32 位 Core Connectivity 通道，并完成正式增量构建、隔离 staging、
@@ -71,7 +71,7 @@ scripts\device_gate.bat -Candidate next220
 datastore；不会尝试错误目标。真机可显式指定 datastore 项，例如：
 
 ```bat
-scripts\device_gate.bat -Candidate next220 ^
+scripts\device_gate.bat -Candidate nextNNN ^
   -PlatformName "Windows Mobile 6 Professional SDK" ^
   -DeviceName "Windows Mobile 6 Professional Device"
 ```
