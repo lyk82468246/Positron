@@ -130,17 +130,17 @@ DNS/TCP/TLS/HTTP/页面提交阶段取证。
 绝对和根相对 URL path 中多个完整 `%2E%2E` segment 的受控折叠已由 next221 全量设备门
 验证；history state 的根相对 path/query/fragment 与 query-relative 写法已由 next222 验证，
 当前 document 目录下的单段 sibling、显式 `./` 单段/多段 sibling、裸多段
-document-relative sibling，以及显式 `./?query`/`./#fragment` trailing-slash 写法已由
-next227 验证。
+document-relative sibling、显式 `./?query`/`./#fragment` trailing-slash 写法，以及
+同源 absolute URL 在 path 不变时的 query/fragment 变化已由 next228 验证。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；
 - 字面 `..` 与编码 segment 混合；
-- 规范化后 query/path 不同的 URL；
+- 规范化后 path 不同的 URL（同 path 的 query/fragment 变化已受限支持）；
 - 越过 origin 根或没有非空前驱目录的折叠。
 - 裸 `./`、`.` 和 `../` history state URL；
 - protocol-relative history state URL；
-- 同源 absolute history URL 的 path 变化（当前 bootstrap 只允许既有 base/fragment）；
+- 同源 absolute history URL 的 path 变化（同 path 的 query/fragment 变化已受限支持）；
 - 默认端口归一、IDN、userinfo 和其他完整 URL Standard origin 规范化。
 
 ## 不得用限制掩盖回归
