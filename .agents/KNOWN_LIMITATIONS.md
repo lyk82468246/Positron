@@ -132,6 +132,7 @@ DNS/TCP/TLS/HTTP/页面提交阶段取证。
 当前 document 目录下的单段 sibling、显式 `./` 单段/多段 sibling、裸多段
 document-relative sibling、显式 `./?query`/`./#fragment` trailing-slash 写法，以及
 同源 absolute URL 在 path 不变时的 query/fragment 变化已由 next228 验证。
+HTTP 的 `:80`/无端口和 HTTPS 的 `:443`/无端口同源等价已由 next229 验证。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；
@@ -141,7 +142,8 @@ document-relative sibling、显式 `./?query`/`./#fragment` trailing-slash 写�
 - 裸 `./`、`.` 和 `../` history state URL；
 - protocol-relative history state URL；
 - 同源 absolute history URL 的 path 变化（同 path 的 query/fragment 变化已受限支持）；
-- 默认端口归一、IDN、userinfo 和其他完整 URL Standard origin 规范化。
+- IDN、userinfo 和其他完整 URL Standard origin 规范化；默认端口只支持上述 HTTP/HTTPS
+  两组等价形式。
 
 ## 不得用限制掩盖回归
 

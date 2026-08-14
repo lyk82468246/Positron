@@ -34,10 +34,10 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ### 1. 下一项受限 history state URL 分类
 
-在 next228 已支持同源 absolute URL 在 path 不变时的 query/fragment 变化之后，选择一个
-尚未覆盖的 URL/history path 边界做单独纵向评估。必须继续覆盖无 GET、state/length、
-traversal 和 popstate/hashchange 顺序，并保持 dot segment、重复分隔符、父路径、跨源和
-同源 absolute path 变化的明确拒绝；不要借此自写完整 URL Standard parser。
+在 next229 已支持 HTTP/HTTPS 默认端口的有限同源等价之后，选择一个尚未覆盖的
+URL/history path 边界做单独纵向评估。必须继续覆盖无 GET、state/length、traversal 和
+popstate/hashchange 顺序，并保持 dot segment、重复分隔符、父路径、跨源和同源 absolute
+path 变化的明确拒绝；不要借此自写完整 URL Standard parser。
 
 ## 中期目标
 

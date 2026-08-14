@@ -9,29 +9,29 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next228。
-- next228 批次包含 `test_host/main.c`、`test_host/test_host.ini`，以及改用当前 WMDC/RAPI
+- 最新已验证产品基线：next229。
+- next229 批次包含 `test_host/main.c`、`test_host/test_host.ini`，以及改用当前 WMDC/RAPI
   会话的 `scripts/device_gate.bat`、`scripts/device_gate.ps1` 自动设备门和
   `scripts/repair_wmdc_rapi.*` 环境修复脚本。
 - 当前工作区的 `test_host/test_host.ini` 保持自动模式：`auto=1`、`javascript=0`、
   `tests=13,20,27,56,58,62,64-67,73,75,999`。这是窄的自动 smoke 选择，不是完整基线；
-- 143 项自动 next228 证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
+- 144 项自动 next229 证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
   验收结束后恢复为 1。
-- 本地设备证据位于 `tmp/device-runs/20260814-211127-next228-final/`；定向证据位于
-  `tmp/device-runs/20260814-211110-next228-debug3c/`。`tmp/` 不跟踪，干净 clone
+- 本地设备证据位于 `tmp/device-runs/20260814-213351-next229-final/`；定向证据位于
+  `tmp/device-runs/20260814-213320-next229-regression/`。`tmp/` 不跟踪，干净 clone
   中没有该日志，不能据此假定新环境也已经连接或通过。
 
 接管时仍须重新运行 `git status --short --branch` 和 `git diff`；以上列表不是 Git 的替代品。
 
 ## 最近已验证设备证据
 
-### 最新全量检查点：next228
+### 最新全量检查点：next229
 
-- 配置：`TEST13/20/27/43/44/56/58-77/80-195/999`，共 143 项。
+- 配置：`TEST13/20/27/43/44/56/58-77/80-196/999`，共 144 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
 - 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
   Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
-- 结果：143 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、
+- 结果：144 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、
   零 `FAIL`、唯一 `TESTBENCH PASS`，`completion_marker=PASS`。
 - TEST13：example.com、IANA Example Domains、Reserved Domains 三段导航均 `completed=1`。
 - 能力终点：`history.pushState`/`replaceState` 支持同源根相对 path/query/fragment、
@@ -39,10 +39,11 @@
   `./?query`/`./#fragment` 会落到当前目录的 trailing-slash URL，且同文档 traversal
   恢复 URL/state 并按 popstate 后 hashchange 排序；裸 `./`、`../`、dot segment、
   重复分隔符、protocol-relative 和同源 absolute path 变化仍拒绝；同源 absolute URL 在
-  path 完全相同的前提下可以更新 query/fragment。
+  path 完全相同的前提下可以更新 query/fragment，HTTP 默认端口 80 与 HTTPS 默认端口
+  443 在同源比较中按无端口形式等价处理。
 - 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I
   Debug 正式构建、14 文件隔离 staging/部署、SHA-256 清单和日志自动判门均通过。定向
-  `TEST190-195/999` 证据和默认全量 gate 均已保存到上述 `tmp/device-runs/` 路径。
+  `TEST195-196/999` 定向证据和默认全量 gate 均已保存到上述 `tmp/device-runs/` 路径。
 - gate 会在设备端只回收自己命名的旧候选目录；本次因旧目录占满 `\Temp` 暴露并验证了该
   回收路径。WMDC 旧 COM 注册的 5 个 RAPI 类已由正式修复脚本做 32/64 位幂等验证。
 
@@ -66,12 +67,12 @@
 - 视觉、真实触摸、SIP、旋转和失败网络允许累计后集中复核；崩溃、数据损坏、严重布局
   破坏或核心交互阻塞必须立即检查。
 
-## 已关闭批次：next228
+## 已关闭批次：next229
 
-目标：让浏览器 history state URL 在受限 absolute URL 分类中支持同源、同 path 的
-query/fragment 变化，在不发 GET 的前提下同步更新 `location`/`document.URL`，并保持
-traversal 的 state、length、popstate/hashchange 行为；path 变化、跨源和 protocol-relative
-URL 仍明确拒绝。
+目标：让浏览器 history state URL 在受限 absolute URL 分类中把 HTTP/HTTPS 默认端口
+作为同源等价形式，在不发 GET 的前提下同步更新 `location`/`document.URL`，并保持
+traversal 的 state、length、popstate/hashchange 行为；非默认端口、协议、path 变化和
+protocol-relative URL 仍明确拒绝。
 
 实现边界：
 
@@ -80,9 +81,10 @@ URL 仍明确拒绝。
   或 query/fragment suffix；`./?query` 和 `./#fragment` 解析到当前目录的 trailing slash，
   裸 `./`、`../`、dot segment、重复分隔符、protocol-relative、cross-origin
   和同源 absolute path 变化明确抛错；同源 absolute URL 若 path 与当前 URL 完全相同，
-  则允许其 query/fragment 变化。
-- C 侧 history bridge 未扩大 URL parser，只继续以大小写不敏感的文本 scheme/authority
-  边界做 same-origin 门，允许已经由 bootstrap 解析成 absolute 的 sibling 结果写入历史。
+  则允许其 query/fragment 变化；HTTP 的 `:80` 与无端口、HTTPS 的 `:443` 与无端口
+  在 origin 比较中等价，其他端口不等价。
+- C 侧 history bridge 未扩大 URL parser，只在大小写不敏感的文本 scheme/authority 边界上
+  增加 HTTP/HTTPS 默认端口收窄，允许已经由 bootstrap 解析成 absolute 的结果写入历史。
 - TEST189 覆盖 replace/push、两次 traversal、URL/state/length、事件顺序、无 GET、拒绝项和
   14/16 native callback 槽位。最初前进事件串超过 `PScript_GetResult` 255 字符上限；最终测试
   像 TEST150 一样只比较新增 `seen.slice(2)`，没有提高预算或放宽行为断言。
@@ -101,6 +103,8 @@ URL 仍明确拒绝。
   两次 traversal、无 GET、URL/state/length、事件顺序和结果边界。
 - TEST195 覆盖同源 absolute 同 path 的 query/fragment replace/push、path 变化/跨源/
   protocol-relative 拒绝、两次 traversal、无 GET、URL/state/length、事件顺序和结果边界。
+- TEST196 覆盖 HTTPS `:443` 与无端口的同源 absolute query/fragment replace/push、非默认端口/
+  协议/path 拒绝、两次 traversal、无 GET、URL/state/length、事件顺序和结果边界。
 - 默认 `javascript=0`、TEST13 行为、公共 ABI 和 callback 总上限不变。
 
 自动化同步完成：
@@ -117,18 +121,18 @@ URL 仍明确拒绝。
 - `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`；
 - PowerShell 解析、修复脚本 `changed=0/status=PASS` 幂等门；
 - VS2008 ARMV4I Debug 正式构建；
-- 定向 `TEST190-195/999` 和默认 143 项全量 WMDC/RAPI 设备门；
+- 定向 `TEST195-196/999` 和默认 144 项全量 WMDC/RAPI 设备门；
 - TEST13 三段真实导航、零 `ERROR`、零 `FAIL`、唯一 `TESTBENCH PASS`。
 
 ## 唯一下一步
 
-在 next228 基线之上只推进下一项尚未覆盖的 URL/history 分类，继续保持有限
+在 next229 基线之上只推进下一项尚未覆盖的 URL/history 分类，继续保持有限
 document-relative 语义和当前安全拒绝规则；不把这批扩展成完整 URL parser，
 并继续保留 TEST13 和人工视觉/输入累计门。
 
 完成标准：
 
-- next228 的 143 项自动 gate、TEST190-195/999 定向 gate、C89、审计和正式构建均保持通过；
+- next229 的 144 项自动 gate、TEST195-196/999 定向 gate、C89、审计和正式构建均保持通过；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
 - 下一批为选定的 URL/history 边界增加正反例、无 GET、state/length、traversal 和事件顺序
