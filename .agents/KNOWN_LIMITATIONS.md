@@ -1,6 +1,6 @@
 # Positron 当前限制
 
-更新时间：2026-08-13
+更新时间：2026-08-14
 
 这里只记录当前仍存在的产品或验收边界。已完成批次和设备流水不保留在本文件；最近证据见
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
@@ -129,14 +129,14 @@ DNS/TCP/TLS/HTTP/页面提交阶段取证。
 
 绝对和根相对 URL path 中多个完整 `%2E%2E` segment 的受控折叠已由 next221 全量设备门
 验证；history state 的根相对 path/query/fragment 与 query-relative 写法已由 next222 验证，
-当前 document 目录下的单段 sibling 和显式 `./` sibling 写法已由 next224 验证。
+当前 document 目录下的单段 sibling 和显式 `./` 单段/多段 sibling 写法已由 next225 验证。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；
 - 字面 `..` 与编码 segment 混合；
 - 规范化后 query/path 不同的 URL；
 - 越过 origin 根或没有非空前驱目录的折叠。
-- 多段 document-relative sibling、裸 `./`、`.` 和 `../` history state URL；
+- 裸多段 document-relative sibling、裸 `./`、`.` 和 `../` history state URL；
 - protocol-relative history state URL；
 - 同源 absolute history URL 的 path 变化（当前 bootstrap 只允许既有 base/fragment）；
 - 默认端口归一、IDN、userinfo 和其他完整 URL Standard origin 规范化。

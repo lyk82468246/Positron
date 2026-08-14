@@ -1,6 +1,6 @@
 # Positron 当前交接
 
-更新时间：2026-08-13
+更新时间：2026-08-14
 
 稳定使命、架构和公共边界见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。本文件只记录当前仓库基线、最近设备证据、
@@ -9,37 +9,38 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next224。
-- next224 批次包含 `test_host/main.c`、`test_host/test_host.ini`，以及改用当前 WMDC/RAPI
+- 最新已验证产品基线：next225。
+- next225 批次包含 `test_host/main.c`、`test_host/test_host.ini`，以及改用当前 WMDC/RAPI
   会话的 `scripts/device_gate.bat`、`scripts/device_gate.ps1` 自动设备门和
   `scripts/repair_wmdc_rapi.*` 环境修复脚本。
-- 当前工作区的 `test_host/test_host.ini` 已暂时切换为人工验收包：`auto=0`、
+- 当前工作区的 `test_host/test_host.ini` 仍暂时切换为人工验收包：`auto=0`、
   `javascript=0`、`tests=13,20,27,56,58,62,64-67,73,75,999`。这不是新的自动基线；
-  上一节记录的 139 项自动 next224 证据仍然有效，人工验收结束后要恢复完整自动三行配置。
-- 本地设备证据位于 `tmp/device-runs/20260813-153637-next224/`；定向证据位于
-  `tmp/device-runs/20260813-153602-next224-dot-retry/`。`tmp/` 不跟踪，干净 clone
+- 上一节记录的 140 项自动 next225 证据仍然有效，人工验收包只保留可视/输入项目。
+- 本地设备证据位于 `tmp/device-runs/20260814-201443-next225/`；定向证据位于
+  `tmp/device-runs/20260814-201352-next225-debug3/`。`tmp/` 不跟踪，干净 clone
   中没有该日志，不能据此假定新环境也已经连接或通过。
 
 接管时仍须重新运行 `git status --short --branch` 和 `git diff`；以上列表不是 Git 的替代品。
 
 ## 最近已验证设备证据
 
-### 最新全量检查点：next224
+### 最新全量检查点：next225
 
-- 配置：`TEST13/20/27/43/44/56/58-77/80-191/999`，共 139 项。
-- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=320x320 dpi=128`。
+- 配置：`TEST13/20/27/43/44/56/58-77/80-192/999`，共 140 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
 - 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
   Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
-- 结果：139 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、
+- 结果：140 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、
   零 `FAIL`、唯一 `TESTBENCH PASS`，`completion_marker=PASS`。
 - TEST13：example.com、IANA Example Domains、Reserved Domains 三段导航均 `completed=1`。
 - 能力终点：`history.pushState`/`replaceState` 支持同源根相对 path/query/fragment、
-  query-relative URL、裸 sibling 和显式 `./` sibling URL，且同文档 traversal 恢复 URL/state
-  并按 popstate 后 hashchange 排序；裸 `./`、`../`、多段相对 URL、cross-origin、
+  query-relative URL、裸单段 sibling 和显式 `./` 单段/多段 sibling URL，且同文档 traversal
+  恢复 URL/state 并按 popstate 后 hashchange 排序；裸 `./`、`../`、dot segment、裸多段、
+  cross-origin、
   protocol-relative 和同源 absolute path 变化仍拒绝。
 - 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I
   Debug 正式构建、14 文件隔离 staging/部署、SHA-256 清单和日志自动判门均通过。定向
-  `TEST190/191/999` 证据和默认全量 gate 均已保存到上述 `tmp/device-runs/` 路径。
+  `TEST192/999` 证据和默认全量 gate 均已保存到上述 `tmp/device-runs/` 路径。
 - gate 会在设备端只回收自己命名的旧候选目录；本次因旧目录占满 `\Temp` 暴露并验证了该
   回收路径。WMDC 旧 COM 注册的 5 个 RAPI 类已由正式修复脚本做 32/64 位幂等验证。
 
@@ -57,21 +58,24 @@
 
 - next167 已人工确认 example.com `Learn More` 后页面容器边距正常。
 - next167 已人工确认真实 SIP 候选词可以完整提交，不再只输入下一个字符。
+- 2026-08-14 的 TEST75 纵向/横向截图（`tmp/QQ20260814-195629.png`、
+  `tmp/QQ20260814-195643.png`）显示灰色定位父框和四个彩色元素均在预期坐标内；
+  小色块内文字的溢出是 fixture 的预期内容，不是布局回归。
 - 视觉、真实触摸、SIP、旋转和失败网络允许累计后集中复核；崩溃、数据损坏、严重布局
   破坏或核心交互阻塞必须立即检查。
 
-## 已关闭批次：next224
+## 已关闭批次：next225
 
-目标：让浏览器 history state URL 支持当前 document 目录下带显式 `./` 的单段 sibling 写法，
+目标：让浏览器 history state URL 支持当前 document 目录下带显式 `./` 的多段 sibling 写法，
 在不发 GET 的前提下同步更新 `location`/`document.URL`，并保持 traversal 的 state、
-length、popstate/hashchange 行为。
+  length、popstate/hashchange 行为。
 
 实现边界：
 
 - JS bootstrap 的 `phistoryUrl` 在保留既有 fragment-only、query-relative、root-relative、
-  受限 absolute 和裸 sibling URL 的前提下，去掉显式 `./` 前缀后把不含 `/` 的单段 sibling
-  拼到当前 document 目录；裸 `./`、`../`、多段相对 URL、protocol-relative、cross-origin
-  和同源 absolute path 变化明确抛错。
+  受限 absolute 和裸单段 sibling URL 的前提下，去掉显式 `./` 前缀后把安全的多段 sibling
+  拼到当前 document 目录；裸 `./`、`../`、dot segment、重复分隔符、裸多段相对 URL、
+  protocol-relative、cross-origin 和同源 absolute path 变化明确抛错。
 - C 侧 history bridge 未扩大 URL parser，只继续以大小写不敏感的文本 scheme/authority
   边界做 same-origin 门，允许已经由 bootstrap 解析成 absolute 的 sibling 结果写入历史。
 - TEST189 覆盖 replace/push、两次 traversal、URL/state/length、事件顺序、无 GET、拒绝项和
@@ -81,6 +85,9 @@ length、popstate/hashchange 行为。
   popstate/hashchange 顺序、14 个 native callback 和小于 256 字符的结果边界。
 - TEST191 覆盖显式 `./` sibling replace/push、裸点/父路径/多段路径/absolute path 拒绝、
   两次 traversal、无 GET、URL/state/length、事件顺序和结果边界。
+- TEST192 覆盖显式 `./dir/...` sibling replace/push、dot segment/重复分隔符/裸多段/父路径/
+  protocol-relative/cross-origin/absolute path 拒绝、两次 traversal、无 GET、URL/state/length、
+  事件顺序和结果边界。
 - 默认 `javascript=0`、TEST13 行为、公共 ABI 和 callback 总上限不变。
 
 自动化同步完成：
@@ -97,22 +104,21 @@ length、popstate/hashchange 行为。
 - `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`；
 - PowerShell 解析、修复脚本 `changed=0/status=PASS` 幂等门；
 - VS2008 ARMV4I Debug 正式构建；
-- 定向 `TEST190/191/999` 和默认 139 项全量 WMDC/RAPI 设备门；
+- 定向 `TEST192/999` 和默认 140 项全量 WMDC/RAPI 设备门；
 - TEST13 三段真实导航、零 `ERROR`、零 `FAIL`、唯一 `TESTBENCH PASS`。
 
 ## 唯一下一步
 
-按 `docs/TESTING.md` 的“当前人工验收包（next224）”执行一次低风险人工门，优先复核
-example.com 深层导航的居中边距、真实触摸、SIP 候选词、native 表单、旋转和失败网络
-反馈；本轮不改变代码边界。
+在 next225 基线之上只推进下一项 URL/history 分类：评估并测试裸多段
+document-relative sibling（例如 `dir/child`），保持当前显式 `./` 的安全拒绝规则，
+不把这批扩展成完整 URL parser；继续保留 TEST13 和人工视觉/输入累计门。
 
 完成标准：
 
-- 13 个选择项按提示完成；TEST13 至少保留 example.com 初始页、Learn More 后页面和
-  IANA 页面截图，并记录 viewport/DPI/方向；
-- TEST65 记录一次完整 SIP 候选词提交，TEST64/66/67/73 至少记录一次实际控件操作；
-- TEST999 只响一次，随后出现 `Configured tests passed`；
-- `auto=0` 不会创建 `test_host.log`，所以人工截图和操作记录必须放入 `tmp/`；若需要机器
-  判定日志，人工记录后恢复自动配置再另跑 gate；
+- next225 的 140 项自动 gate、TEST192/999 定向 gate、C89、审计和正式构建均保持通过；
+- 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；由于 `auto=0` 不会
+  创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
+- 下一批为裸多段 URL 增加正反例、无 GET、state/length、traversal 和事件顺序断言，并通过
+  定向后全量设备门；
 - 若出现崩溃、数据损坏、严重布局破坏或核心交互阻塞，立即停止累计并进入 debug；
-- 人工门结束后恢复完整自动配置、覆写本文件，并从路线图中选择下一个单一代码能力。
+- 候选通过后覆写本文件，并从路线图中选择下一个单一代码能力。

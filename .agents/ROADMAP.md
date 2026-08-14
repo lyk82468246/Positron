@@ -1,6 +1,6 @@
 # Positron 路线图
 
-更新时间：2026-08-13
+更新时间：2026-08-14
 
 本文件只列尚未完成的目标。已提交的 next 批次不继续停留在路线图；当前候选和设备门见
 [`HANDOFF.md`](HANDOFF.md)，当前能力缺口见
@@ -32,10 +32,12 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ## 短期目标
 
-### 1. 累计人工门
+### 1. 裸多段 document-relative history state
 
-在下一次触及布局、真实触摸、SIP、旋转或失败网络之前，整理尚未人工复核的低风险批次。
-若出现严重视觉或交互异常，立即验收，不等累计数量。
+在 next225 已支持的显式 `./dir/child` 之后，单独评估裸 `dir/child` 的有限 sibling
+语义。必须保持 `.`/`..`、dot segment、重复分隔符、跨源和同源 absolute path 的明确
+拒绝；同时覆盖无 GET、state/length、traversal 和 popstate/hashchange 顺序。不要借此
+自写完整 URL Standard parser。
 
 ## 中期目标
 
