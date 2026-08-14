@@ -361,7 +361,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 197
+#define TEST_MAX_NUMBER 198
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -7065,12 +7065,18 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         "(i===5&&ya.substring(p+1)==='443'))){ya=ya.substring(0,p);}"
         "return xa===ya;}"
         "function phistoryRelativePath(p){var l=String(p).toLowerCase();"
+        "var i=0;var slash;var segment;"
         "if(p===''||p==='.'||p==='..'||p.substring(0,2)==='./'||"
         "p.substring(0,3)==='../'||p.indexOf('//')>=0||"
         "p.indexOf('/./')>=0||p.indexOf('/../')>=0||"
         "(p.length>=2&&p.substring(p.length-2)==='/.')||"
-        "(p.length>=3&&p.substring(p.length-3)==='/..')||"
-        "l.indexOf('%2e')>=0){return false;}return true;}"
+        "(p.length>=3&&p.substring(p.length-3)==='/..')){return false;}"
+        "if(l.indexOf('%2e')>=0){"
+        "while(i<=l.length){slash=l.indexOf('/',i);"
+        "if(slash<0){slash=l.length;}segment=l.substring(i,slash);"
+        "if(segment==='%2e'||segment==='%2e%2e'||"
+        "segment==='.%2e'||segment==='%2e.'){return false;}"
+        "if(slash===l.length){break;}i=slash+1;}}return true;}"
         "function phistoryUrl(url,provided){var u=provided?String(url):'';"
         "var h;var b;var q;var pathEnd;var slash;var origin;var explicit;"
         "if(u===''){return purl;}"
@@ -35216,6 +35222,242 @@ static BOOL test197_browser_script_history_absolute_path(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 198 - safe percent-encoded absolute history path segments        */
+/* -------------------------------------------------------------------- */
+static BOOL test198_browser_script_history_encoded_path(void)
+{
+    static const char URL_OLD[] =
+        "https://example.com/app/start?x=0#seed";
+    static const char URL_REPLACE[] =
+        "https://example.com/app/%2Ebook?x=1#base";
+    static const char URL_PUSH[] =
+        "https://example.com/app/file%2Ejson?x=2#tail";
+    static const char URL_FINAL[] =
+        "https://example.com/app/%2Fencoded?x=3";
+    static const char URL_OTHER[] =
+        "https://example.com/app/%2eitem?x=5#next";
+    static const char URL_QUERY[] =
+        "https://example.com/app/file%2Fquery?x=6#query";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var seen=[];var rejected=0;"
+        "onpopstate=function(e){seen.push('P'+e.state.page+'|'"
+        "+location.href);};"
+        "onhashchange=function(e){seen.push('H'+e.oldURL+'>'+e.newURL);};"
+        "history.replaceState({page:0},'',"
+        "'https://example.com/app/%2Ebook?x=1#base');"
+        "history.pushState({page:1},'',"
+        "'https://example.com/app/file%2Ejson?x=2#tail');"
+        "history.pushState({page:2},'',"
+        "'https://example.com/app/%2Fencoded?x=3');"
+        "try{history.pushState({bad:1},'',"
+        "'https://example.com/app/%2e/escape?x=1#dot');}"
+        "catch(e){rejected++;}"
+        "try{history.pushState({bad:2},'',"
+        "'https://example.com/app/.%2e/escape?x=1#mixed');}"
+        "catch(e){rejected++;}"
+        "try{history.pushState({bad:3},'',"
+        "'https://example.com/app/%2e./escape?x=1#mixed2');}"
+        "catch(e){rejected++;}"
+        "try{history.pushState({bad:4},'',"
+        "'https://example.com/app/%2e%2e/escape?x=1#parent');}"
+        "catch(e){rejected++;}"
+        "try{history.pushState({bad:5},'',"
+        "'https://other.invalid/app/%2Fencoded?x=1#cross');}"
+        "catch(e){rejected++;}"
+        "document.getElementById('result').textContent="
+        "location.href+'|'+document.URL+'|'+history.length+'|'"
+        "+history.state.page+'|'+rejected+'|'+seen.length;"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char INITIAL_RESULT[] =
+        "https://example.com/app/%2Fencoded?x=3|"
+        "https://example.com/app/%2Fencoded?x=3|3|2|5|0";
+    static const char BACK_RESULT[] =
+        "P1|https://example.com/app/file%2Ejson?x=2#tail|"
+        "Hhttps://example.com/app/%2Fencoded?x=3>"
+        "https://example.com/app/file%2Ejson?x=2#tail|"
+        "https://example.com/app/file%2Ejson?x=2#tail|1|3";
+    static const char FORWARD_RESULT[] =
+        "P2|https://example.com/app/%2Fencoded?x=3|"
+        "Hhttps://example.com/app/file%2Ejson?x=2#tail>"
+        "https://example.com/app/%2Fencoded?x=3|"
+        "https://example.com/app/%2Fencoded?x=3|2|3";
+    static const char FINAL_RESULT[] =
+        "https://example.com/app/file%2Fquery?x=6#query|"
+        "https://example.com/app/file%2Fquery?x=6#query|4|12|4";
+    HANDLE document;
+    HANDLE runtime;
+    HANDLE session_runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *evaluation_result;
+    char result[256];
+    char error[768];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+    int failure_stage;
+
+    document = NULL;
+    runtime = NULL;
+    session_runtime = NULL;
+    bridge = NULL;
+    evaluation_result = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    failure_stage = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    (void) pcore_browse_history_commit_navigation(URL_OLD, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_OLD,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, INITIAL_RESULT) != 0 ||
+            result_bytes != (int) sizeof(INITIAL_RESULT) - 1 ||
+            result_bytes >= (int) sizeof(result) || bridge == NULL ||
+            bridge->history_entry_url == NULL ||
+            strcmp(bridge->history_entry_url, URL_REPLACE) != 0 ||
+            bridge->history_push_count != 2 ||
+            bridge->history_push_urls[0] == NULL ||
+            strcmp(bridge->history_push_urls[0], URL_PUSH) != 0 ||
+            bridge->history_push_urls[1] == NULL ||
+            strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
+            bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
+            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
+            1, -1, bridge) != 0 || g_browse_history.count != 3 ||
+            g_browse_history.index != 2 ||
+            strcmp(g_browse_history.entries[0], URL_REPLACE) != 0 ||
+            strcmp(g_browse_history.entries[1], URL_PUSH) != 0 ||
+            strcmp(g_browse_history.entries[2], URL_FINAL) != 0 ||
+            !pcore_browse_history_same_document_target(1)) {
+        ok = 0;
+    }
+    if (ok) {
+        failure_stage = 2;
+        bridge->hwnd = (HWND) 1;
+        session_runtime = runtime;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (!pcore_browse_navigate_back((HWND) 1) || g_nav_loading ||
+                g_nav_request != NULL || g_browse_history.index != 1 ||
+                strcmp(pcore_browse_history_current(), URL_PUSH) != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":1}") != 0 ||
+                PScript_Evaluate(session_runtime,
+                "seen.join('|')+'|'+location.href+'|'"
+                "+history.state.page+'|'+history.length;", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        } else {
+            evaluation_result = PScript_GetResult(session_runtime);
+            if (evaluation_result == NULL ||
+                    strlen(evaluation_result) >= 256 ||
+                    strcmp(evaluation_result, BACK_RESULT) != 0) {
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        failure_stage = 3;
+        if (!pcore_browse_navigate_forward((HWND) 1) ||
+                g_nav_loading || g_nav_request != NULL ||
+                g_browse_history.index != 2 ||
+                strcmp(pcore_browse_history_current(), URL_FINAL) != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":2}") != 0 ||
+                PScript_Evaluate(session_runtime,
+                "seen.slice(2).join('|')+'|'+location.href+'|'"
+                "+history.state.page+'|'+history.length;", -1) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        failure_stage = 4;
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strlen(evaluation_result) >= 256 ||
+                strcmp(evaluation_result, FORWARD_RESULT) != 0) {
+            ok = 0;
+        } else {
+            failure_stage = 5;
+            if (PScript_Evaluate(session_runtime,
+                    "history.replaceState({page:11},'',"
+                    "'https://example.com/app/%2eitem?x=5#next');"
+                    "history.pushState({page:12},'',"
+                    "'https://example.com/app/file%2Fquery?x=6#query');"
+                    "location.href+'|'+document.URL+'|'"
+                    "+history.length+'|'+history.state.page+'|'"
+                    "+seen.length;", -1) != PSCRIPT_OK) {
+                pcore_browser_script_error(error, sizeof(error),
+                        "stage 5 evaluation",
+                        PScript_GetError(session_runtime));
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        failure_stage = 6;
+        evaluation_result = PScript_GetResult(session_runtime);
+        if (evaluation_result == NULL ||
+                strlen(evaluation_result) >= 256 ||
+                strcmp(evaluation_result, FINAL_RESULT) != 0 ||
+                g_browse_history.count != 4 ||
+                g_browse_history.index != 3 || g_nav_loading ||
+                g_nav_request != NULL ||
+                strcmp(g_browse_history.entries[2], URL_OTHER) != 0 ||
+                strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
+                strcmp(pcore_browse_history_current_state(),
+                "{\"page\":12}") != 0 ||
+                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+            ok = 0;
+        }
+    }
+    if (!ok && error[0] == '\0') {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%d history=%d/%d current=%s state=%s eval=%s",
+                failure_stage, g_browse_history.index,
+                g_browse_history.count,
+                pcore_browse_history_current() != NULL ?
+                pcore_browse_history_current() : "(null)",
+                pcore_browse_history_current_state() != NULL ?
+                pcore_browse_history_current_state() : "(null)",
+                evaluation_result != NULL ? evaluation_result : "(null)");
+        error[sizeof(error) - 1] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) { PScript_Destroy(runtime); }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (document != NULL) { PCore_FreeDocument(document); }
+    pcore_browse_history_reset();
+    if (!ok) {
+        show_error(L"TEST 198 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 198 OK",
+            "same-origin absolute history state URLs preserve ordinary\n"
+            "percent-encoded pathname segments without a GET; encoded dot\n"
+            "segments and cross-origin targets remain rejected while\n"
+            "traversal preserves state and event ordering.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -39322,6 +39564,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 197: ok =
                 test197_browser_script_history_absolute_path();
+                break;
+        case 198: ok =
+                test198_browser_script_history_encoded_path();
                 break;
         default: ok = FALSE; break;
         }
