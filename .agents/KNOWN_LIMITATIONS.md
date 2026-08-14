@@ -135,7 +135,9 @@ document-relative sibling、显式 `./?query`/`./#fragment` trailing-slash 写�
 HTTP 的 `:80`/无端口和 HTTPS 的 `:443`/无端口同源等价已由 next229 验证。
 安全的同源 absolute pathname 变化已由 next230 的 TEST197 和 145 项全量设备门验证；
 普通 percent-encoded pathname segment 已由 next231 的 TEST198 和 146 项全量设备门验证；
-根相对 pathname 的同一安全校验已由 next232 的 TEST199 和 147 项全量设备门验证。
+根相对 pathname 的同一安全校验已由 next232 的 TEST199 和 147 项全量设备门验证；
+显式 `undefined` history URL 默认当前 document URL、显式空字符串保持同 URL entry 的语义
+已由 next233 的 TEST200 和 148 项全量设备门验证，均不发 GET。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；

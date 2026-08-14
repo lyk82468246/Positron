@@ -9,23 +9,41 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next232。
-- next232 批次包含 `test_host/main.c`、`test_host/test_host.ini`；自动设备门继续使用当前
+- 最新已验证产品基线：next233。
+- next233 批次包含 `test_host/main.c`、`test_host/test_host.ini`；自动设备门继续使用当前
   WMDC/RAPI 会话的 `scripts/device_gate.bat`、`scripts/device_gate.ps1`，环境修复脚本为
   `scripts/repair_wmdc_rapi.*`。
 - 当前工作区的 `test_host/test_host.ini` 保持自动模式：`auto=1`、`javascript=0`、
   `tests=13,20,27,56,58,62,64-67,73,75,999`。这是窄的自动 smoke 选择，不是完整基线；
-- 147 项自动 next232 证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
+- 148 项自动 next233 证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
   验收结束后恢复为 1。
-- 本地设备证据位于 `tmp/device-runs/20260814-230254-next232-final/`；定向证据位于
-  `tmp/device-runs/20260814-230205-next232-history199/`。`tmp/` 不跟踪，干净 clone
+- 本地设备证据位于 `tmp/device-runs/20260814-232021-next233-final/`；定向证据位于
+  `tmp/device-runs/20260814-231852-next233-history200/`。`tmp/` 不跟踪，干净 clone
   中没有该日志，不能据此假定新环境也已经连接或通过。
 
 接管时仍须重新运行 `git status --short --branch` 和 `git diff`；以上列表不是 Git 的替代品。
 
 ## 最近已验证设备证据
 
-### 最新全量检查点：next232
+### 最新全量检查点：next233
+
+- 配置：`TEST13/20/27/43/44/56/58-77/80-200/999`，共 148 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
+- 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
+  Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
+- 结果：148 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、
+  零 `FAIL`、唯一 `TESTBENCH PASS`，`completion_marker=PASS`。
+- TEST13：example.com、IANA Example Domains、Reserved Domains 三段导航均 `completed=1`。
+- 能力终点：`history.pushState`/`replaceState` 的第三个 URL 参数显式为 `undefined` 时使用当前
+  document URL；显式空字符串仍表示当前 URL 的同 URL history entry。两种写法都不发 GET，保留
+  state/length、traversal、popstate/hashchange 顺序和后续 replace/push 行为；既有安全
+  absolute/root-relative/document-relative pathname、query/fragment 和拒绝规则不变。
+- 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I
+  Debug 正式构建、14 文件隔离 staging/部署、SHA-256 清单和日志自动判门均通过。定向
+  `TEST149-200/999` 证据位于 `tmp/device-runs/20260814-231852-next233-history200/`，
+  全量证据位于 `tmp/device-runs/20260814-232021-next233-final/`。
+
+### 上一全量检查点：next232
 
 - 配置：`TEST13/20/27/43/44/56/58-77/80-199/999`，共 147 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
@@ -107,15 +125,39 @@ state、length、traversal、popstate/hashchange 行为可预测。编码 dot se
 - 定向 `TEST149-199/999` 和默认 147 项全量 WMDC/RAPI 设备门；
 - TEST13 三段真实导航、零 `ERROR`、零 `FAIL`、唯一 `TESTBENCH PASS`。
 
+## 已关闭批次：next233
+
+目标：补齐 `history.pushState`/`replaceState` 可选 URL 参数的一个明确边界：调用者显式传入
+`undefined` 时默认当前 document URL，同时保持显式空字符串的同 URL entry 语义，并证明两者
+都不会触发网络请求或破坏 history traversal。
+
+实现边界：
+
+- 浏览器脚本 bridge 只在第三个参数确实不是 `undefined` 时字符串化 URL；缺省/显式
+  `undefined` 走当前 URL，显式 `''` 继续走当前 URL 的同 URL entry；未扩大 URL parser 或
+  放宽既有安全路径拒绝规则。
+- TEST200 覆盖 replace/push 返回值、location/document.URL、history length/state、bridge
+  URL/state、无 GET、back/forward 的 popstate 顺序，以及 traversal 后再次 replace/push；
+  TEST198/199 和上一批测试继续覆盖普通编码段、根相对路径与不安全 URL 拒绝。
+- 默认 `javascript=0`、TEST13 行为、公共 ABI 和 callback 总上限不变。
+
+已经核验并提升为基线：
+
+- `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`；
+- VS2008 ARMV4I Debug 正式构建；
+- 定向 `TEST149-200/999`（53 项）和全量 `TEST13/20/27/43/44/56/58-77/80-200/999`
+  （148 项）WMDC/RAPI 设备门；
+- TEST13 三段真实导航、零 `ERROR`、零 `FAIL`、唯一 `TESTBENCH PASS`。
+
 ## 唯一下一步
 
-在 next232 基线之上只推进下一项尚未覆盖的 URL/history 分类，继续保持有限
+在 next233 基线之上只推进下一项尚未覆盖的 URL/history 分类，继续保持有限
 document-relative 语义和当前安全拒绝规则；不把这批扩展成完整 URL parser，
 并继续保留 TEST13 和人工视觉/输入累计门。
 
 完成标准：
 
-- next232 的 147 项自动 gate、TEST149-199/999 定向 gate、C89、审计和正式构建均保持通过；
+- next233 的 148 项自动 gate、TEST149-200/999 定向 gate、C89、审计和正式构建均保持通过；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
 - 下一批为选定的 URL/history 边界增加正反例、无 GET、state/length、traversal 和事件顺序
