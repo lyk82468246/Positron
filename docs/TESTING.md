@@ -51,7 +51,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前人工验收包（next226）
+### 当前人工验收包（next227）
 
 为了集中检查视觉、真实触摸和输入，工作区当前的 `test_host/test_host.ini` 已配置为：
 
@@ -61,8 +61,8 @@ javascript=0
 tests=13,20,27,56,58,62,64-67,73,75,999
 ```
 
-这是人工验收用的窄选择，不是完整自动回归基线。自动 next226 基线仍是
-`auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-193,999`；人工检查结束后，
+这是人工验收用的窄选择，不是完整自动回归基线。自动 next227 基线仍是
+`auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-194,999`；人工检查结束后，
 下一次自动 gate 前必须恢复这三行。
 
 每项的观察目标如下：
@@ -83,7 +83,7 @@ tests=13,20,27,56,58,62,64-67,73,75,999
 | 75 | 灰色父框内依次看到红色 static、偏移后的绿色 relative、蓝色 absolute block、黄色 absolute inline；四个都不能跑出灰框。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
-TEST190-193 是自动 history-state 断言，不属于这次需要肉眼观察的包。
+TEST190-194 是自动 history-state 断言，不属于这次需要肉眼观察的包。
 
 ## 运行自动设备门
 
@@ -108,7 +108,7 @@ staging 的 `tests=` 值，不修改 tracked ini：
 
 ```bat
 scripts\device_gate.bat -Candidate nextNNN-debug ^
-  -TestSelection "190-193,999"
+  -TestSelection "190-194,999"
 ```
 
 `-PlatformName`/`-DeviceName` 不用于 RAPI gate；更换设备只需先在 GUI 中切换 WMDC 当前连接。
@@ -138,10 +138,10 @@ scripts\repair_wmdc_rapi.bat
 2. 关闭设备上已有的 `test_host.exe`，在仓库根目录执行：
 
    ```bat
-   scripts\stage.bat Debug C:\WMShare\Positron-manual-next226
+   scripts\stage.bat Debug C:\WMShare\Positron-manual-next227
    ```
 
-3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next226`（或共享目录映射的
+3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next227`（或共享目录映射的
    对应路径），确认 `test_host.exe` 与上表配置的 `test_host.ini` 在同一目录，然后运行
    `test_host.exe`。
 4. 启动确认框必须显示这 13 个选择：

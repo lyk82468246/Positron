@@ -34,8 +34,8 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ### 1. 下一项受限 history state URL 分类
 
-在 next226 已支持裸多段 sibling 之后，选择一个尚未覆盖的 document-relative path
-边界（例如 trailing slash 与 query/fragment 的组合）做单独纵向评估。必须继续覆盖
+在 next227 已支持显式当前目录的 trailing-slash query/fragment 组合之后，选择一个
+尚未覆盖的 URL/history path 边界做单独纵向评估。必须继续覆盖
 无 GET、state/length、traversal 和 popstate/hashchange 顺序，并保持 dot segment、重复
 分隔符、父路径、跨源和同源 absolute path 的明确拒绝；不要借此自写完整 URL Standard
 parser。
