@@ -41,6 +41,7 @@
 #include "positron_http.h"
 #include "positron_image.h"
 #include "positron_script.h"
+#include "positron_browser.h"
 
 #include <hubbub/parser.h>
 
@@ -361,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 200
+#define TEST_MAX_NUMBER 201
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -2344,15 +2345,80 @@ typedef struct pcore_browse_history {
 } pcore_browse_history;
 
 static pcore_browse_history g_browse_history;
+static HANDLE g_browse_history_product = NULL;
 
-static void pcore_browse_history_reset(void)
+/* The product DLL owns the history state. This fixed-size copy is only a
+ * diagnostic mirror for legacy test assertions that inspect entry geometry;
+ * no navigation decision is made from it. */
+static int pcore_browse_history_product_ensure(void)
 {
+    if (g_browse_history_product == NULL) {
+        g_browse_history_product = PBrowser_HistoryCreate();
+    }
+    return (g_browse_history_product != NULL) ? 0 : 1;
+}
+
+static void pcore_browse_history_product_sync(void)
+{
+    int i;
+    int count;
+    int index;
+    const char *url;
+    const char *state;
+
+    memset(&g_browse_history, 0, sizeof(g_browse_history));
+    g_browse_history.index = -1;
+    if (g_browse_history_product == NULL) {
+        return;
+    }
+    count = PBrowser_HistoryCount(g_browse_history_product);
+    index = PBrowser_HistoryIndex(g_browse_history_product);
+    if (count < 0 || count > PCORE_BROWSE_HISTORY_MAX) {
+        return;
+    }
+    g_browse_history.count = count;
+    g_browse_history.index = index;
+    for (i = 0; i < count; i++) {
+        url = PBrowser_HistoryEntryUrl(g_browse_history_product, i);
+        state = PBrowser_HistoryEntryState(g_browse_history_product, i);
+        if (url != NULL) {
+            strcpy(g_browse_history.entries[i], url);
+        }
+        if (state != NULL) {
+            strcpy(g_browse_history.states[i], state);
+        }
+        g_browse_history.document_ids[i] =
+                PBrowser_HistoryEntryDocumentId(
+                g_browse_history_product, i);
+    }
+}
+
+static void pcore_browse_history_product_destroy(void)
+{
+    if (g_browse_history_product != NULL) {
+        PBrowser_HistoryDestroy(g_browse_history_product);
+        g_browse_history_product = NULL;
+    }
     memset(&g_browse_history, 0, sizeof(g_browse_history));
     g_browse_history.index = -1;
 }
 
+static void pcore_browse_history_reset(void)
+{
+    if (pcore_browse_history_product_ensure() != 0) {
+        memset(&g_browse_history, 0, sizeof(g_browse_history));
+        g_browse_history.index = -1;
+        return;
+    }
+    PBrowser_HistoryReset(g_browse_history_product);
+    pcore_browse_history_product_sync();
+}
+
 static const char *pcore_browse_history_current(void)
 {
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryCurrentUrl(g_browse_history_product);
+    }
     if (g_browse_history.index < 0 ||
             g_browse_history.index >= g_browse_history.count) {
         return NULL;
@@ -2362,6 +2428,9 @@ static const char *pcore_browse_history_current(void)
 
 static const char *pcore_browse_history_state_at(int index)
 {
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryEntryState(g_browse_history_product, index);
+    }
     if (index < 0 || index >= g_browse_history.count ||
             g_browse_history.states[index][0] == '\0') {
         return "null";
@@ -2371,6 +2440,9 @@ static const char *pcore_browse_history_state_at(int index)
 
 static const char *pcore_browse_history_current_state(void)
 {
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryCurrentState(g_browse_history_product);
+    }
     return pcore_browse_history_state_at(g_browse_history.index);
 }
 
@@ -2385,6 +2457,10 @@ static unsigned long pcore_browse_history_new_document_id(void)
 
 static int pcore_browse_history_same_document_target(int target_index)
 {
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryIsSameDocumentTarget(
+                g_browse_history_product, target_index);
+    }
     if (target_index < 0 || target_index >= g_browse_history.count ||
             target_index == g_browse_history.index ||
             g_browse_history.index < 0 ||
@@ -2403,6 +2479,10 @@ static int pcore_browse_history_same_base_url(const char *left,
     const char *right_hash;
     size_t left_length;
     size_t right_length;
+
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistorySameBaseUrl(left, right);
+    }
 
     if (left == NULL || right == NULL || left[0] == '\0' ||
             right[0] == '\0') {
@@ -2469,6 +2549,10 @@ static int pcore_browse_history_same_origin_url(const char *left,
     size_t left_length;
     size_t right_length;
 
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistorySameOriginUrl(left, right);
+    }
+
     if (left == NULL || right == NULL || left[0] == '\0' ||
             right[0] == '\0') {
         return 0;
@@ -2510,6 +2594,14 @@ static int pcore_browse_history_replace_state_url(const char *url,
         const char *state_json)
 {
     HANDLE parsed;
+    int rc;
+
+    if (g_browse_history_product != NULL) {
+        rc = PBrowser_HistoryReplaceState(
+                g_browse_history_product, url, state_json);
+        pcore_browse_history_product_sync();
+        return rc;
+    }
 
     if (pcore_browse_history_current() == NULL || url == NULL ||
             url[0] == '\0' ||
@@ -2532,6 +2624,10 @@ static int pcore_browse_history_replace_state_url(const char *url,
 
 static int pcore_browse_history_replace_state(const char *state_json)
 {
+    if (g_browse_history_product != NULL) {
+        return pcore_browse_history_replace_state_url(
+                pcore_browse_history_current(), state_json);
+    }
     return pcore_browse_history_replace_state_url(
             pcore_browse_history_current(), state_json);
 }
@@ -2541,6 +2637,13 @@ static int pcore_browse_history_push_state(const char *url,
 {
     HANDLE parsed;
     int i;
+
+    if (g_browse_history_product != NULL) {
+        i = PBrowser_HistoryPushState(g_browse_history_product, url,
+                state_json);
+        pcore_browse_history_product_sync();
+        return i;
+    }
 
     if (pcore_browse_history_current() == NULL || url == NULL ||
             url[0] == '\0' || strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
@@ -2585,6 +2688,15 @@ static int pcore_browse_history_commit_new(const char *url)
 {
     int i;
 
+    if (g_browse_history_product != NULL) {
+        i = PBrowser_HistoryCommitNavigation(
+                g_browse_history_product, url,
+                PBROWSER_HISTORY_METHOD_GET,
+                PBROWSER_HISTORY_TARGET_NEW);
+        pcore_browse_history_product_sync();
+        return i;
+    }
+
     if (url == NULL || url[0] == '\0' ||
             strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX) {
         return 1;
@@ -2625,6 +2737,11 @@ static const char *pcore_browse_history_back_target(int *target_index)
 {
     int target;
 
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryBackTarget(g_browse_history_product,
+                target_index);
+    }
+
     if (target_index == NULL || g_browse_history.index <= 0 ||
             g_browse_history.index >= g_browse_history.count) {
         return NULL;
@@ -2637,6 +2754,11 @@ static const char *pcore_browse_history_back_target(int *target_index)
 static const char *pcore_browse_history_forward_target(int *target_index)
 {
     int target;
+
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryForwardTarget(g_browse_history_product,
+                target_index);
+    }
 
     if (target_index == NULL || g_browse_history.index < 0 ||
             g_browse_history.index + 1 >= g_browse_history.count) {
@@ -2651,6 +2773,11 @@ static const char *pcore_browse_history_go_target(int delta,
         int *target_index)
 {
     int target;
+
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryGoTarget(g_browse_history_product, delta,
+                target_index);
+    }
 
     if (target_index == NULL || g_browse_history.index < 0 ||
             g_browse_history.index >= g_browse_history.count ||
@@ -2668,6 +2795,14 @@ static const char *pcore_browse_history_go_target(int delta,
 
 static int pcore_browse_history_commit_target(int target_index)
 {
+    int rc;
+
+    if (g_browse_history_product != NULL) {
+        rc = PBrowser_HistoryCommitTarget(
+                g_browse_history_product, target_index);
+        pcore_browse_history_product_sync();
+        return rc;
+    }
     if (target_index < 0 || target_index >= g_browse_history.count) {
         return 1;
     }
@@ -2677,6 +2812,14 @@ static int pcore_browse_history_commit_target(int target_index)
 
 static int pcore_browse_history_commit_target_document(int target_index)
 {
+    int rc;
+
+    if (g_browse_history_product != NULL) {
+        rc = PBrowser_HistoryCommitTargetDocument(
+                g_browse_history_product, target_index);
+        pcore_browse_history_product_sync();
+        return rc;
+    }
     if (pcore_browse_history_commit_target(target_index) != 0) {
         return 1;
     }
@@ -2687,6 +2830,14 @@ static int pcore_browse_history_commit_target_document(int target_index)
 
 static int pcore_browse_history_replace_current(const char *url)
 {
+    int rc;
+
+    if (g_browse_history_product != NULL) {
+        rc = PBrowser_HistoryReplaceCurrent(
+                g_browse_history_product, url);
+        pcore_browse_history_product_sync();
+        return rc;
+    }
     if (url == NULL || url[0] == '\0' ||
             strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX) {
         return 1;
@@ -2704,6 +2855,14 @@ static int pcore_browse_history_replace_current(const char *url)
 static int pcore_browse_history_commit_navigation(const char *url,
         int method, int target_index)
 {
+    int rc;
+
+    if (g_browse_history_product != NULL) {
+        rc = PBrowser_HistoryCommitNavigation(
+                g_browse_history_product, url, method, target_index);
+        pcore_browse_history_product_sync();
+        return rc;
+    }
     if (method != 1) {
         return 1;
     }
@@ -2720,6 +2879,15 @@ static int pcore_browse_history_commit_navigation_with_state(
         const char *url, int method, int target_index,
         const char *state_json)
 {
+    int rc;
+
+    if (g_browse_history_product != NULL) {
+        rc = PBrowser_HistoryCommitNavigationWithState(
+                g_browse_history_product, url, method, target_index,
+                state_json);
+        pcore_browse_history_product_sync();
+        return rc;
+    }
     if (pcore_browse_history_commit_navigation(url, method,
             target_index) != 0) {
         return 1;
@@ -2760,6 +2928,10 @@ static int pcore_browse_history_commit_navigation_with_bridge(
 
 static int pcore_browse_history_exposed_length(void)
 {
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryCount(g_browse_history_product) > 0 ?
+                PBrowser_HistoryCount(g_browse_history_product) : 1;
+    }
     return (g_browse_history.count > 0) ? g_browse_history.count : 1;
 }
 
@@ -2767,6 +2939,11 @@ static int pcore_browse_history_navigation_length(const char *url,
         int method, int target_index)
 {
     int count;
+
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryNavigationLength(
+                g_browse_history_product, url, method, target_index);
+    }
 
     count = g_browse_history.count;
     if (method != 1) {
@@ -2796,6 +2973,10 @@ static int pcore_browse_history_navigation_length(const char *url,
 static int pcore_browse_history_navigation_index(const char *url,
         int method, int target_index)
 {
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryNavigationIndex(
+                g_browse_history_product, url, method, target_index);
+    }
     if (method != 1) {
         return (g_browse_history.index >= 0) ?
                 g_browse_history.index : 0;
@@ -2818,6 +2999,10 @@ static int pcore_browse_history_navigation_index(const char *url,
 static const char *pcore_browse_history_navigation_state(const char *url,
         int method, int target_index)
 {
+    if (g_browse_history_product != NULL) {
+        return PBrowser_HistoryNavigationState(
+                g_browse_history_product, url, method, target_index);
+    }
     if (method != 1) {
         return "null";
     }
@@ -35928,6 +36113,102 @@ static BOOL test200_browser_script_history_undefined_url(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 201 - product browser history API smoke                          */
+/* -------------------------------------------------------------------- */
+static BOOL test201_browser_history_product_api(void)
+{
+    static const char URL_A[] =
+        "https://example.com/app/start?x=0#seed";
+    static const char URL_B[] =
+        "https://example.com/app/next?x=1#b";
+    static const char URL_OTHER[] =
+        "https://other.example/app/next?x=1#b";
+    HANDLE history;
+    const char *target;
+    char error[256];
+    int target_index;
+    int ok;
+
+    history = PBrowser_HistoryCreate();
+    target = NULL;
+    target_index = -1;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    if (history == NULL || PBrowser_AbiVersion() != PBROWSER_ABI_VERSION ||
+            PBrowser_HistoryCount(history) != 0 ||
+            PBrowser_HistoryIndex(history) != -1 ||
+            PBrowser_HistoryCurrentUrl(history) != NULL ||
+            PBrowser_HistoryCommitNavigation(history, URL_A,
+            PBROWSER_HISTORY_METHOD_GET,
+            PBROWSER_HISTORY_TARGET_NEW) != PBROWSER_OK ||
+            PBrowser_HistoryPushState(history, URL_B,
+            "{\"page\":1}") != PBROWSER_OK ||
+            PBrowser_HistoryReplaceState(history, URL_B,
+            "{\"page\":2}") != PBROWSER_OK ||
+            PBrowser_HistoryCount(history) != 2 ||
+            PBrowser_HistoryIndex(history) != 1 ||
+            strcmp(PBrowser_HistoryCurrentUrl(history), URL_B) != 0 ||
+            strcmp(PBrowser_HistoryCurrentState(history),
+            "{\"page\":2}") != 0 ||
+            PBrowser_HistoryPushState(history, URL_OTHER,
+            "{\"page\":3}") == PBROWSER_OK ||
+            PBrowser_HistoryPushState(history, URL_B, "not-json") ==
+            PBROWSER_OK ||
+            PBrowser_HistoryCommitNavigationWithState(history, URL_B,
+            PBROWSER_HISTORY_METHOD_GET,
+            PBROWSER_HISTORY_TARGET_NEW, "not-json") !=
+            PBROWSER_ERROR_STATE ||
+            PBrowser_HistoryCount(history) != 2 ||
+            PBrowser_HistoryIndex(history) != 1 ||
+            PBrowser_HistoryCommitNavigation(history, URL_B,
+            PBROWSER_HISTORY_METHOD_GET, -3) != PBROWSER_ERROR_RANGE ||
+            PBrowser_HistoryCommitNavigation(history, URL_B,
+            PBROWSER_HISTORY_METHOD_OTHER,
+            PBROWSER_HISTORY_TARGET_NEW) == PBROWSER_OK ||
+            !PBrowser_HistorySameOriginUrl(URL_A,
+            "https://example.com:443/app/next") ||
+            PBrowser_HistorySameOriginUrl(URL_A, URL_OTHER) ||
+            !PBrowser_HistorySameBaseUrl(URL_A,
+            "https://example.com/app/start?x=0#other")) {
+        ok = 0;
+    }
+    if (ok) {
+        target = PBrowser_HistoryBackTarget(history, &target_index);
+        if (target == NULL || target_index != 0 ||
+                strcmp(target, URL_A) != 0 ||
+                !PBrowser_HistoryIsSameDocumentTarget(history, 0) ||
+                PBrowser_HistoryCommitTargetDocument(history, 0) !=
+                PBROWSER_OK || PBrowser_HistoryIndex(history) != 0 ||
+                PBrowser_HistoryIsSameDocumentTarget(history, 1)) {
+            ok = 0;
+        }
+    }
+    if (ok && PBrowser_HistoryNavigationLength(history, URL_B,
+            PBROWSER_HISTORY_METHOD_GET,
+            PBROWSER_HISTORY_TARGET_NEW) != 2) {
+        ok = 0;
+    }
+    if (!ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "history=%d/%d index=%d target=%s",
+                PBrowser_HistoryIndex(history),
+                PBrowser_HistoryCount(history), target_index,
+                target != NULL ? target : "(null)");
+        error[sizeof(error) - 1] = '\0';
+    }
+    PBrowser_HistoryDestroy(history);
+    if (!ok) {
+        show_error(L"TEST 201 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 201 OK",
+            "positron_browser.dll owns an independent history session;"
+            " same-origin state, traversal, default-port and JSON guards"
+            " are exposed through the product C ABI.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -40044,6 +40325,9 @@ static int run_configured_tests(const unsigned char *selected,
         case 200: ok =
                 test200_browser_script_history_undefined_url();
                 break;
+        case 201: ok =
+                test201_browser_history_product_api();
+                break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -40118,6 +40402,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                 PHttp_Cleanup();
             }
             PCore_Shutdown();
+            pcore_browse_history_product_destroy();
             if (rc == 0) {
                 show_info(L"TESTBENCH PASS",
                           "All tests selected by test_host.ini passed.");
@@ -40138,6 +40423,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                 PHttp_Cleanup();
             }
             PCore_Shutdown();
+            pcore_browse_history_product_destroy();
             if (rc == 0) {
                 show_info(L"Configured tests passed",
                           "All tests selected by test_host.ini passed.");
@@ -40363,5 +40649,6 @@ done:
     if (core_active) {
         PCore_Shutdown();
     }
+    pcore_browse_history_product_destroy();
     return rc;
 }

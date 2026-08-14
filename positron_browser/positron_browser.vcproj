@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="9.00"
+	Name="positron_browser"
+	ProjectGUID="{F2C4A1B3-6D7E-4F80-91A2-B3C4D5E6F708}"
+	RootNamespace="positron_browser"
+	Keyword="Win32Proj"
+	TargetFrameworkVersion="196613">
+	<Platforms>
+		<Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" />
+	</Platforms>
+	<ToolFiles>
+	</ToolFiles>
+	<Configurations>
+		<Configuration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="2" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
+				AdditionalIncludeDirectories=".;..\compat;..\positron_json"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_BROWSER_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
+				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
+				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLinkerTool" AdditionalDependencies="positron_json.lib"
+				AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName)"
+				AdditionalOptions=" /subsystem:windowsce,5.02"
+				OutputFile="$(OutDir)\positron_browser.dll" LinkIncremental="2"
+				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)\positron_browser.pdb" SubSystem="0"
+				StackReserveSize="65536" StackCommitSize="4096"
+				RandomizedBaseAddress="1" DataExecutionPrevention="0"
+				ImportLibrary="$(OutDir)\positron_browser.lib" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory=""
+				RegisterOutput="0" AdditionalFiles="" />
+			<DebuggerTool />
+		</Configuration>
+		<Configuration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="2" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
+				FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories=".;..\compat;..\positron_json"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_BROWSER_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
+				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3"
+				DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLinkerTool" AdditionalDependencies="positron_json.lib"
+				AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName)"
+				AdditionalOptions=" /subsystem:windowsce,5.02"
+				OutputFile="$(OutDir)\positron_browser.dll" LinkIncremental="1"
+				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)\positron_browser.pdb" SubSystem="0"
+				StackReserveSize="65536" StackCommitSize="4096"
+				OptimizeReferences="2" EnableCOMDATFolding="2"
+				RandomizedBaseAddress="1" DataExecutionPrevention="0"
+				ImportLibrary="$(OutDir)\positron_browser.lib" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory=""
+				RegisterOutput="0" AdditionalFiles="" />
+			<DebuggerTool />
+		</Configuration>
+	</Configurations>
+	<References>
+	</References>
+	<Files>
+		<Filter Name="Source Files"
+			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
+			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}">
+			<File RelativePath=".\positron_browser.c"></File>
+		</Filter>
+		<Filter Name="Header Files" Filter="h;hpp;hxx;hm;inl;inc;xsd"
+			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}">
+			<File RelativePath=".\positron_browser.h"></File>
+		</Filter>
+		<Filter Name="Resource Files"
+			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav"
+			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}">
+		</Filter>
+	</Files>
+	<Globals>
+	</Globals>
+</VisualStudioProject>

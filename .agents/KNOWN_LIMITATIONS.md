@@ -11,11 +11,13 @@
 当前状态：
 
 - 默认 `javascript=0`。
-- 显式开启时已有 classic inline/external script、页面 context，以及受限的
-  DOM、Event、form、input、location 和 history bridge。
+- `positron_browser.dll` 已拥有独立 history/session 产品层；显式开启时仍有 classic
+  inline/external script、页面 context，以及一套尚在宿主迁移中的 DOM、Event、form、input、
+  location 和 history bridge。
 
 尚未完成：完整 DOM/window、module、异步任务、CSP、同源策略、任意 Web API 和完整
-URL Standard。
+URL Standard；JavaScript bridge 仍有一部分实现位于 `test_host/main.c`，尚未成为可供
+正式浏览器应用复用的 browser-layer API。
 
 完成方法：每个上游能力单独做纵向测试；关闭路径不得新增脚本请求；完整自动门和对应
 人工门都通过后才能扩大声明。
@@ -137,7 +139,8 @@ HTTP 的 `:80`/无端口和 HTTPS 的 `:443`/无端口同源等价已由 next229
 普通 percent-encoded pathname segment 已由 next231 的 TEST198 和 146 项全量设备门验证；
 根相对 pathname 的同一安全校验已由 next232 的 TEST199 和 147 项全量设备门验证；
 显式 `undefined` history URL 默认当前 document URL、显式空字符串保持同 URL entry 的语义
-已由 next233 的 TEST200 和 148 项全量设备门验证，均不发 GET。
+已由 next233 的 TEST200 和 148 项全量设备门验证，均不发 GET；history/session 状态机
+迁入 `positron_browser.dll` 已由 next234 的 TEST201、TEST149-201 定向门和 149 项全量门验证。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；

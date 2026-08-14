@@ -70,6 +70,7 @@ positron_http.dll
 positron_core.dll
 positron_image.dll
 positron_script.dll
+positron_browser.dll
 test_host.exe
 ```
 
@@ -93,7 +94,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-candidate
 
 `stage.bat` 会先调用同配置的增量构建。只有构建成功后才复制：
 
-- 六个产品 DLL；
+- 七个产品 DLL；
 - `test_host.exe`；
 - `test_host.ini`；
 - `fonts\` 下的 Positron symbol/emoji fallback 字体及许可证。
@@ -117,7 +118,7 @@ Windows Mobile 的关闭按钮通常只是 Smart Minimize。重新 stage 前：
 1. 在设备任务管理器确认旧 `test_host.exe` 已真正退出；
 2. 如 DLL 仍被系统进程加载，关闭相关窗口或重启模拟器；
 3. 优先 stage 到一个新的隔离目录；
-4. 确认同一目录中的七个二进制来自同一次构建。
+4. 确认同一目录中的八个二进制来自同一次构建。
 
 文件锁、旧进程和系统级 DLL 复用都可能让源码正确但设备运行错误版本。
 

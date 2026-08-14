@@ -17,13 +17,14 @@ DLL 之上建设轻量浏览器与应用运行时。
 | `positron_image.dll` | BMP/PNG/JPEG/GIF、SVG、像素缓冲和编码 | 设备位图格式依赖 WM Imaging codec；SVG 是受限子集 |
 | `positron_script.dll` | 独立 JavaScript 执行服务 | Duktape 2.7.0；有时间、内存、源码和 native callback 上限 |
 | `positron_core.dll` | HTML/DOM、CSS、布局、绘制、命中、表单和资源发现 | 基于移植的 NetSurf 3.11 组件；网页兼容性仍在扩展 |
+| `positron_browser.dll` | 浏览器 session、history 和同源 state 组合层 | 当前首个产品切片；不拥有窗口、网络或完整 JavaScript bridge |
 
 所有公共接口都使用稳定 C ABI、UTF-8 字符串、opaque handle 和明确的释放函数。NetSurf、
 Duktape、Mbed TLS 等实现细节不暴露给调用者。
 
 ### 浏览器运行时
 
-`test_host.exe` 同时是回归宿主和示例浏览器消费者。它已经接通：
+`test_host.exe` 是回归宿主和示例浏览器消费者，不是发布时的浏览器运行时。它已经接通：
 
 - verified HTTPS 与明文 HTTP 页面加载；
 - HTML/CSS 解析、外部样式和图片资源、分阶段异步抓取；
@@ -33,8 +34,9 @@ Duktape、Mbed TLS 等实现细节不暴露给调用者。
 - 显式开启时的 classic inline/external JavaScript 与受限 DOM/Event/location/history bridge。
 
 浏览器 JavaScript 默认关闭。`positron_script.dll` 是独立的 JavaScript 引擎封装；浏览器
-JavaScript 是宿主把这个 DLL 与 `positron_core.dll` 的 DOM、事件和导航接口组合起来的
-实验性绑定，并不是第二套引擎。两者的关系和所有权见
+运行时由 `positron_browser.dll` 与 `positron_core.dll`、`positron_script.dll` 及宿主回调
+组合，目前 history/session 已迁入，JavaScript bridge 仍在迁移中。它不是第二套引擎。
+两者的关系和所有权见
 [架构说明](docs/ARCHITECTURE.md)。
 
 ## 快速开始
@@ -73,7 +75,7 @@ Debug|Windows Mobile 6 Professional SDK (ARMV4I)
 scripts\stage.bat
 ```
 
-脚本会先增量构建，再把六个产品 DLL、`test_host.exe`、`test_host.ini` 和 fallback
+脚本会先增量构建，再把七个产品 DLL、`test_host.exe`、`test_host.ini` 和 fallback
 字体复制到 `C:\WMShare\`。在模拟器中把该目录配置为 Shared Folder，然后从对应的
 Storage Card 路径启动 `test_host.exe`。
 
@@ -119,6 +121,7 @@ positron_http/            HTTP 公共 DLL
 positron_image/           位图和 SVG 公共 DLL
 positron_script/          独立 JavaScript 公共 DLL
 positron_core/            HTML/CSS/DOM/layout/paint 产品边界
+positron_browser/         浏览器 session/history 产品组合层
 test_host/                回归宿主和示例消费者
 samples/                  独立 DLL 示例
 scripts/                  正式构建、stage、移植和审计脚本

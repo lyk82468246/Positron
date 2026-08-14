@@ -140,6 +140,7 @@ $required = @(
     "positron_core.dll",
     "positron_image.dll",
     "positron_script.dll",
+    "positron_browser.dll",
     "test_host.exe",
     "test_host.ini",
     "fonts\PositronSymbolsBasic.ttf",

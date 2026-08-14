@@ -32,13 +32,12 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ## 短期目标
 
-### 1. 下一项受限 history state URL 分类
+### 1. 将浏览器 JavaScript bridge 迁入产品层
 
-在 next233 已支持安全同源 absolute/root-relative pathname、普通 percent-encoded segment，
-并验证显式 `undefined` history URL 默认当前 document URL 之后，选择一个尚未覆盖的 URL/history
-边界做单独纵向评估。必须继续覆盖无 GET、state/length、traversal 和 popstate/hashchange
-顺序，并保持 dot segment、重复分隔符、父路径、跨源、protocol-relative 和编码路径的
-明确拒绝；不要借此自写完整 URL Standard parser。
+next234 已将 history/session 状态机迁入 `positron_browser.dll`，下一批迁移 script session、
+DOM/Event/form/input/location/history bridge。`test_host` 只能作为宿主适配和测试消费者；
+产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
+不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
 ## 中期目标
 

@@ -7,7 +7,7 @@
 1. 查看当前 Git 分支、未提交 diff 和候选目录。
 2. 确认使用 `scripts\build.bat` 或 `scripts\stage.bat` 的正式配置。
 3. 确认旧 `test_host.exe` 已真正退出，而不是 Smart Minimize。
-4. 确认六个 DLL 与 EXE 来自同一次构建。
+4. 确认七个 DLL 与 EXE 来自同一次构建。
 5. 读取完整 `test_host.log`，不要只依赖弹窗、提示音或截图。
 6. 记录设备 screen、DPI、方向、系统时间和操作步骤。
 
