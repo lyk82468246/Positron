@@ -134,18 +134,19 @@ document-relative sibling、显式 `./?query`/`./#fragment` trailing-slash 写�
 同源 absolute URL 在 path 不变时的 query/fragment 变化已由 next228 验证。
 HTTP 的 `:80`/无端口和 HTTPS 的 `:443`/无端口同源等价已由 next229 验证。
 安全的同源 absolute pathname 变化已由 next230 的 TEST197 和 145 项全量设备门验证；
-普通 percent-encoded pathname segment 已由 next231 的 TEST198 和 146 项全量设备门验证。
+普通 percent-encoded pathname segment 已由 next231 的 TEST198 和 146 项全量设备门验证；
+根相对 pathname 的同一安全校验已由 next232 的 TEST199 和 147 项全量设备门验证。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；
 - 字面 `..` 与编码 segment 混合；
-- 含 literal/mixed/complete encoded dot segment、重复分隔符的 absolute pathname（普通
-  percent-encoded segment 已受限支持）；
+- 含 literal/mixed/complete encoded dot segment、重复分隔符的 absolute/root-relative pathname
+  （普通 percent-encoded segment 已受限支持）；
 - 越过 origin 根或没有非空前驱目录的折叠。
 - 裸 `./`、`.` 和 `../` history state URL；
 - protocol-relative history state URL；
-- 同源 absolute history URL 的不安全 path 变化（安全 pathname、普通 percent-encoded segment、
-  同 path query/fragment 变化已受限支持）；
+- 同源 absolute/root-relative history URL 的不安全 path 变化（安全 pathname、普通
+  percent-encoded segment、同 path query/fragment 变化已受限支持）；
 - IDN、userinfo 和其他完整 URL Standard origin 规范化；默认端口只支持上述 HTTP/HTTPS
   两组等价形式。
 
