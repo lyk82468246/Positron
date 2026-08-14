@@ -32,12 +32,13 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ## 短期目标
 
-### 1. 裸多段 document-relative history state
+### 1. 下一项受限 history state URL 分类
 
-在 next225 已支持的显式 `./dir/child` 之后，单独评估裸 `dir/child` 的有限 sibling
-语义。必须保持 `.`/`..`、dot segment、重复分隔符、跨源和同源 absolute path 的明确
-拒绝；同时覆盖无 GET、state/length、traversal 和 popstate/hashchange 顺序。不要借此
-自写完整 URL Standard parser。
+在 next226 已支持裸多段 sibling 之后，选择一个尚未覆盖的 document-relative path
+边界（例如 trailing slash 与 query/fragment 的组合）做单独纵向评估。必须继续覆盖
+无 GET、state/length、traversal 和 popstate/hashchange 顺序，并保持 dot segment、重复
+分隔符、父路径、跨源和同源 absolute path 的明确拒绝；不要借此自写完整 URL Standard
+parser。
 
 ## 中期目标
 
