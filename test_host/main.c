@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 215
+#define TEST_MAX_NUMBER 216
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3073,6 +3073,8 @@ static int pcore_browser_script_key_dispatch(void *pw,
         int *out_default_allowed);
 static int pcore_browser_script_focus_dispatch(void *pw,
         const PBrowserScriptFocusEventInfo *info);
+static int pcore_browser_script_select_dispatch(void *pw,
+        const PBrowserScriptSelectEventInfo *info);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data,
         int is_composing);
@@ -3534,12 +3536,14 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
 {
     pcore_browser_script_bridge *bridge;
     PBrowserScriptFocusEventInfo focus_info;
+    PBrowserScriptSelectEventInfo select_event_info;
     PCoreTextInputInfo text_info;
     PCoreSelectInfo select_info;
     unsigned int i;
     int x;
     int y;
     int is_focus_event;
+    int is_select_event;
     int rc;
 
     if (control == NULL || event_type == NULL || g_render_doc == NULL ||
@@ -3552,6 +3556,7 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
             strcmp(event_type, "blur") == 0 ||
             strcmp(event_type, "focusin") == 0 ||
             strcmp(event_type, "focusout") == 0;
+    is_select_event = strcmp(event_type, "change") == 0;
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
                 PCore_TextInputInfo(g_render_doc,
@@ -3598,6 +3603,21 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
                 focus_info.cancelable = 0;
                 rc = PBrowser_ScriptSessionDispatchFocusEvent(
                         bridge->session, &focus_info);
+                if (rc != PSCRIPT_OK) {
+                    return;
+                }
+            } else if (is_select_event && bridge != NULL &&
+                    bridge->session != NULL) {
+                memset(&select_event_info, 0,
+                        sizeof(select_event_info));
+                select_event_info.size = sizeof(select_event_info);
+                select_event_info.x = x;
+                select_event_info.y = y;
+                select_event_info.event_type = event_type;
+                select_event_info.bubbles = bubbles ? 1 : 0;
+                select_event_info.cancelable = 0;
+                rc = PBrowser_ScriptSessionDispatchSelectEvent(
+                        bridge->session, &select_event_info);
                 if (rc != PSCRIPT_OK) {
                     return;
                 }
@@ -3732,6 +3752,25 @@ static int pcore_browser_script_focus_dispatch(void *pw,
     if (bridge == NULL || bridge->document == NULL || info == NULL ||
             info->size < sizeof(PBrowserScriptFocusEventInfo) ||
             info->event_type == NULL || info->event_type[0] == '\0') {
+        return -1;
+    }
+    result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, NULL);
+    return (result < 0) ? -1 : 0;
+}
+
+static int pcore_browser_script_select_dispatch(void *pw,
+        const PBrowserScriptSelectEventInfo *info)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptSelectEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "change") != 0) {
         return -1;
     }
     result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
@@ -6667,6 +6706,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInputCallbacks input_callbacks;
     PBrowserScriptKeyCallbacks key_callbacks;
     PBrowserScriptFocusCallbacks focus_callbacks;
+    PBrowserScriptSelectCallbacks select_callbacks;
     PBrowserScriptNavigationCallbacks navigation_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     PBrowserScriptEventCallbacks event_callbacks;
@@ -6784,6 +6824,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     focus_callbacks.size = sizeof(focus_callbacks);
     focus_callbacks.pw = bridge;
     focus_callbacks.dispatch_focus = pcore_browser_script_focus_dispatch;
+    select_callbacks.size = sizeof(select_callbacks);
+    select_callbacks.pw = bridge;
+    select_callbacks.dispatch_select = pcore_browser_script_select_dispatch;
     navigation_callbacks.size = sizeof(navigation_callbacks);
     navigation_callbacks.pw = bridge;
     navigation_callbacks.navigate = pcore_browser_script_navigation;
@@ -6836,6 +6879,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &key_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFocusCallbacks(session,
             &focus_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterSelectCallbacks(session,
+            &select_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
             &dom_attribute_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEventCallbacks(session,
@@ -38013,6 +38058,163 @@ static BOOL test215_browser_focus_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 216 - product native SELECT change dispatch callback            */
+/* -------------------------------------------------------------------- */
+typedef struct test216_select_state {
+    int calls;
+    int return_code;
+    int x;
+    int y;
+    int bubbles;
+    int cancelable;
+    char event_type[64];
+} test216_select_state;
+
+static int test216_select_dispatch(void *pw,
+        const PBrowserScriptSelectEventInfo *info)
+{
+    test216_select_state *state;
+    size_t event_length;
+
+    state = (test216_select_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptSelectEventInfo) ||
+            info->event_type == NULL) {
+        return -1;
+    }
+    event_length = strlen(info->event_type);
+    if (event_length >= sizeof(state->event_type)) {
+        return -1;
+    }
+    state->calls++;
+    state->x = info->x;
+    state->y = info->y;
+    state->bubbles = info->bubbles;
+    state->cancelable = info->cancelable;
+    memcpy(state->event_type, info->event_type, event_length + 1);
+    return state->return_code < 0 ? state->return_code : 0;
+}
+
+static BOOL test216_browser_select_callbacks(void)
+{
+    PBrowserScriptSelectCallbacks callbacks;
+    PBrowserScriptSelectEventInfo info;
+    test216_select_state state;
+    HANDLE session;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_select = test216_select_dispatch;
+    info.size = sizeof(info);
+    info.x = 51;
+    info.y = 62;
+    info.event_type = "change";
+    info.bubbles = 1;
+    info.cancelable = 0;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, NULL);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+    }
+    if (ok) {
+        stage = "invalid-event-type";
+        info.event_type = "focus";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+        info.event_type = "change";
+    }
+    if (ok) {
+        stage = "dispatch-change";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_OK && state.calls == 1 && state.x == 51 &&
+                state.y == 62 && state.bubbles == 1 &&
+                state.cancelable == 0 &&
+                strcmp(state.event_type, "change") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-change-second";
+        info.x = 73;
+        info.y = 84;
+        info.bubbles = 0;
+        info.cancelable = 1;
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_OK && state.calls == 2 && state.x == 73 &&
+                state.y == 84 && state.bubbles == 0 &&
+                state.cancelable == 1;
+    }
+    if (ok) {
+        stage = "dispatch-adapter-error";
+        state.return_code = -1;
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_ERROR_NATIVE && state.calls == 3;
+        state.return_code = 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterSelectCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "dispatch-after-unregister";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 3;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d calls=%d event=%s runtime=%s",
+                    stage, rc, state.calls, state.event_type,
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 216 FAIL", error[0] != '\0' ? error :
+                "product native SELECT change dispatch callback failed");
+        return FALSE;
+    }
+    show_info(L"TEST 216 OK",
+            "positron_browser.dll owns native SELECT change dispatch;"
+            " the host supplies typed core event propagation.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -42173,6 +42375,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 215: ok =
                 test215_browser_focus_callbacks();
+                break;
+        case 216: ok =
+                test216_browser_select_callbacks();
                 break;
         default: ok = FALSE; break;
         }

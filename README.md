@@ -38,8 +38,8 @@ Duktape、Mbed TLS 等实现细节不暴露给调用者。
 组合。目前 history/session、浏览器脚本 context 的所有权、host JSON callback 注册、browser
 bootstrap、DOM 只读（按 id 查询与 textContent 读取）、textContent 写入、attribute、input value、checked、
 form property（defaultValue/defaultChecked/selectedIndex）、navigation JSON 分发、同文档
-location/history 事件分发、event 回调分发、native input/composition、keyboard 和 focus-family
-typed dispatch entry 已迁入；其余 form/input 适配、core 事件传播以及窗口、网络、控件和
+location/history 事件分发、event 回调分发、native input/composition、keyboard、focus-family 和
+SELECT change typed dispatch entry 已迁入；其余 form/input 适配、core 事件传播以及窗口、网络、控件和
 history/navigation side effect 仍由宿主提供。
 它不是第二套引擎。
 两者的关系和所有权见
