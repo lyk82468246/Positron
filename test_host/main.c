@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 206
+#define TEST_MAX_NUMBER 207
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6365,17 +6365,8 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
         const PCoreEventInfo *event_info)
 {
     pcore_browser_script_event_binding *binding;
-    char args[1024];
-    char data_json[256];
-    char input_type_json[128];
-    const char *key;
-    const char *input_type;
-    const char *data;
-    char key_json[256];
-    char target_id_json[256];
-    char current_target_id_json[256];
-    const char *result;
-    int length;
+    PBrowserScriptEventInfo browser_event;
+    unsigned int action;
 
     binding = (pcore_browser_script_event_binding *) pw;
     if (binding == NULL || binding->bridge == NULL ||
@@ -6383,95 +6374,51 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
             !pcore_browser_script_event_type_safe(binding->event_type)) {
         return PCORE_EVENT_ACTION_NONE;
     }
-    key = event_info->key;
-    input_type = event_info->input_type;
-    data = event_info->data;
-    if (pcore_browser_script_json_escape(key, key_json,
-            sizeof(key_json)) < 0 ||
-            pcore_browser_script_json_escape(input_type, input_type_json,
-            sizeof(input_type_json)) < 0 ||
-            pcore_browser_script_json_escape(data, data_json,
-            sizeof(data_json)) < 0 ||
-            pcore_browser_script_json_escape(event_info->target_id,
-            target_id_json, sizeof(target_id_json)) < 0 ||
-            pcore_browser_script_json_escape(event_info->current_target_id,
-            current_target_id_json, sizeof(current_target_id_json)) < 0) {
-        return PCORE_EVENT_ACTION_NONE;
-    }
-    length = _snprintf(args, sizeof(args) - 1,
-            "[{\"listener\":%u,\"type\":\"%s\","
-            "\"phase\":%u,\"bubbles\":%s,\"cancelable\":%s,"
-            "\"trusted\":%s,\"defaultPrevented\":%s,"
-            "\"inputType\":\"%s\",\"data\":\"%s\","
-            "\"isComposing\":%s,\"key\":\"%s\",\"keyCode\":%u,"
-            "\"charCode\":%u,\"repeat\":%s,\"shiftKey\":%s,"
-            "\"ctrlKey\":%s,\"altKey\":%s,"
-            "\"targetId\":\"%s\",\"currentTargetId\":\"%s\"}]",
-            binding->id, binding->event_type, event_info->phase,
-            event_info->bubbles ? "true" : "false",
-            event_info->cancelable ? "true" : "false",
-            event_info->trusted ? "true" : "false",
-            event_info->default_prevented ? "true" : "false",
-            input_type_json, data_json,
-            event_info->is_composing ? "true" : "false", key_json,
-            event_info->key_code, event_info->char_code,
-            event_info->repeat ? "true" : "false",
-            event_info->shift ? "true" : "false",
-            event_info->ctrl ? "true" : "false",
-            event_info->alt ? "true" : "false",
-            target_id_json, current_target_id_json);
-    if (length < 0 || length >= (int) sizeof(args) - 1) {
-        return PCORE_EVENT_ACTION_NONE;
-    }
-    args[length] = '\0';
-    if (PBrowser_ScriptSessionCallGlobalJson(binding->bridge->session,
-            "__pcoreDispatchEvent", args) != PSCRIPT_OK) {
-        return PCORE_EVENT_ACTION_NONE;
-    }
-    result = PBrowser_ScriptSessionGetResult(binding->bridge->session);
-    if (result != NULL && strcmp(result, "true") == 0) {
+    memset(&browser_event, 0, sizeof(browser_event));
+    browser_event.size = sizeof(browser_event);
+    browser_event.phase = event_info->phase;
+    browser_event.bubbles = event_info->bubbles;
+    browser_event.cancelable = event_info->cancelable;
+    browser_event.trusted = event_info->trusted;
+    browser_event.default_prevented = event_info->default_prevented;
+    browser_event.key = event_info->key;
+    browser_event.key_code = event_info->key_code;
+    browser_event.char_code = event_info->char_code;
+    browser_event.repeat = event_info->repeat;
+    browser_event.shift = event_info->shift;
+    browser_event.ctrl = event_info->ctrl;
+    browser_event.alt = event_info->alt;
+    browser_event.input_type = event_info->input_type;
+    browser_event.data = event_info->data;
+    browser_event.is_composing = event_info->is_composing;
+    browser_event.target_id = event_info->target_id;
+    browser_event.current_target_id = event_info->current_target_id;
+    action = PBrowser_ScriptSessionDispatchEvent(binding->bridge->session,
+            binding->id, binding->event_type, &browser_event);
+    if ((action & PBROWSER_SCRIPT_EVENT_ACTION_PREVENT_DEFAULT) != 0) {
         return PCORE_EVENT_ACTION_PREVENT_DEFAULT;
     }
     return PCORE_EVENT_ACTION_NONE;
 }
 
-static int pcore_browser_script_add_event(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static unsigned int pcore_browser_script_add_event_listener(void *pw,
+        const char *element_id, const char *event_type, int capture)
 {
     pcore_browser_script_bridge *bridge;
     pcore_browser_script_event_binding *binding;
-    HANDLE root;
-    HANDLE object;
     HANDLE listener;
-    const char *element_id;
-    const char *event_type;
-    int capture;
     unsigned int id;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    if (bridge == NULL || bridge->document == NULL || root == NULL) {
-        PJson_Free(root);
-        return pcore_browser_script_write_int(0, out_json,
-                out_capacity, out_len);
-    }
-    element_id = PJson_GetString(object, "id");
-    event_type = PJson_GetString(object, "type");
-    capture = PJson_GetInt(object, "capture");
-    if (element_id == NULL || element_id[0] == '\0' ||
+    if (bridge == NULL || bridge->document == NULL || element_id == NULL ||
+            element_id[0] == '\0' ||
             !pcore_browser_script_event_type_safe(event_type)) {
-        PJson_Free(root);
-        return pcore_browser_script_write_int(0, out_json,
-                out_capacity, out_len);
+        return 0;
     }
     binding = (pcore_browser_script_event_binding *) calloc(1,
             sizeof(*binding));
     if (binding == NULL) {
-        PJson_Free(root);
-        return pcore_browser_script_write_int(0, out_json,
-                out_capacity, out_len);
+        return 0;
     }
     binding->bridge = bridge;
     binding->element_id = pcore_browser_script_copy_string(element_id);
@@ -6480,9 +6427,7 @@ static int pcore_browser_script_add_event(void *pw,
         free(binding->element_id);
         free(binding->event_type);
         free(binding);
-        PJson_Free(root);
-        return pcore_browser_script_write_int(0, out_json,
-                out_capacity, out_len);
+        return 0;
     }
     id = bridge->next_event_id;
     if (id == 0) {
@@ -6497,50 +6442,34 @@ static int pcore_browser_script_add_event(void *pw,
         free(binding->element_id);
         free(binding->event_type);
         free(binding);
-        PJson_Free(root);
-        return pcore_browser_script_write_int(0, out_json,
-                out_capacity, out_len);
+        return 0;
     }
     binding->listener = listener;
     binding->next = bridge->events;
     bridge->events = binding;
-    PJson_Free(root);
-    return pcore_browser_script_write_int((int) id, out_json,
-            out_capacity, out_len);
+    return id;
 }
 
-static int pcore_browser_script_remove_event(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_remove_event_listener(void *pw,
+        unsigned int listener_id)
 {
     pcore_browser_script_bridge *bridge;
     pcore_browser_script_event_binding *binding;
     pcore_browser_script_event_binding *previous;
-    HANDLE root;
-    HANDLE object;
-    int id;
     int removed;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetInt(object, "listener") : 0;
-    if (bridge == NULL || bridge->document == NULL || root == NULL ||
-            id <= 0) {
-        PJson_Free(root);
-        return pcore_browser_script_write_bool(0, out_json,
-                out_capacity, out_len);
+    if (bridge == NULL || bridge->document == NULL || listener_id == 0) {
+        return 0;
     }
     previous = NULL;
     binding = bridge->events;
-    while (binding != NULL && (int) binding->id != id) {
+    while (binding != NULL && binding->id != listener_id) {
         previous = binding;
         binding = binding->next;
     }
     if (binding == NULL) {
-        PJson_Free(root);
-        return pcore_browser_script_write_bool(0, out_json,
-                out_capacity, out_len);
+        return 0;
     }
     if (previous != NULL) {
         previous->next = binding->next;
@@ -6552,9 +6481,7 @@ static int pcore_browser_script_remove_event(void *pw,
     free(binding->element_id);
     free(binding->event_type);
     free(binding);
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(removed > 0, out_json,
-            out_capacity, out_len);
+    return removed > 0 ? 1 : 0;
 }
 
 static void pcore_browser_script_bridge_destroy(
@@ -6848,6 +6775,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
+    PBrowserScriptEventCallbacks event_callbacks;
     char *source;
     char *type;
     const char *data;
@@ -6939,6 +6867,11 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_set_attribute;
     dom_attribute_callbacks.remove_attribute =
             pcore_browser_script_dom_remove_attribute;
+    event_callbacks.size = sizeof(event_callbacks);
+    event_callbacks.pw = bridge;
+    event_callbacks.add_listener = pcore_browser_script_add_event_listener;
+    event_callbacks.remove_listener =
+            pcore_browser_script_remove_event_listener;
     if (history_length < 1 || history_length > PCORE_BROWSE_HISTORY_MAX) {
         history_length = 1;
     }
@@ -6965,6 +6898,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
             &dom_attribute_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterEventCallbacks(session,
+            &event_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterJsonFunction(session,
             "__pcoreGetValue", pcore_browser_script_get_value, bridge) !=
             PSCRIPT_OK ||
@@ -6979,12 +6914,6 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterJsonFunction(session,
             "__pcoreFormProperty", pcore_browser_script_form_property,
-            bridge) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreAddEvent", pcore_browser_script_add_event, bridge) !=
-            PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreRemoveEvent", pcore_browser_script_remove_event,
             bridge) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterJsonFunction(session,
             "__pcoreNavigation", pcore_browser_script_navigation,
@@ -36284,6 +36213,259 @@ static BOOL test206_browser_dom_attribute_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 207 - product DOM event callback adapter                         */
+/* -------------------------------------------------------------------- */
+typedef struct test207_event_state {
+    unsigned int listener;
+    int add_calls;
+    int remove_calls;
+    int capture;
+    char element_id[64];
+    char event_type[64];
+} test207_event_state;
+
+static unsigned int test207_event_add(void *pw, const char *element_id,
+        const char *event_type, int capture)
+{
+    test207_event_state *state;
+    size_t element_length;
+    size_t event_length;
+
+    state = (test207_event_state *) pw;
+    if (state == NULL || element_id == NULL || event_type == NULL) {
+        return 0;
+    }
+    element_length = strlen(element_id);
+    event_length = strlen(event_type);
+    if (element_length == 0 || element_length >= sizeof(state->element_id) ||
+            event_length == 0 || event_length >= sizeof(state->event_type)) {
+        return 0;
+    }
+    memcpy(state->element_id, element_id, element_length + 1);
+    memcpy(state->event_type, event_type, event_length + 1);
+    state->capture = capture ? 1 : 0;
+    state->add_calls++;
+    state->listener = 41;
+    return state->listener;
+}
+
+static int test207_event_remove(void *pw, unsigned int listener)
+{
+    test207_event_state *state;
+
+    state = (test207_event_state *) pw;
+    if (state == NULL) {
+        return -1;
+    }
+    if (listener != 41 || state->listener != listener) {
+        return 0;
+    }
+    state->remove_calls++;
+    state->listener = 0;
+    return 1;
+}
+
+static BOOL test207_browser_event_callbacks(void)
+{
+    PBrowserScriptEventCallbacks callbacks;
+    PBrowserScriptEventInfo event_info;
+    test207_event_state state;
+    HANDLE session;
+    const char *result;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    unsigned int dispatch_action;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&event_info, 0, sizeof(event_info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.add_listener = test207_event_add;
+    callbacks.remove_listener = test207_event_remove;
+    event_info.size = sizeof(event_info);
+    event_info.phase = 2;
+    event_info.bubbles = 1;
+    event_info.cancelable = 1;
+    event_info.trusted = 1;
+    event_info.default_prevented = 0;
+    event_info.key = "Enter";
+    event_info.key_code = 13;
+    event_info.char_code = 0;
+    event_info.repeat = 0;
+    event_info.shift = 0;
+    event_info.ctrl = 0;
+    event_info.alt = 0;
+    event_info.input_type = "insertText";
+    event_info.data = "x";
+    event_info.is_composing = 0;
+    event_info.target_id = "root";
+    event_info.current_target_id = "root";
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    result = NULL;
+    error_result = NULL;
+    stage = "create";
+    dispatch_action = PBROWSER_SCRIPT_EVENT_ACTION_NONE;
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterEventCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterEventCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 2;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterEventCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "globals";
+        ok = PBrowser_ScriptSessionSetGlobalString(session,
+                "__pcoreDocumentUrl", "https://example.com/") ==
+                PSCRIPT_OK && PBrowser_ScriptSessionSetGlobalNumber(session,
+                "__pcoreHistoryLength", 1.0) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionSetGlobalJson(session,
+                "__pcoreHistoryState", "null") == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "bootstrap";
+        ok = PBrowser_ScriptSessionEvaluateBootstrap(session) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "invalid-add";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreAddEvent", "[]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "0") == 0 && state.add_calls == 0;
+    }
+    if (ok) {
+        stage = "invalid-type";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreAddEvent",
+                "[{\"id\":\"root\",\"type\":\"bad type\","
+                "\"capture\":0}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "0") == 0 && state.add_calls == 0;
+    }
+    if (ok) {
+        stage = "add";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreAddEvent",
+                "[{\"id\":\"root\",\"type\":\"click\","
+                "\"capture\":1}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "41") == 0 && state.add_calls == 1 &&
+                state.capture == 1 && strcmp(state.element_id, "root") == 0 &&
+                strcmp(state.event_type, "click") == 0;
+    }
+    if (ok) {
+        stage = "handler";
+        rc = PBrowser_ScriptSessionEvaluate(session,
+                "__pcoreHandlers[41]=function(e){__event_match="
+                "e.type==='click'&&e.phase===2&&e.bubbles&&e.cancelable&&"
+                "e.trusted&&e.key==='Enter'&&e.keyCode===13&&"
+                "e.inputType==='insertText'&&e.data==='x'&&"
+                "e.target.__id==='root'&&e.currentTarget.__id==='root'&&"
+                "!e.defaultPrevented;"
+                "if(__event_match){e.preventDefault();}return true;};", -1);
+        ok = rc == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "handler-check";
+        rc = PBrowser_ScriptSessionEvaluate(session,
+                "__pcoreHandlers[41] instanceof Function", -1);
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0;
+    }
+    if (ok) {
+        stage = "dispatch";
+        dispatch_action = PBrowser_ScriptSessionDispatchEvent(session, 41,
+                "click", &event_info);
+        ok = (dispatch_action &
+                PBROWSER_SCRIPT_EVENT_ACTION_PREVENT_DEFAULT) != 0;
+    }
+    if (ok) {
+        stage = "dispatch-data";
+        rc = PBrowser_ScriptSessionEvaluate(session, "__event_match", -1);
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0;
+    }
+    if (ok) {
+        stage = "missing-remove";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreRemoveEvent", "[{\"listener\":99}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0 && state.remove_calls == 0;
+    }
+    if (ok) {
+        stage = "remove";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreRemoveEvent", "[{\"listener\":41}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && state.remove_calls == 1 &&
+                state.listener == 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterEventCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d action=%u result=%s native=%lu runtime=%s",
+                    stage, rc, dispatch_action,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session),
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d action=%u result=%s native=%lu runtime=(null)",
+                    stage, rc, dispatch_action,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session));
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 207 FAIL", error[0] != '\0' ? error :
+                "product event callback adapter failed");
+        return FALSE;
+    }
+    show_info(L"TEST 207 OK",
+            "positron_browser.dll owns event JSON registration and dispatch;"
+            " the host supplies typed add/remove adapters and event data.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -40417,6 +40599,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 206: ok =
                 test206_browser_dom_attribute_callbacks();
+                break;
+        case 207: ok =
+                test207_browser_event_callbacks();
                 break;
         default: ok = FALSE; break;
         }

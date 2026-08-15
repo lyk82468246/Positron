@@ -177,6 +177,50 @@ typedef struct PBrowserScriptDomAttributeCallbacks {
     PBrowserScriptRemoveAttributeFn remove_attribute;
 } PBrowserScriptDomAttributeCallbacks;
 
+/* Typed host adapters for product-owned DOM event registration. The browser
+ * DLL parses the JSON add/remove requests and returns the host's opaque
+ * listener token to JavaScript. add_listener returns zero when registration
+ * is unavailable; remove_listener returns >0 when a token was removed, 0
+ * when it was not found and <0 for an adapter error. The token is only
+ * meaningful to the host adapter and is never interpreted by this DLL. */
+typedef unsigned int (*PBrowserScriptAddEventListenerFn)(void *pw,
+        const char *element_id, const char *event_type, int capture);
+typedef int (*PBrowserScriptRemoveEventListenerFn)(void *pw,
+        unsigned int listener);
+typedef struct PBrowserScriptEventCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptAddEventListenerFn add_listener;
+    PBrowserScriptRemoveEventListenerFn remove_listener;
+} PBrowserScriptEventCallbacks;
+
+/* Synchronous event data passed to PBrowser_ScriptSessionDispatchEvent.
+ * Strings are UTF-8 and borrowed for the duration of the call. The size tag
+ * permits compatible extensions without exposing positron_core types. */
+typedef struct PBrowserScriptEventInfo {
+    unsigned long size;
+    unsigned int phase;
+    int bubbles;
+    int cancelable;
+    int trusted;
+    int default_prevented;
+    const char *key;
+    unsigned int key_code;
+    unsigned int char_code;
+    int repeat;
+    int shift;
+    int ctrl;
+    int alt;
+    const char *input_type;
+    const char *data;
+    int is_composing;
+    const char *target_id;
+    const char *current_target_id;
+} PBrowserScriptEventInfo;
+
+#define PBROWSER_SCRIPT_EVENT_ACTION_NONE            0x00u
+#define PBROWSER_SCRIPT_EVENT_ACTION_PREVENT_DEFAULT 0x01u
+
 /* Browser script session. The session owns one PScript context and all
  * registered native functions. It does not own a core document or any host
  * callback pw value. Return codes from Evaluate/Call/Set/Register are the
@@ -207,6 +251,16 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
         const PBrowserScriptDomAttributeCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomAttributeCallbacks(
         HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterEventCallbacks(HANDLE hSession,
+        const PBrowserScriptEventCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterEventCallbacks(
+        HANDLE hSession);
+/* Dispatch one synchronous native event to the listener registered through
+ * the product bootstrap. The return value is a PBROWSER_SCRIPT_EVENT_ACTION_*
+ * bitmask; failures conservatively return ACTION_NONE. */
+PBROWSER_API unsigned int PBrowser_ScriptSessionDispatchEvent(
+        HANDLE hSession, unsigned int listener, const char *event_type,
+        const PBrowserScriptEventInfo *event_info);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
         const char *name, const char *value);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalNumber(HANDLE hSession,

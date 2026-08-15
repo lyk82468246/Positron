@@ -1156,11 +1156,16 @@ typedef struct p_browser_script_dom_attribute_binding {
     PBrowserScriptDomAttributeCallbacks callbacks;
 } p_browser_script_dom_attribute_binding;
 
+typedef struct p_browser_script_event_binding {
+    PBrowserScriptEventCallbacks callbacks;
+} p_browser_script_event_binding;
+
 typedef struct p_browser_script_session {
     HANDLE runtime;
     p_browser_script_dom_read_binding *dom_read;
     p_browser_script_dom_write_binding *dom_write;
     p_browser_script_dom_attribute_binding *dom_attribute;
+    p_browser_script_event_binding *event;
 } p_browser_script_session;
 
 static p_browser_script_session *p_script_session(HANDLE hSession)
@@ -1223,6 +1228,26 @@ static int p_browser_script_write_bool(int value, char *out_json,
         return 1;
     }
     memcpy(out_json, word, (size_t) length + 1);
+    *out_len = length;
+    return 0;
+}
+
+static int p_browser_script_write_int(int value, char *out_json,
+        int out_capacity, int *out_len)
+{
+    char number[24];
+    int length;
+
+    if (out_json == NULL || out_len == NULL || out_capacity <= 0) {
+        return 1;
+    }
+    length = _snprintf(number, sizeof(number) - 1, "%d", value);
+    if (length < 0 || length >= (int) sizeof(number) - 1 ||
+            length >= out_capacity) {
+        return 1;
+    }
+    number[length] = '\0';
+    memcpy(out_json, number, (size_t) length + 1);
     *out_len = length;
     return 0;
 }
@@ -1330,6 +1355,25 @@ static int p_browser_script_json_escape(const char *value, char *out,
     }
     out[used] = '\0';
     return used;
+}
+
+static int p_browser_script_event_type_safe(const char *event_type)
+{
+    const char *p;
+    char c;
+
+    if (event_type == NULL || event_type[0] == '\0') {
+        return 0;
+    }
+    for (p = event_type; *p != '\0'; p++) {
+        c = *p;
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+                c == ':' || c == '.')) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 static int p_browser_script_write_string(const char *value,
@@ -1592,6 +1636,72 @@ static int p_browser_script_dom_remove_attribute(void *pw,
             out_capacity, out_len);
 }
 
+static int p_browser_script_event_add_listener(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_event_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *element_id;
+    const char *event_type;
+    int capture;
+    unsigned int listener;
+
+    binding = (p_browser_script_event_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    element_id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    event_type = (object != NULL) ? PJson_GetString(object, "type") : NULL;
+    capture = (object != NULL) ? PJson_GetInt(object, "capture") : 0;
+    if (binding == NULL || root == NULL || element_id == NULL ||
+            element_id[0] == '\0' || !p_browser_script_event_type_safe(
+            event_type) || binding->callbacks.add_listener == NULL) {
+        PJson_Free(root);
+        return p_browser_script_write_int(0, out_json, out_capacity,
+                out_len);
+    }
+    listener = binding->callbacks.add_listener(binding->callbacks.pw,
+            element_id, event_type, capture ? 1 : 0);
+    PJson_Free(root);
+    if (listener == 0 || listener > 0x7fffffffU) {
+        return p_browser_script_write_int(0, out_json, out_capacity,
+                out_len);
+    }
+    return p_browser_script_write_int((int) listener, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_event_remove_listener(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_event_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    int listener;
+    int removed;
+
+    binding = (p_browser_script_event_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    listener = (object != NULL) ? PJson_GetInt(object, "listener") : 0;
+    if (binding == NULL || root == NULL || listener <= 0 ||
+            binding->callbacks.remove_listener == NULL) {
+        PJson_Free(root);
+        return p_browser_script_write_bool(0, out_json, out_capacity,
+                out_len);
+    }
+    removed = binding->callbacks.remove_listener(binding->callbacks.pw,
+            (unsigned int) listener);
+    PJson_Free(root);
+    if (removed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(removed > 0, out_json,
+            out_capacity, out_len);
+}
+
 PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
 {
     p_browser_script_session *session;
@@ -1603,6 +1713,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_read = NULL;
     session->dom_write = NULL;
     session->dom_attribute = NULL;
+    session->event = NULL;
     session->runtime = PScript_Create(budget_ms);
     if (session->runtime == NULL) {
         free(session);
@@ -1642,6 +1753,14 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreRemoveAttribute", -1);
         free(session->dom_attribute);
         session->dom_attribute = NULL;
+    }
+    if (session->event != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreAddEvent", -1);
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreRemoveEvent", -1);
+        free(session->event);
+        session->event = NULL;
     }
     PScript_Destroy(session->runtime);
     session->runtime = NULL;
@@ -1887,6 +2006,138 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomAttributeCallbacks(
         return rc;
     }
     return (second_rc != PSCRIPT_OK) ? second_rc : third_rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterEventCallbacks(
+        HANDLE hSession, const PBrowserScriptEventCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_event_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptEventCallbacks) ||
+            callbacks->add_listener == NULL ||
+            callbacks->remove_listener == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->event != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_event_binding *) malloc(sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreAddEvent", -1, p_browser_script_event_add_listener,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreRemoveEvent", -1,
+            p_browser_script_event_remove_listener, binding);
+    if (rc != PSCRIPT_OK) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreAddEvent", -1);
+        free(binding);
+        return rc;
+    }
+    session->event = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterEventCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+    int second_rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->event == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreAddEvent", -1);
+    second_rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreRemoveEvent", -1);
+    free(session->event);
+    session->event = NULL;
+    return (rc != PSCRIPT_OK) ? rc : second_rc;
+}
+
+PBROWSER_API unsigned int PBrowser_ScriptSessionDispatchEvent(
+        HANDLE hSession, unsigned int listener, const char *event_type,
+        const PBrowserScriptEventInfo *event_info)
+{
+    p_browser_script_session *session;
+    char args[2048];
+    char key_json[256];
+    char input_type_json[128];
+    char data_json[256];
+    char target_id_json[256];
+    char current_target_id_json[256];
+    const char *result;
+    int length;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || listener == 0 ||
+            !p_browser_script_event_type_safe(event_type) ||
+            event_info == NULL ||
+            event_info->size < sizeof(PBrowserScriptEventInfo)) {
+        return PBROWSER_SCRIPT_EVENT_ACTION_NONE;
+    }
+    if (p_browser_script_json_escape(event_info->key, key_json,
+            sizeof(key_json)) < 0 ||
+            p_browser_script_json_escape(event_info->input_type,
+            input_type_json, sizeof(input_type_json)) < 0 ||
+            p_browser_script_json_escape(event_info->data, data_json,
+            sizeof(data_json)) < 0 ||
+            p_browser_script_json_escape(event_info->target_id,
+            target_id_json, sizeof(target_id_json)) < 0 ||
+            p_browser_script_json_escape(event_info->current_target_id,
+            current_target_id_json, sizeof(current_target_id_json)) < 0) {
+        return PBROWSER_SCRIPT_EVENT_ACTION_NONE;
+    }
+    length = _snprintf(args, sizeof(args) - 1,
+            "[{\"listener\":%u,\"type\":\"%s\","
+            "\"phase\":%u,\"bubbles\":%s,\"cancelable\":%s,"
+            "\"trusted\":%s,\"defaultPrevented\":%s,"
+            "\"inputType\":\"%s\",\"data\":\"%s\","
+            "\"isComposing\":%s,\"key\":\"%s\",\"keyCode\":%u,"
+            "\"charCode\":%u,\"repeat\":%s,\"shiftKey\":%s,"
+            "\"ctrlKey\":%s,\"altKey\":%s,"
+            "\"targetId\":\"%s\",\"currentTargetId\":\"%s\"}]",
+            listener, event_type, event_info->phase,
+            event_info->bubbles ? "true" : "false",
+            event_info->cancelable ? "true" : "false",
+            event_info->trusted ? "true" : "false",
+            event_info->default_prevented ? "true" : "false",
+            input_type_json, data_json,
+            event_info->is_composing ? "true" : "false", key_json,
+            event_info->key_code, event_info->char_code,
+            event_info->repeat ? "true" : "false",
+            event_info->shift ? "true" : "false",
+            event_info->ctrl ? "true" : "false",
+            event_info->alt ? "true" : "false",
+            target_id_json, current_target_id_json);
+    if (length < 0 || length >= (int) sizeof(args) - 1 ||
+            PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreDispatchEvent", args) != PSCRIPT_OK) {
+        return PBROWSER_SCRIPT_EVENT_ACTION_NONE;
+    }
+    result = PBrowser_ScriptSessionGetResult(hSession);
+    if (result != NULL && strcmp(result, "true") == 0) {
+        return PBROWSER_SCRIPT_EVENT_ACTION_PREVENT_DEFAULT;
+    }
+    return PBROWSER_SCRIPT_EVENT_ACTION_NONE;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
