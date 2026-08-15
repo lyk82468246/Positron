@@ -157,6 +157,24 @@ typedef struct PBrowserScriptDomWriteCallbacks {
     PBrowserScriptSetTextFn set_text;
 } PBrowserScriptDomWriteCallbacks;
 
+/* Typed host adapters for product-owned form value callbacks. The browser
+ * DLL parses and encodes the JSON value requests; the host only reads or
+ * updates its core document through these UTF-8 callbacks. get_value follows
+ * the same size-probe contract as PBrowserScriptGetTextFn and returns zero on
+ * success or a negative value on error. set_value returns >0 when the target
+ * was updated, 0 when the target or operation was unavailable and <0 on an
+ * adapter error. */
+typedef int (*PBrowserScriptGetValueFn)(void *pw, const char *id,
+        char *out_value, int out_capacity, int *out_len);
+typedef int (*PBrowserScriptSetValueFn)(void *pw, const char *id,
+        const char *value);
+typedef struct PBrowserScriptDomValueCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetValueFn get_value;
+    PBrowserScriptSetValueFn set_value;
+} PBrowserScriptDomValueCallbacks;
+
 /* Typed host adapters for product-owned DOM attribute callbacks. The
  * browser DLL parses and encodes JSON. get_attribute returns 0 when an
  * attribute is present, 1 when it is absent and <0 on error; its out_len
@@ -245,6 +263,10 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacks(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomValueCallbacks(
+        HANDLE hSession, const PBrowserScriptDomValueCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomValueCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
         HANDLE hSession,

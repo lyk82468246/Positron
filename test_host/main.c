@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 207
+#define TEST_MAX_NUMBER 208
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -5799,66 +5799,33 @@ static int pcore_browser_script_dom_remove_attribute(void *pw,
             1 : 0;
 }
 
-static int pcore_browser_script_get_value(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_get_value(void *pw, const char *id,
+        char *out_value, int out_capacity, int *out_len)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    char *value;
-    int bytes;
-    int result;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    bytes = 0;
-    value = NULL;
-    if (bridge == NULL || bridge->document == NULL || root == NULL ||
-            id == NULL || PCore_NodeValueById(bridge->document, id,
-            NULL, 0, &bytes) != 0 || bytes < 0 || bytes > 65535) {
-        PJson_Free(root);
-        return 1;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            out_len == NULL || out_capacity < 0 ||
+            (out_value == NULL && out_capacity != 0) ||
+            (out_value != NULL && out_capacity <= 0)) {
+        return -1;
     }
-    value = (char *) malloc((size_t) bytes + 1);
-    if (value == NULL || PCore_NodeValueById(bridge->document, id,
-            value, bytes + 1, &bytes) != 0) {
-        free(value);
-        PJson_Free(root);
-        return 1;
-    }
-    result = pcore_browser_script_write_string(value, out_json,
+    return PCore_NodeValueById(bridge->document, id, out_value,
             out_capacity, out_len);
-    free(value);
-    PJson_Free(root);
-    return result;
 }
 
-static int pcore_browser_script_set_value(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_set_value(void *pw, const char *id,
+        const char *value)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    const char *value;
-    int changed;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
-    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && value != NULL &&
-            PCore_NodeSetValueById(bridge->document, id, value) == 0;
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(changed, out_json,
-            out_capacity, out_len);
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            value == NULL) {
+        return -1;
+    }
+    return PCore_NodeSetValueById(bridge->document, id, value) == 0 ? 1 : 0;
 }
 
 static int pcore_browser_script_get_default_value(void *pw,
@@ -6774,6 +6741,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     HANDLE runtime;
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
+    PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     PBrowserScriptEventCallbacks event_callbacks;
     char *source;
@@ -6859,6 +6827,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_write_callbacks.size = sizeof(dom_write_callbacks);
     dom_write_callbacks.pw = bridge;
     dom_write_callbacks.set_text = pcore_browser_script_dom_set_text;
+    dom_value_callbacks.size = sizeof(dom_value_callbacks);
+    dom_value_callbacks.pw = bridge;
+    dom_value_callbacks.get_value = pcore_browser_script_dom_get_value;
+    dom_value_callbacks.set_value = pcore_browser_script_dom_set_value;
     dom_attribute_callbacks.size = sizeof(dom_attribute_callbacks);
     dom_attribute_callbacks.pw = bridge;
     dom_attribute_callbacks.get_attribute =
@@ -6896,16 +6868,12 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacks(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterDomValueCallbacks(session,
+            &dom_value_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
             &dom_attribute_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEventCallbacks(session,
             &event_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreGetValue", pcore_browser_script_get_value, bridge) !=
-            PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreSetValue", pcore_browser_script_set_value, bridge) !=
-            PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterJsonFunction(session,
             "__pcoreGetChecked", pcore_browser_script_get_checked, bridge) !=
             PSCRIPT_OK ||
@@ -36466,6 +36434,197 @@ static BOOL test207_browser_event_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 208 - product DOM value callback adapter                         */
+/* -------------------------------------------------------------------- */
+typedef struct test208_dom_value_state {
+    char value[64];
+    int get_calls;
+    int set_calls;
+} test208_dom_value_state;
+
+static int test208_dom_get_value(void *pw, const char *id, char *out_value,
+        int out_capacity, int *out_len)
+{
+    test208_dom_value_state *state;
+    int length;
+
+    state = (test208_dom_value_state *) pw;
+    if (state == NULL || id == NULL || out_len == NULL ||
+            strcmp(id, "root") != 0 || out_capacity < 0 ||
+            (out_value == NULL && out_capacity != 0) ||
+            (out_value != NULL && out_capacity <= 0)) {
+        return -1;
+    }
+    length = (int) strlen(state->value);
+    if (out_value == NULL) {
+        *out_len = length;
+        return 0;
+    }
+    if (out_capacity <= length) {
+        return -1;
+    }
+    memcpy(out_value, state->value, (size_t) length + 1);
+    *out_len = length;
+    state->get_calls++;
+    return 0;
+}
+
+static int test208_dom_set_value(void *pw, const char *id,
+        const char *value)
+{
+    test208_dom_value_state *state;
+    size_t length;
+
+    state = (test208_dom_value_state *) pw;
+    if (state == NULL || id == NULL || value == NULL) {
+        return -1;
+    }
+    if (strcmp(id, "root") != 0) {
+        return 0;
+    }
+    length = strlen(value);
+    if (length >= sizeof(state->value)) {
+        return -1;
+    }
+    memcpy(state->value, value, length + 1);
+    state->set_calls++;
+    return 1;
+}
+
+static BOOL test208_browser_dom_value_callbacks(void)
+{
+    PBrowserScriptDomValueCallbacks callbacks;
+    test208_dom_value_state state;
+    HANDLE session;
+    const char *result;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&state, 0, sizeof(state));
+    memcpy(state.value, "before", sizeof("before"));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.get_value = test208_dom_get_value;
+    callbacks.set_value = test208_dom_set_value;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    result = NULL;
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterDomValueCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterDomValueCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 2;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterDomValueCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "get-root";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session, "__pcoreGetValue",
+                "[{\"id\":\"root\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "\"before\"") == 0 && state.get_calls == 1;
+    }
+    if (ok) {
+        stage = "set-root";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session, "__pcoreSetValue",
+                "[{\"id\":\"root\",\"value\":\"after\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                strcmp(state.value, "after") == 0 && state.set_calls == 1;
+    }
+    if (ok) {
+        stage = "get-updated";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session, "__pcoreGetValue",
+                "[{\"id\":\"root\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "\"after\"") == 0 && state.get_calls == 2;
+    }
+    if (ok) {
+        stage = "set-missing";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session, "__pcoreSetValue",
+                "[{\"id\":\"missing\",\"value\":\"ignored\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0 &&
+                strcmp(state.value, "after") == 0;
+    }
+    if (ok) {
+        stage = "get-missing";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session, "__pcoreGetValue",
+                "[{\"id\":\"missing\"}]");
+        ok = rc != PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "invalid-args";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session, "__pcoreSetValue",
+                "[]");
+        ok = rc != PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterDomValueCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0 &&
+                PBrowser_ScriptSessionUnregisterDomValueCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=%s",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session),
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=(null)",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session));
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 208 FAIL", error[0] != '\0' ? error :
+                "product DOM value callback adapter failed");
+        return FALSE;
+    }
+    show_info(L"TEST 208 OK",
+            "positron_browser.dll owns DOM value JSON dispatch; the host"
+            " supplies typed get/set value adapters.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -40602,6 +40761,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 207: ok =
                 test207_browser_event_callbacks();
+                break;
+        case 208: ok =
+                test208_browser_dom_value_callbacks();
                 break;
         default: ok = FALSE; break;
         }
