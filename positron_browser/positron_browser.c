@@ -1160,6 +1160,10 @@ typedef struct p_browser_script_dom_checked_binding {
     PBrowserScriptDomCheckedCallbacks callbacks;
 } p_browser_script_dom_checked_binding;
 
+typedef struct p_browser_script_form_binding {
+    PBrowserScriptFormCallbacks callbacks;
+} p_browser_script_form_binding;
+
 typedef struct p_browser_script_dom_attribute_binding {
     PBrowserScriptDomAttributeCallbacks callbacks;
 } p_browser_script_dom_attribute_binding;
@@ -1174,6 +1178,7 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_write_binding *dom_write;
     p_browser_script_dom_value_binding *dom_value;
     p_browser_script_dom_checked_binding *dom_checked;
+    p_browser_script_form_binding *form;
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
 } p_browser_script_session;
@@ -1651,6 +1656,244 @@ static int p_browser_script_dom_set_checked(void *pw,
             out_capacity, out_len);
 }
 
+static int p_browser_script_form_get_string(
+        PBrowserScriptGetValueFn callback, void *callback_pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    char *value;
+    int allocated_len;
+    int value_len;
+    int result;
+
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    value = NULL;
+    value_len = 0;
+    if (root == NULL || id == NULL || callback == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    if (callback(callback_pw, id, NULL, 0, &value_len) != 0 ||
+            value_len < 0 || value_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+        PJson_Free(root);
+        return 1;
+    }
+    allocated_len = value_len;
+    value = (char *) malloc((size_t) allocated_len + 1);
+    if (value == NULL || callback(callback_pw, id, value,
+            allocated_len + 1, &value_len) != 0 || value_len < 0 ||
+            value_len > allocated_len ||
+            value_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+        free(value);
+        PJson_Free(root);
+        return 1;
+    }
+    value[value_len] = '\0';
+    result = p_browser_script_write_string(value, out_json,
+            out_capacity, out_len);
+    free(value);
+    PJson_Free(root);
+    return result;
+}
+
+static int p_browser_script_form_set_string(
+        PBrowserScriptSetValueFn callback, void *callback_pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *value;
+    int changed;
+
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
+    if (root == NULL || id == NULL || value == NULL || callback == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    changed = callback(callback_pw, id, value);
+    PJson_Free(root);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_form_get_bool(
+        PBrowserScriptGetCheckedFn callback, void *callback_pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int checked;
+    int result;
+
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = 0;
+    result = root != NULL && id != NULL && callback != NULL &&
+            callback(callback_pw, id, &checked) == 0;
+    PJson_Free(root);
+    if (!result) {
+        return 1;
+    }
+    return p_browser_script_write_bool(checked != 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_form_set_bool(
+        PBrowserScriptSetCheckedFn callback, void *callback_pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int checked;
+    int changed;
+
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = (object != NULL) ? PJson_GetInt(object, "checked") : 0;
+    if (root == NULL || id == NULL || callback == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    changed = callback(callback_pw, id, checked ? 1 : 0);
+    PJson_Free(root);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_form_get_int(
+        PBrowserScriptGetSelectedIndexFn callback, void *callback_pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int index;
+    int result;
+
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    index = -1;
+    result = root != NULL && id != NULL && callback != NULL &&
+            callback(callback_pw, id, &index) == 0;
+    PJson_Free(root);
+    if (!result) {
+        return 1;
+    }
+    return p_browser_script_write_int(index, out_json, out_capacity,
+            out_len);
+}
+
+static int p_browser_script_form_set_int(
+        PBrowserScriptSetSelectedIndexFn callback, void *callback_pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int index;
+    int changed;
+
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    index = (object != NULL) ? PJson_GetInt(object, "index") : -2;
+    if (root == NULL || id == NULL || callback == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    changed = callback(callback_pw, id, index);
+    PJson_Free(root);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_form_property(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_form_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *op;
+
+    binding = (p_browser_script_form_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
+    if (binding == NULL || root == NULL || op == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    if (strcmp(op, "getDefaultValue") == 0) {
+        PJson_Free(root);
+        return p_browser_script_form_get_string(
+                binding->callbacks.get_default_value, binding->callbacks.pw,
+                args_json, args_len, out_json, out_capacity, out_len);
+    }
+    if (strcmp(op, "setDefaultValue") == 0) {
+        PJson_Free(root);
+        return p_browser_script_form_set_string(
+                binding->callbacks.set_default_value, binding->callbacks.pw,
+                args_json, args_len, out_json, out_capacity, out_len);
+    }
+    if (strcmp(op, "getDefaultChecked") == 0) {
+        PJson_Free(root);
+        return p_browser_script_form_get_bool(
+                binding->callbacks.get_default_checked,
+                binding->callbacks.pw, args_json, args_len, out_json,
+                out_capacity, out_len);
+    }
+    if (strcmp(op, "setDefaultChecked") == 0) {
+        PJson_Free(root);
+        return p_browser_script_form_set_bool(
+                binding->callbacks.set_default_checked,
+                binding->callbacks.pw, args_json, args_len, out_json,
+                out_capacity, out_len);
+    }
+    if (strcmp(op, "getSelectedIndex") == 0) {
+        PJson_Free(root);
+        return p_browser_script_form_get_int(
+                binding->callbacks.get_selected_index, binding->callbacks.pw,
+                args_json, args_len, out_json, out_capacity, out_len);
+    }
+    if (strcmp(op, "setSelectedIndex") == 0) {
+        PJson_Free(root);
+        return p_browser_script_form_set_int(
+                binding->callbacks.set_selected_index, binding->callbacks.pw,
+                args_json, args_len, out_json, out_capacity, out_len);
+    }
+    PJson_Free(root);
+    return 1;
+}
+
 static int p_browser_script_dom_get_attribute(void *pw,
         const char *args_json, int args_len, char *out_json,
         int out_capacity, int *out_len)
@@ -1862,6 +2105,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_write = NULL;
     session->dom_value = NULL;
     session->dom_checked = NULL;
+    session->form = NULL;
     session->dom_attribute = NULL;
     session->event = NULL;
     session->runtime = PScript_Create(budget_ms);
@@ -1909,6 +2153,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreSetChecked", -1);
         free(session->dom_checked);
         session->dom_checked = NULL;
+    }
+    if (session->form != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreFormProperty", -1);
+        free(session->form);
+        session->form = NULL;
     }
     if (session->dom_attribute != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -2218,6 +2468,63 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(
     free(session->dom_checked);
     session->dom_checked = NULL;
     return (rc != PSCRIPT_OK) ? rc : second_rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormCallbacks(
+        HANDLE hSession, const PBrowserScriptFormCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_form_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptFormCallbacks) ||
+            callbacks->get_default_value == NULL ||
+            callbacks->set_default_value == NULL ||
+            callbacks->get_default_checked == NULL ||
+            callbacks->set_default_checked == NULL ||
+            callbacks->get_selected_index == NULL ||
+            callbacks->set_selected_index == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->form != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_form_binding *) malloc(sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreFormProperty", -1, p_browser_script_form_property,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->form = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->form == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreFormProperty", -1);
+    free(session->form);
+    session->form = NULL;
+    return rc;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(

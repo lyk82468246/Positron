@@ -192,6 +192,27 @@ typedef struct PBrowserScriptDomCheckedCallbacks {
     PBrowserScriptSetCheckedFn set_checked;
 } PBrowserScriptDomCheckedCallbacks;
 
+/* Typed host adapters for the product-owned form-property callback. The
+ * browser DLL parses and encodes the single __pcoreFormProperty JSON entry;
+ * the host only supplies the six core document operations. String getters
+ * use the same size-probe contract as PBrowserScriptGetTextFn. All getters
+ * return zero on success or a negative value on error. Setters return >0 on
+ * success, 0 when the target or operation is unavailable and <0 on error. */
+typedef int (*PBrowserScriptGetSelectedIndexFn)(void *pw, const char *id,
+        int *out_index);
+typedef int (*PBrowserScriptSetSelectedIndexFn)(void *pw, const char *id,
+        int index);
+typedef struct PBrowserScriptFormCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetValueFn get_default_value;
+    PBrowserScriptSetValueFn set_default_value;
+    PBrowserScriptGetCheckedFn get_default_checked;
+    PBrowserScriptSetCheckedFn set_default_checked;
+    PBrowserScriptGetSelectedIndexFn get_selected_index;
+    PBrowserScriptSetSelectedIndexFn set_selected_index;
+} PBrowserScriptFormCallbacks;
+
 /* Typed host adapters for product-owned DOM attribute callbacks. The
  * browser DLL parses and encodes JSON. get_attribute returns 0 when an
  * attribute is present, 1 when it is absent and <0 on error; its out_len
@@ -288,6 +309,10 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomValueCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomCheckedCallbacks(
         HANDLE hSession, const PBrowserScriptDomCheckedCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormCallbacks(
+        HANDLE hSession, const PBrowserScriptFormCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
         HANDLE hSession,

@@ -37,7 +37,7 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 next234 已将 history/session 状态机迁入 `positron_browser.dll`，next235 已迁移 PScript context
 及 host JSON callback 的 session 所有权和生命周期，next236 已迁移 browser bootstrap 文本与
 求值入口，next237 已迁移 DOM 只读 callback 的 JSON 分发，next238 已迁移 textContent 写入，
-next239 已迁移 DOM attribute callback，next240 已迁移 Event callback，next241 已迁移 input value callback，next242 已迁移 checked callback；下一批迁移 defaultValue/selectedIndex、其余 form/input/location/navigation callback 实现。`test_host` 只能作为
+next239 已迁移 DOM attribute callback，next240 已迁移 Event callback，next241 已迁移 input value callback，next242 已迁移 checked callback，next243 已迁移 form-property callback（defaultValue/defaultChecked/selectedIndex）；下一批迁移其余 form/input/location/navigation callback 实现。`test_host` 只能作为
 宿主适配和测试消费者；
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。

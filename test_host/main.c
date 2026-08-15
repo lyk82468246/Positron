@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 209
+#define TEST_MAX_NUMBER 210
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -5828,66 +5828,34 @@ static int pcore_browser_script_dom_set_value(void *pw, const char *id,
     return PCore_NodeSetValueById(bridge->document, id, value) == 0 ? 1 : 0;
 }
 
-static int pcore_browser_script_get_default_value(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_get_default_value(void *pw,
+        const char *id, char *out_value, int out_capacity, int *out_len)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    char *value;
-    int bytes;
-    int result;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    bytes = 0;
-    value = NULL;
-    if (bridge == NULL || bridge->document == NULL || root == NULL ||
-            id == NULL || PCore_NodeDefaultValueById(bridge->document, id,
-            NULL, 0, &bytes) != 0 || bytes < 0 || bytes > 65535) {
-        PJson_Free(root);
-        return 1;
+    if (bridge == NULL || bridge->document == NULL ||
+            id == NULL || out_len == NULL || out_capacity < 0 ||
+            (out_value == NULL && out_capacity != 0) ||
+            (out_value != NULL && out_capacity <= 0)) {
+        return -1;
     }
-    value = (char *) malloc((size_t) bytes + 1);
-    if (value == NULL || PCore_NodeDefaultValueById(bridge->document, id,
-            value, bytes + 1, &bytes) != 0) {
-        free(value);
-        PJson_Free(root);
-        return 1;
-    }
-    result = pcore_browser_script_write_string(value, out_json,
+    return PCore_NodeDefaultValueById(bridge->document, id, out_value,
             out_capacity, out_len);
-    free(value);
-    PJson_Free(root);
-    return result;
 }
 
-static int pcore_browser_script_set_default_value(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_set_default_value(void *pw,
+        const char *id, const char *value)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    const char *value;
-    int changed;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
-    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && value != NULL &&
-            PCore_NodeSetDefaultValueById(bridge->document, id, value) == 0;
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(changed, out_json,
-            out_capacity, out_len);
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            value == NULL) {
+        return -1;
+    }
+    return PCore_NodeSetDefaultValueById(bridge->document, id, value) == 0 ?
+            1 : 0;
 }
 
 static int pcore_browser_script_dom_get_checked(void *pw, const char *id,
@@ -5916,155 +5884,56 @@ static int pcore_browser_script_dom_set_checked(void *pw, const char *id,
             1 : 0;
 }
 
-static int pcore_browser_script_get_default_checked(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_get_default_checked(void *pw,
+        const char *id, int *out_checked)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    int checked;
-    int result;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    checked = 0;
-    result = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && PCore_NodeDefaultCheckedById(bridge->document, id,
-            &checked) == 0;
-    PJson_Free(root);
-    if (!result) {
-        return 1;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            out_checked == NULL) {
+        return -1;
     }
-    return pcore_browser_script_write_bool(checked, out_json,
-            out_capacity, out_len);
+    return PCore_NodeDefaultCheckedById(bridge->document, id, out_checked);
 }
 
-static int pcore_browser_script_set_default_checked(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_set_default_checked(void *pw,
+        const char *id, int checked)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    int checked;
-    int changed;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    checked = (object != NULL) ? PJson_GetInt(object, "checked") : 0;
-    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && PCore_NodeSetDefaultCheckedById(
-            bridge->document, id, checked) == 0;
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(changed, out_json,
-            out_capacity, out_len);
+    if (bridge == NULL || bridge->document == NULL || id == NULL) {
+        return -1;
+    }
+    return PCore_NodeSetDefaultCheckedById(bridge->document, id, checked) ==
+            0 ? 1 : 0;
 }
 
-static int pcore_browser_script_get_selected_index(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_get_selected_index(void *pw,
+        const char *id, int *out_index)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    int index;
-    int result;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    index = -1;
-    result = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && PCore_NodeSelectedIndexById(bridge->document, id,
-            &index) == 0;
-    PJson_Free(root);
-    if (!result) {
-        return 1;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            out_index == NULL) {
+        return -1;
     }
-    return pcore_browser_script_write_int(index, out_json,
-            out_capacity, out_len);
+    return PCore_NodeSelectedIndexById(bridge->document, id, out_index);
 }
 
-static int pcore_browser_script_set_selected_index(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_set_selected_index(void *pw,
+        const char *id, int index)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    int index;
-    int changed;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    index = (object != NULL) ? PJson_GetInt(object, "index") : -2;
-    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && PCore_NodeSetSelectedIndexById(
-            bridge->document, id, index) == 0;
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(changed, out_json,
-            out_capacity, out_len);
-}
-
-static int pcore_browser_script_form_property(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
-{
-    HANDLE root;
-    HANDLE object;
-    const char *op;
-
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
-    if (op == NULL) {
-        PJson_Free(root);
-        return 1;
+    if (bridge == NULL || bridge->document == NULL || id == NULL) {
+        return -1;
     }
-    if (strcmp(op, "getDefaultValue") == 0) {
-        PJson_Free(root);
-        return pcore_browser_script_get_default_value(pw, args_json,
-                args_len, out_json, out_capacity, out_len);
-    }
-    if (strcmp(op, "setDefaultValue") == 0) {
-        PJson_Free(root);
-        return pcore_browser_script_set_default_value(pw, args_json,
-                args_len, out_json, out_capacity, out_len);
-    }
-    if (strcmp(op, "getDefaultChecked") == 0) {
-        PJson_Free(root);
-        return pcore_browser_script_get_default_checked(pw, args_json,
-                args_len, out_json, out_capacity, out_len);
-    }
-    if (strcmp(op, "setDefaultChecked") == 0) {
-        PJson_Free(root);
-        return pcore_browser_script_set_default_checked(pw, args_json,
-                args_len, out_json, out_capacity, out_len);
-    }
-    if (strcmp(op, "getSelectedIndex") == 0) {
-        PJson_Free(root);
-        return pcore_browser_script_get_selected_index(pw, args_json,
-                args_len, out_json, out_capacity, out_len);
-    }
-    if (strcmp(op, "setSelectedIndex") == 0) {
-        PJson_Free(root);
-        return pcore_browser_script_set_selected_index(pw, args_json,
-                args_len, out_json, out_capacity, out_len);
-    }
-    PJson_Free(root);
-    return 1;
+    return PCore_NodeSetSelectedIndexById(bridge->document, id, index) == 0 ?
+            1 : 0;
 }
 
 static int pcore_browser_script_navigation(void *pw,
@@ -6718,6 +6587,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
+    PBrowserScriptFormCallbacks form_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     PBrowserScriptEventCallbacks event_callbacks;
     char *source;
@@ -6811,6 +6681,20 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_checked_callbacks.pw = bridge;
     dom_checked_callbacks.get_checked = pcore_browser_script_dom_get_checked;
     dom_checked_callbacks.set_checked = pcore_browser_script_dom_set_checked;
+    form_callbacks.size = sizeof(form_callbacks);
+    form_callbacks.pw = bridge;
+    form_callbacks.get_default_value =
+            pcore_browser_script_dom_get_default_value;
+    form_callbacks.set_default_value =
+            pcore_browser_script_dom_set_default_value;
+    form_callbacks.get_default_checked =
+            pcore_browser_script_dom_get_default_checked;
+    form_callbacks.set_default_checked =
+            pcore_browser_script_dom_set_default_checked;
+    form_callbacks.get_selected_index =
+            pcore_browser_script_dom_get_selected_index;
+    form_callbacks.set_selected_index =
+            pcore_browser_script_dom_set_selected_index;
     dom_attribute_callbacks.size = sizeof(dom_attribute_callbacks);
     dom_attribute_callbacks.pw = bridge;
     dom_attribute_callbacks.get_attribute =
@@ -6852,13 +6736,12 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_value_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomCheckedCallbacks(session,
             &dom_checked_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormCallbacks(session,
+            &form_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
             &dom_attribute_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEventCallbacks(session,
             &event_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreFormProperty", pcore_browser_script_form_property,
-            bridge) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterJsonFunction(session,
             "__pcoreNavigation", pcore_browser_script_navigation,
             bridge) != PSCRIPT_OK ||
@@ -36775,6 +36658,321 @@ static BOOL test209_browser_dom_checked_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 210 - product form-property callback adapter                     */
+/* -------------------------------------------------------------------- */
+typedef struct test210_form_state {
+    char default_value[64];
+    int default_checked;
+    int selected_index;
+    int get_value_calls;
+    int set_value_calls;
+    int get_checked_calls;
+    int set_checked_calls;
+    int get_index_calls;
+    int set_index_calls;
+} test210_form_state;
+
+static int test210_get_default_value(void *pw, const char *id,
+        char *out_value, int out_capacity, int *out_len)
+{
+    test210_form_state *state;
+    int length;
+
+    state = (test210_form_state *) pw;
+    if (state == NULL || id == NULL || out_len == NULL ||
+            strcmp(id, "field") != 0 || out_capacity < 0 ||
+            (out_value == NULL && out_capacity != 0) ||
+            (out_value != NULL && out_capacity <= 0)) {
+        return -1;
+    }
+    length = (int) strlen(state->default_value);
+    if (out_value == NULL) {
+        *out_len = length;
+        return 0;
+    }
+    if (out_capacity <= length) {
+        return -1;
+    }
+    memcpy(out_value, state->default_value, (size_t) length + 1);
+    *out_len = length;
+    state->get_value_calls++;
+    return 0;
+}
+
+static int test210_set_default_value(void *pw, const char *id,
+        const char *value)
+{
+    test210_form_state *state;
+    size_t length;
+
+    state = (test210_form_state *) pw;
+    if (state == NULL || id == NULL || value == NULL) {
+        return -1;
+    }
+    if (strcmp(id, "field") != 0) {
+        return 0;
+    }
+    length = strlen(value);
+    if (length >= sizeof(state->default_value)) {
+        return -1;
+    }
+    memcpy(state->default_value, value, length + 1);
+    state->set_value_calls++;
+    return 1;
+}
+
+static int test210_get_default_checked(void *pw, const char *id,
+        int *out_checked)
+{
+    test210_form_state *state;
+
+    state = (test210_form_state *) pw;
+    if (state == NULL || id == NULL || out_checked == NULL ||
+            strcmp(id, "check") != 0) {
+        return -1;
+    }
+    *out_checked = state->default_checked;
+    state->get_checked_calls++;
+    return 0;
+}
+
+static int test210_set_default_checked(void *pw, const char *id,
+        int checked)
+{
+    test210_form_state *state;
+
+    state = (test210_form_state *) pw;
+    if (state == NULL || id == NULL) {
+        return -1;
+    }
+    if (strcmp(id, "check") != 0) {
+        return 0;
+    }
+    state->default_checked = checked ? 1 : 0;
+    state->set_checked_calls++;
+    return 1;
+}
+
+static int test210_get_selected_index(void *pw, const char *id,
+        int *out_index)
+{
+    test210_form_state *state;
+
+    state = (test210_form_state *) pw;
+    if (state == NULL || id == NULL || out_index == NULL ||
+            strcmp(id, "select") != 0) {
+        return -1;
+    }
+    *out_index = state->selected_index;
+    state->get_index_calls++;
+    return 0;
+}
+
+static int test210_set_selected_index(void *pw, const char *id, int index)
+{
+    test210_form_state *state;
+
+    state = (test210_form_state *) pw;
+    if (state == NULL || id == NULL) {
+        return -1;
+    }
+    if (strcmp(id, "select") != 0) {
+        return 0;
+    }
+    if (index < 0 || index > 8) {
+        return -1;
+    }
+    state->selected_index = index;
+    state->set_index_calls++;
+    return 1;
+}
+
+static BOOL test210_browser_form_callbacks(void)
+{
+    PBrowserScriptFormCallbacks callbacks;
+    test210_form_state state;
+    HANDLE session;
+    const char *result;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&state, 0, sizeof(state));
+    memcpy(state.default_value, "baseline", sizeof("baseline"));
+    state.default_checked = 1;
+    state.selected_index = 1;
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.get_default_value = test210_get_default_value;
+    callbacks.set_default_value = test210_set_default_value;
+    callbacks.get_default_checked = test210_get_default_checked;
+    callbacks.set_default_checked = test210_set_default_checked;
+    callbacks.get_selected_index = test210_get_selected_index;
+    callbacks.set_selected_index = test210_set_selected_index;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    result = NULL;
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterFormCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterFormCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 1;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterFormCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "get-default-value";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty",
+                "[{\"op\":\"getDefaultValue\",\"id\":\"field\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "\"baseline\"") == 0 &&
+                state.get_value_calls == 1;
+    }
+    if (ok) {
+        stage = "set-default-value";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty",
+                "[{\"op\":\"setDefaultValue\",\"id\":\"field\","
+                "\"value\":\"updated\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                strcmp(state.default_value, "updated") == 0 &&
+                state.set_value_calls == 1;
+    }
+    if (ok) {
+        stage = "get-default-checked";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty",
+                "[{\"op\":\"getDefaultChecked\",\"id\":\"check\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && state.get_checked_calls == 1;
+    }
+    if (ok) {
+        stage = "set-default-checked";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty",
+                "[{\"op\":\"setDefaultChecked\",\"id\":\"check\","
+                "\"checked\":0}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && state.default_checked == 0 &&
+                state.set_checked_calls == 1;
+    }
+    if (ok) {
+        stage = "get-selected-index";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty",
+                "[{\"op\":\"getSelectedIndex\",\"id\":\"select\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "1") == 0 && state.get_index_calls == 1;
+    }
+    if (ok) {
+        stage = "set-selected-index";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty",
+                "[{\"op\":\"setSelectedIndex\",\"id\":\"select\","
+                "\"index\":3}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && state.selected_index == 3 &&
+                state.set_index_calls == 1;
+    }
+    if (ok) {
+        stage = "set-missing";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty",
+                "[{\"op\":\"setDefaultValue\",\"id\":\"missing\","
+                "\"value\":\"ignored\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0 &&
+                strcmp(state.default_value, "updated") == 0;
+    }
+    if (ok) {
+        stage = "get-missing";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty",
+                "[{\"op\":\"getSelectedIndex\",\"id\":\"missing\"}]");
+        ok = rc != PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "invalid-op";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty",
+                "[{\"op\":\"unknown\",\"id\":\"field\"}]");
+        ok = rc != PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "invalid-args";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreFormProperty", "[]");
+        ok = rc != PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterFormCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0 &&
+                PBrowser_ScriptSessionUnregisterFormCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=%s",
+                    stage, rc, result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session),
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=(null)",
+                    stage, rc, result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session));
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 210 FAIL", error[0] != '\0' ? error :
+                "product form-property callback adapter failed");
+        return FALSE;
+    }
+    show_info(L"TEST 210 OK",
+            "positron_browser.dll owns form-property JSON dispatch; the host"
+            " supplies typed default value, default checked and selected"
+            " index adapters.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -40917,6 +41115,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 209: ok =
                 test209_browser_dom_checked_callbacks();
+                break;
+        case 210: ok =
+                test210_browser_form_callbacks();
                 break;
         default: ok = FALSE; break;
         }

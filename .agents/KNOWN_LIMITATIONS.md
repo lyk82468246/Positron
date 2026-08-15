@@ -13,11 +13,12 @@
 - 默认 `javascript=0`。
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
-  textContent 读取）、textContent 写入、attribute、input value 和 checked JSON 分发；显式开启时仍有 classic inline/external
-  script、页面 context，以及一套尚在宿主迁移中的 defaultValue/selectedIndex、其余 form/input、location 和 navigation bridge；
+  textContent 读取）、textContent 写入、attribute、input value、checked、form property
+  （defaultValue/defaultChecked/selectedIndex）和 event JSON 分发；显式开启时仍有 classic inline/external
+  script、页面 context，以及一套尚在宿主迁移中的其余 form/input、location 和 navigation bridge；
   Event callback 的产品 JSON 分发已迁入，但 core/document typed listener 适配仍由宿主提供。
 
-尚未完成：完整 DOM/window、defaultValue/selectedIndex、其余 form/input/location/navigation callback 实现、module、
+尚未完成：完整 DOM/window、其余 form/input/location/navigation callback 实现、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
 实现位于 `test_host/main.c`，尚未成为可供正式浏览器应用复用的 browser-layer API。
 
@@ -157,9 +158,10 @@ next240 的 TEST207、`TEST112-135,137-152,189-207,999`（60 项）定向门和
 `TEST112-135,137-152,189-208,999`（61 项）定向门和
 `TEST13/20/27/43/44/56/58-77/80-208/999`（156 项）全量门进一步验证 input value callback；
 next242 的 TEST209、`TEST112-135,137-152,189-209,999`（62 项）定向门和
-`TEST13/20/27/43/44/56/58-77/80-209/999`（157 项）全量门进一步验证 checked callback，
-defaultValue/selectedIndex、其余 form/input/location/navigation callback 实现仍在宿主，
-尚未计入产品层完成项。
+`TEST13/20/27/43/44/56/58-77/80-209/999`（157 项）全量门进一步验证 checked callback；
+next243 的 TEST210、`TEST112-135,137-152,189-210,999`（63 项）定向门和
+`TEST13/20/27/43/44/56/58-77/80-210/999`（158 项）全量门验证 form-property callback；
+其余 form/input/location/navigation callback 实现仍在宿主，尚未计入产品层完成项。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；
