@@ -22,15 +22,15 @@
 			<Tool Name="VCXMLDataGeneratorTool" />
 			<Tool Name="VCWebServiceProxyGeneratorTool" />
 			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
-				AdditionalIncludeDirectories=".;..\compat;..\positron_json"
+				AdditionalIncludeDirectories=".;..\compat;..\positron_json;..\positron_script"
 				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_BROWSER_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
 				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
 			<Tool Name="VCManagedResourceCompilerTool" />
 			<Tool Name="VCResourceCompilerTool" />
 			<Tool Name="VCPreLinkEventTool" />
-			<Tool Name="VCLinkerTool" AdditionalDependencies="positron_json.lib"
-				AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName)"
+			<Tool Name="VCLinkerTool" AdditionalDependencies="positron_json.lib positron_script.lib"
+				AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName);..\positron_script\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_browser.dll" LinkIncremental="2"
 				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
@@ -58,15 +58,15 @@
 			<Tool Name="VCWebServiceProxyGeneratorTool" />
 			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
 				FavorSizeOrSpeed="2"
-				AdditionalIncludeDirectories=".;..\compat;..\positron_json"
+				AdditionalIncludeDirectories=".;..\compat;..\positron_json;..\positron_script"
 				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_BROWSER_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3"
 				DebugInformationFormat="3" CompileAs="1" />
 			<Tool Name="VCManagedResourceCompilerTool" />
 			<Tool Name="VCResourceCompilerTool" />
 			<Tool Name="VCPreLinkEventTool" />
-			<Tool Name="VCLinkerTool" AdditionalDependencies="positron_json.lib"
-				AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName)"
+			<Tool Name="VCLinkerTool" AdditionalDependencies="positron_json.lib positron_script.lib"
+				AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName);..\positron_script\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_browser.dll" LinkIncremental="1"
 				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"

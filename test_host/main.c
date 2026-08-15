@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 201
+#define TEST_MAX_NUMBER 202
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -2204,6 +2204,8 @@ struct pcore_browser_script_event_binding {
 
 struct pcore_browser_script_bridge {
     HANDLE document;
+    /* Product-owned browser session; runtime is borrowed only for old tests. */
+    HANDLE session;
     HANDLE runtime;
     HWND hwnd;
     int navigation_kind;
@@ -2225,12 +2227,13 @@ struct pcore_browser_script_bridge {
 
 typedef struct pcore_browser_script_session {
     HANDLE document;
+    HANDLE session;
     HANDLE runtime;
     pcore_browser_script_bridge *bridge;
 } pcore_browser_script_session;
 
 static pcore_browser_script_session g_browser_script_session = {
-    NULL, NULL, NULL
+    NULL, NULL, NULL, NULL
 };
 
 static void pcore_browser_script_bridge_destroy(
@@ -2241,11 +2244,9 @@ static void pcore_browser_script_session_destroy(void)
     if (g_browser_script_session.bridge != NULL) {
         pcore_browser_script_bridge_destroy(g_browser_script_session.bridge);
     }
-    if (g_browser_script_session.runtime != NULL) {
-        PScript_Destroy(g_browser_script_session.runtime);
-    }
     free(g_browser_script_session.bridge);
     g_browser_script_session.document = NULL;
+    g_browser_script_session.session = NULL;
     g_browser_script_session.runtime = NULL;
     g_browser_script_session.bridge = NULL;
 }
@@ -5207,9 +5208,6 @@ static void pcore_navigation_request_free(
     if (request->script_bridge != NULL) {
         pcore_browser_script_bridge_destroy(request->script_bridge);
     }
-    if (request->script_runtime != NULL) {
-        PScript_Destroy(request->script_runtime);
-    }
     free(request->script_bridge);
     if (request->document != NULL) {
         PCore_FreeDocument(request->document);
@@ -6493,7 +6491,7 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
 
     binding = (pcore_browser_script_event_binding *) pw;
     if (binding == NULL || binding->bridge == NULL ||
-            binding->bridge->runtime == NULL || event_info == NULL ||
+            binding->bridge->session == NULL || event_info == NULL ||
             !pcore_browser_script_event_type_safe(binding->event_type)) {
         return PCORE_EVENT_ACTION_NONE;
     }
@@ -6538,11 +6536,11 @@ static unsigned int pcore_browser_script_event_callback(void *pw,
         return PCORE_EVENT_ACTION_NONE;
     }
     args[length] = '\0';
-    if (PScript_CallGlobalJson(binding->bridge->runtime,
-            "__pcoreDispatchEvent", -1, args, length) != PSCRIPT_OK) {
+    if (PBrowser_ScriptSessionCallGlobalJson(binding->bridge->session,
+            "__pcoreDispatchEvent", args) != PSCRIPT_OK) {
         return PCORE_EVENT_ACTION_NONE;
     }
-    result = PScript_GetResult(binding->bridge->runtime);
+    result = PBrowser_ScriptSessionGetResult(binding->bridge->session);
     if (result != NULL && strcmp(result, "true") == 0) {
         return PCORE_EVENT_ACTION_PREVENT_DEFAULT;
     }
@@ -6710,6 +6708,11 @@ static void pcore_browser_script_bridge_destroy(
         bridge->history_push_states[i] = NULL;
     }
     bridge->history_push_count = 0;
+    if (bridge->session != NULL) {
+        PBrowser_ScriptSessionDestroy(bridge->session);
+        bridge->session = NULL;
+    }
+    bridge->runtime = NULL;
 }
 
 static int pcore_browser_script_type_equal(const char *type, int length,
@@ -6781,19 +6784,21 @@ static int pcore_browser_script_session_evaluate(const char *source,
         int source_len, char *error, int error_capacity)
 {
     if (g_browser_script_session.document == NULL ||
-            g_browser_script_session.runtime == NULL ||
             g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL ||
             g_browser_script_session.bridge->document !=
                     g_browser_script_session.document) {
         pcore_browser_script_error(error, error_capacity,
                 "persistent script context", "not available");
         return 1;
     }
-    if (PScript_Evaluate(g_browser_script_session.runtime, source,
+    if (PBrowser_ScriptSessionEvaluate(
+            g_browser_script_session.bridge->session, source,
             source_len) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity,
                 "persistent script evaluation",
-                PScript_GetError(g_browser_script_session.runtime));
+                PBrowser_ScriptSessionGetError(
+                g_browser_script_session.bridge->session));
         return 1;
     }
     return 0;
@@ -6813,7 +6818,7 @@ static int pcore_browser_script_session_traverse_history(int target_index)
 
     bridge = g_browser_script_session.bridge;
     if (!pcore_browse_history_same_document_target(target_index) ||
-            g_browser_script_session.runtime == NULL || bridge == NULL) {
+            bridge == NULL || bridge->session == NULL) {
         return 1;
     }
     state_json = pcore_browse_history_state_at(target_index);
@@ -6821,11 +6826,12 @@ static int pcore_browser_script_session_traverse_history(int target_index)
     state_copy = pcore_browser_script_copy_string(state_json);
     target_copy = pcore_browser_script_copy_string(target_url);
     if (state_copy == NULL || target_copy == NULL ||
-            PScript_SetGlobalJson(g_browser_script_session.runtime,
-            "__pcoreHistoryTraversalState", -1, state_json, -1) !=
-            PSCRIPT_OK || PScript_SetGlobalString(
-            g_browser_script_session.runtime,
-            "__pcoreHistoryTraversalUrl", -1, target_url, -1) !=
+            PBrowser_ScriptSessionSetGlobalJson(
+            bridge->session,
+            "__pcoreHistoryTraversalState", state_json) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalString(
+            bridge->session,
+            "__pcoreHistoryTraversalUrl", target_url) !=
             PSCRIPT_OK) {
         free(state_copy);
         free(target_copy);
@@ -6877,7 +6883,7 @@ static int pcore_browser_script_session_navigate_fragment(const char *url,
     int new_length;
 
     bridge = g_browser_script_session.bridge;
-    if (g_browser_script_session.runtime == NULL || bridge == NULL ||
+    if (bridge == NULL || bridge->session == NULL ||
             url == NULL || url[0] == '\0' ||
             strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
             pcore_browse_history_current() == NULL ||
@@ -6905,11 +6911,13 @@ static int pcore_browser_script_session_navigate_fragment(const char *url,
         }
         new_length++;
     }
-    if (PScript_SetGlobalString(g_browser_script_session.runtime,
-            "__pcoreHashNavigationUrl", -1, url, -1) != PSCRIPT_OK ||
-            PScript_SetGlobalNumber(g_browser_script_session.runtime,
-            "__pcoreHashNavigationLength", -1,
-            (double) new_length) != PSCRIPT_OK ||
+    if (PBrowser_ScriptSessionSetGlobalString(
+            bridge->session,
+            "__pcoreHashNavigationUrl", url) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(
+            bridge->session,
+            "__pcoreHashNavigationLength", (double) new_length) !=
+            PSCRIPT_OK ||
             (replace_current ?
             pcore_browse_history_replace_state_url(url, "null") :
             pcore_browse_history_push_state(url, "null")) != 0) {
@@ -7415,6 +7423,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     pcore_browser_script_bridge bridge_storage;
     pcore_browser_script_bridge *bridge;
     PCoreScriptInfo info;
+    HANDLE session;
     HANDLE runtime;
     char *source;
     char *type;
@@ -7453,8 +7462,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     if (count == 0) {
         return 0;
     }
-    runtime = PScript_Create(PSCRIPT_DEFAULT_BUDGET_MS);
-    if (runtime == NULL) {
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    runtime = PBrowser_ScriptSessionRuntime(session);
+    if (session == NULL || runtime == NULL) {
+        PBrowser_ScriptSessionDestroy(session);
         pcore_browser_script_error(error, error_capacity,
                 "runtime creation", NULL);
         return 1;
@@ -7462,7 +7473,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     if (out_runtime != NULL) {
         bridge = (pcore_browser_script_bridge *) malloc(sizeof(*bridge));
         if (bridge == NULL) {
-            PScript_Destroy(runtime);
+            PBrowser_ScriptSessionDestroy(session);
             pcore_browser_script_error(error, error_capacity,
                     "script bridge allocation", NULL);
             return 1;
@@ -7471,6 +7482,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         bridge = &bridge_storage;
     }
     bridge->document = document;
+    bridge->session = session;
     bridge->runtime = runtime;
     bridge->hwnd = NULL;
     bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
@@ -7502,53 +7514,60 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         history_state_json = "null";
     }
     if (bridge->history_url == NULL || bridge->history_entry_url == NULL ||
-            PScript_SetGlobalString(runtime, "__pcoreDocumentUrl", -1,
-            (document_url != NULL) ? document_url : "", -1) != PSCRIPT_OK ||
-            PScript_SetGlobalNumber(runtime, "__pcoreHistoryLength", -1,
-            (double) history_length) != PSCRIPT_OK ||
-            PScript_SetGlobalJson(runtime, "__pcoreHistoryState", -1,
-            history_state_json, -1) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime, "__pcoreHasElement", -1,
-            pcore_browser_script_has_element, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime, "__pcoreGetText", -1,
-            pcore_browser_script_get_text, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime, "__pcoreSetText", -1,
-            pcore_browser_script_set_text, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreGetAttribute", -1,
-            pcore_browser_script_get_attribute, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreSetAttribute", -1,
-            pcore_browser_script_set_attribute, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreRemoveAttribute", -1,
-            pcore_browser_script_remove_attribute, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreGetValue", -1,
-            pcore_browser_script_get_value, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreSetValue", -1,
-            pcore_browser_script_set_value, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreGetChecked", -1,
-            pcore_browser_script_get_checked, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreSetChecked", -1,
-            pcore_browser_script_set_checked, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime,
-            "__pcoreFormProperty", -1,
-            pcore_browser_script_form_property, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime, "__pcoreAddEvent", -1,
-            pcore_browser_script_add_event, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime, "__pcoreRemoveEvent", -1,
-            pcore_browser_script_remove_event, bridge) != PSCRIPT_OK ||
-            PScript_RegisterGlobalJsonFunction(runtime, "__pcoreNavigation", -1,
-            pcore_browser_script_navigation, bridge) != PSCRIPT_OK ||
-            PScript_Evaluate(runtime, BOOTSTRAP, -1) != PSCRIPT_OK) {
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl",
+            (document_url != NULL) ? document_url : "") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", (double) history_length) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", history_state_json) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreHasElement", pcore_browser_script_has_element,
+            bridge) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreGetText", pcore_browser_script_get_text, bridge) !=
+            PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreSetText", pcore_browser_script_set_text, bridge) !=
+            PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreGetAttribute", pcore_browser_script_get_attribute,
+            bridge) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreSetAttribute", pcore_browser_script_set_attribute,
+            bridge) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreRemoveAttribute", pcore_browser_script_remove_attribute,
+            bridge) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreGetValue", pcore_browser_script_get_value, bridge) !=
+            PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreSetValue", pcore_browser_script_set_value, bridge) !=
+            PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreGetChecked", pcore_browser_script_get_checked, bridge) !=
+            PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreSetChecked", pcore_browser_script_set_checked, bridge) !=
+            PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreFormProperty", pcore_browser_script_form_property,
+            bridge) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreAddEvent", pcore_browser_script_add_event, bridge) !=
+            PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreRemoveEvent", pcore_browser_script_remove_event,
+            bridge) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "__pcoreNavigation", pcore_browser_script_navigation,
+            bridge) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluate(session, BOOTSTRAP, -1) !=
+            PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity, "DOM bootstrap",
-                PScript_GetError(runtime));
+                PBrowser_ScriptSessionGetError(session));
         pcore_browser_script_bridge_destroy(bridge);
-        PScript_Destroy(runtime);
         if (out_runtime != NULL) {
             free(bridge);
         }
@@ -7600,11 +7619,11 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         if (pcore_browser_script_type_supported(type) &&
                 ((info.kind == 1 && source != NULL) ||
                 (info.kind == 2 && data != NULL))) {
-            if (PScript_Evaluate(runtime,
+            if (PBrowser_ScriptSessionEvaluate(session,
                     (info.kind == 1) ? source : data,
                     (info.kind == 1) ? info.source_bytes : info.data_bytes) !=
                     PSCRIPT_OK) {
-                runtime_error = PScript_GetError(runtime);
+                runtime_error = PBrowser_ScriptSessionGetError(session);
                 pcore_browser_script_error(error, error_capacity,
                         "script evaluation", runtime_error);
                 rc = 1;
@@ -7626,7 +7645,6 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         }
     } else {
         pcore_browser_script_bridge_destroy(bridge);
-        PScript_Destroy(runtime);
     }
     if (out_executed != NULL) {
         *out_executed = executed;
@@ -7855,6 +7873,8 @@ static int pcore_navigation_commit_step(HWND hwnd,
     g_render_doc = request->document;
     request->document = NULL;
     g_browser_script_session.document = g_render_doc;
+    g_browser_script_session.session = (request->script_bridge != NULL) ?
+            request->script_bridge->session : NULL;
     g_browser_script_session.runtime = request->script_runtime;
     g_browser_script_session.bridge = request->script_bridge;
     request->script_runtime = NULL;
@@ -36209,6 +36229,84 @@ static BOOL test201_browser_history_product_api(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 202 - product browser script session API                         */
+/* -------------------------------------------------------------------- */
+static int test202_browser_script_echo(void *pw, const char *args_json,
+        int args_len, char *out_json, int out_capacity, int *out_len)
+{
+    const char *value;
+    int length;
+
+    value = (const char *) pw;
+    if (value == NULL || args_json == NULL || args_len < 0 ||
+            out_json == NULL || out_len == NULL) {
+        return 1;
+    }
+    length = (int) strlen(value);
+    if (length < 0 || length >= out_capacity) {
+        return 1;
+    }
+    memcpy(out_json, value, (size_t) length + 1);
+    *out_len = length;
+    return 0;
+}
+
+static BOOL test202_browser_script_session_api(void)
+{
+    static const char ECHO_RESULT[] = "\"browser-session\"";
+    HANDLE session;
+    HANDLE runtime;
+    const char *result;
+    char error[256];
+    int ok;
+
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    runtime = PBrowser_ScriptSessionRuntime(session);
+    result = NULL;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL && runtime != NULL &&
+            PBrowser_ScriptSessionEvaluate(NULL, "1+1", -1) ==
+            PSCRIPT_ERROR_ARGUMENT;
+    if (ok && (PBrowser_ScriptSessionRegisterJsonFunction(session,
+            "nativeEcho", test202_browser_script_echo,
+            (void *) ECHO_RESULT) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionNativeFunctionCount(session) != 1 ||
+            PBrowser_ScriptSessionEvaluate(session, "var total=7;", -1) !=
+            PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluate(session, "total+=5;total;", -1) !=
+            PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, "12") != 0 ||
+            PBrowser_ScriptSessionCallGlobalJson(session, "nativeEcho",
+            "[\"ignored\"]") != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, ECHO_RESULT) != 0 ||
+            PBrowser_ScriptSessionUnregisterJsonFunction(session,
+            "nativeEcho") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionNativeFunctionCount(session) != 0)) {
+        ok = 0;
+    }
+    if (!ok && session != NULL) {
+        result = PBrowser_ScriptSessionGetError(session);
+        if (result != NULL) {
+            _snprintf(error, sizeof(error) - 1, "%s", result);
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 202 FAIL", error[0] != '\0' ? error :
+                "browser script session API did not preserve ownership");
+        return FALSE;
+    }
+    show_info(L"TEST 202 OK",
+            "positron_browser.dll owns the PScript context, registers and"
+            " unregisters host JSON callbacks, and exposes only borrowed"
+            " diagnostic results to the migration adapter.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -40327,6 +40425,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 201: ok =
                 test201_browser_history_product_api();
+                break;
+        case 202: ok =
+                test202_browser_script_session_api();
                 break;
         default: ok = FALSE; break;
         }

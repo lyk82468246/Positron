@@ -1,6 +1,6 @@
 # Positron 路线图
 
-更新时间：2026-08-14
+更新时间：2026-08-15
 
 本文件只列尚未完成的目标。已提交的 next 批次不继续停留在路线图；当前候选和设备门见
 [`HANDOFF.md`](HANDOFF.md)，当前能力缺口见
@@ -34,8 +34,9 @@ Positron 是给 WM6 补齐现代能力，不是拆掉 WM6 重建。
 
 ### 1. 将浏览器 JavaScript bridge 迁入产品层
 
-next234 已将 history/session 状态机迁入 `positron_browser.dll`，下一批迁移 script session、
-DOM/Event/form/input/location/history bridge。`test_host` 只能作为宿主适配和测试消费者；
+next234 已将 history/session 状态机迁入 `positron_browser.dll`，next235 已迁移 PScript context
+及 host JSON callback 的 session 所有权和生命周期；下一批迁移 bootstrap 及 DOM/Event/form/
+input/location/nav callback 实现。`test_host` 只能作为宿主适配和测试消费者；
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 

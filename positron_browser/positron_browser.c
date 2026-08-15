@@ -11,6 +11,7 @@
 
 #include "positron_browser.h"
 #include "positron_json.h"
+#include "positron_script.h"
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -668,4 +669,183 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         return PBrowser_HistoryCurrentState(hHistory);
     }
     return "null";
+}
+
+typedef struct p_browser_script_session {
+    HANDLE runtime;
+} p_browser_script_session;
+
+static p_browser_script_session *p_script_session(HANDLE hSession)
+{
+    return (p_browser_script_session *) hSession;
+}
+
+static int p_script_session_valid(
+        const p_browser_script_session *session)
+{
+    return session != NULL && session->runtime != NULL;
+}
+
+PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
+{
+    p_browser_script_session *session;
+
+    session = (p_browser_script_session *) malloc(sizeof(*session));
+    if (session == NULL) {
+        return NULL;
+    }
+    session->runtime = PScript_Create(budget_ms);
+    if (session->runtime == NULL) {
+        free(session);
+        return NULL;
+    }
+    return (HANDLE) session;
+}
+
+PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (session == NULL) {
+        return;
+    }
+    PScript_Destroy(session->runtime);
+    session->runtime = NULL;
+    free(session);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterJsonFunction(
+        HANDLE hSession, const char *name,
+        PBrowserScriptJsonFunctionFn fn, void *pw)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || name == NULL ||
+            name[0] == '\0' || fn == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PScript_RegisterGlobalJsonFunction(session->runtime, name, -1,
+            fn, pw);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterJsonFunction(
+        HANDLE hSession, const char *name)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || name == NULL ||
+            name[0] == '\0') {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PScript_UnregisterGlobalJsonFunction(session->runtime, name, -1);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
+        const char *source, int source_len)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || source == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PScript_Evaluate(session->runtime, source, source_len);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
+        const char *name, const char *value)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || name == NULL ||
+            value == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PScript_SetGlobalString(session->runtime, name, -1, value, -1);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionSetGlobalNumber(HANDLE hSession,
+        const char *name, double value)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || name == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PScript_SetGlobalNumber(session->runtime, name, -1, value);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionSetGlobalJson(HANDLE hSession,
+        const char *name, const char *value_json)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || name == NULL ||
+            value_json == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PScript_SetGlobalJson(session->runtime, name, -1,
+            value_json, -1);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionCallGlobalJson(HANDLE hSession,
+        const char *name, const char *args_json)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || name == NULL ||
+            args_json == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PScript_CallGlobalJson(session->runtime, name, -1,
+            args_json, -1);
+}
+
+PBROWSER_API const char *PBrowser_ScriptSessionGetResult(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return NULL;
+    }
+    return PScript_GetResult(session->runtime);
+}
+
+PBROWSER_API const char *PBrowser_ScriptSessionGetError(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return NULL;
+    }
+    return PScript_GetError(session->runtime);
+}
+
+PBROWSER_API unsigned long PBrowser_ScriptSessionNativeFunctionCount(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return 0;
+    }
+    return PScript_GetNativeFunctionCount(session->runtime);
+}
+
+PBROWSER_API HANDLE PBrowser_ScriptSessionRuntime(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    return p_script_session_valid(session) ? session->runtime : NULL;
 }

@@ -103,14 +103,15 @@ Core 不依赖某个固定网络实现。宿主可以使用 `positron_http`、Wi
 
 ### `positron_browser.dll`
 
-这是浏览器运行时的产品组合层，不是窗口或网络实现。当前首个稳定切片提供独立的
+这是浏览器运行时的产品组合层，不是窗口或网络实现。当前稳定切片提供独立的
 history/session opaque handle、有限同源 URL 判定、文档导航提交、push/replace state、
-后退/前进/go 目标和待提交导航投影。它依赖 `positron_json.dll` 验证 history state，
-但不依赖 `positron_core.dll`、`positron_script.dll` 或 WM 控件。
+后退/前进/go 目标和待提交导航投影；另提供由该 DLL 持有的浏览器脚本 session、
+host JSON callback 注册、求值和调用生命周期。它依赖 `positron_json.dll` 验证 history state，
+并依赖 `positron_script.dll` 持有脚本 context，但不依赖窗口、网络或 WM 控件。
 
-后续浏览器 JavaScript、DOM/Event bridge 和页面生命周期会逐步迁入此 DLL；窗口、传输、
-native EDIT/SELECT 和绘制调度仍由应用宿主负责。`test_host.exe` 只通过公共 API 组合和
-验证这些能力，不拥有产品 history 状态机。
+后续 bootstrap、DOM/Event/form/input/location 适配和页面生命周期会逐步迁入此 DLL；窗口、
+传输、native EDIT/SELECT 和绘制调度仍由应用宿主负责。`test_host.exe` 只通过公共 API 组合和
+验证这些能力，不拥有 product history 或 script context。
 
 ## 独立 JavaScript 与浏览器 JavaScript
 
@@ -119,13 +120,13 @@ native EDIT/SELECT 和绘制调度仍由应用宿主负责。`test_host.exe` 只
 “独立 JavaScript”指普通应用直接创建 `PScript` context，执行与网页无关的脚本。
 “浏览器 JavaScript”指产品浏览器层和宿主在显式开关开启时：
 
-1. `positron_browser` 从 `positron_core` 枚举 classic inline/external script；
-2. 使用 `positron_script` 的 `PScript` context 按 DOM 顺序执行；
-3. 由 browser layer 注册受限 native callback，把 DOM 查询/修改、事件、表单输入和导航映射给脚本；
-4. 宿主提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
+1. browser layer 持有 `positron_script` context，并按 DOM 顺序驱动 classic inline/external script；
+2. browser layer 通过稳定 JSON callback ABI 注册宿主提供的 DOM、事件、表单和导航适配；
+3. 后续把现有 bootstrap 和 callback 实现从 `test_host` 迁入 browser layer；
+4. 宿主继续提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
 
 因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
-history/session 已进入 `positron_browser.dll`，JavaScript bridge 仍在迁移中且默认关闭；
+history/session 与脚本 context 所有权已进入 `positron_browser.dll`，bootstrap/DOM bridge 仍在迁移中且默认关闭；
 不能将其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。
 
 ## ABI 与所有权原则

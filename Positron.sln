@@ -8,6 +8,7 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "positron_browser", "positron_browser\positron_browser.vcproj", "{F2C4A1B3-6D7E-4F80-91A2-B3C4D5E6F708}"
 	ProjectSection(ProjectDependencies) = postProject
 		{7AAAC227-9102-4214-A088-1D4A3D261D53} = {7AAAC227-9102-4214-A088-1D4A3D261D53}
+		{D4B7E3A1-8D10-4C1E-9A6B-0F2E3D4C5B6A} = {D4B7E3A1-8D10-4C1E-9A6B-0F2E3D4C5B6A}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "positron_script", "positron_script\positron_script.vcproj", "{D4B7E3A1-8D10-4C1E-9A6B-0F2E3D4C5B6A}"

@@ -1,10 +1,10 @@
 /*
  * positron_browser.h - product-level browser session primitives.
  *
- * This first public slice owns document history and same-origin state
- * transitions without depending on a window, network stack, DOM renderer or
- * JavaScript engine. A browser host can compose this DLL with positron_core,
- * positron_script and its own transport/UI callbacks.
+ * The first public slices own document history and browser-script session
+ * lifetime without depending on a window, network stack or DOM renderer. A
+ * browser host composes this DLL with positron_core, positron_script and its
+ * own transport/UI callbacks.
  *
  * All strings are UTF-8. History handles and returned strings are owned by
  * this DLL: callers destroy handles with PBrowser_HistoryDestroy and must not
@@ -38,6 +38,8 @@ extern "C" {
 
 #define PBROWSER_HISTORY_METHOD_OTHER 0
 #define PBROWSER_HISTORY_METHOD_GET 1
+
+#define PBROWSER_SCRIPT_MAX_FUNCTIONS 16
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -115,6 +117,45 @@ PBROWSER_API int PBrowser_HistoryNavigationIndex(HANDLE hHistory,
         const char *url, int method, int target_index);
 PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         const char *url, int method, int target_index);
+
+/* Synchronous JSON callback shape shared with positron_script. The callback
+ * runs on the caller's thread and must not re-enter or destroy its session.
+ * args_json and the output buffer are borrowed for the duration of the call;
+ * pw is the host-owned value supplied at registration time. */
+typedef int (*PBrowserScriptJsonFunctionFn)(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len);
+
+/* Browser script session. The session owns one PScript context and all
+ * registered native functions. It does not own a core document or any host
+ * callback pw value. Return codes from Evaluate/Call/Set/Register are the
+ * stable positron_script result codes; zero is success. */
+PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms);
+PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterJsonFunction(HANDLE hSession,
+        const char *name, PBrowserScriptJsonFunctionFn fn, void *pw);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterJsonFunction(HANDLE hSession,
+        const char *name);
+PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
+        const char *source, int source_len);
+PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
+        const char *name, const char *value);
+PBROWSER_API int PBrowser_ScriptSessionSetGlobalNumber(HANDLE hSession,
+        const char *name, double value);
+PBROWSER_API int PBrowser_ScriptSessionSetGlobalJson(HANDLE hSession,
+        const char *name, const char *value_json);
+PBROWSER_API int PBrowser_ScriptSessionCallGlobalJson(HANDLE hSession,
+        const char *name, const char *args_json);
+PBROWSER_API const char *PBrowser_ScriptSessionGetResult(HANDLE hSession);
+PBROWSER_API const char *PBrowser_ScriptSessionGetError(HANDLE hSession);
+PBROWSER_API unsigned long PBrowser_ScriptSessionNativeFunctionCount(
+        HANDLE hSession);
+
+/* Borrowed compatibility handle for consumers that still use read-only
+ * positron_script diagnostics during this migration. The returned HANDLE is
+ * owned by the browser session; callers must never pass it to PScript_Destroy
+ * or retain it after the session is destroyed. */
+PBROWSER_API HANDLE PBrowser_ScriptSessionRuntime(HANDLE hSession);
 
 #ifdef __cplusplus
 }
