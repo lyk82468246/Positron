@@ -241,6 +241,38 @@ typedef struct PBrowserScriptInputCallbacks {
     PBrowserScriptDispatchInputFn dispatch_input;
 } PBrowserScriptInputCallbacks;
 
+/* Typed host adapter for product-owned native keyboard events. The browser
+ * layer owns the keyboard-event contract and dispatch entry point; the host
+ * supplies core hit-testing/propagation for the document coordinates. x/y
+ * are borrowed document CSS pixels. event_type and key are non-empty UTF-8
+ * strings borrowed only for the synchronous callback. The adapter returns
+ * zero when core dispatch was attempted and writes 1 when the native default
+ * is allowed or 0 when a cancelable listener prevented it; a negative return
+ * reports an adapter failure. */
+typedef struct PBrowserScriptKeyEventInfo {
+    unsigned long size;
+    int x;
+    int y;
+    const char *event_type;
+    int bubbles;
+    int cancelable;
+    const char *key;
+    unsigned int key_code;
+    unsigned int char_code;
+    int repeat;
+    int shift;
+    int ctrl;
+    int alt;
+    int is_composing;
+} PBrowserScriptKeyEventInfo;
+typedef int (*PBrowserScriptDispatchKeyFn)(void *pw,
+        const PBrowserScriptKeyEventInfo *info, int *out_default_allowed);
+typedef struct PBrowserScriptKeyCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptDispatchKeyFn dispatch_key;
+} PBrowserScriptKeyCallbacks;
+
 /* Navigation operations understood by the browser bootstrap. The browser
  * DLL owns their JSON parsing and result encoding; a host adapter supplies
  * the navigation/history side effects. */
@@ -395,6 +427,14 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterInputCallbacks(
  * adapter. On success out_default_allowed is 1 or 0 as described above. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchInputEvent(HANDLE hSession,
         const PBrowserScriptInputEventInfo *info, int *out_default_allowed);
+PBROWSER_API int PBrowser_ScriptSessionRegisterKeyCallbacks(
+        HANDLE hSession, const PBrowserScriptKeyCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterKeyCallbacks(
+        HANDLE hSession);
+/* Dispatch one native keyboard event through the host's core adapter. On
+ * success out_default_allowed is 1 or 0 as described above. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchKeyEvent(HANDLE hSession,
+        const PBrowserScriptKeyEventInfo *info, int *out_default_allowed);
 PBROWSER_API int PBrowser_ScriptSessionRegisterNavigationCallbacks(
         HANDLE hSession,
         const PBrowserScriptNavigationCallbacks *callbacks);

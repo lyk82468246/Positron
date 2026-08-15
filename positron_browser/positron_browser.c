@@ -1168,6 +1168,10 @@ typedef struct p_browser_script_input_binding {
     PBrowserScriptInputCallbacks callbacks;
 } p_browser_script_input_binding;
 
+typedef struct p_browser_script_key_binding {
+    PBrowserScriptKeyCallbacks callbacks;
+} p_browser_script_key_binding;
+
 typedef struct p_browser_script_navigation_binding {
     PBrowserScriptNavigationCallbacks callbacks;
 } p_browser_script_navigation_binding;
@@ -1188,6 +1192,7 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_checked_binding *dom_checked;
     p_browser_script_form_binding *form;
     p_browser_script_input_binding *input;
+    p_browser_script_key_binding *key;
     p_browser_script_navigation_binding *navigation;
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
@@ -2312,6 +2317,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_checked = NULL;
     session->form = NULL;
     session->input = NULL;
+    session->key = NULL;
     session->navigation = NULL;
     session->dom_attribute = NULL;
     session->event = NULL;
@@ -2370,6 +2376,10 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     if (session->input != NULL) {
         free(session->input);
         session->input = NULL;
+    }
+    if (session->key != NULL) {
+        free(session->key);
+        session->key = NULL;
     }
     if (session->navigation != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -2834,6 +2844,77 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchInputEvent(HANDLE hSession,
     default_allowed = 1;
     rc = session->input->callbacks.dispatch_input(
             session->input->callbacks.pw, info, &default_allowed);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    *out_default_allowed = default_allowed ? 1 : 0;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterKeyCallbacks(
+        HANDLE hSession, const PBrowserScriptKeyCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_key_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptKeyCallbacks) ||
+            callbacks->dispatch_key == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->key != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_key_binding *) malloc(sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    session->key = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterKeyCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->key == NULL) {
+        return PSCRIPT_OK;
+    }
+    free(session->key);
+    session->key = NULL;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchKeyEvent(HANDLE hSession,
+        const PBrowserScriptKeyEventInfo *info, int *out_default_allowed)
+{
+    p_browser_script_session *session;
+    int default_allowed;
+    int rc;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->key == NULL ||
+            info == NULL ||
+            info->size < sizeof(PBrowserScriptKeyEventInfo) ||
+            info->event_type == NULL || info->event_type[0] == '\0' ||
+            !p_browser_script_event_type_safe(info->event_type) ||
+            info->key == NULL || info->key[0] == '\0' ||
+            out_default_allowed == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    default_allowed = 1;
+    rc = session->key->callbacks.dispatch_key(
+            session->key->callbacks.pw, info, &default_allowed);
     if (rc < 0) {
         return PSCRIPT_ERROR_NATIVE;
     }
