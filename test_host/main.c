@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 204
+#define TEST_MAX_NUMBER 205
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -5542,34 +5542,18 @@ static int pcore_browser_script_dom_has_element(void *pw, const char *id)
     return PCore_NodeExistsById(bridge->document, id);
 }
 
-static int pcore_browser_script_set_text(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_set_text(void *pw, const char *id,
+        const char *text)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    const char *text;
-    int changed;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    if (bridge == NULL || bridge->document == NULL || root == NULL) {
-        PJson_Free(root);
-        return 1;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            text == NULL) {
+        return -1;
     }
-    id = PJson_GetString(object, "id");
-    text = PJson_GetString(object, "text");
-    if (id == NULL || text == NULL) {
-        PJson_Free(root);
-        return 1;
-    }
-    changed = PCore_NodeSetTextContentById(bridge->document, id, text) == 0;
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(changed, out_json,
-            out_capacity, out_len);
+    return PCore_NodeSetTextContentById(bridge->document, id, text) == 0 ?
+            1 : 0;
 }
 
 static int pcore_browser_script_write_int(int value, char *out_json,
@@ -6923,6 +6907,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     HANDLE session;
     HANDLE runtime;
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
+    PBrowserScriptDomWriteCallbacks dom_write_callbacks;
     char *source;
     char *type;
     const char *data;
@@ -7003,6 +6988,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_read_callbacks.pw = bridge;
     dom_read_callbacks.has_element = pcore_browser_script_dom_has_element;
     dom_read_callbacks.get_text = pcore_browser_script_dom_get_text;
+    dom_write_callbacks.size = sizeof(dom_write_callbacks);
+    dom_write_callbacks.pw = bridge;
+    dom_write_callbacks.set_text = pcore_browser_script_dom_set_text;
     if (history_length < 1 || history_length > PCORE_BROWSE_HISTORY_MAX) {
         history_length = 1;
     }
@@ -7025,9 +7013,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             "__pcoreHistoryState", history_state_json) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomReadCallbacks(session,
             &dom_read_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreSetText", pcore_browser_script_set_text, bridge) !=
-            PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterDomWriteCallbacks(session,
+            &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterJsonFunction(session,
             "__pcoreGetAttribute", pcore_browser_script_get_attribute,
             bridge) != PSCRIPT_OK ||
@@ -36014,6 +36001,136 @@ static BOOL test204_browser_dom_read_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 205 - product DOM write callback adapter                         */
+/* -------------------------------------------------------------------- */
+typedef struct test205_dom_write_state {
+    char text[64];
+} test205_dom_write_state;
+
+static int test205_dom_set_text(void *pw, const char *id, const char *text)
+{
+    test205_dom_write_state *state;
+    size_t length;
+
+    state = (test205_dom_write_state *) pw;
+    if (state == NULL || id == NULL || text == NULL) {
+        return -1;
+    }
+    if (strcmp(id, "root") != 0) {
+        return 0;
+    }
+    length = strlen(text);
+    if (length >= sizeof(state->text)) {
+        return -1;
+    }
+    memcpy(state->text, text, length + 1);
+    return 1;
+}
+
+static BOOL test205_browser_dom_write_callbacks(void)
+{
+    PBrowserScriptDomWriteCallbacks callbacks;
+    test205_dom_write_state state;
+    HANDLE session;
+    const char *result;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&state, 0, sizeof(state));
+    memcpy(state.text, "before", sizeof("before"));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.set_text = test205_dom_set_text;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    result = NULL;
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterDomWriteCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterDomWriteCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 1;
+    }
+    if (ok) {
+        stage = "set-root";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session, "__pcoreSetText",
+                "[{\"id\":\"root\",\"text\":\"dom-write\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                strcmp(state.text, "dom-write") == 0;
+    }
+    if (ok) {
+        stage = "set-missing";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session, "__pcoreSetText",
+                "[{\"id\":\"missing\",\"text\":\"ignored\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0 &&
+                strcmp(state.text, "dom-write") == 0;
+    }
+    if (ok) {
+        stage = "invalid-args";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session, "__pcoreSetText",
+                "[]");
+        ok = rc != PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterDomWriteCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=%s",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session),
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=(null)",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session));
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 205 FAIL", error[0] != '\0' ? error :
+                "product DOM write callback adapter failed");
+        return FALSE;
+    }
+    show_info(L"TEST 205 OK",
+            "positron_browser.dll owns DOM write JSON dispatch; the host"
+            " supplies only a typed set-text adapter.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -40141,6 +40258,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 204: ok =
                 test204_browser_dom_read_callbacks();
+                break;
+        case 205: ok =
+                test205_browser_dom_write_callbacks();
                 break;
         default: ok = FALSE; break;
         }

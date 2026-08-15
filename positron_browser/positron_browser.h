@@ -144,6 +144,19 @@ typedef struct PBrowserScriptDomReadCallbacks {
     PBrowserScriptGetTextFn get_text;
 } PBrowserScriptDomReadCallbacks;
 
+/* Typed host adapters for the first product-owned DOM write callback. The
+ * browser DLL parses the JSON argument object and encodes the JSON result;
+ * the host only mutates its core document through this UTF-8 callback.
+ * set_text returns >0 when the target was updated, 0 when the target or
+ * operation was unavailable and <0 for an adapter error. */
+typedef int (*PBrowserScriptSetTextFn)(void *pw, const char *id,
+        const char *text);
+typedef struct PBrowserScriptDomWriteCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+} PBrowserScriptDomWriteCallbacks;
+
 /* Browser script session. The session owns one PScript context and all
  * registered native functions. It does not own a core document or any host
  * callback pw value. Return codes from Evaluate/Call/Set/Register are the
@@ -164,6 +177,10 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacks(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
         const char *name, const char *value);
