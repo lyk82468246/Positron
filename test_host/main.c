@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 208
+#define TEST_MAX_NUMBER 209
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -5890,55 +5890,30 @@ static int pcore_browser_script_set_default_value(void *pw,
             out_capacity, out_len);
 }
 
-static int pcore_browser_script_get_checked(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_get_checked(void *pw, const char *id,
+        int *out_checked)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    int checked;
-    int result;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    checked = 0;
-    result = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && PCore_NodeCheckedById(bridge->document, id,
-            &checked) == 0;
-    PJson_Free(root);
-    if (!result) {
-        return 1;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            out_checked == NULL) {
+        return -1;
     }
-    return pcore_browser_script_write_bool(checked, out_json,
-            out_capacity, out_len);
+    return PCore_NodeCheckedById(bridge->document, id, out_checked);
 }
 
-static int pcore_browser_script_set_checked(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_set_checked(void *pw, const char *id,
+        int checked)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    int checked;
-    int changed;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    checked = (object != NULL) ? PJson_GetInt(object, "checked") : 0;
-    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && PCore_NodeSetCheckedById(bridge->document, id,
-            checked) == 0;
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(changed, out_json,
-            out_capacity, out_len);
+    if (bridge == NULL || bridge->document == NULL || id == NULL) {
+        return -1;
+    }
+    return PCore_NodeSetCheckedById(bridge->document, id, checked) == 0 ?
+            1 : 0;
 }
 
 static int pcore_browser_script_get_default_checked(void *pw,
@@ -6742,6 +6717,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
+    PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     PBrowserScriptEventCallbacks event_callbacks;
     char *source;
@@ -6831,6 +6807,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_value_callbacks.pw = bridge;
     dom_value_callbacks.get_value = pcore_browser_script_dom_get_value;
     dom_value_callbacks.set_value = pcore_browser_script_dom_set_value;
+    dom_checked_callbacks.size = sizeof(dom_checked_callbacks);
+    dom_checked_callbacks.pw = bridge;
+    dom_checked_callbacks.get_checked = pcore_browser_script_dom_get_checked;
+    dom_checked_callbacks.set_checked = pcore_browser_script_dom_set_checked;
     dom_attribute_callbacks.size = sizeof(dom_attribute_callbacks);
     dom_attribute_callbacks.pw = bridge;
     dom_attribute_callbacks.get_attribute =
@@ -6870,16 +6850,12 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomValueCallbacks(session,
             &dom_value_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterDomCheckedCallbacks(session,
+            &dom_checked_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
             &dom_attribute_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEventCallbacks(session,
             &event_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreGetChecked", pcore_browser_script_get_checked, bridge) !=
-            PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreSetChecked", pcore_browser_script_set_checked, bridge) !=
-            PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterJsonFunction(session,
             "__pcoreFormProperty", pcore_browser_script_form_property,
             bridge) != PSCRIPT_OK ||
@@ -36625,6 +36601,180 @@ static BOOL test208_browser_dom_value_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 209 - product DOM checked callback adapter                       */
+/* -------------------------------------------------------------------- */
+typedef struct test209_dom_checked_state {
+    int checked;
+    int get_calls;
+    int set_calls;
+} test209_dom_checked_state;
+
+static int test209_dom_get_checked(void *pw, const char *id,
+        int *out_checked)
+{
+    test209_dom_checked_state *state;
+
+    state = (test209_dom_checked_state *) pw;
+    if (state == NULL || id == NULL || out_checked == NULL ||
+            strcmp(id, "check") != 0) {
+        return -1;
+    }
+    *out_checked = state->checked;
+    state->get_calls++;
+    return 0;
+}
+
+static int test209_dom_set_checked(void *pw, const char *id, int checked)
+{
+    test209_dom_checked_state *state;
+
+    state = (test209_dom_checked_state *) pw;
+    if (state == NULL || id == NULL) {
+        return -1;
+    }
+    if (strcmp(id, "check") != 0) {
+        return 0;
+    }
+    state->checked = checked ? 1 : 0;
+    state->set_calls++;
+    return 1;
+}
+
+static BOOL test209_browser_dom_checked_callbacks(void)
+{
+    PBrowserScriptDomCheckedCallbacks callbacks;
+    test209_dom_checked_state state;
+    HANDLE session;
+    const char *result;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&state, 0, sizeof(state));
+    state.checked = 1;
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.get_checked = test209_dom_get_checked;
+    callbacks.set_checked = test209_dom_set_checked;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    result = NULL;
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterDomCheckedCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterDomCheckedCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 2;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterDomCheckedCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "get-checked";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreGetChecked", "[{\"id\":\"check\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && state.get_calls == 1;
+    }
+    if (ok) {
+        stage = "set-unchecked";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreSetChecked",
+                "[{\"id\":\"check\",\"checked\":0}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && state.checked == 0 &&
+                state.set_calls == 1;
+    }
+    if (ok) {
+        stage = "get-unchecked";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreGetChecked", "[{\"id\":\"check\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0 && state.get_calls == 2;
+    }
+    if (ok) {
+        stage = "set-missing";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreSetChecked",
+                "[{\"id\":\"missing\",\"checked\":1}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0 && state.checked == 0;
+    }
+    if (ok) {
+        stage = "get-missing";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreGetChecked", "[{\"id\":\"missing\"}]");
+        ok = rc != PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "invalid-args";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreSetChecked", "[]");
+        ok = rc != PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0 &&
+                PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=%s",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session),
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=(null)",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session));
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 209 FAIL", error[0] != '\0' ? error :
+                "product DOM checked callback adapter failed");
+        return FALSE;
+    }
+    show_info(L"TEST 209 OK",
+            "positron_browser.dll owns DOM checked JSON dispatch; the host"
+            " supplies typed get/set checked adapters.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -40764,6 +40914,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 208: ok =
                 test208_browser_dom_value_callbacks();
+                break;
+        case 209: ok =
+                test209_browser_dom_checked_callbacks();
                 break;
         default: ok = FALSE; break;
         }

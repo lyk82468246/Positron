@@ -175,6 +175,23 @@ typedef struct PBrowserScriptDomValueCallbacks {
     PBrowserScriptSetValueFn set_value;
 } PBrowserScriptDomValueCallbacks;
 
+/* Typed host adapters for product-owned checked callbacks. The browser DLL
+ * parses and encodes the JSON checked requests; the host only reads or
+ * updates its core document through these callbacks. get_checked returns zero
+ * on success or a negative value on error. set_checked returns >0 when the
+ * target was updated, 0 when the target or operation was unavailable and <0
+ * on an adapter error. */
+typedef int (*PBrowserScriptGetCheckedFn)(void *pw, const char *id,
+        int *out_checked);
+typedef int (*PBrowserScriptSetCheckedFn)(void *pw, const char *id,
+        int checked);
+typedef struct PBrowserScriptDomCheckedCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetCheckedFn get_checked;
+    PBrowserScriptSetCheckedFn set_checked;
+} PBrowserScriptDomCheckedCallbacks;
+
 /* Typed host adapters for product-owned DOM attribute callbacks. The
  * browser DLL parses and encodes JSON. get_attribute returns 0 when an
  * attribute is present, 1 when it is absent and <0 on error; its out_len
@@ -267,6 +284,10 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomValueCallbacks(
         HANDLE hSession, const PBrowserScriptDomValueCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomValueCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomCheckedCallbacks(
+        HANDLE hSession, const PBrowserScriptDomCheckedCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
         HANDLE hSession,

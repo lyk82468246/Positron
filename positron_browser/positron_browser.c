@@ -1156,6 +1156,10 @@ typedef struct p_browser_script_dom_value_binding {
     PBrowserScriptDomValueCallbacks callbacks;
 } p_browser_script_dom_value_binding;
 
+typedef struct p_browser_script_dom_checked_binding {
+    PBrowserScriptDomCheckedCallbacks callbacks;
+} p_browser_script_dom_checked_binding;
+
 typedef struct p_browser_script_dom_attribute_binding {
     PBrowserScriptDomAttributeCallbacks callbacks;
 } p_browser_script_dom_attribute_binding;
@@ -1169,6 +1173,7 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_read_binding *dom_read;
     p_browser_script_dom_write_binding *dom_write;
     p_browser_script_dom_value_binding *dom_value;
+    p_browser_script_dom_checked_binding *dom_checked;
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
 } p_browser_script_session;
@@ -1587,6 +1592,65 @@ static int p_browser_script_dom_set_value(void *pw,
             out_capacity, out_len);
 }
 
+static int p_browser_script_dom_get_checked(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_dom_checked_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int checked;
+    int result;
+
+    binding = (p_browser_script_dom_checked_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = 0;
+    result = binding != NULL && root != NULL && id != NULL &&
+            binding->callbacks.get_checked != NULL &&
+            binding->callbacks.get_checked(binding->callbacks.pw, id,
+            &checked) == 0;
+    PJson_Free(root);
+    if (!result) {
+        return 1;
+    }
+    return p_browser_script_write_bool(checked != 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_dom_set_checked(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_dom_checked_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int checked;
+    int changed;
+
+    binding = (p_browser_script_dom_checked_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = (object != NULL) ? PJson_GetInt(object, "checked") : 0;
+    if (binding == NULL || root == NULL || id == NULL ||
+            binding->callbacks.set_checked == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    changed = binding->callbacks.set_checked(binding->callbacks.pw, id,
+            checked ? 1 : 0);
+    PJson_Free(root);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
 static int p_browser_script_dom_get_attribute(void *pw,
         const char *args_json, int args_len, char *out_json,
         int out_capacity, int *out_len)
@@ -1797,6 +1861,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_read = NULL;
     session->dom_write = NULL;
     session->dom_value = NULL;
+    session->dom_checked = NULL;
     session->dom_attribute = NULL;
     session->event = NULL;
     session->runtime = PScript_Create(budget_ms);
@@ -1836,6 +1901,14 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreSetValue", -1);
         free(session->dom_value);
         session->dom_value = NULL;
+    }
+    if (session->dom_checked != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetChecked", -1);
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreSetChecked", -1);
+        free(session->dom_checked);
+        session->dom_checked = NULL;
     }
     if (session->dom_attribute != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -2078,6 +2151,72 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomValueCallbacks(
             "__pcoreSetValue", -1);
     free(session->dom_value);
     session->dom_value = NULL;
+    return (rc != PSCRIPT_OK) ? rc : second_rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomCheckedCallbacks(
+        HANDLE hSession, const PBrowserScriptDomCheckedCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_checked_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomCheckedCallbacks) ||
+            callbacks->get_checked == NULL ||
+            callbacks->set_checked == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_checked != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_checked_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetChecked", -1, p_browser_script_dom_get_checked,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetChecked", -1, p_browser_script_dom_set_checked,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetChecked", -1);
+        free(binding);
+        return rc;
+    }
+    session->dom_checked = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+    int second_rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_checked == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetChecked", -1);
+    second_rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetChecked", -1);
+    free(session->dom_checked);
+    session->dom_checked = NULL;
     return (rc != PSCRIPT_OK) ? rc : second_rc;
 }
 
