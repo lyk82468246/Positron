@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 205
+#define TEST_MAX_NUMBER 206
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -5727,17 +5727,6 @@ static int pcore_browser_script_write_string(const char *value,
     return 0;
 }
 
-static int pcore_browser_script_write_null(char *out_json,
-        int out_capacity, int *out_len)
-{
-    if (out_json == NULL || out_len == NULL || out_capacity < 5) {
-        return 1;
-    }
-    memcpy(out_json, "null", 5);
-    *out_len = 4;
-    return 0;
-}
-
 static int pcore_browser_script_dom_get_text(void *pw, const char *id,
         char *out_text, int out_capacity, int *out_len)
 {
@@ -5758,106 +5747,56 @@ static int pcore_browser_script_dom_get_text(void *pw, const char *id,
             out_capacity, out_len);
 }
 
-static int pcore_browser_script_get_attribute(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_get_attribute(void *pw, const char *id,
+        const char *name, char *out_value, int out_capacity, int *out_len)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    const char *name;
-    char *value;
-    int bytes;
     int status;
-    int result;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
-    bytes = 0;
-    value = NULL;
-    if (bridge == NULL || bridge->document == NULL || root == NULL ||
-            id == NULL || name == NULL) {
-        PJson_Free(root);
-        return 1;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            name == NULL || out_len == NULL || out_capacity < 0 ||
+            (out_value == NULL && out_capacity != 0) ||
+            (out_value != NULL && out_capacity <= 0)) {
+        return -1;
     }
     status = PCore_NodeAttributeById(bridge->document, id, name,
-            NULL, 0, &bytes);
+            out_value, out_capacity, out_len);
     if (status == 2) {
-        PJson_Free(root);
-        return pcore_browser_script_write_null(out_json, out_capacity,
-                out_len);
-    }
-    if (status != 0 || bytes < 0 || bytes > 65535) {
-        PJson_Free(root);
         return 1;
     }
-    value = (char *) malloc((size_t) bytes + 1);
-    if (value == NULL || PCore_NodeAttributeById(bridge->document, id,
-            name, value, bytes + 1, &bytes) != 0) {
-        free(value);
-        PJson_Free(root);
-        return 1;
+    if (status != 0) {
+        return -1;
     }
-    result = pcore_browser_script_write_string(value, out_json,
-            out_capacity, out_len);
-    free(value);
-    PJson_Free(root);
-    return result;
+    return 0;
 }
 
-static int pcore_browser_script_set_attribute(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_set_attribute(void *pw, const char *id,
+        const char *name, const char *value)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    const char *name;
-    const char *value;
-    int changed;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
-    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
-    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && name != NULL && value != NULL &&
-            PCore_NodeSetAttributeById(bridge->document, id, name,
-            value) == 0;
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(changed, out_json,
-            out_capacity, out_len);
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            name == NULL || value == NULL) {
+        return -1;
+    }
+    return PCore_NodeSetAttributeById(bridge->document, id, name, value) == 0 ?
+            1 : 0;
 }
 
-static int pcore_browser_script_remove_attribute(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_remove_attribute(void *pw,
+        const char *id, const char *name)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    const char *name;
-    int changed;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
-    changed = bridge != NULL && bridge->document != NULL && root != NULL &&
-            id != NULL && name != NULL &&
-            PCore_NodeRemoveAttributeById(bridge->document, id, name) == 0;
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(changed, out_json,
-            out_capacity, out_len);
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            name == NULL) {
+        return -1;
+    }
+    return PCore_NodeRemoveAttributeById(bridge->document, id, name) == 0 ?
+            1 : 0;
 }
 
 static int pcore_browser_script_get_value(void *pw,
@@ -6908,6 +6847,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     HANDLE runtime;
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
+    PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     char *source;
     char *type;
     const char *data;
@@ -6991,6 +6931,14 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_write_callbacks.size = sizeof(dom_write_callbacks);
     dom_write_callbacks.pw = bridge;
     dom_write_callbacks.set_text = pcore_browser_script_dom_set_text;
+    dom_attribute_callbacks.size = sizeof(dom_attribute_callbacks);
+    dom_attribute_callbacks.pw = bridge;
+    dom_attribute_callbacks.get_attribute =
+            pcore_browser_script_dom_get_attribute;
+    dom_attribute_callbacks.set_attribute =
+            pcore_browser_script_dom_set_attribute;
+    dom_attribute_callbacks.remove_attribute =
+            pcore_browser_script_dom_remove_attribute;
     if (history_length < 1 || history_length > PCORE_BROWSE_HISTORY_MAX) {
         history_length = 1;
     }
@@ -7015,15 +6963,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacks(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreGetAttribute", pcore_browser_script_get_attribute,
-            bridge) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreSetAttribute", pcore_browser_script_set_attribute,
-            bridge) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreRemoveAttribute", pcore_browser_script_remove_attribute,
-            bridge) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
+            &dom_attribute_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterJsonFunction(session,
             "__pcoreGetValue", pcore_browser_script_get_value, bridge) !=
             PSCRIPT_OK ||
@@ -36131,6 +36072,218 @@ static BOOL test205_browser_dom_write_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 206 - product DOM attribute callback adapter                     */
+/* -------------------------------------------------------------------- */
+typedef struct test206_dom_attribute_state {
+    char value[64];
+    int present;
+} test206_dom_attribute_state;
+
+static int test206_dom_get_attribute(void *pw, const char *id,
+        const char *name, char *out_value, int out_capacity, int *out_len)
+{
+    test206_dom_attribute_state *state;
+    int length;
+
+    state = (test206_dom_attribute_state *) pw;
+    if (state == NULL || id == NULL || name == NULL || out_len == NULL ||
+            out_capacity < 0 ||
+            (out_value == NULL && out_capacity != 0) ||
+            (out_value != NULL && out_capacity <= 0)) {
+        return -1;
+    }
+    if (strcmp(id, "root") != 0) {
+        return -1;
+    }
+    if (strcmp(name, "data-x") != 0 || !state->present) {
+        *out_len = 0;
+        return 1;
+    }
+    length = (int) strlen(state->value);
+    if (out_value == NULL) {
+        *out_len = length;
+        return 0;
+    }
+    if (out_capacity <= length) {
+        return -1;
+    }
+    memcpy(out_value, state->value, (size_t) length + 1);
+    *out_len = length;
+    return 0;
+}
+
+static int test206_dom_set_attribute(void *pw, const char *id,
+        const char *name, const char *value)
+{
+    test206_dom_attribute_state *state;
+    size_t length;
+
+    state = (test206_dom_attribute_state *) pw;
+    if (state == NULL || id == NULL || name == NULL || value == NULL) {
+        return -1;
+    }
+    if (strcmp(id, "root") != 0 || strcmp(name, "data-x") != 0) {
+        return 0;
+    }
+    length = strlen(value);
+    if (length >= sizeof(state->value)) {
+        return -1;
+    }
+    memcpy(state->value, value, length + 1);
+    state->present = 1;
+    return 1;
+}
+
+static int test206_dom_remove_attribute(void *pw, const char *id,
+        const char *name)
+{
+    test206_dom_attribute_state *state;
+
+    state = (test206_dom_attribute_state *) pw;
+    if (state == NULL || id == NULL || name == NULL) {
+        return -1;
+    }
+    if (strcmp(id, "root") != 0 || strcmp(name, "data-x") != 0) {
+        return 0;
+    }
+    state->value[0] = '\0';
+    state->present = 0;
+    return 1;
+}
+
+static BOOL test206_browser_dom_attribute_callbacks(void)
+{
+    PBrowserScriptDomAttributeCallbacks callbacks;
+    test206_dom_attribute_state state;
+    HANDLE session;
+    const char *result;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.get_attribute = test206_dom_get_attribute;
+    callbacks.set_attribute = test206_dom_set_attribute;
+    callbacks.remove_attribute = test206_dom_remove_attribute;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    result = NULL;
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterDomAttributeCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 3;
+    }
+    if (ok) {
+        stage = "get-missing-attribute";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreGetAttribute",
+                "[{\"id\":\"root\",\"name\":\"data-x\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "null") == 0;
+    }
+    if (ok) {
+        stage = "set-attribute";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreSetAttribute",
+                "[{\"id\":\"root\",\"name\":\"data-x\","
+                "\"value\":\"one\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && state.present &&
+                strcmp(state.value, "one") == 0;
+    }
+    if (ok) {
+        stage = "get-attribute";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreGetAttribute",
+                "[{\"id\":\"root\",\"name\":\"data-x\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "\"one\"") == 0;
+    }
+    if (ok) {
+        stage = "remove-attribute";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreRemoveAttribute",
+                "[{\"id\":\"root\",\"name\":\"data-x\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && !state.present;
+    }
+    if (ok) {
+        stage = "invalid-set";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreSetAttribute", "[]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0;
+    }
+    if (ok) {
+        stage = "invalid-get";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreGetAttribute", "[]");
+        ok = rc != PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterDomAttributeCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=%s",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session),
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=(null)",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session));
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 206 FAIL", error[0] != '\0' ? error :
+                "product DOM attribute callback adapter failed");
+        return FALSE;
+    }
+    show_info(L"TEST 206 OK",
+            "positron_browser.dll owns DOM attribute JSON dispatch; the host"
+            " supplies typed get/set/remove adapters.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -40261,6 +40414,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 205: ok =
                 test205_browser_dom_write_callbacks();
+                break;
+        case 206: ok =
+                test206_browser_dom_attribute_callbacks();
                 break;
         default: ok = FALSE; break;
         }

@@ -9,45 +9,45 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next238。
-- next238 批次在 `positron_browser/` 产品 DLL 中加入 textContent 写入 callback 的 typed adapter
-  与 JSON 分发；next237 的 DOM 只读 callback、next236 的产品 bootstrap 文本与求值入口、next235
-  的浏览器脚本 session 所有权与 host JSON callback 注册均保持通过；`test_host` 适配与工程接线继续使用当前
+- 最新已验证产品基线：next239。
+- next239 批次在 `positron_browser/` 产品 DLL 中加入 DOM attribute 三件套 callback 的 typed adapter
+  与 JSON 分发；next238 的 textContent 写入、next237 的 DOM 只读 callback、next236 的产品 bootstrap
+  文本与求值入口、next235 的浏览器脚本 session 所有权与 host JSON callback 注册均保持通过；`test_host` 适配与工程接线继续使用当前
   WMDC/RAPI 会话的 `scripts/device_gate.bat`、`scripts/device_gate.ps1`，环境修复脚本为
   `scripts/repair_wmdc_rapi.*`。
 - 当前工作区的 `test_host/test_host.ini` 保持自动模式：`auto=1`、`javascript=0`、
   `tests=13,20,27,56,58,62,64-67,73,75,999`。这是窄的自动 smoke 选择，不是完整基线；
-- 153 项自动 next238 全量证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
+- 154 项自动 next239 全量证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
   验收结束后恢复为 1。
-- 本地设备证据位于 `tmp/device-runs/20260815-114028-next238-dom-write-final-full/`；TEST205 定向证据位于
-  `tmp/device-runs/20260815-113823-next238-dom-write-stage2/`，DOM bridge 回归证据位于
-  `tmp/device-runs/20260815-113917-next238-dom-write-regression/`。`tmp/` 不跟踪，干净 clone 中没有该日志，
+- 本地设备证据位于 `tmp/device-runs/20260815-121338-next239-dom-attribute-final-full/`；TEST206 定向证据位于
+  `tmp/device-runs/20260815-121141-next239-dom-attribute-stage2/`，DOM bridge 回归证据位于
+  `tmp/device-runs/20260815-121231-next239-dom-attribute-regression/`。`tmp/` 不跟踪，干净 clone 中没有该日志，
   不能据此假定新环境也已经连接或通过。
 
 接管时仍须重新运行 `git status --short --branch` 和 `git diff`；以上列表不是 Git 的替代品。
 
 ## 最近已验证设备证据
 
-### 最新全量检查点：next238
+### 最新全量检查点：next239
 
-- 配置：`TEST13/20/27/43/44/56/58-77/80-205/999`，共 153 项。
+- 配置：`TEST13/20/27/43/44/56/58-77/80-206/999`，共 154 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=320x320 dpi=128`。
 - 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
   Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
-- 结果：153 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、零 `FAIL`、
+- 结果：154 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、零 `FAIL`、
   唯一 `TESTBENCH PASS`，`completion_marker=PASS`，`test13_route_ok=True`。
 - TEST13：example.com、IANA Example Domains、Reserved Domains 三段导航均 `completed=1`；
   TEST204 直接验证 product DOM read JSON dispatch；TEST205 直接验证 product DOM write JSON
-  dispatch、typed set-text adapter 和注销。
+  dispatch；TEST206 直接验证 product DOM attribute JSON dispatch、typed get/set/remove adapters 和注销。
 - 产品边界：`positron_browser.dll` 现在拥有 PScript context、callback 注册/调用生命周期、browser
-  bootstrap 文本/求值入口、DOM 只读和 textContent 写入 JSON 分发；`test_host` 仅保留 typed
-  core/document adapter，DOM attribute/Event/form/input/location/navigation callback 实现仍在宿主，
-  产品 session 是唯一销毁者，下一批迁移 attribute callback。
+  bootstrap 文本/求值入口、DOM 只读、textContent 写入和 attribute JSON 分发；`test_host` 仅保留
+  typed core/document adapter，Event/form/input/location/navigation callback 实现仍在宿主，产品
+  session 是唯一销毁者，下一批迁移事件/表单/输入/导航 callback。
 - 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I Debug
-  正式构建、隔离 staging/部署、SHA-256 清单和日志自动判门均通过。直接 `TEST205/999` 证据位于
-  `tmp/device-runs/20260815-113823-next238-dom-write-stage2/`，`TEST112-135/137-152/189-205/999`
-  （58 项）位于 `tmp/device-runs/20260815-113917-next238-dom-write-regression/`，全量证据位于
-  `tmp/device-runs/20260815-114028-next238-dom-write-final-full/`。
+  正式构建、隔离 staging/部署、SHA-256 清单和日志自动判门均通过。直接 `TEST206/999` 证据位于
+  `tmp/device-runs/20260815-121141-next239-dom-attribute-stage2/`，`TEST112-135/137-152/189-206/999`
+  （59 项）位于 `tmp/device-runs/20260815-121231-next239-dom-attribute-regression/`，全量证据位于
+  `tmp/device-runs/20260815-121338-next239-dom-attribute-final-full/`。
 
 ### 上一全量检查点：next236
 
@@ -362,19 +362,44 @@ state、length、traversal、popstate/hashchange 行为可预测。编码 dot se
 - TEST13 三段真实导航、TEST205 product DOM write、零 `ERROR`、零 `FAIL`、唯一
   `TESTBENCH PASS`；最新证据路径见本文件顶部。
 
+## 已关闭批次：next239
+
+目标：把 `__pcoreGetAttribute`、`__pcoreSetAttribute` 和 `__pcoreRemoveAttribute` 的 DOM
+attribute JSON callback 分发从 `test_host/main.c` 迁入 `positron_browser.dll`，让宿主只提供
+typed document adapter，同时保持现有 bootstrap、页面脚本和 core ABI 行为不变。
+
+实现边界：
+
+- `positron_browser.dll` 新增 size-tagged `PBrowserScriptDomAttributeCallbacks` 及注册/注销 API，
+  负责解析 `{id,name,value}` 参数、处理 getter 的 `null`/字符串结果、调用 typed get/set/remove
+  adapter、校验 probe 长度并编码 JSON 结果；attribute 绑定随 script session 创建和销毁。
+- `test_host` 删除三个 attribute JSON 实现，只保留 `PCore_NodeAttributeById`、
+  `PCore_NodeSetAttributeById`、`PCore_NodeRemoveAttributeById` 的 typed adapter；Event/form/input/
+  location/navigation callback 仍留在宿主，未扩大本批范围。
+- TEST206 直接验证参数错误、typed callback 注册、native callback 数量、属性缺失/设置/读取/删除、
+  setter false 语义和注销；默认 `javascript=0`、TEST13 和人工验收流程不变。
+
+已经核验并提升为基线：
+
+- `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`；
+- VS2008 ARMV4I Debug 正式构建；
+- 定向 `TEST206/999`（2 项）、`TEST112-135/137-152/189-206/999`（59 项）和全量
+  `TEST13/20/27/43/44/56/58-77/80-206/999`（154 项）WMDC/RAPI 设备门；
+- TEST13 三段真实导航、TEST206 product DOM attribute、零 `ERROR`、零 `FAIL`、唯一
+  `TESTBENCH PASS`；最新证据路径见本文件顶部。
+
 ## 唯一下一步
 
-在 next238 基线之上，把 `__pcoreGetAttribute`、`__pcoreSetAttribute` 和
-`__pcoreRemoveAttribute` 的 DOM attribute callback 实现从 `test_host/main.c` 迁入
-`positron_browser.dll`，先保持现有 public core/script ABI 和宿主回调边界，不把窗口、网络或
-完整 URL parser 一起迁入；继续保留 TEST13 和人工视觉/输入累计门。
+在 next239 基线之上，把 Event、form/input、location/navigation callback 实现从
+`test_host/main.c` 迁入 `positron_browser.dll`，先保持现有 public core/script ABI 和宿主回调边界，
+不把窗口、网络或完整 URL parser 一起迁入；继续保留 TEST13 和人工视觉/输入累计门。
 
 完成标准：
 
-- next238 的 153 项自动 gate、TEST205/999 和 DOM-write 定向 gate、C89、审计和正式构建均保持通过；
+- next239 的 154 项自动 gate、TEST206/999 和 DOM-attribute 定向 gate、C89、审计和正式构建均保持通过；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
-- 下一批为 DOM attribute 产品边界增加成功/缺失/非法参数、资源关闭、页面脚本和旧页面回归断言，
-  并通过定向后全量设备门；
+- 下一批为 Event/form/input/location/navigation 产品边界增加成功/缺失/非法参数、资源关闭、页面脚本
+  和旧页面回归断言，并通过定向后全量设备门；
 - 若出现崩溃、数据损坏、严重布局破坏或核心交互阻塞，立即停止累计并进入 debug；
 - 候选通过后覆写本文件，并从路线图中选择下一个单一代码能力。

@@ -13,10 +13,10 @@
 - 默认 `javascript=0`。
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
-  textContent 读取）和 textContent 写入 JSON 分发；显式开启时仍有 classic inline/external script、
-  页面 context，以及一套尚在宿主迁移中的 attribute、Event、form、input、location 和 history bridge。
+  textContent 读取）、textContent 写入和 attribute JSON 分发；显式开启时仍有 classic inline/external
+  script、页面 context，以及一套尚在宿主迁移中的 Event、form、input、location 和 history bridge。
 
-尚未完成：完整 DOM/window、DOM attribute/Event/form/input/location/navigation callback 实现、module、
+尚未完成：完整 DOM/window、Event/form/input/location/navigation callback 实现、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
 实现位于 `test_host/main.c`，尚未成为可供正式浏览器应用复用的 browser-layer API。
 
@@ -148,8 +148,10 @@ HTTP 的 `:80`/无端口和 HTTPS 的 `:443`/无端口同源等价已由 next229
 `TEST189-204,999`（17 项）定向门和 `TEST13/20/27/43/44/56/58-77/80-204/999`（152 项）
 全量门验证；textContent 写入 callback 已由 next238 的 TEST205、
 `TEST112-135,137-152,189-205,999`（58 项）定向门和
-`TEST13/20/27/43/44/56/58-77/80-205/999`（153 项）全量门验证，DOM attribute、Event/form/
-input/location/navigation callback 实现仍在宿主，尚未计入产品层完成项。
+`TEST13/20/27/43/44/56/58-77/80-205/999`（153 项）全量门验证；DOM attribute callback 已由
+next239 的 TEST206、`TEST112-135,137-152,189-206,999`（59 项）定向门和
+`TEST13/20/27/43/44/56/58-77/80-206/999`（154 项）全量门验证，Event/form/input/location/
+navigation callback 实现仍在宿主，尚未计入产品层完成项。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；

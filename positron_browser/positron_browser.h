@@ -157,6 +157,26 @@ typedef struct PBrowserScriptDomWriteCallbacks {
     PBrowserScriptSetTextFn set_text;
 } PBrowserScriptDomWriteCallbacks;
 
+/* Typed host adapters for product-owned DOM attribute callbacks. The
+ * browser DLL parses and encodes JSON. get_attribute returns 0 when an
+ * attribute is present, 1 when it is absent and <0 on error; its out_len
+ * excludes the trailing NUL and follows the same probe contract as
+ * PBrowserScriptGetTextFn. set_attribute/remove_attribute return >0 on
+ * success, 0 when the target or operation is unavailable and <0 on error. */
+typedef int (*PBrowserScriptGetAttributeFn)(void *pw, const char *id,
+        const char *name, char *out_value, int out_capacity, int *out_len);
+typedef int (*PBrowserScriptSetAttributeFn)(void *pw, const char *id,
+        const char *name, const char *value);
+typedef int (*PBrowserScriptRemoveAttributeFn)(void *pw, const char *id,
+        const char *name);
+typedef struct PBrowserScriptDomAttributeCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetAttributeFn get_attribute;
+    PBrowserScriptSetAttributeFn set_attribute;
+    PBrowserScriptRemoveAttributeFn remove_attribute;
+} PBrowserScriptDomAttributeCallbacks;
+
 /* Browser script session. The session owns one PScript context and all
  * registered native functions. It does not own a core document or any host
  * callback pw value. Return codes from Evaluate/Call/Set/Register are the
@@ -181,6 +201,11 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacks(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptDomAttributeCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomAttributeCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
         const char *name, const char *value);

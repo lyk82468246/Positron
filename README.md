@@ -17,7 +17,7 @@ DLL 之上建设轻量浏览器与应用运行时。
 | `positron_image.dll` | BMP/PNG/JPEG/GIF、SVG、像素缓冲和编码 | 设备位图格式依赖 WM Imaging codec；SVG 是受限子集 |
 | `positron_script.dll` | 独立 JavaScript 执行服务 | Duktape 2.7.0；有时间、内存、源码和 native callback 上限 |
 | `positron_core.dll` | HTML/DOM、CSS、布局、绘制、命中、表单和资源发现 | 基于移植的 NetSurf 3.11 组件；网页兼容性仍在扩展 |
-| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap 和 DOM 读写回调组合层 | 不拥有窗口、网络；attribute、Event/form/input/location/navigation bridge 仍在迁移 |
+| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap 和 DOM 读写/attribute 回调组合层 | 不拥有窗口、网络；Event/form/input/location/navigation bridge 仍在迁移 |
 
 所有公共接口都使用稳定 C ABI、UTF-8 字符串、opaque handle 和明确的释放函数。NetSurf、
 Duktape、Mbed TLS 等实现细节不暴露给调用者。
@@ -36,8 +36,8 @@ Duktape、Mbed TLS 等实现细节不暴露给调用者。
 浏览器 JavaScript 默认关闭。`positron_script.dll` 是独立的 JavaScript 引擎封装；浏览器
 运行时由 `positron_browser.dll` 与 `positron_core.dll`、`positron_script.dll` 及宿主回调
 组合。目前 history/session、浏览器脚本 context 的所有权、host JSON callback 注册、browser
-bootstrap、DOM 只读（按 id 查询与 textContent 读取）和 textContent 写入回调分发已迁入；
-attribute、Event/form/input/location/navigation 适配仍在迁移中。它不是第二套引擎。
+bootstrap、DOM 只读（按 id 查询与 textContent 读取）、textContent 写入和 attribute 回调分发已迁入；
+Event/form/input/location/navigation 适配仍在迁移中。它不是第二套引擎。
 两者的关系和所有权见
 [架构说明](docs/ARCHITECTURE.md)。
 

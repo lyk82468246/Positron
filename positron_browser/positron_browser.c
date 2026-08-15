@@ -1152,10 +1152,15 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptDomWriteCallbacks callbacks;
 } p_browser_script_dom_write_binding;
 
+typedef struct p_browser_script_dom_attribute_binding {
+    PBrowserScriptDomAttributeCallbacks callbacks;
+} p_browser_script_dom_attribute_binding;
+
 typedef struct p_browser_script_session {
     HANDLE runtime;
     p_browser_script_dom_read_binding *dom_read;
     p_browser_script_dom_write_binding *dom_write;
+    p_browser_script_dom_attribute_binding *dom_attribute;
 } p_browser_script_session;
 
 static p_browser_script_session *p_script_session(HANDLE hSession)
@@ -1219,6 +1224,17 @@ static int p_browser_script_write_bool(int value, char *out_json,
     }
     memcpy(out_json, word, (size_t) length + 1);
     *out_len = length;
+    return 0;
+}
+
+static int p_browser_script_write_null(char *out_json, int out_capacity,
+        int *out_len)
+{
+    if (out_json == NULL || out_len == NULL || out_capacity < 5) {
+        return 1;
+    }
+    memcpy(out_json, "null", 5);
+    *out_len = 4;
     return 0;
 }
 
@@ -1443,6 +1459,139 @@ static int p_browser_script_dom_set_text(void *pw,
             out_capacity, out_len);
 }
 
+static int p_browser_script_dom_get_attribute(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_dom_attribute_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *name;
+    char *value;
+    int allocated_len;
+    int value_len;
+    int status;
+    int result;
+
+    binding = (p_browser_script_dom_attribute_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
+    value = NULL;
+    value_len = 0;
+    if (binding == NULL || root == NULL || id == NULL || name == NULL ||
+            binding->callbacks.get_attribute == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    status = binding->callbacks.get_attribute(binding->callbacks.pw, id,
+            name, NULL, 0, &value_len);
+    if (status == 1) {
+        PJson_Free(root);
+        return p_browser_script_write_null(out_json, out_capacity,
+                out_len);
+    }
+    if (status != 0 || value_len < 0 ||
+            value_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+        PJson_Free(root);
+        return 1;
+    }
+    allocated_len = value_len;
+    value = (char *) malloc((size_t) allocated_len + 1);
+    if (value == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    status = binding->callbacks.get_attribute(binding->callbacks.pw, id,
+            name, value, allocated_len + 1, &value_len);
+    if (status != 0 || value_len < 0 || value_len > allocated_len ||
+            value_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+        free(value);
+        PJson_Free(root);
+        return 1;
+    }
+    value[value_len] = '\0';
+    result = p_browser_script_write_string(value, out_json,
+            out_capacity, out_len);
+    free(value);
+    PJson_Free(root);
+    return result;
+}
+
+static int p_browser_script_dom_set_attribute(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_dom_attribute_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *name;
+    const char *value;
+    int changed;
+
+    binding = (p_browser_script_dom_attribute_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
+    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
+    if (binding == NULL || binding->callbacks.set_attribute == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    if (root == NULL || id == NULL || name == NULL || value == NULL) {
+        PJson_Free(root);
+        return p_browser_script_write_bool(0, out_json, out_capacity,
+                out_len);
+    }
+    changed = binding->callbacks.set_attribute(binding->callbacks.pw, id,
+            name, value);
+    PJson_Free(root);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_dom_remove_attribute(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_dom_attribute_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *name;
+    int changed;
+
+    binding = (p_browser_script_dom_attribute_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
+    if (binding == NULL || binding->callbacks.remove_attribute == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    if (root == NULL || id == NULL || name == NULL) {
+        PJson_Free(root);
+        return p_browser_script_write_bool(0, out_json, out_capacity,
+                out_len);
+    }
+    changed = binding->callbacks.remove_attribute(binding->callbacks.pw,
+            id, name);
+    PJson_Free(root);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
 PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
 {
     p_browser_script_session *session;
@@ -1453,6 +1602,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     }
     session->dom_read = NULL;
     session->dom_write = NULL;
+    session->dom_attribute = NULL;
     session->runtime = PScript_Create(budget_ms);
     if (session->runtime == NULL) {
         free(session);
@@ -1482,6 +1632,16 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreSetText", -1);
         free(session->dom_write);
         session->dom_write = NULL;
+    }
+    if (session->dom_attribute != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetAttribute", -1);
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreSetAttribute", -1);
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreRemoveAttribute", -1);
+        free(session->dom_attribute);
+        session->dom_attribute = NULL;
     }
     PScript_Destroy(session->runtime);
     session->runtime = NULL;
@@ -1642,6 +1802,91 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
     free(session->dom_write);
     session->dom_write = NULL;
     return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptDomAttributeCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_attribute_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomAttributeCallbacks) ||
+            callbacks->get_attribute == NULL ||
+            callbacks->set_attribute == NULL ||
+            callbacks->remove_attribute == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_attribute != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_attribute_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetAttribute", -1, p_browser_script_dom_get_attribute,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetAttribute", -1, p_browser_script_dom_set_attribute,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetAttribute", -1);
+        free(binding);
+        return rc;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreRemoveAttribute", -1,
+            p_browser_script_dom_remove_attribute, binding);
+    if (rc != PSCRIPT_OK) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetAttribute", -1);
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreSetAttribute", -1);
+        free(binding);
+        return rc;
+    }
+    session->dom_attribute = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomAttributeCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+    int second_rc;
+    int third_rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_attribute == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetAttribute", -1);
+    second_rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetAttribute", -1);
+    third_rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreRemoveAttribute", -1);
+    free(session->dom_attribute);
+    session->dom_attribute = NULL;
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    return (second_rc != PSCRIPT_OK) ? second_rc : third_rc;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
