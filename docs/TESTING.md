@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next245）
+### 当前默认自动选择与人工验收包（next246）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -62,8 +62,8 @@ javascript=0
 tests=13,20,27,56,58,62,64-67,73,75,999
 ```
 
-这是窄的自动 smoke 选择，不是完整自动回归基线。自动 next245 候选基线是
-`auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-212,999`，设备 gate
+这是窄的自动 smoke 选择，不是完整自动回归基线。自动 next246 候选基线是
+`auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-213,999`，设备 gate
 通过 `-TestSelection` 只修改隔离 staging，不改 tracked ini。
 
 需要做人工视觉/输入验收时，临时把 staging 或工作区的 `auto` 改为 0；验收结束后务必恢复
@@ -87,7 +87,7 @@ tests=13,20,27,56,58,62,64-67,73,75,999
 | 75 | 灰色父框内依次看到红色 static、偏移后的绿色 relative、蓝色 absolute block、黄色 absolute inline；四个都不能跑出灰框。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
-TEST190-212 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event 断言，不属于这次需要肉眼观察的包；TEST201
+TEST190-213 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input 断言，不属于这次需要肉眼观察的包；TEST201
 直接调用 `positron_browser.dll` 公共 history API，TEST202 直接验证 product script session，
 TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read callback adapter，TEST205
 直接验证 product DOM write callback adapter，TEST206 直接验证 product DOM attribute callback adapter，TEST207
@@ -95,8 +95,9 @@ TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read c
 直接验证 product DOM value callback adapter；TEST209 直接验证 product DOM checked callback adapter；TEST210
 直接验证 product form-property JSON dispatch、defaultValue/defaultChecked/selectedIndex typed adapters；TEST211
 直接验证 product navigation JSON dispatch、十种 operation kind、URL/state/delta 编码和 typed adapter；TEST212
-直接验证 product same-document traversal/hash location dispatch、事件顺序、状态更新和临时 global 清理，
-避免只验证 test_host 私有适配。
+直接验证 product same-document traversal/hash location dispatch、事件顺序、状态更新和临时 global 清理；TEST213
+直接验证 product native input/composition typed dispatch contract、取消结果、错误映射和注销，避免只验证
+test_host 私有适配。
 
 ## 运行自动设备门
 
@@ -151,10 +152,10 @@ scripts\repair_wmdc_rapi.bat
 2. 关闭设备上已有的 `test_host.exe`，在仓库根目录执行：
 
    ```bat
-   scripts\stage.bat Debug C:\WMShare\Positron-manual-next245
+   scripts\stage.bat Debug C:\WMShare\Positron-manual-next246
    ```
 
-3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next245`（或共享目录映射的
+3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next246`（或共享目录映射的
    对应路径），确认 `test_host.exe` 与上表配置的 `test_host.ini` 在同一目录，然后运行
    `test_host.exe`。
 4. 启动确认框必须显示这 13 个选择：

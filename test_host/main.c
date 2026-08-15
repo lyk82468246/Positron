@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 212
+#define TEST_MAX_NUMBER 213
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3065,6 +3065,9 @@ static int pcore_browser_script_dispatch_input_event_ex(HWND control,
         int cancelable, int is_composing);
 static int pcore_browser_script_dispatch_composition_event(HWND control,
         const char *event_type, const char *data, int cancelable);
+static int pcore_browser_script_input_dispatch(void *pw,
+        const PBrowserScriptInputEventInfo *info,
+        int *out_default_allowed);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data,
         int is_composing);
@@ -3788,21 +3791,25 @@ static int pcore_browser_script_dispatch_input_data_event(HWND control,
         const char *event_type, const char *input_type, const char *data,
         int cancelable, int is_composing)
 {
+    pcore_browser_script_bridge *bridge;
     PCoreTextInputInfo text_info;
-    PCoreInputEventDataEx input_data;
+    PBrowserScriptInputEventInfo input_info;
     unsigned int i;
     int x;
     int y;
     int default_allowed;
-    int result;
+    int rc;
 
     if (control == NULL || event_type == NULL || event_type[0] == '\0' ||
             input_type == NULL ||
             g_render_doc == NULL ||
             g_browser_script_session.document != g_render_doc ||
-            g_browser_script_session.runtime == NULL) {
+            g_browser_script_session.runtime == NULL ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
         return 1;
     }
+    bridge = g_browser_script_session.bridge;
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
                 PCore_TextInputInfo(g_render_doc,
@@ -3810,22 +3817,55 @@ static int pcore_browser_script_dispatch_input_data_event(HWND control,
                         NULL, 0) == 0) {
             x = text_info.x + text_info.width / 2;
             y = text_info.y + text_info.height / 2;
-            memset(&input_data, 0, sizeof(input_data));
-            input_data.struct_size = sizeof(input_data);
-            input_data.input_type = input_type;
-            input_data.data = (data != NULL) ? data : "";
-            input_data.is_composing = is_composing ? 1 : 0;
+            memset(&input_info, 0, sizeof(input_info));
+            input_info.size = sizeof(input_info);
+            input_info.x = x;
+            input_info.y = y;
+            input_info.event_type = event_type;
+            input_info.bubbles = 1;
+            input_info.cancelable = cancelable ? 1 : 0;
+            input_info.input_type = input_type;
+            input_info.data = (data != NULL) ? data : "";
+            input_info.is_composing = is_composing ? 1 : 0;
             default_allowed = 1;
-            result = PCore_EventDispatchInputExAt(g_render_doc, x, y,
-                    event_type, 1, cancelable, &input_data,
-                    &default_allowed);
-            if (result < 0) {
+            rc = PBrowser_ScriptSessionDispatchInputEvent(bridge->session,
+                    &input_info, &default_allowed);
+            if (rc != PSCRIPT_OK) {
                 return 1;
             }
             return default_allowed ? 1 : 0;
         }
     }
     return 1;
+}
+
+static int pcore_browser_script_input_dispatch(void *pw,
+        const PBrowserScriptInputEventInfo *info,
+        int *out_default_allowed)
+{
+    pcore_browser_script_bridge *bridge;
+    PCoreInputEventDataEx input_data;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptInputEventInfo) ||
+            info->event_type == NULL || info->input_type == NULL ||
+            info->data == NULL) {
+        return -1;
+    }
+    memset(&input_data, 0, sizeof(input_data));
+    input_data.struct_size = sizeof(input_data);
+    input_data.input_type = info->input_type;
+    input_data.data = info->data;
+    input_data.is_composing = info->is_composing ? 1 : 0;
+    *out_default_allowed = 1;
+    result = PCore_EventDispatchInputExAt(bridge->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, &input_data,
+            out_default_allowed);
+    return (result < 0) ? -1 : 0;
 }
 
 static int pcore_browser_script_dispatch_input_event_ex(HWND control,
@@ -6518,6 +6558,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptFormCallbacks form_callbacks;
+    PBrowserScriptInputCallbacks input_callbacks;
     PBrowserScriptNavigationCallbacks navigation_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     PBrowserScriptEventCallbacks event_callbacks;
@@ -6626,6 +6667,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_get_selected_index;
     form_callbacks.set_selected_index =
             pcore_browser_script_dom_set_selected_index;
+    input_callbacks.size = sizeof(input_callbacks);
+    input_callbacks.pw = bridge;
+    input_callbacks.dispatch_input = pcore_browser_script_input_dispatch;
     navigation_callbacks.size = sizeof(navigation_callbacks);
     navigation_callbacks.pw = bridge;
     navigation_callbacks.navigate = pcore_browser_script_navigation;
@@ -6672,6 +6716,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_checked_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormCallbacks(session,
             &form_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterInputCallbacks(session,
+            &input_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
             &dom_attribute_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEventCallbacks(session,
@@ -37278,6 +37324,197 @@ static BOOL test212_browser_location_dispatch(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 213 - product native input dispatch callback                    */
+/* -------------------------------------------------------------------- */
+typedef struct test213_input_state {
+    int calls;
+    int return_code;
+    int default_allowed;
+    int bad_info;
+    int x;
+    int y;
+    int bubbles;
+    int cancelable;
+    int is_composing;
+    char event_type[64];
+    char input_type[64];
+    char data[64];
+} test213_input_state;
+
+static int test213_input_dispatch(void *pw,
+        const PBrowserScriptInputEventInfo *info,
+        int *out_default_allowed)
+{
+    test213_input_state *state;
+    size_t event_length;
+    size_t input_length;
+    size_t data_length;
+
+    state = (test213_input_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptInputEventInfo) ||
+            info->event_type == NULL || info->input_type == NULL ||
+            info->data == NULL) {
+        return -1;
+    }
+    event_length = strlen(info->event_type);
+    input_length = strlen(info->input_type);
+    data_length = strlen(info->data);
+    if (event_length >= sizeof(state->event_type) ||
+            input_length >= sizeof(state->input_type) ||
+            data_length >= sizeof(state->data)) {
+        return -1;
+    }
+    state->calls++;
+    state->x = info->x;
+    state->y = info->y;
+    state->bubbles = info->bubbles;
+    state->cancelable = info->cancelable;
+    state->is_composing = info->is_composing;
+    memcpy(state->event_type, info->event_type, event_length + 1);
+    memcpy(state->input_type, info->input_type, input_length + 1);
+    memcpy(state->data, info->data, data_length + 1);
+    *out_default_allowed = state->default_allowed ? 1 : 0;
+    if (state->return_code < 0) {
+        return state->return_code;
+    }
+    return 0;
+}
+
+static BOOL test213_browser_input_callbacks(void)
+{
+    PBrowserScriptInputCallbacks callbacks;
+    PBrowserScriptInputEventInfo info;
+    test213_input_state state;
+    HANDLE session;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int default_allowed;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_input = test213_input_dispatch;
+    info.size = sizeof(info);
+    info.x = 12;
+    info.y = 34;
+    info.event_type = "beforeinput";
+    info.bubbles = 1;
+    info.cancelable = 1;
+    info.input_type = "insertText";
+    info.data = "candidate";
+    info.is_composing = 0;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    default_allowed = 1;
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, NULL,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && default_allowed == 1 &&
+                state.calls == 0;
+    }
+    if (ok) {
+        stage = "dispatch-cancel";
+        state.default_allowed = 0;
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                state.calls == 1 && state.x == 12 && state.y == 34 &&
+                state.bubbles == 1 && state.cancelable == 1 &&
+                state.is_composing == 0 &&
+                strcmp(state.event_type, "beforeinput") == 0 &&
+                strcmp(state.input_type, "insertText") == 0 &&
+                strcmp(state.data, "candidate") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-composition";
+        info.event_type = "compositionupdate";
+        info.input_type = "";
+        info.data = "preedit";
+        info.cancelable = 0;
+        info.is_composing = 1;
+        state.default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                state.calls == 2 && state.is_composing == 1 &&
+                state.cancelable == 0 &&
+                strcmp(state.event_type, "compositionupdate") == 0 &&
+                state.input_type[0] == '\0' &&
+                strcmp(state.data, "preedit") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-adapter-error";
+        state.return_code = -1;
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_NATIVE && default_allowed == 1 &&
+                state.calls == 3;
+        state.return_code = 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterInputCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "dispatch-after-unregister";
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 3;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d calls=%d default=%d runtime=%s",
+                    stage, rc, state.calls, default_allowed,
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 213 FAIL", error[0] != '\0' ? error :
+                "product native input dispatch callback failed");
+        return FALSE;
+    }
+    show_info(L"TEST 213 OK",
+            "positron_browser.dll owns native input/composition dispatch;"
+            " the host supplies typed core event propagation.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -41429,6 +41666,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 212: ok =
                 test212_browser_location_dispatch();
+                break;
+        case 213: ok =
+                test213_browser_input_callbacks();
                 break;
         default: ok = FALSE; break;
         }
