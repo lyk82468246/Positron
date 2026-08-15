@@ -1199,6 +1199,83 @@ static int p_script_session_valid(
     return session != NULL && session->runtime != NULL;
 }
 
+static void p_browser_script_clear_dispatch_globals(
+        p_browser_script_session *session, int traversal)
+{
+    if (session == NULL || session->runtime == NULL) {
+        return;
+    }
+    if (traversal) {
+        (void) PScript_Evaluate(session->runtime,
+                "delete this.__pcoreHistoryTraversalState;"
+                "delete this.__pcoreHistoryTraversalUrl;", -1);
+    } else {
+        (void) PScript_Evaluate(session->runtime,
+                "delete this.__pcoreHashNavigationUrl;"
+                "delete this.__pcoreHashNavigationLength;", -1);
+    }
+}
+
+static int p_browser_script_dispatch_history_traversal(
+        p_browser_script_session *session, const char *state_json,
+        const char *url)
+{
+    int rc;
+
+    if (session == NULL || state_json == NULL || url == NULL ||
+            state_json[0] == '\0' || url[0] == '\0' ||
+            strlen(state_json) >= PBROWSER_HISTORY_STATE_MAX ||
+            strlen(url) >= PBROWSER_HISTORY_URL_MAX) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = PScript_SetGlobalJson(session->runtime,
+            "__pcoreHistoryTraversalState", -1, state_json, -1);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    rc = PScript_SetGlobalString(session->runtime,
+            "__pcoreHistoryTraversalUrl", -1, url, -1);
+    if (rc != PSCRIPT_OK) {
+        p_browser_script_clear_dispatch_globals(session, 1);
+        return rc;
+    }
+    rc = PScript_Evaluate(session->runtime,
+            "__pcoreHistoryTraverse(__pcoreHistoryTraversalState,"
+            "__pcoreHistoryTraversalUrl);", -1);
+    p_browser_script_clear_dispatch_globals(session, 1);
+    return rc;
+}
+
+static int p_browser_script_dispatch_hash_navigation(
+        p_browser_script_session *session, const char *url,
+        int history_length)
+{
+    int rc;
+
+    if (session == NULL || url == NULL || url[0] == '\0' ||
+            strlen(url) >= PBROWSER_HISTORY_URL_MAX ||
+            history_length < 1 || history_length > PBROWSER_HISTORY_MAX) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = PScript_SetGlobalString(session->runtime,
+            "__pcoreHashNavigationUrl", -1, url, -1);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    rc = PScript_SetGlobalNumber(session->runtime,
+            "__pcoreHashNavigationLength", -1,
+            (double) history_length);
+    if (rc != PSCRIPT_OK) {
+        p_browser_script_clear_dispatch_globals(session, 0);
+        return rc;
+    }
+    rc = PScript_Evaluate(session->runtime,
+            "__pcoreHashNavigate(__pcoreHashNavigationUrl,"
+            "__pcoreHashNavigationLength);", -1);
+    p_browser_script_clear_dispatch_globals(session, 0);
+    return rc;
+}
+
 #define PBROWSER_SCRIPT_TEXT_MAX_BYTES 65535
 
 static HANDLE p_browser_script_args_object(const char *args_json,
@@ -2351,6 +2428,32 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
         return PSCRIPT_ERROR_ARGUMENT;
     }
     return PScript_Evaluate(session->runtime, source, source_len);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchHistoryTraversal(
+        HANDLE hSession, const char *state_json, const char *url)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return p_browser_script_dispatch_history_traversal(session, state_json,
+            url);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchHashNavigation(
+        HANDLE hSession, const char *url, int history_length)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return p_browser_script_dispatch_hash_navigation(session, url,
+            history_length);
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(

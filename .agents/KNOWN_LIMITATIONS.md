@@ -14,12 +14,12 @@
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
   textContent 读取）、textContent 写入、attribute、input value、checked、form property
-  （defaultValue/defaultChecked/selectedIndex）、navigation 和 event JSON 分发；显式开启时仍有 classic inline/external
-  script、页面 context，以及一套尚在宿主迁移中的其余 form/input/location bridge；导航的窗口、
-  网络和 history side effect 仍由宿主 typed adapter 提供；
+  （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发和 event JSON 分发；显式开启时仍有 classic inline/external
+  script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络和
+  history side effect 仍由宿主 typed adapter 提供；
   Event callback 的产品 JSON 分发已迁入，但 core/document typed listener 适配仍由宿主提供。
 
-尚未完成：完整 DOM/window、其余 form/input/location callback 实现、module、
+尚未完成：完整 DOM/window、其余 form/input callback 实现、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
 实现位于 `test_host/main.c`，尚未成为可供正式浏览器应用复用的 browser-layer API。
 
@@ -164,7 +164,9 @@ next243 的 TEST210、`TEST112-135,137-152,189-210,999`（63 项）定向门和
 `TEST13/20/27/43/44/56/58-77/80-210/999`（158 项）全量门验证 form-property callback；
 next244 的 TEST211、`TEST112-135,137-152,189-211,999`（64 项）定向门和
 `TEST13/20/27/43/44/56/58-77/80-211/999`（159 项）全量门验证 navigation JSON dispatch；
-其余 form/input/location callback 实现及导航 side effect 仍在宿主，尚未计入产品层完成项。
+next245 的 TEST212、`TEST112-135,137-152,189-212,999`（65 项）定向门和
+`TEST13/20/27/43/44/56/58-77/80-212/999`（160 项）全量门验证同文档 location/history 事件分发；
+其余 form/input callback 实现及导航 side effect 仍在宿主，尚未计入产品层完成项。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；

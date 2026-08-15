@@ -328,6 +328,17 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
  * creates the browser-facing window/document/history/location/event objects;
  * it does not own the core document, native controls or host callback pw. */
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession);
+/* Apply a host-committed same-document traversal to the product bootstrap.
+ * The caller owns history commit/rollback and supplies borrowed UTF-8 JSON
+ * state plus the resulting URL; this API only updates location/history state
+ * in the script context and dispatches popstate/hashchange in that context. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchHistoryTraversal(
+        HANDLE hSession, const char *state_json, const char *url);
+/* Apply a host-committed same-document fragment navigation to the product
+ * bootstrap. The caller owns the history entry and side effects; this API
+ * updates location/history length and dispatches hashchange. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchHashNavigation(
+        HANDLE hSession, const char *url, int history_length);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(

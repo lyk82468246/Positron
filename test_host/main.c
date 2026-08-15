@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 211
+#define TEST_MAX_NUMBER 212
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6395,7 +6395,6 @@ static int pcore_browser_script_session_traverse_history(int target_index)
     char *final_copy;
     char *target_copy;
     char *old_url;
-    char error[128];
     int old_index;
 
     bridge = g_browser_script_session.bridge;
@@ -6407,14 +6406,7 @@ static int pcore_browser_script_session_traverse_history(int target_index)
     target_url = g_browse_history.entries[target_index];
     state_copy = pcore_browser_script_copy_string(state_json);
     target_copy = pcore_browser_script_copy_string(target_url);
-    if (state_copy == NULL || target_copy == NULL ||
-            PBrowser_ScriptSessionSetGlobalJson(
-            bridge->session,
-            "__pcoreHistoryTraversalState", state_json) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionSetGlobalString(
-            bridge->session,
-            "__pcoreHistoryTraversalUrl", target_url) !=
-            PSCRIPT_OK) {
+    if (state_copy == NULL || target_copy == NULL) {
         free(state_copy);
         free(target_copy);
         return 1;
@@ -6427,13 +6419,8 @@ static int pcore_browser_script_session_traverse_history(int target_index)
     }
     old_url = bridge->history_url;
     bridge->history_url = target_copy;
-    memset(error, 0, sizeof(error));
-    if (pcore_browser_script_session_evaluate(
-            "__pcoreHistoryTraverse(__pcoreHistoryTraversalState,"
-            "__pcoreHistoryTraversalUrl);"
-            "delete this.__pcoreHistoryTraversalState;"
-            "delete this.__pcoreHistoryTraversalUrl;", -1,
-            error, sizeof(error)) != 0) {
+    if (PBrowser_ScriptSessionDispatchHistoryTraversal(bridge->session,
+            state_json, target_url) != PSCRIPT_OK) {
         (void) pcore_browse_history_commit_target(old_index);
         free(bridge->history_url);
         bridge->history_url = old_url;
@@ -6461,7 +6448,6 @@ static int pcore_browser_script_session_navigate_fragment(const char *url,
     pcore_browser_script_bridge *bridge;
     char *url_copy;
     char *state_copy;
-    char error[128];
     int new_length;
 
     bridge = g_browser_script_session.bridge;
@@ -6493,14 +6479,7 @@ static int pcore_browser_script_session_navigate_fragment(const char *url,
         }
         new_length++;
     }
-    if (PBrowser_ScriptSessionSetGlobalString(
-            bridge->session,
-            "__pcoreHashNavigationUrl", url) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionSetGlobalNumber(
-            bridge->session,
-            "__pcoreHashNavigationLength", (double) new_length) !=
-            PSCRIPT_OK ||
-            (replace_current ?
+    if ((replace_current ?
             pcore_browse_history_replace_state_url(url, "null") :
             pcore_browse_history_push_state(url, "null")) != 0) {
         free(url_copy);
@@ -6514,13 +6493,8 @@ static int pcore_browser_script_session_navigate_fragment(const char *url,
     bridge->history_state_changed = 1;
     bridge->history_length = g_browse_history.count;
     bridge->history_index = g_browse_history.index;
-    memset(error, 0, sizeof(error));
-    if (pcore_browser_script_session_evaluate(
-            "__pcoreHashNavigate(__pcoreHashNavigationUrl,"
-            "__pcoreHashNavigationLength);"
-            "delete this.__pcoreHashNavigationUrl;"
-            "delete this.__pcoreHashNavigationLength;", -1,
-            error, sizeof(error)) != 0) {
+    if (PBrowser_ScriptSessionDispatchHashNavigation(bridge->session,
+            url, bridge->history_length) != PSCRIPT_OK) {
         return 1;
     }
     return 0;
@@ -37203,6 +37177,107 @@ static BOOL test211_browser_navigation_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 212 - product same-document location dispatch                    */
+/* -------------------------------------------------------------------- */
+static BOOL test212_browser_location_dispatch(void)
+{
+    static const char URL_OLD[] =
+            "https://example.com/app/start#seed";
+    static const char URL_NEXT[] =
+            "https://example.com/app/next#tail";
+    static const char URL_HASH[] =
+            "https://example.com/app/next#final";
+    static const char TRAVERSAL_RESULT[] =
+            "https://example.com/app/next#tail|2|2|P2|"
+            "https://example.com/app/next#tail|Hhttps://example.com/app/start#seed>"
+            "https://example.com/app/next#tail|true";
+    static const char HASH_RESULT[] =
+            "#final|3|Hhttps://example.com/app/next#tail>"
+            "https://example.com/app/next#final|true";
+    HANDLE session;
+    const char *result;
+    const char *error_result;
+    char error[256];
+    int rc;
+    int ok;
+
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    result = NULL;
+    error_result = NULL;
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL &&
+            PBrowser_ScriptSessionDispatchHistoryTraversal(NULL,
+            "null", URL_NEXT) == PSCRIPT_ERROR_ARGUMENT &&
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", URL_OLD) == PSCRIPT_OK &&
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 2.0) == PSCRIPT_OK &&
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "{\"page\":1}") == PSCRIPT_OK &&
+            PBrowser_ScriptSessionEvaluateBootstrap(session) == PSCRIPT_OK &&
+            PBrowser_ScriptSessionEvaluate(session,
+            "var seen=[];onpopstate=function(e){seen.push('P'+e.state.page+'|'"
+            "+location.href);};onhashchange=function(e){seen.push('H'+"
+            "e.oldURL+'>'+e.newURL);};", -1) == PSCRIPT_OK;
+    if (ok) {
+        rc = PBrowser_ScriptSessionDispatchHistoryTraversal(session,
+                "{\"page\":2}", URL_NEXT);
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionEvaluate(session,
+                "location.href+'|'+history.length+'|'"
+                "+history.state.page+'|'+seen.join('|')+'|'"
+                "+(typeof __pcoreHistoryTraversalState==='undefined');", -1) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = result != NULL && strcmp(result, TRAVERSAL_RESULT) == 0;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionDispatchHashNavigation(session,
+                URL_HASH, 3);
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionEvaluate(session,
+                "location.hash+'|'+history.length+'|'+seen[2]+'|'"
+                "+(typeof __pcoreHashNavigationUrl==='undefined');", -1) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = result != NULL && strcmp(result, HASH_RESULT) == 0;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionDispatchHistoryTraversal(session,
+                "{", URL_NEXT);
+        ok = rc == PSCRIPT_ERROR_JSON &&
+                PBrowser_ScriptSessionDispatchHashNavigation(session,
+                URL_HASH, 0) == PSCRIPT_ERROR_ARGUMENT &&
+                PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "rc=%d result=%s runtime=%s", rc,
+                    result != NULL ? result : "(null)",
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 212 FAIL", error[0] != '\0' ? error :
+                "product same-document location dispatch failed");
+        return FALSE;
+    }
+    show_info(L"TEST 212 OK",
+            "positron_browser.dll owns same-document traversal and hash"
+            " event dispatch; the host supplies committed URL and length.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -41351,6 +41426,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 211: ok =
                 test211_browser_navigation_callbacks();
+                break;
+        case 212: ok =
+                test212_browser_location_dispatch();
                 break;
         default: ok = FALSE; break;
         }
