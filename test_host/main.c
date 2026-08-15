@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 203
+#define TEST_MAX_NUMBER 204
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -5531,32 +5531,15 @@ static int pcore_browser_script_write_bool(int value, char *out_json,
     return 0;
 }
 
-static int pcore_browser_script_has_element(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_has_element(void *pw, const char *id)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    int exists;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    if (bridge == NULL || bridge->document == NULL || root == NULL) {
-        PJson_Free(root);
-        return 1;
+    if (bridge == NULL || bridge->document == NULL || id == NULL) {
+        return -1;
     }
-    id = PJson_GetString(object, "id");
-    if (id == NULL) {
-        PJson_Free(root);
-        return 1;
-    }
-    exists = PCore_NodeExistsById(bridge->document, id);
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(exists > 0, out_json,
-            out_capacity, out_len);
+    return PCore_NodeExistsById(bridge->document, id);
 }
 
 static int pcore_browser_script_set_text(void *pw,
@@ -5771,42 +5754,24 @@ static int pcore_browser_script_write_null(char *out_json,
     return 0;
 }
 
-static int pcore_browser_script_get_text(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+static int pcore_browser_script_dom_get_text(void *pw, const char *id,
+        char *out_text, int out_capacity, int *out_len)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    char *text;
-    int bytes;
-    int result;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    bytes = 0;
-    text = NULL;
-    if (bridge == NULL || bridge->document == NULL || root == NULL ||
-            id == NULL || PCore_NodeTextContentById(bridge->document, id,
-            NULL, 0, &bytes) != 0 || bytes < 0 || bytes > 65535) {
-        PJson_Free(root);
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            out_len == NULL || out_capacity < 0 ||
+            (out_text == NULL && out_capacity != 0) ||
+            (out_text != NULL && out_capacity <= 0)) {
         return 1;
     }
-    text = (char *) malloc((size_t) bytes + 1);
-    if (text == NULL || PCore_NodeTextContentById(bridge->document, id,
-            text, bytes + 1, &bytes) != 0) {
-        free(text);
-        PJson_Free(root);
-        return 1;
+    if (out_text == NULL) {
+        return PCore_NodeTextContentById(bridge->document, id, NULL, 0,
+                out_len);
     }
-    result = pcore_browser_script_write_string(text, out_json,
+    return PCore_NodeTextContentById(bridge->document, id, out_text,
             out_capacity, out_len);
-    free(text);
-    PJson_Free(root);
-    return result;
 }
 
 static int pcore_browser_script_get_attribute(void *pw,
@@ -6957,6 +6922,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PCoreScriptInfo info;
     HANDLE session;
     HANDLE runtime;
+    PBrowserScriptDomReadCallbacks dom_read_callbacks;
     char *source;
     char *type;
     const char *data;
@@ -7033,6 +6999,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     }
     bridge->next_event_id = 1;
     bridge->events = NULL;
+    dom_read_callbacks.size = sizeof(dom_read_callbacks);
+    dom_read_callbacks.pw = bridge;
+    dom_read_callbacks.has_element = pcore_browser_script_dom_has_element;
+    dom_read_callbacks.get_text = pcore_browser_script_dom_get_text;
     if (history_length < 1 || history_length > PCORE_BROWSE_HISTORY_MAX) {
         history_length = 1;
     }
@@ -7053,12 +7023,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             "__pcoreHistoryLength", (double) history_length) != PSCRIPT_OK ||
             PBrowser_ScriptSessionSetGlobalJson(session,
             "__pcoreHistoryState", history_state_json) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreHasElement", pcore_browser_script_has_element,
-            bridge) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreGetText", pcore_browser_script_get_text, bridge) !=
-            PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterDomReadCallbacks(session,
+            &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterJsonFunction(session,
             "__pcoreSetText", pcore_browser_script_set_text, bridge) !=
             PSCRIPT_OK ||
@@ -35892,6 +35858,162 @@ static BOOL test203_browser_script_bootstrap_api(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 204 - product DOM read callback adapter                          */
+/* -------------------------------------------------------------------- */
+static int test204_dom_has_element(void *pw, const char *id)
+{
+    (void) pw;
+    return (id != NULL && strcmp(id, "root") == 0) ? 1 : 0;
+}
+
+static int test204_dom_get_text(void *pw, const char *id, char *out_text,
+        int out_capacity, int *out_len)
+{
+    const char *value;
+    int length;
+
+    value = (const char *) pw;
+    if (value == NULL || id == NULL || strcmp(id, "root") != 0 ||
+            out_len == NULL || out_capacity < 0 ||
+            (out_text == NULL && out_capacity != 0) ||
+            (out_text != NULL && out_capacity <= 0)) {
+        return 1;
+    }
+    length = (int) strlen(value);
+    if (out_text == NULL) {
+        *out_len = length;
+        return 0;
+    }
+    if (out_capacity <= length) {
+        return 1;
+    }
+    memcpy(out_text, value, (size_t) length);
+    *out_len = length;
+    return 0;
+}
+
+static BOOL test204_browser_dom_read_callbacks(void)
+{
+    static const char TEXT[] = "bootstrap-read";
+    PBrowserScriptDomReadCallbacks callbacks;
+    HANDLE session;
+    const char *result;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = (void *) TEXT;
+    callbacks.has_element = test204_dom_has_element;
+    callbacks.get_text = test204_dom_get_text;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    result = NULL;
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterDomReadCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "globals";
+        ok = PBrowser_ScriptSessionSetGlobalString(session,
+                "__pcoreDocumentUrl", "https://example.com/read") ==
+                PSCRIPT_OK && PBrowser_ScriptSessionSetGlobalNumber(session,
+                "__pcoreHistoryLength", 1.0) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionSetGlobalJson(session,
+                "__pcoreHistoryState", "null") == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterDomReadCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 2;
+    }
+    if (ok) {
+        stage = "bootstrap";
+        ok = PBrowser_ScriptSessionEvaluateBootstrap(session) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "root-text-evaluate";
+        ok = PBrowser_ScriptSessionEvaluate(session,
+                "document.getElementById('root').textContent;", -1) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "root-text-result";
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = result != NULL && strcmp(result, "bootstrap-read") == 0;
+    }
+    if (ok) {
+        stage = "missing-native";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreHasElement", "[{\"id\":\"missing\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0;
+    }
+    if (ok) {
+        stage = "missing-evaluate";
+        ok = PBrowser_ScriptSessionEvaluate(session,
+                "document.getElementById('missing')===null;", -1) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "missing-result";
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = result != NULL && strcmp(result, "true") == 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterDomReadCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=%s",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session),
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=(null)",
+                    stage, rc,
+                    result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session));
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 204 FAIL", error[0] != '\0' ? error :
+                "product DOM read callback adapter failed");
+        return FALSE;
+    }
+    show_info(L"TEST 204 OK",
+            "positron_browser.dll owns DOM read JSON dispatch; the host"
+            " supplies only typed has-element and text adapters.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -40016,6 +40138,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 203: ok =
                 test203_browser_script_bootstrap_api();
+                break;
+        case 204: ok =
+                test204_browser_dom_read_callbacks();
                 break;
         default: ok = FALSE; break;
         }

@@ -1144,8 +1144,13 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     return PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP, -1);
 }
+typedef struct p_browser_script_dom_read_binding {
+    PBrowserScriptDomReadCallbacks callbacks;
+} p_browser_script_dom_read_binding;
+
 typedef struct p_browser_script_session {
     HANDLE runtime;
+    p_browser_script_dom_read_binding *dom_read;
 } p_browser_script_session;
 
 static p_browser_script_session *p_script_session(HANDLE hSession)
@@ -1159,6 +1164,250 @@ static int p_script_session_valid(
     return session != NULL && session->runtime != NULL;
 }
 
+#define PBROWSER_SCRIPT_TEXT_MAX_BYTES 65535
+
+static HANDLE p_browser_script_args_object(const char *args_json,
+        int args_len, HANDLE *out_object)
+{
+    HANDLE root;
+    HANDLE object;
+    char *copy;
+
+    if (out_object == NULL) {
+        return NULL;
+    }
+    *out_object = NULL;
+    if (args_json == NULL || args_len < 0) {
+        return NULL;
+    }
+    copy = (char *) malloc((size_t) args_len + 1);
+    if (copy == NULL) {
+        return NULL;
+    }
+    memcpy(copy, args_json, (size_t) args_len);
+    copy[args_len] = '\0';
+    root = PJson_Parse(copy);
+    free(copy);
+    if (root == NULL || PJson_GetArraySize(root) != 1) {
+        PJson_Free(root);
+        return NULL;
+    }
+    object = PJson_GetArrayItem(root, 0);
+    if (object == NULL) {
+        PJson_Free(root);
+        return NULL;
+    }
+    *out_object = object;
+    return root;
+}
+
+static int p_browser_script_write_bool(int value, char *out_json,
+        int out_capacity, int *out_len)
+{
+    const char *word;
+    int length;
+
+    word = value ? "true" : "false";
+    length = value ? 4 : 5;
+    if (out_json == NULL || out_len == NULL || out_capacity <= length) {
+        return 1;
+    }
+    memcpy(out_json, word, (size_t) length + 1);
+    *out_len = length;
+    return 0;
+}
+
+static int p_browser_script_json_escape(const char *value, char *out,
+        int capacity)
+{
+    static const char HEX[] = "0123456789abcdef";
+    const unsigned char *p;
+    unsigned char c;
+    unsigned int codepoint;
+    unsigned int high;
+    unsigned int low;
+    int used;
+
+    if (out == NULL || capacity <= 0) {
+        return -1;
+    }
+    if (value == NULL) {
+        value = "";
+    }
+    used = 0;
+    for (p = (const unsigned char *) value; *p != '\0'; p++) {
+        c = *p;
+        if (c == '"' || c == '\\') {
+            if (used + 2 >= capacity) {
+                return -1;
+            }
+            out[used++] = '\\';
+            out[used++] = (char) c;
+        } else if (c == '\b' || c == '\f' || c == '\n' ||
+                c == '\r' || c == '\t') {
+            if (used + 2 >= capacity) {
+                return -1;
+            }
+            out[used++] = '\\';
+            if (c == '\b') {
+                out[used++] = 'b';
+            } else if (c == '\f') {
+                out[used++] = 'f';
+            } else if (c == '\n') {
+                out[used++] = 'n';
+            } else if (c == '\r') {
+                out[used++] = 'r';
+            } else {
+                out[used++] = 't';
+            }
+        } else if (c < 0x20) {
+            if (used + 6 >= capacity) {
+                return -1;
+            }
+            out[used++] = '\\';
+            out[used++] = 'u';
+            out[used++] = '0';
+            out[used++] = '0';
+            out[used++] = HEX[c >> 4];
+            out[used++] = HEX[c & 0x0f];
+        } else if (c >= 0xf0 && c <= 0xf4 && p[1] != '\0' &&
+                p[2] != '\0' && p[3] != '\0' &&
+                (p[1] & 0xc0) == 0x80 &&
+                (p[2] & 0xc0) == 0x80 &&
+                (p[3] & 0xc0) == 0x80 &&
+                !(c == 0xf0 && p[1] < 0x90) &&
+                !(c == 0xf4 && p[1] > 0x8f)) {
+            if (used + 12 >= capacity) {
+                return -1;
+            }
+            codepoint = ((unsigned int) (c & 0x07) << 18) |
+                    ((unsigned int) (p[1] & 0x3f) << 12) |
+                    ((unsigned int) (p[2] & 0x3f) << 6) |
+                    (unsigned int) (p[3] & 0x3f);
+            codepoint -= 0x10000U;
+            high = 0xd800U + (codepoint >> 10);
+            low = 0xdc00U + (codepoint & 0x3ffU);
+            out[used++] = '\\';
+            out[used++] = 'u';
+            out[used++] = HEX[(high >> 12) & 0x0f];
+            out[used++] = HEX[(high >> 8) & 0x0f];
+            out[used++] = HEX[(high >> 4) & 0x0f];
+            out[used++] = HEX[high & 0x0f];
+            out[used++] = '\\';
+            out[used++] = 'u';
+            out[used++] = HEX[(low >> 12) & 0x0f];
+            out[used++] = HEX[(low >> 8) & 0x0f];
+            out[used++] = HEX[(low >> 4) & 0x0f];
+            out[used++] = HEX[low & 0x0f];
+            p += 3;
+        } else {
+            if (used + 1 >= capacity) {
+                return -1;
+            }
+            out[used++] = (char) c;
+        }
+    }
+    out[used] = '\0';
+    return used;
+}
+
+static int p_browser_script_write_string(const char *value,
+        char *out_json, int out_capacity, int *out_len)
+{
+    int escaped;
+
+    if (value == NULL || out_json == NULL || out_len == NULL ||
+            out_capacity < 3) {
+        return 1;
+    }
+    out_json[0] = '"';
+    escaped = p_browser_script_json_escape(value, out_json + 1,
+            out_capacity - 2);
+    if (escaped < 0 || escaped + 2 >= out_capacity) {
+        return 1;
+    }
+    out_json[escaped + 1] = '"';
+    out_json[escaped + 2] = '\0';
+    *out_len = escaped + 2;
+    return 0;
+}
+
+static int p_browser_script_dom_has_element(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_dom_read_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int exists;
+
+    binding = (p_browser_script_dom_read_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    if (binding == NULL || root == NULL || id == NULL ||
+            binding->callbacks.has_element == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    exists = binding->callbacks.has_element(binding->callbacks.pw, id);
+    PJson_Free(root);
+    if (exists < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(exists > 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_dom_get_text(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_dom_read_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    char *text;
+    int allocated_len;
+    int text_len;
+    int result;
+
+    binding = (p_browser_script_dom_read_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    text = NULL;
+    text_len = 0;
+    if (binding == NULL || root == NULL || id == NULL ||
+            binding->callbacks.get_text == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    if (binding->callbacks.get_text(binding->callbacks.pw, id, NULL, 0,
+            &text_len) != 0 || text_len < 0 ||
+            text_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+        PJson_Free(root);
+        return 1;
+    }
+    allocated_len = text_len;
+    text = (char *) malloc((size_t) allocated_len + 1);
+    if (text == NULL || binding->callbacks.get_text(binding->callbacks.pw,
+            id, text, allocated_len + 1, &text_len) != 0 || text_len < 0 ||
+            text_len > allocated_len ||
+            text_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+        free(text);
+        PJson_Free(root);
+        return 1;
+    }
+    text[text_len] = '\0';
+    result = p_browser_script_write_string(text, out_json,
+            out_capacity, out_len);
+    free(text);
+    PJson_Free(root);
+    return result;
+}
+
 PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
 {
     p_browser_script_session *session;
@@ -1167,6 +1416,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     if (session == NULL) {
         return NULL;
     }
+    session->dom_read = NULL;
     session->runtime = PScript_Create(budget_ms);
     if (session->runtime == NULL) {
         free(session);
@@ -1182,6 +1432,14 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     session = p_script_session(hSession);
     if (session == NULL) {
         return;
+    }
+    if (session->dom_read != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreHasElement", -1);
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetText", -1);
+        free(session->dom_read);
+        session->dom_read = NULL;
     }
     PScript_Destroy(session->runtime);
     session->runtime = NULL;
@@ -1226,6 +1484,70 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
         return PSCRIPT_ERROR_ARGUMENT;
     }
     return PScript_Evaluate(session->runtime, source, source_len);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
+        HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_read_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomReadCallbacks) ||
+            callbacks->has_element == NULL || callbacks->get_text == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_read != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_read_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreHasElement", -1, p_browser_script_dom_has_element,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetText", -1, p_browser_script_dom_get_text, binding);
+    if (rc != PSCRIPT_OK) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreHasElement", -1);
+        free(binding);
+        return rc;
+    }
+    session->dom_read = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+    int second_rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_read == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreHasElement", -1);
+    second_rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetText", -1);
+    free(session->dom_read);
+    session->dom_read = NULL;
+    return (rc != PSCRIPT_OK) ? rc : second_rc;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
