@@ -1164,6 +1164,10 @@ typedef struct p_browser_script_form_binding {
     PBrowserScriptFormCallbacks callbacks;
 } p_browser_script_form_binding;
 
+typedef struct p_browser_script_navigation_binding {
+    PBrowserScriptNavigationCallbacks callbacks;
+} p_browser_script_navigation_binding;
+
 typedef struct p_browser_script_dom_attribute_binding {
     PBrowserScriptDomAttributeCallbacks callbacks;
 } p_browser_script_dom_attribute_binding;
@@ -1179,6 +1183,7 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_value_binding *dom_value;
     p_browser_script_dom_checked_binding *dom_checked;
     p_browser_script_form_binding *form;
+    p_browser_script_navigation_binding *navigation;
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
 } p_browser_script_session;
@@ -1894,6 +1899,124 @@ static int p_browser_script_form_property(void *pw,
     return 1;
 }
 
+static int p_browser_script_navigation(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_navigation_binding *binding;
+    PBrowserScriptNavigationInfo info;
+    HANDLE root;
+    HANDLE object;
+    HANDLE state;
+    const char *op;
+    const char *url;
+    char *state_json;
+    int result;
+    int out_value;
+
+    binding = (p_browser_script_navigation_binding *) pw;
+    object = NULL;
+    state_json = NULL;
+    out_value = 0;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
+    if (binding == NULL || root == NULL || op == NULL ||
+            binding->callbacks.navigate == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.delta = 0;
+    url = NULL;
+    if (strcmp(op, "replaceState") == 0 ||
+            strcmp(op, "pushState") == 0) {
+        state = PJson_GetObject(object, "state");
+        url = PJson_GetString(object, "url");
+        state_json = PJson_Serialize(state);
+        if (url == NULL || url[0] == '\0' ||
+                strlen(url) >= PBROWSER_HISTORY_URL_MAX ||
+                state_json == NULL || state_json[0] == '\0' ||
+                strlen(state_json) >= PBROWSER_HISTORY_STATE_MAX) {
+            PJson_FreeString(state_json);
+            PJson_Free(root);
+            if (strcmp(op, "pushState") == 0) {
+                return p_browser_script_write_int(0, out_json,
+                        out_capacity, out_len);
+            }
+            return p_browser_script_write_bool(0, out_json,
+                    out_capacity, out_len);
+        }
+        info.kind = (strcmp(op, "pushState") == 0) ?
+                PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE :
+                PBROWSER_SCRIPT_NAVIGATION_REPLACE_STATE;
+        info.url = url;
+        info.state_json = state_json;
+        result = binding->callbacks.navigate(binding->callbacks.pw,
+                &info, &out_value);
+        PJson_FreeString(state_json);
+        PJson_Free(root);
+        if (result < 0) {
+            return 1;
+        }
+        if (info.kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE) {
+            return p_browser_script_write_int(result > 0 ? out_value : 0,
+                    out_json, out_capacity, out_len);
+        }
+        return p_browser_script_write_bool(result > 0, out_json,
+                out_capacity, out_len);
+    }
+    if (strcmp(op, "back") == 0) {
+        info.kind = PBROWSER_SCRIPT_NAVIGATION_BACK;
+    } else if (strcmp(op, "forward") == 0) {
+        info.kind = PBROWSER_SCRIPT_NAVIGATION_FORWARD;
+    } else if (strcmp(op, "go") == 0) {
+        info.kind = PBROWSER_SCRIPT_NAVIGATION_GO;
+        info.delta = PJson_GetInt(object, "delta");
+        if (info.delta < -(PBROWSER_HISTORY_MAX - 1) ||
+                info.delta > PBROWSER_HISTORY_MAX - 1) {
+            PJson_Free(root);
+            return p_browser_script_write_bool(0, out_json,
+                    out_capacity, out_len);
+        }
+    } else if (strcmp(op, "assign") == 0 ||
+            strcmp(op, "reload") == 0 ||
+            strcmp(op, "replace") == 0 ||
+            strcmp(op, "fragment") == 0 ||
+            strcmp(op, "fragmentReplace") == 0) {
+        url = PJson_GetString(object, "url");
+        if (url == NULL || url[0] == '\0' ||
+                strlen(url) >= PBROWSER_HISTORY_URL_MAX) {
+            PJson_Free(root);
+            return p_browser_script_write_bool(0, out_json,
+                    out_capacity, out_len);
+        }
+        if (strcmp(op, "assign") == 0) {
+            info.kind = PBROWSER_SCRIPT_NAVIGATION_ASSIGN;
+        } else if (strcmp(op, "reload") == 0) {
+            info.kind = PBROWSER_SCRIPT_NAVIGATION_RELOAD;
+        } else if (strcmp(op, "replace") == 0) {
+            info.kind = PBROWSER_SCRIPT_NAVIGATION_REPLACE;
+        } else if (strcmp(op, "fragment") == 0) {
+            info.kind = PBROWSER_SCRIPT_NAVIGATION_FRAGMENT;
+        } else {
+            info.kind = PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE;
+        }
+        info.url = url;
+    } else {
+        PJson_Free(root);
+        return 1;
+    }
+    result = binding->callbacks.navigate(binding->callbacks.pw,
+            &info, &out_value);
+    PJson_Free(root);
+    if (result < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(result > 0, out_json,
+            out_capacity, out_len);
+}
+
 static int p_browser_script_dom_get_attribute(void *pw,
         const char *args_json, int args_len, char *out_json,
         int out_capacity, int *out_len)
@@ -2106,6 +2229,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_value = NULL;
     session->dom_checked = NULL;
     session->form = NULL;
+    session->navigation = NULL;
     session->dom_attribute = NULL;
     session->event = NULL;
     session->runtime = PScript_Create(budget_ms);
@@ -2159,6 +2283,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreFormProperty", -1);
         free(session->form);
         session->form = NULL;
+    }
+    if (session->navigation != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreNavigation", -1);
+        free(session->navigation);
+        session->navigation = NULL;
     }
     if (session->dom_attribute != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -2524,6 +2654,60 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
             "__pcoreFormProperty", -1);
     free(session->form);
     session->form = NULL;
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterNavigationCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptNavigationCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_navigation_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptNavigationCallbacks) ||
+            callbacks->navigate == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->navigation != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_navigation_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreNavigation", -1, p_browser_script_navigation,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->navigation = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterNavigationCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->navigation == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreNavigation", -1);
+    free(session->navigation);
+    session->navigation = NULL;
     return rc;
 }
 

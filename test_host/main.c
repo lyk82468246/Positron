@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 210
+#define TEST_MAX_NUMBER 211
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -5937,53 +5937,37 @@ static int pcore_browser_script_dom_set_selected_index(void *pw,
 }
 
 static int pcore_browser_script_navigation(void *pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+        const PBrowserScriptNavigationInfo *info, int *out_value)
 {
     pcore_browser_script_bridge *bridge;
-    HANDLE root;
-    HANDLE object;
-    HANDLE state;
-    const char *op;
     const char *url;
     char *url_copy;
     char *target_url_copy;
-    char *state_json;
     char *state_copy;
-    int delta;
     int i;
-    int kind;
 
     bridge = (pcore_browser_script_bridge *) pw;
-    object = NULL;
+    if (bridge == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptNavigationInfo) ||
+            out_value == NULL) {
+        return -1;
+    }
+    *out_value = 0;
+    url = info->url;
     url_copy = NULL;
     target_url_copy = NULL;
-    state_json = NULL;
     state_copy = NULL;
-    delta = 0;
-    root = pcore_browser_script_args_object(args_json, args_len, &object);
-    op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
-    if (bridge == NULL || root == NULL || op == NULL) {
-        PJson_Free(root);
-        return 1;
-    }
-    if (strcmp(op, "replaceState") == 0) {
-        state = PJson_GetObject(object, "state");
-        url = PJson_GetString(object, "url");
-        state_json = PJson_Serialize(state);
+    if (info->kind == PBROWSER_SCRIPT_NAVIGATION_REPLACE_STATE) {
         if (bridge->history_url == NULL || url == NULL ||
-                url[0] == '\0' ||
+                info->state_json == NULL || url[0] == '\0' ||
+                info->state_json[0] == '\0' ||
                 strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
+                strlen(info->state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX ||
                 !pcore_browse_history_same_origin_url(
-                bridge->history_url, url) || state_json == NULL ||
-                state_json[0] == '\0' ||
-                strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
-            PJson_FreeString(state_json);
-            PJson_Free(root);
-            return pcore_browser_script_write_bool(0, out_json,
-                    out_capacity, out_len);
+                bridge->history_url, url)) {
+            return 0;
         }
-        state_copy = pcore_browser_script_copy_string(state_json);
+        state_copy = pcore_browser_script_copy_string(info->state_json);
         url_copy = pcore_browser_script_copy_string(url);
         if (bridge->hwnd == NULL) {
             target_url_copy = pcore_browser_script_copy_string(url);
@@ -5992,14 +5976,11 @@ static int pcore_browser_script_navigation(void *pw,
                 (bridge->hwnd == NULL && target_url_copy == NULL) ||
                 (bridge->hwnd != NULL &&
                 pcore_browse_history_replace_state_url(url,
-                state_json) != 0)) {
+                info->state_json) != 0)) {
             free(state_copy);
             free(url_copy);
             free(target_url_copy);
-            PJson_FreeString(state_json);
-            PJson_Free(root);
-            return pcore_browser_script_write_bool(0, out_json,
-                    out_capacity, out_len);
+            return 0;
         }
         if (bridge->hwnd == NULL && bridge->history_push_count > 0) {
             i = bridge->history_push_count - 1;
@@ -6018,28 +5999,19 @@ static int pcore_browser_script_navigation(void *pw,
         }
         free(bridge->history_url);
         bridge->history_url = url_copy;
-        PJson_FreeString(state_json);
-        PJson_Free(root);
-        return pcore_browser_script_write_bool(1, out_json, out_capacity,
-                out_len);
+        return 1;
     }
-    if (strcmp(op, "pushState") == 0) {
-        state = PJson_GetObject(object, "state");
-        url = PJson_GetString(object, "url");
-        state_json = PJson_Serialize(state);
+    if (info->kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE) {
         if (!bridge->history_can_commit || bridge->history_url == NULL ||
-                url == NULL || url[0] == '\0' ||
+                url == NULL || info->state_json == NULL ||
+                url[0] == '\0' || info->state_json[0] == '\0' ||
                 strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
+                strlen(info->state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX ||
                 !pcore_browse_history_same_origin_url(
-                url, bridge->history_url) ||
-                state_json == NULL || state_json[0] == '\0' ||
-                strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
-            PJson_FreeString(state_json);
-            PJson_Free(root);
-            return pcore_browser_script_write_int(0, out_json,
-                    out_capacity, out_len);
+                url, bridge->history_url)) {
+            return 0;
         }
-        state_copy = pcore_browser_script_copy_string(state_json);
+        state_copy = pcore_browser_script_copy_string(info->state_json);
         url_copy = pcore_browser_script_copy_string(url);
         if (bridge->hwnd == NULL) {
             target_url_copy = pcore_browser_script_copy_string(url);
@@ -6049,19 +6021,14 @@ static int pcore_browser_script_navigation(void *pw,
             free(state_copy);
             free(url_copy);
             free(target_url_copy);
-            PJson_FreeString(state_json);
-            PJson_Free(root);
-            return pcore_browser_script_write_int(0, out_json,
-                    out_capacity, out_len);
+            return 0;
         }
         if (bridge->hwnd != NULL) {
-            if (pcore_browse_history_push_state(url, state_json) != 0) {
+            if (pcore_browse_history_push_state(url, info->state_json) != 0) {
                 free(state_copy);
                 free(url_copy);
-                PJson_FreeString(state_json);
-                PJson_Free(root);
-                return pcore_browser_script_write_int(0, out_json,
-                        out_capacity, out_len);
+                free(target_url_copy);
+                return 0;
             }
             bridge->history_length = g_browse_history.count;
             bridge->history_index = g_browse_history.index;
@@ -6097,79 +6064,68 @@ static int pcore_browser_script_navigation(void *pw,
         }
         free(bridge->history_url);
         bridge->history_url = url_copy;
-        PJson_FreeString(state_json);
-        PJson_Free(root);
-        return pcore_browser_script_write_int(bridge->history_length,
-                out_json, out_capacity, out_len);
-    }
-    kind = PCORE_SCRIPT_NAVIGATION_NONE;
-    if (strcmp(op, "back") == 0) {
-        kind = PCORE_SCRIPT_NAVIGATION_BACK;
-    } else if (strcmp(op, "forward") == 0) {
-        kind = PCORE_SCRIPT_NAVIGATION_FORWARD;
-    } else if (strcmp(op, "go") == 0) {
-        delta = PJson_GetInt(object, "delta");
-        if (delta < -(PCORE_BROWSE_HISTORY_MAX - 1) ||
-                delta > PCORE_BROWSE_HISTORY_MAX - 1) {
-            PJson_Free(root);
-            return pcore_browser_script_write_bool(0, out_json,
-                    out_capacity, out_len);
-        }
-        kind = PCORE_SCRIPT_NAVIGATION_GO;
-    } else if (strcmp(op, "assign") == 0 ||
-            strcmp(op, "reload") == 0 ||
-            strcmp(op, "replace") == 0 ||
-            strcmp(op, "fragment") == 0 ||
-            strcmp(op, "fragmentReplace") == 0) {
-        url = PJson_GetString(object, "url");
-        if (url == NULL || url[0] == '\0' ||
-                strlen(url) >= PCORE_SCRIPT_NAVIGATION_URL_MAX) {
-            PJson_Free(root);
-            return pcore_browser_script_write_bool(0, out_json,
-                    out_capacity, out_len);
-        }
-        if ((strcmp(op, "fragment") == 0 ||
-                strcmp(op, "fragmentReplace") == 0) &&
-                (!bridge->history_can_commit ||
-                bridge->history_url == NULL ||
-                !pcore_browse_history_same_base_url(
-                bridge->history_url, url))) {
-            PJson_Free(root);
-            return pcore_browser_script_write_bool(0, out_json,
-                    out_capacity, out_len);
-        }
-        url_copy = pcore_browser_script_copy_string(url);
-        if (url_copy == NULL) {
-            PJson_Free(root);
-            return pcore_browser_script_write_bool(0, out_json,
-                    out_capacity, out_len);
-        }
-        if (strcmp(op, "assign") == 0) {
-            kind = PCORE_SCRIPT_NAVIGATION_ASSIGN;
-        } else if (strcmp(op, "reload") == 0) {
-            kind = PCORE_SCRIPT_NAVIGATION_RELOAD;
-        } else if (strcmp(op, "replace") == 0) {
-            kind = PCORE_SCRIPT_NAVIGATION_REPLACE;
-        } else if (strcmp(op, "fragment") == 0) {
-            kind = PCORE_SCRIPT_NAVIGATION_FRAGMENT;
-        } else {
-            kind = PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE;
-        }
-    } else {
-        PJson_Free(root);
+        *out_value = bridge->history_length;
         return 1;
+    }
+    if (info->kind == PBROWSER_SCRIPT_NAVIGATION_BACK ||
+            info->kind == PBROWSER_SCRIPT_NAVIGATION_FORWARD ||
+            info->kind == PBROWSER_SCRIPT_NAVIGATION_GO) {
+        free(bridge->navigation_url);
+        bridge->navigation_url = NULL;
+        bridge->navigation_kind = (info->kind ==
+                PBROWSER_SCRIPT_NAVIGATION_BACK) ?
+                PCORE_SCRIPT_NAVIGATION_BACK :
+                (info->kind == PBROWSER_SCRIPT_NAVIGATION_FORWARD) ?
+                PCORE_SCRIPT_NAVIGATION_FORWARD :
+                PCORE_SCRIPT_NAVIGATION_GO;
+        bridge->navigation_delta = info->delta;
+        if (bridge->hwnd != NULL) {
+            (void) PostMessage(bridge->hwnd, WM_PCORE_SCRIPT_NAVIGATE,
+                    0, 0);
+        }
+        return 1;
+    }
+    if (info->kind != PBROWSER_SCRIPT_NAVIGATION_ASSIGN &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_RELOAD &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_REPLACE &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_FRAGMENT &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE) {
+        return -1;
+    }
+    if (url == NULL || url[0] == '\0' ||
+            strlen(url) >= PCORE_SCRIPT_NAVIGATION_URL_MAX) {
+        return 0;
+    }
+    if ((info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT ||
+            info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE) &&
+            (!bridge->history_can_commit || bridge->history_url == NULL ||
+            !pcore_browse_history_same_base_url(
+            bridge->history_url, url))) {
+        return 0;
+    }
+    url_copy = pcore_browser_script_copy_string(url);
+    if (url_copy == NULL) {
+        return 0;
     }
     free(bridge->navigation_url);
     bridge->navigation_url = url_copy;
-    bridge->navigation_kind = kind;
-    bridge->navigation_delta = delta;
+    if (info->kind == PBROWSER_SCRIPT_NAVIGATION_ASSIGN) {
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_ASSIGN;
+    } else if (info->kind == PBROWSER_SCRIPT_NAVIGATION_RELOAD) {
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_RELOAD;
+    } else if (info->kind == PBROWSER_SCRIPT_NAVIGATION_REPLACE) {
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_REPLACE;
+    } else if (info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT) {
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_FRAGMENT;
+    } else {
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE;
+    }
+    bridge->navigation_delta = 0;
     if (bridge->hwnd != NULL) {
         (void) PostMessage(bridge->hwnd, WM_PCORE_SCRIPT_NAVIGATE,
                 0, 0);
     }
-    PJson_Free(root);
-    return pcore_browser_script_write_bool(1, out_json, out_capacity,
-            out_len);
+    return 1;
 }
 
 static unsigned int pcore_browser_script_event_callback(void *pw,
@@ -6588,6 +6544,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptFormCallbacks form_callbacks;
+    PBrowserScriptNavigationCallbacks navigation_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     PBrowserScriptEventCallbacks event_callbacks;
     char *source;
@@ -6695,6 +6652,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_get_selected_index;
     form_callbacks.set_selected_index =
             pcore_browser_script_dom_set_selected_index;
+    navigation_callbacks.size = sizeof(navigation_callbacks);
+    navigation_callbacks.pw = bridge;
+    navigation_callbacks.navigate = pcore_browser_script_navigation;
     dom_attribute_callbacks.size = sizeof(dom_attribute_callbacks);
     dom_attribute_callbacks.pw = bridge;
     dom_attribute_callbacks.get_attribute =
@@ -6742,9 +6702,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_attribute_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEventCallbacks(session,
             &event_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterJsonFunction(session,
-            "__pcoreNavigation", pcore_browser_script_navigation,
-            bridge) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterNavigationCallbacks(session,
+            &navigation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionEvaluateBootstrap(session) !=
             PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity, "DOM bootstrap",
@@ -36973,6 +36932,277 @@ static BOOL test210_browser_form_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 211 - product navigation callback adapter                        */
+/* -------------------------------------------------------------------- */
+typedef struct test211_navigation_state {
+    unsigned int kind;
+    char url[128];
+    char state_json[128];
+    int delta;
+    int calls;
+} test211_navigation_state;
+
+static int test211_navigation(void *pw,
+        const PBrowserScriptNavigationInfo *info, int *out_value)
+{
+    test211_navigation_state *state;
+    size_t length;
+
+    state = (test211_navigation_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptNavigationInfo) ||
+            out_value == NULL) {
+        return -1;
+    }
+    if (info->url != NULL) {
+        length = strlen(info->url);
+        if (length >= sizeof(state->url)) {
+            return -1;
+        }
+        memcpy(state->url, info->url, length + 1);
+    } else {
+        state->url[0] = '\0';
+    }
+    if (info->state_json != NULL) {
+        length = strlen(info->state_json);
+        if (length >= sizeof(state->state_json)) {
+            return -1;
+        }
+        memcpy(state->state_json, info->state_json, length + 1);
+    } else {
+        state->state_json[0] = '\0';
+    }
+    state->kind = info->kind;
+    state->delta = info->delta;
+    state->calls++;
+    *out_value = 7;
+    return 1;
+}
+
+static BOOL test211_browser_navigation_callbacks(void)
+{
+    PBrowserScriptNavigationCallbacks callbacks;
+    test211_navigation_state state;
+    HANDLE session;
+    const char *result;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.navigate = test211_navigation;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    result = NULL;
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterNavigationCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterNavigationCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 1;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterNavigationCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "replace-state";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation",
+                "[{\"op\":\"replaceState\",\"state\":{\"ok\":true},"
+                "\"url\":\"https://example.com/replaced\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_REPLACE_STATE &&
+                strcmp(state.url, "https://example.com/replaced") == 0 &&
+                strcmp(state.state_json, "{\"ok\":true}") == 0 &&
+                state.delta == 0 && state.calls == 1;
+    }
+    if (ok) {
+        stage = "push-state";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation",
+                "[{\"op\":\"pushState\",\"state\":{\"n\":2},"
+                "\"url\":\"https://example.com/pushed\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "7") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE &&
+                strcmp(state.state_json, "{\"n\":2}") == 0 &&
+                state.calls == 2;
+    }
+    if (ok) {
+        stage = "back";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation", "[{\"op\":\"back\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_BACK &&
+                state.url[0] == '\0' && state.calls == 3;
+    }
+    if (ok) {
+        stage = "go";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation",
+                "[{\"op\":\"go\",\"delta\":-2}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_GO &&
+                state.delta == -2 && state.calls == 4;
+    }
+    if (ok) {
+        stage = "assign";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation",
+                "[{\"op\":\"assign\",\"url\":\"https://example.com/a\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_ASSIGN &&
+                strcmp(state.url, "https://example.com/a") == 0 &&
+                state.calls == 5;
+    }
+    if (ok) {
+        stage = "forward";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation", "[{\"op\":\"forward\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_FORWARD &&
+                state.url[0] == '\0' && state.calls == 6;
+    }
+    if (ok) {
+        stage = "reload";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation",
+                "[{\"op\":\"reload\",\"url\":\"https://example.com/a\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_RELOAD &&
+                strcmp(state.url, "https://example.com/a") == 0 &&
+                state.calls == 7;
+    }
+    if (ok) {
+        stage = "replace";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation",
+                "[{\"op\":\"replace\",\"url\":\"https://example.com/b\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_REPLACE &&
+                strcmp(state.url, "https://example.com/b") == 0 &&
+                state.calls == 8;
+    }
+    if (ok) {
+        stage = "fragment";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation",
+                "[{\"op\":\"fragment\",\"url\":\"https://example.com/b#one\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT &&
+                strcmp(state.url, "https://example.com/b#one") == 0 &&
+                state.calls == 9;
+    }
+    if (ok) {
+        stage = "fragment-replace";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation",
+                "[{\"op\":\"fragmentReplace\",\"url\":\"https://example.com/b#two\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 &&
+                state.kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE &&
+                strcmp(state.url, "https://example.com/b#two") == 0 &&
+                state.calls == 10;
+    }
+    if (ok) {
+        stage = "invalid-go";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation", "[{\"op\":\"go\",\"delta\":16}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0 && state.calls == 10;
+    }
+    if (ok) {
+        stage = "missing-url";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation", "[{\"op\":\"assign\"}]");
+        result = PBrowser_ScriptSessionGetResult(session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "false") == 0 && state.calls == 10;
+    }
+    if (ok) {
+        stage = "invalid-op";
+        rc = PBrowser_ScriptSessionCallGlobalJson(session,
+                "__pcoreNavigation", "[{\"op\":\"unknown\"}]");
+        ok = rc != PSCRIPT_OK && state.calls == 10;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterNavigationCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0 &&
+                PBrowser_ScriptSessionUnregisterNavigationCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=%s",
+                    stage, rc, result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session),
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d result=%s native=%lu runtime=(null)",
+                    stage, rc, result != NULL ? result : "(null)",
+                    PBrowser_ScriptSessionNativeFunctionCount(session));
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 211 FAIL", error[0] != '\0' ? error :
+                "product navigation callback adapter failed");
+        return FALSE;
+    }
+    show_info(L"TEST 211 OK",
+            "positron_browser.dll owns navigation JSON dispatch; the host"
+            " supplies a typed operation adapter with URL, state and delta.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -41118,6 +41348,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 210: ok =
                 test210_browser_form_callbacks();
+                break;
+        case 211: ok =
+                test211_browser_navigation_callbacks();
                 break;
         default: ok = FALSE; break;
         }

@@ -213,6 +213,40 @@ typedef struct PBrowserScriptFormCallbacks {
     PBrowserScriptSetSelectedIndexFn set_selected_index;
 } PBrowserScriptFormCallbacks;
 
+/* Navigation operations understood by the browser bootstrap. The browser
+ * DLL owns their JSON parsing and result encoding; a host adapter supplies
+ * the navigation/history side effects. */
+#define PBROWSER_SCRIPT_NAVIGATION_REPLACE_STATE   1u
+#define PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE      2u
+#define PBROWSER_SCRIPT_NAVIGATION_BACK             3u
+#define PBROWSER_SCRIPT_NAVIGATION_FORWARD          4u
+#define PBROWSER_SCRIPT_NAVIGATION_GO               5u
+#define PBROWSER_SCRIPT_NAVIGATION_ASSIGN           6u
+#define PBROWSER_SCRIPT_NAVIGATION_RELOAD           7u
+#define PBROWSER_SCRIPT_NAVIGATION_REPLACE          8u
+#define PBROWSER_SCRIPT_NAVIGATION_FRAGMENT         9u
+#define PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE 10u
+
+/* Typed navigation request passed to the host adapter. url and state_json
+ * are borrowed for the duration of the callback; either may be NULL when
+ * the operation does not use it. state_json is compact UTF-8 JSON. For a
+ * successful PUSH_STATE callback, out_value must receive the exposed
+ * history length; other operations ignore it. */
+typedef struct PBrowserScriptNavigationInfo {
+    unsigned long size;
+    unsigned int kind;
+    const char *url;
+    const char *state_json;
+    int delta;
+} PBrowserScriptNavigationInfo;
+typedef int (*PBrowserScriptNavigateFn)(void *pw,
+        const PBrowserScriptNavigationInfo *info, int *out_value);
+typedef struct PBrowserScriptNavigationCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptNavigateFn navigate;
+} PBrowserScriptNavigationCallbacks;
+
 /* Typed host adapters for product-owned DOM attribute callbacks. The
  * browser DLL parses and encodes JSON. get_attribute returns 0 when an
  * attribute is present, 1 when it is absent and <0 on error; its out_len
@@ -313,6 +347,11 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormCallbacks(
         HANDLE hSession, const PBrowserScriptFormCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterNavigationCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptNavigationCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterNavigationCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
         HANDLE hSession,
