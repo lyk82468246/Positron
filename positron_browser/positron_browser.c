@@ -1172,6 +1172,10 @@ typedef struct p_browser_script_key_binding {
     PBrowserScriptKeyCallbacks callbacks;
 } p_browser_script_key_binding;
 
+typedef struct p_browser_script_focus_binding {
+    PBrowserScriptFocusCallbacks callbacks;
+} p_browser_script_focus_binding;
+
 typedef struct p_browser_script_navigation_binding {
     PBrowserScriptNavigationCallbacks callbacks;
 } p_browser_script_navigation_binding;
@@ -1193,6 +1197,7 @@ typedef struct p_browser_script_session {
     p_browser_script_form_binding *form;
     p_browser_script_input_binding *input;
     p_browser_script_key_binding *key;
+    p_browser_script_focus_binding *focus;
     p_browser_script_navigation_binding *navigation;
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
@@ -1481,6 +1486,17 @@ static int p_browser_script_event_type_safe(const char *event_type)
         }
     }
     return 1;
+}
+
+static int p_browser_script_focus_event_type_safe(const char *event_type)
+{
+    if (!p_browser_script_event_type_safe(event_type)) {
+        return 0;
+    }
+    return strcmp(event_type, "focus") == 0 ||
+            strcmp(event_type, "blur") == 0 ||
+            strcmp(event_type, "focusin") == 0 ||
+            strcmp(event_type, "focusout") == 0;
 }
 
 static int p_browser_script_write_string(const char *value,
@@ -2318,6 +2334,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->form = NULL;
     session->input = NULL;
     session->key = NULL;
+    session->focus = NULL;
     session->navigation = NULL;
     session->dom_attribute = NULL;
     session->event = NULL;
@@ -2380,6 +2397,10 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     if (session->key != NULL) {
         free(session->key);
         session->key = NULL;
+    }
+    if (session->focus != NULL) {
+        free(session->focus);
+        session->focus = NULL;
     }
     if (session->navigation != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -2919,6 +2940,68 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchKeyEvent(HANDLE hSession,
         return PSCRIPT_ERROR_NATIVE;
     }
     *out_default_allowed = default_allowed ? 1 : 0;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterFocusCallbacks(
+        HANDLE hSession, const PBrowserScriptFocusCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_focus_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptFocusCallbacks) ||
+            callbacks->dispatch_focus == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->focus != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_focus_binding *) malloc(sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    session->focus = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->focus == NULL) {
+        return PSCRIPT_OK;
+    }
+    free(session->focus);
+    session->focus = NULL;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchFocusEvent(HANDLE hSession,
+        const PBrowserScriptFocusEventInfo *info)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->focus == NULL ||
+            info == NULL ||
+            info->size < sizeof(PBrowserScriptFocusEventInfo) ||
+            !p_browser_script_focus_event_type_safe(info->event_type)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = session->focus->callbacks.dispatch_focus(
+            session->focus->callbacks.pw, info);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
     return PSCRIPT_OK;
 }
 

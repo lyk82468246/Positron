@@ -273,6 +273,29 @@ typedef struct PBrowserScriptKeyCallbacks {
     PBrowserScriptDispatchKeyFn dispatch_key;
 } PBrowserScriptKeyCallbacks;
 
+/* Typed host adapter for product-owned native focus-family events. The
+ * browser layer owns the focus-event contract and dispatch entry point; the
+ * host supplies core hit-testing/propagation for the document coordinates.
+ * x/y are borrowed document CSS pixels. event_type must be one of focus,
+ * blur, focusin or focusout and is borrowed only for the synchronous
+ * callback. The adapter returns zero when core dispatch was attempted and a
+ * negative return reports an adapter failure. */
+typedef struct PBrowserScriptFocusEventInfo {
+    unsigned long size;
+    int x;
+    int y;
+    const char *event_type;
+    int bubbles;
+    int cancelable;
+} PBrowserScriptFocusEventInfo;
+typedef int (*PBrowserScriptDispatchFocusFn)(void *pw,
+        const PBrowserScriptFocusEventInfo *info);
+typedef struct PBrowserScriptFocusCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptDispatchFocusFn dispatch_focus;
+} PBrowserScriptFocusCallbacks;
+
 /* Navigation operations understood by the browser bootstrap. The browser
  * DLL owns their JSON parsing and result encoding; a host adapter supplies
  * the navigation/history side effects. */
@@ -435,6 +458,13 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterKeyCallbacks(
  * success out_default_allowed is 1 or 0 as described above. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchKeyEvent(HANDLE hSession,
         const PBrowserScriptKeyEventInfo *info, int *out_default_allowed);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFocusCallbacks(
+        HANDLE hSession, const PBrowserScriptFocusCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusCallbacks(
+        HANDLE hSession);
+/* Dispatch one native focus-family event through the host's core adapter. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchFocusEvent(HANDLE hSession,
+        const PBrowserScriptFocusEventInfo *info);
 PBROWSER_API int PBrowser_ScriptSessionRegisterNavigationCallbacks(
         HANDLE hSession,
         const PBrowserScriptNavigationCallbacks *callbacks);

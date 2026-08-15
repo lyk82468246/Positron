@@ -9,17 +9,20 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next247。
-- next247 批次在 `positron_browser/` 产品 DLL 中加入 native keyboard typed dispatch callback ABI；next246 的 native input/composition typed dispatch callback ABI、next245 的同文档 history traversal/hash location 事件分发 API、next244 的 navigation callback typed registration、JSON
+- 最新已验证产品基线：next248。
+- next248 批次在 `positron_browser/` 产品 DLL 中加入 focus-family typed dispatch callback ABI；next247 的 native keyboard typed dispatch callback ABI、next246 的 native input/composition typed dispatch callback ABI、next245 的同文档 history traversal/hash location 事件分发 API、next244 的 navigation callback typed registration、JSON
   分发和 session 生命周期、next243 的 form-property callback、next242 的 checked callback、next241 的 input value callback、next240 的 Event callback、next239 的 DOM attribute 三件套、next238 的 textContent 写入、next237 的 DOM 只读 callback、next236 的产品 bootstrap
   文本与求值入口、next235 的浏览器脚本 session 所有权与 host JSON callback 注册均保持通过；`test_host` 适配与工程接线继续使用当前
   WMDC/RAPI 会话的 `scripts/device_gate.bat`、`scripts/device_gate.ps1`，环境修复脚本为
   `scripts/repair_wmdc_rapi.*`。
 - 当前工作区的 `test_host/test_host.ini` 保持自动模式：`auto=1`、`javascript=0`、
   `tests=13,20,27,56,58,62,64-67,73,75,999`。这是窄的自动 smoke 选择，不是完整基线；
-- 162 项自动 next247 全量证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
+- 163 项自动 next248 全量证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
   验收结束后恢复为 1。
-- 本地设备证据位于 `tmp/device-runs/20260815-154724-next247-key-final-retry/`；TEST214 定向证据位于
+- 本地设备证据位于 `tmp/device-runs/20260815-221705-next248-focus-final/`；TEST215 定向证据位于
+  `tmp/device-runs/20260815-221554-next248-focus-stage/`，focus/key/input 回归证据位于
+  `tmp/device-runs/20260815-221611-next248-focus-regression/`。next247 的 keyboard 全量证据仍位于
+  `tmp/device-runs/20260815-154724-next247-key-final-retry/`；TEST214 定向证据位于
   `tmp/device-runs/20260815-154407-next247-key-stage/`，keyboard/input 回归证据位于
   `tmp/device-runs/20260815-154427-next247-key-regression/`。next246 的 input 全量证据仍位于
   `tmp/device-runs/20260815-152753-next246-input-final/`；TEST213 定向证据位于
@@ -33,6 +36,28 @@
 接管时仍须重新运行 `git status --short --branch` 和 `git diff`；以上列表不是 Git 的替代品。
 
 ## 最近已验证设备证据
+
+### 最新全量检查点：next248
+
+- 配置：`TEST13/20/27/43/44/56/58-77/80-215/999`，共 163 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=320x320 dpi=128`。
+- 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
+  Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
+- 结果：163 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、零 `FAIL`、
+  唯一 `TESTBENCH PASS`，`completion_marker=PASS`，`test13_route_ok=True`。
+- TEST13：example.com、IANA Example Domains、Reserved Domains 三段导航均 `completed=1`；
+  TEST204–214 的既有 product callback/location/input/key 断言保持通过；TEST215 直接验证 product
+  focus/blur/focusin/focusout typed dispatch contract、bubbles 字段、非法事件、adapter error 映射和注销。
+- 产品边界：`positron_browser.dll` 现在拥有 PScript context、callback 注册/调用生命周期、browser
+  bootstrap 文本/求值入口、DOM 只读、textContent 写入、attribute、input value、checked、form-property、
+  navigation、同文档 location/history 事件分发、Event JSON 分发、native input/composition、keyboard 和
+  focus-family dispatch entry；`test_host` 仅保留 WM 消息/控件、坐标命中、core/document/form/navigation/
+  listener adapter 及窗口、网络、core 事件传播和控件默认副作用，产品 session 是唯一销毁者。
+- 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I Debug
+  正式构建、隔离 staging/部署、SHA-256 清单和日志自动判门均通过。直接 `TEST215/999` 证据位于
+  `tmp/device-runs/20260815-221554-next248-focus-stage/`，`TEST112-135/137-152/189-215/999`
+  （68 项）位于 `tmp/device-runs/20260815-221611-next248-focus-regression/`，全量最终证据位于
+  `tmp/device-runs/20260815-221705-next248-focus-final/`。
 
 ### 最新全量检查点：next247
 
@@ -651,6 +676,31 @@ core/document typed adapter，同时保持既有 bootstrap、页面脚本、nati
   完整证据路径见本文件顶部。全量中途曾出现 TEST129、TEST153、TEST192 的单次 JavaScript
   timeout；定向回归及最终全量重试通过，未调整执行预算或放宽断言。
 
+## 已关闭批次：next248
+
+目标：把 native EDIT/SELECT 的 `focus`、`blur`、`focusin` 和 `focusout` 事件分发入口从
+`test_host/main.c` 的直接 core 调用迁入 `positron_browser.dll` 的 typed callback ABI；宿主继续
+拥有 WM 焦点消息、控件生命周期、坐标命中、core 事件传播和 SIP/控件默认行为。
+
+实现边界：
+
+- `positron_browser.dll` 新增 `PBrowserScriptFocusEventInfo`、`PBrowserScriptFocusCallbacks`、
+  注册/注销 API 和 `PBrowser_ScriptSessionDispatchFocusEvent`；产品层限制事件类型为四种
+  focus-family 事件，同步调用宿主 adapter 并统一 adapter-error 结果。
+- `test_host` 的 native EDIT/SELECT 焦点路径改为构造产品 typed info；宿主 adapter 只把产品请求
+  转成 `PCore_EventDispatchAt`，保留 focus/blur 非冒泡和 focusin/focusout 冒泡语义。
+- TEST215 直接验证注册/重复注册、四种事件字段、非法事件、adapter error、注销和资源关闭；
+  没有迁移 WM 焦点消息、SIP、SELECT 默认行为或表单提交。
+
+已经核验并提升为基线：
+
+- `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`；
+- VS2008 ARMV4I Debug 正式构建；
+- 定向 `TEST215/999`（2 项）、`TEST112-135/137-152/189-215/999`（68 项）和全量
+  `TEST13/20/27/43/44/56/58-77/80-215/999`（163 项）WMDC/RAPI 设备门；
+- TEST13 三段真实导航、TEST215 product focus-family dispatch、零 `ERROR`、零 `FAIL`、
+  唯一 `TESTBENCH PASS`；完整证据路径见本文件顶部。
+
 ## 已关闭批次：next247
 
 目标：把 native EDIT/SELECT 的 `keydown`、`keyup` 和 `keypress` 键盘事件分发入口从
@@ -731,14 +781,14 @@ core/document typed adapter，同时保持既有 bootstrap、页面脚本、nati
 
 ## 唯一下一步
 
-在 next247 基线之上，把剩余 form/input callback 实现从 `test_host/main.c` 迁入
+在 next248 基线之上，把剩余 form/input callback 实现从 `test_host/main.c` 迁入
 `positron_browser.dll`，先保持现有 public core/script ABI 和宿主回调边界，不把窗口、网络、
 history/navigation 副作用或完整 URL parser 一起迁入；优先处理焦点、SELECT 或表单提交中的一个
-明确纵切；继续保留 TEST13 和人工视觉/输入累计门。
+明确纵切（焦点事件已完成）；继续保留 TEST13 和人工视觉/输入累计门。
 
 完成标准：
 
-- next247 的 162 项自动 gate、TEST214/999 和 keyboard/input 定向 gate、C89、审计和正式构建均保持通过；
+- next248 的 163 项自动 gate、TEST215/999 和 focus/key/input 定向 gate、C89、审计和正式构建均保持通过；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
 - 下一批为其余 form/input 产品边界增加成功/缺失/非法参数、资源关闭、页面脚本
