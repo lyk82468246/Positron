@@ -138,6 +138,11 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterJsonFunction(HANDLE hSession,
         const char *name);
 PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
         const char *source, int source_len);
+/* Evaluate the product-owned browser bootstrap after the host has installed
+ * the __pcore* globals and JSON callbacks it needs. The bootstrap only
+ * creates the browser-facing window/document/history/location/event objects;
+ * it does not own the core document, native controls or host callback pw. */
+PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
         const char *name, const char *value);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalNumber(HANDLE hSession,

@@ -9,24 +9,45 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next235。
-- next235 批次在 `positron_browser/` 产品 DLL 中加入浏览器脚本 session 所有权与 host JSON callback
+- 最新已验证产品基线：next236。
+- next236 批次在 `positron_browser/` 产品 DLL 中加入产品 bootstrap 文本与求值入口；next235 的
+  浏览器脚本 session 所有权与 host JSON callback
   注册；`test_host` 适配与工程接线继续使用当前
   WMDC/RAPI 会话的 `scripts/device_gate.bat`、`scripts/device_gate.ps1`，环境修复脚本为
   `scripts/repair_wmdc_rapi.*`。
 - 当前工作区的 `test_host/test_host.ini` 保持自动模式：`auto=1`、`javascript=0`、
   `tests=13,20,27,56,58,62,64-67,73,75,999`。这是窄的自动 smoke 选择，不是完整基线；
-- 150 项自动 next235 证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
+- 151 项自动 next236 证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
   验收结束后恢复为 1。
-- 本地设备证据位于 `tmp/device-runs/20260815-095055-next235-script-session-final/`；脚本回归定向证据位于
-  `tmp/device-runs/20260815-094818-next235-script-session-regression/`。`tmp/` 不跟踪，干净 clone
+- 本地设备证据位于 `tmp/device-runs/20260815-100357-next236-browser-bootstrap-final/`；脚本回归定向证据位于
+  `tmp/device-runs/20260815-100313-next236-browser-bootstrap-regression/`。`tmp/` 不跟踪，干净 clone
   中没有该日志，不能据此假定新环境也已经连接或通过。
 
 接管时仍须重新运行 `git status --short --branch` 和 `git diff`；以上列表不是 Git 的替代品。
 
 ## 最近已验证设备证据
 
-### 最新全量检查点：next235
+### 最新全量检查点：next236
+
+- 配置：`TEST13/20/27/43/44/56/58-77/80-203/999`，共 151 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
+- 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
+  Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
+- 结果：151 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、
+  零 `FAIL`、唯一 `TESTBENCH PASS`，`completion_marker=PASS`。
+- TEST13：example.com、IANA Example Domains、Reserved Domains 三段导航均 `completed=1`；
+  TEST203 直接验证 product bootstrap 的创建、求值和 document/location/history 对象持久性。
+- 产品边界：`positron_browser.dll` 现在拥有 PScript context、callback 注册/调用生命周期和
+  browser bootstrap 文本/求值入口；`test_host` 的 bridge 仍保留 core/窗口/导航适配及 DOM/Event/
+  form/input/location callback 实现，产品 session 是唯一销毁者，下一批迁移 callback 实现。
+- 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I
+  Debug 正式构建、15 项隔离 staging/部署、SHA-256 清单和日志自动判门均通过。直接
+  `TEST203/999` 证据位于 `tmp/device-runs/20260815-100256-next236-browser-bootstrap/`，
+  脚本回归 `TEST112-135/137-152/189-203/999`（56 项）位于
+  `tmp/device-runs/20260815-100313-next236-browser-bootstrap-regression/`，全量证据位于
+  `tmp/device-runs/20260815-100357-next236-browser-bootstrap-final/`。
+
+### 上一全量检查点：next235
 
 - 配置：`TEST13/20/27/43/44/56/58-77/80-202/999`，共 150 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
@@ -241,19 +262,44 @@ state、length、traversal、popstate/hashchange 行为可预测。编码 dot se
 - TEST13 三段真实导航、TEST202 product session、零 `ERROR`、零 `FAIL`、唯一
   `TESTBENCH PASS`；最新证据路径见本文件顶部。
 
+## 已关闭批次：next236
+
+目标：把浏览器 bootstrap 文本及其产品求值入口从 `test_host/main.c` 迁入
+`positron_browser.dll`，让宿主只负责安装 `__pcore*` globals、JSON callback 和 core/窗口/导航
+适配，不再拥有浏览器对象初始化脚本。
+
+实现边界：
+
+- `positron_browser.dll` 新增 `PBrowser_ScriptSessionEvaluateBootstrap`，持有 browser
+  `window`、`document`、`location`、`history`、事件和表单对象的 bootstrap 文本；该入口复用
+  已迁入的 product script session，不拥有 core document、native controls 或 host callback pw。
+- `test_host` 的 bootstrap 常量已删除，既有 callback 注册和页面执行路径改为调用公共 bootstrap
+  API；DOM/Event/form/input/location/navigation callback 实现仍在宿主，下一批迁移。
+- TEST203 直接验证 product bootstrap 的参数错误、持久 session、document URL、location、
+  history length/state 和 native callback 计数；默认 `javascript=0`、TEST13、公共 ABI 和
+  人工验收流程不变。
+
+已经核验并提升为基线：
+
+- `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`；
+- VS2008 ARMV4I Debug 正式构建；
+- 定向 `TEST203/999`（2 项）、`TEST112-135/137-152/189-203/999`（56 项）和全量
+  `TEST13/20/27/43/44/56/58-77/80-203/999`（151 项）WMDC/RAPI 设备门；
+- TEST13 三段真实导航、TEST203 product bootstrap、零 `ERROR`、零 `FAIL`、唯一
+  `TESTBENCH PASS`；最新证据路径见本文件顶部。
+
 ## 唯一下一步
 
-在 next235 基线之上，把 bootstrap 文本以及 DOM/Event/form/input/location/navigation callback
-实现从 `test_host/main.c` 迁入 `positron_browser.dll`，先保持现有 public core/script ABI 和
-宿主回调边界，不把窗口、网络或完整 URL parser 一起迁入；继续保留 TEST13 和人工视觉/输入
-累计门。
+在 next236 基线之上，把 DOM/Event/form/input/location/navigation callback 实现从
+`test_host/main.c` 迁入 `positron_browser.dll`，先保持现有 public core/script ABI 和宿主
+回调边界，不把窗口、网络或完整 URL parser 一起迁入；继续保留 TEST13 和人工视觉/输入累计门。
 
 完成标准：
 
-- next235 的 150 项自动 gate、TEST202/999 和脚本回归定向 gate、C89、审计和正式构建均保持通过；
+- next236 的 151 项自动 gate、TEST203/999 和脚本回归定向 gate、C89、审计和正式构建均保持通过；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
-- 下一批为 bootstrap 与 DOM/Event/form/input/location/navigation 产品边界增加正反例、资源
-  关闭、state/length、traversal 和事件顺序断言，并通过定向后全量设备门；
+- 下一批为 DOM/Event/form/input/location/navigation 产品边界增加正反例、资源关闭、state/length、
+  traversal 和事件顺序断言，并通过定向后全量设备门；
 - 若出现崩溃、数据损坏、严重布局破坏或核心交互阻塞，立即停止累计并进入 debug；
 - 候选通过后覆写本文件，并从路线图中选择下一个单一代码能力。
