@@ -1,6 +1,6 @@
 # Positron 当前限制
 
-更新时间：2026-08-15
+更新时间：2026-08-17
 
 这里只记录当前仍存在的产品或验收边界。已完成批次和设备流水不保留在本文件；最近证据见
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
@@ -14,7 +14,7 @@
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
   textContent 读取）、textContent 写入、attribute、input value、checked、form property
-  （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
+  （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
   Event callback 的产品 JSON 分发已迁入，但 core/document typed listener 适配仍由宿主提供。
@@ -75,7 +75,7 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 ## 表单与输入
 
 当前状态：已有 native EDIT/SELECT、textarea、checkbox/radio、提交/reset、基础 constraint
-validation、keyboard/focus-family/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
+validation、keyboard/focus-family/EDIT change/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
 尚未完成：任意 OEM IME、完整 composition/preedit、类型/范围/step、custom validity、
 `invalid` UI、完整 activation 和文件选择体验。
@@ -164,9 +164,9 @@ next243 的 TEST210、`TEST112-135,137-152,189-210,999`（63 项）定向门和
 `TEST13/20/27/43/44/56/58-77/80-210/999`（158 项）全量门验证 form-property callback；
 next244 的 TEST211、`TEST112-135,137-152,189-211,999`（64 项）定向门和
 `TEST13/20/27/43/44/56/58-77/80-211/999`（159 项）全量门验证 navigation JSON dispatch；
-next250 的 TEST217、`TEST112-135,137-152,189-217,999`（70 项）定向门和
-`TEST13/20/27/43/44/56/58-77/80-217/999`（165 项）全量门验证 SELECT input typed dispatch
-contract；next249 的 SELECT change、next248 的 focus-family、next247 的 native keyboard、next246 的 native input/composition contract 保持通过；其余 form/input callback 实现、
+next251 的 TEST218、`TEST112-135,137-152,189-218,999`（71 项）定向门和
+`TEST13/20/27/43/44/56/58-77/80-218/999`（166 项）全量门验证 EDIT change typed dispatch
+contract；next250 的 SELECT input、next249 的 SELECT change、next248 的 focus-family、next247 的 native keyboard、next246 的 native input/composition contract 保持通过；其余 form/input callback 实现、
 core 事件传播及导航 side effect 仍在宿主，
 尚未计入产品层完成项。
 next248 的 TEST215、`TEST112-135,137-152,189-215,999`（68 项）定向门和

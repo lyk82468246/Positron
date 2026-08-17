@@ -1176,6 +1176,10 @@ typedef struct p_browser_script_focus_binding {
     PBrowserScriptFocusCallbacks callbacks;
 } p_browser_script_focus_binding;
 
+typedef struct p_browser_script_edit_binding {
+    PBrowserScriptEditCallbacks callbacks;
+} p_browser_script_edit_binding;
+
 typedef struct p_browser_script_select_binding {
     PBrowserScriptSelectCallbacks callbacks;
 } p_browser_script_select_binding;
@@ -1202,6 +1206,7 @@ typedef struct p_browser_script_session {
     p_browser_script_input_binding *input;
     p_browser_script_key_binding *key;
     p_browser_script_focus_binding *focus;
+    p_browser_script_edit_binding *edit;
     p_browser_script_select_binding *select;
     p_browser_script_navigation_binding *navigation;
     p_browser_script_dom_attribute_binding *dom_attribute;
@@ -1508,6 +1513,11 @@ static int p_browser_script_select_event_type_safe(const char *event_type)
 {
     return event_type != NULL && (strcmp(event_type, "input") == 0 ||
             strcmp(event_type, "change") == 0);
+}
+
+static int p_browser_script_edit_event_type_safe(const char *event_type)
+{
+    return event_type != NULL && strcmp(event_type, "change") == 0;
 }
 
 static int p_browser_script_write_string(const char *value,
@@ -2346,6 +2356,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->input = NULL;
     session->key = NULL;
     session->focus = NULL;
+    session->edit = NULL;
     session->select = NULL;
     session->navigation = NULL;
     session->dom_attribute = NULL;
@@ -2413,6 +2424,10 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     if (session->focus != NULL) {
         free(session->focus);
         session->focus = NULL;
+    }
+    if (session->edit != NULL) {
+        free(session->edit);
+        session->edit = NULL;
     }
     if (session->select != NULL) {
         free(session->select);
@@ -3015,6 +3030,68 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchFocusEvent(HANDLE hSession,
     }
     rc = session->focus->callbacks.dispatch_focus(
             session->focus->callbacks.pw, info);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterEditCallbacks(
+        HANDLE hSession, const PBrowserScriptEditCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_edit_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptEditCallbacks) ||
+            callbacks->dispatch_edit == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->edit != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_edit_binding *) malloc(sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    session->edit = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterEditCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->edit == NULL) {
+        return PSCRIPT_OK;
+    }
+    free(session->edit);
+    session->edit = NULL;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchEditEvent(HANDLE hSession,
+        const PBrowserScriptEditEventInfo *info)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->edit == NULL ||
+            info == NULL ||
+            info->size < sizeof(PBrowserScriptEditEventInfo) ||
+            !p_browser_script_edit_event_type_safe(info->event_type)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = session->edit->callbacks.dispatch_edit(
+            session->edit->callbacks.pw, info);
     if (rc < 0) {
         return PSCRIPT_ERROR_NATIVE;
     }

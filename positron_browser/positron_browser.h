@@ -296,6 +296,29 @@ typedef struct PBrowserScriptFocusCallbacks {
     PBrowserScriptDispatchFocusFn dispatch_focus;
 } PBrowserScriptFocusCallbacks;
 
+/* Typed host adapter for product-owned native EDIT change events. The
+ * browser layer owns the EDIT event contract and dispatch entry point; the
+ * host supplies core hit-testing/propagation for the document coordinates.
+ * x/y are borrowed document CSS pixels. event_type must be "change" and is
+ * borrowed only for the synchronous callback. The adapter returns zero when
+ * core dispatch was attempted and a negative return reports an adapter
+ * failure. */
+typedef struct PBrowserScriptEditEventInfo {
+    unsigned long size;
+    int x;
+    int y;
+    const char *event_type;
+    int bubbles;
+    int cancelable;
+} PBrowserScriptEditEventInfo;
+typedef int (*PBrowserScriptDispatchEditFn)(void *pw,
+        const PBrowserScriptEditEventInfo *info);
+typedef struct PBrowserScriptEditCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptDispatchEditFn dispatch_edit;
+} PBrowserScriptEditCallbacks;
+
 /* Typed host adapter for product-owned native SELECT input/change events. The
  * browser layer owns the SELECT event contract and dispatch entry point; the
  * host supplies core hit-testing/propagation for the document coordinates.
@@ -488,6 +511,13 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusCallbacks(
 /* Dispatch one native focus-family event through the host's core adapter. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchFocusEvent(HANDLE hSession,
         const PBrowserScriptFocusEventInfo *info);
+PBROWSER_API int PBrowser_ScriptSessionRegisterEditCallbacks(
+        HANDLE hSession, const PBrowserScriptEditCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterEditCallbacks(
+        HANDLE hSession);
+/* Dispatch one native EDIT change event through the host's core adapter. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchEditEvent(HANDLE hSession,
+        const PBrowserScriptEditEventInfo *info);
 PBROWSER_API int PBrowser_ScriptSessionRegisterSelectCallbacks(
         HANDLE hSession, const PBrowserScriptSelectCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterSelectCallbacks(
