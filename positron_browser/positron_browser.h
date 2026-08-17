@@ -296,13 +296,13 @@ typedef struct PBrowserScriptFocusCallbacks {
     PBrowserScriptDispatchFocusFn dispatch_focus;
 } PBrowserScriptFocusCallbacks;
 
-/* Typed host adapter for product-owned native SELECT change events. The
+/* Typed host adapter for product-owned native SELECT input/change events. The
  * browser layer owns the SELECT event contract and dispatch entry point; the
  * host supplies core hit-testing/propagation for the document coordinates.
- * x/y are borrowed document CSS pixels. event_type must be "change" and is
- * borrowed only for the synchronous callback. The adapter returns zero when
- * core dispatch was attempted and a negative return reports an adapter
- * failure. */
+ * x/y are borrowed document CSS pixels. event_type must be "input" or
+ * "change" and is borrowed only for the synchronous callback. The adapter
+ * returns zero when core dispatch was attempted and a negative return reports
+ * an adapter failure. */
 typedef struct PBrowserScriptSelectEventInfo {
     unsigned long size;
     int x;
@@ -492,7 +492,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterSelectCallbacks(
         HANDLE hSession, const PBrowserScriptSelectCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterSelectCallbacks(
         HANDLE hSession);
-/* Dispatch one native SELECT change event through the host's core adapter. */
+/* Dispatch one native SELECT input/change event through the host's core
+ * adapter. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchSelectEvent(HANDLE hSession,
         const PBrowserScriptSelectEventInfo *info);
 PBROWSER_API int PBrowser_ScriptSessionRegisterNavigationCallbacks(

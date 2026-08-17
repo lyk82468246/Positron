@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 216
+#define TEST_MAX_NUMBER 217
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3556,7 +3556,8 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
             strcmp(event_type, "blur") == 0 ||
             strcmp(event_type, "focusin") == 0 ||
             strcmp(event_type, "focusout") == 0;
-    is_select_event = strcmp(event_type, "change") == 0;
+    is_select_event = strcmp(event_type, "input") == 0 ||
+            strcmp(event_type, "change") == 0;
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
                 PCore_TextInputInfo(g_render_doc,
@@ -3770,7 +3771,8 @@ static int pcore_browser_script_select_dispatch(void *pw,
     if (bridge == NULL || bridge->document == NULL || info == NULL ||
             info->size < sizeof(PBrowserScriptSelectEventInfo) ||
             info->event_type == NULL ||
-            strcmp(info->event_type, "change") != 0) {
+            (strcmp(info->event_type, "input") != 0 &&
+            strcmp(info->event_type, "change") != 0)) {
         return -1;
     }
     result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
@@ -38215,6 +38217,129 @@ static BOOL test216_browser_select_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 217 - product native SELECT input dispatch callback              */
+/* -------------------------------------------------------------------- */
+static BOOL test217_browser_select_input_callbacks(void)
+{
+    PBrowserScriptSelectCallbacks callbacks;
+    PBrowserScriptSelectEventInfo info;
+    test216_select_state state;
+    HANDLE session;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_select = test216_select_dispatch;
+    info.size = sizeof(info);
+    info.x = 91;
+    info.y = 102;
+    info.event_type = "input";
+    info.bubbles = 1;
+    info.cancelable = 0;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, NULL);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+    }
+    if (ok) {
+        stage = "invalid-event-type";
+        info.event_type = "focus";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+        info.event_type = "input";
+    }
+    if (ok) {
+        stage = "dispatch-input";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_OK && state.calls == 1 && state.x == 91 &&
+                state.y == 102 && state.bubbles == 1 &&
+                state.cancelable == 0 &&
+                strcmp(state.event_type, "input") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-input-second";
+        info.x = 113;
+        info.y = 124;
+        info.bubbles = 0;
+        info.cancelable = 1;
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_OK && state.calls == 2 && state.x == 113 &&
+                state.y == 124 && state.bubbles == 0 &&
+                state.cancelable == 1 &&
+                strcmp(state.event_type, "input") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-adapter-error";
+        state.return_code = -1;
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_ERROR_NATIVE && state.calls == 3;
+        state.return_code = 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterSelectCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "dispatch-after-unregister";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 3;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d calls=%d event=%s runtime=%s",
+                    stage, rc, state.calls, state.event_type,
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 217 FAIL", error[0] != '\0' ? error :
+                "product native SELECT input dispatch callback failed");
+        return FALSE;
+    }
+    show_info(L"TEST 217 OK",
+            "positron_browser.dll owns native SELECT input dispatch;"
+            " the host supplies typed core event propagation.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -42378,6 +42503,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 216: ok =
                 test216_browser_select_callbacks();
+                break;
+        case 217: ok =
+                test217_browser_select_input_callbacks();
                 break;
         default: ok = FALSE; break;
         }

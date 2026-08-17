@@ -1506,7 +1506,8 @@ static int p_browser_script_focus_event_type_safe(const char *event_type)
 
 static int p_browser_script_select_event_type_safe(const char *event_type)
 {
-    return event_type != NULL && strcmp(event_type, "change") == 0;
+    return event_type != NULL && (strcmp(event_type, "input") == 0 ||
+            strcmp(event_type, "change") == 0);
 }
 
 static int p_browser_script_write_string(const char *value,
