@@ -137,8 +137,27 @@ third_party/              直接 vendoring 的第三方源码和资源
 netsurf-all-3.11/         NetSurf 3.11 上游源码快照
 ```
 
-解决方案还包含若干移植后的内部静态库。调用者应只依赖产品 DLL 的公共头文件，不应直接
-链接或包含 NetSurf 内部接口。
+解决方案还包含若干移植后的内部静态库（`positron_expat`、`positron_hubbub`、
+`positron_libcss`、`positron_libdom`、`positron_libjpeg`、`positron_libsvgtiny`、
+`positron_netsurf`）。调用者应只依赖产品 DLL 的公共头文件，不应直接链接或包含
+NetSurf、Expat、libjpeg-turbo 或其他内部接口。
+
+### 子项目 README
+
+每个解决方案工程的目录 README 都说明了工程输出、边界和调用方式：
+
+- 公共 DLL：[`positron_tls/`](positron_tls/README.md)、[`positron_json/`](positron_json/README.md)、
+  [`positron_http/`](positron_http/README.md)、[`positron_image/`](positron_image/README.md)、
+  [`positron_script/`](positron_script/README.md)、[`positron_core/`](positron_core/README.md)、
+  [`positron_browser/`](positron_browser/README.md)；
+- 内部静态库：[`positron_expat/`](positron_expat/README.md)、[`positron_hubbub/`](positron_hubbub/README.md)、
+  [`positron_libcss/`](positron_libcss/README.md)、[`positron_libdom/`](positron_libdom/README.md)、
+  [`positron_libjpeg/`](positron_libjpeg/README.md)、[`positron_libsvgtiny/`](positron_libsvgtiny/README.md)、
+  [`positron_netsurf/`](positron_netsurf/README.md)；
+- 消费者：[`test_host/`](test_host/README.md) 和 [`samples/positron_image_demo/`](samples/positron_image_demo/README.md)。
+
+`netsurf-all-3.11/`、`positron_tls/mbedtls/` 和 `third_party/` 下的 README 是上游或
+第三方说明，保持其来源语境；它们不是 Positron 公共 API 文档。
 
 ## 文档
 

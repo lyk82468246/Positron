@@ -11,6 +11,12 @@
 - [故障排查](TROUBLESHOOTING.md)：构建、staging、设备、网络、布局、SIP 和脚本问题。
 - [历史里程碑](history/README.md)：早期 Phase 决策记录及其适用边界。
 
+## 子项目说明
+
+解决方案工程的职责、输出和调用方式写在各自目录的 README 中；根目录 README 提供
+完整索引。公共 DLL 的 README 是给其他应用调用者看的，内部静态库 README 明确说明
+它们只由产品 DLL 消费，避免误把 NetSurf/第三方 ABI 当成公共接口。
+
 公共 API 的精确签名和内存规则以各组件头文件为准：
 
 - [`positron_tls.h`](../positron_tls/positron_tls.h)
