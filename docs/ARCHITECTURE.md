@@ -33,7 +33,7 @@ WM6 application / test_host
         +-- positron_browser
               |
               +-- browser session / history / same-origin state
-              +-- script bootstrap + DOM read/write/attribute/value/checked/form-property/navigation/location/event/native-input/key/focus/edit/select bridge
+              +-- script bootstrap + DOM read/write/attribute/value/checked/form-property/navigation/location/event/native-input/key/focus/edit-input/select bridge
               +-- remaining form/input bridge (in migration)
 
 Browser host = composition of positron_browser + positron_core
@@ -132,7 +132,7 @@ DOM JSON 分发以及 native input/composition/keyboard/focus-family/EDIT-change
 
 因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
 history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/value/checked/form-property/
-navigation/location-event/native-input/keyboard/focus/EDIT-change/SELECT-input/change dispatch entry 已进入 `positron_browser.dll`，其余 DOM bridge 仍在迁移中且默认关闭；
+navigation/location-event/native-input/keyboard/focus/EDIT-change/post-change-input/SELECT-input/change dispatch entry 已进入 `positron_browser.dll`，其余 DOM bridge 仍在迁移中且默认关闭；
 不能将其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。
 
 ## ABI 与所有权原则

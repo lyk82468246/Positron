@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 218
+#define TEST_MAX_NUMBER 219
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3031,6 +3031,8 @@ typedef struct pcore_native_edit {
     int composition_active;
     int composition_committing;
     char *composition_data;
+    char *pending_input_type;
+    char *pending_input_data;
     WNDPROC original_proc;
 } pcore_native_edit;
 
@@ -3193,6 +3195,71 @@ static int pcore_native_edit_store_composition(
     return 1;
 }
 
+static void pcore_native_edit_clear_pending_input(
+        pcore_native_edit *native_edit)
+{
+    if (native_edit == NULL) {
+        return;
+    }
+    free(native_edit->pending_input_type);
+    native_edit->pending_input_type = NULL;
+    free(native_edit->pending_input_data);
+    native_edit->pending_input_data = NULL;
+}
+
+static int pcore_native_edit_store_pending_input(
+        pcore_native_edit *native_edit, const char *input_type,
+        const char *data)
+{
+    char *type_copy;
+    char *data_copy;
+    size_t type_length;
+    size_t data_length;
+
+    if (native_edit == NULL) {
+        return 0;
+    }
+    if (input_type == NULL) {
+        input_type = "";
+    }
+    if (data == NULL) {
+        data = "";
+    }
+    type_length = strlen(input_type);
+    data_length = strlen(data);
+    type_copy = (char *) malloc(type_length + 1);
+    data_copy = (char *) malloc(data_length + 1);
+    if (type_copy == NULL || data_copy == NULL) {
+        free(type_copy);
+        free(data_copy);
+        pcore_native_edit_clear_pending_input(native_edit);
+        return 0;
+    }
+    memcpy(type_copy, input_type, type_length + 1);
+    memcpy(data_copy, data, data_length + 1);
+    pcore_native_edit_clear_pending_input(native_edit);
+    native_edit->pending_input_type = type_copy;
+    native_edit->pending_input_data = data_copy;
+    return 1;
+}
+
+static int pcore_native_edit_dispatch_beforeinput(HWND hwnd,
+        pcore_native_edit *native_edit, const char *input_type,
+        const char *data)
+{
+    int default_allowed;
+
+    if (native_edit != NULL) {
+        pcore_native_edit_clear_pending_input(native_edit);
+    }
+    default_allowed = pcore_browser_script_dispatch_input_event(hwnd,
+            input_type, data);
+    if (default_allowed && native_edit != NULL) {
+        pcore_native_edit_store_pending_input(native_edit, input_type, data);
+    }
+    return default_allowed;
+}
+
 static int pcore_native_ime_string(HWND hwnd, DWORD index,
         char **out_utf8)
 {
@@ -3249,6 +3316,7 @@ static int pcore_native_edit_start_composition(HWND hwnd,
     if (native_edit == NULL) {
         return 1;
     }
+    pcore_native_edit_clear_pending_input(native_edit);
     pcore_native_edit_clear_composition(native_edit);
     native_edit->composition_active = 1;
     if (!pcore_native_edit_store_composition(native_edit, "")) {
@@ -3391,12 +3459,12 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                 return 0;
             }
             if (msg == WM_KEYDOWN && wp == VK_BACK &&
-                    pcore_browser_script_dispatch_input_event(hwnd,
+                    pcore_native_edit_dispatch_beforeinput(hwnd, native_edit,
                     "deleteContentBackward", "") == 0) {
                 return 0;
             }
             if (msg == WM_KEYDOWN && wp == VK_DELETE &&
-                    pcore_browser_script_dispatch_input_event(hwnd,
+                    pcore_native_edit_dispatch_beforeinput(hwnd, native_edit,
                     "deleteContentForward", "") == 0) {
                 return 0;
             }
@@ -3443,7 +3511,8 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                         }
                         if (pcore_native_codepoint_utf8(codepoint,
                                 input_char, sizeof(input_char)) > 0 &&
-                                pcore_browser_script_dispatch_input_event(hwnd,
+                                pcore_native_edit_dispatch_beforeinput(hwnd,
+                                native_edit,
                                 "insertText", input_char) == 0) {
                             return 0;
                         }
@@ -3476,23 +3545,23 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                     input_type = "insertText";
                 }
                 if (input_type != NULL &&
-                        pcore_browser_script_dispatch_input_event(hwnd,
+                        pcore_native_edit_dispatch_beforeinput(hwnd, native_edit,
                         input_type, input_char) == 0) {
                     return 0;
                 }
             }
             if (msg == WM_PASTE &&
-                    pcore_browser_script_dispatch_input_event(hwnd,
+                    pcore_native_edit_dispatch_beforeinput(hwnd, native_edit,
                     "insertFromPaste", "") == 0) {
                 return 0;
             }
             if (msg == WM_CUT &&
-                    pcore_browser_script_dispatch_input_event(hwnd,
+                    pcore_native_edit_dispatch_beforeinput(hwnd, native_edit,
                     "deleteByCut", "") == 0) {
                 return 0;
             }
             if (msg == WM_CLEAR &&
-                    pcore_browser_script_dispatch_input_event(hwnd,
+                    pcore_native_edit_dispatch_beforeinput(hwnd, native_edit,
                     "deleteContentBackward", "") == 0) {
                 return 0;
             }
@@ -4101,6 +4170,7 @@ static void pcore_native_edits_destroy(void)
             g_native_edits[i].hwnd = NULL;
         }
         pcore_native_edit_clear_composition(&g_native_edits[i]);
+        pcore_native_edit_clear_pending_input(&g_native_edits[i]);
     }
     free(g_native_edits);
     g_native_edits = NULL;
@@ -4323,6 +4393,9 @@ static void pcore_native_edit_changed(HWND edit)
     wide_value = (WCHAR *) malloc((size_t) (wide_len + 1) *
             sizeof(WCHAR));
     if (wide_value == NULL) {
+        if (native_edit != NULL) {
+            pcore_native_edit_clear_pending_input(native_edit);
+        }
         return;
     }
     GetWindowTextW(edit, wide_value, wide_len + 1);
@@ -4330,11 +4403,17 @@ static void pcore_native_edit_changed(HWND edit)
             NULL, 0, NULL, NULL);
     if (utf8_len < 0) {
         free(wide_value);
+        if (native_edit != NULL) {
+            pcore_native_edit_clear_pending_input(native_edit);
+        }
         return;
     }
     value = (char *) malloc((size_t) utf8_len + 1);
     if (value == NULL) {
         free(wide_value);
+        if (native_edit != NULL) {
+            pcore_native_edit_clear_pending_input(native_edit);
+        }
         return;
     }
     if (utf8_len > 0) {
@@ -4352,8 +4431,15 @@ static void pcore_native_edit_changed(HWND edit)
                     native_edit->composition_data != NULL ?
                     native_edit->composition_data : "", 0, 1);
         } else {
-            pcore_browser_script_dispatch_control_event(edit, "input", 1);
+            pcore_browser_script_dispatch_input_data_event(edit, "input",
+                    native_edit->pending_input_type != NULL ?
+                    native_edit->pending_input_type : "",
+                    native_edit->pending_input_data != NULL ?
+                    native_edit->pending_input_data : "", 0, 0);
         }
+    }
+    if (native_edit != NULL) {
+        pcore_native_edit_clear_pending_input(native_edit);
     }
     if (g_native_edit_probe && stored_index == 1) {
         g_native_edit_probe_seen = 1;
@@ -38543,6 +38629,144 @@ static BOOL test218_browser_edit_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 219 - product native EDIT post-change input dispatch callback   */
+/* -------------------------------------------------------------------- */
+static BOOL test219_browser_edit_input_callbacks(void)
+{
+    PBrowserScriptInputCallbacks callbacks;
+    PBrowserScriptInputEventInfo info;
+    test213_input_state state;
+    HANDLE session;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int default_allowed;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_input = test213_input_dispatch;
+    info.size = sizeof(info);
+    info.x = 161;
+    info.y = 172;
+    info.event_type = "input";
+    info.bubbles = 1;
+    info.cancelable = 0;
+    info.input_type = "insertText";
+    info.data = "changed";
+    info.is_composing = 0;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    default_allowed = 1;
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, NULL,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && default_allowed == 1 &&
+                state.calls == 0;
+    }
+    if (ok) {
+        stage = "invalid-event-type";
+        info.event_type = "input event";
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+        info.event_type = "input";
+    }
+    if (ok) {
+        stage = "dispatch-input";
+        state.default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                state.calls == 1 && state.x == 161 && state.y == 172 &&
+                state.bubbles == 1 && state.cancelable == 0 &&
+                state.is_composing == 0 &&
+                strcmp(state.event_type, "input") == 0 &&
+                strcmp(state.input_type, "insertText") == 0 &&
+                strcmp(state.data, "changed") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-input-cancel";
+        state.default_allowed = 0;
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                state.calls == 2 && state.cancelable == 0 &&
+                strcmp(state.event_type, "input") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-adapter-error";
+        state.default_allowed = 1;
+        state.return_code = -1;
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_NATIVE && default_allowed == 1 &&
+                state.calls == 3;
+        state.return_code = 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterInputCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "dispatch-after-unregister";
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 3;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d calls=%d event=%s input=%s data=%s runtime=%s",
+                    stage, rc, state.calls, state.event_type,
+                    state.input_type, state.data,
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 219 FAIL", error[0] != '\0' ? error :
+                "product native EDIT input dispatch callback failed");
+        return FALSE;
+    }
+    show_info(L"TEST 219 OK",
+            "positron_browser.dll owns native EDIT post-change input"
+            " dispatch; the host supplies typed core event propagation.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -42712,6 +42936,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 218: ok =
                 test218_browser_edit_callbacks();
+                break;
+        case 219: ok =
+                test219_browser_edit_input_callbacks();
                 break;
         default: ok = FALSE; break;
         }
