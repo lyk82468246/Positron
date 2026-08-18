@@ -14,7 +14,7 @@
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
   textContent 读取）、textContent 写入、attribute、input value、checked、form property
-  （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、submit/reset 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
+  （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、submit/reset、invalid 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
   Event callback 的产品 JSON 分发已迁入，但 core/document typed listener 适配仍由宿主提供。
@@ -75,7 +75,7 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 ## 表单与输入
 
 当前状态：已有 native EDIT/SELECT、textarea、checkbox/radio、提交/reset、基础 constraint
-validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
+validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
 尚未完成：任意 OEM IME、完整 composition/preedit、类型/范围/step、custom validity、
 `invalid` UI、完整 activation 和文件选择体验。
@@ -170,7 +170,8 @@ contract；next252 的 TEST219、`TEST112-135,137-152,189-219,999`（72 项）�
 `TEST13/20/27/43/44/56/58-77/80-219/999`（167 项）全量门验证 EDIT post-change input typed dispatch
 contract；next253 的 TEST220、`TEST112-135,137-152,189-220,999`（73 项）定向门和
 `TEST13/20/27/43/44/56/58-77/80-220/999`（168 项）全量门验证 native click typed dispatch contract；next254 的 TEST221、`TEST112-135,137-152,189-221,999`（74 项）定向门和
-`TEST13/20/27/43/44/56/58-77/80-221/999`（169 项）全量门验证 native submit/reset typed dispatch contract；next250 的 SELECT input、next249 的 SELECT change、next248 的 focus-family、next247 的 native keyboard、next246 的 native input/composition contract 保持通过；其余 form/input callback 实现、
+`TEST13/20/27/43/44/56/58-77/80-221/999`（169 项）全量门验证 native submit/reset typed dispatch contract；next255 的 TEST222、`TEST112-135,137-152,189-222,999`（75 项）定向门和
+`TEST13/20/27/43/44/56/58-77/80-222/999`（170 项）全量门验证 native invalid typed dispatch contract；next250 的 SELECT input、next249 的 SELECT change、next248 的 focus-family、next247 的 native keyboard、next246 的 native input/composition contract 保持通过；其余 form/input callback 实现、
 core 事件传播及导航 side effect 仍在宿主，
 尚未计入产品层完成项。
 next248 的 TEST215、`TEST112-135,137-152,189-215,999`（68 项）定向门和

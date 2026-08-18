@@ -390,6 +390,31 @@ typedef struct PBrowserScriptFormEventCallbacks {
     PBrowserScriptDispatchFormEventFn dispatch_form_event;
 } PBrowserScriptFormEventCallbacks;
 
+/* Typed host adapter for product-owned native constraint-validation events.
+ * The browser layer owns the invalid-event contract and dispatch entry point;
+ * the host supplies core hit-testing/propagation for the invalid control's
+ * document coordinates. x/y are borrowed document CSS pixels. event_type must
+ * be "invalid" and is borrowed only for the synchronous callback. The
+ * adapter returns zero when core dispatch was attempted and writes 1 when the
+ * host's invalid feedback is allowed or 0 when a cancelable listener prevented
+ * it; a negative return reports an adapter failure. */
+typedef struct PBrowserScriptInvalidEventInfo {
+    unsigned long size;
+    int x;
+    int y;
+    const char *event_type;
+    int bubbles;
+    int cancelable;
+} PBrowserScriptInvalidEventInfo;
+typedef int (*PBrowserScriptDispatchInvalidEventFn)(void *pw,
+        const PBrowserScriptInvalidEventInfo *info,
+        int *out_default_allowed);
+typedef struct PBrowserScriptInvalidCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptDispatchInvalidEventFn dispatch_invalid;
+} PBrowserScriptInvalidCallbacks;
+
 /* Navigation operations understood by the browser bootstrap. The browser
  * DLL owns their JSON parsing and result encoding; a host adapter supplies
  * the navigation/history side effects. */
@@ -590,6 +615,14 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormEventCallbacks(
  * adapter. On success out_default_allowed is 1 or 0 as described above. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchFormEvent(HANDLE hSession,
         const PBrowserScriptFormEventInfo *info, int *out_default_allowed);
+PBROWSER_API int PBrowser_ScriptSessionRegisterInvalidCallbacks(
+        HANDLE hSession, const PBrowserScriptInvalidCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterInvalidCallbacks(
+        HANDLE hSession);
+/* Dispatch one native constraint-validation event through the host's core
+ * adapter. On success out_default_allowed is 1 or 0 as described above. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchInvalidEvent(HANDLE hSession,
+        const PBrowserScriptInvalidEventInfo *info, int *out_default_allowed);
 PBROWSER_API int PBrowser_ScriptSessionRegisterNavigationCallbacks(
         HANDLE hSession,
         const PBrowserScriptNavigationCallbacks *callbacks);
