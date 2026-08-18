@@ -74,6 +74,8 @@ next281 已补齐 input type=datetime-local 的 min-based step/默认 60 秒/any
 下一候选为 text/password controls 的 product custom validity setter，不依赖人工页面观察。
 next282 已补齐 text/password controls 的 product custom validity setter/clear；下一候选为
 修正 date step 在缺少 min 时优先采用有效 value 作为基准，不依赖人工页面观察。
+next283 已修正 date 缺少 min 时使用固定 default value 作为 step base；下一候选为
+修正 time 缺少 min 时的 value step base，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 

@@ -6578,6 +6578,26 @@ static int pcore_node_attr_time(dom_node *node, const char *attr,
     return result;
 }
 
+static int pcore_node_default_time(dom_node *node, int *milliseconds_out)
+{
+    dom_string *value;
+    int result;
+
+    value = NULL;
+    if (node == NULL || !pcore_node_name_is(node, "input") ||
+            dom_html_input_element_get_default_value(
+            (dom_html_input_element *) node, &value) != DOM_NO_ERR ||
+            value == NULL) {
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        return 0;
+    }
+    result = pcore_dom_time(value, milliseconds_out);
+    dom_string_unref(value);
+    return result;
+}
+
 static int pcore_time_constraint_flags(dom_node *node, dom_string *value,
         unsigned int *flags_out)
 {
@@ -6609,7 +6629,9 @@ static int pcore_time_constraint_flags(dom_node *node, dom_string *value,
             step = 60.0;
         }
         base = 0;
-        (void) pcore_node_attr_time(node, "min", &base);
+        if (!pcore_node_attr_time(node, "min", &base)) {
+            (void) pcore_node_default_time(node, &base);
+        }
         if (pcore_step_mismatch((double) milliseconds, (double) base,
                 step * 1000.0)) {
             *flags_out |= PCORE_VALIDITY_STEP_MISMATCH;
