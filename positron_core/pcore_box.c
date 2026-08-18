@@ -6667,6 +6667,11 @@ static int pcore_month_compare(int year, int month, int other_year,
     return 0;
 }
 
+static int pcore_month_number(int year, int month)
+{
+    return year * 12 + month;
+}
+
 static int pcore_month_constraint_flags(dom_node *node, dom_string *value,
         unsigned int *flags_out)
 {
@@ -6676,6 +6681,9 @@ static int pcore_month_constraint_flags(dom_node *node, dom_string *value,
     int minimum_month;
     int maximum_year;
     int maximum_month;
+    double step;
+    int base_year;
+    int base_month;
 
     *flags_out = 0;
     if (value == NULL || dom_string_byte_length(value) == 0) {
@@ -6694,6 +6702,20 @@ static int pcore_month_constraint_flags(dom_node *node, dom_string *value,
             pcore_month_compare(year, month, maximum_year,
             maximum_month) > 0) {
         *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    if (!pcore_attr_value_is(node, "step", "any")) {
+        step = 1.0;
+        if (!pcore_node_attr_number(node, "step", &step) || step <= 0.0) {
+            step = 1.0;
+        }
+        base_year = 1970;
+        base_month = 1;
+        (void) pcore_node_attr_month(node, "min", &base_year, &base_month);
+        if (pcore_step_mismatch(
+                (double) pcore_month_number(year, month),
+                (double) pcore_month_number(base_year, base_month), step)) {
+            *flags_out |= PCORE_VALIDITY_STEP_MISMATCH;
+        }
     }
     return 1;
 }
