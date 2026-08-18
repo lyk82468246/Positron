@@ -30,6 +30,9 @@
   验收结束后恢复为 1。
 - next264 定向证据位于 `tmp/device-runs/20260818-231007-next264-file-picker-stage/`；`TEST70,189-231/999`
   相关回归证据位于 `tmp/device-runs/20260818-231032-next264-file-picker-regression/`。next263 定向证据位于 `tmp/device-runs/20260818-225735-next263-file-programmatic-stage/`；`TEST70,189-230/999`
+- next265 候选的自动复核证据位于 `tmp/device-runs/20260818-233029-next265-picker-regression/`
+  （`TEST231/999` 2/2）和 `tmp/device-runs/20260818-233055-next265-file-regression/`
+  （`TEST70,189-231/999` 45/45）；两组均无 ERROR/FAIL。TEST232 仍未有人工设备结果。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
