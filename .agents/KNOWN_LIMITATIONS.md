@@ -77,8 +77,8 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 当前状态：已有 native EDIT/SELECT、file input、textarea、checkbox/radio、提交/reset、基础 constraint
 validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/submit-reset-button programmatic `click()`/file-input programmatic `click()` typed dispatch/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
-尚未完成：任意 OEM IME、完整 composition/preedit、除 type=number 的 min/max 核心校验
-外的完整类型/范围/step 语义、custom validity、
+尚未完成：任意 OEM IME、完整 composition/preedit、除 type=number 的 min/max/step 核心校验
+外的完整类型/范围/step 语义、email/URL 类型校验、custom validity、
 `invalid` UI、native file input 的程序化 picker 入口和完整文件选择体验。当前程序化 click
 只分发 typed click，不自动打开系统 picker；TEST231 已自动覆盖 host picker 的注入错误/空选择
 边界，TEST232 的真实 WM6 picker 选择/取消/窗口返回仍等待人工设备证据。

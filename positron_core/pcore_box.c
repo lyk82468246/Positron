@@ -28,6 +28,7 @@
 #include <windows.h>
 #include <float.h>
 #include <limits.h>
+#include <math.h>
 #include <stdlib.h>   /* malloc / free for the per-document render state */
 #include <string.h>
 
@@ -6216,6 +6217,27 @@ static int pcore_number_constraint_flags(dom_node *node, dom_string *value,
     }
     if (pcore_node_attr_number(node, "max", &maximum) && number > maximum) {
         *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    if (!pcore_attr_value_is(node, "step", "any")) {
+        double step;
+        double base;
+        double remainder;
+        double tolerance;
+
+        step = 1.0;
+        if (!pcore_node_attr_number(node, "step", &step) || step <= 0.0) {
+            step = 1.0;
+        }
+        base = 0.0;
+        (void) pcore_node_attr_number(node, "min", &base);
+        remainder = fmod(number - base, step);
+        if (remainder < 0.0) {
+            remainder = -remainder;
+        }
+        tolerance = step * 0.000000001;
+        if (remainder > tolerance && step - remainder > tolerance) {
+            *flags_out |= PCORE_VALIDITY_STEP_MISMATCH;
+        }
     }
     return 1;
 }
