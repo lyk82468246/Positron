@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 243
+#define TEST_MAX_NUMBER 244
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -43423,6 +43423,65 @@ static BOOL test243_form_color_constraints(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 244 - date step base, any and fallback semantics                  */
+/* -------------------------------------------------------------------- */
+static BOOL test244_form_date_step_constraints(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/date-step method=get>"
+        "<input type=date name=day value=2024-01-03 min=2024-01-01 step=2>"
+        "<input type=date value=2024-01-02>"
+        "<input type=date value=2024-01-02 step=any>"
+        "<input type=date value=2024-01-03 step=0>"
+        "<input type=date value=2024-01-03 step=bad>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "2024-01-02") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "2024-01-05") != 0 ||
+            PCore_TextInputSetValue(document, 1, "2024-01-03") != 0 ||
+            PCore_TextInputSetValue(document, 2, "2024-01-03") != 0 ||
+            PCore_TextInputSetValue(document, 3, "2024-01-04") != 0 ||
+            PCore_TextInputSetValue(document, 4, "2024-01-04") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/date-step") != 0 ||
+            strcmp(body, "day=2024-01-05&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 244 FAIL",
+                "date step base, any or fallback validation failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 244 OK",
+            "date controls enforced min-based step days and accepted default, "
+            "any and malformed/nonpositive fallback steps.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -47667,6 +47726,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 243: ok =
                 test243_form_color_constraints();
+                break;
+        case 244: ok =
+                test244_form_date_step_constraints();
                 break;
         default: ok = FALSE; break;
         }
