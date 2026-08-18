@@ -8134,6 +8134,27 @@ PCORE_API int PCore_FormGetCustomValidityForTextInput(HANDLE hDoc,
             control->node, message, capacity);
 }
 
+PCORE_API int PCore_FormGetCustomValidityForTextarea(HANDLE hDoc,
+        unsigned int textarea_index, char *message, unsigned int capacity)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_control *control;
+    unsigned int current;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_text_input_at(st->root_box, textarea_index, &current) : NULL;
+    control = (box != NULL) ? box->gadget : NULL;
+    if (control == NULL || control->node == NULL ||
+            control->type != GADGET_TEXTAREA) {
+        return -1;
+    }
+    return pcore_custom_validity_get((dom_document *) hDoc,
+            control->node, message, capacity);
+}
+
 typedef struct pcore_multipart_part {
     struct pcore_multipart_part *next;
     char *name;

@@ -122,6 +122,8 @@ scripts\device_gate.bat -Candidate next289 ^
   -TestSelection "233-256,999"
 scripts\device_gate.bat -Candidate next290 ^
   -TestSelection "233-257,999"
+scripts\device_gate.bat -Candidate next291 ^
+  -TestSelection "233-258,999"
 ```
 
 next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；上一批 next263 的最终定向门
@@ -173,6 +175,7 @@ next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；�
 | 255 | required 空 text input 同时保留 valueMissing 与 product customError；填值后清空消息恢复提交。 |
 | 256 | textarea 的 product custom validity 可阻止 required 验证；清空消息后恢复提交。 |
 | 257 | text/password custom validity getter 返回完整 UTF-8 字节长度，并在小缓冲区安全截断。 |
+| 258 | textarea custom validity getter 返回完整 UTF-8 字节长度，并在小缓冲区安全截断。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
@@ -229,6 +232,8 @@ TEST256 是自动的 textarea custom validity 门，覆盖 textarea setter、req
 native invalid UI 已完成。
 TEST257 是自动的 custom validity getter 门，覆盖 text/password 读回、UTF-8 字节长度、容量不足时
 的 NUL 截断和清空后的空消息；不需要人工页面观察，也不代表完整 DOM `validationMessage`。
+TEST258 是自动的 textarea custom validity getter 门，覆盖 textarea 读回、UTF-8 字节长度、容量
+不足时的 NUL 截断和清空后的空消息；不需要人工页面观察，也不代表完整 DOM `validationMessage`。
 TEST246 是自动的 month step 门，覆盖 min 作为步长基准、默认 step=1 月、step=any、非法/非正
 step 回退和动态恢复，不需要人工页面观察；它不替代 native month picker 的视觉/触摸验收。
 TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read callback adapter，TEST205

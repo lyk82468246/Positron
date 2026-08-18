@@ -876,6 +876,14 @@ PCORE_API int PCore_FormGetCustomValidityForTextInput(HANDLE hDoc,
                                     unsigned int text_index,
                                     char *message, unsigned int capacity);
 
+/* Read an application-owned custom validity message from a textarea using
+ * the same indexing as PCore_FormSetCustomValidityForTextarea. The UTF-8
+ * message is copied and truncated safely as above; the return value is the
+ * complete message byte length, or -1 on resolution/length failure. */
+PCORE_API int PCore_FormGetCustomValidityForTextarea(HANDLE hDoc,
+                                    unsigned int textarea_index,
+                                    char *message, unsigned int capacity);
+
 /* Build the application/x-www-form-urlencoded successful-control set for a
  * submit button at a document-space point. method is 1 for GET, 2 for an
  * urlencoded POST and 3 for unsupported multipart POST. action/body receive

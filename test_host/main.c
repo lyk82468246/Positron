@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 257
+#define TEST_MAX_NUMBER 258
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -44165,7 +44165,7 @@ static BOOL test257_form_custom_validity_get(void)
         "<input type=text name=field value=ok>"
         "<button type=submit name=go value=send>Send</button>"
         "</form></body></html>";
-    static const char MESSAGE[] = "bad café";
+    static const char MESSAGE[] = "bad caf\xc3\xa9";
     HANDLE document;
     HANDLE sheet;
     char full[64];
@@ -44206,6 +44206,58 @@ static BOOL test257_form_custom_validity_get(void)
     test100_form_cleanup(document, sheet);
     show_info(L"TEST 257 OK",
             "custom validity getter returned UTF-8 bytes and safe truncation.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 258 - textarea custom validity getter and truncation              */
+/* -------------------------------------------------------------------- */
+static BOOL test258_form_textarea_custom_validity_get(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/textarea-get method=get>"
+        "<textarea name=notes>ok</textarea>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    static const char MESSAGE[] = "\xe8\xaf\xb4\xe6\x98\x8e caf\xc3\xa9";
+    HANDLE document;
+    HANDLE sheet;
+    char full[64];
+    char short_message[8];
+    int full_length;
+    int short_length;
+    int empty_length;
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(full, 0, sizeof(full));
+    memset(short_message, 0, sizeof(short_message));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            PCore_FormSetCustomValidityForTextarea(document, 0,
+                    MESSAGE) != 0 ||
+            (full_length = PCore_FormGetCustomValidityForTextarea(
+                    document, 0, full, sizeof(full))) !=
+                    (int) strlen(MESSAGE) ||
+            strcmp(full, MESSAGE) != 0 ||
+            (short_length = PCore_FormGetCustomValidityForTextarea(
+                    document, 0, short_message, sizeof(short_message))) !=
+                    (int) strlen(MESSAGE) ||
+            strcmp(short_message, "\xe8\xaf\xb4\xe6\x98\x8e ") != 0 ||
+            PCore_FormSetCustomValidityForTextarea(document, 0, NULL) != 0 ||
+            (empty_length = PCore_FormGetCustomValidityForTextarea(
+                    document, 0, full, sizeof(full))) != 0 ||
+            full[0] != '\0') {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 258 FAIL",
+                "textarea custom validity getter did not preserve UTF-8 data");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 258 OK",
+            "textarea custom validity getter returned UTF-8 bytes and truncation.");
     return TRUE;
 }
 
@@ -48496,6 +48548,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 257: ok =
                 test257_form_custom_validity_get();
+                break;
+        case 258: ok =
+                test258_form_textarea_custom_validity_get();
                 break;
         default: ok = FALSE; break;
         }
