@@ -1188,6 +1188,10 @@ typedef struct p_browser_script_click_binding {
     PBrowserScriptClickCallbacks callbacks;
 } p_browser_script_click_binding;
 
+typedef struct p_browser_script_form_event_binding {
+    PBrowserScriptFormEventCallbacks callbacks;
+} p_browser_script_form_event_binding;
+
 typedef struct p_browser_script_navigation_binding {
     PBrowserScriptNavigationCallbacks callbacks;
 } p_browser_script_navigation_binding;
@@ -1213,6 +1217,7 @@ typedef struct p_browser_script_session {
     p_browser_script_edit_binding *edit;
     p_browser_script_select_binding *select;
     p_browser_script_click_binding *click;
+    p_browser_script_form_event_binding *form_event;
     p_browser_script_navigation_binding *navigation;
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
@@ -1528,6 +1533,13 @@ static int p_browser_script_edit_event_type_safe(const char *event_type)
 static int p_browser_script_click_event_type_safe(const char *event_type)
 {
     return event_type != NULL && strcmp(event_type, "click") == 0;
+}
+
+static int p_browser_script_form_event_type_safe(const char *event_type)
+{
+    return event_type != NULL &&
+            (strcmp(event_type, "submit") == 0 ||
+            strcmp(event_type, "reset") == 0);
 }
 
 static int p_browser_script_write_string(const char *value,
@@ -2369,6 +2381,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->edit = NULL;
     session->select = NULL;
     session->click = NULL;
+    session->form_event = NULL;
     session->navigation = NULL;
     session->dom_attribute = NULL;
     session->event = NULL;
@@ -2447,6 +2460,10 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     if (session->click != NULL) {
         free(session->click);
         session->click = NULL;
+    }
+    if (session->form_event != NULL) {
+        free(session->form_event);
+        session->form_event = NULL;
     }
     if (session->navigation != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -3237,6 +3254,76 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchClickEvent(HANDLE hSession,
     default_allowed = 1;
     rc = session->click->callbacks.dispatch_click(
             session->click->callbacks.pw, info, &default_allowed);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    *out_default_allowed = default_allowed ? 1 : 0;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormEventCallbacks(
+        HANDLE hSession, const PBrowserScriptFormEventCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_form_event_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptFormEventCallbacks) ||
+            callbacks->dispatch_form_event == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->form_event != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_form_event_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    session->form_event = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormEventCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->form_event == NULL) {
+        return PSCRIPT_OK;
+    }
+    free(session->form_event);
+    session->form_event = NULL;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchFormEvent(HANDLE hSession,
+        const PBrowserScriptFormEventInfo *info, int *out_default_allowed)
+{
+    p_browser_script_session *session;
+    int default_allowed;
+    int rc;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->form_event == NULL ||
+            info == NULL ||
+            info->size < sizeof(PBrowserScriptFormEventInfo) ||
+            !p_browser_script_form_event_type_safe(info->event_type) ||
+            out_default_allowed == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    default_allowed = 1;
+    rc = session->form_event->callbacks.dispatch_form_event(
+            session->form_event->callbacks.pw, info, &default_allowed);
     if (rc < 0) {
         return PSCRIPT_ERROR_NATIVE;
     }

@@ -366,6 +366,30 @@ typedef struct PBrowserScriptClickCallbacks {
     PBrowserScriptDispatchClickFn dispatch_click;
 } PBrowserScriptClickCallbacks;
 
+/* Typed host adapter for product-owned native form submit/reset events. The
+ * browser layer owns the form-event contract and dispatch entry point; the
+ * host supplies core hit-testing/propagation for the document coordinates.
+ * x/y are borrowed document CSS pixels. event_type must be "submit" or
+ * "reset" and is borrowed only for the synchronous callback. The adapter
+ * returns zero when core dispatch was attempted and writes 1 when the native
+ * default is allowed or 0 when a cancelable listener prevented it; a negative
+ * return reports an adapter failure. */
+typedef struct PBrowserScriptFormEventInfo {
+    unsigned long size;
+    int x;
+    int y;
+    const char *event_type;
+    int bubbles;
+    int cancelable;
+} PBrowserScriptFormEventInfo;
+typedef int (*PBrowserScriptDispatchFormEventFn)(void *pw,
+        const PBrowserScriptFormEventInfo *info, int *out_default_allowed);
+typedef struct PBrowserScriptFormEventCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptDispatchFormEventFn dispatch_form_event;
+} PBrowserScriptFormEventCallbacks;
+
 /* Navigation operations understood by the browser bootstrap. The browser
  * DLL owns their JSON parsing and result encoding; a host adapter supplies
  * the navigation/history side effects. */
@@ -558,6 +582,14 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterClickCallbacks(
  * out_default_allowed is 1 or 0 as described above. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchClickEvent(HANDLE hSession,
         const PBrowserScriptClickEventInfo *info, int *out_default_allowed);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormEventCallbacks(
+        HANDLE hSession, const PBrowserScriptFormEventCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormEventCallbacks(
+        HANDLE hSession);
+/* Dispatch one native form submit/reset event through the host's core
+ * adapter. On success out_default_allowed is 1 or 0 as described above. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchFormEvent(HANDLE hSession,
+        const PBrowserScriptFormEventInfo *info, int *out_default_allowed);
 PBROWSER_API int PBrowser_ScriptSessionRegisterNavigationCallbacks(
         HANDLE hSession,
         const PBrowserScriptNavigationCallbacks *callbacks);

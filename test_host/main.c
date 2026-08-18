@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 220
+#define TEST_MAX_NUMBER 221
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3082,6 +3082,9 @@ static int pcore_browser_script_select_dispatch(void *pw,
 static int pcore_browser_script_click_dispatch(void *pw,
         const PBrowserScriptClickEventInfo *info,
         int *out_default_allowed);
+static int pcore_browser_script_form_event_dispatch(void *pw,
+        const PBrowserScriptFormEventInfo *info,
+        int *out_default_allowed);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data,
         int is_composing);
@@ -3905,6 +3908,29 @@ static int pcore_browser_script_click_dispatch(void *pw,
             info->size < sizeof(PBrowserScriptClickEventInfo) ||
             info->event_type == NULL ||
             strcmp(info->event_type, "click") != 0) {
+        return -1;
+    }
+    *out_default_allowed = 1;
+    result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, out_default_allowed);
+    return (result < 0) ? -1 : 0;
+}
+
+static int pcore_browser_script_form_event_dispatch(void *pw,
+        const PBrowserScriptFormEventInfo *info,
+        int *out_default_allowed)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptFormEventInfo) ||
+            info->event_type == NULL ||
+            (strcmp(info->event_type, "submit") != 0 &&
+            strcmp(info->event_type, "reset") != 0)) {
         return -1;
     }
     *out_default_allowed = 1;
@@ -6896,6 +6922,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptEditCallbacks edit_callbacks;
     PBrowserScriptSelectCallbacks select_callbacks;
     PBrowserScriptClickCallbacks click_callbacks;
+    PBrowserScriptFormEventCallbacks form_event_callbacks;
     PBrowserScriptNavigationCallbacks navigation_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     PBrowserScriptEventCallbacks event_callbacks;
@@ -7022,6 +7049,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     click_callbacks.size = sizeof(click_callbacks);
     click_callbacks.pw = bridge;
     click_callbacks.dispatch_click = pcore_browser_script_click_dispatch;
+    form_event_callbacks.size = sizeof(form_event_callbacks);
+    form_event_callbacks.pw = bridge;
+    form_event_callbacks.dispatch_form_event =
+            pcore_browser_script_form_event_dispatch;
     navigation_callbacks.size = sizeof(navigation_callbacks);
     navigation_callbacks.pw = bridge;
     navigation_callbacks.navigate = pcore_browser_script_navigation;
@@ -7080,6 +7111,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &select_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterClickCallbacks(session,
             &click_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormEventCallbacks(session,
+            &form_event_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
             &dom_attribute_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEventCallbacks(session,
@@ -8085,6 +8118,92 @@ static int pcore_restyle_form_state(HWND hwnd, int preserve_focus)
 static void pcore_handle_invalid_form(HWND hwnd,
         const PCoreFormValidationInfo *validation);
 
+static int pcore_form_button_kind_at(int x, int y, int *out_kind)
+{
+    unsigned int index;
+    int left;
+    int top;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+
+    if (out_kind != NULL) {
+        *out_kind = 0;
+    }
+    if (g_render_doc == NULL) {
+        return 0;
+    }
+    index = 0;
+    while (PCore_FormControlInfo(g_render_doc, index, &left, &top,
+            &width, &height, &kind, NULL, &disabled) == 0) {
+        if ((kind == 7 || kind == 8) && !disabled && width > 0 &&
+                height > 0 && x >= left && x < left + width &&
+                y >= top && y < top + height) {
+            if (out_kind != NULL) {
+                *out_kind = kind;
+            }
+            return 1;
+        }
+        if (index == UINT_MAX) {
+            break;
+        }
+        index++;
+    }
+    return 0;
+}
+
+static int pcore_browser_script_dispatch_form_event_at(int x, int y,
+        const char *event_type)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptFormEventInfo event_info;
+    int default_allowed;
+    int rc;
+
+    if (g_render_doc == NULL || event_type == NULL) {
+        return 1;
+    }
+    bridge = g_browser_script_session.bridge;
+    if (g_browser_script_session.document == g_render_doc &&
+            g_browser_script_session.runtime != NULL &&
+            bridge != NULL && bridge->session != NULL) {
+        memset(&event_info, 0, sizeof(event_info));
+        event_info.size = sizeof(event_info);
+        event_info.x = x;
+        event_info.y = y;
+        event_info.event_type = event_type;
+        event_info.bubbles = 1;
+        event_info.cancelable = 1;
+        default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchFormEvent(bridge->session,
+                &event_info, &default_allowed);
+        if (rc != PSCRIPT_OK) {
+            return 0;
+        }
+        return default_allowed ? 1 : 0;
+    }
+    default_allowed = 1;
+    PCore_EventDispatchAt(g_render_doc, x, y, event_type, 1, 1,
+            &default_allowed);
+    return default_allowed ? 1 : 0;
+}
+
+static int pcore_browser_script_dispatch_form_event_for_text_input(
+        unsigned int text_index, const char *event_type)
+{
+    PCoreTextInputInfo text_info;
+
+    if (g_render_doc == NULL || PCore_TextInputInfo(g_render_doc,
+            text_index, &text_info, NULL, 0) != 0 ||
+            text_info.width <= 0 || text_info.height <= 0) {
+        return 1;
+    }
+    return pcore_browser_script_dispatch_form_event_at(
+            text_info.x + text_info.width / 2,
+            text_info.y + text_info.height / 2, event_type);
+}
+
 static int pcore_handle_form_button(HWND hwnd, int x, int y)
 {
     PCoreFormSubmissionInfo info;
@@ -8094,7 +8213,23 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
     char *action;
     char *body;
     int result;
+    int kind;
 
+    kind = 0;
+    if (pcore_form_button_kind_at(x, y, &kind)) {
+        if (kind == 8) {
+            if (!pcore_browser_script_dispatch_form_event_at(x, y,
+                    "reset")) {
+                return 1;
+            }
+        } else if (kind == 7 && PCore_FormValidationAt(g_render_doc,
+                x, y, &validation) && validation.valid) {
+            if (!pcore_browser_script_dispatch_form_event_at(x, y,
+                    "submit")) {
+                return 1;
+            }
+        }
+    }
     result = PCore_FormResetAt(g_render_doc, x, y);
     if (result != 0) {
         if (result == 1) {
@@ -8194,9 +8329,12 @@ static void pcore_handle_form_enter(HWND hwnd, unsigned int text_index)
         return;
     }
     if (result == 3) {
-        navigate_multipart_submission(hwnd,
-                PCore_MultipartSubmissionForTextInput(g_render_doc,
-                        text_index));
+        if (pcore_browser_script_dispatch_form_event_for_text_input(
+                text_index, "submit")) {
+            navigate_multipart_submission(hwnd,
+                    PCore_MultipartSubmissionForTextInput(g_render_doc,
+                            text_index));
+        }
         return;
     }
     action = NULL;
@@ -8216,14 +8354,17 @@ static void pcore_handle_form_enter(HWND hwnd, unsigned int text_index)
         body = body_probe;
     }
     if (result == 1 && action != NULL && body != NULL) {
-        if (g_native_form_enter_probe) {
-            g_native_form_enter_probe_seen = 1;
-            g_native_form_enter_probe_ok =
-                    info.method == 1 &&
-                    strcmp(action, "/implicit") == 0 &&
-                    strcmp(body, g_native_form_enter_expected) == 0;
-        } else {
-            navigate_form_submission(hwnd, info.method, action, body);
+        if (pcore_browser_script_dispatch_form_event_for_text_input(
+                text_index, "submit")) {
+            if (g_native_form_enter_probe) {
+                g_native_form_enter_probe_seen = 1;
+                g_native_form_enter_probe_ok =
+                        info.method == 1 &&
+                        strcmp(action, "/implicit") == 0 &&
+                        strcmp(body, g_native_form_enter_expected) == 0;
+            } else {
+                navigate_form_submission(hwnd, info.method, action, body);
+            }
         }
     } else if (result == 5 &&
             PCore_FormValidationForTextInput(g_render_doc, text_index,
@@ -39002,6 +39143,176 @@ static BOOL test220_browser_click_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 221 - product native form submit/reset dispatch callback        */
+/* -------------------------------------------------------------------- */
+typedef struct test221_form_event_state {
+    int calls;
+    int return_code;
+    int default_allowed;
+    int x;
+    int y;
+    int bubbles;
+    int cancelable;
+    char event_type[64];
+} test221_form_event_state;
+
+static int test221_form_event_dispatch(void *pw,
+        const PBrowserScriptFormEventInfo *info,
+        int *out_default_allowed)
+{
+    test221_form_event_state *state;
+    size_t event_length;
+
+    state = (test221_form_event_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptFormEventInfo) ||
+            info->event_type == NULL) {
+        return -1;
+    }
+    event_length = strlen(info->event_type);
+    if (event_length >= sizeof(state->event_type)) {
+        return -1;
+    }
+    state->calls++;
+    state->x = info->x;
+    state->y = info->y;
+    state->bubbles = info->bubbles;
+    state->cancelable = info->cancelable;
+    memcpy(state->event_type, info->event_type, event_length + 1);
+    *out_default_allowed = state->default_allowed ? 1 : 0;
+    return state->return_code < 0 ? state->return_code : 0;
+}
+
+static BOOL test221_browser_form_event_callbacks(void)
+{
+    PBrowserScriptFormEventCallbacks callbacks;
+    PBrowserScriptFormEventInfo info;
+    test221_form_event_state state;
+    HANDLE session;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int default_allowed;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_form_event = test221_form_event_dispatch;
+    info.size = sizeof(info);
+    info.x = 205;
+    info.y = 216;
+    info.event_type = "submit";
+    info.bubbles = 1;
+    info.cancelable = 1;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    default_allowed = 1;
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterFormEventCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterFormEventCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterFormEventCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchFormEvent(session, NULL,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && default_allowed == 1 &&
+                state.calls == 0;
+    }
+    if (ok) {
+        stage = "invalid-event-type";
+        info.event_type = "click";
+        rc = PBrowser_ScriptSessionDispatchFormEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+        info.event_type = "submit";
+    }
+    if (ok) {
+        stage = "dispatch-submit";
+        state.default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchFormEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                state.calls == 1 && state.x == 205 && state.y == 216 &&
+                state.bubbles == 1 && state.cancelable == 1 &&
+                strcmp(state.event_type, "submit") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-reset-cancel";
+        info.event_type = "reset";
+        state.default_allowed = 0;
+        rc = PBrowser_ScriptSessionDispatchFormEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                state.calls == 2 && state.cancelable == 1 &&
+                strcmp(state.event_type, "reset") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-adapter-error";
+        state.default_allowed = 1;
+        state.return_code = -1;
+        rc = PBrowser_ScriptSessionDispatchFormEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_NATIVE && default_allowed == 1 &&
+                state.calls == 3;
+        state.return_code = 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterFormEventCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "dispatch-after-unregister";
+        rc = PBrowser_ScriptSessionDispatchFormEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 3;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d calls=%d event=%s runtime=%s",
+                    stage, rc, state.calls, state.event_type,
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 221 FAIL", error[0] != '\0' ? error :
+                "product native form submit/reset dispatch callback failed");
+        return FALSE;
+    }
+    show_info(L"TEST 221 OK",
+            "positron_browser.dll owns native form submit/reset dispatch;"
+            " the host supplies typed core event propagation and default handling.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -43177,6 +43488,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 220: ok =
                 test220_browser_click_callbacks();
+                break;
+        case 221: ok =
+                test221_browser_form_event_callbacks();
                 break;
         default: ok = FALSE; break;
         }
