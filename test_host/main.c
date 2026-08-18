@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 244
+#define TEST_MAX_NUMBER 245
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -43113,8 +43113,8 @@ static BOOL test239_form_time_constraints(void)
 {
     static const char HTML[] =
         "<!doctype html><html><body><form action=/time method=get>"
-        "<input type=time name=at value=09:30 min=08:00 max=18:00>"
-        "<input type=time value=12:00>"
+        "<input type=time name=at value=09:30 min=08:00 max=18:00 step=any>"
+        "<input type=time value=12:00 step=any>"
         "<button type=submit name=go value=send>Send</button>"
         "</form></body></html>";
     HANDLE document;
@@ -43478,6 +43478,71 @@ static BOOL test244_form_date_step_constraints(void)
     show_info(L"TEST 244 OK",
             "date controls enforced min-based step days and accepted default, "
             "any and malformed/nonpositive fallback steps.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 245 - time step base, any and fallback semantics                  */
+/* -------------------------------------------------------------------- */
+static BOOL test245_form_time_step_constraints(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/time-step method=get>"
+        "<input type=time name=clock value=10:00 min=09:00 step=900>"
+        "<input type=time value=10:01>"
+        "<input type=time value=10:00:00.123 step=any>"
+        "<input type=time value=10:01:00 step=0>"
+        "<input type=time value=10:01:00 step=bad>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "10:10") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "10:15") != 0 ||
+            PCore_TextInputSetValue(document, 3, "10:01:30") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH ||
+            PCore_TextInputSetValue(document, 3, "10:02:00") != 0 ||
+            PCore_TextInputSetValue(document, 4, "10:01:30") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH ||
+            PCore_TextInputSetValue(document, 4, "10:02:00") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/time-step") != 0 ||
+            strcmp(body, "clock=10%3A15&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 245 FAIL",
+                "time step base, any or fallback validation failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 245 OK",
+            "time controls enforced min-based second steps and accepted any "
+            "and malformed/nonpositive fallback steps.");
     return TRUE;
 }
 
@@ -47729,6 +47794,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 244: ok =
                 test244_form_date_step_constraints();
+                break;
+        case 245: ok =
+                test245_form_time_step_constraints();
                 break;
         default: ok = FALSE; break;
         }

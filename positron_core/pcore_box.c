@@ -6558,6 +6558,8 @@ static int pcore_time_constraint_flags(dom_node *node, dom_string *value,
     int milliseconds;
     int minimum;
     int maximum;
+    double step;
+    int base;
 
     *flags_out = 0;
     if (value == NULL || dom_string_byte_length(value) == 0) {
@@ -6574,6 +6576,18 @@ static int pcore_time_constraint_flags(dom_node *node, dom_string *value,
     if (pcore_node_attr_time(node, "max", &maximum) &&
             milliseconds > maximum) {
         *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    if (!pcore_attr_value_is(node, "step", "any")) {
+        step = 60.0;
+        if (!pcore_node_attr_number(node, "step", &step) || step <= 0.0) {
+            step = 60.0;
+        }
+        base = 0;
+        (void) pcore_node_attr_time(node, "min", &base);
+        if (pcore_step_mismatch((double) milliseconds, (double) base,
+                step * 1000.0)) {
+            *flags_out |= PCORE_VALIDITY_STEP_MISMATCH;
+        }
     }
     return 1;
 }

@@ -822,8 +822,8 @@ typedef struct PCoreFormValidationInfo {
  * and input type=range applies the default 0..100 range when min/max are absent;
  * input type=date uses a bounded YYYY-MM-DD calendar parser for type/min/max/
  * step checks, not a native date picker or the complete date-time specification.
- * input type=time uses bounded HH:MM/seconds/fraction syntax for type/min/max
- * checks, not a native time picker or the complete time specification.
+ * input type=time uses bounded HH:MM/seconds/fraction syntax for type/min/max/
+ * step checks, not a native time picker or the complete time specification.
  * input type=month uses bounded YYYY-MM syntax for type/min/max checks.
  * input type=week uses bounded ISO YYYY-Www syntax for type/min/max checks.
  * input type=datetime-local composes the bounded date/time parsers for
