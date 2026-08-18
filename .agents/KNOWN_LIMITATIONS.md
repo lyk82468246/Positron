@@ -14,7 +14,7 @@
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
   textContent 读取）、textContent 写入、attribute、input value、checked、form property
-  （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、submit/reset、invalid、file-input input/change、checkbox/radio change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
+  （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、submit/reset、invalid、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
   Event callback 的产品 JSON 分发已迁入，但 core/document typed listener 适配仍由宿主提供。
@@ -75,10 +75,10 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 ## 表单与输入
 
 当前状态：已有 native EDIT/SELECT、file input、textarea、checkbox/radio、提交/reset、基础 constraint
-validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio change/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
+validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
 尚未完成：任意 OEM IME、完整 composition/preedit、类型/范围/step、custom validity、
-`invalid` UI、checkbox/radio 的 native `input` 通知、完整 activation 和文件选择体验。
+`invalid` UI、checkbox/radio 的完整 activation 和文件选择体验。
 
 完成方法：synthetic event 与真实 SIP 分开验收；至少覆盖候选词、Unicode、旋转和
 native control 生命周期。
@@ -179,7 +179,10 @@ next256 的 TEST223、`TEST223/999`（2 项）定向门和 `TEST189-223/999`（3
 非法参数、adapter error 和注销；本批未重复 next255 的 170 项全量门；next257 的 TEST224、
 `TEST224/999`（2 项）定向门和 `TEST189-224/999`（37 项）相关回归门验证 checkbox/radio
 状态提交后的非可取消 change、脚本 target、已选 radio/disabled 静默边界；本批仍未重复
-next255 的 170 项全量门。
+next255 的 170 项全量门。next258 的 TEST225、`TEST225/999`（2 项）定向门和
+`TEST189-225/999`（38 项）相关回归门验证 checkbox/radio 状态提交后的非可取消
+`input` → `change` 顺序、空 InputEvent metadata、脚本 target、已选 radio/disabled 静默边界；
+本批仍未重复 next255 的 170 项全量门。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；

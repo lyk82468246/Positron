@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 224
+#define TEST_MAX_NUMBER 225
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3090,6 +3090,7 @@ static int pcore_browser_script_invalid_dispatch(void *pw,
         int *out_default_allowed);
 static int pcore_browser_script_dispatch_file_event_at(int x, int y,
         const char *event_type);
+static int pcore_browser_script_dispatch_toggle_input_at(int x, int y);
 static int pcore_browser_script_dispatch_select_change_at(int x, int y);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data,
@@ -8304,6 +8305,55 @@ static int pcore_browser_script_dispatch_select_change_at(int x, int y)
     return rc < 0 ? -1 : 1;
 }
 
+/* Native checkbox/radio controls use the existing typed input contract. The
+ * event is non-cancelable, carries no text-edit or file metadata, and is
+ * emitted only after the core value/state has been committed. */
+static int pcore_browser_script_dispatch_toggle_input_at(int x, int y)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptInputEventInfo input_info;
+    PCoreInputEventDataEx input_data;
+    int default_allowed;
+    int rc;
+
+    if (g_render_doc == NULL) {
+        return -1;
+    }
+    bridge = g_browser_script_session.bridge;
+    memset(&input_info, 0, sizeof(input_info));
+    input_info.size = sizeof(input_info);
+    input_info.x = x;
+    input_info.y = y;
+    input_info.event_type = "input";
+    input_info.bubbles = 1;
+    input_info.cancelable = 0;
+    input_info.input_type = "";
+    input_info.data = "";
+    input_info.is_composing = 0;
+    default_allowed = 1;
+    if (g_browser_script_session.document == g_render_doc &&
+            g_browser_script_session.runtime != NULL &&
+            bridge != NULL && bridge->session != NULL) {
+        rc = PBrowser_ScriptSessionDispatchInputEvent(
+                bridge->session, &input_info, &default_allowed);
+        if (rc != PSCRIPT_OK) {
+            return -1;
+        }
+        return default_allowed ? 1 : 0;
+    }
+    memset(&input_data, 0, sizeof(input_data));
+    input_data.struct_size = sizeof(input_data);
+    input_data.input_type = input_info.input_type;
+    input_data.data = input_info.data;
+    input_data.is_composing = 0;
+    rc = PCore_EventDispatchInputExAt(g_render_doc, x, y, "input", 1, 0,
+            &input_data, &default_allowed);
+    if (rc < 0) {
+        return -1;
+    }
+    return default_allowed ? 1 : 0;
+}
+
 /* File controls use the existing typed input/select contracts. The input
  * event carries the file-specific InputEvent metadata; change reuses the
  * non-cancelable select-style event contract. The picker and core file value
@@ -8626,9 +8676,10 @@ static int pcore_form_toggle_activate(int x, int y,
             after_selected == before_selected) {
         return consumed;
     }
-    /* Checkbox/radio change is non-cancelable and follows the committed
-     * core state. Adapter failures are fail-open: they must not roll back
-     * the user's selection or suppress repaint. */
+    /* Checkbox/radio input/change are non-cancelable and follow the
+     * committed core state. Adapter failures are fail-open: they must not
+     * roll back the user's selection or suppress repaint. */
+    (void) pcore_browser_script_dispatch_toggle_input_at(x, y);
     (void) pcore_browser_script_dispatch_select_change_at(x, y);
     return consumed;
 }
@@ -40263,6 +40314,261 @@ static BOOL test224_browser_form_toggle_change(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 225 - checkbox/radio input dispatch through host activation     */
+/* -------------------------------------------------------------------- */
+static BOOL test225_browser_form_toggle_input(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='root'>"
+        "<input id='check' type='checkbox'>"
+        "<input id='radio-a' type='radio' name='choice' checked>"
+        "<input id='radio-b' type='radio' name='choice'>"
+        "<input id='disabled' type='checkbox' disabled>"
+        "</div><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "#root{display:block;width:200px}"
+        "input{display:block;width:120px;height:24px}"
+        "#result{display:block;width:500px;height:48px}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function recordInput(e){window.events+=e.type+'|'+e.target.id+'|'"
+        "+String(e.bubbles)+'|'+String(e.cancelable)+'|'"
+        "+String(e.inputType)+'|'+String(e.data)+'|'"
+        "+String(e.isComposing)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "function recordChange(e){window.events+=e.type+'|'+e.target.id+'|'"
+        "+String(e.bubbles)+'|'+String(e.cancelable)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "document.getElementById('root').addEventListener('input',"
+        "recordInput);"
+        "document.getElementById('root').addEventListener('change',"
+        "recordChange);";
+    static const char CHECK_RESULT[] =
+        "input|check|true|false|||false;change|check|true|false;";
+    static const char RADIO_RESULT[] =
+        "input|check|true|false|||false;change|check|true|false;"
+        "input|radio-b|true|false|||false;change|radio-b|true|false;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[320];
+    char result[512];
+    const char *stage;
+    int result_bytes;
+    int executed;
+    int ignored;
+    int index;
+    int left;
+    int top;
+    int width;
+    int height;
+    int kind;
+    int selected;
+    int disabled;
+    int check_index;
+    int check_x;
+    int check_y;
+    int radio_a_index;
+    int radio_a_x;
+    int radio_a_y;
+    int radio_b_index;
+    int radio_b_x;
+    int radio_b_y;
+    int disabled_index;
+    int disabled_x;
+    int disabled_y;
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    stage = "create";
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    index = 0;
+    left = 0;
+    top = 0;
+    width = 0;
+    height = 0;
+    kind = 0;
+    selected = 0;
+    disabled = 0;
+    check_index = -1;
+    check_x = 0;
+    check_y = 0;
+    radio_a_index = -1;
+    radio_a_x = 0;
+    radio_a_y = 0;
+    radio_b_index = -1;
+    radio_b_x = 0;
+    radio_b_y = 0;
+    disabled_index = -1;
+    disabled_x = 0;
+    disabled_y = 0;
+    dirty_x = 0;
+    dirty_y = 0;
+    dirty_w = 0;
+    dirty_h = 0;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    memset(result, 0, sizeof(result));
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/form-toggle-input.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 240) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "enumerate-controls";
+        index = 0;
+        while (PCore_FormControlInfo(document, (unsigned int) index,
+                &left, &top, &width, &height, &kind, &selected,
+                &disabled) == 0) {
+            if (kind == 1 && check_index < 0 && !disabled) {
+                check_index = index;
+                check_x = left + width / 2;
+                check_y = top + height / 2;
+            } else if (kind == 2 && radio_a_index < 0 && selected) {
+                radio_a_index = index;
+                radio_a_x = left + width / 2;
+                radio_a_y = top + height / 2;
+            } else if (kind == 2 && radio_b_index < 0 &&
+                    index != radio_a_index) {
+                radio_b_index = index;
+                radio_b_x = left + width / 2;
+                radio_b_y = top + height / 2;
+            } else if (kind == 1 && disabled && disabled_index < 0) {
+                disabled_index = index;
+                disabled_x = left + width / 2;
+                disabled_y = top + height / 2;
+            }
+            index++;
+        }
+        if (check_index < 0 || radio_a_index < 0 || radio_b_index < 0 ||
+                disabled_index < 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "checkbox-input-change";
+        if (!pcore_form_toggle_activate(check_x, check_y, &dirty_x,
+                &dirty_y, &dirty_w, &dirty_h) ||
+                PCore_FormControlInfo(document, (unsigned int) check_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                !selected || dirty_w <= 0 || dirty_h <= 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, CHECK_RESULT) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "radio-already-selected";
+        if (!pcore_form_toggle_activate(radio_a_x, radio_a_y, &dirty_x,
+                &dirty_y, &dirty_w, &dirty_h) ||
+                PCore_FormControlInfo(document, (unsigned int) radio_a_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                !selected || dirty_w != 0 || dirty_h != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, CHECK_RESULT) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "radio-input-change";
+        if (!pcore_form_toggle_activate(radio_b_x, radio_b_y, &dirty_x,
+                &dirty_y, &dirty_w, &dirty_h) ||
+                PCore_FormControlInfo(document, (unsigned int) radio_a_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                selected ||
+                PCore_FormControlInfo(document, (unsigned int) radio_b_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                !selected || dirty_w <= 0 || dirty_h <= 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, RADIO_RESULT) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "disabled-no-input";
+        if (!pcore_form_toggle_activate(disabled_x, disabled_y, &dirty_x,
+                &dirty_y, &dirty_w, &dirty_h) ||
+                PCore_FormControlInfo(document, (unsigned int) disabled_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, &disabled) != 0 ||
+                !disabled || selected || dirty_w != 0 || dirty_h != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, RADIO_RESULT) != 0) {
+            ok = 0;
+        }
+    }
+    if (!ok && error[0] == '\0') {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%s result=%s selected=%d dirty=%d/%d",
+                stage, result, selected, dirty_w, dirty_h);
+        error[sizeof(error) - 1] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 225 FAIL", error[0] != '\0' ? error :
+                "checkbox/radio input dispatch failed");
+        return FALSE;
+    }
+    show_info(L"TEST 225 OK",
+            "Checkbox/radio activation emits input before change with"
+            " empty text metadata, bubbles, and remains quiet for disabled"
+            " or already-selected controls.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -44450,6 +44756,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 224: ok =
                 test224_browser_form_toggle_change();
+                break;
+        case 225: ok =
+                test225_browser_form_toggle_input();
                 break;
         default: ok = FALSE; break;
         }

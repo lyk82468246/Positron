@@ -213,17 +213,19 @@ typedef struct PBrowserScriptFormCallbacks {
     PBrowserScriptSetSelectedIndexFn set_selected_index;
 } PBrowserScriptFormCallbacks;
 
-/* Typed host adapter for product-owned native text-input and file-input
- * events. The browser layer owns the input-event contract and dispatch entry
- * point; the host supplies core hit-testing/propagation for the document
+/* Typed host adapter for product-owned native text-input, file-input, and
+ * checkbox/radio input events. The browser layer owns the input-event
+ * contract and dispatch entry point; the host supplies core
+ * hit-testing/propagation for the document
  * coordinates. x/y are borrowed document CSS pixels. event_type is
  * non-empty, input_type may be empty for composition events, and all strings
  * are borrowed only for the synchronous callback. A file input notification
  * uses input_type "insertFromFile", an empty data string, and
- * is_composing == 0. The adapter returns zero when core dispatch was
- * attempted and writes 1 when the native default is allowed or 0 when a
- * cancelable listener prevented it; a negative return reports an adapter
- * failure. */
+ * is_composing == 0. A checkbox/radio input notification is non-cancelable,
+ * uses empty input_type/data, and is_composing == 0. The adapter returns
+ * zero when core dispatch was attempted and writes 1 when the native default
+ * is allowed or 0 when a cancelable listener prevented it; a negative return
+ * reports an adapter failure. */
 typedef struct PBrowserScriptInputEventInfo {
     unsigned long size;
     int x;
@@ -568,8 +570,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterInputCallbacks(
         HANDLE hSession, const PBrowserScriptInputCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterInputCallbacks(
         HANDLE hSession);
-/* Dispatch one native text-input/composition event through the host's core
- * adapter. On success out_default_allowed is 1 or 0 as described above. */
+/* Dispatch one native text/file/checkbox-radio input event through the host's
+ * core adapter. On success out_default_allowed is 1 or 0 as described above. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchInputEvent(HANDLE hSession,
         const PBrowserScriptInputEventInfo *info, int *out_default_allowed);
 PBROWSER_API int PBrowser_ScriptSessionRegisterKeyCallbacks(

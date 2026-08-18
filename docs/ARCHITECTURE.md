@@ -112,7 +112,7 @@ host JSON callback 注册、求值和调用生命周期。它依赖 `positron_js
 
 bootstrap、按 id 查询元素、读取/写入 textContent、attribute、input value、checked、form property
 （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件、event 的
-DOM JSON 分发以及 native input/composition/keyboard/focus-family/EDIT-change/post-change-input/click/submit-reset/invalid/file-input/checkbox-radio-change/SELECT-input/change typed dispatch entry 已由此 DLL 持有并执行；
+DOM JSON 分发以及 native input/composition/keyboard/focus-family/EDIT-change/post-change-input/click/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change typed dispatch entry 已由此 DLL 持有并执行；
 其余 form/input 适配和页面生命周期会逐步迁入此 DLL。窗口、传输、native EDIT/SELECT、core
 事件传播、焦点/控件默认行为、history/navigation side effect 和绘制调度仍由应用宿主负责。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
@@ -126,7 +126,7 @@ DOM JSON 分发以及 native input/composition/keyboard/focus-family/EDIT-change
 “浏览器 JavaScript”指产品浏览器层和宿主在显式开关开启时：
 
 1. browser layer 持有 `positron_script` context，并按 DOM 顺序驱动 classic inline/external script；
-2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/submit-reset/invalid/file-input/checkbox-radio-change/SELECT-input/change dispatch contract，并逐步承接其余表单适配；
+2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract，并逐步承接其余表单适配；
 3. browser layer 持有并执行产品 bootstrap；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
 4. 宿主继续提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
 
