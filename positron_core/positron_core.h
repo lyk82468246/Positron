@@ -836,7 +836,7 @@ typedef struct PCoreFormValidationInfo {
  * absent; no picker is owned by this DLL.
  * input type=color uses bounded #RRGGBB syntax for type checks; no picker is
  * owned by this DLL.
- * application-owned custom validity on text/password controls, plus checkbox,
+ * application-owned custom validity on text/password/textarea controls, plus checkbox,
  * radio groups and select controls, including disabled/read-only
  * and no-validate bypasses. Unsupported or malformed constraint attributes
  * are ignored conservatively; pattern support is the documented ASCII subset
@@ -856,6 +856,15 @@ PCORE_API int PCore_FormValidationForTextInput(HANDLE hDoc,
  * allocation fails. */
 PCORE_API int PCore_FormSetCustomValidityForTextInput(HANDLE hDoc,
                                     unsigned int text_index,
+                                    const char *message);
+
+/* Set or clear an application-owned custom validity message on a textarea
+ * selected by the same text-control order used by PCore_TextInputSetValue.
+ * The message is UTF-8 and copied by the DLL; NULL or an empty string clears
+ * the custom error. Returns 0 on success and -1 when the document/control
+ * cannot be resolved or memory allocation fails. */
+PCORE_API int PCore_FormSetCustomValidityForTextarea(HANDLE hDoc,
+                                    unsigned int textarea_index,
                                     const char *message);
 
 /* Build the application/x-www-form-urlencoded successful-control set for a

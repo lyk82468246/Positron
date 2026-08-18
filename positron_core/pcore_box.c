@@ -7850,6 +7850,9 @@ static int pcore_required_control_missing(dom_html_form_element *form,
             }
             return 0;
         }
+        if (pcore_custom_validity_has_error(node)) {
+            *flags_out |= PCORE_VALIDITY_CUSTOM_ERROR;
+        }
         *missing_out = (*flags_out != 0) ? 1 : 0;
         if (value != NULL) {
             dom_string_unref(value);
@@ -8051,6 +8054,27 @@ PCORE_API int PCore_FormSetCustomValidityForTextInput(HANDLE hDoc,
     if (control == NULL || control->node == NULL ||
             (control->type != GADGET_TEXTBOX &&
              control->type != GADGET_PASSWORD)) {
+        return -1;
+    }
+    return pcore_custom_validity_set((dom_document *) hDoc,
+            control->node, message);
+}
+
+PCORE_API int PCore_FormSetCustomValidityForTextarea(HANDLE hDoc,
+        unsigned int textarea_index, const char *message)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_control *control;
+    unsigned int current;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_text_input_at(st->root_box, textarea_index, &current) : NULL;
+    control = (box != NULL) ? box->gadget : NULL;
+    if (control == NULL || control->node == NULL ||
+            control->type != GADGET_TEXTAREA) {
         return -1;
     }
     return pcore_custom_validity_set((dom_document *) hDoc,
