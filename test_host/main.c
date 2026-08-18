@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 259
+#define TEST_MAX_NUMBER 260
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -44314,6 +44314,56 @@ static BOOL test259_form_custom_validity_relayout(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 260 - range missing value uses the default midpoint                */
+/* -------------------------------------------------------------------- */
+static BOOL test260_form_range_default_value(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/range-default method=get>"
+        "<input type=range name=level>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/range-default") != 0 ||
+            strcmp(body, "level=50&go=send") != 0 ||
+            PCore_TextInputSetValue(document, 0, "75") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(body, "level=75&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 260 FAIL",
+                "range missing value did not use the default midpoint");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 260 OK",
+            "range submission used default 50 and then respected an explicit value.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -48606,6 +48656,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 259: ok =
                 test259_form_custom_validity_relayout();
+                break;
+        case 260: ok =
+                test260_form_range_default_value();
                 break;
         default: ok = FALSE; break;
         }

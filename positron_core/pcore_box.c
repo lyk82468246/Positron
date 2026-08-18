@@ -74,6 +74,7 @@ static struct box *pcore_hit(struct box *box, int px, int py);
 static struct box *pcore_box_for_node(struct box *box, dom_node *node);
 static int pcore_utf8_character_count(const char *text,
         unsigned int *out_count);
+static int pcore_range_fill_default(dom_node *node, dom_string **value_out);
 
 /* Referenced (extern) by content/handlers/css/utils.h; the device DPI in fixed
  * point. Kept in sync by PCore_SetViewport / PCore_SetDeviceViewport. */
@@ -5685,6 +5686,10 @@ static int pcore_form_append_input(pcore_form_buffer *buffer,
         dom_string_unref(name);
         return 0;
     }
+    if (!pcore_range_fill_default(node, &value)) {
+        dom_string_unref(name);
+        return 0;
+    }
     append = pcore_form_append_pair(buffer, name, value,
             (pcore_attr_value_is(node, "type", "checkbox") ||
              pcore_attr_value_is(node, "type", "radio")) ? "on" : "");
@@ -6264,6 +6269,61 @@ static int pcore_range_constraint_flags(dom_node *node, dom_string *value,
     }
     if (!pcore_node_attr_number(node, "max", &maximum) && number > 100.0) {
         *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    return 1;
+}
+
+static int pcore_range_default_value(dom_node *node, char *buffer,
+        size_t capacity)
+{
+    double minimum;
+    double maximum;
+    double default_value;
+    int written;
+
+    if (node == NULL || buffer == NULL || capacity == 0) {
+        return 0;
+    }
+    minimum = 0.0;
+    maximum = 100.0;
+    (void) pcore_node_attr_number(node, "min", &minimum);
+    (void) pcore_node_attr_number(node, "max", &maximum);
+    if (minimum > maximum) {
+        minimum = 0.0;
+        maximum = 100.0;
+    }
+    default_value = (minimum + maximum) / 2.0;
+    written = _snprintf(buffer, capacity, "%.15g", default_value);
+    if (written < 0 || (size_t) written >= capacity) {
+        buffer[capacity - 1] = '\0';
+        return 0;
+    }
+    return 1;
+}
+
+static int pcore_range_fill_default(dom_node *node, dom_string **value_out)
+{
+    char default_value[64];
+
+    if (node == NULL || value_out == NULL ||
+            !pcore_attr_value_is(node, "type", "range") ||
+            (*value_out != NULL && dom_string_byte_length(*value_out) > 0)) {
+        return 1;
+    }
+    if (*value_out != NULL) {
+        dom_string_unref(*value_out);
+        *value_out = NULL;
+    }
+    if (!pcore_range_default_value(node, default_value,
+            sizeof(default_value)) ||
+            dom_string_create((const uint8_t *) default_value,
+            strlen(default_value), value_out) != DOM_NO_ERR ||
+            *value_out == NULL) {
+        if (*value_out != NULL) {
+            dom_string_unref(*value_out);
+            *value_out = NULL;
+        }
+        return 0;
     }
     return 1;
 }
@@ -8304,6 +8364,10 @@ static int pcore_multipart_append_input(
         }
     }
     if (dom_html_input_element_get_value(input, &value) != DOM_NO_ERR) {
+        dom_string_unref(name);
+        return 0;
+    }
+    if (!pcore_range_fill_default(node, &value)) {
         dom_string_unref(name);
         return 0;
     }
