@@ -75,10 +75,10 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 ## 表单与输入
 
 当前状态：已有 native EDIT/SELECT、file input、textarea、checkbox/radio、提交/reset、基础 constraint
-validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
+validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
 尚未完成：任意 OEM IME、完整 composition/preedit、类型/范围/step、custom validity、
-`invalid` UI、checkbox/radio 的键盘/程序化完整 activation 和文件选择体验。
+`invalid` UI、checkbox/radio 的程序化完整 activation 和文件选择体验。
 
 完成方法：synthetic event 与真实 SIP 分开验收；至少覆盖候选词、Unicode、旋转和
 native control 生命周期。
@@ -185,7 +185,10 @@ next255 的 170 项全量门。next258 的 TEST225、`TEST225/999`（2 项）定
 本批仍未重复 next255 的 170 项全量门。next259 的 TEST226、`TEST226/999`（2 项）定向门和
 `TEST189-226/999`（39 项）相关回归门验证 label/native checkbox activation 的 label click、
 目标 control click、`input` → `change` 顺序、取消阻断和 disabled 静默边界；本批仍未重复
-next255 的 170 项全量门。
+next255 的 170 项全量门。next260 的 TEST227、`TEST227/999`（2 项）定向门和
+`TEST189-227/999`（40 项）相关回归门验证 checkbox/radio 的 Space/Enter WM keyboard
+activation、`keydown` → `click` → `input` → `change` → `keyup` 顺序、keydown/click
+取消、重复 keydown 不重复切换和 disabled 静默边界；本批仍未重复 next255 的 170 项全量门。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 226
+#define TEST_MAX_NUMBER 227
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -2133,6 +2133,10 @@ static int    g_svg_draw_rc = -1;
 static PIMAGE_SVG g_svg_handle = NULL;
 static int    g_overflow_pointer = 0;
 static int    g_mouse_tracking = 0;
+static HANDLE g_toggle_focus_document = NULL;
+static unsigned int g_toggle_focus_index = 0;
+static int    g_toggle_focus_kind = 0;
+static int    g_toggle_focus_valid = 0;
 #define PCORE_IMAGE_FORMAT_COUNT 4
 static PIMAGE_BITMAP g_image_format_bitmap[PCORE_IMAGE_FORMAT_COUNT];
 static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
@@ -2239,8 +2243,17 @@ static pcore_browser_script_session g_browser_script_session = {
 static void pcore_browser_script_bridge_destroy(
         pcore_browser_script_bridge *bridge);
 
+static void pcore_toggle_focus_clear(void)
+{
+    g_toggle_focus_document = NULL;
+    g_toggle_focus_index = 0;
+    g_toggle_focus_kind = 0;
+    g_toggle_focus_valid = 0;
+}
+
 static void pcore_browser_script_session_destroy(void)
 {
+    pcore_toggle_focus_clear();
     if (g_browser_script_session.bridge != NULL) {
         pcore_browser_script_bridge_destroy(g_browser_script_session.bridge);
     }
@@ -3051,6 +3064,8 @@ static int g_native_form_enter_probe_ok = 0;
 static char g_native_form_enter_expected[256];
 static int g_native_label_probe = 0;
 static int g_native_label_probe_ok = 0;
+static int g_native_toggle_key_probe = 0;
+static int g_native_toggle_key_probe_ok = 0;
 
 static int pcore_browser_script_dispatch_key_event(HWND control,
         const char *event_type, WPARAM wp, LPARAM lp, int system_key);
@@ -4948,6 +4963,7 @@ static void pcore_native_focus_lost(HWND control)
             g_native_edit_syncing || g_native_select_syncing) {
         return;
     }
+    pcore_toggle_focus_clear();
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
                 PCore_TextInputInfo(g_render_doc,
@@ -8646,6 +8662,66 @@ static int pcore_form_toggle_control_at(int x, int y,
     return 0;
 }
 
+static void pcore_toggle_focus_set(unsigned int index, int kind)
+{
+    if (g_render_doc == NULL || (kind != 1 && kind != 2)) {
+        pcore_toggle_focus_clear();
+        return;
+    }
+    g_toggle_focus_document = g_render_doc;
+    g_toggle_focus_index = index;
+    g_toggle_focus_kind = kind;
+    g_toggle_focus_valid = 1;
+}
+
+static int pcore_toggle_focus_track_at(int x, int y)
+{
+    unsigned int index;
+    int kind;
+    int disabled;
+
+    index = 0;
+    kind = 0;
+    disabled = 0;
+    if (!pcore_form_toggle_control_at(x, y, &index, &kind,
+            NULL, &disabled) || disabled) {
+        pcore_toggle_focus_clear();
+        return 0;
+    }
+    pcore_toggle_focus_set(index, kind);
+    return 1;
+}
+
+static int pcore_toggle_focus_current(int *out_x, int *out_y)
+{
+    int left;
+    int top;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+
+    if (!g_toggle_focus_valid ||
+            g_toggle_focus_document != g_render_doc ||
+            g_render_doc == NULL) {
+        return 0;
+    }
+    if (PCore_FormControlInfo(g_render_doc, g_toggle_focus_index,
+            &left, &top, &width, &height, &kind, NULL, &disabled) != 0 ||
+            kind != g_toggle_focus_kind || (kind != 1 && kind != 2) ||
+            disabled || width <= 0 || height <= 0) {
+        pcore_toggle_focus_clear();
+        return 0;
+    }
+    if (out_x != NULL) {
+        *out_x = left + width / 2;
+    }
+    if (out_y != NULL) {
+        *out_y = top + height / 2;
+    }
+    return 1;
+}
+
 static int pcore_form_toggle_activate(int x, int y,
         int *dirty_x, int *dirty_y, int *dirty_w, int *dirty_h)
 {
@@ -8686,13 +8762,25 @@ static int pcore_form_toggle_activate(int x, int y,
 
 static int pcore_handle_form_toggle(HWND hwnd, int x, int y)
 {
+    unsigned int index;
+    int kind;
+    int disabled;
     int dirty_x;
     int dirty_y;
     int dirty_w;
     int dirty_h;
 
-    if (!pcore_form_toggle_control_at(x, y, NULL, NULL, NULL, NULL)) {
+    index = 0;
+    kind = 0;
+    disabled = 0;
+    if (!pcore_form_toggle_control_at(x, y, &index, &kind,
+            NULL, &disabled)) {
         return 0;
+    }
+    if (disabled) {
+        pcore_toggle_focus_clear();
+    } else {
+        pcore_toggle_focus_set(index, kind);
     }
     if (!pcore_form_toggle_activate(x, y, &dirty_x, &dirty_y,
             &dirty_w, &dirty_h)) {
@@ -8867,6 +8955,11 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
             PCORE_INTERACTION_FOCUS) > 0) {
         pcore_request_interaction_restyle(hwnd);
     }
+    if (kind == 1 || kind == 2) {
+        (void) pcore_toggle_focus_track_at(target_x, target_y);
+    } else {
+        pcore_toggle_focus_clear();
+    }
     if (kind >= 7 && kind <= 9) {
         pcore_handle_form_button(hwnd, target_x, target_y);
     } else if (kind == 10) {
@@ -8895,6 +8988,129 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
         pcore_focus_native_form_control(kind, target_x, target_y);
     }
     return 1;
+}
+
+static int pcore_handle_toggle_keyboard(HWND hwnd, UINT msg,
+        WPARAM wp, LPARAM lp, int system_key)
+{
+    int x;
+    int y;
+    int keydown;
+    int keyup;
+
+    if (wp != VK_SPACE && wp != VK_RETURN) {
+        return 0;
+    }
+    if (!pcore_toggle_focus_current(&x, &y)) {
+        return 0;
+    }
+    keydown = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
+    keyup = (msg == WM_KEYUP || msg == WM_SYSKEYUP);
+    if (keydown) {
+        if (!pcore_browser_script_dispatch_key_at(x, y, "keydown",
+                wp, lp, system_key, 0)) {
+            return 1;
+        }
+        /* A held key must not toggle the control repeatedly. The key event
+         * itself still reaches the script bridge for every WM_KEYDOWN. */
+        if ((lp & 0x40000000L) != 0) {
+            return 1;
+        }
+        if (!pcore_browser_script_dispatch_click_at(x, y)) {
+            return 1;
+        }
+        (void) pcore_handle_form_toggle(hwnd, x, y);
+        return 1;
+    }
+    if (keyup) {
+        (void) pcore_browser_script_dispatch_key_at(x, y, "keyup",
+                wp, lp, system_key, 0);
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_native_toggle_key_probe_run(HWND parent)
+{
+    int center_x[5];
+    int center_y[5];
+    int kind[5];
+    int disabled[5];
+    int left;
+    int top;
+    int width;
+    int height;
+    unsigned int index;
+    int i;
+    int ok;
+
+    if (!g_native_toggle_key_probe || parent == NULL ||
+            g_render_doc == NULL) {
+        return;
+    }
+    memset(center_x, 0, sizeof(center_x));
+    memset(center_y, 0, sizeof(center_y));
+    memset(kind, 0, sizeof(kind));
+    memset(disabled, 0, sizeof(disabled));
+    ok = 1;
+    for (i = 0; i < 5; i++) {
+        index = (unsigned int) i;
+        if (PCore_FormControlInfo(g_render_doc, index, &left, &top,
+                &width, &height, &kind[i], NULL, &disabled[i]) != 0 ||
+                width <= 0 || height <= 0) {
+            ok = 0;
+            continue;
+        }
+        center_x[i] = left + width / 2;
+        center_y[i] = top + height / 2;
+    }
+    if (kind[0] != 1 || kind[1] != 1 || kind[2] != 2 ||
+            kind[3] != 2 || kind[4] != 1 || disabled[0] ||
+            disabled[1] || disabled[2] || disabled[3] || !disabled[4]) {
+        ok = 0;
+    }
+    SetFocus(parent);
+    if (ok && (PCore_InteractionSetAt(g_render_doc,
+            center_x[0], center_y[0], PCORE_INTERACTION_FOCUS) < 0 ||
+            !pcore_toggle_focus_track_at(center_x[0], center_y[0]))) {
+        ok = 0;
+    }
+    if (ok) {
+        (void) SendMessage(parent, WM_KEYDOWN, VK_SPACE, 0);
+        (void) SendMessage(parent, WM_KEYDOWN, VK_SPACE, 0x40000000L);
+        (void) SendMessage(parent, WM_KEYUP, VK_SPACE, 0);
+    }
+    if (ok && (PCore_InteractionSetAt(g_render_doc,
+            center_x[1], center_y[1], PCORE_INTERACTION_FOCUS) < 0 ||
+            !pcore_toggle_focus_track_at(center_x[1], center_y[1]))) {
+        ok = 0;
+    }
+    if (ok) {
+        (void) SendMessage(parent, WM_KEYDOWN, VK_RETURN, 0);
+        (void) SendMessage(parent, WM_KEYUP, VK_RETURN, 0);
+    }
+    if (ok && (PCore_InteractionSetAt(g_render_doc,
+            center_x[3], center_y[3], PCORE_INTERACTION_FOCUS) < 0 ||
+            !pcore_toggle_focus_track_at(center_x[3], center_y[3]))) {
+        ok = 0;
+    }
+    if (ok) {
+        (void) SendMessage(parent, WM_KEYDOWN, VK_SPACE, 0);
+        (void) SendMessage(parent, WM_KEYUP, VK_SPACE, 0);
+    }
+    if (ok && PCore_InteractionSetAt(g_render_doc,
+            center_x[4], center_y[4], PCORE_INTERACTION_FOCUS) < 0) {
+        ok = 0;
+    }
+    if (ok && pcore_toggle_focus_track_at(center_x[4], center_y[4])) {
+        ok = 0;
+    }
+    if (ok) {
+        (void) SendMessage(parent, WM_KEYDOWN, VK_SPACE, 0);
+        (void) SendMessage(parent, WM_KEYUP, VK_SPACE, 0);
+    }
+    g_native_toggle_key_probe_ok = ok;
+    PostMessage(parent, WM_CLOSE, 0, 0);
 }
 
 static void pcore_navigation_cleanup(void)
@@ -9297,10 +9513,19 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                         PCORE_INTERACTION_HOVER) > 0) {
             KillTimer(hwnd, PCORE_HOVER_TIMER);
             g_mouse_tracking = 0;
+            pcore_toggle_focus_clear();
             pcore_request_interaction_restyle(hwnd);
         }
         break;
     case WM_KEYDOWN:
+    case WM_SYSKEYDOWN:
+        if (pcore_handle_toggle_keyboard(hwnd, msg, wp, lp,
+                msg == WM_SYSKEYDOWN)) {
+            return 0;
+        }
+        if (msg == WM_SYSKEYDOWN) {
+            break;
+        }
         switch (wp) {
         case VK_LEFT:
             (void) pcore_browse_navigate_back(hwnd);
@@ -9317,12 +9542,20 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             break;
         }
         return 0;
+    case WM_KEYUP:
+    case WM_SYSKEYUP:
+        if (pcore_handle_toggle_keyboard(hwnd, msg, wp, lp,
+                msg == WM_SYSKEYUP)) {
+            return 0;
+        }
+        break;
     case WM_LBUTTONDOWN: {
         int cx = (int) (short) LOWORD(lp);
         int cy = (int) (short) HIWORD(lp);
         int default_allowed;
         char href[1024];
 
+        pcore_toggle_focus_clear();
         if (g_render_doc != NULL &&
                 PCore_OverflowPointer(g_render_doc, PCORE_POINTER_DOWN,
                         cx, cy + g_scroll_y)) {
@@ -9337,6 +9570,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                         PCORE_INTERACTION_FOCUS |
                         PCORE_INTERACTION_ACTIVE) > 0) {
             pcore_request_interaction_restyle(hwnd);
+        }
+        if (g_render_doc != NULL) {
+            (void) pcore_toggle_focus_track_at(cx, cy + g_scroll_y);
         }
         default_allowed = 1;
         if (g_render_doc != NULL) {
@@ -9421,6 +9657,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_DESTROY:
         g_nav_generation++;
         g_overflow_pointer = 0;
+        pcore_toggle_focus_clear();
         KillTimer(hwnd, PCORE_HOVER_TIMER);
         g_mouse_tracking = 0;
         g_interaction_restyle_pending = 0;
@@ -9596,6 +9833,9 @@ static BOOL show_render_window(void)
                         label_x + label_w / 2,
                         label_y + label_h / 2) &&
                 GetFocus() == g_native_edits[0].hwnd;
+    }
+    if (g_native_toggle_key_probe) {
+        pcore_native_toggle_key_probe_run(hwnd);
     }
     /* Read-only view: hide the SIP button and keep the keyboard down. */
     SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
@@ -40904,6 +41144,169 @@ static BOOL test226_browser_form_toggle_click(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 227 - checkbox/radio keyboard activation and event ordering      */
+/* -------------------------------------------------------------------- */
+static BOOL test227_browser_form_toggle_keyboard(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id=root>"
+        "<input id='check' type='checkbox'>"
+        "<input id='enter' type='checkbox'>"
+        "<input id='radio-a' type='radio' name='choice' checked>"
+        "<input id='radio-b' type='radio' name='choice'>"
+        "<input id='disabled' type='checkbox' disabled>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "form{display:block;width:280px}"
+        "input{display:block;width:220px;height:24px;margin:3px}"
+        "#result{display:block;width:500px;height:96px}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function record(e){var id=String(e.target.id||'');"
+        "var key=String(e.key||'');"
+        "window.events+=e.type+'|'+id+'|'+key+'|'"
+        "+String(e.bubbles)+'|'+String(e.cancelable)+'|'"
+        "+String(e.defaultPrevented)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('keydown',record);"
+        "root.addEventListener('keyup',record);"
+        "root.addEventListener('click',record);"
+        "root.addEventListener('input',record);"
+        "root.addEventListener('change',record);"
+        "document.getElementById('enter').addEventListener('keydown',"
+        "function(e){e.preventDefault();});"
+        "document.getElementById('radio-b').addEventListener('click',"
+        "function(e){e.preventDefault();});";
+    static const char EXPECTED[] =
+        "keydown|check|Space|true|true|false;"
+        "click|check||true|true|false;"
+        "input|check||true|false|false;"
+        "change|check||true|false|false;"
+        "keydown|check|Space|true|true|false;"
+        "keyup|check|Space|true|false|false;"
+        "keydown|enter|Enter|true|true|true;"
+        "keyup|enter|Enter|true|false|false;"
+        "keydown|radio-b|Space|true|true|false;"
+        "click|radio-b||true|true|true;"
+        "keyup|radio-b|Space|true|false|false;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[768];
+    char error[320];
+    int bytes;
+    int executed;
+    int ignored;
+    int selected;
+    int disabled;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    selected = 0;
+    disabled = 0;
+    ok = 1;
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    g_native_toggle_key_probe_ok = 0;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/form-toggle-keyboard.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 260) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_native_toggle_key_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_toggle_key_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (ok && !g_native_toggle_key_probe_ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "native toggle key probe did not complete");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (PCore_FormControlInfo(document, 0, NULL, NULL, NULL,
+            NULL, NULL, &selected, NULL) != 0 || !selected ||
+            PCore_FormControlInfo(document, 1, NULL, NULL, NULL,
+            NULL, NULL, &selected, NULL) != 0 || selected ||
+            PCore_FormControlInfo(document, 3, NULL, NULL, NULL,
+            NULL, NULL, &selected, NULL) != 0 || selected ||
+            PCore_FormControlInfo(document, 4, NULL, NULL, NULL,
+            NULL, NULL, &selected, &disabled) != 0 || selected ||
+            !disabled)) {
+        ok = 0;
+    }
+    if (ok && (PCore_NodeTextContentById(document, "result", text,
+            sizeof(text), &bytes) != 0 || strcmp(text, EXPECTED) != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "actual[%d]=%s", bytes, text);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 227 FAIL", error[0] != '\0' ? error :
+                "checkbox/radio keyboard activation failed");
+        return FALSE;
+    }
+    show_info(L"TEST 227 OK",
+            "Space and Enter keyboard activation dispatch key/click/input/"
+            "change in order; keydown and click cancellation suppress the"
+            " default toggle, and disabled controls remain silent.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -45097,6 +45500,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 226: ok =
                 test226_browser_form_toggle_click();
+                break;
+        case 227: ok =
+                test227_browser_form_toggle_keyboard();
                 break;
         default: ok = FALSE; break;
         }
