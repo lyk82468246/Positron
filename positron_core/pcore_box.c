@@ -6522,6 +6522,112 @@ static int pcore_time_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_dom_month(dom_string *value, int *year_out, int *month_out)
+{
+    const char *data;
+    size_t length;
+    size_t index;
+    int year;
+    int month;
+
+    if (value == NULL || year_out == NULL || month_out == NULL) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (length != 7 || data[4] != '-') {
+        return 0;
+    }
+    year = 0;
+    for (index = 0; index < 4; index++) {
+        if (data[index] < '0' || data[index] > '9') {
+            return 0;
+        }
+        year = year * 10 + (int) (data[index] - '0');
+    }
+    if (data[5] < '0' || data[5] > '9' || data[6] < '0' ||
+            data[6] > '9') {
+        return 0;
+    }
+    month = (int) (data[5] - '0') * 10 + (int) (data[6] - '0');
+    if (year == 0 || month < 1 || month > 12) {
+        return 0;
+    }
+    *year_out = year;
+    *month_out = month;
+    return 1;
+}
+
+static int pcore_node_attr_month(dom_node *node, const char *attr,
+        int *year_out, int *month_out)
+{
+    dom_string *name;
+    dom_string *value;
+    int result;
+
+    name = NULL;
+    value = NULL;
+    result = 0;
+    if (node == NULL || attr == NULL ||
+            dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+                    DOM_NO_ERR || name == NULL) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) == DOM_NO_ERR &&
+            value != NULL) {
+        result = pcore_dom_month(value, year_out, month_out);
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return result;
+}
+
+static int pcore_month_compare(int year, int month, int other_year,
+        int other_month)
+{
+    if (year != other_year) {
+        return (year < other_year) ? -1 : 1;
+    }
+    if (month != other_month) {
+        return (month < other_month) ? -1 : 1;
+    }
+    return 0;
+}
+
+static int pcore_month_constraint_flags(dom_node *node, dom_string *value,
+        unsigned int *flags_out)
+{
+    int year;
+    int month;
+    int minimum_year;
+    int minimum_month;
+    int maximum_year;
+    int maximum_month;
+
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    if (!pcore_dom_month(value, &year, &month)) {
+        *flags_out = PCORE_VALIDITY_TYPE_MISMATCH;
+        return 1;
+    }
+    if (pcore_node_attr_month(node, "min", &minimum_year, &minimum_month) &&
+            pcore_month_compare(year, month, minimum_year,
+            minimum_month) < 0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_UNDERFLOW;
+    }
+    if (pcore_node_attr_month(node, "max", &maximum_year, &maximum_month) &&
+            pcore_month_compare(year, month, maximum_year,
+            maximum_month) > 0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    return 1;
+}
+
 static int pcore_email_local_char(unsigned char c)
 {
     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
@@ -6791,7 +6897,14 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     dom_string_byte_length(value) == 0)) {
                 *flags_out = PCORE_VALIDITY_VALUE_MISSING;
             } else {
-                if (pcore_attr_value_is(node, "type", "time")) {
+                if (pcore_attr_value_is(node, "type", "month")) {
+                    if (!pcore_month_constraint_flags(node, value, flags_out)) {
+                        if (value != NULL) {
+                            dom_string_unref(value);
+                        }
+                        return 0;
+                    }
+                } else if (pcore_attr_value_is(node, "type", "time")) {
                     if (!pcore_time_constraint_flags(node, value, flags_out)) {
                         if (value != NULL) {
                             dom_string_unref(value);

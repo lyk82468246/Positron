@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 239
+#define TEST_MAX_NUMBER 240
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -43171,6 +43171,68 @@ static BOOL test239_form_time_constraints(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 240 - bounded month syntax and min/max validation                  */
+/* -------------------------------------------------------------------- */
+static BOOL test240_form_month_constraints(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/month method=get>"
+        "<input type=month name=period value=2024-02 "
+        "min=2024-01 max=2024-12>"
+        "<input type=month value=2023-12>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "2023-12") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_RANGE_UNDERFLOW ||
+            PCore_TextInputSetValue(document, 0, "2024-13") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "2024-06") != 0 ||
+            PCore_TextInputSetValue(document, 1, "2024-00") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 1, "2024-11") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/month") != 0 ||
+            strcmp(body, "period=2024-06&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 240 FAIL",
+                "month syntax or min/max validation failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 240 OK",
+            "month controls enforced bounded YYYY-MM syntax and inclusive "
+            "min/max boundaries before submission.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -47403,6 +47465,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 239: ok =
                 test239_form_time_constraints();
+                break;
+        case 240: ok =
+                test240_form_month_constraints();
                 break;
         default: ok = FALSE; break;
         }

@@ -54,6 +54,8 @@ next271 已补齐 input type=date 的 bounded ISO 日历/闰年/min/max 校验�
 input type=time 的 bounded HH:MM 语法和边界校验，不依赖人工页面观察。
 next272 已补齐 input type=time 的 bounded HH:MM/seconds/fraction/min/max 校验；下一候选为
 input type=month 的 bounded YYYY-MM 和边界校验，不依赖人工页面观察。
+next273 已补齐 input type=month 的 bounded YYYY-MM/month-range/min/max 校验；下一候选为
+input type=week 的 bounded ISO 周和边界校验，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 

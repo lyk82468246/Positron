@@ -79,7 +79,7 @@ validation、keyboard/focus-family/EDIT change/post-change input/click/submit/re
 
 尚未完成：任意 OEM IME、完整 composition/preedit、除 type=number 的 min/max/step 和 type=range
 默认/显式边界核心校验外的完整类型/范围/step 语义、除 email 和保守 url 核心校验外的
-email/URL 类型校验、除 bounded date/time 核心校验外的 date/time 类型校验、month/week 类型校验、custom validity、
+email/URL 类型校验、除 bounded date/time/month 核心校验外的 date/time/month/week 类型校验、custom validity、
 `invalid` UI、native file input 的程序化 picker 入口和完整文件选择体验。当前程序化 click
 只分发 typed click，不自动打开系统 picker；TEST231 已自动覆盖 host picker 的注入错误/空选择
 边界，TEST232 的真实 WM6 picker 选择/取消/窗口返回仍等待人工设备证据。
