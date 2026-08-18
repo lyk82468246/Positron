@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 253
+#define TEST_MAX_NUMBER 254
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -43991,6 +43991,59 @@ static BOOL test253_form_week_step_value_base(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 254 - datetime-local step value fallback base                     */
+/* -------------------------------------------------------------------- */
+static BOOL test254_form_datetime_step_value_base(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/datetime-value-step method=get>"
+        "<input type=datetime-local name=meeting "
+        "value=2024-01-01T10:00:30 step=60>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0,
+                    "2024-01-01T10:01:00") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH ||
+            PCore_TextInputSetValue(document, 0,
+                    "2024-01-01T10:01:30") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/datetime-value-step") != 0 ||
+            strcmp(body, "meeting=2024-01-01T10%3A01%3A30&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 254 FAIL",
+                "datetime-local value step-base fallback did not align values");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 254 OK",
+            "datetime-local step used the valid value as its base when min was absent.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -48265,6 +48318,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 253: ok =
                 test253_form_week_step_value_base();
+                break;
+        case 254: ok =
+                test254_form_datetime_step_value_base();
                 break;
         default: ok = FALSE; break;
         }

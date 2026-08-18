@@ -7053,6 +7053,28 @@ static int pcore_node_attr_datetime_local(dom_node *node, const char *attr,
     return result;
 }
 
+static int pcore_node_default_datetime_local(dom_node *node, int *year_out,
+        int *month_out, int *day_out, int *milliseconds_out)
+{
+    dom_string *value;
+    int result;
+
+    value = NULL;
+    if (node == NULL || !pcore_node_name_is(node, "input") ||
+            dom_html_input_element_get_default_value(
+            (dom_html_input_element *) node, &value) != DOM_NO_ERR ||
+            value == NULL) {
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        return 0;
+    }
+    result = pcore_dom_datetime_local(value, year_out, month_out, day_out,
+            milliseconds_out);
+    dom_string_unref(value);
+    return result;
+}
+
 static int pcore_datetime_compare(int year, int month, int day,
         int milliseconds, int other_year, int other_month, int other_day,
         int other_milliseconds)
@@ -7130,8 +7152,15 @@ static int pcore_datetime_constraint_flags(dom_node *node, dom_string *value,
         base_month = 1;
         base_day = 1;
         base_milliseconds = 0;
-        (void) pcore_node_attr_datetime_local(node, "min", &base_year,
-                &base_month, &base_day, &base_milliseconds);
+        if (!pcore_node_attr_datetime_local(node, "min", &base_year,
+                &base_month, &base_day, &base_milliseconds) &&
+                !pcore_node_default_datetime_local(node, &base_year,
+                &base_month, &base_day, &base_milliseconds)) {
+            base_year = 1970;
+            base_month = 1;
+            base_day = 1;
+            base_milliseconds = 0;
+        }
         if (pcore_step_mismatch(
                 pcore_datetime_number(year, month, day, milliseconds),
                 pcore_datetime_number(base_year, base_month, base_day,

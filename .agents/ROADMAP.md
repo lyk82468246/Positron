@@ -80,6 +80,8 @@ next284 已修正 time 缺少 min 时使用固定 default value 作为 step base
 修正 month 缺少 min 时的 value step base，不依赖人工页面观察。
 next285 已修正 month 缺少 min 时使用固定 default value 作为 step base；下一候选为
 修正 week 缺少 min 时的 value step base，不依赖人工页面观察。
+next286 已修正 week 缺少 min 时使用固定 default value 作为 step base；下一候选为
+修正 datetime-local 缺少 min 时的 value step base，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
