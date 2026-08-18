@@ -1384,8 +1384,8 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 在 next264 基线之上，运行 next265 候选的真实 WM6 picker 人工包：先执行
 `scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-next265`，在当前 GUI
-连接设备上运行 staging 目录中的 `test_host.exe`，只选择 TEST232。实际打开 file input，
-验证选择、取消、窗口回到页面后的控件状态、已选文件显示和值保留，以及
+连接设备上运行 staging 目录中的 `test_host.exe`，只运行 TEST232 并在结束时听 TEST999。
+实际打开 file input，验证选择、取消、窗口回到页面后的控件状态、已选文件显示和值保留，以及
 `input` → `change` 只发生一次；TEST231 已自动覆盖的 picker 错误/无效返回保持为自动证据。
 不把 picker 自动化或迁入产品 DLL。
 若该人工边界无异常，再从路线图选择下一个单一 form/input 代码能力。

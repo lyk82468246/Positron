@@ -207,12 +207,12 @@ scripts\repair_wmdc_rapi.bat
    ```
 
    该脚本先按正式 `stage.bat` 构建并复制整包，再只替换 staging 目录中的
-   `test_host.ini` 为 `auto=0`、`javascript=1`、`tests=232`；tracked 的自动 INI 不会改变。
+   `test_host.ini` 为 `auto=0`、`javascript=1`、`tests=232,999`；tracked 的自动 INI 不会改变。
 
 3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next265`（或共享目录映射的
    对应路径），确认 `test_host.exe` 与上表配置的 `test_host.ini` 在同一目录，然后运行
    `test_host.exe`。
-4. 启动确认框必须显示选择 `232`，并显示
+4. 启动确认框必须显示选择 `232, 999`，并显示
    `Browser JavaScript: experimental inline scripts enabled.`。点击 **Yes**；点 **No** 会退回普通分组选择，不是本次流程。
 5. TEST232 开始时先读提示框，再点 OK 进入 render 窗口：点击 File 控件，在真实 WM6
    对话框中选一个小文件并确认；回到页面后确认文件名出现、trace 恰好为
