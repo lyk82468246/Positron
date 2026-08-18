@@ -1,6 +1,6 @@
 # Positron 路线图
 
-更新时间：2026-08-18
+更新时间：2026-08-19
 
 本文件只列尚未完成的目标。已提交的 next 批次不继续停留在路线图；当前候选和设备门见
 [`HANDOFF.md`](HANDOFF.md)，当前能力缺口见
@@ -58,6 +58,8 @@ next273 已补齐 input type=month 的 bounded YYYY-MM/month-range/min/max 校�
 input type=week 的 bounded ISO 周和边界校验，不依赖人工页面观察。
 next274 已补齐 input type=week 的 bounded ISO 周/week-53/min/max 校验；下一候选为
 input type=datetime-local 的 bounded date/time 组合校验，不依赖人工页面观察。
+next275 已补齐 input type=datetime-local 的 bounded date/time 组合、非法时间和 min/max
+校验；下一候选为 input type=color 的 bounded #RRGGBB 语法校验，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 

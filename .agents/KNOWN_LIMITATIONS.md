@@ -1,6 +1,6 @@
 # Positron 当前限制
 
-更新时间：2026-08-18
+更新时间：2026-08-19
 
 这里只记录当前仍存在的产品或验收边界。已完成批次和设备流水不保留在本文件；最近证据见
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
@@ -79,7 +79,8 @@ validation、keyboard/focus-family/EDIT change/post-change input/click/submit/re
 
 尚未完成：任意 OEM IME、完整 composition/preedit、除 type=number 的 min/max/step 和 type=range
 默认/显式边界核心校验外的完整类型/范围/step 语义、除 email 和保守 url 核心校验外的
-email/URL 类型校验、除 bounded date/time/month/week 核心校验外的 date/time/month/week/datetime-local 类型校验、custom validity、
+email/URL 类型校验、除 bounded date/time/month/week/datetime-local 核心校验外的完整
+date/time/month/week/datetime-local 类型校验、color 类型校验、custom validity、
 `invalid` UI、native file input 的程序化 picker 入口和完整文件选择体验。当前程序化 click
 只分发 typed click，不自动打开系统 picker；TEST231 已自动覆盖 host picker 的注入错误/空选择
 边界，TEST232 的真实 WM6 picker 选择/取消/窗口返回仍等待人工设备证据。

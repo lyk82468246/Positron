@@ -6749,6 +6749,144 @@ static int pcore_week_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_dom_datetime_local(dom_string *value, int *year_out,
+        int *month_out, int *day_out, int *milliseconds_out)
+{
+    const char *data;
+    size_t length;
+    size_t time_length;
+    char date_data[11];
+    char time_data[16];
+    dom_string *date_value;
+    dom_string *time_value;
+    int result;
+
+    date_value = NULL;
+    time_value = NULL;
+    if (value == NULL || year_out == NULL || month_out == NULL ||
+            day_out == NULL || milliseconds_out == NULL) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (length < 16 || data[10] != 'T') {
+        return 0;
+    }
+    time_length = length - 11;
+    if (time_length >= sizeof(time_data)) {
+        return 0;
+    }
+    memcpy(date_data, data, 10);
+    date_data[10] = '\0';
+    memcpy(time_data, data + 11, time_length);
+    time_data[time_length] = '\0';
+    if (dom_string_create((const uint8_t *) date_data, 10, &date_value) !=
+            DOM_NO_ERR || date_value == NULL ||
+            dom_string_create((const uint8_t *) time_data, time_length,
+            &time_value) != DOM_NO_ERR || time_value == NULL) {
+        if (date_value != NULL) {
+            dom_string_unref(date_value);
+        }
+        if (time_value != NULL) {
+            dom_string_unref(time_value);
+        }
+        return 0;
+    }
+    result = pcore_dom_date(date_value, year_out, month_out, day_out) &&
+            pcore_dom_time(time_value, milliseconds_out);
+    dom_string_unref(date_value);
+    dom_string_unref(time_value);
+    return result;
+}
+
+static int pcore_node_attr_datetime_local(dom_node *node, const char *attr,
+        int *year_out, int *month_out, int *day_out,
+        int *milliseconds_out)
+{
+    dom_string *name;
+    dom_string *value;
+    int result;
+
+    name = NULL;
+    value = NULL;
+    result = 0;
+    if (node == NULL || attr == NULL ||
+            dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+                    DOM_NO_ERR || name == NULL) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) == DOM_NO_ERR &&
+            value != NULL) {
+        result = pcore_dom_datetime_local(value, year_out, month_out,
+                day_out, milliseconds_out);
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return result;
+}
+
+static int pcore_datetime_compare(int year, int month, int day,
+        int milliseconds, int other_year, int other_month, int other_day,
+        int other_milliseconds)
+{
+    int date_result;
+
+    date_result = pcore_date_compare(year, month, day, other_year,
+            other_month, other_day);
+    if (date_result != 0) {
+        return date_result;
+    }
+    if (milliseconds != other_milliseconds) {
+        return (milliseconds < other_milliseconds) ? -1 : 1;
+    }
+    return 0;
+}
+
+static int pcore_datetime_constraint_flags(dom_node *node, dom_string *value,
+        unsigned int *flags_out)
+{
+    int year;
+    int month;
+    int day;
+    int milliseconds;
+    int minimum_year;
+    int minimum_month;
+    int minimum_day;
+    int minimum_milliseconds;
+    int maximum_year;
+    int maximum_month;
+    int maximum_day;
+    int maximum_milliseconds;
+
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    if (!pcore_dom_datetime_local(value, &year, &month, &day,
+            &milliseconds)) {
+        *flags_out = PCORE_VALIDITY_TYPE_MISMATCH;
+        return 1;
+    }
+    if (pcore_node_attr_datetime_local(node, "min", &minimum_year,
+            &minimum_month, &minimum_day, &minimum_milliseconds) &&
+            pcore_datetime_compare(year, month, day, milliseconds,
+            minimum_year, minimum_month, minimum_day,
+            minimum_milliseconds) < 0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_UNDERFLOW;
+    }
+    if (pcore_node_attr_datetime_local(node, "max", &maximum_year,
+            &maximum_month, &maximum_day, &maximum_milliseconds) &&
+            pcore_datetime_compare(year, month, day, milliseconds,
+            maximum_year, maximum_month, maximum_day,
+            maximum_milliseconds) > 0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    return 1;
+}
+
 static int pcore_email_local_char(unsigned char c)
 {
     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
@@ -7018,7 +7156,15 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     dom_string_byte_length(value) == 0)) {
                 *flags_out = PCORE_VALIDITY_VALUE_MISSING;
             } else {
-                if (pcore_attr_value_is(node, "type", "week")) {
+                if (pcore_attr_value_is(node, "type", "datetime-local")) {
+                    if (!pcore_datetime_constraint_flags(node, value,
+                            flags_out)) {
+                        if (value != NULL) {
+                            dom_string_unref(value);
+                        }
+                        return 0;
+                    }
+                } else if (pcore_attr_value_is(node, "type", "week")) {
                     if (!pcore_week_constraint_flags(node, value, flags_out)) {
                         if (value != NULL) {
                             dom_string_unref(value);
