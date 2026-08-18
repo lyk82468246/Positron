@@ -7394,6 +7394,37 @@ static int pcore_custom_validity_set(dom_document *doc, dom_node *node,
     return 0;
 }
 
+static int pcore_custom_validity_get(dom_document *doc, dom_node *node,
+        char *message, unsigned int capacity)
+{
+    pcore_custom_validity_state *state;
+    pcore_custom_validity_entry *entry;
+    size_t length;
+    size_t copy_length;
+
+    if (doc == NULL || node == NULL) {
+        return -1;
+    }
+    state = pcore_custom_validity_state_get(doc, 0);
+    entry = pcore_custom_validity_find(state, node, NULL);
+    length = (entry != NULL && entry->message != NULL) ?
+            strlen(entry->message) : 0;
+    if (length > (size_t) INT_MAX) {
+        return -1;
+    }
+    if (message != NULL && capacity > 0) {
+        copy_length = length;
+        if (copy_length >= (size_t) capacity) {
+            copy_length = (size_t) capacity - 1;
+        }
+        if (copy_length > 0 && entry != NULL && entry->message != NULL) {
+            memcpy(message, entry->message, copy_length);
+        }
+        message[copy_length] = '\0';
+    }
+    return (int) length;
+}
+
 static int pcore_hex_digit(unsigned char c)
 {
     return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') ||
@@ -8079,6 +8110,28 @@ PCORE_API int PCore_FormSetCustomValidityForTextarea(HANDLE hDoc,
     }
     return pcore_custom_validity_set((dom_document *) hDoc,
             control->node, message);
+}
+
+PCORE_API int PCore_FormGetCustomValidityForTextInput(HANDLE hDoc,
+        unsigned int text_index, char *message, unsigned int capacity)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_control *control;
+    unsigned int current;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_text_input_at(st->root_box, text_index, &current) : NULL;
+    control = (box != NULL) ? box->gadget : NULL;
+    if (control == NULL || control->node == NULL ||
+            (control->type != GADGET_TEXTBOX &&
+             control->type != GADGET_PASSWORD)) {
+        return -1;
+    }
+    return pcore_custom_validity_get((dom_document *) hDoc,
+            control->node, message, capacity);
 }
 
 typedef struct pcore_multipart_part {

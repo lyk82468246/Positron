@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 256
+#define TEST_MAX_NUMBER 257
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -44156,6 +44156,60 @@ static BOOL test256_form_textarea_custom_validity(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 257 - text custom validity getter and truncation                   */
+/* -------------------------------------------------------------------- */
+static BOOL test257_form_custom_validity_get(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/custom-get method=get>"
+        "<input type=text name=field value=ok>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    static const char MESSAGE[] = "bad café";
+    HANDLE document;
+    HANDLE sheet;
+    char full[64];
+    char short_message[8];
+    int full_length;
+    int short_length;
+    int empty_length;
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(full, 0, sizeof(full));
+    memset(short_message, 0, sizeof(short_message));
+    (void) submit_x;
+    (void) submit_y;
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            PCore_FormSetCustomValidityForTextInput(document, 0,
+                    MESSAGE) != 0 ||
+            (full_length = PCore_FormGetCustomValidityForTextInput(
+                    document, 0, full, sizeof(full))) !=
+                    (int) strlen(MESSAGE) ||
+            strcmp(full, MESSAGE) != 0 ||
+            (short_length = PCore_FormGetCustomValidityForTextInput(
+                    document, 0, short_message, sizeof(short_message))) !=
+                    (int) strlen(MESSAGE) ||
+            strcmp(short_message, "bad caf") != 0 ||
+            PCore_FormSetCustomValidityForTextInput(document, 0, NULL) != 0 ||
+            (empty_length = PCore_FormGetCustomValidityForTextInput(
+                    document, 0, full, sizeof(full))) != 0 ||
+            full[0] != '\0') {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 257 FAIL",
+                "custom validity getter did not preserve UTF-8 length or truncation");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 257 OK",
+            "custom validity getter returned UTF-8 bytes and safe truncation.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -48439,6 +48493,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 256: ok =
                 test256_form_textarea_custom_validity();
+                break;
+        case 257: ok =
+                test257_form_custom_validity_get();
                 break;
         default: ok = FALSE; break;
         }

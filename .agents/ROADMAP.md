@@ -86,6 +86,8 @@ next287 已修正 datetime-local 缺少 min 时使用固定 default value 作为
 修正 custom validity 与 required 空值同时存在时的组合 flags，不依赖人工页面观察。
 next288 已修正 custom validity 与 required 空值的组合 flags；下一候选为
 补齐 textarea 的 product custom validity 入口，不依赖人工页面观察。
+next289 已补齐 textarea 的 product custom validity setter；下一候选为
+补齐 text/password custom validity 的安全 getter/读回能力，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
