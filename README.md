@@ -17,7 +17,7 @@ DLL 之上建设轻量浏览器与应用运行时。
 | `positron_image.dll` | BMP/PNG/JPEG/GIF、SVG、像素缓冲和编码 | 设备位图格式依赖 WM Imaging codec；SVG 是受限子集 |
 | `positron_script.dll` | 独立 JavaScript 执行服务 | Duktape 2.7.0；有时间、内存、源码和 native callback 上限 |
 | `positron_core.dll` | HTML/DOM、CSS、布局、绘制、命中、表单和资源发现 | 基于移植的 NetSurf 3.11 组件；网页兼容性仍在扩展 |
-| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap 和 DOM 读写/attribute/value/checked/form-property/navigation/location/event/native-input/key/focus/form-event/invalid/file-input/checkbox-radio-change 回调组合层 | 不拥有窗口、网络；其余 form/input 适配、core 事件传播及控件副作用仍由宿主提供 |
+| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap、DOM 读写/attribute/value/checked/form-property/navigation/location/event/native-input/key/focus/click/programmatic-click/form-event/invalid/file-input/checkbox-radio-change 回调组合层 | 不拥有窗口、网络；其余 form/input 适配、core 事件传播及控件副作用仍由宿主提供 |
 
 所有公共接口都使用稳定 C ABI、UTF-8 字符串、opaque handle 和明确的释放函数。NetSurf、
 Duktape、Mbed TLS 等实现细节不暴露给调用者。
@@ -39,7 +39,7 @@ Duktape、Mbed TLS 等实现细节不暴露给调用者。
 bootstrap、DOM 只读（按 id 查询与 textContent 读取）、textContent 写入、attribute、input value、checked、
 form property（defaultValue/defaultChecked/selectedIndex）、navigation JSON 分发、同文档
 location/history 事件分发、event 回调分发、native input/composition、keyboard、focus-family、
-EDIT change/post-change input、click、submit/reset、invalid、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry 已迁入；其余 form/input 适配、core 事件传播以及窗口、网络、控件和
+EDIT change/post-change input、click、programmatic `HTMLElement.click()`、submit/reset、invalid、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry 已迁入；其余 form/input 适配、core 事件传播以及窗口、网络、控件和
 history/navigation side effect 仍由宿主提供。
 它不是第二套引擎。
 两者的关系和所有权见

@@ -674,6 +674,8 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
     static const char P_BROWSER_SCRIPT_BOOTSTRAP[] =
         "(function(g){"
         "function PElement(id){this.__id=id;}"
+        "PElement.prototype.click=function(){"
+        "if(!__pcoreClick({id:this.__id})){throw new Error('click failed');}};"
         "Object.defineProperty(PElement.prototype,'textContent',{"
         "get:function(){return __pcoreGetText({id:this.__id});},"
         "set:function(v){if(!__pcoreSetText({id:this.__id,text:String(v)}))"
@@ -1188,6 +1190,11 @@ typedef struct p_browser_script_click_binding {
     PBrowserScriptClickCallbacks callbacks;
 } p_browser_script_click_binding;
 
+typedef struct p_browser_script_programmatic_click_binding {
+    HANDLE session;
+    PBrowserScriptProgrammaticClickCallbacks callbacks;
+} p_browser_script_programmatic_click_binding;
+
 typedef struct p_browser_script_form_event_binding {
     PBrowserScriptFormEventCallbacks callbacks;
 } p_browser_script_form_event_binding;
@@ -1221,6 +1228,7 @@ typedef struct p_browser_script_session {
     p_browser_script_edit_binding *edit;
     p_browser_script_select_binding *select;
     p_browser_script_click_binding *click;
+    p_browser_script_programmatic_click_binding *programmatic_click;
     p_browser_script_form_event_binding *form_event;
     p_browser_script_invalid_binding *invalid;
     p_browser_script_navigation_binding *navigation;
@@ -2372,6 +2380,36 @@ static int p_browser_script_event_remove_listener(void *pw,
             out_capacity, out_len);
 }
 
+static int p_browser_script_programmatic_click(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_programmatic_click_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    PBrowserScriptProgrammaticClickInfo info;
+    const char *id;
+    int rc;
+
+    binding = (p_browser_script_programmatic_click_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    if (binding == NULL || binding->session == NULL || root == NULL ||
+            id == NULL || id[0] == '\0') {
+        PJson_Free(root);
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.element_id = id;
+    rc = PBrowser_ScriptSessionDispatchProgrammaticClick(
+            binding->session, &info);
+    PJson_Free(root);
+    return p_browser_script_write_bool(rc == PSCRIPT_OK, out_json,
+            out_capacity, out_len);
+}
+
 PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
 {
     p_browser_script_session *session;
@@ -2391,6 +2429,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->edit = NULL;
     session->select = NULL;
     session->click = NULL;
+    session->programmatic_click = NULL;
     session->form_event = NULL;
     session->invalid = NULL;
     session->navigation = NULL;
@@ -2471,6 +2510,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     if (session->click != NULL) {
         free(session->click);
         session->click = NULL;
+    }
+    if (session->programmatic_click != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreClick", -1);
+        free(session->programmatic_click);
+        session->programmatic_click = NULL;
     }
     if (session->form_event != NULL) {
         free(session->form_event);
@@ -3273,6 +3318,81 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchClickEvent(HANDLE hSession,
         return PSCRIPT_ERROR_NATIVE;
     }
     *out_default_allowed = default_allowed ? 1 : 0;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptProgrammaticClickCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_programmatic_click_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptProgrammaticClickCallbacks) ||
+            callbacks->dispatch_click == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->programmatic_click != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_programmatic_click_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    binding->session = hSession;
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime, "__pcoreClick",
+            -1, p_browser_script_programmatic_click, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->programmatic_click = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->programmatic_click == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreClick", -1);
+    free(session->programmatic_click);
+    session->programmatic_click = NULL;
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchProgrammaticClick(
+        HANDLE hSession, const PBrowserScriptProgrammaticClickInfo *info)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) ||
+            session->programmatic_click == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptProgrammaticClickInfo) ||
+            info->element_id == NULL || info->element_id[0] == '\0') {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = session->programmatic_click->callbacks.dispatch_click(
+            session->programmatic_click->callbacks.pw, info);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
     return PSCRIPT_OK;
 }
 

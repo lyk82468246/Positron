@@ -371,6 +371,24 @@ typedef struct PBrowserScriptClickCallbacks {
     PBrowserScriptDispatchClickFn dispatch_click;
 } PBrowserScriptClickCallbacks;
 
+/* Typed host adapter for a script-visible HTMLElement.click() invocation.
+ * The browser layer owns the DOM method and its synchronous dispatch entry;
+ * the host receives the UTF-8 DOM id and reuses the typed click/input/change
+ * contracts for any supported default action. Returning zero means the
+ * invocation was processed, including a disabled/no-op target; a negative
+ * return reports an adapter failure. The id is borrowed only for this call. */
+typedef struct PBrowserScriptProgrammaticClickInfo {
+    unsigned long size;
+    const char *element_id;
+} PBrowserScriptProgrammaticClickInfo;
+typedef int (*PBrowserScriptProgrammaticClickFn)(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info);
+typedef struct PBrowserScriptProgrammaticClickCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptProgrammaticClickFn dispatch_click;
+} PBrowserScriptProgrammaticClickCallbacks;
+
 /* Typed host adapter for product-owned native form submit/reset events. The
  * browser layer owns the form-event contract and dispatch entry point; the
  * host supplies core hit-testing/propagation for the document coordinates.
@@ -612,6 +630,15 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterClickCallbacks(
  * out_default_allowed is 1 or 0 as described above. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchClickEvent(HANDLE hSession,
         const PBrowserScriptClickEventInfo *info, int *out_default_allowed);
+PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptProgrammaticClickCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacks(
+        HANDLE hSession);
+/* Dispatch one script-visible HTMLElement.click() invocation through the
+ * host's typed activation adapter. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchProgrammaticClick(
+        HANDLE hSession, const PBrowserScriptProgrammaticClickInfo *info);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormEventCallbacks(
         HANDLE hSession, const PBrowserScriptFormEventCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFormEventCallbacks(

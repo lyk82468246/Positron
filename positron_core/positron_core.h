@@ -383,6 +383,15 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
                                    int *x, int *y, int *w, int *h,
                                    int *kind, int *selected, int *disabled);
 
+/* Inspect a laid-out form control by its UTF-8 DOM id. The returned geometry
+ * and kind use the same document-space coordinates and kind values as
+ * PCore_FormControlInfo. Returns 0 for a matching form gadget and non-zero
+ * when the id is absent, not laid out, or not a form control. */
+PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
+                                       int *x, int *y, int *w, int *h,
+                                       int *kind, int *selected,
+                                       int *disabled);
+
 /* Resolve a file gadget at a document-space point. `file_index` is the
  * file-only index accepted by PCore_FileInputInfo/SetPath. A disabled gadget
  * still consumes the point. Returns 1 for a file gadget and 0 otherwise. */

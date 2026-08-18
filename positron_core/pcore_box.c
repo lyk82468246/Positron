@@ -4084,6 +4084,86 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
     return 0;
 }
 
+PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
+        int *x, int *y, int *w, int *h, int *kind, int *selected,
+        int *disabled)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_string *id;
+    dom_element *element;
+    struct box *box;
+    int ax;
+    int ay;
+    int control_kind;
+
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL || element_id == NULL || element_id[0] == '\0') {
+        return 1;
+    }
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) element_id,
+            strlen(element_id), &id) != DOM_NO_ERR || id == NULL ||
+            dom_document_get_element_by_id(doc, id, &element) != DOM_NO_ERR ||
+            element == NULL) {
+        if (id != NULL) {
+            dom_string_unref(id);
+        }
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    dom_string_unref(id);
+    box = pcore_box_for_node(st->root_box, (dom_node *) element);
+    dom_node_unref((dom_node *) element);
+    if (box == NULL || box->gadget == NULL) {
+        return 1;
+    }
+    if (box->gadget->type == GADGET_CHECKBOX) {
+        control_kind = 1;
+    } else if (box->gadget->type == GADGET_RADIO) {
+        control_kind = 2;
+    } else if (box->gadget->type == GADGET_TEXTBOX) {
+        control_kind = 3;
+    } else if (box->gadget->type == GADGET_PASSWORD) {
+        control_kind = 4;
+    } else if (box->gadget->type == GADGET_TEXTAREA) {
+        control_kind = 5;
+    } else if (box->gadget->type == GADGET_SELECT) {
+        control_kind = 6;
+    } else if (box->gadget->type == GADGET_SUBMIT) {
+        control_kind = 7;
+    } else if (box->gadget->type == GADGET_RESET) {
+        control_kind = 8;
+    } else if (box->gadget->type == GADGET_BUTTON) {
+        control_kind = 9;
+    } else if (box->gadget->type == GADGET_FILE) {
+        control_kind = 10;
+    } else {
+        return 1;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    if (x != NULL) { *x = ax; }
+    if (y != NULL) { *y = ay; }
+    if (w != NULL) { *w = box->width; }
+    if (h != NULL) { *h = box->height; }
+    if (kind != NULL) { *kind = control_kind; }
+    if (selected != NULL) {
+        *selected = (box->gadget->type == GADGET_SELECT) ?
+                ((box->gadget->data.select.num_selected > 0) ? 1 : 0) :
+                (box->gadget->selected ? 1 : 0);
+    }
+    if (disabled != NULL) {
+        *disabled = box->gadget->disabled ? 1 : 0;
+    }
+    return 0;
+}
+
 static struct box *pcore_file_input_at_index(struct box *box,
         unsigned int target, unsigned int *current)
 {

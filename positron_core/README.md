@@ -46,7 +46,9 @@ PCore_Shutdown();
 `PCore_FetchImageResources` 获取图片，`PCore_LinkAt` 做链接命中，
 `PCore_FormActivateAt` / `PCore_InteractionSetAt` 驱动控件状态，
 `PCore_EventListenerAdd` / `PCore_EventDispatchAt` 接入同步 DOM 事件，以及
-`PCore_Node*ById` 读取或修改脚本需要的 DOM 属性、值和表单状态。
+`PCore_Node*ById` 读取或修改脚本需要的 DOM 属性、值和表单状态；
+`PCore_FormControlInfoById` 可在布局后按 DOM id 查询控件几何、kind、selected 和 disabled
+状态，供浏览器宿主实现程序化控件 activation。
 
 `PCore_Init` 与 `PCore_Shutdown` 成对使用；文档、样式表和其他返回句柄分别用
 `PCore_FreeDocument`、`PCore_FreeStylesheet` 及头文件指定的 `PCore_Free*` 释放。

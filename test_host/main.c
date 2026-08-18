@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 227
+#define TEST_MAX_NUMBER 228
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3097,6 +3097,8 @@ static int pcore_browser_script_select_dispatch(void *pw,
 static int pcore_browser_script_click_dispatch(void *pw,
         const PBrowserScriptClickEventInfo *info,
         int *out_default_allowed);
+static int pcore_browser_script_programmatic_click_dispatch(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info);
 static int pcore_browser_script_form_event_dispatch(void *pw,
         const PBrowserScriptFormEventInfo *info,
         int *out_default_allowed);
@@ -3110,6 +3112,11 @@ static int pcore_browser_script_dispatch_select_change_at(int x, int y);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data,
         int is_composing);
+static void pcore_invalidate_form_dirty(HWND hwnd, int x, int y,
+        int width, int height);
+static void pcore_request_interaction_restyle(HWND hwnd);
+static int pcore_form_toggle_activate(int x, int y,
+        int *dirty_x, int *dirty_y, int *dirty_w, int *dirty_h);
 
 static int pcore_native_script_active(void)
 {
@@ -3937,6 +3944,89 @@ static int pcore_browser_script_click_dispatch(void *pw,
             info->event_type, info->bubbles ? 1 : 0,
             info->cancelable ? 1 : 0, out_default_allowed);
     return (result < 0) ? -1 : 0;
+}
+
+static int pcore_browser_script_programmatic_click_dispatch(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info)
+{
+    pcore_browser_script_bridge *bridge;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+    int has_control;
+    int default_allowed;
+    int result;
+    int click_rc;
+    PBrowserScriptClickEventInfo click_info;
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptProgrammaticClickInfo) ||
+            info->element_id == NULL || info->element_id[0] == '\0') {
+        return -1;
+    }
+    x = 0;
+    y = 0;
+    width = 0;
+    height = 0;
+    kind = 0;
+    disabled = 0;
+    has_control = PCore_FormControlInfoById(bridge->document,
+            info->element_id, &x, &y, &width, &height, &kind,
+            NULL, &disabled) == 0;
+    /* HTMLElement.click() is silent for disabled form controls. */
+    if (has_control && disabled) {
+        return 0;
+    }
+    default_allowed = 1;
+    if (has_control && (kind == 1 || kind == 2)) {
+        if (bridge->session == NULL) {
+            return -1;
+        }
+        memset(&click_info, 0, sizeof(click_info));
+        click_info.size = sizeof(click_info);
+        click_info.x = x + width / 2;
+        click_info.y = y + height / 2;
+        click_info.event_type = "click";
+        click_info.bubbles = 1;
+        click_info.cancelable = 1;
+        click_rc = PBrowser_ScriptSessionDispatchClickEvent(
+                bridge->session, &click_info, &default_allowed);
+        if (click_rc != PSCRIPT_OK) {
+            return -1;
+        }
+        result = 1;
+    } else {
+        result = PCore_EventDispatchToId(bridge->document,
+                info->element_id, "click", 1, 1, &default_allowed);
+        if (result < 0) {
+            return -1;
+        }
+    }
+    if (result == 0 || !default_allowed ||
+            !has_control || (kind != 1 && kind != 2) ||
+            bridge->document != g_render_doc) {
+        return 0;
+    }
+    dirty_x = 0;
+    dirty_y = 0;
+    dirty_w = 0;
+    dirty_h = 0;
+    (void) pcore_form_toggle_activate(x + width / 2, y + height / 2,
+            &dirty_x, &dirty_y, &dirty_w, &dirty_h);
+    if (bridge->hwnd != NULL) {
+        pcore_invalidate_form_dirty(bridge->hwnd, dirty_x, dirty_y,
+                dirty_w, dirty_h);
+        pcore_request_interaction_restyle(bridge->hwnd);
+    }
+    return 0;
 }
 
 static int pcore_browser_script_form_event_dispatch(void *pw,
@@ -6967,6 +7057,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptEditCallbacks edit_callbacks;
     PBrowserScriptSelectCallbacks select_callbacks;
     PBrowserScriptClickCallbacks click_callbacks;
+    PBrowserScriptProgrammaticClickCallbacks programmatic_click_callbacks;
     PBrowserScriptFormEventCallbacks form_event_callbacks;
     PBrowserScriptInvalidCallbacks invalid_callbacks;
     PBrowserScriptNavigationCallbacks navigation_callbacks;
@@ -7095,6 +7186,11 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     click_callbacks.size = sizeof(click_callbacks);
     click_callbacks.pw = bridge;
     click_callbacks.dispatch_click = pcore_browser_script_click_dispatch;
+    programmatic_click_callbacks.size =
+            sizeof(programmatic_click_callbacks);
+    programmatic_click_callbacks.pw = bridge;
+    programmatic_click_callbacks.dispatch_click =
+            pcore_browser_script_programmatic_click_dispatch;
     form_event_callbacks.size = sizeof(form_event_callbacks);
     form_event_callbacks.pw = bridge;
     form_event_callbacks.dispatch_form_event =
@@ -7160,6 +7256,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &select_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterClickCallbacks(session,
             &click_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(session,
+            &programmatic_click_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormEventCallbacks(session,
             &form_event_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterInvalidCallbacks(session,
@@ -24551,7 +24649,7 @@ static BOOL test137_browser_script_navigation(void)
             strcmp(result, expected) != 0 || bridge == NULL ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_BACK ||
             bridge->navigation_url != NULL ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     target = pcore_browse_history_back_target(&target_index);
@@ -24638,7 +24736,7 @@ static BOOL test138_browser_script_location_assign(void)
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, TARGET) != 0 ||
             g_browse_history.count != 2 || g_browse_history.index != 1 ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
@@ -24720,7 +24818,7 @@ static BOOL test139_browser_script_location_reload(void)
             strcmp(bridge->navigation_url, URL_B) != 0 ||
             g_browse_history.count != 3 || g_browse_history.index != 1 ||
             strcmp(g_browse_history.entries[2], URL_C) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     if (ok) {
@@ -24817,7 +24915,7 @@ static BOOL test140_browser_script_location_replace(void)
             strcmp(g_browse_history.entries[0], URL_A) != 0 ||
             strcmp(g_browse_history.entries[1], URL_B) != 0 ||
             strcmp(g_browse_history.entries[2], URL_C) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     if (ok) {
@@ -24914,7 +25012,7 @@ static BOOL test141_browser_script_history_forward(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FORWARD ||
             bridge->navigation_url != NULL ||
             g_browse_history.count != 3 || g_browse_history.index != 1 ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     target = pcore_browse_history_forward_target(&target_index);
@@ -25037,7 +25135,7 @@ static BOOL test142_browser_script_history_go(void)
             bridge->navigation_delta != 1 ||
             bridge->navigation_url != NULL ||
             g_browse_history.count != 4 || g_browse_history.index != 1 ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     target = pcore_browse_history_go_target(bridge != NULL ?
@@ -25153,7 +25251,7 @@ static BOOL test143_browser_script_history_length(void)
             first_length != 1 || append_length != 4 ||
             branch_length != 3 || replace_length != 3 ||
             target_length != 3 || post_length != 3 ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
@@ -25231,7 +25329,7 @@ static BOOL test144_browser_script_history_state(void)
             bridge->navigation_delta != 0 ||
             bridge->navigation_url != NULL ||
             g_browse_history.count != 1 || g_browse_history.index != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     if (bridge != NULL) { pcore_browser_script_bridge_destroy(bridge); }
@@ -25336,7 +25434,7 @@ static BOOL test145_browser_script_history_replace_state(void)
             "{\"page\":2,\"tags\":[\"a\"]}") != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
             strcmp(pcore_browse_history_current_state(), "null") != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     if (ok && pcore_browse_history_commit_navigation_with_state(URL_B,
@@ -25381,7 +25479,7 @@ static BOOL test145_browser_script_history_replace_state(void)
             strcmp(restore_result, "1|2") != 0 || restore_bytes != 3 ||
             restore_bridge == NULL || restore_bridge->history_state_changed ||
             restore_bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(restore_runtime) != 14)) {
+            PScript_GetNativeFunctionCount(restore_runtime) != 15)) {
         ok = 0;
     }
     if (ok && (pcore_browse_history_commit_target(0) != 0 ||
@@ -25517,7 +25615,7 @@ static BOOL test146_browser_script_history_push_state(void)
             g_browse_history.count != 2 || g_browse_history.index != 0 ||
             strcmp(pcore_browse_history_state_at(0), "{\"page\":1}") != 0 ||
             strcmp(pcore_browse_history_state_at(1), "{\"page\":2}") != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14) {
+            PScript_GetNativeFunctionCount(runtime) != 15) {
         ok = 0;
     }
     if (ok && pcore_browse_history_commit_navigation_with_bridge(URL_A,
@@ -25570,7 +25668,7 @@ static BOOL test146_browser_script_history_push_state(void)
             restore_result, sizeof(restore_result), &restore_bytes) != 0 ||
             strcmp(restore_result, "21|4") != 0 || restore_bytes != 4 ||
             restore_bridge == NULL || restore_bridge->history_push_count != 0 ||
-            PScript_GetNativeFunctionCount(restore_runtime) != 14 ||
+            PScript_GetNativeFunctionCount(restore_runtime) != 15 ||
             pcore_browse_history_commit_target(1) != 0)) {
         ok = 0;
     }
@@ -25707,7 +25805,7 @@ static BOOL test147_browser_script_history_same_document_traversal(void)
             sizeof(result), &result_bytes) != 0 ||
             strcmp(result, "3|2") != 0 || result_bytes != 3 ||
             bridge == NULL || bridge->history_push_count != 2 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_A,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2) {
@@ -25881,7 +25979,7 @@ static BOOL test148_browser_script_history_popstate(void)
             strcmp(result, "0|2") != 0 || result_bytes != 3 ||
             bridge == NULL ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_BACK ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2) {
@@ -26061,7 +26159,7 @@ static BOOL test149_browser_script_history_fragment_url(void)
             strcmp(bridge->history_push_urls[0], URL_ONE) != 0 ||
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_TWO) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -26239,7 +26337,7 @@ static BOOL test150_browser_script_history_hashchange(void)
             result_bytes != (int) sizeof(INITIAL_RESULT) - 1 ||
             bridge == NULL ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_BACK ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -26430,7 +26528,7 @@ static BOOL test151_browser_script_location_components(void)
             strcmp(result, expected) != 0 ||
             result_bytes != (int) strlen(expected) || bridge == NULL ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_BACK ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 2 ||
             g_browse_history.index != 1 ||
@@ -26587,7 +26685,7 @@ static BOOL test152_browser_script_location_hash_navigation(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_NEXT) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -26792,7 +26890,7 @@ static BOOL test153_browser_script_location_fragment_methods(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -26935,7 +27033,7 @@ static BOOL test153_browser_script_location_fragment_methods(void)
                 g_browse_history.index != 1 ||
                 strcmp(pcore_browse_history_current(), URL_HREF) != 0 ||
                 strcmp(pcore_browse_history_current_state(), "null") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -27042,7 +27140,7 @@ static BOOL test154_browser_script_location_absolute_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -27198,7 +27296,7 @@ static BOOL test154_browser_script_location_absolute_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 URL_PATH) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -27304,7 +27402,7 @@ static BOOL test155_browser_script_location_root_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -27459,7 +27557,7 @@ static BOOL test155_browser_script_location_root_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 ROOT_PATH) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -27565,7 +27663,7 @@ static BOOL test156_browser_script_location_query_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -27720,7 +27818,7 @@ static BOOL test156_browser_script_location_query_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 PATH_OTHER) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -27827,7 +27925,7 @@ static BOOL test157_browser_script_location_path_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -27999,7 +28097,7 @@ static BOOL test157_browser_script_location_path_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 PATH_DOT_OTHER) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -28106,7 +28204,7 @@ static BOOL test158_browser_script_location_dot_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -28278,7 +28376,7 @@ static BOOL test158_browser_script_location_dot_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 PARENT_OTHER) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -28385,7 +28483,7 @@ static BOOL test159_browser_script_location_parent_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -28558,7 +28656,7 @@ static BOOL test159_browser_script_location_parent_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 REPEATED_OTHER) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -28665,7 +28763,7 @@ static BOOL test160_browser_script_location_repeated_parent_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -28838,7 +28936,7 @@ static BOOL test160_browser_script_location_repeated_parent_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 MIXED_OTHER) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -28946,7 +29044,7 @@ static BOOL test161_browser_script_location_parent_dot_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -29119,7 +29217,7 @@ static BOOL test161_browser_script_location_parent_dot_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 REPEATED_DOT_OTHER) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -29226,7 +29324,7 @@ static BOOL test162_browser_script_location_parent_dots_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -29399,7 +29497,7 @@ static BOOL test162_browser_script_location_parent_dots_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -29507,7 +29605,7 @@ static BOOL test163_browser_script_location_repeated_dots_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -29680,7 +29778,7 @@ static BOOL test163_browser_script_location_repeated_dots_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -29788,7 +29886,7 @@ static BOOL test164_browser_script_location_parent_inner_dot_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -29961,7 +30059,7 @@ static BOOL test164_browser_script_location_parent_inner_dot_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -30069,7 +30167,7 @@ static BOOL test165_browser_script_location_parent_inner_dots_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -30242,7 +30340,7 @@ static BOOL test165_browser_script_location_parent_inner_dots_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -30352,7 +30450,7 @@ static BOOL test166_browser_script_location_parent_multiple_dots_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -30526,7 +30624,7 @@ static BOOL test166_browser_script_location_parent_multiple_dots_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -30634,7 +30732,7 @@ static BOOL test167_browser_script_location_root_inner_dot_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -30807,7 +30905,7 @@ static BOOL test167_browser_script_location_root_inner_dot_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -30917,7 +31015,7 @@ static BOOL test168_browser_script_location_root_repeated_inner_dots_fragment(vo
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -31090,7 +31188,7 @@ static BOOL test168_browser_script_location_root_repeated_inner_dots_fragment(vo
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -31200,7 +31298,7 @@ static BOOL test178_browser_script_location_root_repeated_encoded_dots_fragment(
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -31373,7 +31471,7 @@ static BOOL test178_browser_script_location_root_repeated_encoded_dots_fragment(
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -31483,7 +31581,7 @@ static BOOL test169_browser_script_location_root_multiple_dots_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -31656,7 +31754,7 @@ static BOOL test169_browser_script_location_root_multiple_dots_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -31767,7 +31865,7 @@ static BOOL test170_browser_script_location_absolute_inner_dot_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -31941,7 +32039,7 @@ static BOOL test170_browser_script_location_absolute_inner_dot_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -32054,7 +32152,7 @@ static BOOL test173_browser_script_location_absolute_encoded_dot_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -32244,7 +32342,7 @@ static BOOL test173_browser_script_location_absolute_encoded_dot_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -32361,7 +32459,7 @@ static BOOL test174_browser_script_location_absolute_encoded_terminal_dot_fragme
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -32567,7 +32665,7 @@ static BOOL test174_browser_script_location_absolute_encoded_terminal_dot_fragme
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -32684,7 +32782,7 @@ static BOOL test181_browser_script_location_absolute_encoded_terminal_double_dot
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -32890,7 +32988,7 @@ static BOOL test181_browser_script_location_absolute_encoded_terminal_double_dot
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -33005,7 +33103,7 @@ static BOOL test187_browser_script_location_absolute_repeated_encoded_double_dot
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -33211,7 +33309,7 @@ static BOOL test187_browser_script_location_absolute_repeated_encoded_double_dot
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -33323,7 +33421,7 @@ static BOOL test188_browser_script_location_root_repeated_encoded_double_dots_fr
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -33513,7 +33611,7 @@ static BOOL test188_browser_script_location_root_repeated_encoded_double_dots_fr
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -33641,7 +33739,7 @@ static BOOL test189_browser_script_history_root_relative_url(void)
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -33727,7 +33825,7 @@ static BOOL test189_browser_script_history_root_relative_url(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -33870,7 +33968,7 @@ static BOOL test190_browser_script_history_sibling_url(void)
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -33959,7 +34057,7 @@ static BOOL test190_browser_script_history_sibling_url(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -34096,7 +34194,7 @@ static BOOL test191_browser_script_history_explicit_current_directory(void)
             result_bytes >= (int) sizeof(result) ||
             bridge == NULL ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -34186,7 +34284,7 @@ static BOOL test191_browser_script_history_explicit_current_directory(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -34339,7 +34437,7 @@ static BOOL test192_browser_script_history_nested_current_directory(void)
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -34429,7 +34527,7 @@ static BOOL test192_browser_script_history_nested_current_directory(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -34582,7 +34680,7 @@ static BOOL test193_browser_script_history_bare_nested_current_directory(void)
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -34672,7 +34770,7 @@ static BOOL test193_browser_script_history_bare_nested_current_directory(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -34830,7 +34928,7 @@ static BOOL test194_browser_script_history_explicit_directory_suffix(void)
             bridge->history_push_urls[2] == NULL ||
             strcmp(bridge->history_push_urls[2], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 4 ||
             g_browse_history.index != 3 ||
@@ -34921,7 +35019,7 @@ static BOOL test194_browser_script_history_explicit_directory_suffix(void)
                 strcmp(g_browse_history.entries[4], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -35062,7 +35160,7 @@ static BOOL test195_browser_script_history_absolute_same_path(void)
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -35152,7 +35250,7 @@ static BOOL test195_browser_script_history_absolute_same_path(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -35292,7 +35390,7 @@ static BOOL test196_browser_script_history_default_port(void)
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -35382,7 +35480,7 @@ static BOOL test196_browser_script_history_default_port(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -35528,7 +35626,7 @@ static BOOL test197_browser_script_history_absolute_path(void)
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -35618,7 +35716,7 @@ static BOOL test197_browser_script_history_absolute_path(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -35764,7 +35862,7 @@ static BOOL test198_browser_script_history_encoded_path(void)
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -35854,7 +35952,7 @@ static BOOL test198_browser_script_history_encoded_path(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -36010,7 +36108,7 @@ static BOOL test199_browser_script_history_root_encoded_path(void)
             bridge->history_push_urls[1] == NULL ||
             strcmp(bridge->history_push_urls[1], URL_FINAL) != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -36100,7 +36198,7 @@ static BOOL test199_browser_script_history_root_encoded_path(void)
                 strcmp(g_browse_history.entries[3], URL_QUERY) != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -36225,7 +36323,7 @@ static BOOL test200_browser_script_history_undefined_url(void)
             strcmp(bridge->history_push_states[1],
             "{\"page\":2}") != 0 ||
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 3 ||
             g_browse_history.index != 2 ||
@@ -36319,7 +36417,7 @@ static BOOL test200_browser_script_history_undefined_url(void)
                 "{\"page\":11}") != 0 ||
                 strcmp(pcore_browse_history_current_state(),
                 "{\"page\":12}") != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -41307,6 +41405,270 @@ static BOOL test227_browser_form_toggle_keyboard(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 228 - programmatic checkbox/radio click activation               */
+/* -------------------------------------------------------------------- */
+typedef struct test228_programmatic_click_state {
+    int calls;
+    int return_code;
+    char element_id[64];
+} test228_programmatic_click_state;
+
+static int test228_programmatic_click_dispatch(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info)
+{
+    test228_programmatic_click_state *state;
+    size_t length;
+
+    state = (test228_programmatic_click_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptProgrammaticClickInfo) ||
+            info->element_id == NULL) {
+        return -1;
+    }
+    length = strlen(info->element_id);
+    if (length >= sizeof(state->element_id)) {
+        return -1;
+    }
+    memcpy(state->element_id, info->element_id, length + 1);
+    state->calls++;
+    return state->return_code < 0 ? state->return_code : 0;
+}
+
+static BOOL test228_browser_form_toggle_programmatic(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id=root>"
+        "<input id='check' type='checkbox'>"
+        "<input id='cancel' type='checkbox'>"
+        "<input id='radio-a' type='radio' name='choice' checked>"
+        "<input id='radio-b' type='radio' name='choice'>"
+        "<input id='disabled' type='checkbox' disabled>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "form{display:block;width:280px}"
+        "input{display:block;width:220px;height:24px;margin:3px}"
+        "#result{display:block;width:500px;height:120px}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function record(e){var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+'|'+"
+        "String(e.defaultPrevented)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('click',record);"
+        "root.addEventListener('input',record);"
+        "root.addEventListener('change',record);"
+        "document.getElementById('cancel').addEventListener('click',"
+        "function(e){e.preventDefault();});"
+        "document.getElementById('check').click();"
+        "document.getElementById('cancel').click();"
+        "document.getElementById('radio-b').click();"
+        "document.getElementById('disabled').click();";
+    static const char EXPECTED[] =
+        "click|check|false;input|check|false;change|check|false;"
+        "click|cancel|true;click|radio-b|false;input|radio-b|false;"
+        "change|radio-b|false;";
+    PBrowserScriptProgrammaticClickCallbacks callbacks;
+    PBrowserScriptProgrammaticClickInfo info;
+    test228_programmatic_click_state state;
+    HANDLE callback_session;
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char text[1024];
+    char error[384];
+    const char *stage;
+    int bytes;
+    int executed;
+    int ignored;
+    int check;
+    int cancel;
+    int radio_a;
+    int radio_b;
+    int disabled;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_click = test228_programmatic_click_dispatch;
+    info.size = sizeof(info);
+    info.element_id = "check";
+    callback_session = PBrowser_ScriptSessionCreate(
+            PSCRIPT_DEFAULT_BUDGET_MS);
+    stage = "callback-create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    ok = callback_session != NULL;
+    if (ok) {
+        stage = "callback-null-register";
+        ok = PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "callback-register";
+        ok = PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(
+                callback_session, &callbacks) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionNativeFunctionCount(callback_session) ==
+                1;
+    }
+    if (ok) {
+        stage = "callback-duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(
+                callback_session, &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "callback-invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(
+                callback_session, NULL);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+    }
+    if (ok) {
+        stage = "callback-invalid-id";
+        info.element_id = NULL;
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(
+                callback_session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+        info.element_id = "check";
+    }
+    if (ok) {
+        stage = "callback-dispatch";
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(
+                callback_session, &info);
+        ok = rc == PSCRIPT_OK && state.calls == 1 &&
+                strcmp(state.element_id, "check") == 0;
+    }
+    if (ok) {
+        stage = "callback-adapter-error";
+        state.return_code = -1;
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(
+                callback_session, &info);
+        ok = rc == PSCRIPT_ERROR_NATIVE && state.calls == 2;
+        state.return_code = 0;
+    }
+    if (ok) {
+        stage = "callback-unregister";
+        ok = PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacks(
+                callback_session) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionNativeFunctionCount(callback_session) ==
+                0;
+    }
+    if (ok) {
+        stage = "callback-after-unregister";
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(
+                callback_session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 2;
+    }
+    if (ok) {
+        stage = "callback-unregister-again";
+        ok = PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacks(
+                callback_session) == PSCRIPT_OK;
+    }
+    PBrowser_ScriptSessionDestroy(callback_session);
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    check = 0;
+    cancel = 0;
+    radio_a = 0;
+    radio_b = 0;
+    disabled = 0;
+    memset(text, 0, sizeof(text));
+    pcore_browser_script_session_destroy();
+    if (ok) {
+        stage = "integration-parse";
+        document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+        ok = document != NULL;
+    }
+    if (ok) {
+        stage = "integration-script-session";
+        ok = pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+                NULL, &executed, &ignored, error, sizeof(error), &runtime,
+                &bridge) == 0 && executed == 1 && ignored == 0 &&
+                runtime != NULL && bridge != NULL;
+    }
+    if (ok) {
+        stage = "integration-style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/form-toggle-programmatic.css");
+        ok = sheet != NULL && PCore_StyleDocument(document, sheet) == 0 &&
+                PCore_LayoutDocument(document, 320, 280) == 0;
+    }
+    if (ok) {
+        stage = "integration-session-bind";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        stage = "integration-evaluate";
+        ok = pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) == 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (ok) {
+        stage = "integration-state";
+        ok = PCore_NodeCheckedById(document, "check", &check) == 0 &&
+                PCore_NodeCheckedById(document, "cancel", &cancel) == 0 &&
+                PCore_NodeCheckedById(document, "radio-a", &radio_a) == 0 &&
+                PCore_NodeCheckedById(document, "radio-b", &radio_b) == 0 &&
+                PCore_NodeCheckedById(document, "disabled", &disabled) == 0 &&
+                check == 1 && cancel == 0 && radio_a == 0 && radio_b == 1 &&
+                disabled == 0;
+    }
+    if (ok) {
+        stage = "integration-events";
+        ok = PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) == 0 && strcmp(text, EXPECTED) == 0;
+        if (!ok) {
+            _snprintf(error, sizeof(error) - 1,
+                    "actual[%d]=%s", bytes, text);
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d", stage, rc);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 228 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 228 OK",
+            "HTMLElement.click() reuses typed click/input/change contracts;"
+            " cancellation, disabled controls and radio state remain correct.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -41391,7 +41753,7 @@ static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_do
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -41597,7 +41959,7 @@ static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_do
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -41713,7 +42075,7 @@ static BOOL test186_browser_script_location_root_terminal_partial_encoded_double
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -41919,7 +42281,7 @@ static BOOL test186_browser_script_location_root_terminal_partial_encoded_double
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -42036,7 +42398,7 @@ static BOOL test182_browser_script_location_root_encoded_terminal_double_dot_fra
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -42242,7 +42604,7 @@ static BOOL test182_browser_script_location_root_encoded_terminal_double_dot_fra
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -42356,7 +42718,7 @@ static BOOL test175_browser_script_location_root_encoded_dot_fragment(void)
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -42546,7 +42908,7 @@ static BOOL test175_browser_script_location_root_encoded_dot_fragment(void)
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -42661,7 +43023,7 @@ static BOOL test176_browser_script_location_root_encoded_terminal_dot_fragment(v
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -42867,7 +43229,7 @@ static BOOL test176_browser_script_location_root_encoded_terminal_dot_fragment(v
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -42978,7 +43340,7 @@ static BOOL test171_browser_script_location_absolute_repeated_dots_fragment(void
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -43152,7 +43514,7 @@ static BOOL test171_browser_script_location_absolute_repeated_dots_fragment(void
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -43263,7 +43625,7 @@ static BOOL test177_browser_script_location_absolute_repeated_encoded_dots_fragm
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -43437,7 +43799,7 @@ static BOOL test177_browser_script_location_absolute_repeated_encoded_dots_fragm
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -43547,7 +43909,7 @@ static BOOL test179_browser_script_location_absolute_encoded_double_dot_fragment
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -43721,7 +44083,7 @@ static BOOL test179_browser_script_location_absolute_encoded_double_dot_fragment
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -43836,7 +44198,7 @@ static BOOL test183_browser_script_location_absolute_partial_encoded_double_dot_
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -44042,7 +44404,7 @@ static BOOL test183_browser_script_location_absolute_partial_encoded_double_dot_
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -44158,7 +44520,7 @@ static BOOL test184_browser_script_location_root_partial_encoded_double_dot_frag
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -44364,7 +44726,7 @@ static BOOL test184_browser_script_location_root_partial_encoded_double_dot_frag
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -44477,7 +44839,7 @@ static BOOL test180_browser_script_location_root_encoded_double_dot_fragment(voi
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -44651,7 +45013,7 @@ static BOOL test180_browser_script_location_root_encoded_double_dot_fragment(voi
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -44764,7 +45126,7 @@ static BOOL test172_browser_script_location_absolute_multiple_dots_fragment(void
             bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
             bridge->navigation_url == NULL ||
             strcmp(bridge->navigation_url, URL_HREF) != 0 ||
-            PScript_GetNativeFunctionCount(runtime) != 14 ||
+            PScript_GetNativeFunctionCount(runtime) != 15 ||
             pcore_browse_history_commit_navigation_with_bridge(URL_OLD,
             1, -1, bridge) != 0 || g_browse_history.count != 1 ||
             g_browse_history.index != 0) {
@@ -44954,7 +45316,7 @@ static BOOL test172_browser_script_location_absolute_multiple_dots_fragment(void
                 g_browser_script_session.bridge->navigation_url == NULL ||
                 strcmp(g_browser_script_session.bridge->navigation_url,
                 INNER_PARENT) != 0 ||
-                PScript_GetNativeFunctionCount(session_runtime) != 14) {
+                PScript_GetNativeFunctionCount(session_runtime) != 15) {
             ok = 0;
         }
     }
@@ -45503,6 +45865,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 227: ok =
                 test227_browser_form_toggle_keyboard();
+                break;
+        case 228: ok =
+                test228_browser_form_toggle_programmatic();
                 break;
         default: ok = FALSE; break;
         }
