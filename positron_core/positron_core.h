@@ -800,6 +800,7 @@ typedef struct PCoreFormSubmissionInfo {
 #define PCORE_VALIDITY_RANGE_UNDERFLOW 0x0020u
 #define PCORE_VALIDITY_RANGE_OVERFLOW 0x0040u
 #define PCORE_VALIDITY_STEP_MISMATCH 0x0080u
+#define PCORE_VALIDITY_TYPE_MISMATCH 0x0100u
 typedef struct PCoreFormValidationInfo {
     int valid;
     int invalid_count;
@@ -815,6 +816,7 @@ typedef struct PCoreFormValidationInfo {
  * enumerated single-line text/password control. The current implementation
  * covers required, pattern and length constraints for text/password/textarea/file,
  * plus malformed, minimum/maximum and step constraints for input type=number,
+ * and type-mismatch constraints for input type=email (including multiple lists),
  * checkbox, radio groups and select controls, including disabled/read-only
  * and no-validate bypasses. Unsupported or malformed constraint attributes
  * are ignored conservatively; pattern support is the documented ASCII subset

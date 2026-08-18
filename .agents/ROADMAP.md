@@ -44,6 +44,8 @@ next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 仅是�
 后续优先推进不依赖人工的 form/input 自动边界；picker 人工门继续单独登记，不作为自动通过条件。
 next267 已补齐 input type=number 的 min-based step/default-step/step=any 校验；下一候选为
 input type=email 的 typeMismatch，不依赖人工页面观察。
+next268 已补齐 input type=email 的单地址和 multiple 列表 typeMismatch；下一候选为
+input type=url 的受限 typeMismatch，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 

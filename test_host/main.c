@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 234
+#define TEST_MAX_NUMBER 235
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -42846,6 +42846,76 @@ static BOOL test234_form_number_step(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 235 - email type mismatch and multiple-address validation         */
+/* -------------------------------------------------------------------- */
+static BOOL test235_form_email_type(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/email method=get>"
+        "<input type=email name=address value=alice@example.com>"
+        "<input type=email value=guest@local>"
+        "<input type=email multiple value='a@example.com, b@example.net'>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "bad@") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 5 ||
+            PCore_TextInputSetValue(document, 0, "a@b") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 1, "no-at") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 1, "guest@local") != 0 ||
+            PCore_TextInputSetValue(document, 2,
+                    "a@example.com, invalid") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 2,
+                    "a@example.com, b@example.net") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/email") != 0 ||
+            strcmp(body, "address=a%40b&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 235 FAIL",
+                "email type mismatch, multiple list or submission recovery failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 235 OK",
+            "email controls rejected malformed single/list addresses, accepted "
+            "local domains and recovered to a valid submission.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -47063,6 +47133,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 234: ok =
                 test234_form_number_step();
+                break;
+        case 235: ok =
+                test235_form_email_type();
                 break;
         default: ok = FALSE; break;
         }

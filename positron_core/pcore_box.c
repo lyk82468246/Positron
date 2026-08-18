@@ -6242,6 +6242,130 @@ static int pcore_number_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_email_local_char(unsigned char c)
+{
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9')) {
+        return 1;
+    }
+    return strchr("!#$%&'*+-/=?^_`{|}~", (int) c) != NULL;
+}
+
+static int pcore_email_address_valid(const char *data, size_t start,
+        size_t end)
+{
+    size_t index;
+    size_t at;
+    size_t label_start;
+
+    if (data == NULL || start >= end) {
+        return 0;
+    }
+    at = end;
+    for (index = start; index < end; index++) {
+        if (data[index] == '@') {
+            if (at != end) {
+                return 0;
+            }
+            at = index;
+        }
+    }
+    if (at == end || at == start || at + 1 >= end) {
+        return 0;
+    }
+    if (data[start] == '.' || data[at - 1] == '.') {
+        return 0;
+    }
+    for (index = start; index < at; index++) {
+        if (data[index] == '.') {
+            if (index + 1 == at || data[index + 1] == '.') {
+                return 0;
+            }
+        } else if (!pcore_email_local_char((unsigned char) data[index])) {
+            return 0;
+        }
+    }
+    label_start = at + 1;
+    for (index = label_start; index < end; index++) {
+        if (data[index] == '.') {
+            if (index == label_start || data[index - 1] == '-') {
+                return 0;
+            }
+            label_start = index + 1;
+        } else if (!((data[index] >= 'A' && data[index] <= 'Z') ||
+                (data[index] >= 'a' && data[index] <= 'z') ||
+                (data[index] >= '0' && data[index] <= '9') ||
+                data[index] == '-')) {
+            return 0;
+        }
+    }
+    if (label_start >= end || data[label_start] == '-' ||
+            data[end - 1] == '-') {
+        return 0;
+    }
+    return 1;
+}
+
+static int pcore_email_value_valid(dom_node *node, dom_string *value)
+{
+    const char *data;
+    size_t length;
+    size_t start;
+    size_t end;
+    int multiple;
+    int token_count;
+
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    multiple = pcore_node_has_attr(node, "multiple");
+    start = 0;
+    token_count = 0;
+    while (start < length) {
+        end = start;
+        while (end < length && data[end] != ',') {
+            end++;
+        }
+        while (start < end && (data[start] == ' ' || data[start] == '\t' ||
+                data[start] == '\r' || data[start] == '\n' ||
+                data[start] == '\f')) {
+            start++;
+        }
+        while (end > start && (data[end - 1] == ' ' ||
+                data[end - 1] == '\t' || data[end - 1] == '\r' ||
+                data[end - 1] == '\n' || data[end - 1] == '\f')) {
+            end--;
+        }
+        if (!pcore_email_address_valid(data, start, end)) {
+            return 0;
+        }
+        token_count++;
+        if (end == length) {
+            break;
+        }
+        if (!multiple) {
+            return 0;
+        }
+        start = end + 1;
+        if (start >= length) {
+            return 0;
+        }
+    }
+    return token_count > 0;
+}
+
+static int pcore_email_constraint_flags(dom_node *node, dom_string *value,
+        unsigned int *flags_out)
+{
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    if (!pcore_email_value_valid(node, value)) {
+        *flags_out = PCORE_VALIDITY_TYPE_MISMATCH;
+    }
+    return 1;
+}
+
 static int pcore_required_control_missing(dom_html_form_element *form,
         dom_node *node, int *kind_out, int *missing_out,
         unsigned int *flags_out)
@@ -6253,6 +6377,7 @@ static int pcore_required_control_missing(dom_html_form_element *form,
     int gadget_type;
     int group_checked;
     int required;
+    unsigned int email_flags;
 
     value = NULL;
     disabled = false;
@@ -6292,13 +6417,33 @@ static int pcore_required_control_missing(dom_html_form_element *form,
             if (required && (value == NULL ||
                     dom_string_byte_length(value) == 0)) {
                 *flags_out = PCORE_VALIDITY_VALUE_MISSING;
-            } else if (pcore_attr_value_is(node, "type", "number") ?
-                    !pcore_number_constraint_flags(node, value, flags_out) :
-                    !pcore_text_constraint_flags(node, value, flags_out)) {
-                if (value != NULL) {
-                    dom_string_unref(value);
+            } else {
+                if (pcore_attr_value_is(node, "type", "number")) {
+                    if (!pcore_number_constraint_flags(node, value,
+                            flags_out)) {
+                        if (value != NULL) {
+                            dom_string_unref(value);
+                        }
+                        return 0;
+                    }
+                } else if (!pcore_text_constraint_flags(node, value,
+                        flags_out)) {
+                    if (value != NULL) {
+                        dom_string_unref(value);
+                    }
+                    return 0;
                 }
-                return 0;
+                if (pcore_attr_value_is(node, "type", "email")) {
+                    email_flags = 0;
+                    if (!pcore_email_constraint_flags(node, value,
+                            &email_flags)) {
+                        if (value != NULL) {
+                            dom_string_unref(value);
+                        }
+                        return 0;
+                    }
+                    *flags_out |= email_flags;
+                }
             }
             if (value != NULL) {
                 dom_string_unref(value);
