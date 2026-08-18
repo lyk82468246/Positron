@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 235
+#define TEST_MAX_NUMBER 236
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -42916,6 +42916,70 @@ static BOOL test235_form_email_type(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 236 - URL type mismatch and relative/scheme URL validation        */
+/* -------------------------------------------------------------------- */
+static BOOL test236_form_url_type(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/url method=get>"
+        "<input type=url name=target value=https://example.com>"
+        "<input type=url value=docs/page>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "https://") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 5 ||
+            PCore_TextInputSetValue(document, 0,
+                    "mailto:user@example.com") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 1, "not a url") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 1, "//cdn.example.com/x") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "https://example.com") != 0 ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/url") != 0 ||
+            strcmp(body, "target=https%3A%2F%2Fexample.com&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 236 FAIL",
+                "URL type mismatch, relative/scheme cases or submission failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 236 OK",
+            "URL controls rejected empty-authority and whitespace values, "
+            "accepted relative/network-path and scheme URLs, then submitted.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -47136,6 +47200,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 235: ok =
                 test235_form_email_type();
+                break;
+        case 236: ok =
+                test236_form_url_type();
                 break;
         default: ok = FALSE; break;
         }

@@ -9,7 +9,9 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next268（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next269（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- next269 批次把 input type=url 的保守 typeMismatch 核心校验接入 positron_core.dll：支持
+  scheme、relative 和 network-path 形式，拒绝空 authority/空白；明确不实现完整 URL Standard。
 - next268 批次把 input type=email 的 typeMismatch 核心校验接入 positron_core.dll：支持单地址、
   multiple 逗号列表、ASCII 空白裁剪和动态修复；没有改变 native control 的视觉或真实 SIP 行为。
 - next267 批次把 input type=number 的 step mismatch 接入核心约束校验：min 是步长基准，
@@ -48,6 +50,8 @@
   零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。TEST232 仍保持人工待验收。
 - next268 定向证据位于 tmp/device-runs/20260819-000239-next268/：TEST233-235/999 4/4，
   零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。TEST232 仍保持人工待验收。
+- next269 定向证据位于 tmp/device-runs/20260819-000656-next269/：TEST233-236/999 5/5，
+  零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。TEST232 仍保持人工待验收。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -84,7 +88,21 @@
 
 ## 最近已验证设备证据
 
-### 最新定向检查点：next268
+### 最新定向检查点：next269
+
+- 配置：TEST233-236/999 定向 5 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，screen=640x480 dpi=192。
+- 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
+  Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
+- 结果：5 项均有 OK；零 ERROR、零 FAIL，唯一 TESTBENCH PASS，completion_marker=PASS，
+  test13_route_ok=True。
+- TEST236 覆盖 URL 空 authority/空白负例、scheme/relative/network-path 正例、动态修复和
+  urlencoded submission；TEST233-235 的 number/email 回归同批通过。
+- 自动证据：python scripts/test_c89ize.py、python scripts/audit_repo.py、VS2008 ARMV4I
+  Debug 正式构建均通过。证据位于 tmp/device-runs/20260819-000656-next269/；本批未重复
+  next255 的 170 项全量门。
+
+### 已验证检查点：next268
 
 - 配置：TEST233-235/999 定向 4 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，screen=640x480 dpi=192。
@@ -1442,15 +1460,15 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-在 next268 基线之上继续推进一个不需要人工操作的 form/input 纵向能力；当前优先候选是
-input type=url 的 typeMismatch 校验与成功控件提交边界。next265 的 TEST232 真实 WM6
+在 next269 基线之上继续推进一个不需要人工操作的 form/input 纵向能力；当前优先候选是
+input type=range 的默认 min/max/step 约束边界。next265 的 TEST232 真实 WM6
 picker 仍登记为人工待验收，不能用自动测试替代，也不能把 picker 迁入产品 DLL。
 
 完成标准：
 
-- TEST233-235/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
+- TEST233-236/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
   的两组自动证据为依据，只有累计达到检查点或出现风险时再跑全量；
-- 后续 url 能力必须有正例、负例、动态值更新和 submission 阻断/恢复的自动断言，并通过
+- 后续 range 能力必须有默认边界、显式边界、step 负例、动态值更新和 submission 阻断/恢复的自动断言，并通过
   定向设备门；TEST232 人工包仍需稍后确认真实 WM6 picker 的选择/取消/窗口
   返回与一次性 `input` → `change`，不能以自动日志代替；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为

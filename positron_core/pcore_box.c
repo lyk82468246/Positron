@@ -6366,6 +6366,99 @@ static int pcore_email_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_url_scheme_char(unsigned char c, int first)
+{
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+        return 1;
+    }
+    if (!first && ((c >= '0' && c <= '9') || c == '+' || c == '-' ||
+            c == '.')) {
+        return 1;
+    }
+    return 0;
+}
+
+static int pcore_url_value_valid(dom_string *value)
+{
+    const char *data;
+    size_t length;
+    size_t index;
+    size_t colon;
+    size_t authority_start;
+    size_t authority_end;
+
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (length == 0) {
+        return 1;
+    }
+    for (index = 0; index < length; index++) {
+        if ((unsigned char) data[index] <= 0x20 ||
+                (unsigned char) data[index] == 0x7f) {
+            return 0;
+        }
+    }
+    colon = length;
+    for (index = 0; index < length; index++) {
+        if (data[index] == ':') {
+            colon = index;
+            break;
+        }
+        if (data[index] == '/' || data[index] == '?' || data[index] == '#') {
+            break;
+        }
+    }
+    if (colon == 0 || (colon < length && colon == length - 1)) {
+        return 0;
+    }
+    if (colon < length) {
+        for (index = 0; index < colon; index++) {
+            if (!pcore_url_scheme_char((unsigned char) data[index],
+                    index == 0)) {
+                return 0;
+            }
+        }
+        if (colon + 2 < length && data[colon + 1] == '/' &&
+                data[colon + 2] == '/') {
+            authority_start = colon + 3;
+            authority_end = authority_start;
+            while (authority_end < length && data[authority_end] != '/' &&
+                    data[authority_end] != '?' && data[authority_end] != '#') {
+                authority_end++;
+            }
+            if (authority_start == authority_end) {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    if (length >= 2 && data[0] == '/' && data[1] == '/') {
+        authority_start = 2;
+        authority_end = authority_start;
+        while (authority_end < length && data[authority_end] != '/' &&
+                data[authority_end] != '?' && data[authority_end] != '#') {
+            authority_end++;
+        }
+        if (authority_start == authority_end) {
+            return 0;
+        }
+    }
+    return data[0] != ':';
+}
+
+static int pcore_url_constraint_flags(dom_string *value,
+        unsigned int *flags_out)
+{
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    if (!pcore_url_value_valid(value)) {
+        *flags_out = PCORE_VALIDITY_TYPE_MISMATCH;
+    }
+    return 1;
+}
+
 static int pcore_required_control_missing(dom_html_form_element *form,
         dom_node *node, int *kind_out, int *missing_out,
         unsigned int *flags_out)
@@ -6437,6 +6530,16 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     email_flags = 0;
                     if (!pcore_email_constraint_flags(node, value,
                             &email_flags)) {
+                        if (value != NULL) {
+                            dom_string_unref(value);
+                        }
+                        return 0;
+                    }
+                    *flags_out |= email_flags;
+                }
+                if (pcore_attr_value_is(node, "type", "url")) {
+                    email_flags = 0;
+                    if (!pcore_url_constraint_flags(value, &email_flags)) {
                         if (value != NULL) {
                             dom_string_unref(value);
                         }

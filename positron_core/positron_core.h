@@ -817,6 +817,8 @@ typedef struct PCoreFormValidationInfo {
  * covers required, pattern and length constraints for text/password/textarea/file,
  * plus malformed, minimum/maximum and step constraints for input type=number,
  * and type-mismatch constraints for input type=email (including multiple lists),
+ * plus a conservative scheme/relative/network-path type-mismatch check for
+ * input type=url; this is not a complete URL Standard parser,
  * checkbox, radio groups and select controls, including disabled/read-only
  * and no-validate bypasses. Unsupported or malformed constraint attributes
  * are ignored conservatively; pattern support is the documented ASCII subset

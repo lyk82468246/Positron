@@ -78,6 +78,8 @@ scripts\device_gate.bat -Candidate next267 ^
   -TestSelection "233,234,999"
 scripts\device_gate.bat -Candidate next268 ^
   -TestSelection "233-235,999"
+scripts\device_gate.bat -Candidate next269 ^
+  -TestSelection "233-236,999"
 ```
 
 next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；上一批 next263 的最终定向门
@@ -107,6 +109,7 @@ next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；�
 | 233 | input type=number 的 min/max 为 inclusive；下溢、上溢和 malformed value 阻止提交，malformed range 属性忽略，恢复到边界值后提交成功。 |
 | 234 | input type=number 的 min-based step、默认 step=1、step=any 和非法 step 回退；动态不对齐值阻止提交，恢复到合法值后提交成功。 |
 | 235 | input type=email 的单地址和 multiple 逗号列表拒绝 malformed token；动态修复后约束解除并正常提交。 |
+| 236 | input type=url 拒绝空 authority/空白值，接受 scheme、relative、network-path，动态修复后正常提交；不代表完整 URL Standard。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
@@ -115,6 +118,8 @@ TEST234 是自动的 number step mismatch/default/any constraint-validation 门�
 定向设备门，不需要人工页面观察。
 TEST235 是自动的 email typeMismatch 门，覆盖单地址、multiple 列表、malformed token 和动态
 恢复，不需要人工页面观察。
+TEST236 是自动的保守 url typeMismatch 门，覆盖 scheme/relative/network-path 正例、空 authority
+和空白负例；它不替代完整 URL Standard 或人工真实导航验收。
 TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read callback adapter，TEST205
 直接验证 product DOM write callback adapter，TEST206 直接验证 product DOM attribute callback adapter，TEST207
 直接验证 product event callback adapter、事件数据编码和 preventDefault 结果；TEST208
