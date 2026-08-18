@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 228
+#define TEST_MAX_NUMBER 229
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3117,6 +3117,13 @@ static void pcore_invalidate_form_dirty(HWND hwnd, int x, int y,
 static void pcore_request_interaction_restyle(HWND hwnd);
 static int pcore_form_toggle_activate(int x, int y,
         int *dirty_x, int *dirty_y, int *dirty_w, int *dirty_h);
+static int pcore_browser_script_dispatch_form_event_at(int x, int y,
+        const char *event_type);
+static int pcore_browser_script_dispatch_form_event_bridge(
+        pcore_browser_script_bridge *bridge, int x, int y,
+        const char *event_type);
+static int pcore_handle_form_button_default(HWND hwnd, int x, int y,
+        int kind);
 
 static int pcore_native_script_active(void)
 {
@@ -3960,6 +3967,8 @@ static int pcore_browser_script_programmatic_click_dispatch(void *pw,
     int default_allowed;
     int result;
     int click_rc;
+    int form_event_result;
+    PCoreFormValidationInfo validation;
     PBrowserScriptClickEventInfo click_info;
     int dirty_x;
     int dirty_y;
@@ -3986,7 +3995,8 @@ static int pcore_browser_script_programmatic_click_dispatch(void *pw,
         return 0;
     }
     default_allowed = 1;
-    if (has_control && (kind == 1 || kind == 2)) {
+    if (has_control && ((kind == 1 || kind == 2) ||
+            (kind >= 7 && kind <= 9))) {
         if (bridge->session == NULL) {
             return -1;
         }
@@ -4010,8 +4020,47 @@ static int pcore_browser_script_programmatic_click_dispatch(void *pw,
             return -1;
         }
     }
-    if (result == 0 || !default_allowed ||
-            !has_control || (kind != 1 && kind != 2) ||
+    if (result == 0 || !default_allowed || !has_control) {
+        return 0;
+    }
+    if (kind == 7 || kind == 8) {
+        /* The native button path owns validation, submission collection and
+         * navigation. Programmatic activation only adds the missing typed
+         * click/form-event entry before reusing that path. */
+        if (kind == 8) {
+            form_event_result = pcore_browser_script_dispatch_form_event_bridge(
+                    bridge, x + width / 2, y + height / 2, "reset");
+            if (form_event_result < 0) {
+                return -1;
+            }
+            if (!form_event_result) {
+                return 0;
+            }
+        } else if (PCore_FormValidationAt(bridge->document,
+                x + width / 2, y + height / 2, &validation) &&
+                validation.valid) {
+            form_event_result =
+                    pcore_browser_script_dispatch_form_event_bridge(bridge,
+                    x + width / 2, y + height / 2, "submit");
+            if (form_event_result < 0) {
+                return -1;
+            }
+            if (!form_event_result) {
+                return 0;
+            }
+        }
+        if (bridge->document == g_render_doc) {
+            (void) pcore_handle_form_button_default(bridge->hwnd,
+                    x + width / 2, y + height / 2, kind);
+        } else if (kind == 8) {
+            /* There is no visible window to re-layout yet, but the reset
+             * state itself is safe to commit to the new document. */
+            (void) PCore_FormResetAt(bridge->document,
+                    x + width / 2, y + height / 2);
+        }
+        return 0;
+    }
+    if ((kind != 1 && kind != 2) ||
             bridge->document != g_render_doc) {
         return 0;
     }
@@ -8338,6 +8387,50 @@ static int pcore_browser_script_dispatch_form_event_at(int x, int y,
     return default_allowed ? 1 : 0;
 }
 
+/* Programmatic form activation can run while a navigation request is still
+ * preparing its new document, before the global render session is installed.
+ * Dispatch through the callback's bridge directly so the event cannot land on
+ * the previous page. Returns 1 when the default is allowed, 0 when canceled,
+ * and -1 for an adapter/core failure. */
+static int pcore_browser_script_dispatch_form_event_bridge(
+        pcore_browser_script_bridge *bridge, int x, int y,
+        const char *event_type)
+{
+    PBrowserScriptFormEventInfo event_info;
+    int default_allowed;
+    int result;
+    int rc;
+
+    if (bridge == NULL || bridge->document == NULL ||
+            event_type == NULL ||
+            (strcmp(event_type, "submit") != 0 &&
+            strcmp(event_type, "reset") != 0)) {
+        return -1;
+    }
+    memset(&event_info, 0, sizeof(event_info));
+    event_info.size = sizeof(event_info);
+    event_info.x = x;
+    event_info.y = y;
+    event_info.event_type = event_type;
+    event_info.bubbles = 1;
+    event_info.cancelable = 1;
+    default_allowed = 1;
+    if (bridge->session != NULL) {
+        rc = PBrowser_ScriptSessionDispatchFormEvent(bridge->session,
+                &event_info, &default_allowed);
+        if (rc != PSCRIPT_OK) {
+            return -1;
+        }
+    } else {
+        result = PCore_EventDispatchAt(bridge->document, x, y,
+                event_type, 1, 1, &default_allowed);
+        if (result < 0) {
+            return -1;
+        }
+    }
+    return default_allowed ? 1 : 0;
+}
+
 static int pcore_browser_script_dispatch_form_event_for_text_input(
         unsigned int text_index, const char *event_type)
 {
@@ -8526,7 +8619,8 @@ static int pcore_browser_script_dispatch_file_event_at(int x, int y,
     return pcore_browser_script_dispatch_select_change_at(x, y);
 }
 
-static int pcore_handle_form_button(HWND hwnd, int x, int y)
+static int pcore_handle_form_button_default(HWND hwnd, int x, int y,
+        int kind)
 {
     PCoreFormSubmissionInfo info;
     PCoreFormValidationInfo validation;
@@ -8535,27 +8629,14 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
     char *action;
     char *body;
     int result;
-    int kind;
 
-    kind = 0;
-    if (pcore_form_button_kind_at(x, y, &kind)) {
-        if (kind == 8) {
-            if (!pcore_browser_script_dispatch_form_event_at(x, y,
-                    "reset")) {
-                return 1;
-            }
-        } else if (kind == 7 && PCore_FormValidationAt(g_render_doc,
-                x, y, &validation) && validation.valid) {
-            if (!pcore_browser_script_dispatch_form_event_at(x, y,
-                    "submit")) {
-                return 1;
-            }
-        }
+    if (kind != 7 && kind != 8) {
+        return 0;
     }
     result = PCore_FormResetAt(g_render_doc, x, y);
     if (result != 0) {
         if (result == 1) {
-            if (pcore_restyle_form_state(hwnd, 0) != 0) {
+            if (hwnd != NULL && pcore_restyle_form_state(hwnd, 0) != 0) {
                 show_error(L"Form reset failed",
                         "The form reset but could not be re-laid out");
             }
@@ -8622,6 +8703,29 @@ static int pcore_handle_form_button(HWND hwnd, int x, int y)
     free(action);
     free(body);
     return 1;
+}
+
+static int pcore_handle_form_button(HWND hwnd, int x, int y)
+{
+    PCoreFormValidationInfo validation;
+    int kind;
+
+    kind = 0;
+    if (pcore_form_button_kind_at(x, y, &kind)) {
+        if (kind == 8) {
+            if (!pcore_browser_script_dispatch_form_event_at(x, y,
+                    "reset")) {
+                return 1;
+            }
+        } else if (kind == 7 && PCore_FormValidationAt(g_render_doc,
+                x, y, &validation) && validation.valid) {
+            if (!pcore_browser_script_dispatch_form_event_at(x, y,
+                    "submit")) {
+                return 1;
+            }
+        }
+    }
+    return pcore_handle_form_button_default(hwnd, x, y, kind);
 }
 
 static void pcore_handle_form_enter(HWND hwnd, unsigned int text_index)
@@ -41669,6 +41773,201 @@ static BOOL test228_browser_form_toggle_programmatic(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 229 - programmatic submit/reset/button activation                */
+/* -------------------------------------------------------------------- */
+static BOOL test229_browser_form_button_programmatic(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id=root action='/submit' method='get'>"
+        "<input id='field' value='seed'>"
+        "<button id='submit' type='submit'>Submit</button>"
+        "<button id='reset' type='reset'>Reset</button>"
+        "<button id='plain' type='button'>Plain</button>"
+        "<button id='cancel-reset' type='reset'>Cancel reset</button>"
+        "<button id='disabled' type='submit' disabled>Disabled</button>"
+        "</form><p id='result'>idle</p><p id='state'>idle</p></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "form{display:block;width:280px}"
+        "input,button{display:block;width:220px;height:24px;margin:3px}"
+        "p{display:block;width:500px;height:80px}";
+    static const char LISTENER[] =
+        "window.events='';window.cancel_submit=1;window.cancel_reset=0;"
+        "function record(e){"
+        "if(e.type==='submit'&&window.cancel_submit){e.preventDefault();}"
+        "if(e.type==='reset'&&window.cancel_reset){e.preventDefault();}"
+        "var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+'|'"
+        "+String(e.defaultPrevented)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('click',record);"
+        "root.addEventListener('submit',record);"
+        "root.addEventListener('reset',record);"
+        "var field=document.getElementById('field');"
+        "field.value='changed';"
+        "document.getElementById('submit').click();"
+        "document.getElementById('reset').click();"
+        "window.after_reset=field.value;field.value='again';"
+        "window.cancel_reset=1;"
+        "document.getElementById('cancel-reset').click();"
+        "document.getElementById('plain').click();"
+        "document.getElementById('disabled').click();"
+        "document.getElementById('state').textContent="
+        "window.after_reset+'|'+field.value;";
+    static const char EXPECTED_EVENTS[] =
+        "click|submit|false;submit|submit|true;"
+        "click|reset|false;reset|reset|false;"
+        "click|cancel-reset|false;reset|cancel-reset|true;"
+        "click|plain|false;";
+    static const char EXPECTED_STATE[] = "seed|again";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char events[1024];
+    char state_text[128];
+    char value[128];
+    char error[384];
+    const char *stage;
+    int event_bytes;
+    int state_bytes;
+    int value_bytes;
+    int executed;
+    int ignored;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    stage = "create";
+    event_bytes = 0;
+    state_bytes = 0;
+    value_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    x = 0;
+    y = 0;
+    width = 0;
+    height = 0;
+    kind = 0;
+    disabled = 0;
+    ok = 1;
+    memset(events, 0, sizeof(events));
+    memset(state_text, 0, sizeof(state_text));
+    memset(value, 0, sizeof(value));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/form-button-programmatic.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 360) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        stage = "evaluate";
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "events";
+        if (PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, EXPECTED_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "reset-state";
+        if (PCore_NodeTextContentById(document, "state", state_text,
+                sizeof(state_text), &state_bytes) != 0 ||
+                strcmp(state_text, EXPECTED_STATE) != 0 ||
+                PCore_NodeValueById(document, "field", value,
+                sizeof(value), &value_bytes) != 0 ||
+                strcmp(value, "again") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "control-info";
+        ok = PCore_FormControlInfoById(document, "submit", &x, &y,
+                &width, &height, &kind, NULL, &disabled) == 0 &&
+                kind == 7 && !disabled && width > 0 && height > 0 &&
+                PCore_FormControlInfoById(document, "reset", NULL, NULL,
+                NULL, NULL, &kind, NULL, &disabled) == 0 && kind == 8 &&
+                !disabled &&
+                PCore_FormControlInfoById(document, "plain", NULL, NULL,
+                NULL, NULL, &kind, NULL, &disabled) == 0 && kind == 9 &&
+                !disabled &&
+                PCore_FormControlInfoById(document, "disabled", NULL, NULL,
+                NULL, NULL, &kind, NULL, &disabled) == 0 && kind == 7 &&
+                disabled;
+    }
+    if (!ok && error[0] == '\0') {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%s events=%s state=%s value=%s bytes=%d/%d/%d",
+                stage, events, state_text, value, event_bytes, state_bytes,
+                value_bytes);
+        error[sizeof(error) - 1] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 229 FAIL", error[0] != '\0' ? error :
+                "programmatic form-button activation failed");
+        return FALSE;
+    }
+    show_info(L"TEST 229 OK",
+            "Programmatic submit/reset/button clicks reuse typed click and"
+            " form-event paths; cancellation, reset state and disabled"
+            " controls remain correct.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -45868,6 +46167,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 228: ok =
                 test228_browser_form_toggle_programmatic();
+                break;
+        case 229: ok =
+                test229_browser_form_button_programmatic();
                 break;
         default: ok = FALSE; break;
         }

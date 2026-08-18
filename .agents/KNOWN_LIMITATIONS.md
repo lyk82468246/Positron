@@ -75,10 +75,10 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 ## 表单与输入
 
 当前状态：已有 native EDIT/SELECT、file input、textarea、checkbox/radio、提交/reset、基础 constraint
-validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
+validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/submit-reset-button programmatic `click()`/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
 尚未完成：任意 OEM IME、完整 composition/preedit、类型/范围/step、custom validity、
-`invalid` UI、其他 native form control 的程序化默认 activation 和文件选择体验。
+`invalid` UI、native file input 的程序化 picker 入口和文件选择体验。
 
 完成方法：synthetic event 与真实 SIP 分开验收；至少覆盖候选词、Unicode、旋转和
 native control 生命周期。
@@ -193,6 +193,10 @@ next261 的 TEST228、`TEST228/999`（2 项）定向门和 `TEST189-228/999`（4
 验证 `HTMLElement.click()` 的 checkbox/radio target、`click` → `input` → `change` 顺序、
 取消、disabled/no-op、radio 互斥、programmatic-click adapter error 和资源关闭；本批仍未重复
 next255 的 170 项全量门。
+next262 的 TEST229、`TEST229/999`（2 项）定向门和 `TEST68-69,189-229/999`（44 项）相关回归门
+验证 native submit/reset/button 的程序化 click target、submit/reset form-event 顺序、取消、
+reset 初值恢复、generic/disabled no-op 和 reset 重复事件边界；回归首尝 TEST193 的既有
+JavaScript timeout 以原配置重试通过，本批仍未重复 next255 的 170 项全量门。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；

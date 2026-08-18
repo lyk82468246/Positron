@@ -7337,9 +7337,11 @@ static int pcore_form_reset(dom_html_form_element *form)
     elements = NULL;
     node = NULL;
     count = 0;
-    if (dom_html_form_element_reset(form) != DOM_NO_ERR ||
-            dom_html_form_element_get_elements(form, &elements) !=
-                    DOM_NO_ERR ||
+    /* The host dispatches the cancelable reset event before calling this
+     * state-only helper. Calling libdom's reset method here would emit a
+     * second reset event after the host has already accepted the default. */
+    if (dom_html_form_element_get_elements(form, &elements) !=
+            DOM_NO_ERR ||
             elements == NULL ||
             dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
         if (elements != NULL) {

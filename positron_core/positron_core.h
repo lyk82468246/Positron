@@ -889,12 +889,13 @@ PCORE_API int PCore_MultipartPartInfo(HANDLE hSubmission,
                                     char *path, int path_capacity);
 PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission);
 
-/* Perform the default action for a reset button at a document-space point.
- * Initial values/checks/selections saved by libdom are restored in the DOM.
- * The embedder must re-layout afterward so NetSurf gadgets and native controls
- * are rebuilt from that state. Returns 0 when no reset button was hit, 1 on
- * reset, 2 when a disabled/unowned reset consumed the point, and 3 on a DOM
- * failure. */
+/* Perform the state portion of the default action for a reset button at a
+ * document-space point. Initial values/checks/selections saved by libdom are
+ * restored in the DOM; the embedder dispatches any cancelable reset event
+ * before calling this state-only helper. The embedder must re-layout afterward
+ * so NetSurf gadgets and native controls are rebuilt from that state. Returns
+ * 0 when no reset button was hit, 1 on reset, 2 when a disabled/unowned reset
+ * consumed the point, and 3 on a DOM failure. */
 PCORE_API int PCore_FormResetAt(HANDLE hDoc, int x, int y);
 
 /* Forward pointer input to a nested CSS overflow scrollbar. Coordinates use
