@@ -202,6 +202,10 @@ next263 的 TEST230、`TEST230/999`（2 项）定向门和 `TEST70,189-230/999`�
 验证 native file input 的程序化 click target、取消、disabled/no-op、空 value/path 和系统 picker
 边界；程序化路径不打开 picker，相关 adapter error、注销和 native function 资源关闭由 TEST228
 继续覆盖，本批仍未重复 next255 的 170 项全量门。
+next264 的 TEST231、`TEST231/999`（2 项）定向门和 `TEST70,189-231/999`（45 项）相关回归门
+验证宿主 picker adapter 的选择、取消、错误、空选择提交错误、文件 value/path、`input` → `change`
+顺序、再次取消保留状态和同步 callback 生命周期；真实 WM6 picker 仍需人工验收，本批仍未重复
+next255 的 170 项全量门。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；

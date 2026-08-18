@@ -9,7 +9,10 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next263（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next264（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- next264 批次把宿主 GUI picker 的系统调用、选择/取消/错误结果、core 文件状态提交和
+  `input` → `change` 通知拆成可注入的同步 host-only adapter；真实 WM6 picker 仍由
+  `GetOpenFileNameEx` 触发，未新增产品 ABI，也未改变程序化 `HTMLElement.click()` 边界。
 - next263 批次让 native file input 的程序化 `HTMLElement.click()` 先通过既有 typed click
   contract；disabled 控件静默，自动脚本不打开系统 picker，picker、文件系统权限和窗口生命周期
   仍由宿主 GUI 路径拥有。TEST228 继续覆盖 programmatic-click adapter error、注销和资源关闭。
@@ -20,9 +23,10 @@
   `scripts/repair_wmdc_rapi.*`。
 - 当前工作区的 `test_host/test_host.ini` 保持自动模式：`auto=1`、`javascript=0`、
   `tests=13,20,27,56,58,62,64-67,73,75,999`。这是窄的自动 smoke 选择，不是完整基线；
-- next255 的 170 项自动全量证据已经通过；next263 的定向门见下方；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
+- next255 的 170 项自动全量证据已经通过；next264 的定向门见下方；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
   验收结束后恢复为 1。
-- next263 定向证据位于 `tmp/device-runs/20260818-225735-next263-file-programmatic-stage/`；`TEST70,189-230/999`
+- next264 定向证据位于 `tmp/device-runs/20260818-231007-next264-file-picker-stage/`；`TEST70,189-231/999`
+  相关回归证据位于 `tmp/device-runs/20260818-231032-next264-file-picker-regression/`。next263 定向证据位于 `tmp/device-runs/20260818-225735-next263-file-programmatic-stage/`；`TEST70,189-230/999`
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -59,7 +63,24 @@
 
 ## 最近已验证设备证据
 
-### 最新定向检查点：next263
+### 最新定向检查点：next264
+
+- 配置：`TEST231/999` 定向 2 项；`TEST70,189-231/999` 相关回归 45 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
+- 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
+  Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
+- 结果：2 项与 45 项均全部有 `OK`；零 `ERROR`、零 `FAIL`，每组唯一 `TESTBENCH PASS`，
+  `completion_marker=PASS`，`test13_route_ok=True`。
+- TEST231 用注入的同步 picker adapter 覆盖取消、picker 错误、空选择提交错误、成功选择后的
+  文件 value/path、`input` → `change` 顺序、再次取消保留既有值，以及 callback 的非重入/调用后
+  active=0；真实 GUI picker 仍由 `GetOpenFileNameEx` 的宿主路径负责。
+- 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I
+  Debug 正式构建均通过。定向证据位于
+  `tmp/device-runs/20260818-231007-next264-file-picker-stage/`，相关回归证据位于
+  `tmp/device-runs/20260818-231032-next264-file-picker-regression/`；本批未重复
+  next255 的 170 项全量门。
+
+### 已验证检查点：next263
 
 - 配置：`TEST230/999` 定向 2 项；`TEST70,189-230/999` 相关回归 44 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
@@ -832,6 +853,31 @@ core/document typed adapter，同时保持既有 bootstrap、页面脚本、nati
   完整证据路径见本文件顶部。全量中途曾出现 TEST129、TEST153、TEST192 的单次 JavaScript
   timeout；定向回归及最终全量重试通过，未调整执行预算或放宽断言。
 
+## 已关闭批次：next264
+
+目标：把 native file input 的宿主 GUI picker 选择、取消、错误和生命周期边界拆开验证；
+保留 picker、文件系统权限、窗口和真实控件副作用在 `test_host`，不新增产品 ABI。
+
+实现边界：
+
+- `pcore_file_picker_system` 只封装 WM6 `GetOpenFileNameEx`；其 false 返回按用户取消处理，
+  picker adapter 的负值表示 host-side open/error，结果在同步调用结束时归一化并保证缓冲区结尾。
+- `pcore_file_input_commit_selection` 负责 UTF-16 → UTF-8、按 file index 提交 core value/path，
+  先读取布局信息再写入，成功后复用既有 file `input`/`change` typed notifications；窗口为空时
+  不做无主窗口重绘。
+- `pcore_handle_file_input_with_picker` 保留真实 WM/label 路径，测试通过 host-only callback 注入
+  选择/取消/错误，不把 callback 或 picker 状态暴露到 `positron_core.dll`/`positron_browser.dll`。
+- TEST231 覆盖 cancel、picker error、空选择提交错误、成功 selection、`input` → `change`、再次
+  cancel 保留已选状态和同步 callback active 生命周期。
+
+已经核验并提升为定向基线：
+
+- `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`；
+- VS2008 ARMV4I Debug 正式构建（0 errors，3 个既有 libcss C4244 warnings）；
+- 定向 `TEST231/999`（2 项）和 `TEST70,189-231/999`（45 项）WMDC/RAPI 设备门；
+- 两组均零 `ERROR`、零 `FAIL`，唯一 `TESTBENCH PASS`；next255 的 170 项完整门仍是最近一次
+  全量基线，本批未重复全量。
+
 ## 已关闭批次：next263
 
 目标：把 native file input 的程序化 `HTMLElement.click()` 接到既有 typed click contract，
@@ -1333,16 +1379,16 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-在 next263 基线之上，整理 native file input 的宿主 GUI picker 完成边界：把真实 picker 的
-选择、取消、错误和窗口生命周期保持在 `test_host`，明确复用现有 `PCore_FileInputSetPath`
-以及 file `input`/`change` typed contract；不新增产品 ABI，也不让程序化 `HTMLElement.click()`
-自动打开 picker。继续保留 TEST13 和人工视觉/输入累计门。
+在 next264 基线之上，执行真实 WM6 picker 的人工验收包：用 `auto=0` 在当前 GUI 连接设备上
+实际打开 file input，分别验证选择、取消、错误/无效返回、窗口回到页面后的控件状态、已选
+文件显示和值保留，以及 `input` → `change` 只发生一次；不把 picker 自动化或迁入产品 DLL。
+若该人工边界无异常，再从路线图选择下一个单一 form/input 代码能力。
 
 完成标准：
 
-- next263 的 TEST230/999、`TEST70,189-230/999` 相关回归、C89、审计和正式构建均保持通过；
-- 新批次直接测试宿主 GUI picker 的选择/取消/错误和资源关闭边界，并确认程序化 click 不会
-  越过 typed click 边界自动打开 picker；只有累计达到
+- next264 的 TEST231/999、`TEST70,189-231/999` 相关回归、C89、审计和正式构建均保持通过；
+- 人工包确认真实 WM6 picker 的选择/取消/错误/窗口生命周期与一次性 `input` → `change`，并确认
+  程序化 click 不会越过 typed click 边界自动打开 picker；只有累计达到
   检查点或出现风险时再跑全量；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；

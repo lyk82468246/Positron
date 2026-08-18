@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next263）
+### 当前默认自动选择与人工验收包（next264）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -63,20 +63,19 @@ tests=13,20,27,56,58,62,64-67,73,75,999
 ```
 
 这是窄的自动 smoke 选择，不是完整自动回归基线。最近一次完整自动基线仍是 next255：
-`auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-222,999`；next263
+`auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-222,999`；next264
 采用定向门，不要求每批重复全量。设备 gate 通过 `-TestSelection` 只修改隔离 staging，
 不改 tracked ini：
 
 ```bat
-scripts\device_gate.bat -Candidate next263-file-programmatic-stage ^
-  -TestSelection "230,999"
-scripts\device_gate.bat -Candidate next263-file-programmatic-regression ^
-  -TestSelection "70,189-230,999"
+scripts\device_gate.bat -Candidate next264-file-picker-stage ^
+  -TestSelection "231,999"
+scripts\device_gate.bat -Candidate next264-file-picker-regression ^
+  -TestSelection "70,189-231,999"
 ```
 
-next263 的两组定向门应分别覆盖新测试和相关文件/脚本回归；上一批 next262 的最终定向门
-已分别通过 2/2 和 44/44，回归首尝 TEST193 的既有 JavaScript timeout 已用原配置重试通过。
-只有出现回归、设备环境变化或累计达到下一
+next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；上一批 next263 的最终定向门
+已分别通过 2/2 和 44/44。只有出现回归、设备环境变化或累计达到下一
 个检查点时，才需要再次运行完整链。
 
 需要做人工视觉/输入验收时，临时把 staging 或工作区的 `auto` 改为 0；验收结束后务必恢复
@@ -100,7 +99,7 @@ next263 的两组定向门应分别覆盖新测试和相关文件/脚本回归�
 | 75 | 灰色父框内依次看到红色 static、偏移后的绿色 relative、蓝色 absolute block、黄色 absolute inline；四个都不能跑出灰框。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
-TEST190-230 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click 断言，不属于这次需要肉眼观察的包；TEST201
+TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST201
 直接调用 `positron_browser.dll` 公共 history API，TEST202 直接验证 product script session，
 TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read callback adapter，TEST205
 直接验证 product DOM write callback adapter，TEST206 直接验证 product DOM attribute callback adapter，TEST207
@@ -142,6 +141,9 @@ TEST230 通过真实脚本 `HTMLElement.click()` 验证 native file input 的 cl
 取消、disabled/no-op 和空文件状态；自动路径只停在 typed click contract，不打开系统文件选择器，
 picker、文件系统权限和窗口生命周期继续由宿主 GUI 路径负责。TEST228 继续覆盖
 programmatic-click adapter error、注销和 native function 资源关闭。
+TEST231 通过宿主注入的同步 picker adapter 验证选择、取消、picker 错误、空选择提交错误、
+`input` → `change` 顺序、再次取消保留既有文件状态，以及 callback 不重入且调用结束后无活动状态；
+真实 WM6 picker 仍只通过 `GetOpenFileNameEx` 的 GUI 路径运行。
 
 ## 运行自动设备门
 
@@ -196,10 +198,10 @@ scripts\repair_wmdc_rapi.bat
 2. 关闭设备上已有的 `test_host.exe`，在仓库根目录执行：
 
    ```bat
-   scripts\stage.bat Debug C:\WMShare\Positron-manual-next263
+   scripts\stage.bat Debug C:\WMShare\Positron-manual-next264
    ```
 
-3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next263`（或共享目录映射的
+3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next264`（或共享目录映射的
    对应路径），确认 `test_host.exe` 与上表配置的 `test_host.ini` 在同一目录，然后运行
    `test_host.exe`。
 4. 启动确认框必须显示这 13 个选择：

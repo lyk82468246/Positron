@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 230
+#define TEST_MAX_NUMBER 231
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -9082,16 +9082,102 @@ static void pcore_handle_invalid_form(HWND hwnd,
     MessageBeep(MB_ICONEXCLAMATION);
 }
 
-static int pcore_handle_file_input(HWND hwnd, int x, int y)
+typedef int (*pcore_file_picker_callback)(HWND owner,
+        WCHAR *file_path, int file_path_capacity,
+        WCHAR *file_title, int file_title_capacity, void *pw);
+
+static int pcore_file_picker_system(HWND owner, WCHAR *file_path,
+        int file_path_capacity, WCHAR *file_title, int file_title_capacity,
+        void *pw)
 {
     OPENFILENAMEEX picker;
+
+    (void) pw;
+    if (file_path == NULL || file_path_capacity <= 0 ||
+            file_title == NULL || file_title_capacity <= 0) {
+        return -1;
+    }
+    memset(&picker, 0, sizeof(picker));
+    picker.lStructSize = sizeof(picker);
+    picker.hwndOwner = owner;
+    picker.lpstrFilter = L"All files (*.*)\0*.*\0\0";
+    picker.lpstrFile = file_path;
+    picker.nMaxFile = (DWORD) file_path_capacity;
+    picker.lpstrFileTitle = file_title;
+    picker.nMaxFileTitle = (DWORD) file_title_capacity;
+    picker.lpstrTitle = L"Choose a file";
+    picker.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    picker.ExFlags = OFN_EXFLAG_NOFILECREATE;
+    /* WM6's GetOpenFileNameEx has no separate cancel/error result. A false
+     * return is therefore the user-cancel path; storage/conversion failures
+     * are reported after a successful selection. */
+    return GetOpenFileNameEx(&picker) ? 1 : 0;
+}
+
+static int pcore_file_picker_run(HWND owner, WCHAR *file_path,
+        int file_path_capacity, WCHAR *file_title, int file_title_capacity,
+        pcore_file_picker_callback callback, void *pw)
+{
+    int result;
+
+    if (file_path == NULL || file_path_capacity <= 0 ||
+            file_title == NULL || file_title_capacity <= 0) {
+        return -1;
+    }
+    if (callback == NULL) {
+        callback = pcore_file_picker_system;
+    }
+    result = callback(owner, file_path, file_path_capacity,
+            file_title, file_title_capacity, pw);
+    if (result < 0) {
+        return -1;
+    }
+    if (result == 0) {
+        return 0;
+    }
+    file_path[file_path_capacity - 1] = L'\0';
+    file_title[file_title_capacity - 1] = L'\0';
+    return 1;
+}
+
+static int pcore_file_input_commit_selection(HANDLE document,
+        unsigned int file_index, const WCHAR *file_path,
+        const WCHAR *file_title, PCoreFileInputInfo *out_info)
+{
+    const WCHAR *display_title;
+    char *path_utf8;
+    char *title_utf8;
+
+    if (document == NULL || file_path == NULL || file_path[0] == L'\0' ||
+            out_info == NULL || PCore_FileInputInfo(document, file_index,
+            out_info, NULL, 0, NULL, 0) != 0) {
+        return -1;
+    }
+    display_title = (file_title != NULL && file_title[0] != L'\0') ?
+            file_title : file_path;
+    path_utf8 = wide_to_utf8_alloc(file_path);
+    title_utf8 = wide_to_utf8_alloc(display_title);
+    if (path_utf8 == NULL || title_utf8 == NULL ||
+            PCore_FileInputSetPath(document, file_index,
+                    title_utf8, path_utf8) != 0) {
+        free(path_utf8);
+        free(title_utf8);
+        return -1;
+    }
+    free(path_utf8);
+    free(title_utf8);
+    return 0;
+}
+
+static int pcore_handle_file_input_with_picker(HWND hwnd, int x, int y,
+        pcore_file_picker_callback callback, void *pw)
+{
     PCoreFileInputInfo info;
     WCHAR file_path[MAX_PATH];
     WCHAR file_title[MAX_PATH];
-    char *path_utf8;
-    char *title_utf8;
     unsigned int file_index;
     int disabled;
+    int picker_result;
     RECT dirty;
 
     file_index = 0;
@@ -9103,38 +9189,24 @@ static int pcore_handle_file_input(HWND hwnd, int x, int y)
     if (disabled) {
         return 1;
     }
-    memset(&picker, 0, sizeof(picker));
     memset(file_path, 0, sizeof(file_path));
     memset(file_title, 0, sizeof(file_title));
-    picker.lStructSize = sizeof(picker);
-    picker.hwndOwner = hwnd;
-    picker.lpstrFilter = L"All files (*.*)\0*.*\0\0";
-    picker.lpstrFile = file_path;
-    picker.nMaxFile = MAX_PATH;
-    picker.lpstrFileTitle = file_title;
-    picker.nMaxFileTitle = MAX_PATH;
-    picker.lpstrTitle = L"Choose a file";
-    picker.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    picker.ExFlags = OFN_EXFLAG_NOFILECREATE;
-    if (!GetOpenFileNameEx(&picker)) {
+    picker_result = pcore_file_picker_run(hwnd, file_path, MAX_PATH,
+            file_title, MAX_PATH, callback, pw);
+    if (picker_result < 0) {
+        show_error(L"File picker failed",
+                "The system file picker could not be opened");
         return 1;
     }
-    path_utf8 = wide_to_utf8_alloc(file_path);
-    title_utf8 = wide_to_utf8_alloc(
-            (file_title[0] != L'\0') ? file_title : file_path);
-    if (path_utf8 == NULL || title_utf8 == NULL ||
-            PCore_FileInputSetPath(g_render_doc, file_index,
-                    title_utf8, path_utf8) != 0 ||
-            PCore_FileInputInfo(g_render_doc, file_index, &info,
-                    NULL, 0, NULL, 0) != 0) {
-        free(path_utf8);
-        free(title_utf8);
+    if (picker_result == 0) {
+        return 1;
+    }
+    if (pcore_file_input_commit_selection(g_render_doc, file_index,
+            file_path, file_title, &info) != 0) {
         show_error(L"File selection failed",
                 "Could not store the selected file in the form");
         return 1;
     }
-    free(path_utf8);
-    free(title_utf8);
     (void) pcore_browser_script_dispatch_file_event_at(
             info.x + info.width / 2, info.y + info.height / 2, "input");
     (void) pcore_browser_script_dispatch_file_event_at(
@@ -9143,8 +9215,15 @@ static int pcore_handle_file_input(HWND hwnd, int x, int y)
     dirty.top = info.y - g_scroll_y;
     dirty.right = info.x + info.width;
     dirty.bottom = info.y - g_scroll_y + info.height;
-    InvalidateRect(hwnd, &dirty, TRUE);
+    if (hwnd != NULL) {
+        InvalidateRect(hwnd, &dirty, TRUE);
+    }
     return 1;
+}
+
+static int pcore_handle_file_input(HWND hwnd, int x, int y)
+{
+    return pcore_handle_file_input_with_picker(hwnd, x, y, NULL, NULL);
 }
 
 static int pcore_handle_label(HWND hwnd, int x, int y)
@@ -42167,6 +42246,275 @@ static BOOL test230_browser_file_programmatic(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 231 - host file picker selection/cancel/error boundary           */
+/* -------------------------------------------------------------------- */
+typedef struct test231_picker_state {
+    int calls;
+    int active;
+    int max_active;
+    int result;
+    WCHAR path[128];
+    WCHAR title[64];
+} test231_picker_state;
+
+static int test231_copy_wide(WCHAR *dst, int capacity, const WCHAR *src)
+{
+    int i;
+
+    if (dst == NULL || capacity <= 0 || src == NULL) {
+        return 0;
+    }
+    for (i = 0; src[i] != L'\0'; i++) {
+        if (i + 1 >= capacity) {
+            return 0;
+        }
+        dst[i] = src[i];
+    }
+    dst[i] = L'\0';
+    return 1;
+}
+
+static int test231_picker_callback(HWND owner, WCHAR *file_path,
+        int file_path_capacity, WCHAR *file_title, int file_title_capacity,
+        void *pw)
+{
+    test231_picker_state *state;
+    int result;
+
+    (void) owner;
+    state = (test231_picker_state *) pw;
+    if (state == NULL || file_path == NULL || file_title == NULL) {
+        return -1;
+    }
+    state->calls++;
+    state->active++;
+    if (state->active > state->max_active) {
+        state->max_active = state->active;
+    }
+    result = state->result;
+    if (result > 0 &&
+            (!test231_copy_wide(file_path, file_path_capacity,
+                    state->path) ||
+            !test231_copy_wide(file_title, file_title_capacity,
+                    state->title))) {
+        result = -1;
+    }
+    state->active--;
+    return result;
+}
+
+static BOOL test231_browser_file_picker_boundary(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='root'>"
+        "<input id='file' type='file'>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "form{display:block;width:280px}"
+        "input{display:block;width:220px;height:24px;margin:3px}"
+        "p{display:block;width:500px;height:80px}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function record(e){var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('input',record);"
+        "root.addEventListener('change',record);";
+    static const char EXPECTED_EVENTS[] = "input|file;change|file;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFileInputInfo info;
+    test231_picker_state picker_state;
+    WCHAR picker_path[MAX_PATH];
+    WCHAR picker_title[MAX_PATH];
+    char events[256];
+    char value[128];
+    char path[256];
+    char error[384];
+    const char *stage;
+    int event_bytes;
+    int executed;
+    int ignored;
+    int click_x;
+    int click_y;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(&picker_state, 0, sizeof(picker_state));
+    memset(picker_path, 0, sizeof(picker_path));
+    memset(picker_title, 0, sizeof(picker_title));
+    memset(events, 0, sizeof(events));
+    memset(value, 0, sizeof(value));
+    memset(path, 0, sizeof(path));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    event_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    click_x = 0;
+    click_y = 0;
+    ok = 1;
+    picker_state.result = 0;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/file-picker-boundary.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 240) != 0 ||
+                PCore_FileInputInfo(document, 0, &info,
+                NULL, 0, NULL, 0) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    click_x = info.x + info.width / 2;
+    click_y = info.y + info.height / 2;
+    if (ok) {
+        stage = "cancel";
+        picker_state.result = 0;
+        picker_state.calls = 0;
+        picker_state.active = 0;
+        if (pcore_handle_file_input_with_picker(NULL, click_x, click_y,
+                test231_picker_callback, &picker_state) != 1 ||
+                picker_state.calls != 1 || picker_state.active != 0 ||
+                picker_state.max_active != 1 ||
+                PCore_FileInputInfo(document, 0, &info, value,
+                sizeof(value), path, sizeof(path)) != 0 ||
+                value[0] != '\0' || path[0] != '\0') {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "picker-error";
+        picker_state.result = -1;
+        picker_state.calls = 0;
+        picker_state.active = 0;
+        if (pcore_file_picker_run(NULL, picker_path, MAX_PATH,
+                picker_title, MAX_PATH, test231_picker_callback,
+                &picker_state) != -1 || picker_state.calls != 1 ||
+                picker_state.active != 0 || picker_state.max_active != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "commit-error";
+        if (pcore_file_input_commit_selection(document, 0, L"", L"",
+                &info) != -1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "selected";
+        picker_state.result = 1;
+        picker_state.calls = 0;
+        picker_state.active = 0;
+        if (!test231_copy_wide(picker_state.path, sizeof(picker_state.path) /
+                sizeof(WCHAR), L"\\Storage Card\\picked.txt") ||
+                !test231_copy_wide(picker_state.title,
+                sizeof(picker_state.title) / sizeof(WCHAR), L"picked.txt") ||
+                pcore_handle_file_input_with_picker(NULL, click_x, click_y,
+                test231_picker_callback, &picker_state) != 1 ||
+                picker_state.calls != 1 || picker_state.active != 0 ||
+                PCore_FileInputInfo(document, 0, &info, value,
+                sizeof(value), path, sizeof(path)) != 0 ||
+                strcmp(value, "picked.txt") != 0 ||
+                strcmp(path, "\\Storage Card\\picked.txt") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "notifications";
+        if (PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, EXPECTED_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "cancel-after-selection";
+        picker_state.result = 0;
+        picker_state.calls = 0;
+        picker_state.active = 0;
+        if (pcore_handle_file_input_with_picker(NULL, click_x, click_y,
+                test231_picker_callback, &picker_state) != 1 ||
+                picker_state.calls != 1 || picker_state.active != 0 ||
+                PCore_FileInputInfo(document, 0, &info, value,
+                sizeof(value), path, sizeof(path)) != 0 ||
+                strcmp(value, "picked.txt") != 0 ||
+                strcmp(path, "\\Storage Card\\picked.txt") != 0 ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, EXPECTED_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (!ok && error[0] == '\0') {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%s events=%s value=%s path=%s calls=%d active=%d max=%d",
+                stage, events, value, path, picker_state.calls,
+                picker_state.active, picker_state.max_active);
+        error[sizeof(error) - 1] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 231 FAIL", error[0] != '\0' ? error :
+                "host file picker boundary failed");
+        return FALSE;
+    }
+    show_info(L"TEST 231 OK",
+            "Host picker selection, cancel, error and synchronous lifetime"
+            " boundaries preserve file state and input/change notifications.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -46372,6 +46720,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 230: ok =
                 test230_browser_file_programmatic();
+                break;
+        case 231: ok =
+                test231_browser_file_picker_boundary();
                 break;
         default: ok = FALSE; break;
         }
