@@ -66,6 +66,8 @@ next277 已补齐 input type=date 的 min-based step/默认/any/非法回退校�
 input type=time 的 min-based step 语义，不依赖人工页面观察。
 next278 已补齐 input type=time 的 min-based step/默认 60 秒/any/非法回退校验；下一候选为
 input type=month 的 min-based step 语义，不依赖人工页面观察。
+next279 已补齐 input type=month 的 min-based step/默认/any/非法回退校验；下一候选为
+input type=week 的 min-based step 语义，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 

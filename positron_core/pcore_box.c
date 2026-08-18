@@ -6812,6 +6812,24 @@ static int pcore_week_compare(int year, int week, int other_year,
     return 0;
 }
 
+static int pcore_week_number(int year, int week)
+{
+    int current_year;
+    int result;
+
+    result = 0;
+    if (year >= 1970) {
+        for (current_year = 1970; current_year < year; current_year++) {
+            result += pcore_iso_weeks_in_year(current_year);
+        }
+    } else {
+        for (current_year = year; current_year < 1970; current_year++) {
+            result -= pcore_iso_weeks_in_year(current_year);
+        }
+    }
+    return result + week - 1;
+}
+
 static int pcore_week_constraint_flags(dom_node *node, dom_string *value,
         unsigned int *flags_out)
 {
@@ -6821,6 +6839,9 @@ static int pcore_week_constraint_flags(dom_node *node, dom_string *value,
     int minimum_week;
     int maximum_year;
     int maximum_week;
+    double step;
+    int base_year;
+    int base_week;
 
     *flags_out = 0;
     if (value == NULL || dom_string_byte_length(value) == 0) {
@@ -6837,6 +6858,20 @@ static int pcore_week_constraint_flags(dom_node *node, dom_string *value,
     if (pcore_node_attr_week(node, "max", &maximum_year, &maximum_week) &&
             pcore_week_compare(year, week, maximum_year, maximum_week) > 0) {
         *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    if (!pcore_attr_value_is(node, "step", "any")) {
+        step = 1.0;
+        if (!pcore_node_attr_number(node, "step", &step) || step <= 0.0) {
+            step = 1.0;
+        }
+        base_year = 1970;
+        base_week = 1;
+        (void) pcore_node_attr_week(node, "min", &base_year, &base_week);
+        if (pcore_step_mismatch(
+                (double) pcore_week_number(year, week),
+                (double) pcore_week_number(base_year, base_week), step)) {
+            *flags_out |= PCORE_VALIDITY_STEP_MISMATCH;
+        }
     }
     return 1;
 }

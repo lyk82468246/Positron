@@ -825,7 +825,7 @@ typedef struct PCoreFormValidationInfo {
  * input type=time uses bounded HH:MM/seconds/fraction syntax for type/min/max/
  * step checks, not a native time picker or the complete time specification.
  * input type=month uses bounded YYYY-MM syntax for type/min/max/step checks.
- * input type=week uses bounded ISO YYYY-Www syntax for type/min/max checks.
+ * input type=week uses bounded ISO YYYY-Www syntax for type/min/max/step checks.
  * input type=datetime-local composes the bounded date/time parsers for
  * type/min/max checks; no picker is owned by this DLL.
  * input type=color uses bounded #RRGGBB syntax for type checks; no picker is
