@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 219
+#define TEST_MAX_NUMBER 220
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3079,6 +3079,9 @@ static int pcore_browser_script_edit_dispatch(void *pw,
         const PBrowserScriptEditEventInfo *info);
 static int pcore_browser_script_select_dispatch(void *pw,
         const PBrowserScriptSelectEventInfo *info);
+static int pcore_browser_script_click_dispatch(void *pw,
+        const PBrowserScriptClickEventInfo *info,
+        int *out_default_allowed);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data,
         int is_composing);
@@ -3889,6 +3892,28 @@ static int pcore_browser_script_select_dispatch(void *pw,
     return (result < 0) ? -1 : 0;
 }
 
+static int pcore_browser_script_click_dispatch(void *pw,
+        const PBrowserScriptClickEventInfo *info,
+        int *out_default_allowed)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptClickEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "click") != 0) {
+        return -1;
+    }
+    *out_default_allowed = 1;
+    result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, out_default_allowed);
+    return (result < 0) ? -1 : 0;
+}
+
 static int pcore_browser_script_dispatch_key_at(int x, int y,
         const char *event_type, WPARAM wp, LPARAM lp, int system_key,
         int is_composing)
@@ -4147,6 +4172,41 @@ static int pcore_browser_script_dispatch_composition_event(HWND control,
 {
     return pcore_browser_script_dispatch_input_data_event(control,
             event_type, "", data, cancelable, 0);
+}
+
+static int pcore_browser_script_dispatch_click_at(int x, int y)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptClickEventInfo click_info;
+    int default_allowed;
+    int rc;
+
+    if (g_render_doc == NULL) {
+        return 1;
+    }
+    bridge = g_browser_script_session.bridge;
+    if (g_browser_script_session.document == g_render_doc &&
+            g_browser_script_session.runtime != NULL &&
+            bridge != NULL && bridge->session != NULL) {
+        memset(&click_info, 0, sizeof(click_info));
+        click_info.size = sizeof(click_info);
+        click_info.x = x;
+        click_info.y = y;
+        click_info.event_type = "click";
+        click_info.bubbles = 1;
+        click_info.cancelable = 1;
+        default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchClickEvent(bridge->session,
+                &click_info, &default_allowed);
+        if (rc != PSCRIPT_OK) {
+            return 0;
+        }
+        return default_allowed ? 1 : 0;
+    }
+    default_allowed = 1;
+    PCore_EventDispatchAt(g_render_doc, x, y, "click", 1, 1,
+            &default_allowed);
+    return default_allowed ? 1 : 0;
 }
 
 static void pcore_request_interaction_restyle(HWND hwnd)
@@ -6835,6 +6895,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusCallbacks focus_callbacks;
     PBrowserScriptEditCallbacks edit_callbacks;
     PBrowserScriptSelectCallbacks select_callbacks;
+    PBrowserScriptClickCallbacks click_callbacks;
     PBrowserScriptNavigationCallbacks navigation_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     PBrowserScriptEventCallbacks event_callbacks;
@@ -6958,6 +7019,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     select_callbacks.size = sizeof(select_callbacks);
     select_callbacks.pw = bridge;
     select_callbacks.dispatch_select = pcore_browser_script_select_dispatch;
+    click_callbacks.size = sizeof(click_callbacks);
+    click_callbacks.pw = bridge;
+    click_callbacks.dispatch_click = pcore_browser_script_click_dispatch;
     navigation_callbacks.size = sizeof(navigation_callbacks);
     navigation_callbacks.pw = bridge;
     navigation_callbacks.navigate = pcore_browser_script_navigation;
@@ -7014,6 +7078,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &edit_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterSelectCallbacks(session,
             &select_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterClickCallbacks(session,
+            &click_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
             &dom_attribute_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEventCallbacks(session,
@@ -8810,8 +8876,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         default_allowed = 1;
         if (g_render_doc != NULL) {
-            PCore_EventDispatchAt(g_render_doc, cx, cy + g_scroll_y,
-                    "click", 1, 1, &default_allowed);
+            default_allowed = pcore_browser_script_dispatch_click_at(cx,
+                    cy + g_scroll_y);
             if (!default_allowed) {
                 return 0;
             }
@@ -38767,6 +38833,175 @@ static BOOL test219_browser_edit_input_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 220 - product native click dispatch callback                    */
+/* -------------------------------------------------------------------- */
+typedef struct test220_click_state {
+    int calls;
+    int return_code;
+    int default_allowed;
+    int x;
+    int y;
+    int bubbles;
+    int cancelable;
+    char event_type[64];
+} test220_click_state;
+
+static int test220_click_dispatch(void *pw,
+        const PBrowserScriptClickEventInfo *info,
+        int *out_default_allowed)
+{
+    test220_click_state *state;
+    size_t event_length;
+
+    state = (test220_click_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptClickEventInfo) ||
+            info->event_type == NULL) {
+        return -1;
+    }
+    event_length = strlen(info->event_type);
+    if (event_length >= sizeof(state->event_type)) {
+        return -1;
+    }
+    state->calls++;
+    state->x = info->x;
+    state->y = info->y;
+    state->bubbles = info->bubbles;
+    state->cancelable = info->cancelable;
+    memcpy(state->event_type, info->event_type, event_length + 1);
+    *out_default_allowed = state->default_allowed ? 1 : 0;
+    return state->return_code < 0 ? state->return_code : 0;
+}
+
+static BOOL test220_browser_click_callbacks(void)
+{
+    PBrowserScriptClickCallbacks callbacks;
+    PBrowserScriptClickEventInfo info;
+    test220_click_state state;
+    HANDLE session;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int default_allowed;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_click = test220_click_dispatch;
+    info.size = sizeof(info);
+    info.x = 181;
+    info.y = 192;
+    info.event_type = "click";
+    info.bubbles = 1;
+    info.cancelable = 1;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    default_allowed = 1;
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterClickCallbacks(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterClickCallbacks(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterClickCallbacks(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchClickEvent(session, NULL,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && default_allowed == 1 &&
+                state.calls == 0;
+    }
+    if (ok) {
+        stage = "invalid-event-type";
+        info.event_type = "mousedown";
+        rc = PBrowser_ScriptSessionDispatchClickEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+        info.event_type = "click";
+    }
+    if (ok) {
+        stage = "dispatch-click";
+        state.default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchClickEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                state.calls == 1 && state.x == 181 && state.y == 192 &&
+                state.bubbles == 1 && state.cancelable == 1 &&
+                strcmp(state.event_type, "click") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-click-cancel";
+        state.default_allowed = 0;
+        rc = PBrowser_ScriptSessionDispatchClickEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                state.calls == 2 && state.cancelable == 1 &&
+                strcmp(state.event_type, "click") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-adapter-error";
+        state.default_allowed = 1;
+        state.return_code = -1;
+        rc = PBrowser_ScriptSessionDispatchClickEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_NATIVE && default_allowed == 1 &&
+                state.calls == 3;
+        state.return_code = 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterClickCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "dispatch-after-unregister";
+        rc = PBrowser_ScriptSessionDispatchClickEvent(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 3;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d calls=%d event=%s runtime=%s",
+                    stage, rc, state.calls, state.event_type,
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 220 FAIL", error[0] != '\0' ? error :
+                "product native click dispatch callback failed");
+        return FALSE;
+    }
+    show_info(L"TEST 220 OK",
+            "positron_browser.dll owns native click dispatch; the host"
+            " supplies typed core event propagation and default handling.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -42939,6 +43174,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 219: ok =
                 test219_browser_edit_input_callbacks();
+                break;
+        case 220: ok =
+                test220_browser_click_callbacks();
                 break;
         default: ok = FALSE; break;
         }

@@ -1,6 +1,6 @@
 # Positron 当前交接
 
-更新时间：2026-08-17
+更新时间：2026-08-18
 
 稳定使命、架构和公共边界见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。本文件只记录当前仓库基线、最近设备证据、
@@ -9,19 +9,20 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next252。
-- next252 批次在 `test_host` 中把 native EDIT 的 EN_CHANGE 后 input 事件接到既有 `positron_browser/` input typed dispatch callback contract；next251 批次在产品 DLL 中加入 native EDIT change typed dispatch callback ABI；next250 批次让既有 SELECT typed dispatch callback ABI 同时承接 native SELECT input 事件；next249 批次加入 native SELECT change typed dispatch callback ABI；next248 的 focus-family typed dispatch callback ABI、next247 的 native keyboard typed dispatch callback ABI、next246 的 native input/composition typed dispatch callback ABI、next245 的同文档 history traversal/hash location 事件分发 API、next244 的 navigation callback typed registration、JSON
+- 最新已验证产品基线：next253。
+- next253 批次在 `positron_browser/` 产品 DLL 中加入 native click typed dispatch callback ABI，并让 `test_host` 的 WM_LBUTTONDOWN 先经过该 contract；next252 批次在 `test_host` 中把 native EDIT 的 EN_CHANGE 后 input 事件接到既有 `positron_browser/` input typed dispatch callback contract；next251 批次在产品 DLL 中加入 native EDIT change typed dispatch callback ABI；next250 批次让既有 SELECT typed dispatch callback ABI 同时承接 native SELECT input 事件；next249 批次加入 native SELECT change typed dispatch callback ABI；next248 的 focus-family typed dispatch callback ABI、next247 的 native keyboard typed dispatch callback ABI、next246 的 native input/composition typed dispatch callback ABI、next245 的同文档 history traversal/hash location 事件分发 API、next244 的 navigation callback typed registration、JSON
   分发和 session 生命周期、next243 的 form-property callback、next242 的 checked callback、next241 的 input value callback、next240 的 Event callback、next239 的 DOM attribute 三件套、next238 的 textContent 写入、next237 的 DOM 只读 callback、next236 的产品 bootstrap
   文本与求值入口、next235 的浏览器脚本 session 所有权与 host JSON callback 注册均保持通过；`test_host` 适配与工程接线继续使用当前
   WMDC/RAPI 会话的 `scripts/device_gate.bat`、`scripts/device_gate.ps1`，环境修复脚本为
   `scripts/repair_wmdc_rapi.*`。
 - 当前工作区的 `test_host/test_host.ini` 保持自动模式：`auto=1`、`javascript=0`、
   `tests=13,20,27,56,58,62,64-67,73,75,999`。这是窄的自动 smoke 选择，不是完整基线；
-- 167 项自动 next252 全量证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
+- 168 项自动 next253 全量证据已经通过；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
   验收结束后恢复为 1。
-- 本地设备证据位于 `tmp/device-runs/20260817-203107-next252-edit-input-final-rerun/`；TEST219 定向证据位于
-  `tmp/device-runs/20260817-202944-next252-edit-input-stage-rerun/`，EDIT/SELECT/focus/key/input 回归证据位于
-  `tmp/device-runs/20260817-203001-next252-edit-input-regression-rerun/`。next251 的 EDIT change 全量证据仍位于
+- 本地设备证据位于 `tmp/device-runs/20260818-192039-next253-click-final/`；TEST220 定向证据位于
+  `tmp/device-runs/20260818-191908-next253-click-stage/`，EDIT/SELECT/focus/key/input/click 回归证据位于
+  `tmp/device-runs/20260818-191937-next253-click-regression/`。next252 的 EDIT input 全量证据仍位于
+  `tmp/device-runs/20260817-203107-next252-edit-input-final-rerun/`；next251 的 EDIT change 全量证据仍位于
   `tmp/device-runs/20260817-200046-next251-edit-final/`；next250 的 SELECT input 全量证据仍位于
   `tmp/device-runs/20260817-194231-next250-select-input-final/`；next249 的 SELECT change 全量证据仍位于
   `tmp/device-runs/20260815-222840-next249-select-final/`；next248 的 focus 全量证据仍位于
@@ -43,27 +44,27 @@
 
 ## 最近已验证设备证据
 
-### 最新全量检查点：next252
+### 最新全量检查点：next253
 
-- 配置：`TEST13/20/27/43/44/56/58-77/80-219/999`，共 167 项。
+- 配置：`TEST13/20/27/43/44/56/58-77/80-220/999`，共 168 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
 - 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
   Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
-- 结果：167 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、零 `FAIL`、
+- 结果：168 个选中测试 ID 全部有 `OK`，TEST13 overview/box detail 完整；零 `ERROR`、零 `FAIL`、
   唯一 `TESTBENCH PASS`，`completion_marker=PASS`，`test13_route_ok=True`。
 - TEST13：example.com、IANA Example Domains、Reserved Domains 三段导航均 `completed=1`；
-  TEST204–218 的既有 product callback/location/input/key/focus/select/edit 断言保持通过；TEST219 直接验证
-  product EDIT post-change input typed dispatch contract、坐标与冒泡字段、非法事件、adapter error 映射和注销。
+  TEST204–219 的既有 product callback/location/input/key/focus/select/edit 断言保持通过；TEST220 直接验证
+  product native click typed dispatch contract、坐标与冒泡字段、取消结果、非法事件、adapter error 映射和注销。
 - 产品边界：`positron_browser.dll` 现在拥有 PScript context、callback 注册/调用生命周期、browser
   bootstrap 文本/求值入口、DOM 只读、textContent 写入、attribute、input value、checked、form-property、
   navigation、同文档 location/history 事件分发、Event JSON 分发、native input/composition、keyboard、
-  focus-family、EDIT change/post-change input 和 SELECT input/change dispatch entry；`test_host` 仅保留 WM 消息/控件、坐标命中、core/document/
+  focus-family、EDIT change/post-change input、click 和 SELECT input/change dispatch entry；`test_host` 仅保留 WM 消息/控件、坐标命中、core/document/
   form/navigation/listener adapter 及窗口、网络、core 事件传播和控件默认副作用，产品 session 是唯一销毁者。
 - 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I Debug
-  正式构建、隔离 staging/部署、SHA-256 清单和日志自动判门均通过。直接 `TEST219/999` 证据位于
-  `tmp/device-runs/20260817-202944-next252-edit-input-stage-rerun/`，`TEST112-135/137-152/189-219/999`
-  （72 项）位于 `tmp/device-runs/20260817-203001-next252-edit-input-regression-rerun/`，全量最终证据位于
-  `tmp/device-runs/20260817-203107-next252-edit-input-final-rerun/`。
+  正式构建、隔离 staging/部署、SHA-256 清单和日志自动判门均通过。直接 `TEST220/999` 证据位于
+  `tmp/device-runs/20260818-191908-next253-click-stage/`，`TEST112-135/137-152/189-220/999`
+  （73 项）位于 `tmp/device-runs/20260818-191937-next253-click-regression/`，全量最终证据位于
+  `tmp/device-runs/20260818-192039-next253-click-final/`。
 
 ### 最新全量检查点：next248
 
@@ -704,6 +705,33 @@ core/document typed adapter，同时保持既有 bootstrap、页面脚本、nati
   完整证据路径见本文件顶部。全量中途曾出现 TEST129、TEST153、TEST192 的单次 JavaScript
   timeout；定向回归及最终全量重试通过，未调整执行预算或放宽断言。
 
+## 已关闭批次：next253
+
+目标：把 native `click` 事件分发入口从 `test_host/main.c` 的直接
+`PCore_EventDispatchAt` 调用接到 `positron_browser.dll` 的稳定 typed callback contract；
+宿主继续拥有 WM 鼠标消息、坐标命中、core 事件传播以及表单/控件默认 activation 和导航副作用。
+
+实现边界：
+
+- `positron_browser.dll` 新增 `PBrowserScriptClickEventInfo`、
+  `PBrowserScriptClickCallbacks`、注册/注销 API 和
+  `PBrowser_ScriptSessionDispatchClickEvent`；产品层只接受 `click`，同步调用宿主 adapter，
+  统一 default-allowed 和 adapter-error 结果。
+- `test_host` 的 `WM_LBUTTONDOWN` 路径构造产品 click typed info；宿主 adapter 仍只把产品请求
+  转成 `PCore_EventDispatchAt`，保留文档坐标、冒泡/cancelable 字段、preventDefault 结果和
+  控件/链接默认副作用。没有迁移 WM 消息、表单提交、窗口、网络或导航策略。
+- TEST220 直接验证注册/重复注册、click 字段、成功/取消、非法事件、adapter error、注销和
+  资源关闭；既有 TEST13/TEST204–219 回归保持通过。
+
+已经核验并提升为基线：
+
+- `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`；
+- VS2008 ARMV4I Debug 正式构建；
+- 定向 `TEST220/999`（2 项）、`TEST112-135/137-152/189-220/999`（73 项）和全量
+  `TEST13/20/27/43/44/56/58-77/80-220/999`（168 项）WMDC/RAPI 设备门；
+- TEST13 三段真实导航、TEST220 product native click dispatch、零 `ERROR`、零 `FAIL`、
+  唯一 `TESTBENCH PASS`；完整证据路径见本文件顶部。
+
 ## 已关闭批次：next252
 
 目标：把 native EDIT 在 `EN_CHANGE` 后的 `input` 事件分发入口接到已有的
@@ -912,16 +940,16 @@ core/document typed adapter，同时保持既有 bootstrap、页面脚本、nati
 
 ## 唯一下一步
 
-在 next252 基线之上，把 native pointer/click 事件分发入口从 `test_host/main.c` 的直接
-`PCore_EventDispatchAt` 调用接到 `positron_browser.dll` 的稳定 typed callback contract；
-宿主继续负责 WM 鼠标消息、坐标命中、core 事件传播以及表单/控件默认 activation 和导航副作用。
-本批只处理 click 的坐标、冒泡、取消结果和 adapter 错误边界，不把 WM/SIP、表单提交、窗口、
-网络、history/navigation 副作用或完整 URL parser 一起迁入；继续保留 TEST13 和人工视觉/输入累计门。
+在 next253 基线之上，把 native form activation 产生的 `submit`/`reset` 事件分发入口从
+`test_host/main.c` 的直接 core/form 路径接到 `positron_browser.dll` 的稳定 typed callback
+contract；宿主继续负责 WM 鼠标/键盘消息、表单数据收集、验证、窗口、网络和导航副作用。
+本批只处理 submit/reset 的目标坐标、冒泡、cancelable、取消结果和 adapter 错误边界，不把
+表单提交编码、URL 解析、网络请求或控件默认 activation 一起迁入；继续保留 TEST13 和人工视觉/输入累计门。
 
 完成标准：
 
-- next252 的 167 项自动 gate、TEST219/999 和 EDIT/SELECT/focus/key/input 定向 gate、C89、审计和正式构建均保持通过；
-- 新批次直接测试 click typed callback 的注册/注销、成功/取消、字段、非法参数、adapter error
+- next253 的 168 项自动 gate、TEST220/999 和 EDIT/SELECT/focus/key/input/click 定向 gate、C89、审计和正式构建均保持通过；
+- 新批次直接测试 submit/reset typed callback 的注册/注销、成功/取消、字段、非法参数、adapter error
   和资源关闭，并通过定向后全量设备门；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；

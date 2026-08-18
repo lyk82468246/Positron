@@ -13,7 +13,7 @@
 - 典型组合：调用者另行持有 `positron_core.dll`、网络和 native WM 控件
 
 其他项目链接 `positron_browser.lib`，部署 DLL 依赖，并以 callback 形式提供宿主的
-document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input 和 SELECT input/change 适配。
+document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click 和 SELECT input/change 适配。
 `test_host.exe` 是一个完整的组合示例，但不是私有 API 的唯一消费者。
 
 ## 其他项目如何调用
@@ -46,7 +46,7 @@ PBrowser_ScriptSessionDestroy(session);
   back/forward/go 和同文档导航投影；
 - `PBrowser_ScriptSession*`：创建/销毁 PScript context、求值、JSON global、bootstrap、
   DOM read/write/attribute/value/checked/form-property、navigation/location/history 事件、
-  Event JSON 和 native input/keyboard/focus/EDIT change/post-change input/SELECT input/change typed dispatch；
+  Event JSON 和 native input/keyboard/focus/EDIT change/post-change input/click/SELECT input/change typed dispatch；
 - `PBrowser_ScriptSessionRuntime` 仅是迁移期只读诊断借用句柄，不转移所有权。
 
 回调结构体是 size-tagged，字符串和事件信息只在同步 callback 内借用。产品层只管理
