@@ -6887,6 +6887,36 @@ static int pcore_datetime_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_hex_digit(unsigned char c)
+{
+    return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') ||
+            (c >= 'a' && c <= 'f');
+}
+
+static int pcore_color_constraint_flags(dom_string *value,
+        unsigned int *flags_out)
+{
+    const char *data;
+    size_t index;
+
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    data = dom_string_data(value);
+    if (dom_string_byte_length(value) != 7 || data[0] != '#') {
+        *flags_out = PCORE_VALIDITY_TYPE_MISMATCH;
+        return 1;
+    }
+    for (index = 1; index < 7; index++) {
+        if (!pcore_hex_digit((unsigned char) data[index])) {
+            *flags_out = PCORE_VALIDITY_TYPE_MISMATCH;
+            break;
+        }
+    }
+    return 1;
+}
+
 static int pcore_email_local_char(unsigned char c)
 {
     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
@@ -7156,7 +7186,14 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     dom_string_byte_length(value) == 0)) {
                 *flags_out = PCORE_VALIDITY_VALUE_MISSING;
             } else {
-                if (pcore_attr_value_is(node, "type", "datetime-local")) {
+                if (pcore_attr_value_is(node, "type", "color")) {
+                    if (!pcore_color_constraint_flags(value, flags_out)) {
+                        if (value != NULL) {
+                            dom_string_unref(value);
+                        }
+                        return 0;
+                    }
+                } else if (pcore_attr_value_is(node, "type", "datetime-local")) {
                     if (!pcore_datetime_constraint_flags(node, value,
                             flags_out)) {
                         if (value != NULL) {

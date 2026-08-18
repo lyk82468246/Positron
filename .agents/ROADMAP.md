@@ -60,6 +60,8 @@ next274 已补齐 input type=week 的 bounded ISO 周/week-53/min/max 校验；�
 input type=datetime-local 的 bounded date/time 组合校验，不依赖人工页面观察。
 next275 已补齐 input type=datetime-local 的 bounded date/time 组合、非法时间和 min/max
 校验；下一候选为 input type=color 的 bounded #RRGGBB 语法校验，不依赖人工页面观察。
+next276 已补齐 input type=color 的 bounded #RRGGBB/typeMismatch 校验；下一候选为
+已支持日期/时间类型的 step 语义，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 

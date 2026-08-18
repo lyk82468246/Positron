@@ -828,6 +828,8 @@ typedef struct PCoreFormValidationInfo {
  * input type=week uses bounded ISO YYYY-Www syntax for type/min/max checks.
  * input type=datetime-local composes the bounded date/time parsers for
  * type/min/max checks; no picker is owned by this DLL.
+ * input type=color uses bounded #RRGGBB syntax for type checks; no picker is
+ * owned by this DLL.
  * checkbox, radio groups and select controls, including disabled/read-only
  * and no-validate bypasses. Unsupported or malformed constraint attributes
  * are ignored conservatively; pattern support is the documented ASCII subset

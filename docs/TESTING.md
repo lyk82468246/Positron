@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next266；next265 picker 候选仍待人工）
+### 当前默认自动选择与人工验收包（next276；next265 picker 候选仍待人工）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -92,6 +92,8 @@ scripts\device_gate.bat -Candidate next274 ^
   -TestSelection "233-241,999"
 scripts\device_gate.bat -Candidate next275 ^
   -TestSelection "233-242,999"
+scripts\device_gate.bat -Candidate next276 ^
+  -TestSelection "233-243,999"
 ```
 
 next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；上一批 next263 的最终定向门
@@ -128,6 +130,7 @@ next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；�
 | 240 | input type=month 采用 bounded YYYY-MM 校验；非法月份和 min/max 越界阻止提交，恢复后成功。 |
 | 241 | input type=week 采用 bounded ISO YYYY-Www 校验；非法周/week-53 和 min/max 越界阻止提交，恢复后成功。 |
 | 242 | input type=datetime-local 组合 bounded date/time 校验；非法时间和 min/max 越界阻止提交，恢复后成功。 |
+| 243 | input type=color 采用 bounded #RRGGBB 校验；非法十六进制值阻止提交，恢复后成功。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
@@ -150,6 +153,8 @@ TEST241 是自动的 bounded week 门，覆盖 ISO YYYY-Www、week-53、min/max 
 人工页面观察；它不替代 native week picker 的视觉/触摸验收。
 TEST242 是自动的 bounded datetime-local 门，覆盖 date/time 组合、非法时间、min/max 和动态
 恢复，不需要人工页面观察；它不替代 native datetime picker 的视觉/触摸验收。
+TEST243 是自动的 bounded color 门，覆盖 #RRGGBB 语法、非法十六进制值、动态恢复和
+submission，不需要人工页面观察；它不替代 native color picker 的视觉/触摸验收。
 TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read callback adapter，TEST205
 直接验证 product DOM write callback adapter，TEST206 直接验证 product DOM attribute callback adapter，TEST207
 直接验证 product event callback adapter、事件数据编码和 preventDefault 结果；TEST208

@@ -1,6 +1,6 @@
 # Positron 当前交接
 
-更新时间：2026-08-18
+更新时间：2026-08-19
 
 稳定使命、架构和公共边界见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。本文件只记录当前仓库基线、最近设备证据、
@@ -9,7 +9,9 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next275（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next276（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- next276 批次把 input type=color 的 bounded #RRGGBB typeMismatch 核心校验接入
+  positron_core.dll；没有新增 native color picker 或视觉/触摸声明。
 - next275 批次把 input type=datetime-local 的 bounded date/time 组合和 min/max 核心校验接入
   positron_core.dll；没有新增 native datetime picker 或视觉/触摸声明。
 - next274 批次把 input type=week 的 bounded ISO YYYY-Www、week-53 规则和 min/max 核心
@@ -76,6 +78,8 @@
   零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。TEST232 仍保持人工待验收。
 - next275 定向证据位于 tmp/device-runs/20260819-003530-next275/：TEST233-242/999 11/11，
   零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。TEST232 仍保持人工待验收。
+- next276 定向证据位于 tmp/device-runs/20260819-004741-next276-rerun/：TEST233-243/999 12/12，
+  零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。TEST232 仍保持人工待验收。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -112,7 +116,21 @@
 
 ## 最近已验证设备证据
 
-### 最新定向检查点：next275
+### 最新定向检查点：next276
+
+- 配置：TEST233-243/999 定向 12 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，screen=640x480 dpi=192。
+- 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
+  Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
+- 结果：12 项均有 OK；零 ERROR、零 FAIL，唯一 TESTBENCH PASS，completion_marker=PASS，
+  test13_route_ok=True。
+- TEST243 覆盖 #RRGGBB 语法、非法十六进制值、动态恢复和 submission；TEST233-242
+  的 number/range/email/url/date/time/month/week/datetime-local 回归同批通过。
+- 自动证据：python scripts/test_c89ize.py、python scripts/audit_repo.py、VS2008 ARMV4I
+  Debug 正式构建均通过。证据位于 tmp/device-runs/20260819-004741-next276-rerun/；本批未重复
+  next255 的 170 项全量门。
+
+### 已验证检查点：next275
 
 - 配置：TEST233-242/999 定向 11 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，screen=640x480 dpi=192。
@@ -1568,15 +1586,15 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-在 next274 基线之上继续推进一个不需要人工操作的 form/input 纵向能力；当前优先候选是
-input type=datetime-local 的 bounded date/time 组合边界。next265 的 TEST232 真实 WM6
+在 next276 基线之上继续推进一个不需要人工操作的 form/input 纵向能力；当前优先候选是
+input type=number/date/time/month/week/datetime-local 的 step 语义。next265 的 TEST232 真实 WM6
 picker 仍登记为人工待验收，不能用自动测试替代，也不能把 picker 迁入产品 DLL。
 
 完成标准：
 
-- TEST233-241/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
+- TEST233-243/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
   的两组自动证据为依据，只有累计达到检查点或出现风险时再跑全量；
-- 后续 datetime-local 能力必须有 bounded 组合语法、无效日期/时间、min/max 负例、动态值更新和 submission 阻断/恢复的自动断言，并通过
+- 后续 step 能力必须有 valid/mismatch 负例、动态值更新和 submission 阻断/恢复的自动断言，并通过
   定向设备门；TEST232 人工包仍需稍后确认真实 WM6 picker 的选择/取消/窗口
   返回与一次性 `input` → `change`，不能以自动日志代替；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
