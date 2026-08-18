@@ -78,7 +78,7 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/submit-reset-button programmatic `click()`/file-input programmatic `click()` typed dispatch/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
 尚未完成：任意 OEM IME、完整 composition/preedit、除 type=number 的 min/max/step 和 type=range
-默认/显式边界核心校验外的完整类型/范围/step 语义、除 email 和保守 url 核心校验外的
+默认/显式边界/缺省中点核心校验外的完整类型/范围/step 语义、除 email 和保守 url 核心校验外的
 email/URL 类型校验、除 bounded date/time（含规范 step base）/month/week/datetime-local（含 step）/color 核心
 校验外的完整 date/time/month/week/datetime-local/color 类型校验、除 text/password setter
 外的 custom validity、

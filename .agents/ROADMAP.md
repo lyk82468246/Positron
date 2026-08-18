@@ -94,6 +94,10 @@ next291 已补齐 textarea custom validity 的 UTF-8 getter；下一候选为
 验证 custom validity 状态跨 layout/reflow 的文档生命周期保持，不依赖人工页面观察。
 next292 已验证 custom validity 跨 layout/reflow 的状态保持；下一候选为
 补齐 range 缺省 value 的默认中点提交语义，不依赖人工页面观察。
+next293 已补齐 range 缺省 value 的默认中点提交语义；下一候选为
+让有效显式 min/max 下的 range 中点同时通过 text-control bridge 暴露，不依赖人工页面观察。
+next294 已补齐有效显式 min/max 下 range 中点的 text-control bridge 读回、验证和提交；
+下一步先回到 TEST232 真实 WM6 picker 与既有视觉/SIP 人工复核，再决定新的代码纵切。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 

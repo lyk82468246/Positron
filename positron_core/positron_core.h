@@ -821,7 +821,8 @@ typedef struct PCoreFormValidationInfo {
  * plus a conservative scheme/relative/network-path type-mismatch check for
  * input type=url; this is not a complete URL Standard parser,
  * and input type=range applies the default 0..100 range and midpoint value
- * when min/max/value are absent;
+ * when min/max/value are absent; the midpoint is exposed through the text
+ * control bridge as well as successful-control submission;
  * input type=date uses a bounded YYYY-MM-DD calendar parser for type/min/max/
  * step checks; a valid value supplies the step base when min is absent. This
  * is not a native date picker or the complete date-time specification.

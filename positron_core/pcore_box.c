@@ -74,6 +74,8 @@ static struct box *pcore_hit(struct box *box, int px, int py);
 static struct box *pcore_box_for_node(struct box *box, dom_node *node);
 static int pcore_utf8_character_count(const char *text,
         unsigned int *out_count);
+static int pcore_range_default_value(dom_node *node, char *buffer,
+        size_t capacity);
 static int pcore_range_fill_default(dom_node *node, dom_string **value_out);
 
 /* Referenced (extern) by content/handlers/css/utils.h; the device DPI in fixed
@@ -1071,6 +1073,25 @@ static struct box *pcore_make_form_control_box(dom_node *node,
         if (gadget->value == NULL) {
             talloc_free(box);
             return NULL;
+        }
+        if (pcore_attr_value_is(node, "type", "range") &&
+                gadget->value[0] == '\0') {
+            char default_value[64];
+            char *default_copy;
+
+            default_copy = NULL;
+            if (!pcore_range_default_value(node, default_value,
+                    sizeof(default_value))) {
+                talloc_free(box);
+                return NULL;
+            }
+            default_copy = talloc_strdup(gadget, default_value);
+            if (default_copy == NULL) {
+                talloc_free(box);
+                return NULL;
+            }
+            talloc_free(gadget->value);
+            gadget->value = default_copy;
         }
         gadget->length = (unsigned int) strlen(gadget->value);
         gadget->initial_value = talloc_strdup(gadget, gadget->value);

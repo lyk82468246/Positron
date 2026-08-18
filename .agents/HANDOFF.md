@@ -9,7 +9,9 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next293（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next294（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
+  successful-control submission；没有新增 native slider 视觉/触摸声明。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
 - next292 批次验证 custom validity 状态跨 `PCore_LayoutDocument` 重排保持；没有新增视觉/触摸
@@ -154,6 +156,11 @@
   统一两条提交路径后的权威重跑位于 tmp/device-runs/20260819-021754-next293/：
   TEST233-260/999 29/29，零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。
   TEST232 仍保持人工待验收。
+- next294 初次定向门 `tmp/device-runs/20260819-022428-next294/` 和诊断重跑
+  `tmp/device-runs/20260819-022559-next294/` 暴露了默认 range 值只误放在 textarea 分支的实现错误；
+  修正分支后权威证据位于 tmp/device-runs/20260819-022946-next294/：
+  TEST233-261/999 30/30，零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。
+  TEST232 仍保持人工待验收。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -190,15 +197,16 @@
 
 ## 最近已验证设备证据
 
-### 最新定向检查点：next293
+### 最新定向检查点：next294
 
-- 配置：TEST233-260/999 定向 29 项。
+- 配置：TEST233-261/999 定向 30 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，screen=640x480 dpi=192。
 - 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
   Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
-- 结果：29 项均有 OK；零 ERROR、零 FAIL，唯一 TESTBENCH PASS，completion_marker=PASS，
+- 结果：30 项均有 OK；零 ERROR、零 FAIL，唯一 TESTBENCH PASS，completion_marker=PASS，
   test13_route_ok=True。
-- TEST260 覆盖 range 缺省 value 的默认 0..100 中点 50、显式值覆盖和成功 submission；
+- TEST261 覆盖有效 min=10/max=40 时 range 缺省中点 25 的 core 读回、验证、submission 和显式值 35
+  覆盖；TEST260 覆盖 range 缺省 value 的默认 0..100 中点 50、显式值覆盖和成功 submission；
   TEST259 覆盖 custom validity 跨 re-layout 的状态保持、清空消息和恢复 submission；
   TEST258 覆盖 textarea custom validity getter 的 UTF-8 完整长度、安全截断和清空读回；
   TEST257 覆盖 text/password custom validity getter 的 UTF-8 完整长度、安全截断和清空读回；
@@ -211,7 +219,7 @@
   TEST233-249 的
   number/range/email/url/date/time/month/week/datetime-local/color/custom validity 回归同批通过。
 - 自动证据：python scripts/test_c89ize.py、python scripts/audit_repo.py、VS2008 ARMV4I
-  Debug 正式构建均通过。证据位于 tmp/device-runs/20260819-021754-next293/；本批未重复
+  Debug 正式构建均通过。证据位于 tmp/device-runs/20260819-022946-next294/；本批未重复
   next255 的 170 项全量门。
 
 ### 已验证检查点：next282
@@ -1773,13 +1781,13 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-在 next293 基线之上继续推进一个不需要人工操作的 form/input 纵向能力；当前优先候选是
-验证有效显式 min/max 下 range 缺省 value 的中点语义。next265 的 TEST232 真实 WM6
+next275-next294 的自动 form/input 批次已连续完成；下一步先由用户人工复核 TEST232 真实
+WM6 picker 及既有视觉/SIP 包，再决定是否开启新的代码纵向能力。next265 的 TEST232
 picker 仍登记为人工待验收，不能用自动测试替代，也不能把 picker 迁入产品 DLL。
 
 完成标准：
 
-- TEST233-260/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
+- TEST233-261/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
   的两组自动证据为依据，只有累计达到检查点或出现风险时再跑全量；
 - 后续 step 能力必须有 valid/mismatch 负例、动态值更新和 submission 阻断/恢复的自动断言，并通过
   定向设备门；TEST232 人工包仍需稍后确认真实 WM6 picker 的选择/取消/窗口

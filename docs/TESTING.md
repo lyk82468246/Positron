@@ -128,6 +128,8 @@ scripts\device_gate.bat -Candidate next292 ^
   -TestSelection "233-259,999"
 scripts\device_gate.bat -Candidate next293 ^
   -TestSelection "233-260,999"
+scripts\device_gate.bat -Candidate next294 ^
+  -TestSelection "233-261,999"
 ```
 
 next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；上一批 next263 的最终定向门
@@ -182,6 +184,7 @@ next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；�
 | 258 | textarea custom validity getter 返回完整 UTF-8 字节长度，并在小缓冲区安全截断。 |
 | 259 | custom validity 在 `PCore_LayoutDocument` 重排后仍阻止验证；清空后恢复提交。 |
 | 260 | range 缺少 value 时以默认 0..100 中点 50 提交；设置显式值后使用显式值。 |
+| 261 | range 的有效显式 min/max 缺省中点 25 通过 text-control bridge 读回并提交；显式值 35 覆盖。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
@@ -244,6 +247,8 @@ TEST259 是自动的 custom validity 生命周期门，覆盖设置消息、文�
 清空消息后成功提交；不需要人工页面观察，也不代表完整 DOM 生命周期。
 TEST260 是自动的 range 默认值门，覆盖缺少 value 时默认范围中点 50 的成功控件提交，以及
 显式 value 覆盖默认值；不需要人工页面观察，也不替代 native slider 视觉/触摸验收。
+TEST261 是自动的 range bridge 默认值门，覆盖有效 min=10/max=40 时中点 25 的 core 读回、验证和
+提交，以及显式值 35 的动态覆盖；不需要人工页面观察，也不替代 native slider 视觉/触摸验收。
 TEST246 是自动的 month step 门，覆盖 min 作为步长基准、默认 step=1 月、step=any、非法/非正
 step 回退和动态恢复，不需要人工页面观察；它不替代 native month picker 的视觉/触摸验收。
 TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read callback adapter，TEST205

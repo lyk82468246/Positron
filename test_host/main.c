@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 260
+#define TEST_MAX_NUMBER 261
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -44364,6 +44364,70 @@ static BOOL test260_form_range_default_value(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 261 - range explicit-bound midpoint is exposed by core bridge      */
+/* -------------------------------------------------------------------- */
+static BOOL test261_form_range_explicit_default_value(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/range-explicit-default method=get>"
+        "<input type=range name=level min=10 max=40>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreTextInputInfo text_info;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char value[32];
+    char action[64];
+    char body[256];
+    char diagnostic[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&text_info, 0, sizeof(text_info));
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    memset(value, 0, sizeof(value));
+    memset(action, 0, sizeof(action));
+    memset(body, 0, sizeof(body));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            PCore_TextInputInfo(document, 0, &text_info,
+                    value, sizeof(value)) != 0 ||
+            strcmp(value, "25") != 0 || text_info.value_bytes != 2 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(body, "level=25&go=send") != 0 ||
+            PCore_TextInputSetValue(document, 0, "35") != 0 ||
+            PCore_TextInputInfo(document, 0, NULL,
+                    value, sizeof(value)) != 0 ||
+            strcmp(value, "35") != 0 ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/range-explicit-default") != 0 ||
+            strcmp(body, "level=35&go=send") != 0) {
+        _snprintf(diagnostic, sizeof(diagnostic) - 1,
+                "range explicit-bound midpoint failed: value=%s action=%s body=%s",
+                value, action, body);
+        diagnostic[sizeof(diagnostic) - 1] = '\0';
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 261 FAIL", diagnostic);
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 261 OK",
+            "range midpoint 25 was exposed and explicit value 35 overrode it.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -48659,6 +48723,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 260: ok =
                 test260_form_range_default_value();
+                break;
+        case 261: ok =
+                test261_form_range_explicit_default_value();
                 break;
         default: ok = FALSE; break;
         }
