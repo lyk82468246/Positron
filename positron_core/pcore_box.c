@@ -7044,6 +7044,229 @@ static int pcore_datetime_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+typedef struct pcore_custom_validity_entry pcore_custom_validity_entry;
+
+struct pcore_custom_validity_entry {
+    pcore_custom_validity_entry *next;
+    dom_node *node;
+    char *message;
+};
+
+typedef struct pcore_custom_validity_state {
+    pcore_custom_validity_entry *head;
+} pcore_custom_validity_state;
+
+static dom_string *pcore_custom_validity_key = NULL;
+
+static int pcore_ensure_custom_validity_key(void)
+{
+    static const char KEY[] = "__pcore_custom_validity__";
+
+    if (pcore_custom_validity_key != NULL) {
+        return 0;
+    }
+    if (dom_string_create((const uint8_t *) KEY, sizeof(KEY) - 1,
+            &pcore_custom_validity_key) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_custom_validity_entry_free(
+        pcore_custom_validity_entry *entry)
+{
+    if (entry == NULL) {
+        return;
+    }
+    if (entry->node != NULL) {
+        dom_node_unref(entry->node);
+    }
+    free(entry->message);
+    free(entry);
+}
+
+static void pcore_custom_validity_state_free(
+        pcore_custom_validity_state *state)
+{
+    pcore_custom_validity_entry *entry;
+    pcore_custom_validity_entry *next;
+
+    if (state == NULL) {
+        return;
+    }
+    entry = state->head;
+    while (entry != NULL) {
+        next = entry->next;
+        pcore_custom_validity_entry_free(entry);
+        entry = next;
+    }
+    free(state);
+}
+
+static void pcore_custom_validity_ud_handler(dom_node_operation op,
+        dom_string *key, void *data, struct dom_node *src,
+        struct dom_node *dst)
+{
+    (void) key;
+    (void) src;
+    (void) dst;
+    if (op == DOM_NODE_DELETED && data != NULL) {
+        pcore_custom_validity_state_free(
+                (pcore_custom_validity_state *) data);
+    }
+}
+
+static pcore_custom_validity_state *pcore_custom_validity_state_get(
+        dom_document *doc, int create)
+{
+    pcore_custom_validity_state *state;
+    void *data;
+    void *old;
+
+    if (doc == NULL || pcore_ensure_custom_validity_key() != 0) {
+        return NULL;
+    }
+    data = NULL;
+    if (dom_node_get_user_data((dom_node *) doc,
+            pcore_custom_validity_key, &data) != DOM_NO_ERR) {
+        return NULL;
+    }
+    if (data != NULL || !create) {
+        return (pcore_custom_validity_state *) data;
+    }
+    state = (pcore_custom_validity_state *) calloc(1, sizeof(*state));
+    if (state == NULL) {
+        return NULL;
+    }
+    old = NULL;
+    if (dom_node_set_user_data((dom_node *) doc,
+            pcore_custom_validity_key, state,
+            pcore_custom_validity_ud_handler, &old) != DOM_NO_ERR) {
+        free(state);
+        return NULL;
+    }
+    if (old != NULL && old != state) {
+        pcore_custom_validity_state_free(
+                (pcore_custom_validity_state *) old);
+    }
+    return state;
+}
+
+static pcore_custom_validity_entry *pcore_custom_validity_find(
+        pcore_custom_validity_state *state, dom_node *node,
+        pcore_custom_validity_entry **previous_out)
+{
+    pcore_custom_validity_entry *entry;
+    pcore_custom_validity_entry *previous;
+
+    previous = NULL;
+    if (previous_out != NULL) {
+        *previous_out = NULL;
+    }
+    if (state == NULL || node == NULL) {
+        return NULL;
+    }
+    entry = state->head;
+    while (entry != NULL) {
+        if (entry->node == node) {
+            if (previous_out != NULL) {
+                *previous_out = previous;
+            }
+            return entry;
+        }
+        previous = entry;
+        entry = entry->next;
+    }
+    return NULL;
+}
+
+static int pcore_custom_validity_has_error(dom_node *node)
+{
+    dom_document *doc;
+    pcore_custom_validity_state *state;
+    pcore_custom_validity_entry *entry;
+
+    doc = NULL;
+    if (node == NULL || dom_node_get_owner_document(node, &doc) !=
+            DOM_NO_ERR || doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
+        }
+        return 0;
+    }
+    state = pcore_custom_validity_state_get(doc, 0);
+    entry = pcore_custom_validity_find(state, node, NULL);
+    dom_node_unref((dom_node *) doc);
+    return entry != NULL && entry->message != NULL &&
+            entry->message[0] != '\0';
+}
+
+static char *pcore_custom_validity_copy(const char *message)
+{
+    size_t length;
+    char *copy;
+
+    if (message == NULL) {
+        message = "";
+    }
+    length = strlen(message);
+    copy = (char *) malloc(length + 1);
+    if (copy != NULL) {
+        memcpy(copy, message, length);
+        copy[length] = '\0';
+    }
+    return copy;
+}
+
+static int pcore_custom_validity_set(dom_document *doc, dom_node *node,
+        const char *message)
+{
+    pcore_custom_validity_state *state;
+    pcore_custom_validity_entry *entry;
+    pcore_custom_validity_entry *previous;
+    char *copy;
+
+    if (doc == NULL || node == NULL) {
+        return -1;
+    }
+    state = pcore_custom_validity_state_get(doc, 1);
+    if (state == NULL) {
+        return -1;
+    }
+    if (message == NULL || message[0] == '\0') {
+        entry = pcore_custom_validity_find(state, node, &previous);
+        if (entry != NULL) {
+            if (previous != NULL) {
+                previous->next = entry->next;
+            } else {
+                state->head = entry->next;
+            }
+            pcore_custom_validity_entry_free(entry);
+        }
+        return 0;
+    }
+    copy = pcore_custom_validity_copy(message);
+    if (copy == NULL) {
+        return -1;
+    }
+    entry = pcore_custom_validity_find(state, node, NULL);
+    if (entry != NULL) {
+        free(entry->message);
+        entry->message = copy;
+        return 0;
+    }
+    entry = (pcore_custom_validity_entry *) calloc(1, sizeof(*entry));
+    if (entry == NULL) {
+        free(copy);
+        return -1;
+    }
+    entry->node = dom_node_ref(node);
+    entry->message = copy;
+    entry->next = state->head;
+    state->head = entry;
+    return 0;
+}
+
 static int pcore_hex_digit(unsigned char c)
 {
     return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') ||
@@ -7426,6 +7649,9 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     }
                     *flags_out |= email_flags;
                 }
+                if (pcore_custom_validity_has_error(node)) {
+                    *flags_out |= PCORE_VALIDITY_CUSTOM_ERROR;
+                }
             }
             if (value != NULL) {
                 dom_string_unref(value);
@@ -7680,6 +7906,28 @@ PCORE_API int PCore_FormValidationForTextInput(HANDLE hDoc,
     result = pcore_form_validate_default(st, form, out_info);
     dom_node_unref((dom_node *) form);
     return result;
+}
+
+PCORE_API int PCore_FormSetCustomValidityForTextInput(HANDLE hDoc,
+        unsigned int text_index, const char *message)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_control *control;
+    unsigned int current;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_text_input_at(st->root_box, text_index, &current) : NULL;
+    control = (box != NULL) ? box->gadget : NULL;
+    if (control == NULL || control->node == NULL ||
+            (control->type != GADGET_TEXTBOX &&
+             control->type != GADGET_PASSWORD)) {
+        return -1;
+    }
+    return pcore_custom_validity_set((dom_document *) hDoc,
+            control->node, message);
 }
 
 typedef struct pcore_multipart_part {

@@ -801,6 +801,7 @@ typedef struct PCoreFormSubmissionInfo {
 #define PCORE_VALIDITY_RANGE_OVERFLOW 0x0040u
 #define PCORE_VALIDITY_STEP_MISMATCH 0x0080u
 #define PCORE_VALIDITY_TYPE_MISMATCH 0x0100u
+#define PCORE_VALIDITY_CUSTOM_ERROR 0x0200u
 typedef struct PCoreFormValidationInfo {
     int valid;
     int invalid_count;
@@ -830,7 +831,8 @@ typedef struct PCoreFormValidationInfo {
  * type/min/max/step checks; no picker is owned by this DLL.
  * input type=color uses bounded #RRGGBB syntax for type checks; no picker is
  * owned by this DLL.
- * checkbox, radio groups and select controls, including disabled/read-only
+ * application-owned custom validity on text/password controls, plus checkbox,
+ * radio groups and select controls, including disabled/read-only
  * and no-validate bypasses. Unsupported or malformed constraint attributes
  * are ignored conservatively; pattern support is the documented ASCII subset
  * in pcore_pattern.c.
@@ -841,6 +843,15 @@ PCORE_API int PCore_FormValidationAt(HANDLE hDoc, int x, int y,
 PCORE_API int PCore_FormValidationForTextInput(HANDLE hDoc,
                                     unsigned int text_index,
                                     PCoreFormValidationInfo *out_info);
+
+/* Set or clear an application-owned custom validity message on an EDIT or
+ * password control selected by text-input order. The message is UTF-8 and is
+ * copied by the DLL; NULL or an empty string clears the custom error. Returns
+ * 0 on success and -1 when the document/control cannot be resolved or memory
+ * allocation fails. */
+PCORE_API int PCore_FormSetCustomValidityForTextInput(HANDLE hDoc,
+                                    unsigned int text_index,
+                                    const char *message);
 
 /* Build the application/x-www-form-urlencoded successful-control set for a
  * submit button at a document-space point. method is 1 for GET, 2 for an

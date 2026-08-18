@@ -9,7 +9,10 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next281（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next282（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- next282 批次把 text/password controls 的 product custom validity setter/clear 和
+  `PCORE_VALIDITY_CUSTOM_ERROR` 接入 positron_core.dll；没有宣称完整 DOM `setCustomValidity()`
+  或 native invalid UI。
 - next281 批次把 input type=datetime-local 的 min-based step（秒）和 default/any/fallback
   核心校验接入 positron_core.dll；没有新增 native datetime picker 或视觉/触摸声明。
 - next280 批次把 input type=week 的 min-based step（周）和 default/any/fallback 核心校验
@@ -100,6 +103,8 @@
   零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。TEST232 仍保持人工待验收。
 - next281 定向证据位于 tmp/device-runs/20260819-011517-next281/：TEST233-248/999 17/17，
   零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。TEST232 仍保持人工待验收。
+- next282 定向证据位于 tmp/device-runs/20260819-012218-next282/：TEST233-249/999 18/18，
+  零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。TEST232 仍保持人工待验收。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -136,7 +141,21 @@
 
 ## 最近已验证设备证据
 
-### 最新定向检查点：next281
+### 最新定向检查点：next282
+
+- 配置：TEST233-249/999 定向 18 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，screen=640x480 dpi=192。
+- 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
+  Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
+- 结果：18 项均有 OK；零 ERROR、零 FAIL，唯一 TESTBENCH PASS，completion_marker=PASS，
+  test13_route_ok=True。
+- TEST249 覆盖 product text-input custom validity setter、customError 阻断、清空和 submission；
+  TEST233-248 的 number/range/email/url/date/time/month/week/datetime-local/color 回归同批通过。
+- 自动证据：python scripts/test_c89ize.py、python scripts/audit_repo.py、VS2008 ARMV4I
+  Debug 正式构建均通过。证据位于 tmp/device-runs/20260819-012218-next282/；本批未重复
+  next255 的 170 项全量门。
+
+### 已验证检查点：next281
 
 - 配置：TEST233-248/999 定向 17 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，screen=640x480 dpi=192。
@@ -1681,13 +1700,13 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-在 next281 基线之上继续推进一个不需要人工操作的 form/input 纵向能力；当前优先候选是
-form custom validity 的最小产品层语义。next265 的 TEST232 真实 WM6
+在 next282 基线之上继续推进一个不需要人工操作的 form/input 纵向能力；当前优先候选是
+custom validity 的 point-target setter 和非文本控件覆盖。next265 的 TEST232 真实 WM6
 picker 仍登记为人工待验收，不能用自动测试替代，也不能把 picker 迁入产品 DLL。
 
 完成标准：
 
-- TEST233-248/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
+- TEST233-249/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
   的两组自动证据为依据，只有累计达到检查点或出现风险时再跑全量；
 - 后续 step 能力必须有 valid/mismatch 负例、动态值更新和 submission 阻断/恢复的自动断言，并通过
   定向设备门；TEST232 人工包仍需稍后确认真实 WM6 picker 的选择/取消/窗口
