@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 240
+#define TEST_MAX_NUMBER 241
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -43233,6 +43233,68 @@ static BOOL test240_form_month_constraints(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 241 - bounded ISO week syntax and min/max validation               */
+/* -------------------------------------------------------------------- */
+static BOOL test241_form_week_constraints(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/week method=get>"
+        "<input type=week name=week value=2024-W01 "
+        "min=2024-W01 max=2024-W52>"
+        "<input type=week value=2024-W20>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "2023-W52") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_RANGE_UNDERFLOW ||
+            PCore_TextInputSetValue(document, 0, "2024-W00") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "2024-W53") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "2024-W26") != 0 ||
+            PCore_TextInputSetValue(document, 1, "2024-W27") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/week") != 0 ||
+            strcmp(body, "week=2024-W26&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 241 FAIL",
+                "week syntax or ISO min/max validation failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 241 OK",
+            "week controls enforced bounded ISO week syntax, week-53 rules "
+            "and inclusive min/max boundaries before submission.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -47468,6 +47530,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 240: ok =
                 test240_form_month_constraints();
+                break;
+        case 241: ok =
+                test241_form_week_constraints();
                 break;
         default: ok = FALSE; break;
         }

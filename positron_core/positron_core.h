@@ -825,6 +825,7 @@ typedef struct PCoreFormValidationInfo {
  * input type=time uses bounded HH:MM/seconds/fraction syntax for type/min/max
  * checks, not a native time picker or the complete time specification.
  * input type=month uses bounded YYYY-MM syntax for type/min/max checks.
+ * input type=week uses bounded ISO YYYY-Www syntax for type/min/max checks.
  * checkbox, radio groups and select controls, including disabled/read-only
  * and no-validate bypasses. Unsupported or malformed constraint attributes
  * are ignored conservatively; pattern support is the documented ASCII subset

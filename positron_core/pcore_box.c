@@ -6628,6 +6628,127 @@ static int pcore_month_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_iso_leap_year(int year)
+{
+    return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+}
+
+static int pcore_iso_weeks_in_year(int year)
+{
+    int previous;
+    int january_weekday;
+
+    previous = year - 1;
+    january_weekday = (previous + previous / 4 - previous / 100 +
+            previous / 400 + 1) % 7;
+    return (january_weekday == 4 ||
+            (january_weekday == 3 && pcore_iso_leap_year(year))) ? 53 : 52;
+}
+
+static int pcore_dom_week(dom_string *value, int *year_out, int *week_out)
+{
+    const char *data;
+    size_t index;
+    size_t length;
+    int year;
+    int week;
+
+    if (value == NULL || year_out == NULL || week_out == NULL) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (length != 8 || data[4] != '-' || data[5] != 'W') {
+        return 0;
+    }
+    year = 0;
+    for (index = 0; index < 4; index++) {
+        if (data[index] < '0' || data[index] > '9') {
+            return 0;
+        }
+        year = year * 10 + (int) (data[index] - '0');
+    }
+    if (data[6] < '0' || data[6] > '9' || data[7] < '0' ||
+            data[7] > '9') {
+        return 0;
+    }
+    week = (int) (data[6] - '0') * 10 + (int) (data[7] - '0');
+    if (year == 0 || week < 1 || week > pcore_iso_weeks_in_year(year)) {
+        return 0;
+    }
+    *year_out = year;
+    *week_out = week;
+    return 1;
+}
+
+static int pcore_node_attr_week(dom_node *node, const char *attr,
+        int *year_out, int *week_out)
+{
+    dom_string *name;
+    dom_string *value;
+    int result;
+
+    name = NULL;
+    value = NULL;
+    result = 0;
+    if (node == NULL || attr == NULL ||
+            dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+                    DOM_NO_ERR || name == NULL) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) == DOM_NO_ERR &&
+            value != NULL) {
+        result = pcore_dom_week(value, year_out, week_out);
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return result;
+}
+
+static int pcore_week_compare(int year, int week, int other_year,
+        int other_week)
+{
+    if (year != other_year) {
+        return (year < other_year) ? -1 : 1;
+    }
+    if (week != other_week) {
+        return (week < other_week) ? -1 : 1;
+    }
+    return 0;
+}
+
+static int pcore_week_constraint_flags(dom_node *node, dom_string *value,
+        unsigned int *flags_out)
+{
+    int year;
+    int week;
+    int minimum_year;
+    int minimum_week;
+    int maximum_year;
+    int maximum_week;
+
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    if (!pcore_dom_week(value, &year, &week)) {
+        *flags_out = PCORE_VALIDITY_TYPE_MISMATCH;
+        return 1;
+    }
+    if (pcore_node_attr_week(node, "min", &minimum_year, &minimum_week) &&
+            pcore_week_compare(year, week, minimum_year, minimum_week) < 0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_UNDERFLOW;
+    }
+    if (pcore_node_attr_week(node, "max", &maximum_year, &maximum_week) &&
+            pcore_week_compare(year, week, maximum_year, maximum_week) > 0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    return 1;
+}
+
 static int pcore_email_local_char(unsigned char c)
 {
     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
@@ -6897,7 +7018,14 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     dom_string_byte_length(value) == 0)) {
                 *flags_out = PCORE_VALIDITY_VALUE_MISSING;
             } else {
-                if (pcore_attr_value_is(node, "type", "month")) {
+                if (pcore_attr_value_is(node, "type", "week")) {
+                    if (!pcore_week_constraint_flags(node, value, flags_out)) {
+                        if (value != NULL) {
+                            dom_string_unref(value);
+                        }
+                        return 0;
+                    }
+                } else if (pcore_attr_value_is(node, "type", "month")) {
                     if (!pcore_month_constraint_flags(node, value, flags_out)) {
                         if (value != NULL) {
                             dom_string_unref(value);
