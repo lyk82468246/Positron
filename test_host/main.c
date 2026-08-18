@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 222
+#define TEST_MAX_NUMBER 223
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3088,6 +3088,8 @@ static int pcore_browser_script_form_event_dispatch(void *pw,
 static int pcore_browser_script_invalid_dispatch(void *pw,
         const PBrowserScriptInvalidEventInfo *info,
         int *out_default_allowed);
+static int pcore_browser_script_dispatch_file_event_at(int x, int y,
+        const char *event_type);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data,
         int is_composing);
@@ -8270,6 +8272,80 @@ static int pcore_browser_script_dispatch_invalid_event_at(int x, int y)
     return default_allowed ? 1 : 0;
 }
 
+/* File controls use the existing typed input/select contracts. The input
+ * event carries the file-specific InputEvent metadata; change reuses the
+ * non-cancelable select-style event contract. The picker and core file value
+ * are already committed before these notifications, so adapter failures or
+ * cancellation never roll back the selected path. */
+static int pcore_browser_script_dispatch_file_event_at(int x, int y,
+        const char *event_type)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptInputEventInfo input_info;
+    PBrowserScriptSelectEventInfo select_info;
+    PCoreInputEventDataEx input_data;
+    int default_allowed;
+    int rc;
+
+    if (g_render_doc == NULL || event_type == NULL) {
+        return -1;
+    }
+    bridge = g_browser_script_session.bridge;
+    if (strcmp(event_type, "input") == 0) {
+        memset(&input_info, 0, sizeof(input_info));
+        input_info.size = sizeof(input_info);
+        input_info.x = x;
+        input_info.y = y;
+        input_info.event_type = "input";
+        input_info.bubbles = 1;
+        input_info.cancelable = 0;
+        input_info.input_type = "insertFromFile";
+        input_info.data = "";
+        input_info.is_composing = 0;
+        default_allowed = 1;
+        if (g_browser_script_session.document == g_render_doc &&
+                g_browser_script_session.runtime != NULL &&
+                bridge != NULL && bridge->session != NULL) {
+            rc = PBrowser_ScriptSessionDispatchInputEvent(
+                    bridge->session, &input_info, &default_allowed);
+            if (rc != PSCRIPT_OK) {
+                return -1;
+            }
+            return default_allowed ? 1 : 0;
+        }
+        memset(&input_data, 0, sizeof(input_data));
+        input_data.struct_size = sizeof(input_data);
+        input_data.input_type = input_info.input_type;
+        input_data.data = input_info.data;
+        input_data.is_composing = 0;
+        rc = PCore_EventDispatchInputExAt(g_render_doc, x, y, "input",
+                1, 0, &input_data, &default_allowed);
+        if (rc < 0) {
+            return -1;
+        }
+        return default_allowed ? 1 : 0;
+    }
+    if (strcmp(event_type, "change") != 0) {
+        return -1;
+    }
+    memset(&select_info, 0, sizeof(select_info));
+    select_info.size = sizeof(select_info);
+    select_info.x = x;
+    select_info.y = y;
+    select_info.event_type = "change";
+    select_info.bubbles = 1;
+    select_info.cancelable = 0;
+    if (g_browser_script_session.document == g_render_doc &&
+            g_browser_script_session.runtime != NULL &&
+            bridge != NULL && bridge->session != NULL) {
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(
+                bridge->session, &select_info);
+        return rc == PSCRIPT_OK ? 1 : -1;
+    }
+    rc = PCore_EventDispatchAt(g_render_doc, x, y, "change", 1, 0, NULL);
+    return rc < 0 ? -1 : 1;
+}
+
 static int pcore_handle_form_button(HWND hwnd, int x, int y)
 {
     PCoreFormSubmissionInfo info;
@@ -8598,6 +8674,10 @@ static int pcore_handle_file_input(HWND hwnd, int x, int y)
     }
     free(path_utf8);
     free(title_utf8);
+    (void) pcore_browser_script_dispatch_file_event_at(
+            info.x + info.width / 2, info.y + info.height / 2, "input");
+    (void) pcore_browser_script_dispatch_file_event_at(
+            info.x + info.width / 2, info.y + info.height / 2, "change");
     dirty.left = info.x;
     dirty.top = info.y - g_scroll_y;
     dirty.right = info.x + info.width;
@@ -39553,6 +39633,296 @@ static BOOL test222_browser_invalid_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 223 - product file-input event callback reuse                    */
+/* -------------------------------------------------------------------- */
+typedef struct test223_file_event_state {
+    int input_calls;
+    int change_calls;
+    int return_input;
+    int return_change;
+    int input_default_allowed;
+    int order[8];
+    int order_count;
+    int input_x;
+    int input_y;
+    int input_bubbles;
+    int input_cancelable;
+    int input_is_composing;
+    int change_x;
+    int change_y;
+    int change_bubbles;
+    int change_cancelable;
+    char input_event_type[64];
+    char input_type[64];
+    char data[64];
+    char change_event_type[64];
+} test223_file_event_state;
+
+static int test223_file_input_dispatch(void *pw,
+        const PBrowserScriptInputEventInfo *info,
+        int *out_default_allowed)
+{
+    test223_file_event_state *state;
+    size_t event_length;
+    size_t input_length;
+    size_t data_length;
+
+    state = (test223_file_event_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptInputEventInfo) ||
+            info->event_type == NULL || info->input_type == NULL ||
+            info->data == NULL) {
+        return -1;
+    }
+    event_length = strlen(info->event_type);
+    input_length = strlen(info->input_type);
+    data_length = strlen(info->data);
+    if (event_length >= sizeof(state->input_event_type) ||
+            input_length >= sizeof(state->input_type) ||
+            data_length >= sizeof(state->data) ||
+            state->order_count >= (int) (sizeof(state->order) /
+                    sizeof(state->order[0]))) {
+        return -1;
+    }
+    state->input_calls++;
+    state->order[state->order_count++] = 1;
+    state->input_x = info->x;
+    state->input_y = info->y;
+    state->input_bubbles = info->bubbles;
+    state->input_cancelable = info->cancelable;
+    state->input_is_composing = info->is_composing;
+    memcpy(state->input_event_type, info->event_type, event_length + 1);
+    memcpy(state->input_type, info->input_type, input_length + 1);
+    memcpy(state->data, info->data, data_length + 1);
+    *out_default_allowed = state->input_default_allowed ? 1 : 0;
+    return state->return_input < 0 ? state->return_input : 0;
+}
+
+static int test223_file_change_dispatch(void *pw,
+        const PBrowserScriptSelectEventInfo *info)
+{
+    test223_file_event_state *state;
+    size_t event_length;
+
+    state = (test223_file_event_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptSelectEventInfo) ||
+            info->event_type == NULL ||
+            state->order_count >= (int) (sizeof(state->order) /
+                    sizeof(state->order[0]))) {
+        return -1;
+    }
+    event_length = strlen(info->event_type);
+    if (event_length >= sizeof(state->change_event_type)) {
+        return -1;
+    }
+    state->change_calls++;
+    state->order[state->order_count++] = 2;
+    state->change_x = info->x;
+    state->change_y = info->y;
+    state->change_bubbles = info->bubbles;
+    state->change_cancelable = info->cancelable;
+    memcpy(state->change_event_type, info->event_type, event_length + 1);
+    return state->return_change < 0 ? state->return_change : 0;
+}
+
+static BOOL test223_browser_file_input_callbacks(void)
+{
+    PBrowserScriptInputCallbacks input_callbacks;
+    PBrowserScriptSelectCallbacks change_callbacks;
+    PBrowserScriptInputEventInfo input_info;
+    PBrowserScriptSelectEventInfo change_info;
+    test223_file_event_state state;
+    HANDLE session;
+    const char *error_result;
+    const char *stage;
+    char error[256];
+    int default_allowed;
+    int rc;
+    int ok;
+
+    memset(&input_callbacks, 0, sizeof(input_callbacks));
+    memset(&change_callbacks, 0, sizeof(change_callbacks));
+    memset(&input_info, 0, sizeof(input_info));
+    memset(&change_info, 0, sizeof(change_info));
+    memset(&state, 0, sizeof(state));
+    input_callbacks.size = sizeof(input_callbacks);
+    input_callbacks.pw = &state;
+    input_callbacks.dispatch_input = test223_file_input_dispatch;
+    change_callbacks.size = sizeof(change_callbacks);
+    change_callbacks.pw = &state;
+    change_callbacks.dispatch_select = test223_file_change_dispatch;
+    input_info.size = sizeof(input_info);
+    input_info.x = 301;
+    input_info.y = 302;
+    input_info.event_type = "input";
+    input_info.bubbles = 1;
+    input_info.cancelable = 0;
+    input_info.input_type = "insertFromFile";
+    input_info.data = "";
+    input_info.is_composing = 0;
+    change_info.size = sizeof(change_info);
+    change_info.x = 301;
+    change_info.y = 302;
+    change_info.event_type = "change";
+    change_info.bubbles = 1;
+    change_info.cancelable = 0;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    error_result = NULL;
+    stage = "create";
+    rc = PSCRIPT_OK;
+    memset(error, 0, sizeof(error));
+    default_allowed = 1;
+    state.input_default_allowed = 1;
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-input-register";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(NULL,
+                &input_callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "null-change-register";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(NULL,
+                &change_callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "input-register";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(session,
+                &input_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "change-register";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(session,
+                &change_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-input-register";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(session,
+                &input_callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "duplicate-change-register";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(session,
+                &change_callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "dispatch-input";
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &input_info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                state.input_calls == 1 && state.change_calls == 0 &&
+                state.order_count == 1 && state.order[0] == 1 &&
+                state.input_x == 301 && state.input_y == 302 &&
+                state.input_bubbles == 1 && state.input_cancelable == 0 &&
+                state.input_is_composing == 0 &&
+                strcmp(state.input_event_type, "input") == 0 &&
+                strcmp(state.input_type, "insertFromFile") == 0 &&
+                state.data[0] == '\0';
+    }
+    if (ok) {
+        stage = "dispatch-change";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &change_info);
+        ok = rc == PSCRIPT_OK && state.input_calls == 1 &&
+                state.change_calls == 1 && state.order_count == 2 &&
+                state.order[1] == 2 && state.change_x == 301 &&
+                state.change_y == 302 && state.change_bubbles == 1 &&
+                state.change_cancelable == 0 &&
+                strcmp(state.change_event_type, "change") == 0;
+    }
+    if (ok) {
+        stage = "dispatch-input-cancel";
+        state.input_default_allowed = 0;
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &input_info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                state.input_calls == 2 && state.order_count == 3 &&
+                state.order[2] == 1;
+        state.input_default_allowed = 1;
+    }
+    if (ok) {
+        stage = "dispatch-input-error";
+        state.return_input = -1;
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &input_info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_NATIVE && default_allowed == 1 &&
+                state.input_calls == 3 && state.order_count == 4 &&
+                state.order[3] == 1;
+        state.return_input = 0;
+    }
+    if (ok) {
+        stage = "dispatch-change-error";
+        state.return_change = -1;
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &change_info);
+        ok = rc == PSCRIPT_ERROR_NATIVE && state.change_calls == 2 &&
+                state.order_count == 5 && state.order[4] == 2;
+        state.return_change = 0;
+    }
+    if (ok) {
+        stage = "invalid-input-event";
+        input_info.event_type = "input event";
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &input_info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.input_calls == 3;
+        input_info.event_type = "input";
+    }
+    if (ok) {
+        stage = "invalid-change-event";
+        change_info.event_type = "change event";
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(session, &change_info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.change_calls == 2;
+        change_info.event_type = "change";
+    }
+    if (ok) {
+        stage = "unregister-input";
+        ok = PBrowser_ScriptSessionUnregisterInputCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister-change";
+        ok = PBrowser_ScriptSessionUnregisterSelectCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "dispatch-after-unregister";
+        rc = PBrowser_ScriptSessionDispatchInputEvent(session, &input_info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT &&
+                PBrowser_ScriptSessionDispatchSelectEvent(session,
+                &change_info) == PSCRIPT_ERROR_ARGUMENT &&
+                state.input_calls == 3 && state.change_calls == 2;
+    }
+    if (ok) {
+        stage = "unregister-count";
+        ok = PBrowser_ScriptSessionNativeFunctionCount(session) == 0 &&
+                PBrowser_ScriptSessionUnregisterInputCallbacks(session) ==
+                PSCRIPT_OK &&
+                PBrowser_ScriptSessionUnregisterSelectCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (!ok && session != NULL) {
+        error_result = PBrowser_ScriptSessionGetError(session);
+        if (error_result != NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d input=%d change=%d order=%d runtime=%s",
+                    stage, rc, state.input_calls, state.change_calls,
+                    state.order_count,
+                    error_result[0] != '\0' ? error_result : "(empty)");
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 223 FAIL", error[0] != '\0' ? error :
+                "product file-input callback reuse failed");
+        return FALSE;
+    }
+    show_info(L"TEST 223 OK",
+            "file input reuses typed input/select callbacks with file"
+            " metadata, ordered notifications and fail-open adapters.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -43734,6 +44104,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 222: ok =
                 test222_browser_invalid_callbacks();
+                break;
+        case 223: ok =
+                test223_browser_file_input_callbacks();
                 break;
         default: ok = FALSE; break;
         }

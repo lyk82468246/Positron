@@ -213,12 +213,14 @@ typedef struct PBrowserScriptFormCallbacks {
     PBrowserScriptSetSelectedIndexFn set_selected_index;
 } PBrowserScriptFormCallbacks;
 
-/* Typed host adapter for product-owned native text-input events. The browser
- * layer owns the input-event contract and dispatch entry point; the host
- * supplies core hit-testing/propagation for the document coordinates. x/y
- * are borrowed document CSS pixels. event_type is non-empty, input_type may
- * be empty for composition events, and all strings are borrowed only for the
- * synchronous callback. The adapter returns zero when core dispatch was
+/* Typed host adapter for product-owned native text-input and file-input
+ * events. The browser layer owns the input-event contract and dispatch entry
+ * point; the host supplies core hit-testing/propagation for the document
+ * coordinates. x/y are borrowed document CSS pixels. event_type is
+ * non-empty, input_type may be empty for composition events, and all strings
+ * are borrowed only for the synchronous callback. A file input notification
+ * uses input_type "insertFromFile", an empty data string, and
+ * is_composing == 0. The adapter returns zero when core dispatch was
  * attempted and writes 1 when the native default is allowed or 0 when a
  * cancelable listener prevented it; a negative return reports an adapter
  * failure. */
@@ -319,13 +321,13 @@ typedef struct PBrowserScriptEditCallbacks {
     PBrowserScriptDispatchEditFn dispatch_edit;
 } PBrowserScriptEditCallbacks;
 
-/* Typed host adapter for product-owned native SELECT input/change events. The
- * browser layer owns the SELECT event contract and dispatch entry point; the
- * host supplies core hit-testing/propagation for the document coordinates.
- * x/y are borrowed document CSS pixels. event_type must be "input" or
- * "change" and is borrowed only for the synchronous callback. The adapter
- * returns zero when core dispatch was attempted and a negative return reports
- * an adapter failure. */
+/* Typed host adapter for product-owned native SELECT and file-input
+ * input/change events. The browser layer owns the selection-event contract
+ * and dispatch entry point; the host supplies core hit-testing/propagation
+ * for the document coordinates. x/y are borrowed document CSS pixels.
+ * event_type must be "input" or "change" and is borrowed only for the
+ * synchronous callback. The adapter returns zero when core dispatch was
+ * attempted and a negative return reports an adapter failure. */
 typedef struct PBrowserScriptSelectEventInfo {
     unsigned long size;
     int x;
