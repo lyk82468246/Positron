@@ -13,6 +13,9 @@
 - next264 批次把宿主 GUI picker 的系统调用、选择/取消/错误结果、core 文件状态提交和
   `input` → `change` 通知拆成可注入的同步 host-only adapter；真实 WM6 picker 仍由
   `GetOpenFileNameEx` 触发，未新增产品 ABI，也未改变程序化 `HTMLElement.click()` 边界。
+- next265 当前只是人工验收候选：新增 host-only TEST232、显式 `javascript=1` 的真实 WM6
+  picker 页面、以及 `scripts\stage_manual_picker.bat`；它尚未通过设备人工验收，不提升
+  最新已验证基线，也不把 picker 或页面 fixture 迁入产品 DLL。
 - next263 批次让 native file input 的程序化 `HTMLElement.click()` 先通过既有 typed click
   contract；disabled 控件静默，自动脚本不打开系统 picker，picker、文件系统权限和窗口生命周期
   仍由宿主 GUI 路径拥有。TEST228 继续覆盖 programmatic-click adapter error、注销和资源关闭。
@@ -1379,16 +1382,20 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-在 next264 基线之上，执行真实 WM6 picker 的人工验收包：用 `auto=0` 在当前 GUI 连接设备上
-实际打开 file input，分别验证选择、取消、错误/无效返回、窗口回到页面后的控件状态、已选
-文件显示和值保留，以及 `input` → `change` 只发生一次；不把 picker 自动化或迁入产品 DLL。
+在 next264 基线之上，运行 next265 候选的真实 WM6 picker 人工包：先执行
+`scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-next265`，在当前 GUI
+连接设备上运行 staging 目录中的 `test_host.exe`，只选择 TEST232。实际打开 file input，
+验证选择、取消、窗口回到页面后的控件状态、已选文件显示和值保留，以及
+`input` → `change` 只发生一次；TEST231 已自动覆盖的 picker 错误/无效返回保持为自动证据。
+不把 picker 自动化或迁入产品 DLL。
 若该人工边界无异常，再从路线图选择下一个单一 form/input 代码能力。
 
 完成标准：
 
 - next264 的 TEST231/999、`TEST70,189-231/999` 相关回归、C89、审计和正式构建均保持通过；
-- 人工包确认真实 WM6 picker 的选择/取消/错误/窗口生命周期与一次性 `input` → `change`，并确认
-  程序化 click 不会越过 typed click 边界自动打开 picker；只有累计达到
+- TEST232 人工包确认真实 WM6 picker 的选择/取消/窗口返回与一次性 `input` → `change`，
+  页面显示的 value/path 保留；TEST231 自动证据继续确认 picker 错误/空选择提交边界，
+  TEST230 自动证据确认程序化 click 不会越过 typed click 边界自动打开 picker；只有累计达到
   检查点或出现风险时再跑全量；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；

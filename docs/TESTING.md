@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next264）
+### 当前默认自动选择与人工验收包（next265 候选）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -97,9 +97,10 @@ next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；�
 | 67 | 第一个下拉框可打开并改选；禁用下拉框不能改；multiple 列表保留两个选中项并可切换第三项。 |
 | 73 | checkbox、focus、disabled/enabled、button active 和 option:checked 的颜色/状态随操作变化；Reset 后回到初始状态。 |
 | 75 | 灰色父框内依次看到红色 static、偏移后的绿色 relative、蓝色 absolute block、黄色 absolute inline；四个都不能跑出灰框。 |
+| 232 | 真实 WM6 文件选择器：选择一个文件后页面显示文件名，事件 trace 恰好为 `input|file;change|file;`；再次打开并点 Cancel 后文件名和 trace 不变。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
-TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST201
+TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST201
 直接调用 `positron_browser.dll` 公共 history API，TEST202 直接验证 product script session，
 TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read callback adapter，TEST205
 直接验证 product DOM write callback adapter，TEST206 直接验证 product DOM attribute callback adapter，TEST207
@@ -144,6 +145,10 @@ programmatic-click adapter error、注销和 native function 资源关闭。
 TEST231 通过宿主注入的同步 picker adapter 验证选择、取消、picker 错误、空选择提交错误、
 `input` → `change` 顺序、再次取消保留既有文件状态，以及 callback 不重入且调用结束后无活动状态；
 真实 WM6 picker 仍只通过 `GetOpenFileNameEx` 的 GUI 路径运行。
+TEST232 是 manual-only 的真实 WM6 picker fixture：它保持一个显式开启的脚本 session，
+让页面显示选中文件名和 `input|file;change|file;` trace；它不伪造系统对话框，也不会被
+自动设备门选中。取消、窗口返回和文件状态由验收者在设备上观察；picker 错误/无效输入的
+可注入边界继续由 TEST231 自动覆盖。
 
 ## 运行自动设备门
 
@@ -198,23 +203,28 @@ scripts\repair_wmdc_rapi.bat
 2. 关闭设备上已有的 `test_host.exe`，在仓库根目录执行：
 
    ```bat
-   scripts\stage.bat Debug C:\WMShare\Positron-manual-next264
+   scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-next265
    ```
 
-3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next264`（或共享目录映射的
+   该脚本先按正式 `stage.bat` 构建并复制整包，再只替换 staging 目录中的
+   `test_host.ini` 为 `auto=0`、`javascript=1`、`tests=232`；tracked 的自动 INI 不会改变。
+
+3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next265`（或共享目录映射的
    对应路径），确认 `test_host.exe` 与上表配置的 `test_host.ini` 在同一目录，然后运行
    `test_host.exe`。
-4. 启动确认框必须显示这 13 个选择：
-   `13, 20, 27, 56, 58, 62, 64, 65, 66, 67, 73, 75, 999`，并显示
-   `Browser JavaScript: disabled.`。点击 **Yes**；点 **No** 会退回普通分组选择，不是本次流程。
-5. 每项开始时先读 TEST 提示框，再点 OK 看 render 窗口。按照上表操作和观察，必要时截图；
-   render 窗口用 `Esc` 或空白处关闭后才会进入下一项。TEST13 先截取 example.com
-   初始页，再截取 `Learn More` 后和 IANA 页面，便于比较左右边距与居中容器。
-6. TEST65/66/67 中实际点击控件；SIP 候选词必须选中完整词后再记录字段内容。若设备支持
-   旋转，可在输入控件仍有值时旋转一次，确认控件没有漂移、值没有丢失，然后再关闭窗口。
-7. 最后一项 TEST999 应只触发一次系统提示音，随后出现 `Configured tests passed`。如果
-   出现 `FAIL`/`ERROR`、崩溃、黑屏、严重布局破坏或核心控件无法操作，立即停止，不要把
-   后续项目当作通过。
+4. 启动确认框必须显示选择 `232`，并显示
+   `Browser JavaScript: experimental inline scripts enabled.`。点击 **Yes**；点 **No** 会退回普通分组选择，不是本次流程。
+5. TEST232 开始时先读提示框，再点 OK 进入 render 窗口：点击 File 控件，在真实 WM6
+   对话框中选一个小文件并确认；回到页面后确认文件名出现、trace 恰好为
+   `input|file;change|file;`。再次点 File 并按 **Cancel**，确认文件名和 trace 均保持不变。
+   记录设备型号、viewport/DPI 和截图；最后用 `Esc` 或点空白处关闭窗口。
+6. TEST232 关闭后应出现 `TEST 232 OK`，其中 value/path 非空且 trace 与上述字符串一致；
+   若选择失败、页面崩溃、回到页面后状态丢失或 trace 重复，立即记录为失败，不要继续扩大范围。
+   最后 TEST999 应只触发一次系统提示音，随后出现 `Configured tests passed`。
+7. 如果之后仍要运行原来的视觉/输入包，另行使用普通 `stage.bat`，不要把本次手工 INI
+   复制回仓库；普通包仍按启动框中的 13 项和上表逐项操作。TEST13 先截取 example.com
+   初始页，再截取 `Learn More` 后和 IANA 页面；TEST65/66/67 要实际操作控件并记录完整
+   SIP 候选词，最后 TEST999 只应发出一次提示音。
 8. `auto=0` 的交互路径不会创建 `test_host.log`；请保存截图、设备型号/viewport/DPI、
    操作步骤和异常描述到本地 `tmp/`。若还需要机器可判定的完整日志，应在人工记录完成后
    恢复自动三行配置，再单独运行自动 gate；自动日志不能替代人工截图。

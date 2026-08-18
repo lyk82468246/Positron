@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 231
+#define TEST_MAX_NUMBER 232
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -42515,6 +42515,199 @@ static BOOL test231_browser_file_picker_boundary(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 232 - real WM6 file picker manual acceptance                      */
+/* The system dialog is intentionally not automated. This fixture keeps a  */
+/* persistent script session alive so the operator can see the native file  */
+/* value and the exact input -> change trace after returning from the      */
+/* picker.                                                                  */
+/* -------------------------------------------------------------------- */
+static BOOL test232_browser_file_picker_manual(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><h2>Real WM6 file picker</h2>"
+        "<p>Choose one small file, then open the picker again and press "
+        "Cancel.</p>"
+        "<form id='root'><label for='file'>File:</label>"
+        "<input id='file' type='file'></form>"
+        "<p>Event trace (one selection must be exactly "
+        "input|file;change|file;):</p>"
+        "<pre id='events'>none</pre>"
+        "<p>Selected value:</p><pre id='value'>empty</pre>"
+        "<p>Tap empty space or press Esc to close this test.</p>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px;color:#202020;"
+        "background:#ffffff;}"
+        "h2{color:#800000;margin:0 0 8px 0;}"
+        "p{margin:6px 0;}"
+        "form{display:block;width:300px;border:1px solid #4060a0;"
+        "padding:8px;background:#eef6ff;}"
+        "label{display:block;margin-bottom:4px;}"
+        "input{display:block;width:240px;height:28px;}"
+        "pre{display:block;width:300px;min-height:24px;border:1px solid #808080;"
+        "padding:4px;background:#f4f4f4;white-space:pre-wrap;}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function record(e){var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+';';"
+        "document.getElementById('events').textContent=window.events;"
+        "document.getElementById('value').textContent="
+        "String(document.getElementById('file').value||'');}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('input',record);"
+        "root.addEventListener('change',record);";
+    static const char EXPECTED_EVENTS[] = "input|file;change|file;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFileInputInfo info;
+    char events[256];
+    char value[256];
+    char path[512];
+    char error[384];
+    char summary[640];
+    const char *stage;
+    int executed;
+    int ignored;
+    int vw;
+    int vh;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(events, 0, sizeof(events));
+    memset(value, 0, sizeof(value));
+    memset(path, 0, sizeof(path));
+    memset(error, 0, sizeof(error));
+    memset(summary, 0, sizeof(summary));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+
+    if (g_testbench_auto) {
+        show_error(L"TEST 232 SKIPPED",
+                "This test is manual-only; use the dedicated auto=0 picker INI.");
+        return FALSE;
+    }
+    if (!g_browser_javascript_enabled) {
+        show_error(L"TEST 232 FAIL",
+                "Set javascript=1 in the manual picker INI so the event trace is visible.");
+        return FALSE;
+    }
+
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/file-picker-manual.css");
+        vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+        vh = GetSystemMetrics(SM_CYSCREEN);
+        if (vw <= 0) { vw = 224; }
+        if (vh <= 0) { vh = 320; }
+        test_host_set_device_viewport(vw, vh);
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, vw, vh) != 0 ||
+                PCore_FileInputInfo(document, 0, &info, NULL, 0,
+                NULL, 0) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        stage = "listener";
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        show_info(L"TEST 232",
+                "A real WM6 file picker will open from the File control.\n\n"
+                "1. Select one small existing file and confirm. The page must\n"
+                "   return with its filename visible.\n"
+                "2. Open the same control again and press Cancel. The filename\n"
+                "   and the event trace must remain unchanged.\n"
+                "3. The trace must show exactly one input then one change:\n"
+                "   input|file;change|file;\n\n"
+                "Tap empty space or press Esc to close and finish.");
+        stage = "window";
+        if (!show_render_window()) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "manual-result";
+        if (PCore_FileInputInfo(document, 0, &info, value,
+                sizeof(value), path, sizeof(path)) != 0 ||
+                value[0] == '\0' || path[0] == '\0' ||
+                PCore_NodeTextContentById(document, "events", events,
+                sizeof(events), NULL) != 0 ||
+                strcmp(events, EXPECTED_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s events=%s value=%s path=%s",
+                    stage, events, value, path);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 232 FAIL", error);
+        return FALSE;
+    }
+    _snprintf(summary, sizeof(summary) - 1,
+            "Real WM6 picker returned a file.\n"
+            "value=%s\npath=%s\n"
+            "input/change trace=%s", value, path, events);
+    summary[sizeof(summary) - 1] = '\0';
+    show_info(L"TEST 232 OK", summary);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -46723,6 +46916,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 231: ok =
                 test231_browser_file_picker_boundary();
+                break;
+        case 232: ok =
+                test232_browser_file_picker_manual();
                 break;
         default: ok = FALSE; break;
         }
