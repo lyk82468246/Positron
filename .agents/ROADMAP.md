@@ -90,6 +90,8 @@ next289 已补齐 textarea 的 product custom validity setter；下一候选为
 补齐 text/password custom validity 的安全 getter/读回能力，不依赖人工页面观察。
 next290 已补齐 text/password custom validity 的 UTF-8 getter；下一候选为
 补齐 textarea custom validity 的安全 getter/读回能力，不依赖人工页面观察。
+next291 已补齐 textarea custom validity 的 UTF-8 getter；下一候选为
+验证 custom validity 状态跨 layout/reflow 的文档生命周期保持，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
