@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 247
+#define TEST_MAX_NUMBER 248
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -43304,7 +43304,7 @@ static BOOL test242_form_datetime_constraints(void)
         "<input type=datetime-local name=meeting "
         "value=2024-02-29T09:30 min=2024-02-01T08:00 "
         "max=2024-02-29T18:00>"
-        "<input type=datetime-local value=2024-02-29T12:00>"
+        "<input type=datetime-local value=2024-02-29T12:00 step=any>"
         "<button type=submit name=go value=send>Send</button>"
         "</form></body></html>";
     HANDLE document;
@@ -43661,6 +43661,82 @@ static BOOL test247_form_week_step_constraints(void)
     show_info(L"TEST 247 OK",
             "week controls enforced min-based ISO week steps and accepted "
             "default, any and malformed/nonpositive fallback steps.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 248 - datetime-local step base, any and fallback semantics        */
+/* -------------------------------------------------------------------- */
+static BOOL test248_form_datetime_step_constraints(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/datetime-step method=get>"
+        "<input type=datetime-local name=meeting "
+        "value=2024-01-01T10:00 min=2024-01-01T09:00 step=900>"
+        "<input type=datetime-local value=2024-01-01T10:01>"
+        "<input type=datetime-local value=2024-01-01T10:00:00.123 step=any>"
+        "<input type=datetime-local value=2024-01-01T10:01:00 step=0>"
+        "<input type=datetime-local value=2024-01-01T10:01:00 step=bad>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0,
+                    "2024-01-01T10:10") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH ||
+            PCore_TextInputSetValue(document, 0,
+                    "2024-01-01T10:15") != 0 ||
+            PCore_TextInputSetValue(document, 1,
+                    "2024-01-01T10:03") != 0 ||
+            PCore_TextInputSetValue(document, 2,
+                    "2024-01-01T10:03:00.123") != 0 ||
+            PCore_TextInputSetValue(document, 3,
+                    "2024-01-01T10:01:30") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH ||
+            PCore_TextInputSetValue(document, 3,
+                    "2024-01-01T10:02:00") != 0 ||
+            PCore_TextInputSetValue(document, 4,
+                    "2024-01-01T10:01:30") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH ||
+            PCore_TextInputSetValue(document, 4,
+                    "2024-01-01T10:02:00") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/datetime-step") != 0 ||
+            strcmp(body, "meeting=2024-01-01T10%3A15&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 248 FAIL",
+                "datetime-local step base, any or fallback validation failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 248 OK",
+            "datetime-local controls enforced min-based second steps and "
+            "accepted any and malformed/nonpositive fallback steps.");
     return TRUE;
 }
 
@@ -47921,6 +47997,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 247: ok =
                 test247_form_week_step_constraints();
+                break;
+        case 248: ok =
+                test248_form_datetime_step_constraints();
                 break;
         default: ok = FALSE; break;
         }

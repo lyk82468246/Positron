@@ -102,6 +102,8 @@ scripts\device_gate.bat -Candidate next279 ^
   -TestSelection "233-246,999"
 scripts\device_gate.bat -Candidate next280 ^
   -TestSelection "233-247,999"
+scripts\device_gate.bat -Candidate next281 ^
+  -TestSelection "233-248,999"
 ```
 
 next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；上一批 next263 的最终定向门
@@ -143,6 +145,7 @@ next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；�
 | 245 | input type=time 采用 min-based step 秒数；step mismatch 阻止提交，any/非法和非正 step 回退后成功。 |
 | 246 | input type=month 采用 min-based step 月数；step mismatch 阻止提交，any/非法和非正 step 回退后成功。 |
 | 247 | input type=week 采用 min-based step 周数；step mismatch 阻止提交，any/非法和非正 step 回退后成功。 |
+| 248 | input type=datetime-local 采用 min-based step 秒数；step mismatch 阻止提交，any/非法和非正 step 回退后成功。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
@@ -176,6 +179,8 @@ TEST246 是自动的 month step 门，覆盖 min 作为步长基准、默认 ste
 step 回退和动态恢复，不需要人工页面观察；它不替代 native month picker 的视觉/触摸验收。
 TEST247 是自动的 week step 门，覆盖 min 作为步长基准、默认 step=1 周、step=any、非法/非正
 step 回退和动态恢复，不需要人工页面观察；它不替代 native week picker 的视觉/触摸验收。
+TEST248 是自动的 datetime-local step 门，覆盖 min 作为步长基准、默认 step=60 秒、step=any、
+非法/非正 step 回退和动态恢复，不需要人工页面观察；它不替代 native datetime picker 的视觉/触摸验收。
 TEST246 是自动的 month step 门，覆盖 min 作为步长基准、默认 step=1 月、step=any、非法/非正
 step 回退和动态恢复，不需要人工页面观察；它不替代 native month picker 的视觉/触摸验收。
 TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read callback adapter，TEST205

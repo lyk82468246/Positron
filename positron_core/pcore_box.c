@@ -6972,6 +6972,13 @@ static int pcore_datetime_compare(int year, int month, int day,
     return 0;
 }
 
+static double pcore_datetime_number(int year, int month, int day,
+        int milliseconds)
+{
+    return (double) pcore_date_day_number(year, month, day) * 86400000.0 +
+            (double) milliseconds;
+}
+
 static int pcore_datetime_constraint_flags(dom_node *node, dom_string *value,
         unsigned int *flags_out)
 {
@@ -6987,6 +6994,11 @@ static int pcore_datetime_constraint_flags(dom_node *node, dom_string *value,
     int maximum_month;
     int maximum_day;
     int maximum_milliseconds;
+    double step;
+    int base_year;
+    int base_month;
+    int base_day;
+    int base_milliseconds;
 
     *flags_out = 0;
     if (value == NULL || dom_string_byte_length(value) == 0) {
@@ -7010,6 +7022,24 @@ static int pcore_datetime_constraint_flags(dom_node *node, dom_string *value,
             maximum_year, maximum_month, maximum_day,
             maximum_milliseconds) > 0) {
         *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    if (!pcore_attr_value_is(node, "step", "any")) {
+        step = 60.0;
+        if (!pcore_node_attr_number(node, "step", &step) || step <= 0.0) {
+            step = 60.0;
+        }
+        base_year = 1970;
+        base_month = 1;
+        base_day = 1;
+        base_milliseconds = 0;
+        (void) pcore_node_attr_datetime_local(node, "min", &base_year,
+                &base_month, &base_day, &base_milliseconds);
+        if (pcore_step_mismatch(
+                pcore_datetime_number(year, month, day, milliseconds),
+                pcore_datetime_number(base_year, base_month, base_day,
+                        base_milliseconds), step * 1000.0)) {
+            *flags_out |= PCORE_VALIDITY_STEP_MISMATCH;
+        }
     }
     return 1;
 }
