@@ -48,6 +48,8 @@ next268 已补齐 input type=email 的单地址和 multiple 列表 typeMismatch�
 input type=url 的受限 typeMismatch，不依赖人工页面观察。
 next269 已补齐 input type=url 的保守 scheme/relative/network-path typeMismatch；下一候选为
 input type=range 的默认边界和步长约束，不依赖人工页面观察。
+next270 已补齐 input type=range 的默认 0..100/显式 min/max/step 约束；下一候选为
+input type=date 的 ISO 日期和边界校验，不依赖人工页面观察。
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 

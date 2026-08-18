@@ -6242,6 +6242,32 @@ static int pcore_number_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_range_constraint_flags(dom_node *node, dom_string *value,
+        unsigned int *flags_out)
+{
+    double number;
+    double minimum;
+    double maximum;
+
+    if (!pcore_number_constraint_flags(node, value, flags_out)) {
+        return 0;
+    }
+    if (value == NULL || dom_string_byte_length(value) == 0 ||
+            (*flags_out & PCORE_VALIDITY_BAD_INPUT) != 0) {
+        return 1;
+    }
+    if (!pcore_dom_number(value, &number)) {
+        return 1;
+    }
+    if (!pcore_node_attr_number(node, "min", &minimum) && number < 0.0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_UNDERFLOW;
+    }
+    if (!pcore_node_attr_number(node, "max", &maximum) && number > 100.0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    return 1;
+}
+
 static int pcore_email_local_char(unsigned char c)
 {
     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
@@ -6511,9 +6537,13 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     dom_string_byte_length(value) == 0)) {
                 *flags_out = PCORE_VALIDITY_VALUE_MISSING;
             } else {
-                if (pcore_attr_value_is(node, "type", "number")) {
-                    if (!pcore_number_constraint_flags(node, value,
-                            flags_out)) {
+                if (pcore_attr_value_is(node, "type", "number") ||
+                        pcore_attr_value_is(node, "type", "range")) {
+                    if ((pcore_attr_value_is(node, "type", "range") ?
+                            !pcore_range_constraint_flags(node, value,
+                            flags_out) :
+                            !pcore_number_constraint_flags(node, value,
+                            flags_out))) {
                         if (value != NULL) {
                             dom_string_unref(value);
                         }
