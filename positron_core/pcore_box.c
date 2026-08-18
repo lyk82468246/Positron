@@ -6703,6 +6703,27 @@ static int pcore_node_attr_month(dom_node *node, const char *attr,
     return result;
 }
 
+static int pcore_node_default_month(dom_node *node, int *year_out,
+        int *month_out)
+{
+    dom_string *value;
+    int result;
+
+    value = NULL;
+    if (node == NULL || !pcore_node_name_is(node, "input") ||
+            dom_html_input_element_get_default_value(
+            (dom_html_input_element *) node, &value) != DOM_NO_ERR ||
+            value == NULL) {
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        return 0;
+    }
+    result = pcore_dom_month(value, year_out, month_out);
+    dom_string_unref(value);
+    return result;
+}
+
 static int pcore_month_compare(int year, int month, int other_year,
         int other_month)
 {
@@ -6758,7 +6779,11 @@ static int pcore_month_constraint_flags(dom_node *node, dom_string *value,
         }
         base_year = 1970;
         base_month = 1;
-        (void) pcore_node_attr_month(node, "min", &base_year, &base_month);
+        if (!pcore_node_attr_month(node, "min", &base_year, &base_month) &&
+                !pcore_node_default_month(node, &base_year, &base_month)) {
+            base_year = 1970;
+            base_month = 1;
+        }
         if (pcore_step_mismatch(
                 (double) pcore_month_number(year, month),
                 (double) pcore_month_number(base_year, base_month), step)) {
