@@ -7776,9 +7776,9 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     }
                     *flags_out |= email_flags;
                 }
-                if (pcore_custom_validity_has_error(node)) {
-                    *flags_out |= PCORE_VALIDITY_CUSTOM_ERROR;
-                }
+            }
+            if (pcore_custom_validity_has_error(node)) {
+                *flags_out |= PCORE_VALIDITY_CUSTOM_ERROR;
             }
             if (value != NULL) {
                 dom_string_unref(value);
