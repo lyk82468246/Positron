@@ -6356,6 +6356,27 @@ static int pcore_node_attr_date(dom_node *node, const char *attr,
     return result;
 }
 
+static int pcore_node_default_date(dom_node *node, int *year_out,
+        int *month_out, int *day_out)
+{
+    dom_string *value;
+    int result;
+
+    value = NULL;
+    if (node == NULL || !pcore_node_name_is(node, "input") ||
+            dom_html_input_element_get_default_value(
+            (dom_html_input_element *) node, &value) != DOM_NO_ERR ||
+            value == NULL) {
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        return 0;
+    }
+    result = pcore_dom_date(value, year_out, month_out, day_out);
+    dom_string_unref(value);
+    return result;
+}
+
 static int pcore_date_compare(int year, int month, int day,
         int other_year, int other_month, int other_day)
 {
@@ -6449,8 +6470,13 @@ static int pcore_date_constraint_flags(dom_node *node, dom_string *value,
         base_year = 1970;
         base_month = 1;
         base_day = 1;
-        (void) pcore_node_attr_date(node, "min", &base_year, &base_month,
-                &base_day);
+        if (!pcore_node_attr_date(node, "min", &base_year, &base_month,
+                &base_day) && !pcore_node_default_date(node, &base_year,
+                &base_month, &base_day)) {
+            base_year = 1970;
+            base_month = 1;
+            base_day = 1;
+        }
         if (pcore_step_mismatch(
                 (double) pcore_date_day_number(year, month, day),
                 (double) pcore_date_day_number(base_year, base_month,

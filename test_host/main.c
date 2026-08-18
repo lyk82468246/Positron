@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 249
+#define TEST_MAX_NUMBER 250
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -43791,6 +43791,56 @@ static BOOL test249_form_custom_validity(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 250 - date step value fallback base                               */
+/* -------------------------------------------------------------------- */
+static BOOL test250_form_date_step_value_base(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/date-value-step method=get>"
+        "<input type=date name=day value=2024-01-03 step=2>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "2024-01-04") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "2024-01-05") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/date-value-step") != 0 ||
+            strcmp(body, "day=2024-01-05&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 250 FAIL",
+                "date value step-base fallback did not align values");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 250 OK",
+            "date step used the valid value as its base when min was absent.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -48053,6 +48103,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 249: ok =
                 test249_form_custom_validity();
+                break;
+        case 250: ok =
+                test250_form_date_step_value_base();
                 break;
         default: ok = FALSE; break;
         }
