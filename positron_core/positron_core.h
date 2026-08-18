@@ -820,6 +820,8 @@ typedef struct PCoreFormValidationInfo {
  * plus a conservative scheme/relative/network-path type-mismatch check for
  * input type=url; this is not a complete URL Standard parser,
  * and input type=range applies the default 0..100 range when min/max are absent;
+ * input type=date uses a bounded YYYY-MM-DD calendar parser for type/min/max
+ * checks, not a native date picker or the complete date-time specification.
  * checkbox, radio groups and select controls, including disabled/read-only
  * and no-validate bypasses. Unsupported or malformed constraint attributes
  * are ignored conservatively; pattern support is the documented ASCII subset

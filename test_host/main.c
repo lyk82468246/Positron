@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 237
+#define TEST_MAX_NUMBER 238
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -43045,6 +43045,68 @@ static BOOL test237_form_range_constraints(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 238 - ISO date syntax, leap days and min/max validation            */
+/* -------------------------------------------------------------------- */
+static BOOL test238_form_date_constraints(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/date method=get>"
+        "<input type=date name=when value=2024-02-29 "
+        "min=2024-01-01 max=2024-12-31>"
+        "<input type=date value=2024-03-01>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "2023-12-31") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_RANGE_UNDERFLOW ||
+            PCore_TextInputSetValue(document, 0, "2024-02-30") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "2023-02-29") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "2024-06-15") != 0 ||
+            PCore_TextInputSetValue(document, 1, "2024-02-29") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/date") != 0 ||
+            strcmp(body, "when=2024-06-15&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 238 FAIL",
+                "date syntax, leap-day or min/max validation failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 238 OK",
+            "date controls enforced ISO calendar days, leap-year rules and "
+            "inclusive min/max boundaries before submission.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -47271,6 +47333,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 237: ok =
                 test237_form_range_constraints();
+                break;
+        case 238: ok =
+                test238_form_date_constraints();
                 break;
         default: ok = FALSE; break;
         }

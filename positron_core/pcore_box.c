@@ -6268,6 +6268,143 @@ static int pcore_range_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_dom_date(dom_string *value, int *year_out, int *month_out,
+        int *day_out)
+{
+    const char *data;
+    size_t length;
+    size_t index;
+    int year;
+    int month;
+    int day;
+    int leap;
+    int days;
+
+    if (value == NULL || year_out == NULL || month_out == NULL ||
+            day_out == NULL) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (length != 10 || data[4] != '-' || data[7] != '-') {
+        return 0;
+    }
+    year = 0;
+    for (index = 0; index < 4; index++) {
+        if (data[index] < '0' || data[index] > '9') {
+            return 0;
+        }
+        year = year * 10 + (int) (data[index] - '0');
+    }
+    month = 0;
+    for (index = 5; index < 7; index++) {
+        if (data[index] < '0' || data[index] > '9') {
+            return 0;
+        }
+        month = month * 10 + (int) (data[index] - '0');
+    }
+    day = 0;
+    for (index = 8; index < 10; index++) {
+        if (data[index] < '0' || data[index] > '9') {
+            return 0;
+        }
+        day = day * 10 + (int) (data[index] - '0');
+    }
+    if (year == 0 || month < 1 || month > 12) {
+        return 0;
+    }
+    leap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+    days = 31;
+    if (month == 4 || month == 6 || month == 9 || month == 11) {
+        days = 30;
+    } else if (month == 2) {
+        days = leap ? 29 : 28;
+    }
+    if (day < 1 || day > days) {
+        return 0;
+    }
+    *year_out = year;
+    *month_out = month;
+    *day_out = day;
+    return 1;
+}
+
+static int pcore_node_attr_date(dom_node *node, const char *attr,
+        int *year_out, int *month_out, int *day_out)
+{
+    dom_string *name;
+    dom_string *value;
+    int result;
+
+    name = NULL;
+    value = NULL;
+    result = 0;
+    if (node == NULL || attr == NULL ||
+            dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+                    DOM_NO_ERR || name == NULL) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) == DOM_NO_ERR &&
+            value != NULL) {
+        result = pcore_dom_date(value, year_out, month_out, day_out);
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return result;
+}
+
+static int pcore_date_compare(int year, int month, int day,
+        int other_year, int other_month, int other_day)
+{
+    if (year != other_year) {
+        return (year < other_year) ? -1 : 1;
+    }
+    if (month != other_month) {
+        return (month < other_month) ? -1 : 1;
+    }
+    if (day != other_day) {
+        return (day < other_day) ? -1 : 1;
+    }
+    return 0;
+}
+
+static int pcore_date_constraint_flags(dom_node *node, dom_string *value,
+        unsigned int *flags_out)
+{
+    int year;
+    int month;
+    int day;
+    int minimum_year;
+    int minimum_month;
+    int minimum_day;
+    int maximum_year;
+    int maximum_month;
+    int maximum_day;
+
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    if (!pcore_dom_date(value, &year, &month, &day)) {
+        *flags_out = PCORE_VALIDITY_TYPE_MISMATCH;
+        return 1;
+    }
+    if (pcore_node_attr_date(node, "min", &minimum_year, &minimum_month,
+            &minimum_day) && pcore_date_compare(year, month, day,
+            minimum_year, minimum_month, minimum_day) < 0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_UNDERFLOW;
+    }
+    if (pcore_node_attr_date(node, "max", &maximum_year, &maximum_month,
+            &maximum_day) && pcore_date_compare(year, month, day,
+            maximum_year, maximum_month, maximum_day) > 0) {
+        *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    return 1;
+}
+
 static int pcore_email_local_char(unsigned char c)
 {
     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
@@ -6537,7 +6674,14 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     dom_string_byte_length(value) == 0)) {
                 *flags_out = PCORE_VALIDITY_VALUE_MISSING;
             } else {
-                if (pcore_attr_value_is(node, "type", "number") ||
+                if (pcore_attr_value_is(node, "type", "date")) {
+                    if (!pcore_date_constraint_flags(node, value, flags_out)) {
+                        if (value != NULL) {
+                            dom_string_unref(value);
+                        }
+                        return 0;
+                    }
+                } else if (pcore_attr_value_is(node, "type", "number") ||
                         pcore_attr_value_is(node, "type", "range")) {
                     if ((pcore_attr_value_is(node, "type", "range") ?
                             !pcore_range_constraint_flags(node, value,
