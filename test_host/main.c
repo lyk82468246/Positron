@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 238
+#define TEST_MAX_NUMBER 239
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -43107,6 +43107,70 @@ static BOOL test238_form_date_constraints(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 239 - bounded time syntax, seconds and min/max validation          */
+/* -------------------------------------------------------------------- */
+static BOOL test239_form_time_constraints(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/time method=get>"
+        "<input type=time name=at value=09:30 min=08:00 max=18:00>"
+        "<input type=time value=12:00>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "07:59") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_RANGE_UNDERFLOW ||
+            PCore_TextInputSetValue(document, 0, "24:00") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 0, "09:30:15.5") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 1, "12:00:60") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_TYPE_MISMATCH ||
+            PCore_TextInputSetValue(document, 1, "12:00:30.5") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_TextInputSetValue(document, 0, "10:00") != 0 ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/time") != 0 ||
+            strcmp(body, "at=10%3A00&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 239 FAIL",
+                "time syntax, seconds or min/max validation failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 239 OK",
+            "time controls enforced bounded hour/minute/second syntax and "
+            "inclusive min/max boundaries before submission.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -47336,6 +47400,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 238: ok =
                 test238_form_date_constraints();
+                break;
+        case 239: ok =
+                test239_form_time_constraints();
                 break;
         default: ok = FALSE; break;
         }

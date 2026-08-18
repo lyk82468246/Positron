@@ -6405,6 +6405,123 @@ static int pcore_date_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_dom_time(dom_string *value, int *milliseconds_out)
+{
+    const char *data;
+    size_t length;
+    size_t index;
+    int hour;
+    int minute;
+    int second;
+    int milliseconds;
+    int digits;
+
+    if (value == NULL || milliseconds_out == NULL) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (length < 5 || (length != 5 && length < 8) || data[2] != ':') {
+        return 0;
+    }
+    if (data[0] < '0' || data[0] > '9' || data[1] < '0' ||
+            data[1] > '9' || data[3] < '0' || data[3] > '9' ||
+            data[4] < '0' || data[4] > '9') {
+        return 0;
+    }
+    hour = (int) (data[0] - '0') * 10 + (int) (data[1] - '0');
+    minute = (int) (data[3] - '0') * 10 + (int) (data[4] - '0');
+    second = 0;
+    milliseconds = 0;
+    if (length > 5) {
+        if (length < 8 || data[5] != ':' || data[6] < '0' ||
+                data[6] > '9' || data[7] < '0' || data[7] > '9') {
+            return 0;
+        }
+        second = (int) (data[6] - '0') * 10 + (int) (data[7] - '0');
+        if (length > 8) {
+            if (data[8] != '.' || length > 12) {
+                return 0;
+            }
+            digits = (int) length - 9;
+            if (digits < 1 || digits > 3) {
+                return 0;
+            }
+            for (index = 9; index < length; index++) {
+                if (data[index] < '0' || data[index] > '9') {
+                    return 0;
+                }
+                milliseconds = milliseconds * 10 +
+                        (int) (data[index] - '0');
+            }
+            if (digits == 1) {
+                milliseconds *= 100;
+            } else if (digits == 2) {
+                milliseconds *= 10;
+            }
+        }
+    }
+    if (hour > 23 || minute > 59 || second > 59) {
+        return 0;
+    }
+    *milliseconds_out = ((hour * 60 + minute) * 60 + second) * 1000 +
+            milliseconds;
+    return 1;
+}
+
+static int pcore_node_attr_time(dom_node *node, const char *attr,
+        int *milliseconds_out)
+{
+    dom_string *name;
+    dom_string *value;
+    int result;
+
+    name = NULL;
+    value = NULL;
+    result = 0;
+    if (node == NULL || attr == NULL ||
+            dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+                    DOM_NO_ERR || name == NULL) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) == DOM_NO_ERR &&
+            value != NULL) {
+        result = pcore_dom_time(value, milliseconds_out);
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return result;
+}
+
+static int pcore_time_constraint_flags(dom_node *node, dom_string *value,
+        unsigned int *flags_out)
+{
+    int milliseconds;
+    int minimum;
+    int maximum;
+
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    if (!pcore_dom_time(value, &milliseconds)) {
+        *flags_out = PCORE_VALIDITY_TYPE_MISMATCH;
+        return 1;
+    }
+    if (pcore_node_attr_time(node, "min", &minimum) &&
+            milliseconds < minimum) {
+        *flags_out |= PCORE_VALIDITY_RANGE_UNDERFLOW;
+    }
+    if (pcore_node_attr_time(node, "max", &maximum) &&
+            milliseconds > maximum) {
+        *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    return 1;
+}
+
 static int pcore_email_local_char(unsigned char c)
 {
     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
@@ -6674,7 +6791,14 @@ static int pcore_required_control_missing(dom_html_form_element *form,
                     dom_string_byte_length(value) == 0)) {
                 *flags_out = PCORE_VALIDITY_VALUE_MISSING;
             } else {
-                if (pcore_attr_value_is(node, "type", "date")) {
+                if (pcore_attr_value_is(node, "type", "time")) {
+                    if (!pcore_time_constraint_flags(node, value, flags_out)) {
+                        if (value != NULL) {
+                            dom_string_unref(value);
+                        }
+                        return 0;
+                    }
+                } else if (pcore_attr_value_is(node, "type", "date")) {
                     if (!pcore_date_constraint_flags(node, value, flags_out)) {
                         if (value != NULL) {
                             dom_string_unref(value);
