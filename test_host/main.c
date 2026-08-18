@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 223
+#define TEST_MAX_NUMBER 224
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3090,6 +3090,7 @@ static int pcore_browser_script_invalid_dispatch(void *pw,
         int *out_default_allowed);
 static int pcore_browser_script_dispatch_file_event_at(int x, int y,
         const char *event_type);
+static int pcore_browser_script_dispatch_select_change_at(int x, int y);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
         const char *event_type, const PCoreKeyEventData *key_data,
         int is_composing);
@@ -8272,6 +8273,37 @@ static int pcore_browser_script_dispatch_invalid_event_at(int x, int y)
     return default_allowed ? 1 : 0;
 }
 
+/* Native SELECT, checkbox/radio and file controls use the existing typed
+ * select-style change contract. The event is non-cancelable and is emitted
+ * only after the core value/state has been committed. */
+static int pcore_browser_script_dispatch_select_change_at(int x, int y)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptSelectEventInfo select_info;
+    int rc;
+
+    if (g_render_doc == NULL) {
+        return -1;
+    }
+    bridge = g_browser_script_session.bridge;
+    memset(&select_info, 0, sizeof(select_info));
+    select_info.size = sizeof(select_info);
+    select_info.x = x;
+    select_info.y = y;
+    select_info.event_type = "change";
+    select_info.bubbles = 1;
+    select_info.cancelable = 0;
+    if (g_browser_script_session.document == g_render_doc &&
+            g_browser_script_session.runtime != NULL &&
+            bridge != NULL && bridge->session != NULL) {
+        rc = PBrowser_ScriptSessionDispatchSelectEvent(
+                bridge->session, &select_info);
+        return rc == PSCRIPT_OK ? 1 : -1;
+    }
+    rc = PCore_EventDispatchAt(g_render_doc, x, y, "change", 1, 0, NULL);
+    return rc < 0 ? -1 : 1;
+}
+
 /* File controls use the existing typed input/select contracts. The input
  * event carries the file-specific InputEvent metadata; change reuses the
  * non-cancelable select-style event contract. The picker and core file value
@@ -8282,7 +8314,6 @@ static int pcore_browser_script_dispatch_file_event_at(int x, int y,
 {
     pcore_browser_script_bridge *bridge;
     PBrowserScriptInputEventInfo input_info;
-    PBrowserScriptSelectEventInfo select_info;
     PCoreInputEventDataEx input_data;
     int default_allowed;
     int rc;
@@ -8328,22 +8359,7 @@ static int pcore_browser_script_dispatch_file_event_at(int x, int y,
     if (strcmp(event_type, "change") != 0) {
         return -1;
     }
-    memset(&select_info, 0, sizeof(select_info));
-    select_info.size = sizeof(select_info);
-    select_info.x = x;
-    select_info.y = y;
-    select_info.event_type = "change";
-    select_info.bubbles = 1;
-    select_info.cancelable = 0;
-    if (g_browser_script_session.document == g_render_doc &&
-            g_browser_script_session.runtime != NULL &&
-            bridge != NULL && bridge->session != NULL) {
-        rc = PBrowser_ScriptSessionDispatchSelectEvent(
-                bridge->session, &select_info);
-        return rc == PSCRIPT_OK ? 1 : -1;
-    }
-    rc = PCore_EventDispatchAt(g_render_doc, x, y, "change", 1, 0, NULL);
-    return rc < 0 ? -1 : 1;
+    return pcore_browser_script_dispatch_select_change_at(x, y);
 }
 
 static int pcore_handle_form_button(HWND hwnd, int x, int y)
@@ -8539,6 +8555,104 @@ static void pcore_invalidate_form_dirty(HWND hwnd,
     InvalidateRect(hwnd, &dirty, FALSE);
 }
 
+static int pcore_form_toggle_control_at(int x, int y,
+        unsigned int *out_index, int *out_kind, int *out_selected,
+        int *out_disabled)
+{
+    unsigned int index;
+    int left;
+    int top;
+    int width;
+    int height;
+    int kind;
+    int selected;
+    int disabled;
+
+    if (g_render_doc == NULL) {
+        return 0;
+    }
+    index = 0;
+    while (PCore_FormControlInfo(g_render_doc, index, &left, &top,
+            &width, &height, &kind, &selected, &disabled) == 0) {
+        if ((kind == 1 || kind == 2) && width > 0 && height > 0 &&
+                x >= left && x < left + width &&
+                y >= top && y < top + height) {
+            if (out_index != NULL) {
+                *out_index = index;
+            }
+            if (out_kind != NULL) {
+                *out_kind = kind;
+            }
+            if (out_selected != NULL) {
+                *out_selected = selected ? 1 : 0;
+            }
+            if (out_disabled != NULL) {
+                *out_disabled = disabled ? 1 : 0;
+            }
+            return 1;
+        }
+        index++;
+    }
+    return 0;
+}
+
+static int pcore_form_toggle_activate(int x, int y,
+        int *dirty_x, int *dirty_y, int *dirty_w, int *dirty_h)
+{
+    unsigned int index;
+    int kind;
+    int before_selected;
+    int disabled;
+    int after_selected;
+    int consumed;
+
+    index = 0;
+    kind = 0;
+    before_selected = 0;
+    disabled = 0;
+    if (!pcore_form_toggle_control_at(x, y, &index, &kind,
+            &before_selected, &disabled)) {
+        index = 0;
+        kind = 0;
+    }
+    consumed = PCore_FormActivateAt(g_render_doc, x, y,
+            dirty_x, dirty_y, dirty_w, dirty_h);
+    if (!consumed || kind == 0 || disabled) {
+        return consumed;
+    }
+    after_selected = before_selected;
+    if (PCore_FormControlInfo(g_render_doc, index, NULL, NULL, NULL, NULL,
+            NULL, &after_selected, NULL) != 0 ||
+            after_selected == before_selected) {
+        return consumed;
+    }
+    /* Checkbox/radio change is non-cancelable and follows the committed
+     * core state. Adapter failures are fail-open: they must not roll back
+     * the user's selection or suppress repaint. */
+    (void) pcore_browser_script_dispatch_select_change_at(x, y);
+    return consumed;
+}
+
+static int pcore_handle_form_toggle(HWND hwnd, int x, int y)
+{
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
+
+    if (!pcore_form_toggle_control_at(x, y, NULL, NULL, NULL, NULL)) {
+        return 0;
+    }
+    if (!pcore_form_toggle_activate(x, y, &dirty_x, &dirty_y,
+            &dirty_w, &dirty_h)) {
+        return 0;
+    }
+    pcore_invalidate_form_dirty(hwnd, dirty_x, dirty_y,
+            dirty_w, dirty_h);
+    pcore_request_interaction_restyle(hwnd);
+    return 1;
+}
+
 static int pcore_focus_native_form_control(int kind, int x, int y)
 {
     PCoreTextInputInfo text_info;
@@ -8691,10 +8805,6 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
     int target_x;
     int target_y;
     int kind;
-    int dirty_x;
-    int dirty_y;
-    int dirty_w;
-    int dirty_h;
 
     if (!PCore_LabelTargetAt(g_render_doc, x, y,
             &target_x, &target_y, &kind)) {
@@ -8709,12 +8819,7 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
     } else if (kind == 10) {
         pcore_handle_file_input(hwnd, target_x, target_y);
     } else if (kind == 1 || kind == 2) {
-        if (PCore_FormActivateAt(g_render_doc, target_x, target_y,
-                &dirty_x, &dirty_y, &dirty_w, &dirty_h)) {
-            pcore_invalidate_form_dirty(hwnd, dirty_x, dirty_y,
-                    dirty_w, dirty_h);
-            pcore_request_interaction_restyle(hwnd);
-        }
+        (void) pcore_handle_form_toggle(hwnd, target_x, target_y);
     } else {
         pcore_focus_native_form_control(kind, target_x, target_y);
     }
@@ -9144,10 +9249,6 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_LBUTTONDOWN: {
         int cx = (int) (short) LOWORD(lp);
         int cy = (int) (short) HIWORD(lp);
-        int dirty_x;
-        int dirty_y;
-        int dirty_w;
-        int dirty_h;
         int default_allowed;
         char href[1024];
 
@@ -9183,11 +9284,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             return 0;
         }
         if (g_render_doc != NULL &&
-                PCore_FormActivateAt(g_render_doc, cx, cy + g_scroll_y,
-                        &dirty_x, &dirty_y, &dirty_w, &dirty_h)) {
-            pcore_invalidate_form_dirty(hwnd, dirty_x, dirty_y,
-                    dirty_w, dirty_h);
-            pcore_request_interaction_restyle(hwnd);
+                pcore_handle_form_toggle(hwnd, cx, cy + g_scroll_y)) {
             return 0;
         }
         if (g_render_doc != NULL &&
@@ -39923,6 +40020,249 @@ static BOOL test223_browser_file_input_callbacks(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 224 - checkbox/radio change dispatch through host activation    */
+/* -------------------------------------------------------------------- */
+static BOOL test224_browser_form_toggle_change(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='root'>"
+        "<input id='check' type='checkbox'>"
+        "<input id='radio-a' type='radio' name='choice' checked>"
+        "<input id='radio-b' type='radio' name='choice'>"
+        "<input id='disabled' type='checkbox' disabled>"
+        "</div><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "#root{display:block;width:200px}"
+        "input{display:block;width:120px;height:24px}"
+        "#result{display:block;width:220px;height:24px}";
+    static const char LISTENER[] =
+        "window.changeCount=0;"
+        "document.getElementById('root').addEventListener('change',"
+        "function(e){window.changeCount+=1;"
+        "document.getElementById('result').textContent=e.target.id+'|'"
+        "+String(e.bubbles)+'|'+String(e.cancelable)+'|'"
+        "+String(window.changeCount);});";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[320];
+    char result[128];
+    const char *stage;
+    int result_bytes;
+    int executed;
+    int ignored;
+    int index;
+    int left;
+    int top;
+    int width;
+    int height;
+    int kind;
+    int selected;
+    int disabled;
+    int check_index;
+    int check_x;
+    int check_y;
+    int radio_a_index;
+    int radio_a_x;
+    int radio_a_y;
+    int radio_b_index;
+    int radio_b_x;
+    int radio_b_y;
+    int disabled_index;
+    int disabled_x;
+    int disabled_y;
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    stage = "create";
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    index = 0;
+    left = 0;
+    top = 0;
+    width = 0;
+    height = 0;
+    kind = 0;
+    selected = 0;
+    disabled = 0;
+    check_index = -1;
+    check_x = 0;
+    check_y = 0;
+    radio_a_index = -1;
+    radio_a_x = 0;
+    radio_a_y = 0;
+    radio_b_index = -1;
+    radio_b_x = 0;
+    radio_b_y = 0;
+    disabled_index = -1;
+    disabled_x = 0;
+    disabled_y = 0;
+    dirty_x = 0;
+    dirty_y = 0;
+    dirty_w = 0;
+    dirty_h = 0;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    memset(result, 0, sizeof(result));
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/form-toggle-change.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 240) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "enumerate-controls";
+        index = 0;
+        while (PCore_FormControlInfo(document, (unsigned int) index,
+                &left, &top, &width, &height, &kind, &selected,
+                &disabled) == 0) {
+            if (kind == 1 && check_index < 0) {
+                check_index = index;
+                check_x = left + width / 2;
+                check_y = top + height / 2;
+            } else if (kind == 2 && radio_a_index < 0 && selected) {
+                radio_a_index = index;
+                radio_a_x = left + width / 2;
+                radio_a_y = top + height / 2;
+            } else if (kind == 2 && radio_b_index < 0 &&
+                    index != radio_a_index) {
+                radio_b_index = index;
+                radio_b_x = left + width / 2;
+                radio_b_y = top + height / 2;
+            } else if (kind == 1 && disabled && disabled_index < 0) {
+                disabled_index = index;
+                disabled_x = left + width / 2;
+                disabled_y = top + height / 2;
+            }
+            index++;
+        }
+        if (check_index < 0 || radio_a_index < 0 || radio_b_index < 0 ||
+                disabled_index < 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "checkbox-change";
+        if (!pcore_form_toggle_activate(check_x, check_y, &dirty_x,
+                &dirty_y, &dirty_w, &dirty_h) ||
+                PCore_FormControlInfo(document, (unsigned int) check_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                !selected || dirty_w <= 0 || dirty_h <= 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "check|true|false|1") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "radio-already-selected";
+        if (!pcore_form_toggle_activate(radio_a_x, radio_a_y, &dirty_x,
+                &dirty_y, &dirty_w, &dirty_h) ||
+                PCore_FormControlInfo(document, (unsigned int) radio_a_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                !selected || dirty_w != 0 || dirty_h != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "check|true|false|1") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "radio-change";
+        if (!pcore_form_toggle_activate(radio_b_x, radio_b_y, &dirty_x,
+                &dirty_y, &dirty_w, &dirty_h) ||
+                PCore_FormControlInfo(document, (unsigned int) radio_a_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                selected ||
+                PCore_FormControlInfo(document, (unsigned int) radio_b_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                !selected || dirty_w <= 0 || dirty_h <= 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "radio-b|true|false|2") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "disabled-no-change";
+        if (!pcore_form_toggle_activate(disabled_x, disabled_y, &dirty_x,
+                &dirty_y, &dirty_w, &dirty_h) ||
+                PCore_FormControlInfo(document, (unsigned int) disabled_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, &disabled) != 0 ||
+                !disabled || selected || dirty_w != 0 || dirty_h != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "radio-b|true|false|2") != 0) {
+            ok = 0;
+        }
+    }
+    if (!ok && error[0] == '\0') {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%s result=%s selected=%d dirty=%d/%d",
+                stage, result, selected, dirty_w, dirty_h);
+        error[sizeof(error) - 1] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 224 FAIL", error[0] != '\0' ? error :
+                "checkbox/radio change dispatch failed");
+        return FALSE;
+    }
+    show_info(L"TEST 224 OK",
+            "Checkbox/radio activation emits one non-cancelable change"
+            " event only after a committed state change; disabled and"
+            " already-selected controls remain quiet.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -44107,6 +44447,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 223: ok =
                 test223_browser_file_input_callbacks();
+                break;
+        case 224: ok =
+                test224_browser_form_toggle_change();
                 break;
         default: ok = FALSE; break;
         }

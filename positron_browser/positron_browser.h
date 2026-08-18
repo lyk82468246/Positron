@@ -321,13 +321,14 @@ typedef struct PBrowserScriptEditCallbacks {
     PBrowserScriptDispatchEditFn dispatch_edit;
 } PBrowserScriptEditCallbacks;
 
-/* Typed host adapter for product-owned native SELECT and file-input
- * input/change events. The browser layer owns the selection-event contract
- * and dispatch entry point; the host supplies core hit-testing/propagation
- * for the document coordinates. x/y are borrowed document CSS pixels.
- * event_type must be "input" or "change" and is borrowed only for the
- * synchronous callback. The adapter returns zero when core dispatch was
- * attempted and a negative return reports an adapter failure. */
+/* Typed host adapter for product-owned native SELECT input/change events,
+ * checkbox/radio change events and file-input input/change events. The
+ * browser layer owns this selection-like event contract and dispatch entry
+ * point; the host supplies core hit-testing/propagation for document
+ * coordinates. x/y are borrowed document CSS pixels. event_type must be
+ * "input" or "change" and is borrowed only for the synchronous callback.
+ * The adapter returns zero when core dispatch was attempted and a negative
+ * return reports an adapter failure. */
 typedef struct PBrowserScriptSelectEventInfo {
     unsigned long size;
     int x;
