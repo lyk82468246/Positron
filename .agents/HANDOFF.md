@@ -9,7 +9,10 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next264（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next266（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- next266 批次把 `input type=number` 的核心约束校验接入 `positron_core.dll`：合法的
+  `min`/`max` 产生 inclusive range 结果，非法数值产生 `badInput` 标志，malformed
+  range 属性保守忽略；没有改变 native control 的视觉或真实 SIP 行为。
 - next264 批次把宿主 GUI picker 的系统调用、选择/取消/错误结果、core 文件状态提交和
   `input` → `change` 通知拆成可注入的同步 host-only adapter；真实 WM6 picker 仍由
   `GetOpenFileNameEx` 触发，未新增产品 ABI，也未改变程序化 `HTMLElement.click()` 边界。
@@ -33,6 +36,9 @@
 - next265 候选的自动复核证据位于 `tmp/device-runs/20260818-233029-next265-picker-regression/`
   （`TEST231/999` 2/2）和 `tmp/device-runs/20260818-233055-next265-file-regression/`
   （`TEST70,189-231/999` 45/45）；两组均无 ERROR/FAIL。TEST232 仍未有人工设备结果。
+- next266 定向证据位于 `tmp/device-runs/20260818-234713-next266/`：`TEST233/999` 2/2，
+  零 ERROR/FAIL，唯一 `TESTBENCH PASS`，`test13_route_ok=True`。TEST232 仍保持人工待验收，
+  不因本批自动门通过而提升为已验证。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -69,7 +75,21 @@
 
 ## 最近已验证设备证据
 
-### 最新定向检查点：next264
+### 最新定向检查点：next266
+
+- 配置：`TEST233/999` 定向 2 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
+- 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
+  Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
+- 结果：2 项均有 `OK`；零 `ERROR`、零 `FAIL`，唯一 `TESTBENCH PASS`，
+  `completion_marker=PASS`，`test13_route_ok=True`。
+- TEST233 覆盖 `type=number` 的 valid inclusive min/max、下溢、上溢、malformed value、
+  malformed range attributes 和恢复后的 urlencoded submission。
+- 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I
+  Debug 正式构建均通过。证据位于
+  `tmp/device-runs/20260818-234713-next266/`；本批未重复 next255 的 170 项全量门。
+
+### 已验证检查点：next264
 
 - 配置：`TEST231/999` 定向 2 项；`TEST70,189-231/999` 相关回归 45 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
@@ -1385,21 +1405,17 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-在 next264 基线之上，运行 next265 候选的真实 WM6 picker 人工包：先执行
-`scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-next265`，在当前 GUI
-连接设备上运行 staging 目录中的 `test_host.exe`，只运行 TEST232 并在结束时听 TEST999。
-实际打开 file input，验证选择、取消、窗口回到页面后的控件状态、已选文件显示和值保留，以及
-`input` → `change` 只发生一次；TEST231 已自动覆盖的 picker 错误/无效返回保持为自动证据。
-不把 picker 自动化或迁入产品 DLL。
-若该人工边界无异常，再从路线图选择下一个单一 form/input 代码能力。
+在 next266 基线之上继续推进一个不需要人工操作的 form/input 纵向能力；当前优先候选是
+`input type=number` 的 `step` mismatch 与默认步长边界。next265 的 TEST232 真实 WM6
+picker 仍登记为人工待验收，不能用自动测试替代，也不能把 picker 迁入产品 DLL。
 
 完成标准：
 
-- next264 的 TEST231/999、`TEST70,189-231/999` 相关回归、C89、审计和正式构建均保持通过；
-- TEST232 人工包确认真实 WM6 picker 的选择/取消/窗口返回与一次性 `input` → `change`，
-  页面显示的 value/path 保留；TEST231 自动证据继续确认 picker 错误/空选择提交边界，
-  TEST230 自动证据确认程序化 click 不会越过 typed click 边界自动打开 picker；只有累计达到
-  检查点或出现风险时再跑全量；
+- TEST233/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
+  的两组自动证据为依据，只有累计达到检查点或出现风险时再跑全量；
+- 后续 `step` 能力必须有正例、负例、默认步长、动态值更新和 submission 阻断/恢复的自动
+  断言，并通过定向设备门；TEST232 人工包仍需稍后确认真实 WM6 picker 的选择/取消/窗口
+  返回与一次性 `input` → `change`，不能以自动日志代替；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
 - 若出现崩溃、数据损坏、严重布局破坏或核心交互阻塞，立即停止累计并进入 debug；

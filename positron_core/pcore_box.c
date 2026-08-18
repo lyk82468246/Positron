@@ -26,6 +26,7 @@
  */
 
 #include <windows.h>
+#include <float.h>
 #include <limits.h>
 #include <stdlib.h>   /* malloc / free for the per-document render state */
 #include <string.h>
@@ -431,6 +432,121 @@ static int pcore_node_attr_unsigned(dom_node *node, const char *attr,
     dom_string_unref(value);
     dom_string_unref(name);
     return 1;
+}
+
+/* HTML number controls use a deliberately small ASCII grammar. Validate the
+ * spelling before calling strtod so the C runtime cannot accept hexadecimal,
+ * NaN/Infinity or locale-specific forms that are not valid HTML numbers. */
+static int pcore_html_number_syntax(const char *data, size_t length)
+{
+    size_t index;
+    int digits;
+
+    if (data == NULL || length == 0) {
+        return 0;
+    }
+    index = 0;
+    if (data[index] == '-') {
+        index++;
+    }
+    if (index >= length) {
+        return 0;
+    }
+    digits = 0;
+    while (index < length && data[index] >= '0' && data[index] <= '9') {
+        digits = 1;
+        index++;
+    }
+    if (!digits) {
+        return 0;
+    }
+    if (index < length && data[index] == '.') {
+        index++;
+        digits = 0;
+        while (index < length && data[index] >= '0' && data[index] <= '9') {
+            digits = 1;
+            index++;
+        }
+        if (!digits) {
+            return 0;
+        }
+    }
+    if (index < length && (data[index] == 'e' || data[index] == 'E')) {
+        index++;
+        if (index < length && (data[index] == '+' || data[index] == '-')) {
+            index++;
+        }
+        digits = 0;
+        while (index < length && data[index] >= '0' && data[index] <= '9') {
+            digits = 1;
+            index++;
+        }
+        if (!digits) {
+            return 0;
+        }
+    }
+    return index == length;
+}
+
+static int pcore_dom_number(dom_string *value, double *out_value)
+{
+    const char *data;
+    size_t length;
+    char *copy;
+    char *end;
+    double parsed;
+    int result;
+
+    if (value == NULL || out_value == NULL) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (!pcore_html_number_syntax(data, length)) {
+        return 0;
+    }
+    copy = (char *) malloc(length + 1);
+    if (copy == NULL) {
+        return 0;
+    }
+    memcpy(copy, data, length);
+    copy[length] = '\0';
+    end = NULL;
+    parsed = strtod(copy, &end);
+    result = (end == copy + length && parsed <= DBL_MAX &&
+            parsed >= -DBL_MAX && parsed == parsed);
+    free(copy);
+    if (result) {
+        *out_value = parsed;
+    }
+    return result;
+}
+
+static int pcore_node_attr_number(dom_node *node, const char *attr,
+        double *out_value)
+{
+    dom_string *name;
+    dom_string *value;
+    int result;
+
+    name = NULL;
+    value = NULL;
+    result = 0;
+    if (node == NULL || attr == NULL || out_value == NULL ||
+            dom_string_create((const uint8_t *) attr, strlen(attr), &name) !=
+                    DOM_NO_ERR || name == NULL) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) == DOM_NO_ERR &&
+            value != NULL) {
+        result = pcore_dom_number(value, out_value);
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return result;
 }
 
 /* NetSurf box_special.c attaches a form_control to form element boxes. The
@@ -6080,6 +6196,30 @@ static int pcore_text_constraint_flags(dom_node *node, dom_string *value,
     return 1;
 }
 
+static int pcore_number_constraint_flags(dom_node *node, dom_string *value,
+        unsigned int *flags_out)
+{
+    double number;
+    double minimum;
+    double maximum;
+
+    *flags_out = 0;
+    if (value == NULL || dom_string_byte_length(value) == 0) {
+        return 1;
+    }
+    if (!pcore_dom_number(value, &number)) {
+        *flags_out = PCORE_VALIDITY_BAD_INPUT;
+        return 1;
+    }
+    if (pcore_node_attr_number(node, "min", &minimum) && number < minimum) {
+        *flags_out |= PCORE_VALIDITY_RANGE_UNDERFLOW;
+    }
+    if (pcore_node_attr_number(node, "max", &maximum) && number > maximum) {
+        *flags_out |= PCORE_VALIDITY_RANGE_OVERFLOW;
+    }
+    return 1;
+}
+
 static int pcore_required_control_missing(dom_html_form_element *form,
         dom_node *node, int *kind_out, int *missing_out,
         unsigned int *flags_out)
@@ -6130,8 +6270,9 @@ static int pcore_required_control_missing(dom_html_form_element *form,
             if (required && (value == NULL ||
                     dom_string_byte_length(value) == 0)) {
                 *flags_out = PCORE_VALIDITY_VALUE_MISSING;
-            } else if (!pcore_text_constraint_flags(node, value,
-                    flags_out)) {
+            } else if (pcore_attr_value_is(node, "type", "number") ?
+                    !pcore_number_constraint_flags(node, value, flags_out) :
+                    !pcore_text_constraint_flags(node, value, flags_out)) {
                 if (value != NULL) {
                     dom_string_unref(value);
                 }

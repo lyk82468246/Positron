@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 232
+#define TEST_MAX_NUMBER 233
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -42708,6 +42708,72 @@ static BOOL test232_browser_file_picker_manual(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 233 - number min/max and malformed-value validation              */
+/* -------------------------------------------------------------------- */
+static BOOL test233_form_number_range(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form action=/number method=get>"
+        "<input type=number name=amount value=5 min=2 max=8>"
+        "<input type=number value=3 min=bad max=bad>"
+        "<button type=submit name=go value=send>Send</button>"
+        "</form></body></html>";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[256];
+    int submit_x;
+    int submit_y;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    if (!test100_form_prepare(HTML, &document, &sheet,
+            &submit_x, &submit_y) ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            validation.invalid_count != 0 ||
+            PCore_TextInputSetValue(document, 0, "1") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.invalid_count != 1 ||
+            validation.first_flags != PCORE_VALIDITY_RANGE_UNDERFLOW ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 5 ||
+            PCore_TextInputSetValue(document, 0, "9") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_RANGE_OVERFLOW ||
+            PCore_TextInputSetValue(document, 0, "not-a-number") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || validation.valid ||
+            validation.first_flags != PCORE_VALIDITY_BAD_INPUT ||
+            PCore_TextInputSetValue(document, 0, "8") != 0 ||
+            !PCore_FormValidationAt(document, submit_x, submit_y,
+                    &validation) || !validation.valid ||
+            PCore_FormSubmissionAt(document, submit_x, submit_y,
+                    &submission, action, sizeof(action),
+                    body, sizeof(body)) != 1 ||
+            strcmp(action, "/number") != 0 ||
+            strcmp(body, "amount=8&go=send") != 0) {
+        test100_form_cleanup(document, sheet);
+        show_error(L"TEST 233 FAIL",
+                "number min/max, malformed input or boundary submission failed");
+        return FALSE;
+    }
+    test100_form_cleanup(document, sheet);
+    show_info(L"TEST 233 OK",
+            "type=number enforced valid min/max ranges, rejected malformed "
+            "values, ignored malformed range attributes and recovered at "
+            "the inclusive boundary.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -46919,6 +46985,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 232: ok =
                 test232_browser_file_picker_manual();
+                break;
+        case 233: ok =
+                test233_form_number_range();
                 break;
         default: ok = FALSE; break;
         }
