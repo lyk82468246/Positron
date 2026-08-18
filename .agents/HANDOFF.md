@@ -9,7 +9,10 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next262（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next263（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- next263 批次让 native file input 的程序化 `HTMLElement.click()` 先通过既有 typed click
+  contract；disabled 控件静默，自动脚本不打开系统 picker，picker、文件系统权限和窗口生命周期
+  仍由宿主 GUI 路径拥有。TEST228 继续覆盖 programmatic-click adapter error、注销和资源关闭。
 - next262 批次让脚本可见的 `HTMLElement.click()` 对 native submit/reset/button 先复用 typed click，再接入 typed form-event 和既有提交/重置宿主默认路径；reset 由宿主先发可取消事件、core 只提交状态，避免重复 reset；保持取消、disabled/no-op、generic button 和资源边界；next261 批次把脚本可见的 `HTMLElement.click()` 接入 `positron_browser.dll` 的 programmatic-click typed callback；宿主按 DOM id 复用既有 typed click、input、change contracts，保持取消、disabled/no-op、radio 互斥和资源关闭边界；next260 批次让 core checkbox/radio 的 Space/Enter WM keyboard activation 复用既有 typed key/click/input/change contracts，并保持 keydown/click 取消、重复 keydown 和 disabled 边界；next259 批次让 label/native checkbox/radio activation 先通过既有 typed click contract 分发 label click 与目标 control click，并保持取消阻断及 `input` → `change` 顺序；next258 批次让 native checkbox/radio activation 在核心状态提交后按 `input` → `change` 顺序复用 `positron_browser/` 已有的 typed input/select callback contracts；next257 批次让 native checkbox/radio activation 在核心状态提交后复用 `positron_browser/` 已有的 select-style typed `change` callback contract；next256 批次让 `test_host` 的 native file input 选取完成路径复用 `positron_browser/` 已有的 input/select typed callback contract，按 `input` → `change` 顺序分发 file metadata；next255 批次在 `positron_browser/` 产品 DLL 中加入 native invalid typed dispatch callback ABI，并让 `test_host` 的 constraint-validation feedback 先经过该 contract；next254 批次加入 native submit/reset typed dispatch callback ABI，并让 `test_host` 的 form button/Enter activation 先经过该 contract；next253 批次加入 native click typed dispatch callback ABI，并让 `test_host` 的 WM_LBUTTONDOWN 先经过该 contract；next252 批次在 `test_host` 中把 native EDIT 的 EN_CHANGE 后 input 事件接到既有 `positron_browser/` input typed dispatch callback contract；next251 批次在产品 DLL 中加入 native EDIT change typed dispatch callback ABI；next250 批次让既有 SELECT typed dispatch callback ABI 同时承接 native SELECT input 事件；next249 批次加入 native SELECT change typed dispatch callback ABI；next248 的 focus-family typed dispatch callback ABI、next247 的 native keyboard typed dispatch callback ABI、next246 的 native input/composition typed dispatch callback ABI、next245 的同文档 history traversal/hash location 事件分发 API、next244 的 navigation callback typed registration、JSON
   分发和 session 生命周期、next243 的 form-property callback、next242 的 checked callback、next241 的 input value callback、next240 的 Event callback、next239 的 DOM attribute 三件套、next238 的 textContent 写入、next237 的 DOM 只读 callback、next236 的产品 bootstrap
   文本与求值入口、next235 的浏览器脚本 session 所有权与 host JSON callback 注册均保持通过；`test_host` 适配与工程接线继续使用当前
@@ -17,9 +20,10 @@
   `scripts/repair_wmdc_rapi.*`。
 - 当前工作区的 `test_host/test_host.ini` 保持自动模式：`auto=1`、`javascript=0`、
   `tests=13,20,27,56,58,62,64-67,73,75,999`。这是窄的自动 smoke 选择，不是完整基线；
-- next255 的 170 项自动全量证据已经通过；next262 的定向门见下方；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
+- next255 的 170 项自动全量证据已经通过；next263 的定向门见下方；人工视觉/输入包若需要弹窗，必须临时把 `auto` 改为 0，
   验收结束后恢复为 1。
-- next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
+- next263 定向证据位于 `tmp/device-runs/20260818-225735-next263-file-programmatic-stage/`；`TEST70,189-230/999`
+  相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
   相关回归证据位于 `tmp/device-runs/20260818-214821-next260-toggle-key-regression-rerun/`。next259 定向证据位于 `tmp/device-runs/20260818-212733-next259-toggle-click-probe-rerun/`；`TEST189-226/999`
@@ -55,7 +59,25 @@
 
 ## 最近已验证设备证据
 
-### 最新定向检查点：next262
+### 最新定向检查点：next263
+
+- 配置：`TEST230/999` 定向 2 项；`TEST70,189-230/999` 相关回归 44 项。
+- 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
+- 通道：32 位 RAPI 直接消费 WMDC 当前设备；没有枚举/绑定 VMID，也没有连接、选择、启动、
+  Cradle、断开或重置设备。RAPI 1 不提供可靠远端退出码，完成依据为完整日志标记。
+- 结果：2 项与 44 项均全部有 `OK`；零 `ERROR`、零 `FAIL`，每组唯一 `TESTBENCH PASS`，
+  `completion_marker=PASS`，`test13_route_ok=True`。
+- TEST230 通过真实脚本验证启用 file input 的 click 目标和 `defaultPrevented=false`、取消 click、
+  disabled/no-op，以及三个 file input 的 value/path 仍为空；程序化路径没有打开系统 picker，
+  因此文件系统权限、picker 和窗口生命周期仍留在宿主 GUI 路径。TEST228 的 adapter error、注销
+  和 native function 资源关闭断言在相关回归中保持通过。
+- 自动证据：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、VS2008 ARMV4I
+  Debug 正式构建均通过。定向证据位于
+  `tmp/device-runs/20260818-225735-next263-file-programmatic-stage/`，相关回归证据位于
+  `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`；本批未重复
+  next255 的 170 项全量门。
+
+### 已验证检查点：next262
 
 - 配置：`TEST229/999` 定向 2 项；`TEST68-69,189-229/999` 相关回归 44 项。
 - 环境：WMDC 当前连接的 Microsoft DeviceEmulator，`screen=640x480 dpi=192`。
@@ -810,6 +832,29 @@ core/document typed adapter，同时保持既有 bootstrap、页面脚本、nati
   完整证据路径见本文件顶部。全量中途曾出现 TEST129、TEST153、TEST192 的单次 JavaScript
   timeout；定向回归及最终全量重试通过，未调整执行预算或放宽断言。
 
+## 已关闭批次：next263
+
+目标：把 native file input 的程序化 `HTMLElement.click()` 接到既有 typed click contract，
+同时明确自动脚本与系统文件选择器的边界；不把 picker、文件系统权限或窗口生命周期迁入产品 DLL。
+
+实现边界：
+
+- `test_host` 的 programmatic-click adapter 对 kind 10 file control 先通过既有 typed click
+  callback；disabled 控件沿用统一静默规则，click 被取消时不发生任何默认动作。
+- 程序化 file click 在同步脚本路径只分发 click 并返回，不调用 `pcore_handle_file_input`；系统
+  picker 仍只由真实 WM/label GUI 路径显式打开，选取完成后的既有 file `input`/`change` metadata
+  contract 保持不变。
+- TEST230 覆盖启用/取消/disabled file click、click 事件目标和空 value/path，TEST228 继续覆盖
+  programmatic-click adapter error、注销和 native function 资源关闭。
+
+已经核验并提升为定向基线：
+
+- `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`；
+- VS2008 ARMV4I Debug 正式构建（0 errors，3 个既有 libcss C4244 warnings）；
+- 定向 `TEST230/999`（2 项）和 `TEST70,189-230/999`（44 项）WMDC/RAPI 设备门；
+- 两组均零 `ERROR`、零 `FAIL`，唯一 `TESTBENCH PASS`；next255 的 170 项完整门仍是最近一次
+  全量基线，本批未重复全量。
+
 ## 已关闭批次：next262
 
 目标：把 native submit/reset/button 的程序化 `HTMLElement.click()` 接入既有 typed click、
@@ -1288,15 +1333,16 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-在 next262 基线之上，处理 native file input 的程序化 `HTMLElement.click()` 入口：先接入
-既有 typed click、disabled/no-op 和 file-input 边界；系统文件选择器仍保持 GUI/人工路径，
-不把 picker、文件系统权限或窗口生命周期迁入产品 DLL；继续保留 TEST13 和人工视觉/输入累计门。
+在 next263 基线之上，整理 native file input 的宿主 GUI picker 完成边界：把真实 picker 的
+选择、取消、错误和窗口生命周期保持在 `test_host`，明确复用现有 `PCore_FileInputSetPath`
+以及 file `input`/`change` typed contract；不新增产品 ABI，也不让程序化 `HTMLElement.click()`
+自动打开 picker。继续保留 TEST13 和人工视觉/输入累计门。
 
 完成标准：
 
-- next262 的 TEST229/999、`TEST68-69,189-229/999` 相关回归、C89、审计和正式构建均保持通过；
-- 新批次直接测试 native file input 程序化 click 的 click 目标、disabled/no-op、picker 边界、
-  adapter error 和资源关闭，并通过定向后相关回归门；只有累计达到
+- next263 的 TEST230/999、`TEST70,189-230/999` 相关回归、C89、审计和正式构建均保持通过；
+- 新批次直接测试宿主 GUI picker 的选择/取消/错误和资源关闭边界，并确认程序化 click 不会
+  越过 typed click 边界自动打开 picker；只有累计达到
   检查点或出现风险时再跑全量；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；

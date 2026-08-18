@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 229
+#define TEST_MAX_NUMBER 230
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3996,7 +3996,7 @@ static int pcore_browser_script_programmatic_click_dispatch(void *pw,
     }
     default_allowed = 1;
     if (has_control && ((kind == 1 || kind == 2) ||
-            (kind >= 7 && kind <= 9))) {
+            (kind >= 7 && kind <= 10))) {
         if (bridge->session == NULL) {
             return -1;
         }
@@ -4058,6 +4058,12 @@ static int pcore_browser_script_programmatic_click_dispatch(void *pw,
             (void) PCore_FormResetAt(bridge->document,
                     x + width / 2, y + height / 2);
         }
+        return 0;
+    }
+    if (kind == 10) {
+        /* A script-visible file click ends at the typed click contract. The
+         * system picker remains an explicit host GUI action and is never
+         * opened from this synchronous script callback. */
         return 0;
     }
     if ((kind != 1 && kind != 2) ||
@@ -41968,6 +41974,199 @@ static BOOL test229_browser_form_button_programmatic(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 230 - programmatic file input click/picker boundary              */
+/* -------------------------------------------------------------------- */
+static BOOL test230_browser_file_programmatic(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='root'>"
+        "<input id='file' type='file'>"
+        "<input id='cancel' type='file'>"
+        "<input id='disabled' type='file' disabled>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "form{display:block;width:280px}"
+        "input{display:block;width:220px;height:24px;margin:3px}"
+        "p{display:block;width:500px;height:100px}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function record(e){var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+'|'"
+        "+String(e.defaultPrevented)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('click',record);"
+        "root.addEventListener('input',record);"
+        "root.addEventListener('change',record);"
+        "document.getElementById('cancel').addEventListener('click',"
+        "function(e){e.preventDefault();});"
+        "document.getElementById('file').click();"
+        "document.getElementById('cancel').click();"
+        "document.getElementById('disabled').click();";
+    static const char EXPECTED_EVENTS[] =
+        "click|file|false;click|cancel|true;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFileInputInfo file_info;
+    PCoreFileInputInfo cancel_info;
+    PCoreFileInputInfo disabled_info;
+    char events[512];
+    char file_value[128];
+    char file_path[128];
+    char cancel_value[128];
+    char cancel_path[128];
+    char disabled_value[128];
+    char disabled_path[128];
+    char error[384];
+    const char *stage;
+    int event_bytes;
+    int executed;
+    int ignored;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&file_info, 0, sizeof(file_info));
+    memset(&cancel_info, 0, sizeof(cancel_info));
+    memset(&disabled_info, 0, sizeof(disabled_info));
+    memset(events, 0, sizeof(events));
+    memset(file_value, 0, sizeof(file_value));
+    memset(file_path, 0, sizeof(file_path));
+    memset(cancel_value, 0, sizeof(cancel_value));
+    memset(cancel_path, 0, sizeof(cancel_path));
+    memset(disabled_value, 0, sizeof(disabled_value));
+    memset(disabled_path, 0, sizeof(disabled_path));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    event_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    x = 0;
+    y = 0;
+    width = 0;
+    height = 0;
+    kind = 0;
+    disabled = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/file-programmatic.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 280) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        stage = "evaluate";
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "click-events";
+        if (PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, EXPECTED_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "control-info";
+        ok = PCore_FormControlInfoById(document, "file", &x, &y,
+                &width, &height, &kind, NULL, &disabled) == 0 &&
+                kind == 10 && !disabled && width > 0 && height > 0 &&
+                PCore_FormControlInfoById(document, "cancel", NULL, NULL,
+                NULL, NULL, &kind, NULL, &disabled) == 0 && kind == 10 &&
+                !disabled &&
+                PCore_FormControlInfoById(document, "disabled", NULL, NULL,
+                NULL, NULL, &kind, NULL, &disabled) == 0 && kind == 10 &&
+                disabled;
+    }
+    if (ok) {
+        stage = "picker-boundary";
+        ok = PCore_FileInputInfo(document, 0, &file_info,
+                file_value, sizeof(file_value), file_path,
+                sizeof(file_path)) == 0 &&
+                PCore_FileInputInfo(document, 1, &cancel_info,
+                cancel_value, sizeof(cancel_value), cancel_path,
+                sizeof(cancel_path)) == 0 &&
+                PCore_FileInputInfo(document, 2, &disabled_info,
+                disabled_value, sizeof(disabled_value), disabled_path,
+                sizeof(disabled_path)) == 0 &&
+                file_info.disabled == 0 && cancel_info.disabled == 0 &&
+                disabled_info.disabled == 1 && file_value[0] == '\0' &&
+                file_path[0] == '\0' && cancel_value[0] == '\0' &&
+                cancel_path[0] == '\0' && disabled_value[0] == '\0' &&
+                disabled_path[0] == '\0';
+    }
+    if (!ok && error[0] == '\0') {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%s events=%s info=%d/%d/%d values=%s|%s|%s paths=%s|%s|%s",
+                stage, events, file_info.disabled, cancel_info.disabled,
+                disabled_info.disabled, file_value, cancel_value,
+                disabled_value, file_path, cancel_path, disabled_path);
+        error[sizeof(error) - 1] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 230 FAIL", error[0] != '\0' ? error :
+                "programmatic file-input activation crossed picker boundary");
+        return FALSE;
+    }
+    show_info(L"TEST 230 OK",
+            "File input HTMLElement.click() dispatches typed click only;"
+            " disabled controls stay silent and the GUI picker remains host-owned.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -46170,6 +46369,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 229: ok =
                 test229_browser_form_button_programmatic();
+                break;
+        case 230: ok =
+                test230_browser_file_programmatic();
                 break;
         default: ok = FALSE; break;
         }

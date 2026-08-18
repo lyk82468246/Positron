@@ -13,7 +13,7 @@
 - 典型组合：调用者另行持有 `positron_core.dll`、网络和 native WM 控件
 
 其他项目链接 `positron_browser.lib`，部署 DLL 依赖，并以 callback 形式提供宿主的
-document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。
+document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。对 file input，programmatic click 只负责 typed click 分发；系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
 `test_host.exe` 是一个完整的组合示例，但不是私有 API 的唯一消费者。
 
 ## 其他项目如何调用

@@ -14,7 +14,7 @@
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
   textContent 读取）、textContent 写入、attribute、input value、checked、form property
-  （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、submit/reset、invalid、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
+  （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click）、submit/reset、invalid、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
   Event callback 的产品 JSON 分发已迁入，但 core/document typed listener 适配仍由宿主提供。
@@ -75,10 +75,11 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 ## 表单与输入
 
 当前状态：已有 native EDIT/SELECT、file input、textarea、checkbox/radio、提交/reset、基础 constraint
-validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/submit-reset-button programmatic `click()`/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
+validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/submit-reset-button programmatic `click()`/file-input programmatic `click()` typed dispatch/SELECT input/change typed dispatch 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
 尚未完成：任意 OEM IME、完整 composition/preedit、类型/范围/step、custom validity、
-`invalid` UI、native file input 的程序化 picker 入口和文件选择体验。
+`invalid` UI、native file input 的程序化 picker 入口和完整文件选择体验；当前程序化 click
+只分发 typed click，不自动打开系统 picker。
 
 完成方法：synthetic event 与真实 SIP 分开验收；至少覆盖候选词、Unicode、旋转和
 native control 生命周期。
@@ -197,6 +198,10 @@ next262 的 TEST229、`TEST229/999`（2 项）定向门和 `TEST68-69,189-229/99
 验证 native submit/reset/button 的程序化 click target、submit/reset form-event 顺序、取消、
 reset 初值恢复、generic/disabled no-op 和 reset 重复事件边界；回归首尝 TEST193 的既有
 JavaScript timeout 以原配置重试通过，本批仍未重复 next255 的 170 项全量门。
+next263 的 TEST230、`TEST230/999`（2 项）定向门和 `TEST70,189-230/999`（44 项）相关回归门
+验证 native file input 的程序化 click target、取消、disabled/no-op、空 value/path 和系统 picker
+边界；程序化路径不打开 picker，相关 adapter error、注销和 native function 资源关闭由 TEST228
+继续覆盖，本批仍未重复 next255 的 170 项全量门。
 以下仍按普通导航或不支持处理：
 
 - 完整与半编码 double-dot 混合；
