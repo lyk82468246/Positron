@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 263
+#define TEST_MAX_NUMBER 264
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -45035,6 +45035,205 @@ static BOOL test263_browser_file_programmatic_picker_manual(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 264 - browser disabled boolean property and form semantics       */
+/* -------------------------------------------------------------------- */
+static BOOL test264_browser_disabled_property(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form action=/disabled method=get>"
+        "<input id='field' name='field' required disabled value=''>"
+        "<button id='go' type=submit name=go value=send>Send</button>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "input,button{display:block;margin:4px 0;width:180px}";
+    static const char PROBE[] =
+        "var f=document.getElementById('field');var a;var b;var c;"
+        "a=f.disabled===true&&f.hasAttribute('disabled')&&"
+        "f.getAttribute('disabled')==='';"
+        "f.disabled=false;"
+        "b=f.disabled===false&&!f.hasAttribute('disabled');"
+        "f.disabled=1;"
+        "c=f.disabled===true&&f.hasAttribute('disabled');"
+        "document.getElementById('result').textContent="
+        "String(a)+'|'+String(b)+'|'+String(c);";
+    static const char ENABLE[] =
+        "var f=document.getElementById('field');f.disabled=false;"
+        "document.getElementById('result').textContent="
+        "String(f.disabled)+'|'+String(f.hasAttribute('disabled'));";
+    static const char VALUE[] =
+        "var f=document.getElementById('field');f.value='ok';"
+        "document.getElementById('result').textContent=f.value;";
+    static const char DISABLE[] =
+        "var f=document.getElementById('field');f.disabled=true;"
+        "document.getElementById('result').textContent="
+        "String(f.disabled)+'|'+String(f.hasAttribute('disabled'));";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char result[128];
+    char action[128];
+    char body[256];
+    char error[384];
+    const char *stage;
+    int executed;
+    int ignored;
+    int submit_x;
+    int submit_y;
+    int submit_w;
+    int submit_h;
+    int result_bytes;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    memset(result, 0, sizeof(result));
+    memset(action, 0, sizeof(action));
+    memset(body, 0, sizeof(body));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    submit_x = 0;
+    submit_y = 0;
+    submit_w = 0;
+    submit_h = 0;
+    result_bytes = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/disabled-property.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 240, 320) != 0 ||
+                PCore_NodeBox(document, "button", &submit_x, &submit_y,
+                &submit_w, &submit_h) != 0 || submit_w <= 0 ||
+                submit_h <= 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "true|true|true") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "disabled-validation";
+        if (!PCore_FormValidationAt(document, submit_x, submit_y,
+                &validation) || !validation.valid ||
+                validation.invalid_count != 0 ||
+                PCore_FormSubmissionAt(document, submit_x, submit_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+                strcmp(action, "/disabled") != 0 ||
+                strcmp(body, "go=send") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "enabled-validation";
+        if (pcore_browser_script_session_evaluate(ENABLE, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, submit_x, submit_y,
+                &validation) || validation.valid ||
+                validation.invalid_count != 1 ||
+                validation.first_flags != PCORE_VALIDITY_VALUE_MISSING ||
+                PCore_FormSubmissionAt(document, submit_x, submit_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 5) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "value-recovery";
+        if (pcore_browser_script_session_evaluate(VALUE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "ok") != 0 ||
+                !PCore_FormValidationAt(document, submit_x, submit_y,
+                &validation) || !validation.valid ||
+                PCore_FormSubmissionAt(document, submit_x, submit_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+                strcmp(body, "field=ok&go=send") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "disabled-submission";
+        if (pcore_browser_script_session_evaluate(DISABLE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_FormSubmissionAt(document, submit_x, submit_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+                strcmp(body, "go=send") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s result=%s action=%s body=%s valid=%d count=%d flags=%lu",
+                    stage, result, action, body, validation.valid,
+                    validation.invalid_count,
+                    (unsigned long) validation.first_flags);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 264 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 264 OK",
+            "The browser disabled property round-tripped through the "
+            "existing attribute bridge; disabled required controls were "
+            "skipped by validation and submission, then recovered when enabled.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -49339,6 +49538,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 263: ok =
                 test263_browser_file_programmatic_picker_manual();
+                break;
+        case 264: ok =
+                test264_browser_disabled_property();
                 break;
         default: ok = FALSE; break;
         }

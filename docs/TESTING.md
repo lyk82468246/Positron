@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next295 候选）
+### 当前默认自动选择与人工验收包（next296 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -134,10 +134,15 @@ scripts\device_gate.bat -Candidate next295-file-programmatic-picker ^
   -TestSelection "262,999"
 scripts\device_gate.bat -Candidate next295-file-programmatic-picker-regression ^
   -TestSelection "70,189-231,233-262,999"
+scripts\device_gate.bat -Candidate next296-disabled-property ^
+  -TestSelection "264,999"
+scripts\device_gate.bat -Candidate next296-disabled-property-regression ^
+  -TestSelection "70,189-231,233-262,264,999"
 ```
 
-next295 的两组定向门分别覆盖新测试和相关文件/脚本回归，已分别通过 2/2 和 75/75，
-均无 ERROR/FAIL；证据目录和人工待验收状态见 [`.agents/HANDOFF.md`](../.agents/HANDOFF.md)。
+next296 的两组定向门分别覆盖新测试和相关文件/脚本回归，已分别通过 2/2 和 76/76，
+均无 ERROR/FAIL；next295 的 TEST263 真实 GUI 已由用户验收，证据目录和当前状态见
+[`.agents/HANDOFF.md`](../.agents/HANDOFF.md)。
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
 需要做人工视觉/输入验收时，临时把 staging 或工作区的 `auto` 改为 0；验收结束后务必恢复
@@ -191,6 +196,7 @@ next295 的两组定向门分别覆盖新测试和相关文件/脚本回归，�
 | 261 | range 的有效显式 min/max 缺省中点 25 通过 text-control bridge 读回并提交；显式值 35 覆盖。 |
 | 262 | 自动验证 file input 的程序化 click 只排队一次宿主 picker；选择后发出一次 input/change，取消、disabled 和文档替换不改文件状态。 |
 | 263 | 手工验证脚本 `file.click()` 在真实 WM6 窗口中延迟打开 picker；选择后显示 value 和 input/change，再次 Cancel 保持状态。 |
+| 264 | 自动验证 `HTMLElement.disabled` getter/setter 与既有 attribute bridge 同步；禁用 required 控件跳过 validation/submission，启用后恢复阻断与成功提交，重新禁用后再次排除。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 和 TEST263 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
@@ -311,7 +317,10 @@ TEST232 是 manual-only 的真实 WM6 picker fixture：它保持一个显式开�
 TEST262 是自动的 host queue/adapter 边界；TEST263 是 manual-only 的 programmatic picker
 fixture，保持一个显式脚本 session，让 checkbox listener 调用 `file.click()`，由宿主消息循环
 在脚本返回后打开 `GetOpenFileNameEx`。它不把 picker、窗口或文件系统权限迁入
-`positron_browser.dll`；取消必须保留已有文件状态。
+`positron_browser.dll`；取消必须保留已有文件状态。该入口已由用户完成真实 WM6 GUI 验收。
+TEST264 是自动的 `HTMLElement.disabled` 属性门，覆盖 getter/setter 的 attribute round-trip、
+required validation 的禁用/启用切换、successful-control submission 的包含/排除以及动态值
+恢复；它不需要人工页面观察，也不宣称完整 DOM IDL reflection。
 
 ## 运行自动设备门
 
