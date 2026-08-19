@@ -99,6 +99,9 @@ JSON-compatible global、native callback、执行预算和内存限制，但本�
 - 按 DOM id 查询控件的约束状态（`valid`、`will_validate` 和 `PCORE_VALIDITY_*` flags），供浏览器
   bridge 或其他宿主在布局前后读取；该查询不触发 invalid 事件，也不应用 form-level no-validate
   提交按钮绕过；
+- 按 DOM id 聚合查询 form 的约束状态（`PCore_FormValidationById`），供浏览器 bridge 或其他
+  宿主实现受限的 form-level `checkValidity()`；该查询忽略 form 的 `novalidate`，跳过不参与
+  constraint validation 的控件，不依赖布局，也不触发 invalid 事件、提交或 native invalid UI；
 - 按 DOM id 设置/读取当前控件的 application-owned custom validity message，供脚本 bridge
   实现 `setCustomValidity()` 和 `validationMessage`；支持现有 form-control candidates，不触发
   invalid 事件或 native invalid UI；
@@ -118,7 +121,7 @@ history/session opaque handle、有限同源 URL 判定、文档导航提交、p
 host JSON callback 注册、求值和调用生命周期。它依赖 `positron_json.dll` 验证 history state，
 并依赖 `positron_script.dll` 持有脚本 context，但不依赖窗口、网络或 WM 控件。
 
-bootstrap、按 id 查询元素、读取/写入 textContent、attribute、input value、checked、`HTMLElement.disabled`、控件约束查询、custom validity query/set、约束相关
+bootstrap、按 id 查询元素、读取/写入 textContent、attribute、input value、checked、`HTMLElement.disabled`、控件约束查询、form-level `checkValidity()` 聚合查询、custom validity query/set、约束相关
 `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`、form property
 （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件、event 的
 DOM JSON 分发以及 native input/composition/keyboard/focus-family/EDIT-change/post-change-input/click/
@@ -137,7 +140,7 @@ typed dispatch entry 已由此 DLL 持有并执行；
 “浏览器 JavaScript”指产品浏览器层和宿主在显式开关开启时：
 
 1. browser layer 持有 `positron_script` context，并按 DOM 顺序驱动 classic inline/external script；
-2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/validation query/custom-validity/约束相关 reflected properties/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract，并逐步承接其余表单适配；
+2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/validation query（包括 form-level 聚合）/custom-validity/约束相关 reflected properties/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract，并逐步承接其余表单适配；
 3. browser layer 持有并执行产品 bootstrap；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
 4. 宿主继续提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
 

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 267
+#define TEST_MAX_NUMBER 268
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6550,7 +6550,9 @@ static int pcore_browser_script_dom_get_validation(void *pw,
         const char *id, PBrowserScriptValidationInfo *out_info)
 {
     pcore_browser_script_bridge *bridge;
+    PCoreFormValidationInfo form_info;
     PCoreFormControlValidationInfo core_info;
+    int form_result;
 
     bridge = (pcore_browser_script_bridge *) pw;
     if (bridge == NULL || bridge->document == NULL || id == NULL ||
@@ -6558,10 +6560,19 @@ static int pcore_browser_script_dom_get_validation(void *pw,
             sizeof(PBrowserScriptValidationInfo)) {
         return -1;
     }
+    form_result = PCore_FormValidationById(bridge->document, id,
+            &form_info);
     if (PCore_NodeExistsById(bridge->document, id) != 1 ||
-            PCore_FormControlValidationById(bridge->document, id,
-            &core_info) != 0) {
+            (form_result != 0 &&
+             PCore_FormControlValidationById(bridge->document, id,
+             &core_info) != 0)) {
         return -1;
+    }
+    if (form_result == 0) {
+        out_info->valid = form_info.valid ? 1 : 0;
+        out_info->will_validate = 0;
+        out_info->flags = 0;
+        return 0;
     }
     out_info->valid = core_info.valid ? 1 : 0;
     out_info->will_validate = core_info.will_validate ? 1 : 0;
@@ -46112,6 +46123,222 @@ static BOOL test267_browser_custom_validity(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 268 - browser form-level constraint-validation query             */
+/* -------------------------------------------------------------------- */
+static BOOL test268_browser_form_validation(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='form' novalidate>"
+        "<input id='required' required value=''>"
+        "<input id='disabled' required disabled value=''>"
+        "<input id='locked' required readonly value=''>"
+        "<input id='custom' value='ready'>"
+        "<input id='amount' type='number' value='5' min='1' max='8'>"
+        "<button id='send' type=submit>Send</button></form>"
+        "<div id='plain'>Plain</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char PROBE[] =
+        "var f=document.getElementById('form');"
+        "var r=document.getElementById('required');"
+        "var d=document.getElementById('disabled');"
+        "var l=document.getElementById('locked');"
+        "var p=document.getElementById('plain');"
+        "document.getElementById('result').textContent="
+        "String(f.checkValidity())+'|'+String(f.validity.valid)+'|' +"
+        "String(f.willValidate)+'|'+String(r.checkValidity())+'|' +"
+        "String(d.checkValidity())+'|'+String(l.checkValidity())+'|' +"
+        "String(p.checkValidity());";
+    static const char FILL[] =
+        "var f=document.getElementById('form');"
+        "document.getElementById('required').value='ready';"
+        "document.getElementById('result').textContent="
+        "String(f.checkValidity())+'|'+String(f.validity.valid);";
+    static const char CUSTOM[] =
+        "var f=document.getElementById('form');"
+        "document.getElementById('custom').setCustomValidity('owner');"
+        "document.getElementById('result').textContent="
+        "String(f.checkValidity())+'|'+String(f.validity.valid)+'|' +"
+        "String(document.getElementById('custom').validity.customError);";
+    static const char CLEAR[] =
+        "var f=document.getElementById('form');"
+        "document.getElementById('custom').setCustomValidity('');"
+        "document.getElementById('result').textContent="
+        "String(f.checkValidity())+'|'+String(f.validity.valid);";
+    static const char RANGE[] =
+        "var f=document.getElementById('form');"
+        "document.getElementById('amount').min='6';"
+        "document.getElementById('result').textContent="
+        "String(f.checkValidity())+'|'+String(f.validity.valid);";
+    static const char DISABLE[] =
+        "var f=document.getElementById('form');"
+        "document.getElementById('amount').min='';"
+        "document.getElementById('required').disabled=true;"
+        "document.getElementById('result').textContent="
+        "String(f.checkValidity())+'|'+String(f.validity.valid);";
+    static const char NOVALIDATE[] =
+        "var f=document.getElementById('form');"
+        "f.noValidate=true;document.getElementById('required').disabled=false;"
+        "document.getElementById('required').value='';"
+        "document.getElementById('result').textContent="
+        "String(f.checkValidity())+'|'+String(f.noValidate);";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormValidationInfo form_info;
+    char result[256];
+    char error[384];
+    const char *stage;
+    int executed;
+    int ignored;
+    int result_bytes;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&form_info, 0, sizeof(form_info));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "direct-initial";
+        if (PCore_FormValidationById(document, "form", &form_info) != 0 ||
+                form_info.valid || form_info.invalid_count != 1 ||
+                !(form_info.first_flags & PCORE_VALIDITY_VALUE_MISSING) ||
+                form_info.first_control_kind == 0 ||
+                PCore_FormValidationById(document, "plain", &form_info) == 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        stage = "probe";
+        if (pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "false|false|false|false|true|true|true") !=
+                0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "fill";
+        if (pcore_browser_script_session_evaluate(FILL, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "true|true") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "custom";
+        if (pcore_browser_script_session_evaluate(CUSTOM, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "false|false|true") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "clear";
+        if (pcore_browser_script_session_evaluate(CLEAR, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "true|true") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "range";
+        if (pcore_browser_script_session_evaluate(RANGE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "false|false") != 0 ||
+                PCore_FormValidationById(document, "form", &form_info) != 0 ||
+                form_info.valid || form_info.invalid_count != 1 ||
+                !(form_info.first_flags & PCORE_VALIDITY_RANGE_UNDERFLOW)) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "disable";
+        if (pcore_browser_script_session_evaluate(DISABLE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "true|true") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "novalidate";
+        if (pcore_browser_script_session_evaluate(NOVALIDATE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "false|true") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s result=%s valid=%d count=%d flags=%lu",
+                    stage, result, form_info.valid, form_info.invalid_count,
+                    (unsigned long) form_info.first_flags);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 268 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 268 OK",
+            "Form checkValidity() now aggregates current controls through "
+            "the product validation bridge, including custom validity, "
+            "range recovery and disabled/noValidate query semantics.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -50428,6 +50655,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 267: ok =
                 test267_browser_custom_validity();
+                break;
+        case 268: ok =
+                test268_browser_form_validation();
                 break;
         default: ok = FALSE; break;
         }

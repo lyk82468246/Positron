@@ -33,7 +33,12 @@
   textarea、select、checkbox/radio 和 file candidates 的 application-owned message 动态更新。
   这仍不实现 form `checkValidity()`、invalid 事件触发、validation UI 或完整本地化错误消息。
 
-尚未完成：完整 DOM/window、其余 form/input callback 实现、form-level validation/query methods、module、
+- next300 新增了按 form DOM id 的约束聚合查询；现有 validation callback 让 bootstrap 的同一
+   `PElement.checkValidity()` 对 form 返回聚合 `valid`，并保持 `willValidate=false`、flags 为空。
+   该查询忽略 `novalidate`、跳过 disabled/readonly/submit 等不参与候选的控件，可在布局前后运行；
+   它仍不触发 invalid 事件、不提交表单，也不提供 `reportValidity()` 或 native invalid UI。
+
+尚未完成：完整 DOM/window、其余 form/input callback 实现、form-level reporting/invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
 实现位于 `test_host/main.c`，尚未成为可供正式浏览器应用复用的 browser-layer API。
 
@@ -89,13 +94,13 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 ## 表单与输入
 
 当前状态：已有 native EDIT/SELECT、file input、textarea、checkbox/radio、提交/reset、基础 constraint
-validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/submit-reset-button programmatic `click()`/file-input programmatic `click()` typed dispatch/SELECT input/change typed dispatch、`HTMLElement.disabled` 和约束属性的 attribute-backed getter/setter、控件级 `setCustomValidity()`/`validationMessage`、动态 form-level/button-level no-validate 语义和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
+validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/submit-reset-button programmatic `click()`/file-input programmatic `click()` typed dispatch/SELECT input/change typed dispatch、`HTMLElement.disabled` 和约束属性的 attribute-backed getter/setter、控件级 `setCustomValidity()`/`validationMessage`、受限 form-level `checkValidity()` 聚合查询、动态 form-level/button-level no-validate 语义和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
 尚未完成：任意 OEM IME、完整 composition/preedit、除 type=number 的 min/max/step 和 type=range
 默认/显式边界/缺省中点核心校验外的完整类型/范围/step 语义、除 email 和保守 url 核心校验外的
 email/URL 类型校验、除 bounded date/time（含规范 step base）/month/week/datetime-local（含 step）/color 核心
-校验外的完整 date/time/month/week/datetime-local/color 类型校验、form-level validation/query methods、
-`invalid` UI、native file input 的完整文件选择体验。程序化 click 在自动/无窗口路径仍只
+校验外的完整 date/time/month/week/datetime-local/color 类型校验、form-level reporting/invalid UI、
+native file input 的完整文件选择体验。程序化 click 在自动/无窗口路径仍只
 分发 typed click；在有 render window 的宿主路径中，next295 已把未取消的 request 排入窗口
 消息循环，再复用既有 host picker adapter。TEST231 已自动覆盖 host picker 的注入错误/空选择
 边界，TEST262 已覆盖排队合并、disabled、取消和文档替换丢弃；TEST232 的真实 WM6 picker

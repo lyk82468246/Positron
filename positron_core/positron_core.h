@@ -833,6 +833,20 @@ typedef struct PCoreFormControlValidationInfo {
 PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
         const char *element_id, PCoreFormControlValidationInfo *out_info);
 
+/* Query the aggregate constraint state of the form named by form_id. This
+ * is a DOM-only check and works before layout as well as after it. The
+ * form's novalidate attribute is intentionally ignored, matching the query
+ * semantics of HTMLFormElement.checkValidity(); controls that do not
+ * participate in constraint validation are skipped. The first invalid
+ * control kind/flags and invalid_count are reported, but geometry fields are
+ * zero because this API does not require a render tree. Returns 0 when the
+ * id names a form and the collection was inspected, and non-zero when the id
+ * is absent, names another element, or the DOM cannot be inspected. It does
+ * not dispatch invalid events, submit the form, or reveal native validation
+ * UI. */
+PCORE_API int PCore_FormValidationById(HANDLE hDoc, const char *form_id,
+        PCoreFormValidationInfo *out_info);
+
 /* Set or clear an application-owned custom validity message on the form
  * control named by element_id. The message is UTF-8 and copied by the DLL;
  * NULL or an empty string clears the custom error. The current control

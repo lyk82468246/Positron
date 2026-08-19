@@ -49,6 +49,11 @@ next299 已在 `positron_core.dll` 提供按 DOM id 的 custom-validity UTF-8 me
 callback，bootstrap 的 `setCustomValidity()` 与 `validationMessage` 已由 TEST267 及 84 项
 启用 JavaScript 的相关回归验证。该切片仍只覆盖控件级 message，不触发 invalid 事件或 native
 invalid UI，也不宣称 form-level `checkValidity()`；`test_host` 仍只是宿主适配和测试消费者。
+next300 已在 `positron_core.dll` 提供按 form DOM id 的约束聚合查询，并让现有 browser validation
+callback 将 form 的聚合 `valid` 接入 bootstrap 的受限 `checkValidity()`；TEST268 及 85 项启用
+JavaScript 的相关回归已通过。该切片忽略 form `novalidate`、跳过不参与约束验证的控件，但不触发
+invalid 事件、不提交表单、不实现 `reportValidity()` 或 native invalid UI；`test_host` 仍只是
+宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，
@@ -137,7 +142,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 ### 输入、表单与事件
 
 - 完整真实 SIP/IME composition、候选词、Unicode 和 preedit 生命周期。
-- 类型/范围/step、custom validity、`invalid` 事件和首个无效控件反馈。
+- 类型/范围/step、custom validity、form-level reporting、`invalid` 事件和首个无效控件反馈。
 - label、Enter、multiple select、文件选择和 native control 视觉/焦点行为。
 - 区分 synthetic event、WM 消息和真实用户输入的证据。
 

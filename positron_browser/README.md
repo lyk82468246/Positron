@@ -13,7 +13,7 @@
 - 典型组合：调用者另行持有 `positron_core.dll`、网络和 native WM 控件
 
 其他项目链接 `positron_browser.lib`，部署 DLL 依赖，并以 callback 形式提供宿主的
-document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、`HTMLElement.disabled`、`checkValidity()`、`willValidate`、`validity` 查询、`setCustomValidity()`、`validationMessage`、`required`、`readOnly`、`multiple`、`noValidate`、`formNoValidate`、`min`/`max`/`step`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。这些表单属性通过既有 attribute callback bridge 实现；validation query 通过独立的 size-tagged callback 获取 core 的控件状态，custom validity 通过另一个 size-tagged UTF-8 get/set callback 获取/更新 application-owned message；对 file input，programmatic click 只负责 typed click 分发；系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
+document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、`HTMLElement.disabled`、控件与受限 form-level `checkValidity()`、`willValidate`、`validity` 查询、`setCustomValidity()`、`validationMessage`、`required`、`readOnly`、`multiple`、`noValidate`、`formNoValidate`、`min`/`max`/`step`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。这些表单属性通过既有 attribute callback bridge 实现；validation query 通过独立的 size-tagged callback 获取 core 的控件状态或 form 聚合结果，custom validity 通过另一个 size-tagged UTF-8 get/set callback 获取/更新 application-owned message；对 file input，programmatic click 只负责 typed click 分发；系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
 `test_host.exe` 是一个完整的组合示例，但不是私有 API 的唯一消费者。
 
 ## 其他项目如何调用
@@ -49,14 +49,15 @@ PBrowser_ScriptSessionDestroy(session);
 - `PBrowser_ScriptSession*`：创建/销毁 PScript context、求值、JSON global、bootstrap、
   DOM read/write/attribute/value/checked/form-property、navigation/location/history 事件、
   Event JSON 和 native input/keyboard/focus/EDIT change/post-change input/click、programmatic
-  `HTMLElement.click()`、`HTMLElement.disabled`、`checkValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
+  `HTMLElement.click()`、`HTMLElement.disabled`、控件与受限 form-level `checkValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
   `formNoValidate`/`min`/`max`/`step`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
 - `PBrowser_ScriptSessionRuntime` 仅是迁移期只读诊断借用句柄，不转移所有权。
 
 回调结构体是 size-tagged，字符串和事件信息只在同步 callback 内借用。validation callback
-按 DOM id 返回控制候选的 `valid`、`will_validate` 和 flags；custom-validity callback 按 DOM id
-读写 UTF-8 application-owned message。这些是控件级边界，不实现 form `checkValidity()`、
-invalid 事件触发或 native invalid UI。产品层只管理
+按 DOM id 返回控件的 `valid`、`will_validate` 和 flags，或返回 form 的聚合 `valid`（此时
+`will_validate=0`、flags=0）；custom-validity callback 按 DOM id 读写 UTF-8
+application-owned message。这是查询型兼容切片，不实现 `reportValidity()`、form invalid 事件
+触发或 native invalid UI。产品层只管理
 session 与脚本对象；宿主必须管理 document、窗口、网络、控件默认行为、core 事件传播
 以及导航提交/回滚，并在 session 销毁前注销或保证 callback `pw` 仍有效。
 

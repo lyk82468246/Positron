@@ -8269,6 +8269,76 @@ PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
     return 0;
 }
 
+PCORE_API int PCore_FormValidationById(HANDLE hDoc, const char *form_id,
+        PCoreFormValidationInfo *out_info)
+{
+    dom_element *element;
+    dom_html_form_element *form;
+    dom_html_collection *elements;
+    dom_node *node;
+    uint32_t count;
+    uint32_t index;
+    int kind;
+    int missing;
+    unsigned int flags;
+    int result;
+
+    if (out_info == NULL || hDoc == NULL || form_id == NULL ||
+            form_id[0] == '\0') {
+        return 1;
+    }
+    pcore_form_validation_init(out_info);
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    form = (dom_html_form_element *) element;
+    elements = NULL;
+    count = 0;
+    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
+            elements == NULL ||
+            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
+        if (elements != NULL) {
+            dom_html_collection_unref(elements);
+        }
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    result = 1;
+    for (index = 0; index < count; index++) {
+        node = NULL;
+        kind = 0;
+        missing = 0;
+        flags = 0;
+        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
+                node == NULL || !pcore_required_control_missing(form, node,
+                &kind, &missing, &flags)) {
+            if (node != NULL) {
+                dom_node_unref(node);
+            }
+            result = 0;
+            break;
+        }
+        if (missing || flags != 0) {
+            out_info->valid = 0;
+            out_info->invalid_count++;
+            if (out_info->invalid_count == 1) {
+                out_info->first_control_kind = kind;
+                out_info->first_flags = flags;
+            }
+        }
+        dom_node_unref(node);
+    }
+    dom_html_collection_unref(elements);
+    dom_node_unref((dom_node *) element);
+    return result ? 0 : 1;
+}
+
 static int pcore_form_validate(pcore_render *st,
         dom_html_form_element *form, dom_node *activated,
         PCoreFormValidationInfo *out_info)
