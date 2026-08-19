@@ -12,6 +12,10 @@
 - 最新已验证产品基线：next294（本批采用定向门；最近一次完整自动基线仍为 next255）。
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
+- next295 候选在 `test_host` 宿主中把可见 render window 内、未取消的 file-input
+  `HTMLElement.click()` 延迟排队到窗口消息循环，再复用既有 picker adapter；不新增
+  `positron_browser.dll` ABI，也不让脚本回调重入系统对话框。TEST262 自动通过，TEST263
+  真实 GUI 仍待人工验收，因此暂不提升最新已验证产品基线。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
 - next292 批次验证 custom validity 状态跨 `PCore_LayoutDocument` 重排保持；没有新增视觉/触摸
@@ -164,6 +168,14 @@
   TEST232 随后的用户人工验收已通过：真实 WM6 picker 选择、同窗口 Cancel 后状态保持，
   且文件监听器 trace 只出现一次 `input` 后一次 `change`；本地修复同时让动态 DOM
   文本更新在宿主重排后可见。自动证据仍以本目录下的定向门为准。
+- next295 自动候选证据：最终 `TEST262/999` 2/2 位于
+  `tmp/device-runs/20260819-202715-next295-file-programmatic-picker-final/`；此前同门
+  的通过重跑位于 `tmp/device-runs/20260819-201234-next295-file-programmatic-picker-rerun3/`；
+  `TEST70,189-231,233-262/999` 75/75 位于
+  `tmp/device-runs/20260819-201353-next295-file-programmatic-picker-regression-rerun/`。
+  两组均零 ERROR/FAIL、唯一 TESTBENCH PASS；第一次错误的自动回归选择包含 manual-only
+  TEST232，已按仓库规则排除且不作为证据。TEST263 手工包已 staged 到
+  `C:\WMShare\Positron-manual-next295`，尚无真实 GUI 验收结果。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -1784,20 +1796,19 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-TEST232 的真实 picker 人工门和既有视觉/SIP 包已通过；下一步推进 next295：让脚本可见的
-file-input `HTMLElement.click()` 在 click 未被取消、控件可用且已有 render window 时，向宿主
-消息队列提交一次 file-picker 请求，再由 `test_host` 调用现有 picker adapter。该请求保持
-宿主窗口、系统 picker、文件系统权限和重排所有权，不新增产品 DLL 的窗口 API；无窗口、
-disabled、取消、重复请求和导航销毁边界继续保持 no-op/安全丢弃。
+TEST232 的真实 picker 人工门和既有视觉/SIP 包已通过；next295 的自动候选也已通过。唯一
+下一步是由用户人工运行 TEST263，确认脚本 `file.click()` 在真实 WM6 render window 中延迟
+打开 picker、选择后页面状态和同窗口 Cancel 保持。该请求保持宿主窗口、系统 picker、文件
+系统权限和重排所有权，不新增产品 DLL 的窗口 API；无窗口、disabled、取消、重复请求和
+导航销毁边界已由 TEST262 自动覆盖。
 
 完成标准：
 
-- TEST233-261/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
-  的两组自动证据为依据，只有累计达到检查点或出现风险时再跑全量；next295 另需覆盖
-  programmatic picker 的排队、注入选择/取消/错误和生命周期边界；
+- TEST233-262/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next295
+  的两组自动证据为依据，只有累计达到检查点或出现风险时再跑全量；
 - 后续 step 能力必须有 valid/mismatch 负例、动态值更新和 submission 阻断/恢复的自动断言，并通过
-  定向设备门；next295 的 programmatic picker 仍需单独保留真实 GUI 人工入口，不能以注入
-  adapter 日志代替真实 WM6 对话框验收；
+  定向设备门；next295 的 TEST263 仍需单独完成真实 GUI 人工入口，不能以注入 adapter
+  日志代替真实 WM6 对话框验收；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
 - 若出现崩溃、数据损坏、严重布局破坏或核心交互阻塞，立即停止累计并进入 debug；

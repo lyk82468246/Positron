@@ -8,7 +8,7 @@ set CFG=Debug
 if not "%~1"=="" set CFG=%~1
 
 set ROOT=%~dp0..
-set STAGE=C:\WMShare\Positron-manual-next265
+set STAGE=C:\WMShare\Positron-manual-next295
 if not "%~2"=="" set STAGE=%~2
 
 call "%ROOT%\scripts\stage.bat" "%CFG%" "%STAGE%"

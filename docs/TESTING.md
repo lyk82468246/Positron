@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next276；next265 picker 候选仍待人工）
+### 当前默认自动选择与人工验收包（next295 候选）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -63,7 +63,7 @@ tests=13,20,27,56,58,62,64-67,73,75,999
 ```
 
 这是窄的自动 smoke 选择，不是完整自动回归基线。最近一次完整自动基线仍是 next255：
-`auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-222,999`；next264
+`auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-222,999`；next295
 采用定向门，不要求每批重复全量。设备 gate 通过 `-TestSelection` 只修改隔离 staging，
 不改 tracked ini：
 
@@ -130,11 +130,15 @@ scripts\device_gate.bat -Candidate next293 ^
   -TestSelection "233-260,999"
 scripts\device_gate.bat -Candidate next294 ^
   -TestSelection "233-261,999"
+scripts\device_gate.bat -Candidate next295-file-programmatic-picker ^
+  -TestSelection "262,999"
+scripts\device_gate.bat -Candidate next295-file-programmatic-picker-regression ^
+  -TestSelection "70,189-231,233-262,999"
 ```
 
-next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；上一批 next263 的最终定向门
-已分别通过 2/2 和 44/44。只有出现回归、设备环境变化或累计达到下一
-个检查点时，才需要再次运行完整链。
+next295 的两组定向门分别覆盖新测试和相关文件/脚本回归，已分别通过 2/2 和 75/75，
+均无 ERROR/FAIL；证据目录和人工待验收状态见 [`.agents/HANDOFF.md`](../.agents/HANDOFF.md)。
+只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
 需要做人工视觉/输入验收时，临时把 staging 或工作区的 `auto` 改为 0；验收结束后务必恢复
 `auto=1`，避免下一次设备门再次弹出确认框。
@@ -185,9 +189,11 @@ next264 的两组定向门分别覆盖新测试和相关文件/脚本回归；�
 | 259 | custom validity 在 `PCore_LayoutDocument` 重排后仍阻止验证；清空后恢复提交。 |
 | 260 | range 缺少 value 时以默认 0..100 中点 50 提交；设置显式值后使用显式值。 |
 | 261 | range 的有效显式 min/max 缺省中点 25 通过 text-control bridge 读回并提交；显式值 35 覆盖。 |
+| 262 | 自动验证 file input 的程序化 click 只排队一次宿主 picker；选择后发出一次 input/change，取消、disabled 和文档替换不改文件状态。 |
+| 263 | 手工验证脚本 `file.click()` 在真实 WM6 窗口中延迟打开 picker；选择后显示 value 和 input/change，再次 Cancel 保持状态。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
-TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
+TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 和 TEST263 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
 直接调用 `positron_browser.dll` 公共 history API，TEST202 直接验证 product script session，
 TEST234 是自动的 number step mismatch/default/any constraint-validation 门，和 TEST233 一样只需
 定向设备门，不需要人工页面观察。
@@ -249,6 +255,10 @@ TEST260 是自动的 range 默认值门，覆盖缺少 value 时默认范围中�
 显式 value 覆盖默认值；不需要人工页面观察，也不替代 native slider 视觉/触摸验收。
 TEST261 是自动的 range bridge 默认值门，覆盖有效 min=10/max=40 时中点 25 的 core 读回、验证和
 提交，以及显式值 35 的动态覆盖；不需要人工页面观察，也不替代 native slider 视觉/触摸验收。
+TEST262 是自动的 programmatic file-picker queue 门，覆盖 click 取消、disabled 静默、单次排队、
+注入选择后的 input/change、再次取消保留 value/path，以及文档替换后的安全丢弃；它不打开系统
+GUI。TEST263 是 manual-only 的真实 WM6 programmatic picker fixture，验证有 render window 时
+`file.click()` 在脚本回调返回后打开系统 picker，并验证选择/同窗口取消的页面状态。
 TEST246 是自动的 month step 门，覆盖 min 作为步长基准、默认 step=1 月、step=any、非法/非正
 step 回退和动态恢复，不需要人工页面观察；它不替代 native month picker 的视觉/触摸验收。
 TEST203 直接验证 product bootstrap，TEST204 直接验证 product DOM read callback adapter，TEST205
@@ -298,6 +308,10 @@ TEST232 是 manual-only 的真实 WM6 picker fixture：它保持一个显式开�
 让页面显示选中文件名和 `input|file;change|file;` trace；它不伪造系统对话框，也不会被
 自动设备门选中。取消、窗口返回和文件状态由验收者在设备上观察；picker 错误/无效输入的
 可注入边界继续由 TEST231 自动覆盖。
+TEST262 是自动的 host queue/adapter 边界；TEST263 是 manual-only 的 programmatic picker
+fixture，保持一个显式脚本 session，让 checkbox listener 调用 `file.click()`，由宿主消息循环
+在脚本返回后打开 `GetOpenFileNameEx`。它不把 picker、窗口或文件系统权限迁入
+`positron_browser.dll`；取消必须保留已有文件状态。
 
 ## 运行自动设备门
 
@@ -352,16 +366,16 @@ scripts\repair_wmdc_rapi.bat
 2. 关闭设备上已有的 `test_host.exe`，在仓库根目录执行：
 
    ```bat
-   scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-next265
+   scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-next295
    ```
 
    该脚本先按正式 `stage.bat` 构建并复制整包，再只替换 staging 目录中的
-   `test_host.ini` 为 `auto=0`、`javascript=1`、`tests=232,999`；tracked 的自动 INI 不会改变。
+   `test_host.ini` 为 `auto=0`、`javascript=1`、`tests=232,263,999`；tracked 的自动 INI 不会改变。
 
-3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next265`（或共享目录映射的
+3. 在设备 File Explorer 打开 `Storage Card\Positron-manual-next295`（或共享目录映射的
    对应路径），确认 `test_host.exe` 与上表配置的 `test_host.ini` 在同一目录，然后运行
    `test_host.exe`。
-4. 启动确认框必须显示选择 `232, 999`，并显示
+4. 启动确认框必须显示选择 `232, 263, 999`，并显示
    `Browser JavaScript: experimental inline scripts enabled.`。点击 **Yes**；点 **No** 会退回普通分组选择，不是本次流程。
 5. TEST232 开始时先读提示框，再点 OK 进入 render 窗口：在同一个 render 窗口内点击
    File 控件，在真实 WM6 对话框中选一个小文件并确认；回到页面后确认文件名出现、trace
@@ -371,7 +385,13 @@ scripts\repair_wmdc_rapi.bat
    最后用 `Esc` 或点空白处关闭窗口。
 6. TEST232 关闭后应出现 `TEST 232 OK`，其中 value/path 非空且 trace 与上述字符串一致；
    若选择失败、页面崩溃、回到页面后状态丢失或 trace 重复，立即记录为失败，不要继续扩大范围。
-   最后 TEST999 应只触发一次系统提示音，随后出现 `Configured tests passed`。
+   随后继续 TEST263：先读提示框并点 OK，在 render 窗口只点击
+   **Script click file input** 复选框（不要直接点击 File 控件）。它必须通过脚本的
+   `file.click()` 打开真实 WM6 picker；选择文件后页面应显示文件名，Events 应以
+   `click|file;input|file;change|file;` 开头。再次点击同一复选框并在 picker 中按
+   **Cancel**，文件名必须保持，Events 只增加最后一个 `click|file;`，不增加第二组
+   `input|file;change|file;`。关闭该窗口后应出现 `TEST 263 OK`。最后 TEST999 应只触发一次
+   系统提示音，随后出现 `Configured tests passed`。
 7. 如果之后仍要运行原来的视觉/输入包，另行使用普通 `stage.bat`，不要把本次手工 INI
    复制回仓库；普通包仍按启动框中的 13 项和上表逐项操作。TEST13 先截取 example.com
    初始页，再截取 `Learn More` 后和 IANA 页面；TEST65/66/67 要实际操作控件并记录完整

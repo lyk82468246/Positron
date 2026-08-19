@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 261
+#define TEST_MAX_NUMBER 263
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -2137,6 +2137,11 @@ static HANDLE g_toggle_focus_document = NULL;
 static unsigned int g_toggle_focus_index = 0;
 static int    g_toggle_focus_kind = 0;
 static int    g_toggle_focus_valid = 0;
+static int    g_file_picker_pending = 0;
+static int    g_file_picker_active = 0;
+static HANDLE g_file_picker_pending_document = NULL;
+static HWND   g_file_picker_pending_hwnd = NULL;
+static unsigned int g_file_picker_pending_index = 0;
 #define PCORE_IMAGE_FORMAT_COUNT 4
 static PIMAGE_BITMAP g_image_format_bitmap[PCORE_IMAGE_FORMAT_COUNT];
 static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
@@ -2150,6 +2155,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define WM_PCORE_FORM_ENTER (WM_APP + 5)
 #define WM_PCORE_INTERACTION_RESTYLE (WM_APP + 6)
 #define WM_PCORE_SCRIPT_NAVIGATE (WM_APP + 7)
+#define WM_PCORE_FILE_PICKER (WM_APP + 8)
 #define PCORE_SCRIPT_NAVIGATION_NONE 0
 #define PCORE_SCRIPT_NAVIGATION_BACK 1
 #define PCORE_SCRIPT_NAVIGATION_ASSIGN 2
@@ -2243,6 +2249,14 @@ static pcore_browser_script_session g_browser_script_session = {
 static void pcore_browser_script_bridge_destroy(
         pcore_browser_script_bridge *bridge);
 
+static void pcore_file_picker_clear_pending(void)
+{
+    g_file_picker_pending = 0;
+    g_file_picker_pending_document = NULL;
+    g_file_picker_pending_hwnd = NULL;
+    g_file_picker_pending_index = 0;
+}
+
 static void pcore_toggle_focus_clear(void)
 {
     g_toggle_focus_document = NULL;
@@ -2254,6 +2268,7 @@ static void pcore_toggle_focus_clear(void)
 static void pcore_browser_script_session_destroy(void)
 {
     pcore_toggle_focus_clear();
+    pcore_file_picker_clear_pending();
     if (g_browser_script_session.bridge != NULL) {
         pcore_browser_script_bridge_destroy(g_browser_script_session.bridge);
     }
@@ -3107,6 +3122,8 @@ static int pcore_browser_script_invalid_dispatch(void *pw,
         int *out_default_allowed);
 static int pcore_browser_script_dispatch_file_event_at(int x, int y,
         const char *event_type);
+static int pcore_queue_file_input_picker(
+        pcore_browser_script_bridge *bridge, int x, int y);
 static int pcore_browser_script_dispatch_toggle_input_at(int x, int y);
 static int pcore_browser_script_dispatch_select_change_at(int x, int y);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
@@ -4061,9 +4078,14 @@ static int pcore_browser_script_programmatic_click_dispatch(void *pw,
         return 0;
     }
     if (kind == 10) {
-        /* A script-visible file click ends at the typed click contract. The
-         * system picker remains an explicit host GUI action and is never
-         * opened from this synchronous script callback. */
+        /* The typed click has already run.  A visible host window may now
+         * schedule the system picker after script evaluation returns; the
+         * no-window path intentionally keeps TEST230's typed-only boundary. */
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL &&
+                pcore_queue_file_input_picker(bridge,
+                x + width / 2, y + height / 2) != 0) {
+            return -1;
+        }
         return 0;
     }
     if ((kind != 1 && kind != 2) ||
@@ -9169,23 +9191,20 @@ static int pcore_file_input_commit_selection(HANDLE document,
     return 0;
 }
 
-static int pcore_handle_file_input_with_picker(HWND hwnd, int x, int y,
-        pcore_file_picker_callback callback, void *pw)
+static int pcore_handle_file_input_index_with_picker(HWND hwnd,
+        unsigned int file_index, pcore_file_picker_callback callback,
+        void *pw)
 {
     PCoreFileInputInfo info;
     WCHAR file_path[MAX_PATH];
     WCHAR file_title[MAX_PATH];
-    unsigned int file_index;
-    int disabled;
     int picker_result;
 
-    file_index = 0;
-    disabled = 0;
-    if (!PCore_FileInputAt(g_render_doc, x, y,
-            &file_index, &disabled)) {
+    if (g_render_doc == NULL || PCore_FileInputInfo(g_render_doc,
+            file_index, &info, NULL, 0, NULL, 0) != 0) {
         return 0;
     }
-    if (disabled) {
+    if (info.disabled) {
         return 1;
     }
     memset(file_path, 0, sizeof(file_path));
@@ -9224,9 +9243,90 @@ static int pcore_handle_file_input_with_picker(HWND hwnd, int x, int y,
     return 1;
 }
 
+static int pcore_handle_file_input_with_picker(HWND hwnd, int x, int y,
+        pcore_file_picker_callback callback, void *pw)
+{
+    unsigned int file_index;
+    int disabled;
+
+    file_index = 0;
+    disabled = 0;
+    if (!PCore_FileInputAt(g_render_doc, x, y,
+            &file_index, &disabled)) {
+        return 0;
+    }
+    if (disabled) {
+        return 1;
+    }
+    return pcore_handle_file_input_index_with_picker(hwnd, file_index,
+            callback, pw);
+}
+
 static int pcore_handle_file_input(HWND hwnd, int x, int y)
 {
     return pcore_handle_file_input_with_picker(hwnd, x, y, NULL, NULL);
+}
+
+/* HTMLElement.click() runs inside a synchronous script callback.  Queue the
+ * host-owned picker until that callback has returned so the system dialog
+ * cannot re-enter script evaluation or core event propagation. */
+static int pcore_queue_file_input_picker(
+        pcore_browser_script_bridge *bridge, int x, int y)
+{
+    unsigned int file_index;
+    int disabled;
+
+    if (bridge == NULL || bridge->document == NULL ||
+            bridge->document != g_render_doc || bridge->hwnd == NULL) {
+        return 0;
+    }
+    file_index = 0;
+    disabled = 0;
+    if (!PCore_FileInputAt(bridge->document, x, y,
+            &file_index, &disabled) || disabled) {
+        return 0;
+    }
+    /* One script turn may call click() repeatedly.  A single native picker
+     * request is sufficient; later calls remain successful no-ops. */
+    if (g_file_picker_active || g_file_picker_pending) {
+        return 0;
+    }
+    g_file_picker_pending = 1;
+    g_file_picker_pending_document = bridge->document;
+    g_file_picker_pending_hwnd = bridge->hwnd;
+    g_file_picker_pending_index = file_index;
+    if (!PostMessage(bridge->hwnd, WM_PCORE_FILE_PICKER, 0, 0)) {
+        pcore_file_picker_clear_pending();
+        return -1;
+    }
+    return 0;
+}
+
+static int pcore_process_pending_file_picker(HWND hwnd,
+        pcore_file_picker_callback callback, void *pw)
+{
+    unsigned int file_index;
+    int result;
+
+    if (!g_file_picker_pending) {
+        return 0;
+    }
+    if (g_file_picker_pending_hwnd != hwnd ||
+            g_file_picker_pending_document != g_render_doc) {
+        /* A queued request cannot cross a window/document replacement. */
+        pcore_file_picker_clear_pending();
+        return 0;
+    }
+    file_index = g_file_picker_pending_index;
+    pcore_file_picker_clear_pending();
+    if (g_file_picker_active) {
+        return 0;
+    }
+    g_file_picker_active = 1;
+    result = pcore_handle_file_input_index_with_picker(hwnd, file_index,
+            callback, pw);
+    g_file_picker_active = 0;
+    return result;
 }
 
 static int pcore_handle_label(HWND hwnd, int x, int y)
@@ -9721,6 +9821,13 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     "Could not reselect styles after an interaction");
         }
         return 0;
+    case WM_PCORE_FILE_PICKER:
+        if (g_render_doc != NULL) {
+            (void) pcore_process_pending_file_picker(hwnd, NULL, NULL);
+        } else {
+            pcore_file_picker_clear_pending();
+        }
+        return 0;
     case WM_PCORE_SCRIPT_NAVIGATE: {
         pcore_browser_script_bridge *bridge;
         char *url;
@@ -9997,6 +10104,10 @@ static BOOL show_render_window(void)
     if (hwnd == NULL) {
         return FALSE;
     }
+    if (g_browser_script_session.bridge != NULL &&
+            g_browser_script_session.document == g_render_doc) {
+        g_browser_script_session.bridge->hwnd = hwnd;
+    }
     pcore_browse_history_reset();
     if (g_cur_host[0] != '\0' &&
             pcore_document_url(g_cur_host, g_cur_path, g_cur_port,
@@ -10142,6 +10253,12 @@ static BOOL show_render_window(void)
     while (GetMessage(&m, NULL, 0, 0)) {
         TranslateMessage(&m);
         DispatchMessage(&m);
+    }
+    if (g_browser_script_session.bridge != NULL &&
+            g_browser_script_session.document == g_render_doc &&
+            g_browser_script_session.bridge->hwnd == hwnd) {
+        pcore_file_picker_clear_pending();
+        g_browser_script_session.bridge->hwnd = NULL;
     }
     pcore_navigation_cleanup();
     return TRUE;
@@ -44433,6 +44550,491 @@ static BOOL test261_form_range_explicit_default_value(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 262 - programmatic file picker is deferred to the host window     */
+/* -------------------------------------------------------------------- */
+static LRESULT CALLBACK test262_picker_probe_wndproc(HWND hwnd, UINT msg,
+        WPARAM wp, LPARAM lp)
+{
+    return DefWindowProc(hwnd, msg, wp, lp);
+}
+
+static BOOL test262_browser_file_programmatic_picker(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='root'>"
+        "<input id='file' type='file'>"
+        "<input id='cancel' type='file'>"
+        "<input id='disabled' type='file' disabled>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "form{display:block;width:280px}"
+        "input{display:block;width:220px;height:24px;margin:3px}"
+        "p{display:block;width:500px;height:100px}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function record(e){var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('click',record);"
+        "root.addEventListener('input',record);"
+        "root.addEventListener('change',record);"
+        "document.getElementById('cancel').addEventListener('click',"
+        "function(e){e.preventDefault();});";
+    static const char CANCEL_EVENTS[] = "click|cancel;";
+    static const char CLICK_EVENTS[] =
+        "click|cancel;click|file;click|file;";
+    static const char SELECTED_EVENTS[] =
+        "click|cancel;click|file;click|file;input|file;change|file;";
+    static const char CANCEL_AFTER_SELECTION_EVENTS[] =
+        "click|cancel;click|file;click|file;input|file;change|file;"
+        "click|file;";
+    static const char STALE_EVENTS[] =
+        "click|cancel;click|file;click|file;input|file;change|file;"
+        "click|file;click|file;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    HWND probe;
+    PCoreFileInputInfo info;
+    test231_picker_state picker_state;
+    WNDCLASSW wc;
+    MSG message;
+    char events[512];
+    char value[128];
+    char path[256];
+    char error[384];
+    const char *stage;
+    int executed;
+    int ignored;
+    int event_bytes;
+    int value_bytes;
+    int path_bytes;
+    int ok;
+    int calls_after_select;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    probe = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(&picker_state, 0, sizeof(picker_state));
+    memset(&wc, 0, sizeof(wc));
+    memset(events, 0, sizeof(events));
+    memset(value, 0, sizeof(value));
+    memset(path, 0, sizeof(path));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    event_bytes = 0;
+    value_bytes = 0;
+    path_bytes = 0;
+    ok = 1;
+    calls_after_select = 0;
+    pcore_file_picker_clear_pending();
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/file-programmatic-picker.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 280) != 0 ||
+                PCore_FileInputInfo(document, 0, &info,
+                NULL, 0, NULL, 0) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "probe-window";
+        wc.style = 0;
+        wc.lpfnWndProc = test262_picker_probe_wndproc;
+        wc.hInstance = GetModuleHandle(NULL);
+        wc.hbrBackground = (HBRUSH) GetStockObject(WHITE_BRUSH);
+        wc.lpszClassName = L"PositronFilePickerProbe";
+        (void) RegisterClassW(&wc);
+        probe = CreateWindowW(L"PositronFilePickerProbe", L"",
+                WS_POPUP, 0, 0, 320, 280, NULL, NULL,
+                GetModuleHandle(NULL), NULL);
+        if (probe == NULL || g_browser_script_session.bridge == NULL) {
+            ok = 0;
+        } else {
+            g_browser_script_session.bridge->hwnd = probe;
+        }
+    }
+    if (ok) {
+        stage = "cancel-and-disabled";
+        if (pcore_browser_script_session_evaluate(
+                "document.getElementById('cancel').click();"
+                "document.getElementById('disabled').click();", -1,
+                error, sizeof(error)) != 0 || g_file_picker_pending ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, CANCEL_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "queue-and-coalesce";
+        if (pcore_browser_script_session_evaluate(
+                "document.getElementById('file').click();"
+                "document.getElementById('file').click();", -1,
+                error, sizeof(error)) != 0 || !g_file_picker_pending ||
+                g_file_picker_pending_document != document ||
+                g_file_picker_pending_hwnd != probe ||
+                g_file_picker_pending_index != 0 ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, CLICK_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "select-and-dispatch";
+        picker_state.result = 1;
+        if (!test231_copy_wide(picker_state.path,
+                sizeof(picker_state.path) / sizeof(WCHAR),
+                L"\\Storage Card\\programmatic.txt") ||
+                !test231_copy_wide(picker_state.title,
+                sizeof(picker_state.title) / sizeof(WCHAR),
+                L"programmatic.txt") ||
+                pcore_process_pending_file_picker(probe,
+                test231_picker_callback, &picker_state) != 1 ||
+                g_file_picker_pending || g_file_picker_active ||
+                picker_state.calls != 1 ||
+                PCore_FileInputInfo(document, 0, &info, value,
+                sizeof(value), path, sizeof(path)) != 0 ||
+                strcmp(value, "programmatic.txt") != 0 ||
+                strcmp(path, "\\Storage Card\\programmatic.txt") != 0 ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, SELECTED_EVENTS) != 0) {
+            ok = 0;
+        } else {
+            calls_after_select = picker_state.calls;
+        }
+    }
+    if (ok) {
+        stage = "cancel-preserves";
+        if (pcore_browser_script_session_evaluate(
+                "document.getElementById('file').click();", -1,
+                error, sizeof(error)) != 0 || !g_file_picker_pending) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        picker_state.result = 0;
+        if (pcore_process_pending_file_picker(probe,
+                test231_picker_callback, &picker_state) != 1 ||
+                g_file_picker_pending || g_file_picker_active ||
+                picker_state.calls != calls_after_select + 1 ||
+                PCore_FileInputInfo(document, 0, &info, value,
+                sizeof(value), path, sizeof(path)) != 0 ||
+                strcmp(value, "programmatic.txt") != 0 ||
+                strcmp(path, "\\Storage Card\\programmatic.txt") != 0 ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, CANCEL_AFTER_SELECTION_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "stale-document-drop";
+        if (pcore_browser_script_session_evaluate(
+                "document.getElementById('file').click();", -1,
+                error, sizeof(error)) != 0 || !g_file_picker_pending) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = NULL;
+        if (pcore_process_pending_file_picker(probe,
+                test231_picker_callback, &picker_state) != 0 ||
+                g_file_picker_pending ||
+                picker_state.calls != calls_after_select + 1 ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, STALE_EVENTS) != 0) {
+            ok = 0;
+        }
+        g_render_doc = document;
+    }
+    while (probe != NULL && PeekMessage(&message, probe,
+            WM_PCORE_FILE_PICKER, WM_PCORE_FILE_PICKER, PM_REMOVE)) {
+        /* Drop the already-consumed asynchronous copies before destroying
+         * the probe window; the pending state above is the source of truth. */
+    }
+    if (probe != NULL) {
+        if (g_browser_script_session.bridge != NULL &&
+                g_browser_script_session.bridge->hwnd == probe) {
+            g_browser_script_session.bridge->hwnd = NULL;
+        }
+        DestroyWindow(probe);
+        probe = NULL;
+    }
+    pcore_file_picker_clear_pending();
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_h = 0;
+    g_scroll_y = 0;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s events=%s value=%s path=%s pending=%d active=%d calls=%d",
+                    stage, events, value, path, g_file_picker_pending,
+                    g_file_picker_active, picker_state.calls);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 262 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 262 OK",
+            "Programmatic file clicks queue one host picker after script\n"
+            "evaluation; cancellation, disabled controls and stale documents\n"
+            "do not open a second picker or alter the committed file state.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 263 - real WM6 picker opened by script-visible file.click()       */
+/* -------------------------------------------------------------------- */
+static BOOL test263_browser_file_programmatic_picker_manual(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><h2>Programmatic WM6 file picker</h2>"
+        "<p>Tap the Script click checkbox; do not tap the File control."
+        " Choose a small file, then tap the checkbox again and press Cancel.</p>"
+        "<form id='root'><label><input id='launch' type='checkbox'>"
+        " Script click file input</label>"
+        "<label for='file'>File:</label><input id='file' type='file'></form>"
+        "<div class='status'>Events: <span id='events'>none</span></div>"
+        "<div class='status'>Value: <span id='value'>empty</span></div>"
+        "<p class='hint'>The checkbox calls file.click() from its click listener."
+        " Tap blank space or press Esc to close. Re-running starts fresh.</p>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{font:13px sans-serif;line-height:16px;margin:6px;color:#202020;"
+        "background:#ffffff;}"
+        "h2{font-size:18px;line-height:21px;color:#800000;"
+        "margin:0 0 4px 0;}"
+        "p{margin:4px 0;}"
+        "form{display:block;width:90%;border:1px solid #4060a0;"
+        "padding:6px;background:#eef6ff;}"
+        "label{display:block;margin-bottom:3px;}"
+        "input{display:block;width:90%;height:24px;}"
+        "label input{display:inline;width:auto;height:auto;}"
+        ".status{display:block;width:90%;min-height:16px;"
+        "border:1px solid #808080;padding:2px;background:#f4f4f4;"
+        "white-space:pre-wrap;}"
+        ".hint{font-size:12px;line-height:14px;}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function record(e){var id=String(e.target.id||'');"
+        "if(id==='file'){window.events+=e.type+'|'+id+';';"
+        "document.getElementById('events').textContent=window.events;"
+        "document.getElementById('value').textContent="
+        "String(document.getElementById('file').value||'');}}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('click',record);"
+        "root.addEventListener('input',record);"
+        "root.addEventListener('change',record);"
+        "document.getElementById('launch').addEventListener('click',"
+        "function(e){document.getElementById('file').click();});";
+    static const char EXPECTED_EVENTS[] =
+        "click|file;input|file;change|file;click|file;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFileInputInfo info;
+    char events[512];
+    char value[256];
+    char path[512];
+    char error[384];
+    const char *stage;
+    int executed;
+    int ignored;
+    int vw;
+    int vh;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(events, 0, sizeof(events));
+    memset(value, 0, sizeof(value));
+    memset(path, 0, sizeof(path));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    if (g_testbench_auto) {
+        show_error(L"TEST 263 SKIPPED",
+                "This test is manual-only; use the dedicated auto=0 picker INI.");
+        return FALSE;
+    }
+    if (!g_browser_javascript_enabled) {
+        show_error(L"TEST 263 FAIL",
+                "Set javascript=1 in the manual picker INI so file.click() can run.");
+        return FALSE;
+    }
+    pcore_file_picker_clear_pending();
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/file-programmatic-picker-manual.css");
+        vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+        vh = GetSystemMetrics(SM_CYSCREEN);
+        if (vw <= 0) { vw = 224; }
+        if (vh <= 0) { vh = 320; }
+        test_host_set_device_viewport(vw, vh);
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, vw, vh) != 0 ||
+                PCore_FileInputInfo(document, 0, &info,
+                NULL, 0, NULL, 0) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        show_info(L"TEST 263",
+                "This page tests the deferred programmatic picker.\n\n"
+                "1. In this render window, tap the 'Script click file input'\n"
+                "   checkbox; do not tap the File control. A real WM6 picker\n"
+                "   must open after the script click returns.\n"
+                "2. Select one small existing file and confirm. The filename\n"
+                "   must appear and the Events field must start with:\n"
+                "   click|file;input|file;change|file;\n"
+                "3. Tap the same checkbox again and press Cancel. The filename\n"
+                "   must remain and Events must end with one extra click|file;\n"
+                "   but no second input/change.\n\n"
+                "Tap blank space or press Esc to close; re-running starts fresh.");
+        stage = "window";
+        if (!show_render_window()) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "manual-result";
+        if (PCore_FileInputInfo(document, 0, &info, value,
+                sizeof(value), path, sizeof(path)) != 0 ||
+                value[0] == '\0' || path[0] == '\0' ||
+                PCore_NodeTextContentById(document, "events", events,
+                sizeof(events), NULL) != 0 ||
+                strcmp(events, EXPECTED_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    pcore_file_picker_clear_pending();
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s events=%s value=%s path=%s",
+                    stage, events, value, path);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 263 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 263 OK",
+            "Real WM6 picker opened from a script-visible file.click();"
+            " selection and same-window cancellation preserved the file state.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -48731,6 +49333,12 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 261: ok =
                 test261_form_range_explicit_default_value();
+                break;
+        case 262: ok =
+                test262_browser_file_programmatic_picker();
+                break;
+        case 263: ok =
+                test263_browser_file_programmatic_picker_manual();
                 break;
         default: ok = FALSE; break;
         }
