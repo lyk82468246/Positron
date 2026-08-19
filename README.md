@@ -17,7 +17,7 @@ DLL 之上建设轻量浏览器与应用运行时。
 | `positron_image.dll` | BMP/PNG/JPEG/GIF、SVG、像素缓冲和编码 | 设备位图格式依赖 WM Imaging codec；SVG 是受限子集 |
 | `positron_script.dll` | 独立 JavaScript 执行服务 | Duktape 2.7.0；有时间、内存、源码和 native callback 上限 |
 | `positron_core.dll` | HTML/DOM、CSS、布局、绘制、命中、表单和资源发现 | 基于移植的 NetSurf 3.11 组件；网页兼容性仍在扩展 |
-| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap、DOM 读写/attribute/value/checked/disabled/validation/form-property/navigation/location/event/native-input/key/focus/click/programmatic-click/form-event/invalid/file-input/checkbox-radio-change 回调组合层 | 不拥有窗口、网络；其余 form/input 适配、core 事件传播及控件副作用仍由宿主提供 |
+| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap、DOM 读写/attribute/value/checked/disabled/validation/reportValidity/form-property/navigation/location/event/native-input/key/focus/click/programmatic-click/form-event/invalid/file-input/checkbox-radio-change 回调组合层 | 不拥有窗口、网络或原生校验提示；其余 form/input 适配、core 事件传播及控件副作用仍由宿主提供 |
 
 所有公共接口都使用稳定 C ABI、UTF-8 字符串、opaque handle 和明确的释放函数。NetSurf、
 Duktape、Mbed TLS 等实现细节不暴露给调用者。
@@ -37,11 +37,13 @@ Duktape、Mbed TLS 等实现细节不暴露给调用者。
 运行时由 `positron_browser.dll` 与 `positron_core.dll`、`positron_script.dll` 及宿主回调
 组合。目前 history/session、浏览器脚本 context 的所有权、host JSON callback 注册、browser
 bootstrap、DOM 只读（按 id 查询与 textContent 读取）、textContent 写入、attribute、input value、checked、
-disabled、约束属性、控件与受限 form-level `checkValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/
-`validationMessage`、form property（defaultValue/defaultChecked/selectedIndex）、navigation JSON 分发、同文档
+disabled、约束属性、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、
+`setCustomValidity()`/`validationMessage`、form property（defaultValue/defaultChecked/selectedIndex）、navigation JSON 分发、同文档
 location/history 事件分发、event 回调分发、native input/composition、keyboard、focus-family、
-EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click，系统 picker 仍由宿主 GUI 负责）、submit/reset、invalid、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry 已迁入；其余 form/input 适配、core 事件传播以及窗口、网络、控件和
+EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click，系统 picker 仍由宿主 GUI 负责）、submit/reset、invalid/reportValidity、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry 已迁入；其余 form/input 适配、core 事件传播以及窗口、网络、控件和
 history/navigation side effect 仍由宿主提供。
+`reportValidity()` 只执行当前受支持的约束查询并派发可寻址控件的 `invalid` 事件；它不显示
+原生提示、不自动聚焦/滚动，也不提交表单。
 它不是第二套引擎。
 两者的关系和所有权见
 [架构说明](docs/ARCHITECTURE.md)。

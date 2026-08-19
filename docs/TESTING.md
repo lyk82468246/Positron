@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next300 基线）
+### 当前默认自动选择与人工验收包（next301 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -156,6 +156,10 @@ scripts\device_gate.bat -Candidate next300-form-validation ^
   -TestSelection "268,999"
 scripts\device_gate.bat -Candidate next300-form-validation-regression ^
   -TestSelection "68-73,189-231,233-262,264-268,999"
+scripts\device_gate.bat -Candidate next301-report-validity ^
+  -TestSelection "269,999"
+scripts\device_gate.bat -Candidate next301-report-validity-regression ^
+  -TestSelection "68-73,189-231,233-262,264-269,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -171,6 +175,13 @@ next300 的两组定向门覆盖 form-level validation 新测试和启用 JavaSc
 和 `tmp/device-runs/20260819-223614-next300-form-validation-regression/`。回归门的 staging INI
 临时使用 `javascript=1`，仓库 tracked 配置已恢复 `javascript=0`。该批只提供查询型
 form `checkValidity()`，不涉及视觉、触摸、SIP、系统 picker 或 `reportValidity()`，不需要人工页面验收。
+next301 的定向门覆盖 form/control `reportValidity()`、invalid-event 顺序、cancelable/trusted
+事件字段、动态恢复、`novalidate` 不绕过以及 disabled/readonly 跳过；`TEST269/999` 已在
+`tmp/device-runs/20260819-231341-next301-report-validity-final/` 以 2/2 通过。该批不涉及视觉、触摸、
+SIP、系统 picker 或 native validation UI，不需要人工页面验收；启用 JavaScript 的回归门仍应在
+提交前按上面的 regression 选择执行；本次 `68-73,189-231,233-262,264-269,999` 回归已以
+86/86 通过，证据位于 `tmp/device-runs/20260819-231431-next301-report-validity-regression/`。
+
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
 需要做人工视觉/输入验收时，临时把 staging 或工作区的 `auto` 改为 0；验收结束后务必恢复
@@ -229,6 +240,7 @@ form `checkValidity()`，不涉及视觉、触摸、SIP、系统 picker 或 `rep
 | 266 | 自动验证脚本可查询控件 `checkValidity()`、`willValidate` 与基础 `validity` flags；覆盖 required/disabled/readonly/select、number 下溢/上溢/step mismatch，以及动态恢复。 |
 | 267 | 自动验证脚本 `setCustomValidity()`/`validationMessage` 与 `validity.customError` 的 set/get/clear；覆盖 text、number、textarea、select、checkbox 和 core 直接 API 的 unsupported button 边界。 |
 | 268 | 自动验证按 DOM id 聚合的 form `checkValidity()`；覆盖 required、disabled、readonly、custom validity、number 下溢、动态恢复和 `novalidate` 不绕过查询。 |
+| 269 | 自动验证 form/control `reportValidity()`；覆盖 invalid 事件目标与顺序、non-bubbling/cancelable/trusted 字段、preventDefault 不改变 boolean 结果、动态恢复、`novalidate`、disabled/readonly 跳过。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 和 TEST263 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
@@ -370,6 +382,10 @@ TEST268 是自动的 form-level validation-query 门，覆盖按 form id 聚合�
 `novalidate`、跳过 disabled/readonly/submit 控件、传播 custom validity 与 number range flags，
 并验证动态禁用/恢复。该 API 可在布局前后查询，但只提供受限的 form `checkValidity()`，不触发
 `invalid` 事件、不提交、不实现 `reportValidity()` 或 native invalid UI。
+TEST269 是自动的 report-validity 门，覆盖 form/control `reportValidity()` 的 invalid 事件目标、
+DOM 顺序、non-bubbling/cancelable/trusted 字段、`preventDefault()` 后仍返回 false、动态恢复、
+`novalidate` 不绕过和 disabled/readonly 非候选边界。它不实现 native validation UI、焦点/滚动、
+本地化错误消息或提交行为。
 
 ## 运行自动设备门
 

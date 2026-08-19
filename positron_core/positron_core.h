@@ -847,6 +847,18 @@ PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
 PCORE_API int PCore_FormValidationById(HANDLE hDoc, const char *form_id,
         PCoreFormValidationInfo *out_info);
 
+/* Query and report the aggregate constraint state of the form named by
+ * form_id. This uses the same DOM-only candidate rules as
+ * PCore_FormValidationById, then dispatches a trusted, non-bubbling,
+ * cancelable "invalid" event to each invalid control that has a non-empty
+ * DOM id. The boolean result is not affected by preventDefault(): the form
+ * remains invalid until its controls become valid. No native validation UI,
+ * focus/scroll, submission or localized message is produced. Returns 0 when
+ * the form was inspected and non-zero for an absent/non-form id or a DOM or
+ * allocation failure. Geometry fields remain zero. */
+PCORE_API int PCore_FormReportValidityById(HANDLE hDoc, const char *form_id,
+        PCoreFormValidationInfo *out_info);
+
 /* Set or clear an application-owned custom validity message on the form
  * control named by element_id. The message is UTF-8 and copied by the DLL;
  * NULL or an empty string clears the custom error. The current control

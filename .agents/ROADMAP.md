@@ -54,6 +54,11 @@ callback 将 form 的聚合 `valid` 接入 bootstrap 的受限 `checkValidity()`
 JavaScript 的相关回归已通过。该切片忽略 form `novalidate`、跳过不参与约束验证的控件，但不触发
 invalid 事件、不提交表单、不实现 `reportValidity()` 或 native invalid UI；`test_host` 仍只是
 宿主适配和测试消费者。
+next301 已在 `positron_core.dll` 提供 `PCore_FormReportValidityById`，并在
+`positron_browser.dll` 增加 report-validity callback 与 bootstrap `reportValidity()`；TEST269/999
+定向门已通过。该切片按 DOM 顺序派发可寻址 invalid controls 的 trusted、non-bubbling、cancelable
+`invalid` 事件，`preventDefault()` 不改变 boolean 结果，仍不提供 native validation UI、焦点/滚动、
+本地化提示或提交副作用；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，
@@ -142,7 +147,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 ### 输入、表单与事件
 
 - 完整真实 SIP/IME composition、候选词、Unicode 和 preedit 生命周期。
-- 类型/范围/step、custom validity、form-level reporting、`invalid` 事件和首个无效控件反馈。
+- 类型/范围/step、custom validity、native invalid UI、完整 `invalid` 事件传播和首个无效控件反馈。
 - label、Enter、multiple select、文件选择和 native control 视觉/焦点行为。
 - 区分 synthetic event、WM 消息和真实用户输入的证据。
 

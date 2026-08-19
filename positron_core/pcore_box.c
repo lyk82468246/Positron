@@ -3302,6 +3302,32 @@ static dom_string *pcore_event_element_id(dom_event_target *target)
     return value;
 }
 
+static char *pcore_event_element_id_copy(dom_node *node)
+{
+    dom_string *id;
+    const char *data;
+    size_t length;
+    char *copy;
+
+    id = pcore_event_element_id((dom_event_target *) node);
+    if (id == NULL) {
+        return NULL;
+    }
+    data = dom_string_data(id);
+    length = dom_string_byte_length(id);
+    if (data == NULL || length == 0 || length > (size_t) INT_MAX) {
+        dom_string_unref(id);
+        return NULL;
+    }
+    copy = (char *) malloc(length + 1);
+    if (copy != NULL) {
+        memcpy(copy, data, length);
+        copy[length] = '\0';
+    }
+    dom_string_unref(id);
+    return copy;
+}
+
 static void pcore_event_listener_adapter(dom_event *event, void *pw)
 {
     pcore_event_binding *binding;
@@ -8337,6 +8363,134 @@ PCORE_API int PCore_FormValidationById(HANDLE hDoc, const char *form_id,
     dom_html_collection_unref(elements);
     dom_node_unref((dom_node *) element);
     return result ? 0 : 1;
+}
+
+PCORE_API int PCore_FormReportValidityById(HANDLE hDoc, const char *form_id,
+        PCoreFormValidationInfo *out_info)
+{
+    dom_element *element;
+    dom_html_form_element *form;
+    dom_html_collection *elements;
+    dom_node *node;
+    dom_string *node_id;
+    char **invalid_ids;
+    uint32_t count;
+    uint32_t index;
+    uint32_t invalid_id_count;
+    size_t alloc_count;
+    int kind;
+    int missing;
+    unsigned int flags;
+    int default_allowed;
+    int dispatch_result;
+    int result;
+
+    if (out_info == NULL || hDoc == NULL || form_id == NULL ||
+            form_id[0] == '\0') {
+        return 1;
+    }
+    if (PCore_FormValidationById(hDoc, form_id, out_info) != 0) {
+        return 1;
+    }
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    form = (dom_html_form_element *) element;
+    elements = NULL;
+    count = 0;
+    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
+            elements == NULL ||
+            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
+        if (elements != NULL) {
+            dom_html_collection_unref(elements);
+        }
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    alloc_count = (size_t) count;
+    if (alloc_count == (size_t) -1 ||
+            alloc_count + 1 > (size_t) -1 / sizeof(*invalid_ids)) {
+        dom_html_collection_unref(elements);
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    invalid_ids = (char **) calloc(alloc_count + 1,
+            sizeof(*invalid_ids));
+    if (invalid_ids == NULL) {
+        dom_html_collection_unref(elements);
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    invalid_id_count = 0;
+    result = 0;
+    for (index = 0; index < count; index++) {
+        node = NULL;
+        kind = 0;
+        missing = 0;
+        flags = 0;
+        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
+                node == NULL || !pcore_required_control_missing(form, node,
+                &kind, &missing, &flags)) {
+            if (node != NULL) {
+                dom_node_unref(node);
+            }
+            result = 1;
+            break;
+        }
+        if (missing || flags != 0) {
+            node_id = pcore_event_element_id((dom_event_target *) node);
+            if (node_id != NULL && dom_string_byte_length(node_id) > 0) {
+                if (invalid_id_count >= count) {
+                    dom_string_unref(node_id);
+                    dom_node_unref(node);
+                    result = 1;
+                    break;
+                }
+                dom_string_unref(node_id);
+                invalid_ids[invalid_id_count] =
+                        pcore_event_element_id_copy(node);
+                if (invalid_ids[invalid_id_count] == NULL) {
+                    dom_node_unref(node);
+                    result = 1;
+                    break;
+                }
+                invalid_id_count++;
+            } else if (node_id != NULL) {
+                dom_string_unref(node_id);
+            }
+        }
+        dom_node_unref(node);
+    }
+    dom_html_collection_unref(elements);
+    dom_node_unref((dom_node *) element);
+    if (result != 0) {
+        for (index = 0; index < invalid_id_count; index++) {
+            free(invalid_ids[index]);
+        }
+        free(invalid_ids);
+        return 1;
+    }
+    for (index = 0; index < invalid_id_count; index++) {
+        default_allowed = 1;
+        dispatch_result = PCore_EventDispatchToId(hDoc, invalid_ids[index],
+                "invalid", 0, 1, &default_allowed);
+        if (dispatch_result < 0) {
+            for (; index < invalid_id_count; index++) {
+                free(invalid_ids[index]);
+            }
+            free(invalid_ids);
+            return 1;
+        }
+        free(invalid_ids[index]);
+    }
+    free(invalid_ids);
+    return 0;
 }
 
 static int pcore_form_validate(pcore_render *st,

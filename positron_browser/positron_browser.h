@@ -39,7 +39,7 @@ extern "C" {
 #define PBROWSER_HISTORY_METHOD_OTHER 0
 #define PBROWSER_HISTORY_METHOD_GET 1
 
-#define PBROWSER_SCRIPT_MAX_FUNCTIONS 17
+#define PBROWSER_SCRIPT_MAX_FUNCTIONS 18
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -248,6 +248,21 @@ typedef struct PBrowserScriptValidationCallbacks {
     void *pw;
     PBrowserScriptGetValidationFn get_validation;
 } PBrowserScriptValidationCallbacks;
+
+/* Typed host adapter for the script-facing reportValidity() operation. The
+ * browser DLL owns JSON dispatch and the boolean method result; the host
+ * validates a form or control by UTF-8 DOM id and synchronously dispatches the
+ * trusted invalid events that its core can address. out_valid is the result
+ * before any default feedback; preventDefault() does not make an invalid
+ * form/control valid. No native validation UI, focus/scroll or submission is
+ * implied by this callback. */
+typedef int (*PBrowserScriptReportValidityFn)(void *pw, const char *id,
+        int *out_valid);
+typedef struct PBrowserScriptReportValidityCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptReportValidityFn report_validity;
+} PBrowserScriptReportValidityCallbacks;
 
 /* Typed host adapter for application-owned custom validity messages. The
  * browser DLL owns JSON dispatch and the script-facing setCustomValidity()
@@ -636,6 +651,11 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterValidationCallbacks(
         HANDLE hSession, const PBrowserScriptValidationCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterValidationCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterReportValidityCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptReportValidityCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterReportValidityCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterCustomValidityCallbacks(
         HANDLE hSession,
