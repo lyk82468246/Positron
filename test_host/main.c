@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 264
+#define TEST_MAX_NUMBER 265
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -45234,6 +45234,343 @@ static BOOL test264_browser_disabled_property(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 265 - browser reflected form constraint properties              */
+/* -------------------------------------------------------------------- */
+static BOOL test265_form_reflected_properties(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='strict' action=/strict method=get>"
+        "<input id='amount' name=amount type=number value=5 min=2 max=8 step=1>"
+        "<input id='locked' name=locked required readonly value=''>"
+        "<select id='tags' name=tags multiple>"
+        "<option value=a selected>A</option><option value=b selected>B</option>"
+        "</select><button id='send' type=submit name=go value=send>Send</button>"
+        "<button id='skip' type=submit name=skip value=skip>Skip</button>"
+        "</form><form id='draft' action=/draft method=get novalidate>"
+        "<input id='draftField' name=draft required value=''>"
+        "<button id='draftButton' type=submit name=save value=draft>Draft</button>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "input,select,button{display:block;margin:4px 0;width:180px}"
+        "select{height:40px}";
+    static const char REFLECT[] =
+        "var a=document.getElementById('amount');"
+        "var l=document.getElementById('locked');"
+        "var t=document.getElementById('tags');"
+        "var s=document.getElementById('skip');"
+        "var f=document.getElementById('draft');"
+        "var r=a.min==='2'&&a.max==='8'&&a.step==='1'&&"
+        "a.required===false&&l.readOnly===true&&t.multiple===true&&"
+        "s.formNoValidate===false&&f.noValidate===true;"
+        "a.required=true;var rq=a.required&&a.hasAttribute('required');"
+        "a.required=false;var rq2=!a.required&&!a.hasAttribute('required');"
+        "t.multiple=false;var m1=!t.multiple&&!t.hasAttribute('multiple');"
+        "t.multiple=true;var m2=t.multiple&&t.hasAttribute('multiple');"
+        "document.getElementById('result').textContent="
+        "String(r)+'|'+String(rq)+'|'+String(rq2)+'|'+String(m1)+'|'+String(m2);";
+    static const char READONLY_OFF[] =
+        "document.getElementById('locked').readOnly=false;";
+    static const char READONLY_ON[] =
+        "document.getElementById('locked').readOnly=true;";
+    static const char RANGE_UNDERFLOW[] =
+        "var a=document.getElementById('amount');a.min='6';a.step='any';";
+    static const char RANGE_OVERFLOW[] =
+        "var a=document.getElementById('amount');a.min='4';a.max='4';"
+        "a.step='any';";
+    static const char RANGE_STEP[] =
+        "var a=document.getElementById('amount');a.min='4';a.max='8';"
+        "a.step='2';";
+    static const char RANGE_VALID[] =
+        "document.getElementById('amount').step='any';";
+    static const char FORM_INVALID[] =
+        "document.getElementById('locked').readOnly=false;"
+        "document.getElementById('skip').formNoValidate=true;";
+    static const char FORM_SKIP_OFF[] =
+        "document.getElementById('skip').formNoValidate=false;";
+    static const char FORM_NOVALIDATE[] =
+        "document.getElementById('strict').noValidate=true;";
+    static const char FORM_NOVALIDATE_OFF[] =
+        "document.getElementById('strict').noValidate=false;";
+    static const char DRAFT_NOVALIDATE_OFF[] =
+        "document.getElementById('draft').noValidate=false;";
+    static const char DRAFT_VALUE[] =
+        "document.getElementById('draftField').value='ready';";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char result[256];
+    char action[128];
+    char body[512];
+    char error[384];
+    const char *stage;
+    int executed;
+    int ignored;
+    int result_bytes;
+    int send_x;
+    int send_y;
+    int skip_x;
+    int skip_y;
+    int draft_x;
+    int draft_y;
+    int send_kind;
+    int skip_kind;
+    int draft_kind;
+    int disabled;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    memset(result, 0, sizeof(result));
+    memset(action, 0, sizeof(action));
+    memset(body, 0, sizeof(body));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    send_x = 0;
+    send_y = 0;
+    skip_x = 0;
+    skip_y = 0;
+    draft_x = 0;
+    draft_y = 0;
+    send_kind = 0;
+    skip_kind = 0;
+    draft_kind = 0;
+    disabled = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/form-properties.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 480) != 0 ||
+                PCore_FormControlInfoById(document, "send", &send_x,
+                &send_y, NULL, NULL, &send_kind, NULL, &disabled) != 0 ||
+                send_kind != 7 || disabled ||
+                PCore_FormControlInfoById(document, "skip", &skip_x,
+                &skip_y, NULL, NULL, &skip_kind, NULL, &disabled) != 0 ||
+                skip_kind != 7 || disabled ||
+                PCore_FormControlInfoById(document, "draftButton", &draft_x,
+                &draft_y, NULL, NULL, &draft_kind, NULL, &disabled) != 0 ||
+                draft_kind != 7 || disabled) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        stage = "reflection";
+        if (pcore_browser_script_session_evaluate(REFLECT, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "true|true|true|true|true") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "readonly-off";
+        if (pcore_browser_script_session_evaluate(READONLY_OFF, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, send_x, send_y,
+                &validation) || validation.valid ||
+                validation.invalid_count != 1 ||
+                validation.first_flags != PCORE_VALIDITY_VALUE_MISSING ||
+                PCore_FormSubmissionAt(document, send_x, send_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 5) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "readonly-on";
+        if (pcore_browser_script_session_evaluate(READONLY_ON, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, send_x, send_y,
+                &validation) || !validation.valid ||
+                PCore_FormSubmissionAt(document, send_x, send_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+                strcmp(action, "/strict") != 0 ||
+                strcmp(body, "amount=5&locked=&tags=a&tags=b&go=send") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "range-underflow";
+        if (pcore_browser_script_session_evaluate(RANGE_UNDERFLOW, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, send_x, send_y,
+                &validation) || validation.valid ||
+                validation.first_flags != PCORE_VALIDITY_RANGE_UNDERFLOW) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "range-overflow";
+        if (pcore_browser_script_session_evaluate(RANGE_OVERFLOW, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, send_x, send_y,
+                &validation) || validation.valid ||
+                validation.first_flags != PCORE_VALIDITY_RANGE_OVERFLOW) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "range-step";
+        if (pcore_browser_script_session_evaluate(RANGE_STEP, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, send_x, send_y,
+                &validation) || validation.valid ||
+                validation.first_flags != PCORE_VALIDITY_STEP_MISMATCH) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "range-valid";
+        if (pcore_browser_script_session_evaluate(RANGE_VALID, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, send_x, send_y,
+                &validation) || !validation.valid ||
+                PCore_FormSubmissionAt(document, send_x, send_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "formnovalidate";
+        if (pcore_browser_script_session_evaluate(FORM_INVALID, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, skip_x, skip_y,
+                &validation) || !validation.valid ||
+                PCore_FormSubmissionAt(document, skip_x, skip_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+                strcmp(body, "amount=5&locked=&tags=a&tags=b&skip=skip") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "formnovalidate-off";
+        if (pcore_browser_script_session_evaluate(FORM_SKIP_OFF, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_FormSubmissionAt(document, skip_x, skip_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 5) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "novalidate";
+        if (pcore_browser_script_session_evaluate(FORM_NOVALIDATE, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, send_x, send_y,
+                &validation) || !validation.valid ||
+                PCore_FormSubmissionAt(document, send_x, send_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "novalidate-off";
+        if (pcore_browser_script_session_evaluate(FORM_NOVALIDATE_OFF, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_FormSubmissionAt(document, send_x, send_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 5) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "draft-novalidate";
+        if (!PCore_FormValidationAt(document, draft_x, draft_y,
+                &validation) || !validation.valid ||
+                PCore_FormSubmissionAt(document, draft_x, draft_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+                strcmp(action, "/draft") != 0 ||
+                strcmp(body, "draft=&save=draft") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "draft-novalidate-off";
+        if (pcore_browser_script_session_evaluate(DRAFT_NOVALIDATE_OFF, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_FormSubmissionAt(document, draft_x, draft_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 5) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "draft-value";
+        if (pcore_browser_script_session_evaluate(DRAFT_VALUE, -1,
+                error, sizeof(error)) != 0 ||
+                !PCore_FormValidationAt(document, draft_x, draft_y,
+                &validation) || !validation.valid ||
+                PCore_FormSubmissionAt(document, draft_x, draft_y,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+                strcmp(body, "draft=ready&save=draft") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s result=%s action=%s body=%s valid=%d count=%d flags=%lu",
+                    stage, result, action, body, validation.valid,
+                    validation.invalid_count,
+                    (unsigned long) validation.first_flags);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 265 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 265 OK",
+            "Reflected form constraint properties stayed synchronized with "
+            "the DOM; dynamic range, readonly and no-validate changes "
+            "blocked or restored submission as expected.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -49541,6 +49878,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 264: ok =
                 test264_browser_disabled_property();
+                break;
+        case 265: ok =
+                test265_form_reflected_properties();
                 break;
         default: ok = FALSE; break;
         }

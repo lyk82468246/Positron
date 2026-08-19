@@ -13,7 +13,7 @@
 - 典型组合：调用者另行持有 `positron_core.dll`、网络和 native WM 控件
 
 其他项目链接 `positron_browser.lib`，部署 DLL 依赖，并以 callback 形式提供宿主的
-document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、`HTMLElement.disabled`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。`HTMLElement.disabled` 通过既有 attribute callback bridge 实现；对 file input，programmatic click 只负责 typed click 分发；系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
+document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、`HTMLElement.disabled`、`required`、`readOnly`、`multiple`、`noValidate`、`formNoValidate`、`min`/`max`/`step`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。这些表单属性通过既有 attribute callback bridge 实现；对 file input，programmatic click 只负责 typed click 分发；系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
 `test_host.exe` 是一个完整的组合示例，但不是私有 API 的唯一消费者。
 
 ## 其他项目如何调用
@@ -47,7 +47,8 @@ PBrowser_ScriptSessionDestroy(session);
 - `PBrowser_ScriptSession*`：创建/销毁 PScript context、求值、JSON global、bootstrap、
   DOM read/write/attribute/value/checked/form-property、navigation/location/history 事件、
   Event JSON 和 native input/keyboard/focus/EDIT change/post-change input/click、programmatic
-  `HTMLElement.click()`、`HTMLElement.disabled`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
+  `HTMLElement.click()`、`HTMLElement.disabled`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
+  `formNoValidate`/`min`/`max`/`step`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
 - `PBrowser_ScriptSessionRuntime` 仅是迁移期只读诊断借用句柄，不转移所有权。
 
 回调结构体是 size-tagged，字符串和事件信息只在同步 callback 内借用。产品层只管理

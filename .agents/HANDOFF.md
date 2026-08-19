@@ -11,7 +11,7 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next296（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next297（本批采用定向门；最近一次完整自动基线仍为 next255）。
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
 - next295 在 `test_host` 宿主中把可见 render window 内、未取消的 file-input
@@ -22,6 +22,10 @@
 - next296 在产品 bootstrap 中通过既有 attribute bridge 暴露 `HTMLElement.disabled` 布尔属性；
   TEST264 自动断言 getter/setter、required validation 和 successful-control submission 的
   禁用/启用语义，无需人工页面验收。
+- next297 在同一 attribute bridge 上补齐 `required`、`readOnly`、`multiple`、`noValidate`、
+  `formNoValidate` 和 `min`/`max`/`step` 反射；TEST265 自动覆盖属性往返、动态范围约束、
+  readonly 绕过/恢复、form-level/button-level no-validate 和 successful-control submission，
+  不需要人工页面验收。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
 - next292 批次验证 custom validity 状态跨 `PCore_LayoutDocument` 重排保持；没有新增视觉/触摸
@@ -188,6 +192,12 @@
   `tmp/device-runs/20260819-204007-next296-disabled-property-regression-rerun/`。
   两组均零 ERROR/FAIL、唯一 TESTBENCH PASS。首次诊断回归误把 manual-only TEST263
   放入自动选择，且早先 TEST264 夹具把控件 id 当成 tag；两者均已修正，失败运行不作为证据。
+- next297 自动候选证据：`TEST265/999` 2/2 位于
+  `tmp/device-runs/20260819-211540-next297-form-properties-rerun/`；扩大后的
+  `TEST68-73,189-231,233-262,264-265/999` 82/82 位于
+  `tmp/device-runs/20260819-211616-next297-form-properties-regression/`。
+  两组均零 ERROR/FAIL、唯一 TESTBENCH PASS。首次诊断失败是 TEST265 夹具误把
+  `formNoValidate=true` 的规范性绕过结果断言为 invalid，已修正并重跑；失败运行不作为证据。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -1808,13 +1818,14 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-next295 的自动与人工门已经通过，next296 的 `HTMLElement.disabled` 自动定向门及相关回归
-也已通过。唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工
-页面观察的单一能力，继续保持每批一个清晰的产品边界。
+next295 的自动与人工门、next296 的 `HTMLElement.disabled` 自动门以及 next297 的表单
+约束属性反射与动态语义门均已通过。唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md`
+选择下一个不依赖人工页面观察的单一能力，继续保持每批一个清晰的产品边界。
 
 完成标准：
 
-- TEST264/999、相关回归、C89、审计和正式构建均保持通过；共享的回归门采用定向选择，
+- TEST265/999、68–73/189–231/233–265 相关回归、C89、审计和正式构建均保持通过；共享的
+  回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
 - 后续能力必须有 valid/mismatch 负例、动态值更新和 submission 阻断/恢复的自动断言，并通过
   定向设备门；涉及系统 picker、窗口、真实 SIP、旋转或视觉布局的能力仍须另行标为 manual-only，

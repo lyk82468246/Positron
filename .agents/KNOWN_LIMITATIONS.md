@@ -13,7 +13,8 @@
 - 默认 `javascript=0`。
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
-  textContent 读取）、textContent 写入、attribute、input value、checked、`HTMLElement.disabled`、form property
+  textContent 读取）、textContent 写入、attribute、input value、checked、`HTMLElement.disabled`、约束相关
+  `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step` 反射、form property
   （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click）、submit/reset、invalid、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
@@ -75,7 +76,7 @@ fragment/hashchange，以及逐步扩展的相对 URL 分类。
 ## 表单与输入
 
 当前状态：已有 native EDIT/SELECT、file input、textarea、checkbox/radio、提交/reset、基础 constraint
-validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/submit-reset-button programmatic `click()`/file-input programmatic `click()` typed dispatch/SELECT input/change typed dispatch、`HTMLElement.disabled` 的 attribute-backed getter/setter 和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
+validation、keyboard/focus-family/EDIT change/post-change input/click/submit/reset/invalid/file-input input/change/checkbox-radio input/change/label activation/checkbox-radio keyboard activation/checkbox-radio programmatic `click()`/submit-reset-button programmatic `click()`/file-input programmatic `click()` typed dispatch/SELECT input/change typed dispatch、`HTMLElement.disabled` 和约束属性的 attribute-backed getter/setter、动态 form-level/button-level no-validate 语义和部分 composition bridge；WM 控件与 core 事件传播仍由宿主负责。
 
 尚未完成：任意 OEM IME、完整 composition/preedit、除 type=number 的 min/max/step 和 type=range
 默认/显式边界/缺省中点核心校验外的完整类型/范围/step 语义、除 email 和保守 url 核心校验外的
@@ -88,7 +89,9 @@ email/URL 类型校验、除 bounded date/time（含规范 step base）/month/we
 边界，TEST262 已覆盖排队合并、disabled、取消和文档替换丢弃；TEST232 的真实 WM6 picker
 选择/同窗口取消/窗口返回已由用户人工验收，TEST263 的程序化 picker 真实 GUI 入口也已
 由用户验收。TEST264 自动覆盖 `HTMLElement.disabled` 的 attribute round-trip、required
-validation 和 successful-control submission；产品 DLL 仍不提供系统 picker 或窗口生命周期 API。
+validation 和 successful-control submission；TEST265 自动覆盖约束属性反射、动态 min/max/step、
+readonly 和 no-validate 绕过/恢复及 successful-control submission。产品 DLL 仍不提供系统
+picker 或窗口生命周期 API。
 
 完成方法：synthetic event 与真实 SIP 分开验收；至少覆盖候选词、Unicode、旋转和
 native control 生命周期。
