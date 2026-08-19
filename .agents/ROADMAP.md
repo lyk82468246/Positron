@@ -59,6 +59,11 @@ next301 已在 `positron_core.dll` 提供 `PCore_FormReportValidityById`，并�
 定向门已通过。该切片按 DOM 顺序派发可寻址 invalid controls 的 trusted、non-bubbling、cancelable
 `invalid` 事件，`preventDefault()` 不改变 boolean 结果，仍不提供 native validation UI、焦点/滚动、
 本地化提示或提交副作用；`test_host` 仍只是宿主适配和测试消费者。
+next302 已在 `positron_core.dll` 提供 `PCore_FormGetValidationMessageById`，并让现有
+browser custom-validity getter 在没有 application-owned message 时返回固定英文 validity fallback；
+TEST270/999 与启用 JavaScript 的 87 项回归已通过。该切片保留 custom message 优先级，提供完整
+字节长度和安全截断，但不做本地化、不显示 native validation UI；`test_host` 仍只是宿主适配和
+测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

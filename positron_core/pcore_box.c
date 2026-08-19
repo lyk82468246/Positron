@@ -8208,6 +8208,90 @@ PCORE_API int PCore_FormGetCustomValidityById(HANDLE hDoc,
     return result;
 }
 
+static int pcore_validation_message_copy(const char *source,
+        char *message, unsigned int capacity)
+{
+    size_t length;
+    size_t copy_length;
+
+    if (source == NULL || (message == NULL && capacity != 0)) {
+        return -1;
+    }
+    length = strlen(source);
+    if (length > (size_t) INT_MAX) {
+        return -1;
+    }
+    if (message != NULL && capacity > 0) {
+        copy_length = length;
+        if (copy_length >= (size_t) capacity) {
+            copy_length = (size_t) capacity - 1;
+        }
+        if (copy_length > 0) {
+            memcpy(message, source, copy_length);
+        }
+        message[copy_length] = '\0';
+    }
+    return (int) length;
+}
+
+static const char *pcore_validation_message_for_flags(unsigned int flags)
+{
+    if ((flags & PCORE_VALIDITY_VALUE_MISSING) != 0) {
+        return "Please fill out this field.";
+    }
+    if ((flags & PCORE_VALIDITY_TYPE_MISMATCH) != 0) {
+        return "Please enter a valid value.";
+    }
+    if ((flags & PCORE_VALIDITY_BAD_INPUT) != 0) {
+        return "Please enter a number.";
+    }
+    if ((flags & PCORE_VALIDITY_RANGE_UNDERFLOW) != 0) {
+        return "Value is too low.";
+    }
+    if ((flags & PCORE_VALIDITY_RANGE_OVERFLOW) != 0) {
+        return "Value is too high.";
+    }
+    if ((flags & PCORE_VALIDITY_STEP_MISMATCH) != 0) {
+        return "Please enter a valid value.";
+    }
+    if ((flags & PCORE_VALIDITY_TOO_LONG) != 0) {
+        return "Please shorten this text.";
+    }
+    if ((flags & PCORE_VALIDITY_TOO_SHORT) != 0) {
+        return "Please lengthen this text.";
+    }
+    if ((flags & PCORE_VALIDITY_PATTERN_MISMATCH) != 0) {
+        return "Please match the requested format.";
+    }
+    if (flags != 0) {
+        return "Please fix this field.";
+    }
+    return "";
+}
+
+PCORE_API int PCore_FormGetValidationMessageById(HANDLE hDoc,
+        const char *element_id, char *message, unsigned int capacity)
+{
+    PCoreFormControlValidationInfo info;
+    const char *fallback;
+
+    if (message == NULL && capacity != 0) {
+        return -1;
+    }
+    if (PCore_FormControlValidationById(hDoc, element_id, &info) != 0) {
+        return -1;
+    }
+    if (!info.will_validate || info.valid) {
+        return pcore_validation_message_copy("", message, capacity);
+    }
+    if ((info.flags & PCORE_VALIDITY_CUSTOM_ERROR) != 0) {
+        return PCore_FormGetCustomValidityById(hDoc, element_id, message,
+                capacity);
+    }
+    fallback = pcore_validation_message_for_flags(info.flags);
+    return pcore_validation_message_copy(fallback, message, capacity);
+}
+
 PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
         const char *element_id, PCoreFormControlValidationInfo *out_info)
 {

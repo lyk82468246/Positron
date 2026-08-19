@@ -879,6 +879,18 @@ PCORE_API int PCore_FormSetCustomValidityById(HANDLE hDoc,
 PCORE_API int PCore_FormGetCustomValidityById(HANDLE hDoc,
         const char *element_id, char *message, unsigned int capacity);
 
+/* Read the current deterministic validation message for element_id. A
+ * non-empty application-owned custom validity message takes precedence;
+ * otherwise the supported validity flags map to fixed English fallback
+ * strings. Valid or non-validation elements return an empty string. The
+ * complete UTF-8 byte length is returned even when message is NULL, capacity
+ * is zero, or the buffer is too small; a positive capacity always receives a
+ * NUL-terminated safe truncation. This is deliberately not localized and
+ * does not display native validation UI. Returns -1 when the id cannot be
+ * resolved or the message length cannot be represented. */
+PCORE_API int PCore_FormGetValidationMessageById(HANDLE hDoc,
+        const char *element_id, char *message, unsigned int capacity);
+
 /* Validate the form targeted by an explicit submit control or by Enter in an
  * enumerated single-line text/password control. The current implementation
  * covers required, pattern and length constraints for text/password/textarea/file,

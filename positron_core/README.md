@@ -55,9 +55,11 @@ PCore_Shutdown();
 bridge 实现受限的 form-level `checkValidity()`；`PCore_FormReportValidityById` 在同一候选规则上
 收集 invalid controls，并按 DOM 顺序向有非空 id 的控件派发 trusted、non-bubbling、cancelable
 `invalid` 事件。`PCore_FormSetCustomValidityById` 与 `PCore_FormGetCustomValidityById` 可按 id
-设置/读取 application-owned custom validity message，覆盖当前 form-control candidates。查询/设置
-不应用 form-level no-validate 提交按钮绕过，也不提供 native invalid UI、焦点/滚动、提交或本地化
-错误提示；report API 的 boolean 结果不受 `preventDefault()` 改变。
+设置/读取 application-owned custom validity message，覆盖当前 form-control candidates；
+`PCore_FormGetValidationMessageById` 在 custom message 为空时按当前 validity flags 返回固定的
+英文 fallback，并提供完整字节长度和安全截断。查询/设置不应用 form-level no-validate 提交按钮
+绕过，也不提供 native invalid UI、焦点/滚动、提交或本地化错误提示；report API 的 boolean
+结果不受 `preventDefault()` 改变。
 `PCore_FormResetAt` 只提交 reset 的 DOM 初始状态；可取消的 reset 事件由宿主先分发。
 
 `PCore_Init` 与 `PCore_Shutdown` 成对使用；文档、样式表和其他返回句柄分别用

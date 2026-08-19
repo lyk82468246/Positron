@@ -45,7 +45,12 @@
   该切片仍不提供 native validation UI、焦点/滚动、完整错误消息本地化、提交副作用或无 id
   控件的脚本事件目标。
 
-尚未完成：完整 DOM/window、其余 form/input callback 实现、native invalid UI、module、
+- next302 新增了 `PCore_FormGetValidationMessageById`，并让 bootstrap 的
+  `validationMessage` 在 custom message 为空时返回固定英文 fallback；覆盖当前 flags 的
+  优先级、动态恢复和安全截断。它不做本地化，不显示 native validation UI，也不改变
+  `setCustomValidity()` 的 application-owned message 语义。
+
+尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
 实现位于 `test_host/main.c`，尚未成为可供正式浏览器应用复用的 browser-layer API。
 

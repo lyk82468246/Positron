@@ -11,7 +11,7 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next301（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next302（本批采用定向门；最近一次完整自动基线仍为 next255）。
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
 - next295 在 `test_host` 宿主中把可见 render window 内、未取消的 file-input
@@ -51,6 +51,10 @@
   不改变 boolean 结果、`novalidate` 和 disabled/readonly 边界；不提供 native validation UI、
   焦点/滚动、提交或本地化提示。为容纳该受控 callback，独立 script native function 上限从 17
   提升为 18。
+- next302 在 `positron_core.dll` 增加 `PCore_FormGetValidationMessageById`，让现有 browser
+  custom-validity getter 在没有 application-owned message 时返回固定英文 validity fallback；
+  TEST270 自动覆盖 required/range/type mismatch、custom message 优先级、动态清除和安全截断，
+  不做本地化或 native validation UI。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
 - next292 批次验证 custom validity 状态跨 `PCore_LayoutDocument` 重排保持；没有新增视觉/触摸
@@ -252,6 +256,13 @@
   不需要人工视觉/触摸验收；启用 JavaScript 的 `TEST68-73,189-231,233-262,264-269/999`
   相关回归 86/86 位于 `tmp/device-runs/20260819-231431-next301-report-validity-regression/`；
   tracked `test_host/test_host.ini` 已恢复默认 `javascript=0`。
+- next302 自动候选证据：`TEST270/999` 2/2 位于
+  `tmp/device-runs/20260819-233450-next302-validation-message-final/`；零 ERROR/FAIL、唯一
+  TESTBENCH PASS，`test13_route_ok=True`。启用 JavaScript 的
+  `TEST68-73,189-231,233-262,264-270/999` 相关回归 87/87 位于
+  `tmp/device-runs/20260819-232921-next302-validation-message-regression/`；
+  tracked `test_host/test_host.ini` 已恢复默认 `javascript=0`。该批不涉及视觉、触摸、SIP、
+  系统 picker 或本地化/native validation UI，不需要人工页面验收。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -1874,7 +1885,8 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 next295 的自动与人工门、next296 的 `HTMLElement.disabled` 自动门、next297 的表单约束属性
 反射与动态语义门、next298 的 validation query 门、next299 的 custom-validity 门、next300 的
-form-level validation query 门以及 next301 的 report-validity/invalid-event 门均已通过。
+form-level validation query 门、next301 的 report-validity/invalid-event 门以及 next302 的
+validationMessage fallback 门均已通过。
 唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
 每批一个清晰的产品边界。

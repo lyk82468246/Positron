@@ -108,6 +108,9 @@ JSON-compatible global、native callback、执行预算和内存限制，但本�
 - 按 DOM id 设置/读取当前控件的 application-owned custom validity message，供脚本 bridge
   实现 `setCustomValidity()` 和 `validationMessage`；支持现有 form-control candidates，不触发
   invalid 事件或 native invalid UI；
+- 按 DOM id 读取当前控件的 `validationMessage`（`PCore_FormGetValidationMessageById`）：
+  custom message 优先，否则按当前 flags 返回固定英文 fallback；提供完整字节长度和安全截断，
+  不做本地化或 native validation UI；
 - transport-agnostic 的 URL resolve、fetch 和 free callback。
 
 文档、样式表及其他返回句柄必须使用对应 `PCore_Free*` API 释放。查询接口可能返回

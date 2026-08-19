@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 269
+#define TEST_MAX_NUMBER 270
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6632,7 +6632,7 @@ static int pcore_browser_script_dom_get_custom_validity(void *pw,
             (out_value != NULL && out_capacity <= 0)) {
         return -1;
     }
-    length = PCore_FormGetCustomValidityById(bridge->document, id,
+    length = PCore_FormGetValidationMessageById(bridge->document, id,
             out_value, (unsigned int) out_capacity);
     if (length < 0) {
         return -1;
@@ -46595,6 +46595,179 @@ static BOOL test269_browser_report_validity(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 270 - browser validationMessage built-in fallback                */
+/* -------------------------------------------------------------------- */
+static BOOL test270_browser_validation_message(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='form'>"
+        "<input id='required' required value=''>"
+        "<input id='amount' type='number' value='5' min='6'>"
+        "<input id='mail' type='email' value='bad'>"
+        "<input id='custom' value='ready'>"
+        "<input id='disabled' required disabled value=''>"
+        "<input id='locked' required readonly value=''>"
+        "<input id='valid' value='ready'>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var r=document.getElementById('required');"
+        "var n=document.getElementById('amount');"
+        "var m=document.getElementById('mail');"
+        "var c=document.getElementById('custom');"
+        "var d=document.getElementById('disabled');"
+        "var l=document.getElementById('locked');"
+        "var v=document.getElementById('valid');"
+        "document.getElementById('result').textContent="
+        "r.validationMessage+'|'+n.validationMessage+'|' +"
+        "m.validationMessage+'|'+c.validationMessage+'|' +"
+        "d.validationMessage+'|'+l.validationMessage+'|' +"
+        "v.validationMessage;";
+    static const char CUSTOM[] =
+        "r.setCustomValidity('owner');c.setCustomValidity('custom');"
+        "document.getElementById('result').textContent="
+        "r.validationMessage+'|'+String(!r.checkValidity())+'|' +"
+        "c.validationMessage+'|'+String(!c.checkValidity());";
+    static const char CLEAR[] =
+        "r.setCustomValidity('');c.setCustomValidity('');"
+        "r.value='ready';n.value='6';m.value='ok@example.com';"
+        "document.getElementById('result').textContent="
+        "r.validationMessage+'|'+n.validationMessage+'|' +"
+        "m.validationMessage+'|'+c.validationMessage;";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormControlValidationInfo state;
+    char message[12];
+    char custom[64];
+    char result[512];
+    char error[384];
+    const char *stage;
+    int executed;
+    int ignored;
+    int result_bytes;
+    int message_length;
+    int custom_length;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&state, 0, sizeof(state));
+    memset(message, 0, sizeof(message));
+    memset(custom, 0, sizeof(custom));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    message_length = -1;
+    custom_length = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "core-built-in";
+        message_length = PCore_FormGetValidationMessageById(document,
+                "required", message, sizeof(message));
+        if (message_length != 27 || strcmp(message, "Please fill") != 0 ||
+                PCore_FormGetValidationMessageById(document, "required",
+                NULL, 0) != 27 ||
+                PCore_FormControlValidationById(document, "required",
+                &state) != 0 || state.valid ||
+                (state.flags & PCORE_VALIDITY_VALUE_MISSING) == 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+    }
+    if (ok) {
+        stage = "probe";
+        if (pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "Please fill out this field.|Value is too low."
+                "|Please enter a valid value.||||") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "custom";
+        if (pcore_browser_script_session_evaluate(CUSTOM, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "owner|true|custom|true") != 0 ||
+                (custom_length = PCore_FormGetCustomValidityById(document,
+                "required", custom, sizeof(custom))) != 5 ||
+                strcmp(custom, "owner") != 0 ||
+                PCore_FormGetValidationMessageById(document, "required",
+                NULL, 0) != 5) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "clear";
+        if (pcore_browser_script_session_evaluate(CLEAR, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "|||") != 0 ||
+                PCore_FormGetValidationMessageById(document, "required",
+                message, sizeof(message)) != 0 || message[0] != '\0') {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s result=%s message=%s length=%d custom=%s "
+                    "custom_length=%d valid=%d flags=%lu",
+                    stage, result, message, message_length, custom,
+                    custom_length, state.valid, (unsigned long) state.flags);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 270 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 270 OK",
+            "validationMessage() now returns deterministic built-in English "
+            "fallbacks, preserves custom messages, and clears when valid.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -50917,6 +51090,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 269: ok =
                 test269_browser_report_validity();
+                break;
+        case 270: ok =
+                test270_browser_validation_message();
                 break;
         default: ok = FALSE; break;
         }

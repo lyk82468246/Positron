@@ -264,12 +264,14 @@ typedef struct PBrowserScriptReportValidityCallbacks {
     PBrowserScriptReportValidityFn report_validity;
 } PBrowserScriptReportValidityCallbacks;
 
-/* Typed host adapter for application-owned custom validity messages. The
- * browser DLL owns JSON dispatch and the script-facing setCustomValidity()
- * method/validationMessage property; the host supplies UTF-8 get/set
- * operations by DOM id. The getter follows the size-probe contract used by
- * PBrowserScriptGetValueFn. The setter returns >0 on success, 0 when the
- * target is unsupported and <0 on an adapter error. */
+/* Typed host adapter for application-owned custom validity messages and the
+ * script-facing validationMessage property. The browser DLL owns JSON
+ * dispatch and setCustomValidity(); the host supplies a UTF-8 getter/setter
+ * by DOM id. The getter may return a deterministic built-in English fallback
+ * when no custom message exists and the control is invalid, while preserving
+ * the size-probe contract used by PBrowserScriptGetValueFn. The setter
+ * returns >0 on success, 0 when the target is unsupported and <0 on an
+ * adapter error. No localization or native validation UI is implied. */
 typedef struct PBrowserScriptCustomValidityCallbacks {
     unsigned long size;
     void *pw;
