@@ -363,10 +363,12 @@ scripts\repair_wmdc_rapi.bat
    `test_host.exe`。
 4. 启动确认框必须显示选择 `232, 999`，并显示
    `Browser JavaScript: experimental inline scripts enabled.`。点击 **Yes**；点 **No** 会退回普通分组选择，不是本次流程。
-5. TEST232 开始时先读提示框，再点 OK 进入 render 窗口：点击 File 控件，在真实 WM6
-   对话框中选一个小文件并确认；回到页面后确认文件名出现、trace 恰好为
-   `input|file;change|file;`。再次点 File 并按 **Cancel**，确认文件名和 trace 均保持不变。
-   记录设备型号、viewport/DPI 和截图；最后用 `Esc` 或点空白处关闭窗口。
+5. TEST232 开始时先读提示框，再点 OK 进入 render 窗口：在同一个 render 窗口内点击
+   File 控件，在真实 WM6 对话框中选一个小文件并确认；回到页面后确认文件名出现、trace
+   恰好为 `input|file;change|file;`。仍在同一个 render 窗口内再次点 File 并按
+   **Cancel**，确认文件名和 trace 均保持不变。关闭 render 窗口后重新运行 TEST232
+   会创建新的 fixture，不要求跨次运行保留文件状态。记录设备型号、viewport/DPI 和截图；
+   最后用 `Esc` 或点空白处关闭窗口。
 6. TEST232 关闭后应出现 `TEST 232 OK`，其中 value/path 非空且 trace 与上述字符串一致；
    若选择失败、页面崩溃、回到页面后状态丢失或 trace 重复，立即记录为失败，不要继续扩大范围。
    最后 TEST999 应只触发一次系统提示音，随后出现 `Configured tests passed`。

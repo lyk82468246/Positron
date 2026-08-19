@@ -83,8 +83,10 @@ email/URL 类型校验、除 bounded date/time（含规范 step base）/month/we
 校验外的完整 date/time/month/week/datetime-local/color 类型校验、除 text/password setter
 外的 custom validity、
 `invalid` UI、native file input 的程序化 picker 入口和完整文件选择体验。当前程序化 click
-只分发 typed click，不自动打开系统 picker；TEST231 已自动覆盖 host picker 的注入错误/空选择
-边界，TEST232 的真实 WM6 picker 选择/取消/窗口返回仍等待人工设备证据。
+仍只在自动/无窗口路径分发 typed click；next295 将在有 render window 的宿主路径中增加
+deferred picker request。TEST231 已自动覆盖 host picker 的注入错误/空选择边界，TEST232 的
+真实 WM6 picker 选择/同窗口取消/窗口返回已由用户人工验收；程序化 picker 的真实 GUI
+入口仍需单独人工检查。
 
 完成方法：synthetic event 与真实 SIP 分开验收；至少覆盖候选词、Unicode、旋转和
 native control 生命周期。

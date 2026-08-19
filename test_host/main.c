@@ -9178,7 +9178,6 @@ static int pcore_handle_file_input_with_picker(HWND hwnd, int x, int y,
     unsigned int file_index;
     int disabled;
     int picker_result;
-    RECT dirty;
 
     file_index = 0;
     disabled = 0;
@@ -9211,12 +9210,16 @@ static int pcore_handle_file_input_with_picker(HWND hwnd, int x, int y,
             info.x + info.width / 2, info.y + info.height / 2, "input");
     (void) pcore_browser_script_dispatch_file_event_at(
             info.x + info.width / 2, info.y + info.height / 2, "change");
-    dirty.left = info.x;
-    dirty.top = info.y - g_scroll_y;
-    dirty.right = info.x + info.width;
-    dirty.bottom = info.y - g_scroll_y + info.height;
     if (hwnd != NULL) {
-        InvalidateRect(hwnd, &dirty, TRUE);
+        /* DOM textContent setters only mutate the DOM.  The file listeners
+         * update the visible event/value nodes, so re-style and lay out the
+         * document before repainting instead of invalidating only the native
+         * file-control rectangle. */
+        if (pcore_restyle_form_state(hwnd, 1) != 0) {
+            show_error(L"File selection redraw failed",
+                    "The selected file was stored, but the page could not be redrawn");
+            InvalidateRect(hwnd, NULL, TRUE);
+        }
     }
     return 1;
 }
@@ -42526,27 +42529,27 @@ static BOOL test232_browser_file_picker_manual(void)
     static const char HTML[] =
         "<!doctype html><html><head><script>window.boot=1;</script>"
         "</head><body><h2>Real WM6 file picker</h2>"
-        "<p>Choose one small file, then open the picker again and press "
-        "Cancel.</p>"
+        "<p>In this window, choose a small file, then choose again and press Cancel.</p>"
         "<form id='root'><label for='file'>File:</label>"
         "<input id='file' type='file'></form>"
-        "<p>Event trace (one selection must be exactly "
-        "input|file;change|file;):</p>"
-        "<pre id='events'>none</pre>"
-        "<p>Selected value:</p><pre id='value'>empty</pre>"
-        "<p>Tap empty space or press Esc to close this test.</p>"
+        "<div class='status'>Events: <span id='events'>none</span></div>"
+        "<div class='status'>Value: <span id='value'>empty</span></div>"
+        "<p class='hint'>Tap blank space or press Esc to close. Re-running starts fresh.</p>"
         "</body></html>";
     static const char CSS[] =
-        "body{font:14px sans-serif;margin:8px;color:#202020;"
+        "body{font:13px sans-serif;line-height:16px;margin:6px;color:#202020;"
         "background:#ffffff;}"
-        "h2{color:#800000;margin:0 0 8px 0;}"
-        "p{margin:6px 0;}"
-        "form{display:block;width:300px;border:1px solid #4060a0;"
-        "padding:8px;background:#eef6ff;}"
-        "label{display:block;margin-bottom:4px;}"
-        "input{display:block;width:240px;height:28px;}"
-        "pre{display:block;width:300px;min-height:24px;border:1px solid #808080;"
-        "padding:4px;background:#f4f4f4;white-space:pre-wrap;}";
+        "h2{font-size:18px;line-height:21px;color:#800000;"
+        "margin:0 0 4px 0;}"
+        "p{margin:4px 0;}"
+        "form{display:block;width:90%;border:1px solid #4060a0;"
+        "padding:6px;background:#eef6ff;}"
+        "label{display:block;margin-bottom:2px;}"
+        "input{display:block;width:90%;height:24px;}"
+        ".status{display:block;width:90%;min-height:16px;"
+        "border:1px solid #808080;padding:2px;background:#f4f4f4;"
+        "white-space:pre-wrap;}"
+        ".hint{font-size:12px;line-height:14px;}";
     static const char LISTENER[] =
         "window.events='';"
         "function record(e){var id=String(e.target.id||'');"
@@ -42649,12 +42652,14 @@ static BOOL test232_browser_file_picker_manual(void)
     if (ok) {
         show_info(L"TEST 232",
                 "A real WM6 file picker will open from the File control.\n\n"
-                "1. Select one small existing file and confirm. The page must\n"
+                "1. In this render window, select one small existing file and confirm.\n"
+                "   The page must\n"
                 "   return with its filename visible.\n"
-                "2. Open the same control again and press Cancel. The filename\n"
-                "   and the event trace must remain unchanged.\n"
+                "2. In the same render window, open the same control again and press\n"
+                "   Cancel. The filename and the event trace must remain unchanged.\n"
                 "3. The trace must show exactly one input then one change:\n"
                 "   input|file;change|file;\n\n"
+                "Closing this window and running TEST232 again starts a new fixture.\n\n"
                 "Tap empty space or press Esc to close and finish.");
         stage = "window";
         if (!show_render_window()) {

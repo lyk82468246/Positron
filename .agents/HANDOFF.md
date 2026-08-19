@@ -74,9 +74,10 @@
 - next264 批次把宿主 GUI picker 的系统调用、选择/取消/错误结果、core 文件状态提交和
   `input` → `change` 通知拆成可注入的同步 host-only adapter；真实 WM6 picker 仍由
   `GetOpenFileNameEx` 触发，未新增产品 ABI，也未改变程序化 `HTMLElement.click()` 边界。
-- next265 当前只是人工验收候选：新增 host-only TEST232、显式 `javascript=1` 的真实 WM6
-  picker 页面、以及 `scripts\stage_manual_picker.bat`；它尚未通过设备人工验收，不提升
-  最新已验证基线，也不把 picker 或页面 fixture 迁入产品 DLL。
+- next265 新增的 host-only TEST232、显式 `javascript=1` 的真实 WM6 picker 页面、以及
+  `scripts\stage_manual_picker.bat` 已完成用户人工验收：真实选择后文件名和
+  `input|file;change|file;` trace 可见，同一 render 窗口再次打开并 Cancel 后状态保持；
+  关闭后重新运行创建新 fixture。该验收不把 picker 或页面 fixture 迁入产品 DLL。
 - next263 批次让 native file input 的程序化 `HTMLElement.click()` 先通过既有 typed click
   contract；disabled 控件静默，自动脚本不打开系统 picker，picker、文件系统权限和窗口生命周期
   仍由宿主 GUI 路径拥有。TEST228 继续覆盖 programmatic-click adapter error、注销和资源关闭。
@@ -160,7 +161,9 @@
   `tmp/device-runs/20260819-022559-next294/` 暴露了默认 range 值只误放在 textarea 分支的实现错误；
   修正分支后权威证据位于 tmp/device-runs/20260819-022946-next294/：
   TEST233-261/999 30/30，零 ERROR/FAIL，唯一 TESTBENCH PASS，test13_route_ok=True。
-  TEST232 仍保持人工待验收。
+  TEST232 随后的用户人工验收已通过：真实 WM6 picker 选择、同窗口 Cancel 后状态保持，
+  且文件监听器 trace 只出现一次 `input` 后一次 `change`；本地修复同时让动态 DOM
+  文本更新在宿主重排后可见。自动证据仍以本目录下的定向门为准。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -1781,17 +1784,20 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 
 ## 唯一下一步
 
-next275-next294 的自动 form/input 批次已连续完成；下一步先由用户人工复核 TEST232 真实
-WM6 picker 及既有视觉/SIP 包，再决定是否开启新的代码纵向能力。next265 的 TEST232
-picker 仍登记为人工待验收，不能用自动测试替代，也不能把 picker 迁入产品 DLL。
+TEST232 的真实 picker 人工门和既有视觉/SIP 包已通过；下一步推进 next295：让脚本可见的
+file-input `HTMLElement.click()` 在 click 未被取消、控件可用且已有 render window 时，向宿主
+消息队列提交一次 file-picker 请求，再由 `test_host` 调用现有 picker adapter。该请求保持
+宿主窗口、系统 picker、文件系统权限和重排所有权，不新增产品 DLL 的窗口 API；无窗口、
+disabled、取消、重复请求和导航销毁边界继续保持 no-op/安全丢弃。
 
 完成标准：
 
 - TEST233-261/999、C89、审计和正式构建均保持通过；共享的 file-picker 回归仍以 next265
-  的两组自动证据为依据，只有累计达到检查点或出现风险时再跑全量；
+  的两组自动证据为依据，只有累计达到检查点或出现风险时再跑全量；next295 另需覆盖
+  programmatic picker 的排队、注入选择/取消/错误和生命周期边界；
 - 后续 step 能力必须有 valid/mismatch 负例、动态值更新和 submission 阻断/恢复的自动断言，并通过
-  定向设备门；TEST232 人工包仍需稍后确认真实 WM6 picker 的选择/取消/窗口
-  返回与一次性 `input` → `change`，不能以自动日志代替；
+  定向设备门；next295 的 programmatic picker 仍需单独保留真实 GUI 人工入口，不能以注入
+  adapter 日志代替真实 WM6 对话框验收；
 - 最新 TEST75 纵向/横向截图已核对无异常，其余人工包由用户报告正常；人工验收若切换为
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
 - 若出现崩溃、数据损坏、严重布局破坏或核心交互阻塞，立即停止累计并进入 debug；
