@@ -7989,6 +7989,178 @@ static int pcore_required_control_missing(dom_html_form_element *form,
     return 1;
 }
 
+static dom_html_form_element *pcore_form_for_node(dom_node *node)
+{
+    dom_html_form_element *form;
+
+    form = NULL;
+    if (node == NULL) {
+        return NULL;
+    }
+    if (pcore_node_name_is(node, "button")) {
+        dom_html_button_element_get_form(
+                (dom_html_button_element *) node, &form);
+    } else if (pcore_node_name_is(node, "input")) {
+        dom_html_input_element_get_form(
+                (dom_html_input_element *) node, &form);
+    } else if (pcore_node_name_is(node, "textarea")) {
+        dom_html_text_area_element_get_form(
+                (dom_html_text_area_element *) node, &form);
+    } else if (pcore_node_name_is(node, "select")) {
+        dom_html_select_element_get_form(
+                (dom_html_select_element *) node, &form);
+    }
+    return form;
+}
+
+/* Report whether a control participates in constraint validation. This is
+ * deliberately kept beside pcore_required_control_missing so both the
+ * submission path and the script-visible query use the same control-kind
+ * classification. Fieldset inheritance is not represented by the current
+ * NetSurf gadget state and remains outside this compatibility slice. */
+static int pcore_control_will_validate(dom_node *node, int gadget_type,
+        int *out_will_validate)
+{
+    bool disabled;
+    bool read_only;
+
+    if (out_will_validate == NULL) {
+        return 0;
+    }
+    *out_will_validate = 0;
+    if (node == NULL || gadget_type == 0 ||
+            gadget_type == GADGET_SUBMIT ||
+            gadget_type == GADGET_RESET ||
+            gadget_type == GADGET_BUTTON) {
+        return 1;
+    }
+    disabled = false;
+    read_only = false;
+    if (pcore_node_name_is(node, "input")) {
+        if (dom_html_input_element_get_disabled(
+                (dom_html_input_element *) node, &disabled) != DOM_NO_ERR) {
+            return 0;
+        }
+        if (disabled) {
+            return 1;
+        }
+        if ((gadget_type == GADGET_TEXTBOX ||
+             gadget_type == GADGET_PASSWORD) &&
+                dom_html_input_element_get_read_only(
+                (dom_html_input_element *) node, &read_only) != DOM_NO_ERR) {
+            return 0;
+        }
+        if (read_only) {
+            return 1;
+        }
+    } else if (pcore_node_name_is(node, "textarea")) {
+        if (dom_html_text_area_element_get_disabled(
+                (dom_html_text_area_element *) node, &disabled) != DOM_NO_ERR ||
+                dom_html_text_area_element_get_read_only(
+                (dom_html_text_area_element *) node, &read_only) !=
+                        DOM_NO_ERR) {
+            return 0;
+        }
+        if (disabled || read_only) {
+            return 1;
+        }
+    } else if (pcore_node_name_is(node, "select")) {
+        if (dom_html_select_element_get_disabled(
+                (dom_html_select_element *) node, &disabled) != DOM_NO_ERR) {
+            return 0;
+        }
+        if (disabled) {
+            return 1;
+        }
+    }
+    *out_will_validate = 1;
+    return 1;
+}
+
+PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
+        const char *element_id, PCoreFormControlValidationInfo *out_info)
+{
+    dom_document *doc;
+    dom_string *id;
+    dom_element *element;
+    dom_html_form_element *form;
+    int gadget_type;
+    int kind;
+    int missing;
+    int will_validate;
+    bool checked;
+    unsigned int flags;
+    bool is_required;
+
+    if (out_info == NULL || hDoc == NULL || element_id == NULL ||
+            element_id[0] == '\0') {
+        return 1;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->valid = 1;
+    doc = (dom_document *) hDoc;
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) element_id,
+            strlen(element_id), &id) != DOM_NO_ERR || id == NULL ||
+            dom_document_get_element_by_id(doc, id, &element) != DOM_NO_ERR ||
+            element == NULL) {
+        if (id != NULL) {
+            dom_string_unref(id);
+        }
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    dom_string_unref(id);
+    gadget_type = pcore_form_control_type((dom_node *) element);
+    out_info->kind = pcore_public_control_kind(gadget_type);
+    if (gadget_type == 0 || !pcore_control_will_validate(
+            (dom_node *) element, gadget_type, &will_validate)) {
+        dom_node_unref((dom_node *) element);
+        return (gadget_type == 0) ? 0 : 1;
+    }
+    out_info->will_validate = will_validate;
+    if (!will_validate) {
+        dom_node_unref((dom_node *) element);
+        return 0;
+    }
+    form = pcore_form_for_node((dom_node *) element);
+    kind = 0;
+    missing = 0;
+    flags = 0;
+    if (form == NULL && gadget_type == GADGET_RADIO) {
+        is_required = pcore_node_has_attr((dom_node *) element,
+                "required");
+        checked = false;
+        if (dom_html_input_element_get_checked(
+                (dom_html_input_element *) element, &checked) !=
+                        DOM_NO_ERR) {
+            dom_node_unref((dom_node *) element);
+            return 1;
+        }
+        if (is_required && !checked) {
+            missing = 1;
+            flags = PCORE_VALIDITY_VALUE_MISSING;
+        }
+    } else if (!pcore_required_control_missing(form,
+            (dom_node *) element, &kind, &missing, &flags)) {
+        if (form != NULL) {
+            dom_node_unref((dom_node *) form);
+        }
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    out_info->flags = flags;
+    out_info->valid = (missing || flags != 0) ? 0 : 1;
+    if (form != NULL) {
+        dom_node_unref((dom_node *) form);
+    }
+    dom_node_unref((dom_node *) element);
+    return 0;
+}
+
 static int pcore_form_validate(pcore_render *st,
         dom_html_form_element *form, dom_node *activated,
         PCoreFormValidationInfo *out_info)

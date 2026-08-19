@@ -20,7 +20,14 @@
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
   Event callback 的产品 JSON 分发已迁入，但 core/document typed listener 适配仍由宿主提供。
 
-尚未完成：完整 DOM/window、其余 form/input callback 实现、module、
+- next298 新增了独立的 validation query callback 和 bootstrap 的
+  `HTMLElement.checkValidity()`、`willValidate`、`validity`（基础 flags）查询。它按 DOM id
+  读取 core 的当前控件状态，覆盖 required、disabled、readonly、select 和已有的数值约束；
+  非候选元素返回 `valid=true`、`willValidate=false`。这是查询型兼容切片，不触发 invalid 事件，
+  不实现 form `checkValidity()`、`validationMessage`、`setCustomValidity()` 的 DOM 方法或
+  native invalid UI。
+
+尚未完成：完整 DOM/window、其余 form/input callback 实现、form-level validation/query methods、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
 实现位于 `test_host/main.c`，尚未成为可供正式浏览器应用复用的 browser-layer API。
 

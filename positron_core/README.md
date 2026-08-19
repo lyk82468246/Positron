@@ -48,8 +48,10 @@ PCore_Shutdown();
 `PCore_EventListenerAdd` / `PCore_EventDispatchAt` 接入同步 DOM 事件，以及
 `PCore_Node*ById` 读取或修改脚本需要的 DOM 属性、值和表单状态；
 `PCore_FormControlInfoById` 可在布局后按 DOM id 查询控件几何、kind、selected 和 disabled
-状态，供浏览器宿主实现程序化控件 activation。`PCore_FormResetAt` 只提交 reset 的 DOM
-初始状态；可取消的 reset 事件由宿主先分发。
+状态，供浏览器宿主实现程序化控件 activation；`PCore_FormControlValidationById` 可在布局前后
+查询控件的 `valid`、`will_validate` 和 `PCORE_VALIDITY_*` flags，供脚本 bridge 或其他宿主
+读取约束状态。该查询不触发 invalid 事件，也不应用 form-level no-validate 提交按钮绕过。
+`PCore_FormResetAt` 只提交 reset 的 DOM 初始状态；可取消的 reset 事件由宿主先分发。
 
 `PCore_Init` 与 `PCore_Shutdown` 成对使用；文档、样式表和其他返回句柄分别用
 `PCore_FreeDocument`、`PCore_FreeStylesheet` 及头文件指定的 `PCore_Free*` 释放。

@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next297 基线）
+### 当前默认自动选择与人工验收包（next298 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -142,10 +142,15 @@ scripts\device_gate.bat -Candidate next297-form-properties ^
   -TestSelection "265,999"
 scripts\device_gate.bat -Candidate next297-form-properties-regression ^
   -TestSelection "68-73,189-231,233-262,264-265,999"
+scripts\device_gate.bat -Candidate next298-validation-query ^
+  -TestSelection "266,999"
+scripts\device_gate.bat -Candidate next298-validation-query-regression ^
+  -TestSelection "189-231,233-262,264-266,999"
 ```
 
-next297 的两组定向门分别覆盖新测试和扩大后的 form/script/constraint 回归，已分别通过
-2/2 和 82/82，均无 ERROR/FAIL；next295 的 TEST263 真实 GUI 已由用户验收，证据目录和当前状态见
+next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
+2/2 和 77/77，均无 ERROR/FAIL；回归门的 staging INI 临时使用 `javascript=1`，仓库 tracked
+配置仍保持 `javascript=0`。next295 的 TEST263 真实 GUI 已由用户验收，证据目录和当前状态见
 [`.agents/HANDOFF.md`](../.agents/HANDOFF.md)。
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
@@ -202,6 +207,7 @@ next297 的两组定向门分别覆盖新测试和扩大后的 form/script/const
 | 263 | 手工验证脚本 `file.click()` 在真实 WM6 窗口中延迟打开 picker；选择后显示 value 和 input/change，再次 Cancel 保持状态。 |
 | 264 | 自动验证 `HTMLElement.disabled` getter/setter 与既有 attribute bridge 同步；禁用 required 控件跳过 validation/submission，启用后恢复阻断与成功提交，重新禁用后再次排除。 |
 | 265 | 自动验证约束相关反射属性：`required`、`readOnly`、`multiple`、`noValidate`、`formNoValidate` 和 `min/max/step`；动态范围下溢/上溢/step mismatch、readonly 与 form/button no-validate 绕过/恢复，以及成功提交字段均须符合预期。 |
+| 266 | 自动验证脚本可查询控件 `checkValidity()`、`willValidate` 与基础 `validity` flags；覆盖 required/disabled/readonly/select、number 下溢/上溢/step mismatch，以及动态恢复。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 和 TEST263 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
@@ -331,6 +337,10 @@ TEST265 是自动的约束相关 reflected-property 门，覆盖 `required`、`r
 range underflow/overflow/step mismatch、readonly 绕过/恢复、form/button no-validate 绕过/恢复、
 successful-control submission 和 draft form 的恢复提交，不需要人工页面观察，也不宣称完整
 DOM IDL reflection。
+TEST266 是自动的 browser validation-query 门，覆盖 `checkValidity()`、`willValidate` 和
+`validity` 对 required/disabled/readonly/select 控件的候选状态，以及 number 的
+`rangeUnderflow`/`rangeOverflow`/`stepMismatch` flags 和动态恢复；它验证的是按 id 的查询型
+bridge，不宣称 form `checkValidity()`、`validationMessage`、invalid 事件触发或 native invalid UI。
 
 ## 运行自动设备门
 

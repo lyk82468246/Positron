@@ -213,6 +213,40 @@ typedef struct PBrowserScriptFormCallbacks {
     PBrowserScriptSetSelectedIndexFn set_selected_index;
 } PBrowserScriptFormCallbacks;
 
+/* Constraint-validation bits returned by the product-owned validation
+ * bridge. They intentionally mirror the public positron_core flags without
+ * making this DLL depend on positron_core headers. */
+#define PBROWSER_SCRIPT_VALIDITY_VALUE_MISSING 0x0001u
+#define PBROWSER_SCRIPT_VALIDITY_TOO_LONG 0x0002u
+#define PBROWSER_SCRIPT_VALIDITY_TOO_SHORT 0x0004u
+#define PBROWSER_SCRIPT_VALIDITY_PATTERN_MISMATCH 0x0008u
+#define PBROWSER_SCRIPT_VALIDITY_BAD_INPUT 0x0010u
+#define PBROWSER_SCRIPT_VALIDITY_RANGE_UNDERFLOW 0x0020u
+#define PBROWSER_SCRIPT_VALIDITY_RANGE_OVERFLOW 0x0040u
+#define PBROWSER_SCRIPT_VALIDITY_STEP_MISMATCH 0x0080u
+#define PBROWSER_SCRIPT_VALIDITY_TYPE_MISMATCH 0x0100u
+#define PBROWSER_SCRIPT_VALIDITY_CUSTOM_ERROR 0x0200u
+
+/* Typed host adapter for the product-owned constraint-validation query. The
+ * browser DLL owns JSON encoding and the script-facing checkValidity(),
+ * willValidate and validity properties; the host supplies a synchronous
+ * state lookup by UTF-8 DOM id. Non-validation candidates should return
+ * valid=1, will_validate=0 and flags=0. The callback returns zero on success
+ * and a negative value on adapter failure. */
+typedef struct PBrowserScriptValidationInfo {
+    unsigned long size;
+    int valid;
+    int will_validate;
+    unsigned int flags;
+} PBrowserScriptValidationInfo;
+typedef int (*PBrowserScriptGetValidationFn)(void *pw, const char *id,
+        PBrowserScriptValidationInfo *out_info);
+typedef struct PBrowserScriptValidationCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetValidationFn get_validation;
+} PBrowserScriptValidationCallbacks;
+
 /* Typed host adapter for product-owned native text-input, file-input, and
  * checkbox/radio input events. The browser layer owns the input-event
  * contract and dispatch entry point; the host supplies core
@@ -583,6 +617,10 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormCallbacks(
         HANDLE hSession, const PBrowserScriptFormCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterValidationCallbacks(
+        HANDLE hSession, const PBrowserScriptValidationCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterValidationCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterInputCallbacks(
         HANDLE hSession, const PBrowserScriptInputCallbacks *callbacks);

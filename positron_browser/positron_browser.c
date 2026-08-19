@@ -728,6 +728,13 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('min','min');"
         "PDefineString('max','max');"
         "PDefineString('step','step');"
+        "function PValidation(o){return __pcoreValidation({id:o.__id});}"
+        "PElement.prototype.checkValidity=function(){"
+        "return !!PValidation(this).valid;};"
+        "Object.defineProperty(PElement.prototype,'willValidate',{"
+        "get:function(){return !!PValidation(this).willValidate;}});"
+        "Object.defineProperty(PElement.prototype,'validity',{"
+        "get:function(){return PValidation(this);}});"
         "Object.defineProperty(PElement.prototype,'defaultChecked',{"
         "get:function(){return __pcoreFormProperty({id:this.__id,"
         "op:'getDefaultChecked'});},"
@@ -1190,6 +1197,10 @@ typedef struct p_browser_script_form_binding {
     PBrowserScriptFormCallbacks callbacks;
 } p_browser_script_form_binding;
 
+typedef struct p_browser_script_validation_binding {
+    PBrowserScriptValidationCallbacks callbacks;
+} p_browser_script_validation_binding;
+
 typedef struct p_browser_script_input_binding {
     PBrowserScriptInputCallbacks callbacks;
 } p_browser_script_input_binding;
@@ -1246,6 +1257,7 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_value_binding *dom_value;
     p_browser_script_dom_checked_binding *dom_checked;
     p_browser_script_form_binding *form;
+    p_browser_script_validation_binding *validation;
     p_browser_script_input_binding *input;
     p_browser_script_key_binding *key;
     p_browser_script_focus_binding *focus;
@@ -1429,6 +1441,53 @@ static int p_browser_script_write_null(char *out_json, int out_capacity,
     }
     memcpy(out_json, "null", 5);
     *out_len = 4;
+    return 0;
+}
+
+static int p_browser_script_write_validation(
+        const PBrowserScriptValidationInfo *info, char *out_json,
+        int out_capacity, int *out_len)
+{
+    unsigned int flags;
+    int length;
+
+    if (info == NULL || out_json == NULL || out_len == NULL ||
+            out_capacity <= 0) {
+        return 1;
+    }
+    flags = info->flags;
+    length = _snprintf(out_json, out_capacity - 1,
+            "{\"valid\":%s,\"willValidate\":%s,"
+            "\"valueMissing\":%s,\"tooLong\":%s,"
+            "\"tooShort\":%s,\"patternMismatch\":%s,"
+            "\"badInput\":%s,\"rangeUnderflow\":%s,"
+            "\"rangeOverflow\":%s,\"stepMismatch\":%s,"
+            "\"typeMismatch\":%s,\"customError\":%s}",
+            info->valid ? "true" : "false",
+            info->will_validate ? "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_VALUE_MISSING) ?
+                    "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_TOO_LONG) ? "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_TOO_SHORT) ?
+                    "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_PATTERN_MISMATCH) ?
+                    "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_BAD_INPUT) ? "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_RANGE_UNDERFLOW) ?
+                    "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_RANGE_OVERFLOW) ?
+                    "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_STEP_MISMATCH) ?
+                    "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_TYPE_MISMATCH) ?
+                    "true" : "false",
+            (flags & PBROWSER_SCRIPT_VALIDITY_CUSTOM_ERROR) ?
+                    "true" : "false");
+    if (length < 0 || length >= out_capacity - 1) {
+        return 1;
+    }
+    out_json[length] = '\0';
+    *out_len = length;
     return 0;
 }
 
@@ -2087,6 +2146,38 @@ static int p_browser_script_form_property(void *pw,
     return 1;
 }
 
+static int p_browser_script_validation(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_validation_binding *binding;
+    PBrowserScriptValidationInfo info;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int result;
+
+    binding = (p_browser_script_validation_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    if (binding == NULL || root == NULL || id == NULL ||
+            binding->callbacks.get_validation == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    result = binding->callbacks.get_validation(
+            binding->callbacks.pw, id, &info);
+    PJson_Free(root);
+    if (result < 0) {
+        return 1;
+    }
+    return p_browser_script_write_validation(&info, out_json,
+            out_capacity, out_len);
+}
+
 static int p_browser_script_navigation(void *pw,
         const char *args_json, int args_len, char *out_json,
         int out_capacity, int *out_len)
@@ -2447,6 +2538,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_value = NULL;
     session->dom_checked = NULL;
     session->form = NULL;
+    session->validation = NULL;
     session->input = NULL;
     session->key = NULL;
     session->focus = NULL;
@@ -2510,6 +2602,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreFormProperty", -1);
         free(session->form);
         session->form = NULL;
+    }
+    if (session->validation != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreValidation", -1);
+        free(session->validation);
+        session->validation = NULL;
     }
     if (session->input != NULL) {
         free(session->input);
@@ -2945,6 +3043,58 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
             "__pcoreFormProperty", -1);
     free(session->form);
     session->form = NULL;
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterValidationCallbacks(
+        HANDLE hSession, const PBrowserScriptValidationCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_validation_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptValidationCallbacks) ||
+            callbacks->get_validation == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->validation != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_validation_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreValidation", -1, p_browser_script_validation, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->validation = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterValidationCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->validation == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreValidation", -1);
+    free(session->validation);
+    session->validation = NULL;
     return rc;
 }
 

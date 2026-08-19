@@ -813,6 +813,26 @@ typedef struct PCoreFormValidationInfo {
     unsigned int first_flags;
 } PCoreFormValidationInfo;
 
+/* Constraint-validation state for one DOM form control addressed by its
+ * UTF-8 id. Unlike PCoreFormValidationInfo, this is a control-local query:
+ * it does not apply a form's novalidate or submitter formnovalidate bypass.
+ * Non-validation candidates (for example disabled, readonly, hidden or
+ * button controls) return valid=1, will_validate=0 and flags=0. */
+typedef struct PCoreFormControlValidationInfo {
+    int valid;
+    int will_validate;
+    int kind;
+    unsigned int flags;
+} PCoreFormControlValidationInfo;
+
+/* Query the current constraint state of the element named by element_id.
+ * The DOM value/attributes are read directly, so this works before layout as
+ * well as after it. Returns 0 for an existing element (including a
+ * non-validation candidate) and non-zero when the id is absent or the DOM
+ * cannot be inspected. The flags use the PCORE_VALIDITY_* bits above. */
+PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
+        const char *element_id, PCoreFormControlValidationInfo *out_info);
+
 /* Validate the form targeted by an explicit submit control or by Enter in an
  * enumerated single-line text/password control. The current implementation
  * covers required, pattern and length constraints for text/password/textarea/file,
