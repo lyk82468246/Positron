@@ -44,6 +44,11 @@ next298 已在 `positron_core.dll` 提供按 DOM id 的控件约束状态查询�
 `willValidate` 和基础 `validity` flags 已由 TEST266 及 77 项启用 JavaScript 的相关回归验证。
 该切片只查询控件状态，不触发 invalid 事件，也不宣称 form-level validation、validationMessage
 或 native invalid UI；`test_host` 仍只是宿主适配和测试消费者。
+next299 已在 `positron_core.dll` 提供按 DOM id 的 custom-validity UTF-8 message set/get，扩展
+现有 candidate validation 以保留 `customError`；`positron_browser.dll` 增加独立 custom-validity
+callback，bootstrap 的 `setCustomValidity()` 与 `validationMessage` 已由 TEST267 及 84 项
+启用 JavaScript 的相关回归验证。该切片仍只覆盖控件级 message，不触发 invalid 事件或 native
+invalid UI，也不宣称 form-level `checkValidity()`；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

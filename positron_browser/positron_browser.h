@@ -39,7 +39,7 @@ extern "C" {
 #define PBROWSER_HISTORY_METHOD_OTHER 0
 #define PBROWSER_HISTORY_METHOD_GET 1
 
-#define PBROWSER_SCRIPT_MAX_FUNCTIONS 16
+#define PBROWSER_SCRIPT_MAX_FUNCTIONS 17
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -246,6 +246,19 @@ typedef struct PBrowserScriptValidationCallbacks {
     void *pw;
     PBrowserScriptGetValidationFn get_validation;
 } PBrowserScriptValidationCallbacks;
+
+/* Typed host adapter for application-owned custom validity messages. The
+ * browser DLL owns JSON dispatch and the script-facing setCustomValidity()
+ * method/validationMessage property; the host supplies UTF-8 get/set
+ * operations by DOM id. The getter follows the size-probe contract used by
+ * PBrowserScriptGetValueFn. The setter returns >0 on success, 0 when the
+ * target is unsupported and <0 on an adapter error. */
+typedef struct PBrowserScriptCustomValidityCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetValueFn get_message;
+    PBrowserScriptSetValueFn set_message;
+} PBrowserScriptCustomValidityCallbacks;
 
 /* Typed host adapter for product-owned native text-input, file-input, and
  * checkbox/radio input events. The browser layer owns the input-event
@@ -621,6 +634,11 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterValidationCallbacks(
         HANDLE hSession, const PBrowserScriptValidationCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterValidationCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterCustomValidityCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptCustomValidityCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterCustomValidityCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterInputCallbacks(
         HANDLE hSession, const PBrowserScriptInputCallbacks *callbacks);

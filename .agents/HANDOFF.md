@@ -11,7 +11,7 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next298（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next299（本批采用定向门；最近一次完整自动基线仍为 next255）。
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
 - next295 在 `test_host` 宿主中把可见 render window 内、未取消的 file-input
@@ -31,6 +31,13 @@
   `checkValidity()`、`willValidate` 和基础 `validity` flags。TEST266 自动覆盖 required、
   disabled、readonly、select、number 下溢/上溢/step mismatch 及动态恢复；不触发 invalid
   事件、不声称 form-level validation 或 native invalid UI。
+- next299 在 `positron_core.dll` 增加按 DOM id 的 custom-validity UTF-8 message set/get，
+  扩展当前 form-control candidates 的 `customError`；`positron_browser.dll` 增加独立
+  size-tagged custom-validity callback，bootstrap 现在提供控件级 `setCustomValidity()` 和
+  `validationMessage`。TEST267 自动覆盖 text、number、textarea、select、checkbox 的
+  set/get/clear、core 直接 API 和 button unsupported 边界；不触发 invalid 事件、不声称
+  form-level validation 或 native invalid UI。为容纳该受控 callback，独立 script native
+  function 上限从 16 提升为 17。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
 - next292 批次验证 custom validity 状态跨 `PCore_LayoutDocument` 重排保持；没有新增视觉/触摸
@@ -210,6 +217,16 @@
   两组均零 ERROR/FAIL、唯一 TESTBENCH PASS，`test13_route_ok=True`。相关回归的 staging
   INI 临时使用 `javascript=1`，tracked `test_host/test_host.ini` 已恢复默认 `javascript=0`；
   首次用默认关闭开关运行脚本回归时在 TEST189 停止，属于配置不匹配，不作为失败代码证据。
+- next299 自动候选证据：`TEST267/999` 2/2 位于
+  `tmp/device-runs/20260819-221723-next299-custom-validity-rerun2/`；启用 JavaScript 的
+  `TEST68-73,189-231,233-262,264-267/999` 相关回归 84/84 位于
+  `tmp/device-runs/20260819-221803-next299-custom-validity-regression/`。
+  两组均零 ERROR/FAIL、唯一 TESTBENCH PASS，`test13_route_ok=True`。回归 staging INI
+  临时使用 `javascript=1`，tracked `test_host/test_host.ini` 已恢复默认 `javascript=0`。
+  首次定向门因新增 callback 使 native function 数达到 17、旧上限 16 而失败；已同步提升
+  `PSCRIPT_MAX_NATIVE_FUNCTIONS`/browser 严格计数，重建并重跑通过；首次失败不作为能力证据。
+  独立 script 上限回归 `TEST93/999` 2/2 位于
+  `tmp/device-runs/20260819-222439-next299-script-limit/`，同样零 ERROR/FAIL。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -1831,13 +1848,14 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
 ## 唯一下一步
 
 next295 的自动与人工门、next296 的 `HTMLElement.disabled` 自动门、next297 的表单约束属性
-反射与动态语义门以及 next298 的 validation query 门均已通过。唯一下一步是从
+反射与动态语义门、next298 的 validation query 门以及 next299 的 custom-validity 门均已通过。
+唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
 每批一个清晰的产品边界。
 
 完成标准：
 
-- TEST266/999、189–231/233–262/264–266 相关回归、C89、审计和正式构建均保持通过；共享的
+- TEST267/999、TEST93/999、68–73/189–231/233–262/264–267 相关回归、C89、审计和正式构建均保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
 - 后续能力必须有 valid/mismatch 负例、动态值更新和 submission 阻断/恢复的自动断言，并通过

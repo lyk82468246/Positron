@@ -833,6 +833,26 @@ typedef struct PCoreFormControlValidationInfo {
 PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
         const char *element_id, PCoreFormControlValidationInfo *out_info);
 
+/* Set or clear an application-owned custom validity message on the form
+ * control named by element_id. The message is UTF-8 and copied by the DLL;
+ * NULL or an empty string clears the custom error. The current control
+ * candidates (including text/password, number/range/date/time families,
+ * textarea, select, checkbox/radio and file) are supported; hidden and
+ * button controls are rejected. This mutates validation state only and does
+ * not dispatch an invalid event or repaint a native control. Returns 0 on
+ * success and non-zero when the id/control cannot be resolved or allocation
+ * fails. */
+PCORE_API int PCore_FormSetCustomValidityById(HANDLE hDoc,
+        const char *element_id, const char *message);
+
+/* Read the application-owned custom validity message for element_id. The
+ * complete UTF-8 byte length is returned even when message is NULL, capacity
+ * is zero, or the buffer is too small; a positive capacity always receives a
+ * NUL-terminated safe truncation. Returns -1 when the id/control cannot be
+ * resolved or the length cannot be represented. */
+PCORE_API int PCore_FormGetCustomValidityById(HANDLE hDoc,
+        const char *element_id, char *message, unsigned int capacity);
+
 /* Validate the form targeted by an explicit submit control or by Enter in an
  * enumerated single-line text/password control. The current implementation
  * covers required, pattern and length constraints for text/password/textarea/file,

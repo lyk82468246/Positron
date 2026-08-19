@@ -42,7 +42,8 @@ PScript_Destroy(script);
 
 context 不支持并发调用；执行中的 host callback 不得重入或销毁当前 context。
 源码、结果、模块数、native function 数和堆内存都有上限，具体常量以
-`positron_script.h` 为准。模块 provider 的源代码和释放回调由宿主拥有，DLL 只在
+`positron_script.h` 为准（当前 `PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 17，浏览器组合层的
+validation/custom-validity typed callbacks 也计入这个受控槽位）。模块 provider 的源代码和释放回调由宿主拥有，DLL 只在
 同步调用约定内使用。
 
 ## 浏览器关系与验证

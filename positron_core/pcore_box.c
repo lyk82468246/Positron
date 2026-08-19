@@ -7898,44 +7898,61 @@ static int pcore_required_control_missing(dom_html_form_element *form,
             *missing_out = (*flags_out != 0) ? 1 : 0;
             return 1;
         }
-        if (!required) {
-            return 1;
-        }
         if (gadget_type == GADGET_CHECKBOX) {
-            if (dom_html_input_element_get_checked(
-                    (dom_html_input_element *) node, &checked) !=
-                            DOM_NO_ERR) {
-                return 0;
+            if (required) {
+                if (dom_html_input_element_get_checked(
+                        (dom_html_input_element *) node, &checked) !=
+                                DOM_NO_ERR) {
+                    return 0;
+                }
+                if (!checked) {
+                    *flags_out |= PCORE_VALIDITY_VALUE_MISSING;
+                }
             }
-            *flags_out = checked ? 0 : PCORE_VALIDITY_VALUE_MISSING;
-            *missing_out = checked ? 0 : 1;
+            if (pcore_custom_validity_has_error(node)) {
+                *flags_out |= PCORE_VALIDITY_CUSTOM_ERROR;
+            }
+            *missing_out = (*flags_out != 0) ? 1 : 0;
             return 1;
         }
         if (gadget_type == GADGET_RADIO) {
-            group_checked = 0;
-            if (!pcore_radio_group_checked(form,
-                    (dom_html_input_element *) node, &group_checked)) {
-                return 0;
+            if (required) {
+                group_checked = 0;
+                if (!pcore_radio_group_checked(form,
+                        (dom_html_input_element *) node, &group_checked)) {
+                    return 0;
+                }
+                if (!group_checked) {
+                    *flags_out |= PCORE_VALIDITY_VALUE_MISSING;
+                }
             }
-            *flags_out = group_checked ? 0 : PCORE_VALIDITY_VALUE_MISSING;
-            *missing_out = group_checked ? 0 : 1;
+            if (pcore_custom_validity_has_error(node)) {
+                *flags_out |= PCORE_VALIDITY_CUSTOM_ERROR;
+            }
+            *missing_out = (*flags_out != 0) ? 1 : 0;
             return 1;
         }
-        if (gadget_type == GADGET_FILE &&
-                dom_html_input_element_get_value(
-                (dom_html_input_element *) node, &value) != DOM_NO_ERR) {
-            return 0;
-        }
         if (gadget_type == GADGET_FILE) {
-            *flags_out = (value == NULL ||
-                    dom_string_byte_length(value) == 0) ?
-                    PCORE_VALIDITY_VALUE_MISSING : 0;
+            if (required && dom_html_input_element_get_value(
+                    (dom_html_input_element *) node, &value) != DOM_NO_ERR) {
+                return 0;
+            }
+            if (required && (value == NULL ||
+                    dom_string_byte_length(value) == 0)) {
+                *flags_out |= PCORE_VALIDITY_VALUE_MISSING;
+            }
+            if (pcore_custom_validity_has_error(node)) {
+                *flags_out |= PCORE_VALIDITY_CUSTOM_ERROR;
+            }
             *missing_out = (*flags_out != 0) ? 1 : 0;
             if (value != NULL) {
                 dom_string_unref(value);
             }
+            return 1;
         }
-        return 1;
+        if (!required) {
+            return 1;
+        }
     }
     if (pcore_node_name_is(node, "textarea")) {
         if (dom_html_text_area_element_get_disabled(
@@ -7972,18 +7989,25 @@ static int pcore_required_control_missing(dom_html_form_element *form,
         return 1;
     }
     if (pcore_node_name_is(node, "select")) {
-        if (!required || dom_html_select_element_get_disabled(
+        if (dom_html_select_element_get_disabled(
                 (dom_html_select_element *) node, &disabled) != DOM_NO_ERR) {
-            return required ? 0 : 1;
+            return 0;
         }
         if (disabled) {
             return 1;
         }
-        if (!pcore_required_select_missing(
-                (dom_html_select_element *) node, missing_out)) {
-            return 0;
+        if (required) {
+            if (!pcore_required_select_missing(
+                    (dom_html_select_element *) node, missing_out)) {
+                return 0;
+            }
+            *flags_out = (*missing_out != 0) ?
+                    PCORE_VALIDITY_VALUE_MISSING : 0;
         }
-        *flags_out = (*missing_out != 0) ? PCORE_VALIDITY_VALUE_MISSING : 0;
+        if (pcore_custom_validity_has_error(node)) {
+            *flags_out |= PCORE_VALIDITY_CUSTOM_ERROR;
+        }
+        *missing_out = (*flags_out != 0) ? 1 : 0;
         return 1;
     }
     return 1;
@@ -8077,6 +8101,87 @@ static int pcore_control_will_validate(dom_node *node, int gadget_type,
     return 1;
 }
 
+static dom_element *pcore_custom_validity_element_by_id(
+        dom_document *doc, const char *element_id)
+{
+    dom_string *id;
+    dom_element *element;
+
+    if (doc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return NULL;
+    }
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) element_id,
+            strlen(element_id), &id) != DOM_NO_ERR || id == NULL ||
+            dom_document_get_element_by_id(doc, id, &element) != DOM_NO_ERR ||
+            element == NULL) {
+        if (id != NULL) {
+            dom_string_unref(id);
+        }
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return NULL;
+    }
+    dom_string_unref(id);
+    return element;
+}
+
+static int pcore_custom_validity_control_supported(dom_node *node)
+{
+    int gadget_type;
+
+    gadget_type = pcore_form_control_type(node);
+    return gadget_type != 0 && gadget_type != GADGET_SUBMIT &&
+            gadget_type != GADGET_RESET && gadget_type != GADGET_BUTTON;
+}
+
+PCORE_API int PCore_FormSetCustomValidityById(HANDLE hDoc,
+        const char *element_id, const char *message)
+{
+    dom_element *element;
+    int result;
+
+    element = pcore_custom_validity_element_by_id(
+            (dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_custom_validity_control_supported(
+            (dom_node *) element)) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    result = pcore_custom_validity_set((dom_document *) hDoc,
+            (dom_node *) element, message);
+    dom_node_unref((dom_node *) element);
+    return result == 0 ? 0 : 1;
+}
+
+PCORE_API int PCore_FormGetCustomValidityById(HANDLE hDoc,
+        const char *element_id, char *message, unsigned int capacity)
+{
+    dom_element *element;
+    int result;
+
+    if (message == NULL && capacity != 0) {
+        return -1;
+    }
+    element = pcore_custom_validity_element_by_id(
+            (dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_custom_validity_control_supported(
+            (dom_node *) element)) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return -1;
+    }
+    result = pcore_custom_validity_get((dom_document *) hDoc,
+            (dom_node *) element, message, capacity);
+    dom_node_unref((dom_node *) element);
+    return result;
+}
+
 PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
         const char *element_id, PCoreFormControlValidationInfo *out_info)
 {
@@ -8141,9 +8246,12 @@ PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
             return 1;
         }
         if (is_required && !checked) {
-            missing = 1;
             flags = PCORE_VALIDITY_VALUE_MISSING;
         }
+        if (pcore_custom_validity_has_error((dom_node *) element)) {
+            flags |= PCORE_VALIDITY_CUSTOM_ERROR;
+        }
+        missing = (flags != 0) ? 1 : 0;
     } else if (!pcore_required_control_missing(form,
             (dom_node *) element, &kind, &missing, &flags)) {
         if (form != NULL) {
