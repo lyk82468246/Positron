@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 336
+#define TEST_MAX_NUMBER 337
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51437,6 +51437,27 @@ static BOOL test336_browser_aria_description_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 337 - browser HTMLElement.ariaDisabled property reflection        */
+/* -------------------------------------------------------------------- */
+static BOOL test337_browser_aria_disabled_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-disabled='false'>Target</div>",
+            "ariaDisabled", "aria-disabled", "false", "true", "false",
+            error, sizeof(error))) {
+        show_error(L"TEST 337 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 337 OK",
+            "HTMLElement.ariaDisabled reflects the raw UTF-8 aria-disabled "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55960,6 +55981,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 336: ok =
                 test336_browser_aria_description_reflection();
+                break;
+        case 337: ok =
+                test337_browser_aria_disabled_reflection();
                 break;
         default: ok = FALSE; break;
         }
