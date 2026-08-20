@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next326 基线）
+### 当前默认自动选择与人工验收包（next327 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -258,6 +258,10 @@ scripts\device_gate.bat -Candidate next325-reset-metadata-recent-js ^
   -TestSelection "264-293,999"
 scripts\device_gate.bat -Candidate next326-js-baseline ^
   -TestSelection "68-73,189-231,233-262,264-293,999"
+scripts\device_gate.bat -Candidate next327-title-reflection-js ^
+  -TestSelection "294,999"
+scripts\device_gate.bat -Candidate next327-title-reflection-recent-js ^
+  -TestSelection "264-294,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -423,6 +427,11 @@ next326 是本次累计检查点：启用 JavaScript 的
 `tmp/device-runs/20260820-145654-next326-js-baseline/`；零 ERROR/FAIL、唯一 TESTBENCH PASS、
 `test13_route_ok=True`。该批不新增产品语义、不需要人工页面验收；后续批次可继续以该选择作为
 相关回归基线，只有出现风险或达到检查点时再扩展范围。
+next327 的定向门覆盖 `HTMLElement.title` raw UTF-8 getter/setter、attribute round-trip 和移除
+恢复；`TEST294/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-152157-next327-title-reflection/`。最近 `TEST264-294/999` 已以
+32/32 通过，证据位于 `tmp/device-runs/20260820-152312-next327-title-reflection-recent/`；
+该批不涉及 tooltip 绘制、原生提示 UI、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 

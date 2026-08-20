@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 293
+#define TEST_MAX_NUMBER 294
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50363,6 +50363,116 @@ static BOOL test293_reset_submission_metadata(void)
     return TRUE;
 }
 
+/* Small product-browser fixture used by raw reflected-property tests. It
+ * intentionally stops before layout: these properties are DOM/bootstrap
+ * metadata, not visual or native-control claims. */
+static BOOL test_browser_raw_string_fixture(const char *html,
+        const char *probe, const char *expected, char *error,
+        int error_capacity)
+{
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[256];
+    int executed;
+    int ignored;
+    int result_bytes;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(result, 0, sizeof(result));
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    ok = 1;
+    if (error != NULL && error_capacity > 0) {
+        error[0] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(html, strlen(html));
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, error_capacity, &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(probe, -1,
+                error, error_capacity) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, expected) != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok && error != NULL && error_capacity > 0 && error[0] == '\0') {
+        _snprintf(error, error_capacity - 1,
+                "result[%d]=%s exec/ignore=%d/%d expected=%s",
+                result_bytes, result, executed, ignored, expected);
+        error[error_capacity - 1] = '\0';
+    }
+    return ok;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 294 - browser HTMLElement.title property reflection              */
+/* -------------------------------------------------------------------- */
+static BOOL test294_browser_title_reflection(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='target' title='initial'>Target</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var e=document.getElementById('target');"
+        "var initial=e.title==='initial';"
+        "e.setAttribute('title','attr');"
+        "var attr=e.title==='attr';"
+        "e.title='property';"
+        "var reflected=e.title==='property';"
+        "e.removeAttribute('title');"
+        "var recovered=e.title==='';"
+        "document.getElementById('result').textContent="
+        "String(initial)+'|'+String(attr)+'|'+String(reflected)+'|' +"
+        "String(recovered);";
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE,
+            "true|true|true|true", error, sizeof(error))) {
+        show_error(L"TEST 294 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 294 OK",
+            "HTMLElement.title reflects the raw UTF-8 attribute through "
+            "the product browser bridge.");
+    return TRUE;
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
@@ -54758,6 +54868,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 293: ok =
                 test293_reset_submission_metadata();
+                break;
+        case 294: ok =
+                test294_browser_title_reflection();
                 break;
         default: ok = FALSE; break;
         }

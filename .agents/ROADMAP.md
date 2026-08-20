@@ -141,6 +141,9 @@ TEST293/999 与最近的 264–293/999 31 项回归保持 reset 前后 action/me
 该切片不实现额外导航或完整浏览器生命周期；`test_host` 仍只是宿主适配和测试消费者。
 next326 完成累计检查点：`TEST68-73,189-231,233-262,264-293/999` 共 110 项启用 JavaScript 的
 相关回归全部通过；不新增产品语义，后续仍从路线图选择单一、不依赖人工页面观察的能力。
+next327 在 browser bootstrap 的既有 raw attribute bridge 上增加 `HTMLElement.title` 反射；
+TEST294/999 与最近 `TEST264-294/999` 已通过。该切片只覆盖 UTF-8 属性往返，不涉及 tooltip
+绘制、原生提示 UI 或完整 HTMLElement Web IDL；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，
