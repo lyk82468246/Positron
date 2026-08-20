@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 305
+#define TEST_MAX_NUMBER 306
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50794,6 +50794,27 @@ static BOOL test305_browser_input_capture_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 306 - browser input.dirname property reflection                   */
+/* -------------------------------------------------------------------- */
+static BOOL test306_browser_input_dirname_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<input id='target' type='text' dirname='comment.dir'>",
+            "dirname", "dirname", "comment.dir", "message.dir",
+            "note.direction", error, sizeof(error))) {
+        show_error(L"TEST 306 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 306 OK",
+            "HTMLInputElement.dirname reflects the raw UTF-8 dirname attribute "
+            "through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55224,6 +55245,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 305: ok =
                 test305_browser_input_capture_reflection();
+                break;
+        case 306: ok =
+                test306_browser_input_dirname_reflection();
                 break;
         default: ok = FALSE; break;
         }
