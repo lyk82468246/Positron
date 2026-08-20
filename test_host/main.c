@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 385
+#define TEST_MAX_NUMBER 386
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52730,6 +52730,40 @@ static BOOL test385_browser_scroll_state(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 386 - synthetic Event construction and dispatch                   */
+/* -------------------------------------------------------------------- */
+static BOOL test386_browser_synthetic_event(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><button id='target'>x</button><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var count=0;var seen=false;"
+        "function fn(ev){count++;seen=ev.target===e&&ev.currentTarget===e&&"
+        "ev.composedPath().length===1;ev.preventDefault();}"
+        "var token=e.addEventListener('custom',fn,false);"
+        "var first=!e.dispatchEvent(new Event('custom',{cancelable:true}));"
+        "e.removeEventListener('custom',fn,false);"
+        "var second=e.dispatchEvent(new Event('custom',{cancelable:true}));"
+        "document.getElementById('result').textContent=String(token>0)+'|'"
+        "+String(first)+'|'+String(second)+'|'+String(seen)+'|'+count+'|'"
+        "+String(typeof Event==='function');";
+    static const char EXPECTED[] = "true|true|true|true|1|true";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 386 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 386 OK",
+            "Script-created Event objects now dispatch through the bounded"
+            " listener registry with cancellation and target semantics.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57400,6 +57434,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 385: ok =
                 test385_browser_scroll_state();
+                break;
+        case 386: ok =
+                test386_browser_synthetic_event();
                 break;
         default: ok = FALSE; break;
         }
