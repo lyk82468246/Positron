@@ -169,6 +169,10 @@
 - next348 在同一 bridge 上增加 `HTMLElement.itemType` ↔ `itemtype` raw UTF-8 反射；TEST315 及
   最近回归通过。该切片只保证属性往返，不实现 microdata vocabulary 解析、语义树或完整
   HTMLElement Web IDL。
+- next349 在同一 bridge 上增加 `HTMLElement.nonce` ↔ `nonce` raw UTF-8 反射；TEST316 及最近
+  回归通过。该切片只保证属性往返，不实现 CSP nonce 校验、安全策略、脚本执行或完整
+  HTMLElement Web IDL；首个 `<script>` 测试夹具没有产生 probe 结果，已改用普通 `<div>`，失败
+  边界保留在 `HANDOFF.md` 的设备证据中。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
