@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 295
+#define TEST_MAX_NUMBER 296
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50527,6 +50527,26 @@ static BOOL test295_browser_lang_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 296 - browser HTMLElement.dir property reflection                */
+/* -------------------------------------------------------------------- */
+static BOOL test296_browser_dir_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' dir='ltr'>Target</div>", "dir", "dir",
+            "ltr", "rtl", "auto", error, sizeof(error))) {
+        show_error(L"TEST 296 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 296 OK",
+            "HTMLElement.dir reflects the raw UTF-8 attribute through "
+            "the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -54927,6 +54947,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 295: ok =
                 test295_browser_lang_reflection();
+                break;
+        case 296: ok =
+                test296_browser_dir_reflection();
                 break;
         default: ok = FALSE; break;
         }
