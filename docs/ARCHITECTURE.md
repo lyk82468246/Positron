@@ -176,6 +176,8 @@ Shadow DOM 部件导出、CSS 选择器语义或完整 HTMLElement Web IDL 实�
 无障碍树或完整 HTMLElement Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.popover` ↔ `popover` 的 UTF-8 属性往返；这不
 等于 popover 显示/隐藏、焦点管理、top-layer 或完整 HTMLElement Web IDL 实现。
+当前 raw metadata bridge 还提供 `HTMLElement.autofocus` 的布尔属性往返；这不等于焦点调度、
+窗口激活或完整 HTMLElement Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 

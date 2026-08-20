@@ -11,7 +11,7 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next353（最近一次累计检查点仍为 next326；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next354（最近一次累计检查点仍为 next326；最近一次完整自动基线仍为 next255）。
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
 - next295 在 `test_host` 宿主中把可见 render window 内、未取消的 file-input
@@ -206,6 +206,10 @@
   初始值、`setAttribute`、property setter、移除恢复和 UTF-8 DOM 读回，不实现 popover 显示、
   隐藏、焦点管理、top-layer 或完整 HTMLElement Web IDL。`TEST320/999` 与最近
   `TEST264-320/999` 均已通过。
+- next354 在同一 bridge 上增加 `HTMLElement.autofocus` 布尔反射；TEST321 自动覆盖初始存在性、
+  attribute 设置、property true/false、移除恢复和布尔 getter，不实现焦点调度或窗口激活。
+  最近门首尝在既有 TEST266 处出现 JavaScript bootstrap timeout，原选择重跑后
+  `TEST321/999` 与 `TEST264-321/999` 均已通过。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
 - next292 批次验证 custom validity 状态跨 `PCore_LayoutDocument` 重排保持；没有新增视觉/触摸
@@ -724,6 +728,14 @@
   `tmp/device-runs/20260820-203148-next353-popover-reflection-recent/`；零 ERROR/FAIL、唯一
   TESTBENCH PASS，`test13_route_ok=True`；tracked `test_host/test_host.ini` 已恢复默认
   `javascript=0`。
+- next354 自动候选证据：`TEST321/999` 2/2 位于
+  `tmp/device-runs/20260820-203450-next354-autofocus-reflection/`；零 ERROR/FAIL、唯一
+  TESTBENCH PASS，`test13_route_ok=True`。首尝近期门在
+  `tmp/device-runs/20260820-203506-next354-autofocus-reflection-recent/` 的既有 TEST266
+  bootstrap timeout 处停止，不作为基线；原选择重跑后的 `TEST264-321/999` 59/59 位于
+  `tmp/device-runs/20260820-203544-next354-autofocus-reflection-recent-retry/`；零
+  ERROR/FAIL、唯一 TESTBENCH PASS，`test13_route_ok=True`；tracked `test_host/test_host.ini`
+  已恢复默认 `javascript=0`。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -2348,15 +2360,15 @@ next295 的自动与人工门、next296 的 `HTMLElement.disabled` 自动门、n
 反射与动态语义门、next298 的 validation query 门、next299 的 custom-validity 门、next300 的
 form-level validation query 门、next301 的 report-validity/invalid-event 门、next302 的
 validationMessage fallback 门、next303 的 pattern/length reflection 门、next304 的 name
- reflection 门、next305 的 form submission reflection 门、next306 的 enctype reflection 门、next307 的 submitter action reflection 门、next308 的 submitter method reflection 门、next309 的 submitter enctype reflection 门、next310 的 implicit-submit consistency 门、next311 的 target reflection 门、next312 的 form autocomplete reflection 门、next313 的 acceptCharset reflection 门、next314 的 placeholder reflection 门、next315 的 input autocomplete reflection 门、next316 的 inputMode reflection 门、next317 的 input type reflection 门、next318 的 textarea placeholder coverage 门、next319 的 select autocomplete coverage 门、next320 的 button type submitter boundary 门、next321 的 unknown method fallback 门、next322 的 unknown enctype fallback 门、next323 的 case boundary 门、next324 的 metadata relayout 门、next325 的 reset metadata 门、next326 的累计回归检查点、next327 的 `title` reflection 门、next328 的 `lang` reflection 门、next329 的 `dir` reflection 门、next330 的 `hidden` reflection 门、next331 的 `accessKey` reflection 门、next332 的 `role` reflection 门、next333 的 `ariaLabel` reflection 门、next334 的 `contentEditable` reflection 门、next335 的 `draggable` reflection 门、next336 的 `tabIndex` reflection 门、next337 的 `input.accept` reflection 门、next338 的 `input.capture` reflection 门、next339 的 `input.dirname` reflection 门、next340 的 `input.list` reflection 门、next341 的 `textarea.wrap` reflection 门、next342 的 `htmlFor` reflection 门、next343 的 `slot` reflection 门、next344 的 `itemId` reflection 门、next345 的 `itemProp` reflection 门、next346 的 `itemRef` reflection 门、next347 的 `itemScope` reflection 门、next348 的 `itemType` reflection 门、next349 的 `nonce` reflection 门、next350 的 `part` reflection 门、next351 的 `exportParts` reflection 门、next352 的 `inert` reflection 门以及 next353 的 `popover` reflection 门均已通过；`className` 重定义候选已撤回并记录失败边界。
+ reflection 门、next305 的 form submission reflection 门、next306 的 enctype reflection 门、next307 的 submitter action reflection 门、next308 的 submitter method reflection 门、next309 的 submitter enctype reflection 门、next310 的 implicit-submit consistency 门、next311 的 target reflection 门、next312 的 form autocomplete reflection 门、next313 的 acceptCharset reflection 门、next314 的 placeholder reflection 门、next315 的 input autocomplete reflection 门、next316 的 inputMode reflection 门、next317 的 input type reflection 门、next318 的 textarea placeholder coverage 门、next319 的 select autocomplete coverage 门、next320 的 button type submitter boundary 门、next321 的 unknown method fallback 门、next322 的 unknown enctype fallback 门、next323 的 case boundary 门、next324 的 metadata relayout 门、next325 的 reset metadata 门、next326 的累计回归检查点、next327 的 `title` reflection 门、next328 的 `lang` reflection 门、next329 的 `dir` reflection 门、next330 的 `hidden` reflection 门、next331 的 `accessKey` reflection 门、next332 的 `role` reflection 门、next333 的 `ariaLabel` reflection 门、next334 的 `contentEditable` reflection 门、next335 的 `draggable` reflection 门、next336 的 `tabIndex` reflection 门、next337 的 `input.accept` reflection 门、next338 的 `input.capture` reflection 门、next339 的 `input.dirname` reflection 门、next340 的 `input.list` reflection 门、next341 的 `textarea.wrap` reflection 门、next342 的 `htmlFor` reflection 门、next343 的 `slot` reflection 门、next344 的 `itemId` reflection 门、next345 的 `itemProp` reflection 门、next346 的 `itemRef` reflection 门、next347 的 `itemScope` reflection 门、next348 的 `itemType` reflection 门、next349 的 `nonce` reflection 门、next350 的 `part` reflection 门、next351 的 `exportParts` reflection 门、next352 的 `inert` reflection 门、next353 的 `popover` reflection 门以及 next354 的 `autofocus` reflection 门均已通过；`className` 重定义候选已撤回并记录失败边界。
 唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
 每批一个清晰的产品边界。
 
 完成标准：
 
-- TEST320/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–320/999` 定向选择；next299 的
+- TEST321/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–321/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；

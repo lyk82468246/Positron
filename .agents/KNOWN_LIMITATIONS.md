@@ -184,6 +184,9 @@
 - next353 在同一 bridge 上增加 `HTMLElement.popover` ↔ `popover` raw UTF-8 反射；TEST320 及
   最近回归通过。该切片只保证属性往返，不实现 popover 显示/隐藏、焦点管理、top-layer 或
   完整 HTMLElement Web IDL。
+- next354 在同一 bridge 上增加 `HTMLElement.autofocus` 布尔反射；TEST321 及重试后的最近
+  回归通过。该切片只保证属性往返，不实现焦点调度、窗口激活或完整 HTMLElement Web IDL；
+  首次近期门的既有 TEST266 bootstrap timeout 不作为基线。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
