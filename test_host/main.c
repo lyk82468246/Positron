@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 296
+#define TEST_MAX_NUMBER 297
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50471,6 +50471,36 @@ static BOOL test_browser_raw_property_case(const char *target_markup,
             "true|true|true|true", error, error_capacity);
 }
 
+static BOOL test_browser_boolean_property_case(const char *target_markup,
+        const char *property, const char *attribute, char *error,
+        int error_capacity)
+{
+    char html[1024];
+    char probe[2048];
+
+    _snprintf(html, sizeof(html) - 1,
+            "<!doctype html><html><head><script>window.boot=1;</script>"
+            "</head><body>%s<p id='result'>idle</p></body></html>",
+            target_markup);
+    html[sizeof(html) - 1] = '\0';
+    _snprintf(probe, sizeof(probe) - 1,
+            "var e=document.getElementById('target');"
+            "var initial=e.%s===true;"
+            "e.setAttribute('%s','');"
+            "var attr=e.%s===true;"
+            "e.%s=false;var off=e.%s===false;"
+            "e.%s=true;var on=e.%s===true;"
+            "e.removeAttribute('%s');var recovered=e.%s===false;"
+            "document.getElementById('result').textContent="
+            "String(initial)+'|'+String(attr)+'|'+String(off)+'|' +"
+            "String(on)+'|'+String(recovered);",
+            property, attribute, property, property, property, property,
+            property, attribute, property);
+    probe[sizeof(probe) - 1] = '\0';
+    return test_browser_raw_string_fixture(html, probe,
+            "true|true|true|true|true", error, error_capacity);
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 294 - browser HTMLElement.title property reflection              */
 /* -------------------------------------------------------------------- */
@@ -50543,6 +50573,26 @@ static BOOL test296_browser_dir_reflection(void)
     show_info(L"TEST 296 OK",
             "HTMLElement.dir reflects the raw UTF-8 attribute through "
             "the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 297 - browser HTMLElement.hidden boolean reflection              */
+/* -------------------------------------------------------------------- */
+static BOOL test297_browser_hidden_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_boolean_property_case(
+            "<div id='target' hidden>Target</div>", "hidden", "hidden",
+            error, sizeof(error))) {
+        show_error(L"TEST 297 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 297 OK",
+            "HTMLElement.hidden reflects its boolean attribute through the "
+            "product browser bridge.");
     return TRUE;
 }
 
@@ -54950,6 +55000,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 296: ok =
                 test296_browser_dir_reflection();
+                break;
+        case 297: ok =
+                test297_browser_hidden_reflection();
                 break;
         default: ok = FALSE; break;
         }

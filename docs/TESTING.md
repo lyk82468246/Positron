@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next329 基线）
+### 当前默认自动选择与人工验收包（next330 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -270,6 +270,10 @@ scripts\device_gate.bat -Candidate next329-dir-reflection-js ^
   -TestSelection "296,999"
 scripts\device_gate.bat -Candidate next329-dir-reflection-recent-js ^
   -TestSelection "264-296,999"
+scripts\device_gate.bat -Candidate next330-hidden-reflection-js ^
+  -TestSelection "297,999"
+scripts\device_gate.bat -Candidate next330-hidden-reflection-recent-js ^
+  -TestSelection "264-297,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -450,6 +454,11 @@ next329 的定向门覆盖 `HTMLElement.dir` raw UTF-8 getter/setter、attribute
 `tmp/device-runs/20260820-154035-next329-dir-reflection/`。最近 `TEST264-296/999` 已以
 34/34 通过，证据位于 `tmp/device-runs/20260820-154115-next329-dir-reflection-recent/`；
 该批不涉及 CSS 方向布局、视觉或人工页面验收。
+next330 的定向门覆盖 `HTMLElement.hidden` 布尔 getter/setter、attribute round-trip 和移除
+恢复；`TEST297/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-155105-next330-hidden-reflection/`。最近 `TEST264-297/999` 已以
+35/35 通过，证据位于 `tmp/device-runs/20260820-155138-next330-hidden-reflection-recent/`；
+该批不涉及隐藏布局算法、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
