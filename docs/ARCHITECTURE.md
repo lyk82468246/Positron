@@ -151,6 +151,9 @@ typed dispatch entry 已由此 DLL 持有并执行；
 解析、建议项、自动完成或完整 input Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLTextAreaElement.wrap` 的 UTF-8 属性往返；这不等于软/硬
 换行布局、提交编码差异或完整 textarea Web IDL 实现。
+当前 raw metadata bridge 还提供 `HTMLElement.htmlFor` ↔ `for` 的 UTF-8 属性往返；这不等于
+label 关联、焦点转移或完整 HTMLElement Web IDL 实现。`className` 已有独立的 class/classList
+描述符，不得重复定义。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 

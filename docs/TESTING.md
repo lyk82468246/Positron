@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next341 基线）
+### 当前默认自动选择与人工验收包（next342 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -320,6 +320,10 @@ scripts\device_gate.bat -Candidate next341-textarea-wrap-reflection-js ^
   -TestSelection "308,999"
 scripts\device_gate.bat -Candidate next341-textarea-wrap-reflection-recent-js ^
   -TestSelection "264-308,999"
+scripts\device_gate.bat -Candidate next342-html-for-reflection-js ^
+  -TestSelection "309,999"
+scripts\device_gate.bat -Candidate next342-html-for-reflection-recent-js ^
+  -TestSelection "264-309,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -569,6 +573,15 @@ next341 的定向门覆盖 `HTMLTextAreaElement.wrap` raw UTF-8 getter/setter、
 已以 46/46 通过，证据位于
 `tmp/device-runs/20260820-170830-next341-textarea-wrap-reflection-recent/`；该批不涉及软/硬
 换行布局、提交编码、视觉或人工页面验收。
+next342 的最终定向门覆盖 `HTMLElement.htmlFor` ↔ `for` raw UTF-8 getter/setter、attribute
+round-trip 和移除恢复；一次 `className` 重定义候选在 bootstrap 阶段因已有不可配置 descriptor
+报 `TypeError: not configurable`，证据位于
+`tmp/device-runs/20260820-193424-next342-class-name-reflection/`，已撤回且不作为基线。改用
+htmlFor 后，`TEST309/999` 以 2/2 通过，证据位于
+`tmp/device-runs/20260820-193609-next342-html-for-reflection-retry/`；最近
+`TEST264-309/999` 以 47/47 通过，证据位于
+`tmp/device-runs/20260820-193636-next342-html-for-reflection-recent/`。该批不涉及 label 关联、
+焦点转移、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 

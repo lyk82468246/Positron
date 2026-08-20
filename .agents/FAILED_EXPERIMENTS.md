@@ -1,6 +1,6 @@
 # 失败实验与禁止恢复边界
 
-更新时间：2026-08-13
+更新时间：2026-08-20
 
 这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；
 当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
@@ -13,6 +13,16 @@
 - **环境误报**：失败来自旧进程、DLL 混用或设备环境，仍需保留流程护栏。
 
 ## 失败与暂挂
+
+### next342 `className` raw bridge 尝试 — 已撤回
+
+问题：在现有 bootstrap 中追加 `PDefineString('className','class')` 会与产品已有的
+`PElement.prototype.className` 描述符冲突，设备启动 TEST309 时立即报告
+`TypeError: not configurable`；这不是 JavaScript 执行预算或设备环境噪声。
+
+决定：删除该重复定义，不得通过放宽 descriptor 或提高预算掩盖冲突。若未来扩展
+`className`，必须沿用已有 class/classList bridge 并单独验证其动态样式语义；本批改用
+不冲突的 `HTMLElement.htmlFor` raw 反射完成 next342。
 
 ### next38-next43：Browse 稳定性实验 — 暂挂
 
