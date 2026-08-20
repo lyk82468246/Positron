@@ -155,6 +155,8 @@
   已有不可配置 descriptor 冲突而撤回，边界见 `FAILED_EXPERIMENTS.md`。
 - next343 在同一 bridge 上增加 `HTMLElement.slot` ↔ `slot` raw UTF-8 反射；TEST310 及最近
   回归通过。该切片只保证属性往返，不实现 Shadow DOM、slot 分配或完整 HTMLElement Web IDL。
+- next344 在同一 bridge 上增加 `HTMLElement.itemId` ↔ `itemid` raw UTF-8 反射；TEST311 及最近
+  回归通过。该切片只保证属性往返，不实现 microdata 解析、语义树或完整 HTMLElement Web IDL。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

@@ -742,6 +742,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('wrap','wrap');"
         "PDefineString('htmlFor','for');"
         "PDefineString('slot','slot');"
+        "PDefineString('itemId','itemid');"
         "function PDefineInteger(name,attr){"
         "Object.defineProperty(PElement.prototype,name,{"
         "get:function(){var v=this.getAttribute(attr);var n;"

@@ -195,6 +195,9 @@ HTMLElement Web IDL；`className` 重定义候选已撤回并记录失败边界�
 next343 在同一 bridge 上增加 `HTMLElement.slot` ↔ `slot` raw 反射；TEST310/999 与最近
 `TEST264-310/999` 已通过。该切片只覆盖 UTF-8 属性往返，不实现 Shadow DOM、slot 分配或完整
 HTMLElement Web IDL；`test_host` 仍只是宿主适配和测试消费者。
+next344 在同一 bridge 上增加 `HTMLElement.itemId` ↔ `itemid` raw 反射；TEST311/999 与最近
+`TEST264-311/999` 已通过。该切片只覆盖 UTF-8 属性往返，不实现 microdata 解析、语义树或完整
+HTMLElement Web IDL；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

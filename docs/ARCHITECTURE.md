@@ -156,6 +156,8 @@ label 关联、焦点转移或完整 HTMLElement Web IDL 实现。`className` �
 描述符，不得重复定义。
 当前 raw metadata bridge 还提供 `HTMLElement.slot` ↔ `slot` 的 UTF-8 属性往返；这不等于
 Shadow DOM 或 slot 分配。
+当前 raw metadata bridge 还提供 `HTMLElement.itemId` ↔ `itemid` 的 UTF-8 属性往返；这不等于
+microdata 解析或语义树。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 
