@@ -1195,14 +1195,17 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(!isFinite(n)||Math.floor(n)!==n||n<1||n>16){"
         "throw new Error('history push state failed');}"
         "phistoryStateJson=s;phistoryLength=n;purl=u;}"
-        "var pwindowListeners={popstate:[],hashchange:[]};"
+        "var pwindowListeners={popstate:[],hashchange:[],load:[],"
+        "DOMContentLoaded:[],readystatechange:[]};"
         "g.onpopstate=null;g.onhashchange=null;"
         "g.addEventListener=function(type,fn,capture){var t=String(type);"
-        "var a;var i;if((t!=='popstate'&&t!=='hashchange')||"
+        "var a;var i;if((t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
+        "t!=='DOMContentLoaded'&&t!=='readystatechange')||"
         "typeof fn!=='function'){return;}a=pwindowListeners[t];"
         "for(i=0;i<a.length;i++){if(a[i]===fn){return;}}a.push(fn);};"
         "g.removeEventListener=function(type,fn,capture){var t=String(type);"
-        "var a;var i;if(t!=='popstate'&&t!=='hashchange'){return;}"
+        "var a;var i;if(t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
+        "t!=='DOMContentLoaded'&&t!=='readystatechange'){return;}"
         "a=pwindowListeners[t];for(i=a.length-1;i>=0;i--){"
         "if(a[i]===fn){a.splice(i,1);}}};"
         "function pdispatchWindow(type,e){var h=g['on'+type];"
@@ -1270,8 +1273,51 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "plocation.reload=preload;"
         "plocation.replace=preplace;"
         "plocation.toString=function(){return this.href;};"
+        "var pdocumentListeners={readystatechange:[],DOMContentLoaded:[],"
+        "load:[]};var preadyState='loading';"
+        "function pdocumentAddEventListener(type,fn){var a;var i;"
+        "type=String(type);if(typeof fn!=='function'||"
+        "(type!=='readystatechange'&&type!=='DOMContentLoaded'&&"
+        "type!=='load')){return;}a=pdocumentListeners[type];"
+        "for(i=0;i<a.length;i++){if(a[i]===fn){return;}}a.push(fn);}"
+        "function pdocumentRemoveEventListener(type,fn){var a;var i;"
+        "type=String(type);a=pdocumentListeners[type];if(!a){return;}"
+        "for(i=a.length-1;i>=0;i--){if(a[i]===fn){a.splice(i,1);}}}"
+        "function pdocumentDispatch(type){var a=pdocumentListeners[type].slice(0);"
+        "var e={type:type,target:pdocument,currentTarget:pdocument,"
+        "bubbles:false,cancelable:false,defaultPrevented:false,isTrusted:true};"
+        "var i;for(i=0;i<a.length;i++){try{a[i].call(pdocument,e);}"
+        "catch(documentListenerError){}}}"
+        "function ppageEvent(type,target){return {type:type,target:target,"
+        "currentTarget:target,bubbles:false,cancelable:false,"
+        "defaultPrevented:false,isTrusted:true};}"
+        "function ppageLifecycle(state){state=String(state);"
+        "if(state==='interactive'&&preadyState==='loading'){"
+        "preadyState='interactive';pdocumentDispatch('readystatechange');return;}"
+        "if(state==='domcontentloaded'&&preadyState==='loading'){"
+        "preadyState='interactive';pdocumentDispatch('readystatechange');}"
+        "if(state==='domcontentloaded'&&preadyState==='interactive'){"
+        "pdocumentDispatch('DOMContentLoaded');return;}"
+        "if(state==='complete'){if(preadyState==='loading'){"
+        "preadyState='interactive';pdocumentDispatch('readystatechange');}"
+        "if(preadyState==='interactive'){pdocumentDispatch('DOMContentLoaded');}"
+        "if(preadyState!=='complete'){preadyState='complete';"
+        "pdocumentDispatch('readystatechange');"
+        "pdispatchWindow('DOMContentLoaded',ppageEvent('DOMContentLoaded',g));"
+        "pdispatchWindow('load',ppageEvent('load',g));"
+        "pdocumentDispatch('load');}}}"
         "var pdocument={getElementById:function(id){id=String(id);"
-        "return __pcoreHasElement({id:id})?new PElement(id):null;}};"
+        "return __pcoreHasElement({id:id})?new PElement(id):null;},"
+        "addEventListener:pdocumentAddEventListener,"
+        "removeEventListener:pdocumentRemoveEventListener};"
+        "Object.defineProperty(pdocument,'readyState',{get:function(){"
+        "return preadyState;},enumerable:true});"
+        "Object.defineProperty(pdocument,'hidden',{get:function(){"
+        "return false;},enumerable:true});"
+        "Object.defineProperty(pdocument,'visibilityState',{get:function(){"
+        "return 'visible';},enumerable:true});"
+        "Object.defineProperty(g,'__pcorePageLifecycle',{value:ppageLifecycle,"
+        "writable:false,configurable:false});"
         "Object.defineProperty(pdocument,'URL',{get:function(){"
         "return plocation.href;}});"
         "Object.defineProperty(pdocument,'documentURI',{get:function(){"
@@ -1488,6 +1534,30 @@ static int p_browser_script_dispatch_hash_navigation(
             "__pcoreHashNavigate(__pcoreHashNavigationUrl,"
             "__pcoreHashNavigationLength);", -1);
     p_browser_script_clear_dispatch_globals(session, 0);
+    return rc;
+}
+
+static int p_browser_script_dispatch_page_lifecycle(
+        p_browser_script_session *session, const char *state)
+{
+    int rc;
+
+    if (session == NULL || state == NULL || state[0] == '\0' ||
+            (strcmp(state, "interactive") != 0 &&
+            strcmp(state, "domcontentloaded") != 0 &&
+            strcmp(state, "complete") != 0)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = PScript_SetGlobalString(session->runtime,
+            "__pcoreLifecycleState", -1, state, -1);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    rc = PScript_Evaluate(session->runtime,
+            "if(typeof __pcorePageLifecycle==='function')"
+            "{__pcorePageLifecycle(__pcoreLifecycleState);};", -1);
+    (void) PScript_Evaluate(session->runtime,
+            "delete this.__pcoreLifecycleState;", -1);
     return rc;
 }
 
@@ -2950,6 +3020,18 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchHashNavigation(
     }
     return p_browser_script_dispatch_hash_navigation(session, url,
             history_length);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
+        HANDLE hSession, const char *state)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return p_browser_script_dispatch_page_lifecycle(session, state);
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(

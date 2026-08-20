@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 368
+#define TEST_MAX_NUMBER 369
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -7551,6 +7551,12 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         free(type);
         source = NULL;
         type = NULL;
+    }
+    if (rc == 0 && PBrowser_ScriptSessionDispatchPageLifecycle(
+            session, "complete") != PSCRIPT_OK) {
+        pcore_browser_script_error(error, error_capacity,
+                "page lifecycle", PBrowser_ScriptSessionGetError(session));
+        rc = 1;
     }
     if (out_runtime != NULL) {
         *out_runtime = runtime;
@@ -52109,6 +52115,89 @@ static BOOL test368_browser_aria_row_index_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 369 - browser page lifecycle and document readiness              */
+/* -------------------------------------------------------------------- */
+static BOOL test369_browser_page_lifecycle(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var initial=document.readyState;var trace=[];"
+        "function record(prefix,e){trace.push(prefix+e.type+':'"
+        "+document.readyState);}"
+        "document.addEventListener('readystatechange',function(e){"
+        "record('D:',e);},false);"
+        "document.addEventListener('DOMContentLoaded',function(e){"
+        "record('D:',e);},false);"
+        "document.addEventListener('load',function(e){record('D:',e);"
+        "document.getElementById('result').textContent=initial+'|'"
+        "+String(document.hidden)+'|'+document.visibilityState+'|'"
+        "+trace.join('|');},false);"
+        "window.addEventListener('DOMContentLoaded',function(e){"
+        "record('W:',e);},false);"
+        "window.addEventListener('load',function(e){record('W:',e);},false);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] =
+        "loading|false|visible|D:readystatechange:interactive|"
+        "D:DOMContentLoaded:interactive|D:readystatechange:complete|"
+        "W:DOMContentLoaded:complete|W:load:complete|D:load:complete";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[1024];
+    char error[512];
+    int result_bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, EXPECTED) != 0) {
+        ok = 0;
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s exec/ignore=%d/%d",
+                    result_bytes, result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 369 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 369 OK",
+            "The product browser bootstrap exposed loading -> interactive -> "
+            "complete readiness, document/window lifecycle ordering, and the "
+            "visible document snapshot.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56728,6 +56817,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 368: ok =
                 test368_browser_aria_row_index_reflection();
+                break;
+        case 369: ok =
+                test369_browser_page_lifecycle();
                 break;
         default: ok = FALSE; break;
         }

@@ -5,6 +5,7 @@ param(
     [int] $TimeoutSeconds = 1200,
     [string] $RemoteBase = "\Temp\Positron-device-gate",
     [string] $TestSelection = "",
+    [switch] $EnableJavaScript,
     [string] $PlatformName = "",
     [string] $DeviceName = ""
 )
@@ -167,6 +168,17 @@ if (![string]::IsNullOrEmpty($TestSelection)) {
     [IO.File]::WriteAllText($stagedIni, $iniText,
             (New-Object Text.UTF8Encoding($false)))
     Write-Stage "staged test override: $TestSelection"
+}
+if ($EnableJavaScript) {
+    $iniText = [IO.File]::ReadAllText($stagedIni, [Text.Encoding]::UTF8)
+    if ($iniText -notmatch "(?m)^\s*javascript\s*=") {
+        throw "The staged test_host.ini has no javascript= line to override."
+    }
+    $iniText = [regex]::Replace($iniText,
+            "(?m)^\s*javascript\s*=.*$", "javascript=1", 1)
+    [IO.File]::WriteAllText($stagedIni, $iniText,
+            (New-Object Text.UTF8Encoding($false)))
+    Write-Stage "staged browser JavaScript override: javascript=1"
 }
 
 $expectedTests = Get-ConfiguredTests $stagedIni

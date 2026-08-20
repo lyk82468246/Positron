@@ -630,6 +630,13 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchHistoryTraversal(
  * updates location/history length and dispatches hashchange. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchHashNavigation(
         HANDLE hSession, const char *url, int history_length);
+/* Advance the product-owned initial page lifecycle. The host calls this
+ * after the document's classic scripts have run. `state` accepts
+ * "interactive", "domcontentloaded", or "complete"; repeated or regressive
+ * states are ignored. The bootstrap updates document.readyState and
+ * dispatches readystatechange/DOMContentLoaded/load in that order. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
+        HANDLE hSession, const char *state);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
