@@ -87,6 +87,8 @@
   raw getter/setter 不改变当前 submission，也不实现字符集转换、编码协商或非 UTF-8 wire body。
 - next314 在同一 attribute bridge 上增加控件 `placeholder` 属性反射；raw getter/setter 不改变
   current value 或 successful-control submission，也不实现 placeholder 绘制、SIP 或原生提示 UI。
+- next315 在同一 attribute bridge 上确认 input `autocomplete` 属性反射；raw getter/setter 不改变
+  current value 或 successful-control submission，也不实现自动填充策略、凭据存储或原生提示 UI。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
