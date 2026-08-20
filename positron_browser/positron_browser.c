@@ -731,6 +731,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('dir','dir');"
         "PDefineBoolean('hidden','hidden');"
         "PDefineString('accessKey','accesskey');"
+        "PDefineString('role','role');"
         "PDefineString('action','action');"
         "PDefineString('method','method');"
         "PDefineString('enctype','enctype');"

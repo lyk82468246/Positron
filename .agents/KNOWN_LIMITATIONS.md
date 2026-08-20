@@ -124,6 +124,8 @@
   该切片只保证布尔属性往返，不实现隐藏布局算法、视觉或完整 HTMLElement Web IDL 语义。
 - next331 在同一 bridge 上增加 `HTMLElement.accessKey` raw UTF-8 反射；TEST298 及最近回归通过。
   该切片只保证属性往返，不触发 WM 快捷键、焦点副作用或完整 HTMLElement Web IDL 语义。
+- next332 在同一 bridge 上增加 `HTMLElement.role` raw UTF-8 反射；TEST299 及最近回归通过。
+  该切片只保证属性往返，不实现辅助技术树、语义计算或完整 HTMLElement Web IDL 语义。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
