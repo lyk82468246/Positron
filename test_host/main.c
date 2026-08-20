@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 318
+#define TEST_MAX_NUMBER 319
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51066,6 +51066,26 @@ static BOOL test318_browser_export_parts_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 319 - browser HTMLElement.inert boolean reflection                */
+/* -------------------------------------------------------------------- */
+static BOOL test319_browser_inert_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_boolean_property_case(
+            "<div id='target' inert>Target</div>",
+            "inert", "inert", error, sizeof(error))) {
+        show_error(L"TEST 319 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 319 OK",
+            "HTMLElement.inert reflects the inert boolean attribute through "
+            "the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55535,6 +55555,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 318: ok =
                 test318_browser_export_parts_reflection();
+                break;
+        case 319: ok =
+                test319_browser_inert_reflection();
                 break;
         default: ok = FALSE; break;
         }

@@ -750,6 +750,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('nonce','nonce');"
         "PDefineString('part','part');"
         "PDefineString('exportParts','exportparts');"
+        "PDefineBoolean('inert','inert');"
         "function PDefineInteger(name,attr){"
         "Object.defineProperty(PElement.prototype,name,{"
         "get:function(){var v=this.getAttribute(attr);var n;"
