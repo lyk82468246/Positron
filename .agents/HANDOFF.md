@@ -11,7 +11,7 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next315（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next316（本批采用定向门；最近一次完整自动基线仍为 next255）。
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
 - next295 在 `test_host` 宿主中把可见 render window 内、未取消的 file-input
@@ -87,6 +87,8 @@
 - next314 在同一 attribute bridge 上增加控件 `placeholder` 属性反射；TEST282 自动覆盖
   getter/setter、attribute round-trip、移除恢复以及 current value/submission 不变，不涉及视觉或人工验收。
 - next315 在同一 attribute bridge 上确认 input `autocomplete` 属性反射；TEST283 自动覆盖
+  getter/setter、attribute round-trip、移除恢复以及 current value/submission 不变，不涉及视觉或人工验收。
+- next316 在同一 attribute bridge 上增加 input `inputMode` ↔ `inputmode` 属性反射；TEST284 自动覆盖
   getter/setter、attribute round-trip、移除恢复以及 current value/submission 不变，不涉及视觉或人工验收。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
@@ -378,6 +380,13 @@
   `TEST68-73,189-231,233-262,264-283/999` 相关回归 100/100 位于
   `tmp/device-runs/20260820-133726-next315-input-autocomplete-regression-js/`；零
   ERROR/FAIL，tracked `test_host/test_host.ini` 已恢复默认 `javascript=0`。
+- next316 自动候选证据：`TEST284/999` 2/2 位于
+  `tmp/device-runs/20260820-134204-next316-inputmode-js/`；零 ERROR/FAIL、唯一
+  TESTBENCH PASS，`test13_route_ok=True`。启用 JavaScript 的
+  `TEST68-73,189-231,233-262,264-284/999` 相关回归 101/101 位于
+  `tmp/device-runs/20260820-134336-next316-inputmode-regression-js-retry/`；零
+  ERROR/FAIL，tracked `test_host/test_host.ini` 已恢复默认 `javascript=0`。首尝在既有
+  TEST277 bootstrap 处 timeout，未作为基线。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -2002,15 +2011,15 @@ next295 的自动与人工门、next296 的 `HTMLElement.disabled` 自动门、n
 反射与动态语义门、next298 的 validation query 门、next299 的 custom-validity 门、next300 的
 form-level validation query 门、next301 的 report-validity/invalid-event 门、next302 的
 validationMessage fallback 门、next303 的 pattern/length reflection 门、next304 的 name
-reflection 门、next305 的 form submission reflection 门、next306 的 enctype reflection 门、next307 的 submitter action reflection 门、next308 的 submitter method reflection 门、next309 的 submitter enctype reflection 门、next310 的 implicit-submit consistency 门、next311 的 target reflection 门、next312 的 form autocomplete reflection 门、next313 的 acceptCharset reflection 门、next314 的 placeholder reflection 门以及 next315 的 input autocomplete reflection 门均已通过。
+reflection 门、next305 的 form submission reflection 门、next306 的 enctype reflection 门、next307 的 submitter action reflection 门、next308 的 submitter method reflection 门、next309 的 submitter enctype reflection 门、next310 的 implicit-submit consistency 门、next311 的 target reflection 门、next312 的 form autocomplete reflection 门、next313 的 acceptCharset reflection 门、next314 的 placeholder reflection 门、next315 的 input autocomplete reflection 门以及 next316 的 inputMode reflection 门均已通过。
 唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
 每批一个清晰的产品边界。
 
 完成标准：
 
-- TEST283/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归采用
-  `68–73/189–231/233–262/264–283/999` 定向选择；next299 的
+- TEST284/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归采用
+  `68–73/189–231/233–262/264–284/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；

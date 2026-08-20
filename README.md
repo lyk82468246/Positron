@@ -37,7 +37,7 @@ Duktape、Mbed TLS 等实现细节不暴露给调用者。
 运行时由 `positron_browser.dll` 与 `positron_core.dll`、`positron_script.dll` 及宿主回调
 组合。目前 history/session、浏览器脚本 context 的所有权、host JSON callback 注册、browser
 bootstrap、DOM 只读（按 id 查询与 textContent 读取）、textContent 写入、attribute、input value、checked、
-disabled、表单属性（含 `name`/`action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`）与 submitter `formAction`/`formMethod`/`formEnctype` 反射、控件属性 `placeholder`/`autocomplete`、约束属性（含 `pattern`/`minLength`/`maxLength` 反射）、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、
+disabled、表单属性（含 `name`/`action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`）与 submitter `formAction`/`formMethod`/`formEnctype` 反射、控件属性 `placeholder`/`autocomplete`/`inputMode`、约束属性（含 `pattern`/`minLength`/`maxLength` 反射）、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、
 `setCustomValidity()`/`validationMessage`（含固定英文内置 fallback，不做本地化）、form property（defaultValue/defaultChecked/selectedIndex）、navigation JSON 分发、同文档
 location/history 事件分发、event 回调分发、native input/composition、keyboard、focus-family、
 EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click，系统 picker 仍由宿主 GUI 负责）、submit/reset、invalid/reportValidity、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry 已迁入；其余 form/input 适配、core 事件传播以及窗口、网络、控件和
