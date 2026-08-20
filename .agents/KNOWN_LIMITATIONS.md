@@ -111,6 +111,8 @@
   不实现导航提交、异步任务或完整浏览器生命周期。
 - next325 只验证 form reset 恢复控件默认值而保留动态 form action/method，并重新生成正确的
   submission metadata；不实现 reset event 默认动作之外的完整浏览器生命周期或导航。
+- next326 是累计验证检查点，不新增产品语义；110 项启用 JavaScript 的相关回归通过，现有
+  bootstrap timeout 仅作为环境噪声记录，不改变公共 API 或限制边界。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
