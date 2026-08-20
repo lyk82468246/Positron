@@ -1,10 +1,37 @@
 # Positron 当前限制
 
-更新时间：2026-08-20
+更新时间：2026-08-21
 
 这里只记录当前仍存在的产品或验收边界。已完成批次和设备流水不保留在本文件；最近证据见
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
+
+## 当前状态（next421）
+
+next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
+`positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
+URLSearchParams、session storage/cookie、classList/style、受限 selector 查询、FormData、
+输入选择/数值步进/setRangeText、document/window metadata、viewport/scroll、合成事件，以及
+由宿主显式推进的 timer、animation-frame 和 visibility 队列。TEST369–388 与累计门
+`TEST369-388,999` 已通过；这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。
+
+这些 API 的共同限制如下：
+
+- 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
+  配额或跨 session 同步，FormData 也不连接 Blob/File/multipart 传输。
+- selector 只支持当前实现声明的 `#id`、`.class`、有限 attribute 和 `*` 自匹配；不提供 DOM
+  树枚举、通用 CSS selector、布局命中测试或完整 `matches/closest` 祖先语义。
+- selection、numeric step、setRangeText 是产品 bridge 的逻辑状态，不等于 WM native EDIT 的
+  光标、SIP、IME composition、候选词、Unicode preedit 或原生文本选择 UI。
+- document/window metadata、viewport、scroll 是脚本可见的受控快照；它们不自动改变真实窗口、
+  layout、paint、滚动条或 DPI。synthetic event 只在产品注册表中按目标分发，不替代 native/WM
+  冒泡与默认行为。
+- timer、animation frame 和 visibility 都需要宿主显式调用公共 pump/dispatch API；没有后台线程、
+  OS lifecycle 自动接线或跨导航持久队列。计时器行为受 session 预算和 pump 时刻限制，关闭/导航
+  时应由宿主丢弃队列。
+- `scripts\device_gate.bat -EnableJavaScript` 只修改隔离 staging；tracked
+  `test_host/test_host.ini` 仍为 `javascript=0`。本轮只改产品 API/状态，没有新增视觉、触摸、
+  SIP 或系统 picker 人工门；这些风险仍须按下方验收边界单独检查。
 
 ## 浏览器 JavaScript
 

@@ -209,6 +209,27 @@ textarea 布局高度或完整 textarea Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 
+#### next402–421 的脚本 session 扩展
+
+本轮新增能力仍归 `positron_browser.dll` 的产品 session 所有，而不是 `test_host.exe` 的私有
+实现：
+
+- 页面生命周期与环境快照：readyState、`hidden`/`visibilityState`、`window.name`、受控
+  navigator 字段，以及 `pagehide`/`pageshow`/`visibilitychange`；
+- 受限的 `URLSearchParams`、`URL`、session `Storage`、session cookie、`classList`、style
+  declaration、selector query 和 `FormData`；
+- input selection、numeric step、`setRangeText`、document metadata、窗口/viewport/scroll
+  状态和 target-local synthetic event；
+- 宿主显式泵送的异步队列：
+  `PBrowser_ScriptSessionRunTimers`、`PBrowser_ScriptSessionRunAnimationFrames` 和
+  `PBrowser_ScriptSessionDispatchVisibility`。
+
+这些 API 都是同步、session-scoped、受预算限制的兼容切片。计时器和 animation frame 不创建
+后台线程，viewport/scroll 不直接驱动 layout/paint，visibility 不自动连接操作系统窗口生命周期；
+宿主必须在合适的时钟、导航和窗口事件上调用对应入口，并在 session 关闭或导航替换时丢弃队列。
+selector、URL、storage/cookie、FormData、selection 和 synthetic event 均不承诺完整 Web
+标准语义。精确参数、返回值和所有权以 `positron_browser/positron_browser.h` 为准。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

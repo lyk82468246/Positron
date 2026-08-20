@@ -1,6 +1,6 @@
 # Positron 当前交接
 
-更新时间：2026-08-20
+更新时间：2026-08-21
 
 稳定使命、架构和公共边界见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。本文件只记录当前仓库基线、最近设备证据、
@@ -11,8 +11,37 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next401（最终累计检查点为 `TEST264-368/999`；最近一次完整自动基线仍为
-  next255）。本批使用每项候选门和阶段性累计门，没有修改 tracked `test_host.ini`。
+- 最新已验证产品基线：next421（本轮最终累计检查点为 `TEST369-388/999`；最近一次完整自动基线仍为
+  next255）。本轮使用每项候选门和一次累计门，没有修改 tracked `test_host.ini`。
+- next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
+  与 URL、session storage 与 cookie、classList 与 style、选择器查询与 FormData、输入选择/数值步进/
+  setRangeText、文档 metadata、窗口/滚动状态、合成事件、宿主计时器，以及 animation frame/visibility
+  生命周期。对应自动测试为 TEST369–388；这些能力的实现和公共入口位于 `positron_browser.dll`，
+  `test_host.exe` 只负责适配和验证。
+- 本轮累计设备门为 `TEST369-388,999` 共 21 项，零 ERROR、零 FAIL、唯一 TESTBENCH PASS，
+  `test13_route_ok=True`；证据位于
+  `tmp/device-runs/20260821-001141-next402-421-cumulative/`。每项候选门也已分别通过，证据目录
+  位于同一日期下的 `next402` 至 `next421` 目录。
+- `scripts\device_gate.bat -EnableJavaScript` 只在隔离 staging 的 INI 中写入 `javascript=1`；仓库内
+  tracked `test_host/test_host.ini` 仍保持 `javascript=0`，默认 Browse 路径不变。本轮 API/状态批次
+  不涉及视觉、真实触摸、SIP 或系统 picker，因此不要求新增人工页面验收。
+
+## 当前状态：next402–421
+
+本轮 20 个 next 均已实现、构建并通过定向设备门及累计门。产品层现在可以在一个脚本 session
+内提供以下受控能力：页面 readyState/visibility 生命周期和环境快照；有限 URL/URLSearchParams、
+session storage、cookie；class/style/selector/FormData；input selection、numeric step、
+setRangeText；document/window metadata、viewport/scroll；target-local synthetic event；以及由宿主
+显式推进的 timer、animation-frame 和 visibility 队列。它们都是 session-scoped、内存内、受预算限制
+的兼容切片，不代表完整 Web 标准实现。
+
+公共 API 的所有权、宿主泵送职责和未实现边界以
+[`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 为准；下一批不应把窗口、网络、native SIP 或完整
+DOM/URL parser 偷渡进 `positron_browser.dll`。
+
+## 历史基线条目
+
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
 - next295 在 `test_host` 宿主中把可见 render window 内、未取消的 file-input
@@ -2503,7 +2532,7 @@ contract；宿主继续拥有表单数据收集、验证、控件默认 activati
   `TESTBENCH PASS`；完整证据路径见本文件顶部。全量首尝 TEST166 单次 timeout，定向重跑和最终
   全量重试通过，未调整预算或放宽断言。
 
-## 唯一下一步
+## 历史下一步记录（已完成批次）
 
 next295 的自动与人工门、next296 的 `HTMLElement.disabled` 自动门、next297 的表单约束属性
 反射与动态语义门、next298 的 validation query 门、next299 的 custom-validity 门、next300 的
@@ -2533,3 +2562,21 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
   `auto=0` 不会创建 `test_host.log`，这部分仍以截图/操作记录为人工证据，不替代自动日志；
 - 若出现崩溃、数据损坏、严重布局破坏或核心交互阻塞，立即停止累计并进入 debug；
 - 候选通过后覆写本文件，并从路线图中选择下一个单一代码能力。
+
+## 唯一下一步
+
+为 next422 选择并实现一个新的、边界完整的产品能力。候选必须从
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
+先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
+SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
+
+完成标准：
+
+- `positron_browser.dll` 的公共 ABI、C89/VS2008 ARMV4I 正式构建、`python scripts/test_c89ize.py`
+  与 `python scripts/audit_repo.py` 均通过；
+- 新测试和共享回归通过定向设备门，并保留 `TEST999`、零 ERROR/FAIL 和唯一
+  `TESTBENCH PASS` 的完整证据；达到累计阈值或触及高风险基础设施时再跑全量；
+- 若只改变脚本状态/API，默认不要求人工视觉或 SIP 验收；若触及真实窗口、布局、触摸、SIP、
+  旋转、系统 picker 或网络失败反馈，必须单独列入人工门；
+- 只更新本批职责内的 handoff/限制/路线图，保持 tracked `test_host.ini` 的默认
+  `javascript=0` 不变，并提交、推送本批 tracked 文件。
