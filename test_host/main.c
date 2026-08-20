@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 328
+#define TEST_MAX_NUMBER 329
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51269,6 +51269,27 @@ static BOOL test328_browser_open_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 329 - browser HTMLElement.autocapitalize property reflection       */
+/* -------------------------------------------------------------------- */
+static BOOL test329_browser_autocapitalize_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' autocapitalize='sentences'>Target</div>",
+            "autocapitalize", "autocapitalize", "sentences", "words",
+            "characters", error, sizeof(error))) {
+        show_error(L"TEST 329 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 329 OK",
+            "HTMLElement.autocapitalize reflects the raw UTF-8 autocapitalize "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55768,6 +55789,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 328: ok =
                 test328_browser_open_reflection();
+                break;
+        case 329: ok =
+                test329_browser_autocapitalize_reflection();
                 break;
         default: ok = FALSE; break;
         }
