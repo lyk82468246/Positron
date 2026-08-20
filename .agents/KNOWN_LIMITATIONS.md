@@ -107,6 +107,8 @@
   enctype 规范化、multipart 传输或其他编码格式。
 - next323 只验证 method/enctype 的大小写不敏感匹配与 raw case 反射；不实现规范化 getter、
   完整 Web IDL 枚举语义或导航副作用。
+- next324 只验证动态 action/method/value 更新后，反复重排不会陈旧化 submission metadata；
+  不实现导航提交、异步任务或完整浏览器生命周期。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 291
+#define TEST_MAX_NUMBER 292
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -49986,6 +49986,202 @@ static BOOL test291_browser_submission_case_boundary(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 292 - submission metadata remains correct after re-layout         */
+/* -------------------------------------------------------------------- */
+static BOOL test292_submission_metadata_relayout(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='form' action='/before' method='get'>"
+        "<input id='field' name='field' value='alpha'>"
+        "<button id='send' type='submit' name='go' value='send'>Send</button>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "input,button{display:block;margin:4px 0;width:180px}";
+    static const char PROBE[] =
+        "document.getElementById('form').action='/after-layout';"
+        "document.getElementById('form').method='post';"
+        "document.getElementById('field').value='beta';"
+        "document.getElementById('result').textContent='updated';";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormSubmissionInfo before;
+    PCoreFormSubmissionInfo after;
+    PCoreFormSubmissionInfo again;
+    char before_action[128];
+    char before_body[512];
+    char after_action[128];
+    char after_body[512];
+    char again_action[128];
+    char again_body[512];
+    char result[64];
+    char error[384];
+    int executed;
+    int ignored;
+    int result_bytes;
+    int send_x;
+    int send_y;
+    int send_kind;
+    int disabled;
+    int before_result;
+    int after_result;
+    int again_result;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&before, 0, sizeof(before));
+    memset(&after, 0, sizeof(after));
+    memset(&again, 0, sizeof(again));
+    memset(before_action, 0, sizeof(before_action));
+    memset(before_body, 0, sizeof(before_body));
+    memset(after_action, 0, sizeof(after_action));
+    memset(after_body, 0, sizeof(after_body));
+    memset(again_action, 0, sizeof(again_action));
+    memset(again_body, 0, sizeof(again_body));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    send_x = 0;
+    send_y = 0;
+    send_kind = 0;
+    disabled = 0;
+    before_result = 0;
+    after_result = 0;
+    again_result = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/metadata-relayout.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 480) != 0 ||
+                PCore_FormControlInfoById(document, "send", &send_x,
+                &send_y, NULL, NULL, &send_kind, NULL, &disabled) != 0 ||
+                send_kind != 7 || disabled) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        before_result = PCore_FormSubmissionAt(document, send_x, send_y,
+                &before, before_action, sizeof(before_action), before_body,
+                sizeof(before_body));
+        if (before_result != 1 || before.method != 1 ||
+                before.action_bytes != (int) strlen("/before") ||
+                before.body_bytes != (int) strlen("field=alpha&go=send") ||
+                strcmp(before_action, "/before") != 0 ||
+                strcmp(before_body, "field=alpha&go=send") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "updated") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PCore_LayoutDocument(document, 240, 320) != 0 ||
+                PCore_FormControlInfoById(document, "send", &send_x,
+                &send_y, NULL, NULL, &send_kind, NULL, &disabled) != 0 ||
+                send_kind != 7 || disabled) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        after_result = PCore_FormSubmissionAt(document, send_x, send_y,
+                &after, after_action, sizeof(after_action), after_body,
+                sizeof(after_body));
+        if (after_result != 1 || after.method != 2 ||
+                after.action_bytes != (int) strlen("/after-layout") ||
+                after.body_bytes != (int) strlen("field=beta&go=send") ||
+                strcmp(after_action, "/after-layout") != 0 ||
+                strcmp(after_body, "field=beta&go=send") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PCore_LayoutDocument(document, 320, 480) != 0 ||
+                PCore_FormControlInfoById(document, "send", &send_x,
+                &send_y, NULL, NULL, &send_kind, NULL, &disabled) != 0 ||
+                send_kind != 7 || disabled) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        again_result = PCore_FormSubmissionAt(document, send_x, send_y,
+                &again, again_action, sizeof(again_action), again_body,
+                sizeof(again_body));
+        if (again_result != 1 || again.method != after.method ||
+                again.action_bytes != after.action_bytes ||
+                again.body_bytes != after.body_bytes ||
+                strcmp(again_action, after_action) != 0 ||
+                strcmp(again_body, after_body) != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "before=%d/%d after=%d/%d again=%d/%d action=%s/%s body=%s/%s",
+                    before_result, before.method, after_result, after.method,
+                    again_result, again.method, after_action, again_action,
+                    after_body, again_body);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 292 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 292 OK",
+            "submission action/body and size metadata stayed correct "
+            "after dynamic updates and repeated re-layout.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -54374,6 +54570,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 291: ok =
                 test291_browser_submission_case_boundary();
+                break;
+        case 292: ok =
+                test292_submission_metadata_relayout();
                 break;
         default: ok = FALSE; break;
         }

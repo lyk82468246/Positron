@@ -133,6 +133,9 @@ next322 验证未知 form `enctype` 原始值反射与 urlencoded POST fallback�
 next323 验证 method/enctype 的大小写不敏感匹配与 raw case 反射；TEST291/999 与最近的 264–291/999
 29 项回归保持 mixed-case urlencoded POST 的 action/body 不变。该切片不实现规范化 getter、完整
 Web IDL 枚举语义或导航副作用；`test_host` 仍只是宿主适配和测试消费者。
+next324 验证动态 action/method/value 更新后反复重排的 submission metadata 一致性；TEST292/999
+与最近的 264–292/999 30 项回归保持 method、action/body 及 size metadata 正确。该切片不实现导航
+提交、异步任务或完整浏览器生命周期；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，
