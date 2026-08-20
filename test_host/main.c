@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 274
+#define TEST_MAX_NUMBER 275
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -47400,6 +47400,201 @@ static BOOL test274_browser_enctype_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 275 - browser submitter formAction override                       */
+/* -------------------------------------------------------------------- */
+static BOOL test275_browser_submitter_action(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='form' action='/form' method='get'>"
+        "<input id='field' name='field' value='alpha'>"
+        "<button id='send' type=submit name='go' value='send'>Send</button>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "input,button{display:block;margin:4px 0;width:180px}";
+    static const char PROBE[] =
+        "var b=document.getElementById('send');"
+        "var initial=b.formAction==='';"
+        "b.setAttribute('formaction','/attr');"
+        "var attr=b.formAction==='/attr';"
+        "b.formAction='/submit';"
+        "var reflected=b.formAction==='/submit';"
+        "var direct=b.getAttribute('formaction')==='/submit';"
+        "document.getElementById('result').textContent="
+        "String(initial)+'|'+String(attr)+'|'+String(reflected)+'|'+"
+        "String(direct);";
+    static const char RECOVER[] =
+        "document.getElementById('send').removeAttribute('formaction');";
+    static const char MULTIPART[] =
+        "var f=document.getElementById('form');"
+        "f.method='post';f.enctype='multipart/form-data';"
+        "document.getElementById('send').formAction='/multipart';";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    HANDLE multipart;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormSubmissionInfo submission;
+    PCoreMultipartSubmissionInfo multipart_info;
+    char result[256];
+    char action[128];
+    char body[512];
+    char multipart_action[128];
+    char error[384];
+    const char *stage;
+    int executed;
+    int ignored;
+    int result_bytes;
+    int send_x;
+    int send_y;
+    int send_kind;
+    int disabled;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    multipart = NULL;
+    bridge = NULL;
+    memset(&submission, 0, sizeof(submission));
+    memset(&multipart_info, 0, sizeof(multipart_info));
+    memset(result, 0, sizeof(result));
+    memset(action, 0, sizeof(action));
+    memset(body, 0, sizeof(body));
+    memset(multipart_action, 0, sizeof(multipart_action));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    send_x = 0;
+    send_y = 0;
+    send_kind = 0;
+    disabled = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/submitter-action.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 480) != 0 ||
+                PCore_FormControlInfoById(document, "send", &send_x,
+                &send_y, NULL, NULL, &send_kind, NULL, &disabled) != 0 ||
+                send_kind != 7 || disabled) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+    }
+    if (ok) {
+        stage = "reflection";
+        if (pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "true|true|true|true") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "override-submission";
+        if (PCore_FormSubmissionAt(document, send_x, send_y,
+                &submission, action, sizeof(action), body, sizeof(body)) !=
+                1 || submission.method != 1 || strcmp(action, "/submit") != 0 ||
+                strcmp(body, "field=alpha&go=send") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "form-fallback";
+        if (pcore_browser_script_session_evaluate(RECOVER, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_FormSubmissionAt(document, send_x, send_y,
+                &submission, action, sizeof(action), body, sizeof(body)) !=
+                1 || submission.method != 1 || strcmp(action, "/form") != 0 ||
+                strcmp(body, "field=alpha&go=send") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "multipart-override";
+        if (pcore_browser_script_session_evaluate(MULTIPART, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_FormSubmissionAt(document, send_x, send_y,
+                &submission, action, sizeof(action), body, sizeof(body)) !=
+                3 || submission.method != 3 ||
+                submission.action_bytes != (int) strlen("/multipart")) {
+            ok = 0;
+        }
+        if (ok) {
+            multipart = PCore_MultipartSubmissionAt(document, send_x, send_y);
+            if (multipart == NULL ||
+                    PCore_MultipartSubmissionInfo(multipart,
+                    &multipart_info, multipart_action,
+                    sizeof(multipart_action)) != 1 ||
+                    strcmp(multipart_action, "/multipart") != 0 ||
+                    multipart_info.part_count != 2) {
+                ok = 0;
+            }
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (multipart != NULL) {
+        PCore_FreeMultipartSubmission(multipart);
+    }
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s result=%s method=%d action=%s body=%s parts=%u",
+                    stage, result, submission.method, action, body,
+                    multipart_info.part_count);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 275 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 275 OK",
+            "submitter formAction overrode form and multipart targets, "
+            "then removal restored the form action.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -51737,6 +51932,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 274: ok =
                 test274_browser_enctype_reflection();
+                break;
+        case 275: ok =
+                test275_browser_submitter_action();
                 break;
         default: ok = FALSE; break;
         }

@@ -9200,6 +9200,9 @@ static int pcore_multipart_build_parts(dom_html_form_element *form,
     return result;
 }
 
+static dom_string *pcore_form_submission_action(
+        dom_html_form_element *form, dom_node *activated);
+
 static pcore_multipart_submission *pcore_multipart_snapshot(
         pcore_render *st, dom_html_form_element *form, dom_node *activated,
         int choose_default)
@@ -9240,7 +9243,8 @@ static pcore_multipart_submission *pcore_multipart_snapshot(
         pcore_multipart_free(submission);
         return NULL;
     }
-    if (dom_html_form_element_get_action(form, &action) != DOM_NO_ERR) {
+    action = pcore_form_submission_action(form, activated);
+    if (action == NULL) {
         if (default_submit != NULL) {
             dom_node_unref(default_submit);
         }
@@ -9263,6 +9267,35 @@ static pcore_multipart_submission *pcore_multipart_snapshot(
         dom_node_unref(default_submit);
     }
     return submission;
+}
+
+static dom_string *pcore_form_submission_action(
+        dom_html_form_element *form, dom_node *activated)
+{
+    dom_string *attribute;
+    dom_string *action;
+
+    attribute = NULL;
+    action = NULL;
+    if (activated != NULL && dom_string_create(
+            (const uint8_t *) "formaction", 10, &attribute) == DOM_NO_ERR &&
+            attribute != NULL) {
+        if (dom_element_get_attribute(activated, attribute, &action) ==
+                DOM_NO_ERR && action != NULL) {
+            dom_string_unref(attribute);
+            return action;
+        }
+        if (action != NULL) {
+            dom_string_unref(action);
+        }
+        dom_string_unref(attribute);
+    }
+    action = NULL;
+    if (form == NULL || dom_html_form_element_get_action(form, &action) !=
+            DOM_NO_ERR) {
+        return NULL;
+    }
+    return action;
 }
 
 static int pcore_form_submission(pcore_render *st,
@@ -9313,8 +9346,8 @@ static int pcore_form_submission(pcore_render *st,
         result = 5;
         goto form_submission_done;
     }
-    if (dom_html_form_element_get_action(form, &action_string) !=
-            DOM_NO_ERR) {
+    action_string = pcore_form_submission_action(form, activated);
+    if (action_string == NULL) {
         goto form_submission_done;
     }
     if (pcore_attr_value_is((dom_node *) form, "method", "post")) {

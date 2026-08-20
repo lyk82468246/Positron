@@ -80,6 +80,10 @@ next306 已在同一 browser attribute bridge 上增加 form `enctype` 反射；
 JavaScript 的 91 项相关回归验证了 urlencoded/multipart 动态切换和恢复。该切片复用已有
 multipart submission snapshot，不实现 `encoding` 别名、完整规范化或传输边界；`test_host`
 仍只是宿主适配和测试消费者。
+next307 已在同一 browser attribute bridge 上增加 submitter `formAction` 反射；TEST275/999
+与启用 JavaScript 的 92 项相关回归验证了 urlencoded/multipart action 覆盖、移除恢复和
+raw attribute 边界。该切片不实现完整 URL parser 或其他 submitter override 属性；`test_host`
+仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，
