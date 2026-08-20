@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 340
+#define TEST_MAX_NUMBER 341
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51521,6 +51521,27 @@ static BOOL test340_browser_aria_hidden_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 341 - browser HTMLElement.ariaKeyShortcuts property reflection    */
+/* -------------------------------------------------------------------- */
+static BOOL test341_browser_aria_keyshortcuts_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-keyshortcuts='Alt+Shift+P'>Target</div>",
+            "ariaKeyShortcuts", "aria-keyshortcuts", "Alt+Shift+P",
+            "Control+S", "Escape", error, sizeof(error))) {
+        show_error(L"TEST 341 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 341 OK",
+            "HTMLElement.ariaKeyShortcuts reflects the raw UTF-8 "
+            "aria-keyshortcuts attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56056,6 +56077,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 340: ok =
                 test340_browser_aria_hidden_reflection();
+                break;
+        case 341: ok =
+                test341_browser_aria_keyshortcuts_reflection();
                 break;
         default: ok = FALSE; break;
         }
