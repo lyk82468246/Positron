@@ -68,6 +68,10 @@ next303 已在现有 browser attribute bridge 上增加 `pattern`、`minLength`�
 TEST271/999 与启用 JavaScript 的 88 项回归已通过，动态属性会继续驱动
 `tooShort`/`tooLong`/`patternMismatch`，并拒绝负数/非有限 setter。该切片不涉及视觉、SIP、系统 picker 或完整 Web IDL
 异常类型；`test_host` 仍只是宿主适配和测试消费者。
+next304 已在同一 browser attribute bridge 上增加 form、input、textarea、select、button 的
+`name` 反射；TEST272/999 与启用 JavaScript 的 89 项相关回归已通过，动态改名会进入
+successful-control submission。该切片不涉及视觉、SIP、系统 picker 或完整
+`HTMLFormControlsCollection`/表单关联算法；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

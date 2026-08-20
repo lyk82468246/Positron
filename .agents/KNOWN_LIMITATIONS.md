@@ -13,8 +13,8 @@
 - 默认 `javascript=0`。
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
-  textContent 读取）、textContent 写入、attribute、input value、checked、`HTMLElement.disabled`、约束相关
-  `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength` 反射、form property
+  textContent 读取）、textContent 写入、attribute、input value、checked、`HTMLElement.disabled`、表单属性
+  `name` 与约束相关 `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength` 反射、form property
   （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click）、submit/reset、invalid、reportValidity、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
@@ -54,6 +54,10 @@
   `minLength`/`maxLength` 的非负有限整数 setter 会拒绝负数和非有限值，动态值会重新驱动
   `tooShort`/`tooLong`/`patternMismatch` 与 `checkValidity()`。它不声称完整 Web IDL
   异常类型或原生控件 UI。
+
+- next304 在既有 attribute bridge 上增加了 form、input、textarea、select、button 的 `name`
+  属性反射；动态改名会进入当前 successful-control submission。它不声称完整
+  `HTMLFormControlsCollection`、表单关联算法或其他未迁移的 form/input API。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

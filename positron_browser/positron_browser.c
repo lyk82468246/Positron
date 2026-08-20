@@ -725,6 +725,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineBoolean('noValidate','novalidate');"
         "PDefineBoolean('formNoValidate','formnovalidate');"
         "PDefineBoolean('disabled','disabled');"
+        "PDefineString('name','name');"
         "PDefineString('min','min');"
         "PDefineString('max','max');"
         "PDefineString('step','step');"
