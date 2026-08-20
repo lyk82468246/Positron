@@ -172,6 +172,9 @@ next336 在同一 bridge 上增加 `HTMLElement.tabIndex` 的有限整数 raw �
 重试后的最近 `TEST264-303/999` 已通过。该切片只覆盖有限整数往返、非法/缺失回落 `-1` 和
 setter 边界，不实现焦点导航、滚动、键盘顺序或完整 HTMLElement Web IDL；`test_host` 仍只是
 宿主适配和测试消费者。
+next337 在同一 bridge 上增加 `HTMLInputElement.accept` raw 反射；TEST304/999 与最近
+`TEST264-304/999` 已通过。该切片只覆盖 UTF-8 属性往返，不实现文件类型解析、过滤、系统
+picker 或完整 input Web IDL；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 303
+#define TEST_MAX_NUMBER 304
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50752,6 +50752,27 @@ static BOOL test303_browser_tabindex_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 304 - browser input.accept property reflection                    */
+/* -------------------------------------------------------------------- */
+static BOOL test304_browser_input_accept_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<input id='target' type='file' accept='image/*'>",
+            "accept", "accept", "image/*", ".png,.jpg", "audio/*",
+            error, sizeof(error))) {
+        show_error(L"TEST 304 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 304 OK",
+            "HTMLInputElement.accept reflects the raw UTF-8 accept attribute "
+            "through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55176,6 +55197,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 303: ok =
                 test303_browser_tabindex_reflection();
+                break;
+        case 304: ok =
+                test304_browser_input_accept_reflection();
                 break;
         default: ok = FALSE; break;
         }
