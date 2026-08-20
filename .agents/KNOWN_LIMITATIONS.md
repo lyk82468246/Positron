@@ -76,6 +76,9 @@
 - next309 在同一 attribute bridge 上增加了 submitter `formEnctype` 属性反射；已支持的
   `multipart/form-data` 与 `application/x-www-form-urlencoded` 值会覆盖当前 submission
   snapshot 的编码选择，移除后恢复 form enctype。未知值、别名与完整编码规范化仍留待后续切片。
+- next310 让 text-input 的隐式 Enter submission 与显式 submitter 共用首个 submitter 的
+  action/method/enctype override；`PCore_FormSubmissionForTextInput` 与 multipart snapshot
+  仅覆盖当前受限的 first-submit 选择，不引入完整 implicit-submission 或键盘事件规范。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

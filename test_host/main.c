@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 277
+#define TEST_MAX_NUMBER 278
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -47997,6 +47997,161 @@ static BOOL test277_browser_submitter_enctype(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 278 - implicit Enter uses the first submitter overrides          */
+/* -------------------------------------------------------------------- */
+static BOOL test278_browser_implicit_submitter_overrides(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<form id='form' action='/form' method='get' "
+        "enctype='application/x-www-form-urlencoded'>"
+        "<input id='field' name='field' value='alpha'>"
+        "<button id='first' type=submit name='go' value='send' "
+        "formaction='/implicit' formmethod='post' "
+        "formenctype='multipart/form-data'>First</button>"
+        "<button id='second' type=submit name='other' value='no'>Second</button>"
+        "</form></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "input,button{display:block;margin:4px 0;width:180px}";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE explicit_multipart;
+    HANDLE implicit_multipart;
+    PCoreFormSubmissionInfo explicit_info;
+    PCoreFormSubmissionInfo implicit_info;
+    PCoreMultipartSubmissionInfo explicit_parts;
+    PCoreMultipartSubmissionInfo implicit_parts;
+    char explicit_action[128];
+    char implicit_action[128];
+    char explicit_body[512];
+    char implicit_body[512];
+    char explicit_multipart_action[128];
+    char implicit_multipart_action[128];
+    char error[384];
+    int first_x;
+    int first_y;
+    int first_kind;
+    int disabled;
+    int text_result;
+    int explicit_result;
+    int implicit_result;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    explicit_multipart = NULL;
+    implicit_multipart = NULL;
+    memset(&explicit_info, 0, sizeof(explicit_info));
+    memset(&implicit_info, 0, sizeof(implicit_info));
+    memset(&explicit_parts, 0, sizeof(explicit_parts));
+    memset(&implicit_parts, 0, sizeof(implicit_parts));
+    memset(explicit_action, 0, sizeof(explicit_action));
+    memset(implicit_action, 0, sizeof(implicit_action));
+    memset(explicit_body, 0, sizeof(explicit_body));
+    memset(implicit_body, 0, sizeof(implicit_body));
+    memset(explicit_multipart_action, 0,
+            sizeof(explicit_multipart_action));
+    memset(implicit_multipart_action, 0,
+            sizeof(implicit_multipart_action));
+    memset(error, 0, sizeof(error));
+    first_x = 0;
+    first_y = 0;
+    first_kind = 0;
+    disabled = 0;
+    text_result = -1;
+    explicit_result = 0;
+    implicit_result = 0;
+    ok = 1;
+
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/implicit-submit.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 320, 480) != 0 ||
+            PCore_FormControlInfoById(document, "first", &first_x,
+            &first_y, NULL, NULL, &first_kind, NULL, &disabled) != 0 ||
+            first_kind != 7 || disabled) {
+        ok = 0;
+    }
+    if (ok) {
+        text_result = PCore_TextInputInfo(document, 0, NULL, NULL, 0);
+        explicit_result = PCore_FormSubmissionAt(document, first_x, first_y,
+                &explicit_info, explicit_action, sizeof(explicit_action),
+                explicit_body, sizeof(explicit_body));
+        if (text_result != 0 || explicit_result != 3 ||
+                explicit_info.method != 3 ||
+                explicit_info.action_bytes != (int) strlen("/implicit")) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        explicit_multipart = PCore_MultipartSubmissionAt(document,
+                first_x, first_y);
+        if (explicit_multipart == NULL ||
+                PCore_MultipartSubmissionInfo(explicit_multipart,
+                &explicit_parts, explicit_multipart_action,
+                sizeof(explicit_multipart_action)) != 1 ||
+                strcmp(explicit_multipart_action, "/implicit") != 0 ||
+                explicit_parts.part_count != 2) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        implicit_result = PCore_FormSubmissionForTextInput(document, 0,
+                &implicit_info, implicit_action, sizeof(implicit_action),
+                implicit_body, sizeof(implicit_body));
+        if (implicit_result != 3 || implicit_info.method != 3 ||
+                implicit_info.action_bytes != explicit_info.action_bytes) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        implicit_multipart = PCore_MultipartSubmissionForTextInput(document,
+                0);
+        if (implicit_multipart == NULL ||
+                PCore_MultipartSubmissionInfo(implicit_multipart,
+                &implicit_parts, implicit_multipart_action,
+                sizeof(implicit_multipart_action)) != 1 ||
+                strcmp(implicit_multipart_action,
+                explicit_multipart_action) != 0 ||
+                implicit_parts.part_count != explicit_parts.part_count) {
+            ok = 0;
+        }
+    }
+    if (explicit_multipart != NULL) {
+        PCore_FreeMultipartSubmission(explicit_multipart);
+    }
+    if (implicit_multipart != NULL) {
+        PCore_FreeMultipartSubmission(implicit_multipart);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "text=%d explicit=%d/%d action_bytes=%d implicit=%d/%d "
+                "parts=%u/%u action=%s/%s", text_result, explicit_result,
+                explicit_info.method, explicit_info.action_bytes,
+                implicit_result, implicit_info.method,
+                explicit_parts.part_count, implicit_parts.part_count,
+                explicit_multipart_action, implicit_multipart_action);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 278 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 278 OK",
+            "implicit text-input submission matched the first submitter's "
+            "action, method and multipart enctype overrides.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -52343,6 +52498,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 277: ok =
                 test277_browser_submitter_enctype();
+                break;
+        case 278: ok =
+                test278_browser_implicit_submitter_overrides();
                 break;
         default: ok = FALSE; break;
         }

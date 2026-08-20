@@ -91,6 +91,9 @@ next309 已在同一 browser attribute bridge 上增加 submitter `formEnctype` 
 与启用 JavaScript 的 94 项相关回归验证 urlencoded/multipart 覆盖、snapshot eligibility 和
 移除恢复。该切片不实现未知值/别名的完整编码规范化或传输边界；`test_host` 仍只是宿主适配
 和测试消费者。
+next310 已验证 text-input 隐式 Enter submission 与显式首个 submitter 共用 action/method/
+enctype override 及 multipart snapshot；TEST278/999 与启用 JavaScript 的 95 项相关回归通过。
+该切片不扩展完整 implicit-submission 算法或键盘事件规范；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

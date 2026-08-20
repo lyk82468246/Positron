@@ -94,6 +94,10 @@ JSON-compatible global、native callback、执行预算和内存限制，但本�
 - NetSurf layout 和 redraw；
 - GDI 绘制、命中、滚动和动态 viewport/DPI；
 - 链接、表单、文本输入、资源发现和一组 DOM 事件；
+- 表单提交同时提供显式 submitter 与 text-input 隐式 Enter 路径；两者共享首个 submitter
+  的受限 action/method/enctype override 和 multipart snapshot 语义；
+- 表单提交同时提供显式 submitter 与 text-input 隐式 Enter 路径；两者共享首个 submitter
+  的受限 action/method/enctype override 和 multipart snapshot 语义；
 - 按 DOM id 查询已布局 form-control 几何/状态，供宿主实现程序化 activation；`PCore_FormResetAt`
   只提交 reset 状态，取消事件由宿主在调用前分发；
 - 按 DOM id 查询控件的约束状态（`valid`、`will_validate` 和 `PCORE_VALIDITY_*` flags），供浏览器
