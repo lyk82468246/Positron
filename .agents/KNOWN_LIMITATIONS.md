@@ -138,6 +138,9 @@
 - next337 在同一 bridge 上增加 `HTMLInputElement.accept` raw UTF-8 反射；TEST304 及最近回归
   通过。该切片只保证属性往返，不实现文件类型解析、过滤、系统 picker 或完整 input Web IDL
   语义。
+- next338 在同一 bridge 上增加 `HTMLInputElement.capture` raw UTF-8 反射；TEST305 及最近回归
+  通过。该切片只保证属性往返，不实现摄像头/麦克风捕获、文件类型过滤、系统 picker 或完整
+  input Web IDL 语义。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
