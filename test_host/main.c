@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 354
+#define TEST_MAX_NUMBER 355
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51815,6 +51815,27 @@ static BOOL test354_browser_aria_details_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 355 - browser HTMLElement.ariaErrorMessage property reflection    */
+/* -------------------------------------------------------------------- */
+static BOOL test355_browser_aria_error_message_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-errormessage='error-a'>Target</div>",
+            "ariaErrorMessage", "aria-errormessage", "error-a", "error-b", "error-c",
+            error, sizeof(error))) {
+        show_error(L"TEST 355 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 355 OK",
+            "HTMLElement.ariaErrorMessage reflects the raw UTF-8 "
+            "aria-errormessage attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56392,6 +56413,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 354: ok =
                 test354_browser_aria_details_reflection();
+                break;
+        case 355: ok =
+                test355_browser_aria_error_message_reflection();
                 break;
         default: ok = FALSE; break;
         }
