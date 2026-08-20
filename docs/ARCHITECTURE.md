@@ -137,6 +137,8 @@ programmatic `HTMLElement.click()`（包括 file input 的 typed click 边界）
 typed dispatch entry 已由此 DLL 持有并执行；
 其余 form/input 适配和页面生命周期会逐步迁入此 DLL。窗口、传输、native EDIT/SELECT、系统文件选择器、core
 事件传播、焦点/控件默认行为、history/navigation side effect 和绘制调度仍由应用宿主负责。
+当前 raw metadata bridge 还提供 `HTMLElement.draggable` 的 UTF-8 属性往返；这不等于拖放手势或
+完整 HTMLElement Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 
