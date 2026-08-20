@@ -160,6 +160,8 @@ Shadow DOM 或 slot 分配。
 microdata 解析或语义树。
 当前 raw metadata bridge 还提供 `HTMLElement.itemProp` ↔ `itemprop` 的 UTF-8 属性往返；这不
 等于 microdata token 解析或语义树。
+当前 raw metadata bridge 还提供 `HTMLElement.itemRef` ↔ `itemref` 的 UTF-8 属性往返；这不
+等于 microdata 引用解析或语义树。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 
