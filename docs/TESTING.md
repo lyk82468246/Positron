@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next332 基线）
+### 当前默认自动选择与人工验收包（next333 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -282,6 +282,12 @@ scripts\device_gate.bat -Candidate next332-role-reflection-js ^
   -TestSelection "299,999"
 scripts\device_gate.bat -Candidate next332-role-reflection-recent-js ^
   -TestSelection "264-299,999"
+scripts\device_gate.bat -Candidate next333-aria-label-reflection-js ^
+  -TestSelection "300,999"
+scripts\device_gate.bat -Candidate next333-aria-label-focus-retry-js ^
+  -TestSelection "299-300,999"
+scripts\device_gate.bat -Candidate next333-aria-label-reflection-recent-retry-js ^
+  -TestSelection "264-300,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -477,6 +483,13 @@ next332 的定向门覆盖 `HTMLElement.role` raw UTF-8 getter/setter、attribut
 `tmp/device-runs/20260820-160251-next332-role-reflection/`。最近 `TEST264-299/999` 已以
 37/37 通过，证据位于 `tmp/device-runs/20260820-160315-next332-role-reflection-recent/`；
 该批不涉及辅助技术树、语义计算、视觉或人工页面验收。
+next333 的定向门覆盖 `HTMLElement.ariaLabel` ↔ `aria-label` raw UTF-8 getter/setter、attribute
+round-trip 和移除恢复；`TEST300/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-160826-next333-aria-label-reflection/`。独立 `TEST299-300/999`
+以 3/3 通过，证据位于 `tmp/device-runs/20260820-161029-next333-aria-label-focus-retry/`；
+近期链首次在 TEST299 的环境 timeout 处 35/38，重试后的 `TEST264-300/999` 以 38/38 通过，
+证据位于 `tmp/device-runs/20260820-161116-next333-aria-label-reflection-recent-retry/`；
+该批不涉及 ARIA 语义树、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
