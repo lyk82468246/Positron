@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 345
+#define TEST_MAX_NUMBER 346
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51626,6 +51626,27 @@ static BOOL test345_browser_aria_modal_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 346 - browser HTMLElement.ariaPlaceholder property reflection      */
+/* -------------------------------------------------------------------- */
+static BOOL test346_browser_aria_placeholder_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-placeholder='initial'>Target</div>",
+            "ariaPlaceholder", "aria-placeholder", "initial", "hint-a", "hint-b",
+            error, sizeof(error))) {
+        show_error(L"TEST 346 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 346 OK",
+            "HTMLElement.ariaPlaceholder reflects the raw UTF-8 "
+            "aria-placeholder attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56176,6 +56197,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 345: ok =
                 test345_browser_aria_modal_reflection();
+                break;
+        case 346: ok =
+                test346_browser_aria_placeholder_reflection();
                 break;
         default: ok = FALSE; break;
         }
