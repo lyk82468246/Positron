@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next359 基线）
+### 当前默认自动选择与人工验收包（next361 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -392,6 +392,14 @@ scripts\device_gate.bat -Candidate next359-textarea-cols-reflection-js ^
   -TestSelection "326,999"
 scripts\device_gate.bat -Candidate next359-textarea-cols-reflection-recent-js ^
   -TestSelection "264-326,999"
+scripts\device_gate.bat -Candidate next360-textarea-rows-reflection-js ^
+  -TestSelection "327,999"
+scripts\device_gate.bat -Candidate next360-textarea-rows-reflection-recent-js ^
+  -TestSelection "264-327,999"
+scripts\device_gate.bat -Candidate next361-open-reflection-js ^
+  -TestSelection "328,999"
+scripts\device_gate.bat -Candidate next361-open-reflection-recent-js ^
+  -TestSelection "264-328,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -744,6 +752,17 @@ malformed 回落和移除恢复；`TEST326/999` 已以 2/2 通过，证据位于
 已以 64/64 通过，证据位于
 `tmp/device-runs/20260820-205412-next359-textarea-cols-reflection-recent/`；该批不涉及 textarea
 布局宽度、视觉或人工页面验收。
+next360 的定向门覆盖 `HTMLTextAreaElement.rows` 有限整数 getter/setter、attribute round-trip、
+malformed 回落和移除恢复；`TEST327/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-205904-next360-textarea-rows-reflection/`。最近 `TEST264-327/999`
+已以 65/65 通过，证据位于
+`tmp/device-runs/20260820-205924-next360-textarea-rows-reflection-recent/`；该批不涉及 textarea
+布局高度、视觉或人工页面验收。
+next361 的定向门覆盖 `HTMLElement.open` 布尔 getter/setter、attribute round-trip 和移除恢复；
+`TEST328/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-210056-next361-open-reflection/`。最近 `TEST264-328/999` 已以
+66/66 通过，证据位于 `tmp/device-runs/20260820-210114-next361-open-reflection-recent/`；该批
+不涉及 details 展开布局、summary 激活、disclosure 交互、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 

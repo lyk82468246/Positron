@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 326
+#define TEST_MAX_NUMBER 328
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51229,6 +51229,46 @@ static BOOL test326_browser_textarea_cols_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 327 - browser HTMLTextAreaElement.rows integer reflection           */
+/* -------------------------------------------------------------------- */
+static BOOL test327_browser_textarea_rows_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_integer_property_case(
+            "<textarea id='target' rows='4'>Text</textarea>",
+            "rows", "rows", 4, 6, 8, error, sizeof(error))) {
+        show_error(L"TEST 327 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 327 OK",
+            "HTMLTextAreaElement.rows reflects the finite integer rows "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 328 - browser HTMLElement.open boolean reflection                  */
+/* -------------------------------------------------------------------- */
+static BOOL test328_browser_open_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_boolean_property_case(
+            "<details id='target' open><summary>Summary</summary>Body</details>",
+            "open", "open", error, sizeof(error))) {
+        show_error(L"TEST 328 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 328 OK",
+            "HTMLElement.open reflects the open boolean attribute through the "
+            "product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55722,6 +55762,12 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 326: ok =
                 test326_browser_textarea_cols_reflection();
+                break;
+        case 327: ok =
+                test327_browser_textarea_rows_reflection();
+                break;
+        case 328: ok =
+                test328_browser_open_reflection();
                 break;
         default: ok = FALSE; break;
         }

@@ -189,6 +189,10 @@ IDL 实现。
 20、控件宽度、范围钳制或完整 input Web IDL 实现。
 当前 raw metadata bridge 还为 `HTMLTextAreaElement.cols` 提供有限整数属性往返；这不等于
 textarea 布局宽度或完整 textarea Web IDL 实现。
+当前 raw metadata bridge 还为 `HTMLTextAreaElement.rows` 提供有限整数属性往返；这不等于
+textarea 布局高度或完整 textarea Web IDL 实现。
+当前 raw metadata bridge 还提供 `HTMLElement.open` 的布尔属性往返；这不等于 details 展开
+布局、summary 激活、disclosure 交互或完整 HTMLElement Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 

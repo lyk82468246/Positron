@@ -246,6 +246,12 @@ next358 在同一 bridge 上为 `HTMLInputElement.size` 接入有限整数反射
 next359 在同一 bridge 上为 `HTMLTextAreaElement.cols` 接入有限整数反射；TEST326/999 与最近
 `TEST264-326/999` 已通过。该切片只覆盖有限整数往返、malformed 回落和移除恢复，不声明
 textarea 布局宽度或完整 Web IDL 语义；`test_host` 仍只是宿主适配和测试消费者。
+next360 在同一 bridge 上为 `HTMLTextAreaElement.rows` 接入有限整数反射；TEST327/999 与最近
+`TEST264-327/999` 已通过。该切片只覆盖有限整数往返、malformed 回落和移除恢复，不声明
+textarea 布局高度或完整 Web IDL 语义；`test_host` 仍只是宿主适配和测试消费者。
+next361 在同一 bridge 上增加 `HTMLElement.open` 布尔反射；TEST328/999 与最近
+`TEST264-328/999` 已通过。该切片只覆盖布尔属性往返，不实现 details 展开布局、summary 激活、
+disclosure 交互或完整 HTMLElement Web IDL；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，
