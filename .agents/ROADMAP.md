@@ -127,6 +127,9 @@ next320 为 button `type` raw 反射增加 submitter 边界覆盖；TEST288/999 
 next321 验证未知 form `method` 原始值反射与 submission 的安全 GET fallback；TEST289/999 与最近的
 264–289/999 27 项回归保持 action/body 不变。该切片不实现其他 HTTP 方法、规范化或导航副作用；
 `test_host` 仍只是宿主适配和测试消费者。
+next322 验证未知 form `enctype` 原始值反射与 urlencoded POST fallback；TEST290/999 与最近的
+264–290/999 28 项回归保持 action/body 不变。该切片不实现 enctype 规范化、multipart 传输或其他
+编码格式；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

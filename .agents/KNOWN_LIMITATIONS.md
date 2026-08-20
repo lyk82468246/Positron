@@ -103,6 +103,8 @@
   `type=submit` 后才执行，不实现动态控件重建、完整 button Web IDL 或 native button UI。
 - next321 只验证未知 form `method` 原始值保留并在 submission 时安全回落到 GET；不实现其他
   HTTP 方法、method 规范化或导航副作用。
+- next322 只验证未知 form `enctype` 原始值保留并在 urlencoded POST 路径安全回落；不实现
+  enctype 规范化、multipart 传输或其他编码格式。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
