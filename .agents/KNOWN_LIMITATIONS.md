@@ -14,7 +14,7 @@
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
   textContent 读取）、textContent 写入、attribute、input value、checked、`HTMLElement.disabled`、表单属性
-  `name`/form `action`/`method`/`enctype`、submitter `formAction` 与约束相关 `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength` 反射、form property
+  `name`/form `action`/`method`/`enctype`、submitter `formAction`/`formMethod` 与约束相关 `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength` 反射、form property
   （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click）、submit/reset、invalid、reportValidity、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
@@ -70,6 +70,9 @@
 - next307 在同一 attribute bridge 上增加了 submitter `formAction` 属性反射；动态值会覆盖
   当前受限 urlencoded/multipart submission 的 action，移除后恢复 form action。它保留 raw
   attribute 语义，不实现完整 URL 解析、相对 URL 规范化或其他 submitter override 属性。
+- next308 在同一 attribute bridge 上增加了 submitter `formMethod` 属性反射；动态已支持的
+  `get`/`post` 值会覆盖当前受限 submission method，移除后恢复 form method。未知值/完整
+  规范化与 multipart submitter override 仍留待后续切片。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

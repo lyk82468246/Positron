@@ -9298,6 +9298,21 @@ static dom_string *pcore_form_submission_action(
     return action;
 }
 
+static int pcore_form_submission_method(
+        dom_html_form_element *form, dom_node *activated)
+{
+    if (activated != NULL &&
+            pcore_attr_value_is(activated, "formmethod", "post")) {
+        return 2;
+    }
+    if (activated != NULL &&
+            pcore_attr_value_is(activated, "formmethod", "get")) {
+        return 1;
+    }
+    return (form != NULL && pcore_attr_value_is((dom_node *) form,
+            "method", "post")) ? 2 : 1;
+}
+
 static int pcore_form_submission(pcore_render *st,
         dom_html_form_element *form,
         dom_node *activated, int choose_default,
@@ -9350,8 +9365,8 @@ static int pcore_form_submission(pcore_render *st,
     if (action_string == NULL) {
         goto form_submission_done;
     }
-    if (pcore_attr_value_is((dom_node *) form, "method", "post")) {
-        method = 2;
+    method = pcore_form_submission_method(form, activated);
+    if (method == 2) {
         if (pcore_attr_value_is((dom_node *) form, "enctype",
                 "multipart/form-data")) {
             method = 3;
