@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 357
+#define TEST_MAX_NUMBER 358
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51878,6 +51878,27 @@ static BOOL test357_browser_aria_invalid_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 358 - browser HTMLElement.ariaMultiLine property reflection       */
+/* -------------------------------------------------------------------- */
+static BOOL test358_browser_aria_multi_line_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-multiline='false'>Target</div>",
+            "ariaMultiLine", "aria-multiline", "false", "true", "false",
+            error, sizeof(error))) {
+        show_error(L"TEST 358 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 358 OK",
+            "HTMLElement.ariaMultiLine reflects the raw UTF-8 aria-multiline "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56464,6 +56485,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 357: ok =
                 test357_browser_aria_invalid_reflection();
+                break;
+        case 358: ok =
+                test358_browser_aria_multi_line_reflection();
                 break;
         default: ok = FALSE; break;
         }
