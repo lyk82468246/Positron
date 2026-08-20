@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 324
+#define TEST_MAX_NUMBER 325
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51189,6 +51189,26 @@ static BOOL test324_browser_webkit_directory_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 325 - browser HTMLInputElement.size integer reflection             */
+/* -------------------------------------------------------------------- */
+static BOOL test325_browser_input_size_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_integer_property_case(
+            "<input id='target' type='text' size='4'>",
+            "size", "size", 4, 6, 8, error, sizeof(error))) {
+        show_error(L"TEST 325 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 325 OK",
+            "HTMLInputElement.size reflects the finite integer size attribute "
+            "through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55676,6 +55696,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 324: ok =
                 test324_browser_webkit_directory_reflection();
+                break;
+        case 325: ok =
+                test325_browser_input_size_reflection();
                 break;
         default: ok = FALSE; break;
         }

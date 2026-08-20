@@ -767,6 +767,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(!__pcoreSetAttribute({id:this.__id,name:attr,value:String(n)}))"
         "{throw new Error(name+' update failed');}}});}"
         "PDefineInteger('tabIndex','tabindex');"
+        "PDefineInteger('size','size');"
         "PDefineString('action','action');"
         "PDefineString('method','method');"
         "PDefineString('enctype','enctype');"

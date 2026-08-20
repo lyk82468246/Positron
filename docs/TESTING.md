@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next357 基线）
+### 当前默认自动选择与人工验收包（next358 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -384,6 +384,10 @@ scripts\device_gate.bat -Candidate next357-webkitdirectory-reflection-js ^
   -TestSelection "324,999"
 scripts\device_gate.bat -Candidate next357-webkitdirectory-reflection-recent-js ^
   -TestSelection "264-324,999"
+scripts\device_gate.bat -Candidate next358-input-size-reflection-js ^
+  -TestSelection "325,999"
+scripts\device_gate.bat -Candidate next358-input-size-reflection-recent-js ^
+  -TestSelection "264-325,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -725,6 +729,11 @@ round-trip 和移除恢复；`TEST324/999` 已以 2/2 通过，证据位于
 已以 62/62 通过，证据位于
 `tmp/device-runs/20260820-204558-next357-webkitdirectory-reflection-recent/`；该批不涉及目录
 picker、目录选择语义、视觉或人工页面验收。
+next358 的定向门覆盖 `HTMLInputElement.size` 有限整数 getter/setter、attribute round-trip、
+malformed 回落和移除恢复；`TEST325/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-204956-next358-input-size-reflection/`。最近 `TEST264-325/999` 已以
+63/63 通过，证据位于 `tmp/device-runs/20260820-205011-next358-input-size-reflection-recent/`；
+该批不涉及默认 20、控件宽度、范围钳制、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
