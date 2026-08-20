@@ -296,6 +296,10 @@ scripts\device_gate.bat -Candidate next335-draggable-reflection-js ^
   -TestSelection "302,999"
 scripts\device_gate.bat -Candidate next335-draggable-reflection-recent-js ^
   -TestSelection "264-302,999"
+scripts\device_gate.bat -Candidate next336-tabindex-reflection-js ^
+  -TestSelection "303,999"
+scripts\device_gate.bat -Candidate next336-tabindex-reflection-recent-js ^
+  -TestSelection "264-303,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -508,6 +512,13 @@ next335 的定向门覆盖 `HTMLElement.draggable` raw UTF-8 getter/setter、att
 `tmp/device-runs/20260820-162725-next335-draggable-reflection/`。最近 `TEST264-302/999` 已以
 40/40 通过，证据位于 `tmp/device-runs/20260820-162804-next335-draggable-reflection-recent/`；
 该批不涉及拖放手势、视觉或人工页面验收。
+next336 的定向门覆盖 `HTMLElement.tabIndex` 有限整数 getter/setter、attribute round-trip、
+非法/缺失 raw attribute 回落和 setter 边界；`TEST303/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-163640-next336-tabindex-reflection/`。近期链前两次分别在既有
+TEST298、TEST266 的 DOM bootstrap timeout 处停止，均未命中 TEST303；最终
+`TEST264-303/999` 以 41/41 通过，证据位于
+`tmp/device-runs/20260820-163847-next336-tabindex-reflection-recent-retry2/`，零 ERROR/FAIL。
+该批不涉及焦点导航、视觉、触摸或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 

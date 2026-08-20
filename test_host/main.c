@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 302
+#define TEST_MAX_NUMBER 303
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50501,6 +50501,38 @@ static BOOL test_browser_boolean_property_case(const char *target_markup,
             "true|true|true|true|true", error, error_capacity);
 }
 
+static BOOL test_browser_integer_property_case(const char *target_markup,
+        const char *property, const char *attribute, int initial,
+        int attribute_value, int property_value, char *error,
+        int error_capacity)
+{
+    char html[1024];
+    char probe[2048];
+
+    _snprintf(html, sizeof(html) - 1,
+            "<!doctype html><html><head><script>window.boot=1;</script>"
+            "</head><body>%s<p id='result'>idle</p></body></html>",
+            target_markup);
+    html[sizeof(html) - 1] = '\0';
+    _snprintf(probe, sizeof(probe) - 1,
+            "var e=document.getElementById('target');"
+            "var initial=e.%s===%d;"
+            "e.setAttribute('%s','%d');"
+            "var attr=e.%s===%d;"
+            "e.%s=%d;var reflected=e.%s===%d;"
+            "e.setAttribute('%s','bad');var invalid=e.%s===-1;"
+            "e.removeAttribute('%s');var recovered=e.%s===-1;"
+            "document.getElementById('result').textContent="
+            "String(initial)+'|'+String(attr)+'|'+String(reflected)+'|' +"
+            "String(invalid)+'|'+String(recovered);",
+            property, initial, attribute, attribute_value, property,
+            attribute_value, property, property_value, property,
+            property_value, attribute, property, attribute, property);
+    probe[sizeof(probe) - 1] = '\0';
+    return test_browser_raw_string_fixture(html, probe,
+            "true|true|true|true|true", error, error_capacity);
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 294 - browser HTMLElement.title property reflection              */
 /* -------------------------------------------------------------------- */
@@ -50696,6 +50728,26 @@ static BOOL test302_browser_draggable_reflection(void)
     show_info(L"TEST 302 OK",
             "HTMLElement.draggable reflects the raw UTF-8 attribute through "
             "the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 303 - browser HTMLElement.tabIndex integer reflection             */
+/* -------------------------------------------------------------------- */
+static BOOL test303_browser_tabindex_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_integer_property_case(
+            "<div id='target' tabindex='2'>Target</div>", "tabIndex",
+            "tabindex", 2, -1, 4, error, sizeof(error))) {
+        show_error(L"TEST 303 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 303 OK",
+            "HTMLElement.tabIndex accepts finite integers and uses -1 for "
+            "missing or malformed raw attributes.");
     return TRUE;
 }
 
@@ -55121,6 +55173,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 302: ok =
                 test302_browser_draggable_reflection();
+                break;
+        case 303: ok =
+                test303_browser_tabindex_reflection();
                 break;
         default: ok = FALSE; break;
         }

@@ -139,6 +139,8 @@ typed dispatch entry 已由此 DLL 持有并执行；
 事件传播、焦点/控件默认行为、history/navigation side effect 和绘制调度仍由应用宿主负责。
 当前 raw metadata bridge 还提供 `HTMLElement.draggable` 的 UTF-8 属性往返；这不等于拖放手势或
 完整 HTMLElement Web IDL 实现。
+当前 raw metadata bridge 还提供 `HTMLElement.tabIndex` 的有限整数往返（缺失或非法值回落
+`-1`）；这不等于焦点导航、滚动、键盘顺序或完整 HTMLElement Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 

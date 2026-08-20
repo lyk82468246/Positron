@@ -132,6 +132,9 @@
   回归通过。该切片只保证属性往返，不改变 layout、编辑控件、native IME 或完整 Web IDL 语义。
 - next335 在同一 bridge 上增加 `HTMLElement.draggable` raw UTF-8 反射；TEST302 及最近回归通过。
   该切片只保证属性往返，不实现拖放手势、命中测试、native pointer 或完整 Web IDL 语义。
+- next336 在同一 bridge 上增加 `HTMLElement.tabIndex` 的有限整数 raw 反射；TEST303 及最近回归
+  通过。缺失或非法 raw attribute 回落为 `-1`，setter 只接受有限整数；该切片不实现焦点导航、
+  滚动、键盘顺序或完整 HTMLElement Web IDL 语义。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
