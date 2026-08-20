@@ -224,6 +224,10 @@ scripts\device_gate.bat -Candidate next317-type-js ^
   -TestSelection "285,999"
 scripts\device_gate.bat -Candidate next317-type-regression-js ^
   -TestSelection "68-73,189-231,233-262,264-285,999"
+scripts\device_gate.bat -Candidate next318-textarea-placeholder-js ^
+  -TestSelection "286,999"
+scripts\device_gate.bat -Candidate next318-textarea-placeholder-recent-js ^
+  -TestSelection "264-286,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -335,6 +339,13 @@ next317 的定向门覆盖 input `type` raw getter/setter、attribute round-trip
 `tmp/device-runs/20260820-134938-next317-type-js/`。启用 JavaScript 的相关回归已以 102/102
 通过，证据位于 `tmp/device-runs/20260820-135001-next317-type-regression-js/`；不涉及动态控件
 重建、完整 Web IDL type 规范、native type UI、视觉或人工页面验收。
+next318 的定向门覆盖 textarea `placeholder` 的 getter/setter、attribute round-trip、移除恢复，并
+确认 current value 与 GET submission 不变；`TEST286/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-135849-next318-textarea-placeholder-js/`。完整启用 JavaScript 链的多次
+尝试均只在既有 TEST192/227/272/277/279 的 bootstrap timeout 处提前结束，未作为基线；最近
+`TEST264-286/999` 相关段已以 24/24 通过，证据位于
+`tmp/device-runs/20260820-140648-next318-textarea-placeholder-recent-js-retry2/`。该批不涉及
+placeholder 绘制、SIP、原生提示 UI、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
@@ -411,6 +422,7 @@ next317 的定向门覆盖 input `type` raw getter/setter、attribute round-trip
 | 283 | 自动验证 input `autocomplete` 的脚本反射、attribute round-trip、移除恢复，并确认 current value 与 submission 保持不变。 |
 | 284 | 自动验证 input `inputMode` ↔ `inputmode` 的脚本反射、attribute round-trip、移除恢复，并确认 current value 与 submission 保持不变。 |
 | 285 | 自动验证 input `type` raw 属性的脚本反射、attribute round-trip、移除恢复，并确认既有 text-control submission 保持不变。 |
+| 286 | 自动验证 textarea `placeholder` 的脚本反射、attribute round-trip、移除恢复，并确认 current value 与 submission 保持不变。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 和 TEST263 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
