@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 362
+#define TEST_MAX_NUMBER 363
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51983,6 +51983,27 @@ static BOOL test362_browser_aria_pos_in_set_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 363 - browser HTMLElement.ariaReadOnly property reflection         */
+/* -------------------------------------------------------------------- */
+static BOOL test363_browser_aria_read_only_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-readonly='false'>Target</div>",
+            "ariaReadOnly", "aria-readonly", "false", "true", "false",
+            error, sizeof(error))) {
+        show_error(L"TEST 363 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 363 OK",
+            "HTMLElement.ariaReadOnly reflects the raw UTF-8 aria-readonly "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56584,6 +56605,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 362: ok =
                 test362_browser_aria_pos_in_set_reflection();
+                break;
+        case 363: ok =
+                test363_browser_aria_read_only_reflection();
                 break;
         default: ok = FALSE; break;
         }
