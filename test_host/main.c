@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 349
+#define TEST_MAX_NUMBER 350
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51710,6 +51710,27 @@ static BOOL test349_browser_aria_col_count_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 350 - browser HTMLElement.ariaColIndex property reflection        */
+/* -------------------------------------------------------------------- */
+static BOOL test350_browser_aria_col_index_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-colindex='1'>Target</div>",
+            "ariaColIndex", "aria-colindex", "1", "2", "3",
+            error, sizeof(error))) {
+        show_error(L"TEST 350 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 350 OK",
+            "HTMLElement.ariaColIndex reflects the raw UTF-8 aria-colindex "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56272,6 +56293,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 349: ok =
                 test349_browser_aria_col_count_reflection();
+                break;
+        case 350: ok =
+                test350_browser_aria_col_index_reflection();
                 break;
         default: ok = FALSE; break;
         }
