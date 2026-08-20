@@ -223,6 +223,9 @@ next351 在同一 bridge 上增加 `HTMLElement.exportParts` ↔ `exportparts` r
 next352 在同一 bridge 上增加 `HTMLElement.inert` 布尔反射；TEST319/999 与最近
 `TEST264-319/999` 已通过。该切片只覆盖布尔属性往返，不实现焦点、键盘、无障碍树或完整
 HTMLElement Web IDL；`test_host` 仍只是宿主适配和测试消费者。
+next353 在同一 bridge 上增加 `HTMLElement.popover` ↔ `popover` raw 反射；TEST320/999 与最近
+`TEST264-320/999` 已通过。该切片只覆盖 UTF-8 属性往返，不实现 popover 显示/隐藏、焦点管理、
+top-layer 或完整 HTMLElement Web IDL；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，
