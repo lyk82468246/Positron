@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 379
+#define TEST_MAX_NUMBER 380
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52521,6 +52521,39 @@ static BOOL test379_browser_form_data(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 380 - bounded input selection state                               */
+/* -------------------------------------------------------------------- */
+static BOOL test380_browser_input_selection(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><input id='target' type='text' value='abcdef'>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var e=document.getElementById('target');"
+        "e.setSelectionRange(1,3,'backward');"
+        "var first=e.selectionStart+'|'+e.selectionEnd+'|'"
+        "+e.selectionDirection;e.select();"
+        "var second=e.selectionStart+'|'+e.selectionEnd+'|'"
+        "+e.selectionDirection;e.setSelectionRange(-4,99,'bad');"
+        "document.getElementById('result').textContent=first+'|'+second+'|'"
+        "+e.selectionStart+'|'+e.selectionEnd+'|'+e.selectionDirection;";
+    static const char EXPECTED[] = "1|3|backward|0|6|none|0|6|none";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 380 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 380 OK",
+            "Text controls now retain logical selectionStart/End/Direction"
+            " across element wrappers, setSelectionRange and select calls.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57173,6 +57206,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 379: ok =
                 test379_browser_form_data();
+                break;
+        case 380: ok =
+                test380_browser_input_selection();
                 break;
         default: ok = FALSE; break;
         }
