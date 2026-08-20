@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 317
+#define TEST_MAX_NUMBER 318
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51045,6 +51045,27 @@ static BOOL test317_browser_part_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 318 - browser HTMLElement.exportParts property reflection          */
+/* -------------------------------------------------------------------- */
+static BOOL test318_browser_export_parts_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' exportparts='initial'>Target</div>",
+            "exportParts", "exportparts", "initial", "header:card",
+            "footer:panel", error, sizeof(error))) {
+        show_error(L"TEST 318 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 318 OK",
+            "HTMLElement.exportParts reflects the raw UTF-8 exportparts "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55511,6 +55532,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 317: ok =
                 test317_browser_part_reflection();
+                break;
+        case 318: ok =
+                test318_browser_export_parts_reflection();
                 break;
         default: ok = FALSE; break;
         }

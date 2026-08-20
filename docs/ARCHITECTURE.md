@@ -170,6 +170,8 @@ microdata item 解析或语义树。
 CSP nonce 校验、安全策略、脚本执行或完整 HTMLElement Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.part` ↔ `part` 的 UTF-8 属性往返；这不等于
 Shadow DOM 部件导出、CSS 选择器语义或完整 HTMLElement Web IDL 实现。
+当前 raw metadata bridge 还提供 `HTMLElement.exportParts` ↔ `exportparts` 的 UTF-8 属性
+往返；这不等于 Shadow DOM 部件导出算法或完整 HTMLElement Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 
