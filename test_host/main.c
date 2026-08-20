@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 361
+#define TEST_MAX_NUMBER 362
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51962,6 +51962,27 @@ static BOOL test361_browser_aria_owns_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 362 - browser HTMLElement.ariaPosInSet property reflection        */
+/* -------------------------------------------------------------------- */
+static BOOL test362_browser_aria_pos_in_set_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-posinset='1'>Target</div>",
+            "ariaPosInSet", "aria-posinset", "1", "2", "3",
+            error, sizeof(error))) {
+        show_error(L"TEST 362 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 362 OK",
+            "HTMLElement.ariaPosInSet reflects the raw UTF-8 aria-posinset "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56560,6 +56581,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 361: ok =
                 test361_browser_aria_owns_reflection();
+                break;
+        case 362: ok =
+                test362_browser_aria_pos_in_set_reflection();
                 break;
         default: ok = FALSE; break;
         }
