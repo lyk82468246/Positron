@@ -101,6 +101,8 @@
   submission 不变，不实现自动填充策略、凭据存储或完整 select Web IDL 语义。
 - next320 只覆盖 button `type` 的 raw 反射和 submitter 恢复边界；提交断言要求脚本恢复
   `type=submit` 后才执行，不实现动态控件重建、完整 button Web IDL 或 native button UI。
+- next321 只验证未知 form `method` 原始值保留并在 submission 时安全回落到 GET；不实现其他
+  HTTP 方法、method 规范化或导航副作用。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

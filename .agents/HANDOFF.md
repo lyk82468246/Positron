@@ -11,7 +11,7 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next320（本批采用定向门；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next321（本批采用定向门；最近一次完整自动基线仍为 next255）。
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
 - next295 在 `test_host` 宿主中把可见 render window 内、未取消的 file-input
@@ -102,6 +102,9 @@
 - next320 为 button `type` raw 反射增加 submitter 边界覆盖；TEST288 自动覆盖 getter/setter、
   attribute round-trip、移除恢复以及恢复为 submit 后的 successful-control submission，不涉及动态控件
   重建、完整 button Web IDL 或 native button UI。
+- next321 验证未知 form `method` 原始值反射与 submission 的安全 GET fallback；TEST289 自动覆盖
+  getter/setter、attribute round-trip、移除恢复和 action/body 不变，不实现其他 HTTP 方法、规范化或
+  导航副作用。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
 - next292 批次验证 custom validity 状态跨 `PCore_LayoutDocument` 重排保持；没有新增视觉/触摸
@@ -423,6 +426,12 @@
   TESTBENCH PASS，`test13_route_ok=True`。最近
   `TEST264-288/999` 相关段 26/26 位于
   `tmp/device-runs/20260820-142025-next320-button-type-recent-js/`，零 ERROR/FAIL，tracked
+  `test_host/test_host.ini` 已恢复默认 `javascript=0`。
+- next321 自动候选证据：`TEST289/999` 2/2 位于
+  `tmp/device-runs/20260820-142613-next321-unknown-method-js/`；零 ERROR/FAIL、唯一
+  TESTBENCH PASS，`test13_route_ok=True`。最近
+  `TEST264-289/999` 相关段 27/27 位于
+  `tmp/device-runs/20260820-142636-next321-unknown-method-recent-js/`，零 ERROR/FAIL，tracked
   `test_host/test_host.ini` 已恢复默认 `javascript=0`。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
@@ -2048,15 +2057,15 @@ next295 的自动与人工门、next296 的 `HTMLElement.disabled` 自动门、n
 反射与动态语义门、next298 的 validation query 门、next299 的 custom-validity 门、next300 的
 form-level validation query 门、next301 的 report-validity/invalid-event 门、next302 的
 validationMessage fallback 门、next303 的 pattern/length reflection 门、next304 的 name
-reflection 门、next305 的 form submission reflection 门、next306 的 enctype reflection 门、next307 的 submitter action reflection 门、next308 的 submitter method reflection 门、next309 的 submitter enctype reflection 门、next310 的 implicit-submit consistency 门、next311 的 target reflection 门、next312 的 form autocomplete reflection 门、next313 的 acceptCharset reflection 门、next314 的 placeholder reflection 门、next315 的 input autocomplete reflection 门、next316 的 inputMode reflection 门、next317 的 input type reflection 门、next318 的 textarea placeholder coverage 门、next319 的 select autocomplete coverage 门以及 next320 的 button type submitter boundary 门均已通过。
+reflection 门、next305 的 form submission reflection 门、next306 的 enctype reflection 门、next307 的 submitter action reflection 门、next308 的 submitter method reflection 门、next309 的 submitter enctype reflection 门、next310 的 implicit-submit consistency 门、next311 的 target reflection 门、next312 的 form autocomplete reflection 门、next313 的 acceptCharset reflection 门、next314 的 placeholder reflection 门、next315 的 input autocomplete reflection 门、next316 的 inputMode reflection 门、next317 的 input type reflection 门、next318 的 textarea placeholder coverage 门、next319 的 select autocomplete coverage 门、next320 的 button type submitter boundary 门以及 next321 的 unknown method fallback 门均已通过。
 唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
 每批一个清晰的产品边界。
 
 完成标准：
 
-- TEST288/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归采用
-  `68–73/189–231/233–262/264–288/999` 定向选择；next299 的
+- TEST289/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归采用
+  `68–73/189–231/233–262/264–289/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；

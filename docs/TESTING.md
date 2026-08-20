@@ -236,6 +236,10 @@ scripts\device_gate.bat -Candidate next320-button-type-js ^
   -TestSelection "288,999"
 scripts\device_gate.bat -Candidate next320-button-type-recent-js ^
   -TestSelection "264-288,999"
+scripts\device_gate.bat -Candidate next321-unknown-method-js ^
+  -TestSelection "289,999"
+scripts\device_gate.bat -Candidate next321-unknown-method-recent-js ^
+  -TestSelection "264-289,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -366,6 +370,12 @@ next320 的定向门覆盖 button `type` 的 getter/setter、attribute round-tri
 `TEST264-288/999` 相关段已以 26/26 通过，证据位于
 `tmp/device-runs/20260820-142025-next320-button-type-recent-js/`；不涉及动态控件重建、native
 button UI、视觉或人工页面验收。
+next321 的定向门覆盖未知 form `method` 的 getter/setter、attribute round-trip、移除恢复，并确认
+submission 安全回落为 GET；`TEST289/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-142613-next321-unknown-method-js/`。最近
+`TEST264-289/999` 相关段已以 27/27 通过，证据位于
+`tmp/device-runs/20260820-142636-next321-unknown-method-recent-js/`；不涉及其他 HTTP 方法、
+规范化、导航副作用、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
@@ -445,6 +455,7 @@ button UI、视觉或人工页面验收。
 | 286 | 自动验证 textarea `placeholder` 的脚本反射、attribute round-trip、移除恢复，并确认 current value 与 submission 保持不变。 |
 | 287 | 自动验证 select `autocomplete` 的脚本反射、attribute round-trip、移除恢复，并确认选中值与 submission 保持不变。 |
 | 288 | 自动验证 button `type` 的脚本反射、attribute round-trip、移除恢复，并确认恢复为 submit 后 submission 保持不变。 |
+| 289 | 自动验证未知 form `method` 的脚本反射、attribute round-trip、移除恢复，并确认 submission 安全回落为 GET。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 和 TEST263 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
