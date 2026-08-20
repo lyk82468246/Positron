@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 381
+#define TEST_MAX_NUMBER 382
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52586,6 +52586,39 @@ static BOOL test381_browser_numeric_input(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 382 - input setRangeText and selection modes                      */
+/* -------------------------------------------------------------------- */
+static BOOL test382_browser_set_range_text(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><input id='target' type='text' value='abcdef'>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setSelectionRange(1,3);"
+        "e.setRangeText('XYZ');var a=e.value+'|'+e.selectionStart+'|'"
+        "+e.selectionEnd;e.setRangeText('Q',0,1,'select');"
+        "var b=e.value+'|'+e.selectionStart+'|'+e.selectionEnd;"
+        "e.setRangeText('!',1,3,'end');"
+        "document.getElementById('result').textContent=a+'|'+b+'|'"
+        "+e.value+'|'+e.selectionStart+'|'+e.selectionEnd;";
+    static const char EXPECTED[] =
+        "aXYZdef|1|4|QXYZdef|0|1|Q!Zdef|2|2";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 382 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 382 OK",
+            "Text controls now support bounded setRangeText replacement"
+            " with select/start/end/preserve selection modes.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57244,6 +57277,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 381: ok =
                 test381_browser_numeric_input();
+                break;
+        case 382: ok =
+                test382_browser_set_range_text();
                 break;
         default: ok = FALSE; break;
         }
