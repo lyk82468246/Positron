@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 294
+#define TEST_MAX_NUMBER 295
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50438,6 +50438,39 @@ static BOOL test_browser_raw_string_fixture(const char *html,
     return ok;
 }
 
+static BOOL test_browser_raw_property_case(const char *target_markup,
+        const char *property, const char *attribute, const char *initial,
+        const char *attribute_value, const char *property_value,
+        char *error, int error_capacity)
+{
+    char html[1024];
+    char probe[2048];
+
+    _snprintf(html, sizeof(html) - 1,
+            "<!doctype html><html><head><script>window.boot=1;</script>"
+            "</head><body>%s<p id='result'>idle</p></body></html>",
+            target_markup);
+    html[sizeof(html) - 1] = '\0';
+    _snprintf(probe, sizeof(probe) - 1,
+            "var e=document.getElementById('target');"
+            "var initial=e.%s==='%s';"
+            "e.setAttribute('%s','%s');"
+            "var attr=e.%s==='%s';"
+            "e.%s='%s';"
+            "var reflected=e.%s==='%s';"
+            "e.removeAttribute('%s');"
+            "var recovered=e.%s==='';"
+            "document.getElementById('result').textContent="
+            "String(initial)+'|'+String(attr)+'|'+String(reflected)+'|' +"
+            "String(recovered);",
+            property, initial, attribute, attribute_value, property,
+            attribute_value, property, property_value, property,
+            property_value, attribute, property);
+    probe[sizeof(probe) - 1] = '\0';
+    return test_browser_raw_string_fixture(html, probe,
+            "true|true|true|true", error, error_capacity);
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 294 - browser HTMLElement.title property reflection              */
 /* -------------------------------------------------------------------- */
@@ -50469,6 +50502,26 @@ static BOOL test294_browser_title_reflection(void)
     }
     show_info(L"TEST 294 OK",
             "HTMLElement.title reflects the raw UTF-8 attribute through "
+            "the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 295 - browser HTMLElement.lang property reflection               */
+/* -------------------------------------------------------------------- */
+static BOOL test295_browser_lang_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' lang='en'>Target</div>", "lang", "lang",
+            "en", "fr-CA", "de-DE", error, sizeof(error))) {
+        show_error(L"TEST 295 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 295 OK",
+            "HTMLElement.lang reflects the raw UTF-8 attribute through "
             "the product browser bridge.");
     return TRUE;
 }
@@ -54871,6 +54924,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 294: ok =
                 test294_browser_title_reflection();
+                break;
+        case 295: ok =
+                test295_browser_lang_reflection();
                 break;
         default: ok = FALSE; break;
         }

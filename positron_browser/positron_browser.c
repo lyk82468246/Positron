@@ -727,6 +727,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineBoolean('disabled','disabled');"
         "PDefineString('name','name');"
         "PDefineString('title','title');"
+        "PDefineString('lang','lang');"
         "PDefineString('action','action');"
         "PDefineString('method','method');"
         "PDefineString('enctype','enctype');"

@@ -116,6 +116,8 @@
 - next327 在既有 browser attribute bridge 上增加 `HTMLElement.title` raw UTF-8 反射；
   TEST294 及最近回归通过。该切片只保证属性往返，不实现 tooltip 绘制、原生提示 UI 或
   完整 HTMLElement Web IDL 语义。
+- next328 在同一 bridge 上增加 `HTMLElement.lang` raw UTF-8 反射；TEST295 及最近回归通过。
+  该切片只保证属性往返，不实现语言解析、本地化或完整 HTMLElement Web IDL 语义。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
