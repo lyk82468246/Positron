@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 372
+#define TEST_MAX_NUMBER 373
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52290,6 +52290,38 @@ static BOOL test372_browser_url_object(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 373 - browser session/local storage semantics                     */
+/* -------------------------------------------------------------------- */
+static BOOL test373_browser_storage(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "sessionStorage.setItem('a','one');sessionStorage.setItem('b',2);"
+        "localStorage.setItem('a','local');sessionStorage.setItem('a','two');"
+        "var before=sessionStorage.length+'|'+sessionStorage.key(0)+'|'"
+        "+sessionStorage.getItem('a')+'|'+localStorage.getItem('a')+'|'"
+        "+String(sessionStorage.getItem('missing')===null);"
+        "sessionStorage.removeItem('b');localStorage.clear();"
+        "document.getElementById('result').textContent=before+'|'"
+        "+sessionStorage.length+'|'+String(sessionStorage.key(1)===null)+'|'"
+        "+localStorage.length+'|'+String(localStorage.getItem('a')===null);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] = "2|a|two|local|true|1|true|0|true";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, "", EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 373 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 373 OK",
+            "The product browser provides independent sessionStorage and "
+            "localStorage maps with deterministic ordering and mutation.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56921,6 +56953,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 372: ok =
                 test372_browser_url_object();
+                break;
+        case 373: ok =
+                test373_browser_storage();
                 break;
         default: ok = FALSE; break;
         }
