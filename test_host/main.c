@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 323
+#define TEST_MAX_NUMBER 324
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51169,6 +51169,26 @@ static BOOL test323_browser_virtual_keyboard_policy_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 324 - browser HTMLInputElement.webkitDirectory boolean reflection   */
+/* -------------------------------------------------------------------- */
+static BOOL test324_browser_webkit_directory_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_boolean_property_case(
+            "<input id='target' type='file' webkitdirectory>",
+            "webkitDirectory", "webkitdirectory", error, sizeof(error))) {
+        show_error(L"TEST 324 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 324 OK",
+            "HTMLInputElement.webkitDirectory reflects the webkitdirectory "
+            "boolean attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55653,6 +55673,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 323: ok =
                 test323_browser_virtual_keyboard_policy_reflection();
+                break;
+        case 324: ok =
+                test324_browser_webkit_directory_reflection();
                 break;
         default: ok = FALSE; break;
         }

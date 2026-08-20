@@ -193,6 +193,8 @@
 - next356 在同一 bridge 上增加 `HTMLInputElement.virtualKeyboardPolicy` ↔
   `virtualkeyboardpolicy` raw UTF-8 反射；TEST323 及最近回归通过。该切片只保证属性往返，不
   实现 SIP、虚拟键盘策略执行或完整 input Web IDL。
+- next357 在同一 bridge 上增加 `HTMLInputElement.webkitDirectory` 布尔反射；TEST324 及最近
+  回归通过。该切片只保证属性往返，不触发目录 picker、实现目录选择语义或完整 input Web IDL。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
