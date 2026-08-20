@@ -109,6 +109,8 @@
   完整 Web IDL 枚举语义或导航副作用。
 - next324 只验证动态 action/method/value 更新后，反复重排不会陈旧化 submission metadata；
   不实现导航提交、异步任务或完整浏览器生命周期。
+- next325 只验证 form reset 恢复控件默认值而保留动态 form action/method，并重新生成正确的
+  submission metadata；不实现 reset event 默认动作之外的完整浏览器生命周期或导航。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

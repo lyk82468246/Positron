@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 292
+#define TEST_MAX_NUMBER 293
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50182,6 +50182,188 @@ static BOOL test292_submission_metadata_relayout(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 293 - form reset preserves metadata and restores control values    */
+/* -------------------------------------------------------------------- */
+static BOOL test293_reset_submission_metadata(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='form' action='/reset-before' method='get'>"
+        "<input id='field' name='field' value='alpha'>"
+        "<button id='send' type='submit' name='go' value='send'>Send</button>"
+        "<button id='reset' type='reset'>Reset</button>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "input,button{display:block;margin:4px 0;width:180px}";
+    static const char PROBE[] =
+        "document.getElementById('form').action='/reset-after';"
+        "document.getElementById('form').method='post';"
+        "document.getElementById('field').value='beta';"
+        "document.getElementById('result').textContent='changed';";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormSubmissionInfo changed;
+    PCoreFormSubmissionInfo restored;
+    char changed_action[128];
+    char changed_body[512];
+    char restored_action[128];
+    char restored_body[512];
+    char result[64];
+    char error[384];
+    int executed;
+    int ignored;
+    int result_bytes;
+    int send_x;
+    int send_y;
+    int send_kind;
+    int reset_x;
+    int reset_y;
+    int reset_kind;
+    int disabled;
+    int changed_result;
+    int restored_result;
+    int reset_result;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&changed, 0, sizeof(changed));
+    memset(&restored, 0, sizeof(restored));
+    memset(changed_action, 0, sizeof(changed_action));
+    memset(changed_body, 0, sizeof(changed_body));
+    memset(restored_action, 0, sizeof(restored_action));
+    memset(restored_body, 0, sizeof(restored_body));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    send_x = 0;
+    send_y = 0;
+    send_kind = 0;
+    reset_x = 0;
+    reset_y = 0;
+    reset_kind = 0;
+    disabled = 0;
+    changed_result = 0;
+    restored_result = 0;
+    reset_result = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/reset-metadata.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 480) != 0 ||
+                PCore_FormControlInfoById(document, "send", &send_x,
+                &send_y, NULL, NULL, &send_kind, NULL, &disabled) != 0 ||
+                PCore_FormControlInfoById(document, "reset", &reset_x,
+                &reset_y, NULL, NULL, &reset_kind, NULL, &disabled) != 0 ||
+                send_kind != 7 || reset_kind != 8 || disabled) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "changed") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        changed_result = PCore_FormSubmissionAt(document, send_x, send_y,
+                &changed, changed_action, sizeof(changed_action),
+                changed_body, sizeof(changed_body));
+        if (changed_result != 1 || changed.method != 2 ||
+                changed.action_bytes != (int) strlen("/reset-after") ||
+                changed.body_bytes != (int) strlen("field=beta&go=send") ||
+                strcmp(changed_action, "/reset-after") != 0 ||
+                strcmp(changed_body, "field=beta&go=send") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        reset_result = PCore_FormResetAt(document, reset_x, reset_y);
+        if (reset_result != 1 || PCore_LayoutDocument(document, 240, 320) !=
+                0 || PCore_FormControlInfoById(document, "send", &send_x,
+                &send_y, NULL, NULL, &send_kind, NULL, &disabled) != 0 ||
+                PCore_FormControlInfoById(document, "reset", &reset_x,
+                &reset_y, NULL, NULL, &reset_kind, NULL, &disabled) != 0 ||
+                send_kind != 7 || reset_kind != 8 || disabled) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        restored_result = PCore_FormSubmissionAt(document, send_x, send_y,
+                &restored, restored_action, sizeof(restored_action),
+                restored_body, sizeof(restored_body));
+        if (restored_result != 1 || restored.method != 2 ||
+                restored.action_bytes != changed.action_bytes ||
+                restored.body_bytes != (int) strlen("field=alpha&go=send") ||
+                strcmp(restored_action, "/reset-after") != 0 ||
+                strcmp(restored_body, "field=alpha&go=send") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "changed=%d/%d restored=%d/%d reset=%d action=%s body=%s",
+                    changed_result, changed.method, restored_result,
+                    restored.method, reset_result, restored_action,
+                    restored_body);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 293 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 293 OK",
+            "form reset restored control values while preserving dynamic "
+            "action/method and correct submission metadata.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -54573,6 +54755,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 292: ok =
                 test292_submission_metadata_relayout();
+                break;
+        case 293: ok =
+                test293_reset_submission_metadata();
                 break;
         default: ok = FALSE; break;
         }
