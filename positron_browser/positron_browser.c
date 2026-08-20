@@ -758,6 +758,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('itemValue','itemvalue');"
         "PDefineString('is','is');"
         "PDefineString('ariaAtomic','aria-atomic');"
+        "PDefineString('ariaBusy','aria-busy');"
         "PDefineString('enterKeyHint','enterkeyhint');"
         "PDefineString('virtualKeyboardPolicy','virtualkeyboardpolicy');"
         "PDefineBoolean('webkitDirectory','webkitdirectory');"
