@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 329
+#define TEST_MAX_NUMBER 330
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51290,6 +51290,27 @@ static BOOL test329_browser_autocapitalize_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 330 - browser HTMLElement.itemValue property reflection            */
+/* -------------------------------------------------------------------- */
+static BOOL test330_browser_item_value_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' itemvalue='initial'>Target</div>",
+            "itemValue", "itemvalue", "initial", "value-a", "value-b",
+            error, sizeof(error))) {
+        show_error(L"TEST 330 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 330 OK",
+            "HTMLElement.itemValue reflects the raw UTF-8 itemvalue attribute "
+            "through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55792,6 +55813,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 329: ok =
                 test329_browser_autocapitalize_reflection();
+                break;
+        case 330: ok =
+                test330_browser_item_value_reflection();
                 break;
         default: ok = FALSE; break;
         }
