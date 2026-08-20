@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 383
+#define TEST_MAX_NUMBER 384
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -7261,6 +7261,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     int ignored;
     int rc;
     int i;
+    int host_dpi;
+    double viewport_width;
+    double viewport_height;
+    double device_pixel_ratio;
 
     if (out_executed != NULL) {
         *out_executed = 0;
@@ -7429,6 +7433,15 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     if (history_state_json == NULL) {
         history_state_json = "null";
     }
+    host_dpi = test_host_device_dpi();
+    if (host_dpi <= 0) {
+        host_dpi = 96;
+    }
+    viewport_width = (double) GetSystemMetrics(SM_CXSCREEN) * 96.0 /
+            (double) host_dpi;
+    viewport_height = (double) GetSystemMetrics(SM_CYSCREEN) * 96.0 /
+            (double) host_dpi;
+    device_pixel_ratio = (double) host_dpi / 96.0;
     if (bridge->history_url == NULL || bridge->history_entry_url == NULL ||
             PBrowser_ScriptSessionSetGlobalString(session,
             "__pcoreDocumentUrl",
@@ -7437,6 +7450,12 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             "__pcoreHistoryLength", (double) history_length) != PSCRIPT_OK ||
             PBrowser_ScriptSessionSetGlobalJson(session,
             "__pcoreHistoryState", history_state_json) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", viewport_width) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", viewport_height) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", device_pixel_ratio) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomReadCallbacks(session,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacks(session,
@@ -52650,6 +52669,37 @@ static BOOL test383_browser_document_metadata(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 384 - window viewport and screen metrics                          */
+/* -------------------------------------------------------------------- */
+static BOOL test384_browser_window_metrics(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var w=window.innerWidth;var h=window.innerHeight;"
+        "var ok=w>0&&h>0&&w===window.outerWidth&&h===window.outerHeight;"
+        "var screenOk=screen.width===w&&screen.height===h&&"
+        "screen.availWidth===w&&screen.availHeight===h;"
+        "document.getElementById('result').textContent=String(ok)+'|'"
+        "+String(screenOk)+'|'+String(window.devicePixelRatio>0)+'|'"
+        "+String(screen.left===0&&screen.top===0);";
+    static const char EXPECTED[] = "true|true|true|true";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 384 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 384 OK",
+            "Window and screen metrics now reflect the host device viewport"
+            " and DPI-backed devicePixelRatio.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57314,6 +57364,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 383: ok =
                 test383_browser_document_metadata();
+                break;
+        case 384: ok =
+                test384_browser_window_metrics();
                 break;
         default: ok = FALSE; break;
         }
