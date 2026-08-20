@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 334
+#define TEST_MAX_NUMBER 335
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51395,6 +51395,27 @@ static BOOL test334_browser_aria_checked_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 335 - browser HTMLElement.ariaCurrent property reflection         */
+/* -------------------------------------------------------------------- */
+static BOOL test335_browser_aria_current_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-current='page'>Target</div>",
+            "ariaCurrent", "aria-current", "page", "step", "location",
+            error, sizeof(error))) {
+        show_error(L"TEST 335 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 335 OK",
+            "HTMLElement.ariaCurrent reflects the raw UTF-8 aria-current "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55912,6 +55933,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 334: ok =
                 test334_browser_aria_checked_reflection();
+                break;
+        case 335: ok =
+                test335_browser_aria_current_reflection();
                 break;
         default: ok = FALSE; break;
         }
