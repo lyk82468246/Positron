@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 309
+#define TEST_MAX_NUMBER 310
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50878,6 +50878,27 @@ static BOOL test309_browser_html_for_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 310 - browser HTMLElement.slot property reflection                */
+/* -------------------------------------------------------------------- */
+static BOOL test310_browser_slot_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' slot='initial'>Target</div>",
+            "slot", "slot", "initial", "header", "footer",
+            error, sizeof(error))) {
+        show_error(L"TEST 310 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 310 OK",
+            "HTMLElement.slot reflects the raw UTF-8 slot attribute through "
+            "the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55320,6 +55341,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 309: ok =
                 test309_browser_html_for_reflection();
+                break;
+        case 310: ok =
+                test310_browser_slot_reflection();
                 break;
         default: ok = FALSE; break;
         }

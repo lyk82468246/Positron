@@ -154,6 +154,8 @@ typed dispatch entry 已由此 DLL 持有并执行；
 当前 raw metadata bridge 还提供 `HTMLElement.htmlFor` ↔ `for` 的 UTF-8 属性往返；这不等于
 label 关联、焦点转移或完整 HTMLElement Web IDL 实现。`className` 已有独立的 class/classList
 描述符，不得重复定义。
+当前 raw metadata bridge 还提供 `HTMLElement.slot` ↔ `slot` 的 UTF-8 属性往返；这不等于
+Shadow DOM 或 slot 分配。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 
