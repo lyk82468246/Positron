@@ -198,6 +198,9 @@
 - next358 在同一 bridge 上为 `HTMLInputElement.size` 接入有限整数反射；TEST325 及最近回归
   通过。该切片只保证有限整数往返、malformed 回落和移除恢复，不声明默认 20、控件宽度、
   范围钳制或原生输入 UI 语义。
+- next359 在同一 bridge 上为 `HTMLTextAreaElement.cols` 接入有限整数反射；TEST326 及最近
+  回归通过。该切片只保证有限整数往返、malformed 回落和移除恢复，不声明 textarea 布局
+  宽度或完整 Web IDL 语义。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

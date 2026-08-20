@@ -768,6 +768,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "{throw new Error(name+' update failed');}}});}"
         "PDefineInteger('tabIndex','tabindex');"
         "PDefineInteger('size','size');"
+        "PDefineInteger('cols','cols');"
         "PDefineString('action','action');"
         "PDefineString('method','method');"
         "PDefineString('enctype','enctype');"

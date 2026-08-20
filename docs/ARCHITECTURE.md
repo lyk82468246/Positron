@@ -187,6 +187,8 @@ IDL 实现。
 目录 picker、目录选择语义或完整 input Web IDL 实现。
 当前 raw metadata bridge 还为 `HTMLInputElement.size` 提供有限整数属性往返；这不等于默认
 20、控件宽度、范围钳制或完整 input Web IDL 实现。
+当前 raw metadata bridge 还为 `HTMLTextAreaElement.cols` 提供有限整数属性往返；这不等于
+textarea 布局宽度或完整 textarea Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 
