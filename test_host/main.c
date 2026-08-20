@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 280
+#define TEST_MAX_NUMBER 281
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -48433,6 +48433,146 @@ static BOOL test280_browser_form_autocomplete_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 281 - browser form acceptCharset property reflection              */
+/* -------------------------------------------------------------------- */
+static BOOL test281_browser_accept_charset_reflection(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='form' action='/charset' method='get' "
+        "accept-charset='UTF-8'>"
+        "<input id='field' name='field' value='alpha'>"
+        "<button id='send' type=submit name='go' value='send'>Send</button>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "input,button{display:block;margin:4px 0;width:180px}";
+    static const char PROBE[] =
+        "var f=document.getElementById('form');"
+        "var initial=f.acceptCharset==='UTF-8';"
+        "f.setAttribute('accept-charset','ISO-8859-1');"
+        "var attr=f.acceptCharset==='ISO-8859-1';"
+        "f.acceptCharset='UTF-8, ISO-8859-1';"
+        "var reflected=f.acceptCharset==='UTF-8, ISO-8859-1';"
+        "f.removeAttribute('accept-charset');"
+        "var recovered=f.acceptCharset==='';"
+        "document.getElementById('result').textContent="
+        "String(initial)+'|'+String(attr)+'|'+String(reflected)+'|'+"
+        "String(recovered);";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormSubmissionInfo submission;
+    char result[256];
+    char action[128];
+    char body[512];
+    char error[384];
+    int executed;
+    int ignored;
+    int result_bytes;
+    int send_x;
+    int send_y;
+    int send_kind;
+    int disabled;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&submission, 0, sizeof(submission));
+    memset(result, 0, sizeof(result));
+    memset(action, 0, sizeof(action));
+    memset(body, 0, sizeof(body));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    send_x = 0;
+    send_y = 0;
+    send_kind = 0;
+    disabled = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/accept-charset.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 480) != 0 ||
+                PCore_FormControlInfoById(document, "send", &send_x,
+                &send_y, NULL, NULL, &send_kind, NULL, &disabled) != 0 ||
+                send_kind != 7 || disabled) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "true|true|true|true") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PCore_FormSubmissionAt(document, send_x, send_y,
+                &submission, action, sizeof(action), body, sizeof(body)) !=
+                1 || submission.method != 1 || strcmp(action, "/charset") != 0 ||
+                strcmp(body, "field=alpha&go=send") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result=%s method=%d action=%s body=%s", result,
+                    submission.method, action, body);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 281 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 281 OK",
+            "form acceptCharset reflected raw attribute changes without "
+            "altering the existing submission.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -52788,6 +52928,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 280: ok =
                 test280_browser_form_autocomplete_reflection();
+                break;
+        case 281: ok =
+                test281_browser_accept_charset_reflection();
                 break;
         default: ok = FALSE; break;
         }

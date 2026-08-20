@@ -129,7 +129,7 @@ history/session opaque handle、有限同源 URL 判定、文档导航提交、p
 host JSON callback 注册、求值和调用生命周期。它依赖 `positron_json.dll` 验证 history state，
 并依赖 `positron_script.dll` 持有脚本 context，但不依赖窗口、网络或 WM 控件。
 
-bootstrap、按 id 查询元素、读取/写入 textContent、attribute、input value、checked、`HTMLElement.disabled`、表单属性 `name`/`action`/`method`/`enctype`/`target`/`autocomplete`、submitter `formAction`/`formMethod`/`formEnctype`、控件约束查询、form-level `checkValidity()`/`reportValidity()` 聚合查询与 invalid-event dispatch、custom validity query/set、约束相关
+bootstrap、按 id 查询元素、读取/写入 textContent、attribute、input value、checked、`HTMLElement.disabled`、表单属性 `name`/`action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件约束查询、form-level `checkValidity()`/`reportValidity()` 聚合查询与 invalid-event dispatch、custom validity query/set、约束相关
 `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength`、form property
 （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件、event 的
 DOM JSON 分发以及 native input/composition/keyboard/focus-family/EDIT-change/post-change-input/click/
@@ -148,7 +148,7 @@ typed dispatch entry 已由此 DLL 持有并执行；
 “浏览器 JavaScript”指产品浏览器层和宿主在显式开关开启时：
 
 1. browser layer 持有 `positron_script` context，并按 DOM 顺序驱动 classic inline/external script；
-2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/validation query（包括 form-level 聚合）/custom-validity/form/constraint-related reflected properties（含 `name`、form `action`/`method`/`enctype`/`target`/`autocomplete`、submitter `formAction`/`formMethod`/`formEnctype`、`pattern`/`minLength`/`maxLength`）/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract，并逐步承接其余表单适配；
+2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/validation query（包括 form-level 聚合）/custom-validity/form/constraint-related reflected properties（含 `name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、`pattern`/`minLength`/`maxLength`）/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract，并逐步承接其余表单适配；
 2a. report-validity callback 只返回同步 valid 结果并路由可寻址控件的 trusted `invalid` 事件；
     它不负责 native invalid UI、焦点/滚动或表单提交。
 3. browser layer 持有并执行产品 bootstrap；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
