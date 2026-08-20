@@ -233,6 +233,10 @@ HTMLElement Web IDL；首次近期门的既有 TEST266 bootstrap timeout 不作�
 next355 在同一 bridge 上增加 `HTMLInputElement.enterKeyHint` ↔ `enterkeyhint` raw 反射；
 TEST322/999 与最近 `TEST264-322/999` 已通过。该切片只覆盖 UTF-8 属性往返，不实现 SIP、
 键盘布局、输入法策略或完整 input Web IDL；`test_host` 仍只是宿主适配和测试消费者。
+next356 在同一 bridge 上增加 `HTMLInputElement.virtualKeyboardPolicy` ↔
+`virtualkeyboardpolicy` raw 反射；TEST323/999 与最近 `TEST264-323/999` 已通过。该切片只
+覆盖 UTF-8 属性往返，不实现 SIP、虚拟键盘策略执行或完整 input Web IDL；`test_host` 仍只是
+宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

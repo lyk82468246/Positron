@@ -754,6 +754,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('popover','popover');"
         "PDefineBoolean('autofocus','autofocus');"
         "PDefineString('enterKeyHint','enterkeyhint');"
+        "PDefineString('virtualKeyboardPolicy','virtualkeyboardpolicy');"
         "function PDefineInteger(name,attr){"
         "Object.defineProperty(PElement.prototype,name,{"
         "get:function(){var v=this.getAttribute(attr);var n;"

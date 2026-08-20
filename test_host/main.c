@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 322
+#define TEST_MAX_NUMBER 323
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51148,6 +51148,27 @@ static BOOL test322_browser_enter_key_hint_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 323 - browser HTMLInputElement.virtualKeyboardPolicy reflection     */
+/* -------------------------------------------------------------------- */
+static BOOL test323_browser_virtual_keyboard_policy_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<input id='target' virtualkeyboardpolicy='auto'>",
+            "virtualKeyboardPolicy", "virtualkeyboardpolicy", "auto",
+            "manual", "auto", error, sizeof(error))) {
+        show_error(L"TEST 323 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 323 OK",
+            "HTMLInputElement.virtualKeyboardPolicy reflects the raw UTF-8 "
+            "virtualkeyboardpolicy attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55629,6 +55650,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 322: ok =
                 test322_browser_enter_key_hint_reflection();
+                break;
+        case 323: ok =
+                test323_browser_virtual_keyboard_policy_reflection();
                 break;
         default: ok = FALSE; break;
         }
