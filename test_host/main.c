@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 377
+#define TEST_MAX_NUMBER 378
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52449,6 +52449,44 @@ static BOOL test377_browser_event_methods(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 378 - bounded selector matching and ID queries                    */
+/* -------------------------------------------------------------------- */
+static BOOL test378_browser_selector_queries(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target' class='card active' data-kind='demo'>x</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var e=document.querySelector('#target');var all="
+        "document.querySelectorAll('#target');"
+        "var id=e!==null&&e.matches('#target');"
+        "var cls=e.matches('.active')&&!e.matches('.missing');"
+        "var attr=e.matches('[data-kind]')&&"
+        "e.matches('[data-kind=demo]')&&e.matches('[data-kind=\"demo\"]');"
+        "var close=e.closest('[data-kind=demo]')===e;"
+        "var bounded=document.querySelector('.active')===null&&"
+        "document.querySelectorAll('.active').length===0;"
+        "document.getElementById('result').textContent="
+        "String(id)+'|'+String(all.length===1)+'|'+String(cls)+'|'"
+        "+String(attr)+'|'+String(close)+'|'+String(bounded)+'|'"
+        "+String(e.matches('*'));";
+    static const char EXPECTED[] = "true|true|true|true|true|true|true";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 378 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 378 OK",
+            "The browser bridge now supports bounded ID queries plus"
+            " self-element matches/closest for class and attribute selectors.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57095,6 +57133,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 377: ok =
                 test377_browser_event_methods();
+                break;
+        case 378: ok =
+                test378_browser_selector_queries();
                 break;
         default: ok = FALSE; break;
         }
