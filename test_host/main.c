@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 382
+#define TEST_MAX_NUMBER 383
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52619,6 +52619,37 @@ static BOOL test382_browser_set_range_text(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 383 - document metadata snapshot and title                         */
+/* -------------------------------------------------------------------- */
+static BOOL test383_browser_document_metadata(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "document.title='Positron';var title=document.title;"
+        "var type=document.contentType;var cs=document.characterSet;"
+        "var alias=document.charset;var mode=document.compatMode;"
+        "var dt=document.doctype.name;"
+        "document.getElementById('result').textContent=title+'|'+type+'|'"
+        "+cs+'|'+alias+'|'+mode+'|'+dt;";
+    static const char EXPECTED[] =
+        "Positron|text/html|UTF-8|UTF-8|CSS1Compat|html";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 383 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 383 OK",
+            "Document metadata now exposes title, UTF-8 character set,"
+            " content type, compatibility mode and a stable doctype.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57280,6 +57311,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 382: ok =
                 test382_browser_set_range_text();
+                break;
+        case 383: ok =
+                test383_browser_document_metadata();
                 break;
         default: ok = FALSE; break;
         }
