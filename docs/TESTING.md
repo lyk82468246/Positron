@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next302 基线）
+### 当前默认自动选择与人工验收包（next303 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -164,6 +164,10 @@ scripts\device_gate.bat -Candidate next302-validation-message ^
   -TestSelection "270,999"
 scripts\device_gate.bat -Candidate next302-validation-message-regression ^
   -TestSelection "68-73,189-231,233-262,264-270,999"
+scripts\device_gate.bat -Candidate next303-constraint-reflection-js ^
+  -TestSelection "271,999"
+scripts\device_gate.bat -Candidate next303-constraint-reflection-regression-js ^
+  -TestSelection "68-73,189-231,233-262,264-271,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -191,6 +195,12 @@ range/type mismatch、动态清除和 UTF-8 安全截断；`TEST270/999` 已以 
 已以 87/87 通过，证据位于 `tmp/device-runs/20260819-232921-next302-validation-message-regression/`；
 消息是固定英文，不涉及视觉、触摸、SIP、系统 picker、本地化或 native validation UI，不需要人工
 页面验收。
+next303 的定向门覆盖 `pattern`、`minLength`、`maxLength` 的 getter/setter 反射、动态
+`tooShort`/`tooLong`/`patternMismatch` flags 和非法负数/非有限 setter；`TEST271/999` 已以 2/2
+通过，证据位于 `tmp/device-runs/20260820-103112-next303-constraint-reflection-final/`。
+启用 JavaScript 的相关回归已以 88/88 通过，证据位于
+`tmp/device-runs/20260820-103233-next303-constraint-reflection-regression-final/`；不涉及视觉、
+触摸、SIP、系统 picker 或 native validation UI，不需要人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
@@ -252,6 +262,7 @@ range/type mismatch、动态清除和 UTF-8 安全截断；`TEST270/999` 已以 
 | 268 | 自动验证按 DOM id 聚合的 form `checkValidity()`；覆盖 required、disabled、readonly、custom validity、number 下溢、动态恢复和 `novalidate` 不绕过查询。 |
 | 269 | 自动验证 form/control `reportValidity()`；覆盖 invalid 事件目标与顺序、non-bubbling/cancelable/trusted 字段、preventDefault 不改变 boolean 结果、动态恢复、`novalidate`、disabled/readonly 跳过。 |
 | 270 | 自动验证 `validationMessage` 的固定英文内置 fallback、custom message 优先级、required/range/type mismatch、动态清除和安全截断。 |
+| 271 | 自动验证 `pattern`、`minLength`、`maxLength` 的脚本属性反射、动态 tooShort/tooLong/patternMismatch flags 和非法负数/非有限 setter。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 和 TEST263 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201

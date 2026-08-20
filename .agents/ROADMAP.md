@@ -1,6 +1,6 @@
 # Positron 路线图
 
-更新时间：2026-08-19
+更新时间：2026-08-20
 
 本文件只列尚未完成的目标。已提交的 next 批次不继续停留在路线图；当前候选和设备门见
 [`HANDOFF.md`](HANDOFF.md)，当前能力缺口见
@@ -64,6 +64,10 @@ browser custom-validity getter 在没有 application-owned message 时返回固�
 TEST270/999 与启用 JavaScript 的 87 项回归已通过。该切片保留 custom message 优先级，提供完整
 字节长度和安全截断，但不做本地化、不显示 native validation UI；`test_host` 仍只是宿主适配和
 测试消费者。
+next303 已在现有 browser attribute bridge 上增加 `pattern`、`minLength`、`maxLength` 反射；
+TEST271/999 与启用 JavaScript 的 88 项回归已通过，动态属性会继续驱动
+`tooShort`/`tooLong`/`patternMismatch`，并拒绝负数/非有限 setter。该切片不涉及视觉、SIP、系统 picker 或完整 Web IDL
+异常类型；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

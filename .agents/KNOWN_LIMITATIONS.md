@@ -1,6 +1,6 @@
 # Positron 当前限制
 
-更新时间：2026-08-19
+更新时间：2026-08-20
 
 这里只记录当前仍存在的产品或验收边界。已完成批次和设备流水不保留在本文件；最近证据见
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
@@ -14,7 +14,7 @@
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
   textContent 读取）、textContent 写入、attribute、input value、checked、`HTMLElement.disabled`、约束相关
-  `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step` 反射、form property
+  `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength` 反射、form property
   （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click）、submit/reset、invalid、reportValidity、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
@@ -49,6 +49,11 @@
   `validationMessage` 在 custom message 为空时返回固定英文 fallback；覆盖当前 flags 的
   优先级、动态恢复和安全截断。它不做本地化，不显示 native validation UI，也不改变
   `setCustomValidity()` 的 application-owned message 语义。
+
+- next303 在既有 attribute bridge 上增加了 `pattern`、`minLength`、`maxLength` 反射；
+  `minLength`/`maxLength` 的非负有限整数 setter 会拒绝负数和非有限值，动态值会重新驱动
+  `tooShort`/`tooLong`/`patternMismatch` 与 `checkValidity()`。它不声称完整 Web IDL
+  异常类型或原生控件 UI。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

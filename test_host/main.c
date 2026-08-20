@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 270
+#define TEST_MAX_NUMBER 271
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -46768,6 +46768,126 @@ static BOOL test270_browser_validation_message(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 271 - browser pattern and length property reflection              */
+/* -------------------------------------------------------------------- */
+static BOOL test271_browser_constraint_reflection(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form><input id='code' value='ab' minlength='3' "
+        "maxlength='4' pattern='[A-Z]+'>"
+        "<textarea id='notes' minlength='2' maxlength='4'>a</textarea>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var c=document.getElementById('code');"
+        "var t=document.getElementById('notes');"
+        "var initial=c.pattern==='[A-Z]+'&&c.minLength===3&&"
+        "c.maxLength===4&&t.minLength===2&&t.maxLength===4;"
+        "c.pattern='[a-z]+';c.minLength=2;c.maxLength=3;"
+        "t.minLength=1;t.maxLength=5;"
+        "var reflected=c.pattern==='[a-z]+'&&c.minLength===2&&"
+        "c.maxLength===3&&t.minLength===1&&t.maxLength===5;"
+        "c.value='a';var short=!c.checkValidity()&&"
+        "c.validity.tooShort&&!c.validity.patternMismatch;"
+        "c.value='abcdef';var long=!c.checkValidity()&&"
+        "c.validity.tooLong&&!c.validity.patternMismatch;"
+        "c.value='ab';var valid=c.checkValidity()&&"
+        "!c.validity.tooShort&&!c.validity.tooLong;"
+        "c.pattern='[0-9]+';var mismatch=!c.checkValidity()&&"
+        "c.validity.patternMismatch;"
+        "var threw=false;try{c.minLength=-1;}catch(e){threw=true;}"
+        "var infinite=false;try{c.maxLength=Infinity;}catch(e){infinite=true;}"
+        "document.getElementById('result').textContent="
+        "String(initial)+'|'+String(reflected)+'|'+String(short)+'|' +"
+        "String(long)+'|'+String(valid)+'|'+String(mismatch)+'|' +"
+        "String(threw)+'|'+String(infinite);";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormControlValidationInfo state;
+    char result[256];
+    char error[384];
+    const char *stage;
+    int executed;
+    int ignored;
+    int result_bytes;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&state, 0, sizeof(state));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "install-session";
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+    }
+    if (ok) {
+        stage = "reflection-and-validation";
+        if (pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "true|true|true|true|true|true|true|true") != 0 ||
+                PCore_FormControlValidationById(document, "code", &state) !=
+                0 || state.valid ||
+                (state.flags & PCORE_VALIDITY_PATTERN_MISMATCH) == 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s result=%s valid=%d flags=%lu",
+                    stage, result, state.valid,
+                    (unsigned long) state.flags);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 271 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 271 OK",
+            "pattern, minLength and maxLength reflected properties stayed "
+            "live with too-short, too-long and pattern validation flags.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -51093,6 +51213,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 270: ok =
                 test270_browser_validation_message();
+                break;
+        case 271: ok =
+                test271_browser_constraint_reflection();
                 break;
         default: ok = FALSE; break;
         }
