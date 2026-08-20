@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 369
+#define TEST_MAX_NUMBER 370
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52198,6 +52198,35 @@ static BOOL test369_browser_page_lifecycle(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 370 - browser navigator and window identity snapshot             */
+/* -------------------------------------------------------------------- */
+static BOOL test370_browser_environment_snapshot(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var n=navigator;window.name='positron';"
+        "document.getElementById('result').textContent="
+        "n.platform+'|'+n.language+'|'+n.languages[0]+'|'"
+        "+String(n.onLine)+'|'+String(n.cookieEnabled)+'|'"
+        "+window.name+'|'+String(Object.isFrozen(n));"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] =
+        "WinCE|en-US|en-US|true|false|positron|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, "", EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 370 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 370 OK",
+            "The product browser exposes a frozen navigator capability "
+            "snapshot and a script-owned window.name value.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56820,6 +56849,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 369: ok =
                 test369_browser_page_lifecycle();
+                break;
+        case 370: ok =
+                test370_browser_environment_snapshot();
                 break;
         default: ok = FALSE; break;
         }
