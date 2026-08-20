@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 339
+#define TEST_MAX_NUMBER 340
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51500,6 +51500,27 @@ static BOOL test339_browser_aria_has_popup_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 340 - browser HTMLElement.ariaHidden property reflection          */
+/* -------------------------------------------------------------------- */
+static BOOL test340_browser_aria_hidden_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-hidden='false'>Target</div>",
+            "ariaHidden", "aria-hidden", "false", "true", "false",
+            error, sizeof(error))) {
+        show_error(L"TEST 340 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 340 OK",
+            "HTMLElement.ariaHidden reflects the raw UTF-8 aria-hidden "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56032,6 +56053,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 339: ok =
                 test339_browser_aria_has_popup_reflection();
+                break;
+        case 340: ok =
+                test340_browser_aria_hidden_reflection();
                 break;
         default: ok = FALSE; break;
         }
