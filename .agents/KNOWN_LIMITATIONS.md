@@ -97,6 +97,8 @@
 - next318 只为 textarea 的既有 `placeholder` raw 反射补充独立设备断言；当前切片保证 textarea
   current value 与 submission 不变，不实现 placeholder 绘制、SIP、原生提示 UI 或完整 textarea
   Web IDL 语义。
+- next319 只为 select 的既有 `autocomplete` raw 反射补充独立设备断言；当前切片保证选中值与
+  submission 不变，不实现自动填充策略、凭据存储或完整 select Web IDL 语义。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
