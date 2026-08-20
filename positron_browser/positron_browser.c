@@ -730,6 +730,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('method','method');"
         "PDefineString('enctype','enctype');"
         "PDefineString('target','target');"
+        "PDefineString('autocomplete','autocomplete');"
         "PDefineString('formAction','formaction');"
         "PDefineString('formMethod','formmethod');"
         "PDefineString('formEnctype','formenctype');"

@@ -97,6 +97,9 @@ enctype override 及 multipart snapshot；TEST278/999 与启用 JavaScript 的 9
 next311 已在同一 browser attribute bridge 上增加 form `target` 反射；TEST279/999 与启用
 JavaScript 的 96 项相关回归验证 raw round-trip 且 submission action/method 不变。该切片不实现
 新窗口、target browsing context 或导航副作用；`test_host` 仍只是宿主适配和测试消费者。
+next312 已在同一 browser attribute bridge 上增加 form `autocomplete` 反射；TEST280/999 与启用
+JavaScript 的 97 项相关回归验证 raw round-trip 且 submission 不变。该切片不实现自动填充、凭据
+存储或控件级 autocomplete 语义；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

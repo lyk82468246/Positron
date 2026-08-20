@@ -14,7 +14,7 @@
 - `positron_browser.dll` 已拥有独立 history/session 产品层、PScript context、host JSON callback
   的 session 注册/调用生命周期、产品 bootstrap 文本和求值入口，以及 DOM 只读（按 id 查询与
   textContent 读取）、textContent 写入、attribute、input value、checked、`HTMLElement.disabled`、表单属性
-  `name`/form `action`/`method`/`enctype`/`target`、submitter `formAction`/`formMethod`/`formEnctype` 与约束相关 `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength` 反射、form property
+  `name`/form `action`/`method`/`enctype`/`target`/`autocomplete`、submitter `formAction`/`formMethod`/`formEnctype` 与约束相关 `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength` 反射、form property
   （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件分发、event JSON 分发、native input/composition、keyboard、focus-family、EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click）、submit/reset、invalid、reportValidity、file-input input/change、checkbox/radio input/change 和 SELECT input/change typed dispatch entry；显式开启时仍有 classic inline/external
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
@@ -81,6 +81,8 @@
   仅覆盖当前受限的 first-submit 选择，不引入完整 implicit-submission 或键盘事件规范。
 - next311 在同一 attribute bridge 上增加 form `target` 属性反射；raw getter/setter 不改变
   当前受限 submission action/method，也不实现新窗口、target browsing context 或导航副作用。
+- next312 在同一 attribute bridge 上增加 form `autocomplete` 属性反射；raw getter/setter 不改变
+  当前 submission，也不实现自动填充策略、凭据存储或控件级 autocomplete 语义。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
