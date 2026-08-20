@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 331
+#define TEST_MAX_NUMBER 332
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51332,6 +51332,27 @@ static BOOL test331_browser_is_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 332 - browser HTMLElement.ariaAtomic property reflection         */
+/* -------------------------------------------------------------------- */
+static BOOL test332_browser_aria_atomic_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-atomic='initial'>Target</div>",
+            "ariaAtomic", "aria-atomic", "initial", "true", "false",
+            error, sizeof(error))) {
+        show_error(L"TEST 332 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 332 OK",
+            "HTMLElement.ariaAtomic reflects the raw UTF-8 aria-atomic "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55840,6 +55861,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 331: ok =
                 test331_browser_is_reflection();
+                break;
+        case 332: ok =
+                test332_browser_aria_atomic_reflection();
                 break;
         default: ok = FALSE; break;
         }
