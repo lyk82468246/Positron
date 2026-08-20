@@ -87,6 +87,10 @@ raw attribute 边界。该切片不实现完整 URL parser 或其他 submitter o
 next308 已在同一 browser attribute bridge 上增加 submitter `formMethod` 反射；TEST276/999
 与启用 JavaScript 的 93 项相关回归验证 get/post 覆盖和移除恢复。该切片不扩展 multipart
 submitter eligibility 或完整 method 规范化；`test_host` 仍只是宿主适配和测试消费者。
+next309 已在同一 browser attribute bridge 上增加 submitter `formEnctype` 反射；TEST277/999
+与启用 JavaScript 的 94 项相关回归验证 urlencoded/multipart 覆盖、snapshot eligibility 和
+移除恢复。该切片不实现未知值/别名的完整编码规范化或传输边界；`test_host` 仍只是宿主适配
+和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

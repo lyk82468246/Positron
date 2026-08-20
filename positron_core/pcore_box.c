@@ -9202,6 +9202,10 @@ static int pcore_multipart_build_parts(dom_html_form_element *form,
 
 static dom_string *pcore_form_submission_action(
         dom_html_form_element *form, dom_node *activated);
+static int pcore_form_submission_method(
+        dom_html_form_element *form, dom_node *activated);
+static int pcore_form_submission_multipart(
+        dom_html_form_element *form, dom_node *activated);
 
 static pcore_multipart_submission *pcore_multipart_snapshot(
         pcore_render *st, dom_html_form_element *form, dom_node *activated,
@@ -9213,10 +9217,7 @@ static pcore_multipart_submission *pcore_multipart_snapshot(
     dom_node *default_submit;
     int default_error;
 
-    if (form == NULL ||
-            !pcore_attr_value_is((dom_node *) form, "method", "post") ||
-            !pcore_attr_value_is((dom_node *) form, "enctype",
-                    "multipart/form-data")) {
+    if (form == NULL) {
         return NULL;
     }
     submission = (pcore_multipart_submission *) calloc(1,
@@ -9234,6 +9235,14 @@ static pcore_multipart_submission *pcore_multipart_snapshot(
             return NULL;
         }
         activated = default_submit;
+    }
+    if (pcore_form_submission_method(form, activated) != 2 ||
+            !pcore_form_submission_multipart(form, activated)) {
+        if (default_submit != NULL) {
+            dom_node_unref(default_submit);
+        }
+        pcore_multipart_free(submission);
+        return NULL;
     }
     if (!pcore_form_validate(st, form, activated, &validation) ||
             !validation.valid) {
@@ -9313,6 +9322,21 @@ static int pcore_form_submission_method(
             "method", "post")) ? 2 : 1;
 }
 
+static int pcore_form_submission_multipart(
+        dom_html_form_element *form, dom_node *activated)
+{
+    if (activated != NULL && pcore_attr_value_is(activated,
+            "formenctype", "multipart/form-data")) {
+        return 1;
+    }
+    if (activated != NULL && pcore_attr_value_is(activated,
+            "formenctype", "application/x-www-form-urlencoded")) {
+        return 0;
+    }
+    return form != NULL && pcore_attr_value_is((dom_node *) form,
+            "enctype", "multipart/form-data");
+}
+
 static int pcore_form_submission(pcore_render *st,
         dom_html_form_element *form,
         dom_node *activated, int choose_default,
@@ -9367,8 +9391,7 @@ static int pcore_form_submission(pcore_render *st,
     }
     method = pcore_form_submission_method(form, activated);
     if (method == 2) {
-        if (pcore_attr_value_is((dom_node *) form, "enctype",
-                "multipart/form-data")) {
+        if (pcore_form_submission_multipart(form, activated)) {
             method = 3;
         }
     }
