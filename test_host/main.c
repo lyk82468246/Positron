@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 360
+#define TEST_MAX_NUMBER 361
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51941,6 +51941,27 @@ static BOOL test360_browser_aria_orientation_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 361 - browser HTMLElement.ariaOwns property reflection            */
+/* -------------------------------------------------------------------- */
+static BOOL test361_browser_aria_owns_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-owns='owned-a'>Target</div>",
+            "ariaOwns", "aria-owns", "owned-a", "owned-b", "owned-c",
+            error, sizeof(error))) {
+        show_error(L"TEST 361 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 361 OK",
+            "HTMLElement.ariaOwns reflects the raw UTF-8 aria-owns "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56536,6 +56557,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 360: ok =
                 test360_browser_aria_orientation_reflection();
+                break;
+        case 361: ok =
+                test361_browser_aria_owns_reflection();
                 break;
         default: ok = FALSE; break;
         }
