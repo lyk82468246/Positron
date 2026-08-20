@@ -753,6 +753,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineBoolean('inert','inert');"
         "PDefineString('popover','popover');"
         "PDefineBoolean('autofocus','autofocus');"
+        "PDefineString('enterKeyHint','enterkeyhint');"
         "function PDefineInteger(name,attr){"
         "Object.defineProperty(PElement.prototype,name,{"
         "get:function(){var v=this.getAttribute(attr);var n;"
