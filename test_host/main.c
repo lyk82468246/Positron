@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 333
+#define TEST_MAX_NUMBER 334
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -51374,6 +51374,27 @@ static BOOL test333_browser_aria_busy_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 334 - browser HTMLElement.ariaChecked property reflection         */
+/* -------------------------------------------------------------------- */
+static BOOL test334_browser_aria_checked_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<div id='target' aria-checked='mixed'>Target</div>",
+            "ariaChecked", "aria-checked", "mixed", "true", "false",
+            error, sizeof(error))) {
+        show_error(L"TEST 334 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 334 OK",
+            "HTMLElement.ariaChecked reflects the raw UTF-8 aria-checked "
+            "attribute through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55888,6 +55909,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 333: ok =
                 test333_browser_aria_busy_reflection();
+                break;
+        case 334: ok =
+                test334_browser_aria_checked_reflection();
                 break;
         default: ok = FALSE; break;
         }
