@@ -733,6 +733,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('accessKey','accesskey');"
         "PDefineString('role','role');"
         "PDefineString('ariaLabel','aria-label');"
+        "PDefineString('contentEditable','contenteditable');"
         "PDefineString('action','action');"
         "PDefineString('method','method');"
         "PDefineString('enctype','enctype');"
