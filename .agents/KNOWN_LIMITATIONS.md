@@ -99,6 +99,8 @@
   Web IDL 语义。
 - next319 只为 select 的既有 `autocomplete` raw 反射补充独立设备断言；当前切片保证选中值与
   submission 不变，不实现自动填充策略、凭据存储或完整 select Web IDL 语义。
+- next320 只覆盖 button `type` 的 raw 反射和 submitter 恢复边界；提交断言要求脚本恢复
+  `type=submit` 后才执行，不实现动态控件重建、完整 button Web IDL 或 native button UI。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
