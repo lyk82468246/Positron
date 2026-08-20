@@ -193,6 +193,13 @@ textarea 布局宽度或完整 textarea Web IDL 实现。
 textarea 布局高度或完整 textarea Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.open` 的布尔属性往返；这不等于 details 展开
 布局、summary 激活、disclosure 交互或完整 HTMLElement Web IDL 实现。
+当前 raw metadata bridge 还提供 `HTMLElement.autocapitalize`、`itemValue`、`is` 的 UTF-8
+属性往返；这不等于输入法/大小写策略、microdata 解析或 customized built-in 升级。
+当前 raw metadata bridge 还提供 `HTMLElement.ariaAtomic`、`ariaBusy`、`ariaChecked`、
+`ariaCurrent`、`ariaDescription`、`ariaDisabled`、`ariaExpanded`、`ariaHasPopup`、`ariaHidden`、
+`ariaKeyShortcuts`、`ariaLabelledBy`、`ariaLevel`、`ariaLive`、`ariaModal`、`ariaPlaceholder`、
+`ariaPressed`、`ariaSelected` 与对应 `aria-*` 的 UTF-8 属性往返；这不等于 ARIA 语义计算、
+可访问性树、辅助技术通知、焦点/交互或完整 HTMLElement Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 

@@ -252,6 +252,9 @@ textarea 布局高度或完整 Web IDL 语义；`test_host` 仍只是宿主适�
 next361 在同一 bridge 上增加 `HTMLElement.open` 布尔反射；TEST328/999 与最近
 `TEST264-328/999` 已通过。该切片只覆盖布尔属性往返，不实现 details 展开布局、summary 激活、
 disclosure 交互或完整 HTMLElement Web IDL；`test_host` 仍只是宿主适配和测试消费者。
+next362–364 已完成 `HTMLElement.autocapitalize`、`itemValue`、`is` 的 raw UTF-8 反射；
+TEST329–331 通过。next365–381 已完成 17 个 `aria-*` 对应的 HTMLElement raw UTF-8 反射，
+TEST332–348 通过；这些批次不实现 ARIA 语义、可访问性树、辅助技术通知或完整 Web IDL。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

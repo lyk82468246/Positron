@@ -11,7 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next361（最近一次累计检查点仍为 next326；最近一次完整自动基线仍为 next255）。
+- 最新已验证产品基线：next381（最终累计检查点为 `TEST264-348/999`；最近一次完整自动基线仍为
+  next255）。本批使用每项候选门和阶段性累计门，没有修改 tracked `test_host.ini`。
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
 - next295 在 `test_host` 宿主中把可见 render window 内、未取消的 file-input
@@ -232,6 +233,19 @@
 - next361 在同一 bridge 上增加 `HTMLElement.open` 布尔反射；TEST328 自动覆盖初始存在性、
   attribute 设置、property true/false、移除恢复和布尔 getter，不实现 details 展开布局、
   summary 激活或 disclosure 交互。`TEST328/999` 与最近 `TEST264-328/999` 均已通过。
+- next362 在同一 bridge 上增加 `HTMLElement.autocapitalize` ↔ `autocapitalize` raw UTF-8 反射；
+  TEST329 自动覆盖初始值、attribute/property 更新和移除恢复，不实现 SIP、大小写策略或输入法
+  行为。
+- next363 在同一 bridge 上增加 `HTMLElement.itemValue` ↔ `itemvalue` raw UTF-8 反射；TEST330
+  自动覆盖属性往返和移除恢复，不实现 microdata 解析。
+- next364 在同一 bridge 上增加 `HTMLElement.is` raw UTF-8 反射；TEST331 自动覆盖属性往返和
+  移除恢复，不实现 customized built-in 元素升级。
+- next365–381 在同一 bridge 上逐项增加 `HTMLElement.ariaAtomic`、`ariaBusy`、`ariaChecked`、
+  `ariaCurrent`、`ariaDescription`、`ariaDisabled`、`ariaExpanded`、`ariaHasPopup`、`ariaHidden`、
+  `ariaKeyShortcuts`、`ariaLabelledBy`、`ariaLevel`、`ariaLive`、`ariaModal`、`ariaPlaceholder`、
+  `ariaPressed`、`ariaSelected` 与对应 `aria-*` raw UTF-8 反射；TEST332–348 分别覆盖 getter、
+  `setAttribute`、property setter、移除恢复和 UTF-8 DOM 读回。该批明确不实现 ARIA 语义计算、
+  accessibility tree、辅助技术通知、焦点/交互或完整 Web IDL 约束。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
 - next292 批次验证 custom validity 状态跨 `PCore_LayoutDocument` 重排保持；没有新增视觉/触摸
@@ -800,6 +814,38 @@
   `tmp/device-runs/20260820-210114-next361-open-reflection-recent/`；零 ERROR/FAIL、唯一
   TESTBENCH PASS，`test13_route_ok=True`；tracked `test_host/test_host.ini` 已恢复默认
   `javascript=0`。
+- next362–364 自动候选证据分别为 `TEST329/999`、`TEST330/999`、`TEST331/999`，均 2/2、零
+  ERROR/FAIL，位于 `tmp/device-runs/20260820-210835-next362-autocapitalize-reflection/`、
+  `tmp/device-runs/20260820-211037-next363-itemvalue-reflection/`、
+  `tmp/device-runs/20260820-211223-next364-is-reflection/`；对应近期门分别为 67/67、68/68、
+  69/69，位于同名 `*-recent/` 目录。
+- next365–367 自动候选门分别覆盖 TEST332、333、334，各 2/2、零 ERROR/FAIL，证据位于
+  `tmp/device-runs/20260820-211544-next365-aria-atomic-reflection/`、
+  `tmp/device-runs/20260820-211654-next366-aria-busy-reflection/`、
+  `tmp/device-runs/20260820-211741-next367-aria-checked-reflection/`。
+- next368 的 TEST335 候选门 2/2 位于 `tmp/device-runs/20260820-211830-next368-aria-current-reflection/`；
+  阶段累计 `TEST264-335/999` 为 73/73，证据位于
+  `tmp/device-runs/20260820-211857-next368-aria-current-reflection-checkpoint/`。
+- next369–373 自动候选门分别覆盖 TEST336–340，各 2/2、零 ERROR/FAIL，证据位于
+  `tmp/device-runs/20260820-212032-next369-aria-description-reflection/`、
+  `tmp/device-runs/20260820-212122-next370-aria-disabled-reflection/`、
+  `tmp/device-runs/20260820-212209-next371-aria-expanded-reflection/`、
+  `tmp/device-runs/20260820-212302-next372-aria-has-popup-reflection/`、
+  `tmp/device-runs/20260820-212357-next373-aria-hidden-reflection/`。
+- next374 的 TEST341 候选门 2/2 位于 `tmp/device-runs/20260820-212451-next374-aria-keyshortcuts-reflection/`；
+  阶段累计 `TEST264-341/999` 为 79/79，证据位于
+  `tmp/device-runs/20260820-212519-next374-aria-keyshortcuts-reflection-checkpoint/`。
+- next375–380 自动候选门分别覆盖 TEST342–347，各 2/2、零 ERROR/FAIL，证据位于
+  `tmp/device-runs/20260820-212711-next375-aria-labelledby-reflection/`、
+  `tmp/device-runs/20260820-212801-next376-aria-level-reflection/`、
+  `tmp/device-runs/20260820-212852-next377-aria-live-reflection/`、
+  `tmp/device-runs/20260820-212942-next378-aria-modal-reflection/`、
+  `tmp/device-runs/20260820-213029-next379-aria-placeholder-reflection/`、
+  `tmp/device-runs/20260820-213111-next380-aria-pressed-reflection/`。
+- next381 的 TEST348/999 候选门 2/2 位于
+  `tmp/device-runs/20260820-213157-next381-aria-selected-reflection/`；最终累计
+  `TEST264-348/999` 为 86/86，零 ERROR/FAIL、唯一 TESTBENCH PASS、`test13_route_ok=True`，
+  证据位于 `tmp/device-runs/20260820-213220-next381-aria-selected-reflection-final/`。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -2425,14 +2471,17 @@ next295 的自动与人工门、next296 的 `HTMLElement.disabled` 自动门、n
 form-level validation query 门、next301 的 report-validity/invalid-event 门、next302 的
 validationMessage fallback 门、next303 的 pattern/length reflection 门、next304 的 name
  reflection 门、next305 的 form submission reflection 门、next306 的 enctype reflection 门、next307 的 submitter action reflection 门、next308 的 submitter method reflection 门、next309 的 submitter enctype reflection 门、next310 的 implicit-submit consistency 门、next311 的 target reflection 门、next312 的 form autocomplete reflection 门、next313 的 acceptCharset reflection 门、next314 的 placeholder reflection 门、next315 的 input autocomplete reflection 门、next316 的 inputMode reflection 门、next317 的 input type reflection 门、next318 的 textarea placeholder coverage 门、next319 的 select autocomplete coverage 门、next320 的 button type submitter boundary 门、next321 的 unknown method fallback 门、next322 的 unknown enctype fallback 门、next323 的 case boundary 门、next324 的 metadata relayout 门、next325 的 reset metadata 门、next326 的累计回归检查点、next327 的 `title` reflection 门、next328 的 `lang` reflection 门、next329 的 `dir` reflection 门、next330 的 `hidden` reflection 门、next331 的 `accessKey` reflection 门、next332 的 `role` reflection 门、next333 的 `ariaLabel` reflection 门、next334 的 `contentEditable` reflection 门、next335 的 `draggable` reflection 门、next336 的 `tabIndex` reflection 门、next337 的 `input.accept` reflection 门、next338 的 `input.capture` reflection 门、next339 的 `input.dirname` reflection 门、next340 的 `input.list` reflection 门、next341 的 `textarea.wrap` reflection 门、next342 的 `htmlFor` reflection 门、next343 的 `slot` reflection 门、next344 的 `itemId` reflection 门、next345 的 `itemProp` reflection 门、next346 的 `itemRef` reflection 门、next347 的 `itemScope` reflection 门、next348 的 `itemType` reflection 门、next349 的 `nonce` reflection 门、next350 的 `part` reflection 门、next351 的 `exportParts` reflection 门、next352 的 `inert` reflection 门、next353 的 `popover` reflection 门、next354 的 `autofocus` reflection 门、next355 的 `enterKeyHint` reflection 门、next356 的 `virtualKeyboardPolicy` reflection 门、next357 的 `webkitDirectory` reflection 门、next358 的 `input.size` integer reflection 门、next359 的 `textarea.cols` integer reflection 门、next360 的 `textarea.rows` integer reflection 门以及 next361 的 `open` reflection 门均已通过；`className` 重定义候选已撤回并记录失败边界。
+本轮 next362–381 的 metadata reflection 门也已通过：next362–364 覆盖 `autocapitalize`、
+`itemValue`、`is`，next365–381 覆盖上述 17 个 ARIA raw 属性；均只承诺 UTF-8 属性往返，
+不承诺 ARIA 语义或可访问性树。
 唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
 每批一个清晰的产品边界。
 
 完成标准：
 
-- TEST328/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–328/999` 定向选择；next299 的
+- TEST348/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–348/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；

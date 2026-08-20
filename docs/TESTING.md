@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next361 基线）
+### 当前默认自动选择与人工验收包（next381 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -400,6 +400,50 @@ scripts\device_gate.bat -Candidate next361-open-reflection-js ^
   -TestSelection "328,999"
 scripts\device_gate.bat -Candidate next361-open-reflection-recent-js ^
   -TestSelection "264-328,999"
+scripts\device_gate.bat -Candidate next362-autocapitalize-reflection ^
+  -TestSelection "329,999"
+scripts\device_gate.bat -Candidate next363-itemvalue-reflection ^
+  -TestSelection "330,999"
+scripts\device_gate.bat -Candidate next364-is-reflection ^
+  -TestSelection "331,999"
+scripts\device_gate.bat -Candidate next365-aria-atomic-reflection ^
+  -TestSelection "332,999"
+scripts\device_gate.bat -Candidate next366-aria-busy-reflection ^
+  -TestSelection "333,999"
+scripts\device_gate.bat -Candidate next367-aria-checked-reflection ^
+  -TestSelection "334,999"
+scripts\device_gate.bat -Candidate next368-aria-current-reflection ^
+  -TestSelection "335,999"
+scripts\device_gate.bat -Candidate next368-aria-current-reflection-checkpoint ^
+  -TestSelection "264-335,999"
+scripts\device_gate.bat -Candidate next369-aria-description-reflection ^
+  -TestSelection "336,999"
+scripts\device_gate.bat -Candidate next370-aria-disabled-reflection ^
+  -TestSelection "337,999"
+scripts\device_gate.bat -Candidate next371-aria-expanded-reflection ^
+  -TestSelection "338,999"
+scripts\device_gate.bat -Candidate next372-aria-has-popup-reflection ^
+  -TestSelection "339,999"
+scripts\device_gate.bat -Candidate next373-aria-hidden-reflection ^
+  -TestSelection "340,999"
+scripts\device_gate.bat -Candidate next374-aria-keyshortcuts-reflection ^
+  -TestSelection "341,999"
+scripts\device_gate.bat -Candidate next374-aria-keyshortcuts-reflection-checkpoint ^
+  -TestSelection "264-341,999"
+scripts\device_gate.bat -Candidate next375-aria-labelledby-reflection ^
+  -TestSelection "342,999"
+scripts\device_gate.bat -Candidate next376-aria-level-reflection ^
+  -TestSelection "343,999"
+scripts\device_gate.bat -Candidate next377-aria-live-reflection ^
+  -TestSelection "344,999"
+scripts\device_gate.bat -Candidate next378-aria-modal-reflection ^
+  -TestSelection "345,999"
+scripts\device_gate.bat -Candidate next379-aria-placeholder-reflection ^
+  -TestSelection "346,999"
+scripts\device_gate.bat -Candidate next380-aria-pressed-reflection ^
+  -TestSelection "347,999"
+scripts\device_gate.bat -Candidate next381-aria-selected-reflection-final ^
+  -TestSelection "264-348,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -763,6 +807,27 @@ next361 的定向门覆盖 `HTMLElement.open` 布尔 getter/setter、attribute r
 `tmp/device-runs/20260820-210056-next361-open-reflection/`。最近 `TEST264-328/999` 已以
 66/66 通过，证据位于 `tmp/device-runs/20260820-210114-next361-open-reflection-recent/`；该批
 不涉及 details 展开布局、summary 激活、disclosure 交互、视觉或人工页面验收。
+next362–364 的定向门分别覆盖 `autocapitalize`、`itemValue`、`is`（TEST329–331），各 2/2
+通过；近期门 TEST264–329、330、331 分别为 67/67、68/68、69/69。证据目录分别为
+`tmp/device-runs/20260820-210835-next362-autocapitalize-reflection/`、
+`tmp/device-runs/20260820-211037-next363-itemvalue-reflection/`、
+`tmp/device-runs/20260820-211223-next364-is-reflection/` 及对应 `*-recent/`；不涉及视觉或
+人工页面验收。
+next365–367 的定向门分别覆盖 TEST332–334（ariaAtomic、ariaBusy、ariaChecked），各 2/2、
+零 ERROR/FAIL；next368 覆盖 TEST335（ariaCurrent）2/2，阶段累计 TEST264–335/999 为 73/73。
+证据目录为 `tmp/device-runs/20260820-211544-next365-aria-atomic-reflection/`、
+`tmp/device-runs/20260820-211654-next366-aria-busy-reflection/`、
+`tmp/device-runs/20260820-211741-next367-aria-checked-reflection/`、
+`tmp/device-runs/20260820-211830-next368-aria-current-reflection/` 和
+`tmp/device-runs/20260820-211857-next368-aria-current-reflection-checkpoint/`。
+next369–373 的定向门覆盖 TEST336–340（ariaDescription、ariaDisabled、ariaExpanded、
+ariaHasPopup、ariaHidden），各 2/2、零 ERROR/FAIL；next374 覆盖 TEST341（ariaKeyShortcuts）
+2/2，阶段累计 TEST264–341/999 为 79/79。next375–380 的定向门覆盖 TEST342–347
+（ariaLabelledBy、ariaLevel、ariaLive、ariaModal、ariaPlaceholder、ariaPressed），各 2/2、
+零 ERROR/FAIL。所有这些切片均为 raw UTF-8 属性往返，不需要人工视觉/触摸/SIP 验收。
+next381 覆盖 TEST348（ariaSelected）2/2；最终 TEST264–348/999 以 86/86 通过，零 ERROR/FAIL、
+唯一 TESTBENCH PASS、`test13_route_ok=True`，证据位于
+`tmp/device-runs/20260820-213220-next381-aria-selected-reflection-final/`。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
