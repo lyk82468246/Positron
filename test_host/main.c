@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 376
+#define TEST_MAX_NUMBER 377
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -37637,6 +37637,8 @@ typedef struct test207_event_state {
     char event_type[64];
 } test207_event_state;
 
+static int g_suppress_nested_test_output;
+
 static unsigned int test207_event_add(void *pw, const char *element_id,
         const char *event_type, int capture)
 {
@@ -37795,8 +37797,14 @@ static BOOL test207_browser_event_callbacks(void)
                 "e.trusted&&e.key==='Enter'&&e.keyCode===13&&"
                 "e.inputType==='insertText'&&e.data==='x'&&"
                 "e.target.__id==='root'&&e.currentTarget.__id==='root'&&"
-                "!e.defaultPrevented;"
-                "if(__event_match){e.preventDefault();}return true;};", -1);
+                "!e.defaultPrevented&&e.eventPhase===2&&e.timeStamp===0&&"
+                "typeof e.srcElement==='object'&&"
+                "typeof e.composedPath==='function'&&"
+                "typeof e.stopPropagation==='function'&&"
+                "typeof e.stopImmediatePropagation==='function'&&"
+                "typeof e.cancelBubble==='boolean'&&e.returnValue===true;"
+                "if(__event_match){e.cancelBubble=true;e.returnValue=false;"
+                "e.stopImmediatePropagation();}return true;};", -1);
         ok = rc == PSCRIPT_OK;
     }
     if (ok) {
@@ -37868,13 +37876,18 @@ static BOOL test207_browser_event_callbacks(void)
     }
     PBrowser_ScriptSessionDestroy(session);
     if (!ok) {
+        if (g_suppress_nested_test_output) {
+            return FALSE;
+        }
         show_error(L"TEST 207 FAIL", error[0] != '\0' ? error :
                 "product event callback adapter failed");
         return FALSE;
     }
-    show_info(L"TEST 207 OK",
-            "positron_browser.dll owns event JSON registration and dispatch;"
-            " the host supplies typed add/remove adapters and event data.");
+    if (!g_suppress_nested_test_output) {
+        show_info(L"TEST 207 OK",
+                "positron_browser.dll owns event JSON registration and dispatch;"
+                " the host supplies typed add/remove adapters and event data.");
+    }
     return TRUE;
 }
 
@@ -52415,6 +52428,27 @@ static BOOL test376_browser_style_declaration(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 377 - browser Event cancellation and path methods                 */
+/* -------------------------------------------------------------------- */
+static BOOL test377_browser_event_methods(void)
+{
+    BOOL ok;
+
+    g_suppress_nested_test_output = 1;
+    ok = test207_browser_event_callbacks();
+    g_suppress_nested_test_output = 0;
+    if (!ok) {
+        show_error(L"TEST 377 FAIL",
+                "event callback regression while exercising Event methods");
+        return FALSE;
+    }
+    show_info(L"TEST 377 OK",
+            "Event now exposes cancellation state, propagation controls,"
+            " timestamp, source element and a bounded composed path.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57058,6 +57092,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 376: ok =
                 test376_browser_style_declaration();
+                break;
+        case 377: ok =
+                test377_browser_event_methods();
                 break;
         default: ok = FALSE; break;
         }
