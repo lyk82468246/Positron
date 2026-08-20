@@ -216,6 +216,13 @@
   `ariaPressed`、`ariaSelected` 对应 `aria-*` 的 raw UTF-8 属性反射；TEST332–348 通过。该切片
   只保证 getter/setter、attribute round-trip 和移除恢复，不实现 ARIA 语义计算、可访问性树、
   辅助技术通知、焦点/交互或完整 Web IDL。
+- next382–401 在同一 bridge 上增加 `HTMLElement.ariaColCount`、`ariaColIndex`、
+  `ariaColIndexText`、`ariaControls`、`ariaDescribedBy`、`ariaDetails`、`ariaErrorMessage`、
+  `ariaFlowTo`、`ariaInvalid`、`ariaMultiLine`、`ariaMultiSelectable`、`ariaOrientation`、
+  `ariaOwns`、`ariaPosInSet`、`ariaReadOnly`、`ariaRelevant`、`ariaRequired`、
+  `ariaRoleDescription`、`ariaRowCount`、`ariaRowIndex` 对应 `aria-*` 的 raw UTF-8 属性反射；
+  TEST349–368 通过。该切片只保证 getter/setter、attribute round-trip 和移除恢复，不实现
+  ARIA 语义计算、可访问性树、辅助技术通知、焦点/交互或完整 Web IDL。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

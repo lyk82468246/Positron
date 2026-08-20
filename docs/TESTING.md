@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next381 基线）
+### 当前默认自动选择与人工验收包（next401 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -444,6 +444,48 @@ scripts\device_gate.bat -Candidate next380-aria-pressed-reflection ^
   -TestSelection "347,999"
 scripts\device_gate.bat -Candidate next381-aria-selected-reflection-final ^
   -TestSelection "264-348,999"
+scripts\device_gate.bat -Candidate next382-aria-colcount-reflection ^
+  -TestSelection "349,999"
+scripts\device_gate.bat -Candidate next383-aria-colindex-reflection ^
+  -TestSelection "350,999"
+scripts\device_gate.bat -Candidate next384-aria-colindextext-reflection ^
+  -TestSelection "351,999"
+scripts\device_gate.bat -Candidate next385-aria-controls-reflection ^
+  -TestSelection "352,999"
+scripts\device_gate.bat -Candidate next386-aria-describedby-reflection ^
+  -TestSelection "353,999"
+scripts\device_gate.bat -Candidate next387-aria-details-reflection ^
+  -TestSelection "354,999"
+scripts\device_gate.bat -Candidate next388-aria-errormessage-reflection ^
+  -TestSelection "355,999"
+scripts\device_gate.bat -Candidate next389-aria-flowto-reflection ^
+  -TestSelection "356,999"
+scripts\device_gate.bat -Candidate next389-aria-flowto-reflection-checkpoint ^
+  -TestSelection "264-356,999"
+scripts\device_gate.bat -Candidate next390-aria-invalid-reflection ^
+  -TestSelection "357,999"
+scripts\device_gate.bat -Candidate next391-aria-multiline-reflection ^
+  -TestSelection "358,999"
+scripts\device_gate.bat -Candidate next392-aria-multiselectable-reflection ^
+  -TestSelection "359,999"
+scripts\device_gate.bat -Candidate next393-aria-orientation-reflection ^
+  -TestSelection "360,999"
+scripts\device_gate.bat -Candidate next394-aria-owns-reflection ^
+  -TestSelection "361,999"
+scripts\device_gate.bat -Candidate next395-aria-posinset-reflection ^
+  -TestSelection "362,999"
+scripts\device_gate.bat -Candidate next396-aria-readonly-reflection ^
+  -TestSelection "363,999"
+scripts\device_gate.bat -Candidate next397-aria-relevant-reflection ^
+  -TestSelection "364,999"
+scripts\device_gate.bat -Candidate next398-aria-required-reflection ^
+  -TestSelection "365,999"
+scripts\device_gate.bat -Candidate next399-aria-roledescription-reflection ^
+  -TestSelection "366,999"
+scripts\device_gate.bat -Candidate next400-aria-rowcount-reflection ^
+  -TestSelection "367,999"
+scripts\device_gate.bat -Candidate next401-aria-rowindex-reflection-final ^
+  -TestSelection "264-368,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -828,6 +870,25 @@ ariaHasPopup、ariaHidden），各 2/2、零 ERROR/FAIL；next374 覆盖 TEST341
 next381 覆盖 TEST348（ariaSelected）2/2；最终 TEST264–348/999 以 86/86 通过，零 ERROR/FAIL、
 唯一 TESTBENCH PASS、`test13_route_ok=True`，证据位于
 `tmp/device-runs/20260820-213220-next381-aria-selected-reflection-final/`。
+next382–384 的定向门分别覆盖 `ariaColCount`、`ariaColIndex`、`ariaColIndexText`（TEST349–351），
+各 2/2、零 ERROR/FAIL；证据位于 `tmp/device-runs/20260820-214457-next382-aria-colcount-reflection/`、
+`tmp/device-runs/20260820-214541-next383-aria-colindex-reflection/`、
+`tmp/device-runs/20260820-214625-next384-aria-colindextext-reflection/`。
+next385–388 的定向门分别覆盖 `ariaControls`、`ariaDescribedBy`、`ariaDetails`、
+`ariaErrorMessage`（TEST352–355），各 2/2、零 ERROR/FAIL；证据位于
+`tmp/device-runs/20260820-214707-next385-aria-controls-reflection/`、
+`tmp/device-runs/20260820-214751-next386-aria-describedby-reflection/`、
+`tmp/device-runs/20260820-214836-next387-aria-details-reflection/`、
+`tmp/device-runs/20260820-214918-next388-aria-errormessage-reflection/`。
+next389 覆盖 `ariaFlowTo`（TEST356）2/2，阶段累计 TEST264–356/999 为 94/94；证据位于
+`tmp/device-runs/20260820-215000-next389-aria-flowto-reflection/` 和
+`tmp/device-runs/20260820-215027-next389-aria-flowto-reflection-checkpoint/`。
+next390–394 覆盖 `ariaInvalid`、`ariaMultiLine`、`ariaMultiSelectable`、`ariaOrientation`、
+`ariaOwns`（TEST357–361），各 2/2；next395–401 覆盖 `ariaPosInSet`、`ariaReadOnly`、
+`ariaRelevant`、`ariaRequired`、`ariaRoleDescription`、`ariaRowCount`、`ariaRowIndex`
+（TEST362–368），各 2/2，均零 ERROR/FAIL。最终 TEST264–368/999 以 106/106 通过，唯一
+TESTBENCH PASS、`test13_route_ok=True`，证据位于
+`tmp/device-runs/20260820-220031-next401-aria-rowindex-reflection-final/`。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 

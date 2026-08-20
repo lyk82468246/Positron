@@ -11,7 +11,7 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next381（最终累计检查点为 `TEST264-348/999`；最近一次完整自动基线仍为
+- 最新已验证产品基线：next401（最终累计检查点为 `TEST264-368/999`；最近一次完整自动基线仍为
   next255）。本批使用每项候选门和阶段性累计门，没有修改 tracked `test_host.ini`。
 - next294 批次让有效显式 min/max 下的 range 缺省中点同时通过 text-control bridge 读回、验证和
   successful-control submission；没有新增 native slider 视觉/触摸声明。
@@ -246,6 +246,13 @@
   `ariaPressed`、`ariaSelected` 与对应 `aria-*` raw UTF-8 反射；TEST332–348 分别覆盖 getter、
   `setAttribute`、property setter、移除恢复和 UTF-8 DOM 读回。该批明确不实现 ARIA 语义计算、
   accessibility tree、辅助技术通知、焦点/交互或完整 Web IDL 约束。
+- next382–401 在同一 bridge 上逐项增加 `HTMLElement.ariaColCount`、`ariaColIndex`、
+  `ariaColIndexText`、`ariaControls`、`ariaDescribedBy`、`ariaDetails`、`ariaErrorMessage`、
+  `ariaFlowTo`、`ariaInvalid`、`ariaMultiLine`、`ariaMultiSelectable`、`ariaOrientation`、
+  `ariaOwns`、`ariaPosInSet`、`ariaReadOnly`、`ariaRelevant`、`ariaRequired`、
+  `ariaRoleDescription`、`ariaRowCount`、`ariaRowIndex` 与对应 `aria-*` raw UTF-8 反射；
+  TEST349–368 分别覆盖 getter、`setAttribute`、property setter、移除恢复和 UTF-8 DOM 读回。
+  该批仍不实现 ARIA 语义计算、accessibility tree、辅助技术通知、焦点/交互或完整 Web IDL 约束。
 - next293 批次让 range 缺省 value 在默认/有效 min/max 范围中点上生成成功控件值；
   没有新增 native slider 视觉/触摸声明。
 - next292 批次验证 custom validity 状态跨 `PCore_LayoutDocument` 重排保持；没有新增视觉/触摸
@@ -846,6 +853,38 @@
   `tmp/device-runs/20260820-213157-next381-aria-selected-reflection/`；最终累计
   `TEST264-348/999` 为 86/86，零 ERROR/FAIL、唯一 TESTBENCH PASS、`test13_route_ok=True`，
   证据位于 `tmp/device-runs/20260820-213220-next381-aria-selected-reflection-final/`。
+- next382–384 自动候选门分别覆盖 TEST349–351，各 2/2、零 ERROR/FAIL，证据位于
+  `tmp/device-runs/20260820-214457-next382-aria-colcount-reflection/`、
+  `tmp/device-runs/20260820-214541-next383-aria-colindex-reflection/`、
+  `tmp/device-runs/20260820-214625-next384-aria-colindextext-reflection/`。
+- next385–388 自动候选门分别覆盖 TEST352–355，各 2/2、零 ERROR/FAIL，证据位于
+  `tmp/device-runs/20260820-214707-next385-aria-controls-reflection/`、
+  `tmp/device-runs/20260820-214751-next386-aria-describedby-reflection/`、
+  `tmp/device-runs/20260820-214836-next387-aria-details-reflection/`、
+  `tmp/device-runs/20260820-214918-next388-aria-errormessage-reflection/`。
+- next389 的 TEST356 候选门 2/2 位于
+  `tmp/device-runs/20260820-215000-next389-aria-flowto-reflection/`；阶段累计
+  `TEST264-356/999` 为 94/94，零 ERROR/FAIL，证据位于
+  `tmp/device-runs/20260820-215027-next389-aria-flowto-reflection-checkpoint/`。
+- next390–394 自动候选门分别覆盖 TEST357–361（ariaInvalid、ariaMultiLine、
+  ariaMultiSelectable、ariaOrientation、ariaOwns），各 2/2、零 ERROR/FAIL，证据位于
+  `tmp/device-runs/20260820-215204-next390-aria-invalid-reflection/`、
+  `tmp/device-runs/20260820-215246-next391-aria-multiline-reflection/`、
+  `tmp/device-runs/20260820-215328-next392-aria-multiselectable-reflection/`、
+  `tmp/device-runs/20260820-215410-next393-aria-orientation-reflection/`、
+  `tmp/device-runs/20260820-215456-next394-aria-owns-reflection/`。
+- next395–401 自动候选门分别覆盖 TEST362–368（ariaPosInSet、ariaReadOnly、ariaRelevant、
+  ariaRequired、ariaRoleDescription、ariaRowCount、ariaRowIndex），各 2/2、零 ERROR/FAIL，
+  证据位于 `tmp/device-runs/20260820-215541-next395-aria-posinset-reflection/`、
+  `tmp/device-runs/20260820-215623-next396-aria-readonly-reflection/`、
+  `tmp/device-runs/20260820-215705-next397-aria-relevant-reflection/`、
+  `tmp/device-runs/20260820-215749-next398-aria-required-reflection/`、
+  `tmp/device-runs/20260820-215834-next399-aria-roledescription-reflection/`、
+  `tmp/device-runs/20260820-215920-next400-aria-rowcount-reflection/`、
+  `tmp/device-runs/20260820-220007-next401-aria-rowindex-reflection/`。
+- next401 最终累计 `TEST264-368/999` 为 106/106，零 ERROR/FAIL、唯一 TESTBENCH PASS、
+  `test13_route_ok=True`，证据位于
+  `tmp/device-runs/20260820-220031-next401-aria-rowindex-reflection-final/`。
   相关回归证据位于 `tmp/device-runs/20260818-225807-next263-file-programmatic-regression/`。next262 定向证据位于 `tmp/device-runs/20260818-223755-next262-programmatic-form-stage-final/`；`TEST68-69,189-229/999`
   相关回归证据位于 `tmp/device-runs/20260818-223854-next262-programmatic-form-regression-retry/`。next261 定向证据位于 `tmp/device-runs/20260818-220809-next261-programmatic-stage/`；`TEST189-228/999`
   相关回归证据位于 `tmp/device-runs/20260818-221000-next261-programmatic-regression/`。next260 定向证据位于 `tmp/device-runs/20260818-214758-next260-toggle-key-stage-rerun/`；`TEST189-227/999`
@@ -2474,14 +2513,16 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 本轮 next362–381 的 metadata reflection 门也已通过：next362–364 覆盖 `autocapitalize`、
 `itemValue`、`is`，next365–381 覆盖上述 17 个 ARIA raw 属性；均只承诺 UTF-8 属性往返，
 不承诺 ARIA 语义或可访问性树。
+本轮 next382–401 的 metadata reflection 门也已通过，覆盖 20 个 ARIA raw 属性；均只承诺
+UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
 每批一个清晰的产品边界。
 
 完成标准：
 
-- TEST348/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–348/999` 定向选择；next299 的
+- TEST368/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–368/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；

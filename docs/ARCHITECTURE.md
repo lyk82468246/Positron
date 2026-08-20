@@ -200,6 +200,12 @@ textarea 布局高度或完整 textarea Web IDL 实现。
 `ariaKeyShortcuts`、`ariaLabelledBy`、`ariaLevel`、`ariaLive`、`ariaModal`、`ariaPlaceholder`、
 `ariaPressed`、`ariaSelected` 与对应 `aria-*` 的 UTF-8 属性往返；这不等于 ARIA 语义计算、
 可访问性树、辅助技术通知、焦点/交互或完整 HTMLElement Web IDL 实现。
+当前 raw metadata bridge 还提供 `HTMLElement.ariaColCount`、`ariaColIndex`、`ariaColIndexText`、
+`ariaControls`、`ariaDescribedBy`、`ariaDetails`、`ariaErrorMessage`、`ariaFlowTo`、`ariaInvalid`、
+`ariaMultiLine`、`ariaMultiSelectable`、`ariaOrientation`、`ariaOwns`、`ariaPosInSet`、
+`ariaReadOnly`、`ariaRelevant`、`ariaRequired`、`ariaRoleDescription`、`ariaRowCount`、
+`ariaRowIndex` 与对应 `aria-*` 的 UTF-8 属性往返；这不等于 ARIA 语义计算、可访问性树、
+辅助技术通知、焦点/交互或完整 HTMLElement Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 
