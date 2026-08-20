@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 373
+#define TEST_MAX_NUMBER 374
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52211,7 +52211,7 @@ static BOOL test370_browser_environment_snapshot(void)
         "+window.name+'|'+String(Object.isFrozen(n));"
         "</script></head><body><p id='result'>idle</p></body></html>";
     static const char EXPECTED[] =
-        "WinCE|en-US|en-US|true|false|positron|true";
+        "WinCE|en-US|en-US|true|true|positron|true";
     char error[512];
 
     memset(error, 0, sizeof(error));
@@ -52318,6 +52318,34 @@ static BOOL test373_browser_storage(void)
     show_info(L"TEST 373 OK",
             "The product browser provides independent sessionStorage and "
             "localStorage maps with deterministic ordering and mutation.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 374 - browser session cookie jar                                 */
+/* -------------------------------------------------------------------- */
+static BOOL test374_browser_cookie(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "document.cookie='a=1; Path=/';document.cookie='b=two';"
+        "var before=document.cookie;document.cookie='a=updated';"
+        "document.cookie='b=';"
+        "document.getElementById('result').textContent=before+'|'"
+        "+document.cookie+'|'+String(navigator.cookieEnabled);"
+        "</script></head><body><p id='result'>idle</p></body></html>";
+    static const char EXPECTED[] = "a=1; b=two|a=updated|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, "", EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 374 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 374 OK",
+            "document.cookie provides an ordered session jar, ignores "
+            "unsupported attributes and deletes empty values.");
     return TRUE;
 }
 
@@ -56956,6 +56984,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 373: ok =
                 test373_browser_storage();
+                break;
+        case 374: ok =
+                test374_browser_cookie();
                 break;
         default: ok = FALSE; break;
         }
