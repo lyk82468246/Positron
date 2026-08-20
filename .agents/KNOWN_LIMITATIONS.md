@@ -105,6 +105,8 @@
   HTTP 方法、method 规范化或导航副作用。
 - next322 只验证未知 form `enctype` 原始值保留并在 urlencoded POST 路径安全回落；不实现
   enctype 规范化、multipart 传输或其他编码格式。
+- next323 只验证 method/enctype 的大小写不敏感匹配与 raw case 反射；不实现规范化 getter、
+  完整 Web IDL 枚举语义或导航副作用。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分

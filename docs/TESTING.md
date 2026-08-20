@@ -244,6 +244,10 @@ scripts\device_gate.bat -Candidate next322-unknown-enctype-js ^
   -TestSelection "290,999"
 scripts\device_gate.bat -Candidate next322-unknown-enctype-recent-js ^
   -TestSelection "264-290,999"
+scripts\device_gate.bat -Candidate next323-case-boundary-js ^
+  -TestSelection "291,999"
+scripts\device_gate.bat -Candidate next323-case-boundary-recent-js ^
+  -TestSelection "264-291,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -386,6 +390,12 @@ POST submission 安全回落为 urlencoded；`TEST290/999` 已以 2/2 通过，�
 `TEST264-290/999` 相关段已以 28/28 通过，证据位于
 `tmp/device-runs/20260820-143433-next322-unknown-enctype-recent-js/`；不涉及 enctype 规范化、
 multipart 传输、其他编码格式、视觉或人工页面验收。
+next323 的定向门覆盖 method/enctype mixed-case raw getter/setter、attribute round-trip、移除恢复，
+并确认大小写不敏感匹配下的 urlencoded POST action/body；`TEST291/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-143927-next323-case-boundary-js/`。最近
+`TEST264-291/999` 相关段已以 29/29 通过，证据位于
+`tmp/device-runs/20260820-144007-next323-case-boundary-recent-js/`；不涉及规范化 getter、完整
+Web IDL 枚举语义、导航副作用、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 
@@ -467,6 +477,7 @@ multipart 传输、其他编码格式、视觉或人工页面验收。
 | 288 | 自动验证 button `type` 的脚本反射、attribute round-trip、移除恢复，并确认恢复为 submit 后 submission 保持不变。 |
 | 289 | 自动验证未知 form `method` 的脚本反射、attribute round-trip、移除恢复，并确认 submission 安全回落为 GET。 |
 | 290 | 自动验证未知 form `enctype` 的脚本反射、attribute round-trip、移除恢复，并确认 POST 安全回落为 urlencoded。 |
+| 291 | 自动验证 form method/enctype mixed-case 的脚本反射、attribute round-trip、移除恢复，并确认大小写不敏感的 urlencoded POST。 |
 | 999 | 所有项目完成后只听到一次系统提示音。 |
 
 TEST190-231 是自动 history/script-session/bootstrap/DOM-read/DOM-write/DOM-attribute/value/checked/form-property/navigation/location/event/input/key/focus/edit/select/click/form-event/invalid/file-input/checkbox-radio-input/change/label-click/toggle-key/programmatic-click/form-button/file-input-click/file-picker-boundary 断言，不属于这次需要肉眼观察的包；TEST232 和 TEST263 是 manual-only 的真实 WM6 picker 入口，不能放入自动设备门；TEST233 是自动的 type=number min/max/bad-input constraint-validation 门，覆盖下溢、上溢、非法值、malformed 属性忽略和边界恢复；TEST201
