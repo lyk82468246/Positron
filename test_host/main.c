@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 378
+#define TEST_MAX_NUMBER 379
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52487,6 +52487,40 @@ static BOOL test378_browser_selector_queries(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 379 - browser FormData collection operations                      */
+/* -------------------------------------------------------------------- */
+static BOOL test379_browser_form_data(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var f=new FormData({a:'one',b:'two'});f.append('a','three');"
+        "var copy=new FormData(f);copy.set('a','updated');copy.delete('b');"
+        "var seen='';copy.forEach(function(v,k){if(seen!==''){seen+=';'}"
+        "seen+=k+'='+v;});"
+        "document.getElementById('result').textContent="
+        "String(f.length===3)+'|'+String(f.get('a')==='one')+'|'"
+        "+String(f.getAll('a').length===2)+'|'+String(f.has('b'))+'|'"
+        "+String(copy.get('a')==='updated')+'|'+String(!copy.has('b'))+'|'"
+        "+seen+'|'+copy.toQueryString()+'|'+String(copy.entries().length===1);";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|a=updated|a=updated|true";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 379 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 379 OK",
+            "FormData now provides ordered string pairs, copy construction,"
+            " mutation, iteration and URL-encoded export.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57136,6 +57170,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 378: ok =
                 test378_browser_selector_queries();
+                break;
+        case 379: ok =
+                test379_browser_form_data();
                 break;
         default: ok = FALSE; break;
         }
