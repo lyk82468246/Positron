@@ -637,6 +637,11 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchHashNavigation(
  * dispatches readystatechange/DOMContentLoaded/load in that order. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
         HANDLE hSession, const char *state);
+/* Run due script-owned timers at a host monotonic millisecond timestamp.
+ * The host owns the clock and may call this from its message loop; the
+ * bootstrap runs bounded setTimeout/setInterval callbacks synchronously. */
+PBROWSER_API int PBrowser_ScriptSessionRunTimers(HANDLE hSession,
+        unsigned long now_ms);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(

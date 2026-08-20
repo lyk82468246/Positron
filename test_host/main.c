@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 386
+#define TEST_MAX_NUMBER 387
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52764,6 +52764,41 @@ static BOOL test386_browser_synthetic_event(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 387 - host-pumped timer queue                                    */
+/* -------------------------------------------------------------------- */
+static BOOL test387_browser_timers(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var zero=0;var ten=0;var ticks=0;"
+        "var a=setTimeout(function(){zero++;},0);"
+        "var b=setTimeout(function(){ten++;},10);"
+        "var c=setInterval(function(){ticks++;},10);"
+        "clearInterval(c);"
+        "var r0=__pcoreRunTimers(0);var r5=__pcoreRunTimers(5);"
+        "var r10=__pcoreRunTimers(10);"
+        "var r20=__pcoreRunTimers(20);"
+        "document.getElementById('result').textContent=r0+'|'+zero+'|'"
+        "+r5+'|'+ticks+'|'+r10+'|'+ten+'|'+ticks+'|'+r20+'|'"
+        "+String(a>0&&b>0&&c>0);";
+    static const char EXPECTED[] = "1|1|0|0|1|1|0|0|true";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 387 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 387 OK",
+            "setTimeout/setInterval now use a bounded host-pumped queue"
+            " with cancellation and deterministic due-time ordering.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57437,6 +57472,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 386: ok =
                 test386_browser_synthetic_event();
+                break;
+        case 387: ok =
+                test387_browser_timers();
                 break;
         default: ok = FALSE; break;
         }

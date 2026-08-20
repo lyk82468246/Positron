@@ -1232,6 +1232,26 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "return this.__pairs.length;}});"
         "Object.defineProperty(g,'FormData',{value:PFormData,"
         "writable:false,configurable:false});"
+        "var ptimerClock=0;var ptimerNext=1;var ptimers=[];"
+        "function pnewTimer(fn,delay,interval){var d=Number(delay);var id;"
+        "if(typeof fn!=='function'){return 0;}if(!isFinite(d)||d<0){d=0;}"
+        "d=Math.floor(d);if(interval&&d<1){d=1;}id=ptimerNext++;if(id<=0){"
+        "ptimerNext=1;id=ptimerNext++;}ptimers.push({id:id,fn:fn,due:"
+        "ptimerClock+d,delay:d,interval:!!interval});return id;}"
+        "function pclearTimer(id){var n=Number(id);var i;for(i=ptimers.length-1;"
+        "i>=0;i--){if(ptimers[i].id===n){ptimers.splice(i,1);return;}}}"
+        "g.setTimeout=function(fn,delay){return pnewTimer(fn,delay,false);};"
+        "g.setInterval=function(fn,delay){return pnewTimer(fn,delay,true);};"
+        "g.clearTimeout=function(id){pclearTimer(id);};"
+        "g.clearInterval=function(id){pclearTimer(id);};"
+        "g.__pcoreRunTimers=function(now){var n=Number(now);var ran=0;var i;"
+        "var best;var bestDue;var t;if(!isFinite(n)||n<ptimerClock){n=ptimerClock;}"
+        "ptimerClock=Math.floor(n);while(ran<64){best=-1;bestDue=0;"
+        "for(i=0;i<ptimers.length;i++){if(ptimers[i].due<=ptimerClock&&"
+        "(best<0||ptimers[i].due<bestDue)){best=i;bestDue=ptimers[i].due;}}"
+        "if(best<0){break;}t=ptimers[best];if(t.interval){t.due+=t.delay;}"
+        "else{ptimers.splice(best,1);}try{t.fn();}catch(timerError){}ran++;}"
+        "return ran;};"
         "var purl=String(g.__pcoreDocumentUrl||'');"
         "var phistoryLength=Number(g.__pcoreHistoryLength||1);"
         "var phistoryStateJson=JSON.stringify(g.__pcoreHistoryState);"
@@ -3414,6 +3434,26 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
         return PSCRIPT_ERROR_ARGUMENT;
     }
     return p_browser_script_dispatch_page_lifecycle(session, state);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRunTimers(HANDLE hSession,
+        unsigned long now_ms)
+{
+    p_browser_script_session *session;
+    char args[64];
+    int length;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    length = _snprintf(args, sizeof(args) - 1, "[%lu]", now_ms);
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    args[length] = '\0';
+    return PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreRunTimers", args);
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
