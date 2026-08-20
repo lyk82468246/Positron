@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 375
+#define TEST_MAX_NUMBER 376
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52381,6 +52381,40 @@ static BOOL test375_browser_class_list(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 376 - browser CSSStyleDeclaration operations                      */
+/* -------------------------------------------------------------------- */
+static BOOL test376_browser_style_declaration(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='target' style='color: red; width: 10px'>x</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var s=e.style;"
+        "var before=s.length+'|'+s.item(0)+'|'+s.getPropertyValue('color')"
+        "+'|'+s.getPropertyPriority('color');"
+        "s.setProperty('color','blue','important');s.setProperty('height','20px','');"
+        "var middle=s.getPropertyValue('color')+'|'+s.getPropertyPriority('color')+'|'"
+        "+s.length+'|'+s.item(2);var old=s.removeProperty('width');"
+        "document.getElementById('result').textContent=before+'|'+middle+'|'"
+        "+old+'|'+s.getPropertyValue('width')+'|'+s.cssText;";
+    static const char EXPECTED[] =
+        "2|color|red||blue|important|3|height|10px||color: blue !important; height: 20px";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 376 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 376 OK",
+            "CSSStyleDeclaration now exposes indexed properties, priorities "
+            "and important-aware mutation/removal through the product bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -57021,6 +57055,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 375: ok =
                 test375_browser_class_list();
+                break;
+        case 376: ok =
+                test376_browser_style_declaration();
                 break;
         default: ok = FALSE; break;
         }
