@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next340 基线）
+### 当前默认自动选择与人工验收包（next341 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -316,6 +316,10 @@ scripts\device_gate.bat -Candidate next340-input-list-reflection-js ^
   -TestSelection "307,999"
 scripts\device_gate.bat -Candidate next340-input-list-reflection-recent-js ^
   -TestSelection "264-307,999"
+scripts\device_gate.bat -Candidate next341-textarea-wrap-reflection-js ^
+  -TestSelection "308,999"
+scripts\device_gate.bat -Candidate next341-textarea-wrap-reflection-recent-js ^
+  -TestSelection "264-308,999"
 ```
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
@@ -559,6 +563,12 @@ next340 的定向门覆盖 `HTMLInputElement.list` raw UTF-8 getter/setter、att
 的 DOM bootstrap timeout 处停止，未作为基线；重试后的 `TEST264-307/999` 已以 45/45 通过，
 证据位于 `tmp/device-runs/20260820-170415-next340-input-list-reflection-recent-retry/`，零
 ERROR/FAIL。该批不涉及 datalist、自动完成、视觉或人工页面验收。
+next341 的定向门覆盖 `HTMLTextAreaElement.wrap` raw UTF-8 getter/setter、attribute round-trip 和
+移除恢复；`TEST308/999` 已以 2/2 通过，证据位于
+`tmp/device-runs/20260820-170809-next341-textarea-wrap-reflection/`。最近 `TEST264-308/999`
+已以 46/46 通过，证据位于
+`tmp/device-runs/20260820-170830-next341-textarea-wrap-reflection-recent/`；该批不涉及软/硬
+换行布局、提交编码、视觉或人工页面验收。
 
 只有出现回归、设备环境变化或累计达到下一个检查点时，才需要再次运行完整链。
 

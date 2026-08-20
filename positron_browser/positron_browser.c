@@ -739,6 +739,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('capture','capture');"
         "PDefineString('dirname','dirname');"
         "PDefineString('list','list');"
+        "PDefineString('wrap','wrap');"
         "function PDefineInteger(name,attr){"
         "Object.defineProperty(PElement.prototype,name,{"
         "get:function(){var v=this.getAttribute(attr);var n;"
