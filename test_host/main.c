@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 374
+#define TEST_MAX_NUMBER 375
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -52350,6 +52350,37 @@ static BOOL test374_browser_cookie(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 375 - browser DOMTokenList classList completion                   */
+/* -------------------------------------------------------------------- */
+static BOOL test375_browser_class_list(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='target' class='a b'></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var l=e.classList;"
+        "var before=l.length+'|'+l.item(0)+'|'+String(l.item(9)===null);"
+        "var replaced=l.replace('a','x');l.add('c');l.remove('b');"
+        "l.value+=' d';var seen=[];l.forEach(function(v){seen.push(v);});"
+        "document.getElementById('result').textContent=before+'|'"
+        "+String(replaced)+'|'+l.length+'|'+l.value+'|'+seen.join(',');";
+    static const char EXPECTED[] = "2|a|true|true|3|x c d|x,c,d";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 375 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 375 OK",
+            "classList now supports item/length/value, replace and "
+            "deterministic iteration in the product browser layer.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -56987,6 +57018,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 374: ok =
                 test374_browser_cookie();
+                break;
+        case 375: ok =
+                test375_browser_class_list();
                 break;
         default: ok = FALSE; break;
         }
