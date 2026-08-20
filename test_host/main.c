@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 306
+#define TEST_MAX_NUMBER 307
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50815,6 +50815,27 @@ static BOOL test306_browser_input_dirname_reflection(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 307 - browser input.list property reflection                      */
+/* -------------------------------------------------------------------- */
+static BOOL test307_browser_input_list_reflection(void)
+{
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_property_case(
+            "<input id='target' type='text' list='cities'>",
+            "list", "list", "cities", "countries", "airports",
+            error, sizeof(error))) {
+        show_error(L"TEST 307 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 307 OK",
+            "HTMLInputElement.list reflects the raw UTF-8 list attribute "
+            "through the product browser bridge.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 185 - absolute terminal partial double-dot fragment URLs        */
 /* -------------------------------------------------------------------- */
 static BOOL test185_browser_script_location_absolute_terminal_partial_encoded_double_dot_fragment(void)
@@ -55248,6 +55269,9 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 306: ok =
                 test306_browser_input_dirname_reflection();
+                break;
+        case 307: ok =
+                test307_browser_input_list_reflection();
                 break;
         default: ok = FALSE; break;
         }

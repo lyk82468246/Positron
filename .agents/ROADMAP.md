@@ -181,6 +181,10 @@ next338 在同一 bridge 上增加 `HTMLInputElement.capture` raw 反射；TEST3
 next339 在同一 bridge 上增加 `HTMLInputElement.dirname` raw 反射；TEST306/999 与最近
 `TEST264-306/999` 已通过。该切片只覆盖 UTF-8 属性往返，不改变提交方向字段、编码或其他
 表单默认行为，也不实现完整 input Web IDL；`test_host` 仍只是宿主适配和测试消费者。
+next340 在同一 bridge 上增加 `HTMLInputElement.list` raw 反射；TEST307/999 与重试后的最近
+`TEST264-307/999` 已通过。该切片只覆盖 UTF-8 属性往返，不实现 datalist 解析、建议项、自动
+完成或完整 input Web IDL；首次近期门的既有 bootstrap timeout 不作为基线；`test_host` 仍只是
+宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

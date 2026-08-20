@@ -147,6 +147,8 @@ typed dispatch entry 已由此 DLL 持有并执行；
 麦克风捕获、文件类型过滤、系统 picker 或完整 input Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLInputElement.dirname` 的 UTF-8 属性往返；这不等于提交
 方向字段、编码行为或完整 input Web IDL 实现。
+当前 raw metadata bridge 还提供 `HTMLInputElement.list` 的 UTF-8 属性往返；这不等于 datalist
+解析、建议项、自动完成或完整 input Web IDL 实现。
 `test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
 或 bootstrap 文本。
 

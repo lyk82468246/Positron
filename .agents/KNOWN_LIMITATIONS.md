@@ -144,6 +144,9 @@
 - next339 在同一 bridge 上增加 `HTMLInputElement.dirname` raw UTF-8 反射；TEST306 及最近回归
   通过。该切片只保证属性往返，不改变提交方向字段、编码或其他表单默认行为，也不实现完整
   input Web IDL 语义。
+- next340 在同一 bridge 上增加 `HTMLInputElement.list` raw UTF-8 反射；TEST307 及重试后的最近
+  回归通过。该切片只保证属性往返，不实现 datalist 解析、建议项、自动完成或完整 input Web
+  IDL 语义；首次近期门的既有 bootstrap timeout 不作为基线。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
