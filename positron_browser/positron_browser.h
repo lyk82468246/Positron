@@ -642,6 +642,14 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
  * bootstrap runs bounded setTimeout/setInterval callbacks synchronously. */
 PBROWSER_API int PBrowser_ScriptSessionRunTimers(HANDLE hSession,
         unsigned long now_ms);
+/* Run and consume the current requestAnimationFrame batch with a host-owned
+ * timestamp in milliseconds. The callback receives that timestamp. */
+PBROWSER_API int PBrowser_ScriptSessionRunAnimationFrames(HANDLE hSession,
+        unsigned long timestamp_ms);
+/* Update the product-owned visibility state and dispatch visibilitychange
+ * followed by pagehide/pageshow. `hidden` is normalized to 0 or 1. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchVisibility(HANDLE hSession,
+        int hidden);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(

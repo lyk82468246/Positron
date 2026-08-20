@@ -1252,6 +1252,17 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(best<0){break;}t=ptimers[best];if(t.interval){t.due+=t.delay;}"
         "else{ptimers.splice(best,1);}try{t.fn();}catch(timerError){}ran++;}"
         "return ran;};"
+        "var pframeNext=1;var pframes=[];"
+        "g.requestAnimationFrame=function(fn){var id;if(typeof fn!=='function'){return 0;}"
+        "id=pframeNext++;if(id<=0){pframeNext=1;id=pframeNext++;}"
+        "pframes.push({id:id,fn:fn});return id;};"
+        "g.cancelAnimationFrame=function(id){var n=Number(id);var i;"
+        "for(i=pframes.length-1;i>=0;i--){if(pframes[i].id===n){"
+        "pframes.splice(i,1);return;}}};"
+        "g.__pcoreRunAnimationFrames=function(timestamp){var t=Number(timestamp);"
+        "var list=pframes.slice(0);var i;if(!isFinite(t)||t<0){t=0;}pframes=[];"
+        "if(list.length>32){list.length=32;}for(i=0;i<list.length;i++){"
+        "try{list[i].fn(t);}catch(frameError){}}return list.length;};"
         "var purl=String(g.__pcoreDocumentUrl||'');"
         "var phistoryLength=Number(g.__pcoreHistoryLength||1);"
         "var phistoryStateJson=JSON.stringify(g.__pcoreHistoryState);"
@@ -1467,17 +1478,17 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "phistoryStateJson=s;phistoryLength=n;purl=u;}"
         "var pscrollX=0;var pscrollY=0;"
         "var pwindowListeners={popstate:[],hashchange:[],load:[],scroll:[],"
-        "DOMContentLoaded:[],readystatechange:[]};"
-        "g.onpopstate=null;g.onhashchange=null;"
+        "pagehide:[],pageshow:[],DOMContentLoaded:[],readystatechange:[]};"
+        "g.onpopstate=null;g.onhashchange=null;g.onpagehide=null;g.onpageshow=null;"
         "g.addEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if((t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
-        "t!=='scroll'&&"
+        "t!=='scroll'&&t!=='pagehide'&&t!=='pageshow'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange')||"
         "typeof fn!=='function'){return;}a=pwindowListeners[t];"
         "for(i=0;i<a.length;i++){if(a[i]===fn){return;}}a.push(fn);};"
         "g.removeEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if(t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
-        "t!=='scroll'&&"
+        "t!=='scroll'&&t!=='pagehide'&&t!=='pageshow'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange'){return;}"
         "a=pwindowListeners[t];for(i=a.length-1;i>=0;i--){"
         "if(a[i]===fn){a.splice(i,1);}}};"
@@ -1618,12 +1629,14 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "plocation.reload=preload;"
         "plocation.replace=preplace;"
         "plocation.toString=function(){return this.href;};"
-        "var pdocumentListeners={readystatechange:[],DOMContentLoaded:[],"
-        "load:[]};var preadyState='loading';"
+        "var phidden=false;var pdocumentListeners={readystatechange:[],"
+        "DOMContentLoaded:[],load:[],visibilitychange:[]};"
+        "var preadyState='loading';"
         "function pdocumentAddEventListener(type,fn){var a;var i;"
         "type=String(type);if(typeof fn!=='function'||"
         "(type!=='readystatechange'&&type!=='DOMContentLoaded'&&"
-        "type!=='load')){return;}a=pdocumentListeners[type];"
+        "type!=='load'&&type!=='visibilitychange')){return;}"
+        "a=pdocumentListeners[type];"
         "for(i=0;i<a.length;i++){if(a[i]===fn){return;}}a.push(fn);}"
         "function pdocumentRemoveEventListener(type,fn){var a;var i;"
         "type=String(type);a=pdocumentListeners[type];if(!a){return;}"
@@ -1651,6 +1664,14 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "pdispatchWindow('DOMContentLoaded',ppageEvent('DOMContentLoaded',g));"
         "pdispatchWindow('load',ppageEvent('load',g));"
         "pdocumentDispatch('load');}}}"
+        "function pvisibilityEvent(type){return {type:type,target:pdocument,"
+        "currentTarget:pdocument,bubbles:false,cancelable:false,"
+        "defaultPrevented:false,isTrusted:true};}"
+        "g.__pcoreVisibilityChange=function(hidden){var next=!!hidden;"
+        "if(next===phidden){return;}phidden=next;"
+        "pdocumentDispatch('visibilitychange');"
+        "pdispatchWindow(next?'pagehide':'pageshow',ppageEvent("
+        "next?'pagehide':'pageshow',g));};"
         "var pdocument={getElementById:function(id){id=String(id);"
         "return __pcoreHasElement({id:id})?new PElement(id):null;},"
         "addEventListener:pdocumentAddEventListener,"
@@ -1677,9 +1698,9 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "Object.defineProperty(pdocument,'readyState',{get:function(){"
         "return preadyState;},enumerable:true});"
         "Object.defineProperty(pdocument,'hidden',{get:function(){"
-        "return false;},enumerable:true});"
+        "return phidden;},enumerable:true});"
         "Object.defineProperty(pdocument,'visibilityState',{get:function(){"
-        "return 'visible';},enumerable:true});"
+        "return phidden?'hidden':'visible';},enumerable:true});"
         "var pcookieData={};var pcookieKeys=[];"
         "function pcookieGet(){var s='';var i;"
         "for(i=0;i<pcookieKeys.length;i++){if(i>0){s+='; ';}"
@@ -3454,6 +3475,41 @@ PBROWSER_API int PBrowser_ScriptSessionRunTimers(HANDLE hSession,
     args[length] = '\0';
     return PBrowser_ScriptSessionCallGlobalJson(hSession,
             "__pcoreRunTimers", args);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRunAnimationFrames(HANDLE hSession,
+        unsigned long timestamp_ms)
+{
+    p_browser_script_session *session;
+    char args[64];
+    int length;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    length = _snprintf(args, sizeof(args) - 1, "[%lu]", timestamp_ms);
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    args[length] = '\0';
+    return PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreRunAnimationFrames", args);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchVisibility(HANDLE hSession,
+        int hidden)
+{
+    p_browser_script_session *session;
+    const char *args;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    args = hidden ? "[true]" : "[false]";
+    return PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreVisibilityChange", args);
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
