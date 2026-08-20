@@ -112,6 +112,9 @@ JavaScript 的 100 项相关回归验证 raw round-trip、current value 和 subm
 next316 已在同一 browser attribute bridge 上增加 input `inputMode` ↔ `inputmode` 反射；TEST284/999
 与启用 JavaScript 的 101 项相关回归验证 raw round-trip、current value 和 submission 不变。该切片
 不实现 SIP、键盘布局或输入法策略；`test_host` 仍只是宿主适配和测试消费者。
+next317 已在同一 browser attribute bridge 上增加 input `type` raw 反射；TEST285/999 与启用
+JavaScript 的 102 项相关回归验证属性往返和既有 submission 不变。该切片不实现动态控件重建、完整
+Web IDL type 规范或 native type UI；`test_host` 仍只是宿主适配和测试消费者。
 next265 的 TEST232 真实 WM6 picker 人工入口和独立 staging INI 已通过用户人工验收；其
 GUI picker 仍是宿主能力，不是产品 DLL 公共 API。
 人工测试暂缓期间，next266 已先完成 input type=number 的 min/max/malformed value 核心校验，

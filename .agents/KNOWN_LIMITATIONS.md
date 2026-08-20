@@ -91,6 +91,9 @@
   current value 或 successful-control submission，也不实现自动填充策略、凭据存储或原生提示 UI。
 - next316 在同一 attribute bridge 上增加 input `inputMode` ↔ `inputmode` 属性反射；raw getter/setter
   不改变 current value 或 successful-control submission，也不实现 SIP、键盘布局或输入法策略。
+- next317 在同一 attribute bridge 上增加 input `type` raw 属性反射；当前切片只保证 attribute
+  round-trip 与既有 text-control submission 不变，不实现动态控件重建、完整 Web IDL type 规范或
+  native type UI。
 
 尚未完成：完整 DOM/window、其余 form/input callback 实现、完整规范/本地化 validationMessage、native invalid UI、module、
 异步任务、CSP、同源策略、任意 Web API 和完整 URL Standard；JavaScript bridge 仍有一部分
