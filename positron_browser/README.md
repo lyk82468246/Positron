@@ -73,10 +73,13 @@ session 与脚本对象；宿主必须管理 document、窗口、网络、控件
 
 显式启用脚本时，bootstrap 还提供受限的 `dataset`/节点 metadata、FormData/Headers/Storage/
 classList/style iterator、`TextEncoder.encodeInto()`、TextDecoder 选项快照、同步
-Request/Response JSON 与 Blob clone、Headers `getSetCookie()`、AbortSignal `timeout`/`any`/
-`onabort`/`abort`、timer extra arguments/`setImmediate`、MessagePort/BroadcastChannel、
-structuredClone、Storage/HashChange/PopState/Error/Progress/Close event 构造器、同步
-PerformanceObserver 快照、navigator 方法、viewport 派生的 `screen.orientation`、window aliases/
-open-close no-op 和 URLSearchParams pair/delete-value。它们只在单个 session 内存中运行；
-Request/Response 不联网，MessagePort/BroadcastChannel/timeout 需宿主显式 pump，PerformanceObserver
-只读取 observe 时已有 entries，不等于完整 DOM、Promise/fetch/stream、真实窗口生命周期或后台浏览器调度。
+Request/Response JSON/one-shot body 与 Blob/File metadata/slice、Headers `getSetCookie()`、
+URL authority userinfo/default-port 与 URLSearchParams pair/delete-value/按值查询、cookie
+Max-Age 删除、AbortSignal `timeout`/`any`/`onabort`/`abort`、timer extra arguments/`setImmediate`、
+MessagePort/BroadcastChannel、structuredClone、Storage/HashChange/PopState/Error/Progress/Close
+event 构造器、同步 PerformanceObserver/EntryList 快照、NodeList item/iterator、稳定 element
+wrapper identity、navigator 方法、viewport 派生的 `screen.orientation`、window aliases/open-close
+no-op。它们只在单个 session 内存中运行；Request/Response 不联网，MessagePort/BroadcastChannel/
+timeout 需宿主显式 pump，PerformanceObserver 只读取 observe 时已有 entries，不等于完整 DOM、
+Promise/fetch/stream、真实窗口生命周期或后台浏览器调度。公共 bootstrap 现在按六个顺序 IIFE
+评估以保持脚本 source 上限。

@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next481）
+## 当前状态（next501）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -21,9 +21,14 @@ Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/per
   navigator 方法、screen.orientation 和 URLSearchParams pair/delete-value。next462–481 又补齐了
   encodeInto/decoder 选项、同步 JSON body readers、Storage named/toJSON、DOM/style 迭代器、
   toggleAttribute/ownership、事件构造器、MessagePort/BroadcastChannel、PerformanceObserver、
-  window aliases/open-close 边界和 AbortSignal.abort。TEST369–448 与累计门
-  `TEST369-448,999` 已通过；这些
-切片默认关闭 JavaScript 时不会被发现、抓取或执行。
+  window aliases/open-close 边界和 AbortSignal.abort。next482–501 又增加了 Blob/File 元数据与
+  slice 边界、FormData snapshot iterator、Request/Response one-shot body、URL authority/default
+  port、URLSearchParams 按值 has、cookie Max-Age 删除、NodeList/element identity、dataset、Event
+  constants/dispatch reset、MessagePort/BroadcastChannel 状态和 PerformanceObserverEntryList
+  视图。TEST369–448 与 TEST482–501 定向门已通过；这些
+切片默认关闭 JavaScript 时不会被发现、抓取或执行。当前产品 bootstrap 由公共入口按六个
+顺序 IIFE 评估，共享一个 Duktape context；分段只用于保持源码上限，不改变执行预算或引入第二套
+JavaScript 引擎。
 
 这些 API 的共同限制如下：
 
@@ -31,6 +36,9 @@ Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/per
   配额或跨 session 同步，FormData 也不连接 Blob/File/multipart 传输。
 - selector 只支持当前实现声明的 `#id`、`.class`、有限 attribute 和 `*` 自匹配；不提供 DOM
   树枚举、通用 CSS selector、布局命中测试或完整 `matches/closest` 祖先语义。
+- URL 的 userinfo、默认端口和 URLSearchParams 按值查询只覆盖当前 bounded parser 的 authority
+  形态；不提供完整 URL Standard、IPv6/转义异常和 origin 安全策略。NodeList 的 `item()`/iterator
+  与 repeated `getElementById()` identity 只作用于当前 document wrapper，不创建通用 DOM tree。
 - selection、numeric step、setRangeText 是产品 bridge 的逻辑状态，不等于 WM native EDIT 的
   光标、SIP、IME composition、候选词、Unicode preedit 或原生文本选择 UI。
 - document/window metadata、viewport、scroll 是脚本可见的受控快照；它们不自动改变真实窗口、
@@ -42,15 +50,20 @@ Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/per
 - 事件 options、EventTarget、CustomEvent、AbortController 和 handler 属性只覆盖产品注册表内
   的受控分发；没有完整 DOM 冒泡/捕获树、默认动作或 native event retargeting。microtask、idle
   和 postMessage 是 session 内、有限容量、宿主显式 pump 的队列，不等于浏览器线程调度。
+- Event 静态 phase 常量、构造 timestamp 和 dispatch 后 state reset 只保证产品 synthetic event
+  contract；MessagePort/BroadcastChannel 的 started/closed/messageerror 仍限于同一 session、
+  有界 message pump，不代表 native port 或跨页面通信。
 - TextEncoder/TextDecoder、atob/btoa、Blob/File/FormData 文件值是 UTF-8/内存 bounded 适配；
   Blob 的 `text()`/`arrayBuffer()` 同步返回，未开启 Promise，未实现 fetch、stream、multipart
   传输或持久文件句柄。
 - `dataset` 只通过现有按 id attribute bridge 反射 `data-*` 名称，节点常量是产品层 metadata；没有
-  DOM 树关系、tagName/outerHTML、属性枚举或 layout 语义。FormData 的 `Symbol.iterator` 是有序
-  session snapshot，旧 `entries()/keys()/values()` 数组接口保持兼容。
+  DOM 树关系、tagName/outerHTML、完整属性枚举或 layout 语义；`keys()`/`toJSON()` 只报告当前
+  session 触碰过的 named keys。FormData 的 `Symbol.iterator`、`entries()`/`keys()`/`values()`
+  是有序 session snapshot，保留旧 iterator `.length` 兼容字段，不提供 multipart 或异步流。
 - Headers、Request、Response 是内存 bounded 的同步数据模型；它们不建立网络连接、不执行 fetch、
-  不提供 Promise/stream，body `text()`/`arrayBuffer()` 会同步标记 `bodyUsed`。Headers 受条目和值
-  数量限制，非法名称和超限以受控异常失败。
+  不提供 Promise/stream，body `text()`/`json()`/`arrayBuffer()` 是 one-shot 消费并同步标记
+  `bodyUsed`；clone 在已消费后受控抛出 TypeError。Headers 受条目和值数量限制，非法名称和超限
+  以受控异常失败。
 - `AbortSignal.timeout/any/onabort`、setImmediate 和 MessageChannel 都依赖宿主显式 timer/message
   pump；没有后台线程、跨页面通信或导航后队列保留。`structuredClone` 只克隆受限 primitive/array/
   plain object/Blob/File，深度和对象数量受脚本预算影响，循环/函数等不可克隆值会抛出
@@ -59,8 +72,9 @@ Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/per
   `screen.orientation` 只在 session 初始化时由 viewport 派生，不监听旋转、不驱动重排或绘制；
   URLSearchParams pair constructor/delete(value) 仍是受限字符串实现。
 - `matchMedia` 使用初始化 viewport/DPI 快照，不会监听窗口重排；performance 只保留 session 内
-  mark/measure 条目；navigator 是冻结能力快照；storage event 为单 session 内的受控通知，不
-  提供跨页面/跨进程持久化同步。
+  mark/measure 条目；PerformanceObserverEntryList 只提供 observe 时的同步 indexed/iterable
+  snapshot，`clearResourceTimings()` 不会清理真实网络资源；navigator 是冻结能力快照；storage
+  event 为单 session 内的受控通知，不提供跨页面/跨进程持久化同步。
 - `TextEncoder.encodeInto()` 只在给定的 typed-array 容量内同步写入并返回 bounded progress；
   `TextDecoder` 的 `fatal`/`ignoreBOM` 目前是构造时选项快照，未扩展完整流式解码或所有编码错误
   策略。Request/Response 的 `json()` 同步消费 body，Blob-backed Request clone 仍是内存对象，

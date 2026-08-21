@@ -11,8 +11,9 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next481（本轮最终累计检查点为 `TEST369-448/999`；最近一次完整自动基线仍为
-  next255）。本轮使用候选定向门和一次累计门，没有修改 tracked `test_host.ini`。
+- 最新已验证产品基线：next501（本轮覆盖 `TEST369-448` 的分段累计门与
+  `TEST482-501,999` 定向门；最近一次完整自动基线仍为 next255）。本轮没有修改 tracked
+  `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
   与 URL、session storage 与 cookie、classList 与 style、选择器查询与 FormData、输入选择/数值步进/
   setRangeText、文档 metadata、窗口/滚动状态、合成事件、宿主计时器，以及 animation frame/visibility
@@ -64,16 +65,39 @@
   `tmp/device-runs/20260821-103420-next462-481-final-cumulative-r2/`。中间一次 TEST407
   设备超时在单独重跑和累计重跑中均未复现，不作为产品失败基线。
 
-## 当前状态：next462–481
+- next482–501 已完成第五组 20 个完整的浏览器 JavaScript 产品子功能：Blob/File 的
+  `toStringTag`/metadata 与 `slice()` 边界、FormData 独立 iterable snapshot、Request/Response
+  one-shot body、URL authority userinfo/default-port 归一化与 URLSearchParams 按值 `has()`、
+  cookie `Max-Age=0` 删除、NodeList `item()`/iterator、稳定 element wrapper identity、dataset
+  named keys/`toJSON()`、Event 常量/时间戳与 dispatch-state reset、MessagePort 状态、
+  BroadcastChannel clone error/closed 状态、PerformanceObserverEntryList iterable/indexed/
+  `toJSON()`，以及 performance resource-timing clear/JSON snapshot。对应自动测试为 TEST482–501，
+  实现仍位于 `positron_browser.dll`，`test_host.exe` 只提供 fixture 与断言。
+- next482–501 定向设备门 `TEST482-501,999` 在
+  `tmp/device-runs/20260821-112032-next482-501-final-r8/` 通过 21/21；随后为保持历史
+  TEST379 的 iterator `.length` 兼容字段，定向兼容重跑
+  `tmp/device-runs/20260821-110848-next482-501-formdata-compat/` 通过 4/4。旧回归覆盖
+  `TEST369-448` 的分段证据为 `tmp/device-runs/20260821-110712-next482-501-cumulative-369-377/`
+  （9/9）、`tmp/device-runs/20260821-111046-next482-501-cumulative-379-448-r3/` 中
+  TEST379–403（25/25，随后仅在 TEST404 出现一次 bootstrap timeout）和
+  `tmp/device-runs/20260821-111340-next482-501-cumulative-404-448/`（45/45）。
+  单独的 TEST372/378 重跑均通过；累计过程中的 timeout 按既有 WM6 环境噪声处理，未修改预算或放宽断言。
+- 本批只涉及 session 内数据模型、同步脚本语义和宿主显式 pump；不涉及视觉、真实触摸、SIP、
+  旋转、系统 picker 或网络失败，因此不新增人工页面验收。`-EnableJavaScript` 只改隔离 staging，
+  tracked `test_host.ini` 仍保持 `javascript=0`。
 
-本轮 20 个 next 均已实现、构建并通过定向设备门及累计门。产品层现在在同一脚本 session 内提供
+## 当前状态：next482–501
+
+本轮 20 个 next 均已实现、构建并通过定向设备门及分段累计回归门。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
 navigator/media/performance、history/storage event，并新增本轮的事件生命周期/对象监听、dataset、
 节点常量、FormData iterator、Headers、同步 Request/Response、AbortSignal 静态工厂、timer 参数、
 setImmediate、MessageChannel、structuredClone、navigator 方法、screen.orientation、URLSearchParams
 pair/delete-value，并新增本批的 codec/body readers、Storage/DOM iterators、事件构造器、端口/广播
-通道、PerformanceObserver 和窗口/AbortSignal 边界。它们都是 session-scoped、内存内、受预算限制的
+通道、PerformanceObserver 和窗口/AbortSignal 边界；本轮又增加 body one-shot、URL authority、
+cookie Max-Age 删除、NodeList/element identity、dataset named keys、Event/MessagePort/
+BroadcastChannel 状态与 PerformanceObserverEntryList 视图。它们都是 session-scoped、内存内、受预算限制的
 兼容切片，不代表完整 Web 标准实现；Request/Response 不发起网络，MessagePort/BroadcastChannel/
 PerformanceObserver 需要宿主显式 pump 或只读取同步快照，Promise/fetch/stream/后台调度仍不在本批范围。
 
@@ -2588,12 +2612,12 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
-每批一个清晰的产品边界；next462–481 已完成并提升为当前基线。
+每批一个清晰的产品边界；next482–501 已完成并提升为当前基线。
 
 完成标准：
 
-- TEST448/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/999` 定向选择；next299 的
+- TEST501/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/482–501/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2607,7 +2631,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next482 选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next502 选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。

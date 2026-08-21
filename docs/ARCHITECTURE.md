@@ -296,6 +296,26 @@ fixture、泵送和断言。新增的能力边界包括：
 session-scoped、内存 bounded；完整 Web IDL、网络/fetch/stream、transferable、持久化 storage、
 真实窗口生命周期和完整 DOM 树仍明确不在此边界内。
 
+#### next482–501 的脚本平台扩展
+
+本轮继续由 `positron_browser.dll` 持有产品语义，`test_host.exe` 只通过公共 session 入口提供
+fixture、pump 和断言。新增边界包括：
+
+- Blob/File metadata 的 `Symbol.toStringTag` 与受限 `slice()` 边界；FormData 的独立
+  `entries()`/`keys()`/`values()` snapshot、forEach snapshot 和兼容 `length` 字段；
+- Request/Response 同步 one-shot body readers（`text()`/`json()`/`arrayBuffer()`）与已消费
+  clone 错误；URL authority userinfo、默认 HTTP(S) 端口归一化、userinfo mutation 序列化和
+  URLSearchParams 按值 `has()`；cookie `Max-Age=0` 删除；
+- NodeList-like `item()`/iterator、重复 `getElementById()` 的稳定 wrapper identity、dataset
+  named keys/`toJSON()`；Event phase constants/timestamp 与 dispatch 后 state reset；
+- MessagePort started/closed、BroadcastChannel clone error/closed、PerformanceObserverEntryList
+  的 indexed/iterable/`toJSON()` snapshot，以及 performance `clearResourceTimings()`/`toJSON()`。
+
+这些能力都是单 session、内存 bounded 的同步或宿主显式 pump 语义，不引入网络、Promise、stream、
+完整 URL Standard、DOM tree、后台线程、跨页面通信、真实窗口生命周期或 native 输入副作用。公共
+初始化入口现在按顺序评估六个独立 IIFE，共享同一 Duktape context，并保持
+`PSCRIPT_MAX_SOURCE_BYTES`、既有执行预算、opaque handle 和 C ABI 不变。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

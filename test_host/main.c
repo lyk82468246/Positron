@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 448
+#define TEST_MAX_NUMBER 501
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -57309,6 +57309,240 @@ static BOOL test448_browser_abort_signal_factory(void)
     return test_browser_platform_case(448, PROBE, "true|why|true|true", error, sizeof(error));
 }
 
+/* TEST 482 - Blob/File metadata and bounded string tags. */
+static BOOL test482_browser_blob_file_metadata(void)
+{
+    static const char PROBE[] =
+        "var b=new Blob(['x'],{type:'Text/Plain'});var f=new File(['y'],'a.txt',"
+        "{type:'text/plain',lastModified:7});document.getElementById('result').textContent="
+        "String(b.size)+'|'+b.type+'|'+Object.prototype.toString.call(b)+'|'+f.name+'|'"
+        "+String(f.lastModified)+'|'+Object.prototype.toString.call(f);";
+    char error[256];
+    return test_browser_platform_case(482, PROBE,
+            "1|text/plain|[object Blob]|a.txt|7|[object File]", error, sizeof(error));
+}
+
+/* TEST 483 - Blob.slice applies NaN, negative and MIME boundaries. */
+static BOOL test483_browser_blob_slice_boundaries(void)
+{
+    static const char PROBE[] =
+        "var b=new Blob(['abcd'],{type:'text/plain'});var a=b.slice(-2,undefined,'APP/X');"
+        "var z=b.slice(NaN,NaN);document.getElementById('result').textContent=a.text()+'|'"
+        "+String(z.size)+'|'+a.type;";
+    char error[256];
+    return test_browser_platform_case(483, PROBE, "cd|0|app/x", error, sizeof(error));
+}
+
+/* TEST 484 - FormData entries/keys/values expose independent iterable snapshots. */
+static BOOL test484_browser_formdata_iterators(void)
+{
+    static const char PROBE[] =
+        "var f=new FormData();f.append('a','1');f.append('a','2');var e=f.entries();"
+        "var k=f.keys();var v=f.values();var p=e.next().value;var q=k.next().value;"
+        "var r=v.next().value;document.getElementById('result').textContent=p[0]+'='+p[1]+'|'"
+        "+q+'|'+r+'|'+String(e[Symbol.iterator]().next().done===false)+'|'"
+        "+String(f.entries().next().done===false);";
+    char error[256];
+    return test_browser_platform_case(484, PROBE, "a=1|a|1|true|true", error, sizeof(error));
+}
+
+/* TEST 485 - FormData forEach is a snapshot and exposes its tag. */
+static BOOL test485_browser_formdata_snapshot(void)
+{
+    static const char PROBE[] =
+        "var f=new FormData();f.append('a','1');var seen='';f.forEach(function(v){seen+=v;"
+        "f.append('b','2');});document.getElementById('result').textContent=seen+'|'"
+        "+String(f.getAll('b').length)+'|'+Object.prototype.toString.call(f);";
+    char error[256];
+    return test_browser_platform_case(485, PROBE, "1|1|[object FormData]", error, sizeof(error));
+}
+
+/* TEST 486 - Request body readers are one-shot and clone rejects consumed bodies. */
+static BOOL test486_browser_request_body_once(void)
+{
+    static const char PROBE[] =
+        "var r=new Request('/x',{body:'x'});var s=r.text();var second=false;var name='';"
+        "try{r.text();}catch(e){second=true;name=e.name;}var clone=false;try{r.clone();}"
+        "catch(e2){clone=e2.name==='TypeError';}document.getElementById('result').textContent=s+'|'"
+        "+String(r.bodyUsed)+'|'+String(second)+'|'+name+'|'+String(clone);";
+    char error[256];
+    return test_browser_platform_case(486, PROBE, "x|true|true|TypeError|true", error, sizeof(error));
+}
+
+/* TEST 487 - Response body readers share the same one-shot contract. */
+static BOOL test487_browser_response_body_once(void)
+{
+    static const char PROBE[] =
+        "var r=new Response('x');var a=r.arrayBuffer();var second=false;var name='';"
+        "try{r.json();}catch(e){second=true;name=e.name;}var clone=false;try{r.clone();}"
+        "catch(e2){clone=e2.name==='TypeError';}document.getElementById('result').textContent="
+        "String(a[0])+'|'+String(r.bodyUsed)+'|'+String(second)+'|'+name+'|'+String(clone);";
+    char error[256];
+    return test_browser_platform_case(487, PROBE, "120|true|true|TypeError|true", error, sizeof(error));
+}
+
+/* TEST 488 - URL authority parsing separates userinfo from host and origin. */
+static BOOL test488_browser_url_userinfo(void)
+{
+    static const char PROBE[] =
+        "var u=new URL('https://user:pass@example.com:443/a?x#h');"
+        "document.getElementById('result').textContent=u.username+'|'+u.password+'|'"
+        "+u.hostname+'|'+u.port+'|'+u.origin;";
+    char error[256];
+    return test_browser_platform_case(488, PROBE,
+            "user|pass|example.com||https://example.com", error, sizeof(error));
+}
+
+/* TEST 489 - URL userinfo mutation survives search parameter serialization. */
+static BOOL test489_browser_url_userinfo_mutation(void)
+{
+    static const char PROBE[] =
+        "var u=new URL('https://a:b@example.com/a');u.username='new';u.password='p2';"
+        "u.searchParams.set('q','1');document.getElementById('result').textContent=u.username+'|'"
+        "+u.password+'|'+u.href;";
+    char error[256];
+    return test_browser_platform_case(489, PROBE, "new|p2|https://new:p2@example.com/a?q=1", error, sizeof(error));
+}
+
+/* TEST 490 - URL default ports are omitted from normalized host/origin fields. */
+static BOOL test490_browser_url_default_ports(void)
+{
+    static const char PROBE[] =
+        "var a=new URL('http://example.com:80/a');var b=new URL('https://example.com:443/b');"
+        "document.getElementById('result').textContent=a.port+'|'+a.origin+'|'+b.port+'|'+b.origin;";
+    char error[256];
+    return test_browser_platform_case(490, PROBE,
+            "|http://example.com||https://example.com", error, sizeof(error));
+}
+
+/* TEST 491 - URLSearchParams value-aware has and bounded string tag. */
+static BOOL test491_browser_urlsearchparams_value_has(void)
+{
+    static const char PROBE[] =
+        "var p=new URLSearchParams('a=1&a=2+b');document.getElementById('result').textContent="
+        "String(p.has('a','2 b'))+'|'+String(p.has('a','3'))+'|'"
+        "+Object.prototype.toString.call(p)+'|'+p.toString();";
+    char error[256];
+    return test_browser_platform_case(491, PROBE,
+            "true|false|[object URLSearchParams]|a=1&a=2+b", error, sizeof(error));
+}
+
+/* TEST 492 - cookie attributes are ignored while Max-Age=0 removes a value. */
+static BOOL test492_browser_cookie_attributes(void)
+{
+    static const char PROBE[] =
+        "document.cookie='a=1; Path=/';document.cookie='b=2';var before=document.cookie;"
+        "document.cookie='a=; Max-Age=0';document.getElementById('result').textContent=before+'|'"
+        "+document.cookie+'|'+String(document.cookie.indexOf('a=')<0);";
+    char error[256];
+    return test_browser_platform_case(492, PROBE, "a=1; b=2|b=2|true", error, sizeof(error));
+}
+
+/* TEST 493 - querySelectorAll returns a bounded NodeList-like item view. */
+static BOOL test493_browser_nodelist_item(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('#target');var first=a[0];document.getElementById('result').textContent="
+        "String(a.length)+'|'+String(a.item(0)===first)+'|'+String(a.item(1)===null)+'|'"
+        "+String(a[Symbol.iterator]().next().value===first);";
+    char error[256];
+    return test_browser_platform_case(493, PROBE, "1|true|true|true", error, sizeof(error));
+}
+
+/* TEST 494 - repeated id lookup returns the same product element wrapper. */
+static BOOL test494_browser_element_identity(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target');var b=document.getElementById('target');"
+        "document.getElementById('result').textContent=String(a===b)+'|'+String(a.isConnected);";
+    char error[256];
+    return test_browser_platform_case(494, PROBE, "true|true", error, sizeof(error));
+}
+
+/* TEST 495 - dataset named properties enumerate and serialize as a snapshot. */
+static BOOL test495_browser_dataset_own_keys(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');delete e.dataset.foo;e.dataset.foo='bar';"
+        "var o=e.dataset.toJSON();var keys=e.dataset.keys();document.getElementById('result').textContent="
+        "String(keys.indexOf('foo')>=0)+'|'+e.dataset.foo+'|'+String('foo' in e.dataset)+'|'"
+        "+o.foo;";
+    char error[256];
+    return test_browser_platform_case(495, PROBE, "true|bar|true|bar", error, sizeof(error));
+}
+
+/* TEST 496 - Event constants and constructor timestamp are stable. */
+static BOOL test496_browser_event_constants(void)
+{
+    static const char PROBE[] =
+        "var e=new Event('x',{timeStamp:7});document.getElementById('result').textContent="
+        "String(e.timeStamp)+'|'+String(Event.NONE)+'|'+String(Event.CAPTURING_PHASE)+'|'"
+        "+String(Event.AT_TARGET)+'|'+String(Event.BUBBLING_PHASE);";
+    char error[256];
+    return test_browser_platform_case(496, PROBE, "7|0|1|2|3", error, sizeof(error));
+}
+
+/* TEST 497 - EventTarget resets dispatch state after listener delivery. */
+static BOOL test497_browser_eventtarget_dispatch_state(void)
+{
+    static const char PROBE[] =
+        "var t=new EventTarget();var e=new Event('x');var during=false;t.addEventListener('x',function(v){"
+        "during=v.currentTarget===t&&v.target===t&&v.eventPhase===2;});t.dispatchEvent(e);"
+        "document.getElementById('result').textContent=String(during)+'|'"
+        "+String(e.currentTarget===null)+'|'+String(e.eventPhase===0);";
+    char error[256];
+    return test_browser_platform_case(497, PROBE, "true|true|true", error, sizeof(error));
+}
+
+/* TEST 498 - MessagePort exposes explicit start and close state. */
+static BOOL test498_browser_message_port_state(void)
+{
+    static const char PROBE[] =
+        "var c=new MessageChannel();var got='';c.port1.onmessage=function(e){got=e.data;};"
+        "c.port1.start();c.port2.postMessage('x');__pcoreRunMessages(4);c.port1.close();"
+        "document.getElementById('result').textContent=got+'|'+String(c.port1.started)+'|'"
+        "+String(c.port1.closed);";
+    char error[256];
+    return test_browser_platform_case(498, PROBE, "x|true|true", error, sizeof(error));
+}
+
+/* TEST 499 - BroadcastChannel reports clone errors and closed state. */
+static BOOL test499_browser_broadcast_error(void)
+{
+    static const char PROBE[] =
+        "var a=new BroadcastChannel('next499');var b=new BroadcastChannel('next499');var errors=0;"
+        "b.onmessageerror=function(){errors++;};a.postMessage(function(){});var n=__pcoreRunMessages(4);"
+        "b.close();document.getElementById('result').textContent=String(errors)+'|'+String(n)+'|'"
+        "+String(b.closed);a.close();";
+    char error[256];
+    return test_browser_platform_case(499, PROBE, "1|1|true", error, sizeof(error));
+}
+
+/* TEST 500 - PerformanceObserverEntryList is iterable, indexed and serializable. */
+static BOOL test500_browser_performance_entry_list(void)
+{
+    static const char PROBE[] =
+        "performance.clearMarks();performance.mark('next500');var length=0;var name='';var indexed=false;var jsonLength=0;"
+        "var observer=new PerformanceObserver(function(list){length=list.length;name=list.item(0).name;"
+        "indexed=list[Symbol.iterator]().next().value.name==='next500';jsonLength=list.toJSON().length;});observer.observe({type:'mark'});"
+        "var taken=observer.takeRecords();document.getElementById('result').textContent=String(length)+'|'"
+        "+name+'|'+String(indexed)+'|'+String(taken.length===1&&jsonLength===1);";
+    char error[256];
+    return test_browser_platform_case(500, PROBE, "1|next500|true|true", error, sizeof(error));
+}
+
+/* TEST 501 - Performance timeline exposes a stable no-resource clear and JSON snapshot. */
+static BOOL test501_browser_performance_timeline(void)
+{
+    static const char PROBE[] =
+        "performance.clearMarks();performance.mark('next501');var a=performance.getEntries().length;"
+        "performance.clearResourceTimings();var b=performance.getEntries().length;var o=performance.toJSON();"
+        "document.getElementById('result').textContent=String(a)+'|'+String(b)+'|'"
+        "+String(o.timeOrigin===performance.timeOrigin);";
+    char error[256];
+    return test_browser_platform_case(501, PROBE, "1|1|true", error, sizeof(error));
+}
+
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -58403,6 +58637,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 448: ok =
                 test448_browser_abort_signal_factory();
+                break;
+        case 482: ok =
+                test482_browser_blob_file_metadata();
+                break;
+        case 483: ok =
+                test483_browser_blob_slice_boundaries();
+                break;
+        case 484: ok =
+                test484_browser_formdata_iterators();
+                break;
+        case 485: ok =
+                test485_browser_formdata_snapshot();
+                break;
+        case 486: ok =
+                test486_browser_request_body_once();
+                break;
+        case 487: ok =
+                test487_browser_response_body_once();
+                break;
+        case 488: ok =
+                test488_browser_url_userinfo();
+                break;
+        case 489: ok =
+                test489_browser_url_userinfo_mutation();
+                break;
+        case 490: ok =
+                test490_browser_url_default_ports();
+                break;
+        case 491: ok =
+                test491_browser_urlsearchparams_value_has();
+                break;
+        case 492: ok =
+                test492_browser_cookie_attributes();
+                break;
+        case 493: ok =
+                test493_browser_nodelist_item();
+                break;
+        case 494: ok =
+                test494_browser_element_identity();
+                break;
+        case 495: ok =
+                test495_browser_dataset_own_keys();
+                break;
+        case 496: ok =
+                test496_browser_event_constants();
+                break;
+        case 497: ok =
+                test497_browser_eventtarget_dispatch_state();
+                break;
+        case 498: ok =
+                test498_browser_message_port_state();
+                break;
+        case 499: ok =
+                test499_browser_broadcast_error();
+                break;
+        case 500: ok =
+                test500_browser_performance_entry_list();
+                break;
+        case 501: ok =
+                test501_browser_performance_timeline();
                 break;
         default: ok = FALSE; break;
         }
