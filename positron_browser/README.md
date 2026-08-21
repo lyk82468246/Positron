@@ -71,9 +71,12 @@ session 与脚本对象；宿主必须管理 document、窗口、网络、控件
 保持 UTF-8、opaque handle、明确所有权和 VS2008/ARMV4I 兼容；修改后运行正式构建、
 脚本/设备门和相应人工门。
 
-显式启用脚本时，bootstrap 还提供受限的 `dataset`/节点 metadata、FormData iterator、
-case-insensitive Headers、同步 Request/Response、AbortSignal `timeout`/`any`/`onabort`、
-timer extra arguments/`setImmediate`、MessageChannel、structuredClone、navigator 方法、
-viewport 派生的 `screen.orientation` 和 URLSearchParams pair/delete-value。它们只在单个
-session 内存中运行；Request/Response 不联网，MessageChannel/timeout 需宿主显式 pump，
-不等于完整 DOM、Promise/fetch/stream 或后台浏览器调度。
+显式启用脚本时，bootstrap 还提供受限的 `dataset`/节点 metadata、FormData/Headers/Storage/
+classList/style iterator、`TextEncoder.encodeInto()`、TextDecoder 选项快照、同步
+Request/Response JSON 与 Blob clone、Headers `getSetCookie()`、AbortSignal `timeout`/`any`/
+`onabort`/`abort`、timer extra arguments/`setImmediate`、MessagePort/BroadcastChannel、
+structuredClone、Storage/HashChange/PopState/Error/Progress/Close event 构造器、同步
+PerformanceObserver 快照、navigator 方法、viewport 派生的 `screen.orientation`、window aliases/
+open-close no-op 和 URLSearchParams pair/delete-value。它们只在单个 session 内存中运行；
+Request/Response 不联网，MessagePort/BroadcastChannel/timeout 需宿主显式 pump，PerformanceObserver
+只读取 observe 时已有 entries，不等于完整 DOM、Promise/fetch/stream、真实窗口生命周期或后台浏览器调度。

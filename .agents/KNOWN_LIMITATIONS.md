@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next461）
+## 当前状态（next481）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -18,8 +18,11 @@ Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/per
   scrollRestoration 和 storage event。next442–461 又补齐了对象 listener、Event 生命周期、
   DOMException、dataset/节点常量、FormData iterator、受限 Headers、同步 Request/Response、
   AbortSignal timeout/any/onabort、timer 参数/setImmediate、MessageChannel、structuredClone、
-  navigator 方法、screen.orientation 和 URLSearchParams pair/delete-value。TEST369–428 与累计门
-  `TEST369-428,999` 已通过；这些
+  navigator 方法、screen.orientation 和 URLSearchParams pair/delete-value。next462–481 又补齐了
+  encodeInto/decoder 选项、同步 JSON body readers、Storage named/toJSON、DOM/style 迭代器、
+  toggleAttribute/ownership、事件构造器、MessagePort/BroadcastChannel、PerformanceObserver、
+  window aliases/open-close 边界和 AbortSignal.abort。TEST369–448 与累计门
+  `TEST369-448,999` 已通过；这些
 切片默认关闭 JavaScript 时不会被发现、抓取或执行。
 
 这些 API 的共同限制如下：
@@ -58,6 +61,20 @@ Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/per
 - `matchMedia` 使用初始化 viewport/DPI 快照，不会监听窗口重排；performance 只保留 session 内
   mark/measure 条目；navigator 是冻结能力快照；storage event 为单 session 内的受控通知，不
   提供跨页面/跨进程持久化同步。
+- `TextEncoder.encodeInto()` 只在给定的 typed-array 容量内同步写入并返回 bounded progress；
+  `TextDecoder` 的 `fatal`/`ignoreBOM` 目前是构造时选项快照，未扩展完整流式解码或所有编码错误
+  策略。Request/Response 的 `json()` 同步消费 body，Blob-backed Request clone 仍是内存对象，
+  不建立文件句柄、网络或 Promise 链。
+- Storage named properties 只通过 session 内 Proxy 映射到 `getItem`/`setItem`/`removeItem`，
+  `toJSON()` 返回一次性 detached snapshot；不提供持久化、跨窗口同步或完整 Web IDL property
+  enumeration。classList/style iterator 是当前快照，DOM 仍没有通用 createElement/tree API。
+- StorageEvent、HashChangeEvent、PopStateEvent、ErrorEvent、ProgressEvent、CloseEvent 只提供
+  构造器字段和产品事件基类；MessagePort 的 `messageerror`、close 与 BroadcastChannel 仅在同一
+  script session、有限 message pump 中工作，跨页面/跨进程、transferable 和后台通信不在范围。
+- PerformanceObserver 在 `observe()` 时对已有 performance entries 做同步快照并通过
+  `takeRecords()` 读取，不监听未来异步条目；window `self/top/parent/frames/defaultView` 是同一
+  bounded global 的别名，`open()` 返回 null、`close()` 不关闭真实窗口，`closed/length` 只为稳定
+  no-op 状态。`AbortSignal.abort()`/`throwIfAborted()` 只覆盖同步 reason 传播。
 - `scripts\device_gate.bat -EnableJavaScript` 只修改隔离 staging；tracked
   `test_host/test_host.ini` 仍为 `javascript=0`。本轮只改产品 API/状态，没有新增视觉、触摸、
   SIP 或系统 picker 人工门；这些风险仍须按下方验收边界单独检查。

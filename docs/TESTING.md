@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next461 基线）
+### 当前默认自动选择与人工验收包（next481 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -542,6 +542,29 @@ scripts\device_gate.bat -Candidate next442-461-cumulative-pass ^
 本批只覆盖 session 内数据模型、事件/取消和宿主泵送队列，不触及视觉、触摸、SIP、系统 picker、
 旋转、网络或真实窗口生命周期，因此不要求新增人工页面验收；若后续把 Request/Response、
 MessageChannel、screen.orientation 或 dataset 接入这些边界，必须另开人工门。
+
+### next462–481 脚本能力累计门
+
+这 20 个 next 是第四组产品层脚本平台能力，不是 20 个微小反射门。新增 TEST429–448 已通过定向
+门；最终累计门如下：
+
+```bat
+scripts\device_gate.bat -Candidate next462-481-final-cumulative-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "369-448,999"
+```
+
+最终证据 `tmp/device-runs/20260821-103420-next462-481-final-cumulative-r2/` 显示 81/81 通过、
+零 ERROR/FAIL、唯一 `TESTBENCH PASS` 和 `test13_route_ok=True`；新增门定向证据位于
+`tmp/device-runs/20260821-103115-next462-481-final-r2/`，为 21/21。一次独立 TEST407 超时在
+`tmp/device-runs/20260821-103402-next462-481-diagnose-407/` 重跑通过，最终累计门也再次通过，未
+修改任何断言。实现仍由 `positron_browser.dll` 持有，bootstrap 现在分五段评估以保持
+`PSCRIPT_MAX_SOURCE_BYTES` 不变。
+
+本批只覆盖 session 内编码/body、Storage/DOM 集合、事件构造器、MessagePort/BroadcastChannel、
+PerformanceObserver 快照、window no-op aliases 和 AbortSignal 同步 reason；不触及视觉、触摸、
+SIP、系统 picker、旋转、网络或真实窗口生命周期，因此不要求新增人工页面验收。`test_host.ini`
+仍保持 tracked 的 `javascript=0`；`-EnableJavaScript` 只写入隔离 staging。
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
 2/2 和 77/77，均无 ERROR/FAIL；回归门的 staging INI 临时使用 `javascript=1`，仓库 tracked

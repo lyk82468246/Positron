@@ -272,6 +272,30 @@ Response/Headers、Blob/File、structuredClone 都是 session 内存 bounded 的
 timer 和 AbortSignal timeout 必须由宿主显式泵送。Bootstrap 由公共初始化入口按顺序评估四个独立 IIFE，
 保持既有 `PSCRIPT_MAX_SOURCE_BYTES` 和执行预算不变。
 
+#### next462–481 的脚本平台扩展
+
+本轮继续由 `positron_browser.dll` 持有产品语义，`test_host.exe` 只通过公共 session 入口提供
+fixture、泵送和断言。新增的能力边界包括：
+
+- 编码与 body：`TextEncoder.encodeInto()` 的容量受限写入、`TextDecoder` 的 fatal/ignoreBOM
+  选项快照、同步 `Request.prototype.json()`/`Response.prototype.json()`、Blob-backed Request
+  clone，以及 Headers `getSetCookie()` 和 canonical iterator 视图；这些都不建立网络、Promise
+  或文件句柄。
+- 集合与 DOM：Storage named properties 和 detached `toJSON()` snapshot、classList/style 的
+  Symbol.iterator、`toggleAttribute()`，以及 `ownerDocument`/`isConnected`/`nodeValue` 元数据。
+  iterator 与 storage 仍是 session 内快照/Proxy，不引入完整 DOM tree 或通用 createElement。
+- 事件与窗口：Storage/HashChange/PopState/Error/Progress/Close event 构造器，document.defaultView
+  和同一 bounded global 的 window aliases；`open()` 返回 null、`close()` 为 no-op，不创建新窗口。
+- 通信与观测：MessagePort close/messageerror、同 session `BroadcastChannel` 和
+  `PerformanceObserver` 的同步 snapshot/takeRecords。消息仍通过既有 `RunMessages` pump，观测
+  不监听未来异步 entries，不引入后台线程或跨页面通信。
+- 取消：`AbortSignal.abort(reason)` 与 `throwIfAborted()` 的同步 reason 传播。
+
+本批 bootstrap 由公共初始化入口按顺序评估五个独立 IIFE，仍共享同一 Duktape context，并保持
+`PSCRIPT_MAX_SOURCE_BYTES`、执行预算、opaque handle 和既有 C ABI 不变。所有新增状态都是
+session-scoped、内存 bounded；完整 Web IDL、网络/fetch/stream、transferable、持久化 storage、
+真实窗口生命周期和完整 DOM 树仍明确不在此边界内。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

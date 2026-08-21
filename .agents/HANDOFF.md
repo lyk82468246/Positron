@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next461（本轮最终累计检查点为 `TEST369-428/999`；最近一次完整自动基线仍为
-  next255）。本轮使用每项候选门和一次累计门，没有修改 tracked `test_host.ini`。
+- 最新已验证产品基线：next481（本轮最终累计检查点为 `TEST369-448/999`；最近一次完整自动基线仍为
+  next255）。本轮使用候选定向门和一次累计门，没有修改 tracked `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
   与 URL、session storage 与 cookie、classList 与 style、选择器查询与 FormData、输入选择/数值步进/
   setRangeText、文档 metadata、窗口/滚动状态、合成事件、宿主计时器，以及 animation frame/visibility
@@ -51,17 +51,31 @@
   `TEST369-428,999` 通过 61/61，零 ERROR、零 FAIL、唯一 TESTBENCH PASS、`test13_route_ok=True`，
   证据位于 `tmp/device-runs/20260821-101422-next442-461-final-cumulative/`。
 
-## 当前状态：next442–461
+- next462–481 已完成第四组 20 个完整的浏览器 JavaScript 产品子功能：TextEncoder.encodeInto、
+  TextDecoder 选项快照、同步 Request/Response JSON、Blob Request clone、Headers getSetCookie、
+  Storage named properties/toJSON、classList/style iterator、toggleAttribute、节点 ownership、
+  window aliases/defaultView/open/close 边界、Storage/HashChange/PopState/Error/Progress/Close
+  事件构造器、MessagePort 生命周期与 messageerror、同 session BroadcastChannel、同步快照
+  PerformanceObserver，以及 AbortSignal.abort/throwIfAborted。对应自动测试为 TEST429–448，
+  实现仍位于 `positron_browser.dll`，`test_host.exe` 只提供 fixture、callback 注册和断言。
+- next462–481 定向门 `TEST429-448,999` 通过 21/21，累计门 `TEST369-448,999` 通过 81/81；
+  两次最终门均为零 ERROR、零 FAIL、唯一 TESTBENCH PASS、`test13_route_ok=True`。最终证据分别位于
+  `tmp/device-runs/20260821-103115-next462-481-final-r2/` 和
+  `tmp/device-runs/20260821-103420-next462-481-final-cumulative-r2/`。中间一次 TEST407
+  设备超时在单独重跑和累计重跑中均未复现，不作为产品失败基线。
+
+## 当前状态：next462–481
 
 本轮 20 个 next 均已实现、构建并通过定向设备门及累计门。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
 navigator/media/performance、history/storage event，并新增本轮的事件生命周期/对象监听、dataset、
 节点常量、FormData iterator、Headers、同步 Request/Response、AbortSignal 静态工厂、timer 参数、
-setImmediate、MessageChannel、structuredClone、navigator 方法、screen.orientation 和 URLSearchParams
-pair/delete-value。它们都是 session-scoped、内存内、受预算限制的兼容切片，不代表完整 Web 标准实现；
-Request/Response 不发起网络，MessageChannel 需要宿主 message pump，structuredClone/Blob/File
-仍是同步 bounded 适配，Promise/fetch/stream/后台调度仍不在本批范围。
+setImmediate、MessageChannel、structuredClone、navigator 方法、screen.orientation、URLSearchParams
+pair/delete-value，并新增本批的 codec/body readers、Storage/DOM iterators、事件构造器、端口/广播
+通道、PerformanceObserver 和窗口/AbortSignal 边界。它们都是 session-scoped、内存内、受预算限制的
+兼容切片，不代表完整 Web 标准实现；Request/Response 不发起网络，MessagePort/BroadcastChannel/
+PerformanceObserver 需要宿主显式 pump 或只读取同步快照，Promise/fetch/stream/后台调度仍不在本批范围。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -2574,12 +2588,12 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
-每批一个清晰的产品边界；next422–441 已完成并提升为当前基线。
+每批一个清晰的产品边界；next462–481 已完成并提升为当前基线。
 
 完成标准：
 
-- TEST428/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–428/999` 定向选择；next299 的
+- TEST448/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2593,7 +2607,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next462 选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next482 选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
