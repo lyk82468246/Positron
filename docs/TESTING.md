@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next583 基线）
+### 当前默认自动选择与人工验收包（next584 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -94,6 +94,24 @@ scripts\device_gate.bat -Candidate next583 ^
 201/201 通过。两次均为零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。
 本批仍只改变同步脚本 API，不触及视觉、触摸、SIP、系统 picker、旋转或网络失败反馈，
 不新增人工页面验收；tracked `test_host.ini` 继续保持 `javascript=0`。
+
+`next584` 仍是一个批次编号，不为每个集合方法重复分配 next 号。本批在既有 DOM snapshot
+上补齐 `childNodes`、`children`、`form.elements` 和元素作用域 `querySelectorAll()` 结果的
+`forEach()`、`keys()`、`values()`、`entries()`、默认迭代器与 `Symbol.toStringTag`；
+`children`/`form.elements` 保留 `namedItem()`，自动断言为 `TEST622–641`：
+
+```bat
+scripts\device_gate.bat -Candidate next584 ^
+  -EnableJavaScript ^
+  -TestSelection "622-641,999"
+```
+
+定向证据：`tmp/device-runs/20260821-160529-next584/`，21/21 通过；相邻回归门
+`TEST389,390-448,482-641,999` 证据为
+`tmp/device-runs/20260821-160635-next584-regression/`，221/221 通过。两次均为零 ERROR/FAIL、
+唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批仍只改变同步、只读、session-scoped
+集合 API，不触及视觉、触摸、SIP、系统 picker、旋转或网络失败反馈，不新增人工页面验收；
+tracked `test_host.ini` 继续保持 `javascript=0`。
 
 这是窄的自动 smoke 选择，不是完整自动回归基线。最近一次完整自动基线仍是 next255，采用
 `auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-222,999`；next295、next401

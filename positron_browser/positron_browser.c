@@ -2601,20 +2601,20 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(!owner||typeof g.__pcoreGetNodeRelation!=='function'){return null;}"
         "try{value=g.__pcoreGetNodeRelation({id:owner.__id,relation:kind,index:"
         "index===undefined?0:index});}catch(relationError){return null;}return value;}"
-        "function list9(a){var i;Object.defineProperty(a,'item',{value:function(index){"
+        "function list9(a,named){var i;Object.defineProperty(a,'item',{value:function(index){"
         "var n=Number(index);return n===n&&n>=0&&n===Math.floor(n)&&n<a.length?a[n]:null;},"
-        "writable:false,configurable:false,enumerable:false});"
-        "Object.defineProperty(a,'namedItem',{value:function(name){var s=String(name);"
+        "writable:false,configurable:false,enumerable:false});if(named){Object.defineProperty(a,'namedItem',{value:function(name){var s=String(name);"
         "var j;for(j=0;j<this.length;j++){if(this[j]&&(this[j].id===s||this[j].name===s)){"
-        "return this[j];}}return null;},writable:false,configurable:false,enumerable:false});"
-        "if(S&&S.iterator&&a[S.iterator]===undefined){Object.defineProperty(a,S.iterator,{"
+        "return this[j];}}return null;},writable:false,configurable:false,enumerable:false});}"
+        "if(S&&S.iterator&&a[S.iterator]===undefined&&typeof Array.prototype[S.iterator]==='function'){Object.defineProperty(a,S.iterator,{"
         "value:Array.prototype[S.iterator],writable:false,configurable:false});}"
-        "return a;}"
+        "if(typeof g.__pcoreDecorateCollection13==='function'){return g.__pcoreDecorateCollection13(a,"
+        "named?'HTMLCollection':'NodeList',!!named);}return a;}"
         "function children9(owner){var a;var n;var i;var id;"
         "if(owner.__children9){return owner.__children9;}a=[];n=relation9(owner,"
         "6,0);n=Number(n);if(!(n>=0&&n===Math.floor(n))){n=0;}"
         "for(i=0;i<n;i++){id=relation9(owner,2,i);if(typeof id==='string'&&id!==''){"
-        "a.push(wrap9(id));}}owner.__children9=list9(a);return owner.__children9;}"
+        "a.push(wrap9(id));}}owner.__children9=list9(a,true);return owner.__children9;}"
         "function parent9(owner){var id=relation9(owner,1,0);return typeof id==='string'?wrap9(id):null;}"
         "function sibling9(owner,kind){var id=relation9(owner,kind,0);return typeof id==='string'?wrap9(id):null;}"
         "Object.defineProperty(PElement.prototype,'parentElement',{get:function(){return parent9(this);},enumerable:true,configurable:true});"
@@ -2657,13 +2657,13 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PElement.prototype.matches=function(selector){return match9(this,selector);};"
         "PElement.prototype.closest=function(selector){var n=this;var i=0;while(n&&i<64){if(match9(n,selector)){return n;}n=n.parentElement;i++;}return null;};"
         "function query9(owner,selector,all){var out=[];var stack=[];var kids;var i;var n;stack.push(owner);"
-        "while(stack.length){n=stack.pop();kids=children9(n);for(i=0;i<kids.length;i++){if(match9(kids[i],selector)){if(!all){return kids[i];}out.push(kids[i]);}}for(i=kids.length-1;i>=0;i--){stack.push(kids[i]);}}return all?list9(out):null;}"
+        "while(stack.length){n=stack.pop();kids=children9(n);for(i=0;i<kids.length;i++){if(match9(kids[i],selector)){if(!all){return kids[i];}out.push(kids[i]);}}for(i=kids.length-1;i>=0;i--){stack.push(kids[i]);}}return all?list9(out,false):null;}"
         "PElement.prototype.querySelector=function(selector){return query9(this,selector,false);};"
         "PElement.prototype.querySelectorAll=function(selector){return query9(this,selector,true);};"
         "Object.defineProperty(PElement.prototype,'form',{get:function(){var t=this.localName;if(t!=='input'&&t!=='select'&&t!=='textarea'&&t!=='button'){return null;}var id=relation9(this,8,0);return typeof id==='string'?wrap9(id):null;},enumerable:true});"
         "Object.defineProperty(PElement.prototype,'elements',{get:function(){var a=[];var n;var i;var id;"
-        "if(this.localName!=='form'){return list9(a);}n=Number(relation9(this,9,0));if(!(n>=0&&n===Math.floor(n))){n=0;}"
-        "for(i=0;i<n;i++){id=relation9(this,10,i);if(typeof id==='string'&&id!==''){a.push(wrap9(id));}}return list9(a);},enumerable:true});"
+        "if(this.localName!=='form'){return list9(a,true);}n=Number(relation9(this,9,0));if(!(n>=0&&n===Math.floor(n))){n=0;}"
+        "for(i=0;i<n;i++){id=relation9(this,10,i);if(typeof id==='string'&&id!==''){a.push(wrap9(id));}}return list9(a,true);},enumerable:true});"
         "var oldGet9=doc.getElementById;doc.getElementById=function(id){var e=oldGet9.call(this,id);return e?wrap9(String(id)):null;};"
         "})(this);";
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART10[] =
@@ -2719,8 +2719,10 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "var n=Number(index);return n===n&&n>=0&&n===Math.floor(n)&&n<a.length?a[n]:null;},"
         "writable:false,configurable:false,enumerable:false});"
         "if(S&&S.iterator&&a[S.iterator]===undefined){Object.defineProperty(a,S.iterator,{"
-        "value:function(){var j=0;return {next:function(){return j<a.length?"
-        "{done:false,value:a[j++]}:{done:true,value:undefined};}}},writable:false,configurable:false});}return a;}"
+        "value:function(){var j=0;var it={next:function(){return j<a.length?"
+        "{done:false,value:a[j++]}:{done:true,value:undefined};}};if(S&&S.iterator){Object.defineProperty(it,S.iterator,{"
+        "value:function(){return it;},writable:false,configurable:false});}return it;},writable:false,configurable:false});}"
+        "if(typeof g.__pcoreDecorateCollection13==='function'){return g.__pcoreDecorateCollection13(a,'NodeList',false);}return a;}"
         "function nodes(o){var a,n,i,x;if(o.__nodes11){return o.__nodes11;}a=[];"
         "if(!o||typeof o.__id!=='string'){return list(a);}n=num(o,14,0);for(i=0;i<n;i++){"
         "x=child(o,i);if(x!==null){a.push(x);}}o.__nodes11=list(a);return o.__nodes11;}"
@@ -2860,6 +2862,36 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "constant('DOCUMENT_POSITION_FOLLOWING',4);constant('DOCUMENT_POSITION_CONTAINS',8);"
         "constant('DOCUMENT_POSITION_CONTAINED_BY',16);constant('DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC',32);"
         "})(this);";
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART13[] =
+        "(function(g){"
+        "var S=g.Symbol;"
+        "function iterator13(a,kind){var i=0;var n=a.length;var it={};"
+        "it.next=function(){var v;if(i>=n){return {done:true,value:undefined};}"
+        "if(kind==='keys'){v=i;}else if(kind==='entries'){v=[i,a[i]];}else{v=a[i];}"
+        "i++;return {done:false,value:v};};"
+        "if(S&&S.iterator){Object.defineProperty(it,S.iterator,{value:function(){return it;},"
+        "writable:false,configurable:false});}return it;}"
+        "function define13(a,name,value){if(typeof a[name]!=='function'){Object.defineProperty(a,name,{"
+        "value:value,writable:false,configurable:false,enumerable:false});}}"
+        "function decorate13(a,tag,named){var i;var n;"
+        "if(!a||typeof a.length!=='number'){return a;}"
+        "if(typeof a.item!=='function'){define13(a,'item',function(index){var x=Number(index);"
+        "return x===x&&x>=0&&x===Math.floor(x)&&x<this.length?this[x]:null;});}"
+        "if(named&&typeof a.namedItem!=='function'){define13(a,'namedItem',function(name){"
+        "var s=String(name);var j;for(j=0;j<this.length;j++){if(this[j]&&(this[j].id===s||"
+        "this[j].name===s)){return this[j];}}return null;});}"
+        "define13(a,'forEach',function(callback,thisArg){var j;if(typeof callback!=='function'){"
+        "throw new TypeError('callback');}n=this.length;for(j=0;j<n;j++){callback.call(thisArg,this[j],j,this);}});"
+        "define13(a,'keys',function(){return iterator13(this,'keys');});"
+        "define13(a,'values',function(){return iterator13(this,'values');});"
+        "define13(a,'entries',function(){return iterator13(this,'entries');});"
+        "if(S&&S.iterator&&typeof a[S.iterator]!=='function'){Object.defineProperty(a,S.iterator,{"
+        "value:function(){return iterator13(this,'values');},writable:false,configurable:false});}"
+        "if(S&&S.toStringTag){try{if(a[S.toStringTag]!==tag){Object.defineProperty(a,S.toStringTag,{"
+        "value:tag,writable:false,configurable:true,enumerable:false});}}catch(tagError){}}"
+        "return a;}"
+        "g.__pcoreDecorateCollection13=decorate13;"
+        "})(this);";
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 {
     int result;
@@ -2919,8 +2951,13 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     if (result != PSCRIPT_OK) {
         return result;
     }
-    return PBrowser_ScriptSessionEvaluate(hSession,
+    result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART12, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    return PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART13, -1);
 }
 typedef struct p_browser_script_dom_read_binding {
     PBrowserScriptDomReadCallbacks callbacks;

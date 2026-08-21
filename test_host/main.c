@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 621
+#define TEST_MAX_NUMBER 641
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -57829,6 +57829,266 @@ static BOOL test621_browser_node_owner_connection(void)
             "true|true|true|true", error, sizeof(error));
 }
 
+/* TEST 622 - childNodes forEach visits the mixed snapshot in order. */
+static BOOL test622_browser_collection_child_foreach(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;var s='';"
+        "n.forEach(function(v,i,a){s+=i+':'+v.nodeName+':'+String(a===n)+'|';});"
+        "document.getElementById('result').textContent=s;";
+    char error[256];
+    return test_browser_child_node_case(622, PROBE,
+            "0:#text:true|1:SPAN:true|2:#comment:true|3:EM:true|",
+            error, sizeof(error));
+}
+
+/* TEST 623 - childNodes keys() exposes independent numeric cursors. */
+static BOOL test623_browser_collection_child_keys(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;var it=n.keys();"
+        "var a=it.next(),b=it.next(),c=it.next(),d=it.next(),e=it.next();"
+        "document.getElementById('result').textContent=a.value+'|'+b.value+'|'"
+        "+c.value+'|'+d.value+'|'+String(e.done)+'|'+String(it[Symbol.iterator]()==it);";
+    char error[256];
+    return test_browser_child_node_case(623, PROBE,
+            "0|1|2|3|true|true", error, sizeof(error));
+}
+
+/* TEST 624 - childNodes values() returns the same wrapper identities. */
+static BOOL test624_browser_collection_child_values(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;var it=n.values();"
+        "var a=it.next(),b=it.next(),c=it.next();"
+        "document.getElementById('result').textContent=String(a.value===n[0])+'|'"
+        "+String(b.value===n[1])+'|'+String(c.value===n[2])+'|'"
+        "+String(it[Symbol.iterator]()==it);";
+    char error[256];
+    return test_browser_child_node_case(624, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 625 - childNodes entries() keeps index/value pairs together. */
+static BOOL test625_browser_collection_child_entries(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;var it=n.entries();"
+        "var a=it.next().value,b=it.next().value,c=it.next().value,d=it.next().value,e=it.next();"
+        "document.getElementById('result').textContent=a[0]+':'+a[1].nodeName+'|'"
+        "+b[0]+':'+b[1].nodeName+'|'+c[0]+':'+c[1].nodeName+'|'"
+        "+d[0]+':'+d[1].nodeName+'|'+String(e.done);";
+    char error[256];
+    return test_browser_child_node_case(625, PROBE,
+            "0:#text|1:SPAN|2:#comment|3:EM|true", error, sizeof(error));
+}
+
+/* TEST 626 - the default childNodes iterator is iterable and terminates. */
+static BOOL test626_browser_collection_child_iterator(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;var it=n[Symbol.iterator]();"
+        "var a=it.next(),b=it.next(),c=it.next(),d=it.next(),e=it.next();"
+        "document.getElementById('result').textContent=String(it[Symbol.iterator]()==it)+'|'"
+        "+a.value.nodeName+'|'+b.value.nodeName+'|'+c.value.nodeName+'|'"
+        "+d.value.nodeName+'|'+String(e.done);";
+    char error[256];
+    return test_browser_child_node_case(626, PROBE,
+            "true|#text|SPAN|#comment|EM|true", error, sizeof(error));
+}
+
+/* TEST 627 - forEach rejects a non-callable callback without changing data. */
+static BOOL test627_browser_collection_child_foreach_boundary(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;var threw=false;var name='';"
+        "try{n.forEach(null);}catch(e){threw=true;name=e.name;}"
+        "document.getElementById('result').textContent=String(threw)+'|'+name+'|'"
+        "+n.length;";
+    char error[256];
+    return test_browser_child_node_case(627, PROBE,
+            "true|TypeError|4", error, sizeof(error));
+}
+
+/* TEST 628 - NodeList exposes its type tag and keeps item() bounds. */
+static BOOL test628_browser_collection_child_metadata(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent=String(n[Symbol.toStringTag])+'|'"
+        "+String(typeof n.forEach==='function')+'|'+String(typeof n.keys==='function')+'|'"
+        "+String(n.item(99)===null);";
+    char error[256];
+    return test_browser_child_node_case(628, PROBE,
+            "NodeList|true|true|true", error, sizeof(error));
+}
+
+/* TEST 629 - children forEach visits the HTMLCollection snapshot in order. */
+static BOOL test629_browser_collection_children_foreach(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('branch').children;var s='';"
+        "a.forEach(function(v,i){s+=i+':'+v.id+'|';});"
+        "document.getElementById('result').textContent=s;";
+    char error[256];
+    return test_browser_tree_case(629, PROBE,
+            "0:target|1:second|2:leaf|", error, sizeof(error));
+}
+
+/* TEST 630 - children keys/entries share the same ordered snapshot. */
+static BOOL test630_browser_collection_children_keys_entries(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('branch').children;var k=a.keys();var e=a.entries();"
+        "var k0=k.next(),k1=k.next(),k2=k.next(),k3=k.next();"
+        "var e0=e.next().value,e1=e.next().value,e2=e.next().value;"
+        "document.getElementById('result').textContent=k0.value+'|'+k1.value+'|'+k2.value+'|'"
+        "+String(k3.done)+'|'+e0[0]+':'+e0[1].id+'|'+e2[0]+':'+e2[1].id+'|'+String(e1[1]===a[1]);";
+    char error[256];
+    return test_browser_tree_case(630, PROBE,
+            "0|1|2|true|0:target|2:leaf|true", error, sizeof(error));
+}
+
+/* TEST 631 - children keeps namedItem and reports HTMLCollection. */
+static BOOL test631_browser_collection_children_metadata(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('branch').children;"
+        "document.getElementById('result').textContent=String(a.namedItem('leaf')===a[2])+'|'"
+        "+String(a.namedItem('missing')===null)+'|'+String(a[Symbol.toStringTag]);";
+    char error[256];
+    return test_browser_tree_case(631, PROBE,
+            "true|true|HTMLCollection", error, sizeof(error));
+}
+
+/* TEST 632 - form.elements forEach preserves control order and indexes. */
+static BOOL test632_browser_collection_form_foreach(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('form').elements;var s='';"
+        "a.forEach(function(v,i){s+=i+':'+v.id+'|';});"
+        "document.getElementById('result').textContent=s;";
+    char error[256];
+    return test_browser_tree_case(632, PROBE,
+            "0:email|1:choice|2:submitter|", error, sizeof(error));
+}
+
+/* TEST 633 - form.elements keys and values use separate cursors. */
+static BOOL test633_browser_collection_form_keys_values(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('form').elements;var k=a.keys();var v=a.values();"
+        "document.getElementById('result').textContent=k.next().value+'|'+v.next().value.id+'|'"
+        "+k.next().value+'|'+v.next().value.id+'|'+String(a[Symbol.toStringTag]);";
+    char error[256];
+    return test_browser_tree_case(633, PROBE,
+            "0|email|1|choice|HTMLCollection", error, sizeof(error));
+}
+
+/* TEST 634 - form.elements entries and namedItem agree on wrapper identity. */
+static BOOL test634_browser_collection_form_entries_named(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('form').elements;var e=a.entries();"
+        "var x=e.next().value,y=e.next().value;"
+        "document.getElementById('result').textContent=x[0]+':'+x[1].id+'|'+y[0]+':'"
+        "+y[1].name+'|'+String(a.namedItem('send')===a[2]);";
+    char error[256];
+    return test_browser_tree_case(634, PROBE,
+            "0:email|1:choice|true", error, sizeof(error));
+}
+
+/* TEST 635 - form.elements keeps item() bounds while decorated. */
+static BOOL test635_browser_collection_form_item_bounds(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('form').elements;"
+        "document.getElementById('result').textContent=a.item(1).id+'|'"
+        "+String(a.item(-1)===null)+'|'+String(a.item(3)===null)+'|'"
+        "+String(a[Symbol.toStringTag]);";
+    char error[256];
+    return test_browser_tree_case(635, PROBE,
+            "choice|true|true|HTMLCollection", error, sizeof(error));
+}
+
+/* TEST 636 - element querySelectorAll returns a NodeList forEach view. */
+static BOOL test636_browser_collection_query_foreach(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('branch').querySelectorAll('*');var s='';"
+        "a.forEach(function(v){s+=v.id+'|';});"
+        "document.getElementById('result').textContent=s;";
+    char error[256];
+    return test_browser_tree_case(636, PROBE,
+            "target|second|leaf|deep|", error, sizeof(error));
+}
+
+/* TEST 637 - querySelectorAll keys are numeric and have no named lookup. */
+static BOOL test637_browser_collection_query_keys(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('branch').querySelectorAll('*');var k=a.keys();"
+        "var x=k.next(),y=k.next(),z=k.next(),w=k.next(),q=k.next();"
+        "document.getElementById('result').textContent=x.value+'|'+y.value+'|'+z.value+'|'"
+        "+w.value+'|'+String(q.done)+'|'+String(typeof a.namedItem==='undefined');";
+    char error[256];
+    return test_browser_tree_case(637, PROBE,
+            "0|1|2|3|true|true", error, sizeof(error));
+}
+
+/* TEST 638 - querySelectorAll values preserves element wrapper identity. */
+static BOOL test638_browser_collection_query_values(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('branch').querySelectorAll('*');var v=a.values();"
+        "var x=v.next(),y=v.next(),z=v.next();"
+        "document.getElementById('result').textContent=String(x.value===a[0])+'|'"
+        "+String(y.value===a[1])+'|'+String(z.value===a[2])+'|'"
+        "+String(v[Symbol.iterator]()==v);";
+    char error[256];
+    return test_browser_tree_case(638, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 639 - querySelectorAll entries keeps pair values and completion. */
+static BOOL test639_browser_collection_query_entries(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('branch').querySelectorAll('*');var e=a.entries();"
+        "var x=e.next().value,y=e.next().value,z=e.next().value,w=e.next().value,q=e.next();"
+        "document.getElementById('result').textContent=x[0]+':'+x[1].id+'|'+y[0]+':'"
+        "+y[1].id+'|'+z[0]+':'+z[1].id+'|'+w[0]+':'+w[1].id+'|'+String(q.done);";
+    char error[256];
+    return test_browser_tree_case(639, PROBE,
+            "0:target|1:second|2:leaf|3:deep|true", error, sizeof(error));
+}
+
+/* TEST 640 - querySelectorAll exposes the NodeList tag and iterable iterator. */
+static BOOL test640_browser_collection_query_metadata(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('branch').querySelectorAll('*');var it=a[Symbol.iterator]();"
+        "document.getElementById('result').textContent=String(a[Symbol.toStringTag])+'|'"
+        "+String(it[Symbol.iterator]()==it)+'|'+String(it.next().value===a[0]);";
+    char error[256];
+    return test_browser_tree_case(640, PROBE,
+            "NodeList|true|true", error, sizeof(error));
+}
+
+/* TEST 641 - collection iterators are independent and snapshots stay stable. */
+static BOOL test641_browser_collection_snapshot(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('branch').children;var i=a.keys();var j=a.keys();"
+        "var x=i.next().value,y=i.next().value,z=j.next().value;var before=a.length;"
+        "document.getElementById('target').setAttribute('data-change','1');"
+        "document.getElementById('result').textContent=x+'|'+y+'|'+z+'|'"
+        "+String(before===a.length)+'|'+String(i.next().value===2);";
+    char error[256];
+    return test_browser_tree_case(641, PROBE,
+            "0|1|0|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -60718,6 +60978,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 621: ok =
                 test621_browser_node_owner_connection();
+                break;
+        case 622: ok =
+                test622_browser_collection_child_foreach();
+                break;
+        case 623: ok =
+                test623_browser_collection_child_keys();
+                break;
+        case 624: ok =
+                test624_browser_collection_child_values();
+                break;
+        case 625: ok =
+                test625_browser_collection_child_entries();
+                break;
+        case 626: ok =
+                test626_browser_collection_child_iterator();
+                break;
+        case 627: ok =
+                test627_browser_collection_child_foreach_boundary();
+                break;
+        case 628: ok =
+                test628_browser_collection_child_metadata();
+                break;
+        case 629: ok =
+                test629_browser_collection_children_foreach();
+                break;
+        case 630: ok =
+                test630_browser_collection_children_keys_entries();
+                break;
+        case 631: ok =
+                test631_browser_collection_children_metadata();
+                break;
+        case 632: ok =
+                test632_browser_collection_form_foreach();
+                break;
+        case 633: ok =
+                test633_browser_collection_form_keys_values();
+                break;
+        case 634: ok =
+                test634_browser_collection_form_entries_named();
+                break;
+        case 635: ok =
+                test635_browser_collection_form_item_bounds();
+                break;
+        case 636: ok =
+                test636_browser_collection_query_foreach();
+                break;
+        case 637: ok =
+                test637_browser_collection_query_keys();
+                break;
+        case 638: ok =
+                test638_browser_collection_query_values();
+                break;
+        case 639: ok =
+                test639_browser_collection_query_entries();
+                break;
+        case 640: ok =
+                test640_browser_collection_query_metadata();
+                break;
+        case 641: ok =
+                test641_browser_collection_snapshot();
                 break;
         default: ok = FALSE; break;
         }

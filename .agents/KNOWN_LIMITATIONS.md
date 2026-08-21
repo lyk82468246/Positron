@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next583）
+## 当前状态（next584）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -35,8 +35,8 @@ Promise 构造器、then/catch/finally、thenable assimilation、组合器和错
 这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。next562–581 又增加了按 DOM id 的
 attribute count/name/value relation，以及 `getAttributeNames()`、`hasAttributes()`、受限
 `NamedNodeMap`/`Attr` wrapper 和跨 owner fail-closed mutation；attribute map 的 indexed
-properties 固定为 0–7，仍不提供 namespace API 或通用 DOM mutation。当前产品 bootstrap 由公共
-入口按十个顺序 IIFE 评估，共享一个 Duktape context；浏览器 session 的 heap ceiling 为 576 KiB，
+properties 固定为 0–7，仍不提供 namespace API 或通用 DOM mutation。next562–581 时产品
+bootstrap 由公共入口按十个顺序 IIFE 评估，共享一个 Duktape context；浏览器 session 的 heap ceiling 为 576 KiB，
 独立 `positron_script` context 的 512 KiB 默认值不变。分段只用于保持源码上限，不引入第二套
 JavaScript 引擎。
 
@@ -59,6 +59,15 @@ ID-addressable parent 与 childNodes snapshot 计算；未知对象、跨快照�
 定向门与 `TEST389,390–448,482–621,999` 相邻回归门均通过；bootstrap 现在为十二个 IIFE，
 browser heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
 
+next584 在不改动 core relation ABI 的前提下，为既有 DOM 集合 snapshot 补齐了有界迭代协议：
+`childNodes`、`children`、`form.elements` 和元素作用域 `querySelectorAll()` 结果提供
+`forEach()`、`keys()`、`values()`、`entries()`、可复用默认迭代器与 `Symbol.toStringTag`；
+`children`/`form.elements` 仍保留 `namedItem()`，元素作用域查询返回 `NodeList` 类型标识。
+这些集合仍是同步、session-scoped、只读的有限快照，不是 live collection，也没有新增节点创建、
+通用 mutation、复杂 selector 或 layout 语义。`TEST622–641,999` 定向门和
+`TEST389,390–448,482–641,999` 相邻回归门均通过；bootstrap 现在为十三个 IIFE，browser
+heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -67,8 +76,10 @@ browser heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
   `matches()`、`closest()`、元素作用域 `querySelector()`/`querySelectorAll()` 只在当前受限匹配器
   上工作，不提供通用 CSS selector、布局命中测试或完整动态 DOM 语义。
 - URL 的 userinfo、默认端口和 URLSearchParams 按值查询只覆盖当前 bounded parser 的 authority
-  形态；不提供完整 URL Standard、IPv6/转义异常和 origin 安全策略。NodeList 的 `item()`/iterator
-  与 repeated `getElementById()` identity 只作用于当前 document wrapper，不创建通用 DOM tree。
+  形态；不提供完整 URL Standard、IPv6/转义异常和 origin 安全策略。NodeList/HTMLCollection 的
+  `item()`、`namedItem()`、`forEach()`、`keys()`、`values()`、`entries()` 和 iterator 只作用于
+  当前 document 的同步 snapshot；与 repeated `getElementById()` identity 一样，不创建通用 DOM tree，
+  也不提供 live 更新。
 - selection、numeric step、setRangeText 是产品 bridge 的逻辑状态，不等于 WM native EDIT 的
   光标、SIP、IME composition、候选词、Unicode preedit 或原生文本选择 UI。
 - document/window metadata、viewport、scroll 是脚本可见的受控快照；它们不自动改变真实窗口、

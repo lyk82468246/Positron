@@ -306,7 +306,8 @@ fixture、pump 和断言。新增边界包括：
 - Request/Response 同步 one-shot body readers（`text()`/`json()`/`arrayBuffer()`）与已消费
   clone 错误；URL authority userinfo、默认 HTTP(S) 端口归一化、userinfo mutation 序列化和
   URLSearchParams 按值 `has()`；cookie `Max-Age=0` 删除；
-- NodeList-like `item()`/iterator、重复 `getElementById()` 的稳定 wrapper identity、dataset
+- NodeList/HTMLCollection-like `item()`/`namedItem()`、`forEach()`、`keys()`、`values()`、`entries()`/
+  iterator、重复 `getElementById()` 的稳定 wrapper identity、dataset
   named keys/`toJSON()`；Event phase constants/timestamp 与 dispatch 后 state reset；
 - MessagePort started/closed、BroadcastChannel clone error/closed、PerformanceObserverEntryList
   的 indexed/iterable/`toJSON()` snapshot，以及 performance `clearResourceTimings()`/`toJSON()`。
@@ -439,6 +440,23 @@ adapter 和断言：
 
 本批仍只改变脚本状态/API，不触及窗口绘制、真实触摸、SIP、旋转、系统 picker 或网络；默认
 `javascript=0` 路径不变，也不需要人工页面验收。
+
+#### next584 的 DOM 集合遍历边界
+
+本批不扩展 core relation ABI，而是在既有同步 DOM snapshot 上补齐集合协议：
+
+- `positron_browser.dll` 为 `childNodes`、`children`、`form.elements` 和元素作用域
+  `querySelectorAll()` 结果提供 `forEach()`、`keys()`、`values()`、`entries()`、可复用的默认
+  iterator 以及 `Symbol.toStringTag`。`children` 和 `form.elements` 保留 `item()`/`namedItem()`；
+  元素作用域查询使用 `NodeList` 类型标识，避免把 HTMLCollection 的命名查找混入查询结果。
+- 迭代器在创建时固定当前集合长度，返回值、键和 `[index,value]` 对都只引用当前 session 内的
+  wrapper snapshot；非函数 `forEach` callback 抛出 `TypeError`，不会改变集合或宿主 DOM。
+- 集合仍是同步、只读、session-scoped 的有限数组视图，不提供 live 更新、节点创建、通用 DOM
+  mutation、完整 Web IDL descriptor、复杂 selector、layout 或 native control side effect；
+  `test_host.exe` 只提供 fixture、callback adapter 和 `TEST622–641` 断言。
+- bootstrap 现在按十三个顺序 IIFE 评估，browser session 仍使用 576 KiB heap ceiling，独立
+  `positron_script` 默认堆仍为 512 KiB；本批不涉及窗口绘制、真实触摸、SIP、旋转、系统 picker
+  或网络，因此不新增人工页面验收。
 
 ## 独立 JavaScript 与浏览器 JavaScript
 

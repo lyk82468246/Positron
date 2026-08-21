@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next583
+### 当前短期状态：next584
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -385,6 +385,16 @@ parent/child snapshot 计算，未知对象和跨快照关系 fail closed。`TES
 `TEST389,390-448,482-621,999` 通过 201/201，证据为
 `tmp/device-runs/20260821-153044-next583-regression/`。本批不涉及视觉、触摸、SIP、picker、
 旋转或网络失败，tracked `test_host.ini` 仍保持 `javascript=0`；后续继续按一个清晰批次编号推进。
+
+`next584` 作为单一批次在既有 DOM snapshot 上补齐集合遍历协议：`childNodes`、`children`、
+`form.elements` 和元素作用域 `querySelectorAll()` 结果提供 `forEach()`、`keys()`、`values()`、
+`entries()`、可复用默认迭代器和 `Symbol.toStringTag`；`children`/`form.elements` 保留
+`namedItem()`，元素作用域查询使用 `NodeList` 类型标识，不新增 core ABI。`TEST622-641,999`
+通过 21/21，证据为 `tmp/device-runs/20260821-160529-next584/`；相邻
+`TEST389,390-448,482-641,999` 通过 221/221，证据为
+`tmp/device-runs/20260821-160635-next584-regression/`。本批仍只提供同步、session-scoped、
+只读快照，不提供 live collection、节点创建、通用 mutation、复杂 selector 或 layout；
+tracked `test_host.ini` 保持 `javascript=0`，因此不新增人工页面验收。
 
 ## 中期目标
 

@@ -58,6 +58,9 @@ reaction 必须由宿主显式调用 `PBrowser_ScriptSessionRunMicrotasks()` 推
 当前还提供按 DOM id 的父子/兄弟、tag/name、form owner、`children`、`contains()`、基础
 `compareDocumentPosition()`、受限 `matches()`/`closest()`、元素作用域 querySelector 和
 `form.elements` collection；这些是同步、只读、session-scoped snapshot，不是完整 live DOM。
+`childNodes`、`children`、`form.elements` 和元素作用域 `querySelectorAll()` 结果还提供
+有界的 `forEach()`、`keys()`、`values()`、`entries()`、默认 iterator 与 `Symbol.toStringTag`；
+`children`/`form.elements` 保留 `namedItem()`，不承诺 live 更新。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap
@@ -66,7 +69,7 @@ reaction 必须由宿主显式调用 `PBrowser_ScriptSessionRunMicrotasks()` 推
 `firstChild`/`lastChild`/`hasChildNodes()` 和稳定 wrapper identity；next583 又补充受控
 `isSameNode()`/`isEqualNode()`、`getRootNode()`、文档节点元数据、位置常量以及同一快照树内的
 `compareDocumentPosition()`/`contains()`。这些方法只读、session-scoped 且对未知对象 fail closed；
-它不创建通用 DOM 节点，也不写回文本节点。浏览器 bootstrap 使用十二个顺序 IIFE 和 576 KiB
+它不创建通用 DOM 节点，也不写回文本节点。浏览器 bootstrap 使用十三个顺序 IIFE 和 576 KiB
 session heap ceiling；独立
 `positron_script.dll` 默认堆仍为
 512 KiB。它不是第二套引擎。
