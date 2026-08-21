@@ -13,6 +13,13 @@
 #include "positron_json.h"
 #include "positron_script.h"
 
+/* The browser bootstrap owns one additional bounded DOM collection layer
+ * beyond the standalone script surface. Keep its heap ceiling explicit and
+ * local to browser sessions; independent PScript contexts remain at their
+ * 512 KiB default. */
+#define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 64UL * 1024UL)
+
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
     char states[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_STATE_MAX];
@@ -2659,6 +2666,47 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "for(i=0;i<n;i++){id=relation9(this,10,i);if(typeof id==='string'&&id!==''){a.push(wrap9(id));}}return list9(a);},enumerable:true});"
         "var oldGet9=doc.getElementById;doc.getElementById=function(id){var e=oldGet9.call(this,id);return e?wrap9(String(id)):null;};"
         "})(this);";
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART10[] =
+        "(function(g){"
+        "var P=g.__pcorePElement;var S=g.Symbol;var C={};"
+        "function r(o,k,i){var v;if(!o||typeof g.__pcoreGetNodeRelation!=='function'){return null;}"
+        "try{v=g.__pcoreGetNodeRelation({id:o.__id,relation:k,index:i===undefined?0:i});}"
+        "catch(e){return null;}return v;}"
+        "function ns(o){var a=[],n=Number(r(o,11,0)),i,v;"
+        "if(!(n>=0&&n===Math.floor(n))){n=0;}for(i=0;i<n;i++){v=r(o,12,i);"
+        "if(typeof v==='string'){a.push(v);}}return a;}"
+        "function nn(o,i){var v=r(o,12,i);return typeof v==='string'?v:null;}"
+        "function at(o,n){var s=String(n),k=o.__id+'|'+s,a=C[k];if(a){return a;}"
+        "a={o:o,n:s,nodeType:2,nodeName:s,name:s,specified:true,ownerElement:o};"
+        "Object.defineProperty(a,'o',{value:o,writable:false,configurable:false,enumerable:false});"
+        "Object.defineProperty(a,'value',{get:function(){var v=o.getAttribute(s);return v===null?'':v;},"
+        "set:function(v){o.setAttribute(s,String(v));},enumerable:true});"
+        "Object.defineProperty(a,'nodeValue',{get:function(){return a.value;},"
+        "set:function(v){a.value=v;},enumerable:true});"
+        "a.toString=function(){return a.value;};C[k]=a;return a;}"
+        "function ni(o,n){var a=ns(o),s=String(n),i;for(i=0;i<a.length;i++){"
+        "if(a[i]===s||String(a[i]).toLowerCase()===s.toLowerCase()){return at(o,a[i]);}}return null;}"
+        "function it(o){var a=ns(o),i=0;return {next:function(){return i<a.length?"
+        "{done:false,value:at(o,a[i++])}:{done:true,value:undefined};}};}"
+        "function m10(o){var m={},i;Object.defineProperty(m,'length',{get:function(){return ns(o).length;},"
+        "enumerable:true});m.item=function(i){var n=Number(i),s;if(n!==n||n<0||n!==Math.floor(n)){return null;}"
+        "s=nn(o,n);return s===null?null:at(o,s);};m.getNamedItem=function(n){return ni(o,n);};"
+        "m.setNamedItem=function(a){var old;if(!a||a.nodeType!==2||a.o!==o){return null;}"
+        "old=ni(o,a.name);o.setAttribute(a.name,a.value);return old;};"
+        "m.removeNamedItem=function(n){var old=ni(o,n);if(old!==null){o.removeAttribute(old.name);}return old;};"
+        "m.toString=function(){return '[object NamedNodeMap]';};"
+        "for(i=0;i<8;i++){(function(j){Object.defineProperty(m,String(j),{get:function(){return m.item(j);},"
+        "enumerable:true});})(i);}if(S&&S.iterator){Object.defineProperty(m,S.iterator,{value:function(){return it(o);},"
+        "writable:false,configurable:false});}return m;}"
+        "Object.defineProperty(P.prototype,'attributes',{get:function(){return this.__a10||(this.__a10=m10(this));},"
+        "enumerable:true});P.prototype.getAttributeNames=function(){return ns(this);};"
+        "P.prototype.hasAttributes=function(){return this.attributes.length>0;};"
+        "P.prototype.getAttributeNode=function(n){return this.attributes.getNamedItem(n);};"
+        "P.prototype.setAttributeNode=function(a){if(!a||a.nodeType!==2||a.o!==this){return null;}"
+        "return this.attributes.setNamedItem(a);};P.prototype.removeAttributeNode=function(a){var old;"
+        "if(!a||a.nodeType!==2||a.o!==this){return null;}old=this.getAttributeNode(a.name);"
+        "if(old===null){return null;}this.removeAttribute(a.name);return old;};"
+        "})(this);";
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 {
     int result;
@@ -2703,8 +2751,13 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     if (result != PSCRIPT_OK) {
         return result;
     }
-    return PBrowser_ScriptSessionEvaluate(hSession,
+    result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART9, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    return PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART10, -1);
 }
 typedef struct p_browser_script_dom_read_binding {
     PBrowserScriptDomReadCallbacks callbacks;
@@ -3311,7 +3364,8 @@ static int p_browser_script_dom_get_text(void *pw,
 static int p_browser_script_relation_is_count(unsigned int relation)
 {
     return relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_COUNT ||
-            relation == PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_COUNT;
+            relation == PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_COUNT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_COUNT;
 }
 
 static int p_browser_script_dom_get_relation(void *pw,
@@ -4277,7 +4331,8 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->navigation = NULL;
     session->dom_attribute = NULL;
     session->event = NULL;
-    session->runtime = PScript_Create(budget_ms);
+    session->runtime = PScript_CreateEx(budget_ms,
+            P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES);
     if (session->runtime == NULL) {
         free(session);
         return NULL;

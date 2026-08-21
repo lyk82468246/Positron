@@ -147,9 +147,11 @@ typedef struct PBrowserScriptDomReadCallbacks {
 /* Typed host adapter for the bounded, ID-addressable DOM relationship
  * boundary. Value relationships (parent/sibling/child-at/tag/form-owner)
  * use the same UTF-8 size-probe contract as PBrowserScriptGetTextFn. Count
- * relationships leave out_value/out_bytes unused and write out_number. The
- * callback returns 0 when found, 2 when the relationship is absent or outside
- * the bounded wrapper tree, and a negative value on adapter failure. */
+ * relationships (including ATTRIBUTE_COUNT) leave out_value/out_bytes unused
+ * and write out_number; attribute name/value relationships enumerate the
+ * bounded NamedNodeMap. The callback returns 0 when found, 2 when the
+ * relationship is absent or outside the bounded wrapper tree, and a negative
+ * value on adapter failure. */
 typedef int (*PBrowserScriptGetNodeRelationFn)(void *pw, const char *id,
         unsigned int relation, unsigned int index, char *out_value,
         int out_capacity, int *out_bytes, int *out_number);
@@ -171,6 +173,9 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_FORM_OWNER           8u
 #define PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_COUNT   9u
 #define PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_AT     10u
+#define PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_COUNT     11u
+#define PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_NAME_AT   12u
+#define PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_VALUE_AT  13u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;
@@ -630,7 +635,8 @@ typedef struct PBrowserScriptEventInfo {
 #define PBROWSER_SCRIPT_EVENT_ACTION_NONE            0x00u
 #define PBROWSER_SCRIPT_EVENT_ACTION_PREVENT_DEFAULT 0x01u
 
-/* Browser script session. The session owns one PScript context and all
+/* Browser script session. The session owns one browser-sized PScript context
+ * (the browser bootstrap uses a bounded 576 KiB heap ceiling) and all
  * registered native functions. It does not own a core document or any host
  * callback pw value. Return codes from Evaluate/Call/Set/Register are the
  * stable positron_script result codes; zero is success. */

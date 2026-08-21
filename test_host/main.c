@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 561
+#define TEST_MAX_NUMBER 581
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -56918,6 +56918,310 @@ static BOOL test561_browser_relation_snapshot(void)
             sizeof(error));
 }
 
+/* Shared parser-complete fixture for the bounded Attr/NamedNodeMap batch. */
+static BOOL test_browser_attribute_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='target' class='box' data-a='1' title='Hello'"
+        " data-empty='' aria-label='Demo'></div><div id='plain'></div>"
+        "<form id='form' data-form='yes'><input id='field' name='field' required>"
+        "<button id='send' name='go'>Go</button></form>"
+        "<p id='result'>idle</p></body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected,
+            error, error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded DOM attribute fixture passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded DOM attribute fixture failed.");
+    }
+    return ok;
+}
+
+/* TEST 562 - getAttributeNames preserves bounded parser attribute order. */
+static BOOL test562_browser_attribute_names(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var n=e.getAttributeNames();"
+        "document.getElementById('result').textContent=n.length+'|'+n.join('|');";
+    char error[256];
+    return test_browser_attribute_case(562, PROBE,
+            "6|id|class|data-a|title|data-empty|aria-label", error,
+            sizeof(error));
+}
+
+/* TEST 563 - attributes.length and hasAttributes are coherent. */
+static BOOL test563_browser_attribute_collection_length(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "document.getElementById('result').textContent=e.attributes.length+'|'+"
+        "String(e.hasAttributes())+'|'+String(p.attributes.length)+'|'+String(p.hasAttributes());";
+    char error[256];
+    return test_browser_attribute_case(563, PROBE, "6|true|1|true", error,
+            sizeof(error));
+}
+
+/* TEST 564 - item() exposes name/value fields in parser order. */
+static BOOL test564_browser_attribute_item(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').attributes;var x=a.item(0);"
+        "var y=a.item(2);document.getElementById('result').textContent="
+        "x.name+'|'+x.value+'|'+y.name+'|'+y.value;";
+    char error[256];
+    return test_browser_attribute_case(564, PROBE, "id|target|data-a|1", error,
+            sizeof(error));
+}
+
+/* TEST 565 - item() rejects negative, fractional and out-of-range indexes. */
+static BOOL test565_browser_attribute_item_bounds(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').attributes;"
+        "document.getElementById('result').textContent="
+        "String(a.item(-1)===null)+'|'+String(a.item(1.5)===null)+'|' +"
+        "String(a.item(6)===null);";
+    char error[256];
+    return test_browser_attribute_case(565, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 566 - getNamedItem supports exact and bounded HTML case lookup. */
+static BOOL test566_browser_attribute_named_item(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').attributes;var x=a.getNamedItem('data-a');"
+        "var y=a.getNamedItem('DATA-A');document.getElementById('result').textContent="
+        "x.name+'|'+y.value+'|'+String(a.getNamedItem('missing')===null);";
+    char error[256];
+    return test_browser_attribute_case(566, PROBE, "data-a|1|true", error,
+            sizeof(error));
+}
+
+/* TEST 567 - Attr fields are live and ownerElement is stable. */
+static BOOL test567_browser_attr_metadata(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "document.getElementById('result').textContent=a.nodeType+'|'+a.nodeName+'|'+a.name+'|' +"
+        "a.value+'|'+String(a.ownerElement===e)+'|'+String(a.specified);";
+    char error[256];
+    return test_browser_attribute_case(567, PROBE,
+            "2|title|title|Hello|true|true", error, sizeof(error));
+}
+
+/* TEST 568 - Attr.value and nodeValue setters update the owning element. */
+static BOOL test568_browser_attr_value_mutation(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('data-a');"
+        "a.value='2';var b=e.getAttributeNode('data-a');b.nodeValue='3';"
+        "document.getElementById('result').textContent=e.getAttribute('data-a')+'|'+a.value+'|' +"
+        "String(a===b);";
+    char error[256];
+    return test_browser_attribute_case(568, PROBE, "3|3|true", error,
+            sizeof(error));
+}
+
+/* TEST 569 - getAttributeNode returns a stable wrapper and toString value. */
+static BOOL test569_browser_get_attribute_node(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "var b=e.getAttributeNode('title');document.getElementById('result').textContent="
+        "String(a===b)+'|'+a.toString()+'|'+String(e.getAttributeNode('missing')===null);";
+    char error[256];
+    return test_browser_attribute_case(569, PROBE, "true|Hello|true", error,
+            sizeof(error));
+}
+
+/* TEST 570 - returned name arrays are detached from the NamedNodeMap. */
+static BOOL test570_browser_attribute_names_snapshot(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var n=e.getAttributeNames();"
+        "n.pop();document.getElementById('result').textContent=n.length+'|'+"
+        "e.getAttributeNames().length+'|'+e.attributes.length;";
+    char error[256];
+    return test_browser_attribute_case(570, PROBE, "5|6|6", error,
+            sizeof(error));
+}
+
+/* TEST 571 - bounded NamedNodeMap indexed access mirrors item(). */
+static BOOL test571_browser_attribute_indexed_access(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').attributes;document.getElementById('result').textContent="
+        "a[0].name+'|'+a[2].value+'|'+String(a[7]===null);";
+    char error[256];
+    return test_browser_attribute_case(571, PROBE, "id|1|true", error,
+            sizeof(error));
+}
+
+/* TEST 572 - NamedNodeMap iteration produces Attr wrappers in order. */
+static BOOL test572_browser_attribute_iteration(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').attributes;var it=a[Symbol.iterator]();"
+        "var x=it.next();var y=it.next();document.getElementById('result').textContent="
+        "x.value.name+'|'+y.value.name+'|'+String(it.next().done);";
+    char error[256];
+    return test_browser_attribute_case(572, PROBE, "id|class|false", error,
+            sizeof(error));
+}
+
+/* TEST 573 - setNamedItem replaces an existing Attr and returns the prior one. */
+static BOOL test573_browser_set_named_item(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('data-a');"
+        "a.value='4';var old=e.attributes.setNamedItem(a);document.getElementById('result').textContent="
+        "String(old===a)+'|'+e.getAttribute('data-a')+'|'+e.attributes.length;";
+    char error[256];
+    return test_browser_attribute_case(573, PROBE, "true|4|6", error,
+            sizeof(error));
+}
+
+/* TEST 574 - removeAttributeNode removes and returns the existing Attr. */
+static BOOL test574_browser_remove_attribute_node(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "var old=e.removeAttributeNode(a);document.getElementById('result').textContent="
+        "String(old===a)+'|'+String(e.getAttributeNode('title')===null)+'|'+e.attributes.length;";
+    char error[256];
+    return test_browser_attribute_case(574, PROBE, "true|true|5", error,
+            sizeof(error));
+}
+
+/* TEST 575 - setNamedItem and Attr.nodeValue preserve empty values. */
+static BOOL test575_browser_named_item_empty_value(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('data-empty');"
+        "var old=e.attributes.setNamedItem(a);document.getElementById('result').textContent="
+        "String(old===a)+'|'+String(a.value==='')+'|'+String(e.hasAttribute('data-empty'));";
+    char error[256];
+    return test_browser_attribute_case(575, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 576 - removeNamedItem returns the removed Attr and updates the map. */
+static BOOL test576_browser_remove_named_item(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var old=e.attributes.removeNamedItem('title');"
+        "document.getElementById('result').textContent=old.name+'|'+String(e.attributes.getNamedItem('title')===null)+'|' +"
+        "e.attributes.length;";
+    char error[256];
+    return test_browser_attribute_case(576, PROBE, "title|true|5", error,
+            sizeof(error));
+}
+
+/* TEST 577 - map length and names track set/remove mutations. */
+static BOOL test577_browser_attribute_dynamic_map(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('data-new','x');"
+        "var a=e.getAttributeNames();e.removeAttribute('title');"
+        "document.getElementById('result').textContent=a.length+'|'+e.attributes.length+'|' +"
+        "String(e.getAttributeNames().indexOf('data-new')>=0)+'|'+String(e.hasAttribute('title'));";
+    char error[256];
+    return test_browser_attribute_case(577, PROBE, "7|6|true|false", error,
+            sizeof(error));
+}
+
+/* TEST 578 - missing Attr operations fail closed without corrupting the map. */
+static BOOL test578_browser_attribute_missing(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('missing');"
+        "var b=e.attributes.removeNamedItem('missing');document.getElementById('result').textContent="
+        "String(a===null)+'|'+String(b===null)+'|'+e.attributes.length;";
+    char error[256];
+    return test_browser_attribute_case(578, PROBE, "true|true|6", error,
+            sizeof(error));
+}
+
+/* TEST 579 - attributes map identity survives repeated property access. */
+static BOOL test579_browser_attribute_identity(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.attributes;var b=e.attributes;"
+        "var x=a.item(0);var y=e.getAttributeNode('id');document.getElementById('result').textContent="
+        "String(a===b)+'|'+String(x===y)+'|'+String(a.item(0)===x);";
+    char error[256];
+    return test_browser_attribute_case(579, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 580 - cross-owner Attr mutation is rejected without side effects. */
+static BOOL test580_browser_attribute_cross_owner(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var f=document.getElementById('form');"
+        "var a=f.getAttributeNode('id');var x=e.attributes.setNamedItem(a);"
+        "var y=e.removeAttributeNode(a);document.getElementById('result').textContent="
+        "String(x===null)+'|'+String(y===null)+'|'+e.getAttribute('id')+'|'+f.getAttribute('id');";
+    char error[256];
+    return test_browser_attribute_case(580, PROBE,
+            "true|true|target|form", error, sizeof(error));
+}
+
+/* TEST 581 - the public core relation API exposes attribute count/name/value. */
+static BOOL test581_browser_attribute_core_api(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><div id='target' class='box' data-a='1'"
+        " title='Hello' data-empty='' aria-label='Demo'></div></body></html>";
+    HANDLE document;
+    char name[64];
+    char value[64];
+    int bytes;
+    int count;
+    BOOL ok;
+
+    document = PCore_ParseHTML(HTML, strlen(HTML));
+    memset(name, 0, sizeof(name));
+    memset(value, 0, sizeof(value));
+    bytes = 0;
+    count = 0;
+    ok = document != NULL &&
+            PCore_NodeRelationById(document, "target",
+            PCORE_NODE_RELATION_ATTRIBUTE_COUNT, 0, NULL, 0, NULL,
+            &count) == 0 && count == 6 &&
+            PCore_NodeRelationById(document, "target",
+            PCORE_NODE_RELATION_ATTRIBUTE_NAME_AT, 2, name,
+            sizeof(name), &bytes, NULL) == 0 && strcmp(name, "data-a") == 0 &&
+            PCore_NodeRelationById(document, "target",
+            PCORE_NODE_RELATION_ATTRIBUTE_VALUE_AT, 4, value,
+            sizeof(value), &bytes, NULL) == 0 && value[0] == '\0' &&
+            PCore_NodeRelationById(document, "target",
+            PCORE_NODE_RELATION_ATTRIBUTE_NAME_AT, 99, name,
+            sizeof(name), &bytes, NULL) == 2 &&
+            PCore_NodeRelationById(document, "missing",
+            PCORE_NODE_RELATION_ATTRIBUTE_COUNT, 0, NULL, 0, NULL,
+            &count) == 2;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (ok) {
+        show_info(L"TEST 581 OK", "Core attribute relation API passed.");
+    } else {
+        show_error(L"TEST 581 FAIL", "Core attribute relation API failed.");
+    }
+    return ok;
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -59627,6 +59931,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 561: ok =
                 test561_browser_relation_snapshot();
+                break;
+        case 562: ok =
+                test562_browser_attribute_names();
+                break;
+        case 563: ok =
+                test563_browser_attribute_collection_length();
+                break;
+        case 564: ok =
+                test564_browser_attribute_item();
+                break;
+        case 565: ok =
+                test565_browser_attribute_item_bounds();
+                break;
+        case 566: ok =
+                test566_browser_attribute_named_item();
+                break;
+        case 567: ok =
+                test567_browser_attr_metadata();
+                break;
+        case 568: ok =
+                test568_browser_attr_value_mutation();
+                break;
+        case 569: ok =
+                test569_browser_get_attribute_node();
+                break;
+        case 570: ok =
+                test570_browser_attribute_names_snapshot();
+                break;
+        case 571: ok =
+                test571_browser_attribute_indexed_access();
+                break;
+        case 572: ok =
+                test572_browser_attribute_iteration();
+                break;
+        case 573: ok =
+                test573_browser_set_named_item();
+                break;
+        case 574: ok =
+                test574_browser_remove_attribute_node();
+                break;
+        case 575: ok =
+                test575_browser_named_item_empty_value();
+                break;
+        case 576: ok =
+                test576_browser_remove_named_item();
+                break;
+        case 577: ok =
+                test577_browser_attribute_dynamic_map();
+                break;
+        case 578: ok =
+                test578_browser_attribute_missing();
+                break;
+        case 579: ok =
+                test579_browser_attribute_identity();
+                break;
+        case 580: ok =
+                test580_browser_attribute_cross_owner();
+                break;
+        case 581: ok =
+                test581_browser_attribute_core_api();
                 break;
         default: ok = FALSE; break;
         }

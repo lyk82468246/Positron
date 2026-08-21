@@ -4579,6 +4579,96 @@ static int pcore_relation_form_owner(dom_node *node, char *value,
     return 2;
 }
 
+static int pcore_relation_attribute_count(dom_element *element,
+        int *out_count)
+{
+    dom_namednodemap *attributes;
+    dom_ulong length;
+
+    if (out_count != NULL) {
+        *out_count = 0;
+    }
+    if (element == NULL || out_count == NULL) {
+        return 1;
+    }
+    attributes = NULL;
+    length = 0;
+    if (dom_node_get_attributes((dom_node *) element, &attributes) !=
+            DOM_NO_ERR) {
+        return 1;
+    }
+    if (attributes == NULL) {
+        return 0;
+    }
+    if (dom_namednodemap_get_length(attributes, &length) != DOM_NO_ERR) {
+        dom_namednodemap_unref(attributes);
+        return 1;
+    }
+    dom_namednodemap_unref(attributes);
+    if (length > (dom_ulong) 2147483647UL) {
+        return 1;
+    }
+    *out_count = (int) length;
+    return 0;
+}
+
+static int pcore_relation_attribute_field(dom_element *element,
+        unsigned int index, int want_value, char *value,
+        int value_capacity, int *out_bytes)
+{
+    dom_namednodemap *attributes;
+    dom_node *attribute;
+    dom_string *text;
+    dom_ulong length;
+    dom_exception err;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    if (element == NULL) {
+        return 1;
+    }
+    attributes = NULL;
+    attribute = NULL;
+    text = NULL;
+    length = 0;
+    if (dom_node_get_attributes((dom_node *) element, &attributes) !=
+            DOM_NO_ERR || attributes == NULL ||
+            dom_namednodemap_get_length(attributes, &length) != DOM_NO_ERR) {
+        if (attributes != NULL) {
+            dom_namednodemap_unref(attributes);
+        }
+        return 1;
+    }
+    if ((dom_ulong) index >= length ||
+            dom_namednodemap_item(attributes, (dom_ulong) index,
+            &attribute) != DOM_NO_ERR || attribute == NULL) {
+        dom_namednodemap_unref(attributes);
+        return 2;
+    }
+    if (want_value) {
+        err = dom_node_get_text_content(attribute, &text);
+    } else {
+        err = dom_node_get_node_name(attribute, &text);
+    }
+    if (err != DOM_NO_ERR || text == NULL) {
+        if (text != NULL) {
+            dom_string_unref(text);
+        }
+        dom_node_unref(attribute);
+        dom_namednodemap_unref(attributes);
+        return 1;
+    }
+    pcore_copy_dom_string(text, value, value_capacity, out_bytes);
+    dom_string_unref(text);
+    dom_node_unref(attribute);
+    dom_namednodemap_unref(attributes);
+    return 0;
+}
+
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,
         int value_capacity, int *out_bytes, int *out_number)
@@ -4672,6 +4762,20 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
                 err = 2;
             }
         }
+        break;
+    case PCORE_NODE_RELATION_ATTRIBUTE_COUNT:
+        err = pcore_relation_attribute_count(element, &count);
+        if (err == 0 && out_number != NULL) {
+            *out_number = count;
+        }
+        break;
+    case PCORE_NODE_RELATION_ATTRIBUTE_NAME_AT:
+        err = pcore_relation_attribute_field(element, index, 0, out_value,
+                value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_ATTRIBUTE_VALUE_AT:
+        err = pcore_relation_attribute_field(element, index, 1, out_value,
+                value_capacity, out_bytes);
         break;
     default:
         err = 1;

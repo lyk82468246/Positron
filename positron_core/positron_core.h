@@ -253,10 +253,12 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * elements without a non-empty id are skipped by child/sibling collections
  * and are reported as an unavailable relationship. String results use the
  * same probe/truncation contract as PCore_NodeTextContentById. Count results
- * are returned through out_number. The return value is 0 for a relationship
- * that was found, 2 for an absent/unavailable relationship and 1 for invalid
- * input or a DOM failure. The tree is a read snapshot for the duration of the
- * host script call; it is not a live mutation API. */
+ * are returned through out_number; ATTRIBUTE_NAME_AT and ATTRIBUTE_VALUE_AT
+ * enumerate the element's bounded NamedNodeMap in parser order. The return
+ * value is 0 for a relationship that was found, 2 for an absent/unavailable
+ * relationship and 1 for invalid input or a DOM failure. The tree and
+ * attribute map are read snapshots for the duration of the host script call;
+ * mutation remains on the existing attribute APIs. */
 #define PCORE_NODE_RELATION_PARENT_ELEMENT       1u
 #define PCORE_NODE_RELATION_FIRST_CHILD          2u
 #define PCORE_NODE_RELATION_LAST_CHILD           3u
@@ -267,6 +269,9 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_FORM_OWNER           8u
 #define PCORE_NODE_RELATION_FORM_CONTROL_COUNT   9u
 #define PCORE_NODE_RELATION_FORM_CONTROL_AT     10u
+#define PCORE_NODE_RELATION_ATTRIBUTE_COUNT     11u
+#define PCORE_NODE_RELATION_ATTRIBUTE_NAME_AT   12u
+#define PCORE_NODE_RELATION_ATTRIBUTE_VALUE_AT  13u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

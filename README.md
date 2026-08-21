@@ -17,7 +17,7 @@ DLL 之上建设轻量浏览器与应用运行时。
 | `positron_image.dll` | BMP/PNG/JPEG/GIF、SVG、像素缓冲和编码 | 设备位图格式依赖 WM Imaging codec；SVG 是受限子集 |
 | `positron_script.dll` | 独立 JavaScript 执行服务 | Duktape 2.7.0；有时间、内存、源码和 native callback 上限 |
 | `positron_core.dll` | HTML/DOM、CSS、布局、绘制、命中、表单和资源发现 | 基于移植的 NetSurf 3.11 组件；网页兼容性仍在扩展 |
-| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap、受控 DOM/Event/关系、表单/输入、URL、storage、编码、Headers、同步 Request/Response、bounded Promise、AbortSignal、timer/message pump、端口/广播、性能快照和窗口别名数据模型 | 不拥有窗口、网络或原生校验提示；这些 Web API 是 session 内 bounded 兼容切片，Promise 需宿主显式 microtask pump，DOM 关系只读且按 id 寻址，完整 DOM、fetch/stream、core 事件传播及控件副作用仍由宿主提供 |
+| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap、受控 DOM/Event/关系/Attr 集合、表单/输入、URL、storage、编码、Headers、同步 Request/Response、bounded Promise、AbortSignal、timer/message pump、端口/广播、性能快照和窗口别名数据模型 | 不拥有窗口、网络或原生校验提示；这些 Web API 是 session 内 bounded 兼容切片，Promise 需宿主显式 microtask pump，DOM/Attr 关系只读且按 id 寻址，完整 DOM、fetch/stream、core 事件传播及控件副作用仍由宿主提供 |
 
 所有公共接口都使用稳定 C ABI、UTF-8 字符串、opaque handle 和明确的释放函数。NetSurf、
 Duktape、Mbed TLS 等实现细节不暴露给调用者。
@@ -58,7 +58,11 @@ reaction 必须由宿主显式调用 `PBrowser_ScriptSessionRunMicrotasks()` 推
 当前还提供按 DOM id 的父子/兄弟、tag/name、form owner、`children`、`contains()`、基础
 `compareDocumentPosition()`、受限 `matches()`/`closest()`、元素作用域 querySelector 和
 `form.elements` collection；这些是同步、只读、session-scoped snapshot，不是完整 live DOM。
-它不是第二套引擎。
+当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
+和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
+同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap
+使用十个顺序 IIFE 和 576 KiB session heap ceiling；独立 `positron_script.dll` 默认堆仍为
+512 KiB。它不是第二套引擎。
 两者的关系和所有权见
 [架构说明](docs/ARCHITECTURE.md)。
 

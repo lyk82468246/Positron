@@ -374,6 +374,29 @@ Promise reaction 只进入现有 session 的 `queueMicrotask` 队列，由宿主
 `test_host.exe` 只实现 callback adapter、fixture 和 TEST542–561 断言；它不是关系 API 的所有者。
 这组 API 仅在显式 `javascript=1` 的 browser session 中可见，默认 Browse 路径不变。
 
+#### next562–581 的属性集合边界
+
+本批继续沿用同一产品分层，把属性集合查询和受控属性 wrapper 放在 core/browser DLL，而不是
+放进 `test_host.exe`：
+
+- `positron_core.dll` 的 `PCore_NodeRelationById()` 增加 attribute count、name-at 和 value-at
+  三个关系常量。调用者仍使用 UTF-8 probe/truncation 和 `out_number` 计数约定；属性按 libdom
+  parser order 枚举，越界、缺失 id 和 DOM 错误 fail closed。
+- `positron_browser.dll` 复用现有 relation callback 槽位，在第十个 bootstrap IIFE 中提供
+  `Element.getAttributeNames()`、`hasAttributes()`、`attributes`、`getAttributeNode()`、
+  `setAttributeNode()` 和 `removeAttributeNode()`；NamedNodeMap 提供 `length`、`item()`、
+  `getNamedItem()`、`setNamedItem()`、`removeNamedItem()`、iterator 和 indexed slots 0–7。
+  Attr wrapper 提供 `nodeType`、`nodeName`、`name`、`value`、`nodeValue`、`specified`、
+  `ownerElement` 和稳定 identity；value/nodeValue mutation 复用既有 attribute callback，
+  跨 owner 绑定和缺失删除返回 null，不伪造节点转移。
+- 该集合是同步、ID-addressable、session-scoped 的 bounded view；不暴露 libdom 对象，不实现
+  namespaces、prefix/localName、通用节点创建、live collection、完整 Web IDL descriptors、
+  layout 或 native control side effect。浏览器 session 为这层 bootstrap 使用 576 KiB heap
+  ceiling；独立 `positron_script` context 的 512 KiB 默认值和公共 ABI 不变。
+
+`test_host.exe` 只实现 callback adapter、fixture 和 TEST562–581 断言；它不是属性 API 的所有者。
+这组 API 仍只在显式 `javascript=1` 的 browser session 中可见，默认 Browse 路径不变。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

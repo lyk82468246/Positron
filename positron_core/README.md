@@ -64,10 +64,11 @@ bridge 实现受限的 form-level `checkValidity()`；`PCore_FormReportValidityB
 
 `PCore_NodeRelationById` 为浏览器或其他宿主提供一个稳定、只读的 DOM 关系切片：按元素 id
 查询 parent/first-child/last-child/previous-sibling/next-sibling、child count、tag/name、
-form owner，以及按 DOM 顺序查询 form-control count/index。字符串结果遵循 UTF-8 probe 和
-安全截断约定，计数通过 `out_number` 返回；缺失 id、越界索引和不支持的关系会 fail closed。
-该 API 不暴露 libdom 对象，不实现通用节点 mutation、文本节点/shadow tree、复杂 selector、
-layout 或 native control 状态。
+form owner，以及按 DOM 顺序查询 form-control count/index。它还提供 attribute count、name-at
+和 value-at 关系，供浏览器层构造 parser-order 的 `Attr`/NamedNodeMap 视图。字符串结果遵循
+UTF-8 probe 和安全截断约定，计数通过 `out_number` 返回；缺失 id、越界索引和不支持的关系会
+fail closed。该 API 不暴露 libdom 对象，不实现通用节点 mutation、属性 namespace、文本节点/
+shadow tree、复杂 selector、layout 或 native control 状态。
 
 `PCore_Init` 与 `PCore_Shutdown` 成对使用；文档、样式表和其他返回句柄分别用
 `PCore_FreeDocument`、`PCore_FreeStylesheet` 及头文件指定的 `PCore_Free*` 释放。

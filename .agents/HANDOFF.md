@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next561（本轮覆盖 `TEST389,390-448`、`TEST482-561,999` 的相邻回归门与
-  `TEST542-561,999` 定向门；最近一次完整自动基线仍为 next255）。本轮没有修改 tracked
+- 最新已验证产品基线：next581（本轮覆盖 `TEST389,390-448`、`TEST482-581,999` 的相邻回归门与
+  `TEST562-581,999` 定向门；最近一次完整自动基线仍为 next255）。本轮没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
   与 URL、session storage 与 cookie、classList 与 style、选择器查询与 FormData、输入选择/数值步进/
@@ -140,7 +140,26 @@
 - 本批只涉及脚本 API、DOM 快照和表单集合，不涉及视觉、真实触摸、SIP、旋转、系统 picker 或
   网络失败，因此不新增人工页面验收。
 
-## 当前状态：next542–561
+- next562–581 已完成第九组 20 个完整的浏览器 JavaScript 产品子功能：`positron_core.dll` 新增
+  按 DOM id 的 attribute count/name/value relation；`positron_browser.dll` 在 bootstrap 中提供
+  `getAttributeNames()`、`hasAttributes()`、受限 `NamedNodeMap`（`length`、`item()`、
+  `getNamedItem()`、`setNamedItem()`、`removeNamedItem()`、8 个 indexed slots 和 iterator）与
+  `Attr` 的 metadata、live value/nodeValue、owner/identity 以及跨 owner fail-closed 保护。
+  `test_host.exe` 只提供 fixture、callback adapter 和 TEST562–581 断言。
+- `next562–581` 定向设备门 `TEST562-581,999` 在
+  `tmp/device-runs/20260821-142414-next562-581-attr-owner-guard/` 通过 21/21；相邻回归门
+  `TEST389,390-448,482-581,999` 在
+  `tmp/device-runs/20260821-142515-next562-581-regression-final/` 通过 161/161。两次均为零
+  `ERROR`、零 `FAIL`、唯一 `TESTBENCH PASS`、`test13_route_ok=True`。
+- 本批 bootstrap 现在由公共入口按顺序评估十个 IIFE。为容纳新增属性集合并保持既有
+  TEST540 Promise 边界，浏览器 session 使用显式 576 KiB heap ceiling；独立
+  `positron_script.dll` 的 512 KiB 默认值不变。NamedNodeMap 的索引槽位固定为 0–7，关系查询
+  仍是同步、ID-addressable、内存内 snapshot；不提供 namespace API、通用 DOM mutation、
+  节点创建、live collection、layout 或 native control 语义。
+- 本批只涉及脚本 API、DOM 属性 snapshot 和内存内属性 mutation，不涉及视觉、真实触摸、SIP、
+  旋转、系统 picker 或网络失败，因此不新增人工页面验收。
+
+## 当前状态：next562–581
 
 本轮 20 个 next 均已实现、构建并通过定向设备门及相邻累计回归门。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
@@ -157,9 +176,10 @@ Observer option validation、MessagePort auto-start 和 Blob/File JSON metadata�
 Promise 构造器、链式反应、thenable、finally、组合器和显式微任务 pump。它们都是 session-scoped、
 内存内、受预算限制的兼容切片，不代表完整 Web 标准实现；Request/Response 不发起网络，
 MessagePort/BroadcastChannel/PerformanceObserver/Promise 需要宿主显式 pump 或只读取同步快照；
-Promise 不连接 fetch/stream、不创建后台调度，组合器和 handler 均有固定容量上限。DOM 关系和
-form collection 也只是同步、session-scoped 的 ID-addressable snapshot；wrapper identity 在同一
-session 内稳定，但底层 libdom 的动态 mutation、通用节点创建、复杂 selector 和 layout 仍不在范围内。
+Promise 不连接 fetch/stream、不创建后台调度，组合器和 handler 均有固定容量上限。DOM 关系、
+form collection 和 attribute map 也只是同步、session-scoped 的 ID-addressable snapshot；wrapper
+identity 在同一 session 内稳定，Attr value/nodeValue 只复用现有 attribute bridge，跨 owner
+mutation fail closed；底层 libdom 的动态节点创建、namespace API、复杂 selector 和 layout 仍不在范围内。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -2670,14 +2690,14 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 不承诺 ARIA 语义或可访问性树。
 本轮 next382–401 的 metadata reflection 门也已通过，覆盖 20 个 ARIA raw 属性；均只承诺
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
-唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next562 的一个不依赖人工页面观察、
+唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next582 的一个不依赖人工页面观察、
 边界完整的产品能力；继续保持每批一个清晰的产品边界，不能把完整 DOM、布局或 native 输入
 偷偷扩入本批。
 
 完成标准：
 
-- TEST561/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/482–561/999` 定向选择；next299 的
+- TEST581/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/482–581/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2691,7 +2711,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next562 选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next582 选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。

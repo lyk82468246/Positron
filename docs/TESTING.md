@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next561 基线）
+### 当前默认自动选择与人工验收包（next581 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -684,6 +684,36 @@ scripts\device_gate.bat -Candidate next542-561-regression ^
 `test_host.exe` 的浏览器回归 session 使用 `2 * PSCRIPT_DEFAULT_BUDGET_MS`；这只是测试宿主的
 消费方配置，不改变 `positron_script.dll` 默认预算、脚本引擎或公共 ABI。`-EnableJavaScript` 仍只
 修改隔离 staging，tracked `test_host/test_host.ini` 继续保持 `javascript=0`。
+
+### next562–581 属性集合累计门
+
+这 20 个 next 是第九组产品层 DOM 属性集合能力：core 按 id 枚举属性数量、名称和值，browser
+包装为 `getAttributeNames()`、`attributes`/`Attr`、NamedNodeMap lookup/iterator、同 owner
+属性更新和跨 owner fail-closed 语义。它们是同步、内存内、ID-addressable API，不涉及视觉、
+真实触摸、SIP、旋转、系统 picker 或网络，因此不需要人工页面验收。
+
+定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next562-581-attr-owner-guard ^
+  -EnableJavaScript ^
+  -TestSelection "562-581,999"
+```
+
+最终证据 `tmp/device-runs/20260821-142414-next562-581-attr-owner-guard/` 为 21/21，通过零
+`ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 和 `test13_route_ok=True`。相邻回归门：
+
+```bat
+scripts\device_gate.bat -Candidate next562-581-regression-final ^
+  -EnableJavaScript ^
+  -TestSelection "389,390-448,482-581,999"
+```
+
+最终证据 `tmp/device-runs/20260821-142515-next562-581-regression-final/` 为 161/161，同样
+为零 `ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 和 `test13_route_ok=True`。本批 bootstrap 为十个
+顺序 IIFE；browser session 使用显式 576 KiB heap ceiling 以保留既有 TEST540 Promise 边界，
+而独立 `positron_script` 的 512 KiB 默认值不变。NamedNodeMap indexed access 只保证 0–7，
+namespace、通用 DOM mutation、live collection 和 layout 不在本批范围。
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
 2/2 和 77/77，均无 ERROR/FAIL；回归门的 staging INI 临时使用 `javascript=1`，仓库 tracked
