@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 501
+#define TEST_MAX_NUMBER 521
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -57543,6 +57543,248 @@ static BOOL test501_browser_performance_timeline(void)
     return test_browser_platform_case(501, PROBE, "1|1|true", error, sizeof(error));
 }
 
+/* TEST 502 - Headers iterators are independent snapshots with length. */
+static BOOL test502_browser_headers_iterator_snapshot(void)
+{
+    static const char PROBE[] =
+        "var h=new Headers();h.append('A','1');h.append('B','2');var it=h.entries();"
+        "h.set('a','9');h.append('C','3');var a=it.next().value;var b=it.next().value;"
+        "document.getElementById('result').textContent=a[0]+'='+a[1]+'|'+b[0]+'='+b[1]+'|'"
+        "+String(it.length===2)+'|'+String(it.next().done);";
+    char error[256];
+    return test_browser_platform_case(502, PROBE,
+            "a=1|b=2|true|true", error, sizeof(error));
+}
+
+/* TEST 503 - Headers forEach uses a snapshot and preserves thisArg. */
+static BOOL test503_browser_headers_foreach_snapshot(void)
+{
+    static const char PROBE[] =
+        "var h=new Headers({a:'1',b:'2'});var seen='';var ctx={p:'!'};h.forEach(function(v,k){"
+        "seen+=this.p+v;h.append('c','3');},ctx);document.getElementById('result').textContent="
+        "seen+'|'+String(h.size);";
+    char error[256];
+    return test_browser_platform_case(503, PROBE, "!1!2|3", error, sizeof(error));
+}
+
+/* TEST 504 - Request.clone isolates body and header ownership. */
+static BOOL test504_browser_request_clone_isolation(void)
+{
+    static const char PROBE[] =
+        "var r=new Request('/x',{method:'post',headers:{A:'1'},body:'abc'});var c=r.clone();"
+        "c.headers.set('a','2');var body=c.text();document.getElementById('result').textContent="
+        "r.headers.get('a')+'|'+body+'|'+String(r.bodyUsed)+'|'+String(c.bodyUsed)+'|'"
+        "+r.toJSON().method+'|'+c.toJSON().headers.a;";
+    char error[256];
+    return test_browser_platform_case(504, PROBE,
+            "1|abc|false|true|POST|2", error, sizeof(error));
+}
+
+/* TEST 505 - Response.clone isolates body and header ownership. */
+static BOOL test505_browser_response_clone_isolation(void)
+{
+    static const char PROBE[] =
+        "var r=new Response('abc',{status:201,statusText:'Created',headers:{X:'1'},url:'/x'});"
+        "var c=r.clone();c.headers.set('x','2');var body=c.text();document.getElementById('result').textContent="
+        "r.headers.get('x')+'|'+body+'|'+String(r.bodyUsed)+'|'+String(c.bodyUsed)+'|'"
+        "+r.status+'|'+c.toJSON().statusText;";
+    char error[256];
+    return test_browser_platform_case(505, PROBE,
+            "1|abc|false|true|201|Created", error, sizeof(error));
+}
+
+/* TEST 506 - Request/Response expose bounded JSON metadata snapshots. */
+static BOOL test506_browser_fetch_metadata_json(void)
+{
+    static const char PROBE[] =
+        "var r=new Request('/x',{method:'put',headers:{X:'1'}});var s=new Response('ok',{"
+        "status:204,statusText:'No Content',headers:{Y:'2'},url:'/x'});var a=r.toJSON();var b=s.toJSON();"
+        "document.getElementById('result').textContent=a.method+'|'+a.headers.x+'|'+b.status+'|'"
+        "+b.statusText+'|'+b.headers.y+'|'+String(b.ok);";
+    char error[256];
+    return test_browser_platform_case(506, PROBE,
+            "PUT|1|204|No Content|2|true", error, sizeof(error));
+}
+
+/* TEST 507 - URLSearchParams iterators are mutation-safe snapshots. */
+static BOOL test507_browser_urlsearchparams_iterator_snapshot(void)
+{
+    static const char PROBE[] =
+        "var p=new URLSearchParams('a=1&b=2');var it=p.entries();p.set('a','9');p.append('c','3');"
+        "var x=it.next().value;var y=it.next().value;document.getElementById('result').textContent="
+        "x[0]+'='+x[1]+'|'+y[0]+'='+y[1]+'|'+String(it.length===2)+'|'+String(it.next().done);";
+    char error[256];
+    return test_browser_platform_case(507, PROBE,
+            "a=1|b=2|true|true", error, sizeof(error));
+}
+
+/* TEST 508 - URLSearchParams forEach uses a snapshot during mutation. */
+static BOOL test508_browser_urlsearchparams_foreach_snapshot(void)
+{
+    static const char PROBE[] =
+        "var p=new URLSearchParams('a=1&b=2');var seen='';p.forEach(function(v,k){seen+=v;"
+        "p.append('c','3');});document.getElementById('result').textContent=seen+'|'+String(p.size);";
+    char error[256];
+    return test_browser_platform_case(508, PROBE, "12|4", error, sizeof(error));
+}
+
+/* TEST 509 - FormData converts an unnamed Blob to the default File name. */
+static BOOL test509_browser_formdata_default_filename(void)
+{
+    static const char PROBE[] =
+        "var f=new FormData();f.append('file',new Blob(['x'],{type:'text/plain'}));var v=f.get('file');"
+        "document.getElementById('result').textContent=Object.prototype.toString.call(v)+'|'+v.name+'|'"
+        "+String(v.size)+'|'+v.type;";
+    char error[256];
+    return test_browser_platform_case(509, PROBE,
+            "[object File]|blob|1|text/plain", error, sizeof(error));
+}
+
+/* TEST 510 - FormData preserves an explicit Blob filename. */
+static BOOL test510_browser_formdata_explicit_filename(void)
+{
+    static const char PROBE[] =
+        "var f=new FormData();f.set('file',new Blob(['xy'],{type:'app/x'}),'custom.bin');var v=f.get('file');"
+        "document.getElementById('result').textContent=Object.prototype.toString.call(v)+'|'+v.name+'|'"
+        "+String(v.size)+'|'+v.type;";
+    char error[256];
+    return test_browser_platform_case(510, PROBE,
+            "[object File]|custom.bin|2|app/x", error, sizeof(error));
+}
+
+/* TEST 511 - Storage exposes a tag and independent JSON snapshots. */
+static BOOL test511_browser_storage_snapshot(void)
+{
+    static const char PROBE[] =
+        "sessionStorage.clear();sessionStorage.setItem('a','1');sessionStorage.setItem('b','2');"
+        "var first=sessionStorage.toJSON();sessionStorage.setItem('a','9');document.getElementById('result').textContent="
+        "Object.prototype.toString.call(sessionStorage)+'|'+first.a+'|'+sessionStorage.toJSON().a+'|'"
+        "+String(sessionStorage.length);";
+    char error[256];
+    return test_browser_platform_case(511, PROBE,
+            "[object Storage]|1|9|2", error, sizeof(error));
+}
+
+/* TEST 512 - classList rejects empty and whitespace-containing tokens. */
+static BOOL test512_browser_classlist_token_validation(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var bad=false;var name='';try{e.classList.add('a b');}"
+        "catch(x){bad=true;name=x.name;}e.classList.add('a');document.getElementById('result').textContent="
+        "String(bad)+'|'+name+'|'+e.className;";
+    char error[256];
+    return test_browser_platform_case(512, PROBE, "true|SyntaxError|a", error, sizeof(error));
+}
+
+/* TEST 513 - classList is a stable tagged wrapper. */
+static BOOL test513_browser_classlist_identity(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.classList;var b=e.classList;"
+        "document.getElementById('result').textContent=String(a===b)+'|'"
+        "+Object.prototype.toString.call(a);";
+    char error[256];
+    return test_browser_platform_case(513, PROBE,
+            "true|[object DOMTokenList]", error, sizeof(error));
+}
+
+/* TEST 514 - style is a stable tagged wrapper. */
+static BOOL test514_browser_style_identity(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.style;var b=e.style;a.setProperty('color','red');"
+        "document.getElementById('result').textContent=String(a===b)+'|'"
+        "+Object.prototype.toString.call(a)+'|'+b.getPropertyValue('color');";
+    char error[256];
+    return test_browser_platform_case(514, PROBE,
+            "true|[object CSSStyleDeclaration]|red", error, sizeof(error));
+}
+
+/* TEST 515 - dataset is a stable tagged DOMStringMap wrapper. */
+static BOOL test515_browser_dataset_identity(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.dataset;var b=e.dataset;a.foo='x';"
+        "document.getElementById('result').textContent=String(a===b)+'|'"
+        "+Object.prototype.toString.call(a)+'|'+b.foo+'|'+String(a.keys().indexOf('foo')>=0);";
+    char error[256];
+    return test_browser_platform_case(515, PROBE,
+            "true|[object DOMStringMap]|x|true", error, sizeof(error));
+}
+
+/* TEST 516 - performance entries provide serializable metadata snapshots. */
+static BOOL test516_browser_performance_entry_json(void)
+{
+    static const char PROBE[] =
+        "performance.clearMarks();var e=performance.mark('next516');var j=e.toJSON();"
+        "document.getElementById('result').textContent=j.name+'|'+j.entryType+'|'"
+        "+String(j.duration===0)+'|'+String(j!==e);";
+    char error[256];
+    return test_browser_platform_case(516, PROBE,
+            "next516|mark|true|true", error, sizeof(error));
+}
+
+/* TEST 517 - PerformanceObserver advertises the bounded entry types. */
+static BOOL test517_browser_performance_supported_types(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent=PerformanceObserver.supportedEntryTypes.join(',')+'|'"
+        "+String(PerformanceObserver.supportedEntryTypes.indexOf('mark')>=0);";
+    char error[256];
+    return test_browser_platform_case(517, PROBE,
+            "mark,measure|true", error, sizeof(error));
+}
+
+/* TEST 518 - PerformanceObserver rejects conflicting or empty options. */
+static BOOL test518_browser_performance_observe_options(void)
+{
+    static const char PROBE[] =
+        "var o=new PerformanceObserver(function(){});var a='';var b='';try{o.observe({type:'mark',entryTypes:['mark']});}"
+        "catch(e){a=e.name;}try{o.observe({entryTypes:[]});}catch(e2){b=e2.name;}document.getElementById('result').textContent="
+        "a+'|'+b+'|'+String(typeof o.takeRecords==='function');";
+    char error[256];
+    return test_browser_platform_case(518, PROBE,
+            "TypeError|TypeError|true", error, sizeof(error));
+}
+
+/* TEST 519 - assigning onmessage starts a MessagePort automatically. */
+static BOOL test519_browser_message_port_autostart(void)
+{
+    static const char PROBE[] =
+        "var c=new MessageChannel();var got='';c.port1.onmessage=function(e){got=e.data;};"
+        "c.port2.postMessage('x');__pcoreRunMessages(4);document.getElementById('result').textContent=got+'|'"
+        "+String(c.port1.started)+'|'+String(c.port1.closed===false);";
+    char error[256];
+    return test_browser_platform_case(519, PROBE,
+            "x|true|true", error, sizeof(error));
+}
+
+/* TEST 520 - AbortSignal/AbortController tags and abort event metadata. */
+static BOOL test520_browser_abort_tags(void)
+{
+    static const char PROBE[] =
+        "var c=new AbortController();var seen='';c.signal.onabort=function(e){seen=e.type+'|'"
+        "+String(e.bubbles)+'|'+String(e.cancelable)+'|'+String(e.target===c.signal);};c.abort('why');"
+        "document.getElementById('result').textContent=Object.prototype.toString.call(c.signal)+'|'"
+        "+Object.prototype.toString.call(c)+'|'+seen+'|'+c.signal.reason;";
+    char error[256];
+    return test_browser_platform_case(520, PROBE,
+            "[object AbortSignal]|[object AbortController]|abort|false|false|true|why",
+            error, sizeof(error));
+}
+
+/* TEST 521 - Blob/File expose bounded metadata JSON. */
+static BOOL test521_browser_blob_file_json(void)
+{
+    static const char PROBE[] =
+        "var b=new Blob(['é'],{type:'TEXT/PLAIN'});var f=new File(['x'],'a.txt',"
+        "{type:'APP/X',lastModified:7});var a=b.toJSON();var z=f.toJSON();document.getElementById('result').textContent="
+        "String(a.size)+'|'+a.type+'|'+z.name+'|'+String(z.lastModified)+'|'+String(z.size)+'|'+z.type;";
+    char error[256];
+    return test_browser_platform_case(521, PROBE,
+            "2|text/plain|a.txt|7|1|app/x", error, sizeof(error));
+}
+
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -58697,6 +58939,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 501: ok =
                 test501_browser_performance_timeline();
+                break;
+        case 502: ok =
+                test502_browser_headers_iterator_snapshot();
+                break;
+        case 503: ok =
+                test503_browser_headers_foreach_snapshot();
+                break;
+        case 504: ok =
+                test504_browser_request_clone_isolation();
+                break;
+        case 505: ok =
+                test505_browser_response_clone_isolation();
+                break;
+        case 506: ok =
+                test506_browser_fetch_metadata_json();
+                break;
+        case 507: ok =
+                test507_browser_urlsearchparams_iterator_snapshot();
+                break;
+        case 508: ok =
+                test508_browser_urlsearchparams_foreach_snapshot();
+                break;
+        case 509: ok =
+                test509_browser_formdata_default_filename();
+                break;
+        case 510: ok =
+                test510_browser_formdata_explicit_filename();
+                break;
+        case 511: ok =
+                test511_browser_storage_snapshot();
+                break;
+        case 512: ok =
+                test512_browser_classlist_token_validation();
+                break;
+        case 513: ok =
+                test513_browser_classlist_identity();
+                break;
+        case 514: ok =
+                test514_browser_style_identity();
+                break;
+        case 515: ok =
+                test515_browser_dataset_identity();
+                break;
+        case 516: ok =
+                test516_browser_performance_entry_json();
+                break;
+        case 517: ok =
+                test517_browser_performance_supported_types();
+                break;
+        case 518: ok =
+                test518_browser_performance_observe_options();
+                break;
+        case 519: ok =
+                test519_browser_message_port_autostart();
+                break;
+        case 520: ok =
+                test520_browser_abort_tags();
+                break;
+        case 521: ok =
+                test521_browser_blob_file_json();
                 break;
         default: ok = FALSE; break;
         }

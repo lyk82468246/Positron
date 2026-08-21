@@ -45,12 +45,13 @@ history/navigation side effect 仍由宿主提供。
 `reportValidity()` 只执行当前受支持的约束查询并派发可寻址控件的 `invalid` 事件；它不显示
 原生提示、不自动聚焦/滚动，也不提交表单。
 当前脚本 session 还提供受限的 `dataset`、FormData/Headers/Storage/DOM iterator、同步
-Request/Response JSON 与 one-shot body、Blob/File metadata/slice、URL authority/default-port 与
-URLSearchParams pair/delete-value/按值查询、cookie Max-Age 删除、TextEncoder/TextDecoder 选项、
-AbortSignal 静态工厂、setImmediate、MessagePort/BroadcastChannel、structuredClone、
-PerformanceObserver/EntryList 快照、navigator 方法、`screen.orientation`、window aliases/
-open-close no-op 和稳定 element wrapper identity；这些能力不发起网络、不创建后台线程，并由
-宿主显式 timer/message pump 或同步 snapshot 驱动。
+Request/Response JSON 与 one-shot body、clone ownership、Blob/File metadata/slice/JSON、URL
+authority/default-port 与 URLSearchParams pair/delete-value/按值查询和 mutation-safe snapshot、
+cookie Max-Age 删除、TextEncoder/TextDecoder 选项、AbortSignal 静态工厂和 tags、setImmediate、
+MessagePort/BroadcastChannel、structuredClone、PerformanceObserver/EntryList 快照与选项校验、
+navigator 方法、`screen.orientation`、window aliases/open-close no-op 和稳定 element wrapper
+identity；这些能力不发起网络、不创建后台线程，并由宿主显式 timer/message pump 或同步 snapshot
+驱动。
 它不是第二套引擎。
 两者的关系和所有权见
 [架构说明](docs/ARCHITECTURE.md)。

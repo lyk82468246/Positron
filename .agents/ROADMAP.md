@@ -326,9 +326,9 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next482–501
+### 当前短期状态：next502–521
 
-next402–421、next422–441、next442–461、next462–481、next482–501 已完成并从未完成路线图移出；
+next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
 getSetCookie、Storage named/toJSON、classList/style iterator、toggleAttribute、节点 ownership、
 window aliases/defaultView/open/close、Storage/HashChange/PopState/Error/Progress/Close 事件构造器、
@@ -336,11 +336,14 @@ MessagePort 生命周期与 messageerror、同 session BroadcastChannel、同步
 快照和 AbortSignal.abort；next482–501 又完成 Blob/File metadata/slice、FormData snapshot
 iterators、Request/Response one-shot body、URL authority/default-port、cookie Max-Age、
 NodeList/element identity、dataset、Event/MessagePort/BroadcastChannel state 和
-PerformanceObserverEntryList 视图。对应 TEST429–448、TEST482–501 与分段累计回归门均通过，且没有
-修改 tracked `test_host.ini`。Bootstrap 现在分成六个顺序评估阶段以保持
+PerformanceObserverEntryList 视图；next502–521 又完成 Headers/Request/Response ownership 与
+metadata JSON、URLSearchParams/FormData snapshot、Storage/DOM wrapper tags、classList token
+validation、performance entry/observer option metadata、MessagePort auto-start、AbortSignal/
+Controller tags 和 Blob/File JSON metadata。对应 TEST429–448、TEST482–521 与分段累计回归门均通过，且没有
+修改 tracked `test_host.ini`。Bootstrap 现在分成七个顺序评估阶段以保持
 `PSCRIPT_MAX_SOURCE_BYTES` 不变；这不是提升脚本预算。
 
-下一批固定为一个新的完整产品边界（next502），不把已完成的能力重新拆成更小的反射门。
+下一批固定为一个新的完整产品边界（next522），不把已完成的能力重新拆成更小的反射门。
 候选优先从表单关联/DOM 关系、受控异步队列或其他具有真实页面价值且可自动断言的缺口中选择；
 在候选确定前不预先承诺具体 API。涉及窗口、布局、真实 SIP、系统 picker、旋转或网络失败
 反馈的候选必须另列人工验收，不能用宿主注入日志替代。

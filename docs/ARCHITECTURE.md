@@ -316,6 +316,27 @@ fixture、pump 和断言。新增边界包括：
 初始化入口现在按顺序评估六个独立 IIFE，共享同一 Duktape context，并保持
 `PSCRIPT_MAX_SOURCE_BYTES`、既有执行预算、opaque handle 和 C ABI 不变。
 
+#### next502–521 的脚本平台互操作性强化
+
+本批仍由 `positron_browser.dll` 持有产品语义，`test_host.exe` 只通过公共 session 入口提供
+fixture、显式 pump 和断言；没有新增公共 C ABI。新增边界包括：
+
+- Headers 的独立 iterator/forEach snapshot；Request/Response clone 对内存 body、headers 和
+  bounded metadata 的 ownership 隔离，并提供诊断用 JSON snapshot；
+- URLSearchParams 的 mutation-safe iterator/forEach，FormData 对无名 Blob 的默认 `blob` 文件名
+  和显式 filename 保留；
+- Storage/DOM wrapper 的 `Symbol.toStringTag`、classList 空白/空 token 的 SyntaxError 边界、
+  classList/style identity，以及 dataset tag；
+- performance entry 的 `toJSON()`、PerformanceObserver 的 `supportedEntryTypes` 与冲突/空
+  `observe()` 选项校验；MessagePort 的 `onmessage` 自动 `start()`；AbortSignal/Controller 和
+  Blob/File 的 bounded metadata tags/JSON。
+
+这些语义全部 session-scoped、内存 bounded；Request/Response 不联网，MessagePort 和
+PerformanceObserver 仍依赖宿主显式 pump 或同步快照。它们不等价于完整 Fetch、Streams、DOM
+tree、Web IDL serialization 或后台浏览器调度。公共 bootstrap 现在按顺序评估七个独立 IIFE，
+共享同一 Duktape context，并保持 `PSCRIPT_MAX_SOURCE_BYTES`、既有执行预算、opaque handle 和
+C ABI 不变。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

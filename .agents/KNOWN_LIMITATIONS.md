@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next501）
+## 当前状态（next521）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -25,8 +25,11 @@ Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/per
   slice 边界、FormData snapshot iterator、Request/Response one-shot body、URL authority/default
   port、URLSearchParams 按值 has、cookie Max-Age 删除、NodeList/element identity、dataset、Event
   constants/dispatch reset、MessagePort/BroadcastChannel 状态和 PerformanceObserverEntryList
-  视图。TEST369–448 与 TEST482–501 定向门已通过；这些
-切片默认关闭 JavaScript 时不会被发现、抓取或执行。当前产品 bootstrap 由公共入口按六个
+  视图。next502–521 又补齐 Headers/Request/Response ownership 与 metadata JSON、
+URLSearchParams/FormData mutation-safe snapshot、Storage/DOM wrapper tags、classList token
+validation、performance entry/observer option metadata、MessagePort auto-start、AbortSignal/
+Controller tags 和 Blob/File JSON metadata。TEST389–448、TEST482–521 与 TEST502–521 定向门均已通过；
+这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。当前产品 bootstrap 由公共入口按七个
 顺序 IIFE 评估，共享一个 Duktape context；分段只用于保持源码上限，不改变执行预算或引入第二套
 JavaScript 引擎。
 
@@ -81,14 +84,22 @@ JavaScript 引擎。
   不建立文件句柄、网络或 Promise 链。
 - Storage named properties 只通过 session 内 Proxy 映射到 `getItem`/`setItem`/`removeItem`，
   `toJSON()` 返回一次性 detached snapshot；不提供持久化、跨窗口同步或完整 Web IDL property
-  enumeration。classList/style iterator 是当前快照，DOM 仍没有通用 createElement/tree API。
+  enumeration。Storage 的 tag 只在当前 Proxy get path 中保证；classList/style wrapper 在 session
+  内保持 identity，DOM 仍没有通用 createElement/tree API。classList token validation 仅覆盖当前
+  `DOMTokenList` wrapper 的空白/空 token 失败边界。
 - StorageEvent、HashChangeEvent、PopStateEvent、ErrorEvent、ProgressEvent、CloseEvent 只提供
   构造器字段和产品事件基类；MessagePort 的 `messageerror`、close 与 BroadcastChannel 仅在同一
   script session、有限 message pump 中工作，跨页面/跨进程、transferable 和后台通信不在范围。
 - PerformanceObserver 在 `observe()` 时对已有 performance entries 做同步快照并通过
-  `takeRecords()` 读取，不监听未来异步条目；window `self/top/parent/frames/defaultView` 是同一
+  `takeRecords()` 读取，不监听未来异步条目；`supportedEntryTypes` 只声明 `mark`/`measure`，
+  `type` 与 `entryTypes` 冲突或空数组会同步抛出 TypeError；window `self/top/parent/frames/defaultView` 是同一
   bounded global 的别名，`open()` 返回 null、`close()` 不关闭真实窗口，`closed/length` 只为稳定
-  no-op 状态。`AbortSignal.abort()`/`throwIfAborted()` 只覆盖同步 reason 传播。
+  no-op 状态。Request/Response clone 只复制内存 body、headers 和 bounded metadata；`toJSON()`
+  不建立网络或 stream。`AbortSignal.abort()`/`throwIfAborted()` 只覆盖同步 reason 传播，
+  `onmessage` 自动 start 也只作用于 session 内 MessagePort pump。
+- `Blob.prototype.toJSON()`、`File.prototype.toJSON()`、Request/Response metadata JSON 和
+  performance entry `toJSON()` 都是 Positron 为诊断/页面脚本提供的 bounded snapshot，不是完整
+  Web IDL serialization；Blob/File 仍无 Promise、stream、持久文件句柄或 multipart transport。
 - `scripts\device_gate.bat -EnableJavaScript` 只修改隔离 staging；tracked
   `test_host/test_host.ini` 仍为 `javascript=0`。本轮只改产品 API/状态，没有新增视觉、触摸、
   SIP 或系统 picker 人工门；这些风险仍须按下方验收边界单独检查。
