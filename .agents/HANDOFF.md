@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next581（本轮覆盖 `TEST389,390-448`、`TEST482-581,999` 的相邻回归门与
-  `TEST562-581,999` 定向门；最近一次完整自动基线仍为 next255）。本轮没有修改 tracked
+- 最新已验证产品基线：next582（本批覆盖 `TEST389,390-448`、`TEST482-601,999` 的相邻回归门与
+  `TEST582-601,999` 定向门；最近一次完整自动基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
   与 URL、session storage 与 cookie、classList 与 style、选择器查询与 FormData、输入选择/数值步进/
@@ -159,9 +159,24 @@
 - 本批只涉及脚本 API、DOM 属性 snapshot 和内存内属性 mutation，不涉及视觉、真实触摸、SIP、
   旋转、系统 picker 或网络失败，因此不新增人工页面验收。
 
-## 当前状态：next562–581
+- next582 作为一个单一批次编号完成了受控 DOM childNodes/CharacterData 纵切：
+  `positron_core.dll` 的 `PCore_NodeRelationById()` 增加所有直接 childNodes 的数量、类型、
+  name/value/text/id 关系；`positron_browser.dll` 在第十一个 bootstrap IIFE 中提供
+  `childNodes` NodeList、`item()`/iterator、文本/注释/id-less element wrapper、
+  `nodeType`/`nodeName`/`nodeValue`/`textContent`/`data`/`length`/`substringData()`、
+  parent/sibling 和 element-sibling 视图以及 `Node` 常量。`test_host.exe` 只提供 fixture、
+  callback adapter 和 `TEST582–601` 断言，没有新增第二套 JavaScript 引擎或把产品语义留在宿主。
+- `TEST582-601,999` 在 `tmp/device-runs/20260821-150052-next582-r5/` 通过 21/21；相邻
+  回归 `TEST389,390-448,482-601,999` 在
+  `tmp/device-runs/20260821-150157-next582-regression-r2/` 通过 181/181。两次均为零
+  `ERROR`、零 `FAIL`、唯一 `TESTBENCH PASS`、`test13_route_ok=True`。本批只涉及同步、只读、
+  session-scoped DOM snapshot，不涉及视觉、真实触摸、SIP、旋转、系统 picker 或网络失败，
+  因此不新增人工页面验收；tracked `test_host.ini` 仍为 `javascript=0`。
 
-本轮 20 个 next 均已实现、构建并通过定向设备门及相邻累计回归门。产品层现在在同一脚本 session 内提供
+## 当前状态：next582
+
+本批单一 `next582` 已实现、构建并通过定向设备门及相邻累计回归门；其中 20 个自动断言使用
+`TEST582–601` 编号，不再为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
 navigator/media/performance、history/storage event，并新增本轮的事件生命周期/对象监听、dataset、
@@ -179,7 +194,10 @@ MessagePort/BroadcastChannel/PerformanceObserver/Promise 需要宿主显式 pump
 Promise 不连接 fetch/stream、不创建后台调度，组合器和 handler 均有固定容量上限。DOM 关系、
 form collection 和 attribute map 也只是同步、session-scoped 的 ID-addressable snapshot；wrapper
 identity 在同一 session 内稳定，Attr value/nodeValue 只复用现有 attribute bridge，跨 owner
-mutation fail closed；底层 libdom 的动态节点创建、namespace API、复杂 selector 和 layout 仍不在范围内。
+mutation fail closed；本批 childNodes 额外保留文本、注释和无 id 元素的同步 snapshot，但不提供
+通用节点创建/文本 mutation、live collection、namespace API、复杂 selector 和 layout。
+底层 browser bootstrap 现在按十一个 IIFE 顺序评估，浏览器 session heap ceiling 仍为 576 KiB，
+独立 `positron_script` 默认堆仍为 512 KiB。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与

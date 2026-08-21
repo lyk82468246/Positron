@@ -57,6 +57,9 @@ PBrowser_ScriptSessionDestroy(session);
   `attributes`/`Attr`/受限 NamedNodeMap（`length`、`item()`、named lookup、同 owner mutation、
   iterator、indexed 0–7）、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
   `formNoValidate`/`min`/`max`/`step`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
+  bounded `childNodes` NodeList（文本/注释/id-less element wrapper、`item()`/iterator、`nodeType`/
+  `nodeName`/`nodeValue`/`textContent`/CharacterData `data`/`length`/`substringData()`、父子/兄弟与
+  element-sibling 视图、`Node` 常量）；
 - `PBrowser_ScriptSessionRunMicrotasks()`：在调用者自己的窗口/宿主循环中推进当前 session
   的 bounded microtask 队列并返回本次执行数量；Promise reaction 不会自行创建线程或隐式
   event loop。`RunIdleCallbacks()`、`RunMessages()` 同样由宿主按生命周期和关闭策略显式调用；
@@ -94,13 +97,13 @@ no-op，以及由宿主显式 microtask pump 驱动的 bounded Promise（含 `th
 Request/Response 不联网，MessagePort/BroadcastChannel/timeout/Promise 需宿主显式 pump，
 PerformanceObserver 只读取 observe 时已有 entries，不等于完整 DOM、fetch/stream、真实窗口
 生命周期或后台浏览器调度。Promise handler 和组合器输入均限制为 64 项。公共 bootstrap 现在按
-十个顺序 IIFE 评估以保持脚本 source 上限；browser session heap ceiling 为 576 KiB，独立
+十一个顺序 IIFE 评估以保持脚本 source 上限；browser session heap ceiling 为 576 KiB，独立
 `positron_script` context 的默认 heap 仍为 512 KiB。
 
 DOM relation callback 是独立的 size-tagged ABI：调用者提供 `get_relation`，按元素 id 返回
-UTF-8 字段或数量；attribute name/value 也沿用同一 probe/truncation contract。关系值是 session 内
-稳定 wrapper 的只读、ID-addressable snapshot；缺失 id、
-越界索引和不支持关系 fail closed。它不提供通用 DOM mutation、文本节点/shadow tree、复杂 CSS
-selector、namespace、通用 DOM mutation、layout 或 native control 查询；`form.elements` 和
-NamedNodeMap 也不是完整 live
-`HTMLFormControlsCollection`。
+UTF-8 字段或数量；attribute name/value 和 `CHILD_NODE_*` 字段也沿用同一 probe/truncation
+contract。关系值是 session 内稳定 wrapper 的只读 snapshot；legacy `children`/form collection
+仍按可寻址元素工作，而 `childNodes` 额外保留文本、注释和无 id 元素的直接子节点。缺失 id、
+越界索引和不支持关系 fail closed。它不提供通用 DOM mutation、节点创建、live collection、
+shadow tree、复杂 CSS selector、namespace、layout 或 native control 查询；`form.elements`、
+NamedNodeMap 和 childNodes 也不是完整 live Web IDL 集合。

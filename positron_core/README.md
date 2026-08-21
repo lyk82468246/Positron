@@ -67,8 +67,11 @@ bridge 实现受限的 form-level `checkValidity()`；`PCore_FormReportValidityB
 form owner，以及按 DOM 顺序查询 form-control count/index。它还提供 attribute count、name-at
 和 value-at 关系，供浏览器层构造 parser-order 的 `Attr`/NamedNodeMap 视图。字符串结果遵循
 UTF-8 probe 和安全截断约定，计数通过 `out_number` 返回；缺失 id、越界索引和不支持的关系会
-fail closed。该 API 不暴露 libdom 对象，不实现通用节点 mutation、属性 namespace、文本节点/
-shadow tree、复杂 selector、layout 或 native control 状态。
+fail closed。`CHILD_NODE_*` 关系另提供所有直接 childNodes 的数量、类型、name/value、
+textContent 和可用子元素 id，因此文本、注释和无 id 元素不会被旧的 element-only collection
+过滤。该 API 不暴露 libdom 对象，不实现通用节点创建或 mutation、属性 namespace、live
+collection、shadow tree、复杂 selector、layout 或 native control 状态；结果只在同步 callback
+期间作为 UTF-8 snapshot 借用。
 
 `PCore_Init` 与 `PCore_Shutdown` 成对使用；文档、样式表和其他返回句柄分别用
 `PCore_FreeDocument`、`PCore_FreeStylesheet` 及头文件指定的 `PCore_Free*` 释放。

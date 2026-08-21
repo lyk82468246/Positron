@@ -147,11 +147,13 @@ typedef struct PBrowserScriptDomReadCallbacks {
 /* Typed host adapter for the bounded, ID-addressable DOM relationship
  * boundary. Value relationships (parent/sibling/child-at/tag/form-owner)
  * use the same UTF-8 size-probe contract as PBrowserScriptGetTextFn. Count
- * relationships (including ATTRIBUTE_COUNT) leave out_value/out_bytes unused
- * and write out_number; attribute name/value relationships enumerate the
- * bounded NamedNodeMap. The callback returns 0 when found, 2 when the
- * relationship is absent or outside the bounded wrapper tree, and a negative
- * value on adapter failure. */
+ * and child-node-type relationships leave out_value/out_bytes unused and
+ * write out_number; attribute name/value and child-node fields use the
+ * bounded UTF-8 probe/truncation contract. The CHILD_NODE_* relations expose
+ * a direct childNodes snapshot, including text/comment nodes; an element id
+ * is returned only when that child has a non-empty id. The callback returns
+ * 0 when found, 2 when the relationship is absent or outside the bounded
+ * wrapper tree, and a negative value on adapter failure. */
 typedef int (*PBrowserScriptGetNodeRelationFn)(void *pw, const char *id,
         unsigned int relation, unsigned int index, char *out_value,
         int out_capacity, int *out_bytes, int *out_number);
@@ -176,6 +178,12 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_COUNT     11u
 #define PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_NAME_AT   12u
 #define PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_VALUE_AT  13u
+#define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_COUNT    14u
+#define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_TYPE_AT  15u
+#define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_NAME_AT  16u
+#define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_VALUE_AT 17u
+#define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_ID_AT    18u
+#define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_TEXT_AT  19u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

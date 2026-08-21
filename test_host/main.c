@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 581
+#define TEST_MAX_NUMBER 601
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -57222,6 +57222,335 @@ static BOOL test581_browser_attribute_core_api(void)
     return ok;
 }
 
+/* Shared parser-complete fixture for the bounded childNodes/CharacterData
+ * batch. The root intentionally mixes text, an id-addressable element, a
+ * comment, and an id-less element so the wrapper must preserve every direct
+ * child instead of silently filtering the tree. */
+static BOOL test_browser_child_node_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='root'>alpha<span id='child'>beta</span>"
+        "<!--note--><em>gamma</em></div><p id='result'>idle</p>"
+        "</body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected,
+            error, error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded DOM child-node fixture passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded DOM child-node fixture failed.");
+    }
+    return ok;
+}
+
+/* TEST 582 - childNodes preserves all direct child node kinds and order. */
+static BOOL test582_browser_child_nodes_order(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent=n.length+'|'+n[0].nodeName+'|'"
+        "+n[1].nodeName+'|'+n[2].nodeName+'|'+n[3].nodeName;";
+    char error[256];
+    return test_browser_child_node_case(582, PROBE,
+            "4|#text|SPAN|#comment|EM", error, sizeof(error));
+}
+
+/* TEST 583 - NodeList item() has the same bounded index rules as arrays. */
+static BOOL test583_browser_child_nodes_item_bounds(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent="
+        "String(n.item(0)===n[0])+'|'+String(n.item(-1)===null)+'|' +"
+        "String(n.item(1.5)===null)+'|'+String(n.item(4)===null);";
+    char error[256];
+    return test_browser_child_node_case(583, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 584 - childNodes exposes an ordered iterator snapshot. */
+static BOOL test584_browser_child_nodes_iterator(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;var it=n[Symbol.iterator]();"
+        "var a=it.next(),b=it.next(),c=it.next(),d=it.next(),e=it.next();"
+        "document.getElementById('result').textContent=a.value.nodeName+'|'+b.value.nodeName+'|'"
+        "+c.value.nodeName+'|'+d.value.nodeName+'|'+String(e.done);";
+    char error[256];
+    return test_browser_child_node_case(584, PROBE,
+            "#text|SPAN|#comment|EM|true", error, sizeof(error));
+}
+
+/* TEST 585 - text nodes expose CharacterData metadata and UTF-16-like
+ * bounded string helpers. */
+static BOOL test585_browser_text_node_metadata(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('root').firstChild;"
+        "document.getElementById('result').textContent=t.nodeType+'|'+t.nodeName+'|'"
+        "+t.nodeValue+'|'+t.textContent+'|'+t.data+'|'+t.length;";
+    char error[256];
+    return test_browser_child_node_case(585, PROBE,
+            "3|#text|alpha|alpha|alpha|5", error, sizeof(error));
+}
+
+/* TEST 586 - comments keep their node type, name, value, and data. */
+static BOOL test586_browser_comment_node_metadata(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('root').childNodes[2];"
+        "document.getElementById('result').textContent=c.nodeType+'|'+c.nodeName+'|'"
+        "+c.nodeValue+'|'+c.textContent+'|'+c.data+'|'+c.length;";
+    char error[256];
+    return test_browser_child_node_case(586, PROBE,
+            "8|#comment|note|note|note|4", error, sizeof(error));
+}
+
+/* TEST 587 - id-addressable element children reuse the stable element wrapper. */
+static BOOL test587_browser_child_element_identity(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent=String(n[1]===document.getElementById('child'))+'|'"
+        "+String(n[1].parentNode===r)+'|'+n[1].textContent+'|'+String(n[1].nodeValue===null);";
+    char error[256];
+    return test_browser_child_node_case(587, PROBE,
+            "true|true|beta|true", error, sizeof(error));
+}
+
+/* TEST 588 - an id-less element still receives a bounded element wrapper. */
+static BOOL test588_browser_idless_element_node(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes[3];"
+        "document.getElementById('result').textContent=n.nodeType+'|'+n.nodeName+'|'"
+        "+n.localName+'|'+n.id+'|'+n.textContent+'|'+String(n.parentElement===r);";
+    char error[256];
+    return test_browser_child_node_case(588, PROBE,
+            "1|EM|em||gamma|true", error, sizeof(error));
+}
+
+/* TEST 589 - text and comment parentNode/parentElement point at the owner. */
+static BOOL test589_browser_character_parent(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent=String(n[0].parentNode===r)+'|'"
+        "+String(n[0].parentElement===r)+'|'+String(n[2].parentNode===r)+'|'"
+        "+String(n[2].parentElement===r);";
+    char error[256];
+    return test_browser_child_node_case(589, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 590 - first/last child now include non-element nodes. */
+static BOOL test590_browser_first_last_child(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent=String(r.firstChild===n[0])+'|'"
+        "+String(r.lastChild===n[3])+'|'+String(r.hasChildNodes())+'|'"
+        "+String(n[0].previousSibling===null)+'|'+String(n[3].nextSibling===null);";
+    char error[256];
+    return test_browser_child_node_case(590, PROBE,
+            "true|true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 591 - sibling traversal crosses text, element, and comment nodes. */
+static BOOL test591_browser_sibling_sequence(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent=String(n[0].nextSibling===n[1])+'|'"
+        "+String(n[1].nextSibling===n[2])+'|'+String(n[2].previousSibling===n[1])+'|'"
+        "+String(n[3].previousSibling===n[2]);";
+    char error[256];
+    return test_browser_child_node_case(591, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 592 - element-only collections remain separate from childNodes. */
+static BOOL test592_browser_element_child_views(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent=String(r.hasChildNodes())+'|'"
+        "+r.childElementCount+'|'+r.children.length+'|'+r.firstElementChild.id+'|'"
+        "+r.lastElementChild.nodeName;";
+    char error[256];
+    return test_browser_child_node_case(592, PROBE,
+            "true|1|1|child|EM", error, sizeof(error));
+}
+
+/* TEST 593 - next/previousElementSibling skip character data but retain
+ * id-less elements. */
+static BOOL test593_browser_element_sibling_views(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),a=document.getElementById('child'),e=r.lastChild;"
+        "document.getElementById('result').textContent=String(a.nextElementSibling===e)+'|'"
+        "+String(e.previousElementSibling===a)+'|'+String(e.nextElementSibling===null);";
+    char error[256];
+    return test_browser_child_node_case(593, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 594 - contains() follows the bounded parent chain for all node kinds. */
+static BOOL test594_browser_child_contains(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent=String(r.contains(n[0]))+'|'"
+        "+String(r.contains(n[3]))+'|'+String(n[3].parentNode===r);";
+    char error[256];
+    return test_browser_child_node_case(594, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 595 - id-less element textContent is readable while nodeValue is null. */
+static BOOL test595_browser_idless_element_text(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root').lastChild;"
+        "document.getElementById('result').textContent=e.textContent+'|'"
+        "+String(e.nodeValue===null)+'|'+e.data+'|'+e.length;";
+    char error[256];
+    return test_browser_child_node_case(595, PROBE,
+            "gamma|true||0", error, sizeof(error));
+}
+
+/* TEST 596 - every child wrapper keeps the session document owner. */
+static BOOL test596_browser_child_owner_document(void)
+{
+    static const char PROBE[] =
+        "var d=document,r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent=String(n[0].ownerDocument===d)+'|'"
+        "+String(n[1].ownerDocument===d)+'|'+String(n[3].ownerDocument===d)+'|'"
+        "+String(r.ownerDocument===d);";
+    char error[256];
+    return test_browser_child_node_case(596, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 597 - Node constants agree with the wrapper nodeType values. */
+static BOOL test597_browser_node_constants(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent=String(Node.TEXT_NODE===3)+'|'"
+        "+String(Node.COMMENT_NODE===8)+'|'+String(Node.ELEMENT_NODE===1)+'|'"
+        "+String(Node.DOCUMENT_NODE===9)+'|'+String(n[0].nodeType===Node.TEXT_NODE);";
+    char error[256];
+    return test_browser_child_node_case(597, PROBE,
+            "true|true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 598 - the childNodes wrapper is an identity-stable snapshot. */
+static BOOL test598_browser_child_snapshot(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),a=r.childNodes;"
+        "r.setAttribute('data-x','1');document.getElementById('result').textContent="
+        "String(r.childNodes===a)+'|'+String(a.item(1)===r.childNodes[1])+'|'"
+        "+a.length+'|'+r.getAttribute('data-x');";
+    char error[256];
+    return test_browser_child_node_case(598, PROBE,
+            "true|true|4|1", error, sizeof(error));
+}
+
+/* TEST 599 - CharacterData substringData remains bounded and read-only. */
+static BOOL test599_browser_character_substring(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent=n[0].substringData(1,3)+'|'"
+        "+n[2].data+'|'+n[0].substringData(-1,2)+'|'+n[0].length;";
+    char error[256];
+    return test_browser_child_node_case(599, PROBE,
+            "lph|note||5", error, sizeof(error));
+}
+
+/* TEST 600 - the public core relation API exposes all child-node fields. */
+static BOOL test600_browser_child_node_core_api(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><div id='root'>alpha<span id='child'>"
+        "beta</span><!--note--><em>gamma</em></div></body></html>";
+    HANDLE document;
+    char name[64];
+    char value[64];
+    char text[64];
+    char id[64];
+    int bytes;
+    int count;
+    int type;
+    BOOL ok;
+
+    document = PCore_ParseHTML(HTML, strlen(HTML));
+    memset(name, 0, sizeof(name));
+    memset(value, 0, sizeof(value));
+    memset(text, 0, sizeof(text));
+    memset(id, 0, sizeof(id));
+    bytes = 0;
+    count = 0;
+    type = 0;
+    ok = document != NULL &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+            &count) == 0 && count == 4 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_TYPE_AT, 0, NULL, 0, NULL,
+            &type) == 0 && type == 3 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_NAME_AT, 2, name,
+            sizeof(name), &bytes, NULL) == 0 && strcmp(name, "#comment") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 2, value,
+            sizeof(value), &bytes, NULL) == 0 && strcmp(value, "note") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_TEXT_AT, 3, text,
+            sizeof(text), &bytes, NULL) == 0 && strcmp(text, "gamma") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_ID_AT, 1, id,
+            sizeof(id), &bytes, NULL) == 0 && strcmp(id, "child") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_ID_AT, 3, id,
+            sizeof(id), &bytes, NULL) == 2 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_NAME_AT, 99, name,
+            sizeof(name), &bytes, NULL) == 2;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (ok) {
+        show_info(L"TEST 600 OK", "Core child-node relation API passed.");
+    } else {
+        show_error(L"TEST 600 FAIL", "Core child-node relation API failed.");
+    }
+    return ok;
+}
+
+/* TEST 601 - unsupported and out-of-range node relations fail closed. */
+static BOOL test601_browser_child_node_boundaries(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent=String(n.item(99)===null)+'|'"
+        "+String(r.firstChild.previousSibling===null)+'|'+String(r.lastChild.nextSibling===null)+'|'"
+        "+String(document.getElementById('missing')===null);";
+    char error[256];
+    return test_browser_child_node_case(601, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -59991,6 +60320,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 581: ok =
                 test581_browser_attribute_core_api();
+                break;
+        case 582: ok =
+                test582_browser_child_nodes_order();
+                break;
+        case 583: ok =
+                test583_browser_child_nodes_item_bounds();
+                break;
+        case 584: ok =
+                test584_browser_child_nodes_iterator();
+                break;
+        case 585: ok =
+                test585_browser_text_node_metadata();
+                break;
+        case 586: ok =
+                test586_browser_comment_node_metadata();
+                break;
+        case 587: ok =
+                test587_browser_child_element_identity();
+                break;
+        case 588: ok =
+                test588_browser_idless_element_node();
+                break;
+        case 589: ok =
+                test589_browser_character_parent();
+                break;
+        case 590: ok =
+                test590_browser_first_last_child();
+                break;
+        case 591: ok =
+                test591_browser_sibling_sequence();
+                break;
+        case 592: ok =
+                test592_browser_element_child_views();
+                break;
+        case 593: ok =
+                test593_browser_element_sibling_views();
+                break;
+        case 594: ok =
+                test594_browser_child_contains();
+                break;
+        case 595: ok =
+                test595_browser_idless_element_text();
+                break;
+        case 596: ok =
+                test596_browser_child_owner_document();
+                break;
+        case 597: ok =
+                test597_browser_node_constants();
+                break;
+        case 598: ok =
+                test598_browser_child_snapshot();
+                break;
+        case 599: ok =
+                test599_browser_character_substring();
+                break;
+        case 600: ok =
+                test600_browser_child_node_core_api();
+                break;
+        case 601: ok =
+                test601_browser_child_node_boundaries();
                 break;
         default: ok = FALSE; break;
         }

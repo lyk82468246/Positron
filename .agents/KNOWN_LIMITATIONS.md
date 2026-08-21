@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next581）
+## 当前状态（next582）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -31,7 +31,7 @@ validation、performance entry/observer option metadata、MessagePort auto-start
 Controller tags 和 Blob/File JSON metadata。next522–541 又补齐了受宿主显式 pump 驱动的 bounded
 Promise 构造器、then/catch/finally、thenable assimilation、组合器和错误/容量边界。next542–561
 又补齐了按 DOM id 的受控树关系、基础 selector ancestor 查询、form owner 与
-`form.elements` collection 视图。TEST389–448、TEST482–581 与 TEST502–521 定向门均已通过；
+`form.elements` collection 视图。TEST389–448、TEST482–601 与 TEST502–521 定向门均已通过；
 这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。next562–581 又增加了按 DOM id 的
 attribute count/name/value relation，以及 `getAttributeNames()`、`hasAttributes()`、受限
 `NamedNodeMap`/`Attr` wrapper 和跨 owner fail-closed mutation；attribute map 的 indexed
@@ -39,6 +39,16 @@ properties 固定为 0–7，仍不提供 namespace API 或通用 DOM mutation�
 入口按十个顺序 IIFE 评估，共享一个 Duktape context；浏览器 session 的 heap ceiling 为 576 KiB，
 独立 `positron_script` context 的 512 KiB 默认值不变。分段只用于保持源码上限，不引入第二套
 JavaScript 引擎。
+
+next582 在同一 relation bridge 上增加了有界 childNodes/CharacterData snapshot：
+`PCore_NodeRelationById()` 现在可按直接子节点索引返回类型、name/value/textContent 和可用
+element id；browser bootstrap 提供 `childNodes` NodeList、文本/注释/id-less element wrapper、
+父子/兄弟及 element-sibling 视图、`Node` 常量和只读 `data`/`length`/`substringData()`。
+这组 wrapper 仍是同步、session-scoped、只读 snapshot；有 id 的元素复用既有 wrapper，其他
+节点仅由 owner+index 的内部 token 表示，不提供文本节点 mutation、节点创建、live collection、
+shadow tree、layout 或 native control。`TEST582–601,999` 定向门与
+`TEST389,390–448,482–601,999` 相邻回归门均通过；bootstrap 现在为十一个 IIFE，browser
+heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
 
 这些 API 的共同限制如下：
 
@@ -67,8 +77,9 @@ JavaScript 引擎。
 - TextEncoder/TextDecoder、atob/btoa、Blob/File/FormData 文件值是 UTF-8/内存 bounded 适配；
   Blob 的 `text()`/`arrayBuffer()` 仍同步返回，未实现 fetch、stream、multipart 传输或持久
   文件句柄。
-- `dataset` 只通过现有按 id attribute bridge 反射 `data-*` 名称，节点关系和 tag/name 只通过
-  next542–561 的 ID-addressable snapshot 暴露；没有通用 `createElement()`/mutation、outerHTML、
+- `dataset` 只通过现有按 id attribute bridge 反射 `data-*` 名称，legacy 节点关系和 tag/name 只通过
+  next542–561 的 ID-addressable snapshot 暴露；next582 的 `childNodes` 另提供直接文本/注释/
+  无 id 元素 snapshot。仍没有通用 `createElement()`/mutation、outerHTML、
   完整属性枚举或 layout 语义。`children`、兄弟/父子 wrapper、`contains()`、基础
   `compareDocumentPosition()`、`form` 和 `form.elements` 只对当前 document fixture 的可寻址节点
   工作；collection 的 `item()`/`namedItem()` 是有序、有限的同步视图，不是 live HTML DOM。
@@ -123,10 +134,11 @@ JavaScript 引擎。
   performance entry `toJSON()` 都是 Positron 为诊断/页面脚本提供的 bounded snapshot，不是完整
   Web IDL serialization；Blob/File readers 仍无 Promise-backed stream、持久文件句柄或 multipart
   transport。
-- `PCore_NodeRelationById()` 只返回 ID-addressable 元素的 UTF-8 字段或计数；缺失 id、越界索引、
-  非 form 控件的 form 查询和不支持的关系会 fail closed。它不提供完整 Node API、文本节点遍历、
-  动态 mutation、shadow tree、label/fieldset 关联、layout 或 native control 状态；
-  `form.elements` 也不承诺完整 HTMLFormControlsCollection 的 live 更新。
+- `PCore_NodeRelationById()` 对 legacy 关系只返回 ID-addressable 元素的 UTF-8 字段或计数；
+  next582 的 `CHILD_NODE_*` 关系另按直接 child index 返回文本、注释和无 id 元素的 bounded
+  字段。缺失 id、越界索引、非 form 控件的 form 查询和不支持的关系会 fail closed。它不提供
+  完整 Node API、节点创建或动态 mutation、shadow tree、label/fieldset 关联、layout 或 native
+  control 状态；`form.elements` 和 childNodes 也不承诺完整 live collection 更新。
 - `scripts\device_gate.bat -EnableJavaScript` 只修改隔离 staging；tracked
   `test_host/test_host.ini` 仍为 `javascript=0`。本轮只改产品 API/状态，没有新增视觉、触摸、
   SIP 或系统 picker 人工门；这些风险仍须按下方验收边界单独检查。
@@ -149,8 +161,9 @@ JavaScript 引擎。
   同一 session 内通过元素 id 读取 parent/child/sibling、tag/name、`children`、`contains()`、
   基础 `compareDocumentPosition()`、受限 `matches()`/`closest()`、作用域 querySelector，以及
   form owner/`form.elements` 的有序 `item()`/`namedItem()`。这些关系是同步只读 snapshot；不提供
-  通用 DOM mutation、文本节点/shadow tree、复杂 CSS selector、live collection、layout 或 native
-  control 查询。
+  通用 DOM mutation、shadow tree、复杂 CSS selector、live collection、layout 或 native control
+  查询；legacy element-only collection 仍跳过无 id 元素和文本节点。next582 的 `childNodes`
+  snapshot 只补齐直接文本/注释/无 id 元素的读取，不改变这些限制。
 
 - next562–581 在同一 relation bridge 上增加了 attribute count/name/value，并由 browser bootstrap
   暴露 `getAttributeNames()`、`hasAttributes()`、受限 `NamedNodeMap` 和 `Attr`。属性名保持 parser

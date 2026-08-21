@@ -4669,6 +4669,157 @@ static int pcore_relation_attribute_field(dom_element *element,
     return 0;
 }
 
+/* Return one direct child without filtering out text, comment, or
+ * id-less-element nodes. The caller owns the returned reference. */
+static int pcore_relation_child_node_at(dom_node *node, unsigned int index,
+        dom_node **out_node)
+{
+    dom_nodelist *children;
+    dom_ulong length;
+    dom_node *child;
+
+    if (out_node != NULL) {
+        *out_node = NULL;
+    }
+    if (node == NULL || out_node == NULL) {
+        return 1;
+    }
+    children = NULL;
+    length = 0;
+    child = NULL;
+    if (dom_node_get_child_nodes(node, &children) != DOM_NO_ERR ||
+            children == NULL || dom_nodelist_get_length(children,
+            &length) != DOM_NO_ERR) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        return 1;
+    }
+    if ((dom_ulong) index >= length || dom_nodelist_item(children,
+            (dom_ulong) index, &child) != DOM_NO_ERR || child == NULL) {
+        dom_nodelist_unref(children);
+        return 2;
+    }
+    dom_nodelist_unref(children);
+    *out_node = child;
+    return 0;
+}
+
+static int pcore_relation_child_node_count(dom_node *node, int *out_count)
+{
+    dom_nodelist *children;
+    dom_ulong length;
+
+    if (out_count != NULL) {
+        *out_count = 0;
+    }
+    if (node == NULL || out_count == NULL) {
+        return 1;
+    }
+    children = NULL;
+    length = 0;
+    if (dom_node_get_child_nodes(node, &children) != DOM_NO_ERR ||
+            children == NULL || dom_nodelist_get_length(children,
+            &length) != DOM_NO_ERR) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        return 1;
+    }
+    dom_nodelist_unref(children);
+    if (length > (dom_ulong) 2147483647UL) {
+        return 1;
+    }
+    *out_count = (int) length;
+    return 0;
+}
+
+static int pcore_relation_child_node_type(dom_node *node,
+        unsigned int index, int *out_type)
+{
+    dom_node *child;
+    dom_node_type type;
+    int err;
+
+    if (out_type != NULL) {
+        *out_type = 0;
+    }
+    child = NULL;
+    err = pcore_relation_child_node_at(node, index, &child);
+    if (err != 0) {
+        return err;
+    }
+    if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+        dom_node_unref(child);
+        return 1;
+    }
+    dom_node_unref(child);
+    if (out_type != NULL) {
+        *out_type = (int) type;
+    }
+    return 0;
+}
+
+/* field: 0 = nodeName, 1 = nodeValue, 2 = element id, 3 = textContent. */
+static int pcore_relation_child_node_field(dom_node *node,
+        unsigned int index, int field, char *value, int value_capacity,
+        int *out_bytes)
+{
+    dom_node *child;
+    dom_node_type type;
+    dom_string *text;
+    dom_exception err;
+    int result;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    if (field < 0 || field > 3) {
+        return 1;
+    }
+    child = NULL;
+    result = pcore_relation_child_node_at(node, index, &child);
+    if (result != 0) {
+        return result;
+    }
+    if (field == 2) {
+        if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        if (type != DOM_ELEMENT_NODE) {
+            dom_node_unref(child);
+            return 2;
+        }
+        result = pcore_relation_copy_element_id(child, value,
+                value_capacity, out_bytes);
+        dom_node_unref(child);
+        return result;
+    }
+    text = NULL;
+    if (field == 0) {
+        err = dom_node_get_node_name(child, &text);
+    } else if (field == 1) {
+        err = dom_node_get_node_value(child, &text);
+    } else {
+        err = dom_node_get_text_content(child, &text);
+    }
+    if (err != DOM_NO_ERR || text == NULL) {
+        if (text != NULL) {
+            dom_string_unref(text);
+        }
+        dom_node_unref(child);
+        return (err == DOM_NO_ERR) ? 2 : 1;
+    }
+    pcore_copy_dom_string(text, value, value_capacity, out_bytes);
+    dom_string_unref(text);
+    dom_node_unref(child);
+    return 0;
+}
+
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,
         int value_capacity, int *out_bytes, int *out_number)
@@ -4776,6 +4927,35 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     case PCORE_NODE_RELATION_ATTRIBUTE_VALUE_AT:
         err = pcore_relation_attribute_field(element, index, 1, out_value,
                 value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_CHILD_NODE_COUNT:
+        err = pcore_relation_child_node_count((dom_node *) element, &count);
+        if (err == 0 && out_number != NULL) {
+            *out_number = count;
+        }
+        break;
+    case PCORE_NODE_RELATION_CHILD_NODE_TYPE_AT:
+        err = pcore_relation_child_node_type((dom_node *) element, index,
+                &count);
+        if (err == 0 && out_number != NULL) {
+            *out_number = count;
+        }
+        break;
+    case PCORE_NODE_RELATION_CHILD_NODE_NAME_AT:
+        err = pcore_relation_child_node_field((dom_node *) element, index,
+                0, out_value, value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT:
+        err = pcore_relation_child_node_field((dom_node *) element, index,
+                1, out_value, value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_CHILD_NODE_ID_AT:
+        err = pcore_relation_child_node_field((dom_node *) element, index,
+                2, out_value, value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_CHILD_NODE_TEXT_AT:
+        err = pcore_relation_child_node_field((dom_node *) element, index,
+                3, out_value, value_capacity, out_bytes);
         break;
     default:
         err = 1;

@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next562–581
+### 当前短期状态：next582
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -353,8 +353,8 @@ next542–561 已完成一个完整的 DOM 关系与表单集合边界：`positr
 缺失 id、越界、非 form 控件和不支持关系均 fail closed；没有把完整 DOM mutation、layout、shadow
 tree 或 native controls 偷渡进产品层。`TEST542-561,999` 与相邻
 `TEST389,390-448,482-581,999` 设备门均通过，tracked `test_host.ini` 保持
-`javascript=0`。下一批从 `next582` 开始，仍需选择一个新的完整能力边界，而不是把已完成能力
-拆成更小的反射门；涉及窗口、布局、真实 SIP、系统 picker、旋转或网络失败反馈的候选必须另列
+`javascript=0`。后续仍需选择新的完整能力边界，而不是把已完成能力拆成更小的反射门；涉及窗口、
+布局、真实 SIP、系统 picker、旋转或网络失败反馈的候选必须另列
 人工验收，不能用宿主注入日志替代。
 
 next562–581 已完成受控属性集合边界：`positron_core.dll` 新增 attribute count/name/value
@@ -364,7 +364,17 @@ relations，`positron_browser.dll` 新增 `getAttributeNames()`、`hasAttributes
 `TEST389,390-448,482-581,999` 通过 161/161，均无 ERROR/FAIL，`TESTBENCH PASS` 唯一且
 `test13_route_ok=True`。这批只提供同步、ID-addressable、session-scoped 内存语义，不实现
 namespace、通用 DOM mutation、live collection 或 layout；bootstrap 为十个 IIFE，browser heap
-ceiling 为 576 KiB。下一批从 `next582` 开始。
+ceiling 为 576 KiB。
+
+`next582` 作为单一批次完成受控 childNodes/CharacterData snapshot：`positron_core.dll` 的
+`PCore_NodeRelationById()` 增加直接 childNodes 的数量、类型、name/value/textContent/id 关系；
+`positron_browser.dll` 的第十一个 bootstrap IIFE 提供 `childNodes` NodeList、文本/注释/id-less
+element wrapper、`item()`/iterator、父子/兄弟与 element-sibling 视图、`Node` 常量和只读
+CharacterData metadata。`TEST582-601,999` 通过 21/21，证据为
+`tmp/device-runs/20260821-150052-next582-r5/`；相邻
+`TEST389,390-448,482-601,999` 通过 181/181，证据为
+`tmp/device-runs/20260821-150157-next582-regression-r2/`。本批不涉及视觉、触摸、SIP、picker、
+旋转或网络失败，tracked `test_host.ini` 仍保持 `javascript=0`；之后继续按一个清晰批次编号推进。
 
 ## 中期目标
 

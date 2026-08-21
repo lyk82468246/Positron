@@ -397,6 +397,27 @@ Promise reaction 只进入现有 session 的 `queueMicrotask` 队列，由宿主
 `test_host.exe` 只实现 callback adapter、fixture 和 TEST562–581 断言；它不是属性 API 的所有者。
 这组 API 仍只在显式 `javascript=1` 的 browser session 中可见，默认 Browse 路径不变。
 
+#### next582 的 childNodes 与 CharacterData 边界
+
+本批仍把 DOM 语义放在 core/browser 产品 DLL，只让 `test_host.exe` 提供 fixture、callback
+adapter 和断言：
+
+- `positron_core.dll` 的 `PCore_NodeRelationById()` 追加 `CHILD_NODE_*` 关系常量。调用者
+  可以按 ID-addressable 元素查询所有直接 childNodes 的数量、节点类型、节点名、节点值、
+  textContent 和可用的子元素 id；文本、注释和无 id 元素不会被旧的 `children` 关系过滤掉。
+  返回仍遵循 UTF-8 probe/truncation、`out_number` 和 0/2/1 的成功/缺失/错误约定。
+- `positron_browser.dll` 在第十一个 bootstrap IIFE 中包装这些关系，提供有界 `childNodes`
+  NodeList、`item()`/iterator、稳定的 text/comment/id-less element wrapper、`nodeType`/
+  `nodeName`/`nodeValue`/`textContent`/`data`/`length`、`substringData()`、父子/兄弟以及
+  `firstElementChild`/`nextElementSibling` 等 element-sibling 视图，并补齐 `Node` 常量。
+- childNodes 是同步、session-scoped、只读 snapshot；有 id 的元素复用既有 element wrapper，
+  其余节点用 owner+index 的不透明内部 token 表示。它不提供通用文本节点 mutation、节点创建、
+  live collection、shadow tree、布局或 native control side effect。浏览器 bootstrap 现在按
+  十一个顺序 IIFE 评估，576 KiB browser heap ceiling 和独立 script 的 512 KiB 默认值不变。
+
+`test_host.exe` 只实现 callback adapter、fixture 和 TEST582–601 断言；这组 API 仍只在显式
+`javascript=1` 的 browser session 中可见，默认 Browse 路径不变。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

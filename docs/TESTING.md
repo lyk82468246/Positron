@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next581 基线）
+### 当前默认自动选择与人工验收包（next582 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -61,6 +61,23 @@ auto=1
 javascript=0
 tests=13,20,27,56,58,62,64-67,73,75,999
 ```
+
+`next582` 是一个批次编号，不为其中的每个子能力重复分配 next 号。本批把受控
+DOM childNodes/文本节点快照作为一个完整纵切交付，自动断言为 `TEST582–601`；这些测试
+与既有 JS 回归一样不改变 tracked INI，使用设备 gate 的隔离 staging 临时打开浏览器脚本：
+
+```bat
+scripts\device_gate.bat -Candidate next582 ^
+  -EnableJavaScript ^
+  -TestSelection "582-601,999"
+```
+
+定向证据：`tmp/device-runs/20260821-150052-next582-r5/`，21/21 通过、零 ERROR/FAIL、
+唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。相邻回归证据：
+`tmp/device-runs/20260821-150157-next582-regression-r2/`，181/181 通过并满足同一门条件。
+本批只触及同步 DOM snapshot、wrapper 和 core/browser relation ABI，不涉及窗口绘制、真实
+触摸、SIP/IME、系统 picker、旋转或网络失败反馈，因此不新增人工页面验收；若后续修改这些
+边界，仍须另列人工门。
 
 这是窄的自动 smoke 选择，不是完整自动回归基线。最近一次完整自动基线仍是 next255，采用
 `auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-222,999`；next295、next401
