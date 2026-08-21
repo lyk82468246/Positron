@@ -2524,6 +2524,66 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(g.Blob){g.Blob.prototype.toJSON=function(){return {size:this.size,type:this.type};};}"
         "if(g.File){g.File.prototype.toJSON=function(){return {name:this.name,lastModified:this.lastModified,size:this.size,type:this.type};};}"
         "})(this);";
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART8[] =
+        "(function(g){"
+        "if(typeof g.Promise==='function'){return;}"
+        "var MAX=64;var S=g.Symbol;"
+        "function pLength8(input){var n;if(!input||typeof input.length!=='number'){return -1;}"
+        "n=Number(input.length);if(n!==n||n<0||n!==Math.floor(n)){return -1;}return n;}"
+        "function pPending8(){var p=Object.create(PPromise8.prototype);p.__state=0;p.__value=undefined;"
+        "p.__handlers=[];p.__flushing=false;return p;}"
+        "function pEnqueue8(fn){if(g.queueMicrotask){g.queueMicrotask(fn);}else if(g.setImmediate){g.setImmediate(fn);}"
+        "else if(g.setTimeout){g.setTimeout(fn,0);}}"
+        "function pReject8(p,reason){if(p.__state!==0){return;}p.__state=2;p.__value=reason;pFlush8(p);}"
+        "function pResolve8(p,value){var then;var called;"
+        "if(p.__state!==0){return;}if(value===p){pReject8(p,new TypeError('Promise self resolution'));return;}"
+        "if(value&&(typeof value==='object'||typeof value==='function')){try{then=value.then;}catch(resolveError){"
+        "pReject8(p,resolveError);return;}if(typeof then==='function'){called=false;try{then.call(value,function(next){"
+        "if(called){return;}called=true;pResolve8(p,next);},function(reason){if(called){return;}called=true;"
+        "pReject8(p,reason);});}catch(thenError){if(!called){called=true;pReject8(p,thenError);}}return;}}"
+        "p.__state=1;p.__value=value;pFlush8(p);}"
+        "function pFlush8(p){var a;var i;if(p.__state===0||p.__flushing){return;}p.__flushing=true;"
+        "a=p.__handlers;p.__handlers=[];for(i=0;i<a.length;i++){(function(handler){pEnqueue8(function(){"
+        "pRun8(p,handler);});})(a[i]);}p.__flushing=false;}"
+        "function pRun8(p,handler){var cb=p.__state===1?handler.onFulfilled:handler.onRejected;"
+        "if(typeof cb!=='function'){if(p.__state===1){pResolve8(handler.next,p.__value);}else{pReject8(handler.next,p.__value);}return;}"
+        "try{pResolve8(handler.next,cb(p.__value));}catch(handlerError){pReject8(handler.next,handlerError);}}"
+        "function pAggregate8(errors){var e=new Error('All promises were rejected');e.name='AggregateError';e.errors=errors;return e;}"
+        "function PPromise8(executor){var self=this;var done=false;"
+        "if(!(self instanceof PPromise8)){throw new TypeError('Promise constructor requires new');}"
+        "if(typeof executor!=='function'){throw new TypeError('Promise resolver');}"
+        "self.__state=0;self.__value=undefined;self.__handlers=[];self.__flushing=false;"
+        "function resolve(value){if(done){return;}done=true;pResolve8(self,value);}"
+        "function reject(reason){if(done){return;}done=true;pReject8(self,reason);}"
+        "try{executor(resolve,reject);}catch(executorError){reject(executorError);}}"
+        "PPromise8.prototype.then=function(onFulfilled,onRejected){var next=pPending8();"
+        "if(this.__handlers.length>=MAX){pReject8(next,new Error('Promise handler limit'));return next;}"
+        "this.__handlers.push({next:next,onFulfilled:onFulfilled,onRejected:onRejected});if(this.__state!==0){pFlush8(this);}return next;};"
+        "PPromise8.prototype.catch=function(onRejected){return this.then(null,onRejected);};"
+        "PPromise8.prototype['finally']=function(onFinally){var C=PPromise8;return this.then(function(value){"
+        "return C.resolve(typeof onFinally==='function'?onFinally():undefined).then(function(){return value;});},"
+        "function(reason){return C.resolve(typeof onFinally==='function'?onFinally():undefined).then(function(){"
+        "throw reason;});});};"
+        "PPromise8.resolve=function(value){if(value instanceof PPromise8){return value;}return new PPromise8(function(resolve){resolve(value);});};"
+        "PPromise8.reject=function(reason){return new PPromise8(function(resolve,reject){reject(reason);});};"
+        "PPromise8.all=function(input){return new PPromise8(function(resolve,reject){var len=pLength8(input);"
+        "var values=[];var remaining;var i;if(len<0||len>MAX){reject(new TypeError('Promise input limit'));return;}"
+        "if(len===0){resolve(values);return;}remaining=len;for(i=0;i<len;i++){(function(index){PPromise8.resolve(input[index]).then(function(value){"
+        "values[index]=value;remaining--;if(remaining===0){resolve(values);}},reject);})(i);}});};"
+        "PPromise8.race=function(input){return new PPromise8(function(resolve,reject){var len=pLength8(input);var i;"
+        "if(len<0||len>MAX){reject(new TypeError('Promise input limit'));return;}for(i=0;i<len;i++){PPromise8.resolve(input[i]).then(resolve,reject);}});};"
+        "PPromise8.allSettled=function(input){return new PPromise8(function(resolve,reject){var len=pLength8(input);"
+        "var values=[];var remaining;var i;if(len<0||len>MAX){reject(new TypeError('Promise input limit'));return;}"
+        "if(len===0){resolve(values);return;}remaining=len;for(i=0;i<len;i++){(function(index){PPromise8.resolve(input[index]).then(function(value){"
+        "values[index]={status:'fulfilled',value:value};remaining--;if(remaining===0){resolve(values);}},function(reason){"
+        "values[index]={status:'rejected',reason:reason};remaining--;if(remaining===0){resolve(values);}});})(i);}});};"
+        "PPromise8.any=function(input){return new PPromise8(function(resolve,reject){var len=pLength8(input);"
+        "var errors=[];var remaining;var i;if(len<0||len>MAX){reject(new TypeError('Promise input limit'));return;}"
+        "if(len===0){reject(pAggregate8(errors));return;}remaining=len;for(i=0;i<len;i++){(function(index){PPromise8.resolve(input[index]).then(resolve,function(reason){"
+        "errors[index]=reason;remaining--;if(remaining===0){reject(pAggregate8(errors));}});})(i);}});};"
+        "if(S&&S.toStringTag){Object.defineProperty(PPromise8.prototype,S.toStringTag,{value:'Promise',writable:false,configurable:false});}"
+        "g.Promise=PPromise8;"
+        "})(this);";
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 {
     int result;
@@ -2558,8 +2618,13 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     if (result != PSCRIPT_OK) {
         return result;
     }
-    return PBrowser_ScriptSessionEvaluate(hSession,
+    result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART7, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    return PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART8, -1);
 }
 typedef struct p_browser_script_dom_read_binding {
     PBrowserScriptDomReadCallbacks callbacks;

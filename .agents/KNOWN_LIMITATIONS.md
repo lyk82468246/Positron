@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next521）
+## 当前状态（next541）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -28,8 +28,10 @@ Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/per
   视图。next502–521 又补齐 Headers/Request/Response ownership 与 metadata JSON、
 URLSearchParams/FormData mutation-safe snapshot、Storage/DOM wrapper tags、classList token
 validation、performance entry/observer option metadata、MessagePort auto-start、AbortSignal/
-Controller tags 和 Blob/File JSON metadata。TEST389–448、TEST482–521 与 TEST502–521 定向门均已通过；
-这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。当前产品 bootstrap 由公共入口按七个
+Controller tags 和 Blob/File JSON metadata。next522–541 又补齐了受宿主显式 pump 驱动的 bounded
+Promise 构造器、then/catch/finally、thenable assimilation、组合器和错误/容量边界。TEST389–448、
+TEST482–541 与 TEST502–521 定向门均已通过；
+这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。当前产品 bootstrap 由公共入口按八个
 顺序 IIFE 评估，共享一个 Duktape context；分段只用于保持源码上限，不改变执行预算或引入第二套
 JavaScript 引擎。
 
@@ -57,20 +59,26 @@ JavaScript 引擎。
   contract；MessagePort/BroadcastChannel 的 started/closed/messageerror 仍限于同一 session、
   有界 message pump，不代表 native port 或跨页面通信。
 - TextEncoder/TextDecoder、atob/btoa、Blob/File/FormData 文件值是 UTF-8/内存 bounded 适配；
-  Blob 的 `text()`/`arrayBuffer()` 同步返回，未开启 Promise，未实现 fetch、stream、multipart
-  传输或持久文件句柄。
+  Blob 的 `text()`/`arrayBuffer()` 仍同步返回，未实现 fetch、stream、multipart 传输或持久
+  文件句柄。
 - `dataset` 只通过现有按 id attribute bridge 反射 `data-*` 名称，节点常量是产品层 metadata；没有
   DOM 树关系、tagName/outerHTML、完整属性枚举或 layout 语义；`keys()`/`toJSON()` 只报告当前
   session 触碰过的 named keys。FormData 的 `Symbol.iterator`、`entries()`/`keys()`/`values()`
   是有序 session snapshot，保留旧 iterator `.length` 兼容字段，不提供 multipart 或异步流。
 - Headers、Request、Response 是内存 bounded 的同步数据模型；它们不建立网络连接、不执行 fetch、
-  不提供 Promise/stream，body `text()`/`json()`/`arrayBuffer()` 是 one-shot 消费并同步标记
+  不提供 stream，body `text()`/`json()`/`arrayBuffer()` 是 one-shot 消费并同步标记
   `bodyUsed`；clone 在已消费后受控抛出 TypeError。Headers 受条目和值数量限制，非法名称和超限
   以受控异常失败。
 - `AbortSignal.timeout/any/onabort`、setImmediate 和 MessageChannel 都依赖宿主显式 timer/message
   pump；没有后台线程、跨页面通信或导航后队列保留。`structuredClone` 只克隆受限 primitive/array/
   plain object/Blob/File，深度和对象数量受脚本预算影响，循环/函数等不可克隆值会抛出
   `DOMException('DataCloneError')`。
+- Promise 是产品 bootstrap 提供的 bounded polyfill：构造器、`then`/`catch`/`finally`、
+  `resolve`/`reject`、`all`/`race`/`allSettled`/`any` 只在单个脚本 session 内工作；反应队列
+  必须由宿主显式调用 `PBrowser_ScriptSessionRunMicrotasks()` 推进（测试 probe 使用其 bootstrap
+  helper `__pcoreRunMicrotasks()`），不创建后台线程或隐式 event loop。每个
+  Promise 最多保留 64 个 handler，组合器输入最多 64 项；输入超限、非法构造器和全拒绝的
+  `any` 会受控拒绝。它不连接 fetch、stream、网络、文件句柄或跨 session 调度。
 - navigator 新增的 `javaEnabled()`/`sendBeacon()` 只是冻结能力快照（当前返回 false），
   `screen.orientation` 只在 session 初始化时由 viewport 派生，不监听旋转、不驱动重排或绘制；
   URLSearchParams pair constructor/delete(value) 仍是受限字符串实现。
@@ -99,7 +107,8 @@ JavaScript 引擎。
   `onmessage` 自动 start 也只作用于 session 内 MessagePort pump。
 - `Blob.prototype.toJSON()`、`File.prototype.toJSON()`、Request/Response metadata JSON 和
   performance entry `toJSON()` 都是 Positron 为诊断/页面脚本提供的 bounded snapshot，不是完整
-  Web IDL serialization；Blob/File 仍无 Promise、stream、持久文件句柄或 multipart transport。
+  Web IDL serialization；Blob/File readers 仍无 Promise-backed stream、持久文件句柄或 multipart
+  transport。
 - `scripts\device_gate.bat -EnableJavaScript` 只修改隔离 staging；tracked
   `test_host/test_host.ini` 仍为 `javascript=0`。本轮只改产品 API/状态，没有新增视觉、触摸、
   SIP 或系统 picker 人工门；这些风险仍须按下方验收边界单独检查。

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 521
+#define TEST_MAX_NUMBER 541
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -57785,6 +57785,222 @@ static BOOL test521_browser_blob_file_json(void)
             "2|text/plain|a.txt|7|1|app/x", error, sizeof(error));
 }
 
+/* TEST 522 - Promise reactions are deferred until the explicit microtask pump. */
+static BOOL test522_browser_promise_microtask_timing(void)
+{
+    static const char PROBE[] =
+        "var state='before';var p=new Promise(function(resolve){resolve('ok');});"
+        "p.then(function(value){state=value;});var before=state;__pcoreRunMicrotasks();"
+        "document.getElementById('result').textContent=before+'|'+state;";
+    char error[256];
+    return test_browser_platform_case(522, PROBE, "before|ok", error, sizeof(error));
+}
+
+/* TEST 523 - Promise rejection is recoverable through catch. */
+static BOOL test523_browser_promise_rejection_catch(void)
+{
+    static const char PROBE[] =
+        "var value='';Promise.reject('bad').catch(function(reason){value=reason;});"
+        "var before=value;__pcoreRunMicrotasks();document.getElementById('result').textContent="
+        "before+'|'+value;";
+    char error[256];
+    return test_browser_platform_case(523, PROBE, "|bad", error, sizeof(error));
+}
+
+/* TEST 524 - Promise then handlers transform values through a chain. */
+static BOOL test524_browser_promise_chain(void)
+{
+    static const char PROBE[] =
+        "var value='pending';Promise.resolve(2).then(function(number){return number+1;}).then("
+        "function(number){value=String(number*2);});__pcoreRunMicrotasks();"
+        "document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(524, PROBE, "6", error, sizeof(error));
+}
+
+/* TEST 525 - A rejection handler can recover with a fulfillment value. */
+static BOOL test525_browser_promise_rejection_recovery(void)
+{
+    static const char PROBE[] =
+        "var value='pending';Promise.reject('x').then(null,function(reason){return 'recovered';}).then("
+        "function(next){value=next;});__pcoreRunMicrotasks();document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(525, PROBE, "recovered", error, sizeof(error));
+}
+
+/* TEST 526 - Missing handlers pass fulfillment and rejection through unchanged. */
+static BOOL test526_browser_promise_passthrough(void)
+{
+    static const char PROBE[] =
+        "var value='';Promise.resolve('value').then().then(function(next){value=next;});"
+        "__pcoreRunMicrotasks();document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(526, PROBE, "value", error, sizeof(error));
+}
+
+/* TEST 527 - A thrown fulfillment handler becomes a rejection. */
+static BOOL test527_browser_promise_thrown_handler(void)
+{
+    static const char PROBE[] =
+        "var name='';var message='';Promise.resolve('x').then(function(){throw new Error('boom');}).catch("
+        "function(reason){name=reason.name;message=reason.message;});__pcoreRunMicrotasks();"
+        "document.getElementById('result').textContent=name+'|'+message;";
+    char error[256];
+    return test_browser_platform_case(527, PROBE, "Error|boom", error, sizeof(error));
+}
+
+/* TEST 528 - Promise resolution assimilates a thenable and honors its first callback. */
+static BOOL test528_browser_promise_thenable(void)
+{
+    static const char PROBE[] =
+        "var value='';var thenable={then:function(resolve){resolve(7);resolve(8);}};"
+        "Promise.resolve(thenable).then(function(next){value=String(next);});__pcoreRunMicrotasks();"
+        "document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(528, PROBE, "7", error, sizeof(error));
+}
+
+/* TEST 529 - Promise executor resolve/reject functions are one-shot. */
+static BOOL test529_browser_promise_executor_once(void)
+{
+    static const char PROBE[] =
+        "var value='';var p=new Promise(function(resolve,reject){resolve('first');reject('second');});"
+        "p.then(function(next){value=next;});__pcoreRunMicrotasks();document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(529, PROBE, "first", error, sizeof(error));
+}
+
+/* TEST 530 - finally runs on fulfillment and preserves the original value. */
+static BOOL test530_browser_promise_finally_fulfillment(void)
+{
+    static const char PROBE[] =
+        "var seen='';var value='';Promise.resolve('value').finally(function(){seen='finally';}).then("
+        "function(next){value=next;});__pcoreRunMicrotasks();document.getElementById('result').textContent="
+        "seen+'|'+value;";
+    char error[256];
+    return test_browser_platform_case(530, PROBE, "finally|value", error, sizeof(error));
+}
+
+/* TEST 531 - finally runs on rejection and preserves the original reason. */
+static BOOL test531_browser_promise_finally_rejection(void)
+{
+    static const char PROBE[] =
+        "var seen='';var reason='';Promise.reject('reason').finally(function(){seen='finally';}).catch("
+        "function(error){reason=error;});__pcoreRunMicrotasks();document.getElementById('result').textContent="
+        "seen+'|'+reason;";
+    char error[256];
+    return test_browser_platform_case(531, PROBE, "finally|reason", error, sizeof(error));
+}
+
+/* TEST 532 - Promise.resolve preserves identity and assimilates thenables. */
+static BOOL test532_browser_promise_resolve_identity(void)
+{
+    static const char PROBE[] =
+        "var p=Promise.resolve(1);var same=Promise.resolve(p)===p;var value='';"
+        "Promise.resolve({then:function(resolve){resolve(2);}}).then(function(next){value=String(next);});"
+        "__pcoreRunMicrotasks();document.getElementById('result').textContent=String(same)+'|'+value;";
+    char error[256];
+    return test_browser_platform_case(532, PROBE, "true|2", error, sizeof(error));
+}
+
+/* TEST 533 - Promise.reject creates an asynchronously observable rejection. */
+static BOOL test533_browser_promise_reject(void)
+{
+    static const char PROBE[] =
+        "var value='';var p=Promise.reject('rejected');p.catch(function(reason){value=reason;});"
+        "__pcoreRunMicrotasks();document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(533, PROBE, "rejected", error, sizeof(error));
+}
+
+/* TEST 534 - Promise.all preserves input order across different settlement timing. */
+static BOOL test534_browser_promise_all_order(void)
+{
+    static const char PROBE[] =
+        "var value='';var delayed=new Promise(function(resolve){queueMicrotask(function(){resolve('b');});});"
+        "Promise.all([Promise.resolve('a'),delayed]).then(function(values){value=values[0]+'|'+values[1];});"
+        "__pcoreRunMicrotasks();document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(534, PROBE, "a|b", error, sizeof(error));
+}
+
+/* TEST 535 - Promise.all rejects when any member rejects. */
+static BOOL test535_browser_promise_all_rejection(void)
+{
+    static const char PROBE[] =
+        "var value='';Promise.all([Promise.resolve('ok'),Promise.reject('bad')]).catch(function(reason){value=reason;});"
+        "__pcoreRunMicrotasks();document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(535, PROBE, "bad", error, sizeof(error));
+}
+
+/* TEST 536 - Promise.race settles from the first already-settled input in order. */
+static BOOL test536_browser_promise_race(void)
+{
+    static const char PROBE[] =
+        "var value='';Promise.race([Promise.resolve('first'),Promise.resolve('second')]).then(function(next){value=next;});"
+        "__pcoreRunMicrotasks();document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(536, PROBE, "first", error, sizeof(error));
+}
+
+/* TEST 537 - Promise.allSettled returns ordered status records. */
+static BOOL test537_browser_promise_all_settled(void)
+{
+    static const char PROBE[] =
+        "var value='';Promise.allSettled([Promise.resolve(1),Promise.reject('x')]).then(function(values){"
+        "value=values[0].status+'|'+String(values[0].value)+'|'+values[1].status+'|'+values[1].reason;});"
+        "__pcoreRunMicrotasks();document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(537, PROBE,
+            "fulfilled|1|rejected|x", error, sizeof(error));
+}
+
+/* TEST 538 - Promise.any resolves on the first fulfillment. */
+static BOOL test538_browser_promise_any(void)
+{
+    static const char PROBE[] =
+        "var value='';Promise.any([Promise.reject('x'),Promise.resolve('ok')]).then(function(next){value=next;});"
+        "__pcoreRunMicrotasks();document.getElementById('result').textContent=value;";
+    char error[256];
+    return test_browser_platform_case(538, PROBE, "ok", error, sizeof(error));
+}
+
+/* TEST 539 - queueMicrotask and Promise reactions share FIFO pump ordering. */
+static BOOL test539_browser_promise_microtask_order(void)
+{
+    static const char PROBE[] =
+        "var values=[];queueMicrotask(function(){values.push('queue');});Promise.resolve().then(function(){values.push('promise');});"
+        "values.push('sync');__pcoreRunMicrotasks();document.getElementById('result').textContent=values.join('|');";
+    char error[256];
+    return test_browser_platform_case(539, PROBE, "sync|queue|promise", error, sizeof(error));
+}
+
+/* TEST 540 - Invalid constructors, AggregateError-like rejection and handler bounds are explicit. */
+static BOOL test540_browser_promise_bounds(void)
+{
+    static const char PROBE[] =
+        "var a='';var b='';var c='';var d='';var i;try{Promise(function(){});}catch(e){a=e.name;}"
+        "try{new Promise(1);}catch(e2){b=e2.name;}Promise.any([Promise.reject(1)]).catch(function(error){"
+        "c=error.name+'|'+String(error.errors.length);});var pending=new Promise(function(){});var limited;"
+        "for(i=0;i<65;i++){limited=pending.then(null,function(){});}limited.catch(function(error){d=error.message;});"
+        "__pcoreRunMicrotasks();document.getElementById('result').textContent=a+'|'+b+'|'+c+'|'+d;";
+    char error[256];
+    return test_browser_platform_case(540, PROBE,
+            "TypeError|TypeError|AggregateError|1|Promise handler limit", error, sizeof(error));
+}
+
+/* TEST 541 - Promise instances carry a stable tag and expose the bounded static surface. */
+static BOOL test541_browser_promise_metadata(void)
+{
+    static const char PROBE[] =
+        "var p=Promise.resolve(1);document.getElementById('result').textContent="
+        "Object.prototype.toString.call(p)+'|'+String(p instanceof Promise)+'|'+typeof Promise.allSettled+'|'+typeof Promise.any;";
+    char error[256];
+    return test_browser_platform_case(541, PROBE,
+            "[object Promise]|true|function|function", error, sizeof(error));
+}
+
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -58999,6 +59215,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 521: ok =
                 test521_browser_blob_file_json();
+                break;
+        case 522: ok =
+                test522_browser_promise_microtask_timing();
+                break;
+        case 523: ok =
+                test523_browser_promise_rejection_catch();
+                break;
+        case 524: ok =
+                test524_browser_promise_chain();
+                break;
+        case 525: ok =
+                test525_browser_promise_rejection_recovery();
+                break;
+        case 526: ok =
+                test526_browser_promise_passthrough();
+                break;
+        case 527: ok =
+                test527_browser_promise_thrown_handler();
+                break;
+        case 528: ok =
+                test528_browser_promise_thenable();
+                break;
+        case 529: ok =
+                test529_browser_promise_executor_once();
+                break;
+        case 530: ok =
+                test530_browser_promise_finally_fulfillment();
+                break;
+        case 531: ok =
+                test531_browser_promise_finally_rejection();
+                break;
+        case 532: ok =
+                test532_browser_promise_resolve_identity();
+                break;
+        case 533: ok =
+                test533_browser_promise_reject();
+                break;
+        case 534: ok =
+                test534_browser_promise_all_order();
+                break;
+        case 535: ok =
+                test535_browser_promise_all_rejection();
+                break;
+        case 536: ok =
+                test536_browser_promise_race();
+                break;
+        case 537: ok =
+                test537_browser_promise_all_settled();
+                break;
+        case 538: ok =
+                test538_browser_promise_any();
+                break;
+        case 539: ok =
+                test539_browser_promise_microtask_order();
+                break;
+        case 540: ok =
+                test540_browser_promise_bounds();
+                break;
+        case 541: ok =
+                test541_browser_promise_metadata();
                 break;
         default: ok = FALSE; break;
         }

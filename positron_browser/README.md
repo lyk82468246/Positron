@@ -52,6 +52,9 @@ PBrowser_ScriptSessionDestroy(session);
   Event JSON 和 native input/keyboard/focus/EDIT change/post-change input/click、programmatic
   `HTMLElement.click()`、`HTMLElement.disabled`、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
   `formNoValidate`/`min`/`max`/`step`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
+- `PBrowser_ScriptSessionRunMicrotasks()`：在调用者自己的窗口/宿主循环中推进当前 session
+  的 bounded microtask 队列并返回本次执行数量；Promise reaction 不会自行创建线程或隐式
+  event loop。`RunIdleCallbacks()`、`RunMessages()` 同样由宿主按生命周期和关闭策略显式调用；
 - `PBrowser_ScriptSessionRuntime` 仅是迁移期只读诊断借用句柄，不转移所有权。
 
 回调结构体是 size-tagged，字符串和事件信息只在同步 callback 内借用。validation callback
@@ -81,7 +84,9 @@ MessagePort/BroadcastChannel（`onmessage` 自动 start）、structuredClone、S
 PopState/Error/Progress/Close event 构造器、同步 PerformanceObserver/EntryList 快照与选项校验、
 performance entry JSON、NodeList item/iterator、稳定 element/classList/style wrapper identity、
 DOM wrapper tags、navigator 方法、viewport 派生的 `screen.orientation`、window aliases/open-close
-no-op。它们只在单个 session 内存中运行；Request/Response 不联网，MessagePort/BroadcastChannel/
-timeout 需宿主显式 pump，PerformanceObserver 只读取 observe 时已有 entries，不等于完整 DOM、
-Promise/fetch/stream、真实窗口生命周期或后台浏览器调度。公共 bootstrap 现在按七个顺序 IIFE
-评估以保持脚本 source 上限。
+no-op，以及由宿主显式 microtask pump 驱动的 bounded Promise（含 `then`/`catch`/`finally`、
+`resolve`/`reject`、`all`/`race`/`allSettled`/`any`）。它们只在单个 session 内存中运行；
+Request/Response 不联网，MessagePort/BroadcastChannel/timeout/Promise 需宿主显式 pump，
+PerformanceObserver 只读取 observe 时已有 entries，不等于完整 DOM、fetch/stream、真实窗口
+生命周期或后台浏览器调度。Promise handler 和组合器输入均限制为 64 项。公共 bootstrap 现在按
+八个顺序 IIFE 评估以保持脚本 source 上限。

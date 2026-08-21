@@ -337,6 +337,23 @@ tree、Web IDL serialization 或后台浏览器调度。公共 bootstrap 现在�
 共享同一 Duktape context，并保持 `PSCRIPT_MAX_SOURCE_BYTES`、既有执行预算、opaque handle 和
 C ABI 不变。
 
+#### next522–541 的受控 Promise 扩展
+
+本批仍由 `positron_browser.dll` 持有产品语义，`test_host.exe` 只通过公共 session 入口提供
+fixture、显式 microtask pump 和断言；没有新增公共 C ABI。bootstrap 第八个 IIFE 提供：
+
+- bounded Promise 构造器、`then`/`catch`/`finally` 链和同步 executor one-shot 语义；
+- `resolve`/`reject`、thenable assimilation，以及 `all`/`race`/`allSettled`/`any` 组合器；
+- 构造器错误、抛出 handler、rejection recovery、AggregateError-like 全拒绝结果、Promise
+  `Symbol.toStringTag` 和 64 项 handler/input 限制。
+
+Promise reaction 只进入现有 session 的 `queueMicrotask` 队列，由宿主显式调用公共
+`PBrowser_ScriptSessionRunMicrotasks()`（内部转发到 bootstrap pump）推进；产品不创建后台线程、隐式 event loop、网络、fetch、stream、
+文件句柄或跨 session 调度。组合器当前接受 bounded array-like 输入，超限或非法输入受控拒绝。
+这些语义是内存内兼容切片，不代表完整 ECMAScript Promise/iterator/host scheduling 标准；公共
+初始化入口现在按顺序评估八个独立 IIFE，仍共享同一 Duktape context，并保持
+`PSCRIPT_MAX_SOURCE_BYTES`、既有执行预算、opaque handle 和 C ABI 不变。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

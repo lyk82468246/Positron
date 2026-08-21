@@ -17,7 +17,7 @@ DLL 之上建设轻量浏览器与应用运行时。
 | `positron_image.dll` | BMP/PNG/JPEG/GIF、SVG、像素缓冲和编码 | 设备位图格式依赖 WM Imaging codec；SVG 是受限子集 |
 | `positron_script.dll` | 独立 JavaScript 执行服务 | Duktape 2.7.0；有时间、内存、源码和 native callback 上限 |
 | `positron_core.dll` | HTML/DOM、CSS、布局、绘制、命中、表单和资源发现 | 基于移植的 NetSurf 3.11 组件；网页兼容性仍在扩展 |
-| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap、受控 DOM/Event、表单/输入、URL、storage、编码、Headers、同步 Request/Response、AbortSignal、timer/message pump、端口/广播、性能快照和窗口别名数据模型 | 不拥有窗口、网络或原生校验提示；这些 Web API 是 session 内 bounded 兼容切片，完整 DOM、Promise/fetch/stream、core 事件传播及控件副作用仍由宿主提供 |
+| `positron_browser.dll` | 浏览器 session、history、脚本 session/bootstrap、受控 DOM/Event、表单/输入、URL、storage、编码、Headers、同步 Request/Response、bounded Promise、AbortSignal、timer/message pump、端口/广播、性能快照和窗口别名数据模型 | 不拥有窗口、网络或原生校验提示；这些 Web API 是 session 内 bounded 兼容切片，Promise 需宿主显式 microtask pump，完整 DOM、fetch/stream、core 事件传播及控件副作用仍由宿主提供 |
 
 所有公共接口都使用稳定 C ABI、UTF-8 字符串、opaque handle 和明确的释放函数。NetSurf、
 Duktape、Mbed TLS 等实现细节不暴露给调用者。
@@ -52,6 +52,9 @@ MessagePort/BroadcastChannel、structuredClone、PerformanceObserver/EntryList �
 navigator 方法、`screen.orientation`、window aliases/open-close no-op 和稳定 element wrapper
 identity；这些能力不发起网络、不创建后台线程，并由宿主显式 timer/message pump 或同步 snapshot
 驱动。
+当前还提供 bounded Promise 构造器、`then`/`catch`/`finally`、`resolve`/`reject` 和四种组合器；
+reaction 必须由宿主显式调用 `PBrowser_ScriptSessionRunMicrotasks()` 推进，handler 与组合器输入均受
+64 项上限。
 它不是第二套引擎。
 两者的关系和所有权见
 [架构说明](docs/ARCHITECTURE.md)。

@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next502–521
+### 当前短期状态：next522–541
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -339,12 +339,14 @@ NodeList/element identity、dataset、Event/MessagePort/BroadcastChannel state �
 PerformanceObserverEntryList 视图；next502–521 又完成 Headers/Request/Response ownership 与
 metadata JSON、URLSearchParams/FormData snapshot、Storage/DOM wrapper tags、classList token
 validation、performance entry/observer option metadata、MessagePort auto-start、AbortSignal/
-Controller tags 和 Blob/File JSON metadata。对应 TEST429–448、TEST482–521 与分段累计回归门均通过，且没有
-修改 tracked `test_host.ini`。Bootstrap 现在分成七个顺序评估阶段以保持
+Controller tags 和 Blob/File JSON metadata；next522–541 又完成 bounded Promise 构造器、微任务
+时序、then/catch/finally、thenable assimilation、`resolve`/`reject`、`all`/`race`/`allSettled`/`any`
+和错误/容量边界。对应 TEST429–448、TEST482–541 与相邻累计回归门均通过，且没有修改 tracked
+`test_host.ini`。Bootstrap 现在分成八个顺序评估阶段以保持
 `PSCRIPT_MAX_SOURCE_BYTES` 不变；这不是提升脚本预算。
 
-下一批固定为一个新的完整产品边界（next522），不把已完成的能力重新拆成更小的反射门。
-候选优先从表单关联/DOM 关系、受控异步队列或其他具有真实页面价值且可自动断言的缺口中选择；
+下一批固定为一个新的完整产品边界（next542），不把已完成的能力重新拆成更小的反射门。
+候选优先从表单关联/DOM 关系、Promise 之外的受控异步队列或其他具有真实页面价值且可自动断言的缺口中选择；
 在候选确定前不预先承诺具体 API。涉及窗口、布局、真实 SIP、系统 picker、旋转或网络失败
 反馈的候选必须另列人工验收，不能用宿主注入日志替代。
 
