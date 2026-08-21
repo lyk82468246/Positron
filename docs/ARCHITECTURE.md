@@ -230,6 +230,29 @@ textarea 布局高度或完整 textarea Web IDL 实现。
 selector、URL、storage/cookie、FormData、selection 和 synthetic event 均不承诺完整 Web
 标准语义。精确参数、返回值和所有权以 `positron_browser/positron_browser.h` 为准。
 
+#### next422–441 的脚本平台扩展
+
+本轮仍由 `positron_browser.dll` 持有实现，`test_host.exe` 只通过公共 session API 组合 fixture
+和断言：
+
+- 事件层增加 listener options（capture/once/passive/signal）、通用 `EventTarget`、
+  `CustomEvent`、Mouse/Keyboard/Input/Focus/Submit/MessageEvent 构造器、AbortController 和
+  元素 handler 属性；它们只在产品注册表中分发，不伪装完整 DOM 冒泡树或 native 默认动作。
+- 异步层增加 `PBrowser_ScriptSessionRunMicrotasks`、`RunIdleCallbacks`、`RunMessages`，以及
+  对应 `queueMicrotask`、`requestIdleCallback`、同窗口 `postMessage` 队列。宿主拥有时钟、pump
+  顺序和 session 关闭/导航时的丢弃策略；产品不创建后台线程。
+- 脚本 bootstrap 增加 atob/btoa、UTF-8 TextEncoder/TextDecoder、bounded Blob/File 和
+  FormData 文件值、URL `canParse`/`parse`/`toJSON`、稳定 URLSearchParams iterator、navigator
+  capability snapshot、静态 matchMedia、performance mark/measure、history
+  scrollRestoration/location JSON 与 storage event。
+- 为遵守 `positron_script` 的 `PSCRIPT_MAX_SOURCE_BYTES`，bootstrap 由公共初始化入口按顺序
+  评估三个独立 IIFE；每段都在既有 source limit 内，仍共享同一个 script context，不改变执行预算。
+
+这些 API 都是 session-scoped、内存 bounded 的兼容切片。Blob `text()`/`arrayBuffer()` 为同步
+适配，Promise、fetch、stream、真实文件句柄、跨页面 storage 同步、动态 media re-evaluation 和
+完整 URL/DOM 标准均明确不在本边界内。新增 C ABI 只追加稳定导出，不暴露 Duktape、libdom 或
+宿主私有结构。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

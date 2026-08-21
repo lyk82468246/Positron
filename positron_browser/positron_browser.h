@@ -650,6 +650,14 @@ PBROWSER_API int PBrowser_ScriptSessionRunAnimationFrames(HANDLE hSession,
  * followed by pagehide/pageshow. `hidden` is normalized to 0 or 1. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchVisibility(HANDLE hSession,
         int hidden);
+/* Pump bounded product-owned microtasks, idle callbacks, and queued
+ * same-window postMessage deliveries. The host owns scheduling and may call
+ * these from its message loop; each function returns the script result code. */
+PBROWSER_API int PBrowser_ScriptSessionRunMicrotasks(HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRunIdleCallbacks(HANDLE hSession,
+        unsigned long deadline_ms);
+PBROWSER_API int PBrowser_ScriptSessionRunMessages(HANDLE hSession,
+        unsigned long limit);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(

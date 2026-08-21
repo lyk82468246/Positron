@@ -11,7 +11,7 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next421（本轮最终累计检查点为 `TEST369-388/999`；最近一次完整自动基线仍为
+- 最新已验证产品基线：next441（本轮最终累计检查点为 `TEST369-408/999`；最近一次完整自动基线仍为
   next255）。本轮使用每项候选门和一次累计门，没有修改 tracked `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
   与 URL、session storage 与 cookie、classList 与 style、选择器查询与 FormData、输入选择/数值步进/
@@ -26,14 +26,27 @@
   tracked `test_host/test_host.ini` 仍保持 `javascript=0`，默认 Browse 路径不变。本轮 API/状态批次
   不涉及视觉、真实触摸、SIP 或系统 picker，因此不要求新增人工页面验收。
 
-## 当前状态：next402–421
+- next422–441 已完成第二组 20 个完整的浏览器 JavaScript 产品子功能：事件 options/一次性与
+  passive、EventTarget/CustomEvent/常用事件构造器、AbortController、元素 handler 属性、宿主泵送
+  microtask/idle/postMessage、base64、UTF-8 TextEncoder/TextDecoder、受限 Blob/File/FormData
+  文件值、URL 静态 helpers、稳定 URLSearchParams iterator、navigator 能力快照、matchMedia、
+  performance mark/measure、history scrollRestoration/location JSON 和 storage 事件。对应自动
+  测试为 TEST389–408，实现仍位于 `positron_browser.dll`；`test_host.exe` 只提供 fixture、callback
+  注册和验证。
+- 最终累计设备门为 `TEST369-408,999` 共 41 项，零 ERROR、零 FAIL、唯一 TESTBENCH PASS，
+  `test13_route_ok=True`；证据位于
+  `tmp/device-runs/20260821-094308-next422-441-cumulative-pass/`。中间发现的 bootstrap source
+  预算、FormData helper、Storage remove 变量、跨 IIFE trim 和 URLSearchParams sort 问题均已在
+  原始预算/断言下修复并重跑通过。
 
-本轮 20 个 next 均已实现、构建并通过定向设备门及累计门。产品层现在可以在一个脚本 session
-内提供以下受控能力：页面 readyState/visibility 生命周期和环境快照；有限 URL/URLSearchParams、
-session storage、cookie；class/style/selector/FormData；input selection、numeric step、
-setRangeText；document/window metadata、viewport/scroll；target-local synthetic event；以及由宿主
-显式推进的 timer、animation-frame 和 visibility 队列。它们都是 session-scoped、内存内、受预算限制
-的兼容切片，不代表完整 Web 标准实现。
+## 当前状态：next422–441
+
+本轮 20 个 next 均已实现、构建并通过定向设备门及累计门。产品层现在在同一脚本 session 内提供
+上一批的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
+animation-frame/visibility，以及本轮的事件 options/构造器/取消控制、受控异步队列、编码与二进制
+对象、URL/表单迭代、navigator/media/performance、history/storage event。它们都是 session-scoped、
+内存内、受预算限制的兼容切片，不代表完整 Web 标准实现；Blob/File 的 text/arrayBuffer 是同步
+受限适配，Promise/fetch/后台调度仍不在本批范围。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -2546,12 +2559,12 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 唯一下一步是从
 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
-每批一个清晰的产品边界。
+每批一个清晰的产品边界；next422–441 已完成并提升为当前基线。
 
 完成标准：
 
-- TEST368/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–368/999` 定向选择；next299 的
+- TEST408/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–408/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2565,7 +2578,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next422 选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next442 选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。

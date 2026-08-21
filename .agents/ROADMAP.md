@@ -326,15 +326,16 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next402–421
+### 当前短期状态：next422–441
 
-next402–421 已完成并从未完成路线图移出：这 20 个批次分别覆盖页面生命周期/环境快照、
-URLSearchParams/URL、session storage/cookie、classList/style、selector/FormData、输入选择/
-numeric step/setRangeText、document/window metadata、viewport/scroll、synthetic event，以及
-宿主泵送的 timer、animation-frame 和 visibility 生命周期。对应 TEST369–388 和累计
-`TEST369-388,999` 设备门均通过，且没有修改 tracked `test_host.ini`。
+next402–421 已完成并从未完成路线图移出；next422–441 又完成一组 20 个完整产品边界：事件
+options/构造器/AbortController/handler 属性、microtask/idle/postMessage pump、base64 与
+UTF-8 codec、受限 Blob/File/FormData 文件值、URL 静态 helpers 与稳定 iterator、navigator、
+matchMedia、performance、history scrollRestoration/location JSON 和 storage event。对应
+TEST389–408 与累计 `TEST369-408,999` 设备门均通过，且没有修改 tracked `test_host.ini`。
+Bootstrap 为保持 `PSCRIPT_MAX_SOURCE_BYTES` 不变拆成三个顺序评估阶段；这不是提升脚本预算。
 
-下一批固定为一个新的完整产品边界（next422），不把这 20 个小语义重新拆成更小的反射门。
+下一批固定为一个新的完整产品边界（next442），不把这 20 个能力重新拆成更小的反射门。
 候选优先从表单关联/DOM 关系、受控异步队列或其他具有真实页面价值且可自动断言的缺口中选择；
 在候选确定前不预先承诺具体 API。涉及窗口、布局、真实 SIP、系统 picker、旋转或网络失败
 反馈的候选必须另列人工验收，不能用宿主注入日志替代。

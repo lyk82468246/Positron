@@ -6,14 +6,17 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next421）
+## 当前状态（next441）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
 URLSearchParams、session storage/cookie、classList/style、受限 selector 查询、FormData、
 输入选择/数值步进/setRangeText、document/window metadata、viewport/scroll、合成事件，以及
-由宿主显式推进的 timer、animation-frame 和 visibility 队列。TEST369–388 与累计门
-`TEST369-388,999` 已通过；这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。
+由宿主显式推进的 timer、animation-frame 和 visibility 队列。next422–441 又补齐了事件
+options/构造器/AbortController、microtask/idle/postMessage pump、base64/UTF-8 codec、受限
+Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/performance、history
+scrollRestoration 和 storage event。TEST369–408 与累计门 `TEST369-408,999` 已通过；这些
+切片默认关闭 JavaScript 时不会被发现、抓取或执行。
 
 这些 API 的共同限制如下：
 
@@ -29,6 +32,15 @@ URLSearchParams、session storage/cookie、classList/style、受限 selector 查
 - timer、animation frame 和 visibility 都需要宿主显式调用公共 pump/dispatch API；没有后台线程、
   OS lifecycle 自动接线或跨导航持久队列。计时器行为受 session 预算和 pump 时刻限制，关闭/导航
   时应由宿主丢弃队列。
+- 事件 options、EventTarget、CustomEvent、AbortController 和 handler 属性只覆盖产品注册表内
+  的受控分发；没有完整 DOM 冒泡/捕获树、默认动作或 native event retargeting。microtask、idle
+  和 postMessage 是 session 内、有限容量、宿主显式 pump 的队列，不等于浏览器线程调度。
+- TextEncoder/TextDecoder、atob/btoa、Blob/File/FormData 文件值是 UTF-8/内存 bounded 适配；
+  Blob 的 `text()`/`arrayBuffer()` 同步返回，未开启 Promise，未实现 fetch、stream、multipart
+  传输或持久文件句柄。
+- `matchMedia` 使用初始化 viewport/DPI 快照，不会监听窗口重排；performance 只保留 session 内
+  mark/measure 条目；navigator 是冻结能力快照；storage event 为单 session 内的受控通知，不
+  提供跨页面/跨进程持久化同步。
 - `scripts\device_gate.bat -EnableJavaScript` 只修改隔离 staging；tracked
   `test_host/test_host.ini` 仍为 `javascript=0`。本轮只改产品 API/状态，没有新增视觉、触摸、
   SIP 或系统 picker 人工门；这些风险仍须按下方验收边界单独检查。
