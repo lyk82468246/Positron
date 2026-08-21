@@ -247,6 +247,30 @@ PCORE_API int PCore_NodeSetAttributeById(HANDLE hDoc,
         const char *element_id, const char *name, const char *value);
 PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
         const char *element_id, const char *name);
+
+/* Bounded DOM relationship boundary for script/runtime hosts. The document
+ * is intentionally exposed through ID-addressable element wrappers only;
+ * elements without a non-empty id are skipped by child/sibling collections
+ * and are reported as an unavailable relationship. String results use the
+ * same probe/truncation contract as PCore_NodeTextContentById. Count results
+ * are returned through out_number. The return value is 0 for a relationship
+ * that was found, 2 for an absent/unavailable relationship and 1 for invalid
+ * input or a DOM failure. The tree is a read snapshot for the duration of the
+ * host script call; it is not a live mutation API. */
+#define PCORE_NODE_RELATION_PARENT_ELEMENT       1u
+#define PCORE_NODE_RELATION_FIRST_CHILD          2u
+#define PCORE_NODE_RELATION_LAST_CHILD           3u
+#define PCORE_NODE_RELATION_PREVIOUS_SIBLING     4u
+#define PCORE_NODE_RELATION_NEXT_SIBLING         5u
+#define PCORE_NODE_RELATION_CHILD_COUNT          6u
+#define PCORE_NODE_RELATION_TAG_NAME             7u
+#define PCORE_NODE_RELATION_FORM_OWNER           8u
+#define PCORE_NODE_RELATION_FORM_CONTROL_COUNT   9u
+#define PCORE_NODE_RELATION_FORM_CONTROL_AT     10u
+
+PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
+        unsigned int relation, unsigned int index, char *out_value,
+        int value_capacity, int *out_bytes, int *out_number);
 /* DOM-level form properties for script/runtime hosts. Value/defaultValue
  * support input, textarea and select.value; checked/defaultChecked support
  * input; selectedIndex supports select. These functions do not require a

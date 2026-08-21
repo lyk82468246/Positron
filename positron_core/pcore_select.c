@@ -25,6 +25,7 @@
 #include <stdlib.h>   /* malloc / free (box geometry) */
 
 #include <dom/dom.h>
+#include <dom/core/namednodemap.h>
 #include <dom/html/html_button_element.h>
 #include <dom/html/html_input_element.h>
 #include <dom/html/html_option_element.h>
@@ -4088,6 +4089,596 @@ static int pcore_element_name_is(dom_element *element, const char *name)
     dom_string_unref(expected);
     dom_string_unref(actual);
     return same;
+}
+
+/* ------------------------------------------------------------------ */
+/* bounded script-facing DOM relationships                            */
+
+static int pcore_relation_copy_element_id(dom_node *node, char *value,
+        int value_capacity, int *out_bytes)
+{
+    dom_node_type type;
+    dom_namednodemap *attributes;
+    dom_string *id_name;
+    dom_string *attribute_name;
+    dom_string *attribute_text;
+    dom_node *attribute;
+    dom_ulong length;
+    dom_ulong i;
+    int found;
+    dom_exception err;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    if (node == NULL || dom_node_get_node_type(node, &type) != DOM_NO_ERR ||
+            type != DOM_ELEMENT_NODE) {
+        return 1;
+    }
+    attributes = NULL;
+    id_name = NULL;
+    attribute_name = NULL;
+    attribute = NULL;
+    attribute_text = NULL;
+    if (dom_string_create((const uint8_t *) "id", 2, &id_name) !=
+            DOM_NO_ERR || id_name == NULL ||
+            dom_node_get_attributes(node, &attributes) != DOM_NO_ERR ||
+            attributes == NULL || dom_namednodemap_get_length(attributes,
+            &length) != DOM_NO_ERR) {
+        if (id_name != NULL) {
+            dom_string_unref(id_name);
+        }
+        if (attributes != NULL) {
+            dom_namednodemap_unref(attributes);
+        }
+        return 1;
+    }
+    err = DOM_NO_ERR;
+    found = 0;
+    for (i = 0; i < length; i++) {
+        attribute = NULL;
+        attribute_name = NULL;
+        if (dom_namednodemap_item(attributes, i, &attribute) != DOM_NO_ERR ||
+                attribute == NULL ||
+                dom_node_get_node_name(attribute, &attribute_name) !=
+                DOM_NO_ERR || attribute_name == NULL) {
+            err = DOM_INVALID_STATE_ERR;
+            if (attribute_name != NULL) {
+                dom_string_unref(attribute_name);
+            }
+            if (attribute != NULL) {
+                dom_node_unref(attribute);
+            }
+            break;
+        }
+        if (dom_string_isequal(attribute_name, id_name)) {
+            err = dom_node_get_text_content(attribute, &attribute_text);
+            found = 1;
+            dom_string_unref(attribute_name);
+            attribute_name = NULL;
+            dom_node_unref(attribute);
+            attribute = NULL;
+            break;
+        }
+        dom_string_unref(attribute_name);
+        attribute_name = NULL;
+        dom_node_unref(attribute);
+        attribute = NULL;
+    }
+    if (attribute_name != NULL) {
+        dom_string_unref(attribute_name);
+    }
+    if (attribute != NULL) {
+        dom_node_unref(attribute);
+    }
+    dom_string_unref(id_name);
+    dom_namednodemap_unref(attributes);
+    if (err != DOM_NO_ERR) {
+        if (attribute_text != NULL) {
+            dom_string_unref(attribute_text);
+        }
+        return 1;
+    }
+    if (!found || attribute_text == NULL ||
+            dom_string_byte_length(attribute_text) == 0) {
+        if (attribute_text != NULL) {
+            dom_string_unref(attribute_text);
+        }
+        return 2;
+    }
+    pcore_copy_dom_string(attribute_text, value, value_capacity, out_bytes);
+    dom_string_unref(attribute_text);
+    return 0;
+}
+
+static int pcore_relation_copy_node_name(dom_node *node, char *value,
+        int value_capacity, int *out_bytes)
+{
+    dom_node_type type;
+    dom_string *name;
+    dom_exception err;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    if (node == NULL || dom_node_get_node_type(node, &type) != DOM_NO_ERR ||
+            type != DOM_ELEMENT_NODE) {
+        return 1;
+    }
+    name = NULL;
+    err = dom_node_get_node_name(node, &name);
+    if (err != DOM_NO_ERR || name == NULL || dom_string_byte_length(name) == 0) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 1;
+    }
+    pcore_copy_dom_string(name, value, value_capacity, out_bytes);
+    dom_string_unref(name);
+    return 0;
+}
+
+static int pcore_relation_child_at(dom_node *node, unsigned int wanted,
+        char *value, int value_capacity, int *out_bytes)
+{
+    dom_nodelist *children;
+    dom_node *child;
+    dom_node *next;
+    dom_node_type type;
+    uint32_t length;
+    unsigned int index;
+    int bytes;
+    int err;
+
+    children = NULL;
+    if (dom_node_get_child_nodes(node, &children) != DOM_NO_ERR ||
+            children == NULL || dom_nodelist_get_length(children,
+            &length) != DOM_NO_ERR) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        return 1;
+    }
+    child = NULL;
+    if (length > 0 && (dom_nodelist_item(children, 0, &child) !=
+            DOM_NO_ERR || child == NULL)) {
+        dom_nodelist_unref(children);
+        return 1;
+    }
+    dom_nodelist_unref(children);
+    index = 0;
+    while (child != NULL) {
+        if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        if (type == DOM_ELEMENT_NODE) {
+            bytes = 0;
+            err = pcore_relation_copy_element_id(child, NULL, 0, &bytes);
+            if (err == 0 && wanted == index) {
+                err = pcore_relation_copy_element_id(child, value,
+                        value_capacity, out_bytes);
+                dom_node_unref(child);
+                return err;
+            } else if (err == 1) {
+                dom_node_unref(child);
+                return 1;
+            }
+            if (err == 0) {
+                index++;
+            }
+        }
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    return 2;
+}
+
+static int pcore_relation_child_count(dom_node *node, int *out_count)
+{
+    dom_nodelist *children;
+    dom_node *child;
+    dom_node *next;
+    dom_node_type type;
+    uint32_t length;
+    int count;
+    int bytes;
+    int err;
+
+    if (out_count == NULL) {
+        return 1;
+    }
+    *out_count = 0;
+    children = NULL;
+    if (dom_node_get_child_nodes(node, &children) != DOM_NO_ERR ||
+            children == NULL || dom_nodelist_get_length(children,
+            &length) != DOM_NO_ERR) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        return 1;
+    }
+    child = NULL;
+    if (length > 0 && (dom_nodelist_item(children, 0, &child) != DOM_NO_ERR ||
+            child == NULL)) {
+        dom_nodelist_unref(children);
+        return 1;
+    }
+    dom_nodelist_unref(children);
+    count = 0;
+    while (child != NULL) {
+        if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        if (type == DOM_ELEMENT_NODE) {
+            bytes = 0;
+            err = pcore_relation_copy_element_id(child, NULL, 0, &bytes);
+            if (err == 0) {
+                count++;
+            } else if (err == 1) {
+                dom_node_unref(child);
+                return 1;
+            }
+        }
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    *out_count = count;
+    return 0;
+}
+
+static int pcore_relation_sibling(dom_node *node, int previous,
+        char *value, int value_capacity, int *out_bytes)
+{
+    dom_node *sibling;
+    dom_node *next;
+    dom_node_type type;
+    int bytes;
+    int err;
+
+    sibling = NULL;
+    if ((previous ? dom_node_get_previous_sibling(node, &sibling) :
+            dom_node_get_next_sibling(node, &sibling)) != DOM_NO_ERR) {
+        return 1;
+    }
+    while (sibling != NULL) {
+        next = NULL;
+        if (dom_node_get_node_type(sibling, &type) != DOM_NO_ERR) {
+            dom_node_unref(sibling);
+            return 1;
+        }
+        if (type == DOM_ELEMENT_NODE) {
+            bytes = 0;
+            err = pcore_relation_copy_element_id(sibling, NULL, 0,
+                    &bytes);
+            if (err == 0) {
+                err = pcore_relation_copy_element_id(sibling, value,
+                        value_capacity, out_bytes);
+                dom_node_unref(sibling);
+                return err;
+            } else if (err == 1) {
+                dom_node_unref(sibling);
+                return 1;
+            }
+        }
+        if ((previous ? dom_node_get_previous_sibling(sibling, &next) :
+                dom_node_get_next_sibling(sibling, &next)) != DOM_NO_ERR) {
+            dom_node_unref(sibling);
+            return 1;
+        }
+        dom_node_unref(sibling);
+        sibling = next;
+    }
+    return 2;
+}
+
+static int pcore_relation_parent(dom_node *node, char *value,
+        int value_capacity, int *out_bytes)
+{
+    dom_node *parent;
+    dom_node *next;
+    dom_node_type type;
+    int bytes;
+    int err;
+
+    parent = NULL;
+    if (dom_node_get_parent_node(node, &parent) != DOM_NO_ERR) {
+        return 1;
+    }
+    while (parent != NULL) {
+        next = NULL;
+        if (dom_node_get_node_type(parent, &type) != DOM_NO_ERR) {
+            dom_node_unref(parent);
+            return 1;
+        }
+        if (type == DOM_ELEMENT_NODE) {
+            bytes = 0;
+            err = pcore_relation_copy_element_id(parent, NULL, 0, &bytes);
+            if (err == 0) {
+                err = pcore_relation_copy_element_id(parent, value,
+                        value_capacity, out_bytes);
+                dom_node_unref(parent);
+                return err;
+            } else if (err == 1) {
+                dom_node_unref(parent);
+                return 1;
+            }
+        }
+        if (dom_node_get_parent_node(parent, &next) != DOM_NO_ERR) {
+            dom_node_unref(parent);
+            return 1;
+        }
+        dom_node_unref(parent);
+        parent = next;
+    }
+    return 2;
+}
+
+static int pcore_relation_form_owner_is(dom_node *node,
+        dom_element *wanted_form)
+{
+    dom_node *current;
+    dom_node *parent;
+    dom_node_type type;
+    int is_form;
+
+    current = dom_node_ref(node);
+    while (current != NULL) {
+        parent = NULL;
+        if (dom_node_get_parent_node(current, &parent) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return 0;
+        }
+        dom_node_unref(current);
+        current = parent;
+        if (current == NULL) {
+            break;
+        }
+        if (dom_node_get_node_type(current, &type) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return 0;
+        }
+        is_form = type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) current, "form");
+        if (is_form) {
+            if (current == (dom_node *) wanted_form) {
+                dom_node_unref(current);
+                return 1;
+            }
+            dom_node_unref(current);
+            return 0;
+        }
+    }
+    return 0;
+}
+
+static int pcore_relation_is_control(dom_element *element)
+{
+    return pcore_element_name_is(element, "input") ||
+            pcore_element_name_is(element, "select") ||
+            pcore_element_name_is(element, "textarea") ||
+            pcore_element_name_is(element, "button");
+}
+
+static int pcore_relation_walk_controls(dom_node *node, dom_element *form,
+        unsigned int wanted, unsigned int *count, char *value,
+        int value_capacity, int *out_bytes, int *found)
+{
+    dom_node *child;
+    dom_node *next;
+    dom_node_type type;
+    int bytes;
+    int err;
+
+    if (count == NULL || found == NULL) {
+        return 1;
+    }
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return 1;
+    }
+    while (child != NULL) {
+        next = NULL;
+        if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        if (type == DOM_ELEMENT_NODE) {
+            if (pcore_relation_is_control((dom_element *) child) &&
+                    pcore_relation_form_owner_is(child, form)) {
+                bytes = 0;
+                err = pcore_relation_copy_element_id(child, NULL, 0,
+                        &bytes);
+                if (err == 0) {
+                    if (wanted == (unsigned int) -1 ||
+                            *count == wanted) {
+                        if (wanted != (unsigned int) -1) {
+                            err = pcore_relation_copy_element_id(child, value,
+                                    value_capacity, out_bytes);
+                            if (err != 0) {
+                                dom_node_unref(child);
+                                return err;
+                            }
+                            *found = 1;
+                            dom_node_unref(child);
+                            return 0;
+                        }
+                    }
+                    (*count)++;
+                } else if (err == 1) {
+                    dom_node_unref(child);
+                    return 1;
+                }
+            }
+            err = pcore_relation_walk_controls(child, form, wanted, count,
+                    value, value_capacity, out_bytes, found);
+            if (err != 0 || *found) {
+                dom_node_unref(child);
+                return err;
+            }
+        }
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    return 0;
+}
+
+static int pcore_relation_form_owner(dom_node *node, char *value,
+        int value_capacity, int *out_bytes)
+{
+    dom_node *current;
+    dom_node *parent;
+    dom_node_type type;
+    int err;
+
+    current = dom_node_ref(node);
+    while (current != NULL) {
+        parent = NULL;
+        if (dom_node_get_parent_node(current, &parent) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return 1;
+        }
+        dom_node_unref(current);
+        current = parent;
+        if (current == NULL) {
+            break;
+        }
+        if (dom_node_get_node_type(current, &type) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return 1;
+        }
+        if (type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) current, "form")) {
+            err = pcore_relation_copy_element_id(current, value,
+                    value_capacity, out_bytes);
+            dom_node_unref(current);
+            return err == 0 ? 0 : (err == 2 ? 2 : 1);
+        }
+    }
+    return 2;
+}
+
+PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
+        unsigned int relation, unsigned int index, char *out_value,
+        int value_capacity, int *out_bytes, int *out_number)
+{
+    dom_element *element;
+    int count;
+    int found;
+    int err;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (out_number != NULL) {
+        *out_number = 0;
+    }
+    if (out_value != NULL && value_capacity > 0) {
+        out_value[0] = '\0';
+    }
+    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0' ||
+            (out_value == NULL && value_capacity > 0) || value_capacity < 0) {
+        return 1;
+    }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 2;
+    }
+    err = 1;
+    count = 0;
+    found = 0;
+    switch (relation) {
+    case PCORE_NODE_RELATION_PARENT_ELEMENT:
+        err = pcore_relation_parent((dom_node *) element, out_value,
+                value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_FIRST_CHILD:
+        err = pcore_relation_child_at((dom_node *) element, index, out_value,
+                value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_LAST_CHILD:
+        if (pcore_relation_child_count((dom_node *) element, &count) == 0 &&
+                count > 0) {
+            err = pcore_relation_child_at((dom_node *) element,
+                    (unsigned int) (count - 1), out_value, value_capacity,
+                    out_bytes);
+        } else {
+            err = count == 0 ? 2 : 1;
+        }
+        break;
+    case PCORE_NODE_RELATION_PREVIOUS_SIBLING:
+        err = pcore_relation_sibling((dom_node *) element, 1, out_value,
+                value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_NEXT_SIBLING:
+        err = pcore_relation_sibling((dom_node *) element, 0, out_value,
+                value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_CHILD_COUNT:
+        err = pcore_relation_child_count((dom_node *) element, &count);
+        if (err == 0 && out_number != NULL) {
+            *out_number = count;
+        }
+        break;
+    case PCORE_NODE_RELATION_TAG_NAME:
+        err = pcore_relation_copy_node_name((dom_node *) element, out_value,
+                value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_FORM_OWNER:
+        err = pcore_relation_form_owner((dom_node *) element, out_value,
+                value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_FORM_CONTROL_COUNT:
+        if (!pcore_element_name_is(element, "form")) {
+            err = 0;
+            count = 0;
+        } else {
+            err = pcore_relation_walk_controls((dom_node *) element, element,
+                    (unsigned int) -1, &count, NULL, 0, NULL, &found);
+        }
+        if (err == 0 && out_number != NULL) {
+            *out_number = count;
+        }
+        break;
+    case PCORE_NODE_RELATION_FORM_CONTROL_AT:
+        if (!pcore_element_name_is(element, "form")) {
+            err = 2;
+        } else {
+            err = pcore_relation_walk_controls((dom_node *) element, element,
+                    index, &count, out_value, value_capacity, out_bytes,
+                    &found);
+            if (err == 0 && !found) {
+                err = 2;
+            }
+        }
+        break;
+    default:
+        err = 1;
+        break;
+    }
+    dom_node_unref((dom_node *) element);
+    return err;
 }
 
 /* libdom 0.4.2 stores input.value in the value attribute. Freeze the parsed

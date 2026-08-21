@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 541
+#define TEST_MAX_NUMBER 561
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6357,6 +6357,22 @@ static int pcore_browser_script_dom_get_text(void *pw, const char *id,
             out_capacity, out_len);
 }
 
+static int pcore_browser_script_dom_get_relation(void *pw, const char *id,
+        unsigned int relation, unsigned int index, char *out_value,
+        int out_capacity, int *out_bytes, int *out_number)
+{
+    pcore_browser_script_bridge *bridge;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            out_capacity < 0 || (out_value == NULL && out_capacity != 0) ||
+            (out_value != NULL && out_capacity <= 0)) {
+        return -1;
+    }
+    return PCore_NodeRelationById(bridge->document, id, relation, index,
+            out_value, out_capacity, out_bytes, out_number);
+}
+
 static int pcore_browser_script_dom_get_attribute(void *pw, const char *id,
         const char *name, char *out_value, int out_capacity, int *out_len)
 {
@@ -7233,6 +7249,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     HANDLE session;
     HANDLE runtime;
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
+    PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
@@ -7293,7 +7310,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     if (count == 0) {
         return 0;
     }
-    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS * 2UL);
     runtime = PBrowser_ScriptSessionRuntime(session);
     if (session == NULL || runtime == NULL) {
         PBrowser_ScriptSessionDestroy(session);
@@ -7336,6 +7353,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_read_callbacks.pw = bridge;
     dom_read_callbacks.has_element = pcore_browser_script_dom_has_element;
     dom_read_callbacks.get_text = pcore_browser_script_dom_get_text;
+    dom_relation_callbacks.size = sizeof(dom_relation_callbacks);
+    dom_relation_callbacks.pw = bridge;
+    dom_relation_callbacks.get_relation =
+            pcore_browser_script_dom_get_relation;
     dom_write_callbacks.size = sizeof(dom_write_callbacks);
     dom_write_callbacks.pw = bridge;
     dom_write_callbacks.set_text = pcore_browser_script_dom_set_text;
@@ -7458,6 +7479,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             "__pcoreDevicePixelRatio", device_pixel_ratio) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomReadCallbacks(session,
             &dom_read_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
+            &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacks(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomValueCallbacks(session,
@@ -56626,6 +56649,275 @@ static BOOL test_browser_platform_case(int number, const char *probe,
     return ok;
 }
 
+/* Shared parser-complete fixture for the bounded DOM relationship batch.
+ * Every element that can be returned to script has an id; the unlabelled
+ * body deliberately exercises the documented ID-addressable boundary. */
+static BOOL test_browser_tree_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='root'><section id='branch' class='branch'>"
+        "<button id='target' class='leaf' name='go'>Go</button>"
+        "<input id='second' name='second'>"
+        "<span id='leaf'><em id='deep'>Deep</em></span>"
+        "</section><p id='sibling'>Sib</p></div>"
+        "<form id='form'><label id='label' for='email'>Email</label>"
+        "<input id='email' name='email'><select id='choice' name='choice'>"
+        "</select><button id='submitter' name='send'>Send</button></form>"
+        "<p id='result'>idle</p></body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected,
+            error, error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded DOM tree/form fixture passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded DOM tree/form fixture failed.");
+    }
+    return ok;
+}
+
+/* TEST 542 - element/node/local names expose the parser's tag identity. */
+static BOOL test542_browser_node_names(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "e.tagName+'|'+e.nodeName+'|'+e.localName;";
+    char error[256];
+    return test_browser_tree_case(542, PROBE, "BUTTON|BUTTON|button",
+            error, sizeof(error));
+}
+
+/* TEST 543 - parentNode and parentElement return the same bounded wrapper. */
+static BOOL test543_browser_parent_relations(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=e.parentElement;"
+        "document.getElementById('result').textContent=String(p.id)+'|'+String(e.parentNode===p);";
+    char error[256];
+    return test_browser_tree_case(543, PROBE, "branch|true", error,
+            sizeof(error));
+}
+
+/* TEST 544 - firstChild and lastChild follow element-only child order. */
+static BOOL test544_browser_child_edges(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('branch');var c=e.children;document.getElementById('result').textContent=String(c.length)+'|'+c[0].id+'|'+c[1].id+'|'+c[2].id+'|'+e.firstChild.id+'|'+e.lastChild.id;";
+    char error[256];
+    return test_browser_tree_case(544, PROBE, "3|target|second|leaf|target|leaf", error,
+            sizeof(error));
+}
+
+/* TEST 545 - previous/next sibling skip text nodes and preserve order. */
+static BOOL test545_browser_sibling_relations(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target');var b=document.getElementById('second');"
+        "document.getElementById('result').textContent=a.nextSibling.id+'|'+b.previousSibling.id+'|'+"
+        "String(a.previousSibling===null);";
+    char error[256];
+    return test_browser_tree_case(545, PROBE, "second|target|true", error,
+            sizeof(error));
+}
+
+/* TEST 546 - children and childElementCount expose a bounded snapshot. */
+static BOOL test546_browser_children_collection(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('branch');var c=e.children;document.getElementById('result').textContent="
+        "c.length+'|'+e.childElementCount+'|'+c[0].id+'|'+c[2].id;";
+    char error[256];
+    return test_browser_tree_case(546, PROBE, "3|3|target|leaf", error,
+            sizeof(error));
+}
+
+/* TEST 547 - bounded NodeList item() and iteration helpers are usable. */
+static BOOL test547_browser_nodelist_helpers(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('branch').children;var s='';var i;"
+        "for(i=0;i<c.length;i++){s+=c.item(i).id;}document.getElementById('result').textContent="
+        "s+'|'+String(c.item(3)===null)+'|'+String(typeof c.namedItem);";
+    char error[256];
+    return test_browser_tree_case(547, PROBE, "targetsecondleaf|true|function",
+            error, sizeof(error));
+}
+
+/* TEST 548 - contains handles identity, descendants and non-descendants. */
+static BOOL test548_browser_contains(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root');var b=document.getElementById('branch');"
+        "var d=document.getElementById('deep');document.getElementById('result').textContent="
+        "String(r.contains(d))+'|'+String(b.contains(r))+'|'+String(b.contains(b));";
+    char error[256];
+    return test_browser_tree_case(548, PROBE, "true|false|true", error,
+            sizeof(error));
+}
+
+/* TEST 549 - compareDocumentPosition covers order, containment and roots. */
+static BOOL test549_browser_compare_position(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target');var b=document.getElementById('second');"
+        "var branch=document.getElementById('branch');var root=document.getElementById('root');"
+        "var form=document.getElementById('form');document.getElementById('result').textContent="
+        "a.compareDocumentPosition(b)+'|'+b.compareDocumentPosition(a)+'|'+"
+        "branch.compareDocumentPosition(a)+'|'+a.compareDocumentPosition(branch)+'|'+"
+        "root.compareDocumentPosition(form);";
+    char error[256];
+    return test_browser_tree_case(549, PROBE, "4|2|20|10|33", error,
+            sizeof(error));
+}
+
+/* TEST 550 - matches accepts bounded tag/class/id/attribute compounds. */
+static BOOL test550_browser_matches_compounds(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.matches('button'))+'|'+String(e.matches('button.leaf[name=go]'))+'|'+"
+        "String(e.matches('input'));";
+    char error[256];
+    return test_browser_tree_case(550, PROBE, "true|true|false", error,
+            sizeof(error));
+}
+
+/* TEST 551 - closest walks the bounded parent chain instead of self only. */
+static BOOL test551_browser_closest_ancestor(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('deep');var a=e.closest('.branch');var b=e.closest('div');"
+        "document.getElementById('result').textContent=String(a.id)+'|'+String(b.id)+'|'+"
+        "String(e.closest('form')===null);";
+    char error[256];
+    return test_browser_tree_case(551, PROBE, "branch|root|true", error,
+            sizeof(error));
+}
+
+/* TEST 552 - scoped querySelector searches descendants in document order. */
+static BOOL test552_browser_scoped_query_selector(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('branch');document.getElementById('result').textContent="
+        "e.querySelector('em').id+'|'+e.querySelector('input').id;";
+    char error[256];
+    return test_browser_tree_case(552, PROBE, "deep|second", error,
+            sizeof(error));
+}
+
+/* TEST 553 - scoped querySelectorAll returns all bounded matches. */
+static BOOL test553_browser_scoped_query_selector_all(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('branch');var a=e.querySelectorAll('*');"
+        "document.getElementById('result').textContent=a.length+'|'+a.item(0).id+'|'+a.item(3).id;";
+    char error[256];
+    return test_browser_tree_case(553, PROBE, "4|target|deep", error,
+            sizeof(error));
+}
+
+/* TEST 554 - form ownership resolves the nearest ancestor form. */
+static BOOL test554_browser_form_owner(void)
+{
+    static const char PROBE[] =
+        "var input=document.getElementById('email');var button=document.getElementById('target');"
+        "document.getElementById('result').textContent=input.form.id+'|'+String(button.form===null)+'|'+"
+        "String(document.getElementById('form').form===null);";
+    char error[256];
+    return test_browser_tree_case(554, PROBE, "form|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 555 - form.elements preserves control document order. */
+static BOOL test555_browser_form_elements_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('form').elements;var s='';var i;"
+        "for(i=0;i<a.length;i++){s+=a[i].id+(i+1<a.length?'|':'');}"
+        "document.getElementById('result').textContent=s;";
+    char error[256];
+    return test_browser_tree_case(555, PROBE, "email|choice|submitter", error,
+            sizeof(error));
+}
+
+/* TEST 556 - form.elements exposes length/item and out-of-range null. */
+static BOOL test556_browser_form_elements_item(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('form').elements;document.getElementById('result').textContent="
+        "a.length+'|'+a.item(1).id+'|'+String(a.item(4)===null);";
+    char error[256];
+    return test_browser_tree_case(556, PROBE, "3|choice|true", error,
+            sizeof(error));
+}
+
+/* TEST 557 - form.elements.namedItem resolves both id and name. */
+static BOOL test557_browser_form_named_item(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('form').elements;document.getElementById('result').textContent="
+        "a.namedItem('email').id+'|'+a.namedItem('send').id+'|'+String(a.namedItem('missing')===null);";
+    char error[256];
+    return test_browser_tree_case(557, PROBE, "email|submitter|true", error,
+            sizeof(error));
+}
+
+/* TEST 558 - named lookup reads the current reflected name attribute. */
+static BOOL test558_browser_form_named_item_reflection(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('form').elements;var e=document.getElementById('submitter');"
+        "e.name='go-now';document.getElementById('result').textContent="
+        "a.namedItem('go-now').id+'|'+String(a.namedItem('send')===null);";
+    char error[256];
+    return test_browser_tree_case(558, PROBE, "submitter|true", error,
+            sizeof(error));
+}
+
+/* TEST 559 - missing parent IDs and non-form collections fail closed. */
+static BOOL test559_browser_relation_boundary(void)
+{
+    static const char PROBE[] =
+        "var root=document.getElementById('root');var div=document.getElementById('branch');"
+        "document.getElementById('result').textContent=String(root.parentElement===null)+'|'+"
+        "String(div.elements.length)+'|'+String(document.getElementById('form').querySelector('label').form===null);";
+    char error[256];
+    return test_browser_tree_case(559, PROBE, "true|0|true", error,
+            sizeof(error));
+}
+
+/* TEST 560 - relation wrappers are identity-stable within one session. */
+static BOOL test560_browser_relation_identity(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target');var b=document.getElementById('target');"
+        "var c=document.getElementById('branch').children;var f=document.getElementById('form').elements;"
+        "document.getElementById('result').textContent=String(a===b)+'|'+String(c[0]===a)+'|'+"
+        "String(f[0]===document.getElementById('email'));";
+    char error[256];
+    return test_browser_tree_case(560, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 561 - child snapshots stay stable while reflected attributes change. */
+static BOOL test561_browser_relation_snapshot(void)
+{
+    static const char PROBE[] =
+        "var branch=document.getElementById('branch');var c=branch.children;var e=c[0];"
+        "e.className='changed';document.getElementById('result').textContent="
+        "String(branch.children===c)+'|'+String(c.item(0)===e)+'|'+c.length;";
+    char error[256];
+    return test_browser_tree_case(561, PROBE, "true|true|3", error,
+            sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -59275,6 +59567,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 541: ok =
                 test541_browser_promise_metadata();
+                break;
+        case 542: ok =
+                test542_browser_node_names();
+                break;
+        case 543: ok =
+                test543_browser_parent_relations();
+                break;
+        case 544: ok =
+                test544_browser_child_edges();
+                break;
+        case 545: ok =
+                test545_browser_sibling_relations();
+                break;
+        case 546: ok =
+                test546_browser_children_collection();
+                break;
+        case 547: ok =
+                test547_browser_nodelist_helpers();
+                break;
+        case 548: ok =
+                test548_browser_contains();
+                break;
+        case 549: ok =
+                test549_browser_compare_position();
+                break;
+        case 550: ok =
+                test550_browser_matches_compounds();
+                break;
+        case 551: ok =
+                test551_browser_closest_ancestor();
+                break;
+        case 552: ok =
+                test552_browser_scoped_query_selector();
+                break;
+        case 553: ok =
+                test553_browser_scoped_query_selector_all();
+                break;
+        case 554: ok =
+                test554_browser_form_owner();
+                break;
+        case 555: ok =
+                test555_browser_form_elements_order();
+                break;
+        case 556: ok =
+                test556_browser_form_elements_item();
+                break;
+        case 557: ok =
+                test557_browser_form_named_item();
+                break;
+        case 558: ok =
+                test558_browser_form_named_item_reflection();
+                break;
+        case 559: ok =
+                test559_browser_relation_boundary();
+                break;
+        case 560: ok =
+                test560_browser_relation_identity();
+                break;
+        case 561: ok =
+                test561_browser_relation_snapshot();
                 break;
         default: ok = FALSE; break;
         }

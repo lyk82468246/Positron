@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next541（本轮覆盖 `TEST389,390-448`、`TEST482-541,999` 的相邻回归门与
-  `TEST522-541,999` 定向门；最近一次完整自动基线仍为 next255）。本轮没有修改 tracked
+- 最新已验证产品基线：next561（本轮覆盖 `TEST389,390-448`、`TEST482-561,999` 的相邻回归门与
+  `TEST542-561,999` 定向门；最近一次完整自动基线仍为 next255）。本轮没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
   与 URL、session storage 与 cookie、classList 与 style、选择器查询与 FormData、输入选择/数值步进/
@@ -120,7 +120,27 @@
   `-EnableJavaScript` 只改隔离 staging，tracked `test_host.ini` 仍保持 `javascript=0`。Promise
   只提供 session 内、内存 bounded、显式 pump 的兼容切片，不启动后台线程或隐式 event loop。
 
-## 当前状态：next522–541
+- next542–561 已完成第八组 20 个完整的浏览器 JavaScript 产品子功能：按 DOM id 提供受控的
+  `parentElement`、首尾子节点、兄弟节点、tag/name、children/count、`contains()`、基础
+  `compareDocumentPosition()`、`matches()`/`closest()`、元素作用域
+  `querySelector()`/`querySelectorAll()`，以及 form owner 和 `form.elements` 的
+  `item()`/`namedItem()` 视图。实现由 `positron_core.dll` 持有 libdom 关系查询，
+  `positron_browser.dll` 持有 callback/JS wrapper，`test_host.exe` 只提供 fixture、桥接和断言。
+- `next542–561` 定向设备门 `TEST542-561,999` 在
+  `tmp/device-runs/20260821-131746-next542-561-budget2/` 通过 21/21；相邻回归门
+  `TEST389,390-448,482-561,999` 在
+  `tmp/device-runs/20260821-131854-next542-561-regression/` 通过 141/141。两次均为零
+  `ERROR`、零 `FAIL`、唯一 `TESTBENCH PASS`、`test13_route_ok=True`。
+- 本批 bootstrap 现在由公共入口按顺序评估九个 IIFE，仍共享同一 `positron_script.dll` context；
+  `-EnableJavaScript` 只改隔离 staging，tracked `test_host.ini` 仍保持 `javascript=0`。关系查询
+  只暴露 ID-addressable 的只读树快照和受限 selector/form collection，不提供通用 DOM mutation、
+  layout、native control 或完整 CSS selector。为避免连续九段 bootstrap 在 WM6 设备门中触及宿主
+  默认执行预算，`test_host` 的浏览器回归 session 使用 `2 * PSCRIPT_DEFAULT_BUDGET_MS`；
+  独立 `positron_script` 默认预算和公共 ABI 没有改变。
+- 本批只涉及脚本 API、DOM 快照和表单集合，不涉及视觉、真实触摸、SIP、旋转、系统 picker 或
+  网络失败，因此不新增人工页面验收。
+
+## 当前状态：next542–561
 
 本轮 20 个 next 均已实现、构建并通过定向设备门及相邻累计回归门。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
@@ -137,7 +157,9 @@ Observer option validation、MessagePort auto-start 和 Blob/File JSON metadata�
 Promise 构造器、链式反应、thenable、finally、组合器和显式微任务 pump。它们都是 session-scoped、
 内存内、受预算限制的兼容切片，不代表完整 Web 标准实现；Request/Response 不发起网络，
 MessagePort/BroadcastChannel/PerformanceObserver/Promise 需要宿主显式 pump 或只读取同步快照；
-Promise 不连接 fetch/stream、不创建后台调度，组合器和 handler 均有固定容量上限。
+Promise 不连接 fetch/stream、不创建后台调度，组合器和 handler 均有固定容量上限。DOM 关系和
+form collection 也只是同步、session-scoped 的 ID-addressable snapshot；wrapper identity 在同一
+session 内稳定，但底层 libdom 的动态 mutation、通用节点创建、复杂 selector 和 layout 仍不在范围内。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -2648,14 +2670,14 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 不承诺 ARIA 语义或可访问性树。
 本轮 next382–401 的 metadata reflection 门也已通过，覆盖 20 个 ARIA raw 属性；均只承诺
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
-唯一下一步是从
-`KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择下一个不依赖人工页面观察的单一能力，继续保持
-每批一个清晰的产品边界；next522–541 已完成并提升为当前基线。
+唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next562 的一个不依赖人工页面观察、
+边界完整的产品能力；继续保持每批一个清晰的产品边界，不能把完整 DOM、布局或 native 输入
+偷偷扩入本批。
 
 完成标准：
 
-- TEST541/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/482–541/999` 定向选择；next299 的
+- TEST561/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/482–561/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2669,14 +2691,14 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next542 选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next562 选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
 
 完成标准：
 
-- `positron_browser.dll` 的公共 ABI、C89/VS2008 ARMV4I 正式构建、`python scripts/test_c89ize.py`
+- `positron_browser.dll`/`positron_core.dll` 的公共 ABI、C89/VS2008 ARMV4I 正式构建、`python scripts/test_c89ize.py`
   与 `python scripts/audit_repo.py` 均通过；
 - 新测试和共享回归通过定向设备门，并保留 `TEST999`、零 ERROR/FAIL 和唯一
   `TESTBENCH PASS` 的完整证据；达到累计阈值或触及高风险基础设施时再跑全量；

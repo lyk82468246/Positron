@@ -62,6 +62,13 @@ bridge 实现受限的 form-level `checkValidity()`；`PCore_FormReportValidityB
 结果不受 `preventDefault()` 改变。
 `PCore_FormResetAt` 只提交 reset 的 DOM 初始状态；可取消的 reset 事件由宿主先分发。
 
+`PCore_NodeRelationById` 为浏览器或其他宿主提供一个稳定、只读的 DOM 关系切片：按元素 id
+查询 parent/first-child/last-child/previous-sibling/next-sibling、child count、tag/name、
+form owner，以及按 DOM 顺序查询 form-control count/index。字符串结果遵循 UTF-8 probe 和
+安全截断约定，计数通过 `out_number` 返回；缺失 id、越界索引和不支持的关系会 fail closed。
+该 API 不暴露 libdom 对象，不实现通用节点 mutation、文本节点/shadow tree、复杂 selector、
+layout 或 native control 状态。
+
 `PCore_Init` 与 `PCore_Shutdown` 成对使用；文档、样式表和其他返回句柄分别用
 `PCore_FreeDocument`、`PCore_FreeStylesheet` 及头文件指定的 `PCore_Free*` 释放。
 字符串和 callback 缓冲的借用期限以头文件为准。DOM/GDI 操作遵循宿主的 UI 线程

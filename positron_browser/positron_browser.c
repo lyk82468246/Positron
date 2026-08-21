@@ -2584,6 +2584,81 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(S&&S.toStringTag){Object.defineProperty(PPromise8.prototype,S.toStringTag,{value:'Promise',writable:false,configurable:false});}"
         "g.Promise=PPromise8;"
         "})(this);";
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART9[] =
+        "(function(g){"
+        "var PElement=g.__pcorePElement;var doc=g.document;var S=g.Symbol;"
+        "var cache={};"
+        "function wrap9(id){var s;if(typeof id!=='string'||id===''){return null;}"
+        "s=String(id);if(!cache[s]){cache[s]=new PElement(s);}return cache[s];}"
+        "function relation9(owner,kind,index){var value;"
+        "if(!owner||typeof g.__pcoreGetNodeRelation!=='function'){return null;}"
+        "try{value=g.__pcoreGetNodeRelation({id:owner.__id,relation:kind,index:"
+        "index===undefined?0:index});}catch(relationError){return null;}return value;}"
+        "function list9(a){var i;Object.defineProperty(a,'item',{value:function(index){"
+        "var n=Number(index);return n===n&&n>=0&&n===Math.floor(n)&&n<a.length?a[n]:null;},"
+        "writable:false,configurable:false,enumerable:false});"
+        "Object.defineProperty(a,'namedItem',{value:function(name){var s=String(name);"
+        "var j;for(j=0;j<this.length;j++){if(this[j]&&(this[j].id===s||this[j].name===s)){"
+        "return this[j];}}return null;},writable:false,configurable:false,enumerable:false});"
+        "if(S&&S.iterator&&a[S.iterator]===undefined){Object.defineProperty(a,S.iterator,{"
+        "value:Array.prototype[S.iterator],writable:false,configurable:false});}"
+        "return a;}"
+        "function children9(owner){var a;var n;var i;var id;"
+        "if(owner.__children9){return owner.__children9;}a=[];n=relation9(owner,"
+        "6,0);n=Number(n);if(!(n>=0&&n===Math.floor(n))){n=0;}"
+        "for(i=0;i<n;i++){id=relation9(owner,2,i);if(typeof id==='string'&&id!==''){"
+        "a.push(wrap9(id));}}owner.__children9=list9(a);return owner.__children9;}"
+        "function parent9(owner){var id=relation9(owner,1,0);return typeof id==='string'?wrap9(id):null;}"
+        "function sibling9(owner,kind){var id=relation9(owner,kind,0);return typeof id==='string'?wrap9(id):null;}"
+        "Object.defineProperty(PElement.prototype,'parentElement',{get:function(){return parent9(this);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'parentNode',{get:function(){return parent9(this);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'firstChild',{get:function(){return sibling9(this,2);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'lastChild',{get:function(){var a=children9(this);return a.length?a[a.length-1]:null;},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'previousSibling',{get:function(){return sibling9(this,4);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'nextSibling',{get:function(){return sibling9(this,5);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'children',{get:function(){return children9(this);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'childElementCount',{get:function(){return children9(this).length;},enumerable:true});"
+        "function tag9(owner){var value=relation9(owner,7,0);return typeof value==='string'?value:'';}"
+        "Object.defineProperty(PElement.prototype,'tagName',{get:function(){return tag9(this).toUpperCase();},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'nodeName',{get:function(){return tag9(this).toUpperCase();},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'localName',{get:function(){return tag9(this).toLowerCase();},enumerable:true});"
+        "PElement.prototype.contains=function(other){var n=other;var i=0;"
+        "if(!other||typeof other.__id!=='string'){return false;}while(n&&i<64){"
+        "if(n.__id===this.__id){return true;}n=n.parentElement;i++;}return false;};"
+        "function path9(owner){var a=[];var n=owner;var i=0;while(n&&i<64){a.push(n);n=n.parentElement;i++;}return a;}"
+        "PElement.prototype.compareDocumentPosition=function(other){var a;var b;var i;var j;var k;var ai;var bi;var p;var kids;"
+        "if(!other||typeof other.__id!=='string'){return 1|32;}if(other.__id===this.__id){return 0;}"
+        "a=path9(this);b=path9(other);if(!a.length||!b.length||a[a.length-1].__id!==b[b.length-1].__id){return 1|32;}"
+        "for(i=0;i<b.length;i++){if(b[i].__id===this.__id){return 4|16;}}"
+        "for(i=0;i<a.length;i++){if(a[i].__id===other.__id){return 2|8;}}"
+        "i=a.length-1;j=b.length-1;while(i>=0&&j>=0&&a[i].__id===b[j].__id){i--;j--;}"
+        "if(i<0||j<0){return 1|32;}p=a[i+1];kids=children9(p);ai=-1;bi=-1;"
+        "for(k=0;k<kids.length;k++){if(kids[k].__id===a[i].__id){ai=k;}if(kids[k].__id===b[j].__id){bi=k;}}"
+        "return ai<bi?4:2;};"
+        "function trim9(value){return String(value).replace(/^\\s+|\\s+$/g,'');}"
+        "function match9(owner,selector){var s=trim9(selector);var pos=0;var start;var end;var token;var body;var eq;var name;var value;"
+        "if(s==='*'){return true;}if(s.indexOf(' ')>=0||s.indexOf('>')>=0||s.indexOf('+')>=0||s.indexOf('~')>=0){return false;}"
+        "start=0;while(pos<s.length&&s.charAt(pos)!=='#'&&s.charAt(pos)!=='.'&&s.charAt(pos)!=='['){pos++;}"
+        "if(pos>0&&owner.localName!==s.substring(0,pos).toLowerCase()){return false;}"
+        "while(pos<s.length){if(s.charAt(pos)==='#'){start=++pos;while(pos<s.length&&s.charAt(pos)!=='#'&&s.charAt(pos)!=='.'&&s.charAt(pos)!=='['){pos++;}"
+        "if(owner.id!==s.substring(start,pos)){return false;}}else if(s.charAt(pos)==='.'){start=++pos;while(pos<s.length&&s.charAt(pos)!=='#'&&s.charAt(pos)!=='.'&&s.charAt(pos)!=='['){pos++;}"
+        "token=s.substring(start,pos);if(token===''||!owner.classList.contains(token)){return false;}}else if(s.charAt(pos)==='['){"
+        "end=s.indexOf(']',pos+1);if(end<0){return false;}body=trim9(s.substring(pos+1,end));eq=body.indexOf('=');"
+        "if(eq<0){if(body===''||!owner.hasAttribute(body)){return false;}}else{name=trim9(body.substring(0,eq));value=trim9(body.substring(eq+1));"
+        "if((value.charAt(0)==='\\\"'&&value.charAt(value.length-1)==='\\\"')||(value.charAt(0)==='\\''&&value.charAt(value.length-1)==='\\'')){value=value.substring(1,value.length-1);}"
+        "if(name===''||owner.getAttribute(name)!==value){return false;}}pos=end+1;}else{return false;}}return true;}"
+        "PElement.prototype.matches=function(selector){return match9(this,selector);};"
+        "PElement.prototype.closest=function(selector){var n=this;var i=0;while(n&&i<64){if(match9(n,selector)){return n;}n=n.parentElement;i++;}return null;};"
+        "function query9(owner,selector,all){var out=[];var stack=[];var kids;var i;var n;stack.push(owner);"
+        "while(stack.length){n=stack.pop();kids=children9(n);for(i=0;i<kids.length;i++){if(match9(kids[i],selector)){if(!all){return kids[i];}out.push(kids[i]);}}for(i=kids.length-1;i>=0;i--){stack.push(kids[i]);}}return all?list9(out):null;}"
+        "PElement.prototype.querySelector=function(selector){return query9(this,selector,false);};"
+        "PElement.prototype.querySelectorAll=function(selector){return query9(this,selector,true);};"
+        "Object.defineProperty(PElement.prototype,'form',{get:function(){var t=this.localName;if(t!=='input'&&t!=='select'&&t!=='textarea'&&t!=='button'){return null;}var id=relation9(this,8,0);return typeof id==='string'?wrap9(id):null;},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'elements',{get:function(){var a=[];var n;var i;var id;"
+        "if(this.localName!=='form'){return list9(a);}n=Number(relation9(this,9,0));if(!(n>=0&&n===Math.floor(n))){n=0;}"
+        "for(i=0;i<n;i++){id=relation9(this,10,i);if(typeof id==='string'&&id!==''){a.push(wrap9(id));}}return list9(a);},enumerable:true});"
+        "var oldGet9=doc.getElementById;doc.getElementById=function(id){var e=oldGet9.call(this,id);return e?wrap9(String(id)):null;};"
+        "})(this);";
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 {
     int result;
@@ -2623,12 +2698,21 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     if (result != PSCRIPT_OK) {
         return result;
     }
-    return PBrowser_ScriptSessionEvaluate(hSession,
+    result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART8, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    return PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART9, -1);
 }
 typedef struct p_browser_script_dom_read_binding {
     PBrowserScriptDomReadCallbacks callbacks;
 } p_browser_script_dom_read_binding;
+
+typedef struct p_browser_script_dom_relation_binding {
+    PBrowserScriptDomRelationCallbacks callbacks;
+} p_browser_script_dom_relation_binding;
 
 typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptDomWriteCallbacks callbacks;
@@ -2710,6 +2794,7 @@ typedef struct p_browser_script_event_binding {
 typedef struct p_browser_script_session {
     HANDLE runtime;
     p_browser_script_dom_read_binding *dom_read;
+    p_browser_script_dom_relation_binding *dom_relation;
     p_browser_script_dom_write_binding *dom_write;
     p_browser_script_dom_value_binding *dom_value;
     p_browser_script_dom_checked_binding *dom_checked;
@@ -3219,6 +3304,96 @@ static int p_browser_script_dom_get_text(void *pw,
     result = p_browser_script_write_string(text, out_json,
             out_capacity, out_len);
     free(text);
+    PJson_Free(root);
+    return result;
+}
+
+static int p_browser_script_relation_is_count(unsigned int relation)
+{
+    return relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_COUNT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_COUNT;
+}
+
+static int p_browser_script_dom_get_relation(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_dom_relation_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int relation_value;
+    int index_value;
+    int result;
+    int number;
+    char *value;
+    int value_len;
+    int allocated_len;
+
+    binding = (p_browser_script_dom_relation_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    relation_value = (object != NULL) ?
+            PJson_GetInt(object, "relation") : 0;
+    index_value = (object != NULL) ? PJson_GetInt(object, "index") : 0;
+    value = NULL;
+    value_len = 0;
+    number = 0;
+    if (binding == NULL || root == NULL || id == NULL || id[0] == '\0' ||
+            relation_value <= 0 || index_value < 0 ||
+            binding->callbacks.get_relation == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    if (p_browser_script_relation_is_count((unsigned int) relation_value)) {
+        result = binding->callbacks.get_relation(binding->callbacks.pw, id,
+                (unsigned int) relation_value, (unsigned int) index_value,
+                NULL, 0, NULL, &number);
+        PJson_Free(root);
+        if (result < 0) {
+            return 1;
+        }
+        if (result == 2) {
+            number = 0;
+        }
+        if (number < 0) {
+            number = 0;
+        }
+        return p_browser_script_write_int(number, out_json, out_capacity,
+                out_len);
+    }
+    result = binding->callbacks.get_relation(binding->callbacks.pw, id,
+            (unsigned int) relation_value, (unsigned int) index_value,
+            NULL, 0, &value_len, NULL);
+    if (result == 2) {
+        PJson_Free(root);
+        return p_browser_script_write_null(out_json, out_capacity, out_len);
+    }
+    if (result != 0 || value_len < 0 ||
+            value_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+        PJson_Free(root);
+        return 1;
+    }
+    allocated_len = value_len;
+    value = (char *) malloc((size_t) allocated_len + 1);
+    if (value == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    result = binding->callbacks.get_relation(binding->callbacks.pw, id,
+            (unsigned int) relation_value, (unsigned int) index_value, value,
+            allocated_len + 1, &value_len, NULL);
+    if (result != 0 || value_len < 0 || value_len > allocated_len ||
+            value_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+        free(value);
+        PJson_Free(root);
+        return 1;
+    }
+    value[value_len] = '\0';
+    result = p_browser_script_write_string(value, out_json, out_capacity,
+            out_len);
+    free(value);
     PJson_Free(root);
     return result;
 }
@@ -4082,6 +4257,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
         return NULL;
     }
     session->dom_read = NULL;
+    session->dom_relation = NULL;
     session->dom_write = NULL;
     session->dom_value = NULL;
     session->dom_checked = NULL;
@@ -4124,6 +4300,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreGetText", -1);
         free(session->dom_read);
         session->dom_read = NULL;
+    }
+    if (session->dom_relation != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetNodeRelation", -1);
+        free(session->dom_relation);
+        session->dom_relation = NULL;
     }
     if (session->dom_write != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -4485,6 +4667,59 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
     free(session->dom_read);
     session->dom_read = NULL;
     return (rc != PSCRIPT_OK) ? rc : second_rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomRelationCallbacks(
+        HANDLE hSession, const PBrowserScriptDomRelationCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_relation_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomRelationCallbacks) ||
+            callbacks->get_relation == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_relation != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_relation_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetNodeRelation", -1, p_browser_script_dom_get_relation,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_relation = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomRelationCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_relation == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetNodeRelation", -1);
+    free(session->dom_relation);
+    session->dom_relation = NULL;
+    return rc;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacks(

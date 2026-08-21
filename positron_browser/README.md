@@ -36,6 +36,7 @@ PBrowser_ScriptSessionRegisterDomReadCallbacks(session, &dom_read);
 PBrowser_ScriptSessionRegisterValidationCallbacks(session, &validation);
 PBrowser_ScriptSessionRegisterReportValidityCallbacks(session, &report_validity);
 PBrowser_ScriptSessionRegisterCustomValidityCallbacks(session, &custom_validity);
+PBrowser_ScriptSessionRegisterDomRelationCallbacks(session, &dom_relation);
 PBrowser_ScriptSessionRegisterNavigationCallbacks(session, &navigation);
 PBrowser_ScriptSessionEvaluateBootstrap(session);
 PBrowser_ScriptSessionEvaluate(session, "document.title", -1);
@@ -50,7 +51,9 @@ PBrowser_ScriptSessionDestroy(session);
 - `PBrowser_ScriptSession*`：创建/销毁 PScript context、求值、JSON global、bootstrap、
   DOM read/write/attribute/value/checked/form-property、navigation/location/history 事件、
   Event JSON 和 native input/keyboard/focus/EDIT change/post-change input/click、programmatic
-  `HTMLElement.click()`、`HTMLElement.disabled`、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
+  `HTMLElement.click()`、`HTMLElement.disabled`、按 id 的 DOM 关系/`children`/`contains()`/
+  基础 `compareDocumentPosition()`/受限 `matches()`/`closest()`/元素作用域 querySelector、form
+  owner 与 `form.elements` collection、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
   `formNoValidate`/`min`/`max`/`step`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
 - `PBrowser_ScriptSessionRunMicrotasks()`：在调用者自己的窗口/宿主循环中推进当前 session
   的 bounded microtask 队列并返回本次执行数量；Promise reaction 不会自行创建线程或隐式
@@ -89,4 +92,10 @@ no-op，以及由宿主显式 microtask pump 驱动的 bounded Promise（含 `th
 Request/Response 不联网，MessagePort/BroadcastChannel/timeout/Promise 需宿主显式 pump，
 PerformanceObserver 只读取 observe 时已有 entries，不等于完整 DOM、fetch/stream、真实窗口
 生命周期或后台浏览器调度。Promise handler 和组合器输入均限制为 64 项。公共 bootstrap 现在按
-八个顺序 IIFE 评估以保持脚本 source 上限。
+九个顺序 IIFE 评估以保持脚本 source 上限。
+
+DOM relation callback 是独立的 size-tagged ABI：调用者提供 `get_relation`，按元素 id 返回
+UTF-8 字段或数量。关系值是 session 内稳定 wrapper 的只读、ID-addressable snapshot；缺失 id、
+越界索引和不支持关系 fail closed。它不提供通用 DOM mutation、文本节点/shadow tree、复杂 CSS
+selector、layout 或 native control 查询；`form.elements` 也不是完整 live
+`HTMLFormControlsCollection`。

@@ -351,8 +351,28 @@ Promise reaction 只进入现有 session 的 `queueMicrotask` 队列，由宿主
 `PBrowser_ScriptSessionRunMicrotasks()`（内部转发到 bootstrap pump）推进；产品不创建后台线程、隐式 event loop、网络、fetch、stream、
 文件句柄或跨 session 调度。组合器当前接受 bounded array-like 输入，超限或非法输入受控拒绝。
 这些语义是内存内兼容切片，不代表完整 ECMAScript Promise/iterator/host scheduling 标准；公共
-初始化入口现在按顺序评估八个独立 IIFE，仍共享同一 Duktape context，并保持
+初始化入口现在按顺序评估九个独立 IIFE，仍共享同一 Duktape context，并保持
 `PSCRIPT_MAX_SOURCE_BYTES`、既有执行预算、opaque handle 和 C ABI 不变。
+
+#### next542–561 的 DOM 关系与表单集合边界
+
+本批把树关系的最小可用纵切放在正确的产品层，而不是留在 `test_host.exe`：
+
+- `positron_core.dll` 导出 `PCore_NodeRelationById()`。调用者用文档句柄、元素 id、关系常量
+  和可选索引查询父元素、首/尾子元素、前/后兄弟、子元素数量、tag/name、form owner，或按
+  DOM 顺序查询 form control 数量/项。字符串结果使用 UTF-8 probe/truncation 约定，计数通过
+  `out_number` 返回；缺失 id、越界和不支持关系都以明确的 fail-closed 结果返回。
+- `positron_browser.dll` 通过独立的 size-tagged `PBrowserScriptDomRelationCallbacks` 注册
+  该查询，并在 bootstrap 中包装为 `parentElement`、`firstChild`/`lastChild`、兄弟节点、
+  `children`/`childElementCount`、`tagName`/`nodeName`/`localName`、`contains()`、基础
+  `compareDocumentPosition()`、受限 `matches()`/`closest()`、元素作用域
+  `querySelector()`/`querySelectorAll()` 以及 form `elements` 的 `item()`/`namedItem()`。
+- 关系对象是同一脚本 session 内稳定的 wrapper，但底层查询是 ID-addressable、同步、只读
+  snapshot。此批不提供通用 Node mutation、文本节点遍历、shadow tree、复杂 CSS selector、
+  layout/native control 查询，也不把 libdom 类型暴露到公共 ABI。
+
+`test_host.exe` 只实现 callback adapter、fixture 和 TEST542–561 断言；它不是关系 API 的所有者。
+这组 API 仅在显式 `javascript=1` 的 browser session 中可见，默认 Browse 路径不变。
 
 ## 独立 JavaScript 与浏览器 JavaScript
 
@@ -369,8 +389,8 @@ Promise reaction 只进入现有 session 的 `queueMicrotask` 队列，由宿主
 4. 宿主继续提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
 
 因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
-history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/value/checked/disabled/validation-query/custom-validity/constraint-reflection/form-property/
-navigation/location-event/native-input/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click/
+history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/value/checked/disabled/validation-query/custom-validity/constraint-reflection/form-property、ID-addressable
+DOM relation/form collection、navigation/location-event/native-input/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click/
 submit-reset/invalid/report-validity/file-input/checkbox-radio-change/SELECT-input/change dispatch entry 已进入
 `positron_browser.dll`，其余 DOM bridge 仍在迁移中且默认关闭；
 不能将其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。

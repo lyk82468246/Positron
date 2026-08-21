@@ -39,7 +39,7 @@ extern "C" {
 #define PBROWSER_HISTORY_METHOD_OTHER 0
 #define PBROWSER_HISTORY_METHOD_GET 1
 
-#define PBROWSER_SCRIPT_MAX_FUNCTIONS 18
+#define PBROWSER_SCRIPT_MAX_FUNCTIONS 19
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -143,6 +143,34 @@ typedef struct PBrowserScriptDomReadCallbacks {
     PBrowserScriptHasElementFn has_element;
     PBrowserScriptGetTextFn get_text;
 } PBrowserScriptDomReadCallbacks;
+
+/* Typed host adapter for the bounded, ID-addressable DOM relationship
+ * boundary. Value relationships (parent/sibling/child-at/tag/form-owner)
+ * use the same UTF-8 size-probe contract as PBrowserScriptGetTextFn. Count
+ * relationships leave out_value/out_bytes unused and write out_number. The
+ * callback returns 0 when found, 2 when the relationship is absent or outside
+ * the bounded wrapper tree, and a negative value on adapter failure. */
+typedef int (*PBrowserScriptGetNodeRelationFn)(void *pw, const char *id,
+        unsigned int relation, unsigned int index, char *out_value,
+        int out_capacity, int *out_bytes, int *out_number);
+typedef struct PBrowserScriptDomRelationCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetNodeRelationFn get_relation;
+} PBrowserScriptDomRelationCallbacks;
+
+/* Relationship constants mirror positron_core.h without requiring public
+ * browser consumers to include the core header. */
+#define PBROWSER_SCRIPT_NODE_RELATION_PARENT_ELEMENT       1u
+#define PBROWSER_SCRIPT_NODE_RELATION_FIRST_CHILD          2u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAST_CHILD           3u
+#define PBROWSER_SCRIPT_NODE_RELATION_PREVIOUS_SIBLING     4u
+#define PBROWSER_SCRIPT_NODE_RELATION_NEXT_SIBLING         5u
+#define PBROWSER_SCRIPT_NODE_RELATION_CHILD_COUNT          6u
+#define PBROWSER_SCRIPT_NODE_RELATION_TAG_NAME             7u
+#define PBROWSER_SCRIPT_NODE_RELATION_FORM_OWNER           8u
+#define PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_COUNT   9u
+#define PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_AT     10u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;
@@ -661,6 +689,10 @@ PBROWSER_API int PBrowser_ScriptSessionRunMessages(HANDLE hSession,
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomRelationCallbacks(
+        HANDLE hSession, const PBrowserScriptDomRelationCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomRelationCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacks(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacks *callbacks);

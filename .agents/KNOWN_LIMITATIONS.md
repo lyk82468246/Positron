@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next541）
+## 当前状态（next561）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -29,9 +29,10 @@ Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/per
 URLSearchParams/FormData mutation-safe snapshot、Storage/DOM wrapper tags、classList token
 validation、performance entry/observer option metadata、MessagePort auto-start、AbortSignal/
 Controller tags 和 Blob/File JSON metadata。next522–541 又补齐了受宿主显式 pump 驱动的 bounded
-Promise 构造器、then/catch/finally、thenable assimilation、组合器和错误/容量边界。TEST389–448、
-TEST482–541 与 TEST502–521 定向门均已通过；
-这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。当前产品 bootstrap 由公共入口按八个
+Promise 构造器、then/catch/finally、thenable assimilation、组合器和错误/容量边界。next542–561
+又补齐了按 DOM id 的受控树关系、基础 selector ancestor 查询、form owner 与
+`form.elements` collection 视图。TEST389–448、TEST482–561 与 TEST502–521 定向门均已通过；
+这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。当前产品 bootstrap 由公共入口按九个
 顺序 IIFE 评估，共享一个 Duktape context；分段只用于保持源码上限，不改变执行预算或引入第二套
 JavaScript 引擎。
 
@@ -39,8 +40,9 @@ JavaScript 引擎。
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
   配额或跨 session 同步，FormData 也不连接 Blob/File/multipart 传输。
-- selector 只支持当前实现声明的 `#id`、`.class`、有限 attribute 和 `*` 自匹配；不提供 DOM
-  树枚举、通用 CSS selector、布局命中测试或完整 `matches/closest` 祖先语义。
+- selector 只支持当前实现声明的 `#id`、`.class`、有限 attribute、tag/compound 组合和 `*`；
+  `matches()`、`closest()`、元素作用域 `querySelector()`/`querySelectorAll()` 只在当前受限匹配器
+  上工作，不提供通用 CSS selector、布局命中测试或完整动态 DOM 语义。
 - URL 的 userinfo、默认端口和 URLSearchParams 按值查询只覆盖当前 bounded parser 的 authority
   形态；不提供完整 URL Standard、IPv6/转义异常和 origin 安全策略。NodeList 的 `item()`/iterator
   与 repeated `getElementById()` identity 只作用于当前 document wrapper，不创建通用 DOM tree。
@@ -61,9 +63,12 @@ JavaScript 引擎。
 - TextEncoder/TextDecoder、atob/btoa、Blob/File/FormData 文件值是 UTF-8/内存 bounded 适配；
   Blob 的 `text()`/`arrayBuffer()` 仍同步返回，未实现 fetch、stream、multipart 传输或持久
   文件句柄。
-- `dataset` 只通过现有按 id attribute bridge 反射 `data-*` 名称，节点常量是产品层 metadata；没有
-  DOM 树关系、tagName/outerHTML、完整属性枚举或 layout 语义；`keys()`/`toJSON()` 只报告当前
-  session 触碰过的 named keys。FormData 的 `Symbol.iterator`、`entries()`/`keys()`/`values()`
+- `dataset` 只通过现有按 id attribute bridge 反射 `data-*` 名称，节点关系和 tag/name 只通过
+  next542–561 的 ID-addressable snapshot 暴露；没有通用 `createElement()`/mutation、outerHTML、
+  完整属性枚举或 layout 语义。`children`、兄弟/父子 wrapper、`contains()`、基础
+  `compareDocumentPosition()`、`form` 和 `form.elements` 只对当前 document fixture 的可寻址节点
+  工作；collection 的 `item()`/`namedItem()` 是有序、有限的同步视图，不是 live HTML DOM。
+  `keys()`/`toJSON()` 只报告当前 session 触碰过的 named keys。FormData 的 `Symbol.iterator`、`entries()`/`keys()`/`values()`
   是有序 session snapshot，保留旧 iterator `.length` 兼容字段，不提供 multipart 或异步流。
 - Headers、Request、Response 是内存 bounded 的同步数据模型；它们不建立网络连接、不执行 fetch、
   不提供 stream，body `text()`/`json()`/`arrayBuffer()` 是 one-shot 消费并同步标记
@@ -109,6 +114,10 @@ JavaScript 引擎。
   performance entry `toJSON()` 都是 Positron 为诊断/页面脚本提供的 bounded snapshot，不是完整
   Web IDL serialization；Blob/File readers 仍无 Promise-backed stream、持久文件句柄或 multipart
   transport。
+- `PCore_NodeRelationById()` 只返回 ID-addressable 元素的 UTF-8 字段或计数；缺失 id、越界索引、
+  非 form 控件的 form 查询和不支持的关系会 fail closed。它不提供完整 Node API、文本节点遍历、
+  动态 mutation、shadow tree、label/fieldset 关联、layout 或 native control 状态；
+  `form.elements` 也不承诺完整 HTMLFormControlsCollection 的 live 更新。
 - `scripts\device_gate.bat -EnableJavaScript` 只修改隔离 staging；tracked
   `test_host/test_host.ini` 仍为 `javascript=0`。本轮只改产品 API/状态，没有新增视觉、触摸、
   SIP 或系统 picker 人工门；这些风险仍须按下方验收边界单独检查。
@@ -126,6 +135,13 @@ JavaScript 引擎。
   script、页面 context，以及一套尚在宿主迁移中的其余 form/input bridge；导航的窗口、网络、core
   事件传播和 history side effect 仍由宿主 typed adapter 提供；
   Event callback 的产品 JSON 分发已迁入，但 core/document typed listener 适配仍由宿主提供。
+
+- next542–561 新增了独立的 DOM-relation callback 和 core `PCore_NodeRelationById()`：脚本可在
+  同一 session 内通过元素 id 读取 parent/child/sibling、tag/name、`children`、`contains()`、
+  基础 `compareDocumentPosition()`、受限 `matches()`/`closest()`、作用域 querySelector，以及
+  form owner/`form.elements` 的有序 `item()`/`namedItem()`。这些关系是同步只读 snapshot；不提供
+  通用 DOM mutation、文本节点/shadow tree、复杂 CSS selector、live collection、layout 或 native
+  control 查询。
 
 - next298 新增了独立的 validation query callback 和 bootstrap 的
   `HTMLElement.checkValidity()`、`willValidate`、`validity`（基础 flags）查询。它按 DOM id

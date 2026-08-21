@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next522–541
+### 当前短期状态：next542–561
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -345,10 +345,17 @@ Controller tags 和 Blob/File JSON metadata；next522–541 又完成 bounded Pr
 `test_host.ini`。Bootstrap 现在分成八个顺序评估阶段以保持
 `PSCRIPT_MAX_SOURCE_BYTES` 不变；这不是提升脚本预算。
 
-下一批固定为一个新的完整产品边界（next542），不把已完成的能力重新拆成更小的反射门。
-候选优先从表单关联/DOM 关系、Promise 之外的受控异步队列或其他具有真实页面价值且可自动断言的缺口中选择；
-在候选确定前不预先承诺具体 API。涉及窗口、布局、真实 SIP、系统 picker、旋转或网络失败
-反馈的候选必须另列人工验收，不能用宿主注入日志替代。
+next542–561 已完成一个完整的 DOM 关系与表单集合边界：`positron_core.dll` 新增按 DOM id 的
+`PCore_NodeRelationById()`，提供父子/兄弟、tag/name、form owner、控件计数和索引查询；
+`positron_browser.dll` 新增 size-tagged relation callback 与第九个 bootstrap IIFE，提供
+`parentElement`、`children`、`contains()`、基础 `compareDocumentPosition()`、受限
+`matches()`/`closest()`、元素作用域 querySelector 及 `form.elements` 的 `item()`/`namedItem()`。
+缺失 id、越界、非 form 控件和不支持关系均 fail closed；没有把完整 DOM mutation、layout、shadow
+tree 或 native controls 偷渡进产品层。`TEST542-561,999` 与相邻
+`TEST389,390-448,482-561,999` 设备门均通过，tracked `test_host.ini` 保持
+`javascript=0`。下一批从 `next562` 开始，仍需选择一个新的完整能力边界，而不是把已完成能力
+拆成更小的反射门；涉及窗口、布局、真实 SIP、系统 picker、旋转或网络失败反馈的候选必须另列
+人工验收，不能用宿主注入日志替代。
 
 ## 中期目标
 

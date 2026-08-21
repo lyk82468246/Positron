@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next541 基线）
+### 当前默认自动选择与人工验收包（next561 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -650,6 +650,40 @@ scripts\device_gate.bat -Candidate next522-541-regression ^
 fetch 或 stream。它只改变脚本状态/API，不触及视觉、真实触摸、SIP、旋转、系统 picker 或
 网络失败反馈，因此不要求人工页面验收；若未来把 Promise 接到真实窗口、网络或控件副作用，
 必须另开人工门。
+
+### next542–561 DOM 关系与表单集合累计门
+
+这 20 个 next 是第八组产品层 DOM 关系/表单集合能力，不是 20 个孤立属性反射。定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next542-561-budget2 ^
+  -EnableJavaScript ^
+  -TestSelection "542-561,999"
+```
+
+最终证据 `tmp/device-runs/20260821-131746-next542-561-budget2/` 为 21/21，通过零
+`ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 和 `test13_route_ok=True`。相邻回归门：
+
+```bat
+scripts\device_gate.bat -Candidate next542-561-regression ^
+  -EnableJavaScript ^
+  -TestSelection "389,390-448,482-561,999"
+```
+
+最终证据 `tmp/device-runs/20260821-131854-next542-561-regression/` 为 141/141，同样为零
+`ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 和 `test13_route_ok=True`。本批覆盖：
+
+- `PCore_NodeRelationById()` 的父子/兄弟、tag/name、form owner、control count/index；
+- 浏览器 wrapper 的 `children`、`contains()`、基础 `compareDocumentPosition()`、受限
+  `matches()`/`closest()`、元素作用域 querySelector 和 form `elements` collection；
+- 缺失 id、越界索引、非 form 控件和不支持关系的 fail-closed 语义，以及 wrapper identity 和
+  collection snapshot 稳定性。
+
+该批只改变同步、ID-addressable 的脚本 API，不触及视觉、真实触摸、SIP、旋转、系统 picker 或
+网络，因此不需要人工页面验收。由于九段 bootstrap 在 WM6 连续执行时接近宿主默认预算，
+`test_host.exe` 的浏览器回归 session 使用 `2 * PSCRIPT_DEFAULT_BUDGET_MS`；这只是测试宿主的
+消费方配置，不改变 `positron_script.dll` 默认预算、脚本引擎或公共 ABI。`-EnableJavaScript` 仍只
+修改隔离 staging，tracked `test_host/test_host.ini` 继续保持 `javascript=0`。
 
 next298 的两组定向门分别覆盖新测试和启用 JavaScript 的 form/script/constraint 回归，已分别通过
 2/2 和 77/77，均无 ERROR/FAIL；回归门的 staging INI 临时使用 `javascript=1`，仓库 tracked
