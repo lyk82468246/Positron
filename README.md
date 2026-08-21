@@ -61,6 +61,11 @@ reaction 必须由宿主显式调用 `PBrowser_ScriptSessionRunMicrotasks()` 推
 `childNodes`、`children`、`form.elements` 和元素作用域 `querySelectorAll()` 结果还提供
 有界的 `forEach()`、`keys()`、`values()`、`entries()`、默认 iterator 与 `Symbol.toStringTag`；
 `children`/`form.elements` 保留 `namedItem()`，不承诺 live 更新。
+next585 又把 `document.documentElement`、`document.head` 和 `document.body` 接入同一受控
+DOM snapshot：它们拥有稳定 wrapper identity、`parentNode`/`parentElement`、child/sibling、
+`children`/`childNodes`、基础 root selector 和 Node position/contains 视图。core 通过三个保留
+结构 token 识别这些没有 HTML `id` 的节点；这仍是同步、只读、session-scoped 边界，不是通用
+DOM 创建、mutation、live collection 或完整 selector 引擎。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap

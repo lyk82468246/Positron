@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 641
+#define TEST_MAX_NUMBER 661
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -56773,7 +56773,7 @@ static BOOL test549_browser_compare_position(void)
         "branch.compareDocumentPosition(a)+'|'+a.compareDocumentPosition(branch)+'|'+"
         "root.compareDocumentPosition(form);";
     char error[256];
-    return test_browser_tree_case(549, PROBE, "4|2|20|10|33", error,
+    return test_browser_tree_case(549, PROBE, "4|2|20|10|4", error,
             sizeof(error));
 }
 
@@ -56881,7 +56881,7 @@ static BOOL test558_browser_form_named_item_reflection(void)
             sizeof(error));
 }
 
-/* TEST 559 - missing parent IDs and non-form collections fail closed. */
+/* TEST 559 - structural body parent is available; non-form collections fail closed. */
 static BOOL test559_browser_relation_boundary(void)
 {
     static const char PROBE[] =
@@ -56889,7 +56889,7 @@ static BOOL test559_browser_relation_boundary(void)
         "document.getElementById('result').textContent=String(root.parentElement===null)+'|'+"
         "String(div.elements.length)+'|'+String(document.getElementById('form').querySelector('label').form===null);";
     char error[256];
-    return test_browser_tree_case(559, PROBE, "true|0|true", error,
+    return test_browser_tree_case(559, PROBE, "false|0|true", error,
             sizeof(error));
 }
 
@@ -58087,6 +58087,258 @@ static BOOL test641_browser_collection_snapshot(void)
     char error[256];
     return test_browser_tree_case(641, PROBE,
             "0|1|0|true|true", error, sizeof(error));
+}
+
+/* TEST 642 - documentElement is a stable element wrapper with HTML metadata. */
+static BOOL test642_browser_document_element_metadata(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement;document.getElementById('result').textContent="
+        "String(e!==null)+'|'+e.nodeName+'|'+e.localName+'|'+e.tagName+'|'"
+        "+String(e.ownerDocument===document)+'|'+String(e.isConnected);";
+    char error[256];
+    return test_browser_child_node_case(642, PROBE,
+            "true|HTML|html|HTML|true|true", error, sizeof(error));
+}
+
+/* TEST 643 - head and body are stable structural element wrappers. */
+static BOOL test643_browser_document_head_body(void)
+{
+    static const char PROBE[] =
+        "var h=document.head,b=document.body;document.getElementById('result').textContent="
+        "h.nodeName+'|'+b.nodeName+'|'+String(h!==b)+'|'"
+        "+String(h.ownerDocument===document)+'|'+String(b.ownerDocument===document);";
+    char error[256];
+    return test_browser_child_node_case(643, PROBE,
+            "HEAD|BODY|true|true|true", error, sizeof(error));
+}
+
+/* TEST 644 - structural parents distinguish parentNode from parentElement. */
+static BOOL test644_browser_document_parent_edges(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement;document.getElementById('result').textContent="
+        "String(e.parentNode===document)+'|'+String(e.parentElement===null)+'|'"
+        "+String(document.head.parentNode===e)+'|'"
+        "+String(document.body.parentElement===e);";
+    char error[256];
+    return test_browser_child_node_case(644, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 645 - document-level root selectors return the structural wrappers. */
+static BOOL test645_browser_document_root_selectors(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent="
+        "String(document.querySelector('html')===document.documentElement)+'|'"
+        "+String(document.querySelector(':root')===document.documentElement)+'|'"
+        "+String(document.querySelector('head')===document.head)+'|'"
+        "+String(document.querySelector('BODY')===document.body);";
+    char error[256];
+    return test_browser_child_node_case(645, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 646 - document-level root querySelectorAll keeps NodeList identities. */
+static BOOL test646_browser_document_root_query_all(void)
+{
+    static const char PROBE[] =
+        "var h=document.querySelectorAll('head'),b=document.querySelectorAll('body'),"
+        "e=document.querySelectorAll(':root');document.getElementById('result').textContent="
+        "h.length+'|'+h[0].nodeName+'|'+b.length+'|'+b[0].nodeName+'|'"
+        "+e.length+'|'+e[0].nodeName+'|'+String(h.item(0)===document.head)+'|'"
+        "+String(b.item(0)===document.body)+'|'+String(e.item(0)===document.documentElement);";
+    char error[256];
+    return test_browser_child_node_case(646, PROBE,
+            "1|HEAD|1|BODY|1|HTML|true|true|true", error, sizeof(error));
+}
+
+/* TEST 647 - documentElement.children includes reserved head/body tokens. */
+static BOOL test647_browser_document_element_children(void)
+{
+    static const char PROBE[] =
+        "var c=document.documentElement.children;document.getElementById('result').textContent="
+        "c.length+'|'+c[0].localName+'|'+c[1].localName+'|'"
+        "+String(c.item(0)===document.head)+'|'+String(c.item(1)===document.body)+'|'"
+        "+c[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_child_node_case(647, PROBE,
+            "2|head|body|true|true|HTMLCollection", error, sizeof(error));
+}
+
+/* TEST 648 - documentElement.childNodes preserves the direct root order. */
+static BOOL test648_browser_document_element_child_nodes(void)
+{
+    static const char PROBE[] =
+        "var n=document.documentElement.childNodes;document.getElementById('result').textContent="
+        "n.length+'|'+n[0].nodeName+'|'+n[1].nodeName+'|'"
+        "+String(n[0]===document.head)+'|'+String(n[1]===document.body);";
+    char error[256];
+    return test_browser_child_node_case(648, PROBE,
+            "2|HEAD|BODY|true|true", error, sizeof(error));
+}
+
+/* TEST 649 - head/body child collections use the same bounded element view. */
+static BOOL test649_browser_document_subtree_children(void)
+{
+    static const char PROBE[] =
+        "var h=document.head.children,b=document.body.children;"
+        "document.getElementById('result').textContent=h.length+'|'+b.length+'|'"
+        "+b[0].id+'|'+b[1].id+'|'+String(h.item(0)===null);";
+    char error[256];
+    return test_browser_child_node_case(649, PROBE,
+            "0|2|root|result|true", error, sizeof(error));
+}
+
+/* TEST 650 - scoped selectors traverse the structural root into the body. */
+static BOOL test650_browser_document_root_scope(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement.querySelector('#root'),a="
+        "document.body.querySelectorAll('#root');document.getElementById('result').textContent="
+        "String(e===document.getElementById('root'))+'|'+a.length+'|'"
+        "+String(a[0]===e)+'|'+String(document.head.querySelector('#root')===null);";
+    char error[256];
+    return test_browser_child_node_case(650, PROBE,
+            "true|1|true|true", error, sizeof(error));
+}
+
+/* TEST 651 - contains follows the new structural parent chain. */
+static BOOL test651_browser_document_structure_contains(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement;document.getElementById('result').textContent="
+        "String(e.contains(document.head))+'|'+String(e.contains(document.body))+'|'"
+        "+String(document.body.contains(document.getElementById('root')))+'|'"
+        "+String(document.contains(document.body));";
+    char error[256];
+    return test_browser_child_node_case(651, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 652 - structural root position is ordered relative to its children. */
+static BOOL test652_browser_document_structure_position(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement,h=document.head,b=document.body;"
+        "document.getElementById('result').textContent=document.compareDocumentPosition(e)+'|'"
+        "+e.compareDocumentPosition(b)+'|'+b.compareDocumentPosition(e)+'|'"
+        "+h.compareDocumentPosition(b);";
+    char error[256];
+    return test_browser_child_node_case(652, PROBE,
+            "20|20|10|4", error, sizeof(error));
+}
+
+/* TEST 653 - structural getters and id-addressable descendants share identity. */
+static BOOL test653_browser_document_structure_identity(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement,b=document.body,r=document.getElementById('root');"
+        "document.getElementById('result').textContent="
+        "String(e===document.documentElement)+'|'+String(b===document.body)+'|'"
+        "+String(b.querySelector('#root')===r)+'|'+String(e.childNodes[1]===b);";
+    char error[256];
+    return test_browser_child_node_case(653, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 654 - root wrappers report connected document ownership. */
+static BOOL test654_browser_document_structure_root(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement;document.getElementById('result').textContent="
+        "String(e.isConnected)+'|'+String(document.head.getRootNode()===document)+'|'"
+        "+String(document.body.ownerDocument===document)+'|'"
+        "+String(e.getRootNode({composed:true})===document);";
+    char error[256];
+    return test_browser_child_node_case(654, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 655 - structural tokens do not masquerade as HTML id attributes. */
+static BOOL test655_browser_document_structure_ids(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement,h=document.head,b=document.body;"
+        "document.getElementById('result').textContent=e.id+'|'+h.id+'|'+b.id+'|'"
+        "+String(e.hasAttribute('id'))+'|'+String(b.getAttribute('id'));";
+    char error[256];
+    return test_browser_child_node_case(655, PROBE,
+            "|||false|null", error, sizeof(error));
+}
+
+/* TEST 656 - childNodes structural wrappers point back to documentElement. */
+static BOOL test656_browser_document_structure_child_parent(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement,n=e.childNodes;document.getElementById('result').textContent="
+        "String(n[0].parentNode===e)+'|'+String(n[1].parentNode===e)+'|'"
+        "+String(n[0].parentElement===e)+'|'+String(n[0].isConnected);";
+    char error[256];
+    return test_browser_child_node_case(656, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 657 - body HTMLCollection keeps named lookup and item bounds. */
+static BOOL test657_browser_document_body_named_children(void)
+{
+    static const char PROBE[] =
+        "var c=document.body.children;document.getElementById('result').textContent="
+        "String(c.namedItem('root')===c[0])+'|'+String(c.namedItem('result')===c[1])+'|'"
+        "+String(c.namedItem('missing')===null)+'|'+String(c.item(2)===null);";
+    char error[256];
+    return test_browser_child_node_case(657, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 658 - unsupported document selectors still fail closed. */
+static BOOL test658_browser_document_selector_boundary(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('div');document.getElementById('result').textContent="
+        "String(document.querySelector('div')===null)+'|'+a.length+'|'"
+        "+String(document.querySelectorAll('#root').item(0)===document.getElementById('root'));";
+    char error[256];
+    return test_browser_child_node_case(658, PROBE,
+            "true|0|true", error, sizeof(error));
+}
+
+/* TEST 659 - first/last element helpers include reserved root children. */
+static BOOL test659_browser_document_structure_first_last(void)
+{
+    static const char PROBE[] =
+        "var e=document.documentElement,b=document.body;document.getElementById('result').textContent="
+        "String(e.firstElementChild===document.head)+'|'"
+        "+String(e.lastElementChild===b)+'|'+String(b.firstElementChild.id==='root')+'|'"
+        "+String(b.lastElementChild.id==='result');";
+    char error[256];
+    return test_browser_child_node_case(659, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 660 - sibling helpers work for head/body structural wrappers. */
+static BOOL test660_browser_document_structure_siblings(void)
+{
+    static const char PROBE[] =
+        "var h=document.head,b=document.body;document.getElementById('result').textContent="
+        "String(b.previousElementSibling===h)+'|'+String(h.nextElementSibling===b)+'|'"
+        "+String(h.previousElementSibling===null)+'|'+String(b.nextElementSibling===null);";
+    char error[256];
+    return test_browser_child_node_case(660, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 661 - structural HTMLCollection iteration sees head then body. */
+static BOOL test661_browser_document_structure_iteration(void)
+{
+    static const char PROBE[] =
+        "var c=document.documentElement.children,s='';c.forEach(function(v){s+=v.localName+'|';});"
+        "var k=c.keys();document.getElementById('result').textContent=s+k.next().value+'|'"
+        "+k.next().value+'|'+String(k.next().done)+'|'+c[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_child_node_case(661, PROBE,
+            "head|body|0|1|true|HTMLCollection", error, sizeof(error));
 }
 
 /* TEST 389 - listener options once/passive/capture. */
@@ -61038,6 +61290,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 641: ok =
                 test641_browser_collection_snapshot();
+                break;
+        case 642: ok =
+                test642_browser_document_element_metadata();
+                break;
+        case 643: ok =
+                test643_browser_document_head_body();
+                break;
+        case 644: ok =
+                test644_browser_document_parent_edges();
+                break;
+        case 645: ok =
+                test645_browser_document_root_selectors();
+                break;
+        case 646: ok =
+                test646_browser_document_root_query_all();
+                break;
+        case 647: ok =
+                test647_browser_document_element_children();
+                break;
+        case 648: ok =
+                test648_browser_document_element_child_nodes();
+                break;
+        case 649: ok =
+                test649_browser_document_subtree_children();
+                break;
+        case 650: ok =
+                test650_browser_document_root_scope();
+                break;
+        case 651: ok =
+                test651_browser_document_structure_contains();
+                break;
+        case 652: ok =
+                test652_browser_document_structure_position();
+                break;
+        case 653: ok =
+                test653_browser_document_structure_identity();
+                break;
+        case 654: ok =
+                test654_browser_document_structure_root();
+                break;
+        case 655: ok =
+                test655_browser_document_structure_ids();
+                break;
+        case 656: ok =
+                test656_browser_document_structure_child_parent();
+                break;
+        case 657: ok =
+                test657_browser_document_body_named_children();
+                break;
+        case 658: ok =
+                test658_browser_document_selector_boundary();
+                break;
+        case 659: ok =
+                test659_browser_document_structure_first_last();
+                break;
+        case 660: ok =
+                test660_browser_document_structure_siblings();
+                break;
+        case 661: ok =
+                test661_browser_document_structure_iteration();
                 break;
         default: ok = FALSE; break;
         }

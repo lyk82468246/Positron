@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next584 基线）
+### 当前默认自动选择与人工验收包（next585 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -112,6 +112,22 @@ scripts\device_gate.bat -Candidate next584 ^
 唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批仍只改变同步、只读、session-scoped
 集合 API，不触及视觉、触摸、SIP、系统 picker、旋转或网络失败反馈，不新增人工页面验收；
 tracked `test_host.ini` 继续保持 `javascript=0`。
+
+`next585` 仍是一个批次编号，不为每个结构 getter 重复分配 next 号。本批把没有 HTML `id` 的
+document root、直接 `head`/`body` 接入既有 relation/DOM snapshot，自动断言为 `TEST642–661`：
+
+```bat
+scripts\device_gate.bat -Candidate next585 ^
+  -EnableJavaScript ^
+  -TestSelection "642-661,999"
+```
+
+定向证据：`tmp/device-runs/20260821-172711-next585/`，21/21 通过；包含既有 TEST549 位置
+语义更新的兼容重跑为 `tmp/device-runs/20260821-173444-next585-r2/`，22/22 通过。相邻回归
+`TEST389,390-448,482-661,999` 在 `tmp/device-runs/20260821-175025-next585-regression-r3/`
+通过 241/241。本批仍只改变同步脚本
+API/DOM snapshot，不触及视觉、触摸、SIP、系统 picker、旋转或网络失败反馈，不新增人工页面
+验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
 这是窄的自动 smoke 选择，不是完整自动回归基线。最近一次完整自动基线仍是 next255，采用
 `auto=1`、`javascript=0`、`tests=13,20,27,43,44,56,58-77,80-222,999`；next295、next401

@@ -69,7 +69,11 @@ form owner，以及按 DOM 顺序查询 form-control count/index。它还提供 
 UTF-8 probe 和安全截断约定，计数通过 `out_number` 返回；缺失 id、越界索引和不支持的关系会
 fail closed。`CHILD_NODE_*` 关系另提供所有直接 childNodes 的数量、类型、name/value、
 textContent 和可用子元素 id，因此文本、注释和无 id 元素不会被旧的 element-only collection
-过滤。该 API 不暴露 libdom 对象，不实现通用节点创建或 mutation、属性 namespace、live
+过滤；next585 另外为没有 HTML `id` 的 document root、直接 `head` 和直接 `body` 提供三个
+保留结构 token（`PCORE_DOCUMENT_ELEMENT_TOKEN`、`PCORE_DOCUMENT_HEAD_TOKEN`、
+`PCORE_DOCUMENT_BODY_TOKEN`）。真实 id 查找优先，token 只作为结构 fallback，因此可以在
+同一关系桥上构造 `documentElement`/`head`/`body` 的稳定 wrapper。该 API 不暴露 libdom
+对象，不实现通用节点创建或 mutation、属性 namespace、live
 collection、shadow tree、复杂 selector、layout 或 native control 状态；结果只在同步 callback
 期间作为 UTF-8 snapshot 借用。
 

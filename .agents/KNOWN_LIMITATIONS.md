@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next584）
+## 当前状态（next585）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -68,6 +68,19 @@ next584 在不改动 core relation ABI 的前提下，为既有 DOM 集合 snaps
 `TEST389,390–448,482–641,999` 相邻回归门均通过；bootstrap 现在为十三个 IIFE，browser
 heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
 
+next585 在既有 relation bridge 上增加了三个保留结构 token，将没有 HTML `id` 的 document root、
+直接 `head` 和直接 `body` 接入同一 bounded snapshot。`positron_browser.dll` 暴露稳定的
+`document.documentElement`、`document.head`、`document.body` wrapper，并复用既有
+parent/child/sibling、`children`/`childNodes`、root selector、identity/root/position/contains
+和集合协议；`documentElement.parentNode` 指向 document，`parentElement` 为空。真实 id 查找
+优先于 token fallback，结构 wrapper 不伪造 `id`；文档级 selector 只新增 `html`、`:root`、
+`head`、`body` 四种结构查询，复杂 selector 仍 fail closed。由于 root parent 现在可寻址，
+同一 body snapshot 中原先 disconnected 的 ID 子树可排序，TEST549 的 root/form 断言相应
+更新为顺序值 `4`。`TEST642–661,999` 定向门与 `TEST549,642–661,999` 兼容重跑已通过；
+最终相邻回归 `TEST389,390-448,482-661,999` 在
+`tmp/device-runs/20260821-175025-next585-regression-r3/` 通过 241/241。bootstrap 仍为十三个 IIFE，browser heap ceiling 仍为 576 KiB，
+独立 script 默认堆仍为 512 KiB。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -102,7 +115,8 @@ heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
   无 id 元素 snapshot。仍没有通用 `createElement()`/mutation、outerHTML、
   完整属性枚举或 layout 语义。`children`、兄弟/父子 wrapper、`contains()`、基础
   `compareDocumentPosition()`、`form` 和 `form.elements` 只对当前 document fixture 的可寻址节点
-  工作；collection 的 `item()`/`namedItem()` 是有序、有限的同步视图，不是 live HTML DOM。
+  工作；next585 的结构 token 只覆盖 document root、直接 head/body，不扩展到任意无 id 后代；
+  collection 的 `item()`/`namedItem()` 是有序、有限的同步视图，不是 live HTML DOM。
   `keys()`/`toJSON()` 只报告当前 session 触碰过的 named keys。FormData 的 `Symbol.iterator`、`entries()`/`keys()`/`values()`
   是有序 session snapshot，保留旧 iterator `.length` 兼容字段，不提供 multipart 或异步流。
 - `getAttributeNames()` 与 `Attr`/`NamedNodeMap` 只覆盖当前 ID-addressable element 的 parser-order

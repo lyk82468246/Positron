@@ -64,7 +64,12 @@ PBrowser_ScriptSessionDestroy(session);
   iterator 与 `Symbol.toStringTag`，其中 `children`/`form.elements` 保留 `namedItem()`；Node
   identity/root boundary 另外提供
   `isSameNode()`、受限 `isEqualNode()`、`getRootNode()`、`compareDocumentPosition()`、
-  `contains()` 和 document-position 常量；
+  `contains()` 和 document-position 常量；文档结构入口还提供稳定的
+  `document.documentElement`、`document.head`、`document.body`，并把它们接入同一
+  parent/child/sibling、`children`/`childNodes`、identity/root/position/contains 和集合
+  协议 snapshot；文档级 `querySelector()`/`querySelectorAll()` 只额外支持 `html`、`:root`、
+  `head`、`body`，不宣称通用 selector。core 通过三个保留结构 token 映射无 id 的结构节点，
+  不伪造 HTML `id`，也不提供通用 DOM 创建、mutation 或 live collection；
 - `PBrowser_ScriptSessionRunMicrotasks()`：在调用者自己的窗口/宿主循环中推进当前 session
   的 bounded microtask 队列并返回本次执行数量；Promise reaction 不会自行创建线程或隐式
   event loop。`RunIdleCallbacks()`、`RunMessages()` 同样由宿主按生命周期和关闭策略显式调用；

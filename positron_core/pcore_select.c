@@ -4045,6 +4045,9 @@ PCORE_API int PCore_GetScript(HANDLE hDoc, unsigned int index,
     return 0;
 }
 
+static dom_element *pcore_document_structural_element(dom_document *doc,
+        const char *element_id);
+
 static dom_element *pcore_element_by_id(dom_document *doc,
         const char *element_id)
 {
@@ -4064,6 +4067,9 @@ static dom_element *pcore_element_by_id(dom_document *doc,
         element = NULL;
     }
     dom_string_unref(id);
+    if (element == NULL) {
+        element = pcore_document_structural_element(doc, element_id);
+    }
     return element;
 }
 
@@ -4089,6 +4095,138 @@ static int pcore_element_name_is(dom_element *element, const char *name)
     dom_string_unref(expected);
     dom_string_unref(actual);
     return same;
+}
+
+/* Return a retained element for one of the reserved document structure
+ * tokens. Real id lookup runs first in pcore_element_by_id(), so an unusual
+ * page that happens to use one of these strings as an id keeps its normal
+ * getElementById identity. */
+static dom_element *pcore_document_structural_element(dom_document *doc,
+        const char *element_id)
+{
+    dom_element *root;
+    dom_node *child;
+    dom_node *next;
+    dom_node_type type;
+    const char *wanted;
+
+    if (doc == NULL || element_id == NULL) {
+        return NULL;
+    }
+    if (strcmp(element_id, PCORE_DOCUMENT_ELEMENT_TOKEN) == 0) {
+        root = NULL;
+        if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR) {
+            return NULL;
+        }
+        return root;
+    }
+    if (strcmp(element_id, PCORE_DOCUMENT_HEAD_TOKEN) == 0) {
+        wanted = "head";
+    } else if (strcmp(element_id, PCORE_DOCUMENT_BODY_TOKEN) == 0) {
+        wanted = "body";
+    } else {
+        return NULL;
+    }
+    root = NULL;
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        return NULL;
+    }
+    child = NULL;
+    if (dom_node_get_first_child((dom_node *) root, &child) != DOM_NO_ERR) {
+        dom_node_unref((dom_node *) root);
+        return NULL;
+    }
+    while (child != NULL) {
+        if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            dom_node_unref((dom_node *) root);
+            return NULL;
+        }
+        if (type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) child, wanted)) {
+            dom_node_unref((dom_node *) root);
+            return (dom_element *) child;
+        }
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            dom_node_unref((dom_node *) root);
+            return NULL;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    dom_node_unref((dom_node *) root);
+    return NULL;
+}
+
+static const char *pcore_document_structural_token(dom_node *node)
+{
+    dom_node *parent;
+    dom_node_type type;
+    const char *token;
+
+    if (node == NULL) {
+        return NULL;
+    }
+    parent = NULL;
+    if (dom_node_get_parent_node(node, &parent) != DOM_NO_ERR ||
+            parent == NULL || dom_node_get_node_type(parent, &type) !=
+            DOM_NO_ERR) {
+        if (parent != NULL) {
+            dom_node_unref(parent);
+        }
+        return NULL;
+    }
+    token = NULL;
+    if (type == DOM_DOCUMENT_NODE) {
+        token = PCORE_DOCUMENT_ELEMENT_TOKEN;
+    } else if (type == DOM_ELEMENT_NODE &&
+            pcore_element_name_is((dom_element *) parent, "html")) {
+        if (pcore_element_name_is((dom_element *) node, "head")) {
+            token = PCORE_DOCUMENT_HEAD_TOKEN;
+        } else if (pcore_element_name_is((dom_element *) node, "body")) {
+            token = PCORE_DOCUMENT_BODY_TOKEN;
+        }
+    }
+    dom_node_unref(parent);
+    return token;
+}
+
+static int pcore_copy_document_structural_token(dom_node *node, char *value,
+        int value_capacity, int *out_bytes)
+{
+    const char *token;
+    size_t length;
+    size_t copy_length;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    token = pcore_document_structural_token(node);
+    if (token == NULL) {
+        return 2;
+    }
+    length = strlen(token);
+    if (out_bytes != NULL) {
+        *out_bytes = (int) length;
+    }
+    if (value == NULL || value_capacity <= 0) {
+        return 0;
+    }
+    copy_length = length;
+    if (copy_length > (size_t) (value_capacity - 1)) {
+        copy_length = (size_t) (value_capacity - 1);
+    }
+    if (copy_length > 0) {
+        memcpy(value, token, copy_length);
+    }
+    value[copy_length] = '\0';
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -4187,7 +4325,8 @@ static int pcore_relation_copy_element_id(dom_node *node, char *value,
         if (attribute_text != NULL) {
             dom_string_unref(attribute_text);
         }
-        return 2;
+        return pcore_copy_document_structural_token(node, value,
+                value_capacity, out_bytes);
     }
     pcore_copy_dom_string(attribute_text, value, value_capacity, out_bytes);
     dom_string_unref(attribute_text);

@@ -164,7 +164,13 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 } PBrowserScriptDomRelationCallbacks;
 
 /* Relationship constants mirror positron_core.h without requiring public
- * browser consumers to include the core header. */
+ * browser consumers to include the core header. The three structural tokens
+ * are shared with positron_core.h so a host adapter can expose document root
+ * wrappers without inventing a second DOM identity scheme. */
+#define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
+#define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
+#define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
+
 #define PBROWSER_SCRIPT_NODE_RELATION_PARENT_ELEMENT       1u
 #define PBROWSER_SCRIPT_NODE_RELATION_FIRST_CHILD          2u
 #define PBROWSER_SCRIPT_NODE_RELATION_LAST_CHILD           3u

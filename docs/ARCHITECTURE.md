@@ -458,6 +458,33 @@ adapter 和断言：
   `positron_script` 默认堆仍为 512 KiB；本批不涉及窗口绘制、真实触摸、SIP、旋转、系统 picker
   或网络，因此不新增人工页面验收。
 
+#### next585 的 document 结构节点边界
+
+本批为既有 ID-addressable DOM snapshot 增加最小的文档结构入口，仍把产品语义放在 core/browser
+DLL，`test_host.exe` 只提供 fixture、callback adapter 和断言：
+
+- `positron_core.dll` 在既有 `PCore_NodeRelationById()` 入口上增加三个保留结构 token：
+  `__positron_document_element__`、`__positron_document_head__` 和
+  `__positron_document_body__`。真实 HTML `id` 查找优先于 token fallback；因此普通页面 id
+  仍保持原有身份，结构 token 只映射 parser 得到的 document root 及其直接 `head`/`body`
+  元素。既有 UTF-8 probe/truncation、0/2/1 返回和 opaque document ownership 不变。
+- `positron_browser.dll` 将这三个 token 暴露为稳定的 `documentElement`、`head`、`body`
+  wrapper，并让已有 parent/child/sibling、`children`/`childNodes`、元素作用域 selector、
+  identity/root/position/contains 和 collection protocol 复用同一 wrapper cache。文档级
+  `querySelector()`/`querySelectorAll()` 仅增加 `html`、`:root`、`head`、`body` 四种结构
+  查询；其他复杂 document selector 继续 fail closed。
+- `documentElement.parentNode` 返回当前 document，而 `parentElement` 为空；`head`/`body`
+  的 parent/sibling/children 关系则沿结构 token 返回。结构节点没有伪造 HTML `id`，不引入
+  通用节点创建、outerHTML、DOM mutation、live collection、shadow tree、layout 或 native
+  control side effect。
+- 本批使原先因缺少 root parent 而被视为 disconnected 的 bounded ID 子树能够在同一 body
+  snapshot 中排序；因此 `TEST549` 的 root/form 位置断言从 fail-closed `33` 更新为同一文档
+  中的顺序值 `4`，这是结构入口的预期语义扩展而不是放宽断言。
+
+本批 bootstrap 仍按十三个既有 IIFE 顺序评估，browser session heap ceiling 为 576 KiB，独立
+`positron_script` 默认堆为 512 KiB。`TEST642–661` 只验证同步脚本 API 和 DOM snapshot，
+不触及窗口绘制、真实触摸、SIP、旋转、系统 picker 或网络，因此不新增人工页面验收。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

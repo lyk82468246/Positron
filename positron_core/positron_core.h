@@ -249,12 +249,14 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
         const char *element_id, const char *name);
 
 /* Bounded DOM relationship boundary for script/runtime hosts. The document
- * is intentionally exposed through ID-addressable element wrappers only;
- * elements without a non-empty id are skipped by the legacy child/sibling
- * collections and are reported as an unavailable relationship. The
+ * is intentionally exposed through ID-addressable element wrappers plus the
+ * three reserved structural tokens below; elements without a non-empty id
+ * are otherwise skipped by the legacy child/sibling collections and are
+ * reported as an unavailable relationship. The
  * CHILD_NODE_* relations are the separate, read-only childNodes snapshot:
  * they enumerate every direct child (including text/comment nodes) by index;
- * an element child id is returned only when that child has a non-empty id.
+ * an element child id is returned when that child has a non-empty id or is
+ * one of the reserved documentElement/head/body structural nodes.
  * String results use the same probe/truncation contract as
  * PCore_NodeTextContentById. Numeric results are returned through
  * out_number; ATTRIBUTE_NAME_AT and ATTRIBUTE_VALUE_AT enumerate the
@@ -263,6 +265,10 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * and 1 for invalid input or a DOM failure. The tree and attribute map are
  * read snapshots for the duration of the host script call; mutation remains
  * on the existing attribute APIs. */
+#define PCORE_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
+#define PCORE_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
+#define PCORE_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
+
 #define PCORE_NODE_RELATION_PARENT_ELEMENT       1u
 #define PCORE_NODE_RELATION_FIRST_CHILD          2u
 #define PCORE_NODE_RELATION_LAST_CHILD           3u
