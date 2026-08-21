@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 601
+#define TEST_MAX_NUMBER 621
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -57551,6 +57551,284 @@ static BOOL test601_browser_child_node_boundaries(void)
             "true|true|true|true", error, sizeof(error));
 }
 
+/* TEST 602 - element wrappers expose stable Node identity. */
+static BOOL test602_browser_node_identity(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('root'),b=document.getElementById('root'),"
+        "c=document.getElementById('child');document.getElementById('result').textContent="
+        "String(a.isSameNode(b))+'|'+String(a.isSameNode(c))+'|'"
+        "+String(a.isSameNode(null));";
+    char error[256];
+    return test_browser_child_node_case(602, PROBE,
+            "true|false|false", error, sizeof(error));
+}
+
+/* TEST 603 - bounded element equality rejects a different element identity. */
+static BOOL test603_browser_node_equality(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('root'),b=document.getElementById('root'),"
+        "c=document.getElementById('child');document.getElementById('result').textContent="
+        "String(a.isEqualNode(b))+'|'+String(a.isEqualNode(c))+'|'"
+        "+String(a.isEqualNode(null));";
+    char error[256];
+    return test_browser_child_node_case(603, PROBE,
+            "true|false|false", error, sizeof(error));
+}
+
+/* TEST 604 - text node identity/equality follows the child snapshot cache. */
+static BOOL test604_browser_text_node_identity(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent="
+        "String(n[0].isSameNode(r.firstChild))+'|'"
+        "+String(n[0].isEqualNode(r.firstChild))+'|'"
+        "+String(n[0].isSameNode(n[2]));";
+    char error[256];
+    return test_browser_child_node_case(604, PROBE,
+            "true|true|false", error, sizeof(error));
+}
+
+/* TEST 605 - comment nodes keep their own node equality boundary. */
+static BOOL test605_browser_comment_node_equality(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent="
+        "String(n[2].isEqualNode(n[2]))+'|'"
+        "+String(n[2].isEqualNode(n[0]))+'|'"
+        "+String(n[2].nodeType===Node.COMMENT_NODE);";
+    char error[256];
+    return test_browser_child_node_case(605, PROBE,
+            "true|false|true", error, sizeof(error));
+}
+
+/* TEST 606 - id-less elements receive the same identity/root helpers. */
+static BOOL test606_browser_idless_node_identity(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),e=r.lastChild;"
+        "document.getElementById('result').textContent="
+        "String(e.isSameNode(r.lastChild))+'|'"
+        "+String(e.isEqualNode(r.lastChild))+'|'"
+        "+String(e.getRootNode()===document);";
+    char error[256];
+    return test_browser_child_node_case(606, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 607 - getRootNode accepts bounded options without changing the root. */
+static BOOL test607_browser_node_root_options(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent="
+        "String(r.getRootNode()===document)+'|'"
+        "+String(n[0].getRootNode({composed:true})===document)+'|'"
+        "+String(n[2].getRootNode({composed:false})===document);";
+    char error[256];
+    return test_browser_child_node_case(607, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 608 - document exposes stable Node metadata and ownership edges. */
+static BOOL test608_browser_document_metadata(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent=document.nodeType+'|'"
+        "+document.nodeName+'|'+String(document.nodeValue===null)+'|'"
+        "+String(document.ownerDocument===null)+'|'"
+        "+String(document.parentNode===null)+'|'+String(document.isConnected);";
+    char error[256];
+    return test_browser_child_node_case(608, PROBE,
+            "9|#document|true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 609 - the document is its own identity and root. */
+static BOOL test609_browser_document_identity(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root');"
+        "document.getElementById('result').textContent="
+        "String(document.isSameNode(document))+'|'"
+        "+String(document.isEqualNode(document))+'|'"
+        "+String(document.getRootNode()===document)+'|'"
+        "+String(document.isSameNode(r));";
+    char error[256];
+    return test_browser_child_node_case(609, PROBE,
+            "true|true|true|false", error, sizeof(error));
+}
+
+/* TEST 610 - Node document-position constants are explicit and immutable. */
+static BOOL test610_browser_node_position_constants(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent="
+        "Node.DOCUMENT_POSITION_DISCONNECTED+'|'"
+        "+Node.DOCUMENT_POSITION_PRECEDING+'|'"
+        "+Node.DOCUMENT_POSITION_FOLLOWING+'|'"
+        "+Node.DOCUMENT_POSITION_CONTAINS+'|'"
+        "+Node.DOCUMENT_POSITION_CONTAINED_BY+'|'"
+        "+Node.DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC;";
+    char error[256];
+    return test_browser_child_node_case(610, PROBE,
+            "1|2|4|8|16|32", error, sizeof(error));
+}
+
+/* TEST 611 - an element and its direct character child report containment. */
+static BOOL test611_browser_node_position_parent_child(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent="
+        "r.compareDocumentPosition(n[0])+'|'"
+        "+n[0].compareDocumentPosition(r)+'|'"
+        "+String(r.contains(n[0]));";
+    char error[256];
+    return test_browser_child_node_case(611, PROBE,
+            "20|10|true", error, sizeof(error));
+}
+
+/* TEST 612 - direct child order includes text, comment, and elements. */
+static BOOL test612_browser_node_position_siblings(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent="
+        "n[0].compareDocumentPosition(n[1])+'|'"
+        "+n[1].compareDocumentPosition(n[0])+'|'"
+        "+n[1].compareDocumentPosition(n[3]);";
+    char error[256];
+    return test_browser_child_node_case(612, PROBE,
+            "4|2|4", error, sizeof(error));
+}
+
+/* TEST 613 - id-addressable element children use the same position rules. */
+static BOOL test613_browser_element_position(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),c=document.getElementById('child');"
+        "document.getElementById('result').textContent="
+        "c.compareDocumentPosition(r)+'|'"
+        "+r.compareDocumentPosition(c)+'|'"
+        "+String(c.isSameNode(r.childNodes[1]));";
+    char error[256];
+    return test_browser_child_node_case(613, PROBE,
+            "10|20|true", error, sizeof(error));
+}
+
+/* TEST 614 - character data nodes are ordered without element filtering. */
+static BOOL test614_browser_character_position(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent="
+        "n[0].compareDocumentPosition(n[2])+'|'"
+        "+n[2].compareDocumentPosition(n[0])+'|'"
+        "+String(n[0].isEqualNode(n[2]));";
+    char error[256];
+    return test_browser_child_node_case(614, PROBE,
+            "4|2|false", error, sizeof(error));
+}
+
+/* TEST 615 - contains follows the bounded parent chain and rejects document. */
+static BOOL test615_browser_node_contains(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent="
+        "String(r.contains(n[0]))+'|'+String(r.contains(n[3]))+'|'"
+        "+String(r.contains(document));";
+    char error[256];
+    return test_browser_child_node_case(615, PROBE,
+            "true|true|false", error, sizeof(error));
+}
+
+/* TEST 616 - document.contains recognizes connected bounded wrappers. */
+static BOOL test616_browser_document_contains(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent="
+        "String(document.contains(r))+'|'+String(document.contains(n[0]))+'|'"
+        "+String(document.contains(null));";
+    char error[256];
+    return test_browser_child_node_case(616, PROBE,
+            "true|true|false", error, sizeof(error));
+}
+
+/* TEST 617 - the document position bridge fails closed for unknown objects. */
+static BOOL test617_browser_node_position_boundaries(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent="
+        "r.compareDocumentPosition(null)+'|'"
+        "+r.compareDocumentPosition({nodeType:1})+'|'"
+        "+n[0].compareDocumentPosition({nodeType:3});";
+    char error[256];
+    return test_browser_child_node_case(617, PROBE,
+            "33|33|33", error, sizeof(error));
+}
+
+/* TEST 618 - unknown values do not impersonate product Node wrappers. */
+static BOOL test618_browser_node_identity_boundaries(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root');"
+        "document.getElementById('result').textContent="
+        "String(r.isSameNode({nodeType:1}))+'|'"
+        "+String(r.isEqualNode({nodeType:1}))+'|'"
+        "+String(r.getRootNode({foo:1})===document);";
+    char error[256];
+    return test_browser_child_node_case(618, PROBE,
+            "false|false|true", error, sizeof(error));
+}
+
+/* TEST 619 - compareDocumentPosition is zero for the same logical node. */
+static BOOL test619_browser_node_position_identity(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent="
+        "r.compareDocumentPosition(r)+'|'"
+        "+n[0].compareDocumentPosition(n[0])+'|'"
+        "+document.compareDocumentPosition(document);";
+    char error[256];
+    return test_browser_child_node_case(619, PROBE,
+            "0|0|0", error, sizeof(error));
+}
+
+/* TEST 620 - document/root position is available for connected wrappers. */
+static BOOL test620_browser_document_position(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root');"
+        "document.getElementById('result').textContent="
+        "document.compareDocumentPosition(r)+'|'"
+        "+r.compareDocumentPosition(document)+'|'"
+        "+String(r.getRootNode({composed:true})===document);";
+    char error[256];
+    return test_browser_child_node_case(620, PROBE,
+            "20|10|true", error, sizeof(error));
+}
+
+/* TEST 621 - all bounded child wrappers keep owner/root/connection metadata. */
+static BOOL test621_browser_node_owner_connection(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root'),n=r.childNodes;"
+        "document.getElementById('result').textContent="
+        "String(n[0].ownerDocument===document)+'|'"
+        "+String(n[0].isConnected)+'|'+String(n[2].isConnected)+'|'"
+        "+String(r.isConnected);";
+    char error[256];
+    return test_browser_child_node_case(621, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -60380,6 +60658,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 601: ok =
                 test601_browser_child_node_boundaries();
+                break;
+        case 602: ok =
+                test602_browser_node_identity();
+                break;
+        case 603: ok =
+                test603_browser_node_equality();
+                break;
+        case 604: ok =
+                test604_browser_text_node_identity();
+                break;
+        case 605: ok =
+                test605_browser_comment_node_equality();
+                break;
+        case 606: ok =
+                test606_browser_idless_node_identity();
+                break;
+        case 607: ok =
+                test607_browser_node_root_options();
+                break;
+        case 608: ok =
+                test608_browser_document_metadata();
+                break;
+        case 609: ok =
+                test609_browser_document_identity();
+                break;
+        case 610: ok =
+                test610_browser_node_position_constants();
+                break;
+        case 611: ok =
+                test611_browser_node_position_parent_child();
+                break;
+        case 612: ok =
+                test612_browser_node_position_siblings();
+                break;
+        case 613: ok =
+                test613_browser_element_position();
+                break;
+        case 614: ok =
+                test614_browser_character_position();
+                break;
+        case 615: ok =
+                test615_browser_node_contains();
+                break;
+        case 616: ok =
+                test616_browser_document_contains();
+                break;
+        case 617: ok =
+                test617_browser_node_position_boundaries();
+                break;
+        case 618: ok =
+                test618_browser_node_identity_boundaries();
+                break;
+        case 619: ok =
+                test619_browser_node_position_identity();
+                break;
+        case 620: ok =
+                test620_browser_document_position();
+                break;
+        case 621: ok =
+                test621_browser_node_owner_connection();
                 break;
         default: ok = FALSE; break;
         }

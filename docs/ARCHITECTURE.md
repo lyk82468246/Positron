@@ -418,6 +418,28 @@ adapter 和断言：
 `test_host.exe` 只实现 callback adapter、fixture 和 TEST582–601 断言；这组 API 仍只在显式
 `javascript=1` 的 browser session 中可见，默认 Browse 路径不变。
 
+#### next583 的 Node 身份、根节点与位置边界
+
+本批不扩展 core relation ABI，而是在既有 childNodes snapshot 上补齐一组只读 Node 兼容方法：
+
+- `positron_browser.dll` 为 ID-addressable element、文本/注释/id-less element wrapper 和
+  `document` 提供稳定的 `isSameNode()`、受限 `isEqualNode()`、`getRootNode()`、
+  `compareDocumentPosition()` 与 `contains()`；未知对象、跨快照或缺失 parent 链返回
+  `false`/`33`，不伪造节点身份。
+- `Node` 增加六个 document-position 常量。元素、字符数据与 document 暴露必要的
+  `nodeType`/`nodeName`/`nodeValue`/`ownerDocument`/`parentNode`/`isConnected` 元数据；
+  `getRootNode({composed: ...})` 在当前无 shadow tree 的边界内返回同一 session document。
+- 位置计算只沿当前 ID-addressable parent 与 childNodes snapshot 走，支持同一受控树内的
+  祖先、直接字符/元素子节点和兄弟顺序；不实现完整 document order、shadow DOM、节点创建、
+  live collection 或 mutation。`isEqualNode()` 也只比较当前 bounded metadata/text snapshot，
+  不声称完整 Web IDL 深结构相等。
+- bootstrap 现在按十二个顺序 IIFE 评估，browser session 仍使用 576 KiB heap ceiling，
+  独立 `positron_script` 默认堆仍为 512 KiB。`test_host.exe` 只提供 fixture、adapter 和
+  `TEST602–621` 断言。
+
+本批仍只改变脚本状态/API，不触及窗口绘制、真实触摸、SIP、旋转、系统 picker 或网络；默认
+`javascript=0` 路径不变，也不需要人工页面验收。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

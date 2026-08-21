@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next582
+### 当前短期状态：next583
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -375,6 +375,16 @@ CharacterData metadata。`TEST582-601,999` 通过 21/21，证据为
 `TEST389,390-448,482-601,999` 通过 181/181，证据为
 `tmp/device-runs/20260821-150157-next582-regression-r2/`。本批不涉及视觉、触摸、SIP、picker、
 旋转或网络失败，tracked `test_host.ini` 仍保持 `javascript=0`；之后继续按一个清晰批次编号推进。
+
+`next583` 作为单一批次在既有 childNodes snapshot 上完成 Node identity/root/position 只读边界：
+`positron_browser.dll` 为 element、文本/注释/id-less element wrapper 和 document 提供
+`isSameNode()`、受限 `isEqualNode()`、`getRootNode()`、`compareDocumentPosition()`、
+`contains()`、document-position 常量及必要 document metadata；位置只沿当前 bounded
+parent/child snapshot 计算，未知对象和跨快照关系 fail closed。`TEST602-621,999` 定向门通过
+21/21，证据为 `tmp/device-runs/20260821-152913-next583/`；相邻
+`TEST389,390-448,482-621,999` 通过 201/201，证据为
+`tmp/device-runs/20260821-153044-next583-regression/`。本批不涉及视觉、触摸、SIP、picker、
+旋转或网络失败，tracked `test_host.ini` 仍保持 `javascript=0`；后续继续按一个清晰批次编号推进。
 
 ## 中期目标
 

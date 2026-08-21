@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next582）
+## 当前状态（next583）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -31,7 +31,7 @@ validation、performance entry/observer option metadata、MessagePort auto-start
 Controller tags 和 Blob/File JSON metadata。next522–541 又补齐了受宿主显式 pump 驱动的 bounded
 Promise 构造器、then/catch/finally、thenable assimilation、组合器和错误/容量边界。next542–561
 又补齐了按 DOM id 的受控树关系、基础 selector ancestor 查询、form owner 与
-`form.elements` collection 视图。TEST389–448、TEST482–601 与 TEST502–521 定向门均已通过；
+`form.elements` collection 视图。TEST389–448、TEST482–621 与 TEST502–521 定向门均已通过；
 这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。next562–581 又增加了按 DOM id 的
 attribute count/name/value relation，以及 `getAttributeNames()`、`hasAttributes()`、受限
 `NamedNodeMap`/`Attr` wrapper 和跨 owner fail-closed mutation；attribute map 的 indexed
@@ -49,6 +49,15 @@ element id；browser bootstrap 提供 `childNodes` NodeList、文本/注释/id-l
 shadow tree、layout 或 native control。`TEST582–601,999` 定向门与
 `TEST389,390–448,482–601,999` 相邻回归门均通过；bootstrap 现在为十一个 IIFE，browser
 heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
+
+next583 在不改动 core relation ABI 的前提下增加了 bounded Node identity/root/position view：
+element、文本、注释、无 id element wrapper 和 document 支持 `isSameNode()`、受限
+`isEqualNode()`、`getRootNode()`、`compareDocumentPosition()` 与 `contains()`，并补充
+document-position 常量和 document 的 parent/owner/value/connection metadata。位置查询只沿当前
+ID-addressable parent 与 childNodes snapshot 计算；未知对象、跨快照和缺失 parent 链 fail closed，
+不提供完整 document order、shadow tree、节点创建、mutation 或 live collection。`TEST602–621,999`
+定向门与 `TEST389,390–448,482–621,999` 相邻回归门均通过；bootstrap 现在为十二个 IIFE，
+browser heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
 
 这些 API 的共同限制如下：
 
