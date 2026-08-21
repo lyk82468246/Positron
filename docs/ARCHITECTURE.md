@@ -253,6 +253,25 @@ selector、URL、storage/cookie、FormData、selection 和 synthetic event 均�
 完整 URL/DOM 标准均明确不在本边界内。新增 C ABI 只追加稳定导出，不暴露 Duktape、libdom 或
 宿主私有结构。
 
+#### next442–461 的脚本平台扩展
+
+本轮继续把完整但受控的页面数据/异步互操作能力放在 `positron_browser.dll` 的 bootstrap 中，
+`test_host.exe` 只通过公共 session 入口提供 fixture 与断言：
+
+- 事件与 DOM：对象 `handleEvent` listener、Event `initEvent`/`composed`/`cancelBubble`/
+  `returnValue`，受控 `DOMException`，`dataset` data-* 反射，以及 document/element node 常量；
+- 数据集合：FormData 的 Symbol.iterator，大小受限且不联网的 Headers（case-insensitive、append/
+  set/get/delete、forEach/iterator），同步 Request/Response 元数据和 bounded body helper；
+- 取消与调度：AbortSignal `timeout`/`any`/`onabort`，timer callback extra arguments、
+  `setImmediate`，以及通过既有 `RunMessages` pump 派送的 MessageChannel/MessagePort；
+- 工具快照：受限 `structuredClone`、navigator `javaEnabled`/`sendBeacon` 能力快照、初始化时派生的
+  `screen.orientation`，以及 URLSearchParams 的 pair sequence constructor 和按值 delete。
+
+这一批没有引入网络、Promise、fetch、stream、后台线程、DOM 树关系或旋转/布局副作用。Request/
+Response/Headers、Blob/File、structuredClone 都是 session 内存 bounded 的同步适配；MessageChannel、
+timer 和 AbortSignal timeout 必须由宿主显式泵送。Bootstrap 由公共初始化入口按顺序评估四个独立 IIFE，
+保持既有 `PSCRIPT_MAX_SOURCE_BYTES` 和执行预算不变。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

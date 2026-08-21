@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 408
+#define TEST_MAX_NUMBER 428
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -56856,6 +56856,226 @@ static BOOL test408_browser_storage_event(void)
     return test_browser_platform_case(408, PROBE, "k|true|v|true", error, sizeof(error));
 }
 
+/* TEST 409 - EventTarget object listeners with handleEvent callbacks. */
+static BOOL test409_browser_handle_event_listener(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var got='';var obj={seen:0,"
+        "handleEvent:function(ev){this.seen++;got=ev.type+'|'+String(this===obj);}};"
+        "e.addEventListener('x',obj);e.dispatchEvent(new Event('x'));"
+        "e.removeEventListener('x',obj);e.dispatchEvent(new Event('x'));"
+        "document.getElementById('result').textContent=got+'|'+obj.seen;";
+    char error[256];
+    return test_browser_platform_case(409, PROBE, "x|true|1", error, sizeof(error));
+}
+
+/* TEST 410 - Event lifecycle flags, initEvent and returnValue parity. */
+static BOOL test410_browser_event_lifecycle(void)
+{
+    static const char PROBE[] =
+        "var e=new Event('old',{cancelable:true,composed:true});var c=e.composed;"
+        "e.initEvent('new',true,true);e.cancelBubble=true;var b=e.cancelBubble;"
+        "e.returnValue=false;document.getElementById('result').textContent=e.type+'|'"
+        "+String(c)+'|'+String(b)+'|'+String(!e.returnValue);";
+    char error[256];
+    return test_browser_platform_case(410, PROBE, "new|true|true|true", error, sizeof(error));
+}
+
+/* TEST 411 - DOMException names, legacy code and string conversion. */
+static BOOL test411_browser_dom_exception(void)
+{
+    static const char PROBE[] =
+        "var e=new DOMException('bad','AbortError');document.getElementById('result').textContent="
+        "e.name+'|'+e.message+'|'+String(e.code)+'|'+e.toString();";
+    char error[256];
+    return test_browser_platform_case(411, PROBE, "AbortError|bad|20|AbortError: bad", error, sizeof(error));
+}
+
+/* TEST 412 - data-* attributes through the live dataset proxy. */
+static BOOL test412_browser_dataset(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('data-user-name','alice');"
+        "var a=e.dataset.userName;e.dataset.count=3;var b=e.getAttribute('data-count');"
+        "delete e.dataset.userName;document.getElementById('result').textContent=a+'|'"
+        "+b+'|'+String(!e.hasAttribute('data-user-name'))+'|'+String(e.dataset.has('count'));";
+    char error[256];
+    return test_browser_platform_case(412, PROBE, "alice|3|true|true", error, sizeof(error));
+}
+
+/* TEST 413 - document/element node metadata constants. */
+static BOOL test413_browser_node_metadata(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(document.nodeType)+'|'+document.nodeName+'|'+String(e.nodeType)+'|'"
+        "+String(e.ELEMENT_NODE===document.ELEMENT_NODE);";
+    char error[256];
+    return test_browser_platform_case(413, PROBE, "9|#document|1|true", error, sizeof(error));
+}
+
+/* TEST 414 - FormData Symbol.iterator and ordered callback view. */
+static BOOL test414_browser_formdata_iterator(void)
+{
+    static const char PROBE[] =
+        "var f=new FormData();f.append('a','1');f.append('b','2');var p=f[Symbol.iterator]().next().value;"
+        "var seen='';f.forEach(function(v,k){seen+=k+v;});document.getElementById('result').textContent="
+        "p[0]+'='+p[1]+'|'+seen+'|'+String(f[Symbol.iterator]().next().done===false);";
+    char error[256];
+    return test_browser_platform_case(414, PROBE, "a=1|a1b2|true", error, sizeof(error));
+}
+
+/* TEST 415 - case-insensitive Headers append/set/get/delete. */
+static BOOL test415_browser_headers_core(void)
+{
+    static const char PROBE[] =
+        "var h=new Headers([['X-Test','a'],['x-test','b']]);h.append('Y','  c ');"
+        "var a=h.get('X-TEST');h.delete('y');document.getElementById('result').textContent=a+'|'"
+        "+String(h.has('x-test'))+'|'+String(h.size)+'|'+String(!h.has('Y'));";
+    char error[256];
+    return test_browser_platform_case(415, PROBE, "a, b|true|1|true", error, sizeof(error));
+}
+
+/* TEST 416 - Headers iterators, forEach and JSON snapshot. */
+static BOOL test416_browser_headers_iterators(void)
+{
+    static const char PROBE[] =
+        "var h=new Headers();h.set('A','1');h.set('B','2');var e=h.entries();var p=e.next().value;"
+        "var keys='';h.forEach(function(v,k){keys+=k+v;});document.getElementById('result').textContent="
+        "p[0]+'='+p[1]+'|'+keys+'|'+h.toJSON().b;";
+    char error[256];
+    return test_browser_platform_case(416, PROBE, "a=1|a1b2|2", error, sizeof(error));
+}
+
+/* TEST 417 - bounded synchronous Request metadata/body model. */
+static BOOL test417_browser_request(void)
+{
+    static const char PROBE[] =
+        "var r=new Request('/x',{method:'post',headers:{X:'1'},body:'hi'});var s=r.text();"
+        "document.getElementById('result').textContent=r.method+'|'+r.headers.get('x')+'|'"
+        "+s+'|'+String(r.bodyUsed)+'|'+String(r.clone?true:false);";
+    char error[256];
+    return test_browser_platform_case(417, PROBE, "POST|1|hi|true|true", error, sizeof(error));
+}
+
+/* TEST 418 - bounded synchronous Response helpers and status predicates. */
+static BOOL test418_browser_response(void)
+{
+    static const char PROBE[] =
+        "var r=Response.json({a:1});var s=r.text();var e=Response.error();"
+        "document.getElementById('result').textContent=s+'|'+String(r.ok)+'|'"
+        "+r.headers.get('content-type')+'|'+String(e.status)+'|'+e.type;";
+    char error[256];
+    return test_browser_platform_case(418, PROBE, "{\"a\":1}|true|application/json|0|error", error, sizeof(error));
+}
+
+/* TEST 419 - AbortSignal.timeout is host-pump driven and cancellable. */
+static BOOL test419_browser_abort_timeout(void)
+{
+    static const char PROBE[] =
+        "var s=AbortSignal.timeout(0);var before=s.aborted;var n=__pcoreRunTimers(0);"
+        "document.getElementById('result').textContent=String(before)+'|'+String(s.aborted)+'|'"
+        "+String(n)+'|'+String(!!s.reason);";
+    char error[256];
+    return test_browser_platform_case(419, PROBE, "false|true|1|true", error, sizeof(error));
+}
+
+/* TEST 420 - AbortSignal.any propagates the first source reason. */
+static BOOL test420_browser_abort_any(void)
+{
+    static const char PROBE[] =
+        "var a=new AbortController();var b=new AbortController();var s=AbortSignal.any([a.signal,b.signal]);"
+        "b.abort('why');document.getElementById('result').textContent=String(s.aborted)+'|'"
+        "+s.reason+'|'+String(!a.signal.aborted);";
+    char error[256];
+    return test_browser_platform_case(420, PROBE, "true|why|true", error, sizeof(error));
+}
+
+/* TEST 421 - timer extra arguments preserve callback order and values. */
+static BOOL test421_browser_timer_arguments(void)
+{
+    static const char PROBE[] =
+        "var got='';setTimeout(function(a,b){got=a+b;},0,'a','b');var n=__pcoreRunTimers(0);"
+        "document.getElementById('result').textContent=got+'|'+String(n);";
+    char error[256];
+    return test_browser_platform_case(421, PROBE, "ab|1", error, sizeof(error));
+}
+
+/* TEST 422 - bounded setImmediate alias shares the timer pump. */
+static BOOL test422_browser_set_immediate(void)
+{
+    static const char PROBE[] =
+        "var got='';var id=setImmediate(function(v){got=v;},'ok');var n=__pcoreRunTimers(0);"
+        "document.getElementById('result').textContent=got+'|'+String(n)+'|'+String(id>0);";
+    char error[256];
+    return test_browser_platform_case(422, PROBE, "ok|1|true", error, sizeof(error));
+}
+
+/* TEST 423 - MessageChannel ports deliver through the explicit message pump. */
+static BOOL test423_browser_message_channel(void)
+{
+    static const char PROBE[] =
+        "var c=new MessageChannel();var got='';c.port1.onmessage=function(e){got=e.data+'|'"
+        "+String(e.target===c.port1);};c.port2.postMessage('x');var n=__pcoreRunMessages(4);"
+        "document.getElementById('result').textContent=got+'|'+String(n);";
+    char error[256];
+    return test_browser_platform_case(423, PROBE, "x|true|1", error, sizeof(error));
+}
+
+/* TEST 424 - bounded structuredClone preserves value isolation. */
+static BOOL test424_browser_structured_clone(void)
+{
+    static const char PROBE[] =
+        "var x={a:1,n:{b:'x'},arr:[2]};var y=structuredClone(x);y.n.b='y';"
+        "document.getElementById('result').textContent=String(y.a)+'|'+x.n.b+'|'"
+        "+y.n.b+'|'+String(y!==x);";
+    char error[256];
+    return test_browser_platform_case(424, PROBE, "1|x|y|true", error, sizeof(error));
+}
+
+/* TEST 425 - navigator method surface remains a frozen capability snapshot. */
+static BOOL test425_browser_navigator_methods(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent=String(navigator.javaEnabled())+'|'"
+        "+String(navigator.sendBeacon('/x','y'))+'|'+String(Object.isFrozen(navigator));";
+    char error[256];
+    return test_browser_platform_case(425, PROBE, "false|false|true", error, sizeof(error));
+}
+
+/* TEST 426 - screen orientation is a stable viewport-derived snapshot. */
+static BOOL test426_browser_screen_orientation(void)
+{
+    static const char PROBE[] =
+        "var o=screen.orientation;document.getElementById('result').textContent="
+        "String(o.type==='portrait-primary'||o.type==='landscape-primary')+'|'"
+        "+String(o.angle===0||o.angle===90)+'|'+String(o===screen.orientation);";
+    char error[256];
+    return test_browser_platform_case(426, PROBE, "true|true|true", error, sizeof(error));
+}
+
+/* TEST 427 - URLSearchParams pair-sequence construction and value delete. */
+static BOOL test427_browser_urlsearchparams_pairs(void)
+{
+    static const char PROBE[] =
+        "var p=new URLSearchParams([['a','1'],['a','2'],['b','3']]);p.delete('a','1');"
+        "document.getElementById('result').textContent=p.toString()+'|'+String(p.size)+'|'"
+        "+String(p.get('a')==='2');";
+    char error[256];
+    return test_browser_platform_case(427, PROBE, "a=2&b=3|2|true", error, sizeof(error));
+}
+
+/* TEST 428 - AbortSignal onabort fires once despite repeated abort calls. */
+static BOOL test428_browser_abort_onabort(void)
+{
+    static const char PROBE[] =
+        "var c=new AbortController();var n=0;c.signal.onabort=function(){n++;};c.abort();c.abort();"
+        "document.getElementById('result').textContent=String(n)+'|'+String(c.signal.aborted)+'|'"
+        "+String(typeof c.signal.onabort==='function');";
+    char error[256];
+    return test_browser_platform_case(428, PROBE, "1|true|true", error, sizeof(error));
+}
+
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -57830,6 +58050,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 408: ok =
                 test408_browser_storage_event();
+                break;
+        case 409: ok =
+                test409_browser_handle_event_listener();
+                break;
+        case 410: ok =
+                test410_browser_event_lifecycle();
+                break;
+        case 411: ok =
+                test411_browser_dom_exception();
+                break;
+        case 412: ok =
+                test412_browser_dataset();
+                break;
+        case 413: ok =
+                test413_browser_node_metadata();
+                break;
+        case 414: ok =
+                test414_browser_formdata_iterator();
+                break;
+        case 415: ok =
+                test415_browser_headers_core();
+                break;
+        case 416: ok =
+                test416_browser_headers_iterators();
+                break;
+        case 417: ok =
+                test417_browser_request();
+                break;
+        case 418: ok =
+                test418_browser_response();
+                break;
+        case 419: ok =
+                test419_browser_abort_timeout();
+                break;
+        case 420: ok =
+                test420_browser_abort_any();
+                break;
+        case 421: ok =
+                test421_browser_timer_arguments();
+                break;
+        case 422: ok =
+                test422_browser_set_immediate();
+                break;
+        case 423: ok =
+                test423_browser_message_channel();
+                break;
+        case 424: ok =
+                test424_browser_structured_clone();
+                break;
+        case 425: ok =
+                test425_browser_navigator_methods();
+                break;
+        case 426: ok =
+                test426_browser_screen_orientation();
+                break;
+        case 427: ok =
+                test427_browser_urlsearchparams_pairs();
+                break;
+        case 428: ok =
+                test428_browser_abort_onabort();
                 break;
         default: ok = FALSE; break;
         }

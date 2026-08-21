@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next441）
+## 当前状态（next461）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -15,7 +15,11 @@ URLSearchParams、session storage/cookie、classList/style、受限 selector 查
 由宿主显式推进的 timer、animation-frame 和 visibility 队列。next422–441 又补齐了事件
 options/构造器/AbortController、microtask/idle/postMessage pump、base64/UTF-8 codec、受限
 Blob/File/FormData 文件值、URL 静态 helpers/iterator、navigator/media/performance、history
-scrollRestoration 和 storage event。TEST369–408 与累计门 `TEST369-408,999` 已通过；这些
+  scrollRestoration 和 storage event。next442–461 又补齐了对象 listener、Event 生命周期、
+  DOMException、dataset/节点常量、FormData iterator、受限 Headers、同步 Request/Response、
+  AbortSignal timeout/any/onabort、timer 参数/setImmediate、MessageChannel、structuredClone、
+  navigator 方法、screen.orientation 和 URLSearchParams pair/delete-value。TEST369–428 与累计门
+  `TEST369-428,999` 已通过；这些
 切片默认关闭 JavaScript 时不会被发现、抓取或执行。
 
 这些 API 的共同限制如下：
@@ -38,6 +42,19 @@ scrollRestoration 和 storage event。TEST369–408 与累计门 `TEST369-408,99
 - TextEncoder/TextDecoder、atob/btoa、Blob/File/FormData 文件值是 UTF-8/内存 bounded 适配；
   Blob 的 `text()`/`arrayBuffer()` 同步返回，未开启 Promise，未实现 fetch、stream、multipart
   传输或持久文件句柄。
+- `dataset` 只通过现有按 id attribute bridge 反射 `data-*` 名称，节点常量是产品层 metadata；没有
+  DOM 树关系、tagName/outerHTML、属性枚举或 layout 语义。FormData 的 `Symbol.iterator` 是有序
+  session snapshot，旧 `entries()/keys()/values()` 数组接口保持兼容。
+- Headers、Request、Response 是内存 bounded 的同步数据模型；它们不建立网络连接、不执行 fetch、
+  不提供 Promise/stream，body `text()`/`arrayBuffer()` 会同步标记 `bodyUsed`。Headers 受条目和值
+  数量限制，非法名称和超限以受控异常失败。
+- `AbortSignal.timeout/any/onabort`、setImmediate 和 MessageChannel 都依赖宿主显式 timer/message
+  pump；没有后台线程、跨页面通信或导航后队列保留。`structuredClone` 只克隆受限 primitive/array/
+  plain object/Blob/File，深度和对象数量受脚本预算影响，循环/函数等不可克隆值会抛出
+  `DOMException('DataCloneError')`。
+- navigator 新增的 `javaEnabled()`/`sendBeacon()` 只是冻结能力快照（当前返回 false），
+  `screen.orientation` 只在 session 初始化时由 viewport 派生，不监听旋转、不驱动重排或绘制；
+  URLSearchParams pair constructor/delete(value) 仍是受限字符串实现。
 - `matchMedia` 使用初始化 viewport/DPI 快照，不会监听窗口重排；performance 只保留 session 内
   mark/measure 条目；navigator 是冻结能力快照；storage event 为单 session 内的受控通知，不
   提供跨页面/跨进程持久化同步。

@@ -70,3 +70,10 @@ session 与脚本对象；宿主必须管理 document、窗口、网络、控件
 不是 URL Standard parser，也不应暴露 Duktape、libdom 或窗口对象。公共 ABI 变更必须
 保持 UTF-8、opaque handle、明确所有权和 VS2008/ARMV4I 兼容；修改后运行正式构建、
 脚本/设备门和相应人工门。
+
+显式启用脚本时，bootstrap 还提供受限的 `dataset`/节点 metadata、FormData iterator、
+case-insensitive Headers、同步 Request/Response、AbortSignal `timeout`/`any`/`onabort`、
+timer extra arguments/`setImmediate`、MessageChannel、structuredClone、navigator 方法、
+viewport 派生的 `screen.orientation` 和 URLSearchParams pair/delete-value。它们只在单个
+session 内存中运行；Request/Response 不联网，MessageChannel/timeout 需宿主显式 pump，
+不等于完整 DOM、Promise/fetch/stream 或后台浏览器调度。
