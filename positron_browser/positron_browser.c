@@ -2869,6 +2869,8 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "function m10(o){var m={},i;Object.defineProperty(m,'length',{get:function(){return ns(o).length;},"
         "enumerable:true});m.item=function(i){var n=Number(i),s;if(n!==n||n<0||n!==Math.floor(n)){return null;}"
         "s=nn(o,n);return s===null?null:at(o,s);};m.getNamedItem=function(n){return ni(o,n);};"
+        "m.getNamedItemNS=function(namespace,localName){var n=attrFind10(o,namespace,localName);"
+        "return n===null?null:at(o,n);};"
         "m.setNamedItem=function(a){var old;if(!a||a.nodeType!==2||a.o!==o){return null;}"
         "old=ni(o,a.name);o.setAttribute(a.name,a.value);return old;};"
         "m.removeNamedItem=function(n){var old=ni(o,n);if(old!==null){o.removeAttribute(old.name);}return old;};"

@@ -66,6 +66,12 @@ Attr 仍复用同 owner 的 live value/nodeValue wrapper；不提供 namespace m
 live collection、节点创建或新的 core ABI。对应 `TEST802–821` 及兼容/缩减回归门已由自动设备门
 覆盖。
 
+next594 又为既有 `NamedNodeMap` 增加只读的 `getNamedItemNS(namespace, localName)`：它复用
+next593 的 null/空 namespace、XML/XMLNS 已知前缀、未知输入 fail closed、大小写敏感 localName、
+coercion、Attr identity 和 map 对属性增删的观察语义；不提供 `setNamedItemNS()`、
+`removeNamedItemNS()`、XML/SVG parser、namespace mutation、节点创建或 live collection。对应
+`TEST822–841` 及缩减回归门已由自动设备门覆盖。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -104,7 +110,7 @@ PBrowser_ScriptSessionDestroy(session);
   `HTMLElement.click()`、`HTMLElement.disabled`、按 id 的 DOM 关系/`children`/`contains()`/
   基础 `compareDocumentPosition()`/受限 `matches()`/`closest()`/元素作用域 querySelector、form
   owner 与 `form.elements` collection、attribute count/name/value、`getAttributeNames()`、
-  `attributes`/`Attr`/受限 NamedNodeMap（`length`、`item()`、named lookup、同 owner mutation、
+  `attributes`/`Attr`/受限 NamedNodeMap（`length`、`item()`、named lookup、`getNamedItemNS()`、同 owner mutation、
   iterator、indexed 0–7）、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
   `formNoValidate`/`min`/`max`/`step`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
   bounded `childNodes` NodeList（文本/注释/id-less element wrapper、`item()`/iterator、`nodeType`/

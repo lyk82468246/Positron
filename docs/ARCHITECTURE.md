@@ -619,6 +619,22 @@ XML/SVG parser、prefix mutation、节点创建或 live collection，也不引�
 旋转或网络失败人工门。browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
 仍为 512 KiB。
 
+#### next594 的 NamedNodeMap namespace lookup 边界
+
+next594 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。既有 `NamedNodeMap` 现在提供只读的 `getNamedItemNS(namespace, localName)`，复用
+next593 的 null/空 namespace、XML/XMLNS 已知前缀、未知输入 fail-closed、大小写敏感
+localName、String coercion 和稳定 Attr wrapper 语义；同一 map 对后续 attribute 增删和值更新
+保持可观察。
+
+本批不提供 `setNamedItemNS()`、`removeNamedItemNS()`、XML/SVG parser、namespace mutation、
+节点创建或 live collection，也不引入新的 core ABI。`test_host.exe` 只提供 fixture、adapter 和
+`TEST822–841` 自动断言；定向门 21/21、缩减回归 263/263，证据位于
+`tmp/device-runs/20260822-204905-next594-r1/` 和
+`tmp/device-runs/20260822-205012-next594-regression-r1/`。本批不涉及视觉、触摸、SIP、picker、
+旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
+仍为 512 KiB。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

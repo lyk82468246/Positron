@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next593
+### 当前短期状态：next594
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -511,6 +511,18 @@ namespace fail closed；没有加入 namespace mutation、XML/SVG parser、节�
 `tmp/device-runs/20260822-202712-next593-regression-r2/` 通过 21/21、182/182、243/243，
 均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批不涉及视觉、触摸、SIP、picker、旋转或网络失败，
 tracked `test_host.ini` 继续保持 `javascript=0`，因此不新增人工页面验收。
+
+`next594` 作为单一批次在 browser 层为既有 `NamedNodeMap` 增加只读的
+`getNamedItemNS(namespace, localName)`。它复用 next593 的 null/空 namespace、XML/XMLNS 已知
+前缀、未知输入 fail-closed、大小写敏感 localName、String coercion 和稳定 Attr wrapper
+语义；保留的 map 会观察后续属性增删和值更新。没有加入 `setNamedItemNS()`、
+`removeNamedItemNS()`、XML/SVG parser、namespace mutation、节点创建、live collection 或新的
+core ABI。`TEST822-841,999` 在 `tmp/device-runs/20260822-204905-next594-r1/` 通过 21/21，
+缩减回归 `TEST389,390-448,540,549,642-841,999` 在
+`tmp/device-runs/20260822-205012-next594-regression-r1/` 通过 263/263；兼容子集沿用
+next593 的 `TEST549,642-821,999` 证据。两次均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一，
+本批不涉及视觉、触摸、SIP、picker、旋转或网络失败，tracked `test_host.ini` 继续保持
+`javascript=0`，因此不新增人工页面验收。
 
 ## 中期目标
 
