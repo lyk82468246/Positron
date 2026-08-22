@@ -63,11 +63,18 @@ scripts\device_gate.bat -Candidate nextNNN
 
 ### `CeRapiInit` 报 `0x8007007E`
 
-2026-08-13 的本机取证确认：WMDC UI、DMA 会话、`RapiMgr` 和 `WcesComm` 服务都可以正常，
+2026-08-22 的本机取证再次确认：WMDC UI、DMA 会话、`RapiMgr` 和 `WcesComm` 服务都可以正常，
 但旧 WMDC 安装写入的五个 RAPI 相关 COM 类仍把 DLL 路径保存为字面量
 `%windir%\system32\...`。现代 Windows 的 32 位 COM 加载路径没有按旧安装器的预期展开这些
 值，Process Monitor 可见进程在 SysWOW64 路径下继续寻找含字面 `%windir%` 的不存在文件，
 最终使 `CeRapiInit()` 返回 `0x8007007E`。因此，这个错误不等于设备没有连接。
+
+本次 next586 复现时，五个 in-process RAPI COM 类的直接激活也返回 `0x8007007E`，而 out-of-
+process `RAPIMgr` 仍可用；这解释了“WMDC 看起来完全正常但 gate 不能启动”的表象。正式修复脚本
+将 Registry32/Registry64 中共 10 个已知值从旧的 `%windir%` 展开字符串规范化为现有
+SysWOW64/System32 DLL 的绝对路径，报告 `changed=10`、`status=PASS`，之后 next586 的定向、
+兼容和累计门均通过。不要因为 UI 正常就跳过 RAPI 取证，也不要手工修改未知 COM 类；若同一
+HRESULT 再次出现，先确认设备仍由 GUI 连接，再运行下面的幂等修复入口并重新执行设备门。
 
 正式修复入口是：
 

@@ -485,6 +485,21 @@ DLL，`test_host.exe` 只提供 fixture、callback adapter 和断言：
 `positron_script` 默认堆为 512 KiB。`TEST642–661` 只验证同步脚本 API 和 DOM snapshot，
 不触及窗口绘制、真实触摸、SIP、旋转、系统 picker 或网络，因此不新增人工页面验收。
 
+#### next586 的 DocumentType 边界
+
+next586 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。浏览器 session 为 `document.doctype` 创建一个稳定、只读的 synthetic wrapper，提供
+`name`、`nodeType`、`nodeName`、owner/root/position/contains、identity/equality 和字符串
+brand；它是没有 child 的 leaf。document 的 `childNodes` 以 `[doctype, documentElement]` 为顺序
+快照，`document.children` 仍是 element-only，因此 doctype 不会伪装成普通 HTML element。
+
+该边界不承诺完整 HTML doctype parser、public core doctype token、节点创建、mutation、live
+collection、outerHTML 或完整 document tree；wrapper 只复用既有 session-scoped relation/Node
+snapshot 和 fail-closed position semantics。`test_host.exe` 仅提供 fixture、callback adapter
+和自动断言，不拥有该 API。browser bootstrap 仍为十三个 IIFE，session heap ceiling 仍为
+576 KiB，独立 `positron_script` 默认堆仍为 512 KiB；本批不涉及视觉、触摸、SIP、picker、旋转
+或网络，因此不新增人工页面验收。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

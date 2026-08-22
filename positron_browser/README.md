@@ -16,6 +16,11 @@
 document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、`HTMLElement.disabled`、控件与受限 form-level `checkValidity()`/`reportValidity()`、`willValidate`、`validity` 查询、`setCustomValidity()`、`validationMessage`、`required`、`readOnly`、`multiple`、`noValidate`、`formNoValidate`、`name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`min`/`max`/`step`、`pattern`/`minLength`/`maxLength`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。这些表单属性通过既有 attribute callback bridge 实现；validation query 通过独立的 size-tagged callback 获取 core 的控件状态或 form 聚合结果，report-validity callback 负责同步 report/query 与 invalid-event 路由，custom validity 通过另一个 size-tagged UTF-8 get/set callback 获取/更新 application-owned message，`validationMessage` 在 custom message 为空时可使用宿主提供的固定英文 fallback；对 file input，programmatic click 只负责 typed click 分发；系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
 `test_host.exe` 是一个完整的组合示例，但不是私有 API 的唯一消费者。
 
+当前 DOM snapshot 还提供 browser-owned 的 `document.doctype`：它是稳定、只读的
+`DocumentType` wrapper，包含有限 metadata、owner/root/position/contains、identity/equality
+和 document child order 视图；它不要求调用者提供 core doctype parser，也不提供节点创建或
+mutation。该能力仍遵守 session-scoped、fail-closed 的关系边界。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：

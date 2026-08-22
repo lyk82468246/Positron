@@ -1,12 +1,12 @@
 # Positron 当前限制
 
-更新时间：2026-08-21
+更新时间：2026-08-22
 
 这里只记录当前仍存在的产品或验收边界。已完成批次和设备流水不保留在本文件；最近证据见
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next585）
+## 当前状态（next586）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -81,6 +81,15 @@ parent/child/sibling、`children`/`childNodes`、root selector、identity/root/p
 `tmp/device-runs/20260821-175025-next585-regression-r3/` 通过 241/241。bootstrap 仍为十三个 IIFE，browser heap ceiling 仍为 576 KiB，
 独立 script 默认堆仍为 512 KiB。
 
+next586 在不改动 core relation ABI 的前提下增加了 browser-owned 的 `DocumentType` synthetic
+snapshot。`document.doctype` 是稳定、只读、session-scoped singleton，提供 `name`、`nodeType`、
+`nodeName`、owner/root/position/contains、identity/equality 和字符串 brand；它没有子节点，
+document 的 `childNodes` 顺序为 `[doctype, documentElement]`，而 `document.children` 仍只返回
+`documentElement`。该切片不提供通用 doctype parser、public doctype token、节点创建、mutation、
+live collection 或完整 document tree。`TEST662–681,999` 定向门、`TEST549,642–681,999` 兼容门
+和 `TEST389,390–448,482–681,999` 相邻回归分别通过 21/21、42/42、261/261；bootstrap 仍为
+十三个 IIFE，browser heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -116,6 +125,8 @@ parent/child/sibling、`children`/`childNodes`、root selector、identity/root/p
   完整属性枚举或 layout 语义。`children`、兄弟/父子 wrapper、`contains()`、基础
   `compareDocumentPosition()`、`form` 和 `form.elements` 只对当前 document fixture 的可寻址节点
   工作；next585 的结构 token 只覆盖 document root、直接 head/body，不扩展到任意无 id 后代；
+  next586 的 doctype 是 browser-owned synthetic leaf，不代表 core parser token，也不提供
+  doctype metadata mutation 或通用 document child creation；
   collection 的 `item()`/`namedItem()` 是有序、有限的同步视图，不是 live HTML DOM。
   `keys()`/`toJSON()` 只报告当前 session 触碰过的 named keys。FormData 的 `Symbol.iterator`、`entries()`/`keys()`/`values()`
   是有序 session snapshot，保留旧 iterator `.length` 兼容字段，不提供 multipart 或异步流。

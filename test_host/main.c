@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 661
+#define TEST_MAX_NUMBER 681
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -58341,6 +58341,262 @@ static BOOL test661_browser_document_structure_iteration(void)
             "head|body|0|1|true|HTMLCollection", error, sizeof(error));
 }
 
+/* TEST 662 - document.doctype exposes bounded DocumentType metadata. */
+static BOOL test662_browser_document_type_metadata(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "d.nodeType+'|'+d.nodeName+'|'+d.name+'|'"
+        "+String(d.nodeValue===null)+'|'+String(d.textContent===null);";
+    char error[256];
+    return test_browser_child_node_case(662, PROBE,
+            "10|html|html|true|true", error, sizeof(error));
+}
+
+/* TEST 663 - the doctype keeps document ownership and connection metadata. */
+static BOOL test663_browser_document_type_ownership(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.ownerDocument===document)+'|'+String(d.parentNode===document)+'|'"
+        "+String(d.parentElement===null)+'|'+String(d.isConnected);";
+    char error[256];
+    return test_browser_child_node_case(663, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 664 - repeated doctype access preserves singleton identity. */
+static BOOL test664_browser_document_type_identity(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d===document.doctype)+'|'+String(d.isSameNode(document.doctype))+'|'"
+        "+String(document.doctype.isSameNode(d));";
+    char error[256];
+    return test_browser_child_node_case(664, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 665 - doctype equality is name/type based but remains case-sensitive. */
+static BOOL test665_browser_document_type_equality(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.isEqualNode({nodeType:10,nodeName:'html'}))+'|'"
+        "+String(d.isEqualNode({nodeType:10,nodeName:'HTML'}))+'|'"
+        "+String(d.isEqualNode({nodeType:1,nodeName:'HTML'}))+'|'"
+        "+String(d.isEqualNode(null));";
+    char error[256];
+    return test_browser_child_node_case(665, PROBE,
+            "true|false|false|false", error, sizeof(error));
+}
+
+/* TEST 666 - doctype root and document containment are connected. */
+static BOOL test666_browser_document_type_root(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.getRootNode()===document)+'|'"
+        "+String(d.getRootNode({composed:true})===document)+'|'"
+        "+String(document.contains(d));";
+    char error[256];
+    return test_browser_child_node_case(666, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 667 - document and doctype expose the normal containment positions. */
+static BOOL test667_browser_document_type_document_position(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "document.compareDocumentPosition(d)+'|'+d.compareDocumentPosition(document);";
+    char error[256];
+    return test_browser_child_node_case(667, PROBE,
+            "20|10", error, sizeof(error));
+}
+
+/* TEST 668 - doctype precedes the documentElement in document order. */
+static BOOL test668_browser_document_type_root_position(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,e=document.documentElement;"
+        "document.getElementById('result').textContent="
+        "d.compareDocumentPosition(e)+'|'+e.compareDocumentPosition(d);";
+    char error[256];
+    return test_browser_child_node_case(668, PROBE,
+            "4|2", error, sizeof(error));
+}
+
+/* TEST 669 - a doctype is a leaf node with no child content. */
+static BOOL test669_browser_document_type_children(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "d.childNodes.length+'|'+d.children.length+'|'"
+        "+String(d.firstChild===null)+'|'+String(d.lastChild===null)+'|'"
+        "+String(d.hasChildNodes())+'|'+String(d.contains(document.documentElement));";
+    char error[256];
+    return test_browser_child_node_case(669, PROBE,
+            "0|0|true|true|false|false", error, sizeof(error));
+}
+
+/* TEST 670 - sibling getters place doctype before the root element. */
+static BOOL test670_browser_document_type_siblings(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,e=document.documentElement;"
+        "document.getElementById('result').textContent="
+        "String(d.previousSibling===null)+'|'+String(d.nextSibling===e)+'|'"
+        "+String(d.previousElementSibling===null)+'|'"
+        "+String(d.nextElementSibling===e);";
+    char error[256];
+    return test_browser_child_node_case(670, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 671 - document.childNodes includes doctype then documentElement. */
+static BOOL test671_browser_document_child_order(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,e=document.documentElement,n=document.childNodes;"
+        "document.getElementById('result').textContent=n.length+'|'"
+        "+String(n[0]===d)+'|'+String(n[1]===e)+'|'"
+        "+String(document.firstChild===d)+'|'+String(document.lastChild===e);";
+    char error[256];
+    return test_browser_child_node_case(671, PROBE,
+            "2|true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 672 - document childNodes keeps the NodeList protocol. */
+static BOOL test672_browser_document_child_collection(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,n=document.childNodes,it=n[Symbol.iterator]();"
+        "document.getElementById('result').textContent="
+        "String(n[Symbol.toStringTag])+'|'+String(n.item(0)===d)+'|'"
+        "+String(n.item(2)===null)+'|'+String(it.next().value===d);";
+    char error[256];
+    return test_browser_child_node_case(672, PROBE,
+            "NodeList|true|true|true", error, sizeof(error));
+}
+
+/* TEST 673 - the root's previous sibling is the doctype, not an element sibling. */
+static BOOL test673_browser_document_type_root_siblings(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,e=document.documentElement;"
+        "document.getElementById('result').textContent="
+        "String(e.previousSibling===d)+'|'+String(d.nextSibling===e)+'|'"
+        "+String(e.previousElementSibling===null)+'|'"
+        "+String(d.nextElementSibling===e);";
+    char error[256];
+    return test_browser_child_node_case(673, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 674 - document.children filters the doctype to one HTML element. */
+static BOOL test674_browser_document_element_children(void)
+{
+    static const char PROBE[] =
+        "var c=document.children;document.getElementById('result').textContent="
+        "c.length+'|'+c[0].nodeName+'|'+String(c[0]===document.documentElement)+'|'"
+        "+String(c[Symbol.toStringTag])+'|'"
+        "+String(document.firstElementChild===document.documentElement);";
+    char error[256];
+    return test_browser_child_node_case(674, PROBE,
+            "1|HTML|true|HTMLCollection|true", error, sizeof(error));
+}
+
+/* TEST 675 - DocumentType metadata is immutable after bootstrap. */
+static BOOL test675_browser_document_type_immutability(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;try{d.nodeType=1;d.name='x';d.nodeName='X';}catch(e){}"
+        "document.getElementById('result').textContent="
+        "d.nodeType+'|'+d.name+'|'+d.nodeName+'|'+String(d.nodeValue===null);";
+    char error[256];
+    return test_browser_child_node_case(675, PROBE,
+            "10|html|html|true", error, sizeof(error));
+}
+
+/* TEST 676 - DocumentType has stable string branding. */
+static BOOL test676_browser_document_type_brand(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d[Symbol.toStringTag])+'|'+Object.prototype.toString.call(d)+'|'"
+        "+d.toString();";
+    char error[256];
+    return test_browser_child_node_case(676, PROBE,
+            "DocumentType|[object DocumentType]|[object DocumentType]", error,
+            sizeof(error));
+}
+
+/* TEST 677 - doctype order extends across the body subtree. */
+static BOOL test677_browser_document_type_subtree_position(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,r=document.getElementById('root');"
+        "document.getElementById('result').textContent="
+        "d.compareDocumentPosition(r)+'|'+r.compareDocumentPosition(d)+'|'"
+        "+document.compareDocumentPosition(r);";
+    char error[256];
+    return test_browser_child_node_case(677, PROBE,
+            "4|2|20", error, sizeof(error));
+}
+
+/* TEST 678 - contains() distinguishes the doctype leaf from the document. */
+static BOOL test678_browser_document_type_contains(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.contains(d))+'|'+String(d.contains(document))+'|'"
+        "+String(document.contains(document))+'|'"
+        "+String(document.documentElement.contains(d));";
+    char error[256];
+    return test_browser_child_node_case(678, PROBE,
+            "true|false|true|false", error, sizeof(error));
+}
+
+/* TEST 679 - doctype ownership and root remain stable across option objects. */
+static BOOL test679_browser_document_type_root_options(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.ownerDocument===document)+'|'"
+        "+String(d.getRootNode({composed:false})===document)+'|'"
+        "+String(d.parentNode===d.ownerDocument);";
+    char error[256];
+    return test_browser_child_node_case(679, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 680 - the wrapper uses the existing Node document-type constant. */
+static BOOL test680_browser_document_type_constant(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.nodeType===Node.DOCUMENT_TYPE_NODE)+'|'"
+        "+Node.DOCUMENT_TYPE_NODE+'|'+String(d.nodeType===10);";
+    char error[256];
+    return test_browser_child_node_case(680, PROBE,
+            "true|10|true", error, sizeof(error));
+}
+
+/* TEST 681 - the complete doctype/document child contract is internally consistent. */
+static BOOL test681_browser_document_type_contract(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,n=document.childNodes,e=document.documentElement;"
+        "document.getElementById('result').textContent="
+        "String(document.doctype===d)+'|'+String(n[0]===d)+'|'+String(n[1]===e)+'|'"
+        "+String(d.parentNode===document)+'|'+String(d.nextSibling===e)+'|'"
+        "+String(document.contains(d))+'|'+d.nodeName;";
+    char error[256];
+    return test_browser_child_node_case(681, PROBE,
+            "true|true|true|true|true|true|html", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -61350,6 +61606,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 661: ok =
                 test661_browser_document_structure_iteration();
+                break;
+        case 662: ok =
+                test662_browser_document_type_metadata();
+                break;
+        case 663: ok =
+                test663_browser_document_type_ownership();
+                break;
+        case 664: ok =
+                test664_browser_document_type_identity();
+                break;
+        case 665: ok =
+                test665_browser_document_type_equality();
+                break;
+        case 666: ok =
+                test666_browser_document_type_root();
+                break;
+        case 667: ok =
+                test667_browser_document_type_document_position();
+                break;
+        case 668: ok =
+                test668_browser_document_type_root_position();
+                break;
+        case 669: ok =
+                test669_browser_document_type_children();
+                break;
+        case 670: ok =
+                test670_browser_document_type_siblings();
+                break;
+        case 671: ok =
+                test671_browser_document_child_order();
+                break;
+        case 672: ok =
+                test672_browser_document_child_collection();
+                break;
+        case 673: ok =
+                test673_browser_document_type_root_siblings();
+                break;
+        case 674: ok =
+                test674_browser_document_element_children();
+                break;
+        case 675: ok =
+                test675_browser_document_type_immutability();
+                break;
+        case 676: ok =
+                test676_browser_document_type_brand();
+                break;
+        case 677: ok =
+                test677_browser_document_type_subtree_position();
+                break;
+        case 678: ok =
+                test678_browser_document_type_contains();
+                break;
+        case 679: ok =
+                test679_browser_document_type_root_options();
+                break;
+        case 680: ok =
+                test680_browser_document_type_constant();
+                break;
+        case 681: ok =
+                test681_browser_document_type_contract();
                 break;
         default: ok = FALSE; break;
         }

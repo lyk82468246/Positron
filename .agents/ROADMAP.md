@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next585
+### 当前短期状态：next586
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -405,6 +405,18 @@ wrapper 不伪造 `id`；复杂 document selector、通用 DOM 创建/mutation�
 `TEST389,390-448,482-661,999` 在
 `tmp/device-runs/20260821-175025-next585-regression-r3/` 通过 241/241；本批不涉及视觉、触摸、SIP、picker、旋转或网络失败，tracked
 `test_host.ini` 继续保持 `javascript=0`。
+
+`next586` 作为单一批次在 browser 层完成了受控 `DocumentType` snapshot：`document.doctype` 提供
+稳定的 `name`/`nodeType`/`nodeName`、owner/root/position/contains、identity/equality 和只读
+leaf 关系；document `childNodes` 保持 `[doctype, documentElement]`，`document.children` 保持
+element-only。该切片不新增 core ABI，不实现通用 doctype parser、节点创建、mutation、live
+collection 或完整 document tree。`TEST662-681,999` 定向门在
+`tmp/device-runs/20260822-135235-next586-r2/` 通过 21/21，`TEST549,642-681,999` 兼容门在
+`tmp/device-runs/20260822-135350-next586-compat/` 通过 42/42，最终
+`TEST389,390-448,482-681,999` 相邻回归在
+`tmp/device-runs/20260822-135558-next586-regression/` 通过 261/261；三次均无
+ERROR/FAIL 且 `TESTBENCH PASS` 唯一。tracked `test_host.ini` 继续保持 `javascript=0`，本批
+只涉及同步脚本 API/DOM snapshot，不新增人工页面验收。
 
 ## 中期目标
 

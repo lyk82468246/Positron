@@ -1,6 +1,6 @@
 # Positron 当前交接
 
-更新时间：2026-08-21
+更新时间：2026-08-22
 
 稳定使命、架构和公共边界见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。本文件只记录当前仓库基线、最近设备证据、
@@ -11,8 +11,9 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next585（本批覆盖 `TEST389,390-448`、`TEST482-661,999` 的相邻回归门与
-  `TEST642-661,999` 定向门；最近一次完整自动基线仍为 next255）。本批没有修改 tracked
+- 最新已验证产品基线：next586（本批覆盖 `TEST662-681,999` 定向门、
+  `TEST549,642-681,999` 兼容门和 `TEST389,390-448,482-681,999` 相邻回归；最近一次完整自动
+  基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
   与 URL、session storage 与 cookie、classList 与 style、选择器查询与 FormData、输入选择/数值步进/
@@ -215,10 +216,24 @@
   本批仍只涉及同步脚本 API/DOM snapshot，不涉及视觉、真实触摸、SIP、旋转、系统 picker
   或网络失败反馈，因此不新增人工页面验收；tracked `test_host.ini` 仍为 `javascript=0`。
 
-## 当前状态：next585
+- next586 作为一个单一批次在 browser 层增加了 browser-owned 的 `DocumentType` 快照：稳定的
+  `name`/`nodeType`/`nodeName`/owner/root/position/contains 元数据、只读 leaf 关系、identity/
+  equality 和字符串 brand；document 的 `childNodes` 顺序为 `[doctype, documentElement]`，
+  `children` 仍只包含 `documentElement`。它不新增 core ABI，不实现通用 doctype parser、节点
+  创建、mutation 或 live collection；`test_host.exe` 只提供 fixture、adapter 和
+  `TEST662–681` 断言。
+- `TEST662-681,999` 在 `tmp/device-runs/20260822-135235-next586-r2/` 通过 21/21；
+  `TEST549,642-681,999` 兼容重跑在 `tmp/device-runs/20260822-135350-next586-compat/`
+  通过 42/42；最终相邻回归 `TEST389,390-448,482-681,999` 在
+  `tmp/device-runs/20260822-135558-next586-regression/` 通过 261/261。三次均为零
+  ERROR、零 FAIL、唯一 TESTBENCH PASS、`test13_route_ok=True`。本批仍只涉及同步脚本
+  API/DOM snapshot，不新增人工页面验收；tracked `test_host.ini` 仍为 `javascript=0`。
 
-前一批单一 `next584` 已实现、构建并通过定向设备门及相邻累计回归门；当前单一 `next585` 也
-已实现、构建并通过定向设备门及相邻累计回归门，其中本批 20 个自动断言使用 `TEST642–661`
+## 当前状态：next586
+
+前一批单一 `next585` 已实现、构建并通过定向设备门及相邻累计回归门；当前单一 `next586` 也
+已实现、构建并通过定向设备门、兼容门及相邻累计回归门，其中本批 20 个自动断言使用
+`TEST662–681`
 编号，不再为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
@@ -250,7 +265,9 @@ document root 连到 body 子树，`documentElement.parentNode` 为 document 而
 提供；相应 `TEST642–661` 覆盖了正例、identity、边界和旧 TEST549 的顺序语义更新。底层 browser
 bootstrap 仍按十三个 IIFE 顺序评估，浏览器
 session heap ceiling 仍为 576 KiB，
-独立 `positron_script` 默认堆仍为 512 KiB。
+独立 `positron_script` 默认堆仍为 512 KiB。next586 的 DocumentType 只属于浏览器层的
+synthetic snapshot：它与 document child order、Node metadata 和 bounded position API 对齐，
+但不把 doctype token 或 parser/mutation 语义扩入 `positron_core.dll`。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -2761,14 +2778,14 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 不承诺 ARIA 语义或可访问性树。
 本轮 next382–401 的 metadata reflection 门也已通过，覆盖 20 个 ARIA raw 属性；均只承诺
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
-唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next585 之后的一个不依赖人工页面观察、
+唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next586 之后的一个不依赖人工页面观察、
 边界完整的产品能力；继续保持每批一个清晰的产品边界，不能把完整 DOM、布局或 native 输入
 偷偷扩入本批。
 
 完成标准：
 
-- TEST661/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/482–661/999` 定向选择；next299 的
+- TEST681/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/482–681/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2782,7 +2799,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next585 之后选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next586 之后选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
