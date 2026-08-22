@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next592
+### 当前短期状态：next593
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -498,6 +498,19 @@ ABI，`test_host.exe` 只提供 fixture、adapter 和 `TEST782–801` 断言。�
 `tmp/device-runs/20260822-192923-next592-regression-r1/` 通过 223/223。三次均无 ERROR/FAIL
 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、
 picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
+
+`next593` 作为单一批次在 browser 层完成 namespace-aware attribute read projection：
+`getAttributeNS()`、`hasAttributeNS()`、`getAttributeNodeNS()` 以及 Attr 的
+`namespaceURI`/`prefix`/`localName` 元数据复用既有 attribute snapshot 和 owner wrapper。
+null/空 namespace 表示无 namespace，`xml`/`xmlns` 映射已知 XML/XMLNS namespace，未知前缀或
+namespace fail closed；没有加入 namespace mutation、XML/SVG parser、节点创建、live collection
+或新的 core ABI。`TEST802-821,999`、`TEST549,642-821,999`、
+`TEST389,390-448,540,549,642-821,999` 分别在
+`tmp/device-runs/20260822-201726-next593-r2/`、
+`tmp/device-runs/20260822-201838-next593-compat-r2/`、
+`tmp/device-runs/20260822-202712-next593-regression-r2/` 通过 21/21、182/182、243/243，
+均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批不涉及视觉、触摸、SIP、picker、旋转或网络失败，
+tracked `test_host.ini` 继续保持 `javascript=0`，因此不新增人工页面验收。
 
 ## 中期目标
 

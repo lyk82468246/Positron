@@ -600,6 +600,25 @@ traversal、`HTMLCollection` 协议和稳定 wrapper identity，返回同步静�
 snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败人工门；browser session 仍使用
 608 KiB ceiling，独立 `positron_script` 默认堆仍为 512 KiB。
 
+#### next593 的 namespace-aware attribute lookup 边界
+
+next593 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。现有 attribute snapshot 上新增只读的 `getAttributeNS(namespace, localName)`、
+`hasAttributeNS()` 和 `getAttributeNodeNS()`；返回的 Attr wrapper 还暴露一致的
+`namespaceURI`、`prefix` 和 `localName`。null 与空 namespace 都表示无 namespace，已知的
+`xml`/`xmlns` 前缀分别映射到 XML/XMLNS namespace，未知前缀或 namespace 请求 fail closed。
+Attr 的 value/nodeValue 仍通过同 owner 的现有同步 bridge 读取/写回。
+
+这不是 namespace parser 或 mutation API：本批不提供 `setAttributeNS()`、`removeAttributeNS()`、
+XML/SVG parser、prefix mutation、节点创建或 live collection，也不引入新的 core ABI。
+`test_host.exe` 只提供 fixture、adapter 和 `TEST802–821` 自动断言；定向、兼容和缩减回归门分别为
+21/21、182/182、243/243，证据位于
+`tmp/device-runs/20260822-201726-next593-r2/`、
+`tmp/device-runs/20260822-201838-next593-compat-r2/` 和
+`tmp/device-runs/20260822-202712-next593-regression-r2/`。本批不涉及视觉、触摸、SIP、picker、
+旋转或网络失败人工门。browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
+仍为 512 KiB。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

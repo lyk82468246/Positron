@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next592（本批覆盖 `TEST782-801,999` 定向门、
-  `TEST549,642-801,999` 兼容门和缩减回归 `TEST389,390-448,540,549,642-801,999`；最近一次完整自动
+- 最新已验证产品基线：next593（本批覆盖 `TEST802-821,999` 定向门、
+  `TEST549,642-821,999` 兼容门和缩减回归 `TEST389,390-448,540,549,642-821,999`；最近一次完整自动
   基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
@@ -305,11 +305,11 @@
   API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面
   验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
-## 当前状态：next592
+## 当前状态：next593
 
-前一批单一 `next591` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next592` 也
+前一批单一 `next591` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next593` 也
 已实现、构建并通过定向设备门、兼容门及缩减相邻回归门，其中本批 20 个自动断言使用
-`TEST782–801`
+`TEST802–821`
 编号，不再为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
@@ -369,6 +369,20 @@ collection、节点创建、通用 mutation 或新的 core ABI。`TEST782–801,
 `TEST549,642-801,999` 在 `tmp/device-runs/20260822-192203-next592-compat-r1/` 通过
 162/162，缩减回归 `TEST389,390-448,540,549,642-801,999` 在
 `tmp/device-runs/20260822-192923-next592-regression-r1/` 通过 223/223；三次均为零
+ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、
+SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收。
+
+`next593` 在同一 browser-owned attribute snapshot 上增加只读的 namespace-aware attribute
+projection：`getAttributeNS()`、`hasAttributeNS()`、`getAttributeNodeNS()`，以及 Attr 的
+`namespaceURI`/`prefix`/`localName` 元数据。null 与空 namespace 等价于无 namespace；已知的
+`xml`/`xmlns` 前缀映射到 XML/XMLNS namespace，未知前缀和未知 namespace fail closed；Attr
+节点仍复用同 owner 的 live value/nodeValue wrapper。该批不提供 `setAttributeNS()`、
+`removeAttributeNS()`、XML/SVG parser、prefix mutation、节点创建、live collection 或新的
+core ABI；`test_host.exe` 只提供 fixture、adapter 和 `TEST802–821` 断言。最终定向门
+`TEST802-821,999` 在 `tmp/device-runs/20260822-201726-next593-r2/` 通过 21/21，兼容门
+`TEST549,642-821,999` 在 `tmp/device-runs/20260822-201838-next593-compat-r2/` 通过 182/182，
+缩减回归 `TEST389,390-448,540,549,642-821,999` 在
+`tmp/device-runs/20260822-202712-next593-regression-r2/` 通过 243/243；三次均为零
 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、
 SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收。
 
@@ -2881,14 +2895,14 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 不承诺 ARIA 语义或可访问性树。
 本轮 next382–401 的 metadata reflection 门也已通过，覆盖 20 个 ARIA raw 属性；均只承诺
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
-唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next592 之后的一个不依赖人工页面观察、
+唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next593 之后的一个不依赖人工页面观察、
 边界完整的产品能力；继续保持每批一个清晰的产品边界，不能把完整 DOM、布局或 native 输入
 偷偷扩入本批。
 
 完成标准：
 
-- TEST801/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/540/549/642–801/999` 缩减选择；next299 的
+- TEST821/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/540/549/642–821/999` 缩减选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2902,7 +2916,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next592 之后选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next593 之后选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。

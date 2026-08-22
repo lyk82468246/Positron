@@ -95,6 +95,11 @@ next592 又补齐 document 与 element 的 `getElementsByTagNameNS()`：支持�
 HTMLCollection 并复用集合协议和 wrapper identity；空/未知输入 fail closed，不引入 XML/SVG
 parser、live collection 或 mutation。对应 `TEST782–801` 及兼容/缩减回归门已由自动设备门覆盖，
 本批仍未重复旧的全量回归。
+next593 又在同一属性 snapshot 上提供只读的 `getAttributeNS()`、`hasAttributeNS()`、
+`getAttributeNodeNS()` 及 Attr 的 `namespaceURI`/`prefix`/`localName` 元数据；null/空 namespace
+表示无 namespace，`xml`/`xmlns` 映射已知 XML/XMLNS namespace，未知输入 fail closed。它不引入
+namespace mutation、XML/SVG parser、live collection 或节点创建；对应 `TEST802–821` 及兼容/缩减
+回归门已由自动设备门覆盖，本批仍未重复旧的全量回归。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap

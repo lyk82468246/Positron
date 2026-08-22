@@ -272,6 +272,28 @@ ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖�
 因此不新增人工页面验收。为控制设备时间，本批继续未重复旧的 341 项全回归；tracked
 `test_host.ini` 仍保持 `javascript=0`。
 
+`next593` 仍是一个批次编号，不为 namespace/localName 的每个属性组合重复分配 next 号。本批
+在既有 `Attr`/`NamedNodeMap` snapshot 上增加只读 `getAttributeNS()`、`hasAttributeNS()`、
+`getAttributeNodeNS()` 和 `namespaceURI`/`prefix`/`localName` 元数据，自动断言为
+`TEST802–821`：
+
+```bat
+scripts\device_gate.bat -Candidate next593-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "802-821,999"
+```
+
+定向证据为 `tmp/device-runs/20260822-201726-next593-r2/`，21/21 通过；兼容门
+`TEST549,642-821,999` 在 `tmp/device-runs/20260822-201838-next593-compat-r2/` 通过
+182/182；缩减回归 `TEST389,390-448,540,549,642-821,999` 在
+`tmp/device-runs/20260822-202712-next593-regression-r2/` 通过 243/243。三次均为零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖 null/空 namespace、
+XML/XMLNS 已知前缀、未知前缀/namespace fail-closed、localName 大小写和 coercion、Attr
+identity 与 live value 更新；不提供 namespace mutation、XML/SVG parser、节点创建或 live
+collection，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收。
+为控制设备时间，本批继续未重复旧的 341 项全回归；tracked `test_host.ini` 仍保持
+`javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

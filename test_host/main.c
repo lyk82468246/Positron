@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 801
+#define TEST_MAX_NUMBER 821
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -60238,6 +60238,261 @@ static BOOL test801_browser_namespace_collection_contract(void)
             "true|true|true|true|true|true|true|true", error, sizeof(error));
 }
 
+/* TEST 802 - namespace-aware attribute lookup methods expose the read-only projection. */
+static BOOL test802_browser_namespace_attribute_types(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target'),a=e.getAttributeNodeNS(null,'title');"
+        "document.getElementById('result').textContent="
+        "String(typeof e.getAttributeNS==='function')+'|'"
+        "+String(typeof e.hasAttributeNS==='function')+'|'"
+        "+String(typeof e.getAttributeNodeNS==='function')+'|'"
+        "+String(a!==null)+'|'+a.localName;";
+    char error[256];
+    return test_browser_attribute_case(802, PROBE,
+            "true|true|true|true|title", error, sizeof(error));
+}
+
+/* TEST 803 - null namespace reads ordinary HTML attributes by local name. */
+static BOOL test803_browser_namespace_attribute_read(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNodeNS(null,'id');"
+        "document.getElementById('result').textContent=e.getAttributeNS(null,'id')+'|'"
+        "+a.name+'|'+a.value;";
+    char error[256];
+    return test_browser_attribute_case(803, PROBE, "target|id|target", error,
+            sizeof(error));
+}
+
+/* TEST 804 - unknown namespaces fail closed without falling back to null. */
+static BOOL test804_browser_namespace_attribute_unknown(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.getAttributeNS('urn:missing','id')===null)+'|'"
+        "+String(e.getAttributeNodeNS('urn:missing','id')===null);";
+    char error[256];
+    return test_browser_attribute_case(804, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 805 - the empty namespace spelling is equivalent to null. */
+static BOOL test805_browser_namespace_attribute_empty(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "e.getAttributeNS('','id')+'|'+String(e.hasAttributeNS('','id'));";
+    char error[256];
+    return test_browser_attribute_case(805, PROBE, "target|true", error,
+            sizeof(error));
+}
+
+/* TEST 806 - hasAttributeNS distinguishes present, absent and wrong namespaces. */
+static BOOL test806_browser_namespace_attribute_has(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.hasAttributeNS(null,'data-a'))+'|'"
+        "+String(e.hasAttributeNS(null,'missing'))+'|'"
+        "+String(e.hasAttributeNS('urn:missing','data-a'));";
+    char error[256];
+    return test_browser_attribute_case(806, PROBE, "true|false|false", error,
+            sizeof(error));
+}
+
+/* TEST 807 - namespace node lookup shares the existing Attr wrapper identity. */
+static BOOL test807_browser_namespace_attribute_identity(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNodeNS(null,'title');"
+        "var b=e.getAttributeNode('title');document.getElementById('result').textContent="
+        "String(a===b)+'|'+String(a.ownerElement===e)+'|'+a.value;";
+    char error[256];
+    return test_browser_attribute_case(807, PROBE, "true|true|Hello", error,
+            sizeof(error));
+}
+
+/* TEST 808 - namespace localName matching is case-sensitive. */
+static BOOL test808_browser_namespace_attribute_case(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.getAttributeNS(null,'TITLE')===null)+'|'+e.getAttributeNS(null,'title');";
+    char error[256];
+    return test_browser_attribute_case(808, PROBE, "true|Hello", error,
+            sizeof(error));
+}
+
+/* TEST 809 - namespace and localName arguments use String coercion. */
+static BOOL test809_browser_namespace_attribute_coercion(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var n={toString:function(){return '';}};"
+        "var l={toString:function(){return 'title';}};document.getElementById('result').textContent="
+        "e.getAttributeNS(n,l)+'|'+String(e.hasAttributeNS(n,l));";
+    char error[256];
+    return test_browser_attribute_case(809, PROBE, "Hello|true", error,
+            sizeof(error));
+}
+
+/* TEST 810 - wildcard namespace is not an exact attribute namespace. */
+static BOOL test810_browser_namespace_attribute_wildcard(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.getAttributeNS('*','id')===null)+'|'"
+        "+String(e.hasAttributeNS('*','id')===false);";
+    char error[256];
+    return test_browser_attribute_case(810, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 811 - empty localName is a fail-closed lookup. */
+static BOOL test811_browser_namespace_attribute_blank_local(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.getAttributeNS(null,'')===null)+'|'+String(e.hasAttributeNS(null,''));";
+    char error[256];
+    return test_browser_attribute_case(811, PROBE, "true|false", error,
+            sizeof(error));
+}
+
+/* TEST 812 - ordinary Attr metadata remains in the null namespace. */
+static BOOL test812_browser_namespace_attribute_metadata(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNodeNS(null,'id');"
+        "document.getElementById('result').textContent="
+        "String(a.namespaceURI===null)+'|'+String(a.prefix===null)+'|'+a.localName;";
+    char error[256];
+    return test_browser_attribute_case(812, PROBE, "true|true|id", error,
+            sizeof(error));
+}
+
+/* TEST 813 - an explicit xml-prefixed attribute reports XML metadata. */
+static BOOL test813_browser_namespace_attribute_xml_metadata(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:lang','en');"
+        "var a=e.getAttributeNodeNS('http://www.w3.org/XML/1998/namespace','lang');"
+        "document.getElementById('result').textContent=a.value+'|'+a.namespaceURI+'|'"
+        "+a.prefix+'|'+a.localName;";
+    char error[384];
+    return test_browser_attribute_case(813, PROBE,
+            "en|http://www.w3.org/XML/1998/namespace|xml|lang", error,
+            sizeof(error));
+}
+
+/* TEST 814 - XML namespace lookup reads the explicit xml attribute. */
+static BOOL test814_browser_namespace_attribute_xml_read(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:lang','en');"
+        "document.getElementById('result').textContent="
+        "e.getAttributeNS('http://www.w3.org/XML/1998/namespace','lang')+'|'"
+        "+String(e.hasAttributeNS('http://www.w3.org/XML/1998/namespace','lang'));";
+    char error[256];
+    return test_browser_attribute_case(814, PROBE, "en|true", error,
+            sizeof(error));
+}
+
+/* TEST 815 - an XML attribute does not leak into the null namespace. */
+static BOOL test815_browser_namespace_attribute_xml_boundary(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:lang','en');"
+        "document.getElementById('result').textContent="
+        "String(e.getAttributeNS(null,'lang')===null)+'|'"
+        "+String(e.getAttributeNodeNS(null,'lang')===null);";
+    char error[256];
+    return test_browser_attribute_case(815, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 816 - unknown attribute prefixes fail closed rather than inventing a namespace. */
+static BOOL test816_browser_namespace_attribute_unknown_prefix(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('demo:name','x');var a=e.getAttributeNode('demo:name');"
+        "document.getElementById('result').textContent="
+        "String(e.getAttributeNS(null,'name')===null)+'|'"
+        "+String(e.getAttributeNS('urn:demo','name')===null)+'|'"
+        "+String(a.namespaceURI===null);";
+    char error[256];
+    return test_browser_attribute_case(816, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 817 - XMLNS-prefixed attributes expose the bounded XMLNS namespace. */
+static BOOL test817_browser_namespace_attribute_xmlns(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xmlns:demo','urn:demo');"
+        "var a=e.getAttributeNodeNS('http://www.w3.org/2000/xmlns/','demo');"
+        "document.getElementById('result').textContent=a.value+'|'+a.namespaceURI+'|'"
+        "+a.prefix+'|'+a.localName;";
+    char error[384];
+    return test_browser_attribute_case(817, PROBE,
+            "urn:demo|http://www.w3.org/2000/xmlns/|xmlns|demo", error,
+            sizeof(error));
+}
+
+/* TEST 818 - repeated namespace node lookup preserves identity. */
+static BOOL test818_browser_namespace_attribute_node_identity(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:lang','en');"
+        "var a=e.getAttributeNodeNS('http://www.w3.org/XML/1998/namespace','lang');"
+        "var b=e.getAttributeNodeNS('http://www.w3.org/XML/1998/namespace','lang');"
+        "document.getElementById('result').textContent=String(a===b)+'|'+a.value;";
+    char error[256];
+    return test_browser_attribute_case(818, PROBE, "true|en", error,
+            sizeof(error));
+}
+
+/* TEST 819 - Attr.value remains live through a namespace node wrapper. */
+static BOOL test819_browser_namespace_attribute_live_value(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:lang','en');"
+        "var a=e.getAttributeNodeNS('http://www.w3.org/XML/1998/namespace','lang');a.value='fr';"
+        "document.getElementById('result').textContent=e.getAttributeNS('http://www.w3.org/XML/1998/namespace','lang')+'|'+a.value;";
+    char error[256];
+    return test_browser_attribute_case(819, PROBE, "fr|fr", error,
+            sizeof(error));
+}
+
+/* TEST 820 - namespace lookup shares the parser-order attribute map. */
+static BOOL test820_browser_namespace_attribute_map(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:lang','en');"
+        "var a=e.attributes;document.getElementById('result').textContent="
+        "a.length+'|'+a[a.length-1].name+'|'+e.getAttributeNames()[e.getAttributeNames().length-1];";
+    char error[256];
+    return test_browser_attribute_case(820, PROBE, "7|xml:lang|xml:lang", error,
+            sizeof(error));
+}
+
+/* TEST 821 - the namespace attribute contract combines ordinary, XML and fail-closed lookup. */
+static BOOL test821_browser_namespace_attribute_contract(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:lang','en');"
+        "e.setAttribute('demo:name','x');var x=e.getAttributeNodeNS(null,'id');"
+        "var y=e.getAttributeNodeNS('http://www.w3.org/XML/1998/namespace','lang');"
+        "document.getElementById('result').textContent="
+        "String(x===e.getAttributeNode('id'))+'|'+String(x.namespaceURI===null)+'|'"
+        "+String(y.prefix==='xml')+'|'+String(y.localName==='lang')+'|'"
+        "+String(e.hasAttributeNS('urn:demo','name')===false)+'|'"
+        "+String(e.getAttributeNS(null,'name')===null);";
+    char error[384];
+    return test_browser_attribute_case(821, PROBE,
+            "true|true|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -63667,6 +63922,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 801: ok =
                 test801_browser_namespace_collection_contract();
+                break;
+        case 802: ok =
+                test802_browser_namespace_attribute_types();
+                break;
+        case 803: ok =
+                test803_browser_namespace_attribute_read();
+                break;
+        case 804: ok =
+                test804_browser_namespace_attribute_unknown();
+                break;
+        case 805: ok =
+                test805_browser_namespace_attribute_empty();
+                break;
+        case 806: ok =
+                test806_browser_namespace_attribute_has();
+                break;
+        case 807: ok =
+                test807_browser_namespace_attribute_identity();
+                break;
+        case 808: ok =
+                test808_browser_namespace_attribute_case();
+                break;
+        case 809: ok =
+                test809_browser_namespace_attribute_coercion();
+                break;
+        case 810: ok =
+                test810_browser_namespace_attribute_wildcard();
+                break;
+        case 811: ok =
+                test811_browser_namespace_attribute_blank_local();
+                break;
+        case 812: ok =
+                test812_browser_namespace_attribute_metadata();
+                break;
+        case 813: ok =
+                test813_browser_namespace_attribute_xml_metadata();
+                break;
+        case 814: ok =
+                test814_browser_namespace_attribute_xml_read();
+                break;
+        case 815: ok =
+                test815_browser_namespace_attribute_xml_boundary();
+                break;
+        case 816: ok =
+                test816_browser_namespace_attribute_unknown_prefix();
+                break;
+        case 817: ok =
+                test817_browser_namespace_attribute_xmlns();
+                break;
+        case 818: ok =
+                test818_browser_namespace_attribute_node_identity();
+                break;
+        case 819: ok =
+                test819_browser_namespace_attribute_live_value();
+                break;
+        case 820: ok =
+                test820_browser_namespace_attribute_map();
+                break;
+        case 821: ok =
+                test821_browser_namespace_attribute_contract();
                 break;
         default: ok = FALSE; break;
         }

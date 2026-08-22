@@ -59,6 +59,13 @@ next592 又在同一 traversal 上提供 document 与 element 的 `getElementsBy
 identity；null、空或未知输入 fail closed，不实现 XML/SVG namespace parser、live 更新、节点
 创建、通用 mutation 或新的 core ABI。
 
+next593 又在同一属性 snapshot 上提供只读的 `getAttributeNS()`、`hasAttributeNS()`、
+`getAttributeNodeNS()` 及 Attr 的 `namespaceURI`/`prefix`/`localName` 元数据；null/空 namespace
+表示无 namespace，`xml`/`xmlns` 映射已知 XML/XMLNS namespace，未知输入 fail closed。返回的
+Attr 仍复用同 owner 的 live value/nodeValue wrapper；不提供 namespace mutation、XML/SVG parser、
+live collection、节点创建或新的 core ABI。对应 `TEST802–821` 及兼容/缩减回归门已由自动设备门
+覆盖。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
