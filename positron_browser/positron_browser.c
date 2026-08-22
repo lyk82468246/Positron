@@ -13,12 +13,12 @@
 #include "positron_json.h"
 #include "positron_script.h"
 
-/* The browser bootstrap owns one additional bounded DOM collection layer
- * beyond the standalone script surface. Keep its heap ceiling explicit and
- * local to browser sessions; independent PScript contexts remain at their
- * 512 KiB default. */
+/* The browser bootstrap owns additional bounded DOM collection layers beyond
+ * the standalone script surface. Keep its heap ceiling explicit and local to
+ * browser sessions; independent PScript contexts remain at their 512 KiB
+ * default. */
 #define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 64UL * 1024UL)
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 96UL * 1024UL)
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -1989,6 +1989,19 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "return this.getElementById(s.substring(1));}return null;};"
         "pdocument.querySelectorAll=function(selector){var a=[];var e="
         "this.querySelector(selector);if(e!==null){a.push(e);}return a;};"
+        "function pdocumentCollection(a){if(typeof g.__pcoreDecorateCollection13==='function'){"
+        "return g.__pcoreDecorateCollection13(a,'HTMLCollection',true);}return a;}"
+        "pdocument.getElementsByTagName=function(name){var a=[];var e=this.documentElement;"
+        "var d;var i;var s=String(name).toLowerCase();if(s===''){return pdocumentCollection(a);}"
+        "if(e!==null&&(s==='*'||e.localName===s)){a.push(e);}"
+        "if(e!==null&&typeof e.getElementsByTagName==='function'){d=e.getElementsByTagName(name);"
+        "for(i=0;i<d.length;i++){a.push(d[i]);}}return pdocumentCollection(a);};"
+        "pdocument.getElementsByClassName=function(names){var a=[];var e=this.documentElement;"
+        "var d;var i;var s=String(names).replace(/^\\s+|\\s+$/g,'');var p;var q;"
+        "if(e!==null&&s!==''){p=s.split(/\\s+/);q='.';for(i=0;i<p.length;i++){"
+        "if(i>0){q+='.';}q+=p[i];}if(e.matches(q)){a.push(e);}}"
+        "if(e!==null&&typeof e.getElementsByClassName==='function'){d=e.getElementsByClassName(names);"
+        "for(i=0;i<d.length;i++){a.push(d[i]);}}return pdocumentCollection(a);};"
         "Object.defineProperty(pdocument,'documentElement',{get:function(){"
         "return pdocumentStructural(pdocumentElementToken);},enumerable:true});"
         "Object.defineProperty(pdocument,'head',{get:function(){"
@@ -2753,10 +2766,18 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(name===''||owner.getAttribute(name)!==value){return false;}}pos=end+1;}else{return false;}}return true;}"
         "PElement.prototype.matches=function(selector){return match9(this,selector);};"
         "PElement.prototype.closest=function(selector){var n=this;var i=0;while(n&&i<64){if(match9(n,selector)){return n;}n=n.parentElement;i++;}return null;};"
-        "function query9(owner,selector,all){var out=[];var stack=[];var kids;var i;var n;stack.push(owner);"
-        "while(stack.length){n=stack.pop();kids=children9(n);for(i=0;i<kids.length;i++){if(match9(kids[i],selector)){if(!all){return kids[i];}out.push(kids[i]);}}for(i=kids.length-1;i>=0;i--){stack.push(kids[i]);}}return all?list9(out,false):null;}"
+        "function query9(owner,selector,all,named){var out=[];var stack=[];var kids;var i;var n;"
+        "kids=children9(owner);for(i=kids.length-1;i>=0;i--){stack.push(kids[i]);}"
+        "while(stack.length){n=stack.pop();if(match9(n,selector)){if(!all){return n;}out.push(n);}"
+        "kids=children9(n);for(i=kids.length-1;i>=0;i--){stack.push(kids[i]);}}"
+        "return all?list9(out,named===true):null;}"
         "PElement.prototype.querySelector=function(selector){return query9(this,selector,false);};"
         "PElement.prototype.querySelectorAll=function(selector){return query9(this,selector,true);};"
+        "PElement.prototype.getElementsByTagName=function(name){var s=String(name);"
+        "return s===''?list9([],true):query9(this,s,true,true);};"
+        "PElement.prototype.getElementsByClassName=function(names){var s=String(names).replace(/^\\s+|\\s+$/g,'');"
+        "var a;if(s===''){return list9([],true);}a=s.split(/\\s+/);var q='.';var i;"
+        "for(i=0;i<a.length;i++){if(i>0){q+='.';}q+=a[i];}return query9(this,q,true,true);};"
         "Object.defineProperty(PElement.prototype,'form',{get:function(){var t=this.localName;if(t!=='input'&&t!=='select'&&t!=='textarea'&&t!=='button'){return null;}var id=relation9(this,8,0);return typeof id==='string'?wrap9(id):null;},enumerable:true});"
         "Object.defineProperty(PElement.prototype,'elements',{get:function(){var a=[];var n;var i;var id;"
         "if(this.localName!=='form'){return list9(a,true);}n=Number(relation9(this,9,0));if(!(n>=0&&n===Math.floor(n))){n=0;}"

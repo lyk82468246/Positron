@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next587 基线）
+### 当前默认自动选择与人工验收包（next588 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -165,6 +165,32 @@ scripts\device_gate.bat -Candidate next587 ^
 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批只改变同步脚本 API/DOM
 snapshot，不触及视觉、触摸、SIP、系统 picker、旋转或网络失败反馈，因此不新增人工页面
 验收；tracked `test_host.ini` 继续保持 `javascript=0`。
+
+`next588` 仍是一个批次编号，不为每个集合方法重复分配 next 号。本批在既有 DOM snapshot
+上增加 document/element 的 `getElementsByTagName()`/`getElementsByClassName()`，自动断言为
+`TEST702–721`：
+
+```bat
+scripts\device_gate.bat -Candidate next588-final ^
+  -EnableJavaScript ^
+  -TestSelection "702-721,999"
+```
+
+定向证据为 `tmp/device-runs/20260822-152000-next588-final/`，21/21 通过；兼容门
+`TEST549,642-721,999` 在 `tmp/device-runs/20260822-152109-next588-compat-final/` 通过
+82/82；相邻回归 `TEST389,390-448,482-721,999` 在
+`tmp/device-runs/20260822-152431-next588-regression-final/` 通过 301/301。三次均为零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批只改变同步、只读的
+HTMLCollection snapshot：tag 大小写归一、`*`、多 class token、DFS 顺序、owner 排除、
+document root 包含、`item()`/`namedItem()` 与迭代协议都由自动断言覆盖，不实现 live collection、
+通用 selector 或 mutation，因此不新增人工页面验收；tracked `test_host.ini` 继续保持
+`javascript=0`。
+
+新增 bootstrap 后，browser session 的 576 KiB ceiling 在 TEST540 的既有 Promise 边界上
+稳定触发内存上限。未放宽断言、未改变独立 `positron_script` 的 512 KiB 默认堆，而是把 browser
+session ceiling 明确提高到 608 KiB；`tmp/device-runs/20260822-151937-next588-540-r3/`
+的 TEST540/999 2/2 通过，随后兼容和相邻回归门也通过。设备 gate 的 `-EnableJavaScript` 仍只
+修改隔离 staging，默认配置不变。
 
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行

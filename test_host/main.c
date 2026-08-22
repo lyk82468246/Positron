@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 701
+#define TEST_MAX_NUMBER 721
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -58895,6 +58895,280 @@ static BOOL test701_browser_node_metadata_contract(void)
             "true|true|true|true|true|true|true", error, sizeof(error));
 }
 
+static BOOL test_browser_collection_query_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "<title id='title'>Title</title></head>"
+        "<body><main id='main' class='scope'><section id='one' class='item alpha'>"
+        "<span id='a' class='target alpha'>A</span></section>"
+        "<section id='two' class='item beta'><span id='b' class='target beta'>B</span>"
+        "<i id='italic' class='target beta'>I</i></section>"
+        "<p id='result'>idle</p></main></body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected, error,
+            error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded HTMLCollection query passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded HTMLCollection query failed.");
+    }
+    return ok;
+}
+
+/* TEST 702 - tag-name queries preserve descendant document order. */
+static BOOL test702_browser_collection_tag_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByTagName('section');"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].id+'|'+a[1].id;";
+    char error[256];
+    return test_browser_collection_query_case(702, PROBE, "2|one|two", error,
+            sizeof(error));
+}
+
+/* TEST 703 - tag-name queries are ASCII case-insensitive in the HTML view. */
+static BOOL test703_browser_collection_tag_case(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByTagName('SeCtIoN');"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].localName;";
+    char error[256];
+    return test_browser_collection_query_case(703, PROBE, "2|section", error,
+            sizeof(error));
+}
+
+/* TEST 704 - wildcard queries traverse nested bounded element wrappers. */
+static BOOL test704_browser_collection_tag_wildcard(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByTagName('*');"
+        "var s='';a.forEach(function(v){s+=v.id+'|';});"
+        "document.getElementById('result').textContent=a.length+'|'+s;";
+    char error[256];
+    return test_browser_collection_query_case(704, PROBE,
+            "6|one|a|two|b|italic|result|", error, sizeof(error));
+}
+
+/* TEST 705 - HTMLCollection item/namedItem and type metadata are available. */
+static BOOL test705_browser_collection_metadata(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByTagName('section');"
+        "document.getElementById('result').textContent="
+        "String(a.item(1)===a[1])+'|'+String(a.item(2)===null)+'|'"
+        "+String(a.namedItem('one')===a[0])+'|'+a[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_collection_query_case(705, PROBE,
+            "true|true|true|HTMLCollection", error, sizeof(error));
+}
+
+/* TEST 706 - an unknown tag returns an empty, bounded collection. */
+static BOOL test706_browser_collection_tag_empty(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByTagName('missing');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a.item(0)===null)+'|'+String(a.namedItem('one')===null);";
+    char error[256];
+    return test_browser_collection_query_case(706, PROBE, "0|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 707 - a single class token returns matching descendants in order. */
+static BOOL test707_browser_collection_class_single(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByClassName('item');"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].id+'|'+a[1].id;";
+    char error[256];
+    return test_browser_collection_query_case(707, PROBE, "2|one|two", error,
+            sizeof(error));
+}
+
+/* TEST 708 - multiple class tokens are matched conjunctively. */
+static BOOL test708_browser_collection_class_multiple(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByClassName('target beta');"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].id+'|'+a[1].id;";
+    char error[256];
+    return test_browser_collection_query_case(708, PROBE, "2|b|italic", error,
+            sizeof(error));
+}
+
+/* TEST 709 - class-name whitespace is normalized without changing order. */
+static BOOL test709_browser_collection_class_whitespace(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByClassName('  target   alpha ');"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].id;";
+    char error[256];
+    return test_browser_collection_query_case(709, PROBE, "1|a", error,
+            sizeof(error));
+}
+
+/* TEST 710 - an unknown class returns an empty collection. */
+static BOOL test710_browser_collection_class_empty(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByClassName('missing');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a.item(0)===null);";
+    char error[256];
+    return test_browser_collection_query_case(710, PROBE, "0|true", error,
+            sizeof(error));
+}
+
+/* TEST 711 - scoped class queries exclude the owner itself. */
+static BOOL test711_browser_collection_class_scope(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('main');var a=e.getElementsByClassName('scope');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a[0]===e);";
+    char error[256];
+    return test_browser_collection_query_case(711, PROBE, "0|false", error,
+            sizeof(error));
+}
+
+/* TEST 712 - scoped tag queries exclude the owner itself. */
+static BOOL test712_browser_collection_tag_scope(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('main');var a=e.getElementsByTagName('main');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a[0]===e);";
+    char error[256];
+    return test_browser_collection_query_case(712, PROBE, "0|false", error,
+            sizeof(error));
+}
+
+/* TEST 713 - document tag queries include the structural document element. */
+static BOOL test713_browser_collection_document_tag(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagName('HTML');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a[0]===document.documentElement);";
+    char error[256];
+    return test_browser_collection_query_case(713, PROBE, "1|true", error,
+            sizeof(error));
+}
+
+/* TEST 714 - document wildcard queries include root and nested structure. */
+static BOOL test714_browser_collection_document_wildcard(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagName('*');var s='';"
+        "a.forEach(function(v){s+=v.localName+'|';});"
+        "document.getElementById('result').textContent=a.length+'|'+s;";
+    char error[256];
+    return test_browser_collection_query_case(714, PROBE,
+            "11|html|head|title|body|main|section|span|section|span|i|p|",
+            error, sizeof(error));
+}
+
+/* TEST 715 - document class queries include a matching document descendant. */
+static BOOL test715_browser_collection_document_class(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByClassName('scope');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a[0]===document.getElementById('main'));";
+    char error[256];
+    return test_browser_collection_query_case(715, PROBE, "1|true", error,
+            sizeof(error));
+}
+
+/* TEST 716 - an empty class query fails closed. */
+static BOOL test716_browser_collection_class_blank(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByClassName('   ');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a.item(0)===null);";
+    char error[256];
+    return test_browser_collection_query_case(716, PROBE, "0|true", error,
+            sizeof(error));
+}
+
+/* TEST 717 - an empty tag query fails closed. */
+static BOOL test717_browser_collection_tag_blank(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByTagName('');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a.item(0)===null);";
+    char error[256];
+    return test_browser_collection_query_case(717, PROBE, "0|true", error,
+            sizeof(error));
+}
+
+/* TEST 718 - HTMLCollection forEach preserves the depth-first order. */
+static BOOL test718_browser_collection_foreach_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByTagName('*');var s='';"
+        "a.forEach(function(v,i,c){s+=i+':'+v.id+':'+String(c===a)+'|';});"
+        "document.getElementById('result').textContent=s;";
+    char error[256];
+    return test_browser_collection_query_case(718, PROBE,
+            "0:one:true|1:a:true|2:two:true|3:b:true|4:italic:true|5:result:true|",
+            error, sizeof(error));
+}
+
+/* TEST 719 - keys, values and entries share stable collection identities. */
+static BOOL test719_browser_collection_iterators(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByClassName('target');"
+        "var k=a.keys(),v=a.values(),e=a.entries();var k0=k.next(),v0=v.next(),e0=e.next().value;"
+        "document.getElementById('result').textContent=k0.value+'|'+v0.value.id+'|'"
+        "+e0[0]+':'+e0[1].id+'|'+String(a[Symbol.toStringTag])+'|'"
+        "+String(k[Symbol.iterator]()==k);";
+    char error[256];
+    return test_browser_collection_query_case(719, PROBE,
+            "0|a|0:a|HTMLCollection|true", error, sizeof(error));
+}
+
+/* TEST 720 - collections are snapshots while a later query sees the mutation. */
+static BOOL test720_browser_collection_snapshot(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByClassName('target');"
+        "document.getElementById('b').className='other';"
+        "var b=document.getElementById('main').getElementsByClassName('target');"
+        "document.getElementById('result').textContent=a.length+'|'+b.length+'|'"
+        "+String(a[1].id==='b');";
+    char error[256];
+    return test_browser_collection_query_case(720, PROBE, "3|2|true", error,
+            sizeof(error));
+}
+
+/* TEST 721 - the bounded tag/class collection contract is coherent. */
+static BOOL test721_browser_collection_contract(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('main');var t=e.getElementsByTagName('section');"
+        "var c=e.getElementsByClassName('item');var d=document.getElementsByTagName('main');"
+        "document.getElementById('result').textContent="
+        "String(t.length===2)+'|'+String(c.length===2)+'|'"
+        "+String(t[0]===c[0])+'|'+String(d.length===1)+'|'"
+        "+String(typeof e.getElementsByClassName==='function')+'|'"
+        "+String(typeof document.getElementsByTagName==='function');";
+    char error[256];
+    return test_browser_collection_query_case(721, PROBE,
+            "true|true|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -62024,6 +62298,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 701: ok =
                 test701_browser_node_metadata_contract();
+                break;
+        case 702: ok =
+                test702_browser_collection_tag_order();
+                break;
+        case 703: ok =
+                test703_browser_collection_tag_case();
+                break;
+        case 704: ok =
+                test704_browser_collection_tag_wildcard();
+                break;
+        case 705: ok =
+                test705_browser_collection_metadata();
+                break;
+        case 706: ok =
+                test706_browser_collection_tag_empty();
+                break;
+        case 707: ok =
+                test707_browser_collection_class_single();
+                break;
+        case 708: ok =
+                test708_browser_collection_class_multiple();
+                break;
+        case 709: ok =
+                test709_browser_collection_class_whitespace();
+                break;
+        case 710: ok =
+                test710_browser_collection_class_empty();
+                break;
+        case 711: ok =
+                test711_browser_collection_class_scope();
+                break;
+        case 712: ok =
+                test712_browser_collection_tag_scope();
+                break;
+        case 713: ok =
+                test713_browser_collection_document_tag();
+                break;
+        case 714: ok =
+                test714_browser_collection_document_wildcard();
+                break;
+        case 715: ok =
+                test715_browser_collection_document_class();
+                break;
+        case 716: ok =
+                test716_browser_collection_class_blank();
+                break;
+        case 717: ok =
+                test717_browser_collection_tag_blank();
+                break;
+        case 718: ok =
+                test718_browser_collection_foreach_order();
+                break;
+        case 719: ok =
+                test719_browser_collection_iterators();
+                break;
+        case 720: ok =
+                test720_browser_collection_snapshot();
+                break;
+        case 721: ok =
+                test721_browser_collection_contract();
                 break;
         default: ok = FALSE; break;
         }

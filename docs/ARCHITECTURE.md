@@ -518,6 +518,25 @@ namespace mutation、完整 namespace tree、live collection 或通用 DOM mutat
 十三个 IIFE，session heap ceiling 为 576 KiB，独立 `positron_script` 默认堆仍为 512 KiB；
 本批仅覆盖同步脚本 API/DOM snapshot，不新增人工页面验收。
 
+#### next588 的 HTMLCollection 查询边界
+
+next588 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。browser-owned 的 document 与 HTML element wrapper 现在提供
+`getElementsByTagName()` 和 `getElementsByClassName()`：HTML tag 查询按大小写归一并支持
+`*`，class 查询把规范化后的多个 token 作为合取条件；element 查询沿当前 bounded relation
+树按深度优先文档顺序返回并排除 owner，document 查询额外包含 structural `documentElement`。
+结果是静态 HTMLCollection snapshot，支持 `item()`、`namedItem()`、`forEach()`、`keys()`、
+`values()`、`entries()`、默认 iterator 和 `Symbol.toStringTag`。空白或未知输入返回空集合，
+不改变 document tree，也不引入 live 更新、通用 CSS selector、节点创建、mutation、layout 或
+namespace 语义。
+
+这组查询只复用现有 browser relation callback 和 wrapper identity，不新增 core ABI；
+`test_host.exe` 仅提供 fixture、adapter 和 `TEST702–721` 自动断言。新增 bootstrap 后，
+576 KiB browser session ceiling 在既有 TEST540 Promise boundary 上稳定触发内存上限，因此
+当前 browser session ceiling 为 608 KiB；独立 `positron_script` context 的 512 KiB 默认堆、
+公共 ABI 和断言均未放宽。定向、兼容和相邻回归门分别为 21/21、82/82、301/301，均不涉及
+视觉、真实触摸、SIP、旋转、picker 或网络失败反馈，因此不新增人工页面验收。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

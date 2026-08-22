@@ -27,6 +27,15 @@ mutation。该能力仍遵守 session-scoped、fail-closed 的关系边界。
 有限值，未知 prefix fail closed，Attr 查询沿 owner element 上下文工作。该能力不实现 XML/
 namespace parser、节点创建、prefix/namespace mutation 或完整 DOM tree。
 
+next588 又在 document 与 HTML element wrapper 上提供受控的
+`getElementsByTagName()`/`getElementsByClassName()`。查询沿当前 bounded relation snapshot
+按 DFS 文档顺序生成静态 HTMLCollection，支持 tag 大小写归一、`*`、规范化多 class token、
+`item()`/`namedItem()`、`forEach()`/`keys()`/`values()`/`entries()`、默认 iterator 和
+`Symbol.toStringTag`；element 查询排除 owner，document 查询包含 structural `documentElement`。
+空白/未知输入返回空集合；这不是 live collection、通用 CSS selector、节点创建或 mutation API。
+为容纳这组 bootstrap，browser session heap ceiling 为 608 KiB，独立 `positron_script` 默认堆
+仍为 512 KiB。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -119,7 +128,7 @@ no-op，以及由宿主显式 microtask pump 驱动的 bounded Promise（含 `th
 Request/Response 不联网，MessagePort/BroadcastChannel/timeout/Promise 需宿主显式 pump，
 PerformanceObserver 只读取 observe 时已有 entries，不等于完整 DOM、fetch/stream、真实窗口
 生命周期或后台浏览器调度。Promise handler 和组合器输入均限制为 64 项。公共 bootstrap 现在按
-十三个顺序 IIFE 评估以保持脚本 source 上限；browser session heap ceiling 为 576 KiB，独立
+十三个顺序 IIFE 评估以保持脚本 source 上限；browser session heap ceiling 为 608 KiB，独立
 `positron_script` context 的默认 heap 仍为 512 KiB。
 
 DOM relation callback 是独立的 size-tagged ABI：调用者提供 `get_relation`，按元素 id 返回

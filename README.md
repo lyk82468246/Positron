@@ -73,6 +73,11 @@ next587 又为 document、DocumentType、HTML element、CharacterData 和 Attr w
 `baseURI`、HTML/XML namespace、`prefix`、`lookupNamespaceURI()` 与 `isDefaultNamespace()`；
 `baseURI` 随当前 session URL 更新，未知 namespace 请求 fail closed，不实现 namespace parser、
 节点创建或 mutation。对应 `TEST682–701` 已由自动设备门覆盖。
+next588 又在 document 与 HTML element wrapper 上增加受控的 `getElementsByTagName()` 和
+`getElementsByClassName()`：结果按当前 snapshot 的 DFS 文档顺序返回 HTMLCollection，支持
+大小写归一、`*`、多 class token、`item()`/`namedItem()` 与迭代协议；element 查询排除 owner，
+document 查询包含 `documentElement`，空白/未知输入 fail closed。它仍是静态 snapshot，不是
+live collection、通用 selector 或 mutation API；对应 `TEST702–721` 已由自动设备门覆盖。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap
@@ -81,7 +86,7 @@ next587 又为 document、DocumentType、HTML element、CharacterData 和 Attr w
 `firstChild`/`lastChild`/`hasChildNodes()` 和稳定 wrapper identity；next583 又补充受控
 `isSameNode()`/`isEqualNode()`、`getRootNode()`、文档节点元数据、位置常量以及同一快照树内的
 `compareDocumentPosition()`/`contains()`。这些方法只读、session-scoped 且对未知对象 fail closed；
-它不创建通用 DOM 节点，也不写回文本节点。浏览器 bootstrap 使用十三个顺序 IIFE 和 576 KiB
+它不创建通用 DOM 节点，也不写回文本节点。浏览器 bootstrap 使用十三个顺序 IIFE 和 608 KiB
 session heap ceiling；独立
 `positron_script.dll` 默认堆仍为
 512 KiB。它不是第二套引擎。

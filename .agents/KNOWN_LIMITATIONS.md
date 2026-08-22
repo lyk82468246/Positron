@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next587）
+## 当前状态（next588）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -101,6 +101,21 @@ CharacterData 和 Attr wrapper 增加受控的 `baseURI`、`namespaceURI`、`pre
 `TEST389,390–448,482–701,999` 相邻回归分别通过 21/21、62/62、281/281。bootstrap 仍为
 十三个 IIFE，browser heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
 
+next588 在不改动 core relation ABI 的前提下，为 document 和 HTML element wrapper 增加
+`getElementsByTagName()` 与 `getElementsByClassName()`。tag 查询支持 HTML 大小写归一和 `*`，
+class 查询按规范化后的多个 token 做合取；结果按当前 bounded snapshot 的深度优先文档顺序返回，
+document 查询包含 structural `documentElement`，element 查询不包含 owner。结果是静态
+HTMLCollection snapshot，提供 `item()`/`namedItem()`、`forEach()`、`keys()`、`values()`、
+`entries()`、默认 iterator 和 `Symbol.toStringTag`；空白/未知输入 fail closed，不提供 live 更新、
+通用 selector、mutation、namespace/tree 扩展或新的 core ABI。`TEST702–721,999`、
+`TEST549,642–721,999`、`TEST389,390–448,482–721,999` 分别通过 21/21、82/82、301/301，
+证据位于 `tmp/device-runs/20260822-152000-next588-final/`、
+`tmp/device-runs/20260822-152109-next588-compat-final/` 和
+`tmp/device-runs/20260822-152431-next588-regression-final/`。新增 bootstrap 的容量在 576 KiB
+上稳定复现 TEST540 内存上限后，browser session ceiling 提高到 608 KiB；
+`tmp/device-runs/20260822-151937-next588-540-r3/` 的 TEST540/999 2/2 通过，独立
+`positron_script` 默认堆仍为 512 KiB。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -112,7 +127,7 @@ CharacterData 和 Attr wrapper 增加受控的 `baseURI`、`namespaceURI`、`pre
   形态；不提供完整 URL Standard、IPv6/转义异常和 origin 安全策略。NodeList/HTMLCollection 的
   `item()`、`namedItem()`、`forEach()`、`keys()`、`values()`、`entries()` 和 iterator 只作用于
   当前 document 的同步 snapshot；与 repeated `getElementById()` identity 一样，不创建通用 DOM tree，
-  也不提供 live 更新。
+  也不提供 live 更新；next588 的 `getElementsBy*()` 同样只返回当前 session 的静态快照。
 - selection、numeric step、setRangeText 是产品 bridge 的逻辑状态，不等于 WM native EDIT 的
   光标、SIP、IME composition、候选词、Unicode preedit 或原生文本选择 UI。
 - document/window metadata、viewport、scroll 是脚本可见的受控快照；它们不自动改变真实窗口、
@@ -237,6 +252,14 @@ CharacterData 和 Attr wrapper 增加受控的 `baseURI`、`namespaceURI`、`pre
   namespace mutation，也不改变 core ABI、document tree 或节点创建边界；`TEST682–701` 只验证
   同步、内存内的脚本 API。该切片的 bootstrap 为十三个 IIFE，browser session heap ceiling 为
   576 KiB，独立 script 默认堆仍为 512 KiB。
+
+- next588 在上述 snapshot 上增加 document/element 的 `getElementsByTagName()` 与
+  `getElementsByClassName()`，形成有限 HTMLCollection 查询族。它只沿当前有界 relation 读取，
+  按 DFS 文档顺序生成静态结果，支持大小写不敏感 tag、通配符、规范化多 class token、
+  `item()`/`namedItem()` 和集合迭代协议；owner 自身排除，document root 明确包含，未知/空白
+  输入 fail closed。它不是 live collection、通用 CSS selector 或 mutation API；
+  `TEST702–721` 只验证同步内存语义。为容纳这组 bootstrap，browser session ceiling 现为
+  608 KiB，独立 `positron_script` 默认堆仍为 512 KiB；TEST540 在该上限下保持通过。
 
 - next298 新增了独立的 validation query callback 和 bootstrap 的
   `HTMLElement.checkValidity()`、`willValidate`、`validity`（基础 flags）查询。它按 DOM id
