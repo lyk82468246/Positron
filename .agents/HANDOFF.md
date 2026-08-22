@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next591（本批覆盖 `TEST762-781,999` 定向门、
-  `TEST549,642-781,999` 兼容门和缩减回归 `TEST389,390-448,540,549,642-781,999`；最近一次完整自动
+- 最新已验证产品基线：next592（本批覆盖 `TEST782-801,999` 定向门、
+  `TEST549,642-801,999` 兼容门和缩减回归 `TEST389,390-448,540,549,642-801,999`；最近一次完整自动
   基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
@@ -305,11 +305,11 @@
   API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面
   验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
-## 当前状态：next591
+## 当前状态：next592
 
-前一批单一 `next590` 已实现、构建并通过定向设备门及相邻累计回归门；当前单一 `next591` 也
+前一批单一 `next591` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next592` 也
 已实现、构建并通过定向设备门、兼容门及缩减相邻回归门，其中本批 20 个自动断言使用
-`TEST762–781`
+`TEST782–801`
 编号，不再为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
@@ -359,6 +359,18 @@ next591 又在同一 traversal 上增加 `document.links` 与 `document.anchors`
 `href` 的 `a`/`area`，anchors 只收集显式 `name` 的 `a`，均按 DFS 顺序返回静态
 HTMLCollection；属性增删只影响后续查询，既有 wrapper identity、`item()`/`namedItem()` 和
 迭代协议保持不变，不新增 core ABI 或人工页面门。
+next592 又在同一 traversal 上增加 `document.getElementsByTagNameNS()` 与元素作用域的
+`getElementsByTagNameNS()`：namespace `*` 或精确字符串与 localName `*`/大小写敏感字符串
+组合筛选当前 HTML namespace snapshot，document 结果包含 `documentElement`，element 结果排除
+owner；null、空白和未知 namespace/localName fail closed。结果是静态 HTMLCollection，复用
+`item()`/`namedItem()`、迭代协议和 wrapper identity；不引入 XML/SVG namespace parser、live
+collection、节点创建、通用 mutation 或新的 core ABI。`TEST782–801,999` 在
+`tmp/device-runs/20260822-192042-next592-r2/` 通过 21/21，兼容门
+`TEST549,642-801,999` 在 `tmp/device-runs/20260822-192203-next592-compat-r1/` 通过
+162/162，缩减回归 `TEST389,390-448,540,549,642-801,999` 在
+`tmp/device-runs/20260822-192923-next592-regression-r1/` 通过 223/223；三次均为零
+ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、
+SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -2869,14 +2881,14 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 不承诺 ARIA 语义或可访问性树。
 本轮 next382–401 的 metadata reflection 门也已通过，覆盖 20 个 ARIA raw 属性；均只承诺
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
-唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next591 之后的一个不依赖人工页面观察、
+唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next592 之后的一个不依赖人工页面观察、
 边界完整的产品能力；继续保持每批一个清晰的产品边界，不能把完整 DOM、布局或 native 输入
 偷偷扩入本批。
 
 完成标准：
 
-- TEST781/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/540/549/642–781/999` 缩减选择；next299 的
+- TEST801/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/540/549/642–801/999` 缩减选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2890,7 +2902,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next591 之后选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next592 之后选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。

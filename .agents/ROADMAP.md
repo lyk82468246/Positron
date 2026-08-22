@@ -1,6 +1,6 @@
 # Positron 路线图
 
-更新时间：2026-08-21
+更新时间：2026-08-22
 
 本文件只列尚未完成的目标。已提交的 next 批次不继续停留在路线图；当前候选和设备门见
 [`HANDOFF.md`](HANDOFF.md)，当前能力缺口见
@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next591
+### 当前短期状态：next592
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -485,6 +485,19 @@ ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM sna
 且 `TESTBENCH PASS` 唯一。本批未跑旧的 341 项全回归，但保留核心事件、TEST540 内存边界、
 TEST549 和 next642–781 风险区间；本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、
 SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
+
+`next592` 作为单一批次在 browser 层完成 namespace-aware element collection projection：
+document 与 element 的 `getElementsByTagNameNS()` 复用既有 DFS snapshot 和 namespace metadata，
+支持 `*`/精确 namespace、`*`/大小写敏感 localName、document root 包含和 element owner 排除，
+结果为静态 HTMLCollection 并复用既有集合协议与 wrapper identity。null、空或未知 namespace/
+localName fail closed；不新增 XML/SVG parser、live collection、节点创建、通用 mutation 或 core
+ABI，`test_host.exe` 只提供 fixture、adapter 和 `TEST782–801` 断言。定向门
+`TEST782-801,999` 在 `tmp/device-runs/20260822-192042-next592-r2/` 通过 21/21，兼容门
+`TEST549,642-801,999` 在 `tmp/device-runs/20260822-192203-next592-compat-r1/` 通过
+162/162；缩减回归 `TEST389,390-448,540,549,642-801,999` 在
+`tmp/device-runs/20260822-192923-next592-regression-r1/` 通过 223/223。三次均无 ERROR/FAIL
+且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、
+picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
 
 ## 中期目标
 

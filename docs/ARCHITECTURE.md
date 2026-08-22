@@ -583,6 +583,23 @@ TEST540 内存边界、TEST549 和 next642–781 风险区间；不涉及视觉�
 网络失败人工门。browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆仍为
 512 KiB。
 
+#### next592 的 namespace-aware collection 边界
+
+next592 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。document 与 HTML element wrapper 都提供 `getElementsByTagNameNS(namespace, localName)`：
+namespace 接受 `*` 或精确字符串，localName 接受 `*` 或大小写敏感字符串；document 结果包含
+`documentElement`，element 结果只遍历后代并排除 owner。查询复用已有 namespace metadata、DFS
+traversal、`HTMLCollection` 协议和稳定 wrapper identity，返回同步静态 snapshot；null、空或
+未知 namespace/localName fail closed。
+
+这组入口不解析 XML/SVG namespace，不修改 prefix 或节点，不提供 live collection、完整 Web IDL、
+通用 DOM mutation 或新的 core ABI。`test_host.exe` 只提供 fixture、adapter 和 `TEST782–801`
+自动断言；定向、兼容和缩减回归门分别为 21/21、162/162、223/223，证据位于
+`tmp/device-runs/20260822-192042-next592-r2/`、`tmp/device-runs/20260822-192203-next592-compat-r1/`
+和 `tmp/device-runs/20260822-192923-next592-regression-r1/`。本批只涉及同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败人工门；browser session 仍使用
+608 KiB ceiling，独立 `positron_script` 默认堆仍为 512 KiB。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

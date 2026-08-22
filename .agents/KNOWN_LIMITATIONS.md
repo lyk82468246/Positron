@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next591）
+## 当前状态（next592）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -151,6 +151,20 @@ wrapper identity。属性增删只影响后续查询，不提供 live 更新、�
 全回归；保留核心事件、TEST540 内存边界、TEST549 和 next642–781 风险区间。本批不涉及视觉、
 触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
+next592 在不改动 core relation ABI 的前提下增加了 document/element 的
+`getElementsByTagNameNS(namespace, localName)`：`*` namespace 或精确 namespace 字符串与
+`*`/大小写敏感 localName 组合筛选当前 HTML element snapshot；document 查询包含
+`documentElement`，element 查询排除 owner。结果为静态 HTMLCollection，复用
+`item()`/`namedItem()`、`forEach()`、`keys()`、`values()`、`entries()`、默认 iterator 和
+wrapper identity；null、空 namespace、未知 namespace/localName 与空 localName fail closed。
+该切片不提供 XML/SVG namespace parser、prefix mutation、live collection、节点创建、通用
+mutation 或新的 core ABI。`TEST782–801,999`、`TEST549,642–801,999`、
+`TEST389,390–448,540,549,642–801,999` 分别通过 21/21、162/162、223/223，证据位于
+`tmp/device-runs/20260822-192042-next592-r2/`、
+`tmp/device-runs/20260822-192203-next592-compat-r1/` 和
+`tmp/device-runs/20260822-192923-next592-regression-r1/`。本批只涉及同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -163,7 +177,8 @@ wrapper identity。属性增删只影响后续查询，不提供 live 更新、�
   `item()`、`namedItem()`、`forEach()`、`keys()`、`values()`、`entries()` 和 iterator 只作用于
   当前 document 的同步 snapshot；与 repeated `getElementById()` identity 一样，不创建通用 DOM tree，
   也不提供 live 更新；next588 的 `getElementsBy*()` 与 next590 的 named collection projection
-  同样只返回当前 session 的静态快照；next591 的 `links`/`anchors` 也只过滤当前快照。
+  同样只返回当前 session 的静态快照；next591 的 `links`/`anchors` 与 next592 的 namespace
+  collection 也只过滤当前快照。
 - selection、numeric step、setRangeText 是产品 bridge 的逻辑状态，不等于 WM native EDIT 的
   光标、SIP、IME composition、候选词、Unicode preedit 或原生文本选择 UI。
 - document/window metadata、viewport、scroll 是脚本可见的受控快照；它们不自动改变真实窗口、

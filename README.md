@@ -90,6 +90,11 @@ next591 又补齐 `document.links` 与 `document.anchors`：前者按 DFS 收集
 后者按 DFS 收集显式 `name` 的 `a`，均返回静态 HTMLCollection，并复用既有集合协议和
 wrapper identity；属性变化只影响后续查询。对应 `TEST762–781` 及缩减兼容/回归门已由自动
 设备门覆盖，本批未重复旧的全量回归。
+next592 又补齐 document 与 element 的 `getElementsByTagNameNS()`：支持通配或精确 namespace、
+通配或大小写敏感 localName，document 包含 root、element 排除 owner，返回静态
+HTMLCollection 并复用集合协议和 wrapper identity；空/未知输入 fail closed，不引入 XML/SVG
+parser、live collection 或 mutation。对应 `TEST782–801` 及兼容/缩减回归门已由自动设备门覆盖，
+本批仍未重复旧的全量回归。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap

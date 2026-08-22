@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 781
+#define TEST_MAX_NUMBER 801
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -59975,6 +59975,269 @@ static BOOL test781_browser_link_collection_contract(void)
             "true|true|true|true|true|true|true", error, sizeof(error));
 }
 
+static BOOL test_browser_namespace_collection_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script id='script-one'>window.boot=1;</script>"
+        "<title id='title'>Title</title></head><body><main id='main'>"
+        "<form id='form-one'><input id='user' name='user'><input id='query' name='query'>"
+        "</form><p id='result'>idle</p></main></body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected, error,
+            error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded namespace element collection passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded namespace element collection failed.");
+    }
+    return ok;
+}
+
+/* TEST 782 - namespace-aware collection methods expose HTMLCollection metadata. */
+static BOOL test782_browser_namespace_collection_types(void)
+{
+    static const char PROBE[] =
+        "var m=document.getElementById('main'),d=document.getElementsByTagNameNS('*','form'),e=m.getElementsByTagNameNS('*','form');"
+        "document.getElementById('result').textContent="
+        "String(typeof document.getElementsByTagNameNS==='function')+'|'"
+        "+String(typeof m.getElementsByTagNameNS==='function')+'|'"
+        "+d[Symbol.toStringTag]+'|'+e[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_namespace_collection_case(782, PROBE,
+            "true|true|HTMLCollection|HTMLCollection", error, sizeof(error));
+}
+
+/* TEST 783 - the HTML namespace selects the structural html element. */
+static BOOL test783_browser_namespace_document_root(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagNameNS('http://www.w3.org/1999/xhtml','html');"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].localName+'|'"
+        "+String(a[0]===document.documentElement);";
+    char error[256];
+    return test_browser_namespace_collection_case(783, PROBE,
+            "1|html|true", error, sizeof(error));
+}
+
+/* TEST 784 - document namespace wildcard preserves DFS order for all elements. */
+static BOOL test784_browser_namespace_document_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagNameNS('http://www.w3.org/1999/xhtml','*');"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].localName+'|'"
+        "+a[1].localName+'|'+a[4].localName+'|'+a[9].id;";
+    char error[256];
+    return test_browser_namespace_collection_case(784, PROBE,
+            "10|html|head|body|result", error, sizeof(error));
+}
+
+/* TEST 785 - namespace wildcard matches the bounded form projection. */
+static BOOL test785_browser_namespace_wildcard_form(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagNameNS('*','form');document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id;";
+    char error[256];
+    return test_browser_namespace_collection_case(785, PROBE, "1|form-one",
+            error, sizeof(error));
+}
+
+/* TEST 786 - wildcard namespace and local name cover the same document snapshot. */
+static BOOL test786_browser_namespace_wildcard_all(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagNameNS('*','*');document.getElementById('result').textContent="
+        "a.length+'|'+a[0].localName+'|'+a[a.length-1].id;";
+    char error[256];
+    return test_browser_namespace_collection_case(786, PROBE,
+            "10|html|result", error, sizeof(error));
+}
+
+/* TEST 787 - element scope selects descendant inputs in document order. */
+static BOOL test787_browser_namespace_element_inputs(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByTagNameNS('http://www.w3.org/1999/xhtml','input');"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].id+'|'+a[1].id;";
+    char error[256];
+    return test_browser_namespace_collection_case(787, PROBE,
+            "2|user|query", error, sizeof(error));
+}
+
+/* TEST 788 - element scope accepts a wildcard namespace for descendants. */
+static BOOL test788_browser_namespace_element_wildcard(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('main').getElementsByTagNameNS('*','form');"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].id;";
+    char error[256];
+    return test_browser_namespace_collection_case(788, PROBE, "1|form-one",
+            error, sizeof(error));
+}
+
+/* TEST 789 - element scope excludes its owner while document scope includes it. */
+static BOOL test789_browser_namespace_owner_boundary(void)
+{
+    static const char PROBE[] =
+        "var m=document.getElementById('main');var e=m.getElementsByTagNameNS('*','main');"
+        "var d=document.getElementsByTagNameNS('*','main');document.getElementById('result').textContent="
+        "e.length+'|'+d.length+'|'+String(d[0]===m);";
+    char error[256];
+    return test_browser_namespace_collection_case(789, PROBE,
+            "0|1|true", error, sizeof(error));
+}
+
+/* TEST 790 - localName matching remains case-sensitive for the NS API. */
+static BOOL test790_browser_namespace_case_boundary(void)
+{
+    static const char PROBE[] =
+        "var upper=document.getElementsByTagNameNS('http://www.w3.org/1999/xhtml','FORM');"
+        "var lower=document.getElementsByTagNameNS('http://www.w3.org/1999/xhtml','form');"
+        "document.getElementById('result').textContent=upper.length+'|'+lower.length;";
+    char error[256];
+    return test_browser_namespace_collection_case(790, PROBE, "0|1", error,
+            sizeof(error));
+}
+
+/* TEST 791 - empty localName is a fail-closed query. */
+static BOOL test791_browser_namespace_blank_local(void)
+{
+    static const char PROBE[] =
+        "var d=document.getElementsByTagNameNS('*','');var e=document.getElementById('main').getElementsByTagNameNS('*','');"
+        "document.getElementById('result').textContent=d.length+'|'+e.length;";
+    char error[256];
+    return test_browser_namespace_collection_case(791, PROBE, "0|0", error,
+            sizeof(error));
+}
+
+/* TEST 792 - unknown namespaces never fall back to HTML matching. */
+static BOOL test792_browser_namespace_unknown(void)
+{
+    static const char PROBE[] =
+        "var d=document.getElementsByTagNameNS('urn:missing','*');var e=document.getElementById('main').getElementsByTagNameNS('urn:missing','form');"
+        "document.getElementById('result').textContent=d.length+'|'+e.length;";
+    char error[256];
+    return test_browser_namespace_collection_case(792, PROBE, "0|0", error,
+            sizeof(error));
+}
+
+/* TEST 793 - null and empty namespaces remain distinct from HTML. */
+static BOOL test793_browser_namespace_null(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementsByTagNameNS(null,'*');var e=document.getElementsByTagNameNS('','*');"
+        "document.getElementById('result').textContent=n.length+'|'+e.length;";
+    char error[256];
+    return test_browser_namespace_collection_case(793, PROBE, "0|0", error,
+            sizeof(error));
+}
+
+/* TEST 794 - namespace arguments use ordinary JavaScript String coercion. */
+static BOOL test794_browser_namespace_coercion(void)
+{
+    static const char PROBE[] =
+        "var x={toString:function(){return 'http://www.w3.org/1999/xhtml';}};"
+        "var a=document.getElementsByTagNameNS(x,'title');document.getElementById('result').textContent=a.length+'|'+a[0].id;";
+    char error[256];
+    return test_browser_namespace_collection_case(794, PROBE, "1|title", error,
+            sizeof(error));
+}
+
+/* TEST 795 - localName arguments use ordinary JavaScript String coercion. */
+static BOOL test795_browser_namespace_local_coercion(void)
+{
+    static const char PROBE[] =
+        "var x={toString:function(){return 'form';}};var a=document.getElementsByTagNameNS('*',x);"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].id;";
+    char error[256];
+    return test_browser_namespace_collection_case(795, PROBE, "1|form-one", error,
+            sizeof(error));
+}
+
+/* TEST 796 - NS collections retain item bounds and namedItem lookup. */
+static BOOL test796_browser_namespace_collection_bounds(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagNameNS('*','input');document.getElementById('result').textContent="
+        "String(a.item(-1)===null)+'|'+String(a.item(2)===null)+'|'"
+        "+String(a.namedItem('query')===a[1])+'|'+String(a.namedItem('missing')===null);";
+    char error[256];
+    return test_browser_namespace_collection_case(796, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 797 - NS collection iterators preserve DFS order and collection brand. */
+static BOOL test797_browser_namespace_iteration(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagNameNS('*','*'),s='';a.forEach(function(v){s+=v.localName+',';});"
+        "var e=a.entries().next().value;document.getElementById('result').textContent="
+        "s+'|'+e[0]+':'+e[1].localName+'|'+a[Symbol.toStringTag];";
+    char error[512];
+    return test_browser_namespace_collection_case(797, PROBE,
+            "html,head,script,title,body,main,form,input,input,p,|0:html|HTMLCollection",
+            error, sizeof(error));
+}
+
+/* TEST 798 - repeated NS queries create snapshots but share wrappers. */
+static BOOL test798_browser_namespace_snapshot_identity(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagNameNS('*','form'),b=document.getElementsByTagNameNS('*','form');"
+        "document.getElementById('result').textContent=String(a!==b)+'|'+String(a[0]===b[0])+'|'"
+        "+String(a[0]===document.getElementById('form-one'));";
+    char error[256];
+    return test_browser_namespace_collection_case(798, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 799 - document and element NS collections share wrapper identity. */
+static BOOL test799_browser_namespace_scope_identity(void)
+{
+    static const char PROBE[] =
+        "var d=document.getElementsByTagNameNS('*','input');var e=document.getElementById('main').getElementsByTagNameNS('*','input');"
+        "document.getElementById('result').textContent=String(d[0]===e[0])+'|'+String(d[1]===e[1])+'|'+e.length;";
+    char error[256];
+    return test_browser_namespace_collection_case(799, PROBE,
+            "true|true|2", error, sizeof(error));
+}
+
+/* TEST 800 - namespace metadata and structural wrappers agree. */
+static BOOL test800_browser_namespace_metadata(void)
+{
+    static const char PROBE[] =
+        "var n=document.documentElement.namespaceURI;var h=document.getElementsByTagNameNS(n,'head');"
+        "var b=document.getElementsByTagNameNS(n,'body');document.getElementById('result').textContent=n+'|'"
+        "+String(h[0]===document.head)+'|'+String(b[0]===document.body);";
+    char error[256];
+    return test_browser_namespace_collection_case(800, PROBE,
+            "http://www.w3.org/1999/xhtml|true|true", error, sizeof(error));
+}
+
+/* TEST 801 - the namespace collection contract combines type, scope and fail-closed rules. */
+static BOOL test801_browser_namespace_collection_contract(void)
+{
+    static const char PROBE[] =
+        "var n='http://www.w3.org/1999/xhtml';var d=document.getElementsByTagNameNS(n,'*');"
+        "var f=document.getElementsByTagNameNS('*','form');var m=document.getElementById('main');"
+        "var i=m.getElementsByTagNameNS('*','input');document.getElementById('result').textContent="
+        "String(d.length===10)+'|'+String(f.length===1)+'|'+String(i.length===2)+'|'"
+        "+String(d.namedItem('form-one')===f[0])+'|'+String(i[0]===document.getElementById('user'))+'|'"
+        "+String(m.getElementsByTagNameNS(null,'*').length===0)+'|'"
+        "+String(document.getElementsByTagNameNS('urn:missing','*').length===0)+'|'"
+        "+String(d[0]===document.documentElement);";
+    char error[512];
+    return test_browser_namespace_collection_case(801, PROBE,
+            "true|true|true|true|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -63344,6 +63607,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 781: ok =
                 test781_browser_link_collection_contract();
+                break;
+        case 782: ok =
+                test782_browser_namespace_collection_types();
+                break;
+        case 783: ok =
+                test783_browser_namespace_document_root();
+                break;
+        case 784: ok =
+                test784_browser_namespace_document_order();
+                break;
+        case 785: ok =
+                test785_browser_namespace_wildcard_form();
+                break;
+        case 786: ok =
+                test786_browser_namespace_wildcard_all();
+                break;
+        case 787: ok =
+                test787_browser_namespace_element_inputs();
+                break;
+        case 788: ok =
+                test788_browser_namespace_element_wildcard();
+                break;
+        case 789: ok =
+                test789_browser_namespace_owner_boundary();
+                break;
+        case 790: ok =
+                test790_browser_namespace_case_boundary();
+                break;
+        case 791: ok =
+                test791_browser_namespace_blank_local();
+                break;
+        case 792: ok =
+                test792_browser_namespace_unknown();
+                break;
+        case 793: ok =
+                test793_browser_namespace_null();
+                break;
+        case 794: ok =
+                test794_browser_namespace_coercion();
+                break;
+        case 795: ok =
+                test795_browser_namespace_local_coercion();
+                break;
+        case 796: ok =
+                test796_browser_namespace_collection_bounds();
+                break;
+        case 797: ok =
+                test797_browser_namespace_iteration();
+                break;
+        case 798: ok =
+                test798_browser_namespace_snapshot_identity();
+                break;
+        case 799: ok =
+                test799_browser_namespace_scope_identity();
+                break;
+        case 800: ok =
+                test800_browser_namespace_metadata();
+                break;
+        case 801: ok =
+                test801_browser_namespace_collection_contract();
                 break;
         default: ok = FALSE; break;
         }

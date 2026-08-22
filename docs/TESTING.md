@@ -253,6 +253,25 @@ next642–781 风险区间。该切片只改变同步脚本 API/DOM snapshot，�
 系统 picker、旋转或网络失败，因此不新增人工页面验收；tracked `test_host.ini` 继续保持
 `javascript=0`。
 
+`next592` 仍是一个批次编号，不为 namespace/localName 的每个组合重复分配 next 号。本批
+增加 document 与 element 的 `getElementsByTagNameNS()`，自动断言为 `TEST782–801`：
+
+```bat
+scripts\device_gate.bat -Candidate next592-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "782-801,999"
+```
+
+定向证据为 `tmp/device-runs/20260822-192042-next592-r2/`，21/21 通过；兼容门
+`TEST549,642-801,999` 在 `tmp/device-runs/20260822-192203-next592-compat-r1/` 通过
+162/162；缩减回归 `TEST389,390-448,540,549,642-801,999` 在
+`tmp/device-runs/20260822-192923-next592-regression-r1/` 通过 223/223。三次均为零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖精确/通配 namespace、
+大小写敏感 localName、document root 包含、element owner 排除、空/未知输入、coercion、
+集合协议、快照和 wrapper identity；不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，
+因此不新增人工页面验收。为控制设备时间，本批继续未重复旧的 341 项全回归；tracked
+`test_host.ini` 仍保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

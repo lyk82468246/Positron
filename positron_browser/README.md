@@ -53,6 +53,12 @@ next591 又在同一 traversal 上提供 `document.links` 与 `document.anchors`
 HTMLCollection，复用 `item()`/`namedItem()`、迭代协议和 wrapper identity。它不实现链接 URL
 解析、导航副作用、live 更新、节点创建、通用 mutation 或新的 core ABI。
 
+next592 又在同一 traversal 上提供 document 与 element 的 `getElementsByTagNameNS()`：namespace
+支持 `*` 或精确字符串，localName 支持 `*` 或大小写敏感字符串；document 结果包含 root，element
+结果排除 owner。返回静态 HTMLCollection，复用 `item()`/`namedItem()`、迭代协议和 wrapper
+identity；null、空或未知输入 fail closed，不实现 XML/SVG namespace parser、live 更新、节点
+创建、通用 mutation 或新的 core ABI。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
