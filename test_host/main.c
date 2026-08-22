@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 841
+#define TEST_MAX_NUMBER 861
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -60745,6 +60745,270 @@ static BOOL test841_browser_namespace_named_item_contract(void)
             "true|true|true|true|true|true|true", error, sizeof(error));
 }
 
+/* TEST 842 - lookupPrefix is available on the bounded node/attribute wrappers. */
+static BOOL test842_browser_lookup_prefix_types(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('id');"
+        "var t=document.getElementById('result').firstChild;var d=document.doctype;"
+        "document.getElementById('result').textContent="
+        "String(typeof document.lookupPrefix==='function')+'|'"
+        "+String(typeof e.lookupPrefix==='function')+'|'"
+        "+String(typeof a.lookupPrefix==='function')+'|'"
+        "+String(typeof t.lookupPrefix==='function')+'|'"
+        "+String(typeof d.lookupPrefix==='function');";
+    char error[384];
+    return test_browser_attribute_case(842, PROBE,
+            "true|true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 843 - an HTML element has no prefix for its default namespace. */
+static BOOL test843_browser_lookup_prefix_element_html(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.lookupPrefix('http://www.w3.org/1999/xhtml')===null)+'|'"
+        "+String(e.namespaceURI==='http://www.w3.org/1999/xhtml');";
+    char error[256];
+    return test_browser_attribute_case(843, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 844 - the document itself has no namespace prefix. */
+static BOOL test844_browser_lookup_prefix_document_html(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent="
+        "String(document.lookupPrefix('http://www.w3.org/1999/xhtml')===null)+'|'"
+        "+String(document.namespaceURI===null);";
+    char error[256];
+    return test_browser_attribute_case(844, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 845 - null and undefined namespaces fail closed. */
+static BOOL test845_browser_lookup_prefix_null(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.lookupPrefix(null)===null)+'|'"
+        "+String(e.lookupPrefix(undefined)===null);";
+    char error[256];
+    return test_browser_attribute_case(845, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 846 - an empty namespace is not mapped to a prefix. */
+static BOOL test846_browser_lookup_prefix_empty(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.lookupPrefix('')===null)+'|'"
+        "+String(e.lookupPrefix(new String(''))===null);";
+    char error[256];
+    return test_browser_attribute_case(846, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 847 - unknown namespace URIs never invent a prefix. */
+static BOOL test847_browser_lookup_prefix_unknown(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.lookupPrefix('urn:missing')===null)+'|'"
+        "+String(e.lookupPrefix('http://www.w3.org/XML/1998/namespace/')===null);";
+    char error[256];
+    return test_browser_attribute_case(847, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 848 - an element recognizes the bounded XML prefix mapping. */
+static BOOL test848_browser_lookup_prefix_element_xml(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "e.lookupPrefix('http://www.w3.org/XML/1998/namespace')+'|'"
+        "+String(e.prefix===null);";
+    char error[256];
+    return test_browser_attribute_case(848, PROBE, "xml|true", error,
+            sizeof(error));
+}
+
+/* TEST 849 - the document recognizes the same XML prefix mapping. */
+static BOOL test849_browser_lookup_prefix_document_xml(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent="
+        "document.lookupPrefix('http://www.w3.org/XML/1998/namespace')+'|'"
+        "+String(document.lookupNamespaceURI('xml')==='http://www.w3.org/XML/1998/namespace');";
+    char error[256];
+    return test_browser_attribute_case(849, PROBE, "xml|true", error,
+            sizeof(error));
+}
+
+/* TEST 850 - DocumentType exposes the same read-only XML mapping. */
+static BOOL test850_browser_lookup_prefix_doctype(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent="
+        "document.doctype.lookupPrefix('http://www.w3.org/XML/1998/namespace')+'|'"
+        "+String(document.doctype.lookupPrefix('urn:missing')===null);";
+    char error[256];
+    return test_browser_attribute_case(850, PROBE, "xml|true", error,
+            sizeof(error));
+}
+
+/* TEST 851 - CharacterData wrappers carry the bounded XML mapping too. */
+static BOOL test851_browser_lookup_prefix_character_data(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('result').firstChild;document.getElementById('result').textContent="
+        "t.lookupPrefix('http://www.w3.org/XML/1998/namespace')+'|'"
+        "+String(t.lookupPrefix('http://www.w3.org/1999/xhtml')===null);";
+    char error[256];
+    return test_browser_attribute_case(851, PROBE, "xml|true", error,
+            sizeof(error));
+}
+
+/* TEST 852 - an XML Attr returns its own known prefix. */
+static BOOL test852_browser_lookup_prefix_xml_attr(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:lang','en');"
+        "var a=e.getAttributeNode('xml:lang');document.getElementById('result').textContent="
+        "a.lookupPrefix('http://www.w3.org/XML/1998/namespace')+'|'"
+        "+a.prefix+'|'"
+        "+String(a.lookupPrefix('http://www.w3.org/XML/1998/namespace')===a.prefix);";
+    char error[256];
+    return test_browser_attribute_case(852, PROBE, "xml|xml|true", error,
+            sizeof(error));
+}
+
+/* TEST 853 - an XMLNS Attr returns its own bounded xmlns prefix. */
+static BOOL test853_browser_lookup_prefix_xmlns_attr(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xmlns:demo','urn:demo');"
+        "var a=e.getAttributeNode('xmlns:demo');document.getElementById('result').textContent="
+        "a.lookupPrefix('http://www.w3.org/2000/xmlns/')+'|'"
+        "+a.prefix+'|'"
+        "+String(a.lookupPrefix('http://www.w3.org/2000/xmlns/')===a.prefix);";
+    char error[256];
+    return test_browser_attribute_case(853, PROBE, "xmlns|xmlns|true", error,
+            sizeof(error));
+}
+
+/* TEST 854 - an ordinary Attr delegates the known XML lookup to its owner. */
+static BOOL test854_browser_lookup_prefix_attr_owner(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('id');"
+        "document.getElementById('result').textContent="
+        "String(a.lookupPrefix('http://www.w3.org/XML/1998/namespace')==='xml')+'|'"
+        "+String(a.lookupPrefix('urn:missing')===null);";
+    char error[256];
+    return test_browser_attribute_case(854, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 855 - an ordinary Attr has no HTML namespace prefix. */
+static BOOL test855_browser_lookup_prefix_attr_html(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('id');"
+        "document.getElementById('result').textContent="
+        "String(a.lookupPrefix('http://www.w3.org/1999/xhtml')===null)+'|'"
+        "+String(a.namespaceURI===null);";
+    char error[256];
+    return test_browser_attribute_case(855, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 856 - unknown attribute prefixes remain outside all known namespaces. */
+static BOOL test856_browser_lookup_prefix_unknown_attr(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('demo:name','x');"
+        "var a=e.getAttributeNode('demo:name');document.getElementById('result').textContent="
+        "String(a.lookupPrefix('urn:demo')===null)+'|'"
+        "+String(a.prefix===null)+'|'"
+        "+String(a.namespaceURI===null);";
+    char error[256];
+    return test_browser_attribute_case(856, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 857 - lookupPrefix namespace arguments use String coercion. */
+static BOOL test857_browser_lookup_prefix_coercion(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var n={toString:function(){return 'http://www.w3.org/XML/1998/namespace';}};"
+        "document.getElementById('result').textContent=e.lookupPrefix(n);";
+    char error[256];
+    return test_browser_attribute_case(857, PROBE, "xml", error,
+            sizeof(error));
+}
+
+/* TEST 858 - null, undefined and empty arguments share the fail-closed result. */
+static BOOL test858_browser_lookup_prefix_blank_inputs(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');document.getElementById('result').textContent="
+        "String(e.lookupPrefix(null)===null)+'|'"
+        "+String(e.lookupPrefix(undefined)===null)+'|'"
+        "+String(e.lookupPrefix('')===null);";
+    char error[256];
+    return test_browser_attribute_case(858, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 859 - repeated XML lookups are stable primitive results. */
+static BOOL test859_browser_lookup_prefix_repeat(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var x=e.lookupPrefix('http://www.w3.org/XML/1998/namespace');"
+        "var y=e.lookupPrefix('http://www.w3.org/XML/1998/namespace');document.getElementById('result').textContent="
+        "String(x==='xml')+'|'+String(y===x);";
+    char error[256];
+    return test_browser_attribute_case(859, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 860 - unknown namespace lookups do not affect existing attribute metadata. */
+static BOOL test860_browser_lookup_prefix_boundary(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('demo:name','x');"
+        "var a=e.getAttributeNode('demo:name');var before=a.name;"
+        "document.getElementById('result').textContent="
+        "String(e.lookupPrefix('urn:demo')===null)+'|'"
+        "+String(a.lookupPrefix('urn:demo')===null)+'|'"
+        "+String(a.name===before);";
+    char error[256];
+    return test_browser_attribute_case(860, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 861 - all wrapper classes agree on the bounded lookupPrefix contract. */
+static BOOL test861_browser_lookup_prefix_contract(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:lang','en');"
+        "e.setAttribute('xmlns:demo','urn:demo');var x=e.getAttributeNode('xml:lang');"
+        "var y=e.getAttributeNode('xmlns:demo');var t=document.getElementById('result').firstChild;"
+        "document.getElementById('result').textContent="
+        "String(e.lookupPrefix('http://www.w3.org/XML/1998/namespace')==='xml')+'|'"
+        "+String(document.lookupPrefix('http://www.w3.org/XML/1998/namespace')==='xml')+'|'"
+        "+String(document.doctype.lookupPrefix('http://www.w3.org/XML/1998/namespace')==='xml')+'|'"
+        "+String(t.lookupPrefix('http://www.w3.org/XML/1998/namespace')==='xml')+'|'"
+        "+String(x.lookupPrefix('http://www.w3.org/XML/1998/namespace')==='xml')+'|'"
+        "+String(y.lookupPrefix('http://www.w3.org/2000/xmlns/')==='xmlns')+'|'"
+        "+String(e.lookupPrefix('urn:missing')===null);";
+    char error[384];
+    return test_browser_attribute_case(861, PROBE,
+            "true|true|true|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -64294,6 +64558,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 841: ok =
                 test841_browser_namespace_named_item_contract();
+                break;
+        case 842: ok =
+                test842_browser_lookup_prefix_types();
+                break;
+        case 843: ok =
+                test843_browser_lookup_prefix_element_html();
+                break;
+        case 844: ok =
+                test844_browser_lookup_prefix_document_html();
+                break;
+        case 845: ok =
+                test845_browser_lookup_prefix_null();
+                break;
+        case 846: ok =
+                test846_browser_lookup_prefix_empty();
+                break;
+        case 847: ok =
+                test847_browser_lookup_prefix_unknown();
+                break;
+        case 848: ok =
+                test848_browser_lookup_prefix_element_xml();
+                break;
+        case 849: ok =
+                test849_browser_lookup_prefix_document_xml();
+                break;
+        case 850: ok =
+                test850_browser_lookup_prefix_doctype();
+                break;
+        case 851: ok =
+                test851_browser_lookup_prefix_character_data();
+                break;
+        case 852: ok =
+                test852_browser_lookup_prefix_xml_attr();
+                break;
+        case 853: ok =
+                test853_browser_lookup_prefix_xmlns_attr();
+                break;
+        case 854: ok =
+                test854_browser_lookup_prefix_attr_owner();
+                break;
+        case 855: ok =
+                test855_browser_lookup_prefix_attr_html();
+                break;
+        case 856: ok =
+                test856_browser_lookup_prefix_unknown_attr();
+                break;
+        case 857: ok =
+                test857_browser_lookup_prefix_coercion();
+                break;
+        case 858: ok =
+                test858_browser_lookup_prefix_blank_inputs();
+                break;
+        case 859: ok =
+                test859_browser_lookup_prefix_repeat();
+                break;
+        case 860: ok =
+                test860_browser_lookup_prefix_boundary();
+                break;
+        case 861: ok =
+                test861_browser_lookup_prefix_contract();
                 break;
         default: ok = FALSE; break;
         }

@@ -104,6 +104,11 @@ next594 又为既有 `NamedNodeMap` 增加只读的 `getNamedItemNS()`：它复�
 XML/XMLNS 已知前缀、未知输入 fail closed、大小写敏感 localName、coercion、Attr identity 和
 属性增删后的 map 观察语义；不引入 namespace mutation、XML/SVG parser 或节点创建。对应
 `TEST822–841` 及缩减回归门已由自动设备门覆盖。
+next595 又补齐受控的 `lookupPrefix(namespace)`：document、DocumentType、HTML element、
+CharacterData 和 Attr wrapper 都能读取已知 XML 的 `xml` 映射；只有对应 `xmlns:*` Attr 返回
+XMLNS 的 `xmlns`，HTML default、null/空值和未知 namespace 均返回 `null`。参数只做有限
+String coercion，不解析 namespace declaration，不提供 prefix mutation 或新的 core ABI；
+`TEST842–861` 定向门与 `TEST389,390–448,540,549,642–861` 缩减回归均已通过。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap

@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next594
+### 当前短期状态：next595
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -523,6 +523,17 @@ core ABI。`TEST822-841,999` 在 `tmp/device-runs/20260822-204905-next594-r1/` �
 next593 的 `TEST549,642-821,999` 证据。两次均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一，
 本批不涉及视觉、触摸、SIP、picker、旋转或网络失败，tracked `test_host.ini` 继续保持
 `javascript=0`，因此不新增人工页面验收。
+
+`next595` 作为单一批次在 browser 层补齐受控的 `lookupPrefix(namespace)`：document、
+DocumentType、HTML element、CharacterData 和 Attr wrapper 都支持已知 XML namespace 的
+`xml` 映射；XMLNS 的 `xmlns` 只对对应 `xmlns:*` Attr 暴露；HTML default、null/空值和未知
+namespace fail closed，并接受有限 String coercion。该批不改 core relation ABI，不实现
+namespace declaration/parser、prefix mutation、节点创建或 live collection。`TEST842-861,999`
+通过 21/21，证据为 `tmp/device-runs/20260822-211732-next595-r1/`；缩减回归
+`TEST389,390-448,540,549,642-861,999` 通过 283/283，证据为
+`tmp/device-runs/20260822-211920-next595-regression-r1/`。两次均无 ERROR/FAIL 且
+`TESTBENCH PASS` 唯一；本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、picker、
+旋转或网络失败，tracked `test_host.ini` 继续保持 `javascript=0`，因此不新增人工页面验收。
 
 ## 中期目标
 

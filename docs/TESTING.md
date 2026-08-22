@@ -312,6 +312,24 @@ live value 以及保留 NamedNodeMap 对属性增删的观察；不提供 namesp
 节点创建或 live collection，因此不新增人工页面验收。为控制设备时间，本批未重复 next593 的
 兼容子集；其 `TEST549,642-821,999` 证据仍有效。tracked `test_host.ini` 仍保持 `javascript=0`。
 
+`next595` 在既有 namespace metadata 上增加 `lookupPrefix(namespace)`，自动断言为
+`TEST842–861`：
+
+```bat
+scripts\device_gate.bat -Candidate next595-r1 ^
+  -EnableJavaScript ^
+  -TestSelection "842-861,999"
+```
+
+定向证据为 `tmp/device-runs/20260822-211732-next595-r1/`，21/21 通过；缩减回归
+`TEST389,390-448,540,549,642-861,999` 在
+`tmp/device-runs/20260822-211920-next595-regression-r1/` 通过 283/283。两次均为零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖各 wrapper 的方法存在性、
+XML/XMLNS 已知映射、HTML/null/空/未知 fail-closed、Attr owner delegation、String coercion、
+稳定 primitive 结果和不改变属性 metadata 的边界；不提供 namespace mutation、XML/SVG parser、
+节点创建或 live collection，因此不新增人工页面验收。为控制设备时间，本批未重复 next593 的
+兼容子集；其 `TEST549,642-821,999` 证据仍有效。tracked `test_host.ini` 仍保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

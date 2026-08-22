@@ -635,6 +635,22 @@ localName、String coercion 和稳定 Attr wrapper 语义；同一 map 对后续
 旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
 仍为 512 KiB。
 
+#### next595 的 lookupPrefix 边界
+
+next595 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共
+relation ABI。document、DocumentType、HTML element、CharacterData 和 Attr wrapper 现在都
+提供只读 `lookupPrefix(namespace)`：有限的 XML namespace 映射返回 `xml`；XMLNS namespace
+只在相应 `xmlns:*` Attr 上返回 `xmlns`；HTML default namespace、null/空值、未知 URI 与未知
+Attr prefix 均返回 `null`。参数做有限 String coercion，结果不会改变 wrapper metadata。
+
+这不是 namespace declaration/parser 或 mutation API：本批不提供 `setAttributeNS()`、
+`removeAttributeNS()`、prefix mutation、节点创建、live collection 或新的 core ABI。
+`test_host.exe` 只提供 fixture、adapter 和 `TEST842–861` 自动断言；定向门 21/21、缩减回归
+283/283，证据位于 `tmp/device-runs/20260822-211732-next595-r1/` 和
+`tmp/device-runs/20260822-211920-next595-regression-r1/`。本批不涉及视觉、触摸、SIP、picker、
+旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
+仍为 512 KiB。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

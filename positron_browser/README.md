@@ -72,6 +72,12 @@ coercion、Attr identity 和 map 对属性增删的观察语义；不提供 `set
 `removeNamedItemNS()`、XML/SVG parser、namespace mutation、节点创建或 live collection。对应
 `TEST822–841` 及缩减回归门已由自动设备门覆盖。
 
+next595 又在同一 wrapper snapshot 上提供只读 `lookupPrefix(namespace)`：document、DocumentType、
+HTML element、CharacterData 和 Attr 都识别有限的 XML → `xml` 映射；XMLNS → `xmlns` 仅对
+对应 `xmlns:*` Attr 生效，HTML default、null/空值和未知 URI fail closed。参数仅做有限
+String coercion，不解析 namespace declaration，不提供 prefix mutation、节点创建、live collection
+或新的 core ABI。对应 `TEST842–861` 及缩减回归门已通过自动设备门。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：

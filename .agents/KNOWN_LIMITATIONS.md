@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next594）
+## 当前状态（next595）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -190,6 +190,17 @@ collection 或新的 core ABI。`TEST822–841,999` 与
 `TEST549,642–821,999` 证据。本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、
 picker、旋转或网络失败，因此不新增人工页面验收。
 
+next595 在上述 wrapper 上增加只读 `lookupPrefix(namespace)`：document、DocumentType、HTML
+element、CharacterData 和 Attr 均可查询已知 XML namespace 的 `xml` 前缀；只有对应
+`xmlns:*` Attr 返回 XMLNS 的 `xmlns` 前缀。HTML default namespace、null/空 namespace、未知
+namespace 和未知 Attr prefix 都 fail closed，参数仅做有限 String coercion。该切片不解析
+namespace declarations，不提供 prefix/namespace mutation、XML/SVG parser、节点创建、live
+collection 或新的 core ABI。`TEST842–861,999` 与
+`TEST389,390–448,540,549,642–861,999` 分别通过 21/21、283/283，证据位于
+`tmp/device-runs/20260822-211732-next595-r1/` 和
+`tmp/device-runs/20260822-211920-next595-regression-r1/`；本批只涉及同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -203,8 +214,9 @@ picker、旋转或网络失败，因此不新增人工页面验收。
   当前 document 的同步 snapshot；与 repeated `getElementById()` identity 一样，不创建通用 DOM tree，
   也不提供 live 更新；next588 的 `getElementsBy*()` 与 next590 的 named collection projection
   同样只返回当前 session 的静态快照；next591 的 `links`/`anchors` 与 next592 的 namespace
-  collection 也只过滤当前快照，next593 的 namespace attribute lookup 与 next594 的
-  `NamedNodeMap.getNamedItemNS()` 也只读取当前 owner 的属性快照。
+  collection 也只过滤当前快照，next593 的 namespace attribute lookup、next594 的
+  `NamedNodeMap.getNamedItemNS()` 与 next595 的 `lookupPrefix()` 也只读取当前 owner/已知
+  namespace 映射，不解析完整 namespace declarations。
 - selection、numeric step、setRangeText 是产品 bridge 的逻辑状态，不等于 WM native EDIT 的
   光标、SIP、IME composition、候选词、Unicode preedit 或原生文本选择 UI。
 - document/window metadata、viewport、scroll 是脚本可见的受控快照；它们不自动改变真实窗口、
@@ -236,8 +248,9 @@ picker、旋转或网络失败，因此不新增人工页面验收。
 - `getAttributeNames()` 与 `Attr`/`NamedNodeMap` 只覆盖当前 ID-addressable element 的 parser-order
   attribute snapshot；`Attr.value`/`nodeValue` 通过既有 attribute bridge 做同步内存 mutation，
   `setNamedItem()`/`removeNamedItem()` 只接受同 owner wrapper，跨 owner 或缺失项 fail closed。
-  Indexed access 只保证 0–7；next593 的 element namespace lookup 与 next594 的
-  `getNamedItemNS()` 只提供同步读 API 和已知 `xml`/`xmlns` 元数据，不实现 namespace
+  Indexed access 只保证 0–7；next593 的 element namespace lookup、next594 的
+  `getNamedItemNS()` 与 next595 的 `lookupPrefix()` 只提供同步读 API 和已知 `xml`/`xmlns`
+  元数据，不实现 namespace
   mutation、XML/SVG parser、通用节点创建、live collection 或完整 Web IDL descriptor 语义。
   Attr 的 namespace/localName/prefix 仍只在当前 owner 上下文中有效。
 - Headers、Request、Response 是内存 bounded 的同步数据模型；它们不建立网络连接、不执行 fetch、
