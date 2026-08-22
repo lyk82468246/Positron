@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 721
+#define TEST_MAX_NUMBER 741
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -58301,12 +58301,12 @@ static BOOL test657_browser_document_body_named_children(void)
             "true|true|true|true", error, sizeof(error));
 }
 
-/* TEST 658 - unsupported document selectors still fail closed. */
+/* TEST 658 - unsupported document combinators still fail closed. */
 static BOOL test658_browser_document_selector_boundary(void)
 {
     static const char PROBE[] =
-        "var a=document.querySelectorAll('div');document.getElementById('result').textContent="
-        "String(document.querySelector('div')===null)+'|'+a.length+'|'"
+        "var a=document.querySelectorAll('div > span');document.getElementById('result').textContent="
+        "String(document.querySelector('div > span')===null)+'|'+a.length+'|'"
         "+String(document.querySelectorAll('#root').item(0)===document.getElementById('root'));";
     char error[256];
     return test_browser_child_node_case(658, PROBE,
@@ -59166,6 +59166,269 @@ static BOOL test721_browser_collection_contract(void)
         "+String(typeof document.getElementsByTagName==='function');";
     char error[256];
     return test_browser_collection_query_case(721, PROBE,
+            "true|true|true|true|true|true", error, sizeof(error));
+}
+
+static BOOL test_browser_document_query_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "<title id='title'>Title</title></head>"
+        "<body><main id='main' class='scope'><section id='one' class='item alpha'>"
+        "<span id='a' class='target alpha'>A</span></section>"
+        "<section id='two' class='item beta'><span id='b' class='target beta'>B</span>"
+        "<i id='italic' class='target beta'>I</i></section>"
+        "<p id='result'>idle</p></main></body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected, error,
+            error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded document selector query passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded document selector query failed.");
+    }
+    return ok;
+}
+
+/* TEST 722 - document selectors expose both methods and a NodeList result. */
+static BOOL test722_browser_document_query_methods(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('section');document.getElementById('result').textContent="
+        "String(typeof document.querySelector==='function')+'|'"
+        "+String(typeof document.querySelectorAll==='function')+'|'"
+        "+a[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_document_query_case(722, PROBE, "true|true|NodeList",
+            error, sizeof(error));
+}
+
+/* TEST 723 - document tag selectors preserve descendant order. */
+static BOOL test723_browser_document_query_tag_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('section');document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id+'|'+a[1].id;";
+    char error[256];
+    return test_browser_document_query_case(723, PROBE, "2|one|two", error,
+            sizeof(error));
+}
+
+/* TEST 724 - document class selectors include all matching descendants. */
+static BOOL test724_browser_document_query_class_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('.target');var s='';a.forEach(function(v){s+=v.id+'|';});"
+        "document.getElementById('result').textContent=a.length+'|'+s;";
+    char error[256];
+    return test_browser_document_query_case(724, PROBE,
+            "3|a|b|italic|", error, sizeof(error));
+}
+
+/* TEST 725 - wildcard selectors include the structural root and descendants. */
+static BOOL test725_browser_document_query_wildcard(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('*');var s='';a.forEach(function(v){s+=v.localName+'|';});"
+        "document.getElementById('result').textContent=a.length+'|'+s;";
+    char error[256];
+    return test_browser_document_query_case(725, PROBE,
+            "11|html|head|title|body|main|section|span|section|span|i|p|",
+            error, sizeof(error));
+}
+
+/* TEST 726 - document querySelector returns the first matching descendant. */
+static BOOL test726_browser_document_query_first(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent=document.querySelector('section').id;";
+    char error[256];
+    return test_browser_document_query_case(726, PROBE, "one", error,
+            sizeof(error));
+}
+
+/* TEST 727 - :root and html resolve to the documentElement wrapper. */
+static BOOL test727_browser_document_query_root(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent="
+        "String(document.querySelector('html')===document.documentElement)+'|'"
+        "+String(document.querySelector(':root')===document.documentElement);";
+    char error[256];
+    return test_browser_document_query_case(727, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 728 - document querySelectorAll(':root') returns one NodeList item. */
+static BOOL test728_browser_document_query_root_list(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll(':root');document.getElementById('result').textContent="
+        "a.length+'|'+String(a[0]===document.documentElement)+'|'+a[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_document_query_case(728, PROBE,
+            "1|true|NodeList", error, sizeof(error));
+}
+
+/* TEST 729 - document and element query paths reuse wrapper identity. */
+static BOOL test729_browser_document_query_identity(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelector('section');var b=document.getElementsByTagName('section');"
+        "document.getElementById('result').textContent=String(a===b[0]);";
+    char error[256];
+    return test_browser_document_query_case(729, PROBE, "true", error,
+            sizeof(error));
+}
+
+/* TEST 730 - document id selectors remain bounded and addressable. */
+static BOOL test730_browser_document_query_id(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelector('#b');document.getElementById('result').textContent="
+        "a.id+'|'+String(a===document.getElementById('b'));";
+    char error[256];
+    return test_browser_document_query_case(730, PROBE, "b|true", error,
+            sizeof(error));
+}
+
+/* TEST 731 - compound tag/class selectors use the existing matcher. */
+static BOOL test731_browser_document_query_compound(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelector('section.item.beta');document.getElementById('result').textContent="
+        "a.id;";
+    char error[256];
+    return test_browser_document_query_case(731, PROBE, "two", error,
+            sizeof(error));
+}
+
+/* TEST 732 - document attribute selectors preserve quoted values. */
+static BOOL test732_browser_document_query_attribute(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll(\"[id='b']\");"
+        "document.getElementById('result').textContent=a.length+'|'+a[0].id;";
+    char error[256];
+    return test_browser_document_query_case(732, PROBE, "1|b", error,
+            sizeof(error));
+}
+
+/* TEST 733 - a missing document selector fails closed. */
+static BOOL test733_browser_document_query_missing(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelector('missing');var b=document.querySelectorAll('missing');"
+        "document.getElementById('result').textContent=String(a===null)+'|'+b.length;";
+    char error[256];
+    return test_browser_document_query_case(733, PROBE, "true|0", error,
+            sizeof(error));
+}
+
+/* TEST 734 - a blank document selector returns null and an empty NodeList. */
+static BOOL test734_browser_document_query_blank(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelector('   ');var b=document.querySelectorAll('   ');"
+        "document.getElementById('result').textContent=String(a===null)+'|'+b.length;";
+    char error[256];
+    return test_browser_document_query_case(734, PROBE, "true|0", error,
+            sizeof(error));
+}
+
+/* TEST 735 - unsupported combinators remain fail-closed. */
+static BOOL test735_browser_document_query_combinator(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelector('section > span');var b=document.querySelectorAll('section > span');"
+        "document.getElementById('result').textContent=String(a===null)+'|'+b.length;";
+    char error[256];
+    return test_browser_document_query_case(735, PROBE, "true|0", error,
+            sizeof(error));
+}
+
+/* TEST 736 - NodeList item/forEach keeps index bounds and order. */
+static BOOL test736_browser_document_query_iteration(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('.target');var s='';a.forEach(function(v){s+=v.id+',';});"
+        "document.getElementById('result').textContent=String(a.item(-1)===null)+'|'"
+        "+String(a.item(3)===null)+'|'+s;";
+    char error[256];
+    return test_browser_document_query_case(736, PROBE,
+            "true|true|a,b,italic,", error, sizeof(error));
+}
+
+/* TEST 737 - NodeList iterators share snapshot identities and type metadata. */
+static BOOL test737_browser_document_query_iterators(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('.target');var k=a.keys(),v=a.values(),e=a.entries();"
+        "var k0=k.next(),v0=v.next(),e0=e.next().value;document.getElementById('result').textContent="
+        "k0.value+'|'+v0.value.id+'|'+e0[0]+':'+e0[1].id+'|'"
+        "+a[Symbol.toStringTag]+'|'+String(k[Symbol.iterator]()==k);";
+    char error[256];
+    return test_browser_document_query_case(737, PROBE,
+            "0|a|0:a|NodeList|true", error, sizeof(error));
+}
+
+/* TEST 738 - document query results are static while later queries see mutation. */
+static BOOL test738_browser_document_query_snapshot(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('.target');document.getElementById('b').className='other';"
+        "var b=document.querySelectorAll('.target');document.getElementById('result').textContent="
+        "a.length+'|'+b.length+'|'+a[1].id;";
+    char error[256];
+    return test_browser_document_query_case(738, PROBE, "3|2|b", error,
+            sizeof(error));
+}
+
+/* TEST 739 - structural head/body document queries preserve wrapper identity. */
+static BOOL test739_browser_document_query_structure(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('body');var b=document.querySelector('head');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a[0]===document.body)+'|'+String(b===document.head);";
+    char error[256];
+    return test_browser_document_query_case(739, PROBE, "1|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 740 - document selector results agree with existing collection queries. */
+static BOOL test740_browser_document_query_consistency(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('section');var b=document.getElementsByTagName('section');"
+        "var c=document.querySelectorAll('.item');document.getElementById('result').textContent="
+        "String(a.length===2)+'|'+String(b.length===2)+'|'+String(c.length===2)+'|'"
+        "+String(a[0]===b[0])+'|'+String(a[1]===c[1]);";
+    char error[256];
+    return test_browser_document_query_case(740, PROBE,
+            "true|true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 741 - the bounded document selector contract is coherent. */
+static BOOL test741_browser_document_query_contract(void)
+{
+    static const char PROBE[] =
+        "var a=document.querySelectorAll('*');var b=document.querySelectorAll('section');"
+        "var c=document.querySelector('main');var d=document.querySelectorAll(':root');"
+        "document.getElementById('result').textContent="
+        "String(a.length===11)+'|'+String(b.length===2)+'|'"
+        "+String(c.id==='main')+'|'+String(d.length===1)+'|'"
+        "+String(typeof document.querySelector==='function')+'|'"
+        "+String(typeof document.querySelectorAll==='function');";
+    char error[256];
+    return test_browser_document_query_case(741, PROBE,
             "true|true|true|true|true|true", error, sizeof(error));
 }
 
@@ -62358,6 +62621,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 721: ok =
                 test721_browser_collection_contract();
+                break;
+        case 722: ok =
+                test722_browser_document_query_methods();
+                break;
+        case 723: ok =
+                test723_browser_document_query_tag_order();
+                break;
+        case 724: ok =
+                test724_browser_document_query_class_order();
+                break;
+        case 725: ok =
+                test725_browser_document_query_wildcard();
+                break;
+        case 726: ok =
+                test726_browser_document_query_first();
+                break;
+        case 727: ok =
+                test727_browser_document_query_root();
+                break;
+        case 728: ok =
+                test728_browser_document_query_root_list();
+                break;
+        case 729: ok =
+                test729_browser_document_query_identity();
+                break;
+        case 730: ok =
+                test730_browser_document_query_id();
+                break;
+        case 731: ok =
+                test731_browser_document_query_compound();
+                break;
+        case 732: ok =
+                test732_browser_document_query_attribute();
+                break;
+        case 733: ok =
+                test733_browser_document_query_missing();
+                break;
+        case 734: ok =
+                test734_browser_document_query_blank();
+                break;
+        case 735: ok =
+                test735_browser_document_query_combinator();
+                break;
+        case 736: ok =
+                test736_browser_document_query_iteration();
+                break;
+        case 737: ok =
+                test737_browser_document_query_iterators();
+                break;
+        case 738: ok =
+                test738_browser_document_query_snapshot();
+                break;
+        case 739: ok =
+                test739_browser_document_query_structure();
+                break;
+        case 740: ok =
+                test740_browser_document_query_consistency();
+                break;
+        case 741: ok =
+                test741_browser_document_query_contract();
                 break;
         default: ok = FALSE; break;
         }

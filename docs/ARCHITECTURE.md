@@ -471,8 +471,8 @@ DLL，`test_host.exe` 只提供 fixture、callback adapter 和断言：
 - `positron_browser.dll` 将这三个 token 暴露为稳定的 `documentElement`、`head`、`body`
   wrapper，并让已有 parent/child/sibling、`children`/`childNodes`、元素作用域 selector、
   identity/root/position/contains 和 collection protocol 复用同一 wrapper cache。文档级
-  `querySelector()`/`querySelectorAll()` 仅增加 `html`、`:root`、`head`、`body` 四种结构
-  查询；其他复杂 document selector 继续 fail closed。
+  selector 在 next589 扩展前仅增加 `html`、`:root`、`head`、`body` 四种结构查询；其他
+  document selector 当时继续 fail closed。
 - `documentElement.parentNode` 返回当前 document，而 `parentElement` 为空；`head`/`body`
   的 parent/sibling/children 关系则沿结构 token 返回。结构节点没有伪造 HTML `id`，不引入
   通用节点创建、outerHTML、DOM mutation、live collection、shadow tree、layout 或 native
@@ -536,6 +536,22 @@ namespace 语义。
 当前 browser session ceiling 为 608 KiB；独立 `positron_script` context 的 512 KiB 默认堆、
 公共 ABI 和断言均未放宽。定向、兼容和相邻回归门分别为 21/21、82/82、301/301，均不涉及
 视觉、真实触摸、SIP、旋转、picker 或网络失败反馈，因此不新增人工页面验收。
+
+#### next589 的 document selector 边界
+
+next589 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。`document.querySelector()` 与 `document.querySelectorAll()` 现在复用 element 作用域的
+bounded matcher 和 wrapper cache：支持 HTML tag（含大小写归一）、`#id`、class、有限
+attribute、compound、`*` 和 `:root`；`querySelector()` 返回 DFS 文档顺序中的首个匹配，
+`querySelectorAll()` 返回按同一顺序排列的 NodeList snapshot。document root 参与匹配，
+head/body 结构 wrapper 保持既有 identity，结果集合沿现有 `item()`、迭代器和
+`Symbol.toStringTag` 协议工作。
+
+空白、缺失和包含 `>`、`+`、`~` 的组合器返回 null/空 NodeList；这是 fail-closed 的受限
+selector 入口，不是完整 CSS parser，不提供 live collection、节点创建、mutation、layout 或
+shadow tree。`test_host.exe` 只提供 fixture、adapter 和 `TEST722–741` 自动断言；本批不新增
+core ABI、视觉/触摸/SIP/picker/旋转/网络人工门。browser session 仍使用 608 KiB ceiling，
+独立 `positron_script` 默认堆仍为 512 KiB。
 
 ## 独立 JavaScript 与浏览器 JavaScript
 

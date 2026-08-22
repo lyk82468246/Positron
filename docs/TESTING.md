@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next588 基线）
+### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -191,6 +191,26 @@ document root 包含、`item()`/`namedItem()` 与迭代协议都由自动断言�
 session ceiling 明确提高到 608 KiB；`tmp/device-runs/20260822-151937-next588-540-r3/`
 的 TEST540/999 2/2 通过，随后兼容和相邻回归门也通过。设备 gate 的 `-EnableJavaScript` 仍只
 修改隔离 staging，默认配置不变。
+
+`next589` 仍是一个批次编号，不为每个 selector 形态重复分配 next 号。本批把既有受限
+selector matcher 接入 document 作用域，自动断言为 `TEST722–741`：
+
+```bat
+scripts\device_gate.bat -Candidate next589-r5 ^
+  -EnableJavaScript ^
+  -TestSelection "722-741,999"
+```
+
+定向证据为 `tmp/device-runs/20260822-155230-next589-r5/`，21/21 通过；兼容门
+`TEST549,642-741,999` 在 `tmp/device-runs/20260822-155506-next589-compat-r2/` 通过
+102/102；相邻回归 `TEST389,390-448,482-741,999` 在
+`tmp/device-runs/20260822-160014-next589-regression/` 通过 321/321。三次均为零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖 document
+`querySelector()`/`querySelectorAll()` 的 tag、`#id`、class、有限 attribute、compound、
+`*`、`:root`、DFS 顺序、root/head/body identity、NodeList 迭代、静态 snapshot 和组合器负例；
+空白及不支持 selector 仍 fail closed。TEST658 的历史 `div` 负例已改为仍不支持的 `div > span`
+组合器。该切片只改变同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或
+网络失败，因此不新增人工页面验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行

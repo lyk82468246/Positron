@@ -78,6 +78,9 @@ next588 又在 document 与 HTML element wrapper 上增加受控的 `getElements
 大小写归一、`*`、多 class token、`item()`/`namedItem()` 与迭代协议；element 查询排除 owner，
 document 查询包含 `documentElement`，空白/未知输入 fail closed。它仍是静态 snapshot，不是
 live collection、通用 selector 或 mutation API；对应 `TEST702–721` 已由自动设备门覆盖。
+next589 又把同一受限 matcher 接入 document 的 `querySelector()`/`querySelectorAll()`，支持
+tag、`#id`、class、有限 attribute、compound、`*` 和 `:root`，按 DFS 顺序返回首个匹配或
+NodeList snapshot；空白和组合器仍 fail closed。对应 `TEST722–741` 已由自动设备门覆盖。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap

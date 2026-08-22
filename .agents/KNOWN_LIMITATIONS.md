@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next588）
+## 当前状态（next589）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -73,8 +73,8 @@ next585 在既有 relation bridge 上增加了三个保留结构 token，将没�
 `document.documentElement`、`document.head`、`document.body` wrapper，并复用既有
 parent/child/sibling、`children`/`childNodes`、root selector、identity/root/position/contains
 和集合协议；`documentElement.parentNode` 指向 document，`parentElement` 为空。真实 id 查找
-优先于 token fallback，结构 wrapper 不伪造 `id`；文档级 selector 只新增 `html`、`:root`、
-`head`、`body` 四种结构查询，复杂 selector 仍 fail closed。由于 root parent 现在可寻址，
+优先于 token fallback，结构 wrapper 不伪造 `id`；next585 当时的文档级 selector 只新增
+`html`、`:root`、`head`、`body` 四种结构查询，复杂 selector 仍 fail closed。由于 root parent 现在可寻址，
 同一 body snapshot 中原先 disconnected 的 ID 子树可排序，TEST549 的 root/form 断言相应
 更新为顺序值 `4`。`TEST642–661,999` 定向门与 `TEST549,642–661,999` 兼容重跑已通过；
 最终相邻回归 `TEST389,390-448,482-661,999` 在
@@ -115,6 +115,17 @@ HTMLCollection snapshot，提供 `item()`/`namedItem()`、`forEach()`、`keys()`
 上稳定复现 TEST540 内存上限后，browser session ceiling 提高到 608 KiB；
 `tmp/device-runs/20260822-151937-next588-540-r3/` 的 TEST540/999 2/2 通过，独立
 `positron_script` 默认堆仍为 512 KiB。
+
+next589 在不改动 core relation ABI 的前提下，把既有受限 selector matcher 接到 document
+作用域：`document.querySelector()`/`querySelectorAll()` 沿当前 bounded snapshot 支持
+tag、`#id`、class、有限 attribute、compound、`*` 和 `:root`，按 DFS 文档顺序返回静态
+NodeList；root/head/body wrapper 复用既有 identity。空白、缺失和包含 `>`、`+`、`~` 的组合器
+仍 fail closed，不提供完整 CSS selector、live 更新、节点创建或 mutation。`TEST722–741,999`、
+`TEST549,642–741,999`、`TEST389,390–448,482–741,999` 分别通过 21/21、102/102、321/321，
+证据位于 `tmp/device-runs/20260822-155230-next589-r5/`、
+`tmp/device-runs/20260822-155506-next589-compat-r2/` 和
+`tmp/device-runs/20260822-160014-next589-regression/`。历史 TEST658 负例已改为验证组合器
+仍然 fail closed；本批不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
 这些 API 的共同限制如下：
 
@@ -260,6 +271,12 @@ HTMLCollection snapshot，提供 `item()`/`namedItem()`、`forEach()`、`keys()`
   输入 fail closed。它不是 live collection、通用 CSS selector 或 mutation API；
   `TEST702–721` 只验证同步内存语义。为容纳这组 bootstrap，browser session ceiling 现为
   608 KiB，独立 `positron_script` 默认堆仍为 512 KiB；TEST540 在该上限下保持通过。
+
+- next589 把同一 bounded matcher 接入 document 作用域：`querySelector()` 返回首个 DFS
+  匹配 wrapper，`querySelectorAll()` 返回 NodeList snapshot，支持已声明的 tag/class/id/
+  attribute/compound/`*`/`:root` 形态，并保留 root/head/body identity；空白和不支持组合器
+  fail closed。它不扩展 core ABI，不提供通用 CSS parser、live collection、节点创建或 mutation；
+  `TEST722–741` 覆盖顺序、identity、NodeList 迭代、快照和负例。
 
 - next298 新增了独立的 validation query callback 和 bootstrap 的
   `HTMLElement.checkValidity()`、`willValidate`、`validity`（基础 flags）查询。它按 DOM id

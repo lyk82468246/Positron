@@ -36,6 +36,11 @@ next588 又在 document 与 HTML element wrapper 上提供受控的
 为容纳这组 bootstrap，browser session heap ceiling 为 608 KiB，独立 `positron_script` 默认堆
 仍为 512 KiB。
 
+next589 又把同一受限 matcher 接入 document 的 `querySelector()`/`querySelectorAll()`：支持
+tag、`#id`、class、有限 attribute、compound、`*` 和 `:root`，按 DFS 文档顺序返回首个匹配
+或 NodeList snapshot；root/head/body wrapper 复用既有 identity，空白和 `>`/`+`/`~` 组合器
+fail closed。它不提供完整 CSS parser、live DOM、节点创建或 mutation。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -87,8 +92,9 @@ PBrowser_ScriptSessionDestroy(session);
   `contains()` 和 document-position 常量；文档结构入口还提供稳定的
   `document.documentElement`、`document.head`、`document.body`，并把它们接入同一
   parent/child/sibling、`children`/`childNodes`、identity/root/position/contains 和集合
-  协议 snapshot；文档级 `querySelector()`/`querySelectorAll()` 只额外支持 `html`、`:root`、
-  `head`、`body`，不宣称通用 selector。core 通过三个保留结构 token 映射无 id 的结构节点，
+  协议 snapshot；文档级 `querySelector()`/`querySelectorAll()` 现在提供受限的 tag、id、class、
+  attribute、compound、`*` 和 `:root` 查询，按 DFS 顺序返回 NodeList，但不宣称通用 selector。
+  core 通过三个保留结构 token 映射无 id 的结构节点，
   不伪造 HTML `id`，也不提供通用 DOM 创建、mutation 或 live collection；
 - `PBrowser_ScriptSessionRunMicrotasks()`：在调用者自己的窗口/宿主循环中推进当前 session
   的 bounded microtask 队列并返回本次执行数量；Promise reaction 不会自行创建线程或隐式

@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next588（本批覆盖 `TEST702-721,999` 定向门、
-  `TEST549,642-721,999` 兼容门和 `TEST389,390-448,482-721,999` 相邻回归；最近一次完整自动
+- 最新已验证产品基线：next589（本批覆盖 `TEST722-741,999` 定向门、
+  `TEST549,642-741,999` 兼容门和 `TEST389,390-448,482-741,999` 相邻回归；最近一次完整自动
   基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
@@ -262,11 +262,25 @@
   `tmp/device-runs/20260822-151937-next588-540-r3/` 的 TEST540/999 2/2 通过，累计门也在
   上述 301/301 证据中通过。
 
-## 当前状态：next588
+- next589 作为一个单一批次在 browser 层把受限 selector 扩展到 document 作用域：
+  `document.querySelector()`/`querySelectorAll()` 现在沿既有 bounded DOM snapshot 支持
+  tag、`#id`、class、有限 attribute、compound、`*` 和 `:root`，返回按 DFS 文档顺序排列的
+  NodeList；root/head/body 结构 wrapper 与既有 element 查询复用 identity，空白、缺失和不支持
+  的组合器仍 fail closed。结果是静态 session snapshot，不新增 core ABI、通用 CSS selector、
+  live DOM 或 mutation；`test_host.exe` 只提供 fixture、adapter 和 `TEST722–741` 断言。
+- `TEST722-741,999` 在 `tmp/device-runs/20260822-155230-next589-r5/` 通过 21/21；兼容门
+  `TEST549,642-741,999` 在 `tmp/device-runs/20260822-155506-next589-compat-r2/` 通过
+  102/102；相邻回归 `TEST389,390-448,482-741,999` 在
+  `tmp/device-runs/20260822-160014-next589-regression/` 通过 321/321。三次均为零 ERROR、
+  零 FAIL、唯一 TESTBENCH PASS、`test13_route_ok=True`。本批只涉及同步脚本 API/DOM snapshot，
+  不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；TEST658 的
+  历史负例已收窄为仍不支持的组合器边界。
 
-前一批单一 `next587` 已实现、构建并通过定向设备门及相邻累计回归门；当前单一 `next588` 也
+## 当前状态：next589
+
+前一批单一 `next588` 已实现、构建并通过定向设备门及相邻累计回归门；当前单一 `next589` 也
 已实现、构建并通过定向设备门、兼容门及相邻累计回归门，其中本批 20 个自动断言使用
-`TEST702–721`
+`TEST722–741`
 编号，不再为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
@@ -304,8 +318,10 @@ Node 的 baseURI 和有限 namespace metadata 统一到这些 wrapper：当前 U
 提供，HTML element/Attr/CharacterData 的 namespace 行为明确区分，未知 prefix 不猜测。next588
 又在 browser 层增加 document/element 的 tag/class HTMLCollection 查询；它们是按 DFS 文档顺序
 生成的静态 snapshot，支持有限集合协议，owner 自身不计入，空白/未知查询 fail closed，不引入
-live DOM、通用 selector、mutation 或 core ABI。576 KiB 在既有 TEST540 边界上不足后已由
-608 KiB 覆盖，独立 script 上限没有改变。
+live DOM、通用 selector、mutation 或 core ABI。next589 又让 document 作用域复用同一受限
+selector matcher：`querySelector()`/`querySelectorAll()` 返回 NodeList snapshot，支持有限
+tag/class/attribute/compound/`:root` 语义，组合器仍 fail closed。576 KiB 在既有 TEST540 边界
+上不足后已由 608 KiB 覆盖，独立 script 上限没有改变。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -2816,14 +2832,14 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 不承诺 ARIA 语义或可访问性树。
 本轮 next382–401 的 metadata reflection 门也已通过，覆盖 20 个 ARIA raw 属性；均只承诺
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
-唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next588 之后的一个不依赖人工页面观察、
+唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next589 之后的一个不依赖人工页面观察、
 边界完整的产品能力；继续保持每批一个清晰的产品边界，不能把完整 DOM、布局或 native 输入
 偷偷扩入本批。
 
 完成标准：
 
-- TEST721/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/482–721/999` 定向选择；next299 的
+- TEST741/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/482–741/999` 定向选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2837,7 +2853,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next588 之后选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next589 之后选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
