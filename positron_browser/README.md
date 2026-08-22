@@ -21,6 +21,12 @@ document、DOM、navigation、event、input、keyboard、focus、EDIT change/pos
 和 document child order 视图；它不要求调用者提供 core doctype parser，也不提供节点创建或
 mutation。该能力仍遵守 session-scoped、fail-closed 的关系边界。
 
+当前 Node snapshot 还为 document、DocumentType、HTML element、CharacterData 和 Attr wrapper
+提供受控的 `baseURI`、`namespaceURI`、`prefix`、`lookupNamespaceURI()` 与
+`isDefaultNamespace()`。`baseURI` 读取并跟随当前 session URL；namespace 只承诺 HTML/XML 的
+有限值，未知 prefix fail closed，Attr 查询沿 owner element 上下文工作。该能力不实现 XML/
+namespace parser、节点创建、prefix/namespace mutation 或完整 DOM tree。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：

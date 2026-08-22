@@ -500,6 +500,24 @@ snapshot 和 fail-closed position semantics。`test_host.exe` 仅提供 fixture�
 576 KiB，独立 `positron_script` 默认堆仍为 512 KiB；本批不涉及视觉、触摸、SIP、picker、旋转
 或网络，因此不新增人工页面验收。
 
+#### next587 的 Node URL 与 namespace 边界
+
+next587 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。browser-owned 的 document、DocumentType、HTML element、CharacterData 和 Attr wrapper
+提供只读 `baseURI`、`namespaceURI`、`prefix`、`lookupNamespaceURI()` 与
+`isDefaultNamespace()`。`baseURI` 读取当前 session 的 `location.href`，因此在受控
+`history.replaceState()` 后反映新的 URL；它不是完整 URL Standard parser，也不建立新的网络
+或文档生命周期。
+
+HTML element wrapper 的 `namespaceURI` 为 HTML namespace；document、DocumentType、文本/注释
+和普通 Attr wrapper 的 namespace 视图为 null。`xml` prefix 映射到 XML namespace，未知 prefix
+和不支持的 namespace 请求返回 null/false；Attr 的有限查询沿 owner element 上下文工作。
+`prefix` 为只读 null。该边界不实现 XML/namespace parser、`createElementNS()`、prefix 或
+namespace mutation、完整 namespace tree、live collection 或通用 DOM mutation；`test_host.exe`
+只提供 URL fixture、callback adapter 和自动断言，不能成为 API 所有者。browser bootstrap 仍为
+十三个 IIFE，session heap ceiling 为 576 KiB，独立 `positron_script` 默认堆仍为 512 KiB；
+本批仅覆盖同步脚本 API/DOM snapshot，不新增人工页面验收。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

@@ -69,6 +69,10 @@ DOM 创建、mutation、live collection 或完整 selector 引擎。
 next586 又增加 browser-owned 的 `document.doctype` 只读 snapshot，并明确 document 的
 `childNodes` 顺序为 `[doctype, documentElement]`、`children` 仍为 element-only；它不新增 core
 ABI 或通用 doctype parser/mutation。对应 `TEST662–681` 已由自动设备门覆盖。
+next587 又为 document、DocumentType、HTML element、CharacterData 和 Attr wrapper 增加受控的
+`baseURI`、HTML/XML namespace、`prefix`、`lookupNamespaceURI()` 与 `isDefaultNamespace()`；
+`baseURI` 随当前 session URL 更新，未知 namespace 请求 fail closed，不实现 namespace parser、
+节点创建或 mutation。对应 `TEST682–701` 已由自动设备门覆盖。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap

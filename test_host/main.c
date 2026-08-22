@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 681
+#define TEST_MAX_NUMBER 701
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -50427,7 +50427,8 @@ static BOOL test293_reset_submission_metadata(void)
 /* Small product-browser fixture used by raw reflected-property tests. It
  * intentionally stops before layout: these properties are DOM/bootstrap
  * metadata, not visual or native-control claims. */
-static BOOL test_browser_raw_string_fixture(const char *html,
+static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
+        const char *html,
         const char *probe, const char *expected, char *error,
         int error_capacity)
 {
@@ -50456,7 +50457,7 @@ static BOOL test_browser_raw_string_fixture(const char *html,
     g_render_sheet = NULL;
     document = PCore_ParseHTML(html, strlen(html));
     if (document == NULL ||
-            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            pcore_browser_execute_scripts(document, 1, 0, document_url, NULL,
             NULL, &executed, &ignored, error, error_capacity, &runtime,
             &bridge) != 0 || executed != 1 || ignored != 0 ||
             runtime == NULL || bridge == NULL) {
@@ -50497,6 +50498,14 @@ static BOOL test_browser_raw_string_fixture(const char *html,
         error[error_capacity - 1] = '\0';
     }
     return ok;
+}
+
+static BOOL test_browser_raw_string_fixture(const char *html,
+        const char *probe, const char *expected, char *error,
+        int error_capacity)
+{
+    return test_browser_raw_string_fixture_at_url(NULL, html, probe,
+            expected, error, error_capacity);
 }
 
 static BOOL test_browser_raw_property_case(const char *target_markup,
@@ -58597,6 +58606,295 @@ static BOOL test681_browser_document_type_contract(void)
             "true|true|true|true|true|true|html", error, sizeof(error));
 }
 
+static BOOL test_browser_url_metadata_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='root'>alpha<span id='child'>beta</span>"
+        "<!--note--><em>gamma</em></div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char URL[] =
+        "https://example.com/docs/page.html?old=1#old";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture_at_url(URL, HTML, probe, expected,
+            error, error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded Node URL/namespace metadata passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded Node URL/namespace metadata failed.");
+    }
+    return ok;
+}
+
+/* TEST 682 - document baseURI follows the current document URL. */
+static BOOL test682_browser_node_base_uri_document(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent="
+        "document.baseURI+'|'+document.URL+'|'+document.documentURI;";
+    char error[256];
+    return test_browser_url_metadata_case(682, PROBE,
+            "https://example.com/docs/page.html?old=1#old|https://example.com/docs/page.html?old=1#old|https://example.com/docs/page.html?old=1#old",
+            error, sizeof(error));
+}
+
+/* TEST 683 - elements and CharacterData share the document baseURI. */
+static BOOL test683_browser_node_base_uri_subtree(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root'),t=e.childNodes[0],c=e.childNodes[2];"
+        "document.getElementById('result').textContent="
+        "String(e.baseURI===document.baseURI)+'|'+String(t.baseURI===e.baseURI)+'|'"
+        "+String(c.baseURI===e.baseURI);";
+    char error[256];
+    return test_browser_url_metadata_case(683, PROBE, "true|true|true",
+            error, sizeof(error));
+}
+
+/* TEST 684 - document and doctype have no namespace or prefix. */
+static BOOL test684_browser_node_namespace_document(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(document.namespaceURI===null)+'|'+String(d.namespaceURI===null)+'|'"
+        "+String(document.prefix===null)+'|'+String(d.prefix===null);";
+    char error[256];
+    return test_browser_url_metadata_case(684, PROBE, "true|true|true|true",
+            error, sizeof(error));
+}
+
+/* TEST 685 - HTML elements expose the bounded HTML namespace. */
+static BOOL test685_browser_node_namespace_element(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');document.getElementById('result').textContent="
+        "e.namespaceURI+'|'+e.localName+'|'+String(e.prefix===null);";
+    char error[256];
+    return test_browser_url_metadata_case(685, PROBE,
+            "http://www.w3.org/1999/xhtml|div|true", error, sizeof(error));
+}
+
+/* TEST 686 - text and comment nodes fail closed for namespace metadata. */
+static BOOL test686_browser_node_namespace_character_data(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root'),t=e.childNodes[0],c=e.childNodes[2];"
+        "document.getElementById('result').textContent="
+        "String(t.namespaceURI===null)+'|'+String(c.namespaceURI===null)+'|'"
+        "+String(t.prefix===null)+'|'+String(c.prefix===null);";
+    char error[256];
+    return test_browser_url_metadata_case(686, PROBE, "true|true|true|true",
+            error, sizeof(error));
+}
+
+/* TEST 687 - Attr exposes ownerDocument, localName and null namespace. */
+static BOOL test687_browser_node_namespace_attribute(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root'),a=e.getAttributeNode('id');"
+        "document.getElementById('result').textContent="
+        "String(a.ownerDocument===document)+'|'+a.localName+'|'"
+        "+String(a.namespaceURI===null)+'|'+String(a.prefix===null);";
+    char error[256];
+    return test_browser_url_metadata_case(687, PROBE, "true|id|true|true",
+            error, sizeof(error));
+}
+
+/* TEST 688 - HTML elements resolve the default and XML namespaces. */
+static BOOL test688_browser_namespace_lookup_element(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');document.getElementById('result').textContent="
+        "e.lookupNamespaceURI(null)+'|'+e.lookupNamespaceURI('')+'|'"
+        "+e.lookupNamespaceURI('xml');";
+    char error[256];
+    return test_browser_url_metadata_case(688, PROBE,
+            "http://www.w3.org/1999/xhtml|http://www.w3.org/1999/xhtml|http://www.w3.org/XML/1998/namespace",
+            error, sizeof(error));
+}
+
+/* TEST 689 - unknown namespace prefixes return null. */
+static BOOL test689_browser_namespace_lookup_unknown(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');document.getElementById('result').textContent="
+        "String(e.lookupNamespaceURI('svg')===null)+'|'"
+        "+String(e.lookupNamespaceURI('HTML')===null);";
+    char error[256];
+    return test_browser_url_metadata_case(689, PROBE, "true|true",
+            error, sizeof(error));
+}
+
+/* TEST 690 - an HTML element reports only the HTML default namespace. */
+static BOOL test690_browser_namespace_default_element(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');document.getElementById('result').textContent="
+        "String(e.isDefaultNamespace('http://www.w3.org/1999/xhtml'))+'|'"
+        "+String(e.isDefaultNamespace(''))+'|'+String(e.isDefaultNamespace(null));";
+    char error[256];
+    return test_browser_url_metadata_case(690, PROBE, "true|false|false",
+            error, sizeof(error));
+}
+
+/* TEST 691 - document-like nodes use the null namespace default. */
+static BOOL test691_browser_namespace_default_document(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(document.lookupNamespaceURI(null)===null)+'|'"
+        "+String(d.lookupNamespaceURI('')===null)+'|'"
+        "+String(document.isDefaultNamespace(null))+'|'"
+        "+String(d.isDefaultNamespace(null));";
+    char error[256];
+    return test_browser_url_metadata_case(691, PROBE, "true|true|true|true",
+            error, sizeof(error));
+}
+
+/* TEST 692 - XML namespace lookup is stable across node kinds. */
+static BOOL test692_browser_namespace_lookup_xml(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root'),t=e.childNodes[0],a=e.getAttributeNode('id');"
+        "document.getElementById('result').textContent="
+        "e.lookupNamespaceURI('xml')+'|'+t.lookupNamespaceURI('xml')+'|'"
+        "+a.lookupNamespaceURI('xml');";
+    char error[256];
+    return test_browser_url_metadata_case(692, PROBE,
+            "http://www.w3.org/XML/1998/namespace|http://www.w3.org/XML/1998/namespace|http://www.w3.org/XML/1998/namespace",
+            error, sizeof(error));
+}
+
+/* TEST 693 - Attr namespace helpers follow their owner element context. */
+static BOOL test693_browser_namespace_attribute_context(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root'),a=e.getAttributeNode('id');"
+        "document.getElementById('result').textContent="
+        "a.lookupNamespaceURI(null)+'|'"
+        "+String(a.isDefaultNamespace('http://www.w3.org/1999/xhtml'))+'|'"
+        "+String(a.isDefaultNamespace(null));";
+    char error[256];
+    return test_browser_url_metadata_case(693, PROBE,
+            "http://www.w3.org/1999/xhtml|true|false", error, sizeof(error));
+}
+
+/* TEST 694 - baseURI, namespaceURI and prefix are read-only views. */
+static BOOL test694_browser_node_metadata_readonly(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');try{e.baseURI='x';e.namespaceURI='x';e.prefix='x';}catch(x){}"
+        "document.getElementById('result').textContent="
+        "String(e.baseURI===document.baseURI)+'|'+e.namespaceURI+'|'"
+        "+String(e.prefix===null);";
+    char error[256];
+    return test_browser_url_metadata_case(694, PROBE,
+            "true|http://www.w3.org/1999/xhtml|true", error, sizeof(error));
+}
+
+/* TEST 695 - history.replaceState updates baseURI without changing namespace. */
+static BOOL test695_browser_node_base_uri_replace_state(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');history.replaceState({n:1},'',"
+        "'/docs/next.html?new=1#next');document.getElementById('result').textContent="
+        "document.baseURI+'|'+e.baseURI+'|'+String(history.state.n===1)+'|'"
+        "+e.namespaceURI;";
+    char error[256];
+    return test_browser_url_metadata_case(695, PROBE,
+            "https://example.com/docs/next.html?new=1#next|https://example.com/docs/next.html?new=1#next|true|http://www.w3.org/1999/xhtml",
+            error, sizeof(error));
+}
+
+/* TEST 696 - doctype and Attr baseURI follow the same document URL. */
+static BOOL test696_browser_node_base_uri_other_nodes(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root'),a=e.getAttributeNode('id');"
+        "document.getElementById('result').textContent="
+        "String(document.doctype.baseURI===document.baseURI)+'|'"
+        "+String(a.baseURI===document.baseURI)+'|'"
+        "+String(e.childNodes[0].baseURI===document.baseURI);";
+    char error[256];
+    return test_browser_url_metadata_case(696, PROBE, "true|true|true",
+            error, sizeof(error));
+}
+
+/* TEST 697 - CharacterData uses the null default namespace. */
+static BOOL test697_browser_namespace_default_character_data(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root'),t=e.childNodes[0],c=e.childNodes[2];"
+        "document.getElementById('result').textContent="
+        "String(t.isDefaultNamespace(null))+'|'+String(c.isDefaultNamespace(null))+'|'"
+        "+String(t.isDefaultNamespace(''))+'|'+String(c.isDefaultNamespace(''));";
+    char error[256];
+    return test_browser_url_metadata_case(697, PROBE, "true|true|false|false",
+            error, sizeof(error));
+}
+
+/* TEST 698 - non-element nodes reject an HTML default namespace lookup. */
+static BOOL test698_browser_namespace_lookup_non_element(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root'),t=e.childNodes[0],d=document.doctype;"
+        "document.getElementById('result').textContent="
+        "String(t.lookupNamespaceURI(null)===null)+'|'"
+        "+String(d.lookupNamespaceURI(null)===null)+'|'"
+        "+String(document.lookupNamespaceURI('svg')===null);";
+    char error[256];
+    return test_browser_url_metadata_case(698, PROBE, "true|true|true",
+            error, sizeof(error));
+}
+
+/* TEST 699 - baseURI remains current after a query-only history update. */
+static BOOL test699_browser_node_base_uri_query_update(void)
+{
+    static const char PROBE[] =
+        "history.replaceState({},'', '?q=2');document.getElementById('result').textContent="
+        "document.baseURI+'|'+document.getElementById('root').baseURI;";
+    char error[256];
+    return test_browser_url_metadata_case(699, PROBE,
+            "https://example.com/docs/page.html?q=2|https://example.com/docs/page.html?q=2",
+            error, sizeof(error));
+}
+
+/* TEST 700 - namespace identity remains stable across repeated access. */
+static BOOL test700_browser_node_namespace_identity(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');var a=e.namespaceURI;"
+        "document.getElementById('result').textContent="
+        "String(a===e.namespaceURI)+'|'+String(e.lookupNamespaceURI(null)===a)+'|'"
+        "+String(e.isDefaultNamespace(a));";
+    char error[256];
+    return test_browser_url_metadata_case(700, PROBE, "true|true|true",
+            error, sizeof(error));
+}
+
+/* TEST 701 - the complete bounded Node URL/namespace contract is coherent. */
+static BOOL test701_browser_node_metadata_contract(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root'),t=e.childNodes[0],d=document.doctype;"
+        "document.getElementById('result').textContent="
+        "String(e.baseURI===document.baseURI)+'|'+String(e.namespaceURI!==null)+'|'"
+        "+String(t.namespaceURI===null)+'|'+String(d.namespaceURI===null)+'|'"
+        "+String(e.lookupNamespaceURI(null)===e.namespaceURI)+'|'"
+        "+String(e.isDefaultNamespace(e.namespaceURI))+'|'"
+        "+String(document.isDefaultNamespace(null));";
+    char error[256];
+    return test_browser_url_metadata_case(701, PROBE,
+            "true|true|true|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -61666,6 +61964,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 681: ok =
                 test681_browser_document_type_contract();
+                break;
+        case 682: ok =
+                test682_browser_node_base_uri_document();
+                break;
+        case 683: ok =
+                test683_browser_node_base_uri_subtree();
+                break;
+        case 684: ok =
+                test684_browser_node_namespace_document();
+                break;
+        case 685: ok =
+                test685_browser_node_namespace_element();
+                break;
+        case 686: ok =
+                test686_browser_node_namespace_character_data();
+                break;
+        case 687: ok =
+                test687_browser_node_namespace_attribute();
+                break;
+        case 688: ok =
+                test688_browser_namespace_lookup_element();
+                break;
+        case 689: ok =
+                test689_browser_namespace_lookup_unknown();
+                break;
+        case 690: ok =
+                test690_browser_namespace_default_element();
+                break;
+        case 691: ok =
+                test691_browser_namespace_default_document();
+                break;
+        case 692: ok =
+                test692_browser_namespace_lookup_xml();
+                break;
+        case 693: ok =
+                test693_browser_namespace_attribute_context();
+                break;
+        case 694: ok =
+                test694_browser_node_metadata_readonly();
+                break;
+        case 695: ok =
+                test695_browser_node_base_uri_replace_state();
+                break;
+        case 696: ok =
+                test696_browser_node_base_uri_other_nodes();
+                break;
+        case 697: ok =
+                test697_browser_namespace_default_character_data();
+                break;
+        case 698: ok =
+                test698_browser_namespace_lookup_non_element();
+                break;
+        case 699: ok =
+                test699_browser_node_base_uri_query_update();
+                break;
+        case 700: ok =
+                test700_browser_node_namespace_identity();
+                break;
+        case 701: ok =
+                test701_browser_node_metadata_contract();
                 break;
         default: ok = FALSE; break;
         }

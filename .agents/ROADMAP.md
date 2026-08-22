@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next586
+### 当前短期状态：next587
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -417,6 +417,17 @@ collection 或完整 document tree。`TEST662-681,999` 定向门在
 `tmp/device-runs/20260822-135558-next586-regression/` 通过 261/261；三次均无
 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。tracked `test_host.ini` 继续保持 `javascript=0`，本批
 只涉及同步脚本 API/DOM snapshot，不新增人工页面验收。
+
+`next587` 作为单一批次在 browser 层完成了受控 Node URL/namespace metadata：document、
+DocumentType、HTML element、CharacterData 和 Attr wrapper 提供只读 `baseURI`、有限
+`namespaceURI`/`prefix`、`lookupNamespaceURI()` 与 `isDefaultNamespace()`；baseURI 随当前
+session URL 更新，HTML namespace 与 XML prefix 的边界明确，未知值 fail closed。该切片不新增
+core ABI，不实现 XML/namespace parser、prefix mutation、节点创建或通用 DOM mutation；
+`TEST682-701,999` 定向门在 `tmp/device-runs/20260822-142806-next587/` 通过 21/21，兼容门
+重跑在 `tmp/device-runs/20260822-143147-next587-compat-r2/` 通过 62/62，相邻回归在
+`tmp/device-runs/20260822-143521-next587-regression/` 通过 281/281。三次最终门均无
+ERROR/FAIL、`TESTBENCH PASS` 唯一且 `test13_route_ok=True`；本批只涉及同步脚本 API/DOM
+snapshot，不新增人工页面验收，tracked `test_host.ini` 继续保持 `javascript=0`。
 
 ## 中期目标
 

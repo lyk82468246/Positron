@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next586）
+## 当前状态（next587）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -35,7 +35,7 @@ Promise 构造器、then/catch/finally、thenable assimilation、组合器和错
 这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。next562–581 又增加了按 DOM id 的
 attribute count/name/value relation，以及 `getAttributeNames()`、`hasAttributes()`、受限
 `NamedNodeMap`/`Attr` wrapper 和跨 owner fail-closed mutation；attribute map 的 indexed
-properties 固定为 0–7，仍不提供 namespace API 或通用 DOM mutation。next562–581 时产品
+properties 固定为 0–7，仍不提供完整 namespace API 或通用 DOM mutation。next562–581 时产品
 bootstrap 由公共入口按十个顺序 IIFE 评估，共享一个 Duktape context；浏览器 session 的 heap ceiling 为 576 KiB，
 独立 `positron_script` context 的 512 KiB 默认值不变。分段只用于保持源码上限，不引入第二套
 JavaScript 引擎。
@@ -90,6 +90,17 @@ live collection 或完整 document tree。`TEST662–681,999` 定向门、`TEST5
 和 `TEST389,390–448,482–681,999` 相邻回归分别通过 21/21、42/42、261/261；bootstrap 仍为
 十三个 IIFE，browser heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
 
+next587 在不改动 core relation ABI 的前提下，为 document、DocumentType、HTML element、
+CharacterData 和 Attr wrapper 增加受控的 `baseURI`、`namespaceURI`、`prefix`、
+`lookupNamespaceURI()` 与 `isDefaultNamespace()` 元数据。`baseURI` 只反映当前 session URL，
+并随受控 history replacement 更新；HTML element 返回 HTML namespace，document、doctype、
+文本/注释和普通 Attr 的 namespace 视图为 null，只有 `xml` prefix 映射到 XML namespace，
+未知 prefix 或不支持的 namespace 请求 fail closed。Attr 的 namespace 查询沿 owner element
+上下文工作。该切片不提供 XML/namespace parser、prefix mutation、节点创建或通用 DOM mutation；
+`TEST682–701,999` 定向门、`TEST549,642–701,999` 兼容门和
+`TEST389,390–448,482–701,999` 相邻回归分别通过 21/21、62/62、281/281。bootstrap 仍为
+十三个 IIFE，browser heap ceiling 仍为 576 KiB，独立 script 默认堆仍为 512 KiB。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -133,8 +144,9 @@ live collection 或完整 document tree。`TEST662–681,999` 定向门、`TEST5
 - `getAttributeNames()` 与 `Attr`/`NamedNodeMap` 只覆盖当前 ID-addressable element 的 parser-order
   attribute snapshot；`Attr.value`/`nodeValue` 通过既有 attribute bridge 做同步内存 mutation，
   `setNamedItem()`/`removeNamedItem()` 只接受同 owner wrapper，跨 owner 或缺失项 fail closed。
-  Indexed access 只保证 0–7，map 不实现 namespace/localName/prefix、通用节点创建、live
-  collection 或完整 Web IDL descriptor 语义。
+  Indexed access 只保证 0–7，NamedNodeMap 本身不实现 namespace/localName/prefix lookup、通用
+  节点创建、live collection 或完整 Web IDL descriptor 语义；next587 的 Attr wrapper 只提供
+  当前 owner 上下文中的有限 namespace/localName/prefix 元数据。
 - Headers、Request、Response 是内存 bounded 的同步数据模型；它们不建立网络连接、不执行 fetch、
   不提供 stream，body `text()`/`json()`/`arrayBuffer()` 是 one-shot 消费并同步标记
   `bodyUsed`；clone 在已消费后受控抛出 TypeError。Headers 受条目和值数量限制，非法名称和超限
@@ -214,9 +226,17 @@ live collection 或完整 document tree。`TEST662–681,999` 定向门、`TEST5
   暴露 `getAttributeNames()`、`hasAttributes()`、受限 `NamedNodeMap` 和 `Attr`。属性名保持 parser
   顺序；`Attr.value`/`nodeValue` 复用已有同步 attribute mutation，map/Attr identity 在 session
   内稳定，`setNamedItem()`/`removeNamedItem()` 对跨 owner 或缺失项 fail closed。为了适配 WM6
-  脚本堆，indexed access 只保证 0–7；不提供 namespace/localName/prefix、通用节点创建、live
-  collection 或完整 Web IDL descriptor 语义。bootstrap 目前为十个 IIFE，browser session heap
-  ceiling 为 576 KiB，独立 `positron_script` 默认堆仍为 512 KiB。
+  脚本堆，indexed access 只保证 0–7；NamedNodeMap 仍不提供 namespace/localName/prefix lookup、
+  通用节点创建、live collection 或完整 Web IDL descriptor 语义。bootstrap 目前为十个 IIFE，
+  browser session heap ceiling 为 576 KiB，独立 `positron_script` 默认堆仍为 512 KiB。
+
+- next587 又把 browser-owned Node metadata 统一到 document、DocumentType、HTML element、
+  CharacterData 和 Attr wrapper：`baseURI` 读取当前 session URL，`namespaceURI` 只承诺 HTML/XML
+  的有限视图，`prefix` 只读且恒为 null，`lookupNamespaceURI()`/`isDefaultNamespace()` 对未知值
+  fail closed，Attr 查询沿 owner element 上下文工作。它不解析 XML namespace、不支持 prefix 或
+  namespace mutation，也不改变 core ABI、document tree 或节点创建边界；`TEST682–701` 只验证
+  同步、内存内的脚本 API。该切片的 bootstrap 为十三个 IIFE，browser session heap ceiling 为
+  576 KiB，独立 script 默认堆仍为 512 KiB。
 
 - next298 新增了独立的 validation query callback 和 bootstrap 的
   `HTMLElement.checkValidity()`、`willValidate`、`validity`（基础 flags）查询。它按 DOM id

@@ -52,7 +52,7 @@ TEST999 是专用完成提示音。只有显式选中、且前序测试没有令
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
-### 当前默认自动选择与人工验收包（next586 基线）
+### 当前默认自动选择与人工验收包（next587 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
 
@@ -146,6 +146,25 @@ scripts\device_gate.bat -Candidate next586-r2 ^
 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批只改变同步脚本
 API/DOM snapshot，不触及视觉、触摸、SIP、系统 picker、旋转或网络失败反馈，因此不新增人工
 页面验收；tracked `test_host.ini` 继续保持 `javascript=0`。
+
+`next587` 仍是一个批次编号，不为每个 Node metadata getter 重复分配 next 号。本批在既有
+DOM snapshot 上增加 document、DocumentType、HTML element、CharacterData 和 Attr 的受控
+`baseURI`/namespace/prefix 语义，自动断言为 `TEST682–701`：
+
+```bat
+scripts\device_gate.bat -Candidate next587 ^
+  -EnableJavaScript ^
+  -TestSelection "682-701,999"
+```
+
+定向证据为 `tmp/device-runs/20260822-142806-next587/`，21/21 通过；兼容门
+`TEST549,642-701,999` 首次在 TEST678 遇到一次设备 JavaScript timeout，未放宽预算或断言，
+使用原配置重跑后在 `tmp/device-runs/20260822-143147-next587-compat-r2/` 通过 62/62；
+相邻回归 `TEST389,390-448,482-701,999` 在
+`tmp/device-runs/20260822-143521-next587-regression/` 通过 281/281。最终三次门均为零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批只改变同步脚本 API/DOM
+snapshot，不触及视觉、触摸、SIP、系统 picker、旋转或网络失败反馈，因此不新增人工页面
+验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
