@@ -553,6 +553,21 @@ shadow tree。`test_host.exe` 只提供 fixture、adapter 和 `TEST722–741` �
 core ABI、视觉/触摸/SIP/picker/旋转/网络人工门。browser session 仍使用 608 KiB ceiling，
 独立 `positron_script` 默认堆仍为 512 KiB。
 
+#### next590 的 document named collection 边界
+
+next590 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。`document.getElementsByName(name)` 在当前 bounded relation snapshot 上精确匹配显式
+`name` 属性，按 DFS 文档顺序返回 NodeList snapshot；`document.forms`、`document.images` 和
+`document.scripts` 则通过既有 tag traversal 返回静态 HTMLCollection。四种入口都复用当前
+`item()`、`namedItem()`、`forEach()`、iterator、`Symbol.toStringTag` 和稳定 wrapper identity，
+但每次查询只反映当时的 session snapshot，不提供 live collection、通用 named properties、
+节点创建、通用 mutation、完整 HTML parser 或新的 core ABI。
+
+`test_host.exe` 只提供 named-collection fixture、adapter 和 `TEST742–761` 自动断言；本批
+定向、兼容和相邻回归门分别为 21/21、122/122、341/341，均不涉及视觉、触摸、SIP、系统
+picker、旋转或网络失败人工门。browser session 仍使用 608 KiB ceiling，独立
+`positron_script` 默认堆仍为 512 KiB。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

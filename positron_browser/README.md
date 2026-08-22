@@ -41,6 +41,13 @@ tag、`#id`、class、有限 attribute、compound、`*` 和 `:root`，按 DFS �
 或 NodeList snapshot；root/head/body wrapper 复用既有 identity，空白和 `>`/`+`/`~` 组合器
 fail closed。它不提供完整 CSS parser、live DOM、节点创建或 mutation。
 
+next590 又在同一 bounded traversal 上提供 document named collection projection：
+`document.getElementsByName()` 精确匹配显式 `name` 值并返回 DFS 顺序的 NodeList snapshot，
+`document.forms`、`document.images`、`document.scripts` 返回静态 HTMLCollection。它们复用
+`item()`/`namedItem()`、`forEach()`/`keys()`/`values()`/`entries()`、默认 iterator、
+`Symbol.toStringTag` 和稳定 wrapper identity；不提供 live 更新、通用 named properties、节点
+创建、通用 mutation 或新的 core ABI。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：

@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next589）
+## 当前状态（next590）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -127,6 +127,18 @@ NodeList；root/head/body wrapper 复用既有 identity。空白、缺失和包�
 `tmp/device-runs/20260822-160014-next589-regression/`。历史 TEST658 负例已改为验证组合器
 仍然 fail closed；本批不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
+next590 在不改动 core relation ABI 的前提下，把同一 bounded traversal 扩展为 document named
+collection projection：`document.getElementsByName()` 精确匹配显式 `name` 值并返回 DFS 顺序的
+NodeList snapshot；`document.forms`、`document.images` 和 `document.scripts` 返回相应静态
+HTMLCollection，并复用 `item()`/`namedItem()`、迭代器和 wrapper identity。结果只覆盖当前
+ID-addressable session snapshot，不提供 live 更新、节点创建、通用 mutation、完整 named
+properties 或新的 core ABI。`TEST742–761,999`、`TEST549,642–761,999`、
+`TEST389,390–448,482–761,999` 分别通过 21/21、122/122、341/341，证据位于
+`tmp/device-runs/20260822-163511-next590-r1/`、
+`tmp/device-runs/20260822-163636-next590-compat-r1/` 和
+`tmp/device-runs/20260822-164253-next590-regression-r1/`。本批只涉及同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -138,7 +150,8 @@ NodeList；root/head/body wrapper 复用既有 identity。空白、缺失和包�
   形态；不提供完整 URL Standard、IPv6/转义异常和 origin 安全策略。NodeList/HTMLCollection 的
   `item()`、`namedItem()`、`forEach()`、`keys()`、`values()`、`entries()` 和 iterator 只作用于
   当前 document 的同步 snapshot；与 repeated `getElementById()` identity 一样，不创建通用 DOM tree，
-  也不提供 live 更新；next588 的 `getElementsBy*()` 同样只返回当前 session 的静态快照。
+  也不提供 live 更新；next588 的 `getElementsBy*()` 与 next590 的 named collection projection
+  同样只返回当前 session 的静态快照。
 - selection、numeric step、setRangeText 是产品 bridge 的逻辑状态，不等于 WM native EDIT 的
   光标、SIP、IME composition、候选词、Unicode preedit 或原生文本选择 UI。
 - document/window metadata、viewport、scroll 是脚本可见的受控快照；它们不自动改变真实窗口、

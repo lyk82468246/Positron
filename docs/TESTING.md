@@ -212,6 +212,26 @@ ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖 d
 组合器。该切片只改变同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或
 网络失败，因此不新增人工页面验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
+`next590` 仍是一个批次编号，不为每个集合入口重复分配 next 号。本批增加 document named
+collection projection，自动断言为 `TEST742–761`：
+
+```bat
+scripts\device_gate.bat -Candidate next590-r1 ^
+  -EnableJavaScript ^
+  -TestSelection "742-761,999"
+```
+
+定向证据为 `tmp/device-runs/20260822-163511-next590-r1/`，21/21 通过；兼容门
+`TEST549,642-761,999` 在 `tmp/device-runs/20260822-163636-next590-compat-r1/` 通过
+122/122；相邻回归 `TEST389,390-448,482-761,999` 在
+`tmp/device-runs/20260822-164253-next590-regression-r1/` 通过 341/341。三次均为零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖
+`document.getElementsByName()` 的精确 name/DFS/NodeList/快照语义，以及 `document.forms`、
+`document.images`、`document.scripts` 的 HTMLCollection 类型、namedItem、迭代、identity 和
+边界；空值、大小写不匹配和 document-only 入口均有自动断言。该切片只改变同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；
+tracked `test_host.ini` 继续保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

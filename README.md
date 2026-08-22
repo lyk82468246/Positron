@@ -81,6 +81,11 @@ live collection、通用 selector 或 mutation API；对应 `TEST702–721` 已�
 next589 又把同一受限 matcher 接入 document 的 `querySelector()`/`querySelectorAll()`，支持
 tag、`#id`、class、有限 attribute、compound、`*` 和 `:root`，按 DFS 顺序返回首个匹配或
 NodeList snapshot；空白和组合器仍 fail closed。对应 `TEST722–741` 已由自动设备门覆盖。
+next590 又补齐 document named collection projection：`document.getElementsByName()` 按显式
+`name` 精确匹配返回 NodeList snapshot，`document.forms`、`document.images`、`document.scripts`
+返回静态 HTMLCollection；四者复用 `item()`/`namedItem()`、迭代器和 wrapper identity，但不
+提供 live collection、通用 named properties 或 DOM mutation。对应 `TEST742–761` 及兼容/回归门
+已由自动设备门覆盖。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap

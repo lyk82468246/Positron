@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 741
+#define TEST_MAX_NUMBER 761
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -59432,6 +59432,275 @@ static BOOL test741_browser_document_query_contract(void)
             "true|true|true|true|true|true", error, sizeof(error));
 }
 
+static BOOL test_browser_named_collection_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script id='script-one' name='boot'>"
+        "window.boot=1;</script><title id='title' name='title-name'>Title</title></head>"
+        "<body><form id='form-one' name='account'><input id='user' name='field' value='A'></form>"
+        "<img id='hero' name='hero-image' src='hero.png'>"
+        "<form id='form-two' name='search'><input id='query' name='field' value='Q'></form>"
+        "<p id='result'>idle</p></body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected, error,
+            error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded document named collection passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded document named collection failed.");
+    }
+    return ok;
+}
+
+/* TEST 742 - document named lookup and HTML collection projections expose
+ * their bounded return types. */
+static BOOL test742_browser_named_collection_types(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementsByName('field'),f=document.forms,"
+        "i=document.images,s=document.scripts;document.getElementById('result').textContent="
+        "String(typeof document.getElementsByName==='function')+'|'"
+        "+f[Symbol.toStringTag]+'|'+i[Symbol.toStringTag]+'|'"
+        "+s[Symbol.toStringTag]+'|'+n[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_named_collection_case(742, PROBE,
+            "true|HTMLCollection|HTMLCollection|HTMLCollection|NodeList",
+            error, sizeof(error));
+}
+
+/* TEST 743 - a single exact name returns the matching element. */
+static BOOL test743_browser_named_collection_single(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByName('account');document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id;";
+    char error[256];
+    return test_browser_named_collection_case(743, PROBE, "1|form-one",
+            error, sizeof(error));
+}
+
+/* TEST 744 - duplicate names preserve document order. */
+static BOOL test744_browser_named_collection_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByName('field');document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id+'|'+a[1].id;";
+    char error[256];
+    return test_browser_named_collection_case(744, PROBE, "2|user|query",
+            error, sizeof(error));
+}
+
+/* TEST 745 - named lookup is case-sensitive for the value. */
+static BOOL test745_browser_named_collection_case_sensitive(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent="
+        "document.getElementsByName('FIELD').length;";
+    char error[256];
+    return test_browser_named_collection_case(745, PROBE, "0", error,
+            sizeof(error));
+}
+
+/* TEST 746 - missing names return an empty NodeList with null item bounds. */
+static BOOL test746_browser_named_collection_missing(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByName('missing');document.getElementById('result').textContent="
+        "a.length+'|'+String(a.item(0)===null)+'|'+String(a.namedItem===undefined);";
+    char error[256];
+    return test_browser_named_collection_case(746, PROBE, "0|true|true",
+            error, sizeof(error));
+}
+
+/* TEST 747 - an empty name does not match elements without an explicit name. */
+static BOOL test747_browser_named_collection_blank(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('result').textContent="
+        "document.getElementsByName('').length;";
+    char error[256];
+    return test_browser_named_collection_case(747, PROBE, "0", error,
+            sizeof(error));
+}
+
+/* TEST 748 - named lookup reaches nested structural descendants. */
+static BOOL test748_browser_named_collection_nested(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByName('title-name');document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id;";
+    char error[256];
+    return test_browser_named_collection_case(748, PROBE, "1|title", error,
+            sizeof(error));
+}
+
+/* TEST 749 - the name argument follows String coercion. */
+static BOOL test749_browser_named_collection_coercion(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByName({toString:function(){return 'field';}});"
+        "document.getElementById('result').textContent=a.length;";
+    char error[256];
+    return test_browser_named_collection_case(749, PROBE, "2", error,
+            sizeof(error));
+}
+
+/* TEST 750 - NodeList item/forEach preserve index bounds and order. */
+static BOOL test750_browser_named_collection_iteration(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByName('field'),s='';a.forEach(function(v){s+=v.id+',';});"
+        "document.getElementById('result').textContent=String(a.item(-1)===null)+'|'"
+        "+String(a.item(2)===null)+'|'+s;";
+    char error[256];
+    return test_browser_named_collection_case(750, PROBE,
+            "true|true|user,query,", error, sizeof(error));
+}
+
+/* TEST 751 - NodeList iterators retain the existing snapshot protocol. */
+static BOOL test751_browser_named_collection_iterators(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByName('field'),k=a.keys(),v=a.values(),e=a.entries();"
+        "var k0=k.next(),v0=v.next(),e0=e.next().value;document.getElementById('result').textContent="
+        "k0.value+'|'+v0.value.id+'|'+e0[0]+':'+e0[1].id+'|'"
+        "+a[Symbol.toStringTag]+'|'+String(k[Symbol.iterator]()==k);";
+    char error[256];
+    return test_browser_named_collection_case(751, PROBE,
+            "0|user|0:user|NodeList|true", error, sizeof(error));
+}
+
+/* TEST 752 - a prior named lookup is a static snapshot of wrapper members. */
+static BOOL test752_browser_named_collection_snapshot(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByName('field');document.getElementById('query').name='other';"
+        "var b=document.getElementsByName('field');document.getElementById('result').textContent="
+        "a.length+'|'+b.length+'|'+String(a[1]===document.getElementById('query'));";
+    char error[256];
+    return test_browser_named_collection_case(752, PROBE, "2|1|true", error,
+            sizeof(error));
+}
+
+/* TEST 753 - setting name updates later lookups without replacing wrappers. */
+static BOOL test753_browser_named_collection_set_name(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('user');e.name='renamed';var a=document.getElementsByName('field');"
+        "var b=document.getElementsByName('renamed');document.getElementById('result').textContent="
+        "a.length+'|'+b.length+'|'+b[0].id;";
+    char error[256];
+    return test_browser_named_collection_case(753, PROBE, "1|1|user", error,
+            sizeof(error));
+}
+
+/* TEST 754 - removing name removes only that element from later results. */
+static BOOL test754_browser_named_collection_remove_name(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('query').removeAttribute('name');"
+        "document.getElementById('result').textContent="
+        "document.getElementsByName('field').length+'|'"
+        "+document.getElementsByName('').length;";
+    char error[256];
+    return test_browser_named_collection_case(754, PROBE, "1|0", error,
+            sizeof(error));
+}
+
+/* TEST 755 - document.forms is ordered and supports namedItem. */
+static BOOL test755_browser_forms_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.forms;document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id+'|'+a.namedItem('search').id+'|'"
+        "+String(a.namedItem('missing')===null);";
+    char error[256];
+    return test_browser_named_collection_case(755, PROBE,
+            "2|form-one|form-two|true", error, sizeof(error));
+}
+
+/* TEST 756 - forms item bounds and identity remain stable. */
+static BOOL test756_browser_forms_metadata(void)
+{
+    static const char PROBE[] =
+        "var a=document.forms;document.getElementById('result').textContent="
+        "String(a.item(1)===document.getElementById('form-two'))+'|'"
+        "+String(a.item(2)===null)+'|'+a[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_named_collection_case(756, PROBE,
+            "true|true|HTMLCollection", error, sizeof(error));
+}
+
+/* TEST 757 - document.images projects the bounded img collection. */
+static BOOL test757_browser_images_projection(void)
+{
+    static const char PROBE[] =
+        "var a=document.images;document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id+'|'+String(a.namedItem('hero')===a[0]);";
+    char error[256];
+    return test_browser_named_collection_case(757, PROBE,
+            "1|hero|true", error, sizeof(error));
+}
+
+/* TEST 758 - document.scripts projects script elements with names. */
+static BOOL test758_browser_scripts_projection(void)
+{
+    static const char PROBE[] =
+        "var a=document.scripts;document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id+'|'+String(a.namedItem('boot')===a[0]);";
+    char error[256];
+    return test_browser_named_collection_case(758, PROBE,
+            "1|script-one|true", error, sizeof(error));
+}
+
+/* TEST 759 - each document collection getter returns a fresh snapshot while
+ * wrappers retain their identity. */
+static BOOL test759_browser_named_collection_getter_snapshot(void)
+{
+    static const char PROBE[] =
+        "var a=document.forms,b=document.forms;document.getElementById('result').textContent="
+        "String(a!==b)+'|'+String(a[0]===b[0])+'|'+a.length+'|'+b.length;";
+    char error[256];
+    return test_browser_named_collection_case(759, PROBE,
+            "true|true|2|2", error, sizeof(error));
+}
+
+/* TEST 760 - named lookup is document-only and missing projections fail closed. */
+static BOOL test760_browser_named_collection_scope(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('form-one');document.getElementById('result').textContent="
+        "String(typeof e.getElementsByName==='undefined')+'|'"
+        "+document.getElementsByName('missing').length+'|'"
+        "+String(document.forms.item(9)===null);";
+    char error[256];
+    return test_browser_named_collection_case(760, PROBE,
+            "true|0|true", error, sizeof(error));
+}
+
+/* TEST 761 - the document named-collection contract is coherent. */
+static BOOL test761_browser_named_collection_contract(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementsByName('field'),f=document.forms,"
+        "i=document.images,s=document.scripts;document.getElementById('result').textContent="
+        "String(n.length===2)+'|'+String(f.length===2)+'|'"
+        "+String(i.length===1)+'|'+String(s.length===1)+'|'"
+        "+String(f.namedItem('account')===f[0])+'|'"
+        "+String(i.namedItem('hero')===i[0])+'|'"
+        "+String(s.namedItem('script-one')===s[0]);";
+    char error[256];
+    return test_browser_named_collection_case(761, PROBE,
+            "true|true|true|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -62681,6 +62950,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 741: ok =
                 test741_browser_document_query_contract();
+                break;
+        case 742: ok =
+                test742_browser_named_collection_types();
+                break;
+        case 743: ok =
+                test743_browser_named_collection_single();
+                break;
+        case 744: ok =
+                test744_browser_named_collection_order();
+                break;
+        case 745: ok =
+                test745_browser_named_collection_case_sensitive();
+                break;
+        case 746: ok =
+                test746_browser_named_collection_missing();
+                break;
+        case 747: ok =
+                test747_browser_named_collection_blank();
+                break;
+        case 748: ok =
+                test748_browser_named_collection_nested();
+                break;
+        case 749: ok =
+                test749_browser_named_collection_coercion();
+                break;
+        case 750: ok =
+                test750_browser_named_collection_iteration();
+                break;
+        case 751: ok =
+                test751_browser_named_collection_iterators();
+                break;
+        case 752: ok =
+                test752_browser_named_collection_snapshot();
+                break;
+        case 753: ok =
+                test753_browser_named_collection_set_name();
+                break;
+        case 754: ok =
+                test754_browser_named_collection_remove_name();
+                break;
+        case 755: ok =
+                test755_browser_forms_order();
+                break;
+        case 756: ok =
+                test756_browser_forms_metadata();
+                break;
+        case 757: ok =
+                test757_browser_images_projection();
+                break;
+        case 758: ok =
+                test758_browser_scripts_projection();
+                break;
+        case 759: ok =
+                test759_browser_named_collection_getter_snapshot();
+                break;
+        case 760: ok =
+                test760_browser_named_collection_scope();
+                break;
+        case 761: ok =
+                test761_browser_named_collection_contract();
                 break;
         default: ok = FALSE; break;
         }

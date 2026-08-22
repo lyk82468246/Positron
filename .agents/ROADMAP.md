@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next589
+### 当前短期状态：next590
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -458,6 +458,19 @@ ABI；`test_host.exe` 只提供 fixture 和 `TEST722–741` 断言。`TEST722-74
 `tmp/device-runs/20260822-160014-next589-regression/` 通过 321/321；三次均无 ERROR/FAIL
 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、
 picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
+
+`next590` 作为单一批次在 browser 层完成 document named collection projection：
+`document.getElementsByName()` 精确匹配显式 `name` 值并返回 DFS 顺序的 NodeList snapshot；
+`document.forms`、`document.images` 和 `document.scripts` 返回静态 HTMLCollection，复用
+`item()`/`namedItem()`、迭代协议和稳定 wrapper identity。该切片只覆盖当前 ID-addressable
+bounded snapshot，不新增 core ABI、live collection、节点创建或通用 mutation；`test_host.exe`
+只提供 fixture、adapter 和 `TEST742–761` 断言。定向门 `TEST742-761,999` 在
+`tmp/device-runs/20260822-163511-next590-r1/` 通过 21/21，兼容门
+`TEST549,642-761,999` 在 `tmp/device-runs/20260822-163636-next590-compat-r1/` 通过
+122/122，相邻回归 `TEST389,390-448,482-761,999` 在
+`tmp/device-runs/20260822-164253-next590-regression-r1/` 通过 341/341；三次均无
+ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、
+触摸、SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
 
 ## 中期目标
 
