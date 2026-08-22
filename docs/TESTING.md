@@ -232,6 +232,27 @@ ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖
 snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；
 tracked `test_host.ini` 继续保持 `javascript=0`。
 
+`next591` 仍是一个批次编号，不为 `links`/`anchors` 的每个过滤条件重复分配 next 号。本批
+增加 hyperlink collection projection，自动断言为 `TEST762–781`：
+
+```bat
+scripts\device_gate.bat -Candidate next591-r1 ^
+  -EnableJavaScript ^
+  -TestSelection "762-781,999"
+```
+
+定向证据为 `tmp/device-runs/20260822-171429-next591-r1/`，21/21 通过；兼容门
+`TEST549,642-781,999` 在 `tmp/device-runs/20260822-171552-next591-compat-r1/` 通过
+142/142；缩减回归 `TEST389,390-448,540,549,642-781,999` 在
+`tmp/device-runs/20260822-172242-next591-regression-r1/` 通过 203/203。三次均为零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖
+`document.links` 的 `a`/`area[href]` DFS 过滤、`document.anchors` 的 `a[name]` DFS 过滤、
+集合类型、namedItem、迭代、identity、属性增删后的快照和 document-only 边界。为控制设备
+时间，本批未重复旧的 341 项全回归；缩减门仍保留核心事件、TEST540 内存边界、TEST549 和
+next642–781 风险区间。该切片只改变同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、
+系统 picker、旋转或网络失败，因此不新增人工页面验收；tracked `test_host.ini` 继续保持
+`javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

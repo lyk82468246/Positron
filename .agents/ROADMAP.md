@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next590
+### 当前短期状态：next591
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -471,6 +471,20 @@ bounded snapshot，不新增 core ABI、live collection、节点创建或通用 
 `tmp/device-runs/20260822-164253-next590-regression-r1/` 通过 341/341；三次均无
 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、
 触摸、SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
+
+`next591` 作为单一批次在 browser 层完成 hyperlink collection projection：
+`document.links` 按 DFS 顺序收集显式 `href` 的 `a`/`area`，`document.anchors` 按 DFS 顺序收集
+显式 `name` 的 `a`，两者返回静态 HTMLCollection，复用 `item()`/`namedItem()`、迭代协议和
+稳定 wrapper identity。该切片只覆盖当前 bounded snapshot，不新增 core ABI、live collection、
+节点创建、通用 mutation 或 URL parser；`test_host.exe` 只提供 fixture、adapter 和
+`TEST762–781` 断言。定向门 `TEST762-781,999` 在
+`tmp/device-runs/20260822-171429-next591-r1/` 通过 21/21，兼容门
+`TEST549,642-781,999` 在 `tmp/device-runs/20260822-171552-next591-compat-r1/` 通过
+142/142；缩减回归 `TEST389,390-448,540,549,642-781,999` 在
+`tmp/device-runs/20260822-172242-next591-regression-r1/` 通过 203/203。三次均无 ERROR/FAIL
+且 `TESTBENCH PASS` 唯一。本批未跑旧的 341 项全回归，但保留核心事件、TEST540 内存边界、
+TEST549 和 next642–781 风险区间；本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、
+SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
 
 ## 中期目标
 

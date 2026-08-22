@@ -568,6 +568,21 @@ ABI。`document.getElementsByName(name)` 在当前 bounded relation snapshot 上
 picker、旋转或网络失败人工门。browser session 仍使用 608 KiB ceiling，独立
 `positron_script` 默认堆仍为 512 KiB。
 
+#### next591 的 document hyperlink collections 边界
+
+next591 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。`document.links` 在当前 bounded traversal 上筛选显式 `href` 的 `a`/`area` 元素，
+`document.anchors` 筛选显式 `name` 的 `a` 元素；两者按 DFS 文档顺序返回静态
+HTMLCollection，并复用 `item()`、`namedItem()`、迭代协议和稳定 wrapper identity。属性
+增删只影响后续查询，不提供 live collection、链接 URL 解析、导航副作用、通用 named
+properties、节点创建、通用 mutation 或新的 core ABI。
+
+`test_host.exe` 只提供 hyperlink fixture、adapter 和 `TEST762–781` 自动断言；定向、兼容和
+缩减回归门分别为 21/21、142/142、203/203。本批未跑旧的 341 项全回归，但保留核心事件、
+TEST540 内存边界、TEST549 和 next642–781 风险区间；不涉及视觉、触摸、SIP、picker、旋转或
+网络失败人工门。browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆仍为
+512 KiB。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

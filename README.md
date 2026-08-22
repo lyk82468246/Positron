@@ -86,6 +86,10 @@ next590 又补齐 document named collection projection：`document.getElementsBy
 返回静态 HTMLCollection；四者复用 `item()`/`namedItem()`、迭代器和 wrapper identity，但不
 提供 live collection、通用 named properties 或 DOM mutation。对应 `TEST742–761` 及兼容/回归门
 已由自动设备门覆盖。
+next591 又补齐 `document.links` 与 `document.anchors`：前者按 DFS 收集显式 `href` 的 `a`/`area`，
+后者按 DFS 收集显式 `name` 的 `a`，均返回静态 HTMLCollection，并复用既有集合协议和
+wrapper identity；属性变化只影响后续查询。对应 `TEST762–781` 及缩减兼容/回归门已由自动
+设备门覆盖，本批未重复旧的全量回归。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap

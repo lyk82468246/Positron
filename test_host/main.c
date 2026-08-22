@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 761
+#define TEST_MAX_NUMBER 781
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -59701,6 +59701,280 @@ static BOOL test761_browser_named_collection_contract(void)
             "true|true|true|true|true|true|true", error, sizeof(error));
 }
 
+static BOOL test_browser_link_collection_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script id='script-one'>window.boot=1;</script>"
+        "<title id='title'>Title</title></head><body><nav id='nav'>"
+        "<a id='top' name='top' href='/top'>Top</a>"
+        "<a id='plain' href='/plain'>Plain</a>"
+        "<area id='map' href='/map'>"
+        "<a id='anchor' name='section'>Section</a>"
+        "<a id='both' name='both' href='/both'>Both</a>"
+        "<a id='orphan' name='orphan'>Orphan</a>"
+        "<p id='fake' href='/fake'>Fake</p></nav>"
+        "<p id='result'>idle</p></body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected, error,
+            error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded document link collection passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded document link collection failed.");
+    }
+    return ok;
+}
+
+/* TEST 762 - link and anchor projections expose HTMLCollection metadata. */
+static BOOL test762_browser_link_collection_types(void)
+{
+    static const char PROBE[] =
+        "var l=document.links,a=document.anchors;document.getElementById('result').textContent="
+        "String(typeof document.links==='object')+'|'"
+        "+String(typeof document.anchors==='object')+'|'"
+        "+l[Symbol.toStringTag]+'|'+a[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_link_collection_case(762, PROBE,
+            "true|true|HTMLCollection|HTMLCollection", error, sizeof(error));
+}
+
+/* TEST 763 - document.links includes href-bearing a/area elements in order. */
+static BOOL test763_browser_links_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.links;document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id+'|'+a[1].id+'|'+a[2].id+'|'+a[3].id;";
+    char error[256];
+    return test_browser_link_collection_case(763, PROBE,
+            "4|top|plain|map|both", error, sizeof(error));
+}
+
+/* TEST 764 - document.anchors includes only named a elements in order. */
+static BOOL test764_browser_anchors_order(void)
+{
+    static const char PROBE[] =
+        "var a=document.anchors;document.getElementById('result').textContent="
+        "a.length+'|'+a[0].id+'|'+a[1].id+'|'+a[2].id+'|'+a[3].id;";
+    char error[256];
+    return test_browser_link_collection_case(764, PROBE,
+            "4|top|anchor|both|orphan", error, sizeof(error));
+}
+
+/* TEST 765 - non-link elements with href and named area boundaries are
+ * filtered without changing link order. */
+static BOOL test765_browser_links_filtering(void)
+{
+    static const char PROBE[] =
+        "var l=document.links;document.getElementById('result').textContent="
+        "String(l.length===4)+'|'+String(l[2].localName==='area')+'|'"
+        "+String(l.namedItem('fake')===null);";
+    char error[256];
+    return test_browser_link_collection_case(765, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 766 - namedItem resolves link ids and anchor names independently. */
+static BOOL test766_browser_link_collection_named_item(void)
+{
+    static const char PROBE[] =
+        "var l=document.links,a=document.anchors;document.getElementById('result').textContent="
+        "String(l.namedItem('top')===l[0])+'|'"
+        "+String(a.namedItem('section')===a[1])+'|'"
+        "+String(l.namedItem('orphan')===null);";
+    char error[256];
+    return test_browser_link_collection_case(766, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 767 - both projections retain item bounds. */
+static BOOL test767_browser_link_collection_bounds(void)
+{
+    static const char PROBE[] =
+        "var l=document.links,a=document.anchors;document.getElementById('result').textContent="
+        "String(l.item(-1)===null)+'|'+String(l.item(4)===null)+'|'"
+        "+String(a.item(4)===null);";
+    char error[256];
+    return test_browser_link_collection_case(767, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 768 - link collection forEach and entries preserve order. */
+static BOOL test768_browser_links_iteration(void)
+{
+    static const char PROBE[] =
+        "var l=document.links,s='';l.forEach(function(v){s+=v.id+',';});"
+        "var e=l.entries().next().value;document.getElementById('result').textContent="
+        "s+'|'+e[0]+':'+e[1].id+'|'+l[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_link_collection_case(768, PROBE,
+            "top,plain,map,both,|0:top|HTMLCollection", error, sizeof(error));
+}
+
+/* TEST 769 - anchor keys/values share the bounded iterator contract. */
+static BOOL test769_browser_anchors_iteration(void)
+{
+    static const char PROBE[] =
+        "var a=document.anchors,k=a.keys(),v=a.values();var k0=k.next(),v0=v.next();"
+        "document.getElementById('result').textContent=k0.value+'|'+v0.value.id+'|'"
+        "+String(k[Symbol.iterator]()==k);";
+    char error[256];
+    return test_browser_link_collection_case(769, PROBE, "0|top|true", error,
+            sizeof(error));
+}
+
+/* TEST 770 - removing href updates later link snapshots only. */
+static BOOL test770_browser_links_snapshot_remove_href(void)
+{
+    static const char PROBE[] =
+        "var old=document.links;document.getElementById('both').removeAttribute('href');"
+        "var fresh=document.links;document.getElementById('result').textContent="
+        "old.length+'|'+fresh.length+'|'"
+        "+String(old[3]===document.getElementById('both'));";
+    char error[256];
+    return test_browser_link_collection_case(770, PROBE, "4|3|true", error,
+            sizeof(error));
+}
+
+/* TEST 771 - removing name updates later anchor snapshots only. */
+static BOOL test771_browser_anchors_snapshot_remove_name(void)
+{
+    static const char PROBE[] =
+        "var old=document.anchors;document.getElementById('anchor').removeAttribute('name');"
+        "var fresh=document.anchors;document.getElementById('result').textContent="
+        "old.length+'|'+fresh.length+'|'"
+        "+String(old[1]===document.getElementById('anchor'));";
+    char error[256];
+    return test_browser_link_collection_case(771, PROBE, "4|3|true", error,
+            sizeof(error));
+}
+
+/* TEST 772 - adding an empty href makes an a element a link. */
+static BOOL test772_browser_links_snapshot_add_empty_href(void)
+{
+    static const char PROBE[] =
+        "var old=document.links;document.getElementById('orphan').setAttribute('href','');"
+        "var fresh=document.links;document.getElementById('result').textContent="
+        "old.length+'|'+fresh.length+'|'+fresh[4].id;";
+    char error[256];
+    return test_browser_link_collection_case(772, PROBE, "4|5|orphan", error,
+            sizeof(error));
+}
+
+/* TEST 773 - an explicit blank name remains an anchor name. */
+static BOOL test773_browser_anchor_blank_name(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('anchor').name='';var a=document.anchors;"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a.namedItem('')===a[1]);";
+    char error[256];
+    return test_browser_link_collection_case(773, PROBE, "4|true", error,
+            sizeof(error));
+}
+
+/* TEST 774 - removing href excludes only that element from new link views. */
+static BOOL test774_browser_links_remove_href(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('plain').removeAttribute('href');var a=document.links;"
+        "document.getElementById('result').textContent=a.length+'|'+a[1].id;";
+    char error[256];
+    return test_browser_link_collection_case(774, PROBE, "3|map", error,
+            sizeof(error));
+}
+
+/* TEST 775 - repeated link getters return fresh collections with shared
+ * wrapper identity. */
+static BOOL test775_browser_links_getter_snapshot(void)
+{
+    static const char PROBE[] =
+        "var a=document.links,b=document.links;document.getElementById('result').textContent="
+        "String(a!==b)+'|'+String(a[0]===b[0])+'|'+a.length+'|'+b.length;";
+    char error[256];
+    return test_browser_link_collection_case(775, PROBE,
+            "true|true|4|4", error, sizeof(error));
+}
+
+/* TEST 776 - repeated anchor getters return fresh collections with shared
+ * wrapper identity. */
+static BOOL test776_browser_anchors_getter_snapshot(void)
+{
+    static const char PROBE[] =
+        "var a=document.anchors,b=document.anchors;document.getElementById('result').textContent="
+        "String(a!==b)+'|'+String(a[0]===b[0])+'|'+a.length+'|'+b.length;";
+    char error[256];
+    return test_browser_link_collection_case(776, PROBE,
+            "true|true|4|4", error, sizeof(error));
+}
+
+/* TEST 777 - link projections are document-only. */
+static BOOL test777_browser_link_collection_scope(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('nav');document.getElementById('result').textContent="
+        "String(e.links===undefined)+'|'+String(e.anchors===undefined);";
+    char error[256];
+    return test_browser_link_collection_case(777, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 778 - an id alone does not make an element an anchor. */
+static BOOL test778_browser_anchor_name_boundary(void)
+{
+    static const char PROBE[] =
+        "var a=document.anchors;document.getElementById('result').textContent="
+        "a.length+'|'+String(a.namedItem('plain')===null);";
+    char error[256];
+    return test_browser_link_collection_case(778, PROBE, "4|true", error,
+            sizeof(error));
+}
+
+/* TEST 779 - adding a name makes the existing a element an anchor. */
+static BOOL test779_browser_anchor_add_name(void)
+{
+    static const char PROBE[] =
+        "document.getElementById('plain').name='plain-anchor';var a=document.anchors;"
+        "document.getElementById('result').textContent=a.length+'|'+a[1].id;";
+    char error[256];
+    return test_browser_link_collection_case(779, PROBE, "5|plain", error,
+            sizeof(error));
+}
+
+/* TEST 780 - collection namedItem arguments use String coercion. */
+static BOOL test780_browser_link_collection_coercion(void)
+{
+    static const char PROBE[] =
+        "var l=document.links,a=document.anchors;var x={toString:function(){return 'map';}};"
+        "var y={toString:function(){return 'section';}};document.getElementById('result').textContent="
+        "String(l.namedItem(x)===l[2])+'|'+String(a.namedItem(y)===a[1]);";
+    char error[256];
+    return test_browser_link_collection_case(780, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 781 - the bounded link/anchor collection contract is coherent. */
+static BOOL test781_browser_link_collection_contract(void)
+{
+    static const char PROBE[] =
+        "var l=document.links,a=document.anchors,e=document.getElementById('nav');"
+        "document.getElementById('result').textContent="
+        "String(l.length===4)+'|'+String(a.length===4)+'|'"
+        "+String(l[0]===a[0])+'|'+String(l[3]===a[2])+'|'"
+        "+String(l.namedItem('orphan')===null)+'|'"
+        "+String(a.namedItem('orphan')===a[3])+'|'"
+        "+String(e.links===undefined);";
+    char error[256];
+    return test_browser_link_collection_case(781, PROBE,
+            "true|true|true|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -63010,6 +63284,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 761: ok =
                 test761_browser_named_collection_contract();
+                break;
+        case 762: ok =
+                test762_browser_link_collection_types();
+                break;
+        case 763: ok =
+                test763_browser_links_order();
+                break;
+        case 764: ok =
+                test764_browser_anchors_order();
+                break;
+        case 765: ok =
+                test765_browser_links_filtering();
+                break;
+        case 766: ok =
+                test766_browser_link_collection_named_item();
+                break;
+        case 767: ok =
+                test767_browser_link_collection_bounds();
+                break;
+        case 768: ok =
+                test768_browser_links_iteration();
+                break;
+        case 769: ok =
+                test769_browser_anchors_iteration();
+                break;
+        case 770: ok =
+                test770_browser_links_snapshot_remove_href();
+                break;
+        case 771: ok =
+                test771_browser_anchors_snapshot_remove_name();
+                break;
+        case 772: ok =
+                test772_browser_links_snapshot_add_empty_href();
+                break;
+        case 773: ok =
+                test773_browser_anchor_blank_name();
+                break;
+        case 774: ok =
+                test774_browser_links_remove_href();
+                break;
+        case 775: ok =
+                test775_browser_links_getter_snapshot();
+                break;
+        case 776: ok =
+                test776_browser_anchors_getter_snapshot();
+                break;
+        case 777: ok =
+                test777_browser_link_collection_scope();
+                break;
+        case 778: ok =
+                test778_browser_anchor_name_boundary();
+                break;
+        case 779: ok =
+                test779_browser_anchor_add_name();
+                break;
+        case 780: ok =
+                test780_browser_link_collection_coercion();
+                break;
+        case 781: ok =
+                test781_browser_link_collection_contract();
                 break;
         default: ok = FALSE; break;
         }
