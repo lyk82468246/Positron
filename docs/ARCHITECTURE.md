@@ -47,11 +47,20 @@ Browser host = composition of positron_browser + positron_core
 
 ### `positron_tls.dll`
 
-提供 TLS 1.2 客户端、嵌入式 CA bundle、证书链验证和主机名验证。默认产品路径应使用
-`PTls_ConnectVerified`。`PTls_Connect` 跳过证书验证，只适合自签名环境或诊断。
+提供两个刻意分开的 TLS 1.2 信任模型。普通 HTTPS 客户端使用嵌入式/调用方追加 CA、
+证书链和主机名验证，默认产品路径是 `PTls_ConnectVerified`；`PTls_Connect` 跳过验证，
+只保留给明确的诊断或兼容场景。
 
-初始化和清理成对进行；连接句柄由 `PTls_Close` 释放。额外根证书必须在并发连接开始前
-加入，因为修改全局信任链不是线程安全操作。
+ABI v2 还提供 LocalSend 一类局域网 peer 所需的公共能力：持久 ECDSA P-256 自签名身份、
+证书 DER SHA-256 指纹、携带客户端证书的 peer connect、握手返回前的指纹钉扎，以及可选择
+强制客户端证书的 IPv4 TLS listener。NULL/空 pin 仅表示 discovery/TOFU，不能视为已经认证；
+已配对流量必须传入预期指纹。peer 身份属于应用的长期状态，不属于 `test_host` 或 HTTP
+模块。
+
+初始化和清理成对进行；连接、listener 和 identity 分别由匹配的 close 入口释放。身份必须
+活得比引用它的 listener/connection 更久；销毁顺序是 connection、listener、identity、全局
+cleanup。额外根证书必须在并发连接开始前加入。线程、文件安全和失败边界以
+[`positron_tls/README.md`](../positron_tls/README.md) 及公共头为准。
 
 ### `positron_json.dll`
 

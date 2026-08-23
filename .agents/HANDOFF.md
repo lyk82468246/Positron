@@ -15,11 +15,10 @@
 
 ## 当前仓库基线
 
-- 分支：`main`，已与 `origin/main` 同步。
-- 交接提交：`1179b5df next605: add bounded RadioNodeList`。
-- 交接前工作区：干净；后续 agent 必须重新检查，不能沿用这一结论。
-- 当前能力批次：next605。
-- 测试编号上限：`TEST_MAX_NUMBER 1053`。
+- 分支：`main`；本批开始时基线为 `4b03262f docs: restore focused agent handoff`，交付时必须
+  重新核对远端和工作区，不能沿用这一结论。
+- 当前能力批次：next606，TLS peer 公共基础设施 ABI v2。
+- 测试编号上限：`TEST_MAX_NUMBER 1054`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -29,9 +28,13 @@
 
 Positron 的目标是在 Windows Mobile 6 / Windows CE 设备上提供可嵌入、稳定 C ABI 的轻量应用与浏览器运行时。可发布能力必须归属于 `positron_core`、`positron_browser`、`positron_script` 等产品 DLL；`test_host.exe` 只负责回归编排、平台窗口、网络接入和示例消费。
 
-当前中期里程碑是：在默认关闭 JavaScript 的安全基线不变的前提下，使浏览器会话中的 HTML、CSS、表单、DOM 与单一 Duktape 引擎组合成可预测、资源有界、可由产品 DLL 复用的轻量 Web 运行时。
+当前中期里程碑仍是：在默认关闭 JavaScript 的安全基线不变的前提下，使浏览器会话中的
+HTML、CSS、表单、DOM 与单一 Duktape 引擎组合成可预测、资源有界、可由产品 DLL 复用的
+轻量 Web 运行时。
 
-当前短期方向不是继续堆叠零散 API 数量，而是把仍滞留在 `test_host` 中、实际属于产品语义的桥接代码迁回正确 DLL，并用真实页面驱动兼容性选择。
+next606 是一次已完成的安全基础设施中断：把仅有互联网客户端能力的 `positron_tls.dll`
+扩展为可供 LocalSend 一类消费者复用的 peer TLS ABI v2。下一批恢复浏览器产品语义迁移，
+不继续无证据扩张 TLS 协议层。
 
 ## 已验证的产品状态
 
@@ -40,21 +43,35 @@ Positron 的目标是在 Windows Mobile 6 / Windows CE 设备上提供可嵌入�
 - JavaScript 默认关闭；启用是显式的会话配置。
 - 浏览器会话的脚本 heap 上限为 624 KiB；独立脚本会话默认上限为 512 KiB。
 - next605 在产品侧增加了有界的 `RadioNodeList` 表单集合语义；`test_host` 仍只是消费者和断言宿主。
+- next606 在 `positron_tls.dll` 产品侧增加了 ABI 查询、持久 ECDSA P-256 身份、DER SHA-256
+  指纹、携带客户端证书并在返回前钉扎指纹的 peer connect、可选/强制客户端证书的 IPv4
+  listener，以及安全错误快照；ABI v1 的九个导出均保留。
+- peer TLS 和普通 CA/hostname HTTPS 是分离的信任模型；空 pin 只用于 discovery/TOFU，不
+  表示认证。身份文件属于消费者持久状态，`test_host` 只创建隔离临时文件做回归。
 - `test_host` 中仍有需要逐批审计和迁移的浏览器桥接胶水；窗口、原生控件、设备网络等平台副作用继续由宿主持有。
 
 ## 最近验证证据
 
-next605 已完成与风险相称的本地和设备验证：
+next606 已完成与风险相称的本地和设备验证：
 
-- C89 审计、正式构建与仓库审计通过。
-- 针对性设备门：
-  `tmp/device-runs/20260823-142518-next605-r2/device-gate-result.txt`
-  — PASS，19/19，错误与失败均为 0，唯一 PASS，路由为 TEST13。
-- 相关回归设备门：
-  `tmp/device-runs/20260823-142642-next605-regression-r2/device-gate-result.txt`
-  — PASS，252/252。
-- 首次候选曾以 608 KiB 在 TEST901 暴露内存不足；修复是把浏览器会话预算提高到实测所需的 624 KiB，并重新通过两道门，没有放宽断言。
-- next605 没有引入新的人工验收门。历史文件选择器与 TEST75 视觉门已经完成验收，不应因旧文字再次被标记为待验。
+- C89 检查、正式 Debug/Release ARMV4I 构建和仓库/文档审计通过；`positron_tls` 在两种
+  配置均为 0 error/0 warning。Release DLL 为 379,392 bytes（ABI v1 基线为 340,992），
+  导出表为 19 个未修饰 C 符号，旧九个入口全部保留。
+- peer 定向设备门：
+  `tmp/device-runs/20260823-160330-next606-tls-peer-r4/device-gate-result.txt`
+  — PASS，2/2（TEST1054 与 TEST999），错误与失败均为 0，唯一 PASS，路由正确。
+- ABI v1、HTTP 和证书兼容门：
+  `tmp/device-runs/20260823-155644-next606-tls-peer-compat-r1/device-gate-result.txt`
+  — PASS，7/7（TEST1–5、1054、999），包含真实 HTTPS GET/POST、有效证书接受、过期和
+  自签名证书拒绝。
+- TEST1054 覆盖身份生成/重载/错配、指纹、双向证书、pin 成败、可选/强制客户端证书、
+  失败恢复、并发连接和 listener close 取消，不依赖人工判断。
+- 官方 LocalSend 当前使用 rustls 0.23.43 `ring`+`tls12`；源码核对确认其默认 provider 与
+  Positron 共享 ECDHE-ECDSA/P-256/SHA-256/AES-128-GCM suite。尚未运行实际 rustls↔WM6
+  双向互操作，因此该项只标记为配置兼容，不标记为消费者端到端通过。
+- 首次设备候选暴露 WinCE Winsock 对 `SO_RCVTIMEO/SO_SNDTIMEO` 返回 WSA10042；正式实现
+  改为非阻塞 socket + `select` 控制 connect/handshake 期限后重跑通过，没有放宽断言。
+- 本批没有视觉、真实触摸、SIP、旋转或 picker 风险，不新增人工验收门。
 
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
@@ -65,25 +82,30 @@ next605 已完成与风险相称的本地和设备验证：
 - DOM、表单集合、历史、存储、请求响应和异步模型仍是资源有界的子集，不是完整现代浏览器。
 - 布局仍缺少 Grid、sticky、复杂包含块及完整表格/列表行为；float 路线已撤回。
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
-- Mbed TLS 2.16.12 已停止维护；HTTP/TLS、证书、设备时钟和 OEM 网络栈均有限制。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1053 的最新全范围覆盖。
+- Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
+  DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1054 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
 ## 当前工作区与候选状态
 
-- 当前没有待晋升的设备候选。
-- 当前没有已知需要立即 debug 的失败门。
+- next606 设备候选、Release、导出表和仓库审计已经通过；交付时只需确认 Git/远端状态。
+- 用户已授权将 next606 的 11 个 tracked 文件提交并推送；接手者应把该提交视为 TLS 公共
+  基础设施交付，不要把它当成可清理的临时工作。
+- 当前没有已知需要立即 debug 的设备失败门。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
 - 接手者必须先检查工作区；任何未提交改动默认属于用户，不能覆盖。
 
 ## 唯一下一步
 
-next606 只选取一个边界清楚、相对完整的纵向能力：审计并迁移一组仍由 `test_host` 持有的产品级浏览器语义，优先选择表单/输入桥中能形成完整用户行为的一组。语义和状态归入 `positron_browser` 或适当产品 DLL；宿主只保留 WM 窗口、网络、原生控件和测试编排。
+next607 恢复中断前方向：审计并迁移一组仍由 `test_host` 持有的产品级浏览器语义，优先
+选择表单/输入桥中能形成完整用户行为的一组。语义和状态归入 `positron_browser` 或适当
+产品 DLL；宿主只保留 WM 窗口、网络、原生控件和测试编排。
 
 不要为了填充 next 编号加入互不相关的小 API，也不要顺便重构其他模块。
 
-## next606 完成标准
+## next607 完成标准
 
 - 产品级语义不再由 `test_host` 独占，宿主通过公共 API 消费它。
 - 公共 ABI、UTF-8、opaque handle、内存所有权及 VS2008 / WM6 ARMV4I / C89 兼容性不退化。

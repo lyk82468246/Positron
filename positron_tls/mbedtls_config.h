@@ -1,6 +1,6 @@
 /*
  * Positron mbedTLS configuration for Windows CE 5.2 / WM6 Pro (ARMV4I).
- * Target: mbedTLS 2.16.x LTS. TLS 1.2 client only.
+ * Target: mbedTLS 2.16.x LTS. TLS 1.2 client and peer server.
  *
  * Activated via preprocessor define:
  *     MBEDTLS_CONFIG_FILE="mbedtls_config.h"
@@ -50,8 +50,8 @@ extern time_t positron_time(time_t* t);
 #endif
 #define MBEDTLS_PLATFORM_STD_TIME positron_time
 
-/* No file system. Certs are compiled in via ca_bundle.h.                  */
-/* (MBEDTLS_FS_IO deliberately NOT defined.)                               */
+/* No mbedTLS stdio file layer. Positron loads/persists peer identities     */
+/* through UTF-8 -> WinCE wide-path helpers. MBEDTLS_FS_IO stays disabled. */
 
 /* No built-in net layer. We supply our own Winsock2 BIO callbacks.        */
 /* (MBEDTLS_NET_C deliberately NOT defined.)                               */
@@ -82,6 +82,7 @@ extern time_t positron_time(time_t* t);
 #define MBEDTLS_ASN1_WRITE_C
 #define MBEDTLS_PK_C
 #define MBEDTLS_PK_PARSE_C
+#define MBEDTLS_PK_WRITE_C
 #define MBEDTLS_RSA_C
 #define MBEDTLS_PKCS1_V15
 #define MBEDTLS_PKCS1_V21
@@ -97,16 +98,20 @@ extern time_t positron_time(time_t* t);
 /* ---- X.509 (Phase 3: real chain verification on) ---------------------- */
 #define MBEDTLS_X509_USE_C
 #define MBEDTLS_X509_CRT_PARSE_C
+#define MBEDTLS_X509_CREATE_C
+#define MBEDTLS_X509_CRT_WRITE_C
 #define MBEDTLS_X509_CHECK_KEY_USAGE
 #define MBEDTLS_X509_CHECK_EXTENDED_KEY_USAGE
 
 /* PEM input (ca_bundle.h ships PEM-encoded roots).                        */
 #define MBEDTLS_PEM_PARSE_C
+#define MBEDTLS_PEM_WRITE_C
 #define MBEDTLS_BASE64_C
 
 /* ---- TLS --------------------------------------------------------------- */
 #define MBEDTLS_SSL_TLS_C
 #define MBEDTLS_SSL_CLI_C
+#define MBEDTLS_SSL_SRV_C
 #define MBEDTLS_SSL_PROTO_TLS1_2
 #define MBEDTLS_SSL_SERVER_NAME_INDICATION   /* SNI required by Cloudflare/Google */
 

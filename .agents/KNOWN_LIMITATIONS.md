@@ -107,7 +107,19 @@
 
 - 网络能力受 WMDC/设备连接、OEM 网络栈、代理、DNS、证书存储和设备时钟共同影响。
 - Mbed TLS 2.16.12 已停止维护；它不能作为现代 TLS 与证书生态的长期安全基线。
-- HTTP/TLS、重定向、超时、取消、压缩、缓存、cookie 和认证只覆盖有限子集。
+- `positron_tls` ABI v2 已支持持久 ECDSA P-256 peer 身份、双向证书、DER SHA-256 pin 和
+  TLS server，但仍只有 TLS 1.2/IPv4；没有 TLS 1.3、IPv6、证书撤销或现代硬件密钥库。
+- peer 私钥是未加密 PEM，保密性取决于应用选择的设备目录和系统/OEM 文件权限；删除或
+  复制文件会改变或复制设备身份，上层必须拥有配对、迁移和重置策略。
+- peer connect 的期限覆盖 TCP connect 与握手，但 WinCE 5.2 的同步 DNS 解析本身不能可靠
+  取消；每个 listener 同时只允许一个 active accept，同一 connection 的并发顺序由调用方
+  串行化。
+- NULL/空 peer pin 只适合 discovery/TOFU，不能作为已认证会话；普通 HTTPS 仍必须使用
+  CA/hostname 验证，不能把 peer 自签名放行逻辑复用到互联网信任模型。
+- 已从官方 LocalSend/rustls 源码确认 TLS 1.2、P-256 ECDSA 与 AES-128-GCM 的配置交集，但
+  尚未在本仓库运行 LocalSend/rustls↔WM6 两个方向的跨栈互操作；当前设备证据是 Positron
+  loopback，不能替代消费者集成门。
+- HTTP/TLS、重定向、取消、压缩、缓存、cookie 和认证仍只覆盖有限子集。
 - 自动测试中的内存 Request/Response 模型不等于真实网络端到端成功。
 - 当前项目没有完整现代浏览器沙箱、同源策略、CSP 和权限模型。
 
@@ -136,7 +148,7 @@
 
 ### 当前边界
 
-- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1053 全覆盖。
+- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1054 全覆盖。
 - 自动日志与几何断言不能替代视觉、真实触摸、SIP、旋转、文件选择器和失败网络的人工判断。
 - `tmp/` 中设备日志和截图只在本机存在，不进入 Git；丢失本机证据后只能依赖提交中的结论和可重跑测试。
 - WMDC/RAPI 自动化默认假设已有且独占的设备连接；连接和配对本身通常仍是 GUI 操作。

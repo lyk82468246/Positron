@@ -11,7 +11,7 @@ DLL 之上建设轻量浏览器与应用运行时。
 
 | 组件 | 用途 | 当前边界 |
 |---|---|---|
-| `positron_tls.dll` | TLS 1.2、证书链和主机名验证、嵌入式 CA bundle | 基于固定版本 Mbed TLS 2.16.12；不安全连接仅供诊断 |
+| `positron_tls.dll` | TLS 1.2 HTTPS client、持久 peer 身份、双向证书、指纹钉扎和 IPv4 listener | ABI v2；基于已停止维护的 Mbed TLS 2.16.12，安全限制见子项目 README |
 | `positron_json.dll` | UTF-8 JSON 解析和序列化 | cJSON 1.7.18 的稳定 opaque-handle C ABI |
 | `positron_http.dll` | HTTP/1.1 GET/POST、进度回调、重定向 | HTTPS 使用 Positron TLS，明文 HTTP 使用 WinInet |
 | `positron_image.dll` | BMP/PNG/JPEG/GIF、SVG、像素缓冲和编码 | 设备位图格式依赖 WM Imaging codec；SVG 是受限子集 |
@@ -249,7 +249,7 @@ scripts\repair_wmdc_rapi.bat
 
 ```text
 Positron.sln              VS2008 主解决方案
-positron_tls/             TLS 1.2 与证书验证
+positron_tls/             TLS 1.2 HTTPS client 与局域网 peer 基础设施
 positron_json/            JSON 公共 DLL
 positron_http/            HTTP 公共 DLL
 positron_image/           位图和 SVG 公共 DLL

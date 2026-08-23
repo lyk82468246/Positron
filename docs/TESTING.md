@@ -50,6 +50,24 @@ tests=1-5 7b 13 20,999
 TEST999 是专用完成提示音。只有显式选中、且前序测试没有令整个批次失败时，程序退出前才
 请求一次系统提示音。它不验证其他产品能力。
 
+### TLS peer ABI v2 自动门
+
+`TEST1054` 是 `positron_tls.dll` 的完整 loopback 设备门，不需要人工验收。它在真实 WM6
+Winsock、文件系统、线程和时钟上验证：身份生成/持久重载、DER SHA-256 指纹、损坏或错配
+文件拒绝、双向证书、正确/错误/畸形 pin、强制与可选客户端证书、字节流、失败后 listener
+恢复、独立并发连接，以及 `ServerClose` 中断阻塞 accept。
+
+```bat
+scripts\device_gate.bat -Candidate next606-tls-peer ^
+  -TestSelection "1054,999"
+```
+
+旧 ABI 和 HTTP 兼容门使用 `1-5,1054,999`，会访问真实外网端点；因此它同时受设备时钟、
+DNS 和网络可达性影响。两道当前证据分别位于
+`tmp/device-runs/20260823-160330-next606-tls-peer-r4/` 和
+`tmp/device-runs/20260823-155644-next606-tls-peer-compat-r1/`，均为唯一 PASS、零
+ERROR/FAIL、路由正确。device gate 的 staging 覆盖不会修改 tracked INI。
+
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
 ### 当前默认自动选择与人工验收包（next589 基线）

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1053
+#define TEST_MAX_NUMBER 1054
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -1074,6 +1074,652 @@ static BOOL test5_verified_tls(void)
     }
 
     show_info(L"TEST 5 OK", summary);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 1054 - Positron TLS ABI v2 peer infrastructure                  */
+/* -------------------------------------------------------------------- */
+
+typedef struct tls1054_accept_context {
+    HANDLE listener;
+    HANDLE ready;
+    HANDLE conn;
+    char remote_ip[16];
+    int remote_port;
+} tls1054_accept_context;
+
+typedef struct tls1054_client_context {
+    HANDLE identity;
+    HANDLE ready;
+    HANDLE conn;
+    const char* fingerprint;
+    int port;
+} tls1054_client_context;
+
+static DWORD WINAPI tls1054_accept_thread(LPVOID parameter)
+{
+    tls1054_accept_context* context;
+
+    context = (tls1054_accept_context*)parameter;
+    SetEvent(context->ready);
+    context->conn = PTls_ServerAccept(context->listener,
+                                      context->remote_ip,
+                                      sizeof(context->remote_ip),
+                                      &context->remote_port);
+    return 0;
+}
+
+static DWORD WINAPI tls1054_client_thread(LPVOID parameter)
+{
+    tls1054_client_context* context;
+
+    context = (tls1054_client_context*)parameter;
+    SetEvent(context->ready);
+    context->conn = PTls_ConnectPeer("127.0.0.1", context->port,
+                                     context->identity,
+                                     context->fingerprint, 12000);
+    return 0;
+}
+
+static HANDLE tls1054_begin_accept(HANDLE listener,
+                                   tls1054_accept_context* context)
+{
+    HANDLE thread;
+
+    memset(context, 0, sizeof(*context));
+    context->listener = listener;
+    context->ready = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (context->ready == NULL) {
+        return NULL;
+    }
+    thread = CreateThread(NULL, 0, tls1054_accept_thread,
+                          context, 0, NULL);
+    if (thread == NULL) {
+        CloseHandle(context->ready);
+        context->ready = NULL;
+        return NULL;
+    }
+    if (WaitForSingleObject(context->ready, INFINITE) != WAIT_OBJECT_0) {
+        CloseHandle(thread);
+        CloseHandle(context->ready);
+        context->ready = NULL;
+        return NULL;
+    }
+    CloseHandle(context->ready);
+    context->ready = NULL;
+    return thread;
+}
+
+static HANDLE tls1054_begin_client(HANDLE identity, int port,
+                                   const char* fingerprint,
+                                   tls1054_client_context* context)
+{
+    HANDLE thread;
+
+    memset(context, 0, sizeof(*context));
+    context->identity = identity;
+    context->port = port;
+    context->fingerprint = fingerprint;
+    context->ready = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (context->ready == NULL) {
+        return NULL;
+    }
+    thread = CreateThread(NULL, 0, tls1054_client_thread,
+                          context, 0, NULL);
+    if (thread == NULL) {
+        CloseHandle(context->ready);
+        context->ready = NULL;
+        return NULL;
+    }
+    if (WaitForSingleObject(context->ready, INFINITE) != WAIT_OBJECT_0) {
+        CloseHandle(thread);
+        CloseHandle(context->ready);
+        context->ready = NULL;
+        return NULL;
+    }
+    CloseHandle(context->ready);
+    context->ready = NULL;
+    return thread;
+}
+
+static int tls1054_wait_thread(HANDLE* thread)
+{
+    DWORD wait_result;
+
+    if (*thread == NULL) {
+        return 1;
+    }
+    wait_result = WaitForSingleObject(*thread, 15000);
+    CloseHandle(*thread);
+    *thread = NULL;
+    return wait_result == WAIT_OBJECT_0;
+}
+
+static void tls1054_lowercase(char* output, const char* input)
+{
+    int i;
+
+    for (i = 0; i < 64; i++) {
+        if (input[i] >= 'A' && input[i] <= 'F') {
+            output[i] = (char)(input[i] - 'A' + 'a');
+        } else {
+            output[i] = input[i];
+        }
+    }
+    output[64] = '\0';
+}
+
+static int tls1054_fingerprint_format(const char* fingerprint)
+{
+    int i;
+
+    if (fingerprint == NULL || strlen(fingerprint) != 64) {
+        return 0;
+    }
+    for (i = 0; i < 64; i++) {
+        if (!((fingerprint[i] >= '0' && fingerprint[i] <= '9') ||
+              (fingerprint[i] >= 'A' && fingerprint[i] <= 'F'))) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void tls1054_failure(char* output, int output_capacity,
+                            const char* step)
+{
+    char tls_error[256];
+
+    tls_error[0] = '\0';
+    PTls_CopyLastError(tls_error, sizeof(tls_error));
+    _snprintf(output, (size_t)output_capacity,
+              "%s\nTLS error: %s", step,
+              tls_error[0] != '\0' ? tls_error : "(none)");
+    output[output_capacity - 1] = '\0';
+}
+
+static HANDLE tls1054_listen(HANDLE identity, unsigned int flags,
+                             int* out_port)
+{
+    HANDLE listener;
+    int start_port;
+    int offset;
+    int port;
+
+    start_port = 54000 + (int)(GetTickCount() % 1000);
+    listener = NULL;
+    for (offset = 0; offset < 32; offset++) {
+        port = start_port + offset;
+        if (port > 65535) {
+            port = 54000 + offset;
+        }
+        listener = PTls_ServerListen(identity, port, flags, 5000);
+        if (listener != NULL) {
+            *out_port = port;
+            return listener;
+        }
+    }
+    return NULL;
+}
+
+static BOOL test1054_tls_peer_infrastructure(void)
+{
+    static const char CERT_A[] = "\\Temp\\positron_tls_1054_a_cert.pem";
+    static const char KEY_A[] = "\\Temp\\positron_tls_1054_a_key.pem";
+    static const char CERT_B[] = "\\Temp\\positron_tls_1054_b_cert.pem";
+    static const char KEY_B[] = "\\Temp\\positron_tls_1054_b_key.pem";
+    static const char CERT_C[] = "\\Temp\\positron_tls_1054_c_cert.pem";
+    static const char KEY_C[] = "\\Temp\\positron_tls_1054_c_key.pem";
+    static const WCHAR CERT_A_W[] = L"\\Temp\\positron_tls_1054_a_cert.pem";
+    static const WCHAR KEY_A_W[] = L"\\Temp\\positron_tls_1054_a_key.pem";
+    static const WCHAR CERT_B_W[] = L"\\Temp\\positron_tls_1054_b_cert.pem";
+    static const WCHAR KEY_B_W[] = L"\\Temp\\positron_tls_1054_b_key.pem";
+    static const WCHAR CERT_C_W[] = L"\\Temp\\positron_tls_1054_c_cert.pem";
+    static const WCHAR KEY_C_W[] = L"\\Temp\\positron_tls_1054_c_key.pem";
+    HANDLE identity_a;
+    HANDLE identity_b;
+    HANDLE mismatch_identity;
+    HANDLE listener;
+    HANDLE client;
+    HANDLE server;
+    HANDLE accept_thread;
+    HANDLE client_thread_one;
+    HANDLE client_thread_two;
+    tls1054_accept_context accept_context;
+    tls1054_client_context client_context_one;
+    tls1054_client_context client_context_two;
+    char fingerprint_a[65];
+    char fingerprint_a_reloaded[65];
+    char fingerprint_b[65];
+    char fingerprint_peer[65];
+    char lowercase_pin[65];
+    char wrong_pin[65];
+    char small_output[64];
+    char error_copy[256];
+    char data[8];
+    char failure[512];
+    int port;
+    int count;
+    int i;
+    DWORD close_started;
+    DWORD close_elapsed;
+    BOOL ok;
+
+    identity_a = NULL;
+    identity_b = NULL;
+    mismatch_identity = NULL;
+    listener = NULL;
+    client = NULL;
+    server = NULL;
+    accept_thread = NULL;
+    client_thread_one = NULL;
+    client_thread_two = NULL;
+    memset(&accept_context, 0, sizeof(accept_context));
+    memset(&client_context_one, 0, sizeof(client_context_one));
+    memset(&client_context_two, 0, sizeof(client_context_two));
+    failure[0] = '\0';
+    ok = FALSE;
+
+    DeleteFileW(CERT_A_W);
+    DeleteFileW(KEY_A_W);
+    DeleteFileW(CERT_B_W);
+    DeleteFileW(KEY_B_W);
+    DeleteFileW(CERT_C_W);
+    DeleteFileW(KEY_C_W);
+    DeleteFileW(L"\\Temp\\positron_tls_1054_a_cert.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_a_key.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_b_cert.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_b_key.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_c_cert.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_c_key.pem.ptls.tmp");
+
+    if (PTls_GetAbiVersion() != PTLS_ABI_VERSION ||
+        PTLS_ABI_VERSION != 2) {
+        tls1054_failure(failure, sizeof(failure),
+                        "ABI version query did not return v2");
+        goto cleanup;
+    }
+    if (!PTls_Init()) {
+        tls1054_failure(failure, sizeof(failure), "PTls_Init failed");
+        goto cleanup;
+    }
+    identity_a = PTls_IdentityLoadOrCreate(CERT_A, KEY_A);
+    if (identity_a == NULL ||
+        GetFileAttributesW(CERT_A_W) == 0xFFFFFFFF ||
+        GetFileAttributesW(KEY_A_W) == 0xFFFFFFFF) {
+        tls1054_failure(failure, sizeof(failure),
+                        "identity A was not created and persisted");
+        goto cleanup;
+    }
+    if (!PTls_IdentityFingerprint(identity_a, fingerprint_a,
+                                  sizeof(fingerprint_a)) ||
+        !tls1054_fingerprint_format(fingerprint_a)) {
+        tls1054_failure(failure, sizeof(failure),
+                        "identity A fingerprint format is invalid");
+        goto cleanup;
+    }
+    if (PTls_IdentityFingerprint(identity_a, small_output,
+                                 sizeof(small_output))) {
+        tls1054_failure(failure, sizeof(failure),
+                        "fingerprint accepted a buffer smaller than 65");
+        goto cleanup;
+    }
+    PTls_IdentityClose(identity_a);
+    identity_a = PTls_IdentityLoadOrCreate(CERT_A, KEY_A);
+    if (identity_a == NULL ||
+        !PTls_IdentityFingerprint(identity_a, fingerprint_a_reloaded,
+                                  sizeof(fingerprint_a_reloaded)) ||
+        strcmp(fingerprint_a, fingerprint_a_reloaded) != 0) {
+        tls1054_failure(failure, sizeof(failure),
+                        "reloaded identity A changed fingerprint");
+        goto cleanup;
+    }
+    identity_b = PTls_IdentityLoadOrCreate(CERT_B, KEY_B);
+    if (identity_b == NULL ||
+        !PTls_IdentityFingerprint(identity_b, fingerprint_b,
+                                  sizeof(fingerprint_b)) ||
+        !tls1054_fingerprint_format(fingerprint_b) ||
+        strcmp(fingerprint_a, fingerprint_b) == 0) {
+        tls1054_failure(failure, sizeof(failure),
+                        "identity B creation/fingerprint isolation failed");
+        goto cleanup;
+    }
+
+    mismatch_identity = PTls_IdentityLoadOrCreate(CERT_A, KEY_B);
+    if (mismatch_identity != NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "mismatched certificate/private key was accepted");
+        goto cleanup;
+    }
+    error_copy[0] = '\0';
+    PTls_CopyLastError(error_copy, sizeof(error_copy));
+    if (strstr(error_copy, "mismatch") == NULL ||
+        !PTls_IdentityFingerprint(identity_a, fingerprint_a_reloaded,
+                                  sizeof(fingerprint_a_reloaded)) ||
+        strcmp(fingerprint_a, fingerprint_a_reloaded) != 0) {
+        tls1054_failure(failure, sizeof(failure),
+                        "mismatch error/identity preservation failed");
+        goto cleanup;
+    }
+
+    if (!CopyFileW(CERT_A_W, CERT_C_W, FALSE)) {
+        tls1054_failure(failure, sizeof(failure),
+                        "one-file identity fixture could not be created");
+        goto cleanup;
+    }
+    mismatch_identity = PTls_IdentityLoadOrCreate(CERT_C, KEY_C);
+    if (mismatch_identity != NULL ||
+        GetFileAttributesW(CERT_C_W) == 0xFFFFFFFF ||
+        GetFileAttributesW(KEY_C_W) != 0xFFFFFFFF) {
+        tls1054_failure(failure, sizeof(failure),
+                        "one-file identity was accepted or overwritten");
+        goto cleanup;
+    }
+    DeleteFileW(CERT_C_W);
+    if (!CopyFileW(KEY_A_W, CERT_C_W, FALSE) ||
+        !CopyFileW(CERT_A_W, KEY_C_W, FALSE)) {
+        tls1054_failure(failure, sizeof(failure),
+                        "malformed identity fixture could not be created");
+        goto cleanup;
+    }
+    mismatch_identity = PTls_IdentityLoadOrCreate(CERT_C, KEY_C);
+    if (mismatch_identity != NULL ||
+        GetFileAttributesW(CERT_C_W) == 0xFFFFFFFF ||
+        GetFileAttributesW(KEY_C_W) == 0xFFFFFFFF) {
+        tls1054_failure(failure, sizeof(failure),
+                        "malformed identity was accepted or overwritten");
+        goto cleanup;
+    }
+    DeleteFileW(CERT_C_W);
+    DeleteFileW(KEY_C_W);
+
+    listener = tls1054_listen(identity_a,
+                              PTLS_SERVER_REQUIRE_CLIENT_CERT, &port);
+    if (listener == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "TLS listener could not bind");
+        goto cleanup;
+    }
+    accept_thread = tls1054_begin_accept(listener, &accept_context);
+    if (accept_thread == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "accept thread could not start");
+        goto cleanup;
+    }
+    client = PTls_ConnectPeer("127.0.0.1", port, identity_b, NULL, 12000);
+    if (!tls1054_wait_thread(&accept_thread)) {
+        tls1054_failure(failure, sizeof(failure),
+                        "discovery accept did not finish");
+        goto cleanup;
+    }
+    server = accept_context.conn;
+    accept_context.conn = NULL;
+    if (client == NULL || server == NULL ||
+        strcmp(accept_context.remote_ip, "127.0.0.1") != 0 ||
+        accept_context.remote_port <= 0 ||
+        !PTls_PeerFingerprint(client, fingerprint_peer,
+                              sizeof(fingerprint_peer)) ||
+        strcmp(fingerprint_peer, fingerprint_a) != 0 ||
+        !PTls_PeerFingerprint(server, fingerprint_peer,
+                              sizeof(fingerprint_peer)) ||
+        strcmp(fingerprint_peer, fingerprint_b) != 0) {
+        tls1054_failure(failure, sizeof(failure),
+                        "mutual certificate fingerprints are incorrect");
+        goto cleanup;
+    }
+    if (PTls_Write(client, "ping", 4) != 4 ||
+        (count = PTls_Read(server, data, sizeof(data))) != 4 ||
+        memcmp(data, "ping", 4) != 0 ||
+        PTls_Write(server, "pong", 4) != 4 ||
+        (count = PTls_Read(client, data, sizeof(data))) != 4 ||
+        memcmp(data, "pong", 4) != 0) {
+        tls1054_failure(failure, sizeof(failure),
+                        "mutual TLS byte-stream exchange failed");
+        goto cleanup;
+    }
+    PTls_Close(server);
+    server = NULL;
+    PTls_Close(client);
+    client = NULL;
+
+    tls1054_lowercase(lowercase_pin, fingerprint_a);
+    accept_thread = tls1054_begin_accept(listener, &accept_context);
+    client = PTls_ConnectPeer("127.0.0.1", port, identity_b,
+                              lowercase_pin, 12000);
+    if (!tls1054_wait_thread(&accept_thread)) {
+        tls1054_failure(failure, sizeof(failure),
+                        "pinned accept did not finish");
+        goto cleanup;
+    }
+    server = accept_context.conn;
+    accept_context.conn = NULL;
+    if (client == NULL || server == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "case-insensitive correct pin was rejected");
+        goto cleanup;
+    }
+    PTls_Close(server);
+    server = NULL;
+    PTls_Close(client);
+    client = NULL;
+
+    if (PTls_ConnectPeer("127.0.0.1", port, identity_b,
+                         "not-a-fingerprint", 12000) != NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "malformed pin was accepted");
+        goto cleanup;
+    }
+    error_copy[0] = '\0';
+    PTls_CopyLastError(error_copy, sizeof(error_copy));
+    if (strstr(error_copy, "malformed") == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "malformed pin error was not preserved");
+        goto cleanup;
+    }
+
+    for (i = 0; i < 64; i++) {
+        wrong_pin[i] = fingerprint_a[i];
+    }
+    wrong_pin[0] = wrong_pin[0] == '0' ? '1' : '0';
+    wrong_pin[64] = '\0';
+    accept_thread = tls1054_begin_accept(listener, &accept_context);
+    client = PTls_ConnectPeer("127.0.0.1", port, identity_b,
+                              wrong_pin, 12000);
+    error_copy[0] = '\0';
+    PTls_CopyLastError(error_copy, sizeof(error_copy));
+    if (!tls1054_wait_thread(&accept_thread)) {
+        tls1054_failure(failure, sizeof(failure),
+                        "wrong-pin accept did not finish");
+        goto cleanup;
+    }
+    server = accept_context.conn;
+    accept_context.conn = NULL;
+    if (client != NULL || strstr(error_copy, "fingerprint mismatch") == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "wrong pin did not fail before returning a connection");
+        goto cleanup;
+    }
+    if (server != NULL) {
+        PTls_Close(server);
+        server = NULL;
+    }
+
+    accept_thread = tls1054_begin_accept(listener, &accept_context);
+    client = PTls_Connect("127.0.0.1", port);
+    if (!tls1054_wait_thread(&accept_thread)) {
+        tls1054_failure(failure, sizeof(failure),
+                        "no-certificate accept did not finish");
+        goto cleanup;
+    }
+    server = accept_context.conn;
+    accept_context.conn = NULL;
+    if (client != NULL || server != NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "REQUIRE_CLIENT_CERT accepted a certificate-less peer");
+        goto cleanup;
+    }
+
+    accept_thread = tls1054_begin_accept(listener, &accept_context);
+    client = PTls_ConnectPeer("127.0.0.1", port, identity_b,
+                              fingerprint_a, 12000);
+    if (!tls1054_wait_thread(&accept_thread)) {
+        tls1054_failure(failure, sizeof(failure),
+                        "post-failure accept did not finish");
+        goto cleanup;
+    }
+    server = accept_context.conn;
+    accept_context.conn = NULL;
+    if (client == NULL || server == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "one failed handshake damaged the listener");
+        goto cleanup;
+    }
+    PTls_Close(server);
+    server = NULL;
+    PTls_Close(client);
+    client = NULL;
+
+    client_thread_one = tls1054_begin_client(identity_b, port,
+                                              fingerprint_a,
+                                              &client_context_one);
+    client_thread_two = tls1054_begin_client(identity_b, port,
+                                              fingerprint_a,
+                                              &client_context_two);
+    if (client_thread_one == NULL || client_thread_two == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "concurrent client threads could not start");
+        goto cleanup;
+    }
+    server = PTls_ServerAccept(listener, NULL, 0, NULL);
+    accept_context.conn = PTls_ServerAccept(listener, NULL, 0, NULL);
+    if (!tls1054_wait_thread(&client_thread_one) ||
+        !tls1054_wait_thread(&client_thread_two) ||
+        server == NULL || accept_context.conn == NULL ||
+        client_context_one.conn == NULL || client_context_two.conn == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "concurrent connection state was not isolated");
+        goto cleanup;
+    }
+    PTls_Close(server);
+    server = NULL;
+    PTls_Close(accept_context.conn);
+    accept_context.conn = NULL;
+    PTls_Close(client_context_one.conn);
+    client_context_one.conn = NULL;
+    PTls_Close(client_context_two.conn);
+    client_context_two.conn = NULL;
+
+    accept_thread = tls1054_begin_accept(listener, &accept_context);
+    if (accept_thread == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "close-interrupt accept thread could not start");
+        goto cleanup;
+    }
+    close_started = GetTickCount();
+    PTls_ServerClose(listener);
+    listener = NULL;
+    close_elapsed = GetTickCount() - close_started;
+    if (!tls1054_wait_thread(&accept_thread) ||
+        accept_context.conn != NULL || close_elapsed > 5000) {
+        tls1054_failure(failure, sizeof(failure),
+                        "ServerClose did not promptly interrupt ServerAccept");
+        goto cleanup;
+    }
+
+    listener = tls1054_listen(identity_a, 0, &port);
+    if (listener == NULL) {
+        tls1054_failure(failure, sizeof(failure),
+                        "optional-client-certificate listener could not bind");
+        goto cleanup;
+    }
+    accept_thread = tls1054_begin_accept(listener, &accept_context);
+    client = PTls_Connect("127.0.0.1", port);
+    if (!tls1054_wait_thread(&accept_thread)) {
+        tls1054_failure(failure, sizeof(failure),
+                        "optional-certificate accept did not finish");
+        goto cleanup;
+    }
+    server = accept_context.conn;
+    accept_context.conn = NULL;
+    if (client == NULL || server == NULL ||
+        PTls_PeerFingerprint(server, fingerprint_peer,
+                             sizeof(fingerprint_peer)) ||
+        PTls_Write(client, "open", 4) != 4 ||
+        (count = PTls_Read(server, data, sizeof(data))) != 4 ||
+        memcmp(data, "open", 4) != 0) {
+        tls1054_failure(failure, sizeof(failure),
+                        "optional mode did not accept a certificate-less peer");
+        goto cleanup;
+    }
+    PTls_Close(server);
+    server = NULL;
+    PTls_Close(client);
+    client = NULL;
+    PTls_ServerClose(listener);
+    listener = NULL;
+
+    ok = TRUE;
+
+cleanup:
+    if (listener != NULL) {
+        PTls_ServerClose(listener);
+        listener = NULL;
+    }
+    if (accept_thread != NULL) {
+        tls1054_wait_thread(&accept_thread);
+    }
+    if (client_thread_one != NULL) {
+        tls1054_wait_thread(&client_thread_one);
+    }
+    if (client_thread_two != NULL) {
+        tls1054_wait_thread(&client_thread_two);
+    }
+    if (accept_context.conn != NULL) {
+        PTls_Close(accept_context.conn);
+    }
+    if (client_context_one.conn != NULL) {
+        PTls_Close(client_context_one.conn);
+    }
+    if (client_context_two.conn != NULL) {
+        PTls_Close(client_context_two.conn);
+    }
+    if (server != NULL) {
+        PTls_Close(server);
+    }
+    if (client != NULL) {
+        PTls_Close(client);
+    }
+    if (mismatch_identity != NULL) {
+        PTls_IdentityClose(mismatch_identity);
+    }
+    if (identity_b != NULL) {
+        PTls_IdentityClose(identity_b);
+    }
+    if (identity_a != NULL) {
+        PTls_IdentityClose(identity_a);
+    }
+    DeleteFileW(CERT_A_W);
+    DeleteFileW(KEY_A_W);
+    DeleteFileW(CERT_B_W);
+    DeleteFileW(KEY_B_W);
+    DeleteFileW(CERT_C_W);
+    DeleteFileW(KEY_C_W);
+    DeleteFileW(L"\\Temp\\positron_tls_1054_a_cert.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_a_key.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_b_cert.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_b_key.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_c_cert.pem.ptls.tmp");
+    DeleteFileW(L"\\Temp\\positron_tls_1054_c_key.pem.ptls.tmp");
+
+    if (!ok) {
+        show_error(L"TEST 1054 FAIL", failure);
+        return FALSE;
+    }
+    show_info(L"TEST 1054 OK",
+              "TLS ABI v2 identity persistence, mutual certificates, "
+              "DER SHA-256 pinning, listener recovery, concurrency and "
+              "close interruption passed on loopback.");
     return TRUE;
 }
 
@@ -64879,7 +65525,7 @@ static int run_configured_tests(const unsigned char *selected,
                 number != 90 && number != 91 && number != 92 &&
                 number != 93 && number != 94 && number != 95 &&
                 number != 96 && number != 97 && number != 98 &&
-                number != 99 &&
+                number != 99 && number != 1054 &&
                 selected[number]) {
             needs_core = 1;
             break;
@@ -67664,6 +68310,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1053: ok =
                 test1053_browser_form_collection_contract();
                 break;
+        case 1054: ok = test1054_tls_peer_infrastructure(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
