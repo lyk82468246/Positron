@@ -304,6 +304,11 @@ next618 当前候选的本地验证已完成，但设备门尚未形成证据：
 - Windows Application Error/WER 还记录了 `svchost.exe_RapiMgr` 在 23:00、23:59:59 等时刻
   以 `0xc0000008`（`ntdll.dll` 无效句柄）崩溃；`RapiMgr` 后续显示 Running 不能作为会话
   健康证据。当前阻塞应按 WMDC/RapiMgr 主机故障处理，不修改产品或恢复 VMID 路径。
+- 最小化重试 `tmp/device-runs/20260824-003941-next618-rapi-retry/` 的 Debug 构建和
+  staging 成功，但 `CeRapiInitEx()` 仍在 30 秒后超时，设备端没有进程、日志或结果。
+  尝试按依赖顺序重启 `WcesComm`/`RapiMgr` 时被当前会话的服务 ACL 拒绝；两者仍为
+  `Running` 并共享 PID 38056。该操作没有修改仓库、注册表或设备；需要用户以管理员权限
+  重建 WMDC/RapiMgr 或主机连接后再继续设备门。
 - 需要关闭设备/模拟器 GUI 中遗留的 `test_host.exe`，确认 WMDC 只有当前唯一连接后重新
   断开/连接，再原样重跑窄门；恢复门槛见 `.agents/FAILED_EXPERIMENTS.md` 的 next618 条目。
 
