@@ -933,6 +933,20 @@ native commit → input 事务，END 允许 NULL 数据回放最后一次 preedi
 TEST123–125 在真实 WM6 上保持 composition/InputEvent/KeyboardEvent 元数据回归。该批不
 宣称 OEM 候选词整词提交、SIP 视觉、触摸、旋转或其他平台副作用兼容。
 
+#### next614 的 label/control 关系边界
+
+next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：
+`positron_core.dll` 的 `PCore_NodeRelationById()` 增加 label-control、control-label-count
+和 control-label-at 三个只读关系；`positron_browser.dll` 将其包装为
+`HTMLLabelElement.control` 与控件的 `labels` 静态 NodeList。显式 `for` 优先指向同文档的
+labelable input（排除 hidden）、select、textarea 或 button；没有 `for` 时只取 label 内第一个
+可寻址的嵌套控件。无效目标、无 ID label、非控件、hidden 和越界索引 fail closed。
+
+这是一组同步、session-scoped snapshot，不是 live `HTMLFormControlsCollection`，也不实现
+fieldset disabled 传播、节点创建、mutation 或完整 labelable 元素集合。`test_host.exe` 仅提供
+fixture、callback adapter 和 TEST1062 断言；新的 core/browser ABI 可由其他消费者复用，宿主仍
+拥有窗口、焦点、原生控件和视觉副作用。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。
@@ -949,7 +963,7 @@ TEST123–125 在真实 WM6 上保持 composition/InputEvent/KeyboardEvent 元�
 
 因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
 history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/value/checked/disabled/validation-query/custom-validity/constraint-reflection/form-property、ID-addressable
-DOM relation/form collection、navigation/location-event/native-input/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click/
+DOM relation/form collection/label-control snapshot、navigation/location-event/native-input/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click/
 submit-reset/invalid/report-validity/file-input/checkbox-radio-change/SELECT-input/change dispatch entry，及
 程序化 click 的 typed activation policy、native EDIT 的 beforeinput/input/dirty/change 事务策略与
 composition phase/preedit policy、

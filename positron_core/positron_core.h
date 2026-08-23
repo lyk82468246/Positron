@@ -288,6 +288,9 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT 17u
 #define PCORE_NODE_RELATION_CHILD_NODE_ID_AT    18u
 #define PCORE_NODE_RELATION_CHILD_NODE_TEXT_AT  19u
+#define PCORE_NODE_RELATION_LABEL_CONTROL       20u
+#define PCORE_NODE_RELATION_CONTROL_LABEL_COUNT 21u
+#define PCORE_NODE_RELATION_CONTROL_LABEL_AT    22u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

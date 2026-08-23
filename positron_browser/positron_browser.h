@@ -190,6 +190,9 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_VALUE_AT 17u
 #define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_ID_AT    18u
 #define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_TEXT_AT  19u
+#define PBROWSER_SCRIPT_NODE_RELATION_LABEL_CONTROL       20u
+#define PBROWSER_SCRIPT_NODE_RELATION_CONTROL_LABEL_COUNT 21u
+#define PBROWSER_SCRIPT_NODE_RELATION_CONTROL_LABEL_AT    22u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

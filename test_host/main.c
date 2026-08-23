@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1061
+#define TEST_MAX_NUMBER 1062
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -53264,6 +53264,92 @@ static BOOL test_browser_raw_string_fixture(const char *html,
             expected, error, error_capacity);
 }
 
+/* TEST 1062 - bounded label/control association and labels snapshots. */
+static BOOL test1062_browser_label_control_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><form id='form'>"
+        "<label id='first' for='field'>First</label>"
+        "<label id='second' for='field'>Second</label>"
+        "<label id='nested'><span>Nested</span><input id='nested-field'></label>"
+        "<label id='choice-label' for='choice'>Choice</label>"
+        "<label id='bad' for='not-control'>Bad</label>"
+        "<input id='field' name='field'>"
+        "<select id='choice' name='choice'><option>One</option></select>"
+        "<input id='hidden' type='hidden'>"
+        "<div id='not-control'></div><p id='result'>idle</p>"
+        "</form></body></html>";
+    static const char PROBE[] =
+        "var field=document.getElementById('field');"
+        "var nested=document.getElementById('nested');"
+        "var bad=document.getElementById('bad');"
+        "function idof(x){return x===null?'null':(typeof x==='undefined'?'undef':String(x.id));}"
+        "var labels=field.labels;var first=idof(labels[0]);var second=idof(labels[1]);"
+        "labels.pop();var choiceLabels=document.getElementById('choice').labels;"
+        "document.getElementById('result').textContent="
+        "idof(nested.control)+'|'+idof(document.getElementById('first').control)+'|'"
+        "+String(bad.control===null)+'|'+first+'|'+second+'|'"
+        "+String(field.labels.length===2)+'|'+choiceLabels.length+'|'"
+        "+idof(choiceLabels[0])+'|'+String(document.getElementById('hidden').labels===null)+'|'"
+        "+String(document.getElementById('form').labels===null)+'|'"
+        "+String(field.control===null);";
+    static const char EXPECTED[] =
+        "nested-field|field|true|first|second|true|1|choice-label|true|true|true";
+    HANDLE document;
+    char value[64];
+    char error[384];
+    int bytes;
+    int count;
+    BOOL core_ok;
+    BOOL script_ok;
+
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    memset(value, 0, sizeof(value));
+    memset(error, 0, sizeof(error));
+    bytes = 0;
+    count = 0;
+    core_ok = document != NULL &&
+            PCore_NodeRelationById(document, "first",
+            PCORE_NODE_RELATION_LABEL_CONTROL, 0, value, sizeof(value),
+            &bytes, NULL) == 0 && strcmp(value, "field") == 0 &&
+            PCore_NodeRelationById(document, "nested",
+            PCORE_NODE_RELATION_LABEL_CONTROL, 0, value, sizeof(value),
+            &bytes, NULL) == 0 && strcmp(value, "nested-field") == 0 &&
+            PCore_NodeRelationById(document, "bad",
+            PCORE_NODE_RELATION_LABEL_CONTROL, 0, value, sizeof(value),
+            &bytes, NULL) == 2 &&
+            PCore_NodeRelationById(document, "field",
+            PCORE_NODE_RELATION_CONTROL_LABEL_COUNT, 0, NULL, 0, NULL,
+            &count) == 0 && count == 2 &&
+            PCore_NodeRelationById(document, "field",
+            PCORE_NODE_RELATION_CONTROL_LABEL_AT, 1, value, sizeof(value),
+            &bytes, NULL) == 0 && strcmp(value, "second") == 0 &&
+            PCore_NodeRelationById(document, "field",
+            PCORE_NODE_RELATION_CONTROL_LABEL_AT, 2, value, sizeof(value),
+            &bytes, NULL) == 2 &&
+            PCore_NodeRelationById(document, "hidden",
+            PCORE_NODE_RELATION_CONTROL_LABEL_COUNT, 0, NULL, 0, NULL,
+            &count) == 2;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    script_ok = test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error));
+    if (!core_ok || !script_ok) {
+        if (error[0] == '\0') {
+            strcpy(error, "label/control relation contract failed");
+        }
+        show_error(L"TEST 1062 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1062 OK",
+            "Browser-owned label.control and bounded labels snapshots\n"
+            "resolve explicit/nested labelable controls and fail closed for\n"
+            "invalid or non-labelable targets.");
+    return TRUE;
+}
+
 static BOOL test_browser_raw_property_case(const char *target_markup,
         const char *property, const char *attribute, const char *initial,
         const char *attribute_value, const char *property_value,
@@ -70428,6 +70514,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1059: ok = test1059_browser_native_select_transaction_contract(); break;
         case 1060: ok = test1060_browser_native_select_key_contract(); break;
         case 1061: ok = test1061_browser_native_edit_composition_contract(); break;
+        case 1062: ok = test1062_browser_label_control_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

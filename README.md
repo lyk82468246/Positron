@@ -60,8 +60,9 @@ identity；这些能力不发起网络、不创建后台线程，并由宿主显
 reaction 必须由宿主显式调用 `PBrowser_ScriptSessionRunMicrotasks()` 推进，handler 与组合器输入均受
 64 项上限。
 当前还提供按 DOM id 的父子/兄弟、tag/name、form owner、`children`、`contains()`、基础
-`compareDocumentPosition()`、受限 `matches()`/`closest()`、元素作用域 querySelector 和
-`form.elements` collection；这些是同步、只读、session-scoped snapshot，不是完整 live DOM。
+`compareDocumentPosition()`、受限 `matches()`/`closest()`、元素作用域 querySelector、
+`form.elements` collection，以及 bounded 的 `label.control`/控件 `labels` 关联；这些都是
+同步、只读、session-scoped snapshot，不是完整 live DOM。
 `childNodes`、`children`、`form.elements` 和元素作用域 `querySelectorAll()` 结果还提供
 有界的 `forEach()`、`keys()`、`values()`、`entries()`、默认 iterator 与 `Symbol.toStringTag`；
 `children`/`form.elements` 保留 `namedItem()`，不承诺 live 更新。
@@ -161,6 +162,11 @@ next605 又为 `form.elements` 的重复 `id`/`name` 增加有限的 `RadioNodeL
 `TEST1036–1053` 定向门和拆开 `TEST999` 的 `TEST802–998,1000–1053` 缩减回归均已通过；
 为容纳新增 bootstrap，browser session heap ceiling 提升到 624 KiB，独立 `positron_script`
 默认堆仍为 512 KiB。本批不需要人工页面验收。
+next614 又把 label/control 的最小关联放入产品 DLL：`label.control` 支持显式 `for` 指向或
+无 `for` 时的第一个嵌套 input（排除 hidden）、select、textarea 或 button；这些控件的
+`labels` 返回按文档顺序的静态 NodeList。无效目标、无 ID label、非控件、hidden 和越界访问
+均 fail closed；不承诺 live labels、fieldset 禁用传播或完整 labelable 类型集合。`TEST1062`
+以及相邻关系回归已通过自动设备门，无新增人工页面验收。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

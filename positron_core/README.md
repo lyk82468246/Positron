@@ -65,9 +65,11 @@ bridge 实现受限的 form-level `checkValidity()`；`PCore_FormReportValidityB
 `PCore_NodeRelationById` 为浏览器或其他宿主提供一个稳定、只读的 DOM 关系切片：按元素 id
 查询 parent/first-child/last-child/previous-sibling/next-sibling、child count、tag/name、
 form owner，以及按 DOM 顺序查询 form-control count/index。它还提供 attribute count、name-at
-和 value-at 关系，供浏览器层构造 parser-order 的 `Attr`/NamedNodeMap 视图。字符串结果遵循
+和 value-at 关系，供浏览器层构造 parser-order 的 `Attr`/NamedNodeMap 视图；next614 增加
+label-control、control-label-count 和 control-label-at 关系，支持显式 `for` 与嵌套 label，
+仅覆盖 input（排除 hidden）、select、textarea、button。字符串结果遵循
 UTF-8 probe 和安全截断约定，计数通过 `out_number` 返回；缺失 id、越界索引和不支持的关系会
-fail closed。`CHILD_NODE_*` 关系另提供所有直接 childNodes 的数量、类型、name/value、
+fail closed；label-at 只返回有可寻址 DOM id 的 label。`CHILD_NODE_*` 关系另提供所有直接 childNodes 的数量、类型、name/value、
 textContent 和可用子元素 id，因此文本、注释和无 id 元素不会被旧的 element-only collection
 过滤；next585 另外为没有 HTML `id` 的 document root、直接 `head` 和直接 `body` 提供三个
 保留结构 token（`PCORE_DOCUMENT_ELEMENT_TOKEN`、`PCORE_DOCUMENT_HEAD_TOKEN`、

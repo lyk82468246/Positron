@@ -4718,6 +4718,312 @@ static int pcore_relation_form_owner(dom_node *node, char *value,
     return 2;
 }
 
+/* The browser DOM exposes a deliberately bounded label/control association
+ * slice.  It is computed from the parsed document on each relation query so
+ * attribute changes are observed without introducing a second live DOM cache.
+ * Only the labelable controls already represented by the core form bridge are
+ * included (input except type=hidden, select, textarea and button). */
+static int pcore_relation_attribute_value(dom_element *element,
+        const char *name, dom_string **out_value)
+{
+    dom_string *dom_name;
+    dom_exception err;
+
+    if (out_value != NULL) {
+        *out_value = NULL;
+    }
+    if (element == NULL || name == NULL || out_value == NULL) {
+        return 1;
+    }
+    dom_name = NULL;
+    if (dom_string_create((const uint8_t *) name, strlen(name),
+            &dom_name) != DOM_NO_ERR || dom_name == NULL) {
+        return 1;
+    }
+    err = dom_element_get_attribute(element, dom_name, out_value);
+    dom_string_unref(dom_name);
+    if (err != DOM_NO_ERR) {
+        if (*out_value != NULL) {
+            dom_string_unref(*out_value);
+            *out_value = NULL;
+        }
+        return 1;
+    }
+    return (*out_value == NULL) ? 2 : 0;
+}
+
+static int pcore_relation_same_element_id(dom_element *first,
+        dom_element *second)
+{
+    dom_string *first_id;
+    dom_string *second_id;
+    int same;
+
+    first_id = NULL;
+    second_id = NULL;
+    if (pcore_relation_attribute_value(first, "id", &first_id) != 0 ||
+            pcore_relation_attribute_value(second, "id", &second_id) !=
+            0) {
+        if (first_id != NULL) {
+            dom_string_unref(first_id);
+        }
+        if (second_id != NULL) {
+            dom_string_unref(second_id);
+        }
+        return 0;
+    }
+    same = dom_string_isequal(first_id, second_id) ? 1 : 0;
+    dom_string_unref(first_id);
+    dom_string_unref(second_id);
+    return same;
+}
+
+static int pcore_relation_is_labelable(dom_element *element)
+{
+    dom_string *type;
+    const char *data;
+    int result;
+
+    if (element == NULL) {
+        return 0;
+    }
+    if (pcore_element_name_is(element, "input")) {
+        type = NULL;
+        result = pcore_relation_attribute_value(element, "type", &type);
+        if (result == 1) {
+            return 0;
+        }
+        if (type != NULL) {
+            data = (const char *) dom_string_data(type);
+            if (data != NULL && strcasecmp(data, "hidden") == 0) {
+                dom_string_unref(type);
+                return 0;
+            }
+            dom_string_unref(type);
+        }
+        return 1;
+    }
+    return pcore_element_name_is(element, "select") ||
+            pcore_element_name_is(element, "textarea") ||
+            pcore_element_name_is(element, "button");
+}
+
+/* Find the first labelable descendant in tree order. */
+static dom_element *pcore_relation_find_labelable_descendant(dom_node *node)
+{
+    dom_node *child;
+    dom_node *next;
+    dom_node_type type;
+    dom_element *found;
+
+    if (node == NULL) {
+        return NULL;
+    }
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return NULL;
+    }
+    while (child != NULL) {
+        next = NULL;
+        if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return NULL;
+        }
+        if (type == DOM_ELEMENT_NODE) {
+            if (pcore_relation_is_labelable((dom_element *) child)) {
+                return (dom_element *) child;
+            }
+            found = pcore_relation_find_labelable_descendant(child);
+            if (found != NULL) {
+                dom_node_unref(child);
+                return found;
+            }
+        }
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return NULL;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    return NULL;
+}
+
+/* Return a retained labelable control associated with one label. */
+static dom_element *pcore_relation_label_control_element(
+        dom_document *doc, dom_element *label)
+{
+    dom_string *for_value;
+    const char *for_data;
+    dom_element *target;
+    dom_element *nested;
+
+    if (doc == NULL || label == NULL ||
+            !pcore_element_name_is(label, "label")) {
+        return NULL;
+    }
+    for_value = NULL;
+    if (pcore_relation_attribute_value(label, "for", &for_value) == 0) {
+        for_data = (const char *) dom_string_data(for_value);
+        if (for_data != NULL && for_data[0] != '\0') {
+            target = pcore_element_by_id(doc, for_data);
+            dom_string_unref(for_value);
+            if (target != NULL && pcore_relation_is_labelable(target)) {
+                return target;
+            }
+            if (target != NULL) {
+                dom_node_unref((dom_node *) target);
+            }
+            return NULL;
+        }
+        dom_string_unref(for_value);
+    }
+
+    nested = pcore_relation_find_labelable_descendant((dom_node *) label);
+    return nested;
+}
+
+static int pcore_relation_label_control(dom_document *doc,
+        dom_element *label, char *value, int value_capacity,
+        int *out_bytes)
+{
+    dom_element *target;
+    int result;
+
+    target = pcore_relation_label_control_element(doc, label);
+    if (target == NULL) {
+        return 2;
+    }
+    result = pcore_relation_copy_element_id((dom_node *) target, value,
+            value_capacity,
+            out_bytes);
+    dom_node_unref((dom_node *) target);
+    return result;
+}
+
+/* Walk labels in document order.  Only labels with an addressable id are
+ * returned to the browser wrapper; an id-less label still participates in
+ * label.control resolution but cannot be represented by the ID-based ABI. */
+static int pcore_relation_walk_labels(dom_node *node, dom_document *doc,
+        dom_element *control, unsigned int wanted, unsigned int *count,
+        char *value, int value_capacity, int *out_bytes, int *found)
+{
+    dom_node *child;
+    dom_node *next;
+    dom_node_type type;
+    dom_element *associated;
+    int id_result;
+    int err;
+    int same;
+
+    if (node == NULL || doc == NULL || control == NULL || count == NULL ||
+            found == NULL) {
+        return 1;
+    }
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return 1;
+    }
+    while (child != NULL) {
+        next = NULL;
+        if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        if (type == DOM_ELEMENT_NODE) {
+            if (pcore_element_name_is((dom_element *) child, "label")) {
+                associated = pcore_relation_label_control_element(doc,
+                        (dom_element *) child);
+                if (associated != NULL) {
+                    same = pcore_relation_same_element_id(associated,
+                            control);
+                    if (same) {
+                        id_result = pcore_relation_copy_element_id(child,
+                                NULL, 0, NULL);
+                        if (id_result == 0) {
+                            if (wanted == (unsigned int) -1 ||
+                                    *count == wanted) {
+                                if (wanted != (unsigned int) -1) {
+                                    id_result =
+                                            pcore_relation_copy_element_id(
+                                            child, value,
+                                            value_capacity, out_bytes);
+                                    if (id_result != 0) {
+                                        dom_node_unref((dom_node *) associated);
+                                        dom_node_unref(child);
+                                        return id_result;
+                                    }
+                                    *found = 1;
+                                    dom_node_unref((dom_node *) associated);
+                                    dom_node_unref(child);
+                                    return 0;
+                                }
+                            }
+                            (*count)++;
+                        } else if (id_result == 1) {
+                            dom_node_unref((dom_node *) associated);
+                            dom_node_unref(child);
+                            return 1;
+                        }
+                    }
+                    dom_node_unref((dom_node *) associated);
+                }
+            }
+            err = pcore_relation_walk_labels(child, doc, control, wanted,
+                    count, value, value_capacity, out_bytes, found);
+            if (err != 0 || *found) {
+                dom_node_unref(child);
+                return err;
+            }
+        }
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 1;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    return 0;
+}
+
+static int pcore_relation_control_labels(dom_document *doc,
+        dom_element *control, unsigned int wanted, char *value,
+        int value_capacity, int *out_bytes, int *out_count)
+{
+    dom_element *root;
+    unsigned int count;
+    int found;
+    int err;
+
+    if (out_count != NULL) {
+        *out_count = 0;
+    }
+    if (doc == NULL || control == NULL ||
+            !pcore_relation_is_labelable(control)) {
+        return 2;
+    }
+    root = NULL;
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        return 1;
+    }
+    count = 0;
+    found = 0;
+    err = pcore_relation_walk_labels((dom_node *) root, doc, control,
+            wanted, &count, value, value_capacity, out_bytes, &found);
+    dom_node_unref((dom_node *) root);
+    if (err != 0) {
+        return err;
+    }
+    if (wanted != (unsigned int) -1 && !found) {
+        return 2;
+    }
+    if (out_count != NULL) {
+        *out_count = (int) count;
+    }
+    return 0;
+}
+
 static int pcore_relation_attribute_count(dom_element *element,
         int *out_count)
 {
@@ -5028,6 +5334,21 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     case PCORE_NODE_RELATION_FORM_OWNER:
         err = pcore_relation_form_owner((dom_node *) element, out_value,
                 value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_LABEL_CONTROL:
+        err = pcore_relation_label_control((dom_document *) hDoc, element,
+                out_value, value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_CONTROL_LABEL_COUNT:
+        err = pcore_relation_control_labels((dom_document *) hDoc, element,
+                (unsigned int) -1, NULL, 0, NULL, &count);
+        if (err == 0 && out_number != NULL) {
+            *out_number = count;
+        }
+        break;
+    case PCORE_NODE_RELATION_CONTROL_LABEL_AT:
+        err = pcore_relation_control_labels((dom_document *) hDoc, element,
+                index, out_value, value_capacity, out_bytes, NULL);
         break;
     case PCORE_NODE_RELATION_FORM_CONTROL_COUNT:
         if (!pcore_element_name_is(element, "form")) {

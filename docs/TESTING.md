@@ -240,6 +240,35 @@ scripts\device_gate.bat -Candidate next613-native-edit-composition-final-r3 ^
 暴露了 composition update 未接入 pending input metadata，以及新增边界断言的测试状态复位
 错误；修订后未放宽断言并在 final-r3 通过。
 
+### next614 label/control 关系自动门
+
+next614 将 label 与控件的最小关联放入 `positron_core.dll` 与 `positron_browser.dll`：
+`label.control` 支持显式 `for` 和第一个嵌套的 input（排除 hidden）、select、textarea、button；
+这些控件的 `labels` 是按文档顺序生成的静态 NodeList。invalid target、非控件、hidden、无 ID
+label 和越界索引均必须 fail closed；不新增 live collection、fieldset 传播或人工视觉门。
+TEST1062 同时验证 core relation、browser wrapper、顺序、snapshot 稳定性和边界：
+
+```bat
+scripts\device_gate.bat -Candidate next614-label-control-final ^
+  -EnableJavaScript ^
+  -TestSelection "1062,999"
+```
+
+定向证据 `tmp/device-runs/20260823-203232-next614-label-control-final/` 为 2/2，通过零
+`ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`；此前的 r4 取证也保留在
+`tmp/device-runs/20260823-201802-next614-label-control-r4/`。与既有关系/表单集合相邻的回归门为：
+
+```bat
+scripts\device_gate.bat -Candidate next614-label-control-regression ^
+  -EnableJavaScript ^
+  -TestSelection "554-561,1023-1053,1062,999"
+```
+
+回归证据 `tmp/device-runs/20260823-201832-next614-label-control-regression/` 为 41/41，
+同样零 `ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。这组 API 是同步、
+session-scoped、只读 snapshot；因此本批没有新增人工验收，tracked `test_host.ini` 仍保持
+`javascript=0`。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

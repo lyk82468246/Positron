@@ -101,7 +101,21 @@ browser layer 校验稳定 token、phase 和 255 字节 preedit 上限，负责
 事务；宿主仍负责 WM_IME、SIP/候选词窗口、原生文本 mutation 和平台副作用。TEST1061、123–125、
 999 的定向设备门已通过；TEST65 的真实候选词整词提交仍保留人工门。
 
-### 8. 建立真实页面驱动的兼容队列
+### 8. next614：label/control 关联纵切（已完成）
+
+next614 从已记录的表单关系缺口出发，把 label 与控件的可复用 DOM 语义放入
+`positron_core.dll`/`positron_browser.dll`：`label.control` 支持非空 `for` 指向的
+input（排除 hidden）、select、textarea、button，以及没有 `for` 时的第一个嵌套控件；
+这些 labelable 控件的 `labels` 返回按文档顺序的静态 NodeList snapshot。core 通过三个新的
+只读 relation 值提供 control、label count 和 label-at，browser layer 负责属性和集合包装；
+`test_host` 只注册既有 relation bridge。无效目标、非控件、hidden、无 ID label 和越界索引
+fail closed，不把它扩展为 live labels、fieldset 禁用传播或完整 labelable 类型集合。
+
+TEST1062 的 core/browser 契约门与 TEST554–561、1023–1053 相邻关系回归已通过 41/41，
+证据位于 `tmp/device-runs/20260823-201832-next614-label-control-regression/`；该批没有新增
+视觉、真实触摸、SIP、旋转、picker 或网络失败人工门。
+
+### 9. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -112,7 +126,7 @@ browser layer 校验稳定 token、phase 和 255 字节 preedit 上限，负责
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 9. 安排新的全范围检查点
+### 10. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

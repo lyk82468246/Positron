@@ -16,8 +16,8 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next613，native EDIT composition 生命周期与有界 preedit 入口迁移。
-- 测试编号上限：`TEST_MAX_NUMBER 1061`。
+- 当前能力批次：next614，bounded label/control DOM 关联迁移。
+- 测试编号上限：`TEST_MAX_NUMBER 1062`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -32,7 +32,7 @@ HTML、CSS、表单、DOM 与单一 Duktape 引擎组合成可预测、资源有
 轻量 Web 运行时。
 
 next606 是一次已完成的安全基础设施中断：把仅有互联网客户端能力的 `positron_tls.dll`
-扩展为可供 LocalSend 一类消费者复用的 peer TLS ABI v2。next607–613 已恢复并继续浏览器
+扩展为可供 LocalSend 一类消费者复用的 peer TLS ABI v2。next607–614 已恢复并继续浏览器
 产品语义迁移；next613 只处理 native EDIT composition dispatch/default policy，不扩张 TLS
 协议层。
 
@@ -90,6 +90,12 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   next608 的 native commit→input 事务。宿主只提供 WM_IME/SIP phase、借用数据、原生文本
   mutation 和平台副作用；TEST1061、123–125 的自动设备门已通过。OEM 候选词整词提交和
   SIP 视觉仍然是人工风险，不能由该入口宣称兼容。
+- next614 在现有只读 DOM relation bridge 上增加了 bounded label/control 关联：
+  `label.control` 支持显式 `for` 和嵌套的 input/select/textarea/button，labelable 控件的
+  `labels` 返回按文档顺序的静态 NodeList snapshot；input type=hidden、非控件目标、无效
+  `for` 和越界索引 fail closed。`positron_core.dll` 只提供关系查询，`positron_browser.dll`
+  负责脚本属性和集合形状，`test_host` 只消费公共 bridge；没有宣称完整 live labels、fieldset
+  禁用传播或其他成功控件边缘规则。
 
 ## 最近验证证据
 
@@ -195,6 +201,24 @@ next613 的 native EDIT composition 自动门：
   错误；修订后未放宽断言并在 final-r3 通过。TEST65 的实际 SIP 候选词整词提交仍需人工验收，
   不能由该自动门替代。
 
+next614 的 label/control 关联自动门：
+
+- 当前源码最终窄门 `tmp/device-runs/20260823-203232-next614-label-control-final/device-gate-result.txt`：
+  PASS，2/2（TEST1062、TEST999），错误与失败均为 0，唯一 `TESTBENCH PASS`，
+  `test13_route_ok=True`。
+- `tmp/device-runs/20260823-201802-next614-label-control-r4/device-gate-result.txt`：PASS，
+  2/2（TEST1062、TEST999），错误与失败均为 0，唯一 `TESTBENCH PASS`，
+  `test13_route_ok=True`。
+- `tmp/device-runs/20260823-201832-next614-label-control-regression/device-gate-result.txt`：
+  PASS，41/41（TEST554–561、TEST1023–1053、TEST1062、TEST999），错误与失败均为 0，
+  唯一 `TESTBENCH PASS`，`test13_route_ok=True`。
+- TEST1062 同时验证 `PCore_NodeRelationById` 的显式/嵌套 control、文档顺序 labels、越界、
+  hidden/non-control fail-closed，以及 browser JavaScript 的 `control`、静态 `labels` snapshot
+  和 wrapper 形状。中途候选发现 JSON relation 层遗漏新 count 关系，修复后重跑通过；没有放宽
+  断言。该批没有视觉、触摸、SIP、旋转、picker 或网络失败人工门。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和 `python scripts/audit_repo.py`
+  均通过；Release 与 Debug 仅保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
+
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
 ## 当前已知边界
@@ -206,7 +230,7 @@ next613 的 native EDIT composition 自动门：
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1061 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1062 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -216,8 +240,10 @@ next613 的 native EDIT composition 自动门：
   提交/推送后重新核对。
 - next613 的 Debug/Release ARMV4I 正式构建、C89 检查和 `python scripts/audit_repo.py` 均已通过；
   Release 与 Debug 保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
-- next613 的 tracked 改动应只覆盖 `positron_browser` 的 native EDIT composition ABI、
-  `test_host` 消费者/TEST1061 与 TEST123–125 回归，以及对应交接/架构/测试文档；提交时不要把
+- next614 的 Debug/Release ARMV4I 正式构建、C89 检查和针对性设备门均已通过；Release 与 Debug
+  保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
+- next614 的 tracked 改动应只覆盖 `positron_core`/`positron_browser` 的 bounded label/control
+  relation、`test_host` 消费者/TEST1062 与对应交接、架构、测试和 README 文档；提交时不要把
   `tmp/` 设备证据或无关工作区文件带入。
 - next613 候选的设备门已通过；若后续出现 composition 顺序、候选词数据或 native commit→input
   错误，应先保留 browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
@@ -226,18 +252,17 @@ next613 的 native EDIT composition 自动门：
 
 ## 唯一下一步
 
-next614：从真实页面驱动的兼容队列选择一个可重复的完整用户行为纵切；先用现有自动门和
+next615：从真实页面驱动的兼容队列选择下一个可重复的完整用户行为纵切；先用现有自动门和
 设备日志确认缺口，再决定应落在 `positron_core`、`positron_browser` 或宿主边界。不得为了
-填充编号添加互不相关的小 API，也不得重做 next607–613。
+填充编号添加互不相关的小 API，也不得重做 next607–614。
 
-## next613 完成标准
+## next614 完成标准
 
 - 产品级语义不再由 `test_host` 独占，宿主通过公共 API 消费它。
 - 公共 ABI、UTF-8、opaque handle、内存所有权及 VS2008 / WM6 ARMV4I / C89 兼容性不退化。
 - `python scripts/test_c89ize.py`、正式工程构建和 `python scripts/audit_repo.py` 通过。
-- 通过 TEST1061 的 browser-owned composition ABI 契约、TEST123–125 的真实 WM6 composition
-  metadata 回归，并保留 TEST999 完成提示音；设备门必须是唯一 `TESTBENCH PASS` 且无
-  ERROR/FAIL。
+- 通过 TEST1062 的 browser/core label-control 关系契约和 TEST999 完成提示音；设备门必须是
+  唯一 `TESTBENCH PASS` 且无 ERROR/FAIL，并通过 554–561、1023–1053 的相邻关系回归。
 - 只有出现视觉、真实触摸、SIP、旋转、文件选择器或失败网络风险时才累计人工门；崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 - 跟踪的默认 INI 恢复为自动模式且选择集不被无意扩大。
 - 用当批事实覆盖本文件的当前快照，更新限制和路线图；只提交本批 tracked 文件并推送 `main`。

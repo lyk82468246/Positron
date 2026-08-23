@@ -2836,6 +2836,16 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "Object.defineProperty(PElement.prototype,'elements',{get:function(){var a=[];var n;var i;var id;"
         "if(this.localName!=='form'){return list9(a,true);}n=Number(relation9(this,9,0));if(!(n>=0&&n===Math.floor(n))){n=0;}"
         "for(i=0;i<n;i++){id=relation9(this,10,i);if(typeof id==='string'&&id!==''){a.push(wrap9(id));}}return list9(a,true,true);},enumerable:true});"
+        "function labelable9(owner){var t=owner.localName;var type;"
+        "if(t==='input'){type=String(owner.getAttribute('type')||'').toLowerCase();return type!=='hidden';}"
+        "return t==='select'||t==='textarea'||t==='button';}"
+        "Object.defineProperty(PElement.prototype,'control',{get:function(){var id;"
+        "if(this.localName!=='label'){return null;}id=relation9(this,20,0);"
+        "return typeof id==='string'&&id!==''?wrap9(id):null;},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'labels',{get:function(){var a=[];var n;var i;var id;"
+        "if(!labelable9(this)){return null;}n=Number(relation9(this,21,0));"
+        "if(!(n>=0&&n===Math.floor(n))){n=0;}for(i=0;i<n;i++){id=relation9(this,22,i);"
+        "if(typeof id==='string'&&id!==''){a.push(wrap9(id));}}return list9(a,false);},enumerable:true});"
         "var oldGet9=doc.getElementById;doc.getElementById=function(id){var e=oldGet9.call(this,id);return e?wrap9(String(id)):null;};"
         "})(this);";
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART10[] =
@@ -3934,7 +3944,8 @@ static int p_browser_script_relation_is_count(unsigned int relation)
             relation == PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_COUNT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_COUNT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_COUNT ||
-            relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_TYPE_AT;
+            relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_TYPE_AT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_CONTROL_LABEL_COUNT;
 }
 
 static int p_browser_script_dom_get_relation(void *pw,

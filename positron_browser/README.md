@@ -185,8 +185,9 @@ live 更新，也不引入节点创建、mutation 或新的 core ABI。对应 `T
 next605 又为 `form.elements` 的重复 `id`/`name` 增加有限的 `RadioNodeList` snapshot：唯一匹配
 仍返回 element，重复匹配返回可迭代、只读的分组 wrapper；`value` getter 读取当前选中 radio，
 setter 只选择同值控件。直接属性不可枚举、不可写、不可配置，并与 `namedItem()` 复用 session
-内缓存 identity；缺失名称返回 `null`，普通 HTMLCollection 仍返回首匹配 element。该边界不
-实现 live `HTMLFormControlsCollection`、fieldset/label 关联、节点创建或通用 mutation。
+内缓存 identity；缺失名称返回 `null`，普通 HTMLCollection 仍返回首匹配 element。next605
+本身仍不实现 live `HTMLFormControlsCollection`、fieldset 或 label 关联；后续 next614 只补齐
+有界的 label/control 关系，不改变这些 live/mutation 边界。
 对应 `TEST1036–1053` 定向门和 `TEST802–998,1000–1053` 缩减回归均已通过自动设备门；为
 容纳新增 bootstrap，browser session heap ceiling 为 624 KiB，独立 `positron_script` 默认堆仍为
 512 KiB。本批不需要人工页面验收。
@@ -245,6 +246,12 @@ start/update/end phase，持有最后一段不超过 255 字节的 UTF-8 preedit
 beforeinput metadata 会与既有 native commit → input 事务衔接。宿主仍负责 WM_IME、SIP、
 原生文本 mutation 和平台副作用；TEST1061、TEST123–125 已在 WM6 设备门通过。该入口
 不把 OEM 候选词整词提交或 SIP 视觉体验伪装成兼容性保证。
+
+next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
+处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
+textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、
+无 ID label 和越界索引均 fail closed；不提供 live labels、fieldset 传播、节点创建或完整
+labelable 集合。TEST1062 与 554–561、1023–1053 相邻回归已在 WM6 设备门通过。
 
 ## 其他项目如何调用
 
@@ -335,6 +342,7 @@ mutation、`input`/`change` commit、下拉窗口、SIP/IME 和平台副作用�
   DOM read/write/attribute/value/checked/form-property、navigation/location/history 事件、
   Event JSON 和 native input/keyboard/focus/EDIT change/post-change input/click、programmatic
   `HTMLElement.click()`、`HTMLElement.disabled`、按 id 的 DOM 关系/`children`/`contains()`/
+  `HTMLLabelElement.control`/控件 `labels`、
   基础 `compareDocumentPosition()`/受限 `matches()`/`closest()`/元素作用域 querySelector、form
   owner 与 `form.elements` collection、attribute count/name/value、`getAttributeNames()`、
   `attributes`/`Attr`/受限 NamedNodeMap（`length`、`item()`、named lookup、`getNamedItemNS()`、
@@ -398,7 +406,7 @@ PerformanceObserver 只读取 observe 时已有 entries，不等于完整 DOM、
 `positron_script` context 的默认 heap 仍为 512 KiB。
 
 DOM relation callback 是独立的 size-tagged ABI：调用者提供 `get_relation`，按元素 id 返回
-UTF-8 字段或数量；attribute name/value 和 `CHILD_NODE_*` 字段也沿用同一 probe/truncation
+UTF-8 字段或数量；label/control relation、attribute name/value 和 `CHILD_NODE_*` 字段也沿用同一 probe/truncation
 contract。关系值是 session 内稳定 wrapper 的只读 snapshot；legacy `children`/form collection
 仍按可寻址元素工作，而 `childNodes` 额外保留文本、注释和无 id 元素的直接子节点；集合遍历
 方法只读取这些同步 snapshot。缺失 id、越界索引和不支持关系 fail closed。它不提供通用 DOM
