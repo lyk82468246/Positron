@@ -716,6 +716,19 @@ Attr wrapper 的 `isConnected` 固定为 false，`getRootNode()` 返回 Attr 自
 `tmp/device-runs/20260823-111631-next599-regression/`。本批不提供通用 DOM tree、节点创建、
 live collection 或新的 core ABI，也不涉及视觉、触摸、SIP、picker、旋转或网络失败人工门。
 
+#### next600 的 child-wrapper containment 边界
+
+next600 仍把语义放在 `positron_browser.dll`，复用已有 `__pcoreNodeContains12` relation bridge，
+不扩展 `positron_core.dll` ABI。`childNodes` 返回的文本、注释和无 id 子节点 wrapper 现在提供
+`contains()`：wrapper 自身返回 true，已知父元素可包含其直接子节点；兄弟、owner metadata、
+document、null 和非法对象返回 false。无 id 子节点仍使用同步 bounded snapshot，不能因此创建
+通用 child tree 或 live collection。
+
+`test_host.exe` 只提供 fixture、adapter 和 `TEST942–961` 自动断言；定向门 21/21、缩减回归
+161/161，证据位于 `tmp/device-runs/20260823-113402-next600/` 和
+`tmp/device-runs/20260823-113512-next600-regression/`。本批不提供文本 mutation、节点创建、
+新的 core ABI，也不涉及视觉、触摸、SIP、picker、旋转或网络失败人工门。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

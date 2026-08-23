@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next599）
+## 当前状态（next600）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -240,6 +240,14 @@ next599 在上述 Attr leaf wrapper 上补齐 detached-node relation 语义：`i
 `tmp/device-runs/20260823-111631-next599-regression/`。本批只涉及同步脚本 API/DOM snapshot，
 不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
+next600 在上述 childNodes wrapper 上补齐 bounded `contains()`：文本、注释和无 id 子节点 wrapper
+均能自包含；父元素可包含其直接子节点，但 child wrapper 不把 owner、兄弟、document 或非法对象
+误判为后代。实现复用 browser 的受控 relation bridge，不扩展 core ABI、文本 mutation、节点创建或
+live collection；`TEST942–961,999` 与 `TEST802–961,999` 分别通过 21/21、161/161，证据位于
+`tmp/device-runs/20260823-113402-next600/` 和
+`tmp/device-runs/20260823-113512-next600-regression/`。本批只涉及同步脚本 API/DOM snapshot，
+不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -296,8 +304,9 @@ next599 在上述 Attr leaf wrapper 上补齐 detached-node relation 语义：`i
   mutation 只允许对应的有限名称组合；
   不实现完整 NamespaceError、namespace declaration、XML/SVG parser、通用节点创建、live
    collection 或完整 Web IDL descriptor 语义；next598 的 Attr leaf relation 也只是上述有限
-   null/empty snapshot，next599 的 root/position/contains 也只是 detached-node bounded relation，
-   不代表 Attr 真正挂入 element child tree。
+    null/empty snapshot，next599 的 root/position/contains 也只是 detached-node bounded relation，
+    next600 的 child-wrapper `contains()` 也只沿当前同步 parent snapshot 工作，不代表通用 live tree；
+    Attr 仍不真正挂入 element child tree。
   Attr 的 namespace/localName/prefix 仍只在当前 owner 上下文中有效。
 - Headers、Request、Response 是内存 bounded 的同步数据模型；它们不建立网络连接、不执行 fetch、
   不提供 stream，body `text()`/`json()`/`arrayBuffer()` 是 one-shot 消费并同步标记

@@ -127,6 +127,10 @@ next599 又补齐 Attr 的 detached-node relation 语义：`isConnected=false`�
 自身、`contains()` 只包含自身，`compareDocumentPosition()` 对非自身对象返回固定的
 `DISCONNECTED|IMPLEMENTATION_SPECIFIC`。这仍不把 `ownerElement` 伪造成 parent，也不引入新的
 core ABI；`TEST922–941` 定向门和 `TEST802-941` 缩减回归均已通过。
+next600 又让 `childNodes` 返回的文本、注释和无 id 子节点 wrapper 暴露 bounded `contains()`：
+wrapper 自包含，父元素可包含直接子节点，owner/兄弟/document/非法对象均 fail closed；实现复用
+受控 relation bridge，不引入文本 mutation、节点创建或新的 core ABI。`TEST942–961` 定向门和
+`TEST802-961` 缩减回归均已通过。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

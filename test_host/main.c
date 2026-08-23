@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 941
+#define TEST_MAX_NUMBER 961
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -62064,6 +62064,252 @@ static BOOL test941_browser_attr_relation_contract(void)
             "true|true|true|true|true|true", error, sizeof(error));
 }
 
+/* TEST 942 - every child wrapper exposes the bounded contains method. */
+static BOOL test942_browser_child_contains_method_types(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent="
+        "String(typeof n[0].contains==='function')+'|'"
+        "+String(typeof n[2].contains==='function');";
+    char error[256];
+    return test_browser_child_node_case(942, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 943 - a text wrapper contains itself and keeps identity. */
+static BOOL test943_browser_text_contains_self(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[0];"
+        "var again=document.getElementById('root').childNodes[0];"
+        "document.getElementById('result').textContent=String(n.contains(n))+'|'"
+        "+String(n.contains(again))+'|'+String(n===again);";
+    char error[256];
+    return test_browser_child_node_case(943, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 944 - a comment wrapper contains itself and keeps identity. */
+static BOOL test944_browser_comment_contains_self(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[2];"
+        "var again=document.getElementById('root').childNodes[2];"
+        "document.getElementById('result').textContent=String(n.contains(n))+'|'"
+        "+String(n.contains(again))+'|'+String(n===again);";
+    char error[256];
+    return test_browser_child_node_case(944, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 945 - distinct CharacterData leaves do not contain one another. */
+static BOOL test945_browser_character_contains_cross_kind(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes;"
+        "document.getElementById('result').textContent=String(n[0].contains(n[2])===false)+'|'"
+        "+String(n[2].contains(n[0])===false);";
+    char error[256];
+    return test_browser_child_node_case(945, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 946 - a text leaf is not its parent, while the parent contains it. */
+static BOOL test946_browser_text_contains_parent(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');var n=e.childNodes[0];"
+        "document.getElementById('result').textContent=String(n.contains(e)===false)+'|'"
+        "+String(e.contains(n));";
+    char error[256];
+    return test_browser_child_node_case(946, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 947 - a comment leaf is not its parent, while the parent contains it. */
+static BOOL test947_browser_comment_contains_parent(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');var n=e.childNodes[2];"
+        "document.getElementById('result').textContent=String(n.contains(e)===false)+'|'"
+        "+String(e.contains(n));";
+    char error[256];
+    return test_browser_child_node_case(947, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 948 - sibling elements and text are outside each other's containment. */
+static BOOL test948_browser_character_contains_sibling(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');var n=e.childNodes[0];"
+        "var s=document.getElementById('child');document.getElementById('result').textContent="
+        "String(n.contains(s)===false)+'|'+String(s.contains(n)===false);";
+    char error[256];
+    return test_browser_child_node_case(948, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 949 - a nested text leaf is contained by its span parent only. */
+static BOOL test949_browser_nested_text_contains(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('child');var n=e.childNodes[0];"
+        "document.getElementById('result').textContent=String(n.contains(n))+'|'"
+        "+String(e.contains(n))+'|'+String(n.contains(e)===false);";
+    char error[256];
+    return test_browser_child_node_case(949, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 950 - null and undefined operands fail closed. */
+static BOOL test950_browser_character_contains_null(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[0];"
+        "document.getElementById('result').textContent=String(n.contains(null)===false)+'|'"
+        "+String(n.contains(undefined)===false);";
+    char error[256];
+    return test_browser_child_node_case(950, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 951 - primitives and plain objects cannot impersonate child wrappers. */
+static BOOL test951_browser_character_contains_invalid(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[0];"
+        "document.getElementById('result').textContent=String(n.contains(1)===false)+'|'"
+        "+String(n.contains({nodeType:3,nodeValue:'alpha'})===false);";
+    char error[256];
+    return test_browser_child_node_case(951, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 952 - a text leaf has document as root but does not contain it. */
+static BOOL test952_browser_character_contains_document(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[0];"
+        "document.getElementById('result').textContent=String(n.getRootNode()===document)+'|'"
+        "+String(n.contains(document)===false)+'|'+String(document.contains(n));";
+    char error[256];
+    return test_browser_child_node_case(952, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 953 - a comment leaf follows the same document containment boundary. */
+static BOOL test953_browser_comment_contains_document(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[2];"
+        "document.getElementById('result').textContent=String(n.getRootNode()===document)+'|'"
+        "+String(n.contains(document)===false)+'|'+String(document.contains(n));";
+    char error[256];
+    return test_browser_child_node_case(953, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 954 - owner and parent metadata do not change leaf containment. */
+static BOOL test954_browser_character_contains_owner_metadata(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root');var n=e.childNodes[0];"
+        "document.getElementById('result').textContent=String(n.parentNode===e)+'|'"
+        "+String(n.parentElement===e)+'|'+String(n.ownerDocument===document)+'|'"
+        "+String(n.contains(n.parentNode)===false);";
+    char error[256];
+    return test_browser_child_node_case(954, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 955 - composed root options preserve the same containment boundary. */
+static BOOL test955_browser_character_contains_root_options(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[0];var r=n.getRootNode({composed:true});"
+        "document.getElementById('result').textContent=String(r===document)+'|'"
+        "+String(n.contains(r)===false)+'|'+String(document.contains(n));";
+    char error[256];
+    return test_browser_child_node_case(955, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 956 - empty leaf childNodes provide no contained child. */
+static BOOL test956_browser_character_contains_empty_children(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[0];var c=n.childNodes;"
+        "document.getElementById('result').textContent=String(c.length===0)+'|'"
+        "+String(n.hasChildNodes()===false)+'|'+String(n.contains(c[0])===false);";
+    char error[256];
+    return test_browser_child_node_case(956, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 957 - mutating a child snapshot cannot create a contained node. */
+static BOOL test957_browser_character_contains_snapshot(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[0];var c=n.childNodes;c.push('x');"
+        "document.getElementById('result').textContent=String(c.length===1)+'|'"
+        "+String(n.childNodes.length===0)+'|'+String(n.contains(c[0])===false);";
+    char error[256];
+    return test_browser_child_node_case(957, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 958 - an id-less child wrapper is self-contained but bounded. */
+static BOOL test958_browser_idless_child_contains(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root').childNodes[3];var t=document.getElementById('root').childNodes[0];"
+        "document.getElementById('result').textContent=String(e.contains(e))+'|'"
+        "+String(e.contains(t)===false)+'|'+String(e.isConnected===true);";
+    char error[256];
+    return test_browser_child_node_case(958, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 959 - the root parent contains an id-less child, not the reverse. */
+static BOOL test959_browser_idless_child_contains_parent(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('root').childNodes[3];var r=document.getElementById('root');"
+        "document.getElementById('result').textContent=String(r.contains(e))+'|'"
+        "+String(e.contains(r)===false)+'|'+String(e.parentNode===r);";
+    char error[256];
+    return test_browser_child_node_case(959, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 960 - CharacterData namespace metadata composes with containment. */
+static BOOL test960_browser_character_contains_namespace(void)
+{
+    static const char PROBE[] =
+        "var n=document.getElementById('root').childNodes[0];"
+        "document.getElementById('result').textContent=String(n.namespaceURI===null)+'|'"
+        "+String(n.lookupPrefix('')===null)+'|'+String(n.contains(n));";
+    char error[256];
+    return test_browser_child_node_case(960, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 961 - the complete child-wrapper containment matrix stays bounded. */
+static BOOL test961_browser_character_contains_contract(void)
+{
+    static const char PROBE[] =
+        "var r=document.getElementById('root');var t=r.childNodes[0];var c=r.childNodes[2];"
+        "var e=document.getElementById('child');document.getElementById('result').textContent="
+        "String(t.contains(t))+'|'+String(c.contains(c))+'|'"
+        "+String(t.contains(c)===false)+'|'+String(r.contains(t))+'|'"
+        "+String(r.contains(c))+'|'+String(t.contains(e)===false);";
+    char error[384];
+    return test_browser_child_node_case(961, PROBE,
+            "true|true|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -65913,6 +66159,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 941: ok =
                 test941_browser_attr_relation_contract();
+                break;
+        case 942: ok =
+                test942_browser_child_contains_method_types();
+                break;
+        case 943: ok =
+                test943_browser_text_contains_self();
+                break;
+        case 944: ok =
+                test944_browser_comment_contains_self();
+                break;
+        case 945: ok =
+                test945_browser_character_contains_cross_kind();
+                break;
+        case 946: ok =
+                test946_browser_text_contains_parent();
+                break;
+        case 947: ok =
+                test947_browser_comment_contains_parent();
+                break;
+        case 948: ok =
+                test948_browser_character_contains_sibling();
+                break;
+        case 949: ok =
+                test949_browser_nested_text_contains();
+                break;
+        case 950: ok =
+                test950_browser_character_contains_null();
+                break;
+        case 951: ok =
+                test951_browser_character_contains_invalid();
+                break;
+        case 952: ok =
+                test952_browser_character_contains_document();
+                break;
+        case 953: ok =
+                test953_browser_comment_contains_document();
+                break;
+        case 954: ok =
+                test954_browser_character_contains_owner_metadata();
+                break;
+        case 955: ok =
+                test955_browser_character_contains_root_options();
+                break;
+        case 956: ok =
+                test956_browser_character_contains_empty_children();
+                break;
+        case 957: ok =
+                test957_browser_character_contains_snapshot();
+                break;
+        case 958: ok =
+                test958_browser_idless_child_contains();
+                break;
+        case 959: ok =
+                test959_browser_idless_child_contains_parent();
+                break;
+        case 960: ok =
+                test960_browser_character_contains_namespace();
+                break;
+        case 961: ok =
+                test961_browser_character_contains_contract();
                 break;
         default: ok = FALSE; break;
         }

@@ -3007,6 +3007,8 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "g.__pcoreNodeRoot12(n,options):doc;};"
         "n.compareDocumentPosition=function(other){return typeof g.__pcoreNodePosition12==='function'?"
         "g.__pcoreNodePosition12(n,other):33;};"
+        "n.contains=function(other){return typeof g.__pcoreNodeContains12==='function'?"
+        "g.__pcoreNodeContains12(n,other):same(n,other);};"
         "cache[k]=n;return n;}"
         "function parent(o){var id;if(o&&o.__owner11){return o.__owner11;}"
         "if(!o||typeof o.__id!=='string'){return null;}"

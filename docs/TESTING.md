@@ -397,6 +397,21 @@ scripts\device_gate.bat -Candidate next599 ^
 `compareDocumentPosition()`、owner/namespace/删除后 wrapper 边界；不实现 Attr tree、节点创建或
 live collection，因此不新增人工页面验收。tracked `test_host.ini` 仍保持 `javascript=0`。
 
+`next600` 在既有 childNodes wrapper 上补齐 bounded `contains()`，自动断言为 `TEST942–961`：
+
+```bat
+scripts\device_gate.bat -Candidate next600 ^
+  -EnableJavaScript ^
+  -TestSelection "942-961,999"
+```
+
+定向证据为 `tmp/device-runs/20260823-113402-next600/`，21/21 通过；namespace/Attr/child-wrapper
+缩减回归 `TEST802-961,999` 在 `tmp/device-runs/20260823-113512-next600-regression/` 通过
+161/161。两次均为零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖
+文本、注释、无 id 子节点的 self/parent/sibling/owner/document/非法 operand 边界及 snapshot
+隔离；不实现文本 mutation、节点创建或 live collection，因此不新增人工页面验收。tracked
+`test_host.ini` 仍保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

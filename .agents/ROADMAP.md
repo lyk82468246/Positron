@@ -575,6 +575,15 @@ element tree，不扩展 core ABI 或通用 DOM mutation。`TEST922-941,999` 在
 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、picker、
 旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
 
+`next600` 作为单一批次在 browser 层补齐 childNodes wrapper 的 bounded `contains()`：文本、注释
+和无 id 子节点 wrapper 自包含，父元素可包含直接子节点，但 child wrapper 不把 owner、兄弟、
+document 或非法对象误判为后代。实现复用受控 relation bridge，不扩展 core ABI、文本 mutation、
+节点创建或 live collection。`TEST942-961,999` 在 `tmp/device-runs/20260823-113402-next600/`
+通过 21/21，缩减回归 `TEST802-961,999` 在
+`tmp/device-runs/20260823-113512-next600-regression/` 通过 161/161；两次均无 ERROR/FAIL 且
+`TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、picker、
+旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
+
 ## 中期目标
 
 ### 浏览器 JavaScript 与 Web 平台

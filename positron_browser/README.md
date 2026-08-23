@@ -105,6 +105,11 @@ next599 又为 Attr wrapper 提供 detached-node relation 语义：`isConnected`
 parent；不新增 core ABI、节点创建或 live collection；对应 `TEST922–941` 与
 `TEST802–941` 缩减回归已通过自动设备门。
 
+next600 又为 `childNodes` 返回的文本、注释和无 id 子节点 wrapper 提供 bounded `contains()`：
+wrapper 自包含，父元素可包含直接子节点，owner/兄弟/document/非法对象均 fail closed。实现复用
+受控 relation bridge，不新增 core ABI、文本 mutation、节点创建或 live collection；对应
+`TEST942–961` 与 `TEST802–961` 缩减回归已通过自动设备门。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
