@@ -309,6 +309,9 @@ next618 当前候选的本地验证已完成，但设备门尚未形成证据：
   尝试按依赖顺序重启 `WcesComm`/`RapiMgr` 时被当前会话的服务 ACL 拒绝；两者仍为
   `Running` 并共享 PID 38056。该操作没有修改仓库、注册表或设备；需要用户以管理员权限
   重建 WMDC/RapiMgr 或主机连接后再继续设备门。
+- 在服务 PID 未变化的情况下，`tmp/device-runs/20260824-004241-next618-rapi-retry2/`
+  再次完成构建和 staging，但仍在 `CeRapiInitEx()` 的 30 秒有界等待处超时；未产生设备
+  进程、日志或结果，恢复门槛不变。
 - 需要关闭设备/模拟器 GUI 中遗留的 `test_host.exe`，确认 WMDC 只有当前唯一连接后重新
   断开/连接，再原样重跑窄门；恢复门槛见 `.agents/FAILED_EXPERIMENTS.md` 的 next618 条目。
 
