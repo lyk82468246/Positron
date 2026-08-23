@@ -154,6 +154,9 @@ Debug staging，但在打开当前 RAPI 会话后约 90 秒没有进入目录操
 该探针只验证 gate 的有界失败行为，不构成设备测试证据，也不改变“先恢复 WMDC 独占连接”的
 重试门槛。
 
+最新完整窄门 `20260824-002732-next618-native-ime-result-final` 同样在 30 秒后明确超时，
+仍未部署设备程序或生成日志；这确认阻塞仍在 WMDC/RAPI 会话，而不是 next618 断言。
+
 ### 早期 loading 条 — 已替代/部分暂挂
 
 问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。
