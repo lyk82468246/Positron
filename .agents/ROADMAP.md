@@ -566,6 +566,15 @@ identity-based `isSameNode()` 与受控 name/value `isEqualNode()`。Attr 不被
 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、picker、
 旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
 
+`next599` 作为单一批次在 browser 层补齐 Attr 的 detached-node relation 语义：`isConnected` 固定
+为 false，`getRootNode()` 返回自身，`contains()` 只对自身返回 true，`compareDocumentPosition()`
+对自身返回 0、对其他对象返回固定 `DISCONNECTED|IMPLEMENTATION_SPECIFIC`。Attr 仍不挂入
+element tree，不扩展 core ABI 或通用 DOM mutation。`TEST922-941,999` 在
+`tmp/device-runs/20260823-111516-next599/` 通过 21/21，缩减回归 `TEST802-941,999` 在
+`tmp/device-runs/20260823-111631-next599-regression/` 通过 141/141；两次均无 ERROR/FAIL 且
+`TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、picker、
+旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
+
 ## 中期目标
 
 ### 浏览器 JavaScript 与 Web 平台

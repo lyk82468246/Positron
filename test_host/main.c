@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 921
+#define TEST_MAX_NUMBER 941
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -61814,6 +61814,256 @@ static BOOL test921_browser_attr_leaf_contract(void)
             "true|fr|true|true|true", error, sizeof(error));
 }
 
+/* TEST 922 - the Attr relation surface exposes bounded root/position helpers. */
+static BOOL test922_browser_attr_relation_method_types(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "document.getElementById('result').textContent="
+        "String(a.isConnected===false)+'|'"
+        "+String(typeof a.getRootNode==='function')+'|'"
+        "+String(typeof a.compareDocumentPosition==='function')+'|'"
+        "+String(typeof a.contains==='function');";
+    char error[384];
+    return test_browser_attribute_case(922, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 923 - an Attr stays disconnected even while its owner is present. */
+static BOOL test923_browser_attr_is_connected(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.isConnected===false)+'|'"
+        "+String(a.ownerElement===e)+'|'+String(e.isConnected===true);";
+    char error[256];
+    return test_browser_attribute_case(923, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 924 - isConnected is a read-only disconnected snapshot flag. */
+static BOOL test924_browser_attr_is_connected_read_only(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "try{a.isConnected=true;}catch(e){}document.getElementById('result').textContent="
+        "String(a.isConnected===false);";
+    char error[256];
+    return test_browser_attribute_case(924, PROBE, "true", error, sizeof(error));
+}
+
+/* TEST 925 - an Attr's root is the Attr itself, not its owner element. */
+static BOOL test925_browser_attr_root_identity(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.getRootNode()===a)+'|'"
+        "+String(a.getRootNode()!==e);";
+    char error[256];
+    return test_browser_attribute_case(925, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 926 - the bounded root ignores the composed option. */
+static BOOL test926_browser_attr_root_options(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "document.getElementById('result').textContent="
+        "String(a.getRootNode({composed:true})===a)+'|'"
+        "+String(a.getRootNode({composed:false})===a);";
+    char error[256];
+    return test_browser_attribute_case(926, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 927 - root remains distinct from owner metadata. */
+static BOOL test927_browser_attr_root_metadata(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.getRootNode()!==a.ownerElement)+'|'"
+        "+String(a.getRootNode()!==a.ownerDocument)+'|'+String(a.parentNode===null);";
+    char error[256];
+    return test_browser_attribute_case(927, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 928 - repeated root queries preserve Attr wrapper identity. */
+static BOOL test928_browser_attr_root_stable(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "var r=a.getRootNode();document.getElementById('result').textContent="
+        "String(r===a)+'|'+String(a.getRootNode()===r)+'|'+String(r.isSameNode(a));";
+    char error[256];
+    return test_browser_attribute_case(928, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 929 - comparing an Attr with itself returns no position bits. */
+static BOOL test929_browser_attr_position_self(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.compareDocumentPosition(a)===0);";
+    char error[256];
+    return test_browser_attribute_case(929, PROBE, "true", error, sizeof(error));
+}
+
+/* TEST 930 - distinct Attr wrappers are disconnected and implementation-specific. */
+static BOOL test930_browser_attr_position_same_owner(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "var b=e.getAttributeNode('data-a');var p=a.compareDocumentPosition(b);"
+        "document.getElementById('result').textContent=String(p===33)+'|'"
+        "+String((p&Node.DOCUMENT_POSITION_DISCONNECTED)!==0)+'|'"
+        "+String((p&Node.DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC)!==0);";
+    char error[256];
+    return test_browser_attribute_case(930, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 931 - Attrs from different owners use the same disconnected result. */
+static BOOL test931_browser_attr_position_different_owner(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "p.setAttribute('title','Hello');var a=e.getAttributeNode('title');"
+        "var b=p.getAttributeNode('title');document.getElementById('result').textContent="
+        "String(a.compareDocumentPosition(b)===33)+'|'+String(b.compareDocumentPosition(a)===33);";
+    char error[256];
+    return test_browser_attribute_case(931, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 932 - an Attr does not become document-positioned relative to its owner. */
+static BOOL test932_browser_attr_position_owner(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.compareDocumentPosition(e)===33)+'|'"
+        "+String(a.compareDocumentPosition(a.ownerElement)===33);";
+    char error[256];
+    return test_browser_attribute_case(932, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 933 - null and missing operands fail closed as disconnected. */
+static BOOL test933_browser_attr_position_null(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.compareDocumentPosition(null)===33)+'|'"
+        "+String(a.compareDocumentPosition(undefined)===33);";
+    char error[256];
+    return test_browser_attribute_case(933, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 934 - primitive and plain-object operands fail closed as disconnected. */
+static BOOL test934_browser_attr_position_invalid(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.compareDocumentPosition(1)===33)+'|'"
+        "+String(a.compareDocumentPosition({nodeType:2,name:'title',value:'Hello'})===33);";
+    char error[256];
+    return test_browser_attribute_case(934, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 935 - removing an Attr does not change its self-position semantics. */
+static BOOL test935_browser_attr_position_removed(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "e.removeAttribute('title');document.getElementById('result').textContent="
+        "String(a.isConnected===false)+'|'+String(a.getRootNode()===a)+'|'"
+        "+String(a.compareDocumentPosition(a)===0);";
+    char error[256];
+    return test_browser_attribute_case(935, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 936 - Attr.contains includes only the Attr itself. */
+static BOOL test936_browser_attr_contains_self(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.contains(a))+'|'"
+        "+String(a.contains(a.getRootNode()));";
+    char error[256];
+    return test_browser_attribute_case(936, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 937 - a distinct Attr is not a descendant. */
+static BOOL test937_browser_attr_contains_other(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "var b=e.getAttributeNode('data-a');document.getElementById('result').textContent="
+        "String(a.contains(b)===false)+'|'+String(b.contains(a)===false);";
+    char error[256];
+    return test_browser_attribute_case(937, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 938 - owner elements are metadata, not Attr descendants. */
+static BOOL test938_browser_attr_contains_owner(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.contains(e)===false)+'|'"
+        "+String(a.contains(a.ownerElement)===false)+'|'+String(a.contains(null)===false);";
+    char error[256];
+    return test_browser_attribute_case(938, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 939 - empty child snapshots remain outside the Attr containment relation. */
+static BOOL test939_browser_attr_contains_children(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "var c=a.childNodes;document.getElementById('result').textContent="
+        "String(c.length===0)+'|'+String(a.contains(c[0])===false)+'|'"
+        "+String(a.contains(undefined)===false);";
+    char error[256];
+    return test_browser_attribute_case(939, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 940 - namespace Attrs use the same disconnected leaf contract. */
+static BOOL test940_browser_attr_namespace_relations(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var ns='http://www.w3.org/XML/1998/namespace';"
+        "e.setAttributeNS(ns,'xml:lang','en');var a=e.getAttributeNodeNS(ns,'lang');"
+        "document.getElementById('result').textContent=String(a.isConnected===false)+'|'"
+        "+String(a.getRootNode()===a)+'|'+String(a.contains(a))+'|'"
+        "+String(a.compareDocumentPosition(a)===0);";
+    char error[384];
+    return test_browser_attribute_case(940, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 941 - the full Attr relation contract remains bounded after mutation. */
+static BOOL test941_browser_attr_relation_contract(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "a.textContent='Changed';e.removeAttribute('title');document.getElementById('result').textContent="
+        "String(a.isConnected===false)+'|'+String(a.getRootNode({})===a)+'|'"
+        "+String(a.compareDocumentPosition(e)===33)+'|'+String(a.contains(e)===false)+'|'"
+        "+String(a.parentNode===null)+'|'+String(a.textContent==='');";
+    char error[384];
+    return test_browser_attribute_case(941, PROBE,
+            "true|true|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -65603,6 +65853,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 921: ok =
                 test921_browser_attr_leaf_contract();
+                break;
+        case 922: ok =
+                test922_browser_attr_relation_method_types();
+                break;
+        case 923: ok =
+                test923_browser_attr_is_connected();
+                break;
+        case 924: ok =
+                test924_browser_attr_is_connected_read_only();
+                break;
+        case 925: ok =
+                test925_browser_attr_root_identity();
+                break;
+        case 926: ok =
+                test926_browser_attr_root_options();
+                break;
+        case 927: ok =
+                test927_browser_attr_root_metadata();
+                break;
+        case 928: ok =
+                test928_browser_attr_root_stable();
+                break;
+        case 929: ok =
+                test929_browser_attr_position_self();
+                break;
+        case 930: ok =
+                test930_browser_attr_position_same_owner();
+                break;
+        case 931: ok =
+                test931_browser_attr_position_different_owner();
+                break;
+        case 932: ok =
+                test932_browser_attr_position_owner();
+                break;
+        case 933: ok =
+                test933_browser_attr_position_null();
+                break;
+        case 934: ok =
+                test934_browser_attr_position_invalid();
+                break;
+        case 935: ok =
+                test935_browser_attr_position_removed();
+                break;
+        case 936: ok =
+                test936_browser_attr_contains_self();
+                break;
+        case 937: ok =
+                test937_browser_attr_contains_other();
+                break;
+        case 938: ok =
+                test938_browser_attr_contains_owner();
+                break;
+        case 939: ok =
+                test939_browser_attr_contains_children();
+                break;
+        case 940: ok =
+                test940_browser_attr_namespace_relations();
+                break;
+        case 941: ok =
+                test941_browser_attr_relation_contract();
                 break;
         default: ok = FALSE; break;
         }

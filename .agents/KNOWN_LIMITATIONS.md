@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next598）
+## 当前状态（next599）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -231,6 +231,15 @@ nodeType/name/value。Attr 的 `ownerElement` 仍是独立 owner metadata，不�
 `tmp/device-runs/20260823-105630-next598-regression/`。本批只涉及同步脚本 API/DOM snapshot，
 不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
+next599 在上述 Attr leaf wrapper 上补齐 detached-node relation 语义：`isConnected` 固定为 false，
+`getRootNode()` 返回 Attr 自身并忽略 bounded `composed` 选项，`contains()` 只对自身返回 true；
+`compareDocumentPosition()` 对自身返回 0，对其他 Attr、owner element、null 或非法对象统一返回
+`33`（`DISCONNECTED|IMPLEMENTATION_SPECIFIC`）。该切片不把 `ownerElement` 伪造成 tree parent，
+不扩展 core ABI、通用 DOM tree 或 mutation；`TEST922–941,999` 与 `TEST802–941,999` 分别通过
+21/21、141/141，证据位于 `tmp/device-runs/20260823-111516-next599/` 和
+`tmp/device-runs/20260823-111631-next599-regression/`。本批只涉及同步脚本 API/DOM snapshot，
+不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -286,8 +295,9 @@ nodeType/name/value。Attr 的 `ownerElement` 仍是独立 owner metadata，不�
   元数据，next596 的 `setAttributeNS()`/`removeAttributeNS()` 与 next597 的 namespace-node
   mutation 只允许对应的有限名称组合；
   不实现完整 NamespaceError、namespace declaration、XML/SVG parser、通用节点创建、live
-  collection 或完整 Web IDL descriptor 语义；next598 的 Attr leaf relation 也只是上述有限
-  null/empty snapshot，不代表 Attr 真正挂入 element child tree。
+   collection 或完整 Web IDL descriptor 语义；next598 的 Attr leaf relation 也只是上述有限
+   null/empty snapshot，next599 的 root/position/contains 也只是 detached-node bounded relation，
+   不代表 Attr 真正挂入 element child tree。
   Attr 的 namespace/localName/prefix 仍只在当前 owner 上下文中有效。
 - Headers、Request、Response 是内存 bounded 的同步数据模型；它们不建立网络连接、不执行 fetch、
   不提供 stream，body `text()`/`json()`/`arrayBuffer()` 是 one-shot 消费并同步标记

@@ -702,6 +702,20 @@ identity-based `isSameNode()` 和受控的 `isEqualNode()`。`textContent`、`va
 挂接、节点创建、live collection 或新的 core ABI，也不涉及视觉、触摸、SIP、picker、旋转或网络
 失败人工门。
 
+#### next599 的 Attr detached-node relation 边界
+
+next599 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation ABI。
+Attr wrapper 的 `isConnected` 固定为 false，`getRootNode()` 返回 Attr 自身并忽略 bounded
+`composed` 选项；`contains()` 只对自身返回 true。`compareDocumentPosition()` 对自身返回 0，
+对其他 Attr、owner element、null 或非法对象返回固定 `33`，即
+`Node.DOCUMENT_POSITION_DISCONNECTED | Node.DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC`，不猜测
+脱离树节点之间的顺序。`ownerElement` 仍是 owner metadata，不是 parent；Attr 也没有 child tree。
+
+`test_host.exe` 只提供 fixture、adapter 和 `TEST922–941` 自动断言；定向门 21/21、缩减回归
+141/141，证据位于 `tmp/device-runs/20260823-111516-next599/` 和
+`tmp/device-runs/20260823-111631-next599-regression/`。本批不提供通用 DOM tree、节点创建、
+live collection 或新的 core ABI，也不涉及视觉、触摸、SIP、picker、旋转或网络失败人工门。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

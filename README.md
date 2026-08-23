@@ -123,6 +123,10 @@ next598 又补齐 Attr 的 bounded leaf-node 语义：`isId`、live `textContent
 `childNodes`/`hasChildNodes()`、null parent/sibling/child relations，以及 identity-based
 `isSameNode()` 和受控 name/value `isEqualNode()`。Attr 的 `ownerElement` 仍只是 owner metadata，
 不伪造成 element tree parent；`TEST902–921` 定向门和 `TEST802-921` 缩减回归均已通过。
+next599 又补齐 Attr 的 detached-node relation 语义：`isConnected=false`、`getRootNode()` 返回
+自身、`contains()` 只包含自身，`compareDocumentPosition()` 对非自身对象返回固定的
+`DISCONNECTED|IMPLEMENTATION_SPECIFIC`。这仍不把 `ownerElement` 伪造成 parent，也不引入新的
+core ABI；`TEST922–941` 定向门和 `TEST802-941` 缩减回归均已通过。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

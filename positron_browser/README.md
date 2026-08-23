@@ -99,6 +99,12 @@ next598 又为 Attr wrapper 提供 bounded leaf-node 语义：`isId` 仅识别�
 `isEqualNode()` 只比较 nodeType/name/value。`ownerElement` 不会被伪装为 tree parent，也不新增
 core ABI、节点创建或 live collection；对应 `TEST902–921` 与 `TEST802–921` 缩减回归已通过自动设备门。
 
+next599 又为 Attr wrapper 提供 detached-node relation 语义：`isConnected` 固定为 false，
+`getRootNode()` 返回自身，`contains()` 只接受自身，`compareDocumentPosition()` 对非自身对象
+返回固定 `DISCONNECTED|IMPLEMENTATION_SPECIFIC`。`ownerElement` 仍只是 metadata，不变成
+parent；不新增 core ABI、节点创建或 live collection；对应 `TEST922–941` 与
+`TEST802–941` 缩减回归已通过自动设备门。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
