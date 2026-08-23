@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1017
+#define TEST_MAX_NUMBER 1035
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -63008,6 +63008,227 @@ static BOOL test1017_browser_named_map_iteration_contract(void)
             "3|3|0|true|0|true", error, sizeof(error));
 }
 
+/* TEST 1018 - HTMLCollection exposes bounded id named properties. */
+static BOOL test1018_browser_collection_id_properties(void)
+{
+    static const char PROBE[] =
+        "var c=document.body.children;document.getElementById('result').textContent="
+        "c.length+'|'+String(c.root!==undefined)+'|'+String(c.form!==undefined)+'|'"
+        "+String(c.result!==undefined);";
+    char error[256];
+    return test_browser_tree_case(1018, PROBE, "3|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1019 - id properties reuse the collection's element wrappers. */
+static BOOL test1019_browser_collection_id_identity(void)
+{
+    static const char PROBE[] =
+        "var c=document.body.children,r=document.getElementById('root'),"
+        "f=document.getElementById('form');document.getElementById('result').textContent="
+        "String(c.root===r)+'|'+String(c.form===f)+'|'"
+        "+String(c.namedItem('root')===c.root);";
+    char error[256];
+    return test_browser_tree_case(1019, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1020 - name properties are available on button HTMLCollections. */
+static BOOL test1020_browser_collection_name_properties(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementsByTagName('button'),a=document.getElementById('target'),"
+        "b=document.getElementById('submitter');document.getElementById('result').textContent="
+        "String(c.go===a)+'|'+String(c.send===b)+'|'"
+        "+String(c.namedItem('go')===c.go);";
+    char error[256];
+    return test_browser_tree_case(1020, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1021 - class-name HTMLCollections use the same named projection. */
+static BOOL test1021_browser_collection_class_name_property(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementsByClassName('leaf'),e=document.getElementById('target');"
+        "document.getElementById('result').textContent=c.length+'|'"
+        "+String(c.target===e)+'|'+String(c.namedItem('target')===c.target);";
+    char error[256];
+    return test_browser_tree_case(1021, PROBE, "1|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1022 - namespace HTMLCollections retain named properties. */
+static BOOL test1022_browser_collection_namespace_name_property(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementsByTagNameNS('http://www.w3.org/1999/xhtml','button'),e=document.getElementById('target');"
+        "document.getElementById('result').textContent=c.length+'|'"
+        "+String(c.go===e)+'|'+String(c.namedItem('go')===c.go);";
+    char error[256];
+    return test_browser_tree_case(1022, PROBE, "2|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1023 - form.elements exposes control id and name properties. */
+static BOOL test1023_browser_form_elements_named_properties(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('form').elements,e=document.getElementById('email'),"
+        "s=document.getElementById('choice'),b=document.getElementById('submitter');"
+        "document.getElementById('result').textContent=c.length+'|'"
+        "+String(c.email===e)+'|'+String(c.choice===s)+'|'+String(c.send===b);";
+    char error[256];
+    return test_browser_tree_case(1023, PROBE, "3|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1024 - document.forms is a named HTMLCollection. */
+static BOOL test1024_browser_document_forms_named_property(void)
+{
+    static const char PROBE[] =
+        "var c=document.forms,f=document.getElementById('form');"
+        "document.getElementById('result').textContent=c.length+'|'"
+        "+String(c.form===f)+'|'+String(c.namedItem('form')===c.form);";
+    char error[256];
+    return test_browser_tree_case(1024, PROBE, "1|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1025 - document.images keeps the empty collection boundary. */
+static BOOL test1025_browser_empty_named_collection(void)
+{
+    static const char PROBE[] =
+        "var c=document.images;document.getElementById('result').textContent="
+        "c.length+'|'+String(c.missing===undefined)+'|'"
+        "+String(c.namedItem('missing')===null);";
+    char error[256];
+    return test_browser_tree_case(1025, PROBE, "0|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1026 - document.links uses id/name projection without changing item(). */
+static BOOL test1026_browser_links_named_collection(void)
+{
+    static const char PROBE[] =
+        "var c=document.links;document.getElementById('result').textContent="
+        "c.length+'|'+String(typeof c.item==='function')+'|'"
+        "+String(c.missing===undefined);";
+    char error[256];
+    return test_browser_tree_case(1026, PROBE, "0|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1027 - getElementsByTagName returns a stable named snapshot. */
+static BOOL test1027_browser_tag_collection_snapshot(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementsByTagName('button'),b=document.getElementsByTagName('button');"
+        "document.getElementById('result').textContent=a.length+'|'"
+        "+String(a.go===a[0])+'|'+String(a.send===a[1])+'|'"
+        "+String(a!==b)+'|'+String(a[0]===b[0]);";
+    char error[256];
+    return test_browser_tree_case(1027, PROBE, "2|true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1028 - element-scoped tag collections expose descendant names. */
+static BOOL test1028_browser_element_tag_named_property(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('branch').getElementsByTagName('input'),"
+        "e=document.getElementById('second');document.getElementById('result').textContent="
+        "c.length+'|'+String(c.second===e)+'|'+String(c.namedItem('second')===c.second);";
+    char error[256];
+    return test_browser_tree_case(1028, PROBE, "1|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1029 - class-scoped collections expose id and name aliases. */
+static BOOL test1029_browser_class_named_alias(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementsByClassName('leaf'),e=document.getElementById('target');"
+        "document.getElementById('result').textContent=String(c.go===e)+'|'"
+        "+String(c['target']===c.go);";
+    char error[256];
+    return test_browser_tree_case(1029, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1030 - namespace wildcard collections project their element names. */
+static BOOL test1030_browser_namespace_wildcard_named_property(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementsByTagNameNS('*','button'),e=document.getElementById('target');"
+        "document.getElementById('result').textContent=String(c.go===e)+'|'"
+        "+String(c.namedItem('send')===document.getElementById('submitter'));";
+    char error[256];
+    return test_browser_tree_case(1030, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1031 - reserved collection members are never shadowed by named ids. */
+static BOOL test1031_browser_collection_reserved_members(void)
+{
+    static const char PROBE[] =
+        "var c=document.body.children;document.getElementById('result').textContent="
+        "String(typeof c.item==='function')+'|'+String(typeof c.namedItem==='function')+'|'"
+        "+String(c.length===3);";
+    char error[256];
+    return test_browser_tree_case(1031, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1032 - named properties are non-enumerable and read-only descriptors. */
+static BOOL test1032_browser_collection_named_descriptor(void)
+{
+    static const char PROBE[] =
+        "var c=document.body.children,d=Object.getOwnPropertyDescriptor(c,'root');"
+        "document.getElementById('result').textContent=String(d.enumerable)+'|'"
+        "+String(d.writable)+'|'+String(d.configurable)+'|'+String(d.value===c.root);";
+    char error[256];
+    return test_browser_tree_case(1032, PROBE, "false|false|false|true", error,
+            sizeof(error));
+}
+
+/* TEST 1033 - assignment and deletion cannot change the named projection. */
+static BOOL test1033_browser_collection_named_read_only(void)
+{
+    static const char PROBE[] =
+        "var c=document.body.children,e=c.root,deleted=false;"
+        "try{c.root=null;}catch(x){}try{deleted=delete c.root;}catch(y){}"
+        "document.getElementById('result').textContent=String(c.root===e)+'|'"
+        "+String(deleted)+'|'+String(c.namedItem('root')===e);";
+    char error[256];
+    return test_browser_tree_case(1033, PROBE, "true|false|true", error,
+            sizeof(error));
+}
+
+/* TEST 1034 - NodeList query results do not gain HTMLCollection named props. */
+static BOOL test1034_browser_nodelist_no_named_projection(void)
+{
+    static const char PROBE[] =
+        "var n=document.querySelectorAll('#root');document.getElementById('result').textContent="
+        "String(n.length===1)+'|'+String(n.root===undefined)+'|'"
+        "+String(typeof n.namedItem==='undefined');";
+    char error[256];
+    return test_browser_tree_case(1034, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1035 - named properties stay out of Object.keys and fail closed when absent. */
+static BOOL test1035_browser_collection_named_contract(void)
+{
+    static const char PROBE[] =
+        "var c=document.body.children;document.getElementById('result').textContent="
+        "Object.keys(c).join(',')+'|'+String(c.missing===undefined)+'|'"
+        "+String(c.root===c.item(0));";
+    char error[256];
+    return test_browser_tree_case(1035, PROBE, "0,1,2|true|true", error,
+            sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -67082,6 +67303,60 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 1017: ok =
                 test1017_browser_named_map_iteration_contract();
+                break;
+        case 1018: ok =
+                test1018_browser_collection_id_properties();
+                break;
+        case 1019: ok =
+                test1019_browser_collection_id_identity();
+                break;
+        case 1020: ok =
+                test1020_browser_collection_name_properties();
+                break;
+        case 1021: ok =
+                test1021_browser_collection_class_name_property();
+                break;
+        case 1022: ok =
+                test1022_browser_collection_namespace_name_property();
+                break;
+        case 1023: ok =
+                test1023_browser_form_elements_named_properties();
+                break;
+        case 1024: ok =
+                test1024_browser_document_forms_named_property();
+                break;
+        case 1025: ok =
+                test1025_browser_empty_named_collection();
+                break;
+        case 1026: ok =
+                test1026_browser_links_named_collection();
+                break;
+        case 1027: ok =
+                test1027_browser_tag_collection_snapshot();
+                break;
+        case 1028: ok =
+                test1028_browser_element_tag_named_property();
+                break;
+        case 1029: ok =
+                test1029_browser_class_named_alias();
+                break;
+        case 1030: ok =
+                test1030_browser_namespace_wildcard_named_property();
+                break;
+        case 1031: ok =
+                test1031_browser_collection_reserved_members();
+                break;
+        case 1032: ok =
+                test1032_browser_collection_named_descriptor();
+                break;
+        case 1033: ok =
+                test1033_browser_collection_named_read_only();
+                break;
+        case 1034: ok =
+                test1034_browser_nodelist_no_named_projection();
+                break;
+        case 1035: ok =
+                test1035_browser_collection_named_contract();
                 break;
         default: ok = FALSE; break;
         }

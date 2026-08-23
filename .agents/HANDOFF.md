@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next603（本批覆盖 `TEST1000-1017,999` 定向门和
-  `TEST802-998,1000-1017,999` namespace/Attr/child-wrapper/doctype/map 缩减回归；next602 的证据仍覆盖至 TEST998，最近一次完整自动
+- 最新已验证产品基线：next604（本批覆盖 `TEST1018-1035,999` 定向门和
+  `TEST802-998,1000-1035,999` namespace/Attr/child-wrapper/doctype/map/collection 缩减回归；next603 的证据仍覆盖至 TEST1017，最近一次完整自动
   基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
@@ -305,12 +305,12 @@
   API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面
   验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
-## 当前状态：next603
+## 当前状态：next604
 
-前八批单一 `next595`、`next596`、`next597`、`next598`、`next599`、`next600`、`next601`、`next602` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next603` 也
-已实现、构建并通过定向设备门及缩减相邻回归门，兼容子集沿用 next593 的已验证证据，其中本批 18 个自动断言使用
-`TEST1000–1017`
-编号，不再为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
+前九批单一 `next595`、`next596`、`next597`、`next598`、`next599`、`next600`、`next601`、`next602`、`next603` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next604` 也
+已实现、构建并通过定向设备门及缩减相邻回归门，兼容子集沿用 next593 的已验证证据；next603 的
+18 个自动断言使用 `TEST1000–1017`，next604 的 18 个自动断言使用 `TEST1018–1035`，均不再
+为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
 navigator/media/performance、history/storage event，并新增本轮的事件生命周期/对象监听、dataset、
@@ -503,6 +503,18 @@ ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。首轮直通�
 缺少第二属性；长回归选择明确拆开特殊 `TEST999` 后通过。本批只涉及同步脚本 API/DOM snapshot，
 不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；tracked
 `test_host.ini` 仍保持 `javascript=0`。
+
+`next604` 为静态 `HTMLCollection` snapshot 增加了只读、不可枚举的 `id`/`name` 直达属性；
+属性值复用 snapshot 中的 element wrapper，`item()`、`namedItem()`、数字索引、集合 iterator
+和 reserved member 保持稳定，`NodeList` 不获得这组 named projection。属性只在 snapshot 创建时
+定义，不承诺 live 更新；未知名称、空 collection、赋值和删除均 fail closed。实现仍在
+`positron_browser.dll`，不扩展 core ABI、节点 mutation 或 live collection。
+`TEST1018-1035,999` 在 `tmp/device-runs/20260823-134449-next604-r2/` 通过 19/19，
+缩减回归 `TEST802-998,1000-1035,999` 在
+`tmp/device-runs/20260823-134557-next604-regression/` 通过 234/234；两次最终运行零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批只涉及同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；
+tracked `test_host.ini` 仍保持 `javascript=0`。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -3034,7 +3046,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next603 之后选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next604 之后选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
@@ -3047,7 +3059,7 @@ SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
   `TESTBENCH PASS` 的完整证据；达到累计阈值或触及高风险基础设施时再跑全量；
 - 若只改变脚本状态/API，默认不要求人工视觉或 SIP 验收；若触及真实窗口、布局、触摸、SIP、
   旋转、系统 picker 或网络失败反馈，必须单独列入人工门；
-- TEST1017/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/540/549/642–998,1000–1017/999` 缩减选择；
+- TEST1035/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/540/549/642–998,1000–1035/999` 缩减选择；
 - 只更新本批职责内的 handoff/限制/路线图，保持 tracked `test_host.ini` 的默认
   `javascript=0` 不变，并提交、推送本批 tracked 文件。

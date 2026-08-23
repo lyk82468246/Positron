@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next603
+### 当前短期状态：next604
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -611,6 +611,16 @@ snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工
 通过 216/216；最终运行均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM
 snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续
 保持 `javascript=0`。
+
+`next604` 作为单一批次为静态 `HTMLCollection` snapshot 增加只读、不可枚举的 `id`/`name` 直达
+属性；`item()`、`namedItem()`、数字索引、迭代器和 wrapper identity 保持不变，reserved member
+不被覆盖，`NodeList` 不获得 named projection。属性只在 snapshot 创建时定义，不承诺 live 更新，
+不创建节点、不做 mutation、不扩展 core ABI。`TEST1018–1035,999` 在
+`tmp/device-runs/20260823-134449-next604-r2/` 通过 19/19，缩减回归拆开特殊 999 后以
+`TEST802–998,1000–1035,999` 在 `tmp/device-runs/20260823-134557-next604-regression/`
+通过 234/234；两次最终运行均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本
+API/DOM snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工门，tracked `test_host.ini`
+继续保持 `javascript=0`。
 
 ## 中期目标
 

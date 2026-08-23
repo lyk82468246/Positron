@@ -145,6 +145,11 @@ next603 又为普通属性 `NamedNodeMap` 以及 doctype 的空 `entities`/`nota
 identity 保持稳定，非法 callback fail closed。它仍是当前属性名的同步 snapshot，不提供 live DOM、
 节点创建、DTD/实体解析或新的 core ABI。`TEST1000–1017` 定向门和拆开 `TEST999` 的
 `TEST802–998,1000–1017` 缩减回归均已通过。
+next604 又为静态 `HTMLCollection` snapshot 增加只读、不可枚举的 `id`/`name` 直达属性；
+`item()`、`namedItem()`、迭代器和 wrapper identity 保持不变，保留属性名冲突时的既有方法，
+`NodeList` 不获得这组 HTMLCollection named projection。该能力不引入 live collection、节点
+创建、mutation 或新的 core ABI。`TEST1018–1035` 定向门与拆开 `TEST999` 的
+`TEST802–998,1000–1035` 缩减回归均已通过，本批不需要人工页面验收。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

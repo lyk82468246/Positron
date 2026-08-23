@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next603）
+## 当前状态（next604）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -276,6 +276,15 @@ core ABI。`TEST1000–1017,999` 与 `TEST802–998,1000–1017,999` 最终分�
 `tmp/device-runs/20260823-131725-next603-regression-final/`；本批只涉及同步脚本 API/DOM
 snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
+next604 在既有静态 `HTMLCollection` snapshot 上提供只读、不可枚举的 `id`/`name` 直达属性；
+属性值复用 snapshot 中的 element wrapper，`item()`、`namedItem()`、数字索引、集合 iterator
+和 reserved member 保持稳定，`NodeList` 不获得 named projection。属性只在 snapshot 创建时投影，
+不承诺 live 更新；未知名称、空 collection 和删除/赋值均 fail closed。`TEST1018–1035,999`
+与 `TEST802–998,1000–1035,999` 最终分别通过 19/19、234/234，证据位于
+`tmp/device-runs/20260823-134449-next604-r2/` 和
+`tmp/device-runs/20260823-134557-next604-regression/`；本批只涉及同步脚本 API/DOM snapshot，
+不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -287,8 +296,9 @@ snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因
   形态；不提供完整 URL Standard、IPv6/转义异常和 origin 安全策略。NodeList/HTMLCollection 的
   `item()`、`namedItem()`、`forEach()`、`keys()`、`values()`、`entries()` 和 iterator 只作用于
   当前 document 的同步 snapshot；与 repeated `getElementById()` identity 一样，不创建通用 DOM tree，
-  也不提供 live 更新；next588 的 `getElementsBy*()` 与 next590 的 named collection projection
-  同样只返回当前 session 的静态快照；next591 的 `links`/`anchors` 与 next592 的 namespace
+ 也不提供 live 更新；next588 的 `getElementsBy*()` 与 next590 的 named collection projection
+ 同样只返回当前 session 的静态快照；next604 的 HTMLCollection `id`/`name` 直达属性也只在
+ 创建 snapshot 时定义，且不可枚举、不可写、不可删除，NodeList 不提供该投影；next591 的 `links`/`anchors` 与 next592 的 namespace
   collection 也只过滤当前快照，next593 的 namespace attribute lookup、next594 的
   `NamedNodeMap.getNamedItemNS()` 与 next595 的 `lookupPrefix()` 也只读取当前 owner/已知
   namespace 映射，不解析完整 namespace declarations；next596 的 element namespace mutation

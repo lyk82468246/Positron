@@ -129,6 +129,13 @@ wrapper identity 保持稳定，`forEach` 的 callback/`thisArg` 与非法 callb
 `TEST1000–1017` 与拆开特殊 `TEST999` 的 `TEST802–998,1000–1017` 缩减回归均已通过自动设备门，
 本批不需要人工页面验收。
 
+next604 又为静态 `HTMLCollection` snapshot 增加只读、不可枚举的 `id`/`name` 直达属性；
+`item()`、`namedItem()`、`forEach()`、`keys()`、`values()`、`entries()`、默认 iterator 与
+wrapper identity 保持不变，`NodeList` 保留无 named projection 的边界。保留方法名、`length`、
+数字索引等已有成员，不让页面属性覆盖它们；属性值只来自创建该 snapshot 时的元素，不承诺
+live 更新，也不引入节点创建、mutation 或新的 core ABI。对应 `TEST1018–1035` 与拆开特殊
+`TEST999` 的 `TEST802–998,1000–1035` 缩减回归均已通过自动设备门，本批不需要人工页面验收。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：

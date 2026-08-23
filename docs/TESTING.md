@@ -468,6 +468,32 @@ NamedNodeMap 的方法类型、keys/values/entries 顺序与 identity、forEach 
 自迭代 iterator 和无 mutation 边界；不实现 live collection、节点 mutation 或 DTD/实体解析，因此
 不新增人工页面验收。tracked `test_host.ini` 仍保持 `javascript=0`。
 
+`next604` 为静态 `HTMLCollection` snapshot 增加只读、不可枚举的 `id`/`name` 直达属性；保留
+`item()`、`namedItem()`、数字索引、集合 iterator 和 wrapper identity，`NodeList` 不获得这组
+named projection。自动断言为 `TEST1018–1035`：
+
+```bat
+scripts\device_gate.bat -Candidate next604-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "1018-1035,999"
+```
+
+定向证据为 `tmp/device-runs/20260823-134449-next604-r2/`，19/19 通过。相邻 namespace/Attr/
+DOM 回归继续把特殊 `TEST999` 从数字区间拆出：
+
+```bat
+scripts\device_gate.bat -Candidate next604-regression ^
+  -EnableJavaScript ^
+  -TestSelection "802-998,1000-1035,999"
+```
+
+最终证据为 `tmp/device-runs/20260823-134557-next604-regression/`，234/234 通过；两次最终运行
+均为零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。测试覆盖 id/name 直达、
+空 collection、document/form/element/namespace collection、reserved member、descriptor、
+只读删除、NodeList 边界和 snapshot identity；该同步 snapshot API 不触及视觉、触摸、SIP、
+系统 picker、旋转或网络失败反馈，因此不新增人工页面验收。tracked `test_host.ini` 仍保持
+`javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

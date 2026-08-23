@@ -772,6 +772,23 @@ DTD/实体解析或异步调度。
 `tmp/device-runs/20260823-131725-next603-regression-final/`。回归选择把特殊 TEST999 从数字区间
 中拆出后通过；本批不新增 core ABI、节点 mutation 或人工视觉/触摸/SIP/picker/旋转/网络失败门。
 
+#### next604 的 HTMLCollection named projection 边界
+
+next604 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。所有已有的静态
+`HTMLCollection` snapshot（包括 `children`、`form.elements`、tag/class/namespace 查询和文档
+named collections）现在在创建时为非空元素定义只读、不可枚举的 `id` 与 `name` 直达属性；属性值
+复用该 snapshot 中的 element wrapper，方法名、`length`、数字索引和 `namedItem()` 保持原有
+优先级。`NodeList` 查询结果不获得这组 named projection，未知名称和空 collection 仍 fail closed，
+属性不会随 DOM 或属性 mutation live 更新。该实现不创建节点、不构造 Proxy、不改变 relation
+bridge，也不提供通用 DOM mutation 或 live collection。
+
+`test_host.exe` 只提供 tree/form fixture、adapter 和 `TEST1018–1035` 自动断言；定向门
+`TEST1018–1035,999` 通过 19/19，缩减回归 `TEST802–998,1000–1035,999` 通过 234/234，
+证据位于 `tmp/device-runs/20260823-134449-next604-r2/` 和
+`tmp/device-runs/20260823-134557-next604-regression/`。两次最终运行均无 ERROR/FAIL、唯一
+`TESTBENCH PASS` 且 `test13_route_ok=True`；本批只涉及同步 snapshot API，不新增视觉、触摸、
+SIP、picker、旋转或网络失败人工门。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。
