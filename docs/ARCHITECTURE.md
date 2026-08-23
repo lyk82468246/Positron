@@ -34,7 +34,7 @@ WM6 application / test_host
               |
               +-- browser session / history / same-origin state
               +-- script bootstrap + DOM read/write/attribute/value/checked/disabled/validation/custom-validity/form-property/navigation/location/event/native-input/key/focus/edit-input/click/programmatic-click/form-event/invalid/file-input/checkbox-radio-change/select bridge
-              +-- remaining form/input bridge (in migration)
+              +-- typed programmatic form-activation policy; remaining native form/input adapters
 
 Browser host = composition of positron_browser + positron_core
                + positron_script + networking + native WM controls
@@ -142,10 +142,14 @@ bootstrap、按 id 查询元素、读取/写入 textContent、attribute、input 
 `required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength`、form property
 （defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件、event 的
 DOM JSON 分发以及 native input/composition/keyboard/focus-family/EDIT-change/post-change-input/click/
-programmatic `HTMLElement.click()`（包括 file input 的 typed click 边界）/`checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询/`setCustomValidity()`/`validationMessage`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change
-typed dispatch entry 已由此 DLL 持有并执行；
-其余 form/input 适配和页面生命周期会逐步迁入此 DLL。窗口、传输、native EDIT/SELECT、系统文件选择器、core
-事件传播、焦点/控件默认行为、history/navigation side effect 和绘制调度仍由应用宿主负责。
+programmatic `HTMLElement.click()`（包括 disabled 抑制、typed click、submit/reset 事件顺序、
+submit 验证与取消、以及 file input 的 typed click 边界）/`checkValidity()`/`reportValidity()`/
+`willValidate`/`validity` 查询/`setCustomValidity()`/`validationMessage`、submit/reset/invalid/
+file-input/checkbox/radio input/change/SELECT-input/change typed dispatch entry 已由此 DLL 持有并执行；
+宿主只通过 size-tagged target/validation/default-action callback 提供控件几何、core 状态与 WM 副作用。
+其余 native form/input 适配和页面生命周期会逐步迁入此 DLL。窗口、传输、native EDIT/SELECT、
+系统文件选择器、core 事件传播、焦点/绘制调度、history/navigation side effect 和最终控件默认动作
+仍由应用宿主负责。
 当前 raw metadata bridge 还提供 `HTMLElement.draggable` 的 UTF-8 属性往返；这不等于拖放手势或
 完整 HTMLElement Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.tabIndex` 的有限整数往返（缺失或非法值回落
@@ -828,17 +832,17 @@ snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工
 “浏览器 JavaScript”指产品浏览器层和宿主在显式开关开启时：
 
 1. browser layer 持有 `positron_script` context，并按 DOM 顺序驱动 classic inline/external script；
-2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/`title`/`lang`/`dir`/`hidden`/`accessKey`/`role`/`ariaLabel`/`contentEditable`/validation query（包括 form-level 聚合）/custom-validity/form/constraint-related reflected properties（含 `name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`pattern`/`minLength`/`maxLength`）/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract，并逐步承接其余表单适配；
+2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/`title`/`lang`/`dir`/`hidden`/`accessKey`/`role`/`ariaLabel`/`contentEditable`/validation query（包括 form-level 聚合）/custom-validity/form/constraint-related reflected properties（含 `name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`pattern`/`minLength`/`maxLength`）/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（包括 typed click、disabled 抑制、验证与 submit/reset 事件顺序；file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract，并逐步承接其余表单适配；
 2a. report-validity callback 只返回同步 valid 结果并路由可寻址控件的 trusted `invalid` 事件；
     它不负责 native invalid UI、焦点/滚动或表单提交。
-3. browser layer 持有并执行产品 bootstrap；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
+3. browser layer 持有并执行产品 bootstrap，并在 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 中执行程序化表单激活策略；宿主 Ex callback 只提供 target lookup、submit validation、default action 和非表单 click 传播；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
 4. 宿主继续提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
 
 因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
 history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/value/checked/disabled/validation-query/custom-validity/constraint-reflection/form-property、ID-addressable
 DOM relation/form collection、navigation/location-event/native-input/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click/
-submit-reset/invalid/report-validity/file-input/checkbox-radio-change/SELECT-input/change dispatch entry 已进入
-`positron_browser.dll`，其余 DOM bridge 仍在迁移中且默认关闭；
+submit-reset/invalid/report-validity/file-input/checkbox-radio-change/SELECT-input/change dispatch entry，及
+程序化 click 的 typed activation policy 已进入 `positron_browser.dll`；其余 native form/input bridge 仍在迁移中且默认关闭；
 不能将其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。
 
 ## ABI 与所有权原则

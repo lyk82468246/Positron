@@ -10,11 +10,18 @@
 
 ### 当前边界
 
-- `test_host.exe` 已经是公共 DLL 的消费者，但仍保存了数量可观的浏览器桥接胶水和 WM 平台适配代码。必须逐项区分产品语义与宿主副作用，不能笼统搬迁。
+- `test_host.exe` 已经是公共 DLL 的消费者；next607 已将程序化 `HTMLElement.click()` 的
+  disabled 抑制、typed click、submit/reset 事件顺序、submit 验证与取消策略迁入
+  `positron_browser.dll`，但仍保存数量可观的 native form/input 桥接胶水和 WM 平台适配代码。
+  必须逐项区分产品语义与宿主副作用，不能笼统搬迁。
 - 产品级 HTML、CSS、DOM、表单和脚本语义应归入 `positron_browser`、`positron_core` 或 `positron_script`；窗口生命周期、原生控件、设备网络和测试编排仍由宿主持有。
 - 浏览器 JavaScript 与独立脚本 API 共用 `positron_script` 中唯一的 Duktape 引擎。当前默认关闭，启用必须显式配置。
 - 浏览器会话脚本 heap 上限为 624 KiB，独立脚本会话默认上限为 512 KiB。预算是当前设备实测基线，不代表任意页面都能装入。
 - 定时器、promise job、网络回调和其他异步任务依赖宿主显式泵送，不具备现代浏览器常驻事件循环的全部语义。
+- `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 只迁移程序化表单激活的
+  策略与顺序；target lookup、core validation、default action、native EDIT/SELECT、系统
+  picker、窗口和导航副作用仍由宿主 callback 提供。下一批优先审计 native EDIT/SELECT 的
+  beforeinput/composition/change 或键盘纵切，不把 OEM SIP/IME 行为误标为产品兼容性。
 
 ### 解除或推进条件
 

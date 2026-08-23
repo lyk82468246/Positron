@@ -68,6 +68,27 @@ DNS 和网络可达性影响。两道当前证据分别位于
 `tmp/device-runs/20260823-155644-next606-tls-peer-compat-r1/`，均为唯一 PASS、零
 ERROR/FAIL、路由正确。device gate 的 staging 覆盖不会修改 tracked INI。
 
+### next607 程序化表单激活迁移自动门
+
+next607 把 `HTMLElement.click()` 的产品语义顺序迁入
+`PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()`：disabled 控件静默、typed
+click、submit/reset 事件取消、submit 验证和 default-action 回调由
+`positron_browser.dll` 执行；宿主只提供 target lookup、core validation、WM/core default
+action 与非表单 click 传播。TEST228–230 覆盖真实 checkbox/radio、submit/reset 和 file-input
+集成，TEST1055 覆盖 Ex ABI 的 toggle、valid/invalid submit、取消、disabled 与 generic 顺序。
+这批只改变同步脚本/表单语义，不触及视觉、真实触摸、SIP、旋转、系统 picker 的人工结果，
+因此不新增人工页面门；file picker 仍只在真实 GUI 流程中人工验收。
+
+```bat
+scripts\device_gate.bat -Candidate next607-programmatic-click ^
+  -EnableJavaScript ^
+  -TestSelection "228-230,1055,999"
+```
+
+定向证据：`tmp/device-runs/20260823-165349-next607-programmatic-click-r2/`，5/5 通过、零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。tracked `test_host.ini` 仍保持
+`javascript=0` 和原有窄 smoke 选择。
+
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
 ### 当前默认自动选择与人工验收包（next589 基线）

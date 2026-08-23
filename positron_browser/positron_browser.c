@@ -3348,7 +3348,9 @@ typedef struct p_browser_script_click_binding {
 
 typedef struct p_browser_script_programmatic_click_binding {
     HANDLE session;
+    int extended;
     PBrowserScriptProgrammaticClickCallbacks callbacks;
+    PBrowserScriptProgrammaticClickCallbacksEx callbacks_ex;
 } p_browser_script_programmatic_click_binding;
 
 typedef struct p_browser_script_form_event_binding {
@@ -6127,7 +6129,46 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(
         return PSCRIPT_ERROR_FATAL;
     }
     binding->session = hSession;
+    binding->extended = 0;
     memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime, "__pcoreClick",
+            -1, p_browser_script_programmatic_click, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->programmatic_click = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptProgrammaticClickCallbacksEx *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_programmatic_click_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptProgrammaticClickCallbacksEx) ||
+            callbacks->get_target == NULL ||
+            callbacks->validate_submit == NULL ||
+            callbacks->perform_default == NULL ||
+            callbacks->dispatch_generic == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->programmatic_click != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_programmatic_click_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    binding->session = hSession;
+    binding->extended = 1;
+    memcpy(&binding->callbacks_ex, callbacks, sizeof(binding->callbacks_ex));
     rc = PScript_RegisterGlobalJsonFunction(session->runtime, "__pcoreClick",
             -1, p_browser_script_programmatic_click, binding);
     if (rc != PSCRIPT_OK) {
@@ -6158,6 +6199,131 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacks(
     return rc;
 }
 
+PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacksEx(
+        HANDLE hSession)
+{
+    return PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacks(
+            hSession);
+}
+
+static int p_browser_script_dispatch_programmatic_click_ex(
+        p_browser_script_session *session,
+        const PBrowserScriptProgrammaticClickInfo *info)
+{
+    p_browser_script_programmatic_click_binding *binding;
+    PBrowserScriptProgrammaticClickTargetInfo target;
+    PBrowserScriptClickEventInfo click_info;
+    PBrowserScriptFormEventInfo form_info;
+    PBrowserScriptProgrammaticClickDefaultInfo default_info;
+    int default_allowed;
+    int validation_valid;
+    int action;
+    int rc;
+
+    binding = session->programmatic_click;
+    memset(&target, 0, sizeof(target));
+    target.size = sizeof(target);
+    rc = binding->callbacks_ex.get_target(binding->callbacks_ex.pw,
+            info->element_id, &target);
+    if (rc < 0 || target.size < sizeof(target)) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    if (!target.found ||
+            (target.kind != PBROWSER_SCRIPT_CLICK_TARGET_CHECKBOX &&
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_RADIO &&
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT &&
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_RESET &&
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_FILE)) {
+        rc = binding->callbacks_ex.dispatch_generic(
+                binding->callbacks_ex.pw, info);
+        return (rc < 0) ? PSCRIPT_ERROR_NATIVE : PSCRIPT_OK;
+    }
+    /* HTMLElement.click() is silent for disabled form controls. */
+    if (target.disabled) {
+        return PSCRIPT_OK;
+    }
+    if (session->click == NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    memset(&click_info, 0, sizeof(click_info));
+    click_info.size = sizeof(click_info);
+    click_info.x = target.x + target.width / 2;
+    click_info.y = target.y + target.height / 2;
+    click_info.event_type = "click";
+    click_info.bubbles = 1;
+    click_info.cancelable = 1;
+    default_allowed = 1;
+    rc = PBrowser_ScriptSessionDispatchClickEvent(session,
+            &click_info, &default_allowed);
+    if (rc != PSCRIPT_OK || !default_allowed) {
+        return rc;
+    }
+
+    validation_valid = 1;
+    action = PBROWSER_SCRIPT_CLICK_DEFAULT_TOGGLE;
+    if (target.kind == PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT) {
+        action = PBROWSER_SCRIPT_CLICK_DEFAULT_SUBMIT;
+        validation_valid = 0;
+        rc = binding->callbacks_ex.validate_submit(
+                binding->callbacks_ex.pw, info, &target,
+                &validation_valid);
+        if (rc < 0) {
+            return PSCRIPT_ERROR_NATIVE;
+        }
+        if (validation_valid && session->form_event == NULL) {
+            return PSCRIPT_ERROR_GLOBAL;
+        }
+        if (validation_valid) {
+            memset(&form_info, 0, sizeof(form_info));
+            form_info.size = sizeof(form_info);
+            form_info.x = click_info.x;
+            form_info.y = click_info.y;
+            form_info.event_type = "submit";
+            form_info.bubbles = 1;
+            form_info.cancelable = 1;
+            default_allowed = 1;
+            rc = PBrowser_ScriptSessionDispatchFormEvent(session,
+                    &form_info, &default_allowed);
+            if (rc != PSCRIPT_OK || !default_allowed) {
+                return rc;
+            }
+        }
+    } else if (target.kind == PBROWSER_SCRIPT_CLICK_TARGET_RESET) {
+        action = PBROWSER_SCRIPT_CLICK_DEFAULT_RESET;
+        if (session->form_event == NULL) {
+            return PSCRIPT_ERROR_GLOBAL;
+        }
+        memset(&form_info, 0, sizeof(form_info));
+        form_info.size = sizeof(form_info);
+        form_info.x = click_info.x;
+        form_info.y = click_info.y;
+        form_info.event_type = "reset";
+        form_info.bubbles = 1;
+        form_info.cancelable = 1;
+        default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchFormEvent(session,
+                &form_info, &default_allowed);
+        if (rc != PSCRIPT_OK || !default_allowed) {
+            return rc;
+        }
+    } else if (target.kind == PBROWSER_SCRIPT_CLICK_TARGET_FILE) {
+        action = PBROWSER_SCRIPT_CLICK_DEFAULT_FILE;
+    }
+    memset(&default_info, 0, sizeof(default_info));
+    default_info.size = sizeof(default_info);
+    default_info.element_id = info->element_id;
+    default_info.action = action;
+    default_info.x = target.x;
+    default_info.y = target.y;
+    default_info.width = target.width;
+    default_info.height = target.height;
+    default_info.kind = target.kind;
+    default_info.validation_valid = validation_valid ? 1 : 0;
+    rc = binding->callbacks_ex.perform_default(
+            binding->callbacks_ex.pw, &default_info);
+    return (rc < 0) ? PSCRIPT_ERROR_NATIVE : PSCRIPT_OK;
+}
+
 PBROWSER_API int PBrowser_ScriptSessionDispatchProgrammaticClick(
         HANDLE hSession, const PBrowserScriptProgrammaticClickInfo *info)
 {
@@ -6170,6 +6336,9 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchProgrammaticClick(
             info->size < sizeof(PBrowserScriptProgrammaticClickInfo) ||
             info->element_id == NULL || info->element_id[0] == '\0') {
         return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->programmatic_click->extended) {
+        return p_browser_script_dispatch_programmatic_click_ex(session, info);
     }
     rc = session->programmatic_click->callbacks.dispatch_click(
             session->programmatic_click->callbacks.pw, info);

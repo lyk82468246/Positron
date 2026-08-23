@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1054
+#define TEST_MAX_NUMBER 1055
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -1720,6 +1720,266 @@ cleanup:
               "TLS ABI v2 identity persistence, mutual certificates, "
               "DER SHA-256 pinning, listener recovery, concurrency and "
               "close interruption passed on loopback.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 1055 - browser-owned programmatic form activation ordering       */
+/* The Ex adapter keeps target lookup and platform default actions in the
+ * host, but owns disabled suppression, typed click dispatch, submit/reset
+ * event ordering and submit validation. This mock contract isolates that
+ * product-side ordering from positron_core and the WM window path.          */
+/* -------------------------------------------------------------------- */
+typedef struct test1055_programmatic_state {
+    int target_found;
+    int target_kind;
+    int target_disabled;
+    int click_allowed;
+    int form_allowed;
+    int validation_valid;
+    int default_action;
+    int default_validation_valid;
+    char sequence[32];
+} test1055_programmatic_state;
+
+static void test1055_sequence_reset(test1055_programmatic_state *state)
+{
+    if (state != NULL) {
+        state->sequence[0] = '\0';
+        state->default_action = 0;
+        state->default_validation_valid = 0;
+    }
+}
+
+static int test1055_sequence_append(test1055_programmatic_state *state,
+        char value)
+{
+    size_t length;
+
+    if (state == NULL) {
+        return -1;
+    }
+    length = strlen(state->sequence);
+    if (length + 1 >= sizeof(state->sequence)) {
+        return -1;
+    }
+    state->sequence[length] = value;
+    state->sequence[length + 1] = '\0';
+    return 0;
+}
+
+static int test1055_target(void *pw, const char *element_id,
+        PBrowserScriptProgrammaticClickTargetInfo *out_info)
+{
+    test1055_programmatic_state *state;
+
+    state = (test1055_programmatic_state *) pw;
+    if (state == NULL || element_id == NULL || out_info == NULL ||
+            out_info->size < sizeof(PBrowserScriptProgrammaticClickTargetInfo)) {
+        return -1;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->size = sizeof(*out_info);
+    out_info->found = state->target_found ? 1 : 0;
+    out_info->kind = state->target_kind;
+    out_info->disabled = state->target_disabled ? 1 : 0;
+    out_info->width = 20;
+    out_info->height = 10;
+    return 0;
+}
+
+static int test1055_click(void *pw,
+        const PBrowserScriptClickEventInfo *info, int *out_default_allowed)
+{
+    test1055_programmatic_state *state;
+
+    state = (test1055_programmatic_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptClickEventInfo) ||
+            test1055_sequence_append(state, 'C') != 0) {
+        return -1;
+    }
+    *out_default_allowed = state->click_allowed ? 1 : 0;
+    return 0;
+}
+
+static int test1055_form_event(void *pw,
+        const PBrowserScriptFormEventInfo *info, int *out_default_allowed)
+{
+    test1055_programmatic_state *state;
+
+    state = (test1055_programmatic_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptFormEventInfo) ||
+            test1055_sequence_append(state, 'F') != 0) {
+        return -1;
+    }
+    *out_default_allowed = state->form_allowed ? 1 : 0;
+    return 0;
+}
+
+static int test1055_validate(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info,
+        const PBrowserScriptProgrammaticClickTargetInfo *target,
+        int *out_valid)
+{
+    test1055_programmatic_state *state;
+
+    state = (test1055_programmatic_state *) pw;
+    if (state == NULL || info == NULL || target == NULL || out_valid == NULL ||
+            info->size < sizeof(PBrowserScriptProgrammaticClickInfo) ||
+            target->size < sizeof(PBrowserScriptProgrammaticClickTargetInfo) ||
+            test1055_sequence_append(state, 'V') != 0) {
+        return -1;
+    }
+    *out_valid = state->validation_valid ? 1 : 0;
+    return 0;
+}
+
+static int test1055_default(void *pw,
+        const PBrowserScriptProgrammaticClickDefaultInfo *info)
+{
+    test1055_programmatic_state *state;
+
+    state = (test1055_programmatic_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptProgrammaticClickDefaultInfo) ||
+            test1055_sequence_append(state, 'D') != 0) {
+        return -1;
+    }
+    state->default_action = info->action;
+    state->default_validation_valid = info->validation_valid;
+    return 0;
+}
+
+static int test1055_generic(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info)
+{
+    test1055_programmatic_state *state;
+
+    state = (test1055_programmatic_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptProgrammaticClickInfo) ||
+            test1055_sequence_append(state, 'G') != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static BOOL test1055_browser_programmatic_activation_contract(void)
+{
+    PBrowserScriptClickCallbacks click_callbacks;
+    PBrowserScriptFormEventCallbacks form_callbacks;
+    PBrowserScriptProgrammaticClickCallbacksEx callbacks;
+    PBrowserScriptProgrammaticClickInfo info;
+    test1055_programmatic_state state;
+    HANDLE session;
+    const char *stage;
+    int rc;
+    int ok;
+
+    memset(&click_callbacks, 0, sizeof(click_callbacks));
+    memset(&form_callbacks, 0, sizeof(form_callbacks));
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    state.target_found = 1;
+    state.target_kind = PBROWSER_SCRIPT_CLICK_TARGET_CHECKBOX;
+    state.click_allowed = 1;
+    state.form_allowed = 1;
+    state.validation_valid = 1;
+    info.size = sizeof(info);
+    info.element_id = "target";
+    click_callbacks.size = sizeof(click_callbacks);
+    click_callbacks.pw = &state;
+    click_callbacks.dispatch_click = test1055_click;
+    form_callbacks.size = sizeof(form_callbacks);
+    form_callbacks.pw = &state;
+    form_callbacks.dispatch_form_event = test1055_form_event;
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.get_target = test1055_target;
+    callbacks.validate_submit = test1055_validate;
+    callbacks.perform_default = test1055_default;
+    callbacks.dispatch_generic = test1055_generic;
+    stage = "create";
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    ok = session != NULL;
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterClickCallbacks(session,
+                &click_callbacks) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRegisterFormEventCallbacks(session,
+                &form_callbacks) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx(
+                session, &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "toggle";
+        test1055_sequence_reset(&state);
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(session, &info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "CD") == 0 &&
+                state.default_action == PBROWSER_SCRIPT_CLICK_DEFAULT_TOGGLE;
+    }
+    if (ok) {
+        stage = "submit-valid";
+        state.target_kind = PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT;
+        state.validation_valid = 1;
+        state.form_allowed = 1;
+        test1055_sequence_reset(&state);
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(session, &info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "CVFD") == 0 &&
+                state.default_action == PBROWSER_SCRIPT_CLICK_DEFAULT_SUBMIT &&
+                state.default_validation_valid == 1;
+    }
+    if (ok) {
+        stage = "submit-invalid";
+        state.validation_valid = 0;
+        test1055_sequence_reset(&state);
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(session, &info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "CVD") == 0 &&
+                state.default_action == PBROWSER_SCRIPT_CLICK_DEFAULT_SUBMIT &&
+                state.default_validation_valid == 0;
+    }
+    if (ok) {
+        stage = "submit-cancel";
+        state.validation_valid = 1;
+        state.form_allowed = 0;
+        test1055_sequence_reset(&state);
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(session, &info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "CVF") == 0 &&
+                state.default_action == 0;
+    }
+    if (ok) {
+        stage = "disabled";
+        state.target_disabled = 1;
+        test1055_sequence_reset(&state);
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(session, &info);
+        ok = rc == PSCRIPT_OK && state.sequence[0] == '\0';
+    }
+    if (ok) {
+        stage = "generic";
+        state.target_disabled = 0;
+        state.target_found = 0;
+        test1055_sequence_reset(&state);
+        rc = PBrowser_ScriptSessionDispatchProgrammaticClick(session, &info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "G") == 0;
+    }
+    if (session != NULL) {
+        if (PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacksEx(
+                session) != PSCRIPT_OK) {
+            ok = 0;
+        }
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1055 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1055 OK",
+            "Browser-owned HTMLElement.click() ordering covers typed click,\n"
+            "validation, form-event cancellation, disabled suppression and\n"
+            "host default-action dispatch.");
     return TRUE;
 }
 
@@ -3760,6 +4020,15 @@ static int pcore_browser_script_click_dispatch(void *pw,
         int *out_default_allowed);
 static int pcore_browser_script_programmatic_click_dispatch(void *pw,
         const PBrowserScriptProgrammaticClickInfo *info);
+static int pcore_browser_script_programmatic_click_target(void *pw,
+        const char *element_id,
+        PBrowserScriptProgrammaticClickTargetInfo *out_info);
+static int pcore_browser_script_programmatic_click_validate(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info,
+        const PBrowserScriptProgrammaticClickTargetInfo *target,
+        int *out_valid);
+static int pcore_browser_script_programmatic_click_default(void *pw,
+        const PBrowserScriptProgrammaticClickDefaultInfo *info);
 static int pcore_browser_script_form_event_dispatch(void *pw,
         const PBrowserScriptFormEventInfo *info,
         int *out_default_allowed);
@@ -4620,23 +4889,8 @@ static int pcore_browser_script_programmatic_click_dispatch(void *pw,
         const PBrowserScriptProgrammaticClickInfo *info)
 {
     pcore_browser_script_bridge *bridge;
-    int x;
-    int y;
-    int width;
-    int height;
-    int kind;
-    int disabled;
-    int has_control;
     int default_allowed;
     int result;
-    int click_rc;
-    int form_event_result;
-    PCoreFormValidationInfo validation;
-    PBrowserScriptClickEventInfo click_info;
-    int dirty_x;
-    int dirty_y;
-    int dirty_w;
-    int dirty_h;
 
     bridge = (pcore_browser_script_bridge *) pw;
     if (bridge == NULL || bridge->document == NULL || info == NULL ||
@@ -4644,112 +4898,146 @@ static int pcore_browser_script_programmatic_click_dispatch(void *pw,
             info->element_id == NULL || info->element_id[0] == '\0') {
         return -1;
     }
-    x = 0;
-    y = 0;
-    width = 0;
-    height = 0;
-    kind = 0;
-    disabled = 0;
-    has_control = PCore_FormControlInfoById(bridge->document,
-            info->element_id, &x, &y, &width, &height, &kind,
-            NULL, &disabled) == 0;
-    /* HTMLElement.click() is silent for disabled form controls. */
-    if (has_control && disabled) {
-        return 0;
-    }
     default_allowed = 1;
-    if (has_control && ((kind == 1 || kind == 2) ||
-            (kind >= 7 && kind <= 10))) {
-        if (bridge->session == NULL) {
-            return -1;
-        }
-        memset(&click_info, 0, sizeof(click_info));
-        click_info.size = sizeof(click_info);
-        click_info.x = x + width / 2;
-        click_info.y = y + height / 2;
-        click_info.event_type = "click";
-        click_info.bubbles = 1;
-        click_info.cancelable = 1;
-        click_rc = PBrowser_ScriptSessionDispatchClickEvent(
-                bridge->session, &click_info, &default_allowed);
-        if (click_rc != PSCRIPT_OK) {
-            return -1;
-        }
-        result = 1;
+    result = PCore_EventDispatchToId(bridge->document,
+            info->element_id, "click", 1, 1, &default_allowed);
+    return result < 0 ? -1 : 0;
+}
+
+static int pcore_browser_script_programmatic_click_target(void *pw,
+        const char *element_id,
+        PBrowserScriptProgrammaticClickTargetInfo *out_info)
+{
+    pcore_browser_script_bridge *bridge;
+    int core_kind;
+    int core_disabled;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || element_id == NULL ||
+            element_id[0] == '\0' || out_info == NULL ||
+            out_info->size < sizeof(PBrowserScriptProgrammaticClickTargetInfo)) {
+        return -1;
+    }
+    out_info->found = 0;
+    out_info->x = 0;
+    out_info->y = 0;
+    out_info->width = 0;
+    out_info->height = 0;
+    out_info->kind = 0;
+    out_info->disabled = 0;
+    core_kind = 0;
+    core_disabled = 0;
+    if (PCore_FormControlInfoById(bridge->document, element_id,
+            &out_info->x, &out_info->y, &out_info->width,
+            &out_info->height, &core_kind, NULL, &core_disabled) != 0) {
+        return 0;
+    }
+    if (core_kind == 1) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_CHECKBOX;
+    } else if (core_kind == 2) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_RADIO;
+    } else if (core_kind == 7) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT;
+    } else if (core_kind == 8) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_RESET;
+    } else if (core_kind == 10) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_FILE;
     } else {
-        result = PCore_EventDispatchToId(bridge->document,
-                info->element_id, "click", 1, 1, &default_allowed);
-        if (result < 0) {
-            return -1;
-        }
-    }
-    if (result == 0 || !default_allowed || !has_control) {
         return 0;
     }
-    if (kind == 7 || kind == 8) {
-        /* The native button path owns validation, submission collection and
-         * navigation. Programmatic activation only adds the missing typed
-         * click/form-event entry before reusing that path. */
-        if (kind == 8) {
-            form_event_result = pcore_browser_script_dispatch_form_event_bridge(
-                    bridge, x + width / 2, y + height / 2, "reset");
-            if (form_event_result < 0) {
-                return -1;
-            }
-            if (!form_event_result) {
-                return 0;
-            }
-        } else if (PCore_FormValidationAt(bridge->document,
-                x + width / 2, y + height / 2, &validation) &&
-                validation.valid) {
-            form_event_result =
-                    pcore_browser_script_dispatch_form_event_bridge(bridge,
-                    x + width / 2, y + height / 2, "submit");
-            if (form_event_result < 0) {
-                return -1;
-            }
-            if (!form_event_result) {
-                return 0;
-            }
-        }
-        if (bridge->document == g_render_doc) {
-            (void) pcore_handle_form_button_default(bridge->hwnd,
-                    x + width / 2, y + height / 2, kind);
-        } else if (kind == 8) {
-            /* There is no visible window to re-layout yet, but the reset
-             * state itself is safe to commit to the new document. */
-            (void) PCore_FormResetAt(bridge->document,
-                    x + width / 2, y + height / 2);
-        }
+    out_info->disabled = core_disabled ? 1 : 0;
+    out_info->found = 1;
+    return 0;
+}
+
+static int pcore_browser_script_programmatic_click_validate(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info,
+        const PBrowserScriptProgrammaticClickTargetInfo *target,
+        int *out_valid)
+{
+    pcore_browser_script_bridge *bridge;
+    PCoreFormValidationInfo validation;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            target == NULL || out_valid == NULL ||
+            info->size < sizeof(PBrowserScriptProgrammaticClickInfo) ||
+            target->size < sizeof(PBrowserScriptProgrammaticClickTargetInfo)) {
+        return -1;
+    }
+    *out_valid = 0;
+    if (target->kind != PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT) {
+        *out_valid = 1;
         return 0;
     }
-    if (kind == 10) {
-        /* The typed click has already run.  A visible host window may now
-         * schedule the system picker after script evaluation returns; the
-         * no-window path intentionally keeps TEST230's typed-only boundary. */
-        if (bridge->document == g_render_doc && bridge->hwnd != NULL &&
-                pcore_queue_file_input_picker(bridge,
-                x + width / 2, y + height / 2) != 0) {
-            return -1;
-        }
-        return 0;
-    }
-    if ((kind != 1 && kind != 2) ||
-            bridge->document != g_render_doc) {
-        return 0;
-    }
-    dirty_x = 0;
-    dirty_y = 0;
-    dirty_w = 0;
-    dirty_h = 0;
-    (void) pcore_form_toggle_activate(x + width / 2, y + height / 2,
-            &dirty_x, &dirty_y, &dirty_w, &dirty_h);
-    if (bridge->hwnd != NULL) {
-        pcore_invalidate_form_dirty(bridge->hwnd, dirty_x, dirty_y,
-                dirty_w, dirty_h);
-        pcore_request_interaction_restyle(bridge->hwnd);
+    if (PCore_FormValidationAt(bridge->document,
+            target->x + target->width / 2,
+            target->y + target->height / 2, &validation) &&
+            validation.valid) {
+        *out_valid = 1;
     }
     return 0;
+}
+
+static int pcore_browser_script_programmatic_click_default(void *pw,
+        const PBrowserScriptProgrammaticClickDefaultInfo *info)
+{
+    pcore_browser_script_bridge *bridge;
+    int dirty_x;
+    int dirty_y;
+    int dirty_w;
+    int dirty_h;
+    int center_x;
+    int center_y;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptProgrammaticClickDefaultInfo)) {
+        return -1;
+    }
+    center_x = info->x + info->width / 2;
+    center_y = info->y + info->height / 2;
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_TOGGLE) {
+        if (bridge->document != g_render_doc) {
+            return 0;
+        }
+        dirty_x = 0;
+        dirty_y = 0;
+        dirty_w = 0;
+        dirty_h = 0;
+        (void) pcore_form_toggle_activate(center_x, center_y,
+                &dirty_x, &dirty_y, &dirty_w, &dirty_h);
+        if (bridge->hwnd != NULL) {
+            pcore_invalidate_form_dirty(bridge->hwnd, dirty_x, dirty_y,
+                    dirty_w, dirty_h);
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 0;
+    }
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_FILE) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL &&
+                pcore_queue_file_input_picker(bridge, center_x, center_y) != 0) {
+            return -1;
+        }
+        return 0;
+    }
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_RESET) {
+        if (bridge->document == g_render_doc) {
+            (void) pcore_handle_form_button_default(bridge->hwnd,
+                    center_x, center_y, 8);
+        } else {
+            (void) PCore_FormResetAt(bridge->document, center_x, center_y);
+        }
+        return 0;
+    }
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_SUBMIT) {
+        if (bridge->document == g_render_doc) {
+            (void) pcore_handle_form_button_default(bridge->hwnd,
+                    center_x, center_y, 7);
+        }
+        return 0;
+    }
+    return -1;
 }
 
 static int pcore_browser_script_form_event_dispatch(void *pw,
@@ -7909,7 +8197,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptEditCallbacks edit_callbacks;
     PBrowserScriptSelectCallbacks select_callbacks;
     PBrowserScriptClickCallbacks click_callbacks;
-    PBrowserScriptProgrammaticClickCallbacks programmatic_click_callbacks;
+    PBrowserScriptProgrammaticClickCallbacksEx
+            programmatic_click_callbacks_ex;
     PBrowserScriptFormEventCallbacks form_event_callbacks;
     PBrowserScriptInvalidCallbacks invalid_callbacks;
     PBrowserScriptNavigationCallbacks navigation_callbacks;
@@ -8060,10 +8349,16 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     click_callbacks.size = sizeof(click_callbacks);
     click_callbacks.pw = bridge;
     click_callbacks.dispatch_click = pcore_browser_script_click_dispatch;
-    programmatic_click_callbacks.size =
-            sizeof(programmatic_click_callbacks);
-    programmatic_click_callbacks.pw = bridge;
-    programmatic_click_callbacks.dispatch_click =
+    programmatic_click_callbacks_ex.size =
+            sizeof(programmatic_click_callbacks_ex);
+    programmatic_click_callbacks_ex.pw = bridge;
+    programmatic_click_callbacks_ex.get_target =
+            pcore_browser_script_programmatic_click_target;
+    programmatic_click_callbacks_ex.validate_submit =
+            pcore_browser_script_programmatic_click_validate;
+    programmatic_click_callbacks_ex.perform_default =
+            pcore_browser_script_programmatic_click_default;
+    programmatic_click_callbacks_ex.dispatch_generic =
             pcore_browser_script_programmatic_click_dispatch;
     form_event_callbacks.size = sizeof(form_event_callbacks);
     form_event_callbacks.pw = bridge;
@@ -8153,8 +8448,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &select_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterClickCallbacks(session,
             &click_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(session,
-            &programmatic_click_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx(session,
+            &programmatic_click_callbacks_ex) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormEventCallbacks(session,
             &form_event_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterInvalidCallbacks(session,
@@ -68311,6 +68606,7 @@ static int run_configured_tests(const unsigned char *selected,
                 test1053_browser_form_collection_contract();
                 break;
         case 1054: ok = test1054_tls_peer_infrastructure(); break;
+        case 1055: ok = test1055_browser_programmatic_activation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

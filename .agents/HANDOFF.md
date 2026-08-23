@@ -15,10 +15,10 @@
 
 ## 当前仓库基线
 
-- 分支：`main`；本批开始时基线为 `4b03262f docs: restore focused agent handoff`，交付时必须
+- 分支：`main`；本批开始时基线为 `4292753c next606: add TLS peer infrastructure ABI v2`，交付时必须
   重新核对远端和工作区，不能沿用这一结论。
-- 当前能力批次：next606，TLS peer 公共基础设施 ABI v2。
-- 测试编号上限：`TEST_MAX_NUMBER 1054`。
+- 当前能力批次：next607，浏览器程序化表单激活语义迁移。
+- 测试编号上限：`TEST_MAX_NUMBER 1055`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -33,8 +33,8 @@ HTML、CSS、表单、DOM 与单一 Duktape 引擎组合成可预测、资源有
 轻量 Web 运行时。
 
 next606 是一次已完成的安全基础设施中断：把仅有互联网客户端能力的 `positron_tls.dll`
-扩展为可供 LocalSend 一类消费者复用的 peer TLS ABI v2。下一批恢复浏览器产品语义迁移，
-不继续无证据扩张 TLS 协议层。
+扩展为可供 LocalSend 一类消费者复用的 peer TLS ABI v2。next607 已恢复浏览器产品语义
+迁移，未继续无证据扩张 TLS 协议层。
 
 ## 已验证的产品状态
 
@@ -48,7 +48,13 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   listener，以及安全错误快照；ABI v1 的九个导出均保留。
 - peer TLS 和普通 CA/hostname HTTPS 是分离的信任模型；空 pin 只用于 discovery/TOFU，不
   表示认证。身份文件属于消费者持久状态，`test_host` 只创建隔离临时文件做回归。
-- `test_host` 中仍有需要逐批审计和迁移的浏览器桥接胶水；窗口、原生控件、设备网络等平台副作用继续由宿主持有。
+- next607 在 `positron_browser.dll` 增加了 additive 的
+  `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()`：DLL 现在执行
+  `HTMLElement.click()` 的 disabled 抑制、typed click、submit/reset 事件顺序、submit
+  验证与取消策略；`test_host` 只提供 target lookup、validation、default action 和非表单
+  click 传播，窗口、原生控件、设备网络等平台副作用继续由宿主持有。
+- `test_host` 中仍有需要逐批审计和迁移的 native form/input 桥接胶水；不能把 WM 控件、系统
+  picker 或导航副作用错误搬入产品语义 DLL。
 
 ## 最近验证证据
 
@@ -73,6 +79,16 @@ next606 已完成与风险相称的本地和设备验证：
   改为非阻塞 socket + `select` 控制 connect/handshake 期限后重跑通过，没有放宽断言。
 - 本批没有视觉、真实触摸、SIP、旋转或 picker 风险，不新增人工验收门。
 
+next607 的同步脚本/表单自动门：
+
+- `tmp/device-runs/20260823-165349-next607-programmatic-click-r2/device-gate-result.txt`
+  — PASS，5/5（TEST228–230、1055、999），错误与失败均为 0，唯一 PASS，路由正确。
+- TEST228–230 验证真实 checkbox/radio、submit/reset 和 file-input 程序化 click 集成；
+  TEST1055 验证 Ex ABI 的 toggle、valid/invalid submit、form-event/click 取消、disabled
+  静默和 generic fallback 顺序。
+- C89 检查、Debug/Release ARMV4I 正式构建、仓库/文档审计均通过；tracked INI 未修改，
+  仍为 `javascript=0` 的窄 smoke 选择。本批只涉及同步语义，不新增人工页面门。
+
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
 ## 当前已知边界
@@ -84,24 +100,25 @@ next606 已完成与风险相称的本地和设备验证：
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1054 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1055 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
 ## 当前工作区与候选状态
 
-- next606 设备候选、Release、导出表和仓库审计已经通过；交付时只需确认 Git/远端状态。
-- 用户已授权将 next606 的 11 个 tracked 文件提交并推送；接手者应把该提交视为 TLS 公共
-  基础设施交付，不要把它当成可清理的临时工作。
+- next607 设备候选、Release、导出表和仓库审计已经通过；交付时只需确认 Git/远端状态。
+- next607 的 tracked 改动只覆盖 `positron_browser` 的 Ex ABI、`test_host` 消费者与对应
+  交接/架构/测试文档；提交时不要把 `tmp/` 设备证据或无关工作区文件带入。
 - 当前没有已知需要立即 debug 的设备失败门。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
 - 接手者必须先检查工作区；任何未提交改动默认属于用户，不能覆盖。
 
 ## 唯一下一步
 
-next607 恢复中断前方向：审计并迁移一组仍由 `test_host` 持有的产品级浏览器语义，优先
-选择表单/输入桥中能形成完整用户行为的一组。语义和状态归入 `positron_browser` 或适当
-产品 DLL；宿主只保留 WM 窗口、网络、原生控件和测试编排。
+next608：审计剩余 native EDIT/SELECT 的 form/input 事件适配，选择一组能形成完整输入
+行为的 beforeinput/composition/change 或 SELECT 键盘纵切，把事件策略和状态归入
+`positron_browser`/`positron_core`，宿主只保留 WM 控件消息、窗口重绘和平台副作用。
+不得重做 next607 的程序化 click policy，也不得把 SIP/IME 的 OEM 行为伪装成已迁移语义。
 
 不要为了填充 next 编号加入互不相关的小 API，也不要顺便重构其他模块。
 

@@ -502,6 +502,63 @@ typedef struct PBrowserScriptProgrammaticClickCallbacks {
     PBrowserScriptProgrammaticClickFn dispatch_click;
 } PBrowserScriptProgrammaticClickCallbacks;
 
+/* Product-owned programmatic form activation adapter.  The original
+ * PBrowserScriptProgrammaticClickCallbacks contract remains available for
+ * hosts that want to own the complete operation.  This additive contract
+ * moves the browser-semantic ordering into positron_browser: the host only
+ * resolves a supported form target, performs the core/platform default, and
+ * handles non-form targets.  All strings and target pointers are borrowed
+ * for the synchronous callback only. */
+#define PBROWSER_SCRIPT_CLICK_TARGET_CHECKBOX 1
+#define PBROWSER_SCRIPT_CLICK_TARGET_RADIO    2
+#define PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT  3
+#define PBROWSER_SCRIPT_CLICK_TARGET_RESET   4
+#define PBROWSER_SCRIPT_CLICK_TARGET_FILE    5
+
+#define PBROWSER_SCRIPT_CLICK_DEFAULT_TOGGLE 1
+#define PBROWSER_SCRIPT_CLICK_DEFAULT_SUBMIT 2
+#define PBROWSER_SCRIPT_CLICK_DEFAULT_RESET  3
+#define PBROWSER_SCRIPT_CLICK_DEFAULT_FILE   4
+
+typedef struct PBrowserScriptProgrammaticClickTargetInfo {
+    unsigned long size;
+    int found;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+} PBrowserScriptProgrammaticClickTargetInfo;
+typedef int (*PBrowserScriptGetProgrammaticClickTargetFn)(void *pw,
+        const char *element_id,
+        PBrowserScriptProgrammaticClickTargetInfo *out_info);
+typedef int (*PBrowserScriptValidateProgrammaticClickFn)(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info,
+        const PBrowserScriptProgrammaticClickTargetInfo *target,
+        int *out_valid);
+typedef struct PBrowserScriptProgrammaticClickDefaultInfo {
+    unsigned long size;
+    const char *element_id;
+    int action;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int validation_valid;
+} PBrowserScriptProgrammaticClickDefaultInfo;
+typedef int (*PBrowserScriptProgrammaticClickDefaultFn)(void *pw,
+        const PBrowserScriptProgrammaticClickDefaultInfo *info);
+typedef struct PBrowserScriptProgrammaticClickCallbacksEx {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetProgrammaticClickTargetFn get_target;
+    PBrowserScriptValidateProgrammaticClickFn validate_submit;
+    PBrowserScriptProgrammaticClickDefaultFn perform_default;
+    PBrowserScriptProgrammaticClickFn dispatch_generic;
+} PBrowserScriptProgrammaticClickCallbacksEx;
+
 /* Typed host adapter for product-owned native form submit/reset events. The
  * browser layer owns the form-event contract and dispatch entry point; the
  * host supplies core hit-testing/propagation for the document coordinates.
@@ -795,8 +852,16 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(
         const PBrowserScriptProgrammaticClickCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacks(
         HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptProgrammaticClickCallbacksEx *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacksEx(
+        HANDLE hSession);
 /* Dispatch one script-visible HTMLElement.click() invocation through the
- * host's typed activation adapter. */
+ * host's typed activation adapter.  When the additive Ex callbacks are
+ * registered, positron_browser owns disabled-target suppression, typed click
+ * dispatch, submit/reset event ordering and submit validation before calling
+ * the host's default-action callback. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchProgrammaticClick(
         HANDLE hSession, const PBrowserScriptProgrammaticClickInfo *info);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormEventCallbacks(

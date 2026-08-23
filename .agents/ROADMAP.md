@@ -29,24 +29,22 @@
 
 ## 当前短期目标
 
-### 1. next607：恢复一组完整的产品语义迁移
+### 1. next607：程序化表单激活语义迁移（已完成）
 
-next606 已被 TLS 公共基础设施的紧急扩展占用。下一批恢复此前方向：审计 `test_host` 中
-剩余浏览器桥，选择一组能够形成完整用户行为的表单/输入语义迁入 `positron_browser` 或
-适当产品 DLL。
+next607 将一组完整的 `HTMLElement.click()` 表单行为从 `test_host` 下沉到
+`positron_browser.dll`。新增的 additive `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()`
+让 browser layer 负责 disabled 控件静默、typed click、submit/reset 事件顺序、submit 验证
+和取消；宿主只提供 target lookup、validation、default action 与非表单 click 传播。
+TEST228–230 和 TEST1055 已在真实 WM6 设备上通过，tracked INI 未被扩大，未新增人工页面门。
 
-这一批必须同时完成：
+### 2. next608：剩余 native form/input 适配
 
-- 公共 API 与所有权定义；
-- 产品侧状态和规则实现；
-- 宿主改为公共 API 消费者；
-- 成功、失败、容量、销毁和相关回归断言；
-- 正式构建、C89、仓库审计和自动设备门；
-- 必要时记录人工验收项，但不因低风险纯语义变化强制人工查看。
+审计 `test_host` 中尚存的 native EDIT/SELECT beforeinput、composition、change 或 SELECT
+键盘事件适配，选择一组能形成完整输入行为的纵切迁入 `positron_browser`/`positron_core`。
+宿主继续拥有 WM 控件消息、窗口重绘、系统 picker、SIP/IME OEM 差异和平台副作用；不得重做
+next607 的程序化 click policy。该批必须提供稳定 ABI、成功/取消/销毁断言和风险相称的设备门。
 
-窗口创建、WM 消息、原生控件、设备网络和测试路由不得错误迁入产品语义层。
-
-### 2. 建立真实页面驱动的兼容队列
+### 3. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -57,7 +55,7 @@ next606 已被 TLS 公共基础设施的紧急扩展占用。下一批恢复此�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 3. 安排新的全范围检查点
+### 4. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

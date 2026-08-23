@@ -5,6 +5,13 @@
 core/browser.dll` 与内部静态库、WM6 native EDIT/SELECT 控件、窗口消息、网络和
 设备 gate 接起来。
 
+浏览器脚本桥接使用 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()`。
+宿主只实现 `get_target`、`validate_submit`、`perform_default` 和非表单
+`dispatch_generic`：checkbox/radio/submit/reset/file 的 disabled 抑制、typed click、
+submit/reset 事件顺序和验证由 `positron_browser.dll` 执行；WM 窗口、core 状态提交、
+系统 picker 和导航副作用仍留在本宿主。这使 `test_host` 成为公共 ABI 的消费者/示例，
+而不是程序化表单语义的所有者。
+
 ## 构建与部署
 
 从仓库根目录使用正式工程配置：

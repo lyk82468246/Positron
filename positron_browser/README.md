@@ -13,8 +13,18 @@
 - 典型组合：调用者另行持有 `positron_core.dll`、网络和 native WM 控件
 
 其他项目链接 `positron_browser.lib`，部署 DLL 依赖，并以 callback 形式提供宿主的
-document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、`HTMLElement.disabled`、控件与受限 form-level `checkValidity()`/`reportValidity()`、`willValidate`、`validity` 查询、`setCustomValidity()`、`validationMessage`、`required`、`readOnly`、`multiple`、`noValidate`、`formNoValidate`、`name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`min`/`max`/`step`、`pattern`/`minLength`/`maxLength`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。这些表单属性通过既有 attribute callback bridge 实现；validation query 通过独立的 size-tagged callback 获取 core 的控件状态或 form 聚合结果，report-validity callback 负责同步 report/query 与 invalid-event 路由，custom validity 通过另一个 size-tagged UTF-8 get/set callback 获取/更新 application-owned message，`validationMessage` 在 custom message 为空时可使用宿主提供的固定英文 fallback；对 file input，programmatic click 只负责 typed click 分发；系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
+document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、`HTMLElement.disabled`、控件与受限 form-level `checkValidity()`/`reportValidity()`、`willValidate`、`validity` 查询、`setCustomValidity()`、`validationMessage`、`required`、`readOnly`、`multiple`、`noValidate`、`formNoValidate`、`name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`min`/`max`/`step`、`pattern`/`minLength`/`maxLength`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。这些表单属性通过既有 attribute callback bridge 实现；validation query 通过独立的 size-tagged callback 获取 core 的控件状态或 form 聚合结果，report-validity callback 负责同步 report/query 与 invalid-event 路由，custom validity 通过另一个 size-tagged UTF-8 get/set callback 获取/更新 application-owned message，`validationMessage` 在 custom message 为空时可使用宿主提供的固定英文 fallback；对程序化 click，推荐使用 Ex callback，让 DLL 负责 disabled 抑制、typed click、submit/reset 事件顺序和 submit 验证，再由宿主 default-action callback 执行 core/WM 副作用；file input 仍只由宿主排队系统 picker。系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
 `test_host.exe` 是一个完整的组合示例，但不是私有 API 的唯一消费者。
+
+`PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 是向新消费者推荐的
+程序化表单激活入口。调用者提供 `get_target`（返回 checkbox/radio/submit/reset/file 的
+UTF-8 id、几何和 disabled）、`validate_submit`、`perform_default` 与
+`dispatch_generic`；浏览器 DLL 自己调用已注册的 click/form-event callback，并在
+`perform_default` 前固定顺序。`perform_default` 的 action 使用
+`PBROWSER_SCRIPT_CLICK_DEFAULT_TOGGLE/SUBMIT/RESET/FILE`，所有结构体均为 size-tagged，
+字符串和 target/default 信息只在同步 callback 内借用。旧的
+`PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks()` 仍保留给需要自行拥有整套
+激活逻辑的兼容宿主。
 
 当前 DOM snapshot 还提供 browser-owned 的 `document.doctype`：它是稳定、只读的
 `DocumentType` wrapper，包含有限 metadata、owner/root/position/contains、identity/equality
@@ -145,6 +155,14 @@ setter 只选择同值控件。直接属性不可枚举、不可写、不可配�
 容纳新增 bootstrap，browser session heap ceiling 为 624 KiB，独立 `positron_script` 默认堆仍为
 512 KiB。本批不需要人工页面验收。
 
+next607 将程序化表单激活的产品策略从宿主迁入本 DLL：
+`PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 由 browser layer 统一处理
+disabled 静默、typed click、submit/reset form-event 顺序、submit validation 与取消，然后
+调用宿主的 target/validation/default-action/generic callback。宿主仍拥有 Core document、WM
+窗口、native EDIT/SELECT、系统 picker、导航和绘制副作用；旧的 programmatic-click callback
+入口保持兼容。TEST228–230 与 TEST1055 已在 WM6 设备门通过，未改变默认 `javascript=0` 配置，
+也不宣称完整 HTML activation 或 OEM SIP/IME 兼容。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -213,9 +231,9 @@ PBrowser_ScriptSessionDestroy(session);
 application-owned message；getter 在没有 custom message 时可返回固定英文 validity fallback，
 不做本地化。report-validity callback 只返回当前 valid 结果并派发可寻址控件的 trusted
 `invalid` 事件；`preventDefault()` 不改变 boolean 结果，也不触发 native invalid UI、焦点/滚动
-或提交。产品层只管理
-session 与脚本对象；宿主必须管理 document、窗口、网络、控件默认行为、core 事件传播
-以及导航提交/回滚，并在 session 销毁前注销或保证 callback `pw` 仍有效。
+或提交。Ex programmatic-click callback 由产品层管理激活顺序，宿主只管理 document、窗口、
+网络、控件几何/状态、default action、core 事件传播以及导航提交/回滚，并在 session 销毁前
+注销或保证 callback `pw` 仍有效。
 
 ## 边界与验证
 
