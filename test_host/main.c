@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1056
+#define TEST_MAX_NUMBER 1057
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -2188,6 +2188,191 @@ static BOOL test1056_browser_native_edit_contract(void)
             "Browser-owned native EDIT beforeinput/input/change state\n"
             "covers cancellation, commit metadata, dirty tracking, blur\n"
             "ordering and reset without owning WM EDIT or IME behavior.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 1057 - browser-owned native SELECT commit ordering              */
+/* The Ex adapter owns input -> change and target-shape state; the mock
+ * supplies only the typed core propagation callback.                    */
+typedef struct test1057_native_select_state {
+    int return_code;
+    int calls;
+    int input_calls;
+    int change_calls;
+    unsigned long target_token;
+    int multiple;
+    int selected_index;
+    int selected_count;
+    char sequence[32];
+} test1057_native_select_state;
+
+static int test1057_sequence_append(test1057_native_select_state *state,
+        char value)
+{
+    size_t length;
+
+    if (state == NULL) {
+        return -1;
+    }
+    length = strlen(state->sequence);
+    if (length + 1 >= sizeof(state->sequence)) {
+        return -1;
+    }
+    state->sequence[length] = value;
+    state->sequence[length + 1] = '\0';
+    return 0;
+}
+
+static int test1057_native_select_dispatch(void *pw,
+        const PBrowserScriptNativeSelectEventInfo *info)
+{
+    test1057_native_select_state *state;
+
+    state = (test1057_native_select_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptNativeSelectEventInfo) ||
+            info->target_token == 0 || info->event_type == NULL ||
+            info->bubbles != 1 || info->cancelable != 0 ||
+            (strcmp(info->event_type, "input") != 0 &&
+            strcmp(info->event_type, "change") != 0) ||
+            test1057_sequence_append(state,
+            strcmp(info->event_type, "input") == 0 ? 'I' : 'C') != 0) {
+        return -1;
+    }
+    state->calls++;
+    if (strcmp(info->event_type, "input") == 0) {
+        state->input_calls++;
+    } else {
+        state->change_calls++;
+    }
+    state->target_token = info->target_token;
+    state->multiple = info->multiple;
+    state->selected_index = info->selected_index;
+    state->selected_count = info->selected_count;
+    return state->return_code;
+}
+
+static BOOL test1057_browser_native_select_contract(void)
+{
+    PBrowserScriptNativeSelectCallbacksEx callbacks;
+    PBrowserScriptNativeSelectCommitInfo info;
+    test1057_native_select_state state;
+    HANDLE session;
+    const char *stage;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_select = test1057_native_select_dispatch;
+    info.size = sizeof(info);
+    info.target_token = 9;
+    info.x = 21;
+    info.y = 43;
+    info.multiple = 0;
+    info.selected_index = 1;
+    info.selected_count = 1;
+    stage = "create";
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(NULL,
+                &callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(session,
+                &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-register";
+        ok = PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(session,
+                &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(session, NULL);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+    }
+    if (ok) {
+        stage = "invalid-single-count";
+        info.selected_count = 2;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 0;
+        info.selected_count = 1;
+    }
+    if (ok) {
+        stage = "single-commit";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(session, &info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "IC") == 0 &&
+                state.calls == 2 && state.input_calls == 1 &&
+                state.change_calls == 1 && state.target_token == 9 &&
+                state.multiple == 0 && state.selected_index == 1 &&
+                state.selected_count == 1;
+    }
+    if (ok) {
+        stage = "shape-mismatch";
+        info.multiple = 1;
+        info.selected_index = -1;
+        info.selected_count = 2;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 2;
+        info.target_token = 10;
+    }
+    if (ok) {
+        stage = "multi-commit";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(session, &info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "ICIC") == 0 &&
+                state.calls == 4 && state.multiple == 1 &&
+                state.selected_index == -1 && state.selected_count == 2;
+    }
+    if (ok) {
+        stage = "callback-error";
+        state.return_code = -1;
+        info.target_token = 11;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(session, &info);
+        ok = rc == PSCRIPT_ERROR_NATIVE &&
+                strcmp(state.sequence, "ICICI") == 0 && state.calls == 5;
+        state.return_code = 0;
+    }
+    if (ok) {
+        stage = "reset";
+        state.sequence[0] = '\0';
+        rc = PBrowser_ScriptSessionResetNativeSelectState(session);
+        info.target_token = 9;
+        info.multiple = 1;
+        info.selected_index = -1;
+        info.selected_count = 2;
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionDispatchNativeSelectCommit(
+                session, &info) == PSCRIPT_OK &&
+                strcmp(state.sequence, "IC") == 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterNativeSelectCallbacksEx(
+                session) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionDispatchNativeSelectCommit(
+                session, &info) == PSCRIPT_ERROR_ARGUMENT &&
+                PBrowser_ScriptSessionResetNativeSelectState(session) ==
+                PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1057 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1057 OK",
+            "Browser-owned native SELECT input/change ordering covers\n"
+            "adapter error and target reset without owning WM SELECT\n"
+            "or core selection mutation.");
     return TRUE;
 }
 
@@ -4212,6 +4397,8 @@ static int pcore_browser_script_dispatch_native_edit_beforeinput(
 static int pcore_browser_script_dispatch_native_edit_input(HWND control);
 static void pcore_browser_script_dispatch_native_edit_blur(HWND control);
 static void pcore_browser_script_reset_native_edit_state(void);
+static int pcore_browser_script_dispatch_native_select_commit(HWND control);
+static void pcore_browser_script_reset_native_select_state(void);
 static int pcore_browser_script_dispatch_composition_event(HWND control,
         const char *event_type, const char *data, int cancelable);
 static int pcore_browser_script_input_dispatch(void *pw,
@@ -4226,6 +4413,8 @@ static int pcore_browser_script_edit_dispatch(void *pw,
         const PBrowserScriptEditEventInfo *info);
 static int pcore_browser_script_select_dispatch(void *pw,
         const PBrowserScriptSelectEventInfo *info);
+static int pcore_browser_script_native_select_dispatch(void *pw,
+        const PBrowserScriptNativeSelectEventInfo *info);
 static int pcore_browser_script_click_dispatch(void *pw,
         const PBrowserScriptClickEventInfo *info,
         int *out_default_allowed);
@@ -5010,6 +5199,26 @@ static int pcore_browser_script_select_dispatch(void *pw,
     if (bridge == NULL || bridge->document == NULL || info == NULL ||
             info->size < sizeof(PBrowserScriptSelectEventInfo) ||
             info->event_type == NULL ||
+            (strcmp(info->event_type, "input") != 0 &&
+            strcmp(info->event_type, "change") != 0)) {
+        return -1;
+    }
+    result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, NULL);
+    return (result < 0) ? -1 : 0;
+}
+
+static int pcore_browser_script_native_select_dispatch(void *pw,
+        const PBrowserScriptNativeSelectEventInfo *info)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptNativeSelectEventInfo) ||
+            info->target_token == 0 || info->event_type == NULL ||
             (strcmp(info->event_type, "input") != 0 &&
             strcmp(info->event_type, "change") != 0)) {
         return -1;
@@ -5951,6 +6160,7 @@ static void pcore_native_selects_destroy(void)
 {
     unsigned int i;
 
+    pcore_browser_script_reset_native_select_state();
     g_native_select_syncing = 1;
     for (i = 0; i < g_native_select_count; i++) {
         if (g_native_selects[i].hwnd != NULL) {
@@ -6402,10 +6612,8 @@ static void pcore_native_select_changed(HWND select_window)
         g_native_select_syncing = 0;
         if (changed) {
             pcore_request_interaction_restyle(GetParent(select_window));
-            pcore_browser_script_dispatch_control_event(select_window,
-                    "input", 1);
-            pcore_browser_script_dispatch_control_event(select_window,
-                    "change", 1);
+            (void) pcore_browser_script_dispatch_native_select_commit(
+                    select_window);
         }
         return;
     }
@@ -6432,10 +6640,8 @@ static void pcore_native_select_changed(HWND select_window)
     }
     if (set_result == 0) {
         pcore_request_interaction_restyle(GetParent(select_window));
-        pcore_browser_script_dispatch_control_event(select_window,
-                "input", 1);
-        pcore_browser_script_dispatch_control_event(select_window,
-                "change", 1);
+        (void) pcore_browser_script_dispatch_native_select_commit(
+                select_window);
     }
 }
 
@@ -8447,6 +8653,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptEditCallbacks edit_callbacks;
     PBrowserScriptNativeEditCallbacksEx native_edit_callbacks_ex;
     PBrowserScriptSelectCallbacks select_callbacks;
+    PBrowserScriptNativeSelectCallbacksEx native_select_callbacks_ex;
     PBrowserScriptClickCallbacks click_callbacks;
     PBrowserScriptProgrammaticClickCallbacksEx
             programmatic_click_callbacks_ex;
@@ -8603,6 +8810,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     select_callbacks.size = sizeof(select_callbacks);
     select_callbacks.pw = bridge;
     select_callbacks.dispatch_select = pcore_browser_script_select_dispatch;
+    native_select_callbacks_ex.size = sizeof(native_select_callbacks_ex);
+    native_select_callbacks_ex.pw = bridge;
+    native_select_callbacks_ex.dispatch_select =
+            pcore_browser_script_native_select_dispatch;
     click_callbacks.size = sizeof(click_callbacks);
     click_callbacks.pw = bridge;
     click_callbacks.dispatch_click = pcore_browser_script_click_dispatch;
@@ -8705,6 +8916,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &native_edit_callbacks_ex) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterSelectCallbacks(session,
             &select_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(session,
+            &native_select_callbacks_ex) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterClickCallbacks(session,
             &click_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx(session,
@@ -9918,6 +10131,71 @@ static int pcore_browser_script_dispatch_select_change_at(int x, int y)
     }
     rc = PCore_EventDispatchAt(g_render_doc, x, y, "change", 1, 0, NULL);
     return rc < 0 ? -1 : 1;
+}
+
+/* Native SELECT commits use the product-owned Ex adapter when browser
+ * scripting is active. The host still supplies the post-mutation geometry
+ * and selection snapshot; the fallback keeps the non-script path unchanged. */
+static int pcore_browser_script_dispatch_native_select_commit(HWND control)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeSelectCommitInfo commit_info;
+    PCoreSelectInfo select_info;
+    unsigned int i;
+    int x;
+    int y;
+    int rc;
+
+    if (control == NULL || g_render_doc == NULL) {
+        return -1;
+    }
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd == control &&
+                PCore_SelectInfo(g_render_doc,
+                g_native_selects[i].select_index, &select_info) == 0) {
+            x = select_info.x + select_info.width / 2;
+            y = select_info.y + select_info.height / 2;
+            bridge = g_browser_script_session.bridge;
+            if (g_browser_script_session.document == g_render_doc &&
+                    g_browser_script_session.runtime != NULL &&
+                    bridge != NULL && bridge->session != NULL) {
+                memset(&commit_info, 0, sizeof(commit_info));
+                commit_info.size = sizeof(commit_info);
+                commit_info.target_token =
+                        g_native_selects[i].select_index + 1UL;
+                commit_info.x = x;
+                commit_info.y = y;
+                commit_info.multiple = select_info.multiple ? 1 : 0;
+                commit_info.selected_index = select_info.selected_index;
+                commit_info.selected_count = select_info.selected_count;
+                rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(
+                        bridge->session, &commit_info);
+                return rc == PSCRIPT_OK ? 1 : -1;
+            }
+            rc = PCore_EventDispatchAt(g_render_doc, x, y, "input", 1, 0,
+                    NULL);
+            if (rc < 0) {
+                return -1;
+            }
+            rc = PCore_EventDispatchAt(g_render_doc, x, y, "change", 1, 0,
+                    NULL);
+            return rc < 0 ? -1 : 1;
+        }
+    }
+    return -1;
+}
+
+static void pcore_browser_script_reset_native_select_state(void)
+{
+    pcore_browser_script_bridge *bridge;
+
+    bridge = g_browser_script_session.bridge;
+    if (g_browser_script_session.document != NULL &&
+            g_browser_script_session.runtime != NULL &&
+            bridge != NULL && bridge->session != NULL) {
+        (void) PBrowser_ScriptSessionResetNativeSelectState(
+                bridge->session);
+    }
 }
 
 /* Native checkbox/radio controls use the existing typed input contract. The
@@ -68867,6 +69145,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1054: ok = test1054_tls_peer_infrastructure(); break;
         case 1055: ok = test1055_browser_programmatic_activation_contract(); break;
         case 1056: ok = test1056_browser_native_edit_contract(); break;
+        case 1057: ok = test1057_browser_native_select_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -122,6 +122,27 @@ scripts\device_gate.bat -Candidate next608-native-edit-regression ^
 
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
+### next609 native SELECT commit 迁移自动门
+
+next609 将 native SELECT 在 Core selection mutation 成功后的 `input` → `change` 顺序与
+bounded target-shape state 迁入 `positron_browser.dll` 的
+`PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()`。宿主仍拥有 WM SELECT 键盘消息、
+typed key cancellation、Core selection mutation、窗口重绘和平台副作用。TEST1057 是不依赖
+窗口的 ABI 契约，TEST67/71/118 覆盖单选、多选和键盘 native 控件路径，TEST999 保留退出提示音。
+
+窄定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next609-native-select-r1 ^
+  -EnableJavaScript ^
+  -TestSelection "67,71,118,1057,999"
+```
+
+当前证据位于 `tmp/device-runs/20260823-174421-next609-native-select-r1/`：5/5 通过、零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有视觉、真实触摸、旋转、
+系统 picker 或 OEM SIP/IME 人工门；tracked `test_host.ini` 仍保持 `javascript=0` 的默认
+自动 smoke 选择。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

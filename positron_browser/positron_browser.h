@@ -493,6 +493,50 @@ typedef struct PBrowserScriptSelectCallbacks {
     PBrowserScriptDispatchSelectFn dispatch_select;
 } PBrowserScriptSelectCallbacks;
 
+/* Product-owned native SELECT commit. The host calls this only after its
+ * native WM control and core selection mutation have succeeded. The browser
+ * layer emits the non-cancelable input -> change pair in that order and keeps
+ * bounded target-shape state until reset or session destruction. target_token
+ * is host-owned, non-zero and stable for the lifetime of one native SELECT;
+ * it is not a window handle or a DOM pointer. selected_index is -1 when the
+ * host has no single selected option; selected_count is always non-negative.
+ * Strings are not used, so the contract is safe for bounded C89 consumers. */
+typedef struct PBrowserScriptNativeSelectCommitInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    int multiple;
+    int selected_index;
+    int selected_count;
+} PBrowserScriptNativeSelectCommitInfo;
+#define PBROWSER_SCRIPT_NATIVE_SELECT_MAX_TARGETS 16
+
+typedef struct PBrowserScriptNativeSelectEventInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    const char *event_type;
+    int bubbles;
+    int cancelable;
+    int multiple;
+    int selected_index;
+    int selected_count;
+} PBrowserScriptNativeSelectEventInfo;
+typedef int (*PBrowserScriptDispatchNativeSelectFn)(void *pw,
+        const PBrowserScriptNativeSelectEventInfo *info);
+
+/* Additive native SELECT adapter. The browser layer owns the commit event
+ * ordering and bounded target contract; the host supplies only core event
+ * propagation and keeps WM SELECT, selection mutation and repaint side
+ * effects. Keyboard cancellation remains the existing typed key callback. */
+typedef struct PBrowserScriptNativeSelectCallbacksEx {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptDispatchNativeSelectFn dispatch_select;
+} PBrowserScriptNativeSelectCallbacksEx;
+
 /* Typed host adapter for product-owned native click events. The browser
  * layer owns the click-event contract and dispatch entry point; the host
  * supplies core hit-testing/propagation for the document coordinates. x/y
@@ -898,6 +942,21 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterSelectCallbacks(
  * adapter. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchSelectEvent(HANDLE hSession,
         const PBrowserScriptSelectEventInfo *info);
+PBROWSER_API int PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptNativeSelectCallbacksEx *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterNativeSelectCallbacksEx(
+        HANDLE hSession);
+/* Notify the product layer that a native SELECT value/selection was
+ * committed. The browser dispatches input then change; the host remains the
+ * owner of the WM control and core selection mutation. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectCommit(
+        HANDLE hSession,
+        const PBrowserScriptNativeSelectCommitInfo *info);
+/* Drop all bounded native SELECT target state before native controls are
+ * destroyed or rebuilt for a new document/layout. */
+PBROWSER_API int PBrowser_ScriptSessionResetNativeSelectState(
+        HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterClickCallbacks(
         HANDLE hSession, const PBrowserScriptClickCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterClickCallbacks(

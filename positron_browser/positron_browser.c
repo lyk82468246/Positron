@@ -3358,6 +3358,19 @@ typedef struct p_browser_script_select_binding {
     PBrowserScriptSelectCallbacks callbacks;
 } p_browser_script_select_binding;
 
+typedef struct p_browser_script_native_select_state {
+    unsigned long target_token;
+    int used;
+    int shape_set;
+    int multiple;
+} p_browser_script_native_select_state;
+
+typedef struct p_browser_script_native_select_binding {
+    PBrowserScriptNativeSelectCallbacksEx callbacks;
+    p_browser_script_native_select_state states[
+            PBROWSER_SCRIPT_NATIVE_SELECT_MAX_TARGETS];
+} p_browser_script_native_select_binding;
+
 typedef struct p_browser_script_click_binding {
     PBrowserScriptClickCallbacks callbacks;
 } p_browser_script_click_binding;
@@ -3406,6 +3419,7 @@ typedef struct p_browser_script_session {
     p_browser_script_edit_binding *edit;
     p_browser_script_native_edit_binding *native_edit;
     p_browser_script_select_binding *select;
+    p_browser_script_native_select_binding *native_select;
     p_browser_script_click_binding *click;
     p_browser_script_programmatic_click_binding *programmatic_click;
     p_browser_script_form_event_binding *form_event;
@@ -4873,6 +4887,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->edit = NULL;
     session->native_edit = NULL;
     session->select = NULL;
+    session->native_select = NULL;
     session->click = NULL;
     session->programmatic_click = NULL;
     session->form_event = NULL;
@@ -4980,6 +4995,10 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     if (session->select != NULL) {
         free(session->select);
         session->select = NULL;
+    }
+    if (session->native_select != NULL) {
+        free(session->native_select);
+        session->native_select = NULL;
     }
     if (session->click != NULL) {
         free(session->click);
@@ -6338,6 +6357,156 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchSelectEvent(HANDLE hSession,
     if (rc < 0) {
         return PSCRIPT_ERROR_NATIVE;
     }
+    return PSCRIPT_OK;
+}
+
+static p_browser_script_native_select_state *
+p_browser_script_native_select_state_find(
+        p_browser_script_native_select_binding *binding,
+        unsigned long target_token, int create)
+{
+    unsigned int i;
+    p_browser_script_native_select_state *free_state;
+
+    if (binding == NULL || target_token == 0) {
+        return NULL;
+    }
+    free_state = NULL;
+    for (i = 0; i < PBROWSER_SCRIPT_NATIVE_SELECT_MAX_TARGETS; i++) {
+        if (binding->states[i].used &&
+                binding->states[i].target_token == target_token) {
+            return &binding->states[i];
+        }
+        if (!binding->states[i].used && free_state == NULL) {
+            free_state = &binding->states[i];
+        }
+    }
+    if (!create || free_state == NULL) {
+        return NULL;
+    }
+    memset(free_state, 0, sizeof(*free_state));
+    free_state->used = 1;
+    free_state->target_token = target_token;
+    return free_state;
+}
+
+static int p_browser_script_native_select_info_valid(
+        const PBrowserScriptNativeSelectCommitInfo *info)
+{
+    if (info == NULL || info->size < sizeof(*info) ||
+            info->target_token == 0 ||
+            (info->multiple != 0 && info->multiple != 1) ||
+            info->selected_index < -1 || info->selected_count < 0) {
+        return 0;
+    }
+    if (!info->multiple && info->selected_count > 1) {
+        return 0;
+    }
+    return 1;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptNativeSelectCallbacksEx *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_select_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptNativeSelectCallbacksEx) ||
+            callbacks->dispatch_select == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->native_select != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_native_select_binding *) calloc(1,
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    session->native_select = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterNativeSelectCallbacksEx(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->native_select == NULL) {
+        return PSCRIPT_OK;
+    }
+    free(session->native_select);
+    session->native_select = NULL;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectCommit(
+        HANDLE hSession, const PBrowserScriptNativeSelectCommitInfo *info)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_select_state *state;
+    PBrowserScriptNativeSelectEventInfo event_info;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->native_select == NULL ||
+            !p_browser_script_native_select_info_valid(info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state = p_browser_script_native_select_state_find(session->native_select,
+            info->target_token, 1);
+    if (state == NULL) {
+        return PSCRIPT_ERROR_NATIVE_LIMIT;
+    }
+    if (state->shape_set && state->multiple != info->multiple) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state->shape_set = 1;
+    state->multiple = info->multiple;
+    memset(&event_info, 0, sizeof(event_info));
+    event_info.size = sizeof(event_info);
+    event_info.target_token = info->target_token;
+    event_info.x = info->x;
+    event_info.y = info->y;
+    event_info.bubbles = 1;
+    event_info.cancelable = 0;
+    event_info.multiple = info->multiple;
+    event_info.selected_index = info->selected_index;
+    event_info.selected_count = info->selected_count;
+    event_info.event_type = "input";
+    rc = session->native_select->callbacks.dispatch_select(
+            session->native_select->callbacks.pw, &event_info);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    event_info.event_type = "change";
+    rc = session->native_select->callbacks.dispatch_select(
+            session->native_select->callbacks.pw, &event_info);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionResetNativeSelectState(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->native_select == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memset(session->native_select->states, 0,
+            sizeof(session->native_select->states));
     return PSCRIPT_OK;
 }
 

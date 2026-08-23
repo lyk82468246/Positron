@@ -47,15 +47,25 @@ TEST1056 的成功/取消/显式 fallback/reset/unregister 断言，以及 TEST2
 已在真实 WM6 设备上通过。WM 控件、文本 mutation、composition 生命周期、SIP/IME 和 SELECT
 键盘仍不在本批产品语义内。
 
-### 3. next609：native SELECT 键盘/选择事件纵切
+### 3. next609：native SELECT 键盘/选择事件纵切（已完成）
 
-审计 `test_host` 中尚存的 native SELECT 键盘消息、选择 mutation 与 input/change 顺序，选择
-一套可由自动断言覆盖的完整纵切迁入 `positron_browser`（必要时补充 `positron_core` ABI）。
-宿主继续拥有 WM SELECT 控件、窗口重绘、core selection mutation 和平台副作用；不得把
-SIP/IME OEM 行为伪装成产品兼容性，也不得重做 next607/608 的状态策略。该批需提供稳定 ABI、
-取消/销毁断言和相关设备门。
+next609 将 native SELECT 在 Core selection mutation 成功后的 `input` → `change` 顺序迁入
+`positron_browser.dll`：新增 additive `PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()`、
+commit 和 reset 入口，由 browser layer 校验 stable token、single/multiple 形状并保持有界
+target state。宿主仍拥有 WM SELECT 键盘消息、typed key cancellation、窗口重绘、Core
+selection mutation 和平台副作用；不把 SIP/IME OEM 行为伪装成产品兼容性，也没有重做
+next607/608。TEST1057 的注册/非法输入/顺序/错误/reset/unregister 断言与 TEST67、71、118、
+999 的真实设备门均通过。
 
-### 4. 建立真实页面驱动的兼容队列
+### 4. next610：剩余 native SELECT/表单边界的真实行为审计
+
+以真实页面和设备日志为依据，优先处理 native SELECT 键盘默认动作、焦点/关闭下拉、SIP/IME
+候选词或其他已能复现的表单缺口；若没有可重复产品缺口，再继续迁移下一条仍由宿主独占的
+form/input 语义。保持 next609 的边界：browser layer 持有可发布策略，宿主只保留 WM、Core
+mutation、窗口和 OEM 平台副作用；每批提供目标自动门，只有视觉/触摸/SIP/旋转/picker 风险
+才累计人工验收。
+
+### 5. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -66,7 +76,7 @@ SIP/IME OEM 行为伪装成产品兼容性，也不得重做 next607/608 的状�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 5. 安排新的全范围检查点
+### 6. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

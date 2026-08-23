@@ -18,6 +18,14 @@ native EDIT 输入由 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` �
 和 blur/change 顺序不再由宿主保存。宿主仍拥有 WM EDIT、文本 mutation、composition、SIP/IME、
 焦点窗口和重绘。TEST1056 是该公共 ABI 的 mock 契约，TEST228–230/1055/999 是相关设备回归。
 
+native SELECT 的 `input` → `change` 提交顺序由
+`PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()` /
+`PBrowser_ScriptSessionDispatchNativeSelectCommit()` 提供。宿主 subclass 仍处理 WM 键盘和
+选择控件，成功后把 Core selection snapshot 与 token 交给 browser DLL；键盘取消仍沿 typed
+key callback 的 default-allowed 返回值决定是否继续交给 WM 控件。宿主不保存 SELECT 事件
+顺序状态，但负责控件销毁/重建前调用 reset。TEST1057 是 Ex ABI 契约，TEST67/71/118/999
+覆盖单选、多选和键盘回归。
+
 ## 构建与部署
 
 从仓库根目录使用正式工程配置：

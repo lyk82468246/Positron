@@ -15,10 +15,10 @@
 
 ## 当前仓库基线
 
-- 分支：`main`；本批开始时基线为 `8781de22 next607: move programmatic form activation policy to browser`，交付时必须
+- 分支：`main`；本批开始时基线为 `2e4ea8d1 next608: move native edit transaction policy to browser`，交付时必须
   重新核对远端和工作区，不能沿用这一结论。
-- 当前能力批次：next608，native EDIT 输入事务语义迁移。
-- 测试编号上限：`TEST_MAX_NUMBER 1056`。
+- 当前能力批次：next609，native SELECT commit 事件语义迁移。
+- 测试编号上限：`TEST_MAX_NUMBER 1057`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -33,8 +33,8 @@ HTML、CSS、表单、DOM 与单一 Duktape 引擎组合成可预测、资源有
 轻量 Web 运行时。
 
 next606 是一次已完成的安全基础设施中断：把仅有互联网客户端能力的 `positron_tls.dll`
-扩展为可供 LocalSend 一类消费者复用的 peer TLS ABI v2。next607 已恢复浏览器产品语义
-迁移；next608 继续迁移 native EDIT 的输入事务，不扩张 TLS 协议层。
+扩展为可供 LocalSend 一类消费者复用的 peer TLS ABI v2。next607–609 已恢复并继续浏览器
+产品语义迁移；next609 只处理 native SELECT commit 事件，不扩张 TLS 协议层。
 
 ## 已验证的产品状态
 
@@ -58,8 +58,12 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   持有 bounded beforeinput pending metadata、native commit 到 input 的转换、dirty 状态和
   blur/change 一次性顺序；`test_host` 只提供 WM EDIT 消息、文本值提交、几何和 core 事件
   propagation。该批不把 WM 控件、IME/SIP、焦点窗口或文本 mutation 搬入产品 DLL。
-- native SELECT 键盘/选择适配、OEM SIP/IME composition 生命周期、系统 picker 和导航副作用
-  仍需后续逐项迁移或人工验收，不能笼统宣称 native form/input 已完成。
+- next609 在 `positron_browser.dll` 增加了 additive 的
+  `PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()` 与 commit/reset 入口：DLL
+  持有 native SELECT commit 后不可取消的 input→change 顺序、single/multiple 形状校验和
+  16-token bounded state；`test_host` 只提供 WM SELECT 键盘、Core selection mutation、
+  几何和 core 事件传播。native SELECT 的 WM 默认动作、OEM SIP/IME composition 生命周期、
+  系统 picker 和导航副作用仍需后续逐项迁移或人工验收，不能笼统宣称 native form/input 已完成。
 
 ## 最近验证证据
 
@@ -107,6 +111,17 @@ next608 的 native EDIT 自动门：
   INI 未修改，仍为 `javascript=0` 的窄 smoke 选择。本批没有新增视觉、
   真实触摸、旋转、picker 或 OEM SIP/IME 人工门。
 
+next609 的 native SELECT 自动门：
+
+- `tmp/device-runs/20260823-174421-next609-native-select-r1/device-gate-result.txt`
+  — PASS，5/5（TEST67、71、118、1057、999），错误与失败均为 0，唯一 PASS，路由正确。
+- TEST1057 覆盖 Ex 注册/重复注册、非法 single 快照、input→change 顺序、single/multiple
+  形状冲突、adapter error、reset 和 unregister；TEST67/71/118 在真实 WM6 控件上覆盖单选、
+  多选和键盘路径，证明宿主 WM/Core 适配仍能启动并完整退出。
+- C89 检查、Debug/Release 正式 ARMV4I 构建、仓库/文档审计和相关设备门均已通过。tracked
+  INI 未修改，仍为 `javascript=0` 的窄 smoke 选择。本批没有新增视觉、
+  真实触摸、旋转、picker 或 OEM SIP/IME 人工门。
+
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
 ## 当前已知边界
@@ -124,25 +139,25 @@ next608 的 native EDIT 自动门：
 
 ## 当前工作区与候选状态
 
-- next608 的 Debug/Release 候选、导出表和仓库审计均已通过。
-- next608 的 tracked 改动应只覆盖 `positron_browser` 的 native EDIT Ex ABI、`test_host`
-  消费者/TEST1056 与对应交接/架构/测试文档；提交时不要把 `tmp/` 设备证据或无关工作区
+- next609 的 Debug/Release 构建、相关设备门和仓库/文档审计均已通过。
+- next609 的 tracked 改动应只覆盖 `positron_browser` 的 native SELECT Ex ABI、`test_host`
+  消费者/TEST1057 与对应交接/架构/测试文档；提交时不要把 `tmp/` 设备证据或无关工作区
   文件带入。
-- 首次 next608 候选因 input callback 在 pending buffer 清空后才读 metadata 而失败，已修复
-  为回调完成后清空并在 r2 设备门通过；不要恢复首个失败候选。
+- next609 首个候选已一次通过；若后续出现选择事件错误，应先保留 Core mutation 与 WM 控件
+  边界，不要通过跳过 input/change 断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
 - 接手者必须先检查工作区；任何未提交改动默认属于用户，不能覆盖。
 
 ## 唯一下一步
 
-next609：迁移剩余 native SELECT 的键盘/选择事件纵切（或由真实页面证据证明更高优先级的
-form/input 缺口）。复用 next608 的产品/宿主边界：browser layer 持有事件策略与状态，宿主
-只保留 WM SELECT 消息、core selection mutation、窗口重绘和平台副作用；不得把 SIP/IME 的
-OEM 行为伪装成已迁移语义，也不得重做 next607/608。
+next610：依据真实页面和设备日志审计剩余 native SELECT/表单边界，优先处理可重复的键盘默认
+动作、焦点/关闭下拉、SIP/IME 候选词或其他表单缺口。复用 next609 的产品/宿主边界：browser
+layer 持有事件策略与状态，宿主只保留 WM 控件、Core mutation、窗口重绘和平台副作用；不得
+把 OEM 行为伪装成已迁移语义，也不得重做 next607–609。
 
 不要为了填充 next 编号加入互不相关的小 API，也不要顺便重构其他模块。
 
-## next608 完成标准
+## next609 完成标准
 
 - 产品级语义不再由 `test_host` 独占，宿主通过公共 API 消费它。
 - 公共 ABI、UTF-8、opaque handle、内存所有权及 VS2008 / WM6 ARMV4I / C89 兼容性不退化。

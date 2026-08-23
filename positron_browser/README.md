@@ -28,6 +28,15 @@ core propagation callback，并为每个 native EDIT 传入稳定的非零 sessi
 文本 mutation、焦点窗口、composition 生命周期、SIP/IME 或 SELECT 控件。旧的独立 input/edit
 注册入口继续兼容其他宿主。
 
+native SELECT 的产品提交入口是 additive 的
+`PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()`。宿主在 WM SELECT 控件和
+`PCore_SelectSetOptionSelected()`/对应多选 mutation 成功后，传入稳定 token、几何和选择
+快照；browser layer 统一同步派发不可取消的 `input` → `change`，并校验同一 token 的
+single/multiple 形状。`PBrowser_ScriptSessionResetNativeSelectState()` 用于销毁或重建控件时
+丢弃有界 token 状态，最多跟踪 16 个 token。键盘 `keydown`/`keyup` 的取消仍通过已有的
+typed key callback 返回 default-allowed，由宿主决定是否让 WM 控件继续处理；该入口不拥有
+WM SELECT、Core selection mutation、窗口重绘、SIP/IME 或系统 picker。
+
 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 是向新消费者推荐的
 程序化表单激活入口。调用者提供 `get_target`（返回 checkbox/radio/submit/reset/file 的
 UTF-8 id、几何和 disabled）、`validate_submit`、`perform_default` 与
@@ -182,6 +191,14 @@ beforeinput 的取消与 pending input metadata、native value commit 到 input�
 propagation callback；session token 和字符串状态由 browser layer 有界保存，控件销毁/重建时
 由宿主调用 reset。该入口不拥有 WM EDIT、文本 mutation、焦点窗口、composition 生命周期、
 SIP/IME 或 SELECT。TEST1056 及 TEST228–230、1055、999 的 next608 设备门已通过。
+
+next609 将 native SELECT 的提交事件顺序迁入本 DLL：
+`PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()` 与
+`PBrowser_ScriptSessionDispatchNativeSelectCommit()` 在宿主完成 Core 选择 mutation 后，
+有界校验 stable token、single/multiple 形状和选择快照，并同步派发 `input` → `change`。
+宿主在控件销毁/重建前调用 `PBrowser_ScriptSessionResetNativeSelectState()`；WM SELECT、
+键盘 default-action、Core mutation、重绘和 SIP/IME 仍由宿主持有。TEST1057、67、71、118、
+999 的 next609 设备门已通过。
 
 ## 其他项目如何调用
 
