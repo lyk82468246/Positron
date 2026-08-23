@@ -119,6 +119,10 @@ next597 又补齐 `NamedNodeMap.setNamedItemNS()`/`removeNamedItemNS()` 与元�
 未知/非法 namespace、qualified name、非 Attr 输入和缺失删除均 fail closed。该批不引入新的
 core ABI、完整 NamespaceError、namespace declaration、XML/SVG parser、节点创建或 live
 collection；`TEST882–901` 定向门和 `TEST802-901` namespace 缩减回归均已通过。
+next598 又补齐 Attr 的 bounded leaf-node 语义：`isId`、live `textContent`、空
+`childNodes`/`hasChildNodes()`、null parent/sibling/child relations，以及 identity-based
+`isSameNode()` 和受控 name/value `isEqualNode()`。Attr 的 `ownerElement` 仍只是 owner metadata，
+不伪造成 element tree parent；`TEST902–921` 定向门和 `TEST802-921` 缩减回归均已通过。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

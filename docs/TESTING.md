@@ -365,6 +365,22 @@ null/空与 XML/XMLNS namespace、跨 owner Attr 的名称和值复制、source 
 大小写边界；不实现完整 NamespaceError、namespace declaration、XML/SVG parser、节点创建或
 live collection，因此不新增人工页面验收。tracked `test_host.ini` 仍保持 `javascript=0`。
 
+`next598` 在既有 Attr wrapper 上补齐 bounded leaf-node 语义，自动断言为 `TEST902–921`：
+
+```bat
+scripts\device_gate.bat -Candidate next598 ^
+  -EnableJavaScript ^
+  -TestSelection "902-921,999"
+```
+
+定向证据为 `tmp/device-runs/20260823-105508-next598/`，21/21 通过；namespace/Attr 缩减回归
+`TEST802-921,999` 在 `tmp/device-runs/20260823-105630-next598-regression/` 通过 121/121。
+两次均为零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖 `isId` 的
+无 namespace 边界、`textContent`/`value`/`nodeValue` live 往返与 coercion、空 childNodes 的
+length/item/iterator、null parent/sibling/child relations、owner metadata、Attr identity/equality、
+删除后的 wrapper 和 namespace metadata 组合；不实现完整 Attr tree、节点创建或 live collection，
+因此不新增人工页面验收。tracked `test_host.ini` 仍保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

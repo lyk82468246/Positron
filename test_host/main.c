@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 901
+#define TEST_MAX_NUMBER 921
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -61558,6 +61558,262 @@ static BOOL test901_browser_namespace_node_contract(void)
             "true|true|true|true|true", error, sizeof(error));
 }
 
+/* TEST 902 - the Attr leaf surface exposes its bounded node helpers. */
+static BOOL test902_browser_attr_leaf_method_types(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('id');"
+        "document.getElementById('result').textContent="
+        "String(typeof a.isId==='boolean')+'|'"
+        "+String(typeof a.hasChildNodes==='function')+'|'"
+        "+String(typeof a.isSameNode==='function')+'|'"
+        "+String(typeof a.isEqualNode==='function')+'|'"
+        "+String(a.parentNode===null);";
+    char error[384];
+    return test_browser_attribute_case(902, PROBE,
+            "true|true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 903 - only the unqualified HTML id Attr is reported as an ID. */
+static BOOL test903_browser_attr_is_id(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');e.setAttribute('xml:id','x');"
+        "var id=e.getAttributeNode('id');var data=e.getAttributeNode('data-a');"
+        "var xml=e.getAttributeNode('xml:id');document.getElementById('result').textContent="
+        "String(id.isId)+'|'+String(data.isId===false)+'|'+String(xml.isId===false);";
+    char error[384];
+    return test_browser_attribute_case(903, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 904 - isId is a read-only derived flag. */
+static BOOL test904_browser_attr_is_id_read_only(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('id');"
+        "try{a.isId=false;}catch(e){}document.getElementById('result').textContent="
+        "String(a.isId)+'|'+String(a.name==='id');";
+    char error[256];
+    return test_browser_attribute_case(904, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 905 - Attr.textContent reads the live attribute value. */
+static BOOL test905_browser_attr_text_content_read(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "document.getElementById('result').textContent=a.textContent+'|'"
+        "+String(a.textContent===a.value)+'|'+e.getAttribute('title');";
+    char error[256];
+    return test_browser_attribute_case(905, PROBE, "Hello|true|Hello", error,
+            sizeof(error));
+}
+
+/* TEST 906 - Attr.textContent writes through the existing bridge. */
+static BOOL test906_browser_attr_text_content_write(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "a.textContent='World';document.getElementById('result').textContent="
+        "a.value+'|'+e.getAttribute('title')+'|'+a.nodeValue;";
+    char error[256];
+    return test_browser_attribute_case(906, PROBE, "World|World|World", error,
+            sizeof(error));
+}
+
+/* TEST 907 - nodeValue and textContent remain one live value. */
+static BOOL test907_browser_attr_text_content_node_value(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('data-a');"
+        "a.nodeValue='two';document.getElementById('result').textContent="
+        "a.textContent+'|'+a.value+'|'+a.nodeValue;";
+    char error[256];
+    return test_browser_attribute_case(907, PROBE, "two|two|two", error,
+            sizeof(error));
+}
+
+/* TEST 908 - textContent uses String coercion for values. */
+static BOOL test908_browser_attr_text_content_coercion(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('data-a');"
+        "var v={toString:function(){return 'coerced';}};a.textContent=v;"
+        "document.getElementById('result').textContent=a.textContent;";
+    char error[256];
+    return test_browser_attribute_case(908, PROBE, "coerced", error,
+            sizeof(error));
+}
+
+/* TEST 909 - Attr is a leaf and has no child nodes. */
+static BOOL test909_browser_attr_leaf_children(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "var c=a.childNodes;document.getElementById('result').textContent="
+        "String(c.length===0)+'|'+String(a.hasChildNodes()===false)+'|'"
+        "+String(a.firstChild===null);";
+    char error[256];
+    return test_browser_attribute_case(909, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 910 - the empty Attr child collection has bounded item semantics. */
+static BOOL test910_browser_attr_child_collection_item(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('target').getAttributeNode('title').childNodes;"
+        "document.getElementById('result').textContent=String(c.item(0)===null)+'|'"
+        "+String(c.item(-1)===null)+'|'+String(c.item(1.5)===null);";
+    char error[256];
+    return test_browser_attribute_case(910, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 911 - the empty Attr child collection is iterable and immediately done. */
+static BOOL test911_browser_attr_child_collection_iterator(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('target').getAttributeNode('title').childNodes;"
+        "var it=c[Symbol.iterator]();var x=it.next();document.getElementById('result').textContent="
+        "String(x.done)+'|'+String(x.value===undefined);";
+    char error[256];
+    return test_browser_attribute_case(911, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 912 - Attr is not a child in the owner element tree. */
+static BOOL test912_browser_attr_leaf_parent(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.parentNode===null)+'|'"
+        "+String(a.parentElement===null)+'|'+String(a.ownerElement!==null);";
+    char error[256];
+    return test_browser_attribute_case(912, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 913 - Attr has no sibling or first/last child relation. */
+static BOOL test913_browser_attr_leaf_siblings(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.firstChild===null)+'|'"
+        "+String(a.lastChild===null)+'|'+String(a.previousSibling===null)+'|'"
+        "+String(a.nextSibling===null);";
+    char error[256];
+    return test_browser_attribute_case(913, PROBE, "true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 914 - owner metadata remains distinct from tree parent metadata. */
+static BOOL test914_browser_attr_owner_metadata(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.ownerElement===e)+'|'"
+        "+String(a.ownerDocument===document)+'|'+String(a.baseURI===e.baseURI);";
+    char error[256];
+    return test_browser_attribute_case(914, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 915 - isSameNode is identity-based for Attr wrappers. */
+static BOOL test915_browser_attr_same_node(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "var b=e.getAttributeNode('title');var c=e.getAttributeNode('data-a');"
+        "document.getElementById('result').textContent=String(a.isSameNode(b))+'|'"
+        "+String(a.isSameNode(a))+'|'+String(a.isSameNode(c)===false);";
+    char error[256];
+    return test_browser_attribute_case(915, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 916 - equal Attr wrappers may belong to different owners. */
+static BOOL test916_browser_attr_equal_node(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "p.setAttribute('title','Hello');var a=e.getAttributeNode('title');"
+        "var b=p.getAttributeNode('title');document.getElementById('result').textContent="
+        "String(a.isEqualNode(b))+'|'+String(a.isSameNode(b)===false)+'|'"
+        "+String(a.isEqualNode(a));";
+    char error[256];
+    return test_browser_attribute_case(916, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 917 - equality observes live value changes. */
+static BOOL test917_browser_attr_equal_value(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "p.setAttribute('title','Hello');var a=e.getAttributeNode('title');"
+        "var b=p.getAttributeNode('title');b.value='Other';document.getElementById('result').textContent="
+        "String(a.isEqualNode(b)===false)+'|'+a.value+'|'+b.value;";
+    char error[256];
+    return test_browser_attribute_case(917, PROBE, "true|Hello|Other", error,
+            sizeof(error));
+}
+
+/* TEST 918 - equality compares the attribute name as well as the value. */
+static BOOL test918_browser_attr_equal_name(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "p.setAttribute('data-a','1');var a=e.getAttributeNode('data-a');"
+        "var b=p.getAttributeNode('data-a');document.getElementById('result').textContent="
+        "String(a.isEqualNode(b))+'|'+String(a.isEqualNode(e.getAttributeNode('title'))===false);";
+    char error[256];
+    return test_browser_attribute_case(918, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 919 - invalid equality operands fail closed. */
+static BOOL test919_browser_attr_equal_invalid(void)
+{
+    static const char PROBE[] =
+        "var a=document.getElementById('target').getAttributeNode('title');"
+        "document.getElementById('result').textContent=String(a.isEqualNode(null)===false)+'|'"
+        "+String(a.isEqualNode({nodeType:1,name:'title',value:'Hello'})===false)+'|'"
+        "+String(a.isSameNode(null)===false);";
+    char error[256];
+    return test_browser_attribute_case(919, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 920 - removed Attr wrappers stay owner-associated but remain leaves. */
+static BOOL test920_browser_attr_removed_leaf(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var a=e.getAttributeNode('title');"
+        "e.removeAttribute('title');document.getElementById('result').textContent="
+        "String(a.ownerElement===e)+'|'+String(a.parentNode===null)+'|'"
+        "+String(a.textContent==='')+'|'+String(a.isId===false);";
+    char error[256];
+    return test_browser_attribute_case(920, PROBE, "true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 921 - the bounded Attr leaf contract composes with namespace metadata. */
+static BOOL test921_browser_attr_leaf_contract(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var ns='http://www.w3.org/XML/1998/namespace';"
+        "e.setAttributeNS(ns,'xml:lang','en');var a=e.getAttributeNodeNS(ns,'lang');"
+        "var c=a.childNodes;c.push('ignored');a.textContent='fr';document.getElementById('result').textContent="
+        "String(a.isId===false)+'|'+a.textContent+'|'+String(c.length===1)+'|'"
+        "+String(a.childNodes.length===0)+'|'+String(a.lookupPrefix(ns)==='xml');";
+    char error[384];
+    return test_browser_attribute_case(921, PROBE,
+            "true|fr|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -65287,6 +65543,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 901: ok =
                 test901_browser_namespace_node_contract();
+                break;
+        case 902: ok =
+                test902_browser_attr_leaf_method_types();
+                break;
+        case 903: ok =
+                test903_browser_attr_is_id();
+                break;
+        case 904: ok =
+                test904_browser_attr_is_id_read_only();
+                break;
+        case 905: ok =
+                test905_browser_attr_text_content_read();
+                break;
+        case 906: ok =
+                test906_browser_attr_text_content_write();
+                break;
+        case 907: ok =
+                test907_browser_attr_text_content_node_value();
+                break;
+        case 908: ok =
+                test908_browser_attr_text_content_coercion();
+                break;
+        case 909: ok =
+                test909_browser_attr_leaf_children();
+                break;
+        case 910: ok =
+                test910_browser_attr_child_collection_item();
+                break;
+        case 911: ok =
+                test911_browser_attr_child_collection_iterator();
+                break;
+        case 912: ok =
+                test912_browser_attr_leaf_parent();
+                break;
+        case 913: ok =
+                test913_browser_attr_leaf_siblings();
+                break;
+        case 914: ok =
+                test914_browser_attr_owner_metadata();
+                break;
+        case 915: ok =
+                test915_browser_attr_same_node();
+                break;
+        case 916: ok =
+                test916_browser_attr_equal_node();
+                break;
+        case 917: ok =
+                test917_browser_attr_equal_value();
+                break;
+        case 918: ok =
+                test918_browser_attr_equal_name();
+                break;
+        case 919: ok =
+                test919_browser_attr_equal_invalid();
+                break;
+        case 920: ok =
+                test920_browser_attr_removed_leaf();
+                break;
+        case 921: ok =
+                test921_browser_attr_leaf_contract();
                 break;
         default: ok = FALSE; break;
         }

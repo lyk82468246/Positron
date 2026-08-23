@@ -686,6 +686,22 @@ XML/SVG parser、节点创建、live collection、通用 DOM mutation 或新的 
 旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
 仍为 512 KiB。
 
+#### next598 的 Attr leaf-node 边界
+
+next598 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。Attr wrapper 现在提供 `isId`、可读写的 `textContent`、空的 `childNodes`、
+`hasChildNodes()`、null 的 `parentNode`/`parentElement`/首尾子节点/兄弟节点，以及
+identity-based `isSameNode()` 和受控的 `isEqualNode()`。`textContent`、`value`、`nodeValue`
+共用既有 attribute bridge；`isEqualNode()` 只比较 Attr nodeType/name/value，不能替代完整 DOM
+深结构相等。Attr 的 `ownerElement` 仍是 owner metadata，不是 tree parent。
+
+空 child collection 每次读取均是有界空 snapshot，支持 `item()` 和 iterator；调用者对返回数组的
+修改不会写回 DOM。`test_host.exe` 只提供 fixture、adapter 和 `TEST902–921` 自动断言；定向门
+21/21、缩减回归 121/121，证据位于 `tmp/device-runs/20260823-105508-next598/` 和
+`tmp/device-runs/20260823-105630-next598-regression/`。本批不提供通用 DOM tree、Attr parent
+挂接、节点创建、live collection 或新的 core ABI，也不涉及视觉、触摸、SIP、picker、旋转或网络
+失败人工门。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

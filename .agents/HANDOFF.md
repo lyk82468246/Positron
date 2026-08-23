@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next597（本批覆盖 `TEST882-901,999` 定向门和
-  `TEST802-901,999` namespace 缩减回归；next596 的证据仍覆盖至 TEST881，最近一次完整自动
+- 最新已验证产品基线：next598（本批覆盖 `TEST902-921,999` 定向门和
+  `TEST802-921,999` namespace/Attr 缩减回归；next597 的证据仍覆盖至 TEST901，最近一次完整自动
   基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
@@ -305,11 +305,11 @@
   API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面
   验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
-## 当前状态：next597
+## 当前状态：next598
 
-前两批单一 `next595`、`next596` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next597` 也
+前三批单一 `next595`、`next596`、`next597` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next598` 也
 已实现、构建并通过定向设备门及缩减相邻回归门，兼容子集沿用 next593 的已验证证据，其中本批 20 个自动断言使用
-`TEST882–901`
+`TEST902–921`
 编号，不再为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
@@ -434,6 +434,17 @@ wrapper identity；未知 prefix/URI、非法 qualified name、非 Attr 输入�
 XML/SVG parser、节点创建或 live collection。`TEST882-901,999` 在
 `tmp/device-runs/20260823-103228-next597-r3/` 通过 21/21；namespace 缩减回归
 `TEST802-901,999` 在 `tmp/device-runs/20260823-103700-next597-regression-r2/` 通过 101/101；
+两次均为零 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，
+不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；tracked
+`test_host.ini` 仍保持 `javascript=0`。
+
+`next598` 在既有 Attr wrapper 上补齐受控叶子节点语义：`isId` 只为无 namespace 的 `id` 返回
+true；`textContent` 与 live `value`/`nodeValue` 双向同步；`childNodes` 是每次读取均为空的
+有界集合，带 `item()`/iterator；`parentNode`、`parentElement`、首尾子节点和兄弟关系均为 null，
+`hasChildNodes()` 为 false；`isSameNode()` 只按 wrapper identity，`isEqualNode()` 只比较 Attr
+nodeType/name/value。该批不伪造 Attr 到 element tree 的 parent，也不扩展 core ABI。`TEST902-921,999`
+在 `tmp/device-runs/20260823-105508-next598/` 通过 21/21；namespace/Attr 缩减回归
+`TEST802-921,999` 在 `tmp/device-runs/20260823-105630-next598-regression/` 通过 121/121；
 两次均为零 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，
 不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；tracked
 `test_host.ini` 仍保持 `javascript=0`。
@@ -2968,7 +2979,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next597 之后选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next598 之后选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
@@ -2981,5 +2992,7 @@ SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
   `TESTBENCH PASS` 的完整证据；达到累计阈值或触及高风险基础设施时再跑全量；
 - 若只改变脚本状态/API，默认不要求人工视觉或 SIP 验收；若触及真实窗口、布局、触摸、SIP、
   旋转、系统 picker 或网络失败反馈，必须单独列入人工门；
+- TEST921/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/540/549/642–921/999` 缩减选择；
 - 只更新本批职责内的 handoff/限制/路线图，保持 tracked `test_host.ini` 的默认
   `javascript=0` 不变，并提交、推送本批 tracked 文件。

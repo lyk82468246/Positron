@@ -557,6 +557,15 @@ collection。`TEST882-901,999` 在 `tmp/device-runs/20260823-103228-next597-r3/`
 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、
 picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
 
+`next598` 作为单一批次在 browser 层补齐 Attr 的 bounded leaf-node 语义：`isId`、live
+`textContent`、空 `childNodes`/`hasChildNodes()`、null parent/sibling/child relations，以及
+identity-based `isSameNode()` 与受控 name/value `isEqualNode()`。Attr 不被伪造为 element tree 的
+子节点，也不扩展 core ABI 或通用 DOM mutation。`TEST902-921,999` 在
+`tmp/device-runs/20260823-105508-next598/` 通过 21/21，缩减回归 `TEST802-921,999` 在
+`tmp/device-runs/20260823-105630-next598-regression/` 通过 121/121；两次均无 ERROR/FAIL 且
+`TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、picker、
+旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
+
 ## 中期目标
 
 ### 浏览器 JavaScript 与 Web 平台

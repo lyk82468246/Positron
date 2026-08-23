@@ -93,6 +93,12 @@ wrapper 提供 `setAttributeNodeNS()`。null/空 namespace 与 XML/XMLNS 前缀�
 NamespaceError、namespace declaration、XML/SVG parser、节点创建、live collection 或新的
 core ABI；对应 `TEST882–901` 与 `TEST802–901` namespace 缩减回归已通过自动设备门。
 
+next598 又为 Attr wrapper 提供 bounded leaf-node 语义：`isId` 仅识别无 namespace 的 `id`，
+`textContent` 与 `value`/`nodeValue` live 同步；`childNodes` 始终为空但支持 `item()`/iterator，
+`hasChildNodes()` 为 false，parent/child/sibling 关系返回 null；`isSameNode()` 按 identity，
+`isEqualNode()` 只比较 nodeType/name/value。`ownerElement` 不会被伪装为 tree parent，也不新增
+core ABI、节点创建或 live collection；对应 `TEST902–921` 与 `TEST802–921` 缩减回归已通过自动设备门。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -132,7 +138,7 @@ PBrowser_ScriptSessionDestroy(session);
   基础 `compareDocumentPosition()`/受限 `matches()`/`closest()`/元素作用域 querySelector、form
   owner 与 `form.elements` collection、attribute count/name/value、`getAttributeNames()`、
   `attributes`/`Attr`/受限 NamedNodeMap（`length`、`item()`、named lookup、`getNamedItemNS()`、
-  `setNamedItemNS()`/`removeNamedItemNS()`、同 owner/跨 owner bounded mutation、元素
+  `setNamedItemNS()`/`removeNamedItemNS()`、同 owner/跨 owner bounded mutation、Attr leaf metadata、元素
   `setAttributeNS()`/`removeAttributeNS()`/`setAttributeNodeNS()`、
   iterator、indexed 0–7）、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
   `formNoValidate`/`min`/`max`/`step`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
