@@ -301,6 +301,9 @@ next618 当前候选的本地验证已完成，但设备门尚未形成证据：
   状态，证明工具不会再无限挂起，但仍没有设备通过证据。
 - 最新完整窄门 `tmp/device-runs/20260824-002732-next618-native-ime-result-final/` 也在 30 秒
   后明确超时，未部署设备程序或生成日志；阻塞仍限于 WMDC/RAPI 当前会话。
+- Windows Application Error/WER 还记录了 `svchost.exe_RapiMgr` 在 23:00、23:59:59 等时刻
+  以 `0xc0000008`（`ntdll.dll` 无效句柄）崩溃；`RapiMgr` 后续显示 Running 不能作为会话
+  健康证据。当前阻塞应按 WMDC/RapiMgr 主机故障处理，不修改产品或恢复 VMID 路径。
 - 需要关闭设备/模拟器 GUI 中遗留的 `test_host.exe`，确认 WMDC 只有当前唯一连接后重新
   断开/连接，再原样重跑窄门；恢复门槛见 `.agents/FAILED_EXPERIMENTS.md` 的 next618 条目。
 

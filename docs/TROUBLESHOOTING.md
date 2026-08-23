@@ -66,6 +66,15 @@ gate 对 `CeRapiInitEx()` 使用 30 秒有界事件等待。若等待超时，�
 远端主动关闭都表示当前 WMDC/RAPI 会话没有准备好，不是测试断言失败；先在 GUI 关闭遗留
 `test_host.exe`，断开并重新建立唯一设备连接，再重试一次。
 
+### `RapiMgr` 崩溃后服务仍显示 Running
+
+服务控制台显示 `RapiMgr` 为 Running 不能证明 RAPI 通道健康。本机 WER 曾记录
+`svchost.exe_RapiMgr` 在 23:00、23:59:59 等时刻以 `0xc0000008`（`ntdll.dll` 无效句柄）
+崩溃；此时 gate 会稳定地在 `CeRapiInitEx()` 超时，而不是返回设备测试结果。先关闭遗留
+设备进程并在 WMDC GUI 中断开/重新建立唯一连接；如果服务继续崩溃，再由用户决定是否重启
+WMDC/RapiMgr 或主机。不要把该错误归因于候选代码，也不要为非 `0x8007007E` 错误运行
+`repair_wmdc_rapi.bat` 或手工修改注册表。
+
 ### `CeRapiInit` 报 `0x8007007E`
 
 2026-08-22 的本机取证再次确认：WMDC UI、DMA 会话、`RapiMgr` 和 `WcesComm` 服务都可以正常，

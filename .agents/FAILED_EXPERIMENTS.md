@@ -157,6 +157,12 @@ Debug staging，但在打开当前 RAPI 会话后约 90 秒没有进入目录操
 最新完整窄门 `20260824-002732-next618-native-ime-result-final` 同样在 30 秒后明确超时，
 仍未部署设备程序或生成日志；这确认阻塞仍在 WMDC/RAPI 会话，而不是 next618 断言。
 
+进一步的本机 Application Error/WER 取证显示 `svchost.exe_RapiMgr` 在 2026-08-23
+23:00、23:59:59 等时刻发生 APPCRASH，异常码为 `0xc0000008`，故障模块为 `ntdll.dll`。
+服务随后可能仍显示 `Running`，但这不能证明 RAPI 会话健康。该证据把当前超时归因到
+WMDC/RapiMgr 主机环境；不要为此修改产品代码、恢复 VMID 绑定或套用只针对 `0x8007007E`
+的注册修复。恢复前提是用户在 GUI 中重建连接，必要时重启 WMDC/RapiMgr 或主机后再重跑。
+
 ### 早期 loading 条 — 已替代/部分暂挂
 
 问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。
