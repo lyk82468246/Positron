@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next600）
+## 当前状态（next601）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -246,6 +246,14 @@ next600 在上述 childNodes wrapper 上补齐 bounded `contains()`：文本、�
 live collection；`TEST942–961,999` 与 `TEST802–961,999` 分别通过 21/21、161/161，证据位于
 `tmp/device-runs/20260823-113402-next600/` 和
 `tmp/device-runs/20260823-113512-next600-regression/`。本批只涉及同步脚本 API/DOM snapshot，
+不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
+next601 为既有 `document.doctype` snapshot 补齐只读 `publicId`、`systemId`、`internalSubset`：
+HTML doctype 的默认值是空字符串、空字符串和 `null`；字段不可重定义或删除，且不改变既有
+DocumentType 的 identity、关系、namespace 或 URL 元数据。`TEST962–981,999` 与
+`TEST802–981,999` 最终分别通过 21/21、181/181，证据位于
+`tmp/device-runs/20260823-115525-next601/` 和
+`tmp/device-runs/20260823-115645-next601-regression/`。本批只涉及同步脚本 API/DOM snapshot，
 不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
 这些 API 的共同限制如下：

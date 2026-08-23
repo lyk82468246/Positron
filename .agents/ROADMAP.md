@@ -584,6 +584,14 @@ document 或非法对象误判为后代。实现复用受控 relation bridge，�
 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、picker、
 旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
 
+`next601` 作为单一批次为既有 `document.doctype` snapshot 补齐只读 `publicId`、`systemId` 和
+`internalSubset` 元数据；HTML doctype 默认值为空字符串、空字符串和 `null`，不可重定义或删除，
+且不改变既有 DocumentType 关系、identity、namespace 或 baseURI。`TEST962-981,999` 在
+`tmp/device-runs/20260823-115525-next601/` 通过 21/21，缩减回归 `TEST802-981,999` 在
+`tmp/device-runs/20260823-115645-next601-regression/` 通过 181/181；两次最终运行均无
+ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、
+SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
+
 ## 中期目标
 
 ### 浏览器 JavaScript 与 Web 平台

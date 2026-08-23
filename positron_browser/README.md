@@ -110,6 +110,12 @@ wrapper 自包含，父元素可包含直接子节点，owner/兄弟/document/�
 受控 relation bridge，不新增 core ABI、文本 mutation、节点创建或 live collection；对应
 `TEST942–961` 与 `TEST802–961` 缩减回归已通过自动设备门。
 
+next601 又为 `document.doctype` snapshot 提供只读 `publicId`、`systemId`、`internalSubset`：
+HTML doctype 默认值分别为空字符串、空字符串和 `null`，字段不可重定义或删除，且不改变既有
+DocumentType 的 branding、owner/root/position/contains、namespace 或 baseURI。该能力不解析
+DTD/实体、不提供节点 mutation 或新的 core ABI；对应 `TEST962–981` 与 `TEST802–981` 缩减回归
+已通过自动设备门。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：

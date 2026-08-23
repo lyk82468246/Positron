@@ -131,6 +131,10 @@ next600 又让 `childNodes` 返回的文本、注释和无 id 子节点 wrapper 
 wrapper 自包含，父元素可包含直接子节点，owner/兄弟/document/非法对象均 fail closed；实现复用
 受控 relation bridge，不引入文本 mutation、节点创建或新的 core ABI。`TEST942–961` 定向门和
 `TEST802-961` 缩减回归均已通过。
+next601 又为 `document.doctype` snapshot 补齐只读 `publicId`、`systemId`、`internalSubset`：
+HTML doctype 默认分别为 `""`、`""`、`null`，且不可重定义或删除；它不改变既有
+DocumentType 的关系、identity、namespace 或 baseURI。`TEST962–981` 定向门和
+`TEST802–981` 缩减回归均已通过。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

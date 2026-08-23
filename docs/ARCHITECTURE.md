@@ -729,6 +729,19 @@ document、null 和非法对象返回 false。无 id 子节点仍使用同步 bo
 `tmp/device-runs/20260823-113512-next600-regression/`。本批不提供文本 mutation、节点创建、
 新的 core ABI，也不涉及视觉、触摸、SIP、picker、旋转或网络失败人工门。
 
+#### next601 的 DocumentType 外部子集元数据边界
+
+next601 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。既有
+`document.doctype` wrapper 现在提供只读 `publicId`、`systemId` 和 `internalSubset`；当前
+HTML doctype 的值固定为空字符串、空字符串和 `null`。字段在 bootstrap 时定义为不可写、不可
+配置、可枚举属性，并随 frozen DocumentType snapshot 保持不变；它们不伪造外部 DTD、实体或
+解析器，也不改变 owner/root/position/contains、namespace 或 baseURI。
+
+`test_host.exe` 只提供 fixture、adapter 和 `TEST962–981` 自动断言；定向门 21/21、缩减回归
+181/181，证据位于 `tmp/device-runs/20260823-115525-next601/` 和
+`tmp/device-runs/20260823-115645-next601-regression/`。本批不新增 core ABI、DTD/实体解析、
+节点 mutation 或人工视觉/触摸/SIP/picker/旋转/网络失败门。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

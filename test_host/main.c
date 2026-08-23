@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 961
+#define TEST_MAX_NUMBER 981
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -62310,6 +62310,255 @@ static BOOL test961_browser_character_contains_contract(void)
             "true|true|true|true|true|true", error, sizeof(error));
 }
 
+/* TEST 962 - DocumentType exposes the three external-subset metadata fields. */
+static BOOL test962_browser_doctype_subset_method_types(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(typeof d.publicId==='string')+'|'"
+        "+String(typeof d.systemId==='string')+'|'"
+        "+String(d.internalSubset===null);";
+    char error[256];
+    return test_browser_child_node_case(962, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 963 - the HTML doctype has empty public/system identifiers and no subset. */
+static BOOL test963_browser_doctype_subset_defaults(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "d.publicId+'|'+d.systemId+'|'+String(d.internalSubset===null);";
+    char error[256];
+    return test_browser_child_node_case(963, PROBE, "||true", error,
+            sizeof(error));
+}
+
+/* TEST 964 - metadata is present as stable own properties on the snapshot. */
+static BOOL test964_browser_doctype_subset_own_properties(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(Object.prototype.hasOwnProperty.call(d,'publicId'))+'|'"
+        "+String(Object.prototype.hasOwnProperty.call(d,'systemId'))+'|'"
+        "+String(Object.prototype.hasOwnProperty.call(d,'internalSubset'));";
+    char error[256];
+    return test_browser_child_node_case(964, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 965 - repeated document.doctype reads preserve the metadata values. */
+static BOOL test965_browser_doctype_subset_stable_reads(void)
+{
+    static const char PROBE[] =
+        "var a=document.doctype,b=document.doctype;document.getElementById('result').textContent="
+        "String(a===b)+'|'+a.publicId+'|'+b.systemId+'|'"
+        "+String(a.internalSubset===b.internalSubset);";
+    char error[256];
+    return test_browser_child_node_case(965, PROBE, "true|||true", error,
+            sizeof(error));
+}
+
+/* TEST 966 - assignment cannot mutate the frozen metadata snapshot. */
+static BOOL test966_browser_doctype_subset_assignment(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;try{d.publicId='PUBLIC';d.systemId='SYSTEM';"
+        "d.internalSubset='subset';}catch(e){}document.getElementById('result').textContent="
+        "d.publicId+'|'+d.systemId+'|'+String(d.internalSubset===null);";
+    char error[256];
+    return test_browser_child_node_case(966, PROBE, "||true", error,
+            sizeof(error));
+}
+
+/* TEST 967 - redefining a non-configurable field fails closed. */
+static BOOL test967_browser_doctype_subset_define_property(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,threw=false;try{Object.defineProperty(d,'publicId',"
+        "{value:'changed'});}catch(e){threw=true;}document.getElementById('result').textContent="
+        "String(threw)+'|'+d.publicId;";
+    char error[256];
+    return test_browser_child_node_case(967, PROBE, "true|", error,
+            sizeof(error));
+}
+
+/* TEST 968 - deleting a non-configurable field leaves it observable. */
+static BOOL test968_browser_doctype_subset_delete(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;try{delete d.systemId;delete d.internalSubset;}catch(e){}"
+        "document.getElementById('result').textContent="
+        "String(Object.prototype.hasOwnProperty.call(d,'systemId'))+'|'"
+        "+String(Object.prototype.hasOwnProperty.call(d,'internalSubset'))+'|'"
+        "+d.systemId+'|'+String(d.internalSubset===null);";
+    char error[256];
+    return test_browser_child_node_case(968, PROBE, "true|true||true", error,
+            sizeof(error));
+}
+
+/* TEST 969 - descriptor flags match the read-only snapshot contract. */
+static BOOL test969_browser_doctype_subset_descriptors(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,a=Object.getOwnPropertyDescriptor(d,'publicId'),"
+        "b=Object.getOwnPropertyDescriptor(d,'internalSubset');"
+        "document.getElementById('result').textContent="
+        "String(a.writable===false)+'|'+String(a.configurable===false)+'|'"
+        "+String(a.enumerable===true)+'|'+String(b.writable===false);";
+    char error[256];
+    return test_browser_child_node_case(969, PROBE, "true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 970 - metadata participates in the enumerable own-key snapshot. */
+static BOOL test970_browser_doctype_subset_keys(void)
+{
+    static const char PROBE[] =
+        "var k=Object.keys(document.doctype);document.getElementById('result').textContent="
+        "String(k.indexOf('publicId')>=0)+'|'+String(k.indexOf('systemId')>=0)+'|'"
+        "+String(k.indexOf('internalSubset')>=0);";
+    char error[256];
+    return test_browser_child_node_case(970, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 971 - adding the metadata does not change DocumentType branding. */
+static BOOL test971_browser_doctype_subset_brand(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d[Symbol.toStringTag])+'|'+Object.prototype.toString.call(d)+'|'"
+        "+d.toString();";
+    char error[256];
+    return test_browser_child_node_case(971, PROBE,
+            "DocumentType|[object DocumentType]|[object DocumentType]", error,
+            sizeof(error));
+}
+
+/* TEST 972 - metadata does not alter core node identity or type. */
+static BOOL test972_browser_doctype_subset_node_metadata(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "d.nodeType+'|'+d.nodeName+'|'+d.name+'|'+String(d.nodeValue===null);";
+    char error[256];
+    return test_browser_child_node_case(972, PROBE, "10|html|html|true", error,
+            sizeof(error));
+}
+
+/* TEST 973 - owner, root and connection relations remain document-bound. */
+static BOOL test973_browser_doctype_subset_relations(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.ownerDocument===document)+'|'+String(d.parentNode===document)+'|'"
+        "+String(d.getRootNode()===document)+'|'+String(d.isConnected===true);";
+    char error[256];
+    return test_browser_child_node_case(973, PROBE, "true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 974 - the metadata fields do not create children or a mutable tree. */
+static BOOL test974_browser_doctype_subset_children(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.childNodes.length===0)+'|'+String(d.hasChildNodes()===false)+'|'"
+        "+String(d.firstChild===null)+'|'+String(d.lastChild===null);";
+    char error[256];
+    return test_browser_child_node_case(974, PROBE, "true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 975 - document child order still starts with doctype and root. */
+static BOOL test975_browser_doctype_subset_document_order(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,n=document.childNodes,e=document.documentElement;"
+        "document.getElementById('result').textContent="
+        "String(n[0]===d)+'|'+String(n[1]===e)+'|'+String(document.firstChild===d)+'|'"
+        "+String(document.lastChild===e);";
+    char error[256];
+    return test_browser_child_node_case(975, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 976 - document position remains independent of subset metadata. */
+static BOOL test976_browser_doctype_subset_position(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,e=document.documentElement;"
+        "document.getElementById('result').textContent=d.compareDocumentPosition(e)+'|'"
+        "+e.compareDocumentPosition(d)+'|'+document.compareDocumentPosition(d);";
+    char error[256];
+    return test_browser_child_node_case(976, PROBE, "4|2|20", error,
+            sizeof(error));
+}
+
+/* TEST 977 - doctype containment remains a document-only boundary. */
+static BOOL test977_browser_doctype_subset_contains(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,e=document.documentElement;"
+        "document.getElementById('result').textContent="
+        "String(d.contains(d))+'|'+String(d.contains(document)===false)+'|'"
+        "+String(document.contains(d))+'|'+String(e.contains(d)===false);";
+    char error[256];
+    return test_browser_child_node_case(977, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 978 - doctype equality and identity semantics remain unchanged. */
+static BOOL test978_browser_doctype_subset_equality(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.isSameNode(document.doctype))+'|'"
+        "+String(d.isEqualNode(document.doctype))+'|'"
+        "+String(d.isEqualNode({nodeType:10,nodeName:'html'}));";
+    char error[256];
+    return test_browser_child_node_case(978, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 979 - namespace metadata remains the null namespace for doctype. */
+static BOOL test979_browser_doctype_subset_namespace(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.namespaceURI===null)+'|'+String(d.prefix===null)+'|'"
+        "+String(d.isDefaultNamespace(null))+'|'"
+        "+String(d.lookupNamespaceURI('')===null);";
+    char error[256];
+    return test_browser_child_node_case(979, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 980 - doctype baseURI continues to follow the session document URL. */
+static BOOL test980_browser_doctype_subset_base_uri(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.baseURI===document.baseURI)+'|'+String(d.baseURI.length>0);";
+    char error[256];
+    return test_browser_url_metadata_case(980, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 981 - the complete DocumentType external-subset metadata contract. */
+static BOOL test981_browser_doctype_subset_contract(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "d.name+'|'+d.publicId+'|'+d.systemId+'|'"
+        "+String(d.internalSubset===null)+'|'+String(d.parentNode===document)+'|'"
+        "+String(d.contains(d))+'|'+String(document.contains(d));";
+    char error[384];
+    return test_browser_child_node_case(981, PROBE,
+            "html|||true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -66219,6 +66468,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 961: ok =
                 test961_browser_character_contains_contract();
+                break;
+        case 962: ok =
+                test962_browser_doctype_subset_method_types();
+                break;
+        case 963: ok =
+                test963_browser_doctype_subset_defaults();
+                break;
+        case 964: ok =
+                test964_browser_doctype_subset_own_properties();
+                break;
+        case 965: ok =
+                test965_browser_doctype_subset_stable_reads();
+                break;
+        case 966: ok =
+                test966_browser_doctype_subset_assignment();
+                break;
+        case 967: ok =
+                test967_browser_doctype_subset_define_property();
+                break;
+        case 968: ok =
+                test968_browser_doctype_subset_delete();
+                break;
+        case 969: ok =
+                test969_browser_doctype_subset_descriptors();
+                break;
+        case 970: ok =
+                test970_browser_doctype_subset_keys();
+                break;
+        case 971: ok =
+                test971_browser_doctype_subset_brand();
+                break;
+        case 972: ok =
+                test972_browser_doctype_subset_node_metadata();
+                break;
+        case 973: ok =
+                test973_browser_doctype_subset_relations();
+                break;
+        case 974: ok =
+                test974_browser_doctype_subset_children();
+                break;
+        case 975: ok =
+                test975_browser_doctype_subset_document_order();
+                break;
+        case 976: ok =
+                test976_browser_doctype_subset_position();
+                break;
+        case 977: ok =
+                test977_browser_doctype_subset_contains();
+                break;
+        case 978: ok =
+                test978_browser_doctype_subset_equality();
+                break;
+        case 979: ok =
+                test979_browser_doctype_subset_namespace();
+                break;
+        case 980: ok =
+                test980_browser_doctype_subset_base_uri();
+                break;
+        case 981: ok =
+                test981_browser_doctype_subset_contract();
                 break;
         default: ok = FALSE; break;
         }

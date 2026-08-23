@@ -412,6 +412,21 @@ scripts\device_gate.bat -Candidate next600 ^
 隔离；不实现文本 mutation、节点创建或 live collection，因此不新增人工页面验收。tracked
 `test_host.ini` 仍保持 `javascript=0`。
 
+`next601` 为 `document.doctype` 增加只读外部子集元数据，自动断言为 `TEST962–981`：
+
+```bat
+scripts\device_gate.bat -Candidate next601 ^
+  -EnableJavaScript ^
+  -TestSelection "962-981,999"
+```
+
+定向证据为 `tmp/device-runs/20260823-115525-next601/`，21/21 通过；namespace/Attr/child-wrapper/
+doctype 缩减回归 `TEST802-981,999` 在 `tmp/device-runs/20260823-115645-next601-regression/` 通过
+181/181。两次最终运行均为零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。
+本批覆盖默认值、own-property/descriptor、不可变性、branding、关系、位置、包含、namespace 和
+baseURI 边界；不实现 DTD/实体解析、节点 mutation 或 live collection，因此不新增人工页面验收。
+tracked `test_host.ini` 仍保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，
