@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1057
+#define TEST_MAX_NUMBER 1058
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -2373,6 +2373,250 @@ static BOOL test1057_browser_native_select_contract(void)
             "Browser-owned native SELECT input/change ordering covers\n"
             "adapter error and target reset without owning WM SELECT\n"
             "or core selection mutation.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 1058 - browser-owned native SELECT focus-family ordering        */
+/* The browser owns the focus/focusin and blur/focusout pairs plus the
+ * bounded per-target idempotence state; the mock supplies only the
+ * existing generic focus propagation callback.                         */
+typedef struct test1058_native_select_focus_state {
+    int return_code;
+    int calls;
+    int focus_calls;
+    int focusin_calls;
+    int blur_calls;
+    int focusout_calls;
+    unsigned long target_token;
+    int x;
+    int y;
+    char sequence[32];
+} test1058_native_select_focus_state;
+
+static int test1058_sequence_append(
+        test1058_native_select_focus_state *state, char value)
+{
+    size_t length;
+
+    if (state == NULL) {
+        return -1;
+    }
+    length = strlen(state->sequence);
+    if (length + 1 >= sizeof(state->sequence)) {
+        return -1;
+    }
+    state->sequence[length] = value;
+    state->sequence[length + 1] = '\0';
+    return 0;
+}
+
+static int test1058_focus_dispatch(void *pw,
+        const PBrowserScriptFocusEventInfo *info)
+{
+    test1058_native_select_focus_state *state;
+    char marker;
+
+    state = (test1058_native_select_focus_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptFocusEventInfo) ||
+            info->x != 21 || info->y != 43 || info->event_type == NULL ||
+            info->cancelable != 0) {
+        return -1;
+    }
+    marker = '\0';
+    if (strcmp(info->event_type, "focus") == 0) {
+        if (info->bubbles != 0) {
+            return -1;
+        }
+        marker = 'F';
+        state->focus_calls++;
+    } else if (strcmp(info->event_type, "focusin") == 0) {
+        if (info->bubbles != 1) {
+            return -1;
+        }
+        marker = 'I';
+        state->focusin_calls++;
+    } else if (strcmp(info->event_type, "blur") == 0) {
+        if (info->bubbles != 0) {
+            return -1;
+        }
+        marker = 'B';
+        state->blur_calls++;
+    } else if (strcmp(info->event_type, "focusout") == 0) {
+        if (info->bubbles != 1) {
+            return -1;
+        }
+        marker = 'O';
+        state->focusout_calls++;
+    } else {
+        return -1;
+    }
+    if (test1058_sequence_append(state, marker) != 0) {
+        return -1;
+    }
+    state->calls++;
+    state->x = info->x;
+    state->y = info->y;
+    return state->return_code;
+}
+
+static BOOL test1058_browser_native_select_focus_contract(void)
+{
+    PBrowserScriptNativeSelectCallbacksEx select_callbacks;
+    PBrowserScriptNativeSelectFocusInfo info;
+    PBrowserScriptFocusCallbacks focus_callbacks;
+    test1057_native_select_state select_state;
+    test1058_native_select_focus_state focus_state;
+    HANDLE session;
+    const char *stage;
+    int rc;
+    int ok;
+
+    memset(&select_callbacks, 0, sizeof(select_callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&focus_callbacks, 0, sizeof(focus_callbacks));
+    memset(&select_state, 0, sizeof(select_state));
+    memset(&focus_state, 0, sizeof(focus_state));
+    select_callbacks.size = sizeof(select_callbacks);
+    select_callbacks.pw = &select_state;
+    select_callbacks.dispatch_select = test1057_native_select_dispatch;
+    focus_callbacks.size = sizeof(focus_callbacks);
+    focus_callbacks.pw = &focus_state;
+    focus_callbacks.dispatch_focus = test1058_focus_dispatch;
+    info.size = sizeof(info);
+    info.target_token = 9;
+    info.x = 21;
+    info.y = 43;
+    info.focused = 1;
+    stage = "create";
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    ok = session != NULL;
+    if (ok) {
+        stage = "null-register";
+        ok = PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(NULL,
+                &select_callbacks) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register-select";
+        ok = PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(session,
+                &select_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-focus";
+        ok = PBrowser_ScriptSessionRegisterFocusCallbacks(session,
+                &focus_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-focus-register";
+        ok = PBrowser_ScriptSessionRegisterFocusCallbacks(session,
+                &focus_callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "invalid-focus-value";
+        info.focused = 2;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && focus_state.calls == 0;
+        info.focused = 1;
+    }
+    if (ok) {
+        stage = "focus-pair";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info);
+        ok = rc == PSCRIPT_OK && strcmp(focus_state.sequence, "FI") == 0 &&
+                focus_state.calls == 2 && focus_state.focus_calls == 1 &&
+                focus_state.focusin_calls == 1 && focus_state.x == 21 &&
+                focus_state.y == 43;
+    }
+    if (ok) {
+        stage = "duplicate-focus";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info);
+        ok = rc == PSCRIPT_OK && strcmp(focus_state.sequence, "FI") == 0 &&
+                focus_state.calls == 2;
+    }
+    if (ok) {
+        stage = "blur-pair";
+        info.focused = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info);
+        ok = rc == PSCRIPT_OK && strcmp(focus_state.sequence, "FIBO") == 0 &&
+                focus_state.calls == 4 && focus_state.blur_calls == 1 &&
+                focus_state.focusout_calls == 1;
+        info.focused = 1;
+    }
+    if (ok) {
+        stage = "duplicate-blur";
+        info.focused = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info);
+        ok = rc == PSCRIPT_OK && strcmp(focus_state.sequence, "FIBO") == 0 &&
+                focus_state.calls == 4;
+        info.focused = 1;
+    }
+    if (ok) {
+        stage = "callback-error";
+        focus_state.return_code = -1;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info);
+        ok = rc == PSCRIPT_ERROR_NATIVE &&
+                strcmp(focus_state.sequence, "FIBOF") == 0 &&
+                focus_state.calls == 5;
+        focus_state.return_code = 0;
+    }
+    if (ok) {
+        stage = "retry-after-error";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info);
+        ok = rc == PSCRIPT_OK &&
+                strcmp(focus_state.sequence, "FIBOFFI") == 0 &&
+                focus_state.calls == 7;
+    }
+    if (ok) {
+        stage = "second-token";
+        info.target_token = 10;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info);
+        ok = rc == PSCRIPT_OK &&
+                strcmp(focus_state.sequence, "FIBOFFIFI") == 0 &&
+                focus_state.calls == 9;
+    }
+    if (ok) {
+        stage = "reset";
+        info.target_token = 9;
+        rc = PBrowser_ScriptSessionResetNativeSelectState(session);
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info) == PSCRIPT_OK &&
+                strcmp(focus_state.sequence, "FIBOFFIFIFI") == 0 &&
+                focus_state.calls == 11;
+    }
+    if (ok) {
+        stage = "unregister-select";
+        ok = PBrowser_ScriptSessionUnregisterNativeSelectCallbacksEx(
+                session) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionDispatchNativeSelectFocus(session,
+                &info) == PSCRIPT_ERROR_ARGUMENT &&
+                PBrowser_ScriptSessionResetNativeSelectState(session) ==
+                PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "unregister-focus";
+        ok = PBrowser_ScriptSessionUnregisterFocusCallbacks(session) ==
+                PSCRIPT_OK;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1058 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1058 OK",
+            "Browser-owned native SELECT focus/blur pair ordering covers\n"
+            "idempotence, adapter failure recovery and bounded reset\n"
+            "without owning WM focus or Core interaction mutation.");
     return TRUE;
 }
 
@@ -4398,6 +4642,8 @@ static int pcore_browser_script_dispatch_native_edit_input(HWND control);
 static void pcore_browser_script_dispatch_native_edit_blur(HWND control);
 static void pcore_browser_script_reset_native_edit_state(void);
 static int pcore_browser_script_dispatch_native_select_commit(HWND control);
+static int pcore_browser_script_dispatch_native_select_focus(HWND control,
+        int focused);
 static void pcore_browser_script_reset_native_select_state(void);
 static int pcore_browser_script_dispatch_composition_event(HWND control,
         const char *event_type, const char *data, int cancelable);
@@ -4928,15 +5174,12 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
     pcore_browser_script_bridge *bridge;
     PBrowserScriptEditEventInfo edit_event_info;
     PBrowserScriptFocusEventInfo focus_info;
-    PBrowserScriptSelectEventInfo select_event_info;
     PCoreTextInputInfo text_info;
-    PCoreSelectInfo select_info;
     unsigned int i;
     int x;
     int y;
     int is_edit_event;
     int is_focus_event;
-    int is_select_event;
     int rc;
 
     if (control == NULL || event_type == NULL || g_render_doc == NULL ||
@@ -4950,8 +5193,6 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
             strcmp(event_type, "focusin") == 0 ||
             strcmp(event_type, "focusout") == 0;
     is_edit_event = strcmp(event_type, "change") == 0;
-    is_select_event = strcmp(event_type, "input") == 0 ||
-            strcmp(event_type, "change") == 0;
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
                 PCore_TextInputInfo(g_render_doc,
@@ -4985,49 +5226,6 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
                 edit_event_info.cancelable = 0;
                 rc = PBrowser_ScriptSessionDispatchEditEvent(
                         bridge->session, &edit_event_info);
-                if (rc != PSCRIPT_OK) {
-                    return;
-                }
-            } else {
-                PCore_EventDispatchAt(g_render_doc, x, y, event_type,
-                        bubbles, 0, NULL);
-            }
-            return;
-        }
-    }
-    for (i = 0; i < g_native_select_count; i++) {
-        if (g_native_selects[i].hwnd == control &&
-                PCore_SelectInfo(g_render_doc,
-                        g_native_selects[i].select_index,
-                        &select_info) == 0) {
-            x = select_info.x + select_info.width / 2;
-            y = select_info.y + select_info.height / 2;
-            if (is_focus_event && bridge != NULL &&
-                    bridge->session != NULL) {
-                memset(&focus_info, 0, sizeof(focus_info));
-                focus_info.size = sizeof(focus_info);
-                focus_info.x = x;
-                focus_info.y = y;
-                focus_info.event_type = event_type;
-                focus_info.bubbles = bubbles ? 1 : 0;
-                focus_info.cancelable = 0;
-                rc = PBrowser_ScriptSessionDispatchFocusEvent(
-                        bridge->session, &focus_info);
-                if (rc != PSCRIPT_OK) {
-                    return;
-                }
-            } else if (is_select_event && bridge != NULL &&
-                    bridge->session != NULL) {
-                memset(&select_event_info, 0,
-                        sizeof(select_event_info));
-                select_event_info.size = sizeof(select_event_info);
-                select_event_info.x = x;
-                select_event_info.y = y;
-                select_event_info.event_type = event_type;
-                select_event_info.bubbles = bubbles ? 1 : 0;
-                select_event_info.cancelable = 0;
-                rc = PBrowser_ScriptSessionDispatchSelectEvent(
-                        bridge->session, &select_event_info);
                 if (rc != PSCRIPT_OK) {
                     return;
                 }
@@ -6513,10 +6711,8 @@ static void pcore_native_focus_changed(HWND control)
             if (result > 0) {
                 pcore_request_interaction_restyle(GetParent(control));
             }
-            pcore_browser_script_dispatch_control_event(control,
-                    "focus", 0);
-            pcore_browser_script_dispatch_control_event(control,
-                    "focusin", 1);
+            (void) pcore_browser_script_dispatch_native_select_focus(control,
+                    1);
             return;
         }
     }
@@ -6547,10 +6743,8 @@ static void pcore_native_focus_lost(HWND control)
                 PCore_SelectInfo(g_render_doc,
                         g_native_selects[i].select_index,
                         &select_info) == 0) {
-            pcore_browser_script_dispatch_control_event(control,
-                    "blur", 0);
-            pcore_browser_script_dispatch_control_event(control,
-                    "focusout", 1);
+            (void) pcore_browser_script_dispatch_native_select_focus(control,
+                    0);
             return;
         }
     }
@@ -10179,6 +10373,67 @@ static int pcore_browser_script_dispatch_native_select_commit(HWND control)
             }
             rc = PCore_EventDispatchAt(g_render_doc, x, y, "change", 1, 0,
                     NULL);
+            return rc < 0 ? -1 : 1;
+        }
+    }
+    return -1;
+}
+
+/* Native SELECT focus transitions use the browser-owned pair/state adapter
+ * when scripting is active. The host still supplies only the control's
+ * current geometry and the WM focus transition; the non-script fallback
+ * preserves the existing direct Core dispatch. */
+static int pcore_browser_script_dispatch_native_select_focus(HWND control,
+        int focused)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeSelectFocusInfo focus_info;
+    PCoreSelectInfo select_info;
+    unsigned int i;
+    int x;
+    int y;
+    int rc;
+
+    if (control == NULL || g_render_doc == NULL ||
+            (focused != 0 && focused != 1)) {
+        return -1;
+    }
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd == control &&
+                PCore_SelectInfo(g_render_doc,
+                g_native_selects[i].select_index, &select_info) == 0) {
+            x = select_info.x + select_info.width / 2;
+            y = select_info.y + select_info.height / 2;
+            bridge = g_browser_script_session.bridge;
+            if (g_browser_script_session.document == g_render_doc &&
+                    g_browser_script_session.runtime != NULL &&
+                    bridge != NULL && bridge->session != NULL) {
+                memset(&focus_info, 0, sizeof(focus_info));
+                focus_info.size = sizeof(focus_info);
+                focus_info.target_token =
+                        g_native_selects[i].select_index + 1UL;
+                focus_info.x = x;
+                focus_info.y = y;
+                focus_info.focused = focused;
+                rc = PBrowser_ScriptSessionDispatchNativeSelectFocus(
+                        bridge->session, &focus_info);
+                return rc == PSCRIPT_OK ? 1 : -1;
+            }
+            if (focused) {
+                rc = PCore_EventDispatchAt(g_render_doc, x, y,
+                        "focus", 0, 0, NULL);
+                if (rc >= 0) {
+                    rc = PCore_EventDispatchAt(g_render_doc, x, y,
+                            "focusin", 1, 0, NULL);
+                }
+            } else {
+                rc = PCore_EventDispatchAt(g_render_doc, x, y,
+                        "blur", 0, 0, NULL);
+                if (rc >= 0) {
+                    rc = PCore_EventDispatchAt(g_render_doc, x, y,
+                            "focusout", 1, 0, NULL);
+                }
+            }
             return rc < 0 ? -1 : 1;
         }
     }
@@ -69146,6 +69401,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1055: ok = test1055_browser_programmatic_activation_contract(); break;
         case 1056: ok = test1056_browser_native_edit_contract(); break;
         case 1057: ok = test1057_browser_native_select_contract(); break;
+        case 1058: ok = test1058_browser_native_select_focus_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -527,6 +527,21 @@ typedef struct PBrowserScriptNativeSelectEventInfo {
 typedef int (*PBrowserScriptDispatchNativeSelectFn)(void *pw,
         const PBrowserScriptNativeSelectEventInfo *info);
 
+/* Product-owned native SELECT focus transition. The browser layer owns the
+ * focus-family pair and keeps bounded per-target state so repeated native
+ * focus notifications are idempotent. focused=1 emits focus then focusin;
+ * focused=0 emits blur then focusout. The existing generic focus callback
+ * registered for this session receives the pair. target_token is host-owned,
+ * non-zero and stable for the lifetime of one native SELECT; x/y are borrowed
+ * document CSS pixels. */
+typedef struct PBrowserScriptNativeSelectFocusInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    int focused;
+} PBrowserScriptNativeSelectFocusInfo;
+
 /* Additive native SELECT adapter. The browser layer owns the commit event
  * ordering and bounded target contract; the host supplies only core event
  * propagation and keeps WM SELECT, selection mutation and repaint side
@@ -953,6 +968,12 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterNativeSelectCallbacksEx(
 PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectCommit(
         HANDLE hSession,
         const PBrowserScriptNativeSelectCommitInfo *info);
+/* Notify the product layer that a native SELECT gained or lost focus. The
+ * browser dispatches the corresponding focus-family pair through the
+ * session's generic focus adapter and suppresses duplicate transitions. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectFocus(
+        HANDLE hSession,
+        const PBrowserScriptNativeSelectFocusInfo *info);
 /* Drop all bounded native SELECT target state before native controls are
  * destroyed or rebuilt for a new document/layout. */
 PBROWSER_API int PBrowser_ScriptSessionResetNativeSelectState(

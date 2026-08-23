@@ -57,15 +57,24 @@ selection mutation 和平台副作用；不把 SIP/IME OEM 行为伪装成产品
 next607/608。TEST1057 的注册/非法输入/顺序/错误/reset/unregister 断言与 TEST67、71、118、
 999 的真实设备门均通过。
 
-### 4. next610：剩余 native SELECT/表单边界的真实行为审计
+### 4. next610：native SELECT 焦点族事件迁移（已完成）
 
-以真实页面和设备日志为依据，优先处理 native SELECT 键盘默认动作、焦点/关闭下拉、SIP/IME
-候选词或其他已能复现的表单缺口；若没有可重复产品缺口，再继续迁移下一条仍由宿主独占的
-form/input 语义。保持 next609 的边界：browser layer 持有可发布策略，宿主只保留 WM、Core
-mutation、窗口和 OEM 平台副作用；每批提供目标自动门，只有视觉/触摸/SIP/旋转/picker 风险
-才累计人工验收。
+next610 在 next609 的 bounded native SELECT state 上增加了
+`PBrowser_ScriptSessionDispatchNativeSelectFocus()`。browser layer 按稳定 token 持有焦点状态，
+统一同步派发 `focus` → `focusin` 或 `blur` → `focusout`，重复 WM 通知幂等，callback 失败后
+状态保持旧值以便重试；宿主只提供 WM 焦点转换、控件几何、Core 交互和无脚本 fallback。
+TEST1058 覆盖非法输入、成对顺序、幂等、失败恢复、多 token、reset 和 unregister；TEST67、71、
+1057、999 的真实设备门通过。该批不宣称下拉展开/关闭、键盘默认动作或 OEM SIP/IME 兼容。
 
-### 5. 建立真实页面驱动的兼容队列
+### 5. next611：剩余 native SELECT 默认动作与下拉生命周期
+
+以真实页面和设备日志为依据，优先处理可重复的 native SELECT 键盘 Enter/Arrow 默认动作、
+展开/关闭状态、SIP/IME 候选词或其他 form/input 缺口；若没有可重复产品缺口，再迁移下一条
+仍由宿主独占的 form/input 语义。保持 next610 的边界：browser layer 持有可发布策略，宿主只
+保留 WM、Core mutation、窗口和 OEM 平台副作用；每批提供目标自动门，只有视觉/触摸/SIP/旋转/
+picker 风险才累计人工验收。
+
+### 6. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -76,7 +85,7 @@ mutation、窗口和 OEM 平台副作用；每批提供目标自动门，只有�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 6. 安排新的全范围检查点
+### 7. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

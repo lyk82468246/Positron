@@ -34,8 +34,11 @@ native SELECT 的产品提交入口是 additive 的
 快照；browser layer 统一同步派发不可取消的 `input` → `change`，并校验同一 token 的
 single/multiple 形状。`PBrowser_ScriptSessionResetNativeSelectState()` 用于销毁或重建控件时
 丢弃有界 token 状态，最多跟踪 16 个 token。键盘 `keydown`/`keyup` 的取消仍通过已有的
-typed key callback 返回 default-allowed，由宿主决定是否让 WM 控件继续处理；该入口不拥有
-WM SELECT、Core selection mutation、窗口重绘、SIP/IME 或系统 picker。
+typed key callback 返回 default-allowed，由宿主决定是否让 WM 控件继续处理。另有
+`PBrowser_ScriptSessionDispatchNativeSelectFocus()` 复用同一 token state，统一派发不可取消的
+`focus` → `focusin` / `blur` → `focusout`，并抑制重复焦点通知；宿主在控件焦点消息后只提供
+几何和 focused 状态。上述入口不拥有 WM SELECT、Core selection mutation、下拉展开/关闭、
+窗口重绘、SIP/IME 或系统 picker。
 
 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 是向新消费者推荐的
 程序化表单激活入口。调用者提供 `get_target`（返回 checkbox/radio/submit/reset/file 的
@@ -200,6 +203,14 @@ next609 将 native SELECT 的提交事件顺序迁入本 DLL：
 键盘 default-action、Core mutation、重绘和 SIP/IME 仍由宿主持有。TEST1057、67、71、118、
 999 的 next609 设备门已通过。
 
+next610 在该 bounded state 上增加 native SELECT 焦点族入口：
+`PBrowser_ScriptSessionDispatchNativeSelectFocus()` 接收稳定 token、几何和 focused 状态，
+由 browser layer 维护每 token 的焦点状态并同步派发 `focus` → `focusin` 或
+`blur` → `focusout`；重复通知幂等，callback 失败保持旧状态以便重试。该入口复用已注册的
+`PBrowserScriptFocusCallbacks`，不新增宿主私有结构；WM 焦点窗口、Core interaction、下拉
+展开/关闭、键盘默认动作和 OEM SIP/IME 仍由宿主负责。TEST1058、67、71、1057、999 的 next610
+设备门已通过。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -227,6 +238,29 @@ PBrowser_ScriptSessionEvaluate(session, "document.title", -1);
 /* PBrowser_ScriptSessionGetResult/GetError 返回借用字符串。 */
 PBrowser_ScriptSessionDestroy(session);
 ```
+
+对原生 SELECT，调用者先注册已有的 `PBrowserScriptFocusCallbacks` 和
+`PBrowserScriptNativeSelectCallbacksEx`，在 WM 焦点通知后提交稳定 token 与文档几何：
+
+```c
+PBrowserScriptNativeSelectFocusInfo focus;
+
+PBrowser_ScriptSessionRegisterFocusCallbacks(session, &focus_callbacks);
+PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(session,
+        &native_select_callbacks);
+focus.size = sizeof(focus);
+focus.target_token = select_token;  /* non-zero, stable while attached */
+focus.x = select_x;
+focus.y = select_y;
+focus.focused = 1;                  /* 0 on kill-focus */
+PBrowser_ScriptSessionDispatchNativeSelectFocus(session, &focus);
+/* destroy/rebuild native controls before: */
+PBrowser_ScriptSessionResetNativeSelectState(session);
+```
+
+`dispatch_focus` 同步收到 `focus`/`focusin` 或 `blur`/`focusout` 两个事件；重复状态不会
+再次回调，失败返回后可用同一状态重试。WM 控件、Core selection mutation、下拉窗口和
+SIP/IME 仍属于调用者。
 
 主要公共能力包括：
 

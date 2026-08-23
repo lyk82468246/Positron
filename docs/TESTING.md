@@ -143,6 +143,30 @@ ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有�
 系统 picker 或 OEM SIP/IME 人工门；tracked `test_host.ini` 仍保持 `javascript=0` 的默认
 自动 smoke 选择。
 
+### next610 native SELECT 焦点族迁移自动门
+
+next610 在 next609 的 native SELECT session state 上增加
+`PBrowser_ScriptSessionDispatchNativeSelectFocus()`。browser layer 按稳定 token 维护焦点
+状态，并同步派发不可取消的 `focus` → `focusin` 或 `blur` → `focusout`；重复 WM 通知不重复
+派发，adapter 失败不提交状态以便重试。宿主仍负责 WM 焦点窗口、Core interaction、控件几何、
+重绘和无脚本 fallback；下拉展开/关闭、键盘默认动作及 OEM SIP/IME 不在本批保证内。
+TEST1058 是不依赖窗口的 ABI 契约，覆盖非法 focused 值、顺序、幂等、失败恢复、多 token、
+reset 和 unregister；TEST67/71 覆盖真实单选、多选控件，TEST1057 与 TEST999 保持相关回归。
+
+窄定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next610-native-select-focus-regression ^
+  -EnableJavaScript ^
+  -TestSelection "67,71,118,1057,1058,999"
+```
+
+当前最终回归证据位于 `tmp/device-runs/20260823-181515-next610-native-select-focus-final/`：
+6/6 通过（含 TEST118 键盘回归）、零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且
+`test13_route_ok=True`。本批没有视觉、真实触摸、
+旋转、系统 picker 或 OEM SIP/IME 人工门；tracked `test_host.ini` 仍保持 `javascript=0`
+的默认自动 smoke 选择。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

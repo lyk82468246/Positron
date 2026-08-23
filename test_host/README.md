@@ -26,6 +26,13 @@ key callback 的 default-allowed 返回值决定是否继续交给 WM 控件。�
 顺序状态，但负责控件销毁/重建前调用 reset。TEST1057 是 Ex ABI 契约，TEST67/71/118/999
 覆盖单选、多选和键盘回归。
 
+native SELECT 的焦点族由 `PBrowser_ScriptSessionDispatchNativeSelectFocus()` 提供。WM
+`CBN/LBN_SETFOCUS` 或 `CBN/LBN_KILLFOCUS` 到达后，宿主只提交稳定 token、几何和 focused
+状态；browser DLL 负责 `focus` → `focusin` / `blur` → `focusout` 顺序、重复通知幂等和
+失败后的状态重试。宿主仍拥有窗口焦点、`PCore_InteractionSetAt()`、重绘、下拉展开/关闭、
+键盘默认动作和 OEM SIP/IME；控件销毁/重建前继续调用 reset。TEST1058 是 ABI 契约，
+TEST67/71/1057/999 覆盖相关设备回归。
+
 ## 构建与部署
 
 从仓库根目录使用正式工程配置：

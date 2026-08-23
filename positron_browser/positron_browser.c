@@ -3363,6 +3363,7 @@ typedef struct p_browser_script_native_select_state {
     int used;
     int shape_set;
     int multiple;
+    int focused;
 } p_browser_script_native_select_state;
 
 typedef struct p_browser_script_native_select_binding {
@@ -6405,6 +6406,17 @@ static int p_browser_script_native_select_info_valid(
     return 1;
 }
 
+static int p_browser_script_native_select_focus_info_valid(
+        const PBrowserScriptNativeSelectFocusInfo *info)
+{
+    if (info == NULL || info->size < sizeof(*info) ||
+            info->target_token == 0 ||
+            (info->focused != 0 && info->focused != 1)) {
+        return 0;
+    }
+    return 1;
+}
+
 PBROWSER_API int PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
         HANDLE hSession,
         const PBrowserScriptNativeSelectCallbacksEx *callbacks)
@@ -6493,6 +6505,51 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectCommit(
     if (rc < 0) {
         return PSCRIPT_ERROR_NATIVE;
     }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectFocus(
+        HANDLE hSession, const PBrowserScriptNativeSelectFocusInfo *info)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_select_state *state;
+    PBrowserScriptFocusEventInfo focus_info;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->native_select == NULL ||
+            session->focus == NULL ||
+            !p_browser_script_native_select_focus_info_valid(info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state = p_browser_script_native_select_state_find(session->native_select,
+            info->target_token, 1);
+    if (state == NULL) {
+        return PSCRIPT_ERROR_NATIVE_LIMIT;
+    }
+    if (state->focused == info->focused) {
+        return PSCRIPT_OK;
+    }
+    memset(&focus_info, 0, sizeof(focus_info));
+    focus_info.size = sizeof(focus_info);
+    focus_info.x = info->x;
+    focus_info.y = info->y;
+    focus_info.bubbles = 0;
+    focus_info.cancelable = 0;
+    focus_info.event_type = info->focused ? "focus" : "blur";
+    rc = session->focus->callbacks.dispatch_focus(
+            session->focus->callbacks.pw, &focus_info);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    focus_info.bubbles = 1;
+    focus_info.event_type = info->focused ? "focusin" : "focusout";
+    rc = session->focus->callbacks.dispatch_focus(
+            session->focus->callbacks.pw, &focus_info);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    state->focused = info->focused;
     return PSCRIPT_OK;
 }
 
