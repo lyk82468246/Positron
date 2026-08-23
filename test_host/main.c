@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 998
+#define TEST_MAX_NUMBER 1017
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -62771,6 +62771,243 @@ static BOOL test998_browser_doctype_maps_contract(void)
             "true|0|0|true|true|true|true", error, sizeof(error));
 }
 
+/* TEST 1000 - NamedNodeMap exposes the complete bounded iteration method set. */
+static BOOL test1000_browser_named_map_method_types(void)
+{
+    static const char PROBE[] =
+        "var m=document.getElementById('target').attributes;"
+        "document.getElementById('result').textContent="
+        "String(typeof m.forEach==='function')+'|'"
+        "+String(typeof m.keys==='function')+'|'"
+        "+String(typeof m.values==='function')+'|'"
+        "+String(typeof m.entries==='function');";
+    char error[256];
+    return test_browser_platform_case(1000, PROBE, "true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1001 - keys() yields a bounded parser-order index snapshot. */
+static BOOL test1001_browser_named_map_keys(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('target');t.setAttribute('class','a');"
+        "t.setAttribute('data-x','1');var k=t.attributes.keys(),a=k.next(),b=k.next(),"
+        "c=k.next(),d=k.next();document.getElementById('result').textContent="
+        "a.value+'|'+b.value+'|'+c.value+'|'+String(d.done);";
+    char error[256];
+    return test_browser_platform_case(1001, PROBE, "0|1|2|true", error,
+            sizeof(error));
+}
+
+/* TEST 1002 - values() yields stable Attr wrappers in parser order. */
+static BOOL test1002_browser_named_map_values(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('target');t.setAttribute('class','a');"
+        "t.setAttribute('data-x','1');var v=t.attributes.values(),a=v.next(),b=v.next(),"
+        "c=v.next(),d=v.next();document.getElementById('result').textContent="
+        "a.value.name+'|'+b.value.name+'|'+c.value.name+'|'+String(d.done);";
+    char error[256];
+    return test_browser_platform_case(1002, PROBE, "id|class|data-x|true", error,
+            sizeof(error));
+}
+
+/* TEST 1003 - entries() yields index/Attr pairs with stable identity. */
+static BOOL test1003_browser_named_map_entries(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('target');t.setAttribute('class','a');"
+        "t.setAttribute('data-x','1');var e=t.attributes.entries(),a=e.next(),b=e.next(),"
+        "c=e.next(),d=e.next();document.getElementById('result').textContent="
+        "a.value[0]+'|'+a.value[1].name+'|'+b.value[0]+'|'+b.value[1].name+'|'"
+        "+c.value[0]+'|'+c.value[1].name+'|'+String(d.done);";
+    char error[256];
+    return test_browser_platform_case(1003, PROBE, "0|id|1|class|2|data-x|true", error,
+            sizeof(error));
+}
+
+/* TEST 1004 - the default iterator is values() and is itself iterable. */
+static BOOL test1004_browser_named_map_default_iterator(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('target');t.setAttribute('class','a');"
+        "var m=t.attributes,a=m[Symbol.iterator](),b=m.values(),x=a.next(),y=b.next();"
+        "document.getElementById('result').textContent=String(x.value===y.value)+'|'"
+        "+x.value.name+'|'+String(a[Symbol.iterator]()===a);";
+    char error[256];
+    return test_browser_platform_case(1004, PROBE, "true|id|true", error,
+            sizeof(error));
+}
+
+/* TEST 1005 - forEach passes Attr, index and the owning map in order. */
+static BOOL test1005_browser_named_map_for_each(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('target');t.setAttribute('class','a');"
+        "t.setAttribute('data-x','1');var m=t.attributes,out='',same=true;"
+        "m.forEach(function(a,i,map){out+=(i?'|':'')+a.name+':'+i;same=same&&map===m;});"
+        "document.getElementById('result').textContent=out+'|'+String(same);";
+    char error[256];
+    return test_browser_platform_case(1005, PROBE,
+            "id:0|class:1|data-x:2|true", error, sizeof(error));
+}
+
+/* TEST 1006 - forEach honors the supplied thisArg. */
+static BOOL test1006_browser_named_map_for_each_this_arg(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('target');t.setAttribute('class','a');"
+        "t.setAttribute('data-x','1');var out='',ctx={p:'!'};"
+        "t.attributes.forEach(function(a){out+=this.p+a.name;},ctx);"
+        "document.getElementById('result').textContent=out;";
+    char error[256];
+    return test_browser_platform_case(1006, PROBE, "!id!class!data-x", error,
+            sizeof(error));
+}
+
+/* TEST 1007 - forEach rejects a non-callable callback without changing state. */
+static BOOL test1007_browser_named_map_for_each_callback_error(void)
+{
+    static const char PROBE[] =
+        "var m=document.getElementById('target').attributes,threw=false;"
+        "try{m.forEach(null);}catch(e){threw=e.name==='TypeError';}"
+        "document.getElementById('result').textContent=String(threw)+'|'+m.length;";
+    char error[256];
+    return test_browser_platform_case(1007, PROBE, "true|1", error,
+            sizeof(error));
+}
+
+/* TEST 1008 - empty DocumentType maps expose the same method surface. */
+static BOOL test1008_browser_doctype_map_method_types(void)
+{
+    static const char PROBE[] =
+        "var m=document.doctype.entities;document.getElementById('result').textContent="
+        "String(typeof m.forEach==='function')+'|'"
+        "+String(typeof m.keys==='function')+'|'"
+        "+String(typeof m.values==='function')+'|'"
+        "+String(typeof m.entries==='function');";
+    char error[256];
+    return test_browser_child_node_case(1008, PROBE, "true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1009 - empty DocumentType iterators terminate with undefined values. */
+static BOOL test1009_browser_doctype_map_empty_iterators(void)
+{
+    static const char PROBE[] =
+        "var m=document.doctype.entities,a=m.keys().next(),b=m.values().next(),"
+        "c=m.entries().next();document.getElementById('result').textContent="
+        "String(a.done)+'|'+String(a.value===undefined)+'|'"
+        "+String(b.done)+'|'+String(b.value===undefined)+'|'"
+        "+String(c.done)+'|'+String(c.value===undefined);";
+    char error[256];
+    return test_browser_child_node_case(1009, PROBE,
+            "true|true|true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 1010 - empty-map forEach is a no-op and returns undefined. */
+static BOOL test1010_browser_doctype_map_for_each_empty(void)
+{
+    static const char PROBE[] =
+        "var m=document.doctype.entities,n=0,r=m.forEach(function(){n++;});"
+        "document.getElementById('result').textContent=n+'|'+String(r===undefined);";
+    char error[256];
+    return test_browser_child_node_case(1010, PROBE, "0|true", error,
+            sizeof(error));
+}
+
+/* TEST 1011 - every iterator object returns itself from Symbol.iterator. */
+static BOOL test1011_browser_named_map_iterator_self(void)
+{
+    static const char PROBE[] =
+        "var m=document.getElementById('target').attributes,i=m.keys(),"
+        "v=m.values(),e=m.entries(),d=m[Symbol.iterator]();"
+        "document.getElementById('result').textContent="
+        "String(i[Symbol.iterator]()===i)+'|'+String(v[Symbol.iterator]()===v)+'|'"
+        "+String(e[Symbol.iterator]()===e)+'|'+String(d[Symbol.iterator]()===d);";
+    char error[256];
+    return test_browser_platform_case(1011, PROBE, "true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 1012 - values() reuses the map's existing Attr identity cache. */
+static BOOL test1012_browser_named_map_values_identity(void)
+{
+    static const char PROBE[] =
+        "var m=document.getElementById('target').attributes,a=m.values().next().value;"
+        "document.getElementById('result').textContent=String(a===m.getNamedItem('id'))+'|'"
+        "+a.value;";
+    char error[256];
+    return test_browser_platform_case(1012, PROBE, "true|target", error,
+            sizeof(error));
+}
+
+/* TEST 1013 - entries() pairs contain numeric index and the cached Attr. */
+static BOOL test1013_browser_named_map_entry_shape(void)
+{
+    static const char PROBE[] =
+        "var m=document.getElementById('target').attributes,p=m.entries().next().value;"
+        "document.getElementById('result').textContent=p.length+'|'+p[0]+'|'"
+        "+String(p[1]===m.getNamedItem('id'))+'|'+p[1].value;";
+    char error[256];
+    return test_browser_platform_case(1013, PROBE, "2|0|true|target", error,
+            sizeof(error));
+}
+
+/* TEST 1014 - separate iterator calls have independent cursors. */
+static BOOL test1014_browser_named_map_iterator_cursors(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('target');t.setAttribute('class','a');"
+        "var m=t.attributes,a=m.keys(),b=m.keys(),"
+        "x=a.next(),y=b.next(),z=a.next();document.getElementById('result').textContent="
+        "x.value+'|'+y.value+'|'+z.value;";
+    char error[256];
+    return test_browser_platform_case(1014, PROBE, "0|0|1", error,
+            sizeof(error));
+}
+
+/* TEST 1015 - forEach reads the current bounded map snapshot and values. */
+static BOOL test1015_browser_named_map_for_each_live_values(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('target');t.setAttribute('class','a');"
+        "t.setAttribute('data-x','1');var m=t.attributes,out='';"
+        "m.getNamedItem('class').value='b';m.forEach(function(a,i){"
+        "out+=(i?'|':'')+a.name+'='+a.value;});"
+        "document.getElementById('result').textContent=out;";
+    char error[256];
+    return test_browser_platform_case(1015, PROBE,
+            "id=target|class=b|data-x=1", error, sizeof(error));
+}
+
+/* TEST 1016 - iteration helpers are read-only views of the map. */
+static BOOL test1016_browser_named_map_helpers_no_mutation(void)
+{
+    static const char PROBE[] =
+        "var m=document.getElementById('target').attributes,b=m.length;"
+        "m.keys();m.values();m.entries();m.forEach(function(){});"
+        "document.getElementById('result').textContent=b+'|'+m.length+'|'"
+        "+String(m.getNamedItem('id')!==null);";
+    char error[256];
+    return test_browser_platform_case(1016, PROBE, "1|1|true", error,
+            sizeof(error));
+}
+
+/* TEST 1017 - the complete regular/empty map iteration contract is bounded. */
+static BOOL test1017_browser_named_map_iteration_contract(void)
+{
+    static const char PROBE[] =
+        "var t=document.getElementById('target');t.setAttribute('class','a');"
+        "t.setAttribute('data-x','1');var m=t.attributes,e=document.doctype.entities,"
+        "p=m.entries().next().value,n=0;m.forEach(function(){n++;});"
+        "document.getElementById('result').textContent=m.length+'|'+n+'|'+p[0]+'|'"
+        "+String(p[1]===m.item(0))+'|'+e.length+'|'+String(e.keys().next().done);";
+    char error[384];
+    return test_browser_platform_case(1017, PROBE,
+            "3|3|0|true|0|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -66791,6 +67028,60 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 998: ok =
                 test998_browser_doctype_maps_contract();
+                break;
+        case 1000: ok =
+                test1000_browser_named_map_method_types();
+                break;
+        case 1001: ok =
+                test1001_browser_named_map_keys();
+                break;
+        case 1002: ok =
+                test1002_browser_named_map_values();
+                break;
+        case 1003: ok =
+                test1003_browser_named_map_entries();
+                break;
+        case 1004: ok =
+                test1004_browser_named_map_default_iterator();
+                break;
+        case 1005: ok =
+                test1005_browser_named_map_for_each();
+                break;
+        case 1006: ok =
+                test1006_browser_named_map_for_each_this_arg();
+                break;
+        case 1007: ok =
+                test1007_browser_named_map_for_each_callback_error();
+                break;
+        case 1008: ok =
+                test1008_browser_doctype_map_method_types();
+                break;
+        case 1009: ok =
+                test1009_browser_doctype_map_empty_iterators();
+                break;
+        case 1010: ok =
+                test1010_browser_doctype_map_for_each_empty();
+                break;
+        case 1011: ok =
+                test1011_browser_named_map_iterator_self();
+                break;
+        case 1012: ok =
+                test1012_browser_named_map_values_identity();
+                break;
+        case 1013: ok =
+                test1013_browser_named_map_entry_shape();
+                break;
+        case 1014: ok =
+                test1014_browser_named_map_iterator_cursors();
+                break;
+        case 1015: ok =
+                test1015_browser_named_map_for_each_live_values();
+                break;
+        case 1016: ok =
+                test1016_browser_named_map_helpers_no_mutation();
+                break;
+        case 1017: ok =
+                test1017_browser_named_map_iteration_contract();
                 break;
         default: ok = FALSE; break;
         }

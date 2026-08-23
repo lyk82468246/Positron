@@ -758,6 +758,20 @@ lookup 和 iterator 都 fail closed/立即结束，并暴露 `NamedNodeMap` 的�
 TEST901 越过既有脚本堆上限，随后改为复用 helper 后通过，未提高预算。本批不新增 core ABI、
 DTD/实体解析、节点 mutation 或人工视觉/触摸/SIP/picker/旋转/网络失败门。
 
+#### next603 的 NamedNodeMap 迭代边界
+
+next603 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。普通属性
+`NamedNodeMap` 与 doctype 的空 `entities`/`notations` map 现在提供有界的 `forEach()`、`keys()`、
+`values()`、`entries()` 和默认 values iterator。每次迭代读取当前属性名的同步 snapshot，
+Attr wrapper 复用既有 session identity；iterator 对象自身可迭代，`forEach` 传递 Attr、索引、
+map 与 `thisArg`，非法 callback 抛出受控 `TypeError`。这些方法不创建节点、不提供 live collection、
+DTD/实体解析或异步调度。
+
+`test_host.exe` 只提供 fixture、adapter 和 `TEST1000–1017` 自动断言；定向门 19/19、缩减回归
+216/216，证据位于 `tmp/device-runs/20260823-125404-next603-r2/` 和
+`tmp/device-runs/20260823-131725-next603-regression-final/`。回归选择把特殊 TEST999 从数字区间
+中拆出后通过；本批不新增 core ABI、节点 mutation 或人工视觉/触摸/SIP/picker/旋转/网络失败门。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

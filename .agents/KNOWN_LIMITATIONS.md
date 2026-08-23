@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next602）
+## 当前状态（next603）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -267,6 +267,15 @@ next602 在同一 `DocumentType` snapshot 上提供独立、稳定、冻结的�
 通过复用 helper 修复，未提高预算。本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、
 picker、旋转或网络失败，因此不新增人工页面验收。
 
+next603 在普通属性 `NamedNodeMap` 以及 doctype 的空 `entities`/`notations` map 上提供有界的
+`forEach()`、`keys()`、`values()`、`entries()` 和默认 values iterator。每次迭代读取当前属性名
+快照，Attr wrapper 复用既有 identity；iterator 自身可迭代，`forEach` 的 callback/`thisArg` 和
+非法 callback 边界已验证。它仍不是 live collection，不创建节点，不解析 DTD/实体，也不扩展
+core ABI。`TEST1000–1017,999` 与 `TEST802–998,1000–1017,999` 最终分别通过 19/19、216/216，
+证据位于 `tmp/device-runs/20260823-125404-next603-r2/` 和
+`tmp/device-runs/20260823-131725-next603-regression-final/`；本批只涉及同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -408,6 +417,8 @@ picker、旋转或网络失败，因此不新增人工页面验收。
   内稳定，`setNamedItem()`/`removeNamedItem()` 对跨 owner 或缺失项 fail closed。为了适配 WM6
   脚本堆，indexed access 只保证 0–7；next602 的 doctype `entities`/`notations` 是冻结的空
   NamedNodeMap snapshot，其 indexed slot 固定为空，lookup 和 mutation fail closed；普通
+  next603 又为普通与 doctype NamedNodeMap 增加有限的 `forEach()`/`keys()`/`values()`/`entries()`
+  和自迭代 iterator；这些操作只读取当前 bounded snapshot，不提供 live collection 或异步调度。
   NamedNodeMap 仍不提供 namespace/localName/prefix lookup、
   通用节点创建、live collection 或完整 Web IDL descriptor 语义。bootstrap 目前为十个 IIFE，
   browser session heap ceiling 为 576 KiB，独立 `positron_script` 默认堆仍为 512 KiB。

@@ -122,6 +122,13 @@ mutation 方法 fail closed，并带有限的 `NamedNodeMap` branding；实现 l
 不解析 DTD/实体、不创建节点、不增加 core ABI。对应 `TEST982–998` 与 `TEST802–998` 缩减回归
 均已通过自动设备门；tracked `test_host.ini` 默认仍为 `javascript=0`，本批不需要人工页面验收。
 
+next603 又为普通属性 `NamedNodeMap` 与 doctype 的空 `entities`/`notations` map 提供有界的
+`forEach()`、`keys()`、`values()`、`entries()` 和默认 values iterator。迭代器自身可迭代，Attr
+wrapper identity 保持稳定，`forEach` 的 callback/`thisArg` 与非法 callback 边界明确；这些方法
+读取同步 snapshot，不提供 live collection、节点创建、DTD/实体解析或新的 core ABI。对应
+`TEST1000–1017` 与拆开特殊 `TEST999` 的 `TEST802–998,1000–1017` 缩减回归均已通过自动设备门，
+本批不需要人工页面验收。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：

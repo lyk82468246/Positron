@@ -140,6 +140,11 @@ next602 又为既有 `document.doctype` snapshot 提供独立、稳定、冻结�
 结束，mutation 不改变状态，并带有 `NamedNodeMap` branding。它不解析 DTD/实体、不创建节点、
 不增加 core ABI；实现 lazy 复用既有 map helper 以保持 browser heap 预算。`TEST982–998` 定向门
 与 `TEST802–998` 缩减回归均已通过（两次均保留 `TEST999`）。
+next603 又为普通属性 `NamedNodeMap` 以及 doctype 的空 `entities`/`notations` map 补齐有界的
+`forEach()`、`keys()`、`values()`、`entries()` 和默认 values iterator；迭代器自身可迭代，Attr
+identity 保持稳定，非法 callback fail closed。它仍是当前属性名的同步 snapshot，不提供 live DOM、
+节点创建、DTD/实体解析或新的 core ABI。`TEST1000–1017` 定向门和拆开 `TEST999` 的
+`TEST802–998,1000–1017` 缩减回归均已通过。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

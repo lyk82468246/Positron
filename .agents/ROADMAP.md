@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next596
+### 当前短期状态：next603
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -599,6 +599,16 @@ SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续�
 重复占用。`TEST982-998,999` 在 `tmp/device-runs/20260823-122704-next602/` 通过 18/18，
 缩减回归 `TEST802-998,999` 在 `tmp/device-runs/20260823-122827-next602-regression/` 通过
 198/198；最终运行均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM
+snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续
+保持 `javascript=0`。
+
+`next603` 作为单一批次为普通属性 `NamedNodeMap` 以及 doctype 的空 `entities`/`notations` map
+补齐有界的 `forEach()`、`keys()`、`values()`、`entries()` 和默认 values iterator。每次迭代读取
+当前属性名快照，Attr wrapper 复用既有 identity；iterator 自身可迭代，非法 callback fail closed，
+不提供 live collection、节点创建、DTD/实体解析或新的 core ABI。`TEST1000-1017,999` 在
+`tmp/device-runs/20260823-125404-next603-r2/` 通过 19/19，缩减回归使用拆开的特殊 999：
+`TEST802-998,1000-1017,999` 在 `tmp/device-runs/20260823-131725-next603-regression-final/`
+通过 216/216；最终运行均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM
 snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续
 保持 `javascript=0`。
 

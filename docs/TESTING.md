@@ -444,6 +444,30 @@ doctype 缩减回归 `TEST802-998,999` 在 `tmp/device-runs/20260823-122827-next
 人工页面验收。首次重复 bootstrap 的长回归堆上限问题已通过复用既有 helper 修复，未提高 heap 预算；
 tracked `test_host.ini` 仍保持 `javascript=0`。
 
+`next603` 为普通属性 `NamedNodeMap` 以及 doctype 空 map 增加 `forEach()`、`keys()`、`values()`、
+`entries()` 和默认 values iterator，自动断言为 `TEST1000–1017`：
+
+```bat
+scripts\device_gate.bat -Candidate next603-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "1000-1017,999"
+```
+
+定向证据为 `tmp/device-runs/20260823-125404-next603-r2/`，19/19 通过；缩减回归必须把特殊
+`TEST999` 从数字区间拆出：
+
+```bat
+scripts\device_gate.bat -Candidate next603-regression-final ^
+  -EnableJavaScript ^
+  -TestSelection "802-998,1000-1017,999"
+```
+
+最终证据为 `tmp/device-runs/20260823-131725-next603-regression-final/`，216/216 通过；两次最终
+运行均为零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖 regular/empty
+NamedNodeMap 的方法类型、keys/values/entries 顺序与 identity、forEach callback/thisArg/error、
+自迭代 iterator 和无 mutation 边界；不实现 live collection、节点 mutation 或 DTD/实体解析，因此
+不新增人工页面验收。tracked `test_host.ini` 仍保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，
