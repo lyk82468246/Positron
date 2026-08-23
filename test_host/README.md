@@ -43,6 +43,12 @@ begin/candidate/confirm/cancel phase；候选阶段不调用 `PCore_SelectSetOpt
 `CBN_CLOSEUP` 只表示下拉窗口关闭，不作为事务终点；由于 WM 可能在它前后发送
 `CBN_SELCHANGE`，事务只由 `CBN_SELENDOK` 或 `CBN_SELENDCANCEL` 结束。
 
+主文档导航和外部 CSS/图片资源都在宿主边界使用同一个 `resolve_url_from`：WinINet 负责
+目录相对、`.`/`..`、query-only、network-path 和绝对 URL 的合并，宿主随后只接受有界
+HTTP(S) authority、端口和路径并移除 fragment。`positron_browser.dll` 的 URL/history
+ABI 不因这项实现扩张；窗口替换、网络 I/O 和失败提示仍属于宿主。TEST1064 是该共享解析
+契约的离线消费者测试。
+
 ## 构建与部署
 
 从仓库根目录使用正式工程配置：

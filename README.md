@@ -30,7 +30,8 @@ Duktape、Mbed TLS 等实现细节不暴露给调用者。
 - HTML/CSS 解析、外部样式和图片资源、分阶段异步抓取；
 - GDI 绘制、滚动、动态 viewport/DPI、横竖屏重排；
 - 常见 block、inline、flex、table、list、图片和基础 positioning；
-- 链接导航、有限历史、表单控件、文本输入和一组 DOM 事件；
+- 链接导航、有限历史、表单控件、文本输入和一组 DOM 事件；宿主对主文档与外部资源共享
+  有界 HTTP(S) 相对 URL 解析，支持目录相对、点段、query-only 和 network-path 引用；
 - 显式开启时的 classic inline/external JavaScript 与受限 DOM/Event/location/history bridge。
 
 浏览器 JavaScript 默认关闭。`positron_script.dll` 是独立的 JavaScript 引擎封装；浏览器

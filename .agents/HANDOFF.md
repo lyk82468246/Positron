@@ -16,8 +16,8 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next615，fieldset 有效禁用传播纵切。
-- 测试编号上限：`TEST_MAX_NUMBER 1063`。
+- 当前能力批次：next616，宿主 HTTP(S) 深层链接 URL 解析纵切。
+- 测试编号上限：`TEST_MAX_NUMBER 1064`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -100,6 +100,11 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   第一个 legend 后代豁免和嵌套 fieldset，并把它接入约束验证、URL-encoded/multipart 成功控件、
   默认 submitter、表单控件信息、程序化激活及交互闸门。原始 HTML `control.disabled` 仍只反映
   自身属性；native 控件的窗口样式、真实 SIP/IME 和文件选择器仍由宿主拥有。
+- next616 在 `test_host` 的网络/窗口边界统一 HTTP(S) URL 解析：主文档导航与 CSS/图片等
+  子资源都经过 WinINet 的目录相对、`.`/`..`、query-only、network-path 和绝对 URL 解析，
+  再由宿主做严格的 scheme、authority、端口和路径校验并去除 fragment。产品 DLL 的 URL/
+  history ABI 没有扩张；不支持的 scheme、无 origin 的普通相对引用、userinfo、IPv6 和非法
+  端口 fail closed。TEST1064 是离线契约门。
 
 ## 最近验证证据
 
@@ -235,8 +240,25 @@ next615 的 fieldset 有效禁用自动门：
   动态 `fieldset.disabled` 切换、原始 `control.disabled` 与 `willValidate` 的区分、控件信息和
   successful form submission。该批没有视觉、真实触摸、SIP、旋转、picker 或网络失败风险，
   不新增人工门。
-- `python scripts/test_c89ize.py` 和 Debug 正式 ARMV4I 构建已通过；最终交付前仍需完成
-  Release 构建、`python scripts/audit_repo.py`、文档审计和 Git 状态核对。
+- `python scripts/test_c89ize.py`、Debug/Release 正式 ARMV4I 构建、`python scripts/audit_repo.py`
+  和文档审计均已通过；tracked INI 未修改，仍保持自动模式的窄 smoke 选择。
+
+next616 的宿主 URL 解析候选当前状态：
+
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式工程构建、Release 增量构建和
+  `python scripts/audit_repo.py` 已通过；新增 TEST1064 覆盖目录相对、`.`/`..`、query-only、
+  network-path、绝对 URL、空 href、fragment 去除以及 unsupported/no-origin fail-closed。
+- 按既有设备门基线使用 Debug 配置后，`tmp/device-runs/20260823-222112-next616-beep-debug/`
+  的 TEST999 通过，`tmp/device-runs/20260823-222153-next616-url-resolution-debug/` 的
+  TEST43、TEST1064、TEST999 通过，均为唯一 `TESTBENCH PASS` 且无 ERROR/FAIL。
+- 首轮真实页面门 `tmp/device-runs/20260823-213537-next616-url-resolution-final/` 在
+  `13,43,1064,999` 的 1200 秒内只有启动头；RAPI 按安全契约没有远程强杀遗留进程。
+- 该首轮使用 Release payload；其后的 Release 探针也只写启动头，而 Debug payload 正常通过，
+  因此本批设备证据以项目既有 Debug gate 为准，Release 停滞保留为配置/设备兼容观察，不写成
+  URL 断言失败。当前真实页面门 `tmp/device-runs/20260823-222224-next616-url-resolution-final-debug/`
+  已完成 example.com 第一跳，第二跳 IANA 仍受外网响应影响，尚未形成最终 PASS。
+- 离线门已满足交付标准；若需要继续网络取证，先确认设备连接和外网可达，不得把 IANA 超时
+  混入离线 URL 契约。详见 `.agents/FAILED_EXPERIMENTS.md` 的 next616 条目。
 
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
@@ -249,7 +271,7 @@ next615 的 fieldset 有效禁用自动门：
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1063 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1064 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -261,10 +283,10 @@ next615 的 fieldset 有效禁用自动门：
   Release 与 Debug 保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
 - next614 的 Debug/Release ARMV4I 正式构建、C89 检查和针对性设备门均已通过；Release 与 Debug
   保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
-- next615 候选的 Debug 构建、C89 检查和两道针对性设备门均已通过；Release 构建、audit 和
-  文档审计待交付前完成。tracked 改动只覆盖 `positron_core` 的 fieldset 判定/表单路径、
-  `test_host` 消费者/TEST1063 与对应交接、架构、测试和 README 文档；提交时不要把 `tmp/`
-  设备证据或无关工作区文件带入。
+- next616 的源码、C89、Debug/Release 构建、audit、离线 Debug 设备门和文档均已完成；网络
+  Debug 门已完成 example.com 第一跳，IANA 后续跳转属于外网可达性限制，不影响离线交付标准。
+  tracked 改动只覆盖宿主 URL 解析、TEST1064、
+  相关 README/测试/交接文档；提交时不要把 `tmp/` 设备证据或无关工作区文件带入。
 - next613 候选的设备门已通过；若后续出现 composition 顺序、候选词数据或 native commit→input
   错误，应先保留 browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -272,18 +294,18 @@ next615 的 fieldset 有效禁用自动门：
 
 ## 唯一下一步
 
-next616：从真实页面驱动的兼容队列选择下一个可重复的完整用户行为纵切；先用现有自动门和
+next617：从真实页面驱动的兼容队列选择下一个可重复的完整用户行为纵切；先用现有自动门和
 设备日志确认缺口，再决定应落在 `positron_core`、`positron_browser` 或宿主边界。不得为了
-填充编号添加互不相关的小 API，也不得重做 next607–615。
+ 填充编号添加互不相关的小 API，也不得重做 next607–615。
 
-## next615 完成标准
+## next616 完成标准
 
 - 产品级语义不再由 `test_host` 独占，宿主通过公共 API 消费它。
 - 公共 ABI、UTF-8、opaque handle、内存所有权及 VS2008 / WM6 ARMV4I / C89 兼容性不退化。
 - `python scripts/test_c89ize.py`、正式工程构建和 `python scripts/audit_repo.py` 通过。
-- 通过 TEST1063 的 fieldset disabled/validation/submission 契约和 TEST999 完成提示音；设备门
-  必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL，并通过 TEST264–270、554–561、1062 的相邻
-  表单/关系回归。
+- 通过 TEST1064 的 HTTP(S) URL resolution 契约、TEST43 的离线导航资源事务和 TEST999 完成
+  提示音；设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL。网络可用时再以 TEST13
+  证明真实页面消费，但外网超时必须与离线门分开归因。
 - 只有出现视觉、真实触摸、SIP、旋转、文件选择器或失败网络风险时才累计人工门；崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 - 跟踪的默认 INI 恢复为自动模式且选择集不被无意扩大。
 - 用当批事实覆盖本文件的当前快照，更新限制和路线图；只提交本批 tracked 文件并推送 `main`。

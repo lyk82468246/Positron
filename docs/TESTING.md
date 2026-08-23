@@ -300,6 +300,35 @@ scripts\device_gate.bat -Candidate next615-fieldset-disabled-regression ^
 判定的 DOM/表单状态，不新增人工页面验收；若后续涉及 native invalid UI、视觉样式、真实触摸、
 SIP/IME、picker 或旋转，仍需单独累计人工门。
 
+### next616 HTTP(S) 深层链接 URL 解析自动门
+
+next616 修正了 `test_host` 中主文档导航与外部 CSS/图片资源共用的 URL 解析。宿主使用
+WinINet 合并目录相对、`.`/`..`、query-only、network-path 和绝对 URL，再严格解析
+HTTP(S) authority、端口和路径并去掉 fragment；产品 DLL 的 URL/history ABI 没有扩张，
+网络请求和窗口替换仍由宿主持有。TEST1064 是离线契约门，覆盖成功解析以及
+`javascript:`、无 origin 普通相对引用的 fail-closed 行为：
+
+```bat
+scripts\device_gate.bat -Candidate next616-url-resolution-contract ^
+  -EnableJavaScript ^
+  -TestSelection "1064,999"
+```
+
+真实页面消费可在网络可用时加入 TEST13 和现有导航资源门；它不是 URL parser 单元门的前置
+条件，且会受到设备 DNS、TLS、代理和外网可达性影响。当前候选的最终设备证据会记录在
+`tmp/device-runs/`，若网络门超时，应与 TEST1064 的离线结果分开归因，不放宽网络断言。
+本批没有新增视觉、触摸、SIP、旋转或 picker 人工门。
+
+首轮 `13,43,1064,999` 门若因外网阻塞超时，RAPI 不会远程强杀设备进程；必须先在 GUI
+关闭遗留 `test_host.exe`（必要时重启设备并重连），再按 `999` → `43,1064,999` →
+`13,43,1064,999` 顺序重试。启动头或超时日志都不是通过证据。
+
+本批按既有设备基线使用 Debug 配置：`tmp/device-runs/20260823-222112-next616-beep-debug/`
+为 TEST999 通过，`tmp/device-runs/20260823-222153-next616-url-resolution-debug/` 为
+TEST43、TEST1064、TEST999 的 3/3 通过。真实页面门
+`tmp/device-runs/20260823-222224-next616-url-resolution-final-debug/` 已记录
+example.com 第一跳；IANA 后续跳转是否完成取决于当前设备外网可达性，不能替代离线门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

@@ -128,7 +128,18 @@ TEST1063 覆盖静态和动态 `fieldset.disabled`、legend 豁免、嵌套继�
 通过 18/18，证据见 `.agents/HANDOFF.md`。这批只涉及自动可判定的 DOM/表单状态，不新增
 视觉、真实触摸、SIP、旋转、picker 或网络失败人工门。
 
-### 10. 建立真实页面驱动的兼容队列
+### 10. next616：HTTP(S) 深层链接 URL 解析（已完成）
+
+next616 修正了宿主导航和子资源请求共用的 URL 解析边界。`test_host` 不再手工拼接同目录
+字符串，而是让 WinINet 处理目录相对、`.`/`..`、query-only、network-path 和绝对 URL，
+随后以有界 HTTP(S) parser 校验 authority、端口和路径并剥离 fragment。这样真实页面中的
+主文档链接、外部 CSS 和图片引用使用同一套规则；产品 DLL 的 URL/history ABI 仍保持不变，
+网络 I/O 和窗口替换继续由宿主持有。TEST1064 覆盖成功解析与 unsupported scheme、无 origin
+普通相对引用的 fail-closed 边界。Debug 设备门已通过 TEST999 与 TEST43/1064/999；真实
+页面门已完成 example.com 第一跳。IANA 后续跳转受外网响应影响，作为网络环境限制单列，
+不替代离线契约门；Release 停滞也不替代项目既有 Debug gate。
+
+### 11. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -139,7 +150,7 @@ TEST1063 覆盖静态和动态 `fieldset.disabled`、legend 豁免、嵌套继�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 11. 安排新的全范围检查点
+### 12. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

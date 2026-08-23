@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1063
+#define TEST_MAX_NUMBER 1064
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -8054,92 +8054,190 @@ static void copy_path(char *dst, int cap, const char *src)
     dst[n] = '\0';
 }
 
+/* Copy a canonical URL path/query, dropping a fragment without silently
+ * truncating an over-sized request.  InternetCombineUrlA supplies the
+ * RFC-style dot-segment and query-only resolution used by both document and
+ * subresource navigation. */
+static BOOL pcore_copy_resolved_path(const char *source, char *path,
+        int pathcap)
+{
+    int n;
+
+    if (source == NULL || path == NULL || pathcap <= 1) {
+        return FALSE;
+    }
+    n = 0;
+    if (source[0] == '?') {
+        path[n++] = '/';
+    } else if (source[0] != '/') {
+        return FALSE;
+    }
+    while (*source != '\0' && *source != '#') {
+        if (n >= pathcap - 1) {
+            path[0] = '\0';
+            return FALSE;
+        }
+        path[n++] = *source++;
+    }
+    if (n == 0) {
+        path[n++] = '/';
+    }
+    path[n] = '\0';
+    return TRUE;
+}
+
+/* Parse one canonical http(s) URL produced by WinINet.  Userinfo, unknown
+ * schemes and malformed/overflowed ports fail closed; the network layer only
+ * receives an authority and path it can safely send to PHttp. */
+static BOOL pcore_parse_resolved_url(const char *url, char *host,
+        int hostcap, char *path, int pathcap, int *out_port)
+{
+    const char *p;
+    const char *authority_end;
+    const char *host_end;
+    const char *colon;
+    const char *q;
+    int port;
+    int digits;
+    int n;
+    int is_http;
+
+    if (url == NULL || host == NULL || hostcap <= 1 || path == NULL ||
+            pathcap <= 1 || out_port == NULL) {
+        return FALSE;
+    }
+    host[0] = '\0';
+    path[0] = '\0';
+    if (ci_prefix(url, "http://")) {
+        p = url + 7;
+        is_http = 1;
+    } else if (ci_prefix(url, "https://")) {
+        p = url + 8;
+        is_http = 0;
+    } else {
+        return FALSE;
+    }
+    authority_end = p;
+    while (*authority_end != '\0' && *authority_end != '/' &&
+            *authority_end != '?' && *authority_end != '#') {
+        authority_end++;
+    }
+    if (authority_end == p) {
+        return FALSE;
+    }
+    host_end = authority_end;
+    colon = NULL;
+    for (q = p; q < authority_end; q++) {
+        if (*q == '@') {
+            return FALSE;
+        }
+        if (*q == ':') {
+            colon = q;
+        }
+    }
+    if (colon != NULL) {
+        host_end = colon;
+    }
+    n = (int) (host_end - p);
+    if (n <= 0 || n >= hostcap) {
+        return FALSE;
+    }
+    memcpy(host, p, (size_t) n);
+    host[n] = '\0';
+    port = is_http ? 80 : 443;
+    if (colon != NULL) {
+        port = 0;
+        digits = 0;
+        for (q = colon + 1; q < authority_end; q++) {
+            if (*q < '0' || *q > '9' || port > 6553) {
+                return FALSE;
+            }
+            port = port * 10 + (*q - '0');
+            digits++;
+        }
+        if (digits == 0 || port <= 0 || port > 65535) {
+            return FALSE;
+        }
+    }
+    if (!pcore_copy_resolved_path(authority_end, path, pathcap)) {
+        return FALSE;
+    }
+    *out_port = port;
+    return TRUE;
+}
+
 /* Resolve a URL against an explicit page origin. The navigation worker uses
- * the pending origin while the visible page keeps its old global origin. */
+ * the pending origin while the visible page keeps its old global origin.
+ * WinINet is deliberately kept at this host boundary: it handles the
+ * directory-relative, query-only, network-path and dot-segment cases that a
+ * hand-written same-directory join gets wrong on real pages. */
 static BOOL resolve_url_from(const char *base_host, const char *base_path,
         int base_port, const char *href, char *host, int hostcap,
         char *path, int pathcap, int *out_port)
 {
-    const char *p = href;
+    char reference[2048];
+    char base_url[2048];
+    char combined[2048];
+    const char *start;
+    const char *end;
+    int length;
+    DWORD combined_length;
 
-    *out_port = 443;
-
-    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') {
-        p++;
+    if (href == NULL || host == NULL || hostcap <= 1 || path == NULL ||
+            pathcap <= 1 || out_port == NULL) {
+        return FALSE;
     }
+    host[0] = '\0';
+    path[0] = '\0';
+    start = href;
+    while (*start == ' ' || *start == '\t' || *start == '\n' ||
+            *start == '\r') {
+        start++;
+    }
+    end = start + strlen(start);
+    while (end > start &&
+            (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' ||
+            end[-1] == '\r')) {
+        end--;
+    }
+    length = (int) (end - start);
+    if (length < 0 || length >= (int) sizeof(reference)) {
+        return FALSE;
+    }
+    memcpy(reference, start, (size_t) length);
+    reference[length] = '\0';
 
-    if (ci_prefix(p, "http://")) {
-        p += 7;
-        *out_port = 80;
-    } else if (ci_prefix(p, "https://")) {
-        p += 8;
-        *out_port = 443;
-    } else if (ci_prefix(p, "mailto:") || ci_prefix(p, "javascript:") ||
-               ci_prefix(p, "tel:") || p[0] == '#') {
-        return FALSE;   /* not a navigable http(s) document link */
-    } else if (p[0] == '/') {
-        if (base_host == NULL || base_host[0] == '\0') {
+    /* An empty current origin exists only on the offline landing page.  A
+     * dummy HTTPS base lets absolute and network-path references still parse;
+     * ordinary relative links correctly fail closed until a page is loaded. */
+    if (base_host != NULL && base_host[0] != '\0' && base_path != NULL) {
+        if (pcore_document_url(base_host, base_path, base_port, base_url,
+                sizeof(base_url)) != 0) {
             return FALSE;
         }
-        cstr_copy(host, hostcap, base_host);
-        copy_path(path, pathcap, p);
-        *out_port = base_port;   /* same scheme as current page */
-        return TRUE;
     } else {
-        /* Same-directory relative: current host + base dir + href. */
-        int n = 0, i, lastslash = -1;
-        if (base_host == NULL || base_host[0] == '\0' || base_path == NULL) {
+        if (!(ci_prefix(reference, "http://") ||
+                ci_prefix(reference, "https://") ||
+                (reference[0] == '/' && reference[1] == '/'))) {
             return FALSE;
         }
-        cstr_copy(host, hostcap, base_host);
-        for (i = 0; base_path[i] != '\0'; i++) {
-            if (base_path[i] == '/') {
-                lastslash = i;
-            }
-        }
-        for (i = 0; i <= lastslash && n < pathcap - 1; i++) {
-            path[n++] = base_path[i];
-        }
-        if (lastslash < 0 && n < pathcap - 1) {
-            path[n++] = '/';
-        }
-        while (*p != '\0' && *p != '#' && n < pathcap - 1) {
-            path[n++] = *p++;
-        }
-        path[n] = '\0';
-        *out_port = base_port;   /* same scheme as current page */
-        return TRUE;
+        cstr_copy(base_url, sizeof(base_url),
+                "https://positron.invalid/");
     }
-
-    /* Absolute: p now points at host[:port][/path][#frag]. */
-    {
-        int n = 0;
-        while (*p != '\0' && *p != '/' && *p != '#' && *p != ':' &&
-                n < hostcap - 1) {
-            host[n++] = *p++;
-        }
-        host[n] = '\0';
-        if (n == 0) {
+    if (reference[0] == '\0') {
+        cstr_copy(combined, sizeof(combined), base_url);
+    } else {
+        combined_length = (DWORD) sizeof(combined);
+        if (!InternetCombineUrlA(base_url, reference, combined,
+                &combined_length, ICU_NO_ENCODE) ||
+                combined_length == 0 ||
+                combined_length >= (DWORD) sizeof(combined)) {
             return FALSE;
         }
-        if (*p == ':') {
-            int pt = 0;
-            p++;
-            while (*p >= '0' && *p <= '9') {
-                pt = pt * 10 + (*p - '0');
-                p++;
-            }
-            if (pt > 0) {
-                *out_port = pt;
-            }
-        }
-        if (*p == '/') {
-            copy_path(path, pathcap, p);
-        } else {
-            cstr_copy(path, pathcap, "/");
-        }
     }
-    return TRUE;
+    combined[sizeof(combined) - 1] = '\0';
+    return pcore_parse_resolved_url(combined, host, hostcap, path, pathcap,
+            out_port);
 }
 
 /* Resolve a clicked link against the currently visible page. */
@@ -53590,6 +53688,78 @@ static BOOL test1063_form_fieldset_disabled_contract(void)
     return TRUE;
 }
 
+/* TEST 1064 - host URL resolution for real-page deep links. */
+static BOOL test1064_navigation_url_resolution_contract(void)
+{
+    char host[128];
+    char path[512];
+    char error[512];
+    int port;
+    int relative_ok;
+    int query_ok;
+    int root_ok;
+    int network_ok;
+    int empty_ok;
+    int absolute_ok;
+    int rejected_ok;
+
+    memset(host, 0, sizeof(host));
+    memset(path, 0, sizeof(path));
+    memset(error, 0, sizeof(error));
+    port = 0;
+    relative_ok = resolve_url_from("example.test",
+            "/dir/page.html?old=1", 443,
+            "../img/logo.png?new=2#fragment", host, sizeof(host), path,
+            sizeof(path), &port) && strcmp(host, "example.test") == 0 &&
+            strcmp(path, "/img/logo.png?new=2") == 0 && port == 443;
+    port = 0;
+    query_ok = resolve_url_from("example.test", "/dir/page.html?old=1", 443,
+            "?next=1", host, sizeof(host), path, sizeof(path), &port) &&
+            strcmp(host, "example.test") == 0 &&
+            strcmp(path, "/dir/page.html?next=1") == 0 && port == 443;
+    port = 0;
+    root_ok = resolve_url_from("example.test", "/dir/page.html", 443,
+            "/assets/./main.css", host, sizeof(host), path, sizeof(path),
+            &port) && strcmp(host, "example.test") == 0 &&
+            strcmp(path, "/assets/main.css") == 0 && port == 443;
+    port = 0;
+    network_ok = resolve_url_from("example.test", "/dir/page.html", 443,
+            "//cdn.test:8080/a/../img.png#x", host, sizeof(host), path,
+            sizeof(path), &port) && strcmp(host, "cdn.test") == 0 &&
+            strcmp(path, "/img.png") == 0 && port == 8080;
+    port = 0;
+    empty_ok = resolve_url_from("example.test", "/dir/page.html", 443, "",
+            host, sizeof(host), path, sizeof(path), &port) &&
+            strcmp(host, "example.test") == 0 &&
+            strcmp(path, "/dir/page.html") == 0 && port == 443;
+    port = 0;
+    absolute_ok = resolve_url_from(NULL, NULL, 443,
+            "https://www.iana.org/domains/reserved", host, sizeof(host),
+            path, sizeof(path), &port) &&
+            strcmp(host, "www.iana.org") == 0 &&
+            strcmp(path, "/domains/reserved") == 0 && port == 443;
+    rejected_ok = !resolve_url_from("example.test", "/dir/page.html", 443,
+            "javascript:alert(1)", host, sizeof(host), path, sizeof(path),
+            &port) && !resolve_url_from(NULL, NULL, 443, "relative.html",
+            host, sizeof(host), path, sizeof(path), &port);
+    if (!relative_ok || !query_ok || !root_ok || !network_ok || !empty_ok ||
+            !absolute_ok || !rejected_ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "relative=%d query=%d root=%d network=%d empty=%d "
+                "absolute=%d rejected=%d host=%s path=%s port=%d",
+                relative_ok, query_ok, root_ok, network_ok, empty_ok,
+                absolute_ok, rejected_ok, host, path, port);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1064 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1064 OK",
+            "HTTP(S) navigation and resource references now share bounded "
+            "WinINet resolution for directory, query, network-path and "
+            "dot-segment cases; fragments and unsupported schemes fail safe.");
+    return TRUE;
+}
+
 static BOOL test_browser_raw_property_case(const char *target_markup,
         const char *property, const char *attribute, const char *initial,
         const char *attribute_value, const char *property_value,
@@ -70756,6 +70926,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1061: ok = test1061_browser_native_edit_composition_contract(); break;
         case 1062: ok = test1062_browser_label_control_contract(); break;
         case 1063: ok = test1063_form_fieldset_disabled_contract(); break;
+        case 1064: ok = test1064_navigation_url_resolution_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

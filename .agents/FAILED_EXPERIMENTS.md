@@ -1,6 +1,6 @@
 # 失败实验与禁止恢复边界
 
-更新时间：2026-08-20
+更新时间：2026-08-23
 
 这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；
 当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
@@ -115,6 +115,19 @@ Connect/Cradle。若未来重启 CoreCon 方向，必须先证明同一个接口
 GUI 连接状态的情况下同时复用 USB 真机和 DMA emulator 当前会话；仅在 emulator 上成功不算
 通过。完整通道区别和 RAPI 环境修复见
 [`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md)。
+
+### next616 首轮设备门：Release/遗留进程组合 — 环境误报，已确认
+
+问题：首轮 `next616-url-resolution-final` 选择 `13,43,1064,999` 时使用了 Release payload，
+真实外网导航在 1200 秒内没有写出任何测试完成标记；RAPI gate 按安全契约没有远程强杀设备
+进程。随后同一会话上的 Release 离线/999 探针也只留下启动头，不能据此判定 URL 解析断言
+失败。切回项目既有 Debug gate 后，TEST999 及 TEST43/1064/999 均正常通过；Release 停滞
+只保留为配置/设备兼容观察。
+
+决定：设备门默认使用 Debug 配置；Release 结果不得替代既有 Debug 基线。若 Debug 仍在启动
+头停住，才在设备/模拟器 GUI 关闭所有遗留 `test_host.exe`，必要时重启设备并重新建立 WMDC
+当前连接；顺序为 `999` → `43,1064,999` → 网络可用时 `13,43,1064,999`。超时日志不得
+写成通过证据；不要修改 gate 去强杀未知设备进程。
 
 ### 早期 loading 条 — 已替代/部分暂挂
 
