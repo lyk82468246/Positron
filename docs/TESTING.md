@@ -191,6 +191,29 @@ scripts\device_gate.bat -Candidate next611-native-select-transaction-final ^
 系统 picker 或 OEM SIP/IME 人工门；tracked `test_host.ini` 仍保持 `javascript=0` 的默认
 自动 smoke 选择。
 
+### next612 native SELECT 键盘默认动作自动门
+
+next612 将 native SELECT 的 `keydown`/`keyup` dispatch 入口迁入
+`positron_browser.dll` 的 `PBrowser_ScriptSessionDispatchNativeSelectKey()`。browser layer
+校验稳定 token 和事件 phase，复用已注册的 typed key adapter，并返回 cancel/default-allowed
+结果；宿主继续执行 WM COMBOBOX 的真正 Enter/Arrow 默认动作以及 Core selection mutation。
+TEST1060 是不依赖窗口的 ABI 契约，覆盖 ArrowDown/Enter 元数据、取消、adapter error、reset
+和 unregister；TEST118 在真实页面中发送 ArrowDown，断言未取消时 COMBOBOX 和 Core selection
+都从 option 0 移到 option 1，TEST999 保留最终提示音。
+
+窄定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next612-native-select-key-final ^
+  -EnableJavaScript ^
+  -TestSelection "1060,118,999"
+```
+
+当前最终证据位于 `tmp/device-runs/20260823-190158-next612-native-select-key-final/`：
+3/3 通过、零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增
+视觉、真实触摸、旋转、系统 picker 或 OEM SIP/IME 人工门；tracked `test_host.ini` 仍保持
+`javascript=0` 的默认自动 smoke 选择。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

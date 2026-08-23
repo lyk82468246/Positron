@@ -157,7 +157,9 @@ input→change 顺序、single/multiple 形状校验、bounded target state，�
 `PBrowser_ScriptSessionDispatchNativeSelectInteraction()` 还持有单选下拉的
 begin/candidate/confirm/cancel 事务状态，只在确认且观察到候选时给宿主 commit 闸门。宿主仍
 提交 Core selection mutation、处理 WM 通知、在取消时恢复原生控件并传播 core 事件。native
-SELECT 键盘 WM 默认动作、下拉窗口/视觉、composition 生命周期、系统文件选择器、焦点窗口/
+SELECT 的 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 现在持有 keydown/keyup 的
+stable-token 校验、typed key adapter 复用和 cancel/default-allowed policy；native WM 控件的
+真正默认动作、下拉窗口/视觉、composition 生命周期、系统文件选择器、焦点窗口/
 绘制调度、history/navigation side effect 和 OEM 平台副作用仍由应用宿主负责；其余 form/input
 适配会逐步迁入此 DLL。
 当前 raw metadata bridge 还提供 `HTMLElement.draggable` 的 UTF-8 属性往返；这不等于拖放手势或
@@ -899,6 +901,21 @@ layer 只保存有界候选状态，确认且候选存在时返回 `out_should_c
 覆盖 interaction ABI 的非法输入、候选抑制、确认/取消、无候选确认、reset/unregister；TEST67
 的合成 WM 探针覆盖 Core 延迟 mutation、取消回滚和确认提交。
 
+#### next612 的 native SELECT 键盘边界
+
+next612 继续把可发布的键盘事件策略放在 `positron_browser.dll`，不扩展
+`positron_core.dll` ABI。`PBrowser_ScriptSessionDispatchNativeSelectKey()` 接收宿主提供的
+稳定 token、文档几何、`keydown`/`keyup` phase 和 Enter/Arrow 元数据，复用已注册的
+`PBrowserScriptKeyCallbacks`，并把 callback 的 cancel/default-allowed 结果返回给宿主；
+adapter 失败时保持 fail-open 的 WM 兼容回退。browser layer 不模拟 COMBOBOX 默认动作，
+也不拥有 Core selection mutation。
+
+`test_host.exe` 仍负责将 WM key message 转成该入口、依据结果决定是否调用原生控件、接收
+`CBN_SELCHANGE` 并更新 Core。TEST1060 覆盖 ABI 的 phase/token/metadata、取消、失败、reset
+和注销；TEST118 在真实 WM6 页面上证明未取消的 ArrowDown 同时移动 COMBOBOX 和 Core selection。
+Enter 的平台提交、下拉窗口、SIP/IME composition、视觉和 OEM 副作用继续属于宿主边界，
+不能由该自动门扩展为完整键盘或移动端兼容性声明。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。
@@ -907,10 +924,10 @@ layer 只保存有界候选状态，确认且候选存在时返回 `out_should_c
 “浏览器 JavaScript”指产品浏览器层和宿主在显式开关开启时：
 
 1. browser layer 持有 `positron_script` context，并按 DOM 顺序驱动 classic inline/external script；
-2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/`title`/`lang`/`dir`/`hidden`/`accessKey`/`role`/`ariaLabel`/`contentEditable`/validation query（包括 form-level 聚合）/custom-validity/form/constraint-related reflected properties（含 `name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`pattern`/`minLength`/`maxLength`）/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（包括 typed click、disabled 抑制、验证与 submit/reset 事件顺序；file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract；native EDIT 的事务状态由 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 持有，native SELECT 的 commit input→change、focus-family 和单选下拉 interaction 顺序由 `PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()` 与 `PBrowser_ScriptSessionDispatchNativeSelectInteraction()` 持有，宿主只提供 value/selection/focus transition、WM phase 与 core propagation；
+2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/`title`/`lang`/`dir`/`hidden`/`accessKey`/`role`/`ariaLabel`/`contentEditable`/validation query（包括 form-level 聚合）/custom-validity/form/constraint-related reflected properties（含 `name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`pattern`/`minLength`/`maxLength`）/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（包括 typed click、disabled 抑制、验证与 submit/reset 事件顺序；file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract；native EDIT 的事务状态由 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 持有，native SELECT 的 commit input→change、focus-family、单选下拉 interaction 和 key dispatch/default-allowed policy 由 `PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()`、`PBrowser_ScriptSessionDispatchNativeSelectInteraction()` 与 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 持有，宿主只提供 value/selection/focus transition、WM phase 与 core propagation；
 2a. report-validity callback 只返回同步 valid 结果并路由可寻址控件的 trusted `invalid` 事件；
     它不负责 native invalid UI、焦点/滚动或表单提交。
-3. browser layer 持有并执行产品 bootstrap，并在 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 中执行程序化表单激活策略；宿主 Ex callback 只提供 target lookup、submit validation、default action 和非表单 click 传播；native EDIT/SELECT Ex callback 只提供 value/selection commit、焦点转换后的 core 事件传播；键盘取消仍通过 typed key callback 返回 default-allowed；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
+3. browser layer 持有并执行产品 bootstrap，并在 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 中执行程序化表单激活策略；宿主 Ex callback 只提供 target lookup、submit validation、default action 和非表单 click 传播；native EDIT/SELECT Ex callback 只提供 value/selection commit、焦点转换后的 core 事件传播；native SELECT 键盘取消通过 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 返回 default-allowed；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
 4. 宿主继续提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
 
 因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
@@ -918,8 +935,8 @@ history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/
 DOM relation/form collection、navigation/location-event/native-input/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click/
 submit-reset/invalid/report-validity/file-input/checkbox-radio-change/SELECT-input/change dispatch entry，及
 程序化 click 的 typed activation policy、native EDIT 的 beforeinput/input/dirty/change 事务策略、
-native SELECT 的 commit input/change、focus-family 顺序与单选下拉事务策略已进入
-`positron_browser.dll`；native SELECT WM 键盘/控件默认动作、下拉窗口/视觉、composition 生命周期和其余 native
+native SELECT 的 commit input/change、focus-family 顺序、单选下拉事务策略与 typed key dispatch policy 已进入
+`positron_browser.dll`；native SELECT WM 控件真正默认动作、下拉窗口/视觉、composition 生命周期和其余 native
 form/input bridge 仍在迁移中且默认关闭；
 不能将其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。
 

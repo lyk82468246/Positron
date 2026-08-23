@@ -33,8 +33,9 @@ native SELECT 的产品提交入口是 additive 的
 `PCore_SelectSetOptionSelected()`/对应多选 mutation 成功后，传入稳定 token、几何和选择
 快照；browser layer 统一同步派发不可取消的 `input` → `change`，并校验同一 token 的
 single/multiple 形状。`PBrowser_ScriptSessionResetNativeSelectState()` 用于销毁或重建控件时
-丢弃有界 token 状态，最多跟踪 16 个 token。键盘 `keydown`/`keyup` 的取消仍通过已有的
-typed key callback 返回 default-allowed，由宿主决定是否让 WM 控件继续处理。另有
+丢弃有界 token 状态，最多跟踪 16 个 token。`PBrowser_ScriptSessionDispatchNativeSelectKey()`
+现在校验 native SELECT 的稳定 token 与 `keydown`/`keyup` phase，复用已有 typed key callback
+并返回 cancel/default-allowed，由宿主决定是否让 WM 控件继续处理真正的默认动作。另有
 `PBrowser_ScriptSessionDispatchNativeSelectFocus()` 复用同一 token state，统一派发不可取消的
 `focus` → `focusin` / `blur` → `focusout`，并抑制重复焦点通知；宿主在控件焦点消息后只提供
 几何和 focused 状态。上述入口不拥有 WM SELECT、Core selection mutation、下拉展开/关闭、
@@ -226,6 +227,13 @@ Core selection mutation 和既有 input/change commit；END_CANCEL 时由宿主�
 Core 快照。TEST1059 覆盖 interaction ABI，TEST67 覆盖合成 WM 通知探针；该入口不承诺
 下拉窗口视觉、键盘默认动作、SIP/IME 或 OEM 行为兼容。
 
+next612 在同一 bounded state 上增加 native SELECT 键盘入口：
+`PBrowser_ScriptSessionDispatchNativeSelectKey()` 校验稳定 token、`keydown`/`keyup` phase
+和 Enter/Arrow 元数据，复用 `PBrowserScriptKeyCallbacks` 并把取消/default-allowed 结果交回
+宿主。宿主继续拥有 WM COMBOBOX 的真正默认动作、Core selection mutation、下拉窗口和
+平台副作用。TEST1060 覆盖 ABI 的成功、取消、失败、reset 和注销；TEST118 在真实 WM6
+页面上验证未取消的 ArrowDown 同时移动原生控件和 Core selection。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -276,6 +284,36 @@ PBrowser_ScriptSessionResetNativeSelectState(session);
 `dispatch_focus` 同步收到 `focus`/`focusin` 或 `blur`/`focusout` 两个事件；重复状态不会
 再次回调，失败返回后可用同一状态重试。WM 控件、Core selection mutation、下拉窗口和
 SIP/IME 仍属于调用者。
+
+键盘消息使用同一 session 的 typed key adapter；native SELECT 可用专用入口保留稳定 token
+边界，并依据 `default_allowed` 决定是否把消息交给 WM 控件：
+
+```c
+PBrowserScriptNativeSelectKeyInfo key;
+int default_allowed;
+
+PBrowser_ScriptSessionRegisterKeyCallbacks(session, &key_callbacks);
+key.size = sizeof(key);
+key.target_token = select_token;
+key.x = select_x;
+key.y = select_y;
+key.event_type = "keydown";       /* or "keyup" */
+key.key = "ArrowDown";             /* or "Enter" */
+key.key_code = 40;                  /* VK_DOWN */
+key.char_code = 0;
+key.repeat = 0;
+key.shift = 0;
+key.ctrl = 0;
+key.alt = 0;
+key.is_composing = 0;
+if (PBrowser_ScriptSessionDispatchNativeSelectKey(session, &key,
+        &default_allowed) == PSCRIPT_OK && default_allowed) {
+    /* call the original WM COMBOBOX procedure/default action */
+}
+```
+
+该入口只负责 browser-owned 事件 contract 和取消结果；调用者仍负责 WM 消息、Core selection
+mutation、`input`/`change` commit、下拉窗口、SIP/IME 和平台副作用。
 
 主要公共能力包括：
 

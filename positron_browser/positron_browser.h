@@ -542,6 +542,27 @@ typedef struct PBrowserScriptNativeSelectFocusInfo {
     int focused;
 } PBrowserScriptNativeSelectFocusInfo;
 
+/* Product-owned native SELECT keyboard event. The browser layer validates
+ * the stable target token, supplies the trusted key-event shape to the
+ * generic key adapter and returns whether the WM control may process its
+ * native default action. event_type is only "keydown" or "keyup". Strings
+ * are borrowed for the synchronous callback. */
+typedef struct PBrowserScriptNativeSelectKeyInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    const char *event_type;
+    const char *key;
+    unsigned int key_code;
+    unsigned int char_code;
+    int repeat;
+    int shift;
+    int ctrl;
+    int alt;
+    int is_composing;
+} PBrowserScriptNativeSelectKeyInfo;
+
 /* Native SELECT dropdown transaction phases. The browser layer owns the
  * bounded candidate state and whether an accepted close should commit; the
  * host remains responsible for the WM dropdown and the eventual Core
@@ -563,9 +584,9 @@ typedef struct PBrowserScriptNativeSelectInteractionInfo {
 } PBrowserScriptNativeSelectInteractionInfo;
 
 /* Additive native SELECT adapter. The browser layer owns the commit event
- * ordering and bounded target contract; the host supplies only core event
- * propagation and keeps WM SELECT, selection mutation and repaint side
- * effects. Keyboard cancellation remains the existing typed key callback. */
+ * ordering, keyboard default-allowed policy and bounded target contract; the
+ * host supplies only core event propagation and keeps WM SELECT, selection
+ * mutation and repaint side effects. */
 typedef struct PBrowserScriptNativeSelectCallbacksEx {
     unsigned long size;
     void *pw;
@@ -994,6 +1015,14 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectCommit(
 PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectFocus(
         HANDLE hSession,
         const PBrowserScriptNativeSelectFocusInfo *info);
+/* Dispatch one native SELECT key event through the session's generic key
+ * adapter. On success out_default_allowed is 1 when the host may let the WM
+ * control process its native default, or 0 when a cancelable keydown was
+ * prevented. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectKey(
+        HANDLE hSession,
+        const PBrowserScriptNativeSelectKeyInfo *info,
+        int *out_default_allowed);
 /* Notify the product layer about a single-select dropdown transaction. On
  * END_OK, out_should_commit is 1 only when a candidate was observed since
  * BEGIN; on all other phases it is zero. END_CANCEL clears the candidate

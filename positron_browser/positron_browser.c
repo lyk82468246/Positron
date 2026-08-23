@@ -6421,6 +6421,22 @@ static int p_browser_script_native_select_focus_info_valid(
     return 1;
 }
 
+static int p_browser_script_native_select_key_info_valid(
+        const PBrowserScriptNativeSelectKeyInfo *info)
+{
+    if (info == NULL || info->size < sizeof(*info) ||
+            info->target_token == 0 || info->event_type == NULL ||
+            info->event_type[0] == '\0' || info->key == NULL ||
+            info->key[0] == '\0') {
+        return 0;
+    }
+    if (strcmp(info->event_type, "keydown") != 0 &&
+            strcmp(info->event_type, "keyup") != 0) {
+        return 0;
+    }
+    return 1;
+}
+
 static int p_browser_script_native_select_interaction_info_valid(
         const PBrowserScriptNativeSelectInteractionInfo *info)
 {
@@ -6577,6 +6593,55 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectFocus(
         return PSCRIPT_ERROR_NATIVE;
     }
     state->focused = info->focused;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectKey(
+        HANDLE hSession, const PBrowserScriptNativeSelectKeyInfo *info,
+        int *out_default_allowed)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_select_state *state;
+    PBrowserScriptKeyEventInfo key_info;
+    int default_allowed;
+    int rc;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->native_select == NULL ||
+            session->key == NULL || out_default_allowed == NULL ||
+            !p_browser_script_native_select_key_info_valid(info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state = p_browser_script_native_select_state_find(
+            session->native_select, info->target_token, 1);
+    if (state == NULL) {
+        return PSCRIPT_ERROR_NATIVE_LIMIT;
+    }
+    memset(&key_info, 0, sizeof(key_info));
+    key_info.size = sizeof(key_info);
+    key_info.x = info->x;
+    key_info.y = info->y;
+    key_info.event_type = info->event_type;
+    key_info.bubbles = 1;
+    key_info.cancelable = strcmp(info->event_type, "keydown") == 0;
+    key_info.key = info->key;
+    key_info.key_code = info->key_code;
+    key_info.char_code = info->char_code;
+    key_info.repeat = info->repeat ? 1 : 0;
+    key_info.shift = info->shift ? 1 : 0;
+    key_info.ctrl = info->ctrl ? 1 : 0;
+    key_info.alt = info->alt ? 1 : 0;
+    key_info.is_composing = info->is_composing ? 1 : 0;
+    default_allowed = 1;
+    rc = session->key->callbacks.dispatch_key(
+            session->key->callbacks.pw, &key_info, &default_allowed);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    *out_default_allowed = default_allowed ? 1 : 0;
     return PSCRIPT_OK;
 }
 

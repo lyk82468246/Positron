@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1059
+#define TEST_MAX_NUMBER 1060
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -2808,6 +2808,227 @@ static BOOL test1059_browser_native_select_transaction_contract(void)
             "confirm/cancel transaction state covers early Core mutation\n"
             "suppression, accept-only commit and reset without owning WM\n"
             "notifications or native control rollback.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 1060 - browser-owned native SELECT keyboard default policy       */
+/* The browser validates the stable SELECT token and dispatches the key
+ * event through the generic key adapter; the host only decides whether the
+ * WM control receives the native default action.                         */
+typedef struct test1060_native_select_key_state {
+    int calls;
+    int return_code;
+    int default_allowed;
+    int x;
+    int y;
+    int bubbles;
+    int cancelable;
+    unsigned int key_code;
+    unsigned int char_code;
+    int repeat;
+    int shift;
+    int ctrl;
+    int alt;
+    int is_composing;
+    char event_type[32];
+    char key[64];
+} test1060_native_select_key_state;
+
+static int test1060_native_select_key_dispatch(void *pw,
+        const PBrowserScriptKeyEventInfo *info,
+        int *out_default_allowed)
+{
+    test1060_native_select_key_state *state;
+    size_t event_length;
+    size_t key_length;
+
+    state = (test1060_native_select_key_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptKeyEventInfo) ||
+            info->event_type == NULL || info->key == NULL) {
+        return -1;
+    }
+    event_length = strlen(info->event_type);
+    key_length = strlen(info->key);
+    if (event_length >= sizeof(state->event_type) ||
+            key_length >= sizeof(state->key)) {
+        return -1;
+    }
+    state->calls++;
+    state->x = info->x;
+    state->y = info->y;
+    state->bubbles = info->bubbles;
+    state->cancelable = info->cancelable;
+    state->key_code = info->key_code;
+    state->char_code = info->char_code;
+    state->repeat = info->repeat;
+    state->shift = info->shift;
+    state->ctrl = info->ctrl;
+    state->alt = info->alt;
+    state->is_composing = info->is_composing;
+    memcpy(state->event_type, info->event_type, event_length + 1);
+    memcpy(state->key, info->key, key_length + 1);
+    *out_default_allowed = state->default_allowed ? 1 : 0;
+    return state->return_code;
+}
+
+static BOOL test1060_browser_native_select_key_contract(void)
+{
+    PBrowserScriptNativeSelectCallbacksEx select_callbacks;
+    PBrowserScriptKeyCallbacks key_callbacks;
+    PBrowserScriptNativeSelectKeyInfo info;
+    test1057_native_select_state select_state;
+    test1060_native_select_key_state key_state;
+    HANDLE session;
+    const char *stage;
+    int default_allowed;
+    int rc;
+    int ok;
+
+    memset(&select_callbacks, 0, sizeof(select_callbacks));
+    memset(&key_callbacks, 0, sizeof(key_callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&select_state, 0, sizeof(select_state));
+    memset(&key_state, 0, sizeof(key_state));
+    select_callbacks.size = sizeof(select_callbacks);
+    select_callbacks.pw = &select_state;
+    select_callbacks.dispatch_select = test1057_native_select_dispatch;
+    key_callbacks.size = sizeof(key_callbacks);
+    key_callbacks.pw = &key_state;
+    key_callbacks.dispatch_key = test1060_native_select_key_dispatch;
+    info.size = sizeof(info);
+    info.target_token = 9;
+    info.x = 31;
+    info.y = 47;
+    info.event_type = "keydown";
+    info.key = "ArrowDown";
+    info.key_code = 40;
+    info.char_code = 0;
+    info.repeat = 0;
+    info.shift = 0;
+    info.ctrl = 0;
+    info.alt = 0;
+    info.is_composing = 0;
+    stage = "create";
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    default_allowed = 1;
+    rc = PSCRIPT_OK;
+    ok = session != NULL;
+    if (ok) {
+        stage = "invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectKey(
+                session, NULL, &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && default_allowed == 1;
+    }
+    if (ok) {
+        stage = "register-select";
+        ok = PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
+                session, &select_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-key";
+        ok = PBrowser_ScriptSessionRegisterKeyCallbacks(session,
+                &key_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "duplicate-key";
+        ok = PBrowser_ScriptSessionRegisterKeyCallbacks(session,
+                &key_callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "invalid-token";
+        info.target_token = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectKey(
+                session, &info, &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && default_allowed == 1 &&
+                key_state.calls == 0;
+        info.target_token = 9;
+    }
+    if (ok) {
+        stage = "invalid-event";
+        info.event_type = "keypress";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectKey(
+                session, &info, &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && default_allowed == 1 &&
+                key_state.calls == 0;
+        info.event_type = "keydown";
+    }
+    if (ok) {
+        stage = "keydown-cancel";
+        key_state.default_allowed = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectKey(
+                session, &info, &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                key_state.calls == 1 && key_state.x == 31 &&
+                key_state.y == 47 && key_state.bubbles == 1 &&
+                key_state.cancelable == 1 && key_state.key_code == 40 &&
+                key_state.char_code == 0 && key_state.repeat == 0 &&
+                key_state.is_composing == 0 &&
+                strcmp(key_state.event_type, "keydown") == 0 &&
+                strcmp(key_state.key, "ArrowDown") == 0;
+    }
+    if (ok) {
+        stage = "keyup-allow";
+        info.event_type = "keyup";
+        info.key = "Enter";
+        info.key_code = 13;
+        info.ctrl = 1;
+        key_state.default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectKey(
+                session, &info, &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                key_state.calls == 2 && key_state.cancelable == 0 &&
+                key_state.key_code == 13 && key_state.ctrl == 1 &&
+                strcmp(key_state.event_type, "keyup") == 0 &&
+                strcmp(key_state.key, "Enter") == 0;
+    }
+    if (ok) {
+        stage = "adapter-error";
+        key_state.return_code = -1;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectKey(
+                session, &info, &default_allowed);
+        ok = rc == PSCRIPT_ERROR_NATIVE && default_allowed == 1 &&
+                key_state.calls == 3;
+        key_state.return_code = 0;
+    }
+    if (ok) {
+        stage = "reset-and-retry";
+        ok = PBrowser_ScriptSessionResetNativeSelectState(session) ==
+                PSCRIPT_OK;
+        info.event_type = "keydown";
+        info.key = "ArrowDown";
+        info.key_code = 40;
+        info.ctrl = 0;
+        rc = ok ? PBrowser_ScriptSessionDispatchNativeSelectKey(
+                session, &info, &default_allowed) : PSCRIPT_ERROR_FATAL;
+        ok = ok && rc == PSCRIPT_OK && default_allowed == 1 &&
+                key_state.calls == 4;
+    }
+    if (ok) {
+        stage = "unregister-key";
+        ok = PBrowser_ScriptSessionUnregisterKeyCallbacks(session) ==
+                PSCRIPT_OK;
+        rc = ok ? PBrowser_ScriptSessionDispatchNativeSelectKey(
+                session, &info, &default_allowed) : PSCRIPT_ERROR_FATAL;
+        ok = ok && rc == PSCRIPT_ERROR_ARGUMENT && key_state.calls == 4;
+    }
+    if (ok) {
+        stage = "unregister-select";
+        ok = PBrowser_ScriptSessionUnregisterNativeSelectCallbacksEx(
+                session) == PSCRIPT_OK;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1060 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1060 OK",
+            "Browser-owned native SELECT key dispatch validates target and\n"
+            "key phase, carries Enter/Arrow metadata, preserves cancellation\n"
+            "and adapter failure semantics, and resets with the native state.");
     return TRUE;
 }
 
@@ -5357,6 +5578,7 @@ static int g_native_select_transaction_probe_ok = 0;
 static int g_native_multiselect_probe = 0;
 static int g_native_multiselect_probe_ok = 0;
 static int g_native_select_key_probe = 0;
+static int g_native_select_key_probe_ok = 0;
 static int g_native_keypress_probe = 0;
 static int g_native_syskey_probe = 0;
 static int g_native_unicode_probe = 0;
@@ -5917,16 +6139,23 @@ static int pcore_browser_script_dispatch_key_event(HWND control,
 static int pcore_browser_script_dispatch_select_key_event(HWND control,
         const char *event_type, WPARAM wp, LPARAM lp, int system_key)
 {
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeSelectKeyInfo key_info;
     PCoreSelectInfo select_info;
     unsigned int i;
     int x;
     int y;
+    int default_allowed;
+    int rc;
 
     if (control == NULL || event_type == NULL || g_render_doc == NULL ||
             g_browser_script_session.document != g_render_doc ||
-            g_browser_script_session.runtime == NULL) {
+            g_browser_script_session.runtime == NULL ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
         return 1;
     }
+    bridge = g_browser_script_session.bridge;
     for (i = 0; i < g_native_select_count; i++) {
         if (g_native_selects[i].hwnd == control &&
                 PCore_SelectInfo(g_render_doc,
@@ -5934,8 +6163,29 @@ static int pcore_browser_script_dispatch_select_key_event(HWND control,
                         &select_info) == 0) {
             x = select_info.x + select_info.width / 2;
             y = select_info.y + select_info.height / 2;
-            return pcore_browser_script_dispatch_key_at(x, y,
-                    event_type, wp, lp, system_key, 0);
+            memset(&key_info, 0, sizeof(key_info));
+            key_info.size = sizeof(key_info);
+            key_info.target_token =
+                    g_native_selects[i].select_index + 1UL;
+            key_info.x = x;
+            key_info.y = y;
+            key_info.event_type = event_type;
+            key_info.key = pcore_native_key_name(wp);
+            key_info.key_code = (unsigned int) wp;
+            key_info.char_code = 0;
+            key_info.repeat = ((lp & 0x40000000L) != 0) ? 1 : 0;
+            key_info.shift = (GetKeyState(VK_SHIFT) < 0) ? 1 : 0;
+            key_info.ctrl = (GetKeyState(VK_CONTROL) < 0) ? 1 : 0;
+            key_info.alt = system_key ? 1 :
+                    ((GetKeyState(VK_MENU) < 0) ? 1 : 0);
+            key_info.is_composing = 0;
+            default_allowed = 1;
+            rc = PBrowser_ScriptSessionDispatchNativeSelectKey(
+                    bridge->session, &key_info, &default_allowed);
+            if (rc != PSCRIPT_OK) {
+                return 1;
+            }
+            return default_allowed ? 1 : 0;
         }
     }
     return 1;
@@ -12463,8 +12713,24 @@ static BOOL show_render_window(void)
     }
     if (g_native_select_key_probe && g_native_select_count > 0 &&
             g_native_selects[0].hwnd != NULL) {
+        PCoreSelectInfo key_probe_info;
+        int key_probe_before;
+
+        key_probe_before = -1;
+        if (PCore_SelectInfo(g_render_doc,
+                g_native_selects[0].select_index, &key_probe_info) == 0) {
+            key_probe_before = key_probe_info.selected_index;
+        }
         SendMessage(g_native_selects[0].hwnd, WM_KEYDOWN, VK_DOWN, 0);
         SendMessage(g_native_selects[0].hwnd, WM_KEYUP, VK_DOWN, 0);
+        if (key_probe_before == 0 &&
+                SendMessage(g_native_selects[0].hwnd, CB_GETCURSEL,
+                0, 0) == 1 &&
+                PCore_SelectInfo(g_render_doc,
+                g_native_selects[0].select_index, &key_probe_info) == 0 &&
+                key_probe_info.selected_index == 1) {
+            g_native_select_key_probe_ok = 1;
+        }
     }
     if (g_native_keypress_probe) {
         if (g_native_edit_count > 0 && g_native_edits[0].hwnd != NULL) {
@@ -25320,11 +25586,19 @@ static BOOL test118_browser_script_select_keyboard(void)
         g_scroll_y = 0;
         g_render_doc = document;
         g_render_sheet = sheet;
+        g_native_select_key_probe_ok = 0;
         g_native_select_key_probe = 1;
         if (!show_render_window()) {
             ok = 0;
         }
         g_native_select_key_probe = 0;
+        if (ok && !g_native_select_key_probe_ok) {
+            ok = 0;
+            _snprintf(error, sizeof(error) - 1,
+                    "native ArrowDown default action did not move "
+                    "COMBOBOX and Core selection to option 1");
+            error[sizeof(error) - 1] = '\0';
+        }
         g_render_doc = NULL;
         g_render_sheet = NULL;
         if (ok && (PCore_NodeTextContentById(document, "result", text,
@@ -25352,7 +25626,8 @@ static BOOL test118_browser_script_select_keyboard(void)
     show_info(L"TEST 118 OK",
             "Native COMBOBOX keyboard messages and public SELECT key\n"
             "dispatch carried ArrowDown metadata through target and\n"
-            "bubble listeners with the expected default policy.");
+            "bubble listeners with the expected default policy; the allowed\n"
+            "default moved both the native control and Core selection.");
     return TRUE;
 }
 
@@ -69837,6 +70112,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1057: ok = test1057_browser_native_select_contract(); break;
         case 1058: ok = test1058_browser_native_select_focus_contract(); break;
         case 1059: ok = test1059_browser_native_select_transaction_contract(); break;
+        case 1060: ok = test1060_browser_native_select_key_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

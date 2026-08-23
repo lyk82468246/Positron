@@ -78,12 +78,18 @@ WM 通知、Core selection mutation、原生控件取消回滚、窗口重绘和
 （TEST67、71、118、1057、1058、1059、999），Debug/Release ARMV4I 构建、C89 检查和
 仓库/文档 audit 均通过；本批没有新增人工门。
 
-### 6. next612：native SELECT 键盘默认动作审计
+### 6. next612：native SELECT 键盘默认动作审计（已完成）
 
-在 next611 设备证据通过后，以真实页面和设备日志为依据审计键盘 Enter/Arrow 默认动作；
-只有出现可重复产品缺口才迁移下一条行为。保持 next611 的边界：browser layer 持有可发布
-策略，宿主只保留 WM、Core mutation、窗口和 OEM 平台副作用；每批提供目标自动门，只有
-视觉/触摸/SIP/旋转/picker 风险才累计人工验收。
+next612 将 native SELECT 的键盘事件入口从宿主私有的 generic key 调用改为
+`positron_browser.dll` 的 additive `PBrowser_ScriptSessionDispatchNativeSelectKey()`。
+browser layer 校验稳定 token 和 `keydown`/`keyup` phase，复用已注册的 typed key adapter，
+并把 cancelable/default-allowed 结果返回给宿主；宿主仍负责 WM 控件真正的 Enter/Arrow 默认动作、
+Core selection mutation、窗口和 OEM 副作用。TEST1060 覆盖 ArrowDown/Enter 元数据、取消、
+adapter error、reset 和 unregister；TEST118 在真实 WM6 页面上验证允许的 ArrowDown 同时移动
+COMBOBOX 与 Core selection。窄定向设备门
+`tmp/device-runs/20260823-190158-next612-native-select-key-final/` 通过 3/3
+（TEST1060、118、999），Debug ARMV4I 构建和 C89 检查通过；本批没有新增人工门。
+Release ARMV4I 构建、仓库/文档 audit 也已通过。
 
 ### 7. 建立真实页面驱动的兼容队列
 
