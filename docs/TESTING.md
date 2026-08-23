@@ -89,6 +89,37 @@ scripts\device_gate.bat -Candidate next607-programmatic-click ^
 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。tracked `test_host.ini` 仍保持
 `javascript=0` 和原有窄 smoke 选择。
 
+### next608 native EDIT 输入事务迁移自动门
+
+next608 将 native EDIT 的 beforeinput 接受/取消、pending metadata、native commit 到 input、
+dirty tracking 和 blur/change 顺序迁入 `positron_browser.dll` 的
+`PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()`。宿主仍拥有 WM EDIT 消息、
+`PCore_TextInputSetValue()`、控件几何、core 事件传播、composition 生命周期和 SIP/IME；本批
+不把 OEM 候选词或完整 IME 兼容性写成产品保证。TEST1056 是不依赖窗口的 Ex ABI 契约测试，
+TEST228–230 与 TEST1055 保持相关表单回归，TEST999 保留完成提示音。
+
+窄定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next608-native-edit-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "1056,999"
+```
+
+相关回归门：
+
+```bat
+scripts\device_gate.bat -Candidate next608-native-edit-regression ^
+  -EnableJavaScript ^
+  -TestSelection "228-230,1055-1056,999"
+```
+
+当前证据分别位于 `tmp/device-runs/20260823-172005-next608-native-edit-r2/`（2/2）和
+`tmp/device-runs/20260823-172030-next608-native-edit-regression/`（6/6），均为唯一
+`TESTBENCH PASS`、零 ERROR/FAIL 且 `test13_route_ok=True`。本批为同步输入策略迁移，不新增
+视觉、真实触摸、旋转、文件选择器或 OEM SIP/IME 人工门；tracked `test_host.ini` 仍保持
+`javascript=0` 的默认自动 smoke 选择。
+
 配置缺失时宿主走交互流程；存在但无效的配置会提示并忽略，不会静默扩大测试范围。
 
 ### 当前默认自动选择与人工验收包（next589 基线）

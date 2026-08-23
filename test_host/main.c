@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1055
+#define TEST_MAX_NUMBER 1056
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -1980,6 +1980,214 @@ static BOOL test1055_browser_programmatic_activation_contract(void)
             "Browser-owned HTMLElement.click() ordering covers typed click,\n"
             "validation, form-event cancellation, disabled suppression and\n"
             "host default-action dispatch.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
+/* TEST 1056 - browser-owned native EDIT transaction ordering           */
+/* The Ex adapter owns beforeinput acceptance, input commit metadata and
+ * dirty/blur change state; this mock does not create a WM control.        */
+typedef struct test1056_native_edit_state {
+    int default_allowed;
+    int return_code;
+    int input_calls;
+    int change_calls;
+    char sequence[32];
+    char input_type[PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES];
+    char data[PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES];
+} test1056_native_edit_state;
+
+static int test1056_sequence_append(test1056_native_edit_state *state,
+        char value)
+{
+    size_t length;
+
+    if (state == NULL) {
+        return -1;
+    }
+    length = strlen(state->sequence);
+    if (length + 1 >= sizeof(state->sequence)) {
+        return -1;
+    }
+    state->sequence[length] = value;
+    state->sequence[length + 1] = '\0';
+    return 0;
+}
+
+static int test1056_input(void *pw,
+        const PBrowserScriptInputEventInfo *info,
+        int *out_default_allowed)
+{
+    test1056_native_edit_state *state;
+
+    state = (test1056_native_edit_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptInputEventInfo) ||
+            info->event_type == NULL || info->input_type == NULL ||
+            info->data == NULL) {
+        return -1;
+    }
+    if (strcmp(info->event_type, "beforeinput") == 0) {
+        if (test1056_sequence_append(state, 'B') != 0) {
+            return -1;
+        }
+    } else if (strcmp(info->event_type, "input") == 0) {
+        if (test1056_sequence_append(state, 'I') != 0) {
+            return -1;
+        }
+    } else {
+        return -1;
+    }
+    state->input_calls++;
+    strncpy(state->input_type, info->input_type,
+            sizeof(state->input_type) - 1);
+    state->input_type[sizeof(state->input_type) - 1] = '\0';
+    strncpy(state->data, info->data, sizeof(state->data) - 1);
+    state->data[sizeof(state->data) - 1] = '\0';
+    *out_default_allowed = state->default_allowed ? 1 : 0;
+    return state->return_code;
+}
+
+static int test1056_change(void *pw,
+        const PBrowserScriptEditEventInfo *info)
+{
+    test1056_native_edit_state *state;
+
+    state = (test1056_native_edit_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptEditEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "change") != 0 ||
+            test1056_sequence_append(state, 'C') != 0) {
+        return -1;
+    }
+    state->change_calls++;
+    return state->return_code;
+}
+
+static BOOL test1056_browser_native_edit_contract(void)
+{
+    PBrowserScriptNativeEditCallbacksEx callbacks;
+    PBrowserScriptNativeEditInputInfo info;
+    PBrowserScriptNativeEditInputInfo commit_info;
+    test1056_native_edit_state state;
+    HANDLE session;
+    const char *stage;
+    int default_allowed;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&commit_info, 0, sizeof(commit_info));
+    memset(&state, 0, sizeof(state));
+    state.default_allowed = 1;
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_input = test1056_input;
+    callbacks.dispatch_change = test1056_change;
+    info.size = sizeof(info);
+    info.target_token = 7;
+    info.x = 12;
+    info.y = 34;
+    info.input_type = "insertText";
+    info.data = "a";
+    info.cancelable = 1;
+    commit_info.size = sizeof(commit_info);
+    commit_info.target_token = 7;
+    commit_info.x = 12;
+    commit_info.y = 34;
+    stage = "create";
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    ok = session != NULL;
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(
+                session, &callbacks) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(
+                session, &callbacks) == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "beforeinput";
+        rc = PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
+                session, &info, &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "B") == 0;
+    }
+    if (ok) {
+        stage = "input-commit";
+        rc = PBrowser_ScriptSessionDispatchNativeEditInput(
+                session, &commit_info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "BI") == 0 &&
+                strcmp(state.input_type, "insertText") == 0 &&
+                strcmp(state.data, "a") == 0;
+    }
+    if (ok) {
+        stage = "blur-change";
+        rc = PBrowser_ScriptSessionDispatchNativeEditBlur(
+                session, &commit_info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "BIC") == 0 &&
+                state.change_calls == 1;
+    }
+    if (ok) {
+        stage = "blur-idempotent";
+        rc = PBrowser_ScriptSessionDispatchNativeEditBlur(
+                session, &commit_info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "BIC") == 0 &&
+                state.change_calls == 1;
+    }
+    if (ok) {
+        stage = "beforeinput-cancel";
+        state.default_allowed = 0;
+        state.sequence[0] = '\0';
+        rc = PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
+                session, &info, &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                strcmp(state.sequence, "B") == 0;
+    }
+    if (ok) {
+        stage = "cancel-no-commit";
+        rc = PBrowser_ScriptSessionDispatchNativeEditBlur(
+                session, &commit_info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "B") == 0;
+    }
+    if (ok) {
+        stage = "explicit-commit";
+        state.default_allowed = 1;
+        commit_info.input_type = "insertFromPaste";
+        commit_info.data = "paste";
+        rc = PBrowser_ScriptSessionDispatchNativeEditInput(
+                session, &commit_info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "BI") == 0 &&
+                strcmp(state.input_type, "insertFromPaste") == 0 &&
+                strcmp(state.data, "paste") == 0;
+    }
+    if (ok) {
+        stage = "reset";
+        rc = PBrowser_ScriptSessionResetNativeEditState(session);
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionDispatchNativeEditBlur(
+                session, &commit_info) == PSCRIPT_OK &&
+                strcmp(state.sequence, "BI") == 0;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterNativeEditCallbacksEx(
+                session) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionDispatchNativeEditBlur(
+                session, &commit_info) == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1056 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1056 OK",
+            "Browser-owned native EDIT beforeinput/input/change state\n"
+            "covers cancellation, commit metadata, dirty tracking, blur\n"
+            "ordering and reset without owning WM EDIT or IME behavior.");
     return TRUE;
 }
 
@@ -3958,15 +4166,12 @@ typedef struct pcore_native_edit {
     HWND hwnd;
     unsigned int text_index;
     int multiline;
-    int change_pending;
     unsigned int pending_high_surrogate;
     UINT pending_high_message;
     LPARAM pending_high_lparam;
     int composition_active;
     int composition_committing;
     char *composition_data;
-    char *pending_input_type;
-    char *pending_input_data;
     WNDPROC original_proc;
 } pcore_native_edit;
 
@@ -4001,6 +4206,12 @@ static int pcore_browser_script_dispatch_input_event(HWND control,
 static int pcore_browser_script_dispatch_input_event_ex(HWND control,
         const char *event_type, const char *input_type, const char *data,
         int cancelable, int is_composing);
+static int pcore_browser_script_dispatch_native_edit_beforeinput(
+        HWND control, const char *input_type, const char *data,
+        int cancelable, int is_composing);
+static int pcore_browser_script_dispatch_native_edit_input(HWND control);
+static void pcore_browser_script_dispatch_native_edit_blur(HWND control);
+static void pcore_browser_script_reset_native_edit_state(void);
 static int pcore_browser_script_dispatch_composition_event(HWND control,
         const char *event_type, const char *data, int cancelable);
 static int pcore_browser_script_input_dispatch(void *pw,
@@ -4169,68 +4380,15 @@ static int pcore_native_edit_store_composition(
     return 1;
 }
 
-static void pcore_native_edit_clear_pending_input(
-        pcore_native_edit *native_edit)
-{
-    if (native_edit == NULL) {
-        return;
-    }
-    free(native_edit->pending_input_type);
-    native_edit->pending_input_type = NULL;
-    free(native_edit->pending_input_data);
-    native_edit->pending_input_data = NULL;
-}
-
-static int pcore_native_edit_store_pending_input(
-        pcore_native_edit *native_edit, const char *input_type,
-        const char *data)
-{
-    char *type_copy;
-    char *data_copy;
-    size_t type_length;
-    size_t data_length;
-
-    if (native_edit == NULL) {
-        return 0;
-    }
-    if (input_type == NULL) {
-        input_type = "";
-    }
-    if (data == NULL) {
-        data = "";
-    }
-    type_length = strlen(input_type);
-    data_length = strlen(data);
-    type_copy = (char *) malloc(type_length + 1);
-    data_copy = (char *) malloc(data_length + 1);
-    if (type_copy == NULL || data_copy == NULL) {
-        free(type_copy);
-        free(data_copy);
-        pcore_native_edit_clear_pending_input(native_edit);
-        return 0;
-    }
-    memcpy(type_copy, input_type, type_length + 1);
-    memcpy(data_copy, data, data_length + 1);
-    pcore_native_edit_clear_pending_input(native_edit);
-    native_edit->pending_input_type = type_copy;
-    native_edit->pending_input_data = data_copy;
-    return 1;
-}
-
 static int pcore_native_edit_dispatch_beforeinput(HWND hwnd,
         pcore_native_edit *native_edit, const char *input_type,
         const char *data)
 {
     int default_allowed;
 
-    if (native_edit != NULL) {
-        pcore_native_edit_clear_pending_input(native_edit);
-    }
     default_allowed = pcore_browser_script_dispatch_input_event(hwnd,
             input_type, data);
-    if (default_allowed && native_edit != NULL) {
-        pcore_native_edit_store_pending_input(native_edit, input_type, data);
-    }
+    (void) native_edit;
     return default_allowed;
 }
 
@@ -4290,7 +4448,6 @@ static int pcore_native_edit_start_composition(HWND hwnd,
     if (native_edit == NULL) {
         return 1;
     }
-    pcore_native_edit_clear_pending_input(native_edit);
     pcore_native_edit_clear_composition(native_edit);
     native_edit->composition_active = 1;
     if (!pcore_native_edit_store_composition(native_edit, "")) {
@@ -5238,6 +5395,135 @@ static int pcore_browser_script_dispatch_select_char_event(HWND control,
     return 1;
 }
 
+static int pcore_browser_script_native_edit_geometry(HWND control,
+        unsigned long *out_token, int *out_x, int *out_y)
+{
+    PCoreTextInputInfo text_info;
+    unsigned int i;
+
+    if (control == NULL || out_token == NULL || out_x == NULL ||
+            out_y == NULL || g_render_doc == NULL) {
+        return 0;
+    }
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == control &&
+                PCore_TextInputInfo(g_render_doc,
+                        g_native_edits[i].text_index, &text_info,
+                        NULL, 0) == 0) {
+            *out_token = (unsigned long) g_native_edits[i].text_index + 1UL;
+            *out_x = text_info.x + text_info.width / 2;
+            *out_y = text_info.y + text_info.height / 2;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pcore_browser_script_dispatch_native_edit_beforeinput(
+        HWND control, const char *input_type, const char *data,
+        int cancelable, int is_composing)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeEditInputInfo info;
+    unsigned long target_token;
+    int x;
+    int y;
+    int default_allowed;
+    int rc;
+
+    if (input_type == NULL || data == NULL ||
+            !pcore_browser_script_native_edit_geometry(control,
+            &target_token, &x, &y) ||
+            !pcore_native_script_active() ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return 1;
+    }
+    bridge = g_browser_script_session.bridge;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.input_type = input_type;
+    info.data = data;
+    info.cancelable = cancelable ? 1 : 0;
+    info.is_composing = is_composing ? 1 : 0;
+    default_allowed = 1;
+    rc = PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
+            bridge->session, &info, &default_allowed);
+    if (rc != PSCRIPT_OK) {
+        return 1;
+    }
+    return default_allowed ? 1 : 0;
+}
+
+static int pcore_browser_script_dispatch_native_edit_input(HWND control)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeEditInputInfo info;
+    unsigned long target_token;
+    int x;
+    int y;
+    int rc;
+
+    if (!pcore_browser_script_native_edit_geometry(control,
+            &target_token, &x, &y) ||
+            !pcore_native_script_active() ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return 1;
+    }
+    bridge = g_browser_script_session.bridge;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    rc = PBrowser_ScriptSessionDispatchNativeEditInput(
+            bridge->session, &info);
+    (void) rc;
+    return 1;
+}
+
+static void pcore_browser_script_dispatch_native_edit_blur(HWND control)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeEditInputInfo info;
+    unsigned long target_token;
+    int x;
+    int y;
+
+    if (!pcore_browser_script_native_edit_geometry(control,
+            &target_token, &x, &y) ||
+            !pcore_native_script_active() ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return;
+    }
+    bridge = g_browser_script_session.bridge;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    (void) PBrowser_ScriptSessionDispatchNativeEditBlur(
+            bridge->session, &info);
+}
+
+static void pcore_browser_script_reset_native_edit_state(void)
+{
+    pcore_browser_script_bridge *bridge;
+
+    if (!pcore_native_script_active() ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return;
+    }
+    bridge = g_browser_script_session.bridge;
+    (void) PBrowser_ScriptSessionResetNativeEditState(bridge->session);
+}
+
 static int pcore_browser_script_dispatch_input_data_event(HWND control,
         const char *event_type, const char *input_type, const char *data,
         int cancelable, int is_composing)
@@ -5268,6 +5554,11 @@ static int pcore_browser_script_dispatch_input_data_event(HWND control,
                         NULL, 0) == 0) {
             x = text_info.x + text_info.width / 2;
             y = text_info.y + text_info.height / 2;
+            if (strcmp(event_type, "beforeinput") == 0) {
+                return pcore_browser_script_dispatch_native_edit_beforeinput(
+                        control, input_type, (data != NULL) ? data : "",
+                        cancelable, is_composing);
+            }
             memset(&input_info, 0, sizeof(input_info));
             input_info.size = sizeof(input_info);
             input_info.x = x;
@@ -5394,6 +5685,7 @@ static void pcore_native_edits_destroy(void)
 {
     unsigned int i;
 
+    pcore_browser_script_reset_native_edit_state();
     g_native_edit_syncing = 1;
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd != NULL) {
@@ -5401,7 +5693,6 @@ static void pcore_native_edits_destroy(void)
             g_native_edits[i].hwnd = NULL;
         }
         pcore_native_edit_clear_composition(&g_native_edits[i]);
-        pcore_native_edit_clear_pending_input(&g_native_edits[i]);
     }
     free(g_native_edits);
     g_native_edits = NULL;
@@ -5596,14 +5887,12 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
 
 static void pcore_native_edit_changed(HWND edit)
 {
-    pcore_native_edit *native_edit;
     WCHAR *wide_value;
     char *value;
     LONG stored_index;
     int set_result;
     int wide_len;
     int utf8_len;
-    unsigned int i;
 
     if (g_native_edit_syncing || edit == NULL || g_render_doc == NULL) {
         return;
@@ -5612,21 +5901,11 @@ static void pcore_native_edit_changed(HWND edit)
     if (stored_index <= 0) {
         return;
     }
-    native_edit = NULL;
-    for (i = 0; i < g_native_edit_count; i++) {
-        if (g_native_edits[i].hwnd == edit) {
-            native_edit = &g_native_edits[i];
-            break;
-        }
-    }
     SendMessage(edit, EM_FMTLINES, FALSE, 0);
     wide_len = GetWindowTextLengthW(edit);
     wide_value = (WCHAR *) malloc((size_t) (wide_len + 1) *
             sizeof(WCHAR));
     if (wide_value == NULL) {
-        if (native_edit != NULL) {
-            pcore_native_edit_clear_pending_input(native_edit);
-        }
         return;
     }
     GetWindowTextW(edit, wide_value, wide_len + 1);
@@ -5634,17 +5913,11 @@ static void pcore_native_edit_changed(HWND edit)
             NULL, 0, NULL, NULL);
     if (utf8_len < 0) {
         free(wide_value);
-        if (native_edit != NULL) {
-            pcore_native_edit_clear_pending_input(native_edit);
-        }
         return;
     }
     value = (char *) malloc((size_t) utf8_len + 1);
     if (value == NULL) {
         free(wide_value);
-        if (native_edit != NULL) {
-            pcore_native_edit_clear_pending_input(native_edit);
-        }
         return;
     }
     if (utf8_len > 0) {
@@ -5654,23 +5927,8 @@ static void pcore_native_edit_changed(HWND edit)
     value[utf8_len] = '\0';
     set_result = PCore_TextInputSetValue(g_render_doc,
             (unsigned int) (stored_index - 1), value);
-    if (set_result == 0 && native_edit != NULL) {
-        native_edit->change_pending = 1;
-        if (native_edit->composition_active) {
-            pcore_browser_script_dispatch_input_event_ex(edit, "input",
-                    "insertCompositionText",
-                    native_edit->composition_data != NULL ?
-                    native_edit->composition_data : "", 0, 1);
-        } else {
-            pcore_browser_script_dispatch_input_data_event(edit, "input",
-                    native_edit->pending_input_type != NULL ?
-                    native_edit->pending_input_type : "",
-                    native_edit->pending_input_data != NULL ?
-                    native_edit->pending_input_data : "", 0, 0);
-        }
-    }
-    if (native_edit != NULL) {
-        pcore_native_edit_clear_pending_input(native_edit);
+    if (set_result == 0) {
+        (void) pcore_browser_script_dispatch_native_edit_input(edit);
     }
     if (g_native_edit_probe && stored_index == 1) {
         g_native_edit_probe_seen = 1;
@@ -6056,7 +6314,6 @@ static void pcore_native_focus_changed(HWND control)
 
 static void pcore_native_focus_lost(HWND control)
 {
-    PCoreTextInputInfo text_info;
     PCoreSelectInfo select_info;
     unsigned int i;
 
@@ -6066,15 +6323,8 @@ static void pcore_native_focus_lost(HWND control)
     }
     pcore_toggle_focus_clear();
     for (i = 0; i < g_native_edit_count; i++) {
-        if (g_native_edits[i].hwnd == control &&
-                PCore_TextInputInfo(g_render_doc,
-                        g_native_edits[i].text_index,
-                        &text_info, NULL, 0) == 0) {
-            if (g_native_edits[i].change_pending) {
-                pcore_browser_script_dispatch_control_event(control,
-                        "change", 1);
-                g_native_edits[i].change_pending = 0;
-            }
+        if (g_native_edits[i].hwnd == control) {
+            pcore_browser_script_dispatch_native_edit_blur(control);
             pcore_browser_script_dispatch_control_event(control,
                     "blur", 0);
             pcore_browser_script_dispatch_control_event(control,
@@ -8195,6 +8445,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptKeyCallbacks key_callbacks;
     PBrowserScriptFocusCallbacks focus_callbacks;
     PBrowserScriptEditCallbacks edit_callbacks;
+    PBrowserScriptNativeEditCallbacksEx native_edit_callbacks_ex;
     PBrowserScriptSelectCallbacks select_callbacks;
     PBrowserScriptClickCallbacks click_callbacks;
     PBrowserScriptProgrammaticClickCallbacksEx
@@ -8343,6 +8594,12 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     edit_callbacks.size = sizeof(edit_callbacks);
     edit_callbacks.pw = bridge;
     edit_callbacks.dispatch_edit = pcore_browser_script_edit_dispatch;
+    native_edit_callbacks_ex.size = sizeof(native_edit_callbacks_ex);
+    native_edit_callbacks_ex.pw = bridge;
+    native_edit_callbacks_ex.dispatch_input =
+            pcore_browser_script_input_dispatch;
+    native_edit_callbacks_ex.dispatch_change =
+            pcore_browser_script_edit_dispatch;
     select_callbacks.size = sizeof(select_callbacks);
     select_callbacks.pw = bridge;
     select_callbacks.dispatch_select = pcore_browser_script_select_dispatch;
@@ -8444,6 +8701,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &focus_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEditCallbacks(session,
             &edit_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(session,
+            &native_edit_callbacks_ex) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterSelectCallbacks(session,
             &select_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterClickCallbacks(session,
@@ -68607,6 +68866,7 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 1054: ok = test1054_tls_peer_infrastructure(); break;
         case 1055: ok = test1055_browser_programmatic_activation_contract(); break;
+        case 1056: ok = test1056_browser_native_edit_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

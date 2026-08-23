@@ -37,14 +37,25 @@ next607 将一组完整的 `HTMLElement.click()` 表单行为从 `test_host` 下
 和取消；宿主只提供 target lookup、validation、default action 与非表单 click 传播。
 TEST228–230 和 TEST1055 已在真实 WM6 设备上通过，tracked INI 未被扩大，未新增人工页面门。
 
-### 2. next608：剩余 native form/input 适配
+### 2. next608：native EDIT 输入事务适配（已完成）
 
-审计 `test_host` 中尚存的 native EDIT/SELECT beforeinput、composition、change 或 SELECT
-键盘事件适配，选择一组能形成完整输入行为的纵切迁入 `positron_browser`/`positron_core`。
-宿主继续拥有 WM 控件消息、窗口重绘、系统 picker、SIP/IME OEM 差异和平台副作用；不得重做
-next607 的程序化 click policy。该批必须提供稳定 ABI、成功/取消/销毁断言和风险相称的设备门。
+next608 将 native EDIT 的一组完整输入事务从 `test_host` 下沉到 `positron_browser.dll`：
+新增 additive `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 及 beforeinput、native
+commit、blur 入口，由 browser layer 持有 bounded pending metadata、input 转换、dirty tracking
+和一次性 change 顺序；宿主只提供 WM EDIT 消息、文本值提交、几何和 core 事件传播。
+TEST1056 的成功/取消/显式 fallback/reset/unregister 断言，以及 TEST228–230、1055、999 回归
+已在真实 WM6 设备上通过。WM 控件、文本 mutation、composition 生命周期、SIP/IME 和 SELECT
+键盘仍不在本批产品语义内。
 
-### 3. 建立真实页面驱动的兼容队列
+### 3. next609：native SELECT 键盘/选择事件纵切
+
+审计 `test_host` 中尚存的 native SELECT 键盘消息、选择 mutation 与 input/change 顺序，选择
+一套可由自动断言覆盖的完整纵切迁入 `positron_browser`（必要时补充 `positron_core` ABI）。
+宿主继续拥有 WM SELECT 控件、窗口重绘、core selection mutation 和平台副作用；不得把
+SIP/IME OEM 行为伪装成产品兼容性，也不得重做 next607/608 的状态策略。该批需提供稳定 ABI、
+取消/销毁断言和相关设备门。
+
+### 4. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -55,7 +66,7 @@ next607 的程序化 click policy。该批必须提供稳定 ABI、成功/取消
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 4. 安排新的全范围检查点
+### 5. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

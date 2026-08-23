@@ -3338,6 +3338,22 @@ typedef struct p_browser_script_edit_binding {
     PBrowserScriptEditCallbacks callbacks;
 } p_browser_script_edit_binding;
 
+typedef struct p_browser_script_native_edit_state {
+    unsigned long target_token;
+    int used;
+    int dirty;
+    int pending;
+    int pending_is_composing;
+    char input_type[PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES];
+    char data[PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES];
+} p_browser_script_native_edit_state;
+
+typedef struct p_browser_script_native_edit_binding {
+    PBrowserScriptNativeEditCallbacksEx callbacks;
+    p_browser_script_native_edit_state states[
+            PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TARGETS];
+} p_browser_script_native_edit_binding;
+
 typedef struct p_browser_script_select_binding {
     PBrowserScriptSelectCallbacks callbacks;
 } p_browser_script_select_binding;
@@ -3388,6 +3404,7 @@ typedef struct p_browser_script_session {
     p_browser_script_key_binding *key;
     p_browser_script_focus_binding *focus;
     p_browser_script_edit_binding *edit;
+    p_browser_script_native_edit_binding *native_edit;
     p_browser_script_select_binding *select;
     p_browser_script_click_binding *click;
     p_browser_script_programmatic_click_binding *programmatic_click;
@@ -4854,6 +4871,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->key = NULL;
     session->focus = NULL;
     session->edit = NULL;
+    session->native_edit = NULL;
     session->select = NULL;
     session->click = NULL;
     session->programmatic_click = NULL;
@@ -4954,6 +4972,10 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     if (session->edit != NULL) {
         free(session->edit);
         session->edit = NULL;
+    }
+    if (session->native_edit != NULL) {
+        free(session->native_edit);
+        session->native_edit = NULL;
     }
     if (session->select != NULL) {
         free(session->select);
@@ -5972,6 +5994,288 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchEditEvent(HANDLE hSession,
     if (rc < 0) {
         return PSCRIPT_ERROR_NATIVE;
     }
+    return PSCRIPT_OK;
+}
+
+static p_browser_script_native_edit_state *
+p_browser_script_native_edit_state_find(
+        p_browser_script_native_edit_binding *binding,
+        unsigned long target_token, int create)
+{
+    unsigned int i;
+    p_browser_script_native_edit_state *free_state;
+
+    if (binding == NULL || target_token == 0) {
+        return NULL;
+    }
+    free_state = NULL;
+    for (i = 0; i < PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TARGETS; i++) {
+        if (binding->states[i].used &&
+                binding->states[i].target_token == target_token) {
+            return &binding->states[i];
+        }
+        if (free_state == NULL && !binding->states[i].used) {
+            free_state = &binding->states[i];
+        }
+    }
+    if (!create || free_state == NULL) {
+        return NULL;
+    }
+    memset(free_state, 0, sizeof(*free_state));
+    free_state->used = 1;
+    free_state->target_token = target_token;
+    return free_state;
+}
+
+static void p_browser_script_native_edit_clear_pending(
+        p_browser_script_native_edit_state *state)
+{
+    if (state == NULL) {
+        return;
+    }
+    state->pending = 0;
+    state->pending_is_composing = 0;
+    state->input_type[0] = '\0';
+    state->data[0] = '\0';
+}
+
+static int p_browser_script_native_edit_text_valid(const char *text)
+{
+    size_t length;
+
+    if (text == NULL) {
+        return 0;
+    }
+    length = strlen(text);
+    return length < PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES;
+}
+
+static int p_browser_script_native_edit_info_valid(
+        const PBrowserScriptNativeEditInputInfo *info,
+        int require_payload)
+{
+    if (info == NULL || info->size < sizeof(*info) ||
+            info->target_token == 0) {
+        return 0;
+    }
+    if (require_payload && (info->input_type == NULL ||
+            info->data == NULL)) {
+        return 0;
+    }
+    if ((info->input_type != NULL &&
+            !p_browser_script_native_edit_text_valid(info->input_type)) ||
+            (info->data != NULL &&
+            !p_browser_script_native_edit_text_valid(info->data))) {
+        return 0;
+    }
+    if ((info->input_type == NULL) != (info->data == NULL)) {
+        return 0;
+    }
+    return 1;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptNativeEditCallbacksEx *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_edit_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptNativeEditCallbacksEx) ||
+            callbacks->dispatch_input == NULL ||
+            callbacks->dispatch_change == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->native_edit != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_native_edit_binding *) calloc(1,
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    session->native_edit = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterNativeEditCallbacksEx(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->native_edit == NULL) {
+        return PSCRIPT_OK;
+    }
+    free(session->native_edit);
+    session->native_edit = NULL;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
+        HANDLE hSession, const PBrowserScriptNativeEditInputInfo *info,
+        int *out_default_allowed)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_edit_state *state;
+    PBrowserScriptInputEventInfo input_info;
+    int default_allowed;
+    int rc;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->native_edit == NULL ||
+            !p_browser_script_native_edit_info_valid(info, 1) ||
+            out_default_allowed == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state = p_browser_script_native_edit_state_find(session->native_edit,
+            info->target_token, 1);
+    if (state == NULL) {
+        return PSCRIPT_ERROR_NATIVE_LIMIT;
+    }
+    p_browser_script_native_edit_clear_pending(state);
+    memset(&input_info, 0, sizeof(input_info));
+    input_info.size = sizeof(input_info);
+    input_info.x = info->x;
+    input_info.y = info->y;
+    input_info.event_type = "beforeinput";
+    input_info.bubbles = 1;
+    input_info.cancelable = info->cancelable ? 1 : 0;
+    input_info.input_type = info->input_type;
+    input_info.data = info->data;
+    input_info.is_composing = info->is_composing ? 1 : 0;
+    default_allowed = 1;
+    rc = session->native_edit->callbacks.dispatch_input(
+            session->native_edit->callbacks.pw, &input_info,
+            &default_allowed);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    *out_default_allowed = default_allowed ? 1 : 0;
+    if (default_allowed) {
+        memcpy(state->input_type, info->input_type,
+                strlen(info->input_type) + 1);
+        memcpy(state->data, info->data, strlen(info->data) + 1);
+        state->pending = 1;
+        state->pending_is_composing = info->is_composing ? 1 : 0;
+    }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditInput(
+        HANDLE hSession, const PBrowserScriptNativeEditInputInfo *info)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_edit_state *state;
+    PBrowserScriptInputEventInfo input_info;
+    const char *input_type;
+    const char *data;
+    int is_composing;
+    int default_allowed;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->native_edit == NULL ||
+            !p_browser_script_native_edit_info_valid(info, 0)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state = p_browser_script_native_edit_state_find(session->native_edit,
+            info->target_token, 1);
+    if (state == NULL) {
+        return PSCRIPT_ERROR_NATIVE_LIMIT;
+    }
+    input_type = info->input_type;
+    data = info->data;
+    is_composing = info->is_composing ? 1 : 0;
+    if (input_type == NULL && state->pending) {
+        input_type = state->input_type;
+        data = state->data;
+        is_composing = state->pending_is_composing;
+    }
+    if (input_type == NULL) {
+        input_type = "";
+        data = "";
+    }
+    memset(&input_info, 0, sizeof(input_info));
+    input_info.size = sizeof(input_info);
+    input_info.x = info->x;
+    input_info.y = info->y;
+    input_info.event_type = "input";
+    input_info.bubbles = 1;
+    input_info.cancelable = 0;
+    input_info.input_type = input_type;
+    input_info.data = data;
+    input_info.is_composing = is_composing;
+    default_allowed = 1;
+    rc = session->native_edit->callbacks.dispatch_input(
+            session->native_edit->callbacks.pw, &input_info,
+            &default_allowed);
+    p_browser_script_native_edit_clear_pending(state);
+    state->dirty = 1;
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditBlur(
+        HANDLE hSession, const PBrowserScriptNativeEditInputInfo *info)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_edit_state *state;
+    PBrowserScriptEditEventInfo edit_info;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->native_edit == NULL ||
+            !p_browser_script_native_edit_info_valid(info, 0)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state = p_browser_script_native_edit_state_find(session->native_edit,
+            info->target_token, 1);
+    if (state == NULL) {
+        return PSCRIPT_ERROR_NATIVE_LIMIT;
+    }
+    p_browser_script_native_edit_clear_pending(state);
+    if (!state->dirty) {
+        return PSCRIPT_OK;
+    }
+    memset(&edit_info, 0, sizeof(edit_info));
+    edit_info.size = sizeof(edit_info);
+    edit_info.x = info->x;
+    edit_info.y = info->y;
+    edit_info.event_type = "change";
+    edit_info.bubbles = 1;
+    edit_info.cancelable = 0;
+    rc = session->native_edit->callbacks.dispatch_change(
+            session->native_edit->callbacks.pw, &edit_info);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    state->dirty = 0;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionResetNativeEditState(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->native_edit == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memset(session->native_edit->states, 0,
+            sizeof(session->native_edit->states));
     return PSCRIPT_OK;
 }
 

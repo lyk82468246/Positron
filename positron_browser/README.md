@@ -16,6 +16,18 @@
 document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、`HTMLElement.disabled`、控件与受限 form-level `checkValidity()`/`reportValidity()`、`willValidate`、`validity` 查询、`setCustomValidity()`、`validationMessage`、`required`、`readOnly`、`multiple`、`noValidate`、`formNoValidate`、`name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`min`/`max`/`step`、`pattern`/`minLength`/`maxLength`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。这些表单属性通过既有 attribute callback bridge 实现；validation query 通过独立的 size-tagged callback 获取 core 的控件状态或 form 聚合结果，report-validity callback 负责同步 report/query 与 invalid-event 路由，custom validity 通过另一个 size-tagged UTF-8 get/set callback 获取/更新 application-owned message，`validationMessage` 在 custom message 为空时可使用宿主提供的固定英文 fallback；对程序化 click，推荐使用 Ex callback，让 DLL 负责 disabled 抑制、typed click、submit/reset 事件顺序和 submit 验证，再由宿主 default-action callback 执行 core/WM 副作用；file input 仍只由宿主排队系统 picker。系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
 `test_host.exe` 是一个完整的组合示例，但不是私有 API 的唯一消费者。
 
+native EDIT 的产品事务入口是 additive 的
+`PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()`。调用者提供现有的 input/change
+core propagation callback，并为每个 native EDIT 传入稳定的非零 session token 和文档几何；
+`PBrowser_ScriptSessionDispatchNativeEditBeforeInput()` 由 browser layer 负责 beforeinput
+取消与 pending metadata，`PBrowser_ScriptSessionDispatchNativeEditInput()` 在宿主确认
+`PCore_TextInputSetValue()` 成功后派发 input 并记录 dirty，
+`PBrowser_ScriptSessionDispatchNativeEditBlur()` 只在 dirty 时派发一次 change，
+`PBrowser_ScriptSessionResetNativeEditState()` 用于销毁/重建 native 控件时丢弃状态。
+最多跟踪 16 个 token，每个 inputType/data 字符串最多 255 字节；该入口不拥有 WM EDIT、
+文本 mutation、焦点窗口、composition 生命周期、SIP/IME 或 SELECT 控件。旧的独立 input/edit
+注册入口继续兼容其他宿主。
+
 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 是向新消费者推荐的
 程序化表单激活入口。调用者提供 `get_target`（返回 checkbox/radio/submit/reset/file 的
 UTF-8 id、几何和 disabled）、`validate_submit`、`perform_default` 与
@@ -162,6 +174,14 @@ disabled 静默、typed click、submit/reset form-event 顺序、submit validati
 窗口、native EDIT/SELECT、系统 picker、导航和绘制副作用；旧的 programmatic-click callback
 入口保持兼容。TEST228–230 与 TEST1055 已在 WM6 设备门通过，未改变默认 `javascript=0` 配置，
 也不宣称完整 HTML activation 或 OEM SIP/IME 兼容。
+
+next608 将 native EDIT 的输入事务策略从宿主迁入本 DLL：
+`PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 配合三个同步入口，统一处理
+beforeinput 的取消与 pending input metadata、native value commit 到 input、dirty tracking
+以及 blur 时一次性 change。宿主只在 WM EDIT 消息后提交 core value，并提供几何和 core event
+propagation callback；session token 和字符串状态由 browser layer 有界保存，控件销毁/重建时
+由宿主调用 reset。该入口不拥有 WM EDIT、文本 mutation、焦点窗口、composition 生命周期、
+SIP/IME 或 SELECT。TEST1056 及 TEST228–230、1055、999 的 next608 设备门已通过。
 
 ## 其他项目如何调用
 

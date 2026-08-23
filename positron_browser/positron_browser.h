@@ -436,6 +436,39 @@ typedef struct PBrowserScriptEditCallbacks {
     PBrowserScriptDispatchEditFn dispatch_edit;
 } PBrowserScriptEditCallbacks;
 
+/* Product-owned native EDIT input transaction. The target token is an
+ * application-owned, non-zero value that remains stable while a native EDIT
+ * is attached to this script session; it is not a DOM pointer or a window
+ * handle. x/y are document CSS pixels supplied by the host adapter. For
+ * beforeinput, input_type and data are required (they may be empty for a
+ * composition update); for the native-commit operation both may be NULL to
+ * consume the last accepted beforeinput, or both may be supplied as an
+ * explicit fallback. Strings are borrowed for the synchronous call only. */
+typedef struct PBrowserScriptNativeEditInputInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    const char *input_type;
+    const char *data;
+    int cancelable;
+    int is_composing;
+} PBrowserScriptNativeEditInputInfo;
+#define PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TARGETS 16
+#define PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES 256
+
+/* Additive native EDIT adapter. The browser layer owns the bounded pending
+ * beforeinput state, native-commit to input transition, dirty tracking and
+ * blur/change ordering. The host supplies only the existing core event
+ * propagation callbacks. This contract intentionally does not own WM EDIT,
+ * IME/SIP, focus windows or text mutation. */
+typedef struct PBrowserScriptNativeEditCallbacksEx {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptDispatchInputFn dispatch_input;
+    PBrowserScriptDispatchEditFn dispatch_change;
+} PBrowserScriptNativeEditCallbacksEx;
+
 /* Typed host adapter for product-owned native SELECT input/change events,
  * checkbox/radio change events and file-input input/change events. The
  * browser layer owns this selection-like event contract and dispatch entry
@@ -831,6 +864,32 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterEditCallbacks(
 /* Dispatch one native EDIT change event through the host's core adapter. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchEditEvent(HANDLE hSession,
         const PBrowserScriptEditEventInfo *info);
+PBROWSER_API int PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptNativeEditCallbacksEx *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterNativeEditCallbacksEx(
+        HANDLE hSession);
+/* Dispatch a product-owned native EDIT beforeinput. On success
+ * out_default_allowed is 1 when the host may let the native control mutate,
+ * or 0 when a cancelable listener prevented that default. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
+        HANDLE hSession, const PBrowserScriptNativeEditInputInfo *info,
+        int *out_default_allowed);
+/* Notify the product layer that the native EDIT value was committed. This
+ * dispatches input using the accepted beforeinput metadata, or the explicit
+ * input_type/data fallback supplied in info, and marks the target dirty for a
+ * later blur/change. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditInput(
+        HANDLE hSession, const PBrowserScriptNativeEditInputInfo *info);
+/* Notify the product layer that the native EDIT lost focus. A change event is
+ * dispatched only when this target has committed a value since its last
+ * blur/change. The target's pending metadata is then cleared. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditBlur(
+        HANDLE hSession, const PBrowserScriptNativeEditInputInfo *info);
+/* Drop all native EDIT pending/dirty state, normally before the host destroys
+ * and rebuilds its native controls for a new document/layout. */
+PBROWSER_API int PBrowser_ScriptSessionResetNativeEditState(
+        HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterSelectCallbacks(
         HANDLE hSession, const PBrowserScriptSelectCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterSelectCallbacks(

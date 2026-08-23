@@ -12,6 +12,12 @@ submit/reset 事件顺序和验证由 `positron_browser.dll` 执行；WM 窗口�
 系统 picker 和导航副作用仍留在本宿主。这使 `test_host` 成为公共 ABI 的消费者/示例，
 而不是程序化表单语义的所有者。
 
+native EDIT 输入由 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 接管事务策略：
+宿主的 WM subclass 只拦截 beforeinput 相关消息、调用 `PCore_TextInputSetValue()` 同步值，
+再把 token/几何交给 browser DLL；beforeinput 取消、pending metadata、input、dirty tracking
+和 blur/change 顺序不再由宿主保存。宿主仍拥有 WM EDIT、文本 mutation、composition、SIP/IME、
+焦点窗口和重绘。TEST1056 是该公共 ABI 的 mock 契约，TEST228–230/1055/999 是相关设备回归。
+
 ## 构建与部署
 
 从仓库根目录使用正式工程配置：
