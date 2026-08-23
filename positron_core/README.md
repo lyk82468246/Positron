@@ -51,7 +51,8 @@ PCore_Shutdown();
 状态，供浏览器宿主实现程序化控件 activation；`PCore_FormControlValidationById` 可在布局前后
 查询控件的 `valid`、`will_validate` 和 `PCORE_VALIDITY_*` flags，供脚本 bridge 或其他宿主
 读取约束状态；`PCore_FormValidationById` 可在布局前后按 form 的 DOM id 聚合查询当前控件的
-约束结果（忽略 form `novalidate`，跳过 disabled/readonly/submit 等不参与候选），供脚本
+约束结果（忽略 form `novalidate`，跳过自身或 disabled fieldset 继承的 disabled、readonly、
+submit 等不参与候选），供脚本
 bridge 实现受限的 form-level `checkValidity()`；`PCore_FormReportValidityById` 在同一候选规则上
 收集 invalid controls，并按 DOM 顺序向有非空 id 的控件派发 trusted、non-bubbling、cancelable
 `invalid` 事件。`PCore_FormSetCustomValidityById` 与 `PCore_FormGetCustomValidityById` 可按 id
@@ -59,7 +60,10 @@ bridge 实现受限的 form-level `checkValidity()`；`PCore_FormReportValidityB
 `PCore_FormGetValidationMessageById` 在 custom message 为空时按当前 validity flags 返回固定的
 英文 fallback，并提供完整字节长度和安全截断。查询/设置不应用 form-level no-validate 提交按钮
 绕过，也不提供 native invalid UI、焦点/滚动、提交或本地化错误提示；report API 的 boolean
-结果不受 `preventDefault()` 改变。
+结果不受 `preventDefault()` 改变。fieldset disabled 的有效状态由 core 统一计算：第一个
+legend 后代豁免，嵌套 fieldset 逐层继承；该判定也用于 successful-control 序列化、默认
+submitter、`PCore_FormControlInfo*`、表单激活和交互闸门。HTML `control.disabled` 的属性反射
+仍由浏览器层按自身属性提供，不把祖先 fieldset 状态写回 DOM。
 `PCore_FormResetAt` 只提交 reset 的 DOM 初始状态；可取消的 reset 事件由宿主先分发。
 
 `PCore_NodeRelationById` 为浏览器或其他宿主提供一个稳定、只读的 DOM 关系切片：按元素 id

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1062
+#define TEST_MAX_NUMBER 1063
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -53350,6 +53350,246 @@ static BOOL test1062_browser_label_control_contract(void)
     return TRUE;
 }
 
+/* TEST 1063 - effective disabled state inherited from fieldsets. */
+static BOOL test1063_form_fieldset_disabled_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><form id='form' action='/fieldset' method='get'>"
+        "<fieldset id='locked' disabled>"
+        "<legend id='first-legend'>First <input id='legend-field' "
+        "name='legend' required value='legend-value'></legend>"
+        "<input id='blocked' name='blocked' required value=''>"
+        "<legend id='second-legend'>Second <input id='second-legend-field' "
+        "name='second' required value='second-value'></legend>"
+        "<fieldset id='nested-set'><input id='nested' name='nested' required "
+        "value='nested-value'></fieldset>"
+        "<select id='blocked-select' name='choice' required>"
+        "<option value='choice' selected>Choice</option></select>"
+        "<textarea id='blocked-text' name='notes' required>notes</textarea>"
+        "<button id='blocked-button' type='submit' name='blocked-go' "
+        "value='yes'>Blocked</button></fieldset>"
+        "<input id='open' name='open' required value='open-value'>"
+        "<button id='submit' type='submit' name='go' value='send'>Send</button>"
+        "<p id='result'>idle</p></form></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:12px sans-serif;padding:4px}"
+        "fieldset{display:block;margin:4px;padding:4px}"
+        "legend{display:block}"
+        "input,select,textarea,button{display:block;margin:2px;width:150px;"
+        "height:20px}textarea{height:30px}";
+    static const char PROBE[] =
+        "var fs=document.getElementById('locked');"
+        "var b=document.getElementById('blocked');"
+        "var l=document.getElementById('legend-field');"
+        "var s=document.getElementById('second-legend-field');"
+        "var n=document.getElementById('nested');"
+        "var q=document.getElementById('blocked-select');"
+        "var t=document.getElementById('blocked-text');"
+        "var initial=fs.disabled&&!b.disabled&&!b.willValidate&&"
+        "b.checkValidity()&&l.willValidate&&l.checkValidity()&&"
+        "!s.willValidate&&s.checkValidity()&&!n.willValidate&&"
+        "n.checkValidity()&&!q.willValidate&&q.checkValidity()&&"
+        "!t.willValidate&&t.checkValidity();"
+        "fs.disabled=false;var enabled=b.willValidate&&!b.checkValidity();"
+        "b.value='blocked-value';fs.disabled=true;"
+        "var restored=!b.willValidate&&b.checkValidity();"
+        "document.getElementById('result').textContent="
+        "String(initial)+'|'+String(enabled)+'|'+String(restored);";
+    static const char EXPECTED[] = "true|true|true";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormControlValidationInfo state;
+    PCoreFormValidationInfo form_info;
+    PCoreFormSubmissionInfo submission;
+    char result[128];
+    char error[384];
+    char action[128];
+    char body[512];
+    const char *stage;
+    int executed;
+    int ignored;
+    int result_bytes;
+    int submit_x;
+    int submit_y;
+    int submit_w;
+    int submit_h;
+    int submit_kind;
+    int disabled;
+    int blocked_info_result;
+    int legend_info_result;
+    int second_info_result;
+    int nested_info_result;
+    int blocked_disabled;
+    int legend_disabled;
+    int second_disabled;
+    int nested_disabled;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&state, 0, sizeof(state));
+    memset(&form_info, 0, sizeof(form_info));
+    memset(&submission, 0, sizeof(submission));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    memset(action, 0, sizeof(action));
+    memset(body, 0, sizeof(body));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    submit_x = 0;
+    submit_y = 0;
+    submit_w = 0;
+    submit_h = 0;
+    submit_kind = 0;
+    disabled = 0;
+    blocked_info_result = -1;
+    legend_info_result = -1;
+    second_info_result = -1;
+    nested_info_result = -1;
+    blocked_disabled = -1;
+    legend_disabled = -1;
+    second_disabled = -1;
+    nested_disabled = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/fieldset-disabled.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 480) != 0 ||
+                PCore_FormControlInfoById(document, "submit", &submit_x,
+                &submit_y, &submit_w, &submit_h, &submit_kind, NULL,
+                NULL) != 0 || submit_kind != 7 || submit_w <= 0 ||
+                submit_h <= 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "initial-core";
+        if (PCore_FormControlValidationById(document, "blocked",
+                &state) != 0 || !state.valid || state.will_validate ||
+                state.kind != 3 || state.flags != 0 ||
+                PCore_FormControlValidationById(document, "legend-field",
+                &state) != 0 || !state.valid || !state.will_validate ||
+                PCore_FormControlValidationById(document,
+                "second-legend-field", &state) != 0 || !state.valid ||
+                state.will_validate ||
+                PCore_FormControlValidationById(document, "nested", &state) !=
+                0 || !state.valid || state.will_validate ||
+                PCore_FormControlValidationById(document, "blocked-select",
+                &state) != 0 || !state.valid || state.will_validate ||
+                PCore_FormControlValidationById(document, "blocked-text",
+                &state) != 0 || !state.valid || state.will_validate ||
+                PCore_FormValidationById(document, "form", &form_info) != 0 ||
+                !form_info.valid || form_info.invalid_count != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, EXPECTED) != 0) {
+            stage = "script-probe";
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "effective-info";
+        blocked_info_result = PCore_FormControlInfoById(document, "blocked",
+                NULL, NULL, NULL, NULL, NULL, NULL, &blocked_disabled);
+        legend_info_result = PCore_FormControlInfoById(document,
+                "legend-field", NULL, NULL, NULL, NULL, NULL, NULL,
+                &legend_disabled);
+        second_info_result = PCore_FormControlInfoById(document,
+                "second-legend-field", NULL, NULL, NULL, NULL, NULL, NULL,
+                &second_disabled);
+        nested_info_result = PCore_FormControlInfoById(document, "nested",
+                NULL, NULL, NULL, NULL, NULL, NULL, &nested_disabled);
+        if (blocked_info_result != 0 || !blocked_disabled ||
+                legend_info_result != 0 || legend_disabled ||
+                second_info_result != 0 || !second_disabled ||
+                nested_info_result != 0 || !nested_disabled) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "submission";
+        if (PCore_FormValidationById(document, "form", &form_info) != 0 ||
+                !form_info.valid || form_info.invalid_count != 0 ||
+                PCore_FormSubmissionAt(document,
+                submit_x + submit_w / 2, submit_y + submit_h / 2,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+                submission.method != 1 || strcmp(action, "/fieldset") != 0 ||
+                strcmp(body, "legend=legend-value&open=open-value&go=send") !=
+                0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s result=%s form=%d/%d body=%s "
+                    "info=%d/%d/%d/%d disabled=%d/%d/%d/%d",
+                    stage, result, form_info.valid, form_info.invalid_count,
+                    body, blocked_info_result, legend_info_result,
+                    second_info_result, nested_info_result, blocked_disabled,
+                    legend_disabled, second_disabled, nested_disabled);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1063 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1063 OK",
+            "Fieldset disabled inheritance now follows the first-legend "
+            "exemption across validation, live script state, control info "
+            "and successful form submission.");
+    return TRUE;
+}
+
 static BOOL test_browser_raw_property_case(const char *target_markup,
         const char *property, const char *attribute, const char *initial,
         const char *attribute_value, const char *property_value,
@@ -70515,6 +70755,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1060: ok = test1060_browser_native_select_key_contract(); break;
         case 1061: ok = test1061_browser_native_edit_composition_contract(); break;
         case 1062: ok = test1062_browser_label_control_contract(); break;
+        case 1063: ok = test1063_form_fieldset_disabled_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -16,8 +16,8 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next614，bounded label/control DOM 关联迁移。
-- 测试编号上限：`TEST_MAX_NUMBER 1062`。
+- 当前能力批次：next615，fieldset 有效禁用传播纵切。
+- 测试编号上限：`TEST_MAX_NUMBER 1063`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -94,8 +94,12 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   `label.control` 支持显式 `for` 和嵌套的 input/select/textarea/button，labelable 控件的
   `labels` 返回按文档顺序的静态 NodeList snapshot；input type=hidden、非控件目标、无效
   `for` 和越界索引 fail closed。`positron_core.dll` 只提供关系查询，`positron_browser.dll`
-  负责脚本属性和集合形状，`test_host` 只消费公共 bridge；没有宣称完整 live labels、fieldset
-  禁用传播或其他成功控件边缘规则。
+  负责脚本属性和集合形状，`test_host` 只消费公共 bridge；没有宣称完整 live labels 或其他
+  成功控件边缘规则。
+- next615 在 `positron_core.dll` 增加了统一的有效禁用判定：支持 disabled ancestor fieldset、
+  第一个 legend 后代豁免和嵌套 fieldset，并把它接入约束验证、URL-encoded/multipart 成功控件、
+  默认 submitter、表单控件信息、程序化激活及交互闸门。原始 HTML `control.disabled` 仍只反映
+  自身属性；native 控件的窗口样式、真实 SIP/IME 和文件选择器仍由宿主拥有。
 
 ## 最近验证证据
 
@@ -219,6 +223,21 @@ next614 的 label/control 关联自动门：
 - `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和 `python scripts/audit_repo.py`
   均通过；Release 与 Debug 仅保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
 
+next615 的 fieldset 有效禁用自动门：
+
+- `tmp/device-runs/20260823-210420-next615-fieldset-disabled-final/device-gate-result.txt`：
+  PASS，2/2（TEST1063、TEST999），错误与失败均为 0，唯一 `TESTBENCH PASS`，
+  `test13_route_ok=True`。
+- `tmp/device-runs/20260823-210451-next615-fieldset-disabled-regression/device-gate-result.txt`：
+  PASS，18/18（TEST264–270、554–561、1062–1063、999），错误与失败均为 0，唯一
+  `TESTBENCH PASS`，`test13_route_ok=True`。
+- TEST1063 覆盖 disabled fieldset 的第一个 legend 豁免、第二个 legend/嵌套 fieldset 的继承、
+  动态 `fieldset.disabled` 切换、原始 `control.disabled` 与 `willValidate` 的区分、控件信息和
+  successful form submission。该批没有视觉、真实触摸、SIP、旋转、picker 或网络失败风险，
+  不新增人工门。
+- `python scripts/test_c89ize.py` 和 Debug 正式 ARMV4I 构建已通过；最终交付前仍需完成
+  Release 构建、`python scripts/audit_repo.py`、文档审计和 Git 状态核对。
+
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
 ## 当前已知边界
@@ -230,7 +249,7 @@ next614 的 label/control 关联自动门：
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1062 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1063 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -242,9 +261,10 @@ next614 的 label/control 关联自动门：
   Release 与 Debug 保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
 - next614 的 Debug/Release ARMV4I 正式构建、C89 检查和针对性设备门均已通过；Release 与 Debug
   保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
-- next614 的 tracked 改动应只覆盖 `positron_core`/`positron_browser` 的 bounded label/control
-  relation、`test_host` 消费者/TEST1062 与对应交接、架构、测试和 README 文档；提交时不要把
-  `tmp/` 设备证据或无关工作区文件带入。
+- next615 候选的 Debug 构建、C89 检查和两道针对性设备门均已通过；Release 构建、audit 和
+  文档审计待交付前完成。tracked 改动只覆盖 `positron_core` 的 fieldset 判定/表单路径、
+  `test_host` 消费者/TEST1063 与对应交接、架构、测试和 README 文档；提交时不要把 `tmp/`
+  设备证据或无关工作区文件带入。
 - next613 候选的设备门已通过；若后续出现 composition 顺序、候选词数据或 native commit→input
   错误，应先保留 browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -252,17 +272,18 @@ next614 的 label/control 关联自动门：
 
 ## 唯一下一步
 
-next615：从真实页面驱动的兼容队列选择下一个可重复的完整用户行为纵切；先用现有自动门和
+next616：从真实页面驱动的兼容队列选择下一个可重复的完整用户行为纵切；先用现有自动门和
 设备日志确认缺口，再决定应落在 `positron_core`、`positron_browser` 或宿主边界。不得为了
-填充编号添加互不相关的小 API，也不得重做 next607–614。
+填充编号添加互不相关的小 API，也不得重做 next607–615。
 
-## next614 完成标准
+## next615 完成标准
 
 - 产品级语义不再由 `test_host` 独占，宿主通过公共 API 消费它。
 - 公共 ABI、UTF-8、opaque handle、内存所有权及 VS2008 / WM6 ARMV4I / C89 兼容性不退化。
 - `python scripts/test_c89ize.py`、正式工程构建和 `python scripts/audit_repo.py` 通过。
-- 通过 TEST1062 的 browser/core label-control 关系契约和 TEST999 完成提示音；设备门必须是
-  唯一 `TESTBENCH PASS` 且无 ERROR/FAIL，并通过 554–561、1023–1053 的相邻关系回归。
+- 通过 TEST1063 的 fieldset disabled/validation/submission 契约和 TEST999 完成提示音；设备门
+  必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL，并通过 TEST264–270、554–561、1062 的相邻
+  表单/关系回归。
 - 只有出现视觉、真实触摸、SIP、旋转、文件选择器或失败网络风险时才累计人工门；崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 - 跟踪的默认 INI 恢复为自动模式且选择集不被无意扩大。
 - 用当批事实覆盖本文件的当前快照，更新限制和路线图；只提交本批 tracked 文件并推送 `main`。

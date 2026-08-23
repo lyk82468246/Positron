@@ -32,8 +32,10 @@
   只迁移 native EDIT 的有界输入事务策略；`PBrowser_ScriptSessionDispatchNativeEditComposition()`
   只迁移 composition phase/data 的顺序与 bounded preedit；WM EDIT/WM_IME 消息、文本 mutation、
   SIP/候选词窗口和 OEM 行为仍由宿主提供。next614 还把显式/嵌套 label-control 关联和
-  labelable 控件的静态 `labels` snapshot 放入 core/browser relation bridge，但不承诺 live labels、
-  fieldset 禁用传播或完整成功控件边缘规则。`PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()`
+  labelable 控件的静态 `labels` snapshot 放入 core/browser relation bridge；next615 又把
+  disabled ancestor fieldset 的有效状态（含第一个 legend 豁免和嵌套 fieldset）接入产品 core 的
+  验证、successful controls、控件信息和交互闸门，但不承诺 live labels、native invalid UI 或
+  完整成功控件边缘规则。`PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()`
   只迁移 commit 后的 input→change 顺序、target-shape 校验、next610 的焦点族 dispatch、
   next611 的单选下拉事务闸门以及 next612 的 typed key dispatch/default-allowed policy；WM
   SELECT 控件真正的键盘默认动作、下拉窗口/视觉、Core selection mutation、原生取消回滚和
@@ -53,9 +55,10 @@
 - 尚不支持通用节点创建和变更、完整 Shadow DOM、完整 namespace/XML，以及现代浏览器的全部 selector 行为。
 - 若接口返回集合、列表或映射，通常具有固定容量、快照寿命或有限索引范围；例如 NamedNodeMap 的索引槽当前只覆盖 0–7。
 - `form.elements`、`RadioNodeList` 和 `labels` 都是有界快照；没有完整的 live
-  `HTMLFormControlsCollection`/labels、fieldset 禁用传播、labelable 控件全部类型或同名控件全部
-  边缘规则。当前 label 关联只覆盖有 ID 的 input（排除 hidden）、select、textarea、button，
-  显式 `for` 和嵌套控件。
+  `HTMLFormControlsCollection`/labels、labelable 控件全部类型或同名控件全部边缘规则。next615
+  的 fieldset disabled 只覆盖产品 core 已接入的验证、successful-control、控件信息和交互路径，
+  不等于完整 live DOM 或所有宿主 native 副作用。当前 label 关联只覆盖有 ID 的 input（排除
+  hidden）、select、textarea、button，显式 `for` 和嵌套控件。
 - Request、Response、Headers 等对象是内存模型；创建对象本身不会发起网络。
 - storage 和 cookie 主要是会话内存模型，没有持久化、跨会话隔离、完整 quota、安全属性和浏览器级策略。
 - API 存在不代表完整标准兼容。参数强制转换、异常类型、属性描述符、可枚举性、原型链和跨 realm 行为仍可能不同。
@@ -103,8 +106,10 @@
 
 - 基础表单值、选择、单选/复选、提交和部分约束验证已覆盖，但不是完整 HTML 表单标准。
 - 任意 OEM IME/SIP、候选词整词提交、composition/preedit、硬键盘组合和焦点切换仍可能有设备差异。
-- 原生 invalid UI、完整 type/range/step 规则、fieldset 禁用传播、output/meter/progress 等
-  未纳入的 labelable 类型与复杂成功控件集合仍不完整；当前 label/control 只保证上述有界关系。
+- 原生 invalid UI、完整 type/range/step 规则、output/meter/progress 等未纳入的 labelable 类型
+  与复杂成功控件集合仍不完整。next615 已覆盖 fieldset disabled 对产品 core 验证、successful
+  controls、控件信息和交互闸门的有效状态；native 窗口样式、invalid UI、SIP/IME、picker 和
+  其他宿主副作用仍不由该语义自动完成，当前 label/control 也只保证上述有界关系。
 - 文件输入依赖 WM 文件选择器；自动化可验证状态和事件，但无法替代真实选择、取消、重入及可见性体验。
 - 旋转、软键盘弹出、原生控件与 HTML 视图重排存在需要人工观察的风险。
 

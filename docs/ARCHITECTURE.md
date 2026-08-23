@@ -943,9 +943,25 @@ labelable input（排除 hidden）、select、textarea 或 button；没有 `for`
 可寻址的嵌套控件。无效目标、无 ID label、非控件、hidden 和越界索引 fail closed。
 
 这是一组同步、session-scoped snapshot，不是 live `HTMLFormControlsCollection`，也不实现
-fieldset disabled 传播、节点创建、mutation 或完整 labelable 元素集合。`test_host.exe` 仅提供
-fixture、callback adapter 和 TEST1062 断言；新的 core/browser ABI 可由其他消费者复用，宿主仍
-拥有窗口、焦点、原生控件和视觉副作用。
+节点创建、mutation 或完整 labelable 元素集合。fieldset disabled 的有效状态由
+`positron_core.dll` 的统一判定提供给验证、successful controls、控件信息和交互闸门；它支持
+第一个 legend 后代豁免和嵌套 fieldset，但不等于完整 live DOM，也不替宿主完成 native 窗口样式、
+invalid UI、SIP/IME 或文件选择器副作用。`test_host.exe` 仅提供 fixture、callback adapter 和
+TEST1062/1063 断言；新的 core/browser ABI 可由其他消费者复用，宿主仍拥有窗口、焦点、原生
+控件和视觉副作用。
+
+#### next615 的 fieldset disabled 边界
+
+next615 将 form-control 的有效 disabled 状态集中到 `pcore_node_effectively_disabled()`：元素
+自身的 `disabled` 属性优先；没有自身属性时，祖先 disabled fieldset 会使 input、button、
+select、textarea 失效，但该 fieldset 的第一个直接 legend 及其后代豁免，嵌套 fieldset 仍按
+各自祖先逐层计算。该判定在 `positron_core.dll` 内被验证、成功控件序列化、默认 submitter、
+`PCore_FormControlInfo*`、表单激活和交互状态查询复用，因此动态修改 `fieldset.disabled` 不必
+重建 layout 才能更新这些语义；HTML `control.disabled` 仍只反射元素自身属性。
+
+该批不宣称完整 HTML fieldset/live DOM 标准、native 控件视觉或 invalid UI；WM 窗口样式、真实
+触摸、SIP/IME、文件选择器和其他平台副作用仍由宿主负责。`test_host.exe` 只提供 TEST1063
+fixture/断言与设备门消费者。
 
 ## 独立 JavaScript 与浏览器 JavaScript
 

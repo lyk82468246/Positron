@@ -372,6 +372,175 @@ static int pcore_node_has_attr(dom_node *node, const char *attr)
     return present ? 1 : 0;
 }
 
+/* Return whether `node` is below the first legend child of `fieldset`. The
+ * first legend is the one exemption from a disabled fieldset's inherited
+ * disabled state. All DOM references acquired by this walk are released
+ * before returning. */
+static int pcore_node_in_first_legend(dom_node *node, dom_node *fieldset)
+{
+    dom_node *current;
+    dom_node *parent;
+    dom_node *direct;
+    dom_node *child;
+    dom_node *next;
+    dom_node_type type;
+    int result;
+
+    if (node == NULL || fieldset == NULL) {
+        return 0;
+    }
+    current = dom_node_ref(node);
+    direct = NULL;
+    while (current != NULL) {
+        parent = NULL;
+        if (dom_node_get_parent_node(current, &parent) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return -1;
+        }
+        if (parent == fieldset) {
+            direct = current;
+            if (parent != NULL) {
+                dom_node_unref(parent);
+            }
+            break;
+        }
+        dom_node_unref(current);
+        current = parent;
+    }
+    if (direct == NULL) {
+        return 0;
+    }
+    child = NULL;
+    if (dom_node_get_first_child(fieldset, &child) != DOM_NO_ERR) {
+        dom_node_unref(direct);
+        return -1;
+    }
+    result = 0;
+    while (child != NULL) {
+        next = NULL;
+        if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            dom_node_unref(direct);
+            return -1;
+        }
+        if (type == DOM_ELEMENT_NODE &&
+                pcore_node_name_is(child, "legend")) {
+            result = (child == direct) ? 1 : 0;
+            dom_node_unref(child);
+            dom_node_unref(direct);
+            return result;
+        }
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            dom_node_unref(direct);
+            return -1;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    dom_node_unref(direct);
+    return result;
+}
+
+/* Walk ancestors and find a disabled fieldset that does not exempt this
+ * control through its first legend. The result is -1 on a DOM traversal
+ * error, 0 when no inherited disabled state applies, or 1 when it applies. */
+static int pcore_node_disabled_fieldset(dom_node *node)
+{
+    dom_node *current;
+    dom_node *parent;
+    int in_legend;
+
+    if (node == NULL) {
+        return 0;
+    }
+    current = dom_node_ref(node);
+    while (current != NULL) {
+        parent = NULL;
+        if (dom_node_get_parent_node(current, &parent) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return -1;
+        }
+        dom_node_unref(current);
+        current = parent;
+        if (current == NULL) {
+            break;
+        }
+        if (pcore_node_name_is(current, "fieldset") &&
+                pcore_node_has_attr(current, "disabled")) {
+            in_legend = pcore_node_in_first_legend(node, current);
+            if (in_legend < 0) {
+                dom_node_unref(current);
+                return -1;
+            }
+            if (!in_legend) {
+                dom_node_unref(current);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+int pcore_node_effectively_disabled(dom_node *node, bool *applies,
+        bool *disabled)
+{
+    dom_exception err;
+    int inherited;
+    bool local_applies;
+
+    if (disabled == NULL) {
+        return 1;
+    }
+    if (applies == NULL) {
+        local_applies = false;
+        applies = &local_applies;
+    }
+    *applies = false;
+    *disabled = false;
+    if (node == NULL) {
+        return 1;
+    }
+    *applies = pcore_node_name_is(node, "input") ||
+            pcore_node_name_is(node, "button") ||
+            pcore_node_name_is(node, "select") ||
+            pcore_node_name_is(node, "textarea") ||
+            pcore_node_name_is(node, "option");
+    if (!*applies) {
+        return 0;
+    }
+    if (pcore_node_name_is(node, "input")) {
+        err = dom_html_input_element_get_disabled(
+                (dom_html_input_element *) node, disabled);
+    } else if (pcore_node_name_is(node, "button")) {
+        err = dom_html_button_element_get_disabled(
+                (dom_html_button_element *) node, disabled);
+    } else if (pcore_node_name_is(node, "select")) {
+        err = dom_html_select_element_get_disabled(
+                (dom_html_select_element *) node, disabled);
+    } else if (pcore_node_name_is(node, "textarea")) {
+        err = dom_html_text_area_element_get_disabled(
+                (dom_html_text_area_element *) node, disabled);
+    } else {
+        err = dom_html_option_element_get_disabled(
+                (dom_html_option_element *) node, disabled);
+    }
+    if (err != DOM_NO_ERR) {
+        *disabled = pcore_node_has_attr(node, "disabled") ? true : false;
+    }
+    if (*disabled || pcore_node_name_is(node, "option")) {
+        return 0;
+    }
+    inherited = pcore_node_disabled_fieldset(node);
+    if (inherited < 0) {
+        return 1;
+    }
+    if (inherited) {
+        *disabled = true;
+    }
+    return 0;
+}
+
 /* Parse a valid HTML non-negative integer attribute. Malformed values are
  * ignored by constraint validation, matching the platform's conservative
  * form behavior rather than inventing a value for the page. */
@@ -673,8 +842,7 @@ static int pcore_make_button_control(struct box *box,
         if (dom_html_button_element_get_value(button, &value) != DOM_NO_ERR) {
             value = NULL;
         }
-        if (dom_html_button_element_get_disabled(button, &disabled) !=
-                DOM_NO_ERR) {
+        if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
             disabled = pcore_node_has_attr(node, "disabled") ? true : false;
         }
         if (dom_node_get_text_content(node, &content) == DOM_NO_ERR &&
@@ -692,8 +860,7 @@ static int pcore_make_button_control(struct box *box,
         if (dom_html_input_element_get_value(input, &value) != DOM_NO_ERR) {
             value = NULL;
         }
-        if (dom_html_input_element_get_disabled(input, &disabled) !=
-                DOM_NO_ERR) {
+        if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
             disabled = pcore_node_has_attr(node, "disabled") ? true : false;
         }
     }
@@ -852,8 +1019,7 @@ static int pcore_make_select_control(struct box *box,
     if (gadget->name == NULL) {
         return 0;
     }
-    if (dom_html_select_element_get_disabled(select, &disabled) !=
-            DOM_NO_ERR) {
+    if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
         disabled = pcore_node_has_attr(node, "disabled") ? true : false;
     }
     if (dom_html_select_element_get_multiple(select, &multiple) !=
@@ -990,8 +1156,7 @@ static struct box *pcore_make_form_control_box(dom_node *node,
             talloc_free(box);
             return NULL;
         }
-        if (dom_html_text_area_element_get_disabled(textarea,
-                &disabled) != DOM_NO_ERR) {
+        if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
             disabled = pcore_node_has_attr(node, "disabled") ?
                     true : false;
         }
@@ -1036,7 +1201,7 @@ static struct box *pcore_make_form_control_box(dom_node *node,
     if (dom_html_input_element_get_checked(input, &selected) != DOM_NO_ERR) {
         selected = pcore_node_has_attr(node, "checked") ? true : false;
     }
-    if (dom_html_input_element_get_disabled(input, &disabled) != DOM_NO_ERR) {
+    if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
         disabled = pcore_node_has_attr(node, "disabled") ? true : false;
     }
     gadget->selected = selected;
@@ -4199,6 +4364,7 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
     int ax;
     int ay;
     int control_kind;
+    bool effective_disabled;
 
     st = pcore_get_render((dom_document *) hDoc);
     current = 0;
@@ -4244,7 +4410,12 @@ PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
                 (box->gadget->selected ? 1 : 0);
     }
     if (disabled != NULL) {
-        *disabled = box->gadget->disabled ? 1 : 0;
+        effective_disabled = box->gadget->disabled;
+        if (pcore_node_effectively_disabled(box->gadget->node, NULL,
+                &effective_disabled) != 0) {
+            return 1;
+        }
+        *disabled = effective_disabled ? 1 : 0;
     }
     return 0;
 }
@@ -4261,6 +4432,7 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
     int ax;
     int ay;
     int control_kind;
+    bool effective_disabled;
 
     doc = (dom_document *) hDoc;
     st = pcore_get_render(doc);
@@ -4283,8 +4455,8 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
     }
     dom_string_unref(id);
     box = pcore_box_for_node(st->root_box, (dom_node *) element);
-    dom_node_unref((dom_node *) element);
     if (box == NULL || box->gadget == NULL) {
+        dom_node_unref((dom_node *) element);
         return 1;
     }
     if (box->gadget->type == GADGET_CHECKBOX) {
@@ -4308,6 +4480,7 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
     } else if (box->gadget->type == GADGET_FILE) {
         control_kind = 10;
     } else {
+        dom_node_unref((dom_node *) element);
         return 1;
     }
     ax = 0;
@@ -4324,8 +4497,15 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
                 (box->gadget->selected ? 1 : 0);
     }
     if (disabled != NULL) {
-        *disabled = box->gadget->disabled ? 1 : 0;
+        effective_disabled = box->gadget->disabled;
+        if (pcore_node_effectively_disabled((dom_node *) element, NULL,
+                &effective_disabled) != 0) {
+            dom_node_unref((dom_node *) element);
+            return 1;
+        }
+        *disabled = effective_disabled ? 1 : 0;
     }
+    dom_node_unref((dom_node *) element);
     return 0;
 }
 
@@ -4433,6 +4613,7 @@ PCORE_API int PCore_FileInputAt(HANDLE hDoc, int x, int y,
     struct box *box;
     unsigned int current;
     unsigned int index;
+    bool effective_disabled;
 
     st = pcore_get_render((dom_document *) hDoc);
     if (st == NULL) {
@@ -4456,7 +4637,12 @@ PCORE_API int PCore_FileInputAt(HANDLE hDoc, int x, int y,
         *file_index = index;
     }
     if (disabled != NULL) {
-        *disabled = box->gadget->disabled ? 1 : 0;
+        effective_disabled = box->gadget->disabled;
+        if (pcore_node_effectively_disabled(box->gadget->node, NULL,
+                &effective_disabled) != 0) {
+            return 0;
+        }
+        *disabled = effective_disabled ? 1 : 0;
     }
     return 1;
 }
@@ -4475,6 +4661,7 @@ PCORE_API int PCore_FileInputInfo(HANDLE hDoc, unsigned int file_index,
     int ax;
     int ay;
     void *stored_path;
+    bool effective_disabled;
 
     st = pcore_get_render((dom_document *) hDoc);
     current = 0;
@@ -4508,7 +4695,12 @@ PCORE_API int PCore_FileInputInfo(HANDLE hDoc, unsigned int file_index,
         out_info->y = ay;
         out_info->width = box->width;
         out_info->height = box->height;
-        out_info->disabled = box->gadget->disabled ? 1 : 0;
+        effective_disabled = box->gadget->disabled;
+        if (pcore_node_effectively_disabled(box->gadget->node, NULL,
+                &effective_disabled) != 0) {
+            return 1;
+        }
+        out_info->disabled = effective_disabled ? 1 : 0;
         out_info->value_bytes = (int) value_length;
         out_info->path_bytes = (int) path_length;
     }
@@ -4540,6 +4732,7 @@ PCORE_API int PCore_FileInputSetPath(HANDLE hDoc,
     char *stored_path;
     char *old_path;
     unsigned int current;
+    bool effective_disabled;
 
     if (value == NULL || path == NULL) {
         return 1;
@@ -4550,7 +4743,12 @@ PCORE_API int PCore_FileInputSetPath(HANDLE hDoc,
             pcore_file_input_at_index(st->root_box, file_index,
                     &current) : NULL;
     control = (box != NULL) ? box->gadget : NULL;
-    if (control == NULL || control->disabled) {
+    if (control == NULL) {
+        return 1;
+    }
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
         return 1;
     }
     gadget_value = talloc_strdup(control, value);
@@ -4681,6 +4879,7 @@ PCORE_API int PCore_TextInputInfo(HANDLE hDoc, unsigned int index,
     dom_html_text_area_element *textarea;
     unsigned int current;
     bool read_only;
+    bool effective_disabled;
     int ax;
     int ay;
     size_t value_len;
@@ -4725,7 +4924,12 @@ PCORE_API int PCore_TextInputInfo(HANDLE hDoc, unsigned int index,
         out_info->password =
                 (control->type == GADGET_PASSWORD) ? 1 : 0;
         out_info->read_only = read_only ? 1 : 0;
-        out_info->disabled = control->disabled ? 1 : 0;
+        effective_disabled = control->disabled;
+        if (pcore_node_effectively_disabled(control->node, NULL,
+                &effective_disabled) != 0) {
+            return 1;
+        }
+        out_info->disabled = effective_disabled ? 1 : 0;
         out_info->max_length =
                 (control->maxlength == UINT_MAX ||
                  control->maxlength > (unsigned int) INT_MAX) ?
@@ -4825,6 +5029,7 @@ PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
     unsigned int current;
     unsigned int characters;
     bool read_only;
+    bool effective_disabled;
     size_t source_index;
     size_t target_index;
     size_t value_len;
@@ -4857,7 +5062,12 @@ PCORE_API int PCore_TextInputSetValue(HANDLE hDoc, unsigned int index,
                     true : false;
         }
     }
-    if (control->disabled || read_only) {
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0) {
+        return 1;
+    }
+    if (effective_disabled || read_only) {
         return 2;
     }
     if (control->maxlength != UINT_MAX &&
@@ -5005,6 +5215,7 @@ PCORE_API int PCore_SelectInfo(HANDLE hDoc, unsigned int index,
     int selected_index;
     int option_index;
     struct form_option *option;
+    bool effective_disabled;
 
     st = pcore_get_render((dom_document *) hDoc);
     current = 0;
@@ -5039,7 +5250,12 @@ PCORE_API int PCore_SelectInfo(HANDLE hDoc, unsigned int index,
     out_info->height = box->border[TOP].width +
             box->padding[TOP] + box->height + box->padding[BOTTOM] +
             box->border[BOTTOM].width;
-    out_info->disabled = control->disabled ? 1 : 0;
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0) {
+        return 1;
+    }
+    out_info->disabled = effective_disabled ? 1 : 0;
     out_info->multiple = control->data.select.multiple ? 1 : 0;
     out_info->option_count = control->data.select.num_items;
     out_info->selected_count = control->data.select.num_selected;
@@ -5104,6 +5320,7 @@ PCORE_API int PCore_SelectSetOptionSelected(HANDLE hDoc,
     struct form_option *target;
     unsigned int current;
     bool option_disabled;
+    bool effective_disabled;
     const char *display_text;
 
     st = pcore_get_render((dom_document *) hDoc);
@@ -5122,7 +5339,12 @@ PCORE_API int PCore_SelectSetOptionSelected(HANDLE hDoc,
         option_disabled = pcore_node_has_attr(target->node,
                 "disabled") ? true : false;
     }
-    if (control->disabled || option_disabled) {
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0) {
+        return 1;
+    }
+    if (effective_disabled || option_disabled) {
         return 2;
     }
     if (!control->data.select.multiple && selected) {
@@ -5695,8 +5917,10 @@ static int pcore_form_append_input(pcore_form_buffer *buffer,
     checked = false;
     append = 1;
     node = (dom_node *) input;
-    if (dom_html_input_element_get_disabled(input, &disabled) !=
-            DOM_NO_ERR || disabled) {
+    if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
+        return 0;
+    }
+    if (disabled) {
         return (disabled) ? 1 : 0;
     }
     if (dom_html_input_element_get_name(input, &name) != DOM_NO_ERR) {
@@ -5758,8 +5982,11 @@ static int pcore_form_append_textarea(pcore_form_buffer *buffer,
     name = NULL;
     value = NULL;
     disabled = false;
-    if (dom_html_text_area_element_get_disabled(textarea, &disabled) !=
-            DOM_NO_ERR || disabled) {
+    if (pcore_node_effectively_disabled((dom_node *) textarea, NULL,
+            &disabled) != 0) {
+        return 0;
+    }
+    if (disabled) {
         return (disabled) ? 1 : 0;
     }
     if (dom_html_text_area_element_get_name(textarea, &name) != DOM_NO_ERR) {
@@ -5800,8 +6027,11 @@ static int pcore_form_append_select(pcore_form_buffer *buffer,
     value = NULL;
     count = 0;
     disabled = false;
-    if (dom_html_select_element_get_disabled(select, &disabled) !=
-            DOM_NO_ERR || disabled) {
+    if (pcore_node_effectively_disabled((dom_node *) select, NULL,
+            &disabled) != 0) {
+        return 0;
+    }
+    if (disabled) {
         return (disabled) ? 1 : 0;
     }
     if (dom_html_select_element_get_name(select, &name) != DOM_NO_ERR) {
@@ -5865,8 +6095,10 @@ static int pcore_form_append_button(pcore_form_buffer *buffer,
     name = NULL;
     value = NULL;
     disabled = false;
-    if (dom_html_button_element_get_disabled(button, &disabled) !=
-            DOM_NO_ERR || disabled) {
+    if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
+        return 0;
+    }
+    if (disabled) {
         return (disabled) ? 1 : 0;
     }
     if (pcore_attr_value_is(node, "type", "reset") ||
@@ -5996,18 +6228,14 @@ static dom_node *pcore_form_first_submit(dom_html_form_element *form,
             break;
         }
         if (pcore_node_name_is(node, "input")) {
-            if (dom_html_input_element_get_disabled(
-                    (dom_html_input_element *) node, &disabled) !=
-                    DOM_NO_ERR) {
+            if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
                 *error = 1;
             } else if (!disabled &&
                     pcore_attr_value_is(node, "type", "submit")) {
                 is_submit = 1;
             }
         } else if (pcore_node_name_is(node, "button")) {
-            if (dom_html_button_element_get_disabled(
-                    (dom_html_button_element *) node, &disabled) !=
-                    DOM_NO_ERR) {
+            if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
                 *error = 1;
             } else if (!disabled &&
                     !pcore_attr_value_is(node, "type", "reset") &&
@@ -7802,6 +8030,12 @@ static int pcore_required_control_missing(dom_html_form_element *form,
     required = pcore_node_has_attr(node, "required");
     gadget_type = pcore_form_control_type(node);
     *kind_out = pcore_public_control_kind(gadget_type);
+    if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
+        return 0;
+    }
+    if (disabled) {
+        return 1;
+    }
     if (pcore_node_name_is(node, "input")) {
         if (dom_html_input_element_get_disabled(
                 (dom_html_input_element *) node, &disabled) != DOM_NO_ERR) {
@@ -8066,8 +8300,7 @@ static dom_html_form_element *pcore_form_for_node(dom_node *node)
 /* Report whether a control participates in constraint validation. This is
  * deliberately kept beside pcore_required_control_missing so both the
  * submission path and the script-visible query use the same control-kind
- * classification. Fieldset inheritance is not represented by the current
- * NetSurf gadget state and remains outside this compatibility slice. */
+ * classification, including effective disabled fieldset inheritance. */
 static int pcore_control_will_validate(dom_node *node, int gadget_type,
         int *out_will_validate)
 {
@@ -8086,6 +8319,12 @@ static int pcore_control_will_validate(dom_node *node, int gadget_type,
     }
     disabled = false;
     read_only = false;
+    if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
+        return 0;
+    }
+    if (disabled) {
+        return 1;
+    }
     if (pcore_node_name_is(node, "input")) {
         if (dom_html_input_element_get_disabled(
                 (dom_html_input_element *) node, &disabled) != DOM_NO_ERR) {
@@ -8682,6 +8921,7 @@ PCORE_API int PCore_FormValidationAt(HANDLE hDoc, int x, int y,
     struct form_control *control;
     dom_html_form_element *form;
     int result;
+    bool effective_disabled;
 
     pcore_form_validation_init(out_info);
     st = pcore_get_render((dom_document *) hDoc);
@@ -8694,8 +8934,12 @@ PCORE_API int PCore_FormValidationAt(HANDLE hDoc, int x, int y,
         /* Resolve submit-button text to its gadget-bearing ancestor. */
     }
     control = (box != NULL) ? box->gadget : NULL;
-    if (control == NULL || control->type != GADGET_SUBMIT ||
-            control->disabled) {
+    if (control == NULL || control->type != GADGET_SUBMIT) {
+        return 0;
+    }
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
         return 0;
     }
     form = pcore_control_form(control);
@@ -8716,6 +8960,7 @@ PCORE_API int PCore_FormValidationForTextInput(HANDLE hDoc,
     dom_html_form_element *form;
     unsigned int current;
     int result;
+    bool effective_disabled;
 
     pcore_form_validation_init(out_info);
     st = pcore_get_render((dom_document *) hDoc);
@@ -8725,8 +8970,12 @@ PCORE_API int PCore_FormValidationForTextInput(HANDLE hDoc,
     control = (box != NULL) ? box->gadget : NULL;
     if (control == NULL ||
             (control->type != GADGET_TEXTBOX &&
-             control->type != GADGET_PASSWORD) ||
-            control->disabled) {
+             control->type != GADGET_PASSWORD)) {
+        return 0;
+    }
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
         return 0;
     }
     form = pcore_control_form(control);
@@ -8942,8 +9191,8 @@ static int pcore_multipart_append_input(
     disabled = false;
     checked = false;
     stored_path = NULL;
-    if (dom_html_input_element_get_disabled(input, &disabled) !=
-            DOM_NO_ERR || disabled) {
+    if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0 ||
+            disabled) {
         return disabled ? 1 : 0;
     }
     if (dom_html_input_element_get_name(input, &name) != DOM_NO_ERR) {
@@ -9016,8 +9265,8 @@ static int pcore_multipart_append_textarea(
     name = NULL;
     value = NULL;
     disabled = false;
-    if (dom_html_text_area_element_get_disabled(textarea, &disabled) !=
-            DOM_NO_ERR || disabled) {
+    if (pcore_node_effectively_disabled((dom_node *) textarea, NULL,
+            &disabled) != 0 || disabled) {
         return disabled ? 1 : 0;
     }
     if (dom_html_text_area_element_get_name(textarea, &name) != DOM_NO_ERR) {
@@ -9059,8 +9308,8 @@ static int pcore_multipart_append_select(
     value = NULL;
     count = 0;
     disabled = false;
-    if (dom_html_select_element_get_disabled(select, &disabled) !=
-            DOM_NO_ERR || disabled) {
+    if (pcore_node_effectively_disabled((dom_node *) select, NULL,
+            &disabled) != 0 || disabled) {
         return disabled ? 1 : 0;
     }
     if (dom_html_select_element_get_name(select, &name) != DOM_NO_ERR) {
@@ -9126,8 +9375,8 @@ static int pcore_multipart_append_button(
     name = NULL;
     value = NULL;
     disabled = false;
-    if (dom_html_button_element_get_disabled(button, &disabled) !=
-            DOM_NO_ERR || disabled) {
+    if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0 ||
+            disabled) {
         return disabled ? 1 : 0;
     }
     if (pcore_attr_value_is(node, "type", "reset") ||
@@ -9448,6 +9697,7 @@ PCORE_API int PCore_FormSubmissionAt(HANDLE hDoc, int x, int y,
     struct form_control *control;
     dom_html_form_element *form;
     int result;
+    bool effective_disabled;
 
     st = pcore_get_render((dom_document *) hDoc);
     if (st == NULL) {
@@ -9467,7 +9717,12 @@ PCORE_API int PCore_FormSubmissionAt(HANDLE hDoc, int x, int y,
             control->type != GADGET_BUTTON) {
         return 0;
     }
-    if (control->disabled || control->type != GADGET_SUBMIT) {
+    if (control->type != GADGET_SUBMIT) {
+        return 2;
+    }
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
         return 2;
     }
     form = pcore_control_form(control);
@@ -9490,6 +9745,7 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
     dom_html_form_element *form;
     unsigned int current;
     int result;
+    bool effective_disabled;
 
     st = pcore_get_render((dom_document *) hDoc);
     current = 0;
@@ -9498,8 +9754,12 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
     control = (box != NULL) ? box->gadget : NULL;
     if (control == NULL ||
             (control->type != GADGET_TEXTBOX &&
-             control->type != GADGET_PASSWORD) ||
-            control->disabled) {
+            control->type != GADGET_PASSWORD)) {
+        return 0;
+    }
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
         return 0;
     }
     form = pcore_control_form(control);
@@ -9520,6 +9780,7 @@ PCORE_API HANDLE PCore_MultipartSubmissionAt(HANDLE hDoc, int x, int y)
     struct form_control *control;
     dom_html_form_element *form;
     pcore_multipart_submission *submission;
+    bool effective_disabled;
 
     st = pcore_get_render((dom_document *) hDoc);
     if (st == NULL) {
@@ -9531,8 +9792,12 @@ PCORE_API HANDLE PCore_MultipartSubmissionAt(HANDLE hDoc, int x, int y)
         /* Resolve a submit button's text child to the gadget box. */
     }
     control = (box != NULL) ? box->gadget : NULL;
-    if (control == NULL || control->type != GADGET_SUBMIT ||
-            control->disabled) {
+    if (control == NULL || control->type != GADGET_SUBMIT) {
+        return NULL;
+    }
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
         return NULL;
     }
     form = pcore_control_form(control);
@@ -9553,6 +9818,7 @@ PCORE_API HANDLE PCore_MultipartSubmissionForTextInput(HANDLE hDoc,
     dom_html_form_element *form;
     pcore_multipart_submission *submission;
     unsigned int current;
+    bool effective_disabled;
 
     st = pcore_get_render((dom_document *) hDoc);
     current = 0;
@@ -9561,8 +9827,12 @@ PCORE_API HANDLE PCore_MultipartSubmissionForTextInput(HANDLE hDoc,
     control = (box != NULL) ? box->gadget : NULL;
     if (control == NULL ||
             (control->type != GADGET_TEXTBOX &&
-             control->type != GADGET_PASSWORD) ||
-            control->disabled) {
+            control->type != GADGET_PASSWORD)) {
+        return NULL;
+    }
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
         return NULL;
     }
     form = pcore_control_form(control);
@@ -9888,6 +10158,7 @@ PCORE_API int PCore_FormResetAt(HANDLE hDoc, int x, int y)
     struct form_control *control;
     dom_html_form_element *form;
     int result;
+    bool effective_disabled;
 
     st = pcore_get_render((dom_document *) hDoc);
     if (st == NULL) {
@@ -9902,7 +10173,9 @@ PCORE_API int PCore_FormResetAt(HANDLE hDoc, int x, int y)
     if (control == NULL || control->type != GADGET_RESET) {
         return 0;
     }
-    if (control->disabled) {
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
         return 2;
     }
     form = pcore_control_form(control);
@@ -9995,10 +10268,13 @@ static void pcore_radio_deselect_group(struct box *box,
 static dom_node *pcore_interaction_node(struct box *hit, int focus)
 {
     struct box *box;
+    bool effective_disabled;
 
     for (box = hit; box != NULL; box = box->parent) {
         if (box->gadget != NULL) {
-            if (box->gadget->disabled) {
+            effective_disabled = box->gadget->disabled;
+            if (pcore_node_effectively_disabled(box->gadget->node, NULL,
+                    &effective_disabled) != 0 || effective_disabled) {
                 return NULL;
             }
             return box->gadget->node;
@@ -10103,6 +10379,7 @@ PCORE_API int PCore_FormActivateAt(HANDLE hDoc, int x, int y,
     int y0;
     int x1;
     int y1;
+    bool effective_disabled;
 
     if (dirty_x != NULL) { *dirty_x = 0; }
     if (dirty_y != NULL) { *dirty_y = 0; }
@@ -10125,7 +10402,9 @@ PCORE_API int PCore_FormActivateAt(HANDLE hDoc, int x, int y,
             control->type != GADGET_RADIO) {
         return 0;
     }
-    if (control->disabled) {
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
         return 1;
     }
 

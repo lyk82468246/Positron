@@ -186,8 +186,10 @@ next605 又为 `form.elements` 的重复 `id`/`name` 增加有限的 `RadioNodeL
 仍返回 element，重复匹配返回可迭代、只读的分组 wrapper；`value` getter 读取当前选中 radio，
 setter 只选择同值控件。直接属性不可枚举、不可写、不可配置，并与 `namedItem()` 复用 session
 内缓存 identity；缺失名称返回 `null`，普通 HTMLCollection 仍返回首匹配 element。next605
-本身仍不实现 live `HTMLFormControlsCollection`、fieldset 或 label 关联；后续 next614 只补齐
-有界的 label/control 关系，不改变这些 live/mutation 边界。
+本身仍不实现 live `HTMLFormControlsCollection` 或 label 关联；后续 next614 只补齐
+有界的 label/control 关系，不改变这些 live/mutation 边界。fieldset 的有效 disabled 状态由
+next615 的 `positron_core.dll` 表单判定提供，browser layer 仍不把祖先状态伪装成原始
+`control.disabled` 属性。
 对应 `TEST1036–1053` 定向门和 `TEST802–998,1000–1053` 缩减回归均已通过自动设备门；为
 容纳新增 bootstrap，browser session heap ceiling 为 624 KiB，独立 `positron_script` 默认堆仍为
 512 KiB。本批不需要人工页面验收。
@@ -250,8 +252,14 @@ beforeinput metadata 会与既有 native commit → input 事务衔接。宿主�
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、
-无 ID label 和越界索引均 fail closed；不提供 live labels、fieldset 传播、节点创建或完整
-labelable 集合。TEST1062 与 554–561、1023–1053 相邻回归已在 WM6 设备门通过。
+无 ID label 和越界索引均 fail closed；不提供 live labels、节点创建或完整 labelable 集合。
+TEST1062 与 554–561、1023–1053 相邻回归已在 WM6 设备门通过。
+
+next615 的 fieldset disabled 语义由 `positron_core.dll` 统一计算并被 browser 的 validation
+query 消费：disabled fieldset 的第一个 legend 后代豁免，其他后代和嵌套 fieldset 逐层继承；
+动态切换会反映到 `willValidate`、`checkValidity()` 和 core 控件信息，而原始
+`control.disabled` 仍只反映自身属性。TEST1063 与 264–270、554–561、1062 的回归设备门
+通过；native invalid UI、窗口样式、SIP/IME 和文件选择器仍属于宿主边界。
 
 ## 其他项目如何调用
 

@@ -245,7 +245,7 @@ scripts\device_gate.bat -Candidate next613-native-edit-composition-final-r3 ^
 next614 将 label 与控件的最小关联放入 `positron_core.dll` 与 `positron_browser.dll`：
 `label.control` 支持显式 `for` 和第一个嵌套的 input（排除 hidden）、select、textarea、button；
 这些控件的 `labels` 是按文档顺序生成的静态 NodeList。invalid target、非控件、hidden、无 ID
-label 和越界索引均必须 fail closed；不新增 live collection、fieldset 传播或人工视觉门。
+label 和越界索引均必须 fail closed；不新增 live collection 或人工视觉门。
 TEST1062 同时验证 core relation、browser wrapper、顺序、snapshot 稳定性和边界：
 
 ```bat
@@ -268,6 +268,37 @@ scripts\device_gate.bat -Candidate next614-label-control-regression ^
 同样零 `ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。这组 API 是同步、
 session-scoped、只读 snapshot；因此本批没有新增人工验收，tracked `test_host.ini` 仍保持
 `javascript=0`。
+
+### next615 fieldset disabled 自动门
+
+next615 将 disabled ancestor fieldset 的有效状态放入 `positron_core.dll`：第一个直接 legend
+及其后代豁免，其他后代和嵌套 fieldset 逐层继承。统一判定覆盖约束验证、URL-encoded 与
+multipart successful controls、默认 submitter、`PCore_FormControlInfo*`、表单激活和交互闸门；
+动态修改 `fieldset.disabled` 不必重建 layout 才能更新这些查询。HTML `control.disabled` 仍
+只反射元素自身属性，native 窗口样式、invalid UI、SIP/IME 和文件选择器仍由宿主负责。
+
+TEST1063 自动断言首个 legend 豁免、第二个 legend/嵌套 fieldset 继承、动态切换、
+`willValidate`、控件信息和提交 body：
+
+```bat
+scripts\device_gate.bat -Candidate next615-fieldset-disabled-final ^
+  -EnableJavaScript ^
+  -TestSelection "1063,999"
+```
+
+最终定向证据 `tmp/device-runs/20260823-210420-next615-fieldset-disabled-final/` 为 2/2，
+零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。相关回归门：
+
+```bat
+scripts\device_gate.bat -Candidate next615-fieldset-disabled-regression ^
+  -EnableJavaScript ^
+  -TestSelection "264-270,554-561,1062-1063,999"
+```
+
+回归证据 `tmp/device-runs/20260823-210451-next615-fieldset-disabled-regression/` 为 18/18，
+同样零 `ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批只覆盖可自动
+判定的 DOM/表单状态，不新增人工页面验收；若后续涉及 native invalid UI、视觉样式、真实触摸、
+SIP/IME、picker 或旋转，仍需单独累计人工门。
 
 ### 当前默认自动选择与人工验收包（next589 基线）
 

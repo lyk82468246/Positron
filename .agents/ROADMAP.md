@@ -109,13 +109,26 @@ input（排除 hidden）、select、textarea、button，以及没有 `for` 时�
 这些 labelable 控件的 `labels` 返回按文档顺序的静态 NodeList snapshot。core 通过三个新的
 只读 relation 值提供 control、label count 和 label-at，browser layer 负责属性和集合包装；
 `test_host` 只注册既有 relation bridge。无效目标、非控件、hidden、无 ID label 和越界索引
-fail closed，不把它扩展为 live labels、fieldset 禁用传播或完整 labelable 类型集合。
+fail closed，不把它扩展为 live labels 或完整 labelable 类型集合。
 
 TEST1062 的 core/browser 契约门与 TEST554–561、1023–1053 相邻关系回归已通过 41/41，
 证据位于 `tmp/device-runs/20260823-201832-next614-label-control-regression/`；该批没有新增
 视觉、真实触摸、SIP、旋转、picker 或网络失败人工门。
 
-### 9. 建立真实页面驱动的兼容队列
+### 9. next615：fieldset 有效禁用传播纵切（已完成）
+
+next615 把 disabled ancestor fieldset 的有效状态放入 `positron_core.dll` 的统一判定，明确
+第一个 legend 后代豁免，并处理嵌套 fieldset。该状态同时进入约束验证、URL-encoded 与
+multipart successful controls、默认 submitter、控件信息、程序化激活和交互闸门；原始
+`control.disabled` 仍只反映元素自身属性，native 窗口样式、invalid UI、SIP/IME 和文件选择器
+仍由宿主负责。
+
+TEST1063 覆盖静态和动态 `fieldset.disabled`、legend 豁免、嵌套继承、`willValidate`、控件信息
+和提交结果；定向门 `TEST1063,999` 通过 2/2，相关回归 `TEST264–270、554–561、1062–1063、999`
+通过 18/18，证据见 `.agents/HANDOFF.md`。这批只涉及自动可判定的 DOM/表单状态，不新增
+视觉、真实触摸、SIP、旋转、picker 或网络失败人工门。
+
+### 10. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -126,7 +139,7 @@ TEST1062 的 core/browser 契约门与 TEST554–561、1023–1053 相邻关系�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 10. 安排新的全范围检查点
+### 11. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

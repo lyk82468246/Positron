@@ -1239,30 +1239,7 @@ static css_error node_is_focus(void *pw, void *node, bool *match)
 static int pcore_node_disabled(dom_node *node, bool *applies,
         bool *disabled)
 {
-    dom_exception err;
-
-    *applies = true;
-    *disabled = false;
-    if (pcore_node_name_is(node, "input")) {
-        err = dom_html_input_element_get_disabled(
-                (dom_html_input_element *) node, disabled);
-    } else if (pcore_node_name_is(node, "button")) {
-        err = dom_html_button_element_get_disabled(
-                (dom_html_button_element *) node, disabled);
-    } else if (pcore_node_name_is(node, "select")) {
-        err = dom_html_select_element_get_disabled(
-                (dom_html_select_element *) node, disabled);
-    } else if (pcore_node_name_is(node, "textarea")) {
-        err = dom_html_text_area_element_get_disabled(
-                (dom_html_text_area_element *) node, disabled);
-    } else if (pcore_node_name_is(node, "option")) {
-        err = dom_html_option_element_get_disabled(
-                (dom_html_option_element *) node, disabled);
-    } else {
-        *applies = false;
-        return 0;
-    }
-    return (err == DOM_NO_ERR) ? 0 : 1;
+    return pcore_node_effectively_disabled(node, applies, disabled);
 }
 
 static css_error node_is_enabled(void *pw, void *node, bool *match)
