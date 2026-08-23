@@ -16,8 +16,8 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next616，宿主 HTTP(S) 深层链接 URL 解析纵切。
-- 测试编号上限：`TEST_MAX_NUMBER 1064`。
+- 当前能力批次：next617，HTTP reference/Location 解析产品化纵切。
+- 测试编号上限：`TEST_MAX_NUMBER 1065`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -105,6 +105,11 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   再由宿主做严格的 scheme、authority、端口和路径校验并去除 fragment。产品 DLL 的 URL/
   history ABI 没有扩张；不支持的 scheme、无 origin 的普通相对引用、userinfo、IPv6 和非法
   端口 fail closed。TEST1064 是离线契约门。
+- next617 在 `positron_http.dll` 增加 additive 的 `PHttp_ResolveReference`，把目录相对、
+  点段、query-only、network-path、绝对 HTTP(S)、fragment stripping 以及 authority/端口
+  fail-closed 语义放到产品 DLL。主文档导航、CSS/图片资源和 HTTP GET 的 3xx `Location`
+  现在共用该 resolver；`test_host` 只提供 origin、窗口/网络副作用和公共 API 消费，不再
+  复制 URL 业务规则。TEST1064 保留宿主回归，TEST1065 验证产品契约。
 
 ## 最近验证证据
 
@@ -260,6 +265,18 @@ next616 的宿主 URL 解析候选当前状态：
 - 离线门已满足交付标准；若需要继续网络取证，先确认设备连接和外网可达，不得把 IANA 超时
   混入离线 URL 契约。详见 `.agents/FAILED_EXPERIMENTS.md` 的 next616 条目。
 
+next617 的 HTTP reference/Location 产品解析已完成：
+
+- `python scripts/test_c89ize.py`、Debug ARMV4I 全量正式重建 16/16、Release 增量构建和
+  `python scripts/audit_repo.py` 均通过；修改的 `positron_http` 与 `test_host` 在两种配置
+  均为 0 error/0 warning。
+- 定向设备门 `tmp/device-runs/20260823-232147-next617-http-reference-contract-r5/`
+  的 `device-gate-result.txt` 为 PASS，TEST1065 与 TEST999 通过 2/2，唯一
+  `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、`test13_route_ok=True`。日志证明
+  成功、失败输出清零、容量边界和最终系统提示音均已执行；本批无人工视觉或输入门。
+- r1/r2 的 RAPI 失败是重连前远端关闭（Win32 10101），r3/r4 已完成部署并暴露出产品
+  解析器的失败输出清理缺口；修复后 r5 通过，不能把中间候选当作最终设备证据。
+
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
 ## 当前已知边界
@@ -271,7 +288,7 @@ next616 的宿主 URL 解析候选当前状态：
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1064 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1065 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -287,6 +304,10 @@ next616 的宿主 URL 解析候选当前状态：
   Debug 门已完成 example.com 第一跳，IANA 后续跳转属于外网可达性限制，不影响离线交付标准。
   tracked 改动只覆盖宿主 URL 解析、TEST1064、
   相关 README/测试/交接文档；提交时不要把 `tmp/` 设备证据或无关工作区文件带入。
+- next617 的源码、C89、Debug 构建、定向设备门和产品/消费者文档已完成；最终 Release 构建、
+  audit、Git diff 和远端状态必须在提交前后重新核对。tracked 改动只应覆盖
+  `positron_http` resolver、`test_host` TEST1065/consumer、README/测试/agent 文档；
+  不要把 `tmp/` 设备证据或无关工作区文件带入。
 - next613 候选的设备门已通过；若后续出现 composition 顺序、候选词数据或 native commit→input
   错误，应先保留 browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -294,18 +315,19 @@ next616 的宿主 URL 解析候选当前状态：
 
 ## 唯一下一步
 
-next617：从真实页面驱动的兼容队列选择下一个可重复的完整用户行为纵切；先用现有自动门和
+next618：从真实页面驱动的兼容队列选择下一个可重复的完整用户行为纵切；先用现有自动门和
 设备日志确认缺口，再决定应落在 `positron_core`、`positron_browser` 或宿主边界。不得为了
- 填充编号添加互不相关的小 API，也不得重做 next607–615。
+ 填充编号添加互不相关的小 API，也不得重做 next607–617。
 
-## next616 完成标准
+## next617 完成标准
 
-- 产品级语义不再由 `test_host` 独占，宿主通过公共 API 消费它。
+- `PHttp_ResolveReference` 作为 additive 稳定 C ABI 导出，产品 resolver 统一服务页面导航、
+  子资源和 HTTP GET 重定向；宿主不再拥有同一套 URL 业务副本。
 - 公共 ABI、UTF-8、opaque handle、内存所有权及 VS2008 / WM6 ARMV4I / C89 兼容性不退化。
 - `python scripts/test_c89ize.py`、正式工程构建和 `python scripts/audit_repo.py` 通过。
-- 通过 TEST1064 的 HTTP(S) URL resolution 契约、TEST43 的离线导航资源事务和 TEST999 完成
-  提示音；设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL。网络可用时再以 TEST13
-  证明真实页面消费，但外网超时必须与离线门分开归因。
+- 通过 TEST1065 的产品 HTTP(S) reference/Location 契约、TEST1064 的宿主消费者回归和
+  TEST999 完成提示音；设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL。网络可用时
+  再以 TEST13 证明真实页面消费，但外网超时必须与离线门分开归因。
 - 只有出现视觉、真实触摸、SIP、旋转、文件选择器或失败网络风险时才累计人工门；崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 - 跟踪的默认 INI 恢复为自动模式且选择集不被无意扩大。
 - 用当批事实覆盖本文件的当前快照，更新限制和路线图；只提交本批 tracked 文件并推送 `main`。

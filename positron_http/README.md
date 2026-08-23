@@ -1,8 +1,9 @@
 # `positron_http`
 
 `positron_http.dll` 是 Positron 的同步 HTTP/HTTPS 客户端公共 DLL。它提供
-HTTP/1.1 GET、POST、响应进度回调和统一响应对象；HTTPS 通过
-`positron_tls.dll`，明文 HTTP 使用 WM6 WinInet 路径。
+HTTP/1.1 GET、POST、响应进度回调、统一响应对象，以及不执行网络 I/O 的有界
+HTTP(S) reference/Location 解析；HTTPS 通过 `positron_tls.dll`，明文 HTTP 使用
+WM6 WinInet 路径。
 
 ## 输出与依赖
 
@@ -34,6 +35,27 @@ if (response != NULL && response->status_code == 200) {
 PHttp_FreeResponse(response);
 PHttp_Cleanup();
 ```
+
+页面宿主或其他需要自行维护导航的消费者，可以复用同一套解析策略，而不用复制
+重定向或目录相对拼接逻辑：
+
+```c
+char host[256];
+char path[1024];
+int port;
+
+if (PHttp_ResolveReference("api.example.com", 443, "/v1/page.html",
+        "../status?full=1#fragment", host, sizeof(host), path,
+        sizeof(path), &port) == 0) {
+    /* host="api.example.com", path="/status?full=1", port=443 */
+}
+```
+
+`PHttp_ResolveReference` 只写入调用者提供的 UTF-8 缓冲区，不分配内存，也不发起
+请求。它支持目录相对、`.`/`..`、query-only、network-path、绝对 HTTP(S) 和
+fragment stripping；userinfo、IPv6、非法端口、非 HTTP(S)、无 origin 的普通相对
+引用和容量不足都会失败。返回成功后 `path` 总是以 `/` 开头。HTTP GET 的 3xx
+`Location` 自动跟随后也使用此函数；POST 不自动跟随。
 
 需要响应进度时使用 `PHttp_GetEx` / `PHttp_PostEx`；回调同步发生在请求线程，
 应保持短小，不能在回调中调用 `PHttp_Cleanup`。POST 的 `body` 是原始字节，

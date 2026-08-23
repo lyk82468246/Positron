@@ -38,6 +38,31 @@ typedef struct PHttpResponse {
                                occurred (resp may still be non-NULL) */
 } PHttpResponse;
 
+/* Resolve one bounded HTTP(S) reference against an existing request origin.
+ *
+ * base_host/base_port/base_path describe the current request.  A NULL or
+ * empty base host is accepted only for an absolute http(s) reference or a
+ * network-path reference beginning with "//".  The resolver trims ASCII
+ * whitespace, follows directory/query/dot-segment rules, strips fragments,
+ * and returns caller-owned UTF-8 host/path buffers.  Userinfo, IPv6,
+ * unsupported schemes, malformed ports, control characters and truncation
+ * fail closed.  The path always begins with '/'.
+ *
+ * Returns 0 on success and non-zero on invalid input or insufficient output
+ * capacity.  This helper does not perform network I/O and does not require
+ * PHttp_Init. */
+PHTTP_API int PHttp_ResolveReference(
+    const char* base_host,
+    int         base_port,
+    const char* base_path,
+    const char* reference,
+    char*       out_host,
+    int         out_host_capacity,
+    char*       out_path,
+    int         out_path_capacity,
+    int*        out_port
+);
+
 /* Called synchronously on the thread running PHttp_GetEx/PHttp_PostEx.
  * received is the decoded response-body byte count accumulated so far.
  * total is Content-Length when known, or -1 for chunked/close-delimited

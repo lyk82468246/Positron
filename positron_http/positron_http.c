@@ -520,131 +520,265 @@ static void cstrcpy(char* d, int cap, const char* s)
     d[n] = '\0';
 }
 
-/* Copy a request path, stopping at any '#' fragment; fall back to "/". */
-static void copy_path_h(char* d, int cap, const char* s)
+static int phttp_is_ascii_space(int c)
 {
-    int n = 0;
-    if (cap <= 0) {
-        return;
-    }
-    while (s[n] != '\0' && s[n] != '#' && n < cap - 1) {
-        d[n] = s[n];
-        n++;
-    }
-    if (n == 0 && cap > 1) {
-        d[n++] = '/';
-    }
-    d[n] = '\0';
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' ||
+           c == '\f' || c == '\v';
 }
 
-/* Case-insensitive ASCII prefix test over a counted string. */
-static int ci_prefix(const char* s, size_t slen, const char* pfx)
+static int phttp_starts_with_ci(const char* value, const char* prefix)
 {
-    size_t n = strlen(pfx);
     size_t i;
-    if (slen < n) {
+    size_t n;
+
+    if (value == NULL || prefix == NULL) {
         return 0;
     }
+    n = strlen(prefix);
     for (i = 0; i < n; i++) {
-        char a = s[i], b = pfx[i];
-        if (a >= 'A' && a <= 'Z') a = (char)(a + 32);
-        if (b >= 'A' && b <= 'Z') b = (char)(b + 32);
-        if (a != b) {
+        if (value[i] == '\0' || ascii_tolower((unsigned char)value[i]) !=
+                ascii_tolower((unsigned char)prefix[i])) {
             return 0;
         }
     }
     return 1;
 }
 
-/* Resolve a Location header value (loc/loclen, not NUL-terminated) against the
- * current host/path/port into out_host/out_path/out_port. Handles absolute
- * http(s) (with optional :port), root-relative ("/x") and same-directory
- * relative ("x"). Returns 1 on success, 0 if it cannot be parsed. */
+static int phttp_trim_reference(const char* source, char* destination,
+                                int capacity)
+{
+    const char* start;
+    const char* end;
+    size_t length;
+
+    if (source == NULL || destination == NULL || capacity <= 1) {
+        return 1;
+    }
+    start = source;
+    while (*start != '\0' && phttp_is_ascii_space((unsigned char)*start)) {
+        start++;
+    }
+    end = start + strlen(start);
+    while (end > start && phttp_is_ascii_space((unsigned char)end[-1])) {
+        end--;
+    }
+    length = (size_t)(end - start);
+    if (length >= (size_t)capacity) {
+        destination[0] = '\0';
+        return 1;
+    }
+    memcpy(destination, start, length);
+    destination[length] = '\0';
+    return 0;
+}
+
+static int phttp_document_url(const char* host, int port, const char* path,
+                              char* url, int capacity)
+{
+    const char* scheme;
+    int default_port;
+    int n;
+
+    if (host == NULL || host[0] == '\0' || path == NULL || path[0] != '/' ||
+            url == NULL || capacity <= 1 || port <= 0 || port > 65535) {
+        return 1;
+    }
+    scheme = (port == 80) ? "http" : "https";
+    default_port = (port == 80 || port == 443);
+    if (default_port) {
+        n = _snprintf(url, capacity - 1, "%s://%s%s", scheme, host, path);
+    } else {
+        n = _snprintf(url, capacity - 1, "%s://%s:%d%s", scheme, host,
+                port, path);
+    }
+    url[capacity - 1] = '\0';
+    return n < 0 || n >= capacity - 1 ? 1 : 0;
+}
+
+static int phttp_copy_resolved_path(const char* source, char* path,
+                                    int capacity)
+{
+    int n;
+
+    if (source == NULL || path == NULL || capacity <= 1) {
+        return 1;
+    }
+    n = 0;
+    if (source[0] == '?') {
+        path[n++] = '/';
+    } else if (source[0] != '/') {
+        return 1;
+    }
+    while (*source != '\0' && *source != '#') {
+        if (n >= capacity - 1 || *source == '\r' || *source == '\n') {
+            path[0] = '\0';
+            return 1;
+        }
+        path[n++] = *source++;
+    }
+    if (n == 0) {
+        path[n++] = '/';
+    }
+    path[n] = '\0';
+    return 0;
+}
+
+static int phttp_parse_resolved_url(const char* url, char* host, int hostcap,
+                                    char* path, int pathcap, int* out_port)
+{
+    const char* p;
+    const char* authority_end;
+    const char* host_end;
+    const char* colon;
+    const char* q;
+    int is_http;
+    int port;
+    int digits;
+    int n;
+
+    if (url == NULL || host == NULL || hostcap <= 1 || path == NULL ||
+            pathcap <= 1 || out_port == NULL) {
+        return 1;
+    }
+    host[0] = '\0';
+    path[0] = '\0';
+    if (phttp_starts_with_ci(url, "http://")) {
+        p = url + 7;
+        is_http = 1;
+    } else if (phttp_starts_with_ci(url, "https://")) {
+        p = url + 8;
+        is_http = 0;
+    } else {
+        return 1;
+    }
+    authority_end = p;
+    while (*authority_end != '\0' && *authority_end != '/' &&
+            *authority_end != '?' && *authority_end != '#') {
+        authority_end++;
+    }
+    if (authority_end == p) {
+        return 1;
+    }
+    host_end = authority_end;
+    colon = NULL;
+    for (q = p; q < authority_end; q++) {
+        if (*q == '@' || *q == '[' || *q == ']' ||
+                phttp_is_ascii_space((unsigned char)*q) ||
+                (unsigned char)*q < 0x20) {
+            return 1;
+        }
+        if (*q == ':') {
+            if (colon != NULL) {
+                return 1;
+            }
+            colon = q;
+        }
+    }
+    if (colon != NULL) {
+        host_end = colon;
+    }
+    n = (int)(host_end - p);
+    if (n <= 0 || n >= hostcap) {
+        return 1;
+    }
+    memcpy(host, p, (size_t)n);
+    host[n] = '\0';
+    port = is_http ? 80 : 443;
+    if (colon != NULL) {
+        port = 0;
+        digits = 0;
+        for (q = colon + 1; q < authority_end; q++) {
+            if (*q < '0' || *q > '9' || port > 6553 ||
+                    (port == 6553 && *q > '5')) {
+                host[0] = '\0';
+                path[0] = '\0';
+                *out_port = 0;
+                return 1;
+            }
+            port = port * 10 + (*q - '0');
+            digits++;
+        }
+        if (digits == 0 || port <= 0 || port > 65535) {
+            host[0] = '\0';
+            path[0] = '\0';
+            *out_port = 0;
+            return 1;
+        }
+    }
+    if (phttp_copy_resolved_path(authority_end, path, pathcap) != 0) {
+        host[0] = '\0';
+        path[0] = '\0';
+        *out_port = 0;
+        return 1;
+    }
+    *out_port = port;
+    return 0;
+}
+
+PHTTP_API int PHttp_ResolveReference(const char* base_host, int base_port,
+                                     const char* base_path,
+                                     const char* reference, char* out_host,
+                                     int out_host_capacity, char* out_path,
+                                     int out_path_capacity, int* out_port)
+{
+    char ref[2048];
+    char base_url[2048];
+    char combined[2048];
+    DWORD combined_length;
+
+    if (out_host == NULL || out_host_capacity <= 1 || out_path == NULL ||
+            out_path_capacity <= 1 || out_port == NULL || reference == NULL) {
+        return 1;
+    }
+    out_host[0] = '\0';
+    out_path[0] = '\0';
+    *out_port = 0;
+    if (phttp_trim_reference(reference, ref, sizeof(ref)) != 0) {
+        return 1;
+    }
+    if (base_host != NULL && base_host[0] != '\0' && base_path != NULL) {
+        if (phttp_document_url(base_host, base_port, base_path, base_url,
+                sizeof(base_url)) != 0) {
+            return 1;
+        }
+    } else {
+        if (!(phttp_starts_with_ci(ref, "http://") ||
+                phttp_starts_with_ci(ref, "https://") ||
+                (ref[0] == '/' && ref[1] == '/'))) {
+            return 1;
+        }
+        cstrcpy(base_url, sizeof(base_url), "https://positron.invalid/");
+    }
+    if (ref[0] == '\0') {
+        cstrcpy(combined, sizeof(combined), base_url);
+    } else {
+        combined_length = (DWORD)sizeof(combined);
+        if (!InternetCombineUrlA(base_url, ref, combined, &combined_length,
+                ICU_NO_ENCODE) || combined_length == 0 ||
+                combined_length >= (DWORD)sizeof(combined)) {
+            return 1;
+        }
+        combined[sizeof(combined) - 1] = '\0';
+    }
+    return phttp_parse_resolved_url(combined, out_host, out_host_capacity,
+            out_path, out_path_capacity, out_port);
+}
+
+/* Resolve a counted Location header against the current request. */
 static int resolve_redirect(const char* loc, size_t loclen,
                             const char* cur_host, const char* cur_path,
-                            int cur_port,
-                            char* out_host, int hostcap,
+                            int cur_port, char* out_host, int hostcap,
                             char* out_path, int pathcap, int* out_port)
 {
-    char        buf[1200];
-    const char* p;
-    int         scheme_port = cur_port;
+    char location[2048];
 
-    while (loclen > 0 && (loc[loclen - 1] == '\r' || loc[loclen - 1] == '\n' ||
-                          loc[loclen - 1] == ' '  || loc[loclen - 1] == '\t')) {
-        loclen--;
-    }
-    if (loclen == 0 || loclen >= sizeof(buf)) {
+    if (loc == NULL || loclen >= sizeof(location)) {
         return 0;
     }
-    memcpy(buf, loc, loclen);
-    buf[loclen] = '\0';
-    p = buf;
-
-    if (ci_prefix(p, strlen(p), "https://")) {
-        p += 8;
-        scheme_port = 443;
-    } else if (ci_prefix(p, strlen(p), "http://")) {
-        p += 7;
-        scheme_port = 80;
-    } else if (p[0] == '/') {
-        cstrcpy(out_host, hostcap, cur_host);
-        copy_path_h(out_path, pathcap, p);
-        *out_port = cur_port;
-        return 1;
-    } else {
-        /* same-directory relative: current host + base dir + target */
-        int i, lastslash = -1, k = 0;
-        cstrcpy(out_host, hostcap, cur_host);
-        for (i = 0; cur_path[i] != '\0'; i++) {
-            if (cur_path[i] == '/') {
-                lastslash = i;
-            }
-        }
-        for (i = 0; i <= lastslash && k < pathcap - 1; i++) {
-            out_path[k++] = cur_path[i];
-        }
-        if (lastslash < 0 && k < pathcap - 1) {
-            out_path[k++] = '/';
-        }
-        for (i = 0; p[i] != '\0' && p[i] != '#' && k < pathcap - 1; i++) {
-            out_path[k++] = p[i];
-        }
-        out_path[k] = '\0';
-        *out_port = cur_port;
-        return 1;
-    }
-
-    /* Absolute: p now points at host[:port][/path]. */
-    {
-        int    k = 0;
-        size_t n = 0;
-        while (p[n] != '\0' && p[n] != '/' && p[n] != ':' && k < hostcap - 1) {
-            out_host[k++] = p[n++];
-        }
-        out_host[k] = '\0';
-        if (k == 0) {
-            return 0;
-        }
-        *out_port = scheme_port;
-        if (p[n] == ':') {
-            int port = 0;
-            n++;
-            while (p[n] >= '0' && p[n] <= '9') {
-                port = port * 10 + (p[n] - '0');
-                n++;
-            }
-            if (port > 0) {
-                *out_port = port;
-            }
-        }
-        if (p[n] == '/') {
-            copy_path_h(out_path, pathcap, p + n);
-        } else {
-            cstrcpy(out_path, pathcap, "/");
-        }
-    }
-    return 1;
+    memcpy(location, loc, loclen);
+    location[loclen] = '\0';
+    return PHttp_ResolveReference(cur_host, cur_port, cur_path, location,
+            out_host, hostcap, out_path, pathcap, out_port) == 0;
 }
 
 /* ---- plaintext HTTP via WinInet (WM6 built-in) ------------------- */

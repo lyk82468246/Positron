@@ -13,7 +13,7 @@ DLL 之上建设轻量浏览器与应用运行时。
 |---|---|---|
 | `positron_tls.dll` | TLS 1.2 HTTPS client、持久 peer 身份、双向证书、指纹钉扎和 IPv4 listener | ABI v2；基于已停止维护的 Mbed TLS 2.16.12，安全限制见子项目 README |
 | `positron_json.dll` | UTF-8 JSON 解析和序列化 | cJSON 1.7.18 的稳定 opaque-handle C ABI |
-| `positron_http.dll` | HTTP/1.1 GET/POST、进度回调、重定向 | HTTPS 使用 Positron TLS，明文 HTTP 使用 WinInet |
+| `positron_http.dll` | HTTP/1.1 GET/POST、进度回调、重定向和有界 HTTP(S) reference 解析 | HTTPS 使用 Positron TLS，明文 HTTP 使用 WinInet；解析失败时 fail closed |
 | `positron_image.dll` | BMP/PNG/JPEG/GIF、SVG、像素缓冲和编码 | 设备位图格式依赖 WM Imaging codec；SVG 是受限子集 |
 | `positron_script.dll` | 独立 JavaScript 执行服务 | Duktape 2.7.0；有时间、内存、源码和 native callback 上限 |
 | `positron_core.dll` | HTML/DOM、CSS、布局、绘制、命中、表单和资源发现 | 基于移植的 NetSurf 3.11 组件；网页兼容性仍在扩展 |
@@ -30,8 +30,9 @@ Duktape、Mbed TLS 等实现细节不暴露给调用者。
 - HTML/CSS 解析、外部样式和图片资源、分阶段异步抓取；
 - GDI 绘制、滚动、动态 viewport/DPI、横竖屏重排；
 - 常见 block、inline、flex、table、list、图片和基础 positioning；
-- 链接导航、有限历史、表单控件、文本输入和一组 DOM 事件；宿主对主文档与外部资源共享
-  有界 HTTP(S) 相对 URL 解析，支持目录相对、点段、query-only 和 network-path 引用；
+- 链接导航、有限历史、表单控件、文本输入和一组 DOM 事件；主文档、外部资源和 HTTP
+  3xx Location 共享 `positron_http.dll` 的有界 HTTP(S) reference 解析，支持目录相对、
+  点段、query-only 和 network-path 引用；
 - 显式开启时的 classic inline/external JavaScript 与受限 DOM/Event/location/history bridge。
 
 浏览器 JavaScript 默认关闭。`positron_script.dll` 是独立的 JavaScript 引擎封装；浏览器

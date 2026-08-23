@@ -139,7 +139,20 @@ next616 修正了宿主导航和子资源请求共用的 URL 解析边界。`tes
 页面门已完成 example.com 第一跳。IANA 后续跳转受外网响应影响，作为网络环境限制单列，
 不替代离线契约门；Release 停滞也不替代项目既有 Debug gate。
 
-### 11. 建立真实页面驱动的兼容队列
+### 11. next617：HTTP reference/Location 解析产品化（已完成）
+
+next617 将 next616 在 `test_host` 中验证过的有界 HTTP(S) reference 解析迁入
+`positron_http.dll` 的 `PHttp_ResolveReference`。页面主文档、外部 CSS/图片资源和 HTTP
+GET 重定向的 `Location` 共用同一套无网络解析策略；宿主只保留 origin、窗口替换、网络
+I/O 和失败提示。该 API 使用调用者提供的 UTF-8 缓冲区，支持目录相对、点段、query-only、
+network-path、绝对 HTTP(S) 和 fragment stripping，并对 userinfo、IPv6、非法端口、非
+HTTP(S)、无 origin 普通相对引用及容量不足 fail closed。TEST1065 是产品 DLL 的离线契约，
+TEST1064 是宿主消费者回归；不新增人工视觉或输入门。
+`tmp/device-runs/20260823-232147-next617-http-reference-contract-r5/device-gate-result.txt`
+已记录 TEST1065/999 设备门 2/2 PASS，
+无 ERROR/FAIL 且唯一 `TESTBENCH PASS`。C89、Debug/Release 构建和仓库审计均通过。
+
+### 12. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -150,7 +163,7 @@ next616 修正了宿主导航和子资源请求共用的 URL 解析边界。`tes
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 12. 安排新的全范围检查点
+### 13. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

@@ -73,19 +73,22 @@
 
 ### 当前边界
 
-- `test_host` 的主文档导航与 CSS/图片子资源现在共享一条有界 HTTP(S) 解析路径：目录相对、
-  `.`/`..`、query-only、network-path、绝对 URL 会按 WinINet 规则合并，宿主随后校验
-  scheme/authority/端口/路径并去除 fragment。它仍不是完整 WHATWG URL Standard；userinfo、
-  IPv6、非法端口、非 HTTP(S) scheme 和无 origin 的普通相对引用会 fail closed。
+- `positron_http.dll` 的 `PHttp_ResolveReference` 为主文档导航、CSS/图片子资源和 HTTP GET
+  重定向提供统一的有界 HTTP(S) 解析：目录相对、`.`/`..`、query-only、network-path、
+  绝对 URL 会按 WinINet 规则合并，产品 API 随后校验 scheme/authority/端口/路径并去除
+  fragment。它仍不是完整 WHATWG URL Standard；userinfo、IPv6、非法端口、非 HTTP(S)
+  scheme、无 origin 的普通相对引用和输出容量不足会 fail closed。`test_host` 只消费该
+  API，不再拥有同一套业务解析副本。
 - 没有完整页面缓存、持久历史、跨进程恢复、滚动位置恢复、表单状态恢复和 POST 重提交模型。
 - 导航是否实际发起请求，以及窗口如何替换，仍需要宿主网络和窗口层参与。
-- 产品 URL/history 状态与宿主实际 I/O 仍是分层边界；旧设备编码、重定向链、特殊 scheme、
-  同源策略和跨文档 history 的边缘行为覆盖有限。
+- 产品 URL/history 状态与宿主实际 I/O 仍是分层边界；HTTP resolver 的重定向链上限、旧设备
+  编码、特殊 scheme、同源策略和跨文档 history 的边缘行为覆盖有限。
 
 ### 解除或推进条件
 
 - 用固定页面语料覆盖绝对/相对 URL、跳转、失败、重定向和 history 前进后退。
-- 把纯 URL/历史状态语义留在产品 DLL，把实际 I/O 和窗口副作用留在宿主边界。
+- 继续把纯 URL/历史状态语义留在产品 DLL，把实际 I/O 和窗口副作用留在宿主边界；为重定向
+  链、失败响应和 history 前进后退补齐固定页面语料。
 - 对不支持的 scheme 和恢复语义返回明确、稳定的失败，而不是静默近似成功。
 
 ## 4. 布局与视觉兼容
@@ -184,7 +187,7 @@
 
 ### 当前边界
 
-- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1064 全覆盖。
+- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1065 全覆盖。
 - 自动日志与几何断言不能替代视觉、真实触摸、SIP、旋转、文件选择器和失败网络的人工判断。
 - `tmp/` 中设备日志和截图只在本机存在，不进入 Git；丢失本机证据后只能依赖提交中的结论和可重跑测试。
 - WMDC/RAPI 自动化默认假设已有且独占的设备连接；连接和配对本身通常仍是 GUI 操作。

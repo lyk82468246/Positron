@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1064
+#define TEST_MAX_NUMBER 1065
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -7962,21 +7962,6 @@ static void pcore_invalidate_overflow(HWND hwnd)
     }
 }
 
-/* Case-insensitive ASCII prefix test (avoids depending on _strnicmp). */
-static int ci_prefix(const char *s, const char *pfx)
-{
-    while (*pfx != '\0') {
-        char a = *s, b = *pfx;
-        if (a >= 'A' && a <= 'Z') a = (char) (a + 32);
-        if (b >= 'A' && b <= 'Z') b = (char) (b + 32);
-        if (a != b) {
-            return 0;
-        }
-        s++; pfx++;
-    }
-    return 1;
-}
-
 /* Bounded NUL-terminated string copy. */
 static void cstr_copy(char *d, int cap, const char *s)
 {
@@ -8054,190 +8039,15 @@ static void copy_path(char *dst, int cap, const char *src)
     dst[n] = '\0';
 }
 
-/* Copy a canonical URL path/query, dropping a fragment without silently
- * truncating an over-sized request.  InternetCombineUrlA supplies the
- * RFC-style dot-segment and query-only resolution used by both document and
- * subresource navigation. */
-static BOOL pcore_copy_resolved_path(const char *source, char *path,
-        int pathcap)
-{
-    int n;
-
-    if (source == NULL || path == NULL || pathcap <= 1) {
-        return FALSE;
-    }
-    n = 0;
-    if (source[0] == '?') {
-        path[n++] = '/';
-    } else if (source[0] != '/') {
-        return FALSE;
-    }
-    while (*source != '\0' && *source != '#') {
-        if (n >= pathcap - 1) {
-            path[0] = '\0';
-            return FALSE;
-        }
-        path[n++] = *source++;
-    }
-    if (n == 0) {
-        path[n++] = '/';
-    }
-    path[n] = '\0';
-    return TRUE;
-}
-
-/* Parse one canonical http(s) URL produced by WinINet.  Userinfo, unknown
- * schemes and malformed/overflowed ports fail closed; the network layer only
- * receives an authority and path it can safely send to PHttp. */
-static BOOL pcore_parse_resolved_url(const char *url, char *host,
-        int hostcap, char *path, int pathcap, int *out_port)
-{
-    const char *p;
-    const char *authority_end;
-    const char *host_end;
-    const char *colon;
-    const char *q;
-    int port;
-    int digits;
-    int n;
-    int is_http;
-
-    if (url == NULL || host == NULL || hostcap <= 1 || path == NULL ||
-            pathcap <= 1 || out_port == NULL) {
-        return FALSE;
-    }
-    host[0] = '\0';
-    path[0] = '\0';
-    if (ci_prefix(url, "http://")) {
-        p = url + 7;
-        is_http = 1;
-    } else if (ci_prefix(url, "https://")) {
-        p = url + 8;
-        is_http = 0;
-    } else {
-        return FALSE;
-    }
-    authority_end = p;
-    while (*authority_end != '\0' && *authority_end != '/' &&
-            *authority_end != '?' && *authority_end != '#') {
-        authority_end++;
-    }
-    if (authority_end == p) {
-        return FALSE;
-    }
-    host_end = authority_end;
-    colon = NULL;
-    for (q = p; q < authority_end; q++) {
-        if (*q == '@') {
-            return FALSE;
-        }
-        if (*q == ':') {
-            colon = q;
-        }
-    }
-    if (colon != NULL) {
-        host_end = colon;
-    }
-    n = (int) (host_end - p);
-    if (n <= 0 || n >= hostcap) {
-        return FALSE;
-    }
-    memcpy(host, p, (size_t) n);
-    host[n] = '\0';
-    port = is_http ? 80 : 443;
-    if (colon != NULL) {
-        port = 0;
-        digits = 0;
-        for (q = colon + 1; q < authority_end; q++) {
-            if (*q < '0' || *q > '9' || port > 6553) {
-                return FALSE;
-            }
-            port = port * 10 + (*q - '0');
-            digits++;
-        }
-        if (digits == 0 || port <= 0 || port > 65535) {
-            return FALSE;
-        }
-    }
-    if (!pcore_copy_resolved_path(authority_end, path, pathcap)) {
-        return FALSE;
-    }
-    *out_port = port;
-    return TRUE;
-}
-
-/* Resolve a URL against an explicit page origin. The navigation worker uses
- * the pending origin while the visible page keeps its old global origin.
- * WinINet is deliberately kept at this host boundary: it handles the
- * directory-relative, query-only, network-path and dot-segment cases that a
- * hand-written same-directory join gets wrong on real pages. */
+/* Resolve a URL against an explicit page origin through the HTTP product
+ * boundary. The navigation worker uses the pending origin while the visible
+ * page keeps its old global origin. */
 static BOOL resolve_url_from(const char *base_host, const char *base_path,
         int base_port, const char *href, char *host, int hostcap,
         char *path, int pathcap, int *out_port)
 {
-    char reference[2048];
-    char base_url[2048];
-    char combined[2048];
-    const char *start;
-    const char *end;
-    int length;
-    DWORD combined_length;
-
-    if (href == NULL || host == NULL || hostcap <= 1 || path == NULL ||
-            pathcap <= 1 || out_port == NULL) {
-        return FALSE;
-    }
-    host[0] = '\0';
-    path[0] = '\0';
-    start = href;
-    while (*start == ' ' || *start == '\t' || *start == '\n' ||
-            *start == '\r') {
-        start++;
-    }
-    end = start + strlen(start);
-    while (end > start &&
-            (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' ||
-            end[-1] == '\r')) {
-        end--;
-    }
-    length = (int) (end - start);
-    if (length < 0 || length >= (int) sizeof(reference)) {
-        return FALSE;
-    }
-    memcpy(reference, start, (size_t) length);
-    reference[length] = '\0';
-
-    /* An empty current origin exists only on the offline landing page.  A
-     * dummy HTTPS base lets absolute and network-path references still parse;
-     * ordinary relative links correctly fail closed until a page is loaded. */
-    if (base_host != NULL && base_host[0] != '\0' && base_path != NULL) {
-        if (pcore_document_url(base_host, base_path, base_port, base_url,
-                sizeof(base_url)) != 0) {
-            return FALSE;
-        }
-    } else {
-        if (!(ci_prefix(reference, "http://") ||
-                ci_prefix(reference, "https://") ||
-                (reference[0] == '/' && reference[1] == '/'))) {
-            return FALSE;
-        }
-        cstr_copy(base_url, sizeof(base_url),
-                "https://positron.invalid/");
-    }
-    if (reference[0] == '\0') {
-        cstr_copy(combined, sizeof(combined), base_url);
-    } else {
-        combined_length = (DWORD) sizeof(combined);
-        if (!InternetCombineUrlA(base_url, reference, combined,
-                &combined_length, ICU_NO_ENCODE) ||
-                combined_length == 0 ||
-                combined_length >= (DWORD) sizeof(combined)) {
-            return FALSE;
-        }
-    }
-    combined[sizeof(combined) - 1] = '\0';
-    return pcore_parse_resolved_url(combined, host, hostcap, path, pathcap,
-            out_port);
+    return PHttp_ResolveReference(base_host, base_port, base_path, href,
+            host, hostcap, path, pathcap, out_port) == 0;
 }
 
 /* Resolve a clicked link against the currently visible page. */
@@ -53760,6 +53570,104 @@ static BOOL test1064_navigation_url_resolution_contract(void)
     return TRUE;
 }
 
+/* TEST 1065 - product HTTP reference/Location resolver contract. */
+static BOOL test1065_http_reference_product_contract(void)
+{
+    char host[128];
+    char path[512];
+    char error[512];
+    int port;
+    int relative_ok;
+    int query_ok;
+    int network_ok;
+    int absolute_ok;
+    int empty_ok;
+    int fail_userinfo;
+    int fail_ipv6;
+    int fail_port;
+    int fail_scheme;
+    int fail_no_base;
+    int fail_capacity;
+
+    memset(host, 0, sizeof(host));
+    memset(path, 0, sizeof(path));
+    memset(error, 0, sizeof(error));
+    port = 0;
+    relative_ok = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html?old=1", "  ../img/logo.png?new=2#fragment \t",
+            host, sizeof(host), path, sizeof(path), &port) == 0 &&
+            strcmp(host, "example.test") == 0 &&
+            strcmp(path, "/img/logo.png?new=2") == 0 && port == 443;
+    port = 0;
+    query_ok = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html?old=1", "?next=1", host, sizeof(host), path,
+            sizeof(path), &port) == 0 && strcmp(host, "example.test") == 0 &&
+            strcmp(path, "/dir/page.html?next=1") == 0 && port == 443;
+    port = 0;
+    network_ok = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html", "//cdn.test:8080/a/../img.png#x", host,
+            sizeof(host), path, sizeof(path), &port) == 0 &&
+            strcmp(host, "cdn.test") == 0 && strcmp(path, "/img.png") == 0 &&
+            port == 8080;
+    port = 0;
+    absolute_ok = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html", "http://plain.test:8080/x#fragment", host,
+            sizeof(host), path, sizeof(path), &port) == 0 &&
+            strcmp(host, "plain.test") == 0 && strcmp(path, "/x") == 0 &&
+            port == 8080;
+    port = 0;
+    empty_ok = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html", "#same", host, sizeof(host), path,
+            sizeof(path), &port) == 0 && strcmp(host, "example.test") == 0 &&
+            strcmp(path, "/dir/page.html") == 0 && port == 443;
+    port = 0;
+    fail_userinfo = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html", "https://user:pass@example.test/x", host,
+            sizeof(host), path, sizeof(path), &port) != 0 && host[0] == '\0' &&
+            path[0] == '\0' && port == 0;
+    port = 0;
+    fail_ipv6 = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html", "https://[::1]/x", host, sizeof(host), path,
+            sizeof(path), &port) != 0 && host[0] == '\0' && path[0] == '\0' &&
+            port == 0;
+    port = 0;
+    fail_port = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html", "https://example.test:65536/x", host,
+            sizeof(host), path, sizeof(path), &port) != 0 && host[0] == '\0' &&
+            path[0] == '\0' && port == 0;
+    port = 0;
+    fail_scheme = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html", "javascript:alert(1)", host, sizeof(host),
+            path, sizeof(path), &port) != 0 && host[0] == '\0' &&
+            path[0] == '\0' && port == 0;
+    port = 0;
+    fail_no_base = PHttp_ResolveReference(NULL, 443, NULL, "relative.html",
+            host, sizeof(host), path, sizeof(path), &port) != 0 &&
+            host[0] == '\0' && path[0] == '\0' && port == 0;
+    port = 0;
+    fail_capacity = PHttp_ResolveReference("example.test", 443,
+            "/dir/page.html", "/x", host, 4, path, sizeof(path), &port) != 0 &&
+            host[0] == '\0' && path[0] == '\0' && port == 0;
+    if (!relative_ok || !query_ok || !network_ok || !absolute_ok ||
+            !empty_ok || !fail_userinfo || !fail_ipv6 || !fail_port ||
+            !fail_scheme || !fail_no_base || !fail_capacity) {
+        _snprintf(error, sizeof(error) - 1,
+                "ok=%d/%d/%d/%d/%d fail=%d/%d/%d/%d/%d/%d host=%s path=%s port=%d",
+                relative_ok, query_ok, network_ok, absolute_ok, empty_ok,
+                fail_userinfo, fail_ipv6, fail_port, fail_scheme,
+                fail_no_base, fail_capacity, host, path, port);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1065 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1065 OK",
+            "positron_http owns bounded reference and redirect resolution: "
+            "relative, query, network-path, absolute and fragment cases "
+            "pass, while unsafe authority, scheme, port and capacity inputs "
+            "fail closed.");
+    return TRUE;
+}
+
 static BOOL test_browser_raw_property_case(const char *target_markup,
         const char *property, const char *attribute, const char *initial,
         const char *attribute_value, const char *property_value,
@@ -70927,6 +70835,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1062: ok = test1062_browser_label_control_contract(); break;
         case 1063: ok = test1063_form_fieldset_disabled_contract(); break;
         case 1064: ok = test1064_navigation_url_resolution_contract(); break;
+        case 1065: ok = test1065_http_reference_product_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

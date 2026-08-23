@@ -329,6 +329,34 @@ TEST43、TEST1064、TEST999 的 3/3 通过。真实页面门
 `tmp/device-runs/20260823-222224-next616-url-resolution-final-debug/` 已记录
 example.com 第一跳；IANA 后续跳转是否完成取决于当前设备外网可达性，不能替代离线门。
 
+### next617 HTTP reference/Location 产品解析自动门
+
+next617 把 next616 的 URL 业务语义迁入 `positron_http.dll` 的
+`PHttp_ResolveReference`。宿主页面导航、CSS/图片子资源和 HTTP GET 的 3xx `Location`
+现在共用同一个无网络、有界 resolver；`test_host` 不再复制 authority、端口、目录相对或
+dot-segment 规则。产品 API 支持目录相对、`.`/`..`、query-only、network-path、绝对
+HTTP(S)、ASCII whitespace trimming 和 fragment stripping；userinfo、IPv6、非法/溢出端口、
+非 HTTP(S)、无 origin 普通相对引用、控制字符和输出容量不足都会 fail closed。它不改变
+`positron_browser.dll` 的 URL/history ABI，也不负责窗口或网络 I/O。
+
+TEST1065 直接验证产品 DLL 的成功、失败、输出清零和容量契约；TEST1064 保留为宿主
+消费者回归。默认 Debug 设备门：
+
+```bat
+scripts\device_gate.bat -Candidate next617-http-reference-contract ^
+  -EnableJavaScript ^
+  -TestSelection "1065,999"
+```
+
+该批不需要人工视觉、触摸、SIP、旋转或文件选择器验收；若额外运行 TEST13，网络
+重定向结果仍须按 DNS/TCP/TLS/HTTP 阶段单独归因，不能替代 TEST1065 的离线门。
+
+重新连接 WMDC 后的最终窄门记录在
+`tmp/device-runs/20260823-232147-next617-http-reference-contract-r5/`：TEST1065 与
+TEST999 通过 2/2，唯一 `TESTBENCH PASS`，`error_count=0`、`fail_count=0`，
+`test13_route_ok=True`。中途 r1/r2 的 RAPI 远端关闭和 r3/r4 暴露的失败输出清理缺口均不作为
+最终证据；修复后 r5 才是本批基线。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
