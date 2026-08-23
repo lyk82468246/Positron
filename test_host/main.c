@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1058
+#define TEST_MAX_NUMBER 1059
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -2621,6 +2621,197 @@ static BOOL test1058_browser_native_select_focus_contract(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 1059 - browser-owned native SELECT dropdown transaction          */
+/* The browser records a bounded single-select candidate transaction;
+ * the host remains responsible for WM notifications, Core mutation and
+ * invoking the existing input/change commit only after END_OK.           */
+static BOOL test1059_browser_native_select_transaction_contract(void)
+{
+    PBrowserScriptNativeSelectCallbacksEx callbacks;
+    PBrowserScriptNativeSelectInteractionInfo interaction;
+    PBrowserScriptNativeSelectCommitInfo commit_info;
+    test1057_native_select_state state;
+    HANDLE session;
+    const char *stage;
+    int should_commit;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&interaction, 0, sizeof(interaction));
+    memset(&commit_info, 0, sizeof(commit_info));
+    memset(&state, 0, sizeof(state));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_select = test1057_native_select_dispatch;
+    interaction.size = sizeof(interaction);
+    interaction.target_token = 9;
+    interaction.x = 21;
+    interaction.y = 43;
+    interaction.multiple = 0;
+    interaction.selected_index = 0;
+    interaction.selected_count = 1;
+    interaction.phase =
+            PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN;
+    commit_info.size = sizeof(commit_info);
+    commit_info.target_token = 9;
+    commit_info.x = 21;
+    commit_info.y = 43;
+    commit_info.multiple = 0;
+    commit_info.selected_index = 2;
+    commit_info.selected_count = 1;
+    stage = "create";
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    ok = session != NULL;
+    should_commit = 99;
+    if (ok) {
+        stage = "invalid-null-info";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, NULL, &should_commit);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && should_commit == 0;
+    }
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
+                session, &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "invalid-multiple";
+        interaction.multiple = 1;
+        should_commit = 99;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && should_commit == 0;
+        interaction.multiple = 0;
+    }
+    if (ok) {
+        stage = "begin";
+        should_commit = 99;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit);
+        ok = rc == PSCRIPT_OK && should_commit == 0 && state.calls == 0;
+    }
+    if (ok) {
+        stage = "commit-while-active";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(
+                session, &commit_info);
+        ok = rc == PSCRIPT_ERROR_GLOBAL && state.calls == 0;
+    }
+    if (ok) {
+        stage = "candidate";
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_CANDIDATE;
+        interaction.selected_index = 2;
+        should_commit = 99;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit);
+        ok = rc == PSCRIPT_OK && should_commit == 0 && state.calls == 0;
+    }
+    if (ok) {
+        stage = "end-ok";
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_OK;
+        should_commit = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit);
+        ok = rc == PSCRIPT_OK && should_commit == 1 && state.calls == 0;
+    }
+    if (ok) {
+        stage = "accepted-commit";
+        rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(
+                session, &commit_info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "IC") == 0 &&
+                state.calls == 2 && state.selected_index == 2;
+    }
+    if (ok) {
+        stage = "candidate-without-begin";
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_CANDIDATE;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.calls == 2;
+    }
+    if (ok) {
+        stage = "cancel";
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN;
+        interaction.selected_index = 2;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit);
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_CANDIDATE;
+        interaction.selected_index = 0;
+        rc = (rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit) : rc;
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_CANCEL;
+        should_commit = 99;
+        rc = (rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit) : rc;
+        ok = rc == PSCRIPT_OK && should_commit == 0 && state.calls == 2;
+    }
+    if (ok) {
+        stage = "end-ok-without-candidate";
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit);
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_OK;
+        should_commit = 99;
+        rc = (rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit) : rc;
+        ok = rc == PSCRIPT_OK && should_commit == 0 && state.calls == 2;
+    }
+    if (ok) {
+        stage = "reset";
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN;
+        rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit);
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_CANDIDATE;
+        rc = (rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit) : rc;
+        rc = (rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionResetNativeSelectState(session) : rc;
+        interaction.phase =
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_OK;
+        should_commit = 99;
+        rc = (rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit) : rc;
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && should_commit == 0 &&
+                state.calls == 2;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterNativeSelectCallbacksEx(
+                session) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                session, &interaction, &should_commit) ==
+                PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1059 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1059 OK",
+            "Browser-owned single-select dropdown begin/candidate/"
+            "confirm/cancel transaction state covers early Core mutation\n"
+            "suppression, accept-only commit and reset without owning WM\n"
+            "notifications or native control rollback.");
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 6 - libhubbub HTML tokeniser (NetSurf engine, Phase 4)           */
 /* Feeds a small HTML document to hubbub in tokeniser mode: setting a     */
 /* custom token handler makes hubbub destroy its default treebuilder and  */
@@ -4644,6 +4835,8 @@ static void pcore_browser_script_reset_native_edit_state(void);
 static int pcore_browser_script_dispatch_native_select_commit(HWND control);
 static int pcore_browser_script_dispatch_native_select_focus(HWND control,
         int focused);
+static int pcore_browser_script_dispatch_native_select_interaction(
+        HWND control, int phase, int *out_should_commit);
 static void pcore_browser_script_reset_native_select_state(void);
 static int pcore_browser_script_dispatch_composition_event(HWND control,
         const char *event_type, const char *data, int cancelable);
@@ -5147,6 +5340,7 @@ typedef struct pcore_native_select {
     unsigned int pending_high_surrogate;
     UINT pending_high_message;
     LPARAM pending_high_lparam;
+    int dropdown_active;
     WNDPROC original_proc;
 } pcore_native_select;
 
@@ -5158,6 +5352,8 @@ static unsigned int g_native_select_count = 0;
 static int g_native_select_syncing = 0;
 static int g_native_select_probe = 0;
 static int g_native_select_probe_ok = 0;
+static int g_native_select_transaction_probe = 0;
+static int g_native_select_transaction_probe_ok = 0;
 static int g_native_multiselect_probe = 0;
 static int g_native_multiselect_probe_ok = 0;
 static int g_native_select_key_probe = 0;
@@ -6750,6 +6946,26 @@ static void pcore_native_focus_lost(HWND control)
     }
 }
 
+static void pcore_native_select_restore(HWND select_window)
+{
+    pcore_native_select *native_select;
+    PCoreSelectInfo info;
+
+    if (select_window == NULL || g_render_doc == NULL) {
+        return;
+    }
+    native_select = pcore_native_select_find(select_window);
+    if (native_select == NULL ||
+            PCore_SelectInfo(g_render_doc, native_select->select_index,
+            &info) != 0) {
+        return;
+    }
+    g_native_select_syncing = 1;
+    SendMessage(select_window, CB_SETCURSEL,
+            (WPARAM) info.selected_index, 0);
+    g_native_select_syncing = 0;
+}
+
 static void pcore_native_select_changed(HWND select_window)
 {
     pcore_native_select *native_select;
@@ -6927,6 +7143,81 @@ static void pcore_native_multiselect_probe_run(HWND parent)
         return;
     }
     g_native_multiselect_probe_ok = 1;
+}
+
+static void pcore_native_select_transaction_probe_run(HWND parent)
+{
+    pcore_native_select *target;
+    PCoreSelectInfo info;
+    unsigned int i;
+    int original_index;
+
+    target = NULL;
+    memset(&info, 0, sizeof(info));
+    for (i = 0; i < g_native_select_count; i++) {
+        if (!g_native_selects[i].multiple &&
+                g_native_selects[i].select_index == 0) {
+            target = &g_native_selects[i];
+            break;
+        }
+    }
+    if (target == NULL || target->hwnd == NULL ||
+            PCore_SelectInfo(g_render_doc, target->select_index, &info) != 0 ||
+            info.selected_index < 0) {
+        return;
+    }
+    original_index = info.selected_index;
+    SendMessage(target->hwnd, CB_SETCURSEL, (WPARAM) original_index, 0);
+    SendMessage(parent, WM_COMMAND,
+            MAKEWPARAM(2000 + target->select_index, CBN_DROPDOWN),
+            (LPARAM) target->hwnd);
+    SendMessage(target->hwnd, CB_SETCURSEL, 2, 0);
+    SendMessage(parent, WM_COMMAND,
+            MAKEWPARAM(2000 + target->select_index, CBN_SELCHANGE),
+            (LPARAM) target->hwnd);
+    SendMessage(parent, WM_COMMAND,
+            MAKEWPARAM(2000 + target->select_index, CBN_CLOSEUP),
+            (LPARAM) target->hwnd);
+    if (!target->dropdown_active ||
+            SendMessage(target->hwnd, CB_GETCURSEL, 0, 0) != 2 ||
+            PCore_SelectInfo(g_render_doc, target->select_index, &info) != 0 ||
+            info.selected_index != original_index) {
+        return;
+    }
+    SendMessage(parent, WM_COMMAND,
+            MAKEWPARAM(2000 + target->select_index, CBN_SELENDCANCEL),
+            (LPARAM) target->hwnd);
+    if (target->dropdown_active ||
+            SendMessage(target->hwnd, CB_GETCURSEL, 0, 0) != original_index ||
+            PCore_SelectInfo(g_render_doc, target->select_index, &info) != 0 ||
+            info.selected_index != original_index) {
+        return;
+    }
+    SendMessage(parent, WM_COMMAND,
+            MAKEWPARAM(2000 + target->select_index, CBN_DROPDOWN),
+            (LPARAM) target->hwnd);
+    SendMessage(target->hwnd, CB_SETCURSEL, 2, 0);
+    SendMessage(parent, WM_COMMAND,
+            MAKEWPARAM(2000 + target->select_index, CBN_SELCHANGE),
+            (LPARAM) target->hwnd);
+    SendMessage(parent, WM_COMMAND,
+            MAKEWPARAM(2000 + target->select_index, CBN_CLOSEUP),
+            (LPARAM) target->hwnd);
+    if (!target->dropdown_active ||
+            PCore_SelectInfo(g_render_doc, target->select_index, &info) != 0 ||
+            info.selected_index != original_index) {
+        return;
+    }
+    SendMessage(parent, WM_COMMAND,
+            MAKEWPARAM(2000 + target->select_index, CBN_SELENDOK),
+            (LPARAM) target->hwnd);
+    if (target->dropdown_active ||
+            PCore_SelectInfo(g_render_doc, target->select_index, &info) != 0 ||
+            info.selected_index != 2 ||
+            SendMessage(target->hwnd, CB_GETCURSEL, 0, 0) != 2) {
+        return;
+    }
+    g_native_select_transaction_probe_ok = 1;
 }
 
 static void testbench_log_navigation(
@@ -10379,6 +10670,66 @@ static int pcore_browser_script_dispatch_native_select_commit(HWND control)
     return -1;
 }
 
+/* Native single-select dropdown notifications use a browser-owned bounded
+ * transaction when scripting is active. The host supplies only the current
+ * WM phase and selection snapshot; Core is mutated later, on END_OK, by the
+ * existing commit helper. A zero return means the non-script path keeps its
+ * legacy immediate behavior. */
+static int pcore_browser_script_dispatch_native_select_interaction(
+        HWND control, int phase, int *out_should_commit)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeSelectInteractionInfo interaction_info;
+    PCoreSelectInfo select_info;
+    unsigned int i;
+    LRESULT selected_index;
+    int selected_count;
+    int rc;
+
+    if (out_should_commit != NULL) {
+        *out_should_commit = 0;
+    }
+    if (control == NULL || g_render_doc == NULL ||
+            out_should_commit == NULL) {
+        return -1;
+    }
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd == control &&
+                !g_native_selects[i].multiple &&
+                PCore_SelectInfo(g_render_doc,
+                g_native_selects[i].select_index, &select_info) == 0) {
+            selected_index = (phase ==
+                    PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN) ?
+                    (LRESULT) select_info.selected_index :
+                    SendMessage(control, CB_GETCURSEL, 0, 0);
+            selected_count = (selected_index == CB_ERR) ? 0 : 1;
+            memset(&interaction_info, 0, sizeof(interaction_info));
+            interaction_info.size = sizeof(interaction_info);
+            interaction_info.target_token =
+                    g_native_selects[i].select_index + 1UL;
+            interaction_info.x = select_info.x + select_info.width / 2;
+            interaction_info.y = select_info.y + select_info.height / 2;
+            interaction_info.multiple = 0;
+            interaction_info.selected_index =
+                    (selected_index == CB_ERR) ? -1 :
+                    (int) selected_index;
+            interaction_info.selected_count = selected_count;
+            interaction_info.phase = phase;
+            bridge = g_browser_script_session.bridge;
+            if (g_browser_script_session.document == g_render_doc &&
+                    g_browser_script_session.runtime != NULL &&
+                    bridge != NULL && bridge->session != NULL) {
+                rc = PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+                        bridge->session, &interaction_info,
+                        out_should_commit);
+                return rc == PSCRIPT_OK ? 1 : -1;
+            }
+            return 0;
+        }
+    }
+    return -1;
+}
+
 /* Native SELECT focus transitions use the browser-owned pair/state adapter
  * when scripting is active. The host still supplies only the control's
  * current geometry and the WM focus transition; the non-script fallback
@@ -11783,10 +12134,80 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         return 0;
     }
-    case WM_COMMAND:
+    case WM_COMMAND: {
+        pcore_native_select *native_select;
+        int should_commit;
+        int interaction_result;
+
         if ((HWND) lp != NULL) {
+            native_select = pcore_native_select_find((HWND) lp);
+            if (HIWORD(wp) == CBN_DROPDOWN && native_select != NULL &&
+                    !native_select->multiple) {
+                should_commit = 0;
+                interaction_result =
+                        pcore_browser_script_dispatch_native_select_interaction(
+                        (HWND) lp,
+                        PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN,
+                        &should_commit);
+                if (interaction_result > 0) {
+                    native_select->dropdown_active = 1;
+                }
+                return 0;
+            }
             if (HIWORD(wp) == CBN_SELCHANGE) {
+                if (native_select != NULL &&
+                        native_select->dropdown_active) {
+                    should_commit = 0;
+                    interaction_result =
+                            pcore_browser_script_dispatch_native_select_interaction(
+                            (HWND) lp,
+                            PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_CANDIDATE,
+                            &should_commit);
+                    if (interaction_result > 0) {
+                        return 0;
+                    }
+                    native_select->dropdown_active = 0;
+                }
                 pcore_native_select_changed((HWND) lp);
+                return 0;
+            }
+            if (HIWORD(wp) == CBN_SELENDOK) {
+                if (native_select != NULL &&
+                        native_select->dropdown_active) {
+                    should_commit = 0;
+                    interaction_result =
+                            pcore_browser_script_dispatch_native_select_interaction(
+                            (HWND) lp,
+                            PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_OK,
+                            &should_commit);
+                    native_select->dropdown_active = 0;
+                    if (interaction_result > 0) {
+                        if (should_commit) {
+                            pcore_native_select_changed((HWND) lp);
+                        }
+                        return 0;
+                    }
+                    pcore_native_select_changed((HWND) lp);
+                }
+                return 0;
+            }
+            if (HIWORD(wp) == CBN_SELENDCANCEL) {
+                if (native_select != NULL &&
+                        native_select->dropdown_active) {
+                    should_commit = 0;
+                    (void) pcore_browser_script_dispatch_native_select_interaction(
+                            (HWND) lp,
+                            PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_CANCEL,
+                            &should_commit);
+                    native_select->dropdown_active = 0;
+                    pcore_native_select_restore((HWND) lp);
+                }
+                return 0;
+            }
+            /* CBN_SELCHANGE may arrive before or after CBN_CLOSEUP. The
+             * END_OK/END_CANCEL notification is the transaction boundary;
+             * CLOSEUP alone must not roll a candidate back prematurely. */
+            if (HIWORD(wp) == CBN_CLOSEUP) {
                 return 0;
             }
             if (HIWORD(wp) == EN_CHANGE) {
@@ -11815,6 +12236,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             }
         }
         break;
+    }
     case WM_ACTIVATE:
         if (LOWORD(wp) == WA_INACTIVE && g_render_doc != NULL &&
                 PCore_InteractionClear(g_render_doc,
@@ -12029,6 +12451,11 @@ static BOOL show_render_window(void)
     }
     pcore_native_edits_rebuild(hwnd, 0);
     pcore_native_selects_rebuild(hwnd, 0);
+    if (g_native_select_transaction_probe &&
+            g_native_select_count > 0 &&
+            g_native_selects[0].hwnd != NULL) {
+        pcore_native_select_transaction_probe_run(hwnd);
+    }
     if (g_native_select_probe && g_native_select_count > 0 &&
             g_native_selects[0].hwnd != NULL) {
         SendMessage(g_native_selects[0].hwnd, CB_SETCURSEL, 2, 0);
@@ -19324,6 +19751,7 @@ static BOOL test67_select_control(void)
     int label_bytes;
     int value_bytes;
     int i;
+    int transaction_required;
 
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
@@ -19408,6 +19836,9 @@ static BOOL test67_select_control(void)
     g_scroll_y = 0;
     g_render_doc = hDoc;
     g_render_sheet = hSheet;
+    transaction_required = pcore_native_script_active();
+    g_native_select_transaction_probe = transaction_required;
+    g_native_select_transaction_probe_ok = 0;
     g_native_select_probe = 1;
     g_native_select_probe_ok = 0;
     if (!show_render_window()) {
@@ -19419,10 +19850,13 @@ static BOOL test67_select_control(void)
         show_error(L"TEST 67 FAIL", "CreateWindow returned NULL");
         return FALSE;
     }
+    g_native_select_transaction_probe = 0;
     g_native_select_probe = 0;
     g_render_doc = NULL;
     g_render_sheet = NULL;
-    if (PCore_SelectInfo(hDoc, 0, &info[0]) != 0 ||
+    if ((transaction_required &&
+            !g_native_select_transaction_probe_ok) ||
+            PCore_SelectInfo(hDoc, 0, &info[0]) != 0 ||
             info[0].selected_index != 2) {
         g_native_select_probe_ok = 0;
     }
@@ -69402,6 +69836,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1056: ok = test1056_browser_native_edit_contract(); break;
         case 1057: ok = test1057_browser_native_select_contract(); break;
         case 1058: ok = test1058_browser_native_select_focus_contract(); break;
+        case 1059: ok = test1059_browser_native_select_transaction_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -3364,6 +3364,10 @@ typedef struct p_browser_script_native_select_state {
     int shape_set;
     int multiple;
     int focused;
+    int interaction_active;
+    int interaction_candidate;
+    int candidate_selected_index;
+    int candidate_selected_count;
 } p_browser_script_native_select_state;
 
 typedef struct p_browser_script_native_select_binding {
@@ -6417,6 +6421,26 @@ static int p_browser_script_native_select_focus_info_valid(
     return 1;
 }
 
+static int p_browser_script_native_select_interaction_info_valid(
+        const PBrowserScriptNativeSelectInteractionInfo *info)
+{
+    if (info == NULL || info->size < sizeof(*info) ||
+            info->target_token == 0 || info->multiple != 0 ||
+            info->selected_index < -1 || info->selected_count < 0 ||
+            info->selected_count > 1 ||
+            (info->phase !=
+            PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN &&
+            info->phase !=
+            PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_CANDIDATE &&
+            info->phase !=
+            PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_OK &&
+            info->phase !=
+            PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_CANCEL)) {
+        return 0;
+    }
+    return 1;
+}
+
 PBROWSER_API int PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
         HANDLE hSession,
         const PBrowserScriptNativeSelectCallbacksEx *callbacks)
@@ -6480,6 +6504,9 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectCommit(
     }
     if (state->shape_set && state->multiple != info->multiple) {
         return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (state->interaction_active) {
+        return PSCRIPT_ERROR_GLOBAL;
     }
     state->shape_set = 1;
     state->multiple = info->multiple;
@@ -6550,6 +6577,63 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectFocus(
         return PSCRIPT_ERROR_NATIVE;
     }
     state->focused = info->focused;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+        HANDLE hSession,
+        const PBrowserScriptNativeSelectInteractionInfo *info,
+        int *out_should_commit)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_select_state *state;
+
+    session = p_script_session(hSession);
+    if (out_should_commit != NULL) {
+        *out_should_commit = 0;
+    }
+    if (!p_script_session_valid(session) || session->native_select == NULL ||
+            out_should_commit == NULL ||
+            !p_browser_script_native_select_interaction_info_valid(info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN) {
+        state = p_browser_script_native_select_state_find(
+                session->native_select, info->target_token, 1);
+        if (state == NULL) {
+            return PSCRIPT_ERROR_NATIVE_LIMIT;
+        }
+        if (state->shape_set && state->multiple != info->multiple) {
+            return PSCRIPT_ERROR_ARGUMENT;
+        }
+        state->shape_set = 1;
+        state->multiple = info->multiple;
+        state->interaction_active = 1;
+        state->interaction_candidate = 0;
+        state->candidate_selected_index = info->selected_index;
+        state->candidate_selected_count = info->selected_count;
+        return PSCRIPT_OK;
+    }
+    state = p_browser_script_native_select_state_find(
+            session->native_select, info->target_token, 0);
+    if (state == NULL || !state->interaction_active) {
+        return (info->phase ==
+                PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_CANCEL) ?
+                PSCRIPT_OK : PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_CANDIDATE) {
+        state->interaction_candidate = 1;
+        state->candidate_selected_index = info->selected_index;
+        state->candidate_selected_count = info->selected_count;
+        return PSCRIPT_OK;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_OK) {
+        *out_should_commit = state->interaction_candidate ? 1 : 0;
+    }
+    state->interaction_active = 0;
+    state->interaction_candidate = 0;
+    state->candidate_selected_index = -1;
+    state->candidate_selected_count = 0;
     return PSCRIPT_OK;
 }
 

@@ -66,15 +66,26 @@ next610 在 next609 的 bounded native SELECT state 上增加了
 TEST1058 覆盖非法输入、成对顺序、幂等、失败恢复、多 token、reset 和 unregister；TEST67、71、
 1057、999 的真实设备门通过。该批不宣称下拉展开/关闭、键盘默认动作或 OEM SIP/IME 兼容。
 
-### 5. next611：剩余 native SELECT 默认动作与下拉生命周期
+### 5. next611：native SELECT 单选下拉事务迁移（已完成）
 
-以真实页面和设备日志为依据，优先处理可重复的 native SELECT 键盘 Enter/Arrow 默认动作、
-展开/关闭状态、SIP/IME 候选词或其他 form/input 缺口；若没有可重复产品缺口，再迁移下一条
-仍由宿主独占的 form/input 语义。保持 next610 的边界：browser layer 持有可发布策略，宿主只
-保留 WM、Core mutation、窗口和 OEM 平台副作用；每批提供目标自动门，只有视觉/触摸/SIP/旋转/
-picker 风险才累计人工验收。
+next611 把单选 COMBOBOX 的 begin/candidate/confirm/cancel 事务状态迁入
+`positron_browser.dll`，新增 `PBrowser_ScriptSessionDispatchNativeSelectInteraction()`。
+browser layer 只记录有界候选状态，并在确认且确有候选时给宿主一个 commit 闸门；宿主仍拥有
+WM 通知、Core selection mutation、原生控件取消回滚、窗口重绘和无脚本即时回退。TEST1059
+覆盖 ABI 的非法输入、候选抑制、确认/取消、无候选确认、reset 和 unregister；TEST67 通过
+合成 WM 通知探针断言 Core 不提前改变、取消恢复和确认提交。窄定向设备门
+`tmp/device-runs/20260823-184446-next611-native-select-transaction-final-r2/` 通过 7/7
+（TEST67、71、118、1057、1058、1059、999），Debug/Release ARMV4I 构建、C89 检查和
+仓库/文档 audit 均通过；本批没有新增人工门。
 
-### 6. 建立真实页面驱动的兼容队列
+### 6. next612：native SELECT 键盘默认动作审计
+
+在 next611 设备证据通过后，以真实页面和设备日志为依据审计键盘 Enter/Arrow 默认动作；
+只有出现可重复产品缺口才迁移下一条行为。保持 next611 的边界：browser layer 持有可发布
+策略，宿主只保留 WM、Core mutation、窗口和 OEM 平台副作用；每批提供目标自动门，只有
+视觉/触摸/SIP/旋转/picker 风险才累计人工验收。
+
+### 7. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -85,7 +96,7 @@ picker 风险才累计人工验收。
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 7. 安排新的全范围检查点
+### 8. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

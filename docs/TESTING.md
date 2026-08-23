@@ -167,6 +167,30 @@ scripts\device_gate.bat -Candidate next610-native-select-focus-regression ^
 旋转、系统 picker 或 OEM SIP/IME 人工门；tracked `test_host.ini` 仍保持 `javascript=0`
 的默认自动 smoke 选择。
 
+### next611 native SELECT 单选下拉事务自动门
+
+next611 在 `positron_browser.dll` 增加
+`PBrowser_ScriptSessionDispatchNativeSelectInteraction()`，记录单选 COMBOBOX 的
+begin/candidate/confirm/cancel 事务。候选阶段不改变 Core；确认且候选存在时宿主才调用既有
+commit 入口，取消时宿主把原生控件恢复到 Core 选中项。TEST1059 是不依赖窗口的 ABI 契约，
+TEST67 的合成 WM 探针验证真实宿主接线；TEST71/118、1057/1058 和 TEST999 保持多选、键盘、
+既有 SELECT ABI、焦点和退出回归。
+
+窄定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next611-native-select-transaction-final ^
+  -EnableJavaScript ^
+  -TestSelection "67,71,118,1057,1058,1059,999"
+```
+
+该门必须在已由 WMDC/Device Emulator GUI 连接的单一设备上运行。本批最终证据位于
+`tmp/device-runs/20260823-184446-next611-native-select-transaction-final-r2/`：7/7 通过、
+零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`，摘要已写回 `.agents/HANDOFF.md`。
+本批没有新增视觉、真实触摸、旋转、
+系统 picker 或 OEM SIP/IME 人工门；tracked `test_host.ini` 仍保持 `javascript=0` 的默认
+自动 smoke 选择。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

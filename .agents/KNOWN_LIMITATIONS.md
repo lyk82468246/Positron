@@ -16,8 +16,10 @@
   到 input、dirty tracking 和 blur/change 顺序迁入同一 DLL，next609 再将 native SELECT
   commit 后的 input→change 顺序与 bounded target-shape state 迁入同一 DLL，next610 又将
   native SELECT 的 focus→focusin / blur→focusout 成对顺序和 bounded focus state 迁入同一
-  DLL。仍保存 native SELECT 的 WM 键盘/控件默认动作、下拉展开/关闭生命周期、composition
-  生命周期和平台副作用胶水，必须逐项区分产品语义与宿主副作用，不能笼统搬迁。
+  DLL，next611 再将单选下拉的 begin/candidate/confirm/cancel 事务状态迁入同一 DLL。仍由
+  宿主持有 native SELECT 的 WM 键盘/控件默认动作、原生下拉窗口与视觉、Core selection
+  mutation、取消回滚、composition 生命周期和平台副作用胶水，必须逐项区分产品语义与
+  宿主副作用，不能笼统搬迁。
 - 产品级 HTML、CSS、DOM、表单和脚本语义应归入 `positron_browser`、`positron_core` 或 `positron_script`；窗口生命周期、原生控件、设备网络和测试编排仍由宿主持有。
 - 浏览器 JavaScript 与独立脚本 API 共用 `positron_script` 中唯一的 Duktape 引擎。当前默认关闭，启用必须显式配置。
 - 浏览器会话脚本 heap 上限为 624 KiB，独立脚本会话默认上限为 512 KiB。预算是当前设备实测基线，不代表任意页面都能装入。
@@ -27,9 +29,9 @@
   窗口和导航副作用仍由宿主 callback 提供。`PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()`
   只迁移 native EDIT 的有界输入事务策略；WM EDIT/SELECT 消息、文本 mutation、composition
   生命周期和 OEM SIP/IME 行为仍由宿主提供。`PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()`
-  只迁移 commit 后的 input→change 顺序、target-shape 校验以及 next610 的焦点族 dispatch；
-  WM SELECT 键盘默认动作、下拉展开/关闭、Core selection mutation 和 OEM SIP/IME 行为仍由
-  宿主提供，不把 OEM 行为误标为产品兼容性。
+  只迁移 commit 后的 input→change 顺序、target-shape 校验、next610 的焦点族 dispatch
+  以及 next611 的单选下拉事务闸门；WM SELECT 键盘默认动作、下拉窗口/视觉、Core selection
+  mutation、原生取消回滚和 OEM SIP/IME 行为仍由宿主提供，不把 OEM 行为误标为产品兼容性。
 
 ### 解除或推进条件
 

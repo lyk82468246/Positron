@@ -40,6 +40,14 @@ typed key callback 返回 default-allowed，由宿主决定是否让 WM 控件�
 几何和 focused 状态。上述入口不拥有 WM SELECT、Core selection mutation、下拉展开/关闭、
 窗口重绘、SIP/IME 或系统 picker。
 
+单选 COMBOBOX 的下拉事务使用同一 bounded state 的
+`PBrowser_ScriptSessionDispatchNativeSelectInteraction()`：宿主在 `CBN_DROPDOWN`、候选
+`CBN_SELCHANGE`、`CBN_SELENDOK` 或 `CBN_SELENDCANCEL` 时提交 size-tagged phase；browser
+layer 只记录候选，不在 begin/candidate 阶段改变 Core。END_OK 通过 `out_should_commit` 告知
+宿主是否观察到候选，宿主随后才调用 commit 入口；END_CANCEL 清除候选，宿主负责把原生
+COMBOBOX 恢复到 Core 选中项。该入口仅适用于 single-select，不拥有 WM 下拉窗口、键盘默认
+动作、Core selection mutation、回滚消息、SIP/IME 或视觉绘制；最多继续复用 16 个 token。
+
 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 是向新消费者推荐的
 程序化表单激活入口。调用者提供 `get_target`（返回 checkbox/radio/submit/reset/file 的
 UTF-8 id、几何和 disabled）、`validate_submit`、`perform_default` 与
@@ -210,6 +218,13 @@ next610 在该 bounded state 上增加 native SELECT 焦点族入口：
 `PBrowserScriptFocusCallbacks`，不新增宿主私有结构；WM 焦点窗口、Core interaction、下拉
 展开/关闭、键盘默认动作和 OEM SIP/IME 仍由宿主负责。TEST1058、67、71、1057、999 的 next610
 设备门已通过。
+
+next611 在同一 bounded state 上增加单选 SELECT 下拉事务入口：
+`PBrowser_ScriptSessionDispatchNativeSelectInteraction()` 记录 begin/candidate/confirm/cancel
+phase，只有 END_OK 且此前收到候选时才返回 `out_should_commit=1`。宿主接到该结果后才执行
+Core selection mutation 和既有 input/change commit；END_CANCEL 时由宿主将 COMBOBOX 恢复到
+Core 快照。TEST1059 覆盖 interaction ABI，TEST67 覆盖合成 WM 通知探针；该入口不承诺
+下拉窗口视觉、键盘默认动作、SIP/IME 或 OEM 行为兼容。
 
 ## 其他项目如何调用
 

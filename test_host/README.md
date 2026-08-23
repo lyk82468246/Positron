@@ -33,6 +33,16 @@ native SELECT 的焦点族由 `PBrowser_ScriptSessionDispatchNativeSelectFocus()
 键盘默认动作和 OEM SIP/IME；控件销毁/重建前继续调用 reset。TEST1058 是 ABI 契约，
 TEST67/71/1057/999 覆盖相关设备回归。
 
+单选 SELECT 的下拉事务由 `PBrowser_ScriptSessionDispatchNativeSelectInteraction()` 记录。
+宿主把 `CBN_DROPDOWN`、`CBN_SELCHANGE`、`CBN_SELENDOK` 和 `CBN_SELENDCANCEL` 映射为
+begin/candidate/confirm/cancel phase；候选阶段不调用 `PCore_SelectSetOptionSelected()`，
+确认且 browser DLL 返回 `out_should_commit=1` 后才走既有 commit，取消则按 Core 快照调用
+`CB_SETCURSEL` 回滚。多选、无脚本路径、COMBOBOX 下拉窗口/视觉、键盘默认动作、SIP/IME
+和 OEM 副作用仍由宿主持有。TEST1059 是 ABI 契约，TEST67 的合成 WM 探针验证延迟 mutation、
+取消回滚和确认提交。
+`CBN_CLOSEUP` 只表示下拉窗口关闭，不作为事务终点；由于 WM 可能在它前后发送
+`CBN_SELCHANGE`，事务只由 `CBN_SELENDOK` 或 `CBN_SELENDCANCEL` 结束。
+
 ## 构建与部署
 
 从仓库根目录使用正式工程配置：

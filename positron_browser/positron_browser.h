@@ -542,6 +542,26 @@ typedef struct PBrowserScriptNativeSelectFocusInfo {
     int focused;
 } PBrowserScriptNativeSelectFocusInfo;
 
+/* Native SELECT dropdown transaction phases. The browser layer owns the
+ * bounded candidate state and whether an accepted close should commit; the
+ * host remains responsible for the WM dropdown and the eventual Core
+ * selection mutation. */
+#define PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN       1
+#define PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_CANDIDATE   2
+#define PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_OK      3
+#define PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_CANCEL  4
+
+typedef struct PBrowserScriptNativeSelectInteractionInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    int multiple;
+    int selected_index;
+    int selected_count;
+    int phase;
+} PBrowserScriptNativeSelectInteractionInfo;
+
 /* Additive native SELECT adapter. The browser layer owns the commit event
  * ordering and bounded target contract; the host supplies only core event
  * propagation and keeps WM SELECT, selection mutation and repaint side
@@ -974,6 +994,14 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectCommit(
 PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectFocus(
         HANDLE hSession,
         const PBrowserScriptNativeSelectFocusInfo *info);
+/* Notify the product layer about a single-select dropdown transaction. On
+ * END_OK, out_should_commit is 1 only when a candidate was observed since
+ * BEGIN; on all other phases it is zero. END_CANCEL clears the candidate
+ * without dispatching input/change. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+        HANDLE hSession,
+        const PBrowserScriptNativeSelectInteractionInfo *info,
+        int *out_should_commit);
 /* Drop all bounded native SELECT target state before native controls are
  * destroyed or rebuilt for a new document/layout. */
 PBROWSER_API int PBrowser_ScriptSessionResetNativeSelectState(

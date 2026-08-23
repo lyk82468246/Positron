@@ -15,10 +15,10 @@
 
 ## 当前仓库基线
 
-- 分支：`main`；本批开始时基线为 `69ffa52b next609: move native select commit policy to browser`，交付时必须
+- 分支：`main`；本批开始时基线为 `43431ad4 next610: move native select focus policy to browser`，交付时必须
   重新核对远端和工作区，不能沿用这一结论。
-- 当前能力批次：next610，native SELECT 焦点族事件语义迁移。
-- 测试编号上限：`TEST_MAX_NUMBER 1058`。
+- 当前能力批次：next611，native SELECT 单选下拉确认/取消事务迁移。
+- 测试编号上限：`TEST_MAX_NUMBER 1059`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -33,8 +33,8 @@ HTML、CSS、表单、DOM 与单一 Duktape 引擎组合成可预测、资源有
 轻量 Web 运行时。
 
 next606 是一次已完成的安全基础设施中断：把仅有互联网客户端能力的 `positron_tls.dll`
-扩展为可供 LocalSend 一类消费者复用的 peer TLS ABI v2。next607–610 已恢复并继续浏览器
-产品语义迁移；next610 只处理 native SELECT 焦点族事件，不扩张 TLS 协议层。
+扩展为可供 LocalSend 一类消费者复用的 peer TLS ABI v2。next607–611 已恢复并继续浏览器
+产品语义迁移；next611 只处理 native SELECT 单选下拉事务，不扩张 TLS 协议层。
 
 ## 已验证的产品状态
 
@@ -69,6 +69,12 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   token 的焦点状态，并按 `focus`→`focusin` 或 `blur`→`focusout` 成对同步派发，重复通知
   幂等、adapter 失败可重试；`test_host` 只提供 WM 焦点转换、控件几何、Core 交互和无脚本
   fallback。下拉展开/关闭、WM 键盘默认动作、SIP/IME composition 和 OEM 副作用仍未迁移。
+- next611 在同一 native SELECT bounded state 上增加了
+  `PBrowser_ScriptSessionDispatchNativeSelectInteraction()`：browser layer 现在记录单选
+  下拉的 begin/candidate/confirm/cancel 事务，只有确认且观察到候选时才允许宿主提交
+  `input`→`change`；取消会清空候选，宿主把原生 COMBOBOX 恢复到 Core 选中项。宿主仍拥有
+  WM 通知、Core selection mutation、控件回滚和无脚本即时回退；多选、键盘默认动作、
+  下拉视觉和 OEM SIP/IME composition 不在本批宣称范围。
 
 ## 最近验证证据
 
@@ -138,6 +144,17 @@ next610 的 native SELECT 焦点族自动门：
 - `python scripts/test_c89ize.py`、Debug/Release 正式 ARMV4I 构建和仓库/文档审计均已在本批
   最终工作区通过；tracked INI 仍未修改，保持 `javascript=0` 的窄 smoke 选择。
 
+next611 的 native SELECT 单选下拉事务自动门：
+
+- `tmp/device-runs/20260823-184446-next611-native-select-transaction-final-r2/device-gate-result.txt`：
+  PASS，7/7（TEST67、71、118、1057、1058、1059、999），错误与失败均为 0，唯一 PASS，
+  `test13_route_ok=True`；RAPI 不暴露远程退出码，但完成标记和选定测试集合均匹配。
+- TEST1059 覆盖 interaction ABI 的非法输入、begin/candidate 抑制、确认后 commit、取消、
+  无候选确认、reset 和 unregister；TEST67 的真实 WM COMBOBOX 探针覆盖 Core 不提前变化、
+  取消回滚和确认提交。该批没有新增视觉或人工门。
+- `python scripts/test_c89ize.py`、Debug/Release 正式 ARMV4I 构建和 `python scripts/audit_repo.py`
+  均通过；Release 与 Debug 保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
+
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
 ## 当前已知边界
@@ -149,37 +166,38 @@ next610 的 native SELECT 焦点族自动门：
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1058 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1059 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
 ## 当前工作区与候选状态
 
-- next610 的 Debug/Release 构建、相关设备门和仓库/文档审计均已通过。
-- next610 的 tracked 改动应只覆盖 `positron_browser` 的 native SELECT focus ABI、`test_host`
-  消费者/TEST1058 与对应交接/架构/测试文档；提交时不要把 `tmp/` 设备证据或无关工作区
+- next611 的 Debug/Release 构建、C89 检查、audit 和针对性设备门均已通过；最终远端状态需在
+  提交/推送后重新核对。
+- next611 的 tracked 改动应只覆盖 `positron_browser` 的 native SELECT interaction ABI、
+  `test_host` 消费者/TEST1059 与对应交接/架构/测试文档；提交时不要把 `tmp/` 设备证据或无关工作区
   文件带入。
-- next610 候选的第一轮设备门已通过；若后续出现焦点事件错误，应先保留 Core/WM 边界，
+- next611 候选的设备门已通过；若后续出现事务或焦点事件错误，应先保留 Core/WM 边界，
   不要通过跳过成对顺序或重复通知断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
 - 接手者必须先检查工作区；任何未提交改动默认属于用户，不能覆盖。
 
 ## 唯一下一步
 
-next611：继续审计仍由宿主独占的 native SELECT 默认动作与下拉生命周期；只有在真实页面或
-设备日志可重复证明后，才选择键盘 Enter/Arrow 默认动作、展开/关闭状态、SIP/IME 候选词或
-其他 form/input 缺口。复用 next610 的边界：browser layer 持有事件策略与状态，宿主只保留
-WM 控件、Core mutation、窗口重绘和 OEM 平台副作用；不得把 OEM 行为伪装成已迁移语义，也
-不得重做 next607–610。
+next612：在 next611 设备证据通过后，继续审计 native SELECT 键盘 Enter/Arrow 默认动作；
+只有真实页面或设备日志可重复证明后才迁移下一条行为。复用 next611 的边界：browser layer
+持有可发布事件策略与有界状态，宿主只保留 WM 控件、Core mutation、窗口重绘和 OEM 平台
+副作用；不得把 OEM 行为伪装成已迁移语义，也不得重做 next607–611。
 
 不要为了填充 next 编号加入互不相关的小 API，也不要顺便重构其他模块。
 
-## next610 完成标准
+## next611 完成标准
 
 - 产品级语义不再由 `test_host` 独占，宿主通过公共 API 消费它。
 - 公共 ABI、UTF-8、opaque handle、内存所有权及 VS2008 / WM6 ARMV4I / C89 兼容性不退化。
 - `python scripts/test_c89ize.py`、正式工程构建和 `python scripts/audit_repo.py` 通过。
-- 通过覆盖新行为的针对性自动设备门，以及包含相关既有能力和 TEST999 的回归门。
+- 通过覆盖新行为的针对性自动设备门，以及包含相关既有能力和 TEST999 的回归门；TEST67
+  必须证明候选阶段 Core 不变、取消恢复原生控件、确认才提交。
 - 只有出现视觉、真实触摸、SIP、旋转、文件选择器或失败网络风险时才累计人工门；崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 - 跟踪的默认 INI 恢复为自动模式且选择集不被无意扩大。
 - 用当批事实覆盖本文件的当前快照，更新限制和路线图；只提交本批 tracked 文件并推送 `main`。
