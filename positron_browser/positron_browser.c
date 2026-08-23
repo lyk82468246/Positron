@@ -3344,8 +3344,10 @@ typedef struct p_browser_script_native_edit_state {
     int dirty;
     int pending;
     int pending_is_composing;
+    int composition_active;
     char input_type[PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES];
     char data[PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES];
+    char composition_data[PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES];
 } p_browser_script_native_edit_state;
 
 typedef struct p_browser_script_native_edit_binding {
@@ -6098,6 +6100,34 @@ static int p_browser_script_native_edit_info_valid(
     return 1;
 }
 
+static int p_browser_script_native_edit_composition_info_valid(
+        const PBrowserScriptNativeEditCompositionInfo *info)
+{
+    if (info == NULL || info->size < sizeof(*info) ||
+            info->target_token == 0 ||
+            (info->phase !=
+            PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_START &&
+            info->phase !=
+            PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_UPDATE &&
+            info->phase !=
+            PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_END)) {
+        return 0;
+    }
+    if (info->data != NULL &&
+            !p_browser_script_native_edit_text_valid(info->data)) {
+        return 0;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_UPDATE &&
+            info->data == NULL) {
+        return 0;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_START &&
+            info->data != NULL && info->data[0] != '\0') {
+        return 0;
+    }
+    return 1;
+}
+
 PBROWSER_API int PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(
         HANDLE hSession,
         const PBrowserScriptNativeEditCallbacksEx *callbacks)
@@ -6192,6 +6222,126 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
         state->pending = 1;
         state->pending_is_composing = info->is_composing ? 1 : 0;
     }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditComposition(
+        HANDLE hSession,
+        const PBrowserScriptNativeEditCompositionInfo *info,
+        int *out_default_allowed)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_edit_state *state;
+    PBrowserScriptInputEventInfo input_info;
+    const char *data;
+    int default_allowed;
+    int rc;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->native_edit == NULL ||
+            out_default_allowed == NULL ||
+            !p_browser_script_native_edit_composition_info_valid(info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state = p_browser_script_native_edit_state_find(session->native_edit,
+            info->target_token, 1);
+    if (state == NULL) {
+        return PSCRIPT_ERROR_NATIVE_LIMIT;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_START) {
+        if (state->composition_active) {
+            return PSCRIPT_ERROR_GLOBAL;
+        }
+        p_browser_script_native_edit_clear_pending(state);
+        memset(&input_info, 0, sizeof(input_info));
+        input_info.size = sizeof(input_info);
+        input_info.x = info->x;
+        input_info.y = info->y;
+        input_info.event_type = "compositionstart";
+        input_info.bubbles = 1;
+        input_info.cancelable = 1;
+        input_info.input_type = "";
+        input_info.data = "";
+        input_info.is_composing = 0;
+        default_allowed = 1;
+        rc = session->native_edit->callbacks.dispatch_input(
+                session->native_edit->callbacks.pw, &input_info,
+                &default_allowed);
+        if (rc < 0) {
+            return PSCRIPT_ERROR_NATIVE;
+        }
+        *out_default_allowed = default_allowed ? 1 : 0;
+        if (!default_allowed) {
+            return PSCRIPT_OK;
+        }
+        state->composition_active = 1;
+        state->composition_data[0] = '\0';
+        return PSCRIPT_OK;
+    }
+    if (!state->composition_active) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_UPDATE) {
+        data = info->data;
+        memset(&input_info, 0, sizeof(input_info));
+        input_info.size = sizeof(input_info);
+        input_info.x = info->x;
+        input_info.y = info->y;
+        input_info.event_type = "beforeinput";
+        input_info.bubbles = 1;
+        input_info.cancelable = 0;
+        input_info.input_type = "insertCompositionText";
+        input_info.data = data;
+        input_info.is_composing = 1;
+        default_allowed = 1;
+        rc = session->native_edit->callbacks.dispatch_input(
+                session->native_edit->callbacks.pw, &input_info,
+                &default_allowed);
+        if (rc < 0) {
+            return PSCRIPT_ERROR_NATIVE;
+        }
+        memcpy(state->input_type, input_info.input_type,
+                strlen(input_info.input_type) + 1);
+        memcpy(state->data, input_info.data,
+                strlen(input_info.data) + 1);
+        state->pending = 1;
+        state->pending_is_composing = 1;
+        input_info.event_type = "compositionupdate";
+        input_info.input_type = "";
+        input_info.is_composing = 0;
+        default_allowed = 1;
+        rc = session->native_edit->callbacks.dispatch_input(
+                session->native_edit->callbacks.pw, &input_info,
+                &default_allowed);
+        if (rc < 0) {
+            return PSCRIPT_ERROR_NATIVE;
+        }
+        memcpy(state->composition_data, data, strlen(data) + 1);
+        return PSCRIPT_OK;
+    }
+    data = info->data != NULL ? info->data : state->composition_data;
+    memset(&input_info, 0, sizeof(input_info));
+    input_info.size = sizeof(input_info);
+    input_info.x = info->x;
+    input_info.y = info->y;
+    input_info.event_type = "compositionend";
+    input_info.bubbles = 1;
+    input_info.cancelable = 0;
+    input_info.input_type = "";
+    input_info.data = data;
+    input_info.is_composing = 0;
+    default_allowed = 1;
+    rc = session->native_edit->callbacks.dispatch_input(
+            session->native_edit->callbacks.pw, &input_info,
+            &default_allowed);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    state->composition_active = 0;
+    state->composition_data[0] = '\0';
     return PSCRIPT_OK;
 }
 

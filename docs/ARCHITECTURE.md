@@ -916,6 +916,23 @@ adapter 失败时保持 fail-open 的 WM 兼容回退。browser layer 不模拟 
 Enter 的平台提交、下拉窗口、SIP/IME composition、视觉和 OEM 副作用继续属于宿主边界，
 不能由该自动门扩展为完整键盘或移动端兼容性声明。
 
+#### next613 的 native EDIT composition 边界
+
+next613 继续把 native EDIT 的可发布 composition 语义放在 `positron_browser.dll`，不扩展
+`positron_core.dll` ABI。新增的 `PBrowser_ScriptSessionDispatchNativeEditComposition()`
+接收宿主提供的稳定 token、几何、START/UPDATE/END phase 和借用的 UTF-8 数据；browser
+layer 在最多 16 个 token 的 native EDIT 状态中保存不超过 255 字节的最后 preedit，并以
+`compositionstart`、不可取消的 `beforeinput(insertCompositionText)` →
+`compositionupdate` → `compositionend` 顺序调用既有 input callback。START 的 callback
+取消会返回 `out_default_allowed=0`，UPDATE 的 beforeinput metadata 会复用 next608 的
+native commit → input 事务，END 允许 NULL 数据回放最后一次 preedit。
+
+`test_host.exe` 仍负责 WM_IME、ImmGetCompositionStringW、SIP/候选词窗口、原生 EDIT
+文本 mutation、WM_CHAR 抑制和平台重绘；它只把平台 phase/data 转换成该 ABI，不保存产品
+事件顺序。TEST1061 覆盖顺序、取消、adapter 失败重试、显式/隐式 END、reset 和 unregister；
+TEST123–125 在真实 WM6 上保持 composition/InputEvent/KeyboardEvent 元数据回归。该批不
+宣称 OEM 候选词整词提交、SIP 视觉、触摸、旋转或其他平台副作用兼容。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。
@@ -927,17 +944,18 @@ Enter 的平台提交、下拉窗口、SIP/IME composition、视觉和 OEM 副�
 2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/`title`/`lang`/`dir`/`hidden`/`accessKey`/`role`/`ariaLabel`/`contentEditable`/validation query（包括 form-level 聚合）/custom-validity/form/constraint-related reflected properties（含 `name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`pattern`/`minLength`/`maxLength`）/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（包括 typed click、disabled 抑制、验证与 submit/reset 事件顺序；file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract；native EDIT 的事务状态由 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 持有，native SELECT 的 commit input→change、focus-family、单选下拉 interaction 和 key dispatch/default-allowed policy 由 `PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()`、`PBrowser_ScriptSessionDispatchNativeSelectInteraction()` 与 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 持有，宿主只提供 value/selection/focus transition、WM phase 与 core propagation；
 2a. report-validity callback 只返回同步 valid 结果并路由可寻址控件的 trusted `invalid` 事件；
     它不负责 native invalid UI、焦点/滚动或表单提交。
-3. browser layer 持有并执行产品 bootstrap，并在 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 中执行程序化表单激活策略；宿主 Ex callback 只提供 target lookup、submit validation、default action 和非表单 click 传播；native EDIT/SELECT Ex callback 只提供 value/selection commit、焦点转换后的 core 事件传播；native SELECT 键盘取消通过 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 返回 default-allowed；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
+3. browser layer 持有并执行产品 bootstrap，并在 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 中执行程序化表单激活策略；宿主 Ex callback 只提供 target lookup、submit validation、default action 和非表单 click 传播；native EDIT/SELECT Ex callback 只提供 value/selection commit、composition phase/data、焦点转换后的 core 事件传播；native SELECT 键盘取消通过 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 返回 default-allowed；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
 4. 宿主继续提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
 
 因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
 history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/value/checked/disabled/validation-query/custom-validity/constraint-reflection/form-property、ID-addressable
 DOM relation/form collection、navigation/location-event/native-input/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click/
 submit-reset/invalid/report-validity/file-input/checkbox-radio-change/SELECT-input/change dispatch entry，及
-程序化 click 的 typed activation policy、native EDIT 的 beforeinput/input/dirty/change 事务策略、
+程序化 click 的 typed activation policy、native EDIT 的 beforeinput/input/dirty/change 事务策略与
+composition phase/preedit policy、
 native SELECT 的 commit input/change、focus-family 顺序、单选下拉事务策略与 typed key dispatch policy 已进入
-`positron_browser.dll`；native SELECT WM 控件真正默认动作、下拉窗口/视觉、composition 生命周期和其余 native
-form/input bridge 仍在迁移中且默认关闭；
+`positron_browser.dll`；native SELECT WM 控件真正默认动作、下拉窗口/视觉、native EDIT 的 WM_IME/SIP
+与原生文本 mutation，以及其余 native form/input bridge 仍在迁移中且默认关闭；
 不能将其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。
 
 ## ABI 与所有权原则

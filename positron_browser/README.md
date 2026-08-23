@@ -23,9 +23,12 @@ core propagation callback，并为每个 native EDIT 传入稳定的非零 sessi
 取消与 pending metadata，`PBrowser_ScriptSessionDispatchNativeEditInput()` 在宿主确认
 `PCore_TextInputSetValue()` 成功后派发 input 并记录 dirty，
 `PBrowser_ScriptSessionDispatchNativeEditBlur()` 只在 dirty 时派发一次 change，
+`PBrowser_ScriptSessionDispatchNativeEditComposition()` 处理 START/UPDATE/END 的
+compositionstart、insertCompositionText beforeinput、compositionupdate、compositionend
+顺序并把 UPDATE metadata 接到 native commit；
 `PBrowser_ScriptSessionResetNativeEditState()` 用于销毁/重建 native 控件时丢弃状态。
-最多跟踪 16 个 token，每个 inputType/data 字符串最多 255 字节；该入口不拥有 WM EDIT、
-文本 mutation、焦点窗口、composition 生命周期、SIP/IME 或 SELECT 控件。旧的独立 input/edit
+最多跟踪 16 个 token，每个 inputType/data/preedit 字符串最多 255 字节；这些入口不拥有
+WM EDIT/WM_IME、文本 mutation、焦点窗口、SIP/IME 候选词窗口或 SELECT 控件。旧的独立 input/edit
 注册入口继续兼容其他宿主。
 
 native SELECT 的产品提交入口是 additive 的
@@ -233,6 +236,15 @@ next612 在同一 bounded state 上增加 native SELECT 键盘入口：
 宿主。宿主继续拥有 WM COMBOBOX 的真正默认动作、Core selection mutation、下拉窗口和
 平台副作用。TEST1060 覆盖 ABI 的成功、取消、失败、reset 和注销；TEST118 在真实 WM6
 页面上验证未取消的 ArrowDown 同时移动原生控件和 Core selection。
+
+next613 在 native EDIT 的同一 bounded state 上增加
+`PBrowser_ScriptSessionDispatchNativeEditComposition()`：browser layer 校验稳定 token 与
+start/update/end phase，持有最后一段不超过 255 字节的 UTF-8 preedit，并同步派发
+`compositionstart`、不可取消的 `beforeinput(insertCompositionText)` →
+`compositionupdate` 以及 `compositionend`。START 的取消结果返回给宿主；更新后的
+beforeinput metadata 会与既有 native commit → input 事务衔接。宿主仍负责 WM_IME、SIP、
+原生文本 mutation 和平台副作用；TEST1061、TEST123–125 已在 WM6 设备门通过。该入口
+不把 OEM 候选词整词提交或 SIP 视觉体验伪装成兼容性保证。
 
 ## 其他项目如何调用
 

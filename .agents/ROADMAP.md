@@ -91,7 +91,17 @@ COMBOBOX 与 Core selection。窄定向设备门
 （TEST1060、118、999），Debug ARMV4I 构建和 C89 检查通过；本批没有新增人工门。
 Release ARMV4I 构建、仓库/文档 audit 也已通过。
 
-### 7. 建立真实页面驱动的兼容队列
+### 7. next613：native EDIT composition 生命周期迁移（已完成）
+
+next613 将 native EDIT 的 compositionstart/update/end 语义从宿主私有 generic dispatch 下沉到
+`positron_browser.dll`。新增 `PBrowser_ScriptSessionDispatchNativeEditComposition()`，由
+browser layer 校验稳定 token、phase 和 255 字节 preedit 上限，负责
+`compositionstart` → `beforeinput(insertCompositionText)` → `compositionupdate` →
+`compositionend` 顺序，并把 UPDATE 的 pending metadata 接入 next608 的 native commit→input
+事务；宿主仍负责 WM_IME、SIP/候选词窗口、原生文本 mutation 和平台副作用。TEST1061、123–125、
+999 的定向设备门已通过；TEST65 的真实候选词整词提交仍保留人工门。
+
+### 8. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -102,7 +112,7 @@ Release ARMV4I 构建、仓库/文档 audit 也已通过。
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 8. 安排新的全范围检查点
+### 9. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

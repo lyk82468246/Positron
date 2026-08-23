@@ -39,9 +39,13 @@ Duktape、Mbed TLS 等实现细节不暴露给调用者。
 bootstrap、DOM 只读（按 id 查询与 textContent 读取）、textContent 写入、attribute、input value、checked、
 disabled、表单属性（含 `name`/`action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`）与 submitter `formAction`/`formMethod`/`formEnctype` 反射、控件属性 `placeholder`/`autocomplete`/`inputMode`/`type`、约束属性（含 `pattern`/`minLength`/`maxLength` 反射）、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、
 `setCustomValidity()`/`validationMessage`（含固定英文内置 fallback，不做本地化）、form property（defaultValue/defaultChecked/selectedIndex）、navigation JSON 分发、同文档
-location/history 事件分发、event 回调分发、native input/composition、keyboard、focus-family、
-EDIT change/post-change input、click、programmatic `HTMLElement.click()`（file input 只到 typed click，系统 picker 仍由宿主 GUI 负责）、submit/reset、invalid/reportValidity、file-input input/change、checkbox/radio input/change、SELECT input/change 和 native SELECT key dispatch/default-allowed policy typed entry 已迁入；其余 form/input 适配、core 事件传播以及窗口、网络、控件和
-history/navigation side effect 仍由宿主提供。
+location/history 事件分发、event 回调分发、native input、EDIT composition lifecycle policy、
+keyboard、focus-family、EDIT change/post-change input、click、programmatic `HTMLElement.click()`
+（file input 只到 typed click，系统 picker 仍由宿主 GUI 负责）、submit/reset、invalid/reportValidity、
+file-input input/change、checkbox/radio input/change、SELECT input/change 和 native SELECT key
+dispatch/default-allowed policy typed entry 已迁入；WM_IME/SIP、候选词窗口、原生文本 mutation、
+其余 form/input 适配、core 事件传播以及窗口、网络、控件和 history/navigation side effect 仍由
+宿主提供。
 `reportValidity()` 只执行当前受支持的约束查询并派发可寻址控件的 `invalid` 事件；它不显示
 原生提示、不自动聚焦/滚动，也不提交表单。
 当前脚本 session 还提供受限的 `dataset`、FormData/Headers/Storage/DOM iterator、同步

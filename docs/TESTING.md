@@ -214,6 +214,32 @@ scripts\device_gate.bat -Candidate next612-native-select-key-final ^
 视觉、真实触摸、旋转、系统 picker 或 OEM SIP/IME 人工门；tracked `test_host.ini` 仍保持
 `javascript=0` 的默认自动 smoke 选择。
 
+### next613 native EDIT composition 自动门
+
+next613 将 native EDIT 的 composition lifecycle 从宿主私有 generic dispatch 迁入
+`positron_browser.dll` 的 `PBrowser_ScriptSessionDispatchNativeEditComposition()`。browser
+layer 负责稳定 token、START/UPDATE/END phase、有界最后 preedit 和
+`compositionstart` → `beforeinput(insertCompositionText)` → `compositionupdate` →
+`compositionend` 顺序；UPDATE 的 beforeinput metadata 继续接入 next608 的 native commit
+→ input 事务。宿主仍负责 WM_IME、SIP、候选词窗口、文本 mutation 和平台副作用。
+TEST1061 是不依赖窗口的 ABI 契约，覆盖成功/取消、重复 START、显式与隐式 END、adapter
+失败重试、reset 和 unregister；TEST123–125 保持真实 WM6 composition/InputEvent/KeyboardEvent
+元数据回归。TEST65 的实际 SIP 候选词整词提交仍是人工门，自动门不把 OEM 输入法体验写成
+兼容性保证。
+
+窄定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next613-native-edit-composition-final-r3 ^
+  -EnableJavaScript ^
+  -TestSelection "1061,123-125,999"
+```
+
+最终证据位于 `tmp/device-runs/20260823-195411-next613-native-edit-composition-final-r3/`：
+5/5 通过、零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。中途候选运行
+暴露了 composition update 未接入 pending input metadata，以及新增边界断言的测试状态复位
+错误；修订后未放宽断言并在 final-r3 通过。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

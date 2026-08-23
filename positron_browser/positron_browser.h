@@ -457,11 +457,33 @@ typedef struct PBrowserScriptNativeEditInputInfo {
 #define PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TARGETS 16
 #define PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES 256
 
+/* Product-owned native EDIT composition lifecycle. The host supplies the
+ * platform IME/SIP phase and borrowed UTF-8 preedit/result data; the browser
+ * layer owns the bounded active-composition state and dispatches the standard
+ * compositionstart -> beforeinput/compositionupdate -> compositionend
+ * ordering through the registered input callback. START is cancelable and
+ * writes whether the host may keep the platform composition active. UPDATE
+ * and END are non-cancelable; END may pass NULL to use the last accepted
+ * update. The browser layer does not own WM_IME, SIP windows, or text
+ * mutation. Strings are borrowed for the synchronous call only. */
+#define PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_START 1
+#define PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_UPDATE 2
+#define PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_END 3
+typedef struct PBrowserScriptNativeEditCompositionInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    int phase;
+    const char *data;
+} PBrowserScriptNativeEditCompositionInfo;
+
 /* Additive native EDIT adapter. The browser layer owns the bounded pending
- * beforeinput state, native-commit to input transition, dirty tracking and
- * blur/change ordering. The host supplies only the existing core event
- * propagation callbacks. This contract intentionally does not own WM EDIT,
- * IME/SIP, focus windows or text mutation. */
+ * beforeinput state, composition phase/preedit state, native-commit to input
+ * transition, dirty tracking and blur/change ordering. The host supplies only
+ * the existing core event propagation callbacks. This contract intentionally
+ * does not own WM EDIT/WM_IME, IME/SIP windows, focus windows or text
+ * mutation. */
 typedef struct PBrowserScriptNativeEditCallbacksEx {
     unsigned long size;
     void *pw;
@@ -974,6 +996,13 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterNativeEditCallbacksEx(
  * or 0 when a cancelable listener prevented that default. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
         HANDLE hSession, const PBrowserScriptNativeEditInputInfo *info,
+        int *out_default_allowed);
+/* Dispatch one native EDIT composition phase. START is cancelable and
+ * returns whether the host may keep the platform composition active; UPDATE
+ * and END are non-cancelable and preserve the browser-owned preedit state. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditComposition(
+        HANDLE hSession,
+        const PBrowserScriptNativeEditCompositionInfo *info,
         int *out_default_allowed);
 /* Notify the product layer that the native EDIT value was committed. This
  * dispatches input using the accepted beforeinput metadata, or the explicit
