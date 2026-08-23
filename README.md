@@ -135,6 +135,11 @@ next601 又为 `document.doctype` snapshot 补齐只读 `publicId`、`systemId`�
 HTML doctype 默认分别为 `""`、`""`、`null`，且不可重定义或删除；它不改变既有
 DocumentType 的关系、identity、namespace 或 baseURI。`TEST962–981` 定向门和
 `TEST802–981` 缩减回归均已通过。
+next602 又为既有 `document.doctype` snapshot 提供独立、稳定、冻结的空 `entities` 与
+`notations` `NamedNodeMap`：length 为 0，indexed/named/namespace lookup 为空，iterator 立即
+结束，mutation 不改变状态，并带有 `NamedNodeMap` branding。它不解析 DTD/实体、不创建节点、
+不增加 core ABI；实现 lazy 复用既有 map helper 以保持 browser heap 预算。`TEST982–998` 定向门
+与 `TEST802–998` 缩减回归均已通过（两次均保留 `TEST999`）。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

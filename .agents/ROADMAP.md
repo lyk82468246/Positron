@@ -592,6 +592,16 @@ document 或非法对象误判为后代。实现复用受控 relation bridge，�
 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、
 SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
 
+`next602` 作为单一批次在 browser 层为 `document.doctype` 增加独立、稳定、冻结的空
+`entities` 与 `notations` `NamedNodeMap` snapshot。两者支持有限的 `length`/indexed
+`item()`/named lookup/namespace lookup/iterator/branding 语义，但不解析 DTD/实体，mutation
+方法 fail closed，不创建节点，也不扩展 core ABI；实现 lazy 复用既有 `m10(null)` 以避免脚本堆
+重复占用。`TEST982-998,999` 在 `tmp/device-runs/20260823-122704-next602/` 通过 18/18，
+缩减回归 `TEST802-998,999` 在 `tmp/device-runs/20260823-122827-next602-regression/` 通过
+198/198；最终运行均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM
+snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工门，tracked `test_host.ini` 继续
+保持 `javascript=0`。
+
 ## 中期目标
 
 ### 浏览器 JavaScript 与 Web 平台

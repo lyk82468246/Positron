@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 981
+#define TEST_MAX_NUMBER 998
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -62559,6 +62559,218 @@ static BOOL test981_browser_doctype_subset_contract(void)
             "html|||true|true|true|true", error, sizeof(error));
 }
 
+/* TEST 982 - DocumentType exposes empty entities and notations maps. */
+static BOOL test982_browser_doctype_maps_method_types(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(typeof d.entities==='object')+'|'"
+        "+String(typeof d.notations==='object')+'|'"
+        "+String(d.entities!==null)+'|'+String(d.notations!==null);";
+    char error[256];
+    return test_browser_child_node_case(982, PROBE, "true|true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 983 - each empty map is stable while the two maps remain distinct. */
+static BOOL test983_browser_doctype_maps_identity(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,e=d.entities,n=d.notations;"
+        "document.getElementById('result').textContent="
+        "String(e===d.entities)+'|'+String(n===d.notations)+'|'"
+        "+String(e!==n);";
+    char error[256];
+    return test_browser_child_node_case(983, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 984 - empty maps carry NamedNodeMap branding. */
+static BOOL test984_browser_doctype_maps_brand(void)
+{
+    static const char PROBE[] =
+        "var e=document.doctype.entities;document.getElementById('result').textContent="
+        "String(e[Symbol.toStringTag])+'|'+Object.prototype.toString.call(e)+'|'"
+        "+e.toString();";
+    char error[256];
+    return test_browser_child_node_case(984, PROBE,
+            "NamedNodeMap|[object NamedNodeMap]|[object NamedNodeMap]", error,
+            sizeof(error));
+}
+
+/* TEST 985 - both maps are permanently empty and item(0) is null. */
+static BOOL test985_browser_doctype_maps_empty(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "d.entities.length+'|'+d.notations.length+'|'"
+        "+String(d.entities.item(0)===null)+'|'+String(d.notations.item(0)===null);";
+    char error[256];
+    return test_browser_child_node_case(985, PROBE, "0|0|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 986 - indexed lookup stays fail-closed for all empty-map inputs. */
+static BOOL test986_browser_doctype_maps_item_boundary(void)
+{
+    static const char PROBE[] =
+        "var e=document.doctype.entities;document.getElementById('result').textContent="
+        "String(e.item(-1)===null)+'|'+String(e.item('x')===null)+'|'"
+        "+String(e.item(undefined)===null);";
+    char error[256];
+    return test_browser_child_node_case(986, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 987 - named and namespace lookup cannot invent entity nodes. */
+static BOOL test987_browser_doctype_maps_named_lookup(void)
+{
+    static const char PROBE[] =
+        "var e=document.doctype.entities;document.getElementById('result').textContent="
+        "String(e.getNamedItem('html')===null)+'|'"
+        "+String(e.getNamedItemNS(null,'html')===null)+'|'"
+        "+String(e.getNamedItemNS('urn:x','x')===null);";
+    char error[256];
+    return test_browser_child_node_case(987, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 988 - the empty map iterator terminates without yielding a node. */
+static BOOL test988_browser_doctype_maps_iterator(void)
+{
+    static const char PROBE[] =
+        "var it=document.doctype.entities[Symbol.iterator](),x=it.next();"
+        "document.getElementById('result').textContent="
+        "String(x.done)+'|'+String(x.value===undefined);";
+    char error[256];
+    return test_browser_child_node_case(988, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 989 - frozen maps reject new indexed or named state. */
+static BOOL test989_browser_doctype_maps_frozen(void)
+{
+    static const char PROBE[] =
+        "var e=document.doctype.entities;try{e[0]='x';e.extra='x';}catch(x){}"
+        "document.getElementById('result').textContent=e.length+'|'"
+        "+String(Object.prototype.hasOwnProperty.call(e,'0'))+'|'"
+        "+String(Object.prototype.hasOwnProperty.call(e,'extra'));";
+    char error[256];
+    return test_browser_child_node_case(989, PROBE, "0|true|false", error,
+            sizeof(error));
+}
+
+/* TEST 990 - setNamedItem is a no-op for the read-only empty map. */
+static BOOL test990_browser_doctype_maps_set_named(void)
+{
+    static const char PROBE[] =
+        "var e=document.doctype.entities,r=e.setNamedItem({nodeType:2});"
+        "document.getElementById('result').textContent=String(r===null)+'|'"
+        "+e.length+'|'+String(e.getNamedItem('x')===null);";
+    char error[256];
+    return test_browser_child_node_case(990, PROBE, "true|0|true", error,
+            sizeof(error));
+}
+
+/* TEST 991 - setNamedItemNS is also a no-op and never creates a node. */
+static BOOL test991_browser_doctype_maps_set_named_ns(void)
+{
+    static const char PROBE[] =
+        "var e=document.doctype.entities,r=e.setNamedItemNS({nodeType:2,name:'x'});"
+        "document.getElementById('result').textContent=String(r===null)+'|'"
+        "+e.length+'|'+String(e.getNamedItemNS(null,'x')===null);";
+    char error[256];
+    return test_browser_child_node_case(991, PROBE, "true|0|true", error,
+            sizeof(error));
+}
+
+/* TEST 992 - removeNamedItem remains harmless when the map is empty. */
+static BOOL test992_browser_doctype_maps_remove_named(void)
+{
+    static const char PROBE[] =
+        "var e=document.doctype.entities,r=e.removeNamedItem('missing');"
+        "document.getElementById('result').textContent=String(r===null)+'|'"
+        "+String(e.length===0);";
+    char error[256];
+    return test_browser_child_node_case(992, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 993 - removeNamedItemNS remains harmless when the map is empty. */
+static BOOL test993_browser_doctype_maps_remove_named_ns(void)
+{
+    static const char PROBE[] =
+        "var e=document.doctype.entities,r=e.removeNamedItemNS('urn:x','missing');"
+        "document.getElementById('result').textContent=String(r===null)+'|'"
+        "+String(e.length===0);";
+    char error[256];
+    return test_browser_child_node_case(993, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 994 - DocumentType owns the two map properties while preserving names. */
+static BOOL test994_browser_doctype_maps_own_properties(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(Object.prototype.hasOwnProperty.call(d,'entities'))+'|'"
+        "+String(Object.prototype.hasOwnProperty.call(d,'notations'))+'|'"
+        "+d.name;";
+    char error[256];
+    return test_browser_child_node_case(994, PROBE, "true|true|html", error,
+            sizeof(error));
+}
+
+/* TEST 995 - adding empty maps does not alter doctype public identifiers. */
+static BOOL test995_browser_doctype_maps_metadata(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "d.publicId+'|'+d.systemId+'|'+String(d.internalSubset===null)+'|'"
+        "+String(d.entities.length===0)+'|'+String(d.notations.length===0);";
+    char error[256];
+    return test_browser_child_node_case(995, PROBE, "||true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 996 - map properties do not alter owner/root/parent relations. */
+static BOOL test996_browser_doctype_maps_relations(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.ownerDocument===document)+'|'+String(d.parentNode===document)+'|'"
+        "+String(d.getRootNode()===document)+'|'+String(document.contains(d));";
+    char error[256];
+    return test_browser_child_node_case(996, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 997 - map properties do not alter namespace or URL metadata. */
+static BOOL test997_browser_doctype_maps_namespace_url(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype;document.getElementById('result').textContent="
+        "String(d.namespaceURI===null)+'|'+String(d.prefix===null)+'|'"
+        "+String(d.baseURI===document.baseURI)+'|'+String(d.lookupPrefix('urn:x')===null);";
+    char error[256];
+    return test_browser_child_node_case(997, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 998 - the complete empty NamedNodeMap/DocumentType contract is bounded. */
+static BOOL test998_browser_doctype_maps_contract(void)
+{
+    static const char PROBE[] =
+        "var d=document.doctype,e=d.entities,n=d.notations;"
+        "document.getElementById('result').textContent="
+        "String(e!==n)+'|'+e.length+'|'+n.length+'|'"
+        "+String(e.item(0)===null)+'|'+String(n.getNamedItem('x')===null)+'|'"
+        "+String(d.contains(d))+'|'+String(document.contains(d));";
+    char error[384];
+    return test_browser_child_node_case(998, PROBE,
+            "true|0|0|true|true|true|true", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -66528,6 +66740,57 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 981: ok =
                 test981_browser_doctype_subset_contract();
+                break;
+        case 982: ok =
+                test982_browser_doctype_maps_method_types();
+                break;
+        case 983: ok =
+                test983_browser_doctype_maps_identity();
+                break;
+        case 984: ok =
+                test984_browser_doctype_maps_brand();
+                break;
+        case 985: ok =
+                test985_browser_doctype_maps_empty();
+                break;
+        case 986: ok =
+                test986_browser_doctype_maps_item_boundary();
+                break;
+        case 987: ok =
+                test987_browser_doctype_maps_named_lookup();
+                break;
+        case 988: ok =
+                test988_browser_doctype_maps_iterator();
+                break;
+        case 989: ok =
+                test989_browser_doctype_maps_frozen();
+                break;
+        case 990: ok =
+                test990_browser_doctype_maps_set_named();
+                break;
+        case 991: ok =
+                test991_browser_doctype_maps_set_named_ns();
+                break;
+        case 992: ok =
+                test992_browser_doctype_maps_remove_named();
+                break;
+        case 993: ok =
+                test993_browser_doctype_maps_remove_named_ns();
+                break;
+        case 994: ok =
+                test994_browser_doctype_maps_own_properties();
+                break;
+        case 995: ok =
+                test995_browser_doctype_maps_metadata();
+                break;
+        case 996: ok =
+                test996_browser_doctype_maps_relations();
+                break;
+        case 997: ok =
+                test997_browser_doctype_maps_namespace_url();
+                break;
+        case 998: ok =
+                test998_browser_doctype_maps_contract();
                 break;
         default: ok = FALSE; break;
         }

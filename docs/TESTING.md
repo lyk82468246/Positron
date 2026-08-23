@@ -427,6 +427,23 @@ doctype 缩减回归 `TEST802-981,999` 在 `tmp/device-runs/20260823-115645-next
 baseURI 边界；不实现 DTD/实体解析、节点 mutation 或 live collection，因此不新增人工页面验收。
 tracked `test_host.ini` 仍保持 `javascript=0`。
 
+`next602` 为 `document.doctype.entities` 与 `.notations` 增加空、冻结的 `NamedNodeMap` snapshot，
+自动断言为 `TEST982–998`：
+
+```bat
+scripts\device_gate.bat -Candidate next602 ^
+  -EnableJavaScript ^
+  -TestSelection "982-998,999"
+```
+
+定向证据为 `tmp/device-runs/20260823-122704-next602/`，18/18 通过；namespace/Attr/child-wrapper/
+doctype 缩减回归 `TEST802-998,999` 在 `tmp/device-runs/20260823-122827-next602-regression/` 通过
+198/198。两次最终运行均为零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。
+本批覆盖两张 map 的稳定 identity、branding、空集合、indexed/named/namespace lookup、iterator、
+冻结与 mutation fail-closed 边界；不实现 DTD/实体解析、节点 mutation 或 live collection，因此不新增
+人工页面验收。首次重复 bootstrap 的长回归堆上限问题已通过复用既有 helper 修复，未提高 heap 预算；
+tracked `test_host.ini` 仍保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

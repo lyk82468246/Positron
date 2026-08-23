@@ -742,6 +742,22 @@ HTML doctype 的值固定为空字符串、空字符串和 `null`。字段在 bo
 `tmp/device-runs/20260823-115645-next601-regression/`。本批不新增 core ABI、DTD/实体解析、
 节点 mutation 或人工视觉/触摸/SIP/picker/旋转/网络失败门。
 
+#### next602 的 DocumentType entities/notations 边界
+
+next602 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。既有
+`document.doctype` wrapper 现在提供两个独立、稳定、冻结的空 `NamedNodeMap` snapshot：
+`entities` 与 `notations`。它们的 `length` 为 0，固定 indexed slots、`item()`、named/namespace
+lookup 和 iterator 都 fail closed/立即结束，并暴露 `NamedNodeMap` 的有限 branding；
+`setNamedItem*()`/`removeNamedItem*()` 不改变状态。该边界不解析 DTD/实体、不创建 Attr/节点，
+也不把 parser token 偷渡进 core；browser bootstrap 通过 lazy helper 复用既有 `m10(null)`，
+避免重复实现造成 session heap 压力。
+
+`test_host.exe` 只提供 fixture、adapter 和 `TEST982–998` 自动断言；定向门 18/18、缩减回归
+198/198，证据位于 `tmp/device-runs/20260823-122704-next602/` 和
+`tmp/device-runs/20260823-122827-next602-regression/`。首次长回归发现重复 map bootstrap 会在
+TEST901 越过既有脚本堆上限，随后改为复用 helper 后通过，未提高预算。本批不新增 core ABI、
+DTD/实体解析、节点 mutation 或人工视觉/触摸/SIP/picker/旋转/网络失败门。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

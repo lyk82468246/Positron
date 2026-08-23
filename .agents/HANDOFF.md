@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next601（本批覆盖 `TEST962-981,999` 定向门和
-  `TEST802-981,999` namespace/Attr/child-wrapper/doctype 缩减回归；next600 的证据仍覆盖至 TEST961，最近一次完整自动
+- 最新已验证产品基线：next602（本批覆盖 `TEST982-998,999` 定向门和
+  `TEST802-998,999` namespace/Attr/child-wrapper/doctype 缩减回归；next601 的证据仍覆盖至 TEST981，最近一次完整自动
   基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
@@ -305,11 +305,11 @@
   API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面
   验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
-## 当前状态：next601
+## 当前状态：next602
 
-前六批单一 `next595`、`next596`、`next597`、`next598`、`next599`、`next600` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next601` 也
-已实现、构建并通过定向设备门及缩减相邻回归门，兼容子集沿用 next593 的已验证证据，其中本批 20 个自动断言使用
-`TEST962–981`
+前七批单一 `next595`、`next596`、`next597`、`next598`、`next599`、`next600`、`next601` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next602` 也
+已实现、构建并通过定向设备门及缩减相邻回归门，兼容子集沿用 next593 的已验证证据，其中本批 17 个自动断言使用
+`TEST982–998`
 编号，不再为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
@@ -478,6 +478,18 @@ TEST968 仅因测试期望多写一个分隔符失败，修正断言后在
 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、
 SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；tracked `test_host.ini` 仍保持
 `javascript=0`。
+
+`next602` 在既有 `document.doctype` snapshot 上增加了独立、稳定、冻结的空 `entities` 与
+`notations` `NamedNodeMap` 视图。两者的 `length` 为 0，固定 indexed slots 和 named/namespace
+lookup 均返回空结果，iterator 立即结束，mutation 方法 fail closed；它们带有
+`NamedNodeMap` branding，但不解析 DTD/实体，也不创建节点或扩展 `positron_core.dll` ABI。
+实现通过 lazy helper 复用既有 `m10(null)`，避免复制 bootstrap 实现和增加脚本堆压力。
+`TEST982-998,999` 在 `tmp/device-runs/20260823-122704-next602/` 通过 18/18，
+`TEST802-998,999` 在 `tmp/device-runs/20260823-122827-next602-regression/` 通过 198/198；
+两次最终运行均为零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。首次长回归曾在
+TEST901 暴露重复 map bootstrap 导致的脚本堆上限，已通过复用 helper 修复，未提高预算。
+本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，
+因此不新增人工页面验收；tracked `test_host.ini` 仍保持 `javascript=0`。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -3009,7 +3021,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next601 之后选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next602 之后选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
@@ -3022,7 +3034,7 @@ SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
   `TESTBENCH PASS` 的完整证据；达到累计阈值或触及高风险基础设施时再跑全量；
 - 若只改变脚本状态/API，默认不要求人工视觉或 SIP 验收；若触及真实窗口、布局、触摸、SIP、
   旋转、系统 picker 或网络失败反馈，必须单独列入人工门；
-- TEST981/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/540/549/642–981/999` 缩减选择；
+- TEST998/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/540/549/642–998/999` 缩减选择；
 - 只更新本批职责内的 handoff/限制/路线图，保持 tracked `test_host.ini` 的默认
   `javascript=0` 不变，并提交、推送本批 tracked 文件。

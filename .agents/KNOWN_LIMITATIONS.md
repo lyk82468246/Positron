@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next601）
+## 当前状态（next602）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -256,6 +256,17 @@ DocumentType 的 identity、关系、namespace 或 URL 元数据。`TEST962–98
 `tmp/device-runs/20260823-115645-next601-regression/`。本批只涉及同步脚本 API/DOM snapshot，
 不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
+next602 在同一 `DocumentType` snapshot 上提供独立、稳定、冻结的空 `entities` 与 `notations`
+`NamedNodeMap`。两者的 `length` 为 0，固定 indexed slots、`item()`、named/namespace lookup
+和 iterator 均保持空结果，`setNamedItem*()`/`removeNamedItem*()` 不创建或删除状态；map 具有
+`NamedNodeMap` branding，但不解析 DTD/实体、不生成 Attr 节点，也不新增 core ABI。实现 lazy
+复用既有 `m10(null)`，以保持 608 KiB browser session heap ceiling 不变。`TEST982–998,999` 与
+`TEST802–998,999` 最终分别通过 18/18、198/198，证据位于
+`tmp/device-runs/20260823-122704-next602/` 和
+`tmp/device-runs/20260823-122827-next602-regression/`；首次重复 bootstrap 的长回归堆上限探针已
+通过复用 helper 修复，未提高预算。本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、
+picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -395,7 +406,9 @@ DocumentType 的 identity、关系、namespace 或 URL 元数据。`TEST962–98
   暴露 `getAttributeNames()`、`hasAttributes()`、受限 `NamedNodeMap` 和 `Attr`。属性名保持 parser
   顺序；`Attr.value`/`nodeValue` 复用已有同步 attribute mutation，map/Attr identity 在 session
   内稳定，`setNamedItem()`/`removeNamedItem()` 对跨 owner 或缺失项 fail closed。为了适配 WM6
-  脚本堆，indexed access 只保证 0–7；NamedNodeMap 仍不提供 namespace/localName/prefix lookup、
+  脚本堆，indexed access 只保证 0–7；next602 的 doctype `entities`/`notations` 是冻结的空
+  NamedNodeMap snapshot，其 indexed slot 固定为空，lookup 和 mutation fail closed；普通
+  NamedNodeMap 仍不提供 namespace/localName/prefix lookup、
   通用节点创建、live collection 或完整 Web IDL descriptor 语义。bootstrap 目前为十个 IIFE，
   browser session heap ceiling 为 576 KiB，独立 `positron_script` 默认堆仍为 512 KiB。
 
