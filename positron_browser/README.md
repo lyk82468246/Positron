@@ -136,6 +136,15 @@ wrapper identity 保持不变，`NodeList` 保留无 named projection 的边界�
 live 更新，也不引入节点创建、mutation 或新的 core ABI。对应 `TEST1018–1035` 与拆开特殊
 `TEST999` 的 `TEST802–998,1000–1035` 缩减回归均已通过自动设备门，本批不需要人工页面验收。
 
+next605 又为 `form.elements` 的重复 `id`/`name` 增加有限的 `RadioNodeList` snapshot：唯一匹配
+仍返回 element，重复匹配返回可迭代、只读的分组 wrapper；`value` getter 读取当前选中 radio，
+setter 只选择同值控件。直接属性不可枚举、不可写、不可配置，并与 `namedItem()` 复用 session
+内缓存 identity；缺失名称返回 `null`，普通 HTMLCollection 仍返回首匹配 element。该边界不
+实现 live `HTMLFormControlsCollection`、fieldset/label 关联、节点创建或通用 mutation。
+对应 `TEST1036–1053` 定向门和 `TEST802–998,1000–1053` 缩减回归均已通过自动设备门；为
+容纳新增 bootstrap，browser session heap ceiling 为 624 KiB，独立 `positron_script` 默认堆仍为
+512 KiB。本批不需要人工页面验收。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -231,7 +240,7 @@ no-op，以及由宿主显式 microtask pump 驱动的 bounded Promise（含 `th
 Request/Response 不联网，MessagePort/BroadcastChannel/timeout/Promise 需宿主显式 pump，
 PerformanceObserver 只读取 observe 时已有 entries，不等于完整 DOM、fetch/stream、真实窗口
 生命周期或后台浏览器调度。Promise handler 和组合器输入均限制为 64 项。公共 bootstrap 现在按
-十三个顺序 IIFE 评估以保持脚本 source 上限；browser session heap ceiling 为 608 KiB，独立
+十三个顺序 IIFE 评估以保持脚本 source 上限；browser session heap ceiling 为 624 KiB，独立
 `positron_script` context 的默认 heap 仍为 512 KiB。
 
 DOM relation callback 是独立的 size-tagged ABI：调用者提供 `get_relation`，按元素 id 返回

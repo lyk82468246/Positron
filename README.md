@@ -150,6 +150,13 @@ next604 又为静态 `HTMLCollection` snapshot 增加只读、不可枚举的 `i
 `NodeList` 不获得这组 HTMLCollection named projection。该能力不引入 live collection、节点
 创建、mutation 或新的 core ABI。`TEST1018–1035` 定向门与拆开 `TEST999` 的
 `TEST802–998,1000–1035` 缩减回归均已通过，本批不需要人工页面验收。
+next605 又为 `form.elements` 的重复 `id`/`name` 增加有限的 `RadioNodeList` snapshot：唯一匹配
+仍返回原 element，重复匹配返回可迭代、只读的 `RadioNodeList`，其 `value` 只读当前选中 radio、
+写入匹配值只选择对应控件；普通 HTMLCollection 继续保留首匹配 `namedItem()`。该能力不引入 live
+`HTMLFormControlsCollection`、fieldset/label 语义、节点创建、mutation 或新的 core ABI。
+`TEST1036–1053` 定向门和拆开 `TEST999` 的 `TEST802–998,1000–1053` 缩减回归均已通过；
+为容纳新增 bootstrap，browser session heap ceiling 提升到 624 KiB，独立 `positron_script`
+默认堆仍为 512 KiB。本批不需要人工页面验收。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node
@@ -159,7 +166,7 @@ next604 又为静态 `HTMLCollection` snapshot 增加只读、不可枚举的 `i
 `firstChild`/`lastChild`/`hasChildNodes()` 和稳定 wrapper identity；next583 又补充受控
 `isSameNode()`/`isEqualNode()`、`getRootNode()`、文档节点元数据、位置常量以及同一快照树内的
 `compareDocumentPosition()`/`contains()`。这些方法只读、session-scoped 且对未知对象 fail closed；
-它不创建通用 DOM 节点，也不写回文本节点。浏览器 bootstrap 使用十三个顺序 IIFE 和 608 KiB
+它不创建通用 DOM 节点，也不写回文本节点。浏览器 bootstrap 使用十三个顺序 IIFE 和 624 KiB
 session heap ceiling；独立
 `positron_script.dll` 默认堆仍为
 512 KiB。它不是第二套引擎。

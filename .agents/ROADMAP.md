@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next604
+### 当前短期状态：next605
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -621,6 +621,18 @@ snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工
 通过 234/234；两次最终运行均无 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本
 API/DOM snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工门，tracked `test_host.ini`
 继续保持 `javascript=0`。
+
+`next605` 作为单一批次为 `form.elements` 的重复 `id`/`name` 增加有限的 `RadioNodeList`
+snapshot：唯一匹配仍返回 element，重复匹配提供 `item()`、有限 iterator、branding 和当前
+checked radio 的 `value` getter/按值 setter；direct named property 与 `namedItem()` 复用
+session 内缓存 identity。普通 HTMLCollection 继续使用首匹配语义，缺失名称返回 `null`；不
+实现 live `HTMLFormControlsCollection`、fieldset/label 关联、节点创建或通用 mutation。
+`TEST1036-1053,999` 在 `tmp/device-runs/20260823-142518-next605-r2/` 通过 19/19，缩减回归
+`TEST802-998,1000-1053,999` 在 `tmp/device-runs/20260823-142642-next605-regression-r2/`
+通过 252/252。首次 608 KiB 回归在 TEST901 触发内存上限，browser session ceiling 已调为
+624 KiB；独立 `positron_script` 默认堆仍为 512 KiB。两次最终运行均无 ERROR/FAIL 且
+`TESTBENCH PASS` 唯一，本批不新增人工页面验收，tracked `test_host.ini` 继续保持
+`javascript=0`。
 
 ## 中期目标
 

@@ -789,6 +789,28 @@ bridge，也不提供通用 DOM mutation 或 live collection。
 `TESTBENCH PASS` 且 `test13_route_ok=True`；本批只涉及同步 snapshot API，不新增视觉、触摸、
 SIP、picker、旋转或网络失败人工门。
 
+#### next605 的 form.elements RadioNodeList 边界
+
+next605 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。只有
+`form.elements` 这个已标记的 HTMLCollection 对重复 `id`/`name` 做分组：唯一匹配仍返回原
+element，多个匹配返回静态 `RadioNodeList` snapshot；`item()`、数组索引、有限迭代器和
+`Symbol.toStringTag` 复用既有 collection decorator，`value` getter 读取当前已选 radio，
+setter 只选择同值 radio。缺失名称返回 `null`，普通 HTMLCollection 仍然使用首匹配
+`namedItem()`，因此该特殊分组不会泄漏到其他 collection 或 NodeList。
+
+RadioNodeList 的缓存只在当前脚本 session 内按控件 token 复用，direct named property 是
+不可枚举、不可写、不可配置的 snapshot；不承诺 live `HTMLFormControlsCollection`、fieldset/
+label 关联、节点创建、通用 mutation 或跨 session identity。新增 bootstrap 使 browser session
+heap ceiling 从 608 KiB 调整到 624 KiB；独立 `positron_script` 的 512 KiB 默认堆、公共 C ABI、
+所有权和宿主职责不变。`test_host.exe` 只提供 fixture 与断言。
+
+`TEST1036–1053,999` 定向门通过 19/19，`TEST802–998,1000–1053,999` 缩减回归通过
+252/252，证据分别位于 `tmp/device-runs/20260823-142518-next605-r2/` 和
+`tmp/device-runs/20260823-142642-next605-regression-r2/`；两次最终运行均无 ERROR/FAIL、
+唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。中途首次回归在 608 KiB 下由 TEST901 暴露
+堆上限，单测确认 624 KiB 是本批的最小通过调整；未放宽断言。本批只涉及同步脚本 API/DOM
+snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工门。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

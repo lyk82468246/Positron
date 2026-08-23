@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1035
+#define TEST_MAX_NUMBER 1053
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -56692,6 +56692,33 @@ static BOOL test_browser_tree_case(int number, const char *probe,
     return ok;
 }
 
+/* Shared fixture for the bounded form.elements RadioNodeList contract. */
+static BOOL test_browser_form_collection_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='form'><input id='first' type='radio' "
+        "name='choice' value='one'><input id='second' type='radio' "
+        "name='choice' value='two'><input id='solo' name='solo' "
+        "value='solo'></form><p id='result'>idle</p></body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected,
+            error, error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Bounded form collection fixture passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Bounded form collection fixture failed.");
+    }
+    return ok;
+}
+
 /* TEST 542 - element/node/local names expose the parser's tag identity. */
 static BOOL test542_browser_node_names(void)
 {
@@ -63229,6 +63256,231 @@ static BOOL test1035_browser_collection_named_contract(void)
             sizeof(error));
 }
 
+/* TEST 1036 - form control groups expose their bounded collection tags. */
+static BOOL test1036_browser_form_radio_collection_tags(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('form').elements,g=c.namedItem('choice');"
+        "document.getElementById('result').textContent=c.length+'|'"
+        "+c[Symbol.toStringTag]+'|'+g.length+'|'+g[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_form_collection_case(1036, PROBE,
+            "3|HTMLCollection|2|RadioNodeList", error, sizeof(error));
+}
+
+/* TEST 1037 - a unique control name still returns its element wrapper. */
+static BOOL test1037_browser_form_unique_named_control(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('form').elements,e=document.getElementById('solo');"
+        "document.getElementById('result').textContent="
+        "String(c.namedItem('solo')===e)+'|'+String(c.solo===c.namedItem('solo'));";
+    char error[256];
+    return test_browser_form_collection_case(1037, PROBE,
+            "true|true", error, sizeof(error));
+}
+
+/* TEST 1038 - missing form names fail closed without creating a property. */
+static BOOL test1038_browser_form_missing_named_control(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('form').elements;"
+        "document.getElementById('result').textContent="
+        "String(c.namedItem('missing')===null)+'|'"
+        "+String(c.missing===undefined);";
+    char error[256];
+    return test_browser_form_collection_case(1038, PROBE,
+            "true|true", error, sizeof(error));
+}
+
+/* TEST 1039 - duplicate form names share one cached RadioNodeList wrapper. */
+static BOOL test1039_browser_form_radio_group_identity(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('form').elements,g=c.namedItem('choice');"
+        "document.getElementById('result').textContent=g.length+'|'"
+        "+g[0].id+'|'+g[1].id+'|'+String(c.choice===g);";
+    char error[256];
+    return test_browser_form_collection_case(1039, PROBE,
+            "2|first|second|true", error, sizeof(error));
+}
+
+/* TEST 1040 - RadioNodeList item() keeps integer bounds and null misses. */
+static BOOL test1040_browser_form_radio_group_item_bounds(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice;"
+        "document.getElementById('result').textContent="
+        "String(g.item(0)===g[0])+'|'+String(g.item(2)===null)+'|'"
+        "+String(g.item(-1)===null);";
+    char error[256];
+    return test_browser_form_collection_case(1040, PROBE,
+            "true|true|true", error, sizeof(error));
+}
+
+/* TEST 1041 - RadioNodeList inherits the read-only array-like helpers. */
+static BOOL test1041_browser_form_radio_group_methods(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice;"
+        "document.getElementById('result').textContent=typeof g.forEach+'|'"
+        "+typeof g.keys+'|'+typeof g.values+'|'+typeof g.entries+'|'"
+        "+typeof g[Symbol.iterator];";
+    char error[256];
+    return test_browser_form_collection_case(1041, PROBE,
+            "function|function|function|function|function", error,
+            sizeof(error));
+}
+
+/* TEST 1042 - forEach visits the radio snapshot in document order. */
+static BOOL test1042_browser_form_radio_group_for_each(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice,s='';"
+        "g.forEach(function(e){s+=e.id+'|';});"
+        "document.getElementById('result').textContent=s;";
+    char error[256];
+    return test_browser_form_collection_case(1042, PROBE,
+            "first|second|", error, sizeof(error));
+}
+
+/* TEST 1043 - keys() and entries() expose stable indexes and wrappers. */
+static BOOL test1043_browser_form_radio_group_keys_entries(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice,k=g.keys().next(),"
+        "e=g.entries().next().value;document.getElementById('result').textContent="
+        "k.value+'|'+e[0]+'|'+e[1].id;";
+    char error[256];
+    return test_browser_form_collection_case(1043, PROBE,
+            "0|0|first", error, sizeof(error));
+}
+
+/* TEST 1044 - values() and Symbol.iterator reuse the existing wrappers. */
+static BOOL test1044_browser_form_radio_group_values_iterator(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice;"
+        "document.getElementById('result').textContent="
+        "String(g.values().next().value===g[0])+'|'"
+        "+String(g[Symbol.iterator]().next().value===g[0]);";
+    char error[256];
+    return test_browser_form_collection_case(1044, PROBE,
+            "true|true", error, sizeof(error));
+}
+
+/* TEST 1045 - an initially unchecked group reports the empty value. */
+static BOOL test1045_browser_form_radio_group_initial_value(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice;"
+        "document.getElementById('result').textContent=String(g.value==='')+'|'"
+        "+String(!g[0].checked&&!g[1].checked);";
+    char error[256];
+    return test_browser_form_collection_case(1045, PROBE,
+            "true|true", error, sizeof(error));
+}
+
+/* TEST 1046 - assigning a matching value checks that radio. */
+static BOOL test1046_browser_form_radio_group_value_setter(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice;g.value='two';"
+        "document.getElementById('result').textContent=g.value+'|'"
+        "+String(g[1].checked)+'|'+String(g[0].checked);";
+    char error[256];
+    return test_browser_form_collection_case(1046, PROBE,
+            "two|true|false", error, sizeof(error));
+}
+
+/* TEST 1047 - value reads the first currently checked radio. */
+static BOOL test1047_browser_form_radio_group_checked_read(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice;g[0].checked=true;"
+        "document.getElementById('result').textContent=g.value+'|'"
+        "+String(g[0].checked);";
+    char error[256];
+    return test_browser_form_collection_case(1047, PROBE,
+            "one|true", error, sizeof(error));
+}
+
+/* TEST 1048 - value reflects an explicit checked-state change. */
+static BOOL test1048_browser_form_radio_group_live_read(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice;g[0].checked=false;"
+        "g[1].checked=true;document.getElementById('result').textContent=g.value+'|'"
+        "+String(g[0].checked)+'|'+String(g[1].checked);";
+    char error[256];
+    return test_browser_form_collection_case(1048, PROBE,
+            "two|false|true", error, sizeof(error));
+}
+
+/* TEST 1049 - assigning an unmatched value leaves the checked radio alone. */
+static BOOL test1049_browser_form_radio_group_unmatched_setter(void)
+{
+    static const char PROBE[] =
+        "var g=document.getElementById('form').elements.choice;g[0].checked=true;"
+        "g.value='missing';document.getElementById('result').textContent=g.value+'|'"
+        "+String(g[0].checked);";
+    char error[256];
+    return test_browser_form_collection_case(1049, PROBE,
+            "one|true", error, sizeof(error));
+}
+
+/* TEST 1050 - group properties are non-enumerable, read-only snapshots. */
+static BOOL test1050_browser_form_radio_group_descriptor(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('form').elements,d="
+        "Object.getOwnPropertyDescriptor(c,'choice');"
+        "document.getElementById('result').textContent=String(d.enumerable)+'|'"
+        "+String(d.writable)+'|'+String(d.configurable)+'|'"
+        "+String(d.value===c.choice);";
+    char error[256];
+    return test_browser_form_collection_case(1050, PROBE,
+            "false|false|false|true", error, sizeof(error));
+}
+
+/* TEST 1051 - group property assignment/deletion cannot alter namedItem(). */
+static BOOL test1051_browser_form_radio_group_read_only(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('form').elements,g=c.choice,deleted=false;"
+        "try{c.choice=null;}catch(x){}try{deleted=delete c.choice;}catch(y){}"
+        "document.getElementById('result').textContent=String(c.choice===g)+'|'"
+        "+String(deleted)+'|'+String(c.namedItem('choice')===g);";
+    char error[256];
+    return test_browser_form_collection_case(1051, PROBE,
+            "true|false|true", error, sizeof(error));
+}
+
+/* TEST 1052 - ordinary HTMLCollections retain first-match namedItem semantics. */
+static BOOL test1052_browser_form_radio_ordinary_collection(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementsByTagName('input'),x=c.namedItem('choice');"
+        "document.getElementById('result').textContent=c.length+'|'"
+        "+x.id+'|'+String(x===c[0])+'|'+String(c.choice===c[0]);";
+    char error[256];
+    return test_browser_form_collection_case(1052, PROBE,
+            "3|first|true|true", error, sizeof(error));
+}
+
+/* TEST 1053 - the complete form collection contract remains bounded. */
+static BOOL test1053_browser_form_collection_contract(void)
+{
+    static const char PROBE[] =
+        "var c=document.getElementById('form').elements,g=c.choice;"
+        "document.getElementById('result').textContent=c.length+'|'"
+        "+g.length+'|'+g.value+'|'+c.namedItem('solo').id+'|'"
+        "+String(c.namedItem('missing')===null)+'|'+g[Symbol.toStringTag];";
+    char error[256];
+    return test_browser_form_collection_case(1053, PROBE,
+            "3|2||solo|true|RadioNodeList", error, sizeof(error));
+}
+
 /* TEST 389 - listener options once/passive/capture. */
 static BOOL test389_browser_event_options(void)
 {
@@ -67357,6 +67609,60 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 1035: ok =
                 test1035_browser_collection_named_contract();
+                break;
+        case 1036: ok =
+                test1036_browser_form_radio_collection_tags();
+                break;
+        case 1037: ok =
+                test1037_browser_form_unique_named_control();
+                break;
+        case 1038: ok =
+                test1038_browser_form_missing_named_control();
+                break;
+        case 1039: ok =
+                test1039_browser_form_radio_group_identity();
+                break;
+        case 1040: ok =
+                test1040_browser_form_radio_group_item_bounds();
+                break;
+        case 1041: ok =
+                test1041_browser_form_radio_group_methods();
+                break;
+        case 1042: ok =
+                test1042_browser_form_radio_group_for_each();
+                break;
+        case 1043: ok =
+                test1043_browser_form_radio_group_keys_entries();
+                break;
+        case 1044: ok =
+                test1044_browser_form_radio_group_values_iterator();
+                break;
+        case 1045: ok =
+                test1045_browser_form_radio_group_initial_value();
+                break;
+        case 1046: ok =
+                test1046_browser_form_radio_group_value_setter();
+                break;
+        case 1047: ok =
+                test1047_browser_form_radio_group_checked_read();
+                break;
+        case 1048: ok =
+                test1048_browser_form_radio_group_live_read();
+                break;
+        case 1049: ok =
+                test1049_browser_form_radio_group_unmatched_setter();
+                break;
+        case 1050: ok =
+                test1050_browser_form_radio_group_descriptor();
+                break;
+        case 1051: ok =
+                test1051_browser_form_radio_group_read_only();
+                break;
+        case 1052: ok =
+                test1052_browser_form_radio_ordinary_collection();
+                break;
+        case 1053: ok =
+                test1053_browser_form_collection_contract();
                 break;
         default: ok = FALSE; break;
         }

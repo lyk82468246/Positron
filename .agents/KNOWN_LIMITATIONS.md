@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next604）
+## 当前状态（next605）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -285,6 +285,17 @@ next604 在既有静态 `HTMLCollection` snapshot 上提供只读、不可枚举
 `tmp/device-runs/20260823-134557-next604-regression/`；本批只涉及同步脚本 API/DOM snapshot，
 不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
+next605 在 `form.elements` 上增加有限的重复 `id`/`name` 分组：唯一匹配仍返回 element，
+重复匹配返回静态 `RadioNodeList` snapshot，带 `item()`、有限 iterator、`Symbol.toStringTag`
+以及读取当前 checked radio 的 `value` getter/按值选择 setter。direct named property 与
+`namedItem()` 在当前 session 内复用缓存 identity；缺失名称返回 `null`，普通 HTMLCollection
+仍返回首匹配 element。该能力不实现 live `HTMLFormControlsCollection`、fieldset/label 关联、
+节点创建或通用 mutation。`TEST1036–1053,999` 与 `TEST802–998,1000–1053,999` 最终分别
+通过 19/19、252/252，证据位于 `tmp/device-runs/20260823-142518-next605-r2/` 和
+`tmp/device-runs/20260823-142642-next605-regression-r2/`；为容纳 bootstrap 增量，当前 browser
+session heap ceiling 为 624 KiB，独立 script 默认堆仍为 512 KiB。本批只涉及同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -298,7 +309,8 @@ next604 在既有静态 `HTMLCollection` snapshot 上提供只读、不可枚举
   当前 document 的同步 snapshot；与 repeated `getElementById()` identity 一样，不创建通用 DOM tree，
  也不提供 live 更新；next588 的 `getElementsBy*()` 与 next590 的 named collection projection
  同样只返回当前 session 的静态快照；next604 的 HTMLCollection `id`/`name` 直达属性也只在
- 创建 snapshot 时定义，且不可枚举、不可写、不可删除，NodeList 不提供该投影；next591 的 `links`/`anchors` 与 next592 的 namespace
+ 创建 snapshot 时定义，且不可枚举、不可写、不可删除，NodeList 不提供该投影；next605 的 form
+ `RadioNodeList` 也只在 `form.elements` 重名 snapshot 中产生，不能视为 live 控件集合；next591 的 `links`/`anchors` 与 next592 的 namespace
   collection 也只过滤当前快照，next593 的 namespace attribute lookup、next594 的
   `NamedNodeMap.getNamedItemNS()` 与 next595 的 `lookupPrefix()` 也只读取当前 owner/已知
   namespace 映射，不解析完整 namespace declarations；next596 的 element namespace mutation

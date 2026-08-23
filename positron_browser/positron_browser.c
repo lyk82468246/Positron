@@ -18,7 +18,7 @@
  * browser sessions; independent PScript contexts remain at their 512 KiB
  * default. */
 #define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 96UL * 1024UL)
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 112UL * 1024UL)
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -2725,11 +2725,14 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(!owner||typeof g.__pcoreGetNodeRelation!=='function'){return null;}"
         "try{value=g.__pcoreGetNodeRelation({id:owner.__id,relation:kind,index:"
         "index===undefined?0:index});}catch(relationError){return null;}return value;}"
-        "function list9(a,named){var i;Object.defineProperty(a,'item',{value:function(index){"
+        "function list9(a,named,formControls){var i;Object.defineProperty(a,'item',{value:function(index){"
         "var n=Number(index);return n===n&&n>=0&&n===Math.floor(n)&&n<a.length?a[n]:null;},"
-        "writable:false,configurable:false,enumerable:false});if(named){Object.defineProperty(a,'namedItem',{value:function(name){var s=String(name);"
-        "var j;for(j=0;j<this.length;j++){if(this[j]&&(this[j].id===s||this[j].name===s)){"
-        "return this[j];}}return null;},writable:false,configurable:false,enumerable:false});}"
+        "writable:false,configurable:false,enumerable:false});if(formControls){Object.defineProperty(a,"
+        "'__pcoreFormControls13',{value:true,writable:false,configurable:false,enumerable:false});}"
+        "if(named){Object.defineProperty(a,'namedItem',{value:function(name){var s=String(name);"
+        "var j;if(this.__pcoreFormControls13&&typeof g.__pcoreFormNamed13==='function'){"
+        "return g.__pcoreFormNamed13(this,s);}for(j=0;j<this.length;j++){if(this[j]&&(this[j].id===s||"
+        "this[j].name===s)){return this[j];}}return null;},writable:false,configurable:false,enumerable:false});}"
         "if(S&&S.iterator&&a[S.iterator]===undefined&&typeof Array.prototype[S.iterator]==='function'){Object.defineProperty(a,S.iterator,{"
         "value:Array.prototype[S.iterator],writable:false,configurable:false});}"
         "if(typeof g.__pcoreDecorateCollection13==='function'){return g.__pcoreDecorateCollection13(a,"
@@ -2832,7 +2835,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "Object.defineProperty(PElement.prototype,'form',{get:function(){var t=this.localName;if(t!=='input'&&t!=='select'&&t!=='textarea'&&t!=='button'){return null;}var id=relation9(this,8,0);return typeof id==='string'?wrap9(id):null;},enumerable:true});"
         "Object.defineProperty(PElement.prototype,'elements',{get:function(){var a=[];var n;var i;var id;"
         "if(this.localName!=='form'){return list9(a,true);}n=Number(relation9(this,9,0));if(!(n>=0&&n===Math.floor(n))){n=0;}"
-        "for(i=0;i<n;i++){id=relation9(this,10,i);if(typeof id==='string'&&id!==''){a.push(wrap9(id));}}return list9(a,true);},enumerable:true});"
+        "for(i=0;i<n;i++){id=relation9(this,10,i);if(typeof id==='string'&&id!==''){a.push(wrap9(id));}}return list9(a,true,true);},enumerable:true});"
         "var oldGet9=doc.getElementById;doc.getElementById=function(id){var e=oldGet9.call(this,id);return e?wrap9(String(id)):null;};"
         "})(this);";
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART10[] =
@@ -3172,6 +3175,25 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "writable:false,configurable:false});}return it;}"
         "function define13(a,name,value){if(typeof a[name]!=='function'){Object.defineProperty(a,name,{"
         "value:value,writable:false,configurable:false,enumerable:false});}}"
+        "function radio13(a){var r=a.slice(0);Object.defineProperty(r,'value',{get:function(){"
+        "var i;for(i=0;i<this.length;i++){if(this[i]&&String(this[i].type).toLowerCase()==='radio'&&"
+        "this[i].checked){return String(this[i].value||'');}}return '';},set:function(value){"
+        "var s=String(value),i;for(i=0;i<this.length;i++){if(this[i]&&String(this[i].type).toLowerCase()==='radio'&&"
+        "String(this[i].value||'')===s){this[i].checked=true;return;}}},enumerable:true});"
+        "return decorate13(r,'RadioNodeList',false);}"
+        "function formNamed13(a,s){var out=[];var i;var e;var key='';var cache;var r;"
+        "for(i=0;i<a.length;i++){e=a[i];if(e&&(e.id===s||e.name===s)){out.push(e);"
+        "key+=String(e.__id)+';';}}if(out.length===0){return null;}if(out.length===1){return out[0];}"
+        "cache=a.__pcoreFormRadioCache13;if(!cache){cache={};Object.defineProperty(a,'__pcoreFormRadioCache13',"
+        "{value:cache,writable:false,configurable:false,enumerable:false});}r=cache[s];"
+        "if(r&&r.__pcoreRadioSignature13===key){return r;}r=radio13(out);Object.defineProperty(r,"
+        "'__pcoreRadioSignature13',{value:key,writable:false,configurable:false,enumerable:false});"
+        "cache[s]=r;return r;}"
+        "function defineFormNamed13(a,s){var v;if(typeof s!=='string'||s===''||a[s]!==undefined){return;}"
+        "v=formNamed13(a,s);if(v===null){return;}try{Object.defineProperty(a,s,{value:v,writable:false,"
+        "configurable:false,enumerable:false});}catch(formNameError){}}"
+        "function decorateForm13(a){var i;var e;for(i=0;i<a.length;i++){e=a[i];if(!e){continue;}"
+        "defineFormNamed13(a,e.id);defineFormNamed13(a,e.name);}return a;}"
         "function decorate13(a,tag,named){var i;var n;var s;"
         "if(!a||typeof a.length!=='number'){return a;}"
         "if(typeof a.item!=='function'){define13(a,'item',function(index){var x=Number(index);"
@@ -3186,15 +3208,16 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "define13(a,'entries',function(){return iterator13(this,'entries');});"
         "if(S&&S.iterator&&typeof a[S.iterator]!=='function'){Object.defineProperty(a,S.iterator,{"
         "value:function(){return iterator13(this,'values');},writable:false,configurable:false});}"
-        "if(named){for(i=0;i<a.length;i++){n=a[i];if(!n){continue;}s=n.id;"
+        "if(named&&!a.__pcoreFormControls13){for(i=0;i<a.length;i++){n=a[i];if(!n){continue;}s=n.id;"
         "if(typeof s==='string'&&s!==''&&a[s]===undefined){try{Object.defineProperty(a,s,{"
         "value:n,writable:false,configurable:false,enumerable:false});}catch(idError){}}"
         "s=n.name;if(typeof s==='string'&&s!==''&&a[s]===undefined){try{Object.defineProperty(a,s,{"
         "value:n,writable:false,configurable:false,enumerable:false});}catch(nameError){}}}}"
+        "if(named&&a.__pcoreFormControls13){decorateForm13(a);}"
         "if(S&&S.toStringTag){try{if(a[S.toStringTag]!==tag){Object.defineProperty(a,S.toStringTag,{"
         "value:tag,writable:false,configurable:true,enumerable:false});}}catch(tagError){}}"
         "return a;}"
-        "g.__pcoreDecorateCollection13=decorate13;"
+        "g.__pcoreDecorateCollection13=decorate13;g.__pcoreFormNamed13=formNamed13;"
         "})(this);";
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 {

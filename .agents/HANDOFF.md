@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next604（本批覆盖 `TEST1018-1035,999` 定向门和
-  `TEST802-998,1000-1035,999` namespace/Attr/child-wrapper/doctype/map/collection 缩减回归；next603 的证据仍覆盖至 TEST1017，最近一次完整自动
+- 最新已验证产品基线：next605（本批覆盖 `TEST1036-1053,999` 定向门和
+  `TEST802-998,1000-1053,999` namespace/Attr/child-wrapper/doctype/map/collection 缩减回归；next604 的证据仍覆盖至 TEST1035，最近一次完整自动
   基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
@@ -305,11 +305,12 @@
   API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面
   验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
-## 当前状态：next604
+## 当前状态：next605
 
-前九批单一 `next595`、`next596`、`next597`、`next598`、`next599`、`next600`、`next601`、`next602`、`next603` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next604` 也
+前九批单一 `next595`、`next596`、`next597`、`next598`、`next599`、`next600`、`next601`、`next602`、`next603` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next604`、`next605` 也
 已实现、构建并通过定向设备门及缩减相邻回归门，兼容子集沿用 next593 的已验证证据；next603 的
-18 个自动断言使用 `TEST1000–1017`，next604 的 18 个自动断言使用 `TEST1018–1035`，均不再
+18 个自动断言使用 `TEST1000–1017`，next604 的 18 个自动断言使用 `TEST1018–1035`，next605 的
+18 个自动断言使用 `TEST1036–1053`，均不再
 为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
@@ -340,7 +341,7 @@ wrapper；既有关系、集合、selector、Node identity/root/position/contain
 document root 连到 body 子树，`documentElement.parentNode` 为 document 而 `parentElement` 为空。
 结构节点不伪造 HTML `id`，复杂 document selector、节点创建、mutation 和 live collection 仍不
 提供；相应 `TEST642–661` 覆盖了正例、identity、边界和旧 TEST549 的顺序语义更新。底层 browser
-bootstrap 仍按十三个 IIFE 顺序评估，浏览器 session heap ceiling 现为 608 KiB，
+bootstrap 仍按十三个 IIFE 顺序评估，浏览器 session heap ceiling 现为 624 KiB，
 独立 `positron_script` 默认堆仍为 512 KiB。next586 的 DocumentType 只属于浏览器层的
 synthetic snapshot：它与 document child order、Node metadata 和 bounded position API 对齐，
 但不把 doctype token 或 parser/mutation 语义扩入 `positron_core.dll`。next587 又把
@@ -515,6 +516,19 @@ ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。首轮直通�
 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批只涉及同步脚本 API/DOM
 snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；
 tracked `test_host.ini` 仍保持 `javascript=0`。
+
+`next605` 为 `form.elements` 的重复 `id`/`name` 增加了有限的 `RadioNodeList` snapshot：唯一
+匹配仍返回原 element，多个匹配返回只读、可迭代的分组；`value` getter 读取当前选中 radio，
+setter 只选择同值控件。direct named property 与 `namedItem()` 复用 session 内缓存 identity，
+缺失名称返回 `null`，普通 HTMLCollection 仍保持首匹配语义；不实现 live
+`HTMLFormControlsCollection`、fieldset/label 关联、节点创建或通用 mutation。实现继续位于
+`positron_browser.dll`，不扩展 core ABI；为容纳新增 bootstrap，browser session heap ceiling
+从 608 KiB 调整为 624 KiB，独立 `positron_script` 默认堆仍为 512 KiB。
+`TEST1036-1053,999` 在 `tmp/device-runs/20260823-142518-next605-r2/` 通过 19/19，
+`TEST802-998,1000-1053,999` 在 `tmp/device-runs/20260823-142642-next605-regression-r2/`
+通过 252/252；两次最终运行均无 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。
+首次 608 KiB 回归在 TEST901 触发内存上限，624 KiB 单测与完整缩减回归均已验证；未放宽断言。
+本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、系统 picker、旋转或网络失败人工门。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -3046,7 +3060,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next604 之后选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next605 之后选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
@@ -3059,7 +3073,7 @@ SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。
   `TESTBENCH PASS` 的完整证据；达到累计阈值或触及高风险基础设施时再跑全量；
 - 若只改变脚本状态/API，默认不要求人工视觉或 SIP 验收；若触及真实窗口、布局、触摸、SIP、
   旋转、系统 picker 或网络失败反馈，必须单独列入人工门；
-- TEST1035/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/540/549/642–998,1000–1035/999` 缩减选择；
+- TEST1053/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/540/549/642–998,1000–1053/999` 缩减选择；
 - 只更新本批职责内的 handoff/限制/路线图，保持 tracked `test_host.ini` 的默认
   `javascript=0` 不变，并提交、推送本批 tracked 文件。

@@ -494,6 +494,32 @@ scripts\device_gate.bat -Candidate next604-regression ^
 系统 picker、旋转或网络失败反馈，因此不新增人工页面验收。tracked `test_host.ini` 仍保持
 `javascript=0`。
 
+`next605` 为 `form.elements` 的重复 `id`/`name` 增加有限的 `RadioNodeList` snapshot，自动断言为
+`TEST1036–1053`：
+
+```bat
+scripts\device_gate.bat -Candidate next605-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "1036-1053,999"
+```
+
+定向证据为 `tmp/device-runs/20260823-142518-next605-r2/`，19/19 通过。相邻 namespace/Attr/
+DOM/collection 回归继续把特殊 `TEST999` 从数字区间拆出：
+
+```bat
+scripts\device_gate.bat -Candidate next605-regression-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "802-998,1000-1053,999"
+```
+
+最终证据为 `tmp/device-runs/20260823-142642-next605-regression-r2/`，252/252 通过；两次最终
+运行均无 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。测试覆盖重复组的
+`RadioNodeList` branding、缓存 identity、item/iterator、value 读写、只读 descriptor、缺失/首
+匹配边界以及普通 HTMLCollection 兼容语义。新增 bootstrap 让 browser session heap ceiling 从
+608 KiB 调整为 624 KiB；首次 608 KiB 回归在 TEST901 触发内存上限，624 KiB 单测和回归均已
+验证，未放宽任何断言。本批仍不触及视觉、触摸、SIP、系统 picker、旋转或网络失败反馈，故不
+新增人工页面验收；tracked `test_host.ini` 仍保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，
