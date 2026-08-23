@@ -1,6 +1,6 @@
 # Positron 当前交接
 
-更新时间：2026-08-22
+更新时间：2026-08-23
 
 稳定使命、架构和公共边界见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。本文件只记录当前仓库基线、最近设备证据、
@@ -11,8 +11,8 @@
 ## Git 与仓库基线
 
 - 分支：`main`，跟踪 `origin/main`。
-- 最新已验证产品基线：next596（本批覆盖 `TEST862-881,999` 定向门和缩减回归
-  `TEST389,390-448,540,549,642-881,999`；next593 的兼容门仍覆盖至 TEST821，最近一次完整自动
+- 最新已验证产品基线：next597（本批覆盖 `TEST882-901,999` 定向门和
+  `TEST802-901,999` namespace 缩减回归；next596 的证据仍覆盖至 TEST881，最近一次完整自动
   基线仍为 next255）。本批没有修改 tracked
   `test_host.ini`。
 - next402–421 已完成一组完整的浏览器 JavaScript 产品子功能：页面生命周期与环境快照、URLSearchParams
@@ -305,11 +305,11 @@
   API/DOM snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面
   验收；tracked `test_host.ini` 继续保持 `javascript=0`。
 
-## 当前状态：next596
+## 当前状态：next597
 
-前一批单一 `next595` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next596` 也
+前两批单一 `next595`、`next596` 已实现、构建并通过定向设备门及缩减相邻回归门；当前单一 `next597` 也
 已实现、构建并通过定向设备门及缩减相邻回归门，兼容子集沿用 next593 的已验证证据，其中本批 20 个自动断言使用
-`TEST862–881`
+`TEST882–901`
 编号，不再为每个子能力分配独立 next。产品层现在在同一脚本 session 内提供
 此前的生命周期、URL、storage、DOM metadata、selection、FormData、synthetic event、timer、
 animation-frame/visibility、事件 options/构造器/取消控制、受控异步队列、编码与二进制对象、
@@ -327,8 +327,9 @@ Promise 构造器、链式反应、thenable、finally、组合器和显式微任
 MessagePort/BroadcastChannel/PerformanceObserver/Promise 需要宿主显式 pump 或只读取同步快照；
 Promise 不连接 fetch/stream、不创建后台调度，组合器和 handler 均有固定容量上限。DOM 关系、
 form collection 和 attribute map 也只是同步、session-scoped 的 ID-addressable snapshot；wrapper
-identity 在同一 session 内稳定，Attr value/nodeValue 只复用现有 attribute bridge，跨 owner
-mutation fail closed；本批 childNodes 额外保留文本、注释和无 id 元素的同步 snapshot，但不提供
+identity 在同一 session 内稳定，Attr value/nodeValue 只复用现有 attribute bridge；普通
+NamedNodeMap mutation 对跨 owner fail closed，next597 的 namespace-node mutation 只做受控名称/值
+复制且不转移 owner；本批 childNodes 额外保留文本、注释和无 id 元素的同步 snapshot，但不提供
 通用节点创建/文本 mutation、live collection、完整 namespace API、复杂 selector 和 layout；本批又增加
 Node identity/root/position 的同步只读方法与 document metadata，不扩大上述树和 mutation 边界；
 next584 又为既有 `childNodes`、`children`、`form.elements` 和元素作用域 `querySelectorAll()`
@@ -424,6 +425,18 @@ prefix、空名称和多重冒号均安全无操作。成功写入复用既有 a
 `tmp/device-runs/20260823-095546-next596-regression-r1/` 通过 303/303；两次均为零
 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、
 SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收。
+
+`next597` 在同一 browser-owned `NamedNodeMap` 上补齐受控的
+`setNamedItemNS()`、`removeNamedItemNS()` 和元素 `setAttributeNodeNS()`。支持 null/空 namespace
+以及有限的 XML/XMLNS 前缀；跨 owner 的 `Attr` 只复制名称和值，不转移 source `ownerElement` 或
+wrapper identity；未知 prefix/URI、非法 qualified name、非 Attr 输入和缺失删除均 fail closed。
+该批不扩展 `positron_core.dll` ABI，不实现完整 NamespaceError、namespace declaration、
+XML/SVG parser、节点创建或 live collection。`TEST882-901,999` 在
+`tmp/device-runs/20260823-103228-next597-r3/` 通过 21/21；namespace 缩减回归
+`TEST802-901,999` 在 `tmp/device-runs/20260823-103700-next597-regression-r2/` 通过 101/101；
+两次均为零 ERROR/FAIL 且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，
+不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败，因此不新增人工页面验收；tracked
+`test_host.ini` 仍保持 `javascript=0`。
 
 公共 API 的所有权、宿主泵送职责和未实现边界以
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与
@@ -2934,14 +2947,14 @@ validationMessage fallback 门、next303 的 pattern/length reflection 门、nex
 不承诺 ARIA 语义或可访问性树。
 本轮 next382–401 的 metadata reflection 门也已通过，覆盖 20 个 ARIA raw 属性；均只承诺
 UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
-唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next594 之后的一个不依赖人工页面观察、
+唯一下一步是从 `KNOWN_LIMITATIONS.md` 和 `ROADMAP.md` 选择 next597 之后的一个不依赖人工页面观察、
 边界完整的产品能力；继续保持每批一个清晰的产品边界，不能把完整 DOM、布局或 native 输入
 偷偷扩入本批。
 
 完成标准：
 
-- TEST881/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
-  `68–73/189–231/233–262/264–448/540/549/642–881/999` 缩减选择；next299 的
+- TEST901/999、C89、审计和正式构建均保持通过；下一次启用 JavaScript 的相关回归继续采用
+  `68–73/189–231/233–262/264–448/540/549/642–901/999` 缩减选择；next299 的
   TEST93/999 script-limit 门也保持通过；共享的
   回归门采用定向选择，
   只有累计达到检查点或出现风险时再跑全量；
@@ -2955,7 +2968,7 @@ UTF-8 属性往返，不承诺 ARIA 语义或可访问性树。
 
 ## 唯一下一步
 
-为 next596 之后选择并实现一个新的、边界完整的产品能力。候选必须从
+为 next597 之后选择并实现一个新的、边界完整的产品能力。候选必须从
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 与 [`ROADMAP.md`](ROADMAP.md) 的未完成项中选出，
 先写清公共 DLL 所有权、失败语义和宿主职责，再实现对应的正例/反例测试；不把窗口、网络、native
 SIP、完整 DOM 树或完整 URL Standard parser 偷渡进本批。

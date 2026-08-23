@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 881
+#define TEST_MAX_NUMBER 901
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -60727,7 +60727,8 @@ static BOOL test840_browser_namespace_named_item_repeat(void)
             sizeof(error));
 }
 
-/* TEST 841 - the NamedNodeMap namespace read contract is complete and read-only. */
+/* TEST 841 - the NamedNodeMap namespace read contract exposes the bounded
+ * mutation companions added by next597. */
 static BOOL test841_browser_namespace_named_item_contract(void)
 {
     static const char PROBE[] =
@@ -60738,8 +60739,8 @@ static BOOL test841_browser_namespace_named_item_contract(void)
         "+String(x===e.getAttributeNode('id'))+'|'+String(y.prefix==='xml')+'|'"
         "+String(y.localName==='lang')+'|'"
         "+String(a.getNamedItemNS('urn:missing','id')===null)+'|'"
-        "+String(typeof a.setNamedItemNS==='undefined')+'|'"
-        "+String(typeof a.removeNamedItemNS==='undefined');";
+        "+String(typeof a.setNamedItemNS==='function')+'|'"
+        "+String(typeof a.removeNamedItemNS==='function');";
     char error[384];
     return test_browser_attribute_case(841, PROBE,
             "true|true|true|true|true|true|true", error, sizeof(error));
@@ -61267,6 +61268,294 @@ static BOOL test881_browser_namespace_mutation_contract(void)
     char error[384];
     return test_browser_attribute_case(881, PROBE,
             "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 882 - namespace-aware Attr-node methods are exposed only on the
+ * bounded element/attribute collection surface. */
+static BOOL test882_browser_namespace_node_method_types(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var m=e.attributes;var a=e.getAttributeNode('id');"
+        "document.getElementById('result').textContent="
+        "String(typeof m.setNamedItemNS==='function')+'|'"
+        "+String(typeof m.removeNamedItemNS==='function')+'|'"
+        "+String(typeof e.setAttributeNodeNS==='function')+'|'"
+        "+String(typeof document.setAttributeNodeNS==='undefined')+'|'"
+        "+String(typeof a.setNamedItemNS==='undefined');";
+    char error[384];
+    return test_browser_attribute_case(882, PROBE,
+            "true|true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 883 - a null-namespace Attr can be copied into another owner map. */
+static BOOL test883_browser_namespace_node_copy_null(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "var a=e.getAttributeNode('data-a');var old=p.attributes.setNamedItemNS(a);"
+        "document.getElementById('result').textContent=p.getAttribute('data-a')+'|'"
+        "+String(old===null)+'|'+e.getAttribute('data-a')+'|'"
+        "+String(p.getAttributeNodeNS(null,'data-a')===p.getAttributeNode('data-a'));";
+    char error[384];
+    return test_browser_attribute_case(883, PROBE, "1|true|1|true", error,
+            sizeof(error));
+}
+
+/* TEST 884 - an empty namespace follows the null-namespace replacement path. */
+static BOOL test884_browser_namespace_node_replace_empty(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "p.setAttributeNS(null,'data-a','old');var a=e.getAttributeNode('data-a');"
+        "var old=p.attributes.setNamedItemNS(a);document.getElementById('result').textContent="
+        "String(old===p.getAttributeNode('data-a'))+'|'+p.getAttributeNS('', 'data-a')+'|'"
+        "+p.getAttribute('data-a');";
+    char error[384];
+    return test_browser_attribute_case(884, PROBE, "true|1|1", error,
+            sizeof(error));
+}
+
+/* TEST 885 - XML namespace Attr copying preserves prefix/local metadata. */
+static BOOL test885_browser_namespace_node_copy_xml(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "var ns='http://www.w3.org/XML/1998/namespace';e.setAttributeNS(ns,'xml:lang','en');"
+        "var a=e.getAttributeNodeNS(ns,'lang');p.attributes.setNamedItemNS(a);"
+        "var b=p.getAttributeNodeNS(ns,'lang');document.getElementById('result').textContent="
+        "b.value+'|'+b.prefix+'|'+b.localName+'|'+b.namespaceURI+'|'"
+        "+e.getAttributeNS(ns,'lang');";
+    char error[384];
+    return test_browser_attribute_case(885, PROBE,
+            "en|xml|lang|http://www.w3.org/XML/1998/namespace|en", error,
+            sizeof(error));
+}
+
+/* TEST 886 - XMLNS namespace Attr copying preserves the declaration prefix. */
+static BOOL test886_browser_namespace_node_copy_xmlns(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "var ns='http://www.w3.org/2000/xmlns/';e.setAttributeNS(ns,'xmlns:demo','urn:demo');"
+        "var a=e.getAttributeNodeNS(ns,'demo');p.attributes.setNamedItemNS(a);"
+        "var b=p.getAttributeNodeNS(ns,'demo');document.getElementById('result').textContent="
+        "b.value+'|'+b.prefix+'|'+b.localName+'|'+b.namespaceURI+'|'"
+        "+e.getAttributeNS(ns,'demo');";
+    char error[384];
+    return test_browser_attribute_case(886, PROBE,
+            "urn:demo|xmlns|demo|http://www.w3.org/2000/xmlns/|urn:demo",
+            error, sizeof(error));
+}
+
+/* TEST 887 - setAttributeNodeNS returns the replaced target wrapper. */
+static BOOL test887_browser_set_attribute_node_ns(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "p.setAttributeNS(null,'title','old');var a=e.getAttributeNode('title');"
+        "var old=p.setAttributeNodeNS(a);document.getElementById('result').textContent="
+        "String(old===p.getAttributeNode('title'))+'|'+p.getAttribute('title')+'|'"
+        "+String(a===e.getAttributeNode('title'));";
+    char error[384];
+    return test_browser_attribute_case(887, PROBE, "true|Hello|true", error,
+            sizeof(error));
+}
+
+/* TEST 888 - copying an Attr never changes its source owner or identity. */
+static BOOL test888_browser_namespace_node_owner_stable(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "var a=e.getAttributeNode('data-a');p.attributes.setNamedItemNS(a);"
+        "document.getElementById('result').textContent=String(a.ownerElement===e)+'|'"
+        "+String(a===e.getAttributeNode('data-a'))+'|'+p.getAttribute('data-a');";
+    char error[384];
+    return test_browser_attribute_case(888, PROBE, "true|true|1", error,
+            sizeof(error));
+}
+
+/* TEST 889 - an unknown prefix is rejected by namespace-aware node copying. */
+static BOOL test889_browser_namespace_node_unknown_prefix(void)
+{
+    static const char PROBE[] =
+        "var p=document.getElementById('plain');var before=p.attributes.length;"
+        "var fake={nodeType:2,name:'demo:name',value:'x'};var old=p.attributes.setNamedItemNS(fake);"
+        "document.getElementById('result').textContent=String(old===null)+'|'"
+        "+String(p.attributes.length===before)+'|'+String(p.getAttribute('demo:name')===null);";
+    char error[384];
+    return test_browser_attribute_case(889, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 890 - malformed qualified names are rejected without mutation. */
+static BOOL test890_browser_namespace_node_bad_name(void)
+{
+    static const char PROBE[] =
+        "var p=document.getElementById('plain');var before=p.attributes.length;"
+        "var fake={nodeType:2,name:'xml:bad:name',value:'x'};var old=p.attributes.setNamedItemNS(fake);"
+        "document.getElementById('result').textContent=String(old===null)+'|'"
+        "+String(p.attributes.length===before)+'|'+String(p.getAttribute('xml:bad:name')===null);";
+    char error[384];
+    return test_browser_attribute_case(890, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 891 - non-Attr inputs fail closed. */
+static BOOL test891_browser_namespace_node_invalid_input(void)
+{
+    static const char PROBE[] =
+        "var m=document.getElementById('plain').attributes;var before=m.length;"
+        "var a=m.setNamedItemNS(null);var b=m.setNamedItemNS({nodeType:1,name:'x',value:'y'});"
+        "document.getElementById('result').textContent=String(a===null)+'|'"
+        "+String(b===null)+'|'+String(m.length===before);";
+    char error[384];
+    return test_browser_attribute_case(891, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 892 - null-namespace removal returns the live removed wrapper. */
+static BOOL test892_browser_namespace_node_remove_null(void)
+{
+    static const char PROBE[] =
+        "var p=document.getElementById('plain');p.setAttributeNS(null,'data-rm','x');"
+        "var a=p.getAttributeNode('data-rm');var old=p.attributes.removeNamedItemNS(null,'data-rm');"
+        "document.getElementById('result').textContent=String(old===a)+'|'"
+        "+String(p.getAttributeNode('data-rm')===null)+'|'+String(old.ownerElement===p);";
+    char error[384];
+    return test_browser_attribute_case(892, PROBE, "true|true|true", error,
+            sizeof(error));
+}
+
+/* TEST 893 - empty namespace removal is equivalent to null. */
+static BOOL test893_browser_namespace_node_remove_empty(void)
+{
+    static const char PROBE[] =
+        "var p=document.getElementById('plain');p.setAttributeNS(null,'data-rm','x');"
+        "var old=p.attributes.removeNamedItemNS('','data-rm');"
+        "document.getElementById('result').textContent=String(old!==null)+'|'"
+        "+String(p.hasAttribute('data-rm')===false);";
+    char error[256];
+    return test_browser_attribute_case(893, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 894 - XML namespace removal matches localName. */
+static BOOL test894_browser_namespace_node_remove_xml(void)
+{
+    static const char PROBE[] =
+        "var p=document.getElementById('plain');var ns='http://www.w3.org/XML/1998/namespace';"
+        "p.setAttributeNS(ns,'xml:lang','en');var a=p.getAttributeNodeNS(ns,'lang');"
+        "var old=p.attributes.removeNamedItemNS(ns,'lang');document.getElementById('result').textContent="
+        "String(old===a)+'|'+String(p.getAttributeNodeNS(ns,'lang')===null);";
+    char error[256];
+    return test_browser_attribute_case(894, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 895 - XMLNS namespace removal matches the declaration localName. */
+static BOOL test895_browser_namespace_node_remove_xmlns(void)
+{
+    static const char PROBE[] =
+        "var p=document.getElementById('plain');var ns='http://www.w3.org/2000/xmlns/';"
+        "p.setAttributeNS(ns,'xmlns:demo','urn:demo');var old=p.attributes.removeNamedItemNS(ns,'demo');"
+        "document.getElementById('result').textContent=String(old!==null)+'|'"
+        "+String(p.getAttributeNodeNS(ns,'demo')===null);";
+    char error[256];
+    return test_browser_attribute_case(895, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 896 - removing an absent namespace/local pair is a no-op. */
+static BOOL test896_browser_namespace_node_remove_missing(void)
+{
+    static const char PROBE[] =
+        "var p=document.getElementById('plain');p.setAttributeNS(null,'data-keep','x');"
+        "var old=p.attributes.removeNamedItemNS('http://www.w3.org/XML/1998/namespace','keep');"
+        "document.getElementById('result').textContent=String(old===null)+'|'"
+        "+p.getAttribute('data-keep');";
+    char error[256];
+    return test_browser_attribute_case(896, PROBE, "true|x", error,
+            sizeof(error));
+}
+
+/* TEST 897 - localName matching remains case-sensitive. */
+static BOOL test897_browser_namespace_node_remove_case(void)
+{
+    static const char PROBE[] =
+        "var p=document.getElementById('plain');var ns='http://www.w3.org/XML/1998/namespace';"
+        "p.setAttributeNS(ns,'xml:lang','en');var old=p.attributes.removeNamedItemNS(ns,'LANG');"
+        "document.getElementById('result').textContent=String(old===null)+'|'"
+        "+p.getAttributeNS(ns,'lang');";
+    char error[256];
+    return test_browser_attribute_case(897, PROBE, "true|en", error,
+            sizeof(error));
+}
+
+/* TEST 898 - namespace and localName arguments use String coercion. */
+static BOOL test898_browser_namespace_node_remove_coercion(void)
+{
+    static const char PROBE[] =
+        "var p=document.getElementById('plain');var ns='http://www.w3.org/XML/1998/namespace';"
+        "p.setAttributeNS(ns,'xml:lang','en');var n={toString:function(){return ns;}};"
+        "var l={toString:function(){return 'lang';}};var old=p.attributes.removeNamedItemNS(n,l);"
+        "document.getElementById('result').textContent=String(old!==null)+'|'"
+        "+String(p.getAttributeNodeNS(ns,'lang')===null);";
+    char error[256];
+    return test_browser_attribute_case(898, PROBE, "true|true", error,
+            sizeof(error));
+}
+
+/* TEST 899 - a retained NamedNodeMap observes copied attributes live. */
+static BOOL test899_browser_namespace_node_live_map(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "var m=p.attributes;var a=e.getAttributeNode('data-a');m.setNamedItemNS(a);"
+        "e.setAttribute('data-a','two');document.getElementById('result').textContent="
+        "String(m.length===2)+'|'+m.getNamedItemNS(null,'data-a').value+'|'"
+        "+String(m.getNamedItemNS(null,'data-a')===p.getAttributeNode('data-a'));";
+    char error[384];
+    return test_browser_attribute_case(899, PROBE, "true|1|true", error,
+            sizeof(error));
+}
+
+/* TEST 900 - namespace node mutation composes with element-node helpers. */
+static BOOL test900_browser_namespace_node_helper_contract(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "var ns='http://www.w3.org/XML/1998/namespace';e.setAttributeNS(ns,'xml:lang','en');"
+        "var a=e.getAttributeNodeNS(ns,'lang');var old=p.setAttributeNodeNS(a);"
+        "var current=p.getAttributeNodeNS(ns,'lang');var removed=p.attributes.removeNamedItemNS(ns,'lang');"
+        "document.getElementById('result').textContent="
+        "String(old===null)+'|'+String(removed===current)+'|'"
+        "+String(p.getAttributeNodeNS(ns,'lang')===null)+'|'+String(a.ownerElement===e);";
+    char error[384];
+    return test_browser_attribute_case(900, PROBE,
+            "true|true|true|true", error, sizeof(error));
+}
+
+/* TEST 901 - the complete bounded namespace-node contract preserves known
+ * namespace boundaries while allowing ordinary cross-owner copies. */
+static BOOL test901_browser_namespace_node_contract(void)
+{
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var p=document.getElementById('plain');"
+        "var xml='http://www.w3.org/XML/1998/namespace';var xmlns='http://www.w3.org/2000/xmlns/';"
+        "e.setAttributeNS(xml,'xml:lang','en');e.setAttributeNS(xmlns,'xmlns:demo','urn:demo');"
+        "p.setAttributeNodeNS(e.getAttributeNode('data-a'));"
+        "p.setAttributeNodeNS(e.getAttributeNodeNS(xml,'lang'));"
+        "p.attributes.setNamedItemNS(e.getAttributeNodeNS(xmlns,'demo'));"
+        "p.attributes.removeNamedItemNS(null,'data-a');p.removeAttributeNS(xml,'lang');"
+        "document.getElementById('result').textContent="
+        "String(p.getAttributeNodeNS(null,'data-a')===null)+'|'"
+        "+String(p.getAttributeNodeNS(xml,'lang')===null)+'|'"
+        "+String(p.getAttributeNodeNS(xmlns,'demo')!==null)+'|'"
+        "+String(e.getAttributeNodeNS(xml,'lang')!==null)+'|'"
+        "+String(e.getAttributeNodeNS(xmlns,'demo')!==null);";
+    char error[384];
+    return test_browser_attribute_case(901, PROBE,
+            "true|true|true|true|true", error, sizeof(error));
 }
 
 /* TEST 389 - listener options once/passive/capture. */
@@ -64938,6 +65227,66 @@ static int run_configured_tests(const unsigned char *selected,
                 break;
         case 881: ok =
                 test881_browser_namespace_mutation_contract();
+                break;
+        case 882: ok =
+                test882_browser_namespace_node_method_types();
+                break;
+        case 883: ok =
+                test883_browser_namespace_node_copy_null();
+                break;
+        case 884: ok =
+                test884_browser_namespace_node_replace_empty();
+                break;
+        case 885: ok =
+                test885_browser_namespace_node_copy_xml();
+                break;
+        case 886: ok =
+                test886_browser_namespace_node_copy_xmlns();
+                break;
+        case 887: ok =
+                test887_browser_set_attribute_node_ns();
+                break;
+        case 888: ok =
+                test888_browser_namespace_node_owner_stable();
+                break;
+        case 889: ok =
+                test889_browser_namespace_node_unknown_prefix();
+                break;
+        case 890: ok =
+                test890_browser_namespace_node_bad_name();
+                break;
+        case 891: ok =
+                test891_browser_namespace_node_invalid_input();
+                break;
+        case 892: ok =
+                test892_browser_namespace_node_remove_null();
+                break;
+        case 893: ok =
+                test893_browser_namespace_node_remove_empty();
+                break;
+        case 894: ok =
+                test894_browser_namespace_node_remove_xml();
+                break;
+        case 895: ok =
+                test895_browser_namespace_node_remove_xmlns();
+                break;
+        case 896: ok =
+                test896_browser_namespace_node_remove_missing();
+                break;
+        case 897: ok =
+                test897_browser_namespace_node_remove_case();
+                break;
+        case 898: ok =
+                test898_browser_namespace_node_remove_coercion();
+                break;
+        case 899: ok =
+                test899_browser_namespace_node_live_map();
+                break;
+        case 900: ok =
+                test900_browser_namespace_node_helper_contract();
+                break;
+        case 901: ok =
+                test901_browser_namespace_node_contract();
                 break;
         default: ok = FALSE; break;
         }

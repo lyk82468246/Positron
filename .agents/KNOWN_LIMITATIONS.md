@@ -1,12 +1,12 @@
 # Positron 当前限制
 
-更新时间：2026-08-22
+更新时间：2026-08-23
 
 这里只记录当前仍存在的产品或验收边界。已完成批次和设备流水不保留在本文件；最近证据见
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next596）
+## 当前状态（next597）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -34,7 +34,7 @@ Promise 构造器、then/catch/finally、thenable assimilation、组合器和错
 `form.elements` collection 视图。TEST389–448、TEST482–621 与 TEST502–521 定向门均已通过；
 这些切片默认关闭 JavaScript 时不会被发现、抓取或执行。next562–581 又增加了按 DOM id 的
 attribute count/name/value relation，以及 `getAttributeNames()`、`hasAttributes()`、受限
-`NamedNodeMap`/`Attr` wrapper 和跨 owner fail-closed mutation；attribute map 的 indexed
+`NamedNodeMap`/`Attr` wrapper 和受控跨 owner mutation 边界；attribute map 的 indexed
 properties 固定为 0–7，仍不提供完整 namespace API 或通用 DOM mutation。next562–581 时产品
 bootstrap 由公共入口按十个顺序 IIFE 评估，共享一个 Duktape context；浏览器 session 的 heap ceiling 为 576 KiB，
 独立 `positron_script` context 的 512 KiB 默认值不变。分段只用于保持源码上限，不引入第二套
@@ -211,6 +211,16 @@ live collection。`TEST862–881,999` 与 `TEST389,390–448,540,549,642–881,9
 `tmp/device-runs/20260823-095546-next596-regression-r1/`；本批只涉及同步脚本 API/DOM
 snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
+next597 在上述 `NamedNodeMap` 上增加有界 `setNamedItemNS()`、`removeNamedItemNS()`，并在元素
+wrapper 上增加 `setAttributeNodeNS()`。namespace 仍只承诺 null/空、XML 和 XMLNS 三组已知值；
+跨 owner 的 Attr 是名称和值的复制，source `ownerElement` 与 wrapper identity 不转移。未知
+prefix/URI、非法 qualified name、非 Attr 输入和缺失删除安全返回 null/不操作。该切片不引入
+core ABI、完整 NamespaceError、namespace declaration/parser、XML/SVG parser、节点创建或
+live collection；`TEST882–901,999` 与 `TEST802–901,999` 分别通过 21/21、101/101，证据位于
+`tmp/device-runs/20260823-103228-next597-r3/` 和
+`tmp/device-runs/20260823-103700-next597-regression-r2/`。本批只涉及同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -226,8 +236,8 @@ snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因
   同样只返回当前 session 的静态快照；next591 的 `links`/`anchors` 与 next592 的 namespace
   collection 也只过滤当前快照，next593 的 namespace attribute lookup、next594 的
   `NamedNodeMap.getNamedItemNS()` 与 next595 的 `lookupPrefix()` 也只读取当前 owner/已知
-  namespace 映射，不解析完整 namespace declarations；next596 的 namespace mutation 只允许
-  这组已知 URI/前缀组合，其他输入安全无操作。
+  namespace 映射，不解析完整 namespace declarations；next596 的 element namespace mutation
+  以及 next597 的 namespace-node mutation 只允许这组已知 URI/前缀组合，其他输入安全无操作。
 - selection、numeric step、setRangeText 是产品 bridge 的逻辑状态，不等于 WM native EDIT 的
   光标、SIP、IME composition、候选词、Unicode preedit 或原生文本选择 UI。
 - document/window metadata、viewport、scroll 是脚本可见的受控快照；它们不自动改变真实窗口、
@@ -258,10 +268,13 @@ snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因
   是有序 session snapshot，保留旧 iterator `.length` 兼容字段，不提供 multipart 或异步流。
 - `getAttributeNames()` 与 `Attr`/`NamedNodeMap` 只覆盖当前 ID-addressable element 的 parser-order
   attribute snapshot；`Attr.value`/`nodeValue` 通过既有 attribute bridge 做同步内存 mutation，
-  `setNamedItem()`/`removeNamedItem()` 只接受同 owner wrapper，跨 owner 或缺失项 fail closed。
+  `setNamedItem()`/`removeNamedItem()` 只接受同 owner wrapper，跨 owner 或缺失项 fail closed；
+  next597 的 `setNamedItemNS()`/`setAttributeNodeNS()` 是受控的跨 owner 名称和值复制，绝不转移
+  `Attr.ownerElement` 或 wrapper identity，`removeNamedItemNS()` 对缺失项返回 null。
   Indexed access 只保证 0–7；next593 的 element namespace lookup、next594 的
   `getNamedItemNS()` 与 next595 的 `lookupPrefix()` 只提供同步读 API 和已知 `xml`/`xmlns`
-  元数据，next596 的 `setAttributeNS()`/`removeAttributeNS()` 只允许对应的有限名称组合；
+  元数据，next596 的 `setAttributeNS()`/`removeAttributeNS()` 与 next597 的 namespace-node
+  mutation 只允许对应的有限名称组合；
   不实现完整 NamespaceError、namespace declaration、XML/SVG parser、通用节点创建、live
   collection 或完整 Web IDL descriptor 语义。
   Attr 的 namespace/localName/prefix 仍只在当前 owner 上下文中有效。

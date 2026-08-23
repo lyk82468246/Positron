@@ -114,9 +114,15 @@ next596 又补齐元素 wrapper 的有界 `setAttributeNS()`/`removeAttributeNS(
 冒号安全无操作。成功写入复用既有 attribute bridge，不实现完整 NamespaceError、namespace
 declaration、XML/SVG parser 或新的 core ABI；`TEST862–881` 定向门和
 `TEST389,390–448,540,549,642–881` 缩减回归均已通过。
+next597 又补齐 `NamedNodeMap.setNamedItemNS()`/`removeNamedItemNS()` 与元素
+`setAttributeNodeNS()`：跨 owner Attr 只复制名称和值，不转移 source owner 或 wrapper identity；
+未知/非法 namespace、qualified name、非 Attr 输入和缺失删除均 fail closed。该批不引入新的
+core ABI、完整 NamespaceError、namespace declaration、XML/SVG parser、节点创建或 live
+collection；`TEST882–901` 定向门和 `TEST802-901` namespace 缩减回归均已通过。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
-同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap
+同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node
+入口的跨 owner 行为是受控名称/值复制，indexed access 只保证 0–7。浏览器 bootstrap
 当前还提供按 DOM id 的有界 `childNodes` 快照：它保留文本、注释和无 id 元素的直接子节点顺序，
 暴露 `Node`/`CharacterData` 的只读元数据、父子/兄弟及 element-sibling 关系、`item()`/iterator、
 `firstChild`/`lastChild`/`hasChildNodes()` 和稳定 wrapper identity；next583 又补充受控

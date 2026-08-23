@@ -86,6 +86,13 @@ next596 又为元素 wrapper 提供有界 `setAttributeNS(namespace, qualifiedNa
 NamespaceError、namespace declaration、XML/SVG parser、节点创建、live collection 或新的
 core ABI。对应 `TEST862–881` 及缩减回归门已通过自动设备门。
 
+next597 又为既有 `NamedNodeMap` 提供有界 `setNamedItemNS()`/`removeNamedItemNS()`，并为元素
+wrapper 提供 `setAttributeNodeNS()`。null/空 namespace 与 XML/XMLNS 前缀沿用 next596 的有限
+边界；跨 owner Attr 只复制名称和值，source `ownerElement` 与 wrapper identity 保持不变，替换
+返回目标 owner 的旧 Attr，未知/非法输入和缺失删除 fail closed。该能力不实现完整
+NamespaceError、namespace declaration、XML/SVG parser、节点创建、live collection 或新的
+core ABI；对应 `TEST882–901` 与 `TEST802–901` namespace 缩减回归已通过自动设备门。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -124,8 +131,9 @@ PBrowser_ScriptSessionDestroy(session);
   `HTMLElement.click()`、`HTMLElement.disabled`、按 id 的 DOM 关系/`children`/`contains()`/
   基础 `compareDocumentPosition()`/受限 `matches()`/`closest()`/元素作用域 querySelector、form
   owner 与 `form.elements` collection、attribute count/name/value、`getAttributeNames()`、
-  `attributes`/`Attr`/受限 NamedNodeMap（`length`、`item()`、named lookup、`getNamedItemNS()`、同 owner mutation、
-  元素 `setAttributeNS()`/`removeAttributeNS()`、
+  `attributes`/`Attr`/受限 NamedNodeMap（`length`、`item()`、named lookup、`getNamedItemNS()`、
+  `setNamedItemNS()`/`removeNamedItemNS()`、同 owner/跨 owner bounded mutation、元素
+  `setAttributeNS()`/`removeAttributeNS()`/`setAttributeNodeNS()`、
   iterator、indexed 0–7）、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
   `formNoValidate`/`min`/`max`/`step`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
   bounded `childNodes` NodeList（文本/注释/id-less element wrapper、`item()`/iterator、`nodeType`/

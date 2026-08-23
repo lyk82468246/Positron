@@ -1,6 +1,6 @@
 # Positron 路线图
 
-更新时间：2026-08-22
+更新时间：2026-08-23
 
 本文件只列尚未完成的目标。已提交的 next 批次不继续停留在路线图；当前候选和设备门见
 [`HANDOFF.md`](HANDOFF.md)，当前能力缺口见
@@ -545,6 +545,17 @@ prefix、空名称和多重冒号安全无操作。成功写入复用既有 attr
 `tmp/device-runs/20260823-095546-next596-regression-r1/`。两次均无 ERROR/FAIL 且
 `TESTBENCH PASS` 唯一；本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、picker、
 旋转或网络失败，tracked `test_host.ini` 继续保持 `javascript=0`，因此不新增人工页面验收。
+
+`next597` 作为单一批次在 browser 层补齐 namespace-aware `NamedNodeMap`/Attr mutation：增加
+`setNamedItemNS()`、`removeNamedItemNS()` 和元素 `setAttributeNodeNS()`。null/空 namespace、
+XML/XMLNS 仍复用 next596 的有限名称边界；跨 owner Attr 只复制名称和值，绝不转移 source
+owner 或 wrapper identity，未知/非法输入和缺失删除 fail closed。该批不改 core relation ABI，
+不实现完整 NamespaceError、namespace declaration/parser、XML/SVG parser、节点创建或 live
+collection。`TEST882-901,999` 在 `tmp/device-runs/20260823-103228-next597-r3/` 通过 21/21，
+缩减 namespace 回归 `TEST802-901,999` 在
+`tmp/device-runs/20260823-103700-next597-regression-r2/` 通过 101/101；两次均无 ERROR/FAIL
+且 `TESTBENCH PASS` 唯一。本批只涉及同步脚本 API/DOM snapshot，不新增视觉、触摸、SIP、
+picker、旋转或网络失败人工门，tracked `test_host.ini` 继续保持 `javascript=0`。
 
 ## 中期目标
 

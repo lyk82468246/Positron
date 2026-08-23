@@ -668,6 +668,24 @@ adapter 和 `TEST862–881` 自动断言；定向门 21/21、缩减回归 303/30
 旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
 仍为 512 KiB。
 
+#### next597 的 NamedNodeMap/Attr namespace mutation 边界
+
+next597 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。既有 `NamedNodeMap` 现在提供受控的 `setNamedItemNS(namespace-aware Attr)` 与
+`removeNamedItemNS(namespace, localName)`，元素 wrapper 另外提供 `setAttributeNodeNS(Attr)`。
+这些入口复用 next596 的 null/空 namespace、XML/XMLNS 已知前缀和 `Attr` live wrapper；跨 owner
+传入的 Attr 只把名称和值复制到目标 owner，source `ownerElement` 与 wrapper identity 不转移。
+成功替换返回目标 owner 的旧 Attr，缺失项返回 null；未知 URI/prefix、非法 qualified name、非
+Attr 输入和不支持的 namespace 组合均 fail closed。
+
+这仍不是完整 DOM ownership 或 NamespaceError 实现：本批不解析 namespace declaration，不提供
+XML/SVG parser、节点创建、live collection、通用 DOM mutation 或新的 core ABI。`test_host.exe`
+只提供 fixture、adapter 和 `TEST882–901` 自动断言；定向门 21/21、namespace 缩减回归 101/101，
+证据位于 `tmp/device-runs/20260823-103228-next597-r3/` 和
+`tmp/device-runs/20260823-103700-next597-regression-r2/`。本批不涉及视觉、触摸、SIP、picker、
+旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
+仍为 512 KiB。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。
