@@ -149,6 +149,11 @@ Debug staging，但在打开当前 RAPI 会话后约 90 秒没有进入目录操
 第三次短探测 `20260824-001630-next618-native-ime-result-final` 在相同的 RAPI 会话建立处
 约 30 秒无进展后停止，仍没有设备日志；在 WMDC GUI 重新建立独占连接前不得继续重复。
 
+随后把 gate 的同步 `CeRapiInit()` 改为官方 `CeRapiInitEx()` 事件等待后，
+`20260824-002343-next618-rapi-timeout-probe` 在 30 秒后明确返回连接超时并清理本地状态；
+该探针只验证 gate 的有界失败行为，不构成设备测试证据，也不改变“先恢复 WMDC 独占连接”的
+重试门槛。
+
 ### 早期 loading 条 — 已替代/部分暂挂
 
 问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。

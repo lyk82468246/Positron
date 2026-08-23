@@ -252,7 +252,9 @@ scripts\device_gate.bat -Candidate nextNNN
 脚本会使用正式工程配置增量构建，创建隔离 staging，部署完整候选包，启动
 `test_host.exe`，有限等待并回收日志，最后检查所选测试、设备指标、`ERROR`/`FAIL`、
 TEST13 导航和 `TESTBENCH PASS`。每次运行前只回收设备端由 gate 自己命名的旧候选目录；
-完整本地证据保存在被 Git 忽略的 `tmp/device-runs/`。
+完整本地证据保存在被 Git 忽略的 `tmp/device-runs/`。连接阶段使用 32 位 RAPI
+`CeRapiInitEx()` 并有 30 秒超时；WMDC 会话未就绪时 gate 会清理并退出，不会无限挂起或
+把未启动的设备进程写成通过证据。
 
 如果 RAPI 初始化报告 `0x8007007E`，WMDC 的旧式 COM 路径可能未被现代 Windows 正确展开。
 运行一次下列脚本并确认 UAC；脚本只修复已知 WMDC/RAPI COM 注册，遇到未知值会拒绝修改：

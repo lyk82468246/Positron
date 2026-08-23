@@ -261,8 +261,21 @@ public static class PositronDeviceRapi
         public string cFileName;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RapiInit
+    {
+        public uint cbSize;
+        public IntPtr heRapiInit;
+        public int hrRapiInit;
+    }
+
+    private const uint WAIT_OBJECT_0 = 0x00000000;
+    private const uint WAIT_TIMEOUT = 0x00000102;
+    private const uint WAIT_FAILED = 0xffffffff;
+    private const uint RAPI_INIT_TIMEOUT_MS = 30000;
+
     [DllImport("rapi.dll", ExactSpelling = true)]
-    private static extern int CeRapiInit();
+    private static extern int CeRapiInitEx(ref RapiInit init);
 
     [DllImport("rapi.dll", ExactSpelling = true)]
     private static extern int CeRapiUninit();
@@ -272,6 +285,19 @@ public static class PositronDeviceRapi
 
     [DllImport("rapi.dll", ExactSpelling = true)]
     private static extern uint CeGetLastError();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateEvent(
+        IntPtr eventAttributes, bool manualReset, bool initialState,
+        string name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(
+        IntPtr handle, uint milliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
 
     [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -350,11 +376,48 @@ public static class PositronDeviceRapi
 
     public static void Connect()
     {
-        int result = CeRapiInit();
-        if (result < 0) {
+        RapiInit init = new RapiInit();
+        IntPtr eventHandle;
+        uint waitResult;
+        int result;
+
+        eventHandle = CreateEvent(IntPtr.Zero, false, false, null);
+        if (eventHandle == IntPtr.Zero) {
             throw new InvalidOperationException(String.Format(
-                "CeRapiInit failed (HRESULT=0x{0:x8}).",
+                "CreateEvent for CeRapiInitEx failed (Win32={0}).",
+                Marshal.GetLastWin32Error()));
+        }
+        init.cbSize = (uint) Marshal.SizeOf(typeof(RapiInit));
+        init.heRapiInit = eventHandle;
+        init.hrRapiInit = 0;
+        result = CeRapiInitEx(ref init);
+        if (result < 0) {
+            CloseHandle(eventHandle);
+            throw new InvalidOperationException(String.Format(
+                "CeRapiInitEx failed (HRESULT=0x{0:x8}).",
                 unchecked((uint) result)));
+        }
+        waitResult = WaitForSingleObject(eventHandle,
+                RAPI_INIT_TIMEOUT_MS);
+        CloseHandle(eventHandle);
+        if (waitResult == WAIT_TIMEOUT) {
+            CeRapiUninit();
+            throw new TimeoutException(
+                "CeRapiInitEx timed out after 30 seconds; WMDC's current " +
+                "RAPI session did not become ready.");
+        }
+        if (waitResult == WAIT_FAILED) {
+            int error = Marshal.GetLastWin32Error();
+            CeRapiUninit();
+            throw new InvalidOperationException(String.Format(
+                "WaitForSingleObject(CeRapiInitEx) failed (Win32={0}).",
+                error));
+        }
+        if (init.hrRapiInit < 0) {
+            CeRapiUninit();
+            throw new InvalidOperationException(String.Format(
+                "CeRapiInitEx completed with HRESULT=0x{0:x8}.",
+                unchecked((uint) init.hrRapiInit)));
         }
     }
 

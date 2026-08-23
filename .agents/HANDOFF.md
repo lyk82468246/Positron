@@ -296,6 +296,9 @@ next618 当前候选的本地验证已完成，但设备门尚未形成证据：
 - 第三次短探测 `tmp/device-runs/20260824-001630-next618-native-ime-result-final/` 在相同
   RAPI 会话建立处约 30 秒无进展后停止，仍未产生设备日志；在 WMDC GUI 重新建立独占连接
   前不再重复设备门。
+- gate 随后改用官方 `CeRapiInitEx()` 的 30 秒有界事件等待；探针
+  `tmp/device-runs/20260824-002343-next618-rapi-timeout-probe/` 明确返回连接超时并清理本地
+  状态，证明工具不会再无限挂起，但仍没有设备通过证据。
 - 需要关闭设备/模拟器 GUI 中遗留的 `test_host.exe`，确认 WMDC 只有当前唯一连接后重新
   断开/连接，再原样重跑窄门；恢复门槛见 `.agents/FAILED_EXPERIMENTS.md` 的 next618 条目。
 
@@ -328,9 +331,10 @@ next618 当前候选的本地验证已完成，但设备门尚未形成证据：
   相关 README/测试/交接文档；提交时不要把 `tmp/` 设备证据或无关工作区文件带入。
 - next617 的源码、C89、Debug/Release 构建、定向设备门、audit、Git diff 和远端状态均已在
   `f2f0dbcb` 推送前后核对；tracked 改动只覆盖该批 `positron_http` resolver、消费者和文档。
-- next618 的 Debug/Release 全量 ARMV4I rebuild、C89、audit 和文档检查均已通过；候选已在
-  `de41b0fe` 提交并推送到 `origin/main`。定向设备门先在 RAPI 远端关闭处失败，重连后又在
-  打开 RAPI 会话处挂起，因此该提交仍明确是设备门未验收候选。tracked 改动只覆盖
+- next618 的 Debug/Release 全量 ARMV4I rebuild、C89、audit 和文档检查均已通过；候选及
+  RAPI 有界 gate 修订已提交并推送到 `origin/main`。定向设备门先在 RAPI 远端关闭处失败，
+  重连后又在打开 RAPI 会话处挂起；新的 gate 已能在 30 秒后明确超时，因此该提交仍明确是
+  设备门未验收候选。tracked 改动只覆盖
   `test_host` IME result 适配、TEST1066 与相关 README/测试/agent 文档；不要把 `tmp/`
   设备证据或无关工作区文件带入。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留

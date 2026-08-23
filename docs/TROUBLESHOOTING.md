@@ -53,13 +53,18 @@ CoreCon `Connect()`，结束时再 `Disconnect()`。这条路径完全没有调�
 部署通道”可行，不能证明 WMDC 当前连接能够被 CoreCon 直接枚举；它也不满足随意更换当前
 USB/DMA 设备且不绑定目标身份的要求。
 
-next222 起的正式 gate 改用 32 位 RAPI 1。`CeRapiInit()` 只是让本地客户端打开 WMDC 已有的
+next222 起的正式 gate 改用 32 位 RAPI 1。`CeRapiInitEx()` 只是让本地客户端打开 WMDC 已有的
 当前会话；gate 不选择设备、不读取 VMID，也不执行启动、Cradle、断开或重置。更换设备时，
 只需先在 GUI 中让所需设备成为 WMDC 当前连接，再运行：
 
 ```bat
 scripts\device_gate.bat -Candidate nextNNN
 ```
+
+gate 对 `CeRapiInitEx()` 使用 30 秒有界事件等待。若等待超时，会清理本地 RAPI 状态并退出，
+不会留下无限等待的 PowerShell，也不会把设备端进程当作已启动。超时、WinSock 10101 或
+远端主动关闭都表示当前 WMDC/RAPI 会话没有准备好，不是测试断言失败；先在 GUI 关闭遗留
+`test_host.exe`，断开并重新建立唯一设备连接，再重试一次。
 
 ### `CeRapiInit` 报 `0x8007007E`
 

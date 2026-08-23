@@ -391,6 +391,9 @@ RAPI 环境错误或人工未执行写成 TEST1066 通过。
 重连后的第二次尝试完成 staging 后在打开 RAPI 会话处约 90 秒无进展，已停止本地 gate，
 同样没有 `test_host.log` 或结果文件；这仍属于 WMDC/RAPI 环境阻塞，不是测试断言结果。
 第三次短探测在相同位置约 30 秒无进展后停止；在 WMDC GUI 重新建立独占连接前不再重复。
+随后新增的 `CeRapiInitEx()` 有界连接探针 `tmp/device-runs/20260824-002343-next618-rapi-timeout-probe/`
+在 30 秒后明确返回超时，未产生设备日志；这只证明 gate 不再无限等待，不构成 TEST999 或
+TEST1066 通过。
 
 ### 当前默认自动选择与人工验收包（next589 基线）
 
