@@ -651,6 +651,23 @@ Attr prefix 均返回 `null`。参数做有限 String coercion，结果不会改
 旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
 仍为 512 KiB。
 
+#### next596 的 namespace mutation 边界
+
+next596 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
+ABI。元素 wrapper 现在提供 `setAttributeNS(namespace, qualifiedName, value)` 与
+`removeAttributeNS(namespace, localName)`：null/空 namespace 只接受无前缀名称，XML/XMLNS
+只接受对应的 `xml`/`xmlns` 前缀，且未知 URI、未知 prefix、空名称和多重冒号安全无操作。
+成功写入复用既有 attribute bridge，因此已有 namespace read API、Attr identity 和属性 map
+观察语义保持一致。
+
+这不是完整 DOM NamespaceError 或 namespace parser：本批不提供 namespace declaration 解析、
+XML/SVG parser、节点创建、live collection 或新的 core ABI。`test_host.exe` 只提供 fixture、
+adapter 和 `TEST862–881` 自动断言；定向门 21/21、缩减回归 303/303，证据位于
+`tmp/device-runs/20260823-095421-next596-r2/` 和
+`tmp/device-runs/20260823-095546-next596-regression-r1/`。本批不涉及视觉、触摸、SIP、picker、
+旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
+仍为 512 KiB。
+
 ## 独立 JavaScript 与浏览器 JavaScript
 
 项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。

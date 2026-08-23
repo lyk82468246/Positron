@@ -6,7 +6,7 @@
 [`HANDOFF.md`](HANDOFF.md)，稳定架构见
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
 
-## 当前状态（next595）
+## 当前状态（next596）
 
 next402–421 已把一组完整但受控的浏览器 JavaScript 子功能放入
 `positron_browser.dll`：页面 readyState/visibility 生命周期和环境快照、有限 URL 与
@@ -201,6 +201,16 @@ collection 或新的 core ABI。`TEST842–861,999` 与
 `tmp/device-runs/20260822-211920-next595-regression-r1/`；本批只涉及同步脚本 API/DOM
 snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
 
+next596 在上述属性 snapshot 上增加有界 `setAttributeNS(namespace, qualifiedName, value)` 和
+`removeAttributeNS(namespace, localName)`。null/空 namespace 只接受无前缀名称，XML/XMLNS
+只接受 `xml`/`xmlns` 前缀；未知 URI、未知 prefix、空名称和多重冒号安全无操作。成功写入
+复用既有 attribute bridge，Attr identity 和 namespace read API 保持一致。该切片不新增
+core ABI，不实现完整 NamespaceError、XML/SVG parser、namespace declaration、节点创建或
+live collection。`TEST862–881,999` 与 `TEST389,390–448,540,549,642–881,999` 分别通过
+21/21、303/303，证据位于 `tmp/device-runs/20260823-095421-next596-r2/` 和
+`tmp/device-runs/20260823-095546-next596-regression-r1/`；本批只涉及同步脚本 API/DOM
+snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因此不新增人工页面验收。
+
 这些 API 的共同限制如下：
 
 - 所有状态都属于单个脚本 session，保存在内存中；storage/cookie 没有持久化、域/路径安全策略、
@@ -216,7 +226,8 @@ snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因
   同样只返回当前 session 的静态快照；next591 的 `links`/`anchors` 与 next592 的 namespace
   collection 也只过滤当前快照，next593 的 namespace attribute lookup、next594 的
   `NamedNodeMap.getNamedItemNS()` 与 next595 的 `lookupPrefix()` 也只读取当前 owner/已知
-  namespace 映射，不解析完整 namespace declarations。
+  namespace 映射，不解析完整 namespace declarations；next596 的 namespace mutation 只允许
+  这组已知 URI/前缀组合，其他输入安全无操作。
 - selection、numeric step、setRangeText 是产品 bridge 的逻辑状态，不等于 WM native EDIT 的
   光标、SIP、IME composition、候选词、Unicode preedit 或原生文本选择 UI。
 - document/window metadata、viewport、scroll 是脚本可见的受控快照；它们不自动改变真实窗口、
@@ -250,8 +261,9 @@ snapshot，不涉及视觉、触摸、SIP、picker、旋转或网络失败，因
   `setNamedItem()`/`removeNamedItem()` 只接受同 owner wrapper，跨 owner 或缺失项 fail closed。
   Indexed access 只保证 0–7；next593 的 element namespace lookup、next594 的
   `getNamedItemNS()` 与 next595 的 `lookupPrefix()` 只提供同步读 API 和已知 `xml`/`xmlns`
-  元数据，不实现 namespace
-  mutation、XML/SVG parser、通用节点创建、live collection 或完整 Web IDL descriptor 语义。
+  元数据，next596 的 `setAttributeNS()`/`removeAttributeNS()` 只允许对应的有限名称组合；
+  不实现完整 NamespaceError、namespace declaration、XML/SVG parser、通用节点创建、live
+  collection 或完整 Web IDL descriptor 语义。
   Attr 的 namespace/localName/prefix 仍只在当前 owner 上下文中有效。
 - Headers、Request、Response 是内存 bounded 的同步数据模型；它们不建立网络连接、不执行 fetch、
   不提供 stream，body `text()`/`json()`/`arrayBuffer()` 是 one-shot 消费并同步标记

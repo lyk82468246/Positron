@@ -109,6 +109,11 @@ CharacterData 和 Attr wrapper 都能读取已知 XML 的 `xml` 映射；只有�
 XMLNS 的 `xmlns`，HTML default、null/空值和未知 namespace 均返回 `null`。参数只做有限
 String coercion，不解析 namespace declaration，不提供 prefix mutation 或新的 core ABI；
 `TEST842–861` 定向门与 `TEST389,390–448,540,549,642–861` 缩减回归均已通过。
+next596 又补齐元素 wrapper 的有界 `setAttributeNS()`/`removeAttributeNS()`：null/空 namespace
+只接受无前缀名称，XML/XMLNS 只接受对应 `xml`/`xmlns` 前缀；未知 URI、未知前缀、空名和多重
+冒号安全无操作。成功写入复用既有 attribute bridge，不实现完整 NamespaceError、namespace
+declaration、XML/SVG parser 或新的 core ABI；`TEST862–881` 定向门和
+`TEST389,390–448,540,549,642–881` 缩减回归均已通过。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 更新可用，跨 owner 绑定 fail closed，indexed access 只保证 0–7。浏览器 bootstrap

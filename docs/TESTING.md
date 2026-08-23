@@ -330,6 +330,24 @@ XML/XMLNS 已知映射、HTML/null/空/未知 fail-closed、Attr owner delegatio
 节点创建或 live collection，因此不新增人工页面验收。为控制设备时间，本批未重复 next593 的
 兼容子集；其 `TEST549,642-821,999` 证据仍有效。tracked `test_host.ini` 仍保持 `javascript=0`。
 
+`next596` 在既有 namespace attribute snapshot 上增加 `setAttributeNS(namespace, qualifiedName, value)`
+与 `removeAttributeNS(namespace, localName)`，自动断言为 `TEST862–881`：
+
+```bat
+scripts\device_gate.bat -Candidate next596-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "862-881,999"
+```
+
+定向证据为 `tmp/device-runs/20260823-095421-next596-r2/`，21/21 通过；缩减回归
+`TEST389,390-448,540,549,642-881,999` 在
+`tmp/device-runs/20260823-095546-next596-regression-r1/` 通过 303/303。两次均为零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖方法归属、null/空 namespace、
+XML/XMLNS 合法前缀、Attr identity/live read-back、String coercion、非法 URI/前缀/空名/多冒号
+安全无操作，以及按 localName 的移除和大小写边界；不实现完整 NamespaceError、namespace
+declaration、XML/SVG parser、节点创建或 live collection，因此不新增人工页面验收。tracked
+`test_host.ini` 仍保持 `javascript=0`。
+
 本批设备门曾遇到 `CeRapiInit()` 的 `0x8007007E`，但 WMDC UI 与设备会话仍正常；取证确认五个
 旧 RAPI COM 类的 32/64 位注册值使用了未展开的 `%windir%` 路径。经用户授权运行
 `scripts\repair_wmdc_rapi.bat` 后，10 个已知注册值改为对应 SysWOW64/System32 绝对路径，

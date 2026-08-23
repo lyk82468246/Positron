@@ -22,10 +22,11 @@ document、DOM、navigation、event、input、keyboard、focus、EDIT change/pos
 mutation。该能力仍遵守 session-scoped、fail-closed 的关系边界。
 
 当前 Node snapshot 还为 document、DocumentType、HTML element、CharacterData 和 Attr wrapper
-提供受控的 `baseURI`、`namespaceURI`、`prefix`、`lookupNamespaceURI()` 与
-`isDefaultNamespace()`。`baseURI` 读取并跟随当前 session URL；namespace 只承诺 HTML/XML 的
-有限值，未知 prefix fail closed，Attr 查询沿 owner element 上下文工作。该能力不实现 XML/
-namespace parser、节点创建、prefix/namespace mutation 或完整 DOM tree。
+提供受控的 `baseURI`、`namespaceURI`、`prefix`、`lookupNamespaceURI()`、`lookupPrefix()` 与
+`isDefaultNamespace()`，以及元素上的有界 `setAttributeNS()`/`removeAttributeNS()`。
+`baseURI` 读取并跟随当前 session URL；namespace 只承诺 HTML/XML 的有限值，未知 prefix/URI
+和非法 mutation 组合 fail closed，Attr 查询沿 owner element 上下文工作。该能力不实现完整
+XML/namespace parser、NamespaceError、节点创建或完整 DOM tree。
 
 next588 又在 document 与 HTML element wrapper 上提供受控的
 `getElementsByTagName()`/`getElementsByClassName()`。查询沿当前 bounded relation snapshot
@@ -78,6 +79,13 @@ HTML element、CharacterData 和 Attr 都识别有限的 XML → `xml` 映射；
 String coercion，不解析 namespace declaration，不提供 prefix mutation、节点创建、live collection
 或新的 core ABI。对应 `TEST842–861` 及缩减回归门已通过自动设备门。
 
+next596 又为元素 wrapper 提供有界 `setAttributeNS(namespace, qualifiedName, value)` 与
+`removeAttributeNS(namespace, localName)`：null/空 namespace 只接受无前缀名称，XML/XMLNS
+只接受对应 `xml`/`xmlns` 前缀；未知 URI、未知 prefix、空名称和多重冒号安全无操作。成功
+写入复用既有 attribute bridge，Attr identity 与 namespace read API 保持一致；不提供完整
+NamespaceError、namespace declaration、XML/SVG parser、节点创建、live collection 或新的
+core ABI。对应 `TEST862–881` 及缩减回归门已通过自动设备门。
+
 ## 其他项目如何调用
 
 历史状态和脚本 session 是两个明确的 opaque 生命周期。脚本 session 的典型顺序是：
@@ -117,6 +125,7 @@ PBrowser_ScriptSessionDestroy(session);
   基础 `compareDocumentPosition()`/受限 `matches()`/`closest()`/元素作用域 querySelector、form
   owner 与 `form.elements` collection、attribute count/name/value、`getAttributeNames()`、
   `attributes`/`Attr`/受限 NamedNodeMap（`length`、`item()`、named lookup、`getNamedItemNS()`、同 owner mutation、
+  元素 `setAttributeNS()`/`removeAttributeNS()`、
   iterator、indexed 0–7）、控件与受限 form-level `checkValidity()`/`reportValidity()`/`willValidate`/`validity` 查询、`setCustomValidity()`/`validationMessage`、约束相关 `required`/`readOnly`/`multiple`/`noValidate`/
   `formNoValidate`/`min`/`max`/`step`、submit/reset/invalid/file-input/checkbox/radio input/change/SELECT input/change typed dispatch；
   bounded `childNodes` NodeList（文本/注释/id-less element wrapper、`item()`/iterator、`nodeType`/

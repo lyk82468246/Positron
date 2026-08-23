@@ -326,7 +326,7 @@ min/max/step、readonly、form-level/button-level no-validate 语义；TEST265 �
 产品层必须继续保持 opaque handle、UTF-8、明确所有权、受控 callback 数和页面生命周期，
 不把窗口、网络或完整 URL Standard parser 一起塞入 core/browser DLL。
 
-### 当前短期状态：next595
+### 当前短期状态：next596
 
 next402–421、next422–441、next442–461、next462–481、next482–501、next502–521 已完成并从未完成路线图移出；
 完整产品边界：encodeInto/decoder 选项、同步 Request/Response JSON、Blob Request clone、Headers
@@ -532,6 +532,17 @@ namespace declaration/parser、prefix mutation、节点创建或 live collection
 通过 21/21，证据为 `tmp/device-runs/20260822-211732-next595-r1/`；缩减回归
 `TEST389,390-448,540,549,642-861,999` 通过 283/283，证据为
 `tmp/device-runs/20260822-211920-next595-regression-r1/`。两次均无 ERROR/FAIL 且
+`TESTBENCH PASS` 唯一；本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、picker、
+旋转或网络失败，tracked `test_host.ini` 继续保持 `javascript=0`，因此不新增人工页面验收。
+
+`next596` 作为单一批次在 browser 层补齐有界 namespace mutation：元素 wrapper 提供
+`setAttributeNS(namespace, qualifiedName, value)` 与 `removeAttributeNS(namespace, localName)`。
+null/空 namespace 只接受无前缀名称，XML/XMLNS 只接受对应 `xml`/`xmlns` 前缀；未知 URI、未知
+prefix、空名称和多重冒号安全无操作。成功写入复用既有 attribute bridge，不改 core relation ABI，
+不实现完整 NamespaceError、namespace declaration、XML/SVG parser、节点创建或 live collection。
+`TEST862-881,999` 通过 21/21，证据为 `tmp/device-runs/20260823-095421-next596-r2/`；缩减回归
+`TEST389,390-448,540,549,642-881,999` 通过 303/303，证据为
+`tmp/device-runs/20260823-095546-next596-regression-r1/`。两次均无 ERROR/FAIL 且
 `TESTBENCH PASS` 唯一；本批只涉及同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、picker、
 旋转或网络失败，tracked `test_host.ini` 继续保持 `javascript=0`，因此不新增人工页面验收。
 
