@@ -16,7 +16,10 @@ native EDIT 输入由 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` �
 宿主的 WM subclass 只拦截 beforeinput 相关消息、调用 `PCore_TextInputSetValue()` 同步值，
 再把 token/几何交给 browser DLL；beforeinput 取消、pending metadata、input、dirty tracking
 和 blur/change 顺序不再由宿主保存。宿主仍拥有 WM EDIT、文本 mutation、composition、SIP/IME、
-焦点窗口和重绘。TEST1056 是该公共 ABI 的 mock 契约，TEST228–230/1055/999 是相关设备回归。
+焦点窗口和重绘。next618 处理 WM6 `GCS_RESULTSTR` 的平台差异：完整 UTF-8 候选词通过一次
+`EM_REPLACESEL` 写入当前 composition selection，继续触发正常 `EN_CHANGE` 回写；转换失败
+才回到 EDIT default procedure。TEST1056 是该公共 ABI 的 mock 契约，TEST1066 覆盖多字节
+多字符结果，TEST65 仍需真实 SIP 候选词人工确认。
 
 native SELECT 的 `input` → `change` 提交顺序由
 `PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()` /

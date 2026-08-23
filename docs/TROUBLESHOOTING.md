@@ -170,8 +170,11 @@ viewport 和 DPI；不能把 96 DPI 固定成产品前提。
 - `beforeinput`、`input`、`change` 和 key event 的次序；
 - EDIT、textarea、SELECT 的不同 native control 路径。
 
-候选词只能输入一个字符时，先记录 WM 消息序列和实际 control 文本，再判断是宿主子类、
-composition bridge 还是测试 oracle 问题。
+候选词只能输入一个字符时，先记录 `WM_IME_COMPOSITION` 的 `GCS_RESULTSTR`、实际 control
+文本和 `EN_CHANGE` 次数。当前宿主会把完整结果一次性写入 composition selection；若仍只
+出现首字符，优先检查设备是否运行了包含 next618 的 `test_host.exe`，以及 WMDC 是否部署
+了同一 stage 目录的 DLL。只有在完整结果已经到达 control、而页面事件仍异常时，才继续
+区分 composition bridge 与测试 oracle；不要用重复发送 `WM_CHAR` 掩盖真实 IME 路径。
 
 ## JavaScript
 

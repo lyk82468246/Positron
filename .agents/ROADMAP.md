@@ -1,6 +1,6 @@
 # Positron 路线图
 
-更新时间：2026-08-23
+更新时间：2026-08-24
 
 本文件只描述未来工作，不累计已完成 next、提交记录或设备日志。当前基线见 `.agents/HANDOFF.md`，当前边界见 `.agents/KNOWN_LIMITATIONS.md`，项目使命与公共 DLL 职责见 `docs/ARCHITECTURE.md`。
 
@@ -152,7 +152,21 @@ TEST1064 是宿主消费者回归；不新增人工视觉或输入门。
 已记录 TEST1065/999 设备门 2/2 PASS，
 无 ERROR/FAIL 且唯一 `TESTBENCH PASS`。C89、Debug/Release 构建和仓库审计均通过。
 
-### 12. 建立真实页面驱动的兼容队列
+### 12. next618：WM6 native EDIT 完整 IME 结果提交（进行中）
+
+next618 处理已观察到的 TEST65 平台缺口，而不扩张 browser composition ABI。部分 WinCE
+EDIT 默认过程在 `WM_IME_COMPOSITION | GCS_RESULTSTR` 上只把候选词首字符交给 subclass；
+宿主现在读取完整 `ImmGetCompositionStringW` 结果，转换为 UTF-8 后一次性以 `EM_REPLACESEL`
+写入当前 composition selection，再复用既有 `EN_CHANGE` → Core value → browser input
+事务。转换失败保留原 default-procedure fallback。TEST1066 用多字节多字符候选做可重复
+自动断言；TEST123–125 继续覆盖 composition/InputEvent/KeyboardEvent 元数据。
+
+本批仍不把 OEM SIP 候选窗口、候选条视觉、真实设备字体/触摸或所有 IME 行为写成产品保证。
+完成条件是 C89、Debug/Release ARMV4I 构建、audit、`TEST1066,123-125,999` 窄门通过，
+并在 TEST65 人工点选一个多字符候选词确认输入框出现完整词。失败时先保留 WM/Core/browser
+边界，不通过重复 `WM_CHAR` 或放宽事件断言掩盖问题。
+
+### 13. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -163,7 +177,7 @@ TEST1064 是宿主消费者回归；不新增人工视觉或输入门。
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 13. 安排新的全范围检查点
+### 14. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

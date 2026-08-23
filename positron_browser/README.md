@@ -246,8 +246,9 @@ start/update/end phase，持有最后一段不超过 255 字节的 UTF-8 preedit
 `compositionstart`、不可取消的 `beforeinput(insertCompositionText)` →
 `compositionupdate` 以及 `compositionend`。START 的取消结果返回给宿主；更新后的
 beforeinput metadata 会与既有 native commit → input 事务衔接。宿主仍负责 WM_IME、SIP、
-原生文本 mutation 和平台副作用；TEST1061、TEST123–125 已在 WM6 设备门通过。该入口
-不把 OEM 候选词整词提交或 SIP 视觉体验伪装成兼容性保证。
+原生文本 mutation 和平台副作用；TEST1061、TEST123–125 已在 WM6 设备门通过。next618
+在宿主边界补齐 WinCE `GCS_RESULTSTR` 的完整候选落地，但没有改变该 ABI 或把 OEM 候选词
+窗口、SIP 视觉体验伪装成 browser 兼容性保证；TEST1066 只验证可重复的多字节结果提交。
 
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、

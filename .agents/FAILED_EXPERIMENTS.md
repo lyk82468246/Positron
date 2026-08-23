@@ -129,6 +129,26 @@ GUI 连接状态的情况下同时复用 USB 真机和 DMA emulator 当前会话
 当前连接；顺序为 `999` → `43,1064,999` → 网络可用时 `13,43,1064,999`。超时日志不得
 写成通过证据；不要修改 gate 去强杀未知设备进程。
 
+### next618 首轮窄门：WMDC 远端主动关闭 — 环境阻塞，未形成基线
+
+问题：在 next618 的本地 Debug 增量构建、完整 staging 和 Release 全量重建均成功后，
+窄门 `1066,123-125,999` 在 RAPI `CeCreateDirectory(\Temp)` 处失败，返回
+`RAPI=0x80072775`（WinSock 10101，远端已主动关闭）。该错误发生在设备收到
+`test_host.exe` 之前，因此不能归因于 TEST1066、IME 适配或测试断言。
+
+决定：本次只保留本地构建/静态验证，不能把该目录或启动头写成设备通过证据。不要让 gate
+增加 VMID 绑定、自动连接或远程强杀；应在设备/模拟器 GUI 关闭遗留 `test_host.exe`，
+确认 WMDC 只保留一个当前连接后重新断开/连接，再原样重跑 next618 窄门。若仍在
+`CeCreateDirectory` 失败，应继续按 WMDC/RAPI 环境阻塞处理，而不是放宽 TEST1066。
+
+重连后的第二次尝试 `20260824-001001-next618-native-ime-result-final` 完成了同一份
+Debug staging，但在打开当前 RAPI 会话后约 90 秒没有进入目录操作、部署或设备进程阶段；
+本地 gate 进程已安全停止，目录中没有 `test_host.log` 或结果文件。该启动头同样不是
+设备测试证据，后续仍应先恢复 WMDC/RAPI 会话再重跑。
+
+第三次短探测 `20260824-001630-next618-native-ime-result-final` 在相同的 RAPI 会话建立处
+约 30 秒无进展后停止，仍没有设备日志；在 WMDC GUI 重新建立独占连接前不得继续重复。
+
 ### 早期 loading 条 — 已替代/部分暂挂
 
 问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。

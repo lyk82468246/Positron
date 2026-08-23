@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1065
+#define TEST_MAX_NUMBER 1066
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -5567,6 +5567,29 @@ static int pcore_native_ime_string(HWND hwnd, DWORD index,
     return 1;
 }
 
+/* WinCE IME implementations do not all let the EDIT default procedure
+ * consume a multi-character GCS_RESULTSTR.  Some versions expose only the
+ * first WM_CHAR through the subclass, leaving the rest of the candidate in
+ * the IME state.  The result string is already the complete UTF-8 payload;
+ * apply it as one native replacement while the browser composition metadata
+ * remains pending.  EM_REPLACESEL keeps the control's current composition
+ * selection and still produces the normal EN_CHANGE -> Core commit path. */
+static int pcore_native_edit_apply_ime_result(HWND hwnd, const char *data)
+{
+    WCHAR *wide_value;
+
+    if (hwnd == NULL || data == NULL) {
+        return 0;
+    }
+    wide_value = utf8_to_wide_alloc(data);
+    if (wide_value == NULL) {
+        return 0;
+    }
+    SendMessage(hwnd, EM_REPLACESEL, TRUE, (LPARAM) wide_value);
+    free(wide_value);
+    return 1;
+}
+
 static int pcore_native_edit_start_composition(HWND hwnd,
         pcore_native_edit *native_edit)
 {
@@ -5623,6 +5646,46 @@ static void pcore_native_edit_end_composition(HWND hwnd,
     pcore_native_edit_clear_composition(native_edit);
 }
 
+static int g_native_ime_result_probe = 0;
+static int g_native_ime_result_probe_ok = 0;
+
+/* Deliberately use a multi-byte, multi-character candidate so the probe
+ * catches the historical WinCE "first character only" result path. */
+static const char g_native_ime_candidate[] =
+        "\xe5\x80\x99\xe9\x80\x89\xe8\xaf\x8d";
+
+static void pcore_native_edit_result_probe_run(void)
+{
+    pcore_native_edit *native_edit;
+    HWND hwnd;
+
+    g_native_ime_result_probe_ok = 0;
+    if (g_native_edit_count == 0 || g_native_edits == NULL ||
+            g_native_edits[0].hwnd == NULL) {
+        return;
+    }
+    native_edit = &g_native_edits[0];
+    hwnd = native_edit->hwnd;
+    SendMessage(hwnd, EM_SETSEL, 0, (LPARAM) -1);
+    if (!pcore_native_edit_start_composition(hwnd, native_edit)) {
+        return;
+    }
+    pcore_native_edit_update_composition(hwnd, native_edit,
+            g_native_ime_candidate);
+    native_edit->composition_committing = 1;
+    if (!pcore_native_edit_apply_ime_result(hwnd,
+            g_native_ime_candidate)) {
+        native_edit->composition_committing = 0;
+        pcore_native_edit_end_composition(hwnd, native_edit,
+                g_native_ime_candidate);
+        return;
+    }
+    native_edit->composition_committing = 0;
+    pcore_native_edit_end_composition(hwnd, native_edit,
+            g_native_ime_candidate);
+    g_native_ime_result_probe_ok = 1;
+}
+
 static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp)
 {
@@ -5674,9 +5737,13 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                     pcore_native_edit_update_composition(hwnd, native_edit,
                             ime_data);
                     native_edit->composition_committing = 1;
-                    native_result = (original != NULL) ?
-                            CallWindowProc(original, hwnd, msg, wp, lp) :
-                            DefWindowProc(hwnd, msg, wp, lp);
+                    if (pcore_native_edit_apply_ime_result(hwnd, ime_data)) {
+                        native_result = 0;
+                    } else {
+                        native_result = (original != NULL) ?
+                                CallWindowProc(original, hwnd, msg, wp, lp) :
+                                DefWindowProc(hwnd, msg, wp, lp);
+                    }
                     native_edit->composition_committing = 0;
                     pcore_native_edit_end_composition(hwnd, native_edit,
                             ime_data);
@@ -13025,6 +13092,9 @@ static BOOL show_render_window(void)
                 TRUE, (LPARAM) L"\x2192");
         SendMessage(g_native_edits[0].hwnd,
                 WM_IME_ENDCOMPOSITION, 0, 0);
+    }
+    if (g_native_ime_result_probe) {
+        pcore_native_edit_result_probe_run();
     }
     if (g_native_multiselect_probe) {
         pcore_native_multiselect_probe_run(hwnd);
@@ -53668,6 +53738,69 @@ static BOOL test1065_http_reference_product_contract(void)
     return TRUE;
 }
 
+/* TEST 1066 - complete native IME result replacement. */
+static BOOL test1066_native_ime_result_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><input value=old></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "input{display:block;width:180px;height:28px;}";
+    HANDLE hDoc;
+    HANDLE hSheet;
+    PCoreTextInputInfo info;
+    char value[128];
+    int ok;
+
+    hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/native-ime-result.css");
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 240, 320) != 0) {
+        if (hSheet != NULL) {
+            PCore_FreeStylesheet(hSheet);
+        }
+        if (hDoc != NULL) {
+            PCore_FreeDocument(hDoc);
+        }
+        show_error(L"TEST 1066 FAIL", "IME result fixture setup failed");
+        return FALSE;
+    }
+    memset(&info, 0, sizeof(info));
+    memset(value, 0, sizeof(value));
+    g_doc_h = PCore_DocumentHeight(hDoc);
+    g_scroll_y = 0;
+    g_render_doc = hDoc;
+    g_render_sheet = hSheet;
+    g_native_ime_result_probe = 1;
+    g_native_ime_result_probe_ok = 0;
+    ok = show_render_window();
+    g_native_ime_result_probe = 0;
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (ok && (PCore_TextInputInfo(hDoc, 0, &info, value,
+            sizeof(value)) != 0 ||
+            strcmp(value, g_native_ime_candidate) != 0)) {
+        ok = 0;
+    }
+    if (ok && !g_native_ime_result_probe_ok) {
+        ok = 0;
+    }
+    PCore_FreeStylesheet(hSheet);
+    PCore_FreeDocument(hDoc);
+    if (!ok) {
+        show_error(L"TEST 1066 FAIL",
+                "multi-character UTF-8 IME result did not replace the "
+                "complete native EDIT value");
+        return FALSE;
+    }
+    show_info(L"TEST 1066 OK",
+            "A complete multi-character UTF-8 IME result replaced the "
+            "native EDIT selection and reached Core as one value.");
+    return TRUE;
+}
+
 static BOOL test_browser_raw_property_case(const char *target_markup,
         const char *property, const char *attribute, const char *initial,
         const char *attribute_value, const char *property_value,
@@ -70836,6 +70969,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1063: ok = test1063_form_fieldset_disabled_contract(); break;
         case 1064: ok = test1064_navigation_url_resolution_contract(); break;
         case 1065: ok = test1065_http_reference_product_contract(); break;
+        case 1066: ok = test1066_native_ime_result_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

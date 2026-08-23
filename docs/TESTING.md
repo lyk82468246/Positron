@@ -357,6 +357,41 @@ TEST999 通过 2/2，唯一 `TESTBENCH PASS`，`error_count=0`、`fail_count=0`�
 `test13_route_ok=True`。中途 r1/r2 的 RAPI 远端关闭和 r3/r4 暴露的失败输出清理缺口均不作为
 最终证据；修复后 r5 才是本批基线。
 
+### next618 WM6 native EDIT 完整 IME 结果自动门
+
+next618 修正的是宿主平台边界，不扩张 `positron_browser.dll` 的 composition ABI。部分 WM6
+EDIT 默认过程在 `WM_IME_COMPOSITION | GCS_RESULTSTR` 上只把候选词的首个字符送入
+`WM_CHAR`；宿主现在读取完整 `ImmGetCompositionStringW` 结果，转换为 UTF-8 后一次性用
+`EM_REPLACESEL` 写入当前 composition selection，再沿既有 `EN_CHANGE` → Core value →
+browser input 路径提交。转换失败才回退到原来的 EDIT default procedure。
+
+TEST1066 是不依赖 OEM 输入法窗口的可重复回归：它用多字节、多字符候选值验证原生 EDIT
+选区和 Core 最终值完整一致；TEST123–125 保持 composition/InputEvent/KeyboardEvent
+元数据回归。真实 SIP 候选词窗口、候选条视觉、OEM composition 细节和 TEST65 的人工
+操作仍不能由该自动门替代。
+
+窄定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next618-native-ime-result-final ^
+  -EnableJavaScript ^
+  -TestSelection "1066,123-125,999"
+```
+
+门的完成标准是选定测试全部出现 `TEST n OK`、唯一 `TESTBENCH PASS`、零 ERROR/FAIL，且
+`TEST999` 只产生一次系统提示音；真实 TEST65 需在同一构建上点选一个多字符 SIP 候选词，
+确认输入框显示完整候选词并保留其余密码/readonly/disabled/maxlength 行为。
+
+当前候选的 staging 已完成，但设备门在首条 RAPI 目录操作
+`CeCreateDirectory(\Temp)` 处收到 `RAPI=0x80072775`（WinSock 10101，远端主动关闭），
+因此尚无 `device-gate-result.txt` 或设备通过证据。先在设备/模拟器 GUI 关闭遗留
+`test_host.exe`，重新建立 WMDC 当前唯一连接，再原样重跑上面的窄门；不要把启动头、
+RAPI 环境错误或人工未执行写成 TEST1066 通过。
+
+重连后的第二次尝试完成 staging 后在打开 RAPI 会话处约 90 秒无进展，已停止本地 gate，
+同样没有 `test_host.log` 或结果文件；这仍属于 WMDC/RAPI 环境阻塞，不是测试断言结果。
+第三次短探测在相同位置约 30 秒无进展后停止；在 WMDC GUI 重新建立独占连接前不再重复。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

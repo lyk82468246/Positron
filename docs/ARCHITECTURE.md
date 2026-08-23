@@ -933,6 +933,14 @@ native commit → input 事务，END 允许 NULL 数据回放最后一次 preedi
 TEST123–125 在真实 WM6 上保持 composition/InputEvent/KeyboardEvent 元数据回归。该批不
 宣称 OEM 候选词整词提交、SIP 视觉、触摸、旋转或其他平台副作用兼容。
 
+next618 仍不扩张 browser ABI：宿主在收到 WM_IME 的 `GCS_RESULTSTR` 后，先通过
+`ImmGetCompositionStringW` 取得完整结果并转换为 UTF-8，再用一次 `EM_REPLACESEL` 写入
+当前 native EDIT composition selection；由既有 `EN_CHANGE` 回写 Core，继续复用
+next613 的 composition metadata 和 browser-owned commit→input 事务。若 UTF-8 转换失败，
+宿主保留原来的 EDIT default-procedure fallback。这样修正的是 WinCE 平台副作用，不把
+WM 控件、SIP 窗口或 OEM 候选词体验冒充成 `positron_browser.dll` 语义；TEST1066 只覆盖
+可重复的完整多字节结果落地，真实 SIP 候选窗口和视觉仍需人工验收。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

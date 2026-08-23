@@ -1,6 +1,6 @@
 # Positron 当前已知限制
 
-更新时间：2026-08-23
+更新时间：2026-08-24
 
 本文件只记录当前仍然成立的边界，以及解除边界所需的证据。已修复问题和旧 next 流水由 Git 历史、`docs/history/` 与相关测试保存；最新候选和设备证据见 `.agents/HANDOFF.md`。
 
@@ -19,9 +19,11 @@
   DLL，next611 再将单选下拉的 begin/candidate/confirm/cancel 事务状态迁入同一 DLL，next612
   又将 native SELECT 的 keydown/keyup dispatch、取消结果和 Enter/Arrow 元数据入口迁入同一
   DLL，next613 又将 native EDIT 的 compositionstart/update/end 顺序、有界 preedit 和
-  UPDATE pending metadata 迁入同一 DLL。仍由宿主持有 native SELECT 的 WM 控件默认动作、
-  原生下拉窗口与视觉、Core selection mutation、取消回滚，以及 native EDIT 的 WM_IME/SIP、
-  原生文本 mutation 和平台副作用胶水；必须逐项区分产品语义与宿主副作用，不能笼统搬迁。
+  UPDATE pending metadata 迁入同一 DLL。next618 在宿主 WM6 边界把完整 `GCS_RESULTSTR`
+  一次性写入当前 native EDIT composition selection，避免部分 WinCE EDIT 默认过程只提交
+  首个字符。仍由宿主持有 native SELECT 的 WM 控件默认动作、原生下拉窗口与视觉、Core
+  selection mutation、取消回滚，以及 native EDIT 的 WM_IME/SIP、原生文本 mutation 和
+  平台副作用胶水；必须逐项区分产品语义与宿主副作用，不能笼统搬迁。
 - 产品级 HTML、CSS、DOM、表单和脚本语义应归入 `positron_browser`、`positron_core` 或 `positron_script`；窗口生命周期、原生控件、设备网络和测试编排仍由宿主持有。
 - 浏览器 JavaScript 与独立脚本 API 共用 `positron_script` 中唯一的 Duktape 引擎。当前默认关闭，启用必须显式配置。
 - 浏览器会话脚本 heap 上限为 624 KiB，独立脚本会话默认上限为 512 KiB。预算是当前设备实测基线，不代表任意页面都能装入。
@@ -31,7 +33,8 @@
   窗口和导航副作用仍由宿主 callback 提供。`PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()`
   只迁移 native EDIT 的有界输入事务策略；`PBrowser_ScriptSessionDispatchNativeEditComposition()`
   只迁移 composition phase/data 的顺序与 bounded preedit；WM EDIT/WM_IME 消息、文本 mutation、
-  SIP/候选词窗口和 OEM 行为仍由宿主提供。next614 还把显式/嵌套 label-control 关联和
+  SIP/候选词窗口和 OEM 行为仍由宿主提供。next618 的 `GCS_RESULTSTR` 完整候选落地只覆盖
+  已有 WM6 native EDIT 路径，不等于所有 OEM 输入法或视觉均兼容。next614 还把显式/嵌套 label-control 关联和
   labelable 控件的静态 `labels` snapshot 放入 core/browser relation bridge；next615 又把
   disabled ancestor fieldset 的有效状态（含第一个 legend 豁免和嵌套 fieldset）接入产品 core 的
   验证、successful controls、控件信息和交互闸门，但不承诺 live labels、native invalid UI 或

@@ -1,6 +1,6 @@
 # Positron 当前交接
 
-更新时间：2026-08-23
+更新时间：2026-08-24
 
 本文件只保存接手下一批工作所需的当前快照。已完成批次、旧故障和旧验收记录以 Git 历史、`docs/history/` 与本地 `tmp/device-runs/` 为准，不在这里累计。
 
@@ -16,8 +16,8 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next617，HTTP reference/Location 解析产品化纵切。
-- 测试编号上限：`TEST_MAX_NUMBER 1065`。
+- 当前能力批次：next618，WM6 native EDIT 完整 IME 候选词结果提交纵切（设备门待完成）。
+- 测试编号上限：`TEST_MAX_NUMBER 1066`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -110,6 +110,11 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   fail-closed 语义放到产品 DLL。主文档导航、CSS/图片资源和 HTTP GET 的 3xx `Location`
   现在共用该 resolver；`test_host` 只提供 origin、窗口/网络副作用和公共 API 消费，不再
   复制 URL 业务规则。TEST1064 保留宿主回归，TEST1065 验证产品契约。
+- next618 保持 next613 的 browser-owned composition 生命周期不变，修正宿主 WM6 IME
+  `GCS_RESULTSTR` 的平台落地：完整 UTF-8 候选词先进入当前 native EDIT composition
+  selection，再沿既有 `EN_CHANGE` → Core value → browser input 路径提交，不再依赖某些
+  WinCE EDIT 默认过程只生成的首个 `WM_CHAR`。TEST1066 覆盖多字节多字符候选的完整值；
+  OEM SIP 候选窗口、视觉和真实设备输入仍需单独人工确认。
 
 ## 最近验证证据
 
@@ -277,6 +282,23 @@ next617 的 HTTP reference/Location 产品解析已完成：
 - r1/r2 的 RAPI 失败是重连前远端关闭（Win32 10101），r3/r4 已完成部署并暴露出产品
   解析器的失败输出清理缺口；修复后 r5 通过，不能把中间候选当作最终设备证据。
 
+next618 当前候选的本地验证已完成，但设备门尚未形成证据：
+
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式重建和本批源码检查均通过；
+  Release 全量重建为 16/16，test_host 为 0 error/3 个既有警告。
+- 窄门 `1066,123-125,999` 已完成 staging，但在
+  `tmp/device-runs/20260823-235833-next618-native-ime-result-final/` 的第一条
+  `CeCreateDirectory(\Temp)` 处收到 `RAPI=0x80072775`（WinSock 10101，远端主动关闭），
+  设备尚未收到 `test_host.exe`。这不是 TEST1066 失败，不能写成通过基线。
+- 重连后的第二次窄门 `tmp/device-runs/20260824-001001-next618-native-ime-result-final/`
+  也只完成 staging，打开当前 RAPI 会话后约 90 秒无进展；本地 gate 进程已停止，未产生
+  `test_host.log` 或结果文件，不能把启动头写成设备证据。
+- 第三次短探测 `tmp/device-runs/20260824-001630-next618-native-ime-result-final/` 在相同
+  RAPI 会话建立处约 30 秒无进展后停止，仍未产生设备日志；在 WMDC GUI 重新建立独占连接
+  前不再重复设备门。
+- 需要关闭设备/模拟器 GUI 中遗留的 `test_host.exe`，确认 WMDC 只有当前唯一连接后重新
+  断开/连接，再原样重跑窄门；恢复门槛见 `.agents/FAILED_EXPERIMENTS.md` 的 next618 条目。
+
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
 ## 当前已知边界
@@ -304,20 +326,23 @@ next617 的 HTTP reference/Location 产品解析已完成：
   Debug 门已完成 example.com 第一跳，IANA 后续跳转属于外网可达性限制，不影响离线交付标准。
   tracked 改动只覆盖宿主 URL 解析、TEST1064、
   相关 README/测试/交接文档；提交时不要把 `tmp/` 设备证据或无关工作区文件带入。
-- next617 的源码、C89、Debug 构建、定向设备门和产品/消费者文档已完成；最终 Release 构建、
-  audit、Git diff 和远端状态必须在提交前后重新核对。tracked 改动只应覆盖
-  `positron_http` resolver、`test_host` TEST1065/consumer、README/测试/agent 文档；
-  不要把 `tmp/` 设备证据或无关工作区文件带入。
-- next613 候选的设备门已通过；若后续出现 composition 顺序、候选词数据或 native commit→input
-  错误，应先保留 browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
+- next617 的源码、C89、Debug/Release 构建、定向设备门、audit、Git diff 和远端状态均已在
+  `f2f0dbcb` 推送前后核对；tracked 改动只覆盖该批 `positron_http` resolver、消费者和文档。
+- next618 的 Debug/Release 全量 ARMV4I rebuild 和 C89 检查已通过；定向设备门先在 RAPI 远端
+  关闭处失败，重连后又在打开 RAPI 会话处挂起，audit、文档和 Git 推送仍是本批交付项。
+  tracked 改动只应覆盖
+  `test_host` IME result 适配、TEST1066 与相关 README/测试/agent 文档；不要把 `tmp/`
+  设备证据或无关工作区文件带入。
+- 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
+  browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
 - 接手者必须先检查工作区；任何未提交改动默认属于用户，不能覆盖。
 
 ## 唯一下一步
 
-next618：从真实页面驱动的兼容队列选择下一个可重复的完整用户行为纵切；先用现有自动门和
-设备日志确认缺口，再决定应落在 `positron_core`、`positron_browser` 或宿主边界。不得为了
- 填充编号添加互不相关的小 API，也不得重做 next607–617。
+next618：完成 WM6 native EDIT 的完整 IME 候选词结果提交纵切，先通过 TEST1066 与相关构建，
+再用窄设备门和一次人工 TEST65 确认真实 SIP；不得把 OEM 窗口视觉或未验证设备行为写成
+产品保证。
 
 ## next617 完成标准
 
@@ -331,3 +356,14 @@ next618：从真实页面驱动的兼容队列选择下一个可重复的完整�
 - 只有出现视觉、真实触摸、SIP、旋转、文件选择器或失败网络风险时才累计人工门；崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 - 跟踪的默认 INI 恢复为自动模式且选择集不被无意扩大。
 - 用当批事实覆盖本文件的当前快照，更新限制和路线图；只提交本批 tracked 文件并推送 `main`。
+
+## next618 完成标准
+
+- `GCS_RESULTSTR` 的完整 UTF-8 结果在 WM6 native EDIT 当前 composition selection 中一次性
+  提交；失败时保留原有 default-procedure fallback，不改变无脚本路径。
+- TEST1066 的多字节多字符候选值完整到达 Core；TEST123–125、TEST65 相关回归不退化，
+  TEST999 只触发一次提示音。
+- `python scripts/test_c89ize.py`、Debug/Release 正式 ARMV4I 构建和
+  `python scripts/audit_repo.py` 通过；设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL。
+- 真实 SIP 候选词整词提交和视觉只在人工确认后提升为设备事实；人工未确认前继续记录为
+  限制，不扩张默认 `test_host.ini` 选择集。

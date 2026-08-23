@@ -173,6 +173,10 @@ next615 又把 disabled ancestor fieldset 的有效状态迁入 `positron_core.d
 后代豁免，嵌套 fieldset 逐层继承，并统一用于约束验证、successful controls、默认 submitter、
 控件信息和交互闸门；原始 `control.disabled` 仍只反射自身属性。`TEST1063` 与表单/关系回归
 已通过自动设备门；native 窗口样式、invalid UI、SIP/IME 和文件选择器仍由宿主负责。
+next618 又修正 WM6 native EDIT 对多字符 IME 候选结果的宿主落地：完整 `GCS_RESULTSTR`
+通过一次 `EM_REPLACESEL` 写入当前 composition selection，继续沿 `EN_CHANGE` 回写 Core，
+避免部分设备只留下首字符。`TEST1066` 覆盖多字节完整值；真实 SIP 候选窗口视觉与 OEM
+行为仍需设备人工确认，不能从自动门扩大为通用输入法保证。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node
