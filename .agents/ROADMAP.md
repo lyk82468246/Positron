@@ -329,7 +329,23 @@ TEST1076 覆盖 label→checkbox、radio 互斥、目标 click `preventDefault` 
 真实 label 触摸坐标、焦点视觉、OEM 行为以及 select/file/textarea 等其他 labelable 控件
 仍保持人工/独立边界。
 
-### 23. 建立真实页面驱动的兼容队列
+### 23. next629：label→native text/select 受信任转发（已完成）
+
+next629 不扩张公共 ABI，而是补齐宿主对其余 native labelable 控件的消费者接线：启用脚本时，
+label 命中的 text/password/textarea/select/file target 先经过既有 browser click adapter；
+目标 click 未被取消且 target 有效时，宿主才执行 native EDIT/SELECT `SetFocus()` 或进入
+系统 file picker。disabled/stale target 不合成目标 click；无脚本路径继续使用原有 focus/picker
+fallback。browser layer 仍只拥有 click 事件传播与取消，WM 控件、Core interaction、picker、
+路径和重绘副作用留在宿主。
+
+TEST1077 在真实 native EDIT/SELECT 子窗口上覆盖 text、textarea、select 的 target click、
+焦点顺序、取消和 disabled 静默；文件 picker 的模态对话框、路径写入和真实 label 触摸仍是
+独立人工边界。`tmp/device-runs/20260824-145252-next629-label-native-r9/` 的定向设备门
+通过 10/10（TEST1077、1076、1075、1074、1073、1072、1071、64、73、999），零 ERROR/FAIL，
+唯一 `TESTBENCH PASS`。Debug/Release、C89 和 audit 需保持既有 3 个 libcss/fpmath C4244
+警告基线；不修改 tracked INI。
+
+### 24. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -340,7 +356,7 @@ TEST1076 覆盖 label→checkbox、radio 互斥、目标 click `preventDefault` 
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 24. 安排新的全范围检查点
+### 25. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

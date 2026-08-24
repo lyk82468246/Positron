@@ -1018,6 +1018,14 @@ next628 复用同一公共 ABI 补齐启用脚本时的 label→native toggle �
 stale target 不合成目标 click。TEST1076 是该消费者接线门；label 的真实触摸坐标、焦点视觉、
 OEM 行为以及其他 labelable 控件仍不是该自动门的承诺。
 
+next629 不扩张公共 ABI，而是让宿主对 text/password/textarea/select/file label target 复用
+既有 browser click adapter：browser layer 同步派发目标的可取消 `click`，宿主只在目标未被
+取消且未 disabled/stale 时执行 native EDIT/SELECT `SetFocus()` 或进入系统 file picker。
+因此目标 click 的事件传播/取消留在 browser layer，WM 控件、Core interaction、picker、路径、
+窗口和重绘副作用留在消费者；无脚本路径保持原有 focus/picker fallback。TEST1077 在真实
+native EDIT/SELECT 子窗口上验证 text/textarea/select 的事件与焦点顺序、取消和 disabled 闸门；
+文件 picker 模态对话框、真实 label 坐标、SIP/IME 和 OEM 视觉仍不是本批保证。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

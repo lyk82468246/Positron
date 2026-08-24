@@ -325,6 +325,14 @@ checked/radio mutation、重绘和窗口副作用。TEST1076 覆盖 checkbox 提
 click `preventDefault` 和 disabled 静默；label 几何、触摸、焦点视觉以及 select/file/textarea
 等其他 labelable 控件仍由消费者负责。
 
+next629 不新增 ABI，而是补齐宿主对其余 native labelable 控件的 trusted target click 接线：
+启用脚本时，label 命中 text/password/textarea/select/file 后先通过既有
+`PBrowser_ScriptSessionDispatchClickEvent()` 派发目标的可取消 `click`；只有未取消时，宿主才
+把焦点交给 native EDIT/SELECT，或继续进入系统 file picker。disabled/stale target 不合成目标
+click；browser layer 仍只拥有事件取消/传播，WM 控件、Core focus、picker、路径和重绘仍由
+消费者负责。TEST1077 在真实 native EDIT/SELECT 子窗口上覆盖 text/textarea/select 的事件、
+焦点、取消和 disabled 闸门；文件 picker 的模态对话框与真实触摸仍需独立人工验收。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

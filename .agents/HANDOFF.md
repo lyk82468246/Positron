@@ -16,9 +16,9 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next628，label→native checkbox/radio 受信任转发（自动设备门已完成）；
-  next618 的 TEST65 真实 SIP 候选词仍待人工确认。
-- 测试编号上限：`TEST_MAX_NUMBER 1076`。
+- 当前能力批次：next629，label→native text/textarea/select 受信任转发（自动设备门已完成）；
+  next618 的 TEST65 真实 SIP 候选词仍待人工确认，file picker/真实 label 触摸仍是独立人工边界。
+- 测试编号上限：`TEST_MAX_NUMBER 1077`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -169,6 +169,12 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   命中派发，目标 control 再由 Core 执行 checked/radio mutation；browser layer 继续拥有目标
   click 取消和一次 `input` → `change`，stale/disabled target 不合成 click。TEST1076 覆盖
   checkbox、radio 互斥、preventDefault 和 disabled 静默。
+- next629 在 `test_host` 把 label 命中的 text/password/textarea/select/file target
+  先交给既有 browser click adapter；只有目标 click 未取消且目标有效时，宿主才聚焦
+  native EDIT/SELECT 或进入系统 file picker。disabled/stale target 不合成目标 click，
+  无脚本 fallback 保持不变。TEST1077 覆盖 text/textarea/select 的真实 render-window
+  click、focus/focusin、select 取消和 disabled 静默；file picker 模态框与真实触摸仍是
+  独立人工边界。
 
 ## 最近验证证据
 
@@ -457,6 +463,20 @@ next628 的 trusted label→native toggle activation 自动设备门已经完成
   和同一窄设备门均已通过；Release/Debug 仅保留既有 libcss/fpmath 的 3 个 C4244 警告，
   产品 DLL 无新增警告。
 
+next629 的 trusted label→native text/select forwarding 自动设备门已经完成：
+
+- `tmp/device-runs/20260824-145252-next629-label-native-r9/` 的
+  `device-gate-result.txt` 为 PASS，TEST1077、1076、1075、1074、1073、1072、1071、64、
+  73、999 共 10/10，唯一 `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、
+  `test13_route_ok=True`。
+- TEST1077 覆盖 label→text/textarea/select 的 browser-owned target click、接受后的
+  focus/focusin、select `preventDefault`、disabled target 静默；没有把系统 file picker
+  的模态框、路径提交、真实 label 触摸、SIP/IME 或 OEM 焦点视觉写成已验证保证。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、`python scripts/audit_repo.py`
+  和窄设备门均已通过；Release/Debug 仅保留既有 libcss/fpmath 的 3 个 C4244 警告，产品
+  DLL 无新增警告。首次实验的旧远端目录仍作为本地诊断证据保留，r9 使用独立远端目录完成
+  验证，不应删除或带入 Git。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -490,7 +510,7 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1076 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1077 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -543,6 +563,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - next628 的宿主 label→native toggle forwarding、TEST1076、C89、Debug/Release 构建、
   audit 和窄设备门已完成；tracked 改动只覆盖 `test_host` 消费者、TEST1076 与相关文档，
   `positron_browser` 公共 ABI 未扩张。不要把 `tmp/` 证据或无关工作区文件带入。
+- next629 的宿主 label→native text/textarea/select forwarding、TEST1077、C89、
+  Debug/Release 构建、audit 和窄设备门已完成；tracked 改动只覆盖 `test_host` 消费者、
+  TEST1077 与相关文档，`positron_browser` 公共 ABI 未扩张。没有修改 tracked INI；不要把
+  `tmp/` 证据或无关工作区文件带入。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -551,10 +575,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 ## 唯一下一步
 
 完成 next618 的一次人工 TEST65：在同一构建的真实 WM6 窗口中点选多字符 SIP 候选词，确认
-输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next622–626
-本身的自动契约已经完成，next627 的 label→button 和 next628 的 label→toggle 事件契约也
-已自动通过；确认前不得把 OEM 窗口视觉、键盘映射、真实 label 触摸或其他未验证设备行为
-写成产品保证；确认后再按
+输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next622–629
+本身的自动契约已经完成；next629 的 label→text/textarea/select 事件契约已自动通过，
+但 file picker 模态框、真实 label 触摸、OEM 窗口视觉、键盘映射和 SIP/IME 仍未被自动门
+证明。确认前不得把这些行为写成产品保证；确认后再按
 路线图选择下一个产品纵切。
 
 ## next617 完成标准
@@ -699,3 +723,16 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   焦点视觉、OEM 行为和其他 labelable 控件继续保持人工/独立边界。
 - 跟踪的默认 INI 保持自动模式和原有选择集；更新限制、路线图和交接快照，只提交本批
   tracked 文件并推送 `main`。
+
+## next629 完成标准
+
+- enabled label 的 text/password/textarea/select/file target 先经过既有 browser click
+  adapter；click 未取消且目标有效时，宿主才执行对应 native EDIT/SELECT focus 或系统
+  picker；disabled/stale target 不产生目标 click，取消保持无默认动作，无脚本路径不变。
+- TEST1077 与 1076、1075、1074、1073、1072、1071、64、73、999 的窄设备门必须是唯一
+  `TESTBENCH PASS` 且无 ERROR/FAIL；设备日志记录 `test13_route_ok=True`。
+- `python scripts/test_c89ize.py`、Debug/Release 正式 ARMV4I 构建、`python scripts/audit_repo.py`
+  和 `git diff --check` 通过；只保留既有 libcss/fpmath 的 3 个 C4244 警告，不扩张
+  `positron_browser` 公共 ABI，不改默认 INI。
+- 系统 file picker 的打开/取消/路径提交、真实 label 触摸、SIP/IME、旋转和 OEM 视觉
+  必须作为独立人工门记录，不能由 TEST1077 的自动断言代替。

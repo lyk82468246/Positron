@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1076
+#define TEST_MAX_NUMBER 1077
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6922,6 +6922,9 @@ static int g_native_form_enter_probe_ok = 0;
 static char g_native_form_enter_expected[256];
 static int g_native_label_probe = 0;
 static int g_native_label_probe_ok = 0;
+static int g_native_label_forward_probe = 0;
+static int g_native_label_forward_probe_ok = 0;
+static char g_native_label_forward_probe_detail[256];
 static int g_native_toggle_key_probe = 0;
 static int g_native_toggle_key_probe_ok = 0;
 
@@ -7026,6 +7029,8 @@ static int pcore_handle_form_button_default(HWND hwnd, int x, int y,
         int kind);
 static int pcore_activate_form_button(HWND hwnd, unsigned int index,
         int kind, int x, int y);
+static int pcore_focus_native_form_control(int kind, int x, int y);
+static int pcore_handle_file_input(HWND hwnd, int x, int y);
 
 static int pcore_native_script_active(void)
 {
@@ -14039,6 +14044,62 @@ static int pcore_activate_form_toggle(HWND hwnd, int x, int y)
     return 1;
 }
 
+/* Resolve the label target's effective disabled state before synthesising a
+ * target click.  Label activation must fail closed for every labelable
+ * control, not only the controls that have a dedicated native transaction.
+ */
+static int pcore_label_target_disabled(int kind, int x, int y)
+{
+    unsigned int index;
+    int left;
+    int top;
+    int width;
+    int height;
+    int current_kind;
+    int disabled;
+
+    if (g_render_doc == NULL) {
+        return 1;
+    }
+    index = 0;
+    while (PCore_FormControlInfo(g_render_doc, index, &left, &top,
+            &width, &height, &current_kind, NULL, &disabled) == 0) {
+        if (current_kind == kind && width > 0 && height > 0 &&
+                x >= left && x < left + width &&
+                y >= top && y < top + height) {
+            return disabled ? 1 : 0;
+        }
+        index++;
+    }
+    return 1;
+}
+
+/* Complete the trusted part of label activation for labelable native
+ * controls that do not have a specialised CLICK/COMMIT transaction.  The
+ * browser layer owns the cancelable target click; the host performs only the
+ * native focus or system-picker default action after that click is accepted.
+ * The legacy/no-script path keeps its historical focus/picker behavior. */
+static int pcore_activate_label_native_control(HWND hwnd, int kind,
+        int x, int y)
+{
+    if ((kind < 3 || kind > 6) && kind != 10) {
+        return 0;
+    }
+    if (pcore_label_target_disabled(kind, x, y)) {
+        return 1;
+    }
+    if (pcore_native_script_active() &&
+            !pcore_browser_script_dispatch_click_at(x, y)) {
+        return 1;
+    }
+    if (kind == 10) {
+        (void) pcore_handle_file_input(hwnd, x, y);
+    } else {
+        (void) pcore_focus_native_form_control(kind, x, y);
+    }
+    return 1;
+}
+
 static int pcore_focus_native_form_control(int kind, int x, int y)
 {
     PCoreTextInputInfo text_info;
@@ -14498,7 +14559,8 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
          * receive a synthetic click. */
         (void) pcore_activate_form_toggle(hwnd, target_x, target_y);
     } else {
-        pcore_focus_native_form_control(kind, target_x, target_y);
+        (void) pcore_activate_label_native_control(hwnd, kind,
+                target_x, target_y);
     }
     return 1;
 }
@@ -15643,6 +15705,220 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     return DefWindowProc(hwnd, msg, wp, lp);
 }
 
+static int pcore_native_label_probe_point(HANDLE document, int *out_x,
+        int *out_y, int *out_kind)
+{
+    int label_x;
+    int label_y;
+    int label_w;
+    int label_h;
+    int probe_x;
+    int probe_y;
+    int step_x;
+    int step_y;
+    int target_x;
+    int target_y;
+    int target_kind;
+
+    if (document == NULL || out_x == NULL || out_y == NULL ||
+            PCore_NodeBox(document, "label", &label_x, &label_y,
+            &label_w, &label_h) != 0 || label_w <= 0 || label_h <= 0) {
+        return 0;
+    }
+    step_x = label_w / 4;
+    step_y = label_h / 4;
+    if (step_x <= 0) {
+        step_x = 1;
+    }
+    if (step_y <= 0) {
+        step_y = 1;
+    }
+    for (probe_y = label_y;
+            probe_y < label_y + label_h; probe_y += step_y) {
+        for (probe_x = label_x;
+                probe_x < label_x + label_w; probe_x += step_x) {
+            if (PCore_LabelTargetAt(document, probe_x, probe_y,
+                    &target_x, &target_y, &target_kind) == 1) {
+                *out_x = probe_x;
+                *out_y = probe_y;
+                if (out_kind != NULL) {
+                    *out_kind = target_kind;
+                }
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* Probe label forwarding with real native EDIT/SELECT children.  The
+ * accepted text/textarea/select paths must deliver a target click before the
+ * host moves focus; a canceled or disabled target must not move focus or
+ * open the system picker. */
+static void pcore_native_label_forward_probe_run(HWND hwnd)
+{
+    char events[768];
+    char error[160];
+    const char *stage;
+    int label_x;
+    int label_y;
+    int label_w;
+    int label_h;
+    int target_x;
+    int target_y;
+    int target_kind;
+
+    g_native_label_forward_probe_ok = 0;
+    g_native_label_forward_probe_detail[0] = '\0';
+    stage = "setup";
+    memset(events, 0, sizeof(events));
+    memset(error, 0, sizeof(error));
+    if (hwnd == NULL || g_render_doc == NULL ||
+            g_native_edit_count < 2 || g_native_select_count < 1 ||
+            g_browser_script_session.runtime == NULL ||
+            g_native_edits[0].hwnd == NULL ||
+            g_native_edits[1].hwnd == NULL ||
+            g_native_selects[0].hwnd == NULL) {
+        goto failed;
+    }
+    stage = "text";
+    if (PCore_NodeBox(g_render_doc, "label", &label_x, &label_y,
+            &label_w, &label_h) != 0 || label_w <= 0 || label_h <= 0) {
+        stage = "text-box";
+        goto failed;
+    }
+    if (PCore_NodeSetAttributeById(g_render_doc, "label", "for",
+            "text") != 0) {
+        stage = "text-for";
+        goto failed;
+    }
+    if (!pcore_native_label_probe_point(g_render_doc,
+            &target_x, &target_y, &target_kind) || target_kind != 3) {
+        stage = "text-target";
+        goto failed;
+    }
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';window.cancel_select=false;"
+            "window.cancel_file=false;", -1, error, sizeof(error)) != 0) {
+        stage = "text-script";
+        goto failed;
+    }
+    if (!pcore_browser_script_dispatch_click_at(
+            target_x, target_y)) {
+        stage = "text-label-click";
+        goto failed;
+    }
+    if (!pcore_handle_label(hwnd, target_x, target_y)) {
+        stage = "text-label-handler";
+        goto failed;
+    }
+    if (GetFocus() != g_native_edits[0].hwnd) {
+        stage = "text-focus";
+        goto failed;
+    }
+    if (PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0) {
+        stage = "text-result";
+        goto failed;
+    }
+    if (strcmp(events,
+            "click|label|false;click|text|false;"
+            "focus|text|false;focusin|text|false;") != 0) {
+        stage = "text-events";
+        goto failed;
+    }
+    stage = "textarea";
+    if (PCore_NodeBox(g_render_doc, "label", &label_x, &label_y,
+            &label_w, &label_h) != 0 ||
+            PCore_NodeSetAttributeById(g_render_doc, "label", "for",
+            "area") != 0 ||
+            !pcore_native_label_probe_point(g_render_doc,
+            &target_x, &target_y, &target_kind) || target_kind != 5 ||
+            pcore_browser_script_session_evaluate(
+            "window.events='';", -1, error, sizeof(error)) != 0 ||
+            !pcore_browser_script_dispatch_click_at(
+            target_x, target_y) ||
+            !pcore_handle_label(hwnd, target_x, target_y) ||
+            GetFocus() != g_native_edits[1].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strstr(events, "click|area|false;") == NULL ||
+            strstr(events, "focus|area|false;") == NULL ||
+            strstr(events, "focusin|area|false;") == NULL) {
+        goto failed;
+    }
+    stage = "select";
+    if (PCore_NodeBox(g_render_doc, "label", &label_x, &label_y,
+            &label_w, &label_h) != 0 ||
+            PCore_NodeSetAttributeById(g_render_doc, "label", "for",
+            "pick") != 0 ||
+            !pcore_native_label_probe_point(g_render_doc,
+            &target_x, &target_y, &target_kind) || target_kind != 6 ||
+            pcore_browser_script_session_evaluate(
+            "window.events='';window.cancel_select=false;", -1,
+            error, sizeof(error)) != 0 ||
+            !pcore_browser_script_dispatch_click_at(
+            target_x, target_y) ||
+            !pcore_handle_label(hwnd, target_x, target_y) ||
+            GetFocus() != g_native_selects[0].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strstr(events, "click|pick|false;") == NULL ||
+            strstr(events, "focus|pick|false;") == NULL ||
+            strstr(events, "focusin|pick|false;") == NULL) {
+        goto failed;
+    }
+    stage = "select-cancel";
+    if (PCore_NodeBox(g_render_doc, "label", &label_x, &label_y,
+            &label_w, &label_h) != 0 ||
+            PCore_NodeSetAttributeById(g_render_doc, "label", "for",
+            "pick") != 0 ||
+            !pcore_native_label_probe_point(g_render_doc,
+            &target_x, &target_y, &target_kind) || target_kind != 6 ||
+            pcore_browser_script_session_evaluate(
+            "window.events='';window.cancel_select=true;", -1,
+            error, sizeof(error)) != 0 ||
+            !pcore_browser_script_dispatch_click_at(
+            target_x, target_y) ||
+            !pcore_handle_label(hwnd, target_x, target_y) ||
+            GetFocus() != g_native_selects[0].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strcmp(events,
+            "click|label|false;click|pick|true;") != 0) {
+        goto failed;
+    }
+    stage = "disabled";
+    if (PCore_NodeBox(g_render_doc, "label", &label_x,
+            &label_y, &label_w, &label_h) != 0 ||
+            PCore_NodeSetAttributeById(g_render_doc, "label", "for",
+            "disabled") != 0 ||
+            !pcore_native_label_probe_point(g_render_doc,
+            &target_x, &target_y, &target_kind) || target_kind != 3 ||
+            pcore_browser_script_session_evaluate(
+            "window.events='';", -1, error, sizeof(error)) != 0 ||
+            !pcore_browser_script_dispatch_click_at(
+            target_x, target_y) ||
+            !pcore_handle_label(hwnd, target_x, target_y) ||
+            GetFocus() != g_native_selects[0].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strcmp(events, "click|label|false;") != 0) {
+        goto failed;
+    }
+    g_native_label_forward_probe_ok = 1;
+    return;
+
+failed:
+    _snprintf(g_native_label_forward_probe_detail,
+            sizeof(g_native_label_forward_probe_detail) - 1,
+            "stage=%s events=%s script=%s box=%d,%d,%d,%d edits=%u selects=%u",
+            stage, events, error, label_x, label_y, label_w, label_h,
+            g_native_edit_count, g_native_select_count);
+    g_native_label_forward_probe_detail[
+            sizeof(g_native_label_forward_probe_detail) - 1] = '\0';
+}
+
 /* Create the full-screen render window and run its message loop until closed.
  * Assumes g_render_doc + g_doc_h + g_scroll_y are already set. Returns FALSE
  * only if the window could not be created. */
@@ -15832,6 +16108,9 @@ static BOOL show_render_window(void)
                         label_x + label_w / 2,
                         label_y + label_h / 2) &&
                 GetFocus() == g_native_edits[0].hwnd;
+    }
+    if (g_native_label_forward_probe) {
+        pcore_native_label_forward_probe_run(hwnd);
     }
     if (g_native_toggle_key_probe) {
         pcore_native_toggle_key_probe_run(hwnd);
@@ -16587,6 +16866,136 @@ static BOOL test1076_browser_label_toggle_activation_contract(void)
             "Label activation forwards trusted checkbox/radio CLICK and"
             " COMMIT through the browser transaction; cancellation, radio"
             " selection and disabled targets preserve their event policy.");
+    return TRUE;
+}
+
+/* TEST 1077 - trusted label forwarding to other native labelable controls. */
+static BOOL test1077_browser_label_native_control_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='root'>"
+        "<label id='label' for='text'>Control label</label>"
+        "<input id='text' value='seed'>"
+        "<textarea id='area'>base</textarea>"
+        "<select id='pick'><option selected>Alpha</option>"
+        "<option>Beta</option></select>"
+        "<input id='disabled' disabled value='locked'>"
+        "<input id='file' type='file'>"
+        "<p id='result'>idle</p></form></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "label,input,textarea,select{display:block;width:220px;"
+        "height:22px;margin:2px}"
+        "textarea{height:34px}#result{display:block;width:300px;height:80px}";
+    static const char LISTENER[] =
+        "window.events='';window.cancel_select=false;window.cancel_file=false;"
+        "function record(e){var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+'|'+String(e.defaultPrevented)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('click',record);"
+        "document.getElementById('text').addEventListener('focus',record);"
+        "document.getElementById('text').addEventListener('focusin',record);"
+        "document.getElementById('area').addEventListener('focus',record);"
+        "document.getElementById('area').addEventListener('focusin',record);"
+        "document.getElementById('pick').addEventListener('focus',record);"
+        "document.getElementById('pick').addEventListener('focusin',record);"
+        "document.getElementById('pick').addEventListener('click',"
+        "function(e){if(window.cancel_select)e.preventDefault();});"
+        "document.getElementById('file').addEventListener('click',"
+        "function(e){if(window.cancel_file)e.preventDefault();});";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[384];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/label-native.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 420) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_native_label_forward_probe = 1;
+        g_native_label_forward_probe_ok = 0;
+        g_native_label_forward_probe_detail[0] = '\0';
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_label_forward_probe = 0;
+        if (!g_native_label_forward_probe_ok) {
+            if (g_native_label_forward_probe_detail[0] != '\0') {
+                cstr_copy(error, sizeof(error),
+                        g_native_label_forward_probe_detail);
+            }
+            ok = 0;
+        }
+    }
+    g_native_label_forward_probe = 0;
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1077 FAIL", error[0] != '\0' ? error :
+                "label native-control forwarding failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1077 OK",
+            "Label activation forwards trusted target clicks to native"
+            " text/textarea/select controls; accepted targets focus normally,"
+            " while cancellation and disabled targets stay quiet. File picker"
+            " opening remains a separate system-dialog boundary.");
     return TRUE;
 }
 
@@ -74408,6 +74817,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1074: ok = test1074_browser_native_button_keyboard_contract(); break;
         case 1075: ok = test1075_browser_label_button_activation_contract(); break;
         case 1076: ok = test1076_browser_label_toggle_activation_contract(); break;
+        case 1077: ok = test1077_browser_label_native_control_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

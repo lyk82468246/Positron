@@ -227,6 +227,11 @@ CLICK→COMMIT；Core 仍负责 checked/radio 状态变更和重绘，browser la
 取消及一次 `input` → `change`。`TEST1076` 覆盖 checkbox、radio 互斥、preventDefault 和
 disabled 静默；真实 label 触摸坐标、焦点视觉、OEM 行为以及 select/file/textarea 等其他
 labelable 控件仍需人工或独立边界确认。
+next629 将同一条 label 转发边界扩展到 text/password/textarea/select/file：启用脚本时，
+宿主先通过既有 browser click adapter 派发目标 click，未取消且目标有效时才执行 native
+EDIT/SELECT focus 或系统 file picker 默认动作。`TEST1077` 在真实 native EDIT/SELECT 子窗口
+上验证 text、textarea、select 的 click/焦点顺序、取消和 disabled 闸门；文件 picker 模态
+对话框、真实 label 触摸、SIP/IME 和 OEM 视觉仍需独立验收。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

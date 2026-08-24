@@ -601,6 +601,26 @@ scripts\device_gate.bat -Candidate next628-label-toggle-r1 ^
 触摸坐标、焦点视觉、OEM 行为以及 select/file/textarea 等其他 labelable 控件仍需人工或独立
 门确认。
 
+### next629 label→native text/select 转发自动门
+
+next629 将启用脚本时 label 命中的 text/password/textarea/select/file target 接入既有
+browser click adapter：目标 click 先可取消派发，未取消且目标有效时才由宿主聚焦 native
+EDIT/SELECT 或进入系统 file picker；disabled/stale target 不合成 click。TEST1077 使用真实
+native EDIT/SELECT 子窗口覆盖 text、textarea、select 的 click/焦点顺序、目标取消和 disabled
+静默；file picker 的模态对话框、路径写入和真实 label 触摸仍保留为独立人工边界。它与
+先前 button/toggle 门一起回归：
+
+```bat
+scripts\device_gate.bat -Candidate next629-label-native-r9 ^
+  -RemoteBase "\Temp\Positron-device-gate-r9" ^
+  -EnableJavaScript ^
+  -TestSelection "1077,1076,1075,1074,1073,1072,1071,64,73,999"
+```
+
+`tmp/device-runs/20260824-145252-next629-label-native-r9/` 已通过 10/10，零 ERROR/FAIL、
+唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有修改 tracked INI；设备门的
+`-RemoteBase` 只是为了隔离一次仍被中止实验占用的旧远端目录。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

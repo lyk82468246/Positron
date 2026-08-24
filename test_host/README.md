@@ -101,6 +101,11 @@ next628 将 label 命中的 checkbox/radio 也接入既有 native toggle 事务�
 `PCore_FormActivateAt()` 负责 Core checked/radio mutation，browser DLL 负责取消和一次
 `input` → `change`。TEST1076 覆盖 checkbox、radio 互斥、目标 click 取消和 disabled 静默；
 真实 label 触摸坐标、焦点视觉、OEM 行为及其他 labelable 控件仍需人工观察。
+next629 将同一 label 接线扩展到 text/password/textarea/select/file：启用脚本时，宿主先把
+目标 click 交给既有 browser click adapter；目标未取消时才调用 native EDIT/SELECT 的
+`SetFocus()`，或继续进入系统 file picker。目标 disabled/stale 时不派发合成 click。TEST1077
+使用真实 native EDIT/SELECT 子窗口覆盖 text、textarea、select 的 click/焦点顺序、取消和
+disabled 静默；系统 file picker、文件路径和真实 label 触摸仍由独立人工门负责。
 
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、

@@ -69,8 +69,11 @@
   disabled/stale target fail closed。next628 又让启用脚本时 label 命中的 kind=1/2
   checkbox/radio 复用 `PBrowser_ScriptSessionDispatchNativeToggle()` CLICK/COMMIT；Core
   checked/radio mutation 和重绘仍由宿主提供，browser layer 继续持有目标 click 取消及
-  input→change 顺序。真实 OEM 按键映射、焦点视觉、触摸、label 几何和
-  toggle/file/select/textarea 等其他 labelable 控件仍需单独人工或独立门验收。
+  input→change 顺序。next629 又让启用脚本时 label 命中的 text/password/textarea/select/file
+  先经过既有 browser click adapter；目标未取消且有效时宿主才执行 native EDIT/SELECT focus
+  或系统 file picker。TEST1077 已覆盖 text/textarea/select 的真实 native 子窗口事件、焦点、
+  取消和 disabled 闸门，但真实 label 触摸坐标、文件 picker 模态对话框、路径写入、SIP/IME、
+  OEM 视觉和其他未列入 fixture 的 labelable 边缘仍需单独人工或独立门验收。
 
 ### 解除或推进条件
 
