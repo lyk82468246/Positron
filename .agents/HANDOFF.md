@@ -16,9 +16,9 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next625，受信任普通原生按钮激活（自动设备门已完成）；
+- 当前能力批次：next626，受信任原生按钮键盘激活（自动设备门已完成）；
   next618 的 TEST65 真实 SIP 候选词仍待人工确认。
-- 测试编号上限：`TEST_MAX_NUMBER 1073`。
+- 测试编号上限：`TEST_MAX_NUMBER 1074`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -155,6 +155,10 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   `<button type="button">`：browser layer 仍持有可取消 click 与 bounded COMMIT，普通按钮
   不派发 submit/reset；宿主把已接受的普通按钮默认动作消费掉，不再落入关闭窗口 fallback。
   `test_host` 仍拥有 hit-test、Core/WM 副作用和重绘；TEST1073 是产品契约及 helper 回归。
+- next626 在 `test_host` 为 enabled 的 Core button 增加 document/index/kind 焦点状态和
+  WM 键盘路由：Enter 在 keydown、Space 在 keyup 复用同一 CLICK→COMMIT 事务，重复 keydown
+  只保留脚本可观察性而不重复激活；browser DLL 继续拥有 click/form 取消和事件顺序。TEST1074
+  以实际 render window 消息队列覆盖 ordinary、submit、reset、取消、禁用焦点和窗口不误关闭。
 
 ## 最近验证证据
 
@@ -406,6 +410,18 @@ next625 的 trusted native ordinary button activation 自动门已经完成：
 - `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、`python scripts/audit_repo.py`
   和相关回归设备门均已通过。
 
+next626 的 trusted native button keyboard activation 自动门已经完成：
+
+- `tmp/device-runs/20260824-135909-next626-native-button-keyboard-r4/` 的
+  `device-gate-result.txt` 为 PASS，TEST1074、1073、1072、64、73、999 共 6/6，唯一
+  `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、`test13_route_ok=True`。
+- TEST1074 使用实际 render window 消息队列覆盖 ordinary/submit/reset 的 Enter/Space、
+  重复 keydown、keydown 取消、禁用焦点和激活后不误关闭窗口；这是消息/事件契约门，不把
+  OEM 键盘映射、焦点视觉、真实触摸或 label 完整事务写成已验证事实。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、`python scripts/audit_repo.py`
+  和窄设备门均已通过；Release/Debug 仅保留既有 libcss/fpmath 的 3 个 C4244 警告，产品
+  DLL 无新增警告。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -482,6 +498,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   Debug/Release 构建、C89、audit 和窄设备门已完成；tracked 改动只覆盖 `positron_browser`
   ABI/实现、`test_host` 消费者、TEST1073 与相关文档。不要把 `tmp/` 设备证据或无关工作区
   文件带入。
+- next626 的宿主 native button keyboard focus/activation、TEST1074、Debug/Release 构建、
+  C89、audit 和窄设备门已完成；tracked 改动只覆盖 `test_host` 消费者、TEST1074 与相关
+  文档。`positron_browser` 公共 ABI 未扩张，继续复用既有 button/key 入口；不要把 `tmp/`
+  设备证据或无关工作区文件带入。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -490,10 +510,9 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 ## 唯一下一步
 
 完成 next618 的一次人工 TEST65：在同一构建的真实 WM6 窗口中点选多字符 SIP 候选词，确认
-输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next622、
-next623、next624 和 next625 本身的自动契约已经完成，但确认前不得把 OEM 窗口视觉或未验证设备行为
-写成产品保证；
-确认后再按路线图选择下一个产品纵切。
+输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next622–626
+本身的自动契约已经完成，但确认前不得把 OEM 窗口视觉、键盘映射、label 事务或其他未验证
+设备行为写成产品保证；确认后再按路线图选择下一个产品纵切。
 
 ## next617 完成标准
 
@@ -595,5 +614,18 @@ next623、next624 和 next625 本身的自动契约已经完成，但确认前�
 - TEST1073、1072、64、73、999 的窄设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL；
   Debug/Release 正式构建、C89 和仓库 audit 通过。普通按钮真实触摸视觉、键盘焦点/激活与
   label 转发继续保持未覆盖边界。
+- 跟踪的默认 INI 保持自动模式和原有选择集；更新限制、路线图和交接快照，只提交本批
+  tracked 文件并推送 `main`。
+
+## next626 完成标准
+
+- `test_host` 为 enabled 的 Core native button 维护 document/index/kind 焦点；WM Enter
+  keydown 与 Space keyup 复用 `PBrowser_ScriptSessionDispatchNativeButton()` 的
+  CLICK→COMMIT，重复 keydown 不重复激活，焦点失效/禁用/销毁清理 pending 状态。
+- browser DLL 继续拥有 typed key callback、click/form 取消与事件顺序；宿主只拥有 WM
+  消息、Core 坐标、焦点、默认动作和窗口生命周期，不新增公共 ABI 或复制产品仲裁语义。
+- TEST1074、1073、1072、64、73、999 的窄设备门必须是唯一 `TESTBENCH PASS` 且无
+  ERROR/FAIL；Debug/Release 正式 ARMV4I 构建、C89 和仓库 audit 通过。真实 OEM 键盘映射、
+  焦点视觉、触摸和 label 完整事务继续保持人工边界。
 - 跟踪的默认 INI 保持自动模式和原有选择集；更新限制、路线图和交接快照，只提交本批
   tracked 文件并推送 `main`。

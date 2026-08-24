@@ -287,7 +287,21 @@ kind 和共享 session helper；`tmp/device-runs/20260824-133502-next625-native-
 Debug/Release 正式 ARMV4I 构建、C89 和仓库/文档 audit 均已完成；普通按钮真实触摸
 视觉、键盘焦点/激活和 label 转发仍保留为后续边界。
 
-### 20. 建立真实页面驱动的兼容队列
+### 20. next626：受信任原生按钮键盘激活（已完成）
+
+next626 在 `test_host` 中为 enabled 的 Core button 建立 document/index/kind 焦点状态，
+把 WM `keydown`/`keyup` 交给 browser key-event callback，并在 Enter keydown、Space keyup
+时复用 `PBrowser_ScriptSessionDispatchNativeButton()` 的 CLICK→COMMIT。重复 keydown 只
+保持脚本可观察性，不重复 trusted activation；焦点失效、禁用、取消和 form-event policy
+都不会落入关闭窗口 fallback。
+
+TEST1074 使用真实 render window 消息队列覆盖 ordinary、submit、reset、重复键、keydown
+取消、禁用焦点和窗口生命周期；`tmp/device-runs/20260824-135909-next626-native-button-keyboard-r4/`
+的定向设备门通过 6/6（TEST1074、1073、1072、64、73、999），零 ERROR/FAIL，唯一
+`TESTBENCH PASS`。Debug/Release ARMV4I 正式构建、C89、仓库/文档 audit 均已完成；OEM
+键盘映射、焦点视觉、真实触摸和 label 的完整事务继续作为人工边界。
+
+### 21. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -298,7 +312,7 @@ Debug/Release 正式 ARMV4I 构建、C89 和仓库/文档 audit 均已完成；�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 21. 安排新的全范围检查点
+### 22. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

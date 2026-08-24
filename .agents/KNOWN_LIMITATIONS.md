@@ -63,7 +63,9 @@
   label 激活不由该入口额外覆盖。
   next625 又扩展该入口覆盖 ordinary `<button type="button">` 的 CLICK/COMMIT：普通按钮不
   派发 submit/reset，宿主消费已接受的默认动作，因此物理点击不再误关闭页面；普通按钮的
-  键盘焦点/激活、label 转发和视觉仍需单独迁移或人工验收。
+  键盘焦点/激活现在由宿主以 TEST1074 的消息级契约覆盖，Enter/Space 事务不再落入关闭
+  窗口 fallback；真实 OEM 按键映射、焦点视觉、触摸和 label 的完整 native button 事务仍
+  需单独人工验收。
 
 ### 解除或推进条件
 

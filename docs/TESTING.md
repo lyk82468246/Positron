@@ -541,6 +541,28 @@ scripts\device_gate.bat -Candidate next625-native-button-r3 ^
 唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。普通按钮真实触摸视觉、键盘焦点/激活和
 label 转发仍属于累计人工门。
 
+### next626 native button keyboard activation 自动门
+
+next626 在宿主窗口中为 enabled 的 submit/reset/ordinary button 保存稳定焦点，并把
+`keydown`/`keyup` 交给 browser layer：Enter 在 keydown 激活，Space 在 keyup 激活；重复
+keydown 不会重复 click，取消、submit/reset form-event 和禁用状态保持 fail-closed。宿主仍
+负责 WM 消息、Core 坐标和窗口生命周期，事务继续复用
+`PBrowser_ScriptSessionDispatchNativeButton()`。
+
+TEST1074 使用实际 render window 消息队列覆盖 ordinary、submit、reset、Space/Enter、重复
+键、keydown 取消、禁用焦点和激活后不误关闭窗口，并与 TEST1073、1072、64、73、999 一起
+回归：
+
+```bat
+scripts\device_gate.bat -Candidate next626-native-button-keyboard-r4 ^
+  -EnableJavaScript ^
+  -TestSelection "1074,1073,1072,64,73,999"
+```
+
+`tmp/device-runs/20260824-135909-next626-native-button-keyboard-r4/` 已通过 6/6，零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。这是一条自动化消息/事件契约
+门；真实 OEM 键盘映射、焦点视觉、触摸和 label 的完整事务仍需累计人工验收。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

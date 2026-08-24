@@ -306,6 +306,12 @@ submit/reset；普通按钮不要求注册 form-event callback。宿主负责消
 generic click 后关闭窗口。TEST1073 覆盖该 kind 的事件、取消、禁用、非法输入和共享
 session helper。
 
+next626 复用同一入口承接宿主的 native button 键盘激活：宿主把焦点 button 的 typed
+`keydown`/`keyup` 交给既有 browser key-event callback，并在 Enter/Space 的相应时机调用
+CLICK→COMMIT。browser DLL 不新增 WM 或焦点所有权，继续负责 click/form 取消、事务状态和
+事件顺序；普通按钮仍不产生 submit/reset。TEST1074 是宿主真实窗口消息级接线门，验证重复
+键不会重复 trusted activation，取消和 form-event default policy 不泄漏。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

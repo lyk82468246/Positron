@@ -994,6 +994,14 @@ COMMIT 被接受后消费该按钮默认动作，避免 generic click 路径误�
 hit-test、Core/WM 副作用、键盘焦点、label 转发和重绘仍由宿主持有；TEST1073 验证产品
 契约和 helper 消费者路径。
 
+next626 没有新增公共 ABI，而是补齐宿主对同一 native button 事务的键盘入口：宿主保存
+enabled button 的 document/index/kind 焦点，向 browser layer 派发 typed `keydown`/`keyup`，
+并在 Enter 的 keydown 或 Space 的 keyup 上复用 CLICK→COMMIT。重复 keydown 只保留脚本可见
+的 key 事件，不重复产生 trusted click；焦点失效、控件禁用或文档销毁时清空 pending 状态。
+browser layer 继续拥有 click/form 取消与事件顺序，宿主只拥有 WM 消息、Core 命中/坐标、
+焦点、默认动作和重绘；TEST1074 是实际窗口消息级消费者门。OEM 键盘映射、焦点视觉及
+label 点击的完整 native button 事务仍不由此 ABI 保证。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

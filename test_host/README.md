@@ -82,7 +82,12 @@ next625 让同一 native button 路径也识别 Core `kind=9` 的普通
 `<button type="button">`：browser DLL 仍执行 CLICK→COMMIT，但不派发 form 事件；宿主在
 COMMIT 成功后消费普通按钮默认动作，避免 generic click 后关闭窗口。TEST1073 验证普通
 按钮的接受、取消、禁用、非法 kind 和共享 session helper 路径；普通按钮键盘焦点/激活和
-label 转发仍未纳入本批。
+label 转发在 next625 本批仍未纳入，随后由 next626 单独补齐键盘路径。
+next626 在宿主窗口增加 native button 焦点生命周期和 WM 键盘路由：enabled button 被命中
+后保存 document/index/kind，Enter 在 keydown 激活，Space 在 keyup 激活，重复 keydown 只
+派发脚本 key 事件而不重复 click。宿主调用既有 `PBrowser_ScriptSessionDispatchNativeButton()`
+并保留 Core 坐标、默认动作和窗口生命周期；TEST1074 覆盖普通、submit/reset、取消、禁用
+焦点和激活后不误关闭窗口。真实 OEM 按键映射、焦点视觉和 label 的完整事务仍需人工门。
 
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、
