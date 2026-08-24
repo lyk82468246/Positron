@@ -557,9 +557,10 @@ typedef struct PBrowserScriptNativeToggleInfo {
     int selected_after;
 } PBrowserScriptNativeToggleInfo;
 
-/* Trusted native submit/reset button activation phases. The browser layer
- * owns the cancelable click and the conditional submit/reset event ordering;
- * the host owns hit-testing, Core validation, the default submission/reset
+/* Trusted native button activation phases. The browser layer owns the
+ * cancelable click and the conditional submit/reset event ordering; an
+ * ordinary button emits only click and then consumes the accepted default.
+ * The host owns hit-testing, Core validation, the default submission/reset
  * mutation, navigation and repaint. CLICK starts a bounded transaction only
  * when the target is enabled and click is not prevented. COMMIT is sent after
  * the host has queried Core validation; CANCEL is idempotent. A disabled
@@ -571,6 +572,7 @@ typedef struct PBrowserScriptNativeToggleInfo {
 #define PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL 3
 #define PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT 1
 #define PBROWSER_SCRIPT_NATIVE_BUTTON_RESET  2
+#define PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON 3
 #define PBROWSER_SCRIPT_NATIVE_BUTTON_MAX_TARGETS 16
 typedef struct PBrowserScriptNativeButtonInfo {
     unsigned long size;
@@ -1163,10 +1165,12 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeToggle(
         int *out_default_allowed);
 PBROWSER_API int PBrowser_ScriptSessionResetNativeToggleState(
         HANDLE hSession);
-/* Dispatch one phase of a trusted native submit/reset button activation.
- * CLICK emits click and opens bounded state; COMMIT emits submit or reset
- * after an accepted host/Core default gate; CANCEL clears state. The host may
- * perform Core/WM default action only after an accepted COMMIT. */
+/* Dispatch one phase of a trusted native button activation. CLICK emits
+ * click and opens bounded state; COMMIT emits submit or reset for those kinds,
+ * while an ordinary button only consumes the accepted default; CANCEL clears
+ * state. A form-event callback is required for submit/reset and not required
+ * for an ordinary button. The host may perform Core/WM default action only
+ * after an accepted COMMIT. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchNativeButton(
         HANDLE hSession, const PBrowserScriptNativeButtonInfo *info,
         int *out_default_allowed);

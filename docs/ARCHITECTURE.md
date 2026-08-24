@@ -988,6 +988,12 @@ next624 将受信任 submit/reset 原生按钮的事务边界继续放入 `posit
 窗口、重绘和 label/窗口副作用；公共 ABI 不暴露 core 控件或原生窗口。TEST1072 是产品
 契约与宿主 helper 接线门。
 
+next625 扩展该 native button ABI 接受普通 `kind=9`（`<button type="button">`）：browser
+layer 仍按 CLICK→COMMIT 持有可取消 click 事务，但普通按钮不派发 submit/reset；宿主在
+COMMIT 被接受后消费该按钮默认动作，避免 generic click 路径误触发窗口关闭。普通按钮的
+hit-test、Core/WM 副作用、键盘焦点、label 转发和重绘仍由宿主持有；TEST1073 验证产品
+契约和 helper 消费者路径。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

@@ -273,7 +273,21 @@ preventDefault、kind mismatch、回调错误、容量和 reset 都有明确边�
 C4244 警告，产品 DLL 无新增警告。本批没有新增视觉保证；真实按钮坐标、label 转发、窗口
 视觉和旋转仍需累计人工观察。
 
-### 19. 建立真实页面驱动的兼容队列
+### 19. next625：受信任普通原生按钮激活（已完成）
+
+next625 扩展 next624 的 browser-owned native button 事务，支持 Core 已识别的
+`kind=9` 普通 `<button type="button">`。browser layer 对普通按钮仍先派发可取消 click，
+再接受 bounded COMMIT；普通按钮不派发 submit/reset，宿主消费已接受的默认动作，不再让
+generic click 后落入关闭窗口 fallback。submit/reset 的验证和 form-event 顺序保持 next624
+契约不变。
+
+TEST1073 覆盖普通按钮 click→commit、无 form 事件、无 form callback、click 取消、禁用、非法
+kind 和共享 session helper；`tmp/device-runs/20260824-133502-next625-native-button-r3/` 的定向设备门
+通过 5/5（TEST1073、1072、64、73、999），零 ERROR/FAIL，唯一 `TESTBENCH PASS`。
+Debug/Release 正式 ARMV4I 构建、C89 和仓库/文档 audit 均已完成；普通按钮真实触摸
+视觉、键盘焦点/激活和 label 转发仍保留为后续边界。
+
+### 20. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -284,7 +298,7 @@ C4244 警告，产品 DLL 无新增警告。本批没有新增视觉保证；真
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 20. 安排新的全范围检查点
+### 21. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

@@ -61,6 +61,9 @@
   CLICK/COMMIT/CANCEL、click 取消和 submit/reset 事件顺序；宿主在 click 后提供 Core 校验，
   仍负责默认提交/重置、导航、窗口、label 转发、重绘和原生视觉。程序化 click 与直接物理
   label 激活不由该入口额外覆盖。
+  next625 又扩展该入口覆盖 ordinary `<button type="button">` 的 CLICK/COMMIT：普通按钮不
+  派发 submit/reset，宿主消费已接受的默认动作，因此物理点击不再误关闭页面；普通按钮的
+  键盘焦点/激活、label 转发和视觉仍需单独迁移或人工验收。
 
 ### 解除或推进条件
 

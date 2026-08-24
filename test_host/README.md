@@ -78,6 +78,11 @@ validation，再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click
 submit/reset 事件顺序，宿主仍负责 hit-test、Core validation/default action、导航、窗口、
 重绘和 label fallback。无脚本路径保持原有 generic click 与宿主事件 fallback。TEST1072
 验证产品契约、click/form 取消、无效校验、容量/生命周期边界和共享 session helper 接线。
+next625 让同一 native button 路径也识别 Core `kind=9` 的普通
+`<button type="button">`：browser DLL 仍执行 CLICK→COMMIT，但不派发 form 事件；宿主在
+COMMIT 成功后消费普通按钮默认动作，避免 generic click 后关闭窗口。TEST1073 验证普通
+按钮的接受、取消、禁用、非法 kind 和共享 session helper 路径；普通按钮键盘焦点/激活和
+label 转发仍未纳入本批。
 
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、

@@ -206,6 +206,10 @@ next624 又把受信任 submit/reset 原生按钮的产品事务放入 `positron
 取消和 submit/reset 顺序；宿主在 click 之后查询 Core validation，再执行默认提交/重置、
 导航和重绘。禁用、preventDefault、无效校验、回调错误和取消不放行默认动作，`TEST1072`
 覆盖产品契约与共享 session 的 helper 接线。
+next625 扩展同一入口支持普通 `<button type="button">`：browser layer 仍派发可取消 click
+并接受 bounded COMMIT，但不产生 submit/reset；宿主消费已接受的普通按钮默认动作，避免
+generic click 后误关闭窗口。`TEST1073` 覆盖普通按钮的成功、取消、禁用、非法 kind 和
+共享 session helper 路径。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

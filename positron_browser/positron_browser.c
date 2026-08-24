@@ -6839,7 +6839,8 @@ static int p_browser_script_native_button_info_valid(
             info->phase != PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT &&
             info->phase != PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL) ||
             (info->kind != PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT &&
-            info->kind != PBROWSER_SCRIPT_NATIVE_BUTTON_RESET) ||
+            info->kind != PBROWSER_SCRIPT_NATIVE_BUTTON_RESET &&
+            info->kind != PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON) ||
             (info->disabled != 0 && info->disabled != 1) ||
             (info->validation_valid != 0 && info->validation_valid != 1)) {
         return 0;
@@ -6864,8 +6865,11 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeButton(
     *out_default_allowed = 1;
     session = p_script_session(hSession);
     if (!p_script_session_valid(session) || session->click == NULL ||
-            session->form_event == NULL ||
             !p_browser_script_native_button_info_valid(info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (info->kind != PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON &&
+            session->form_event == NULL) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
     if (info->phase == PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK) {

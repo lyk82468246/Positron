@@ -300,6 +300,11 @@ session 最多 16 个 submit/reset stable token 的 CLICK/COMMIT/CANCEL 事务�
 submit 或 reset。禁用、preventDefault、无效校验、取消、kind mismatch、回调错误和容量
 边界不放行默认动作；宿主仍拥有命中、Core validation/default action、导航、窗口、重绘和
 label 副作用。TEST1072 覆盖产品契约、生命周期和宿主 helper 接线。
+next625 扩展该入口支持 `PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON`（普通
+`<button type="button">`）：CLICK 仍可取消，COMMIT 只返回普通按钮默认已接受，不派发
+submit/reset；普通按钮不要求注册 form-event callback。宿主负责消费该默认动作，避免
+generic click 后关闭窗口。TEST1073 覆盖该 kind 的事件、取消、禁用、非法输入和共享
+session helper。
 
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
@@ -427,7 +432,7 @@ if (PBrowser_ScriptSessionDispatchNativeButton(session, &button,
 ```
 
 `PBrowser_ScriptSessionResetNativeButtonState()` 清理控件重建前的 bounded token；Core
-validation、默认提交/重置、导航、窗口和重绘仍由调用者拥有。
+validation、普通按钮默认消费、默认提交/重置、导航、窗口和重绘仍由调用者拥有。
 
 主要公共能力包括：
 

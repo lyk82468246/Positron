@@ -521,6 +521,26 @@ scripts\device_gate.bat -Candidate next624-native-button-r4 ^
 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉保证；
 真实按钮触摸坐标、label 转发、窗口视觉和旋转仍属于累计人工门。
 
+### next625 native ordinary button activation 自动门
+
+next625 扩展 `PBrowser_ScriptSessionDispatchNativeButton()` 支持普通
+`<button type="button">`。browser layer 先派发可取消 click，再接受 bounded COMMIT；普通
+按钮不派发 submit/reset，宿主只消费已接受的默认动作，因此不会从 generic click 路径误关闭
+窗口。禁用、click 取消和非法 kind 仍 fail-closed。
+
+TEST1073 覆盖普通按钮的 click→commit、无 form 事件、取消、禁用、非法 kind 和共享 session
+helper；TEST1072、64、73 保持 submit/reset 与浏览器回归。
+
+```bat
+scripts\device_gate.bat -Candidate next625-native-button-r3 ^
+  -EnableJavaScript ^
+  -TestSelection "1073,1072,64,73,999"
+```
+
+`tmp/device-runs/20260824-133502-next625-native-button-r3/` 已通过 5/5，零 ERROR/FAIL、
+唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。普通按钮真实触摸视觉、键盘焦点/激活和
+label 转发仍属于累计人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
