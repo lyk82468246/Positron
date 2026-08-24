@@ -182,6 +182,11 @@ next619 又把完整 result 的产品事件事务加入 `positron_browser.dll`�
 result，派发 `beforeinput(insertCompositionText)` → `compositionupdate` 并衔接 pending
 native commit；宿主仍拥有 `ImmGetCompositionStringW`、`EM_REPLACESEL`、SIP 窗口和平台
 视觉。`TEST1067` 覆盖生命周期、容量、commit、reset 和注销边界。
+next620 又把文件输入选择的产品事务加入 `positron_browser.dll`：
+`PBrowser_ScriptSessionDispatchNativeFileSelection()` 以有界 token 状态统一
+BEGIN/COMMIT/CANCEL，并在提交后派发一次 `input(insertFromFile)` → `change`；宿主仍拥有
+WM6 系统 picker、文件系统、`PCore_FileInputSetPath()` 和重绘。`TEST1068` 覆盖回调、容量、
+取消和错误边界，`TEST262` 覆盖真实消费者路径；TEST232/263 的系统对话框视觉仍需人工确认。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

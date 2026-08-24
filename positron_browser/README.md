@@ -62,7 +62,11 @@ UTF-8 id、几何和 disabled）、`validate_submit`、`perform_default` 与
 `PBROWSER_SCRIPT_CLICK_DEFAULT_TOGGLE/SUBMIT/RESET/FILE`，所有结构体均为 size-tagged，
 字符串和 target/default 信息只在同步 callback 内借用。旧的
 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks()` 仍保留给需要自行拥有整套
-激活逻辑的兼容宿主。
+激活逻辑的兼容宿主。文件控件的系统 picker 不属于 browser DLL；宿主在打开 picker 前、
+Core 写入新路径后或用户取消/失败时调用
+`PBrowser_ScriptSessionDispatchNativeFileSelection()` 的 BEGIN/COMMIT/CANCEL phase，
+由 browser layer 统一产生一次不可取消的 `input(insertFromFile)` → `change`，并用
+`PBrowser_ScriptSessionResetNativeFileState()` 清除销毁/重建时的 16-token bounded state。
 
 当前 DOM snapshot 还提供 browser-owned 的 `document.doctype`：它是稳定、只读的
 `DocumentType` wrapper，包含有限 metadata、owner/root/position/contains、identity/equality
@@ -259,6 +263,15 @@ composition 和不超过 255 字节的借用 UTF-8 result，派发
 commit → input 事务。宿主仍拥有 `ImmGetCompositionStringW`、`EM_REPLACESEL`、WM_IME/SIP
 窗口和平台副作用；TEST1067 覆盖无效输入、容量、未开始/已结束 composition、完整 result、
 native commit、reset 和 unregister。该 API 不宣称 OEM 候选条视觉或所有输入法兼容。
+
+next620 在现有 typed input/select callback 上增加
+`PBrowser_ScriptSessionDispatchNativeFileSelection()`：browser layer 保存最多 16 个文件
+控件 token 的 BEGIN/COMMIT/CANCEL 状态，COMMIT 时固定派发一次
+`input(insertFromFile)` → `change`，取消、重复提交、容量不足和 adapter 错误均有稳定边界。
+宿主仍负责 WM6 系统 picker、文件系统权限和 `PCore_FileInputSetPath()`；文件路径不进入
+公共 browser ABI。TEST1068 覆盖未注册、非法 phase、重复 begin、提交/取消、回调失败、
+reset 和容量，TEST262 覆盖 programmatic picker 的实际消费者路径；TEST232/263 仍只需人工
+确认真实系统对话框的视觉、选择和取消体验。
 
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、

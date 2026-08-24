@@ -413,6 +413,29 @@ scripts\device_gate.bat -Candidate next619-native-ime-result-transaction ^
 零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉、触摸、
 旋转或 picker 人工门；TEST65 的真实 SIP 多字符候选词仍是 next618 的独立人工门。
 
+### next620 native file-input selection 产品事务自动门
+
+next620 将文件控件从系统 picker 返回后的产品事件事务放入
+`positron_browser.dll` 的 `PBrowser_ScriptSessionDispatchNativeFileSelection()`。宿主在
+打开 WM6 picker 前发送 BEGIN，成功把路径写入 Core 后发送 COMMIT，取消、picker 失败或
+stale request 发送 CANCEL；browser layer 保存最多 16 个稳定 token，并在 COMMIT 时只派发
+一次不可取消的 `input(insertFromFile)` → `change`。文件路径、文件系统权限、picker
+窗口和重绘仍由宿主拥有，路径不进入公共 browser ABI。
+
+TEST1068 覆盖未注册 callback、非法 phase、重复 BEGIN、未开始/重复 COMMIT、取消无事件、
+input/change adapter 错误、reset 和 16-token 容量。TEST262 覆盖 programmatic file click
+的排队、合并、成功、取消旧值保持和 stale document 消费者路径。
+
+```bat
+scripts\device_gate.bat -Candidate next620-native-file-selection-transaction ^
+  -EnableJavaScript ^
+  -TestSelection "1068,262,230,999"
+```
+
+`tmp/device-runs/20260824-112810-next620-native-file-selection-transaction/` 已通过 4/4，
+零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增自动视觉保证；
+TEST232/263 仍需在真实 WM6 上检查系统对话框、选择后的显示、再次取消和事件 trace。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

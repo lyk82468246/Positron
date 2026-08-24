@@ -533,6 +533,25 @@ typedef struct PBrowserScriptSelectCallbacks {
     PBrowserScriptDispatchSelectFn dispatch_select;
 } PBrowserScriptSelectCallbacks;
 
+/* Native file-input selection transaction phases. The browser layer owns the
+ * bounded begin/commit/cancel state and the non-cancelable input -> change
+ * ordering; the host still owns the system picker, file-system access and
+ * Core's selected path mutation. BEGIN is sent before opening the picker,
+ * COMMIT only after Core accepted a new path, and CANCEL on user cancel,
+ * picker failure or a stale document. The browser reuses the registered
+ * input/select callbacks, so no file path or picker handle crosses this ABI. */
+#define PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN  1
+#define PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_COMMIT 2
+#define PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_CANCEL 3
+#define PBROWSER_SCRIPT_NATIVE_FILE_MAX_TARGETS      16
+typedef struct PBrowserScriptNativeFileSelectionInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    int phase;
+} PBrowserScriptNativeFileSelectionInfo;
+
 /* Product-owned native SELECT commit. The host calls this only after its
  * native WM control and core selection mutation have succeeded. The browser
  * layer emits the non-cancelable input -> change pair in that order and keeps
@@ -1050,6 +1069,19 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterSelectCallbacks(
  * adapter. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchSelectEvent(HANDLE hSession,
         const PBrowserScriptSelectEventInfo *info);
+/* Notify the product layer about one native file-input picker transaction.
+ * BEGIN opens bounded state without dispatching events. COMMIT dispatches a
+ * non-cancelable input(insertFromFile) followed by change and closes the
+ * transaction; CANCEL closes it without changing the already committed Core
+ * value. The host owns the picker and file mutation. A CANCEL for an absent
+ * transaction is idempotent. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeFileSelection(
+        HANDLE hSession,
+        const PBrowserScriptNativeFileSelectionInfo *info);
+/* Drop all bounded native file-input transaction state before native controls
+ * or the document are destroyed/rebuilt. */
+PBROWSER_API int PBrowser_ScriptSessionResetNativeFileState(
+        HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
         HANDLE hSession,
         const PBrowserScriptNativeSelectCallbacksEx *callbacks);

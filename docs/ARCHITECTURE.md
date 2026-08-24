@@ -951,6 +951,15 @@ native commit → input metadata。`test_host.exe` 只将 `ImmGetCompositionStri
 WM_IME、SIP/候选词窗口、原生控件和视觉仍归宿主。TEST1067 覆盖 invalid/capacity、生命周期、
 完整多字节结果、commit、reset 和 unregister，不宣称 OEM 输入法视觉兼容。
 
+next620 把文件输入 picker 返回后的产品事务放入
+`positron_browser.dll`，但不搬迁平台 picker。新增
+`PBrowser_ScriptSessionDispatchNativeFileSelection()` 接收稳定的 file-control token 和
+BEGIN/COMMIT/CANCEL phase，保存最多 16 个 token；COMMIT 只派发一次不可取消的
+`input`（`inputType="insertFromFile"`）→ `change`，CANCEL 幂等且不派发事件。宿主在打开
+`GetOpenFileNameEx` 前 BEGIN，Core 通过 `PCore_FileInputSetPath()` 写入成功后 COMMIT；
+picker 窗口、文件系统权限、路径和重绘仍由宿主负责。TEST1068 是 ABI 契约，TEST262 是
+消费者回归，TEST232/263 继续作为真实对话框人工门。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：
@@ -1003,9 +1012,11 @@ submit-reset/invalid/report-validity/file-input/checkbox-radio-change/SELECT-inp
 composition phase/preedit policy、
 native SELECT 的 commit input/change、focus-family 顺序、单选下拉事务策略与 typed key dispatch policy 已进入
 `positron_browser.dll`；native SELECT WM 控件真正默认动作、下拉窗口/视觉、native EDIT 的 WM_IME/SIP
-与原生文本 mutation，以及其余 native form/input bridge 仍在迁移中且默认关闭；完整 IME result 的
-事件事务现在由 `PBrowser_ScriptSessionDispatchNativeEditResult()` 持有，但平台文本替换仍由宿主完成；
-不能将其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。
+与原生文本 mutation、文件 picker/文件系统，以及其余 native form/input bridge 仍在迁移中且
+默认关闭；完整 IME result 的事件事务现在由
+`PBrowser_ScriptSessionDispatchNativeEditResult()` 持有，文件选择后的事件事务由
+`PBrowser_ScriptSessionDispatchNativeFileSelection()` 持有，但平台副作用仍由宿主完成；不能将
+其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。
 
 ## ABI 与所有权原则
 

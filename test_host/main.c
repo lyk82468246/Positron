@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1067
+#define TEST_MAX_NUMBER 1068
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3455,6 +3455,266 @@ static BOOL test1067_browser_native_edit_result_contract(void)
     return TRUE;
 }
 
+/* TEST 1068 - browser-owned native file-input selection transaction. */
+typedef struct test1068_native_file_state {
+    int input_calls;
+    int change_calls;
+    int input_return_code;
+    int change_return_code;
+    int last_x;
+    int last_y;
+    char sequence[32];
+} test1068_native_file_state;
+
+static int test1068_native_file_append(
+        test1068_native_file_state *state, char marker)
+{
+    size_t length;
+
+    if (state == NULL) {
+        return 0;
+    }
+    length = strlen(state->sequence);
+    if (length >= sizeof(state->sequence) - 1) {
+        return 0;
+    }
+    state->sequence[length] = marker;
+    state->sequence[length + 1] = '\0';
+    return 1;
+}
+
+static int test1068_native_file_input(void *pw,
+        const PBrowserScriptInputEventInfo *info, int *out_default_allowed)
+{
+    test1068_native_file_state *state;
+
+    state = (test1068_native_file_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptInputEventInfo) ||
+            info->x != 31 || info->y != 42 ||
+            strcmp(info->event_type, "input") != 0 ||
+            info->bubbles != 1 || info->cancelable != 0 ||
+            strcmp(info->input_type, "insertFromFile") != 0 ||
+            strcmp(info->data, "") != 0 || info->is_composing != 0 ||
+            !test1068_native_file_append(state, 'I')) {
+        return -1;
+    }
+    state->input_calls++;
+    state->last_x = info->x;
+    state->last_y = info->y;
+    *out_default_allowed = 1;
+    return state->input_return_code;
+}
+
+static int test1068_native_file_change(void *pw,
+        const PBrowserScriptSelectEventInfo *info)
+{
+    test1068_native_file_state *state;
+
+    state = (test1068_native_file_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptSelectEventInfo) ||
+            info->x != 31 || info->y != 42 ||
+            strcmp(info->event_type, "change") != 0 ||
+            info->bubbles != 1 || info->cancelable != 0 ||
+            !test1068_native_file_append(state, 'C')) {
+        return -1;
+    }
+    state->change_calls++;
+    state->last_x = info->x;
+    state->last_y = info->y;
+    return state->change_return_code;
+}
+
+static BOOL test1068_browser_native_file_selection_contract(void)
+{
+    PBrowserScriptInputCallbacks input_callbacks;
+    PBrowserScriptSelectCallbacks select_callbacks;
+    PBrowserScriptNativeFileSelectionInfo info;
+    test1068_native_file_state state;
+    HANDLE session;
+    const char *stage;
+    unsigned int i;
+    int rc;
+    int ok;
+
+    memset(&input_callbacks, 0, sizeof(input_callbacks));
+    memset(&select_callbacks, 0, sizeof(select_callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    state.input_return_code = 0;
+    state.change_return_code = 0;
+    input_callbacks.size = sizeof(input_callbacks);
+    input_callbacks.pw = &state;
+    input_callbacks.dispatch_input = test1068_native_file_input;
+    select_callbacks.size = sizeof(select_callbacks);
+    select_callbacks.pw = &state;
+    select_callbacks.dispatch_select = test1068_native_file_change;
+    info.size = sizeof(info);
+    info.target_token = 17;
+    info.x = 31;
+    info.y = 42;
+    info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN;
+    stage = "create";
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    rc = PSCRIPT_OK;
+    ok = session != NULL;
+    if (ok) {
+        stage = "unregistered";
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "register-input";
+        ok = PBrowser_ScriptSessionRegisterInputCallbacks(session,
+                &input_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "register-change";
+        ok = PBrowser_ScriptSessionRegisterSelectCallbacks(session,
+                &select_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "invalid-phase";
+        info.phase = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.sequence[0] == '\0';
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_COMMIT;
+    }
+    if (ok) {
+        stage = "commit-before-begin";
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && state.sequence[0] == '\0';
+    }
+    if (ok) {
+        stage = "cancel-before-begin";
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_CANCEL;
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        ok = rc == PSCRIPT_OK && state.sequence[0] == '\0';
+    }
+    if (ok) {
+        stage = "begin-and-duplicate";
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN;
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        ok = rc == PSCRIPT_OK;
+        if (ok) {
+            rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                    session, &info);
+            ok = rc == PSCRIPT_ERROR_GLOBAL;
+        }
+    }
+    if (ok) {
+        stage = "commit";
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_COMMIT;
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "IC") == 0 &&
+                state.input_calls == 1 && state.change_calls == 1 &&
+                state.last_x == 31 && state.last_y == 42;
+    }
+    if (ok) {
+        stage = "duplicate-commit";
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT &&
+                strcmp(state.sequence, "IC") == 0;
+    }
+    if (ok) {
+        stage = "cancel-without-events";
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN;
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        if (rc == PSCRIPT_OK) {
+            info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_CANCEL;
+            rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                    session, &info);
+        }
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "IC") == 0;
+    }
+    if (ok) {
+        stage = "input-callback-error";
+        state.input_return_code = -1;
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN;
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        if (rc == PSCRIPT_OK) {
+            info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_COMMIT;
+            rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                    session, &info);
+        }
+        state.input_return_code = 0;
+        ok = rc == PSCRIPT_ERROR_NATIVE &&
+                strcmp(state.sequence, "ICI") == 0 &&
+                state.input_calls == 2 && state.change_calls == 1;
+    }
+    if (ok) {
+        stage = "change-callback-error";
+        state.change_return_code = -1;
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN;
+        rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info);
+        if (rc == PSCRIPT_OK) {
+            info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_COMMIT;
+            rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                    session, &info);
+        }
+        state.change_return_code = 0;
+        ok = rc == PSCRIPT_ERROR_NATIVE &&
+                strcmp(state.sequence, "ICIIC") == 0 &&
+                state.input_calls == 3 && state.change_calls == 2;
+    }
+    if (ok) {
+        stage = "capacity";
+        rc = PBrowser_ScriptSessionResetNativeFileState(session);
+        ok = rc == PSCRIPT_OK;
+        for (i = 0; ok && i < PBROWSER_SCRIPT_NATIVE_FILE_MAX_TARGETS;
+                i++) {
+            info.target_token = i + 1UL;
+            info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN;
+            rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                    session, &info);
+            ok = rc == PSCRIPT_OK;
+        }
+        if (ok) {
+            info.target_token = 99;
+            rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+                    session, &info);
+            ok = rc == PSCRIPT_ERROR_NATIVE_LIMIT;
+        }
+    }
+    if (ok) {
+        stage = "reset-and-unregister";
+        ok = PBrowser_ScriptSessionResetNativeFileState(session) ==
+                PSCRIPT_OK &&
+                PBrowser_ScriptSessionUnregisterInputCallbacks(session) ==
+                PSCRIPT_OK &&
+                PBrowser_ScriptSessionUnregisterSelectCallbacks(session) ==
+                PSCRIPT_OK;
+        info.target_token = 17;
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN;
+        rc = ok ? PBrowser_ScriptSessionDispatchNativeFileSelection(
+                session, &info) : PSCRIPT_ERROR_FATAL;
+        ok = ok && rc == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1068 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1068 OK",
+            "Browser-owned native file selection transactions dispatch one\n"
+            "input(insertFromFile) then change on commit, preserve cancel\n"
+            "semantics, and enforce bounded reset/callback error behavior.");
+    return TRUE;
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 6 - libhubbub HTML tokeniser (NetSurf engine, Phase 4)           */
 /* Feeds a small HTML document to hubbub in tokeniser mode: setting a     */
@@ -5522,6 +5782,8 @@ static int pcore_browser_script_invalid_dispatch(void *pw,
         int *out_default_allowed);
 static int pcore_browser_script_dispatch_file_event_at(int x, int y,
         const char *event_type);
+static int pcore_browser_script_dispatch_native_file_phase(
+        unsigned int file_index, int x, int y, int phase);
 static int pcore_queue_file_input_picker(
         pcore_browser_script_bridge *bridge, int x, int y);
 static int pcore_browser_script_dispatch_toggle_input_at(int x, int y);
@@ -11575,11 +11837,31 @@ static int pcore_browser_script_dispatch_toggle_input_at(int x, int y)
     return default_allowed ? 1 : 0;
 }
 
-/* File controls use the existing typed input/select contracts. The input
- * event carries the file-specific InputEvent metadata; change reuses the
- * non-cancelable select-style event contract. The picker and core file value
- * are already committed before these notifications, so adapter failures or
- * cancellation never roll back the selected path. */
+/* Product file selection uses the existing typed input/select callbacks. The
+ * picker and Core file value remain host-owned; this bridge only stages the
+ * browser-owned begin/commit/cancel transaction. */
+static int pcore_browser_script_dispatch_native_file_phase(
+        unsigned int file_index, int x, int y, int phase)
+{
+    PBrowserScriptNativeFileSelectionInfo info;
+    int rc;
+
+    if (!pcore_native_script_active() ||
+            g_browser_script_session.session == NULL) {
+        return 0;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = (unsigned long) file_index + 1UL;
+    info.x = x;
+    info.y = y;
+    info.phase = phase;
+    rc = PBrowser_ScriptSessionDispatchNativeFileSelection(
+            g_browser_script_session.session, &info);
+    return rc == PSCRIPT_OK ? 1 : -1;
+}
+
+/* Fallback for a host path without an active browser script session. */
 static int pcore_browser_script_dispatch_file_event_at(int x, int y,
         const char *event_type)
 {
@@ -12185,6 +12467,10 @@ static int pcore_handle_file_input_index_with_picker(HWND hwnd,
     WCHAR file_path[MAX_PATH];
     WCHAR file_title[MAX_PATH];
     int picker_result;
+    int transaction_started;
+    int transaction_result;
+    int center_x;
+    int center_y;
 
     if (g_render_doc == NULL || PCore_FileInputInfo(g_render_doc,
             file_index, &info, NULL, 0, NULL, 0) != 0) {
@@ -12193,28 +12479,63 @@ static int pcore_handle_file_input_index_with_picker(HWND hwnd,
     if (info.disabled) {
         return 1;
     }
+    center_x = info.x + info.width / 2;
+    center_y = info.y + info.height / 2;
+    transaction_started = pcore_browser_script_dispatch_native_file_phase(
+            file_index, center_x, center_y,
+            PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN);
+    if (transaction_started < 0) {
+        show_error(L"File selection failed",
+                "Could not start the browser-owned file selection transaction");
+        return 1;
+    }
     memset(file_path, 0, sizeof(file_path));
     memset(file_title, 0, sizeof(file_title));
     picker_result = pcore_file_picker_run(hwnd, file_path, MAX_PATH,
             file_title, MAX_PATH, callback, pw);
     if (picker_result < 0) {
+        if (transaction_started > 0) {
+            (void) pcore_browser_script_dispatch_native_file_phase(
+                    file_index, center_x, center_y,
+                    PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_CANCEL);
+        }
         show_error(L"File picker failed",
                 "The system file picker could not be opened");
         return 1;
     }
     if (picker_result == 0) {
+        if (transaction_started > 0) {
+            (void) pcore_browser_script_dispatch_native_file_phase(
+                    file_index, center_x, center_y,
+                    PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_CANCEL);
+        }
         return 1;
     }
     if (pcore_file_input_commit_selection(g_render_doc, file_index,
             file_path, file_title, &info) != 0) {
+        if (transaction_started > 0) {
+            (void) pcore_browser_script_dispatch_native_file_phase(
+                    file_index, center_x, center_y,
+                    PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_CANCEL);
+        }
         show_error(L"File selection failed",
                 "Could not store the selected file in the form");
         return 1;
     }
-    (void) pcore_browser_script_dispatch_file_event_at(
-            info.x + info.width / 2, info.y + info.height / 2, "input");
-    (void) pcore_browser_script_dispatch_file_event_at(
-            info.x + info.width / 2, info.y + info.height / 2, "change");
+    if (transaction_started > 0) {
+        transaction_result = pcore_browser_script_dispatch_native_file_phase(
+                file_index, center_x, center_y,
+                PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_COMMIT);
+        if (transaction_result < 0) {
+            show_error(L"File event dispatch failed",
+                    "The file was stored, but input/change notification failed");
+        }
+    } else {
+        (void) pcore_browser_script_dispatch_file_event_at(
+                center_x, center_y, "input");
+        (void) pcore_browser_script_dispatch_file_event_at(
+                center_x, center_y, "change");
+    }
     if (hwnd != NULL) {
         /* DOM textContent setters only mutate the DOM.  The file listeners
          * update the visible event/value nodes, so re-style and lay out the
@@ -71154,6 +71475,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1065: ok = test1065_http_reference_product_contract(); break;
         case 1066: ok = test1066_native_ime_result_contract(); break;
         case 1067: ok = test1067_browser_native_edit_result_contract(); break;
+        case 1068: ok = test1068_browser_native_file_selection_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

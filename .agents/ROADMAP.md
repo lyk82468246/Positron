@@ -188,7 +188,24 @@ ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。Debug/Release 
 C89 检查和仓库/文档 audit 均通过。本批没有新增视觉、触摸、旋转或 picker 人工门；next618
 的 TEST65 真实 SIP 候选词仍需单独人工确认。
 
-### 14. 建立真实页面驱动的兼容队列
+### 14. next620：native file-input selection 产品事务（已完成）
+
+next620 将文件输入选择成功后的产品事件事务迁入 `positron_browser.dll`，新增 additive
+`PBrowser_ScriptSessionDispatchNativeFileSelection()` 和 reset 入口。browser layer 只持有
+每个 session 最多 16 个 stable token 的 BEGIN/COMMIT/CANCEL 状态，并在成功提交时严格派发
+一次不可取消的 `input(insertFromFile)` → `change`；系统文件选择器、文件系统、权限、
+路径写入、重绘和取消回滚仍由 `test_host`/平台宿主持有。宿主在打开 `GetOpenFileNameEx`
+前 BEGIN，成功完成 `PCore_FileInputSetPath` 后 COMMIT，取消、失败或路径写入失败时 CANCEL；
+没有活动脚本 session 时保留旧的无脚本 fallback。
+
+TEST1068 覆盖 ABI 生命周期、非法 phase、重复 BEGIN/COMMIT、幂等 CANCEL、callback 错误、
+reset/unregister 和 16-token 容量边界；TEST262 覆盖真实宿主文件输入回归，TEST230 与
+TEST999 保持页面路由和退出提示音。`tmp/device-runs/20260824-112810-next620-native-file-selection-transaction/`
+的定向设备门为 4/4 PASS、零 ERROR/FAIL；Debug/Release ARMV4I 构建、C89 检查和仓库
+audit 均通过。TEST232/263 的真实文件选择、取消、权限、重入和视觉仍属于人工门，不由
+该自动契约冒充覆盖。
+
+### 15. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -199,7 +216,7 @@ C89 检查和仓库/文档 audit 均通过。本批没有新增视觉、触摸�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 15. 安排新的全范围检查点
+### 16. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

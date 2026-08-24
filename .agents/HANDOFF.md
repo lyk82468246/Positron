@@ -16,9 +16,9 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next619，native EDIT 完整 IME result 产品事务（自动设备门已完成）；
+- 当前能力批次：next620，native file-input selection 产品事务（自动设备门已完成）；
   next618 的 TEST65 真实 SIP 候选词仍待人工确认。
-- 测试编号上限：`TEST_MAX_NUMBER 1067`。
+- 测试编号上限：`TEST_MAX_NUMBER 1068`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -122,6 +122,13 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   并将 result metadata 接入既有 native commit → input 事务；宿主仍拥有
   `ImmGetCompositionStringW`、`EM_REPLACESEL`、WM_IME/SIP 和原生文本 mutation。
   TEST1067 覆盖生命周期、容量、完整多字节 result、commit、reset 和 unregister。
+- next620 在 `positron_browser.dll` 增加 additive 的
+  `PBrowser_ScriptSessionDispatchNativeFileSelection()` 与 reset 入口：browser layer
+  持有每个 session 最多 16 个 stable token 的 BEGIN/COMMIT/CANCEL 状态，并在 COMMIT
+  时一次性派发 `input(insertFromFile)` → `change`。`test_host` 仍拥有
+  `GetOpenFileNameEx`、文件系统、权限、`PCore_FileInputSetPath`、重绘和取消回滚；
+  没有活动脚本 session 时保留旧 fallback。TEST1068 是产品契约门，TEST262 是宿主
+  文件输入回归；TEST232/263 的真实 picker 和视觉仍需人工验收。
 
 ## 最近验证证据
 
@@ -326,6 +333,18 @@ next619 的产品事务自动门已经完成：
 
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
+next620 的文件输入选择产品事务自动门已经完成：
+
+- `tmp/device-runs/20260824-112810-next620-native-file-selection-transaction/` 的
+  `device-gate-result.txt` 为 PASS，TEST1068、262、230、999 共 4/4，唯一
+  `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、`test13_route_ok=True`。
+- TEST1068 覆盖 BEGIN/COMMIT/CANCEL 生命周期、非法 phase、重复提交、幂等取消、callback
+  错误、reset/unregister 和 16-token 容量边界；TEST262 覆盖宿主 picker 的成功/失败
+  路径接线。产品 DLL 不拥有系统 picker、路径写入或视觉，TEST232/263 仍是人工门。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和
+  `python scripts/audit_repo.py` 均通过；Release/Debug 仅保留既有 libcss/fpmath 的 3 个
+  C4244 警告，产品 DLL 无新增警告。
+
 ## 当前已知边界
 
 需要继续面对而不能用断言掩盖的边界包括：
@@ -335,7 +354,7 @@ next619 的产品事务自动门已经完成：
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1067 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1068 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -358,6 +377,9 @@ next619 的产品事务自动门已经完成：
 - next619 的 browser-owned IME result transaction、TEST1067、Debug/Release 构建、C89、audit
   和窄设备门已完成；tracked 改动只覆盖 `positron_browser` ABI/实现、`test_host` 消费者、
   TEST1067 与相关文档。不要把 `tmp/` 设备证据或无关工作区文件带入。
+- next620 的 browser-owned file selection transaction、TEST1068、Debug/Release 构建、C89、
+  audit 和窄设备门已完成；tracked 改动只覆盖 `positron_browser` ABI/实现、`test_host`
+  消费者、TEST1068 与相关文档。不要把 `tmp/` 设备证据或无关工作区文件带入。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -366,8 +388,9 @@ next619 的产品事务自动门已经完成：
 ## 唯一下一步
 
 完成 next618 的一次人工 TEST65：在同一构建的真实 WM6 窗口中点选多字符 SIP 候选词，确认
-输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。确认前不得把
-OEM 窗口视觉或未验证设备行为写成产品保证；确认后再按路线图选择下一个产品纵切。
+输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next620
+本身的自动契约已经完成，但确认前不得把 OEM 窗口视觉或未验证设备行为写成产品保证；
+确认后再按路线图选择下一个产品纵切。
 
 ## next617 完成标准
 
@@ -401,3 +424,17 @@ OEM 窗口视觉或未验证设备行为写成产品保证；确认后再按路�
 - TEST1067 与 TEST1066、123–125、999 的窄设备门唯一 PASS、零 ERROR/FAIL；Debug/Release
   正式构建、C89 和仓库/文档 audit 通过。
 - 不新增视觉、触摸、旋转、picker 或 OEM SIP 人工保证；TEST65 仍按 next618 的独立人工门处理。
+
+## next620 完成标准
+
+- `PBrowser_ScriptSessionDispatchNativeFileSelection()` 作为 additive 稳定 C ABI，校验
+  stable token、phase 和固定容量，持有 BEGIN/COMMIT/CANCEL 状态；COMMIT 只派发一次
+  `input(insertFromFile)` → `change`，CANCEL 幂等，reset/unregister 清理状态。
+- `test_host` 在打开系统 picker 前 BEGIN，成功完成 `PCore_FileInputSetPath` 后 COMMIT，
+  取消、失败或路径写入失败时 CANCEL；无脚本路径保留原 fallback，宿主不复制产品事件
+  策略。
+- TEST1068、262、230、999 的窄设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL；
+  Debug/Release 正式构建、C89 和仓库 audit 通过。TEST232/263 的真实 picker、权限、
+  重入和视觉继续作为人工门，不写成自动化保证。
+- 跟踪的默认 INI 保持自动模式和原有选择集；更新限制、路线图和交接快照，只提交本批
+  tracked 文件并推送 `main`。

@@ -46,6 +46,13 @@ begin/candidate/confirm/cancel phase；候选阶段不调用 `PCore_SelectSetOpt
 `CBN_CLOSEUP` 只表示下拉窗口关闭，不作为事务终点；由于 WM 可能在它前后发送
 `CBN_SELCHANGE`，事务只由 `CBN_SELENDOK` 或 `CBN_SELENDCANCEL` 结束。
 
+文件输入的 picker 事务由 `PBrowser_ScriptSessionDispatchNativeFileSelection()` 提供：
+宿主在 `GetOpenFileNameEx` 前提交 BEGIN，成功写入 `PCore_FileInputSetPath()` 后提交
+COMMIT，取消、失败或 stale request 提交 CANCEL。browser DLL 只负责有界状态和一次
+`input(insertFromFile)` → `change`；本宿主仍拥有系统对话框、文件路径、权限和重绘。
+TEST1068 是产品 ABI 契约，TEST262 是自动消费者回归，TEST232/263 仍是需要真实 WM6
+对话框的人工视觉/选择验收。
+
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、
 network-path 和绝对 URL 的合并，产品 DLL 随后只接受有界 HTTP(S) authority、端口和路径
