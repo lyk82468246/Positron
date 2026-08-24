@@ -182,6 +182,12 @@ WMDC/RapiMgr 主机环境；不要为此修改产品代码、恢复 VMID 绑定�
 `20260824-101622-next618-after-wmdc-restart` 仍在 `CeRapiInitEx()` 处超时；这次结果
 再次确认 gate 必须以用户在 WMDC GUI 中完成的唯一设备连接为前置条件。
 
+用户随后确认已在 WMDC GUI 中手动连接成功；在不再触碰 WMDC 进程的前提下运行
+`20260824-103254-next618-native-ime-result-final-after-manual-reconnect`，构建和 staging
+成功，但 `CeRapiInitEx()` 仍在 30 秒处超时，设备端没有进程或日志。GUI 连接因此不能
+被误写成 RAPI 健康证据；结合此前 `WcesComm`/`RapiMgr` 的 `0xc0000008` 崩溃，下一步
+应是主机级恢复（由用户决定重启主机），而不是继续清理或重启已连接的 WMDC 进程。
+
 ### 早期 loading 条 — 已替代/部分暂挂
 
 问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。

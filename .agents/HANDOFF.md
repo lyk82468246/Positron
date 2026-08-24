@@ -319,6 +319,10 @@ next618 当前候选的本地验证已完成，但设备门尚未形成证据：
   UI 重启不会自动恢复设备连接。未进行 GUI 手动连接就运行的
   `tmp/device-runs/20260824-101622-next618-after-wmdc-restart/` 仍在 `CeRapiInitEx()`
   30 秒处超时，进一步确认设备门必须等待用户完成 WMDC GUI 的唯一连接。
+- 用户随后已在 WMDC GUI 中手动连接成功；在不再操作 WMDC 进程的前提下运行的
+  `tmp/device-runs/20260824-103254-next618-native-ime-result-final-after-manual-reconnect/`
+  仍在 `CeRapiInitEx()` 30 秒处超时，构建/staging 成功但设备端没有进程、日志或结果。
+  GUI 连接不能替代 RAPI 健康证据；下一步需用户决定主机级恢复/重启，不再清理已连接进程。
 - 需要关闭设备/模拟器 GUI 中遗留的 `test_host.exe`，确认 WMDC 只有当前唯一连接后重新
   断开/连接，再原样重跑窄门；恢复门槛见 `.agents/FAILED_EXPERIMENTS.md` 的 next618 条目。
 
