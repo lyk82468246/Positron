@@ -974,6 +974,13 @@ next622 再把受信任物理锚点点击的默认动作接入 `positron_browser
 请求、窗口替换和文档生命周期仍由宿主拥有，公共 API 不暴露 core/link/window 类型。
 TEST1070 是产品契约及宿主 helper 接线门。
 
+next623 将受信任 checkbox/radio 激活的事务边界继续放入 `positron_browser.dll`：
+`PBrowser_ScriptSessionDispatchNativeToggle()` 对每个 session 保留最多 16 个 stable token，
+先派发可取消 click；宿主报告 Core checked 状态提交后，browser layer 才按一次不可取消的
+`input` → `change` 派发，取消、禁用和无状态变化不派发伪造事件。宿主仍负责命中、Core
+mutation、WM 鼠标/键盘默认动作、重绘和 label/窗口副作用；公共 ABI 不暴露 core 控件或
+原生窗口。TEST1071 是产品契约与宿主 helper 接线门。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1070
+#define TEST_MAX_NUMBER 1071
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -4086,6 +4086,315 @@ static BOOL test1070_browser_anchor_activation_contract(void)
     return TRUE;
 }
 
+/* TEST 1071 - browser-owned trusted checkbox/radio activation. */
+typedef struct test1071_toggle_state {
+    int click_calls;
+    int input_calls;
+    int change_calls;
+    int click_allowed;
+    int input_return_code;
+    int change_return_code;
+    char sequence[64];
+} test1071_toggle_state;
+
+static int test1071_toggle_append(test1071_toggle_state *state, char value)
+{
+    size_t length;
+
+    if (state == NULL) {
+        return -1;
+    }
+    length = strlen(state->sequence);
+    if (length + 1 >= sizeof(state->sequence)) {
+        return -1;
+    }
+    state->sequence[length] = value;
+    state->sequence[length + 1] = '\0';
+    return 0;
+}
+
+static int test1071_toggle_click(void *pw,
+        const PBrowserScriptClickEventInfo *info,
+        int *out_default_allowed)
+{
+    test1071_toggle_state *state;
+
+    state = (test1071_toggle_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptClickEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "click") != 0 ||
+            info->bubbles != 1 || info->cancelable != 1) {
+        return -1;
+    }
+    state->click_calls++;
+    if (test1071_toggle_append(state, 'C') != 0) {
+        return -1;
+    }
+    *out_default_allowed = state->click_allowed ? 1 : 0;
+    return 0;
+}
+
+static int test1071_toggle_input(void *pw,
+        const PBrowserScriptInputEventInfo *info,
+        int *out_default_allowed)
+{
+    test1071_toggle_state *state;
+
+    state = (test1071_toggle_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptInputEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "input") != 0 ||
+            info->bubbles != 1 || info->cancelable != 0 ||
+            info->input_type == NULL || info->input_type[0] != '\0' ||
+            info->data == NULL || info->data[0] != '\0') {
+        return -1;
+    }
+    state->input_calls++;
+    if (test1071_toggle_append(state, 'I') != 0) {
+        return -1;
+    }
+    *out_default_allowed = 1;
+    return state->input_return_code;
+}
+
+static int test1071_toggle_change(void *pw,
+        const PBrowserScriptSelectEventInfo *info)
+{
+    test1071_toggle_state *state;
+
+    state = (test1071_toggle_state *) pw;
+    if (state == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptSelectEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "change") != 0 ||
+            info->bubbles != 1 || info->cancelable != 0) {
+        return -1;
+    }
+    state->change_calls++;
+    if (test1071_toggle_append(state, 'S') != 0) {
+        return -1;
+    }
+    return state->change_return_code;
+}
+
+static int test1071_browser_toggle_host_route(
+        test1071_toggle_state *state, HANDLE session);
+
+static BOOL test1071_browser_native_toggle_contract(void)
+{
+    PBrowserScriptClickCallbacks click_callbacks;
+    PBrowserScriptInputCallbacks input_callbacks;
+    PBrowserScriptSelectCallbacks select_callbacks;
+    PBrowserScriptNativeToggleInfo info;
+    test1071_toggle_state state;
+    HANDLE session;
+    const char *stage;
+    int default_allowed;
+    int rc;
+    int ok;
+
+    memset(&click_callbacks, 0, sizeof(click_callbacks));
+    memset(&input_callbacks, 0, sizeof(input_callbacks));
+    memset(&select_callbacks, 0, sizeof(select_callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    state.click_allowed = 1;
+    info.size = sizeof(info);
+    info.target_token = 1;
+    info.x = 21;
+    info.y = 34;
+    info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK;
+    info.kind = PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX;
+    info.disabled = 0;
+    info.selected_before = 0;
+    info.selected_after = 1;
+    click_callbacks.size = sizeof(click_callbacks);
+    click_callbacks.pw = &state;
+    click_callbacks.dispatch_click = test1071_toggle_click;
+    input_callbacks.size = sizeof(input_callbacks);
+    input_callbacks.pw = &state;
+    input_callbacks.dispatch_input = test1071_toggle_input;
+    select_callbacks.size = sizeof(select_callbacks);
+    select_callbacks.pw = &state;
+    select_callbacks.dispatch_select = test1071_toggle_change;
+    stage = "create";
+    default_allowed = 1;
+    rc = PSCRIPT_OK;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    ok = session != NULL;
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterClickCallbacks(session,
+                &click_callbacks) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRegisterInputCallbacks(session,
+                &input_callbacks) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRegisterSelectCallbacks(session,
+                &select_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "click";
+        rc = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "C") == 0;
+    }
+    if (ok) {
+        stage = "commit";
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT;
+        rc = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "CIS") == 0 &&
+                state.input_calls == 1 && state.change_calls == 1;
+    }
+    if (ok) {
+        stage = "no-state-change";
+        info.target_token = 2;
+        info.kind = PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO;
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK;
+        info.selected_before = 1;
+        info.selected_after = 1;
+        rc = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed);
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT;
+        rc = (rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed) : rc;
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "CISC") == 0 &&
+                state.input_calls == 1 && state.change_calls == 1;
+    }
+    if (ok) {
+        stage = "prevent-default";
+        info.target_token = 3;
+        info.kind = PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX;
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK;
+        info.disabled = 0;
+        info.selected_before = 0;
+        info.selected_after = 1;
+        state.click_allowed = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                strcmp(state.sequence, "CISCC") == 0;
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT;
+        if (ok) {
+            ok = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                    &default_allowed) == PSCRIPT_ERROR_ARGUMENT;
+        }
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK;
+    }
+    if (ok) {
+        stage = "disabled";
+        info.target_token = 4;
+        info.disabled = 1;
+        rc = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                state.click_calls == 3;
+        info.disabled = 0;
+        state.click_allowed = 1;
+    }
+    if (ok) {
+        stage = "mismatch-and-cancel";
+        info.target_token = 5;
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK;
+        rc = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed);
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT;
+        info.kind = PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO;
+        rc = (rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed) : rc;
+        ok = rc == PSCRIPT_ERROR_ARGUMENT;
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_CANCEL;
+        info.kind = PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX;
+        if (ok) {
+            rc = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                    &default_allowed);
+            ok = rc == PSCRIPT_OK &&
+                    PBrowser_ScriptSessionDispatchNativeToggle(session,
+                    &info, &default_allowed) == PSCRIPT_OK;
+        }
+    }
+    if (ok) {
+        stage = "callback-error";
+        info.target_token = 6;
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK;
+        rc = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed);
+        state.input_return_code = -1;
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT;
+        rc = (rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed) : rc;
+        ok = rc == PSCRIPT_ERROR_NATIVE &&
+                PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed) == PSCRIPT_ERROR_ARGUMENT;
+        state.input_return_code = 0;
+    }
+    if (ok) {
+        stage = "reset";
+        info.target_token = 7;
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK;
+        rc = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK;
+        if (!ok) {
+            stage = (rc == PSCRIPT_ERROR_NATIVE_LIMIT) ?
+                    "reset-click-limit" :
+                    (rc == PSCRIPT_ERROR_GLOBAL) ?
+                    "reset-click-global" : "reset-click-error";
+        }
+        if (ok && PBrowser_ScriptSessionResetNativeToggleState(session) !=
+                PSCRIPT_OK) {
+            ok = 0;
+            stage = "reset-state";
+        }
+        info.phase = PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT;
+        if (ok) {
+            ok = PBrowser_ScriptSessionDispatchNativeToggle(session, &info,
+                    &default_allowed) == PSCRIPT_ERROR_ARGUMENT;
+            if (!ok) {
+                stage = "reset-commit";
+            }
+        }
+    }
+    if (ok) {
+        stage = "host-route";
+        state.sequence[0] = '\0';
+        state.click_calls = 0;
+        state.input_calls = 0;
+        state.change_calls = 0;
+        ok = test1071_browser_toggle_host_route(&state, session) != 0;
+    }
+    if (session != NULL) {
+        if (PBrowser_ScriptSessionUnregisterSelectCallbacks(session) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        if (PBrowser_ScriptSessionUnregisterInputCallbacks(session) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        if (PBrowser_ScriptSessionUnregisterClickCallbacks(session) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1071 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1071 OK",
+            "Browser-owned checkbox/radio activation dispatches click,\n"
+            "input and change only after an accepted Core state commit.");
+    return TRUE;
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 6 - libhubbub HTML tokeniser (NetSurf engine, Phase 4)           */
 /* Feeds a small HTML document to hubbub in tokeniser mode: setting a     */
@@ -6166,6 +6475,10 @@ static int pcore_browser_script_dispatch_native_file_picker_phase(
         int x, int y, int phase, int *out_accepted);
 static int pcore_queue_file_input_picker(
         pcore_browser_script_bridge *bridge, int x, int y);
+static int pcore_browser_script_dispatch_native_toggle_phase(
+        unsigned int index, int kind, int x, int y, int phase,
+        int disabled, int selected_before, int selected_after,
+        int *out_default_allowed);
 static int pcore_browser_script_dispatch_toggle_input_at(int x, int y);
 static int pcore_browser_script_dispatch_select_change_at(int x, int y);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
@@ -6175,7 +6488,8 @@ static void pcore_invalidate_form_dirty(HWND hwnd, int x, int y,
         int width, int height);
 static void pcore_request_interaction_restyle(HWND hwnd);
 static int pcore_form_toggle_activate(int x, int y,
-        int *dirty_x, int *dirty_y, int *dirty_w, int *dirty_h);
+        int product_toggle_started, int *dirty_x, int *dirty_y,
+        int *dirty_w, int *dirty_h);
 static int pcore_browser_script_dispatch_form_event_at(int x, int y,
         const char *event_type);
 static int pcore_browser_script_dispatch_form_event_bridge(
@@ -7131,7 +7445,7 @@ static int pcore_browser_script_programmatic_click_default(void *pw,
         dirty_y = 0;
         dirty_w = 0;
         dirty_h = 0;
-        (void) pcore_form_toggle_activate(center_x, center_y,
+        (void) pcore_form_toggle_activate(center_x, center_y, 0,
                 &dirty_x, &dirty_y, &dirty_w, &dirty_h);
         if (bridge->hwnd != NULL) {
             pcore_invalidate_form_dirty(bridge->hwnd, dirty_x, dirty_y,
@@ -12243,6 +12557,99 @@ static void pcore_browser_script_reset_native_select_state(void)
 /* Native checkbox/radio controls use the existing typed input contract. The
  * event is non-cancelable, carries no text-edit or file metadata, and is
  * emitted only after the core value/state has been committed. */
+static int pcore_browser_script_dispatch_native_toggle_phase(
+        unsigned int index, int kind, int x, int y, int phase,
+        int disabled, int selected_before, int selected_after,
+        int *out_default_allowed)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeToggleInfo info;
+    int default_allowed;
+    int ignored_default_allowed;
+    int rc;
+
+    if (out_default_allowed == NULL) {
+        out_default_allowed = &ignored_default_allowed;
+    }
+    *out_default_allowed = 1;
+    if (g_render_doc == NULL || index >= PBROWSER_SCRIPT_NATIVE_TOGGLE_MAX_TARGETS ||
+            (kind != PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX &&
+            kind != PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO) ||
+            (phase != PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK &&
+            phase != PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT &&
+            phase != PBROWSER_SCRIPT_NATIVE_TOGGLE_CANCEL)) {
+        return -1;
+    }
+    bridge = g_browser_script_session.bridge;
+    if (!pcore_native_script_active() || bridge == NULL ||
+            bridge->session == NULL) {
+        return 0;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = (unsigned long) index + 1UL;
+    info.x = x;
+    info.y = y;
+    info.phase = phase;
+    info.kind = kind;
+    info.disabled = disabled ? 1 : 0;
+    info.selected_before = selected_before ? 1 : 0;
+    info.selected_after = selected_after ? 1 : 0;
+    default_allowed = 1;
+    rc = PBrowser_ScriptSessionDispatchNativeToggle(
+            bridge->session, &info, &default_allowed);
+    if (rc != PSCRIPT_OK) {
+        *out_default_allowed = 0;
+        return -1;
+    }
+    *out_default_allowed = default_allowed ? 1 : 0;
+    return 1;
+}
+
+static int test1071_browser_toggle_host_route(
+        test1071_toggle_state *state, HANDLE session)
+{
+    pcore_browser_script_bridge bridge_storage;
+    int default_allowed;
+    int rc;
+    int ok;
+
+    if (state == NULL || session == NULL) {
+        return 0;
+    }
+    memset(&bridge_storage, 0, sizeof(bridge_storage));
+    g_render_doc = (HANDLE) 1;
+    bridge_storage.document = g_render_doc;
+    bridge_storage.runtime = session;
+    bridge_storage.session = session;
+    g_browser_script_session.document = g_render_doc;
+    g_browser_script_session.runtime = session;
+    g_browser_script_session.session = session;
+    g_browser_script_session.bridge = &bridge_storage;
+    default_allowed = 0;
+    rc = pcore_browser_script_dispatch_native_toggle_phase(
+            4, PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX, 44, 55,
+            PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK, 0, 0, 0,
+            &default_allowed);
+    ok = rc == 1 && default_allowed == 1;
+    if (ok) {
+        rc = pcore_browser_script_dispatch_native_toggle_phase(
+                4, PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX, 44, 55,
+                PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT, 0, 0, 1,
+                NULL);
+        ok = rc == 1 &&
+                strcmp(state->sequence, "CIS") == 0 &&
+                state->click_calls == 1 && state->input_calls == 1 &&
+                state->change_calls == 1;
+    }
+    g_browser_script_session.document = NULL;
+    g_browser_script_session.runtime = NULL;
+    g_browser_script_session.session = NULL;
+    g_browser_script_session.bridge = NULL;
+    g_render_doc = NULL;
+    return ok;
+}
+
 static int pcore_browser_script_dispatch_toggle_input_at(int x, int y)
 {
     pcore_browser_script_bridge *bridge;
@@ -12713,7 +13120,8 @@ static int pcore_toggle_focus_current(int *out_x, int *out_y)
 }
 
 static int pcore_form_toggle_activate(int x, int y,
-        int *dirty_x, int *dirty_y, int *dirty_w, int *dirty_h)
+        int product_toggle_started, int *dirty_x, int *dirty_y,
+        int *dirty_w, int *dirty_h)
 {
     unsigned int index;
     int kind;
@@ -12734,23 +13142,43 @@ static int pcore_form_toggle_activate(int x, int y,
     consumed = PCore_FormActivateAt(g_render_doc, x, y,
             dirty_x, dirty_y, dirty_w, dirty_h);
     if (!consumed || kind == 0 || disabled) {
+        if (product_toggle_started) {
+            (void) pcore_browser_script_dispatch_native_toggle_phase(
+                    index, kind, x, y,
+                    PBROWSER_SCRIPT_NATIVE_TOGGLE_CANCEL,
+                    disabled, before_selected, before_selected, NULL);
+        }
         return consumed;
     }
     after_selected = before_selected;
     if (PCore_FormControlInfo(g_render_doc, index, NULL, NULL, NULL, NULL,
             NULL, &after_selected, NULL) != 0 ||
             after_selected == before_selected) {
+        if (product_toggle_started) {
+            (void) pcore_browser_script_dispatch_native_toggle_phase(
+                    index, kind, x, y,
+                    PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT,
+                    disabled, before_selected, before_selected, NULL);
+        }
         return consumed;
     }
-    /* Checkbox/radio input/change are non-cancelable and follow the
-     * committed core state. Adapter failures are fail-open: they must not
-     * roll back the user's selection or suppress repaint. */
-    (void) pcore_browser_script_dispatch_toggle_input_at(x, y);
-    (void) pcore_browser_script_dispatch_select_change_at(x, y);
+    if (product_toggle_started) {
+        (void) pcore_browser_script_dispatch_native_toggle_phase(
+                index, kind, x, y,
+                PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT,
+                disabled, before_selected, after_selected, NULL);
+    } else {
+        /* Checkbox/radio input/change are non-cancelable and follow the
+         * committed core state. Adapter failures are fail-open: they must
+         * not roll back the user's selection or suppress repaint. */
+        (void) pcore_browser_script_dispatch_toggle_input_at(x, y);
+        (void) pcore_browser_script_dispatch_select_change_at(x, y);
+    }
     return consumed;
 }
 
-static int pcore_handle_form_toggle(HWND hwnd, int x, int y)
+static int pcore_handle_form_toggle(HWND hwnd, int x, int y,
+        int product_toggle_started)
 {
     unsigned int index;
     int kind;
@@ -12772,8 +13200,8 @@ static int pcore_handle_form_toggle(HWND hwnd, int x, int y)
     } else {
         pcore_toggle_focus_set(index, kind);
     }
-    if (!pcore_form_toggle_activate(x, y, &dirty_x, &dirty_y,
-            &dirty_w, &dirty_h)) {
+    if (!pcore_form_toggle_activate(x, y, product_toggle_started,
+            &dirty_x, &dirty_y, &dirty_w, &dirty_h)) {
         return 0;
     }
     pcore_invalidate_form_dirty(hwnd, dirty_x, dirty_y,
@@ -13235,7 +13663,7 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
             }
         }
         if (click_allowed) {
-            (void) pcore_handle_form_toggle(hwnd, target_x, target_y);
+            (void) pcore_handle_form_toggle(hwnd, target_x, target_y, 0);
         }
     } else {
         pcore_focus_native_form_control(kind, target_x, target_y);
@@ -13246,10 +13674,17 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
 static int pcore_handle_toggle_keyboard(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp, int system_key)
 {
+    unsigned int index;
+    int kind;
+    int selected_before;
+    int disabled;
     int x;
     int y;
     int keydown;
     int keyup;
+    int default_allowed;
+    int product_toggle_started;
+    int phase_result;
 
     if (wp != VK_SPACE && wp != VK_RETURN) {
         return 0;
@@ -13269,10 +13704,34 @@ static int pcore_handle_toggle_keyboard(HWND hwnd, UINT msg,
         if ((lp & 0x40000000L) != 0) {
             return 1;
         }
-        if (!pcore_browser_script_dispatch_click_at(x, y)) {
+        product_toggle_started = 0;
+        index = 0;
+        kind = 0;
+        selected_before = 0;
+        disabled = 0;
+        if (pcore_native_script_active() &&
+                pcore_form_toggle_control_at(x, y, &index, &kind,
+                &selected_before, &disabled)) {
+            default_allowed = 1;
+            phase_result = pcore_browser_script_dispatch_native_toggle_phase(
+                    index, kind, x, y,
+                    PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK,
+                    disabled, selected_before, selected_before,
+                    &default_allowed);
+            if (phase_result < 0 ||
+                    (phase_result > 0 && !default_allowed)) {
+                return 1;
+            }
+            if (phase_result > 0) {
+                product_toggle_started = 1;
+            }
+        }
+        if (!product_toggle_started &&
+                !pcore_browser_script_dispatch_click_at(x, y)) {
             return 1;
         }
-        (void) pcore_handle_form_toggle(hwnd, x, y);
+        (void) pcore_handle_form_toggle(hwnd, x, y,
+                product_toggle_started);
         return 1;
     }
     if (keyup) {
@@ -13885,6 +14344,13 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int cy = (int) (short) HIWORD(lp);
         int default_allowed;
         int link_found;
+        int toggle_found;
+        int toggle_product_started;
+        int toggle_phase_result;
+        unsigned int toggle_index;
+        int toggle_kind;
+        int toggle_selected_before;
+        int toggle_disabled;
         char href[1024];
 
         pcore_toggle_focus_clear();
@@ -13906,6 +14372,18 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         if (g_render_doc != NULL) {
             (void) pcore_toggle_focus_track_at(cx, cy + g_scroll_y);
         }
+        toggle_found = 0;
+        toggle_product_started = 0;
+        toggle_index = 0;
+        toggle_kind = 0;
+        toggle_selected_before = 0;
+        toggle_disabled = 0;
+        if (g_render_doc != NULL &&
+                pcore_form_toggle_control_at(cx, cy + g_scroll_y,
+                &toggle_index, &toggle_kind, &toggle_selected_before,
+                &toggle_disabled)) {
+            toggle_found = 1;
+        }
         link_found = 0;
         href[0] = '\0';
         if (g_render_doc != NULL &&
@@ -13919,11 +14397,28 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             return 0;
         }
         default_allowed = 1;
-        if (g_render_doc != NULL) {
+        if (g_render_doc != NULL &&
+                !(toggle_found && pcore_native_script_active())) {
             default_allowed = pcore_browser_script_dispatch_click_at(cx,
                     cy + g_scroll_y);
             if (!default_allowed) {
                 return 0;
+            }
+        }
+        if (toggle_found && pcore_native_script_active()) {
+            default_allowed = 1;
+            toggle_phase_result =
+                    pcore_browser_script_dispatch_native_toggle_phase(
+                    toggle_index, toggle_kind, cx, cy + g_scroll_y,
+                    PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK, toggle_disabled,
+                    toggle_selected_before, toggle_selected_before,
+                    &default_allowed);
+            if (toggle_phase_result < 0 ||
+                    (toggle_phase_result > 0 && !default_allowed)) {
+                return 0;
+            }
+            if (toggle_phase_result > 0) {
+                toggle_product_started = 1;
             }
         }
         if (g_render_doc != NULL &&
@@ -13935,7 +14430,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             return 0;
         }
         if (g_render_doc != NULL &&
-                pcore_handle_form_toggle(hwnd, cx, cy + g_scroll_y)) {
+                pcore_handle_form_toggle(hwnd, cx, cy + g_scroll_y,
+                toggle_product_started)) {
             return 0;
         }
         if (g_render_doc != NULL &&
@@ -44895,7 +45391,7 @@ static BOOL test224_browser_form_toggle_change(void)
     }
     if (ok) {
         stage = "checkbox-change";
-        if (!pcore_form_toggle_activate(check_x, check_y, &dirty_x,
+        if (!pcore_form_toggle_activate(check_x, check_y, 0, &dirty_x,
                 &dirty_y, &dirty_w, &dirty_h) ||
                 PCore_FormControlInfo(document, (unsigned int) check_index,
                 NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
@@ -44908,7 +45404,7 @@ static BOOL test224_browser_form_toggle_change(void)
     }
     if (ok) {
         stage = "radio-already-selected";
-        if (!pcore_form_toggle_activate(radio_a_x, radio_a_y, &dirty_x,
+        if (!pcore_form_toggle_activate(radio_a_x, radio_a_y, 0, &dirty_x,
                 &dirty_y, &dirty_w, &dirty_h) ||
                 PCore_FormControlInfo(document, (unsigned int) radio_a_index,
                 NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
@@ -44921,7 +45417,7 @@ static BOOL test224_browser_form_toggle_change(void)
     }
     if (ok) {
         stage = "radio-change";
-        if (!pcore_form_toggle_activate(radio_b_x, radio_b_y, &dirty_x,
+        if (!pcore_form_toggle_activate(radio_b_x, radio_b_y, 0, &dirty_x,
                 &dirty_y, &dirty_w, &dirty_h) ||
                 PCore_FormControlInfo(document, (unsigned int) radio_a_index,
                 NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
@@ -44937,7 +45433,7 @@ static BOOL test224_browser_form_toggle_change(void)
     }
     if (ok) {
         stage = "disabled-no-change";
-        if (!pcore_form_toggle_activate(disabled_x, disabled_y, &dirty_x,
+        if (!pcore_form_toggle_activate(disabled_x, disabled_y, 0, &dirty_x,
                 &dirty_y, &dirty_w, &dirty_h) ||
                 PCore_FormControlInfo(document, (unsigned int) disabled_index,
                 NULL, NULL, NULL, NULL, NULL, &selected, &disabled) != 0 ||
@@ -45150,7 +45646,7 @@ static BOOL test225_browser_form_toggle_input(void)
     }
     if (ok) {
         stage = "checkbox-input-change";
-        if (!pcore_form_toggle_activate(check_x, check_y, &dirty_x,
+        if (!pcore_form_toggle_activate(check_x, check_y, 0, &dirty_x,
                 &dirty_y, &dirty_w, &dirty_h) ||
                 PCore_FormControlInfo(document, (unsigned int) check_index,
                 NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
@@ -45163,7 +45659,7 @@ static BOOL test225_browser_form_toggle_input(void)
     }
     if (ok) {
         stage = "radio-already-selected";
-        if (!pcore_form_toggle_activate(radio_a_x, radio_a_y, &dirty_x,
+        if (!pcore_form_toggle_activate(radio_a_x, radio_a_y, 0, &dirty_x,
                 &dirty_y, &dirty_w, &dirty_h) ||
                 PCore_FormControlInfo(document, (unsigned int) radio_a_index,
                 NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
@@ -45176,7 +45672,7 @@ static BOOL test225_browser_form_toggle_input(void)
     }
     if (ok) {
         stage = "radio-input-change";
-        if (!pcore_form_toggle_activate(radio_b_x, radio_b_y, &dirty_x,
+        if (!pcore_form_toggle_activate(radio_b_x, radio_b_y, 0, &dirty_x,
                 &dirty_y, &dirty_w, &dirty_h) ||
                 PCore_FormControlInfo(document, (unsigned int) radio_a_index,
                 NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
@@ -45192,7 +45688,7 @@ static BOOL test225_browser_form_toggle_input(void)
     }
     if (ok) {
         stage = "disabled-no-input";
-        if (!pcore_form_toggle_activate(disabled_x, disabled_y, &dirty_x,
+        if (!pcore_form_toggle_activate(disabled_x, disabled_y, 0, &dirty_x,
                 &dirty_y, &dirty_w, &dirty_h) ||
                 PCore_FormControlInfo(document, (unsigned int) disabled_index,
                 NULL, NULL, NULL, NULL, NULL, &selected, &disabled) != 0 ||
@@ -72045,6 +72541,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1068: ok = test1068_browser_native_file_selection_contract(); break;
         case 1069: ok = test1069_browser_native_file_picker_contract(); break;
         case 1070: ok = test1070_browser_anchor_activation_contract(); break;
+        case 1071: ok = test1071_browser_native_toggle_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

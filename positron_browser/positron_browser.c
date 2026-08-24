@@ -3388,6 +3388,14 @@ typedef struct p_browser_script_native_select_binding {
             PBROWSER_SCRIPT_NATIVE_SELECT_MAX_TARGETS];
 } p_browser_script_native_select_binding;
 
+typedef struct p_browser_script_native_toggle_state {
+    unsigned long target_token;
+    int used;
+    int active;
+    int kind;
+    int selected_before;
+} p_browser_script_native_toggle_state;
+
 typedef struct p_browser_script_native_file_state {
     unsigned long target_token;
     int used;
@@ -3452,6 +3460,8 @@ typedef struct p_browser_script_session {
     p_browser_script_native_edit_binding *native_edit;
     p_browser_script_select_binding *select;
     p_browser_script_native_select_binding *native_select;
+    p_browser_script_native_toggle_state native_toggle_states[
+            PBROWSER_SCRIPT_NATIVE_TOGGLE_MAX_TARGETS];
     p_browser_script_native_file_state native_file_states[
             PBROWSER_SCRIPT_NATIVE_FILE_MAX_TARGETS];
     p_browser_script_native_file_picker_state native_file_picker;
@@ -4924,6 +4934,8 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->native_edit = NULL;
     session->select = NULL;
     session->native_select = NULL;
+    memset(session->native_toggle_states, 0,
+            sizeof(session->native_toggle_states));
     memset(session->native_file_states, 0,
             sizeof(session->native_file_states));
     memset(&session->native_file_picker, 0,
@@ -6599,6 +6611,179 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchSelectEvent(HANDLE hSession,
     if (rc < 0) {
         return PSCRIPT_ERROR_NATIVE;
     }
+    return PSCRIPT_OK;
+}
+
+static p_browser_script_native_toggle_state *
+p_browser_script_native_toggle_state_find(
+        p_browser_script_session *session, unsigned long target_token,
+        int create)
+{
+    unsigned int i;
+    p_browser_script_native_toggle_state *free_state;
+
+    if (session == NULL || target_token == 0) {
+        return NULL;
+    }
+    free_state = NULL;
+    for (i = 0; i < PBROWSER_SCRIPT_NATIVE_TOGGLE_MAX_TARGETS; i++) {
+        if (session->native_toggle_states[i].used &&
+                session->native_toggle_states[i].target_token ==
+                target_token) {
+            return &session->native_toggle_states[i];
+        }
+        if (free_state == NULL &&
+                !session->native_toggle_states[i].used) {
+            free_state = &session->native_toggle_states[i];
+        }
+    }
+    if (!create || free_state == NULL) {
+        return NULL;
+    }
+    memset(free_state, 0, sizeof(*free_state));
+    free_state->used = 1;
+    free_state->target_token = target_token;
+    return free_state;
+}
+
+static int p_browser_script_native_toggle_info_valid(
+        const PBrowserScriptNativeToggleInfo *info)
+{
+    if (info == NULL || info->size < sizeof(*info) ||
+            info->target_token == 0 ||
+            (info->phase != PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK &&
+            info->phase != PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT &&
+            info->phase != PBROWSER_SCRIPT_NATIVE_TOGGLE_CANCEL) ||
+            (info->kind != PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX &&
+            info->kind != PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO) ||
+            (info->disabled != 0 && info->disabled != 1) ||
+            (info->selected_before != 0 && info->selected_before != 1) ||
+            (info->selected_after != 0 && info->selected_after != 1)) {
+        return 0;
+    }
+    return 1;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeToggle(
+        HANDLE hSession, const PBrowserScriptNativeToggleInfo *info,
+        int *out_default_allowed)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_toggle_state *state;
+    PBrowserScriptClickEventInfo click_info;
+    PBrowserScriptInputEventInfo input_info;
+    PBrowserScriptSelectEventInfo select_info;
+    int default_allowed;
+    int rc;
+
+    if (out_default_allowed == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    *out_default_allowed = 1;
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->click == NULL ||
+            session->input == NULL || session->select == NULL ||
+            !p_browser_script_native_toggle_info_valid(info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK) {
+        state = p_browser_script_native_toggle_state_find(session,
+                info->target_token, 0);
+        if (state != NULL && state->active) {
+            return PSCRIPT_ERROR_GLOBAL;
+        }
+        if (info->disabled) {
+            *out_default_allowed = 0;
+            return PSCRIPT_OK;
+        }
+        memset(&click_info, 0, sizeof(click_info));
+        click_info.size = sizeof(click_info);
+        click_info.x = info->x;
+        click_info.y = info->y;
+        click_info.event_type = "click";
+        click_info.bubbles = 1;
+        click_info.cancelable = 1;
+        default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchClickEvent(hSession,
+                &click_info, &default_allowed);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+        if (!default_allowed) {
+            *out_default_allowed = 0;
+            return PSCRIPT_OK;
+        }
+        state = p_browser_script_native_toggle_state_find(session,
+                info->target_token, 1);
+        if (state == NULL) {
+            return PSCRIPT_ERROR_NATIVE_LIMIT;
+        }
+        state->active = 1;
+        state->kind = info->kind;
+        state->selected_before = info->selected_before;
+        *out_default_allowed = 1;
+        return PSCRIPT_OK;
+    }
+    state = p_browser_script_native_toggle_state_find(session,
+            info->target_token, 0);
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_TOGGLE_CANCEL) {
+        if (state != NULL) {
+            state->active = 0;
+        }
+        return PSCRIPT_OK;
+    }
+    if (state == NULL || !state->active || state->kind != info->kind ||
+            state->selected_before != info->selected_before) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    /* Close the transaction before calling out so a re-entrant callback
+     * cannot duplicate the same checkbox/radio input/change pair. */
+    state->active = 0;
+    if (state->selected_before == info->selected_after) {
+        return PSCRIPT_OK;
+    }
+    memset(&input_info, 0, sizeof(input_info));
+    input_info.size = sizeof(input_info);
+    input_info.x = info->x;
+    input_info.y = info->y;
+    input_info.event_type = "input";
+    input_info.bubbles = 1;
+    input_info.cancelable = 0;
+    input_info.input_type = "";
+    input_info.data = "";
+    input_info.is_composing = 0;
+    default_allowed = 1;
+    rc = session->input->callbacks.dispatch_input(
+            session->input->callbacks.pw, &input_info, &default_allowed);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    memset(&select_info, 0, sizeof(select_info));
+    select_info.size = sizeof(select_info);
+    select_info.x = info->x;
+    select_info.y = info->y;
+    select_info.event_type = "change";
+    select_info.bubbles = 1;
+    select_info.cancelable = 0;
+    rc = session->select->callbacks.dispatch_select(
+            session->select->callbacks.pw, &select_info);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionResetNativeToggleState(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memset(session->native_toggle_states, 0,
+            sizeof(session->native_toggle_states));
     return PSCRIPT_OK;
 }
 

@@ -287,6 +287,13 @@ href 只在同步调用中借用，API 不拥有网络、窗口或文档；宿�
 请求和窗口替换。TEST1070 覆盖接受、preventDefault、导航拒绝、适配器错误和宿主 helper
 接线。
 
+next623 增加 `PBrowser_ScriptSessionDispatchNativeToggle()` 与 reset 入口，持有每个
+session 最多 16 个 checkbox/radio stable token 的 CLICK/COMMIT/CANCEL 事务。browser layer
+先派发一次可取消 click；宿主报告 Core 的 checked 状态已提交且确实变化后，DLL 才派发一次
+不可取消的 `input` → `change`。禁用、preventDefault、取消、无状态变化、回调失败和 reset
+均有明确边界；宿主仍拥有命中、Core mutation、原生 WM 默认动作、重绘和 label/窗口副作用。
+TEST1071 覆盖接受、无变化、取消、禁用、回调错误、reset 和宿主 helper 接线。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

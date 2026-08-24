@@ -196,6 +196,11 @@ next622 又把受信任物理锚点点击的默认导航接线放入 `positron_b
 `PBrowser_ScriptSessionDispatchAnchorClick()` 先派发一次可取消 click，只有未被阻止时才
 通过已注册导航适配器提交 ASSIGN；命中测试、网络、窗口和文档替换仍由宿主负责。
 `TEST1070` 覆盖接受、preventDefault、导航拒绝、适配器错误以及宿主 helper 接线。
+next623 又把受信任 checkbox/radio 激活的产品事务放入 `positron_browser.dll`：
+`PBrowser_ScriptSessionDispatchNativeToggle()` 先处理可取消 click，只有宿主报告 Core
+状态提交后才按一次 `input` → `change` 派发；取消、禁用和无状态变化不伪造事件。
+宿主仍负责命中、Core mutation、重绘和 WM 键盘/鼠标副作用，`TEST1071` 覆盖产品契约与
+共享 session 的 helper 接线。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

@@ -533,6 +533,30 @@ typedef struct PBrowserScriptSelectCallbacks {
     PBrowserScriptDispatchSelectFn dispatch_select;
 } PBrowserScriptSelectCallbacks;
 
+/* Native checkbox/radio activation phases. The browser layer owns the
+ * trusted click cancellation and the post-commit input -> change ordering;
+ * the host owns hit-testing, Core's checked-state mutation and repaint. A
+ * CLICK starts a bounded transaction only when the click is not prevented.
+ * COMMIT is sent after Core reports the resulting state; CANCEL is idempotent
+ * and is used when the host cannot commit the default action. */
+#define PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK  1
+#define PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT 2
+#define PBROWSER_SCRIPT_NATIVE_TOGGLE_CANCEL 3
+#define PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX 1
+#define PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO    2
+#define PBROWSER_SCRIPT_NATIVE_TOGGLE_MAX_TARGETS 16
+typedef struct PBrowserScriptNativeToggleInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    int phase;
+    int kind;
+    int disabled;
+    int selected_before;
+    int selected_after;
+} PBrowserScriptNativeToggleInfo;
+
 /* Native file-input selection transaction phases. The browser layer owns the
  * bounded begin/commit/cancel state and the non-cancelable input -> change
  * ordering; the host still owns the system picker, file-system access and
@@ -1102,6 +1126,17 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterSelectCallbacks(
  * adapter. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchSelectEvent(HANDLE hSession,
         const PBrowserScriptSelectEventInfo *info);
+/* Arbitrate one trusted checkbox/radio activation. CLICK dispatches a
+ * cancelable click and sets out_default_allowed to 1 only when the host may
+ * mutate Core. COMMIT dispatches non-cancelable input then change only when
+ * selected_after differs from the CLICK snapshot. CANCEL clears the bounded
+ * transaction without dispatching events. The host owns Core mutation and
+ * native control state; target_token is stable and non-zero for one target. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeToggle(
+        HANDLE hSession, const PBrowserScriptNativeToggleInfo *info,
+        int *out_default_allowed);
+PBROWSER_API int PBrowser_ScriptSessionResetNativeToggleState(
+        HANDLE hSession);
 /* Notify the product layer about one native file-input picker transaction.
  * BEGIN opens bounded state without dispatching events. COMMIT dispatches a
  * non-cancelable input(insertFromFile) followed by change and closes the

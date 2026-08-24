@@ -65,6 +65,13 @@ preventDefault 和 ASSIGN 导航适配，宿主不再直接为启用脚本的链
 宿主仍拥有 `PCore_LinkAt` 命中测试、网络 worker、窗口替换和无脚本 fallback。
 TEST1070 同时验证产品契约与该 helper 的消费者接线。
 
+next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
+`PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
+再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次
+`input` → `change`，宿主仍负责命中、Core checked-state mutation、重绘、WM 默认动作以及
+label fallback。无脚本路径保持原有 generic click 与宿主事件 fallback。TEST1071 验证产品
+契约、无状态变化/取消/错误边界和共享 session helper 接线。
+
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、
 network-path 和绝对 URL 的合并，产品 DLL 随后只接受有界 HTTP(S) authority、端口和路径

@@ -477,6 +477,27 @@ scripts\device_gate.bat -Candidate next622-anchor-activation-r2 ^
 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉
 保证；真实 WM6 点击坐标、链接命中和导航页面仍可在累计人工批次中观察。
 
+### next623 native toggle activation 自动门
+
+next623 将启用脚本时 checkbox/radio 的受信任激活接入
+`PBrowser_ScriptSessionDispatchNativeToggle()`：browser layer 先派发可取消 click，宿主
+执行 Core checked-state mutation 后再 COMMIT；只有状态确实变化时派发一次 `input` →
+`change`。CANCEL、禁用、preventDefault、无状态变化、回调错误和 reset 均保持有界；宿主
+仍负责 hit-test、WM 鼠标/键盘默认动作、Core mutation 与重绘。
+
+TEST1071 覆盖接受、无状态变化、preventDefault、禁用、kind mismatch、取消、回调错误、
+reset，以及共享 session 的宿主 helper 路径（含无输出值的 COMMIT）。
+
+```bat
+scripts\device_gate.bat -Candidate next623-native-toggle-r5 ^
+  -EnableJavaScript ^
+  -TestSelection "1071,64,73,999"
+```
+
+`tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 已通过 4/4，零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉保证；
+真实 checkbox/radio 触摸坐标、label 转发、OEM 控件视觉和旋转仍属于累计人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

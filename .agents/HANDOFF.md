@@ -16,9 +16,9 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next622，受信任物理锚点激活（自动设备门已完成）；
+- 当前能力批次：next623，受信任 checkbox/radio 激活（自动设备门已完成）；
   next618 的 TEST65 真实 SIP 候选词仍待人工确认。
-- 测试编号上限：`TEST_MAX_NUMBER 1070`。
+- 测试编号上限：`TEST_MAX_NUMBER 1071`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -139,6 +139,12 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   href 先派发一次可取消 click，只有未被阻止时才通过已注册导航适配器提交 ASSIGN。宿主
   仍拥有 `PCore_LinkAt`、网络、窗口和文档生命周期；TEST1070 是产品契约及 helper
   消费者回归。
+- next623 在 `positron_browser.dll` 增加 additive 的
+  `PBrowser_ScriptSessionDispatchNativeToggle()` 与 reset：browser layer 对受信任
+  checkbox/radio 激活持有最多 16 个 stable token 的 CLICK/COMMIT/CANCEL 状态，先派发
+  可取消 click，只有宿主报告 Core checked-state 变化已提交后才派发一次 input→change。
+  宿主仍拥有 hit-test、Core mutation、WM 默认动作、label fallback 和重绘；TEST1071 是
+  产品契约及 helper 消费者回归。
 
 ## 最近验证证据
 
@@ -379,6 +385,18 @@ next622 的 trusted physical anchor activation 自动门已经完成：
   `python scripts/audit_repo.py` 和窄设备门均已通过；Release/Debug 仅保留既有
   libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
 
+next623 的 trusted native toggle activation 自动门已经完成：
+
+- `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
+  `device-gate-result.txt` 为 PASS，TEST1071、64、73、999 共 4/4，唯一
+  `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、`test13_route_ok=True`。
+- TEST1071 覆盖接受、无状态变化、preventDefault、禁用、kind mismatch、取消、回调错误、
+  reset，以及共享 session helper 的 CLICK→Core commit→COMMIT 接线；真实触摸、label
+  转发、OEM 视觉和旋转仍不由该自动门保证。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、
+  `python scripts/audit_repo.py` 和窄设备门均已通过；Release/Debug 仅保留既有
+  libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
+
 ## 当前已知边界
 
 需要继续面对而不能用断言掩盖的边界包括：
@@ -420,6 +438,9 @@ next622 的 trusted physical anchor activation 自动门已经完成：
 - next622 的 browser-owned trusted anchor activation、TEST1070、Debug/Release 构建、C89、
   audit 和窄设备门已完成；tracked 改动只覆盖 `positron_browser` ABI/实现、`test_host`
   消费者、TEST1070 与相关文档。不要把 `tmp/` 设备证据或无关工作区文件带入。
+- next623 的 browser-owned trusted native toggle activation、TEST1071、Debug/Release 构建、
+  C89、audit 和窄设备门已完成；tracked 改动只覆盖 `positron_browser` ABI/实现、`test_host` 消费者、
+  TEST1071 与相关文档。不要把 `tmp/` 设备证据或无关工作区文件带入。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -429,7 +450,7 @@ next622 的 trusted physical anchor activation 自动门已经完成：
 
 完成 next618 的一次人工 TEST65：在同一构建的真实 WM6 窗口中点选多字符 SIP 候选词，确认
 输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next622
-本身的自动契约已经完成，但确认前不得把 OEM 窗口视觉或未验证设备行为写成产品保证；
+和 next623 本身的自动契约已经完成，但确认前不得把 OEM 窗口视觉或未验证设备行为写成产品保证；
 确认后再按路线图选择下一个产品纵切。
 
 ## next617 完成标准

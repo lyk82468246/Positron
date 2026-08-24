@@ -54,6 +54,9 @@
   next622 又由 `PBrowser_ScriptSessionDispatchAnchorClick()` 持有启用脚本时受信任
   物理锚点的 click 取消与 ASSIGN 导航接线；`PCore_LinkAt` 命中、网络、窗口和
   文档替换仍由宿主提供，程序化 anchor click 和 target/rel/window 行为尚未由此入口覆盖。
+  next623 又由 `PBrowser_ScriptSessionDispatchNativeToggle()` 持有 checkbox/radio 直接激活
+  的 click 取消、有限 token 事务和提交后的 input→change 顺序；Core checked-state mutation、
+  WM 鼠标/键盘默认动作、label 转发、重绘和原生视觉仍由宿主提供。
 
 ### 解除或推进条件
 

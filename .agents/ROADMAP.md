@@ -235,7 +235,26 @@ TEST1070 覆盖接受、preventDefault、导航拒绝、适配器错误和宿主
 Debug/Release ARMV4I 构建、C89 和仓库 audit 均已通过。本批没有新增视觉保证；
 程序化 anchor click、target/rel/window 和真实点击坐标仍需后续范围定义或人工观察。
 
-### 17. 建立真实页面驱动的兼容队列
+### 17. next623：受信任 checkbox/radio 激活（已完成）
+
+next623 将启用脚本时 checkbox/radio 的直接鼠标和键盘激活事务从宿主的 generic click +
+即时事件接线迁入 `positron_browser.dll`。新增 additive
+`PBrowser_ScriptSessionDispatchNativeToggle()` 与 reset 入口，为每个 session 保留最多 16
+个 stable token 的 CLICK/COMMIT/CANCEL 状态：browser layer 先派发可取消 click，宿主执行
+Core checked-state mutation 后再 COMMIT，只有状态确实变化时才派发一次不可取消的
+`input` → `change`。禁用、preventDefault、取消、无状态变化、kind mismatch、回调失败和
+reset 都有明确失败边界。
+
+宿主仍拥有 hit-test、Core mutation、WM 鼠标/键盘默认动作、重绘和 label fallback；无脚本
+路径保持原有 generic click 与 Core 事件。TEST1071 覆盖产品契约、状态/错误边界以及共享
+session 的消费者 helper 接线。`tmp/device-runs/20260824-124858-next623-native-toggle-r5/`
+的定向设备门通过 4/4（TEST1071、64、73、999），零 ERROR/FAIL，唯一 `TESTBENCH PASS`；
+`python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和
+`python scripts/audit_repo.py` 均已通过，Release/Debug 只保留既有 libcss/fpmath 的 3 个
+C4244 警告，产品 DLL 无新增警告。本批没有新增视觉保证；
+真实触摸坐标、label 转发、OEM 控件视觉和旋转仍需累计人工观察。
+
+### 18. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -246,7 +265,7 @@ Debug/Release ARMV4I 构建、C89 和仓库 audit 均已通过。本批没有新
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 18. 安排新的全范围检查点
+### 19. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 
