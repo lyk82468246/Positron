@@ -51,6 +51,9 @@
   next621 又由 `PBrowser_ScriptSessionDispatchNativeFilePicker()` 持有 programmatic
   picker 的单 pending/active request、重复点击合并、OPEN/CLOSE/CANCEL 和 reset；
   `PostMessage`、系统 picker、文件系统、路径写入、权限和视觉仍由宿主提供。
+  next622 又由 `PBrowser_ScriptSessionDispatchAnchorClick()` 持有启用脚本时受信任
+  物理锚点的 click 取消与 ASSIGN 导航接线；`PCore_LinkAt` 命中、网络、窗口和
+  文档替换仍由宿主提供，程序化 anchor click 和 target/rel/window 行为尚未由此入口覆盖。
 
 ### 解除或推进条件
 

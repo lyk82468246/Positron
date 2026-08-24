@@ -220,7 +220,22 @@ TEST1069 覆盖非法 phase/NULL output、重复 request、错误 token、重复
 的定向设备门为 4/4 PASS、零 ERROR/FAIL；Debug/Release ARMV4I 构建、C89 检查和仓库
 audit 均通过。本批没有新增视觉保证；TEST232/263 的真实系统对话框仍需人工验收。
 
-### 16. 建立真实页面驱动的兼容队列
+### 16. next622：受信任物理锚点激活（已完成）
+
+next622 将启用脚本时的物理链接默认动作从 `test_host` 的直接
+`navigate_to` 接线迁入 `positron_browser.dll`。新增 additive
+`PBrowser_ScriptSessionDispatchAnchorClick()`：browser layer 先复用可取消 click，
+只有未被阻止时才以 ASSIGN 调用已注册导航适配器。宿主仍持有 `PCore_LinkAt` 命中
+测试、网络 worker、窗口替换、文档生命周期和无脚本 fallback；href 只在同步调用中借用，
+不把 core/link/window 类型带入公共 ABI。
+
+TEST1070 覆盖接受、preventDefault、导航拒绝、适配器错误和宿主 helper 接线。
+`tmp/device-runs/20260824-122629-next622-anchor-activation-r2/` 的定向设备门
+通过 4/4（TEST1070、230、262、999），零 ERROR/FAIL，唯一 `TESTBENCH PASS`；
+Debug/Release ARMV4I 构建、C89 和仓库 audit 均已通过。本批没有新增视觉保证；
+程序化 anchor click、target/rel/window 和真实点击坐标仍需后续范围定义或人工观察。
+
+### 17. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -231,7 +246,7 @@ audit 均通过。本批没有新增视觉保证；TEST232/263 的真实系统�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 17. 安排新的全范围检查点
+### 18. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

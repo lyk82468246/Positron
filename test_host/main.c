@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1069
+#define TEST_MAX_NUMBER 1070
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3907,6 +3907,185 @@ static BOOL test1069_browser_native_file_picker_contract(void)
     return TRUE;
 }
 
+/* TEST 1070 - browser-owned trusted anchor activation. */
+typedef struct test1070_anchor_state {
+    int click_calls;
+    int click_allowed;
+    int navigation_calls;
+    int navigation_result;
+    int navigation_return_code;
+    int x;
+    int y;
+    unsigned int navigation_kind;
+    char href[128];
+} test1070_anchor_state;
+
+static int test1070_anchor_click(void *pw,
+        const PBrowserScriptClickEventInfo *info,
+        int *out_default_allowed)
+{
+    test1070_anchor_state *state;
+
+    state = (test1070_anchor_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptClickEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "click") != 0) {
+        return -1;
+    }
+    state->click_calls++;
+    state->x = info->x;
+    state->y = info->y;
+    *out_default_allowed = state->click_allowed ? 1 : 0;
+    return 0;
+}
+
+static int test1070_anchor_navigation(void *pw,
+        const PBrowserScriptNavigationInfo *info, int *out_value)
+{
+    test1070_anchor_state *state;
+    size_t length;
+
+    state = (test1070_anchor_state *) pw;
+    if (state == NULL || info == NULL || out_value == NULL ||
+            info->size < sizeof(PBrowserScriptNavigationInfo) ||
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_ASSIGN ||
+            info->url == NULL) {
+        return -1;
+    }
+    length = strlen(info->url);
+    if (length >= sizeof(state->href)) {
+        return -1;
+    }
+    state->navigation_calls++;
+    state->navigation_kind = info->kind;
+    memcpy(state->href, info->url, length + 1);
+    *out_value = 0;
+    if (state->navigation_return_code < 0) {
+        return state->navigation_return_code;
+    }
+    return state->navigation_result ? 1 : 0;
+}
+
+static int test1070_browser_anchor_host_route(
+        test1070_anchor_state *state, HANDLE session);
+
+static BOOL test1070_browser_anchor_activation_contract(void)
+{
+    PBrowserScriptClickCallbacks click_callbacks;
+    PBrowserScriptNavigationCallbacks navigation_callbacks;
+    PBrowserScriptAnchorClickInfo info;
+    test1070_anchor_state state;
+    HANDLE session;
+    const char *stage;
+    int navigated;
+    int rc;
+    int ok;
+
+    memset(&click_callbacks, 0, sizeof(click_callbacks));
+    memset(&navigation_callbacks, 0, sizeof(navigation_callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    state.click_allowed = 1;
+    state.navigation_result = 1;
+    info.size = sizeof(info);
+    info.x = 21;
+    info.y = 34;
+    info.href = "/learn-more";
+    click_callbacks.size = sizeof(click_callbacks);
+    click_callbacks.pw = &state;
+    click_callbacks.dispatch_click = test1070_anchor_click;
+    navigation_callbacks.size = sizeof(navigation_callbacks);
+    navigation_callbacks.pw = &state;
+    navigation_callbacks.navigate = test1070_anchor_navigation;
+    stage = "create";
+    navigated = 0;
+    rc = PSCRIPT_OK;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    ok = session != NULL;
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterClickCallbacks(session,
+                &click_callbacks) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRegisterNavigationCallbacks(session,
+                &navigation_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "accepted";
+        rc = PBrowser_ScriptSessionDispatchAnchorClick(session, &info,
+                &navigated);
+        ok = rc == PSCRIPT_OK && navigated == 1 &&
+                state.click_calls == 1 && state.navigation_calls == 1 &&
+                state.x == 21 && state.y == 34 &&
+                state.navigation_kind == PBROWSER_SCRIPT_NAVIGATION_ASSIGN &&
+                strcmp(state.href, "/learn-more") == 0;
+    }
+    if (ok) {
+        stage = "prevent-default";
+        state.click_allowed = 0;
+        navigated = 1;
+        rc = PBrowser_ScriptSessionDispatchAnchorClick(session, &info,
+                &navigated);
+        ok = rc == PSCRIPT_OK && navigated == 0 &&
+                state.click_calls == 2 && state.navigation_calls == 1;
+    }
+    if (ok) {
+        stage = "navigation-rejected";
+        state.click_allowed = 1;
+        state.navigation_result = 0;
+        navigated = 1;
+        rc = PBrowser_ScriptSessionDispatchAnchorClick(session, &info,
+                &navigated);
+        ok = rc == PSCRIPT_OK && navigated == 0 &&
+                state.click_calls == 3 && state.navigation_calls == 2;
+    }
+    if (ok) {
+        stage = "invalid";
+        info.href = "";
+        navigated = 1;
+        rc = PBrowser_ScriptSessionDispatchAnchorClick(session, &info,
+                &navigated);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && navigated == 0 &&
+                state.click_calls == 3 && state.navigation_calls == 2;
+        info.href = "/learn-more";
+    }
+    if (ok) {
+        stage = "navigation-error";
+        state.navigation_return_code = -1;
+        navigated = 1;
+        rc = PBrowser_ScriptSessionDispatchAnchorClick(session, &info,
+                &navigated);
+        ok = rc == PSCRIPT_ERROR_NATIVE && navigated == 0 &&
+                state.click_calls == 4 && state.navigation_calls == 3;
+    }
+    if (ok) {
+        stage = "host-route";
+        state.navigation_return_code = 0;
+        state.navigation_result = 1;
+        state.click_allowed = 1;
+        ok = test1070_browser_anchor_host_route(&state, session) != 0;
+    }
+    if (session != NULL) {
+        if (PBrowser_ScriptSessionUnregisterNavigationCallbacks(session) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        if (PBrowser_ScriptSessionUnregisterClickCallbacks(session) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1070 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1070 OK",
+            "Browser-owned trusted anchor activation dispatches one\n"
+            "cancelable click and forwards only accepted navigation.");
+    return TRUE;
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 6 - libhubbub HTML tokeniser (NetSurf engine, Phase 4)           */
 /* Feeds a small HTML document to hubbub in tokeniser mode: setting a     */
@@ -5959,6 +6138,8 @@ static int pcore_browser_script_native_select_dispatch(void *pw,
 static int pcore_browser_script_click_dispatch(void *pw,
         const PBrowserScriptClickEventInfo *info,
         int *out_default_allowed);
+static int pcore_browser_script_dispatch_anchor_click_at(int x, int y,
+        const char *href);
 static int pcore_browser_script_programmatic_click_dispatch(void *pw,
         const PBrowserScriptProgrammaticClickInfo *info);
 static int pcore_browser_script_programmatic_click_target(void *pw,
@@ -7547,6 +7728,78 @@ static int pcore_browser_script_dispatch_click_at(int x, int y)
     PCore_EventDispatchAt(g_render_doc, x, y, "click", 1, 1,
             &default_allowed);
     return default_allowed ? 1 : 0;
+}
+
+/* Trusted anchor activation is product-owned when a browser script session
+ * is active: the browser layer dispatches the cancelable click and forwards
+ * an accepted ASSIGN request through its navigation adapter. The host keeps
+ * only hit-testing, network I/O and window replacement. Without scripting,
+ * preserve the direct Core click fallback. */
+static int pcore_browser_script_dispatch_anchor_click_at(int x, int y,
+        const char *href)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptAnchorClickInfo info;
+    int navigated;
+    int default_allowed;
+    int rc;
+
+    if (g_render_doc == NULL || href == NULL || href[0] == '\0') {
+        return 0;
+    }
+    bridge = g_browser_script_session.bridge;
+    if (pcore_native_script_active() &&
+            g_browser_script_session.document == g_render_doc &&
+            bridge != NULL && bridge->session != NULL) {
+        memset(&info, 0, sizeof(info));
+        info.size = sizeof(info);
+        info.x = x;
+        info.y = y;
+        info.href = href;
+        navigated = 0;
+        rc = PBrowser_ScriptSessionDispatchAnchorClick(
+                bridge->session, &info, &navigated);
+        if (rc != PSCRIPT_OK) {
+            return 0;
+        }
+        return navigated ? 1 : 0;
+    }
+    default_allowed = 1;
+    rc = PCore_EventDispatchAt(g_render_doc, x, y, "click", 1, 1,
+            &default_allowed);
+    return (rc < 0 || !default_allowed) ? 0 : 1;
+}
+
+static int test1070_browser_anchor_host_route(
+        test1070_anchor_state *state, HANDLE session)
+{
+    pcore_browser_script_bridge bridge_storage;
+    int rc;
+    int ok;
+
+    if (state == NULL || session == NULL) {
+        return 0;
+    }
+    memset(&bridge_storage, 0, sizeof(bridge_storage));
+    g_render_doc = (HANDLE) 1;
+    bridge_storage.document = g_render_doc;
+    bridge_storage.runtime = session;
+    bridge_storage.session = session;
+    g_browser_script_session.document = g_render_doc;
+    g_browser_script_session.runtime = session;
+    g_browser_script_session.session = session;
+    g_browser_script_session.bridge = &bridge_storage;
+    rc = pcore_browser_script_dispatch_anchor_click_at(
+            44, 55, "/host-link");
+    ok = rc == 1 && state->click_calls == 5 &&
+            state->navigation_calls == 4 && state->x == 44 &&
+            state->y == 55 && strcmp(state->href, "/host-link") == 0;
+    g_browser_script_session.document = NULL;
+    g_browser_script_session.runtime = NULL;
+    g_browser_script_session.session = NULL;
+    g_browser_script_session.bridge = NULL;
+    g_render_doc = NULL;
+    return ok;
 }
 
 static void pcore_request_interaction_restyle(HWND hwnd)
@@ -13631,6 +13884,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int cx = (int) (short) LOWORD(lp);
         int cy = (int) (short) HIWORD(lp);
         int default_allowed;
+        int link_found;
         char href[1024];
 
         pcore_toggle_focus_clear();
@@ -13651,6 +13905,18 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         if (g_render_doc != NULL) {
             (void) pcore_toggle_focus_track_at(cx, cy + g_scroll_y);
+        }
+        link_found = 0;
+        href[0] = '\0';
+        if (g_render_doc != NULL &&
+                PCore_LinkAt(g_render_doc, cx, cy + g_scroll_y,
+                             href, sizeof(href))) {
+            link_found = 1;
+        }
+        if (link_found && pcore_native_script_active()) {
+            (void) pcore_browser_script_dispatch_anchor_click_at(
+                    cx, cy + g_scroll_y, href);
+            return 0;
         }
         default_allowed = 1;
         if (g_render_doc != NULL) {
@@ -13678,9 +13944,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         /* Document-space point = client point + scroll (scroll_x is 0). If it
          * lands on a link, follow it; otherwise a tap closes the view. */
-        if (g_render_doc != NULL &&
-                PCore_LinkAt(g_render_doc, cx, cy + g_scroll_y,
-                             href, sizeof(href))) {
+        if (link_found) {
             navigate_to(hwnd, href);
         } else {
             DestroyWindow(hwnd);
@@ -71780,6 +72044,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1067: ok = test1067_browser_native_edit_result_contract(); break;
         case 1068: ok = test1068_browser_native_file_selection_contract(); break;
         case 1069: ok = test1069_browser_native_file_picker_contract(); break;
+        case 1070: ok = test1070_browser_anchor_activation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

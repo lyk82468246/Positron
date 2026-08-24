@@ -59,6 +59,12 @@ next621 又把 programmatic picker 的请求仲裁放入 browser DLL：本宿主
 发送 CANCEL。宿主只保存 HWND、document 和 file index，仍负责 `PostMessage` 与系统
 picker；TEST1069 是产品契约，TEST262 验证该消费者路径。
 
+next622 的受信任物理链接路径在 WM6 命中 href 后调用
+`PBrowser_ScriptSessionDispatchAnchorClick()`；browser DLL 负责一次 click、
+preventDefault 和 ASSIGN 导航适配，宿主不再直接为启用脚本的链接调用 navigate_to。
+宿主仍拥有 `PCore_LinkAt` 命中测试、网络 worker、窗口替换和无脚本 fallback。
+TEST1070 同时验证产品契约与该 helper 的消费者接线。
+
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、
 network-path 和绝对 URL 的合并，产品 DLL 随后只接受有界 HTTP(S) authority、端口和路径

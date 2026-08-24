@@ -192,6 +192,10 @@ next621 又把 programmatic `file.click()` 的 picker 请求仲裁放入
 OPEN/CLOSE/CANCEL 和 reset 对 token/文档替换保持有界生命周期；WM6 `PostMessage`、系统
 picker、文件系统和路径写入仍由宿主负责。`TEST1069` 覆盖 ABI 阶段、重复请求、错误、
 reset 和 session 隔离；`TEST262` 覆盖真实消费者接线。
+next622 又把受信任物理锚点点击的默认导航接线放入 `positron_browser.dll`：
+`PBrowser_ScriptSessionDispatchAnchorClick()` 先派发一次可取消 click，只有未被阻止时才
+通过已注册导航适配器提交 ASSIGN；命中测试、网络、窗口和文档替换仍由宿主负责。
+`TEST1070` 覆盖接受、preventDefault、导航拒绝、适配器错误以及宿主 helper 接线。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

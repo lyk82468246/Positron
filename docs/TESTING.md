@@ -457,6 +457,26 @@ scripts\device_gate.bat -Candidate next621-file-picker-arbitration ^
 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉保证；
 TEST232/263 仍需人工检查真实系统对话框和选择/取消体验。
 
+### next622 trusted anchor activation 自动门
+
+next622 将启用脚本时的受信任物理锚点默认动作接入
+`PBrowser_ScriptSessionDispatchAnchorClick()`：browser layer 先派发一次可取消 click，
+再把未阻止的 href 以 ASSIGN 交给导航适配器；宿主仍负责 `PCore_LinkAt`、网络、
+窗口和无脚本 fallback。
+
+TEST1070 覆盖 click 接受、preventDefault、导航适配器拒绝、适配器错误，以及宿主 helper
+通过共享 session 的消费者接线。
+
+```bat
+scripts\device_gate.bat -Candidate next622-anchor-activation-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "1070,230,262,999"
+```
+
+`tmp/device-runs/20260824-122629-next622-anchor-activation-r2/` 已通过 4/4，零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉
+保证；真实 WM6 点击坐标、链接命中和导航页面仍可在累计人工批次中观察。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

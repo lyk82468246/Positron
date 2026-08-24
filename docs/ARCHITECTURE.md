@@ -968,6 +968,12 @@ session 保存一个 pending/active request：REQUEST 在 host 投递窗口消�
 校验；宿主只保存 HWND/document/index 并执行 PostMessage、系统 picker、文件系统和路径
 写入。TEST1069 是离线 ABI 门，TEST262 继续验证实际宿主接线。
 
+next622 再把受信任物理锚点点击的默认动作接入 `positron_browser.dll`：
+`PBrowser_ScriptSessionDispatchAnchorClick()` 接收宿主命中的 href，先复用 browser-owned
+可取消 click；只有未被阻止时才向已注册导航适配器提交 ASSIGN。href、命中测试、网络
+请求、窗口替换和文档生命周期仍由宿主拥有，公共 API 不暴露 core/link/window 类型。
+TEST1070 是产品契约及宿主 helper 接线门。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

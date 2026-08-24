@@ -7240,6 +7240,62 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchClickEvent(HANDLE hSession,
     return PSCRIPT_OK;
 }
 
+PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClick(
+        HANDLE hSession, const PBrowserScriptAnchorClickInfo *info,
+        int *out_navigated)
+{
+    p_browser_script_session *session;
+    PBrowserScriptClickEventInfo click_info;
+    PBrowserScriptNavigationInfo navigation_info;
+    int default_allowed;
+    int out_value;
+    int rc;
+
+    if (out_navigated == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    *out_navigated = 0;
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->click == NULL ||
+            session->navigation == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptAnchorClickInfo) ||
+            info->href == NULL || info->href[0] == '\0' ||
+            strlen(info->href) >= PBROWSER_HISTORY_URL_MAX) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memset(&click_info, 0, sizeof(click_info));
+    click_info.size = sizeof(click_info);
+    click_info.x = info->x;
+    click_info.y = info->y;
+    click_info.event_type = "click";
+    click_info.bubbles = 1;
+    click_info.cancelable = 1;
+    default_allowed = 1;
+    rc = PBrowser_ScriptSessionDispatchClickEvent(hSession, &click_info,
+            &default_allowed);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    if (!default_allowed) {
+        return PSCRIPT_OK;
+    }
+    memset(&navigation_info, 0, sizeof(navigation_info));
+    navigation_info.size = sizeof(navigation_info);
+    navigation_info.kind = PBROWSER_SCRIPT_NAVIGATION_ASSIGN;
+    navigation_info.url = info->href;
+    navigation_info.state_json = NULL;
+    navigation_info.delta = 0;
+    out_value = 0;
+    rc = session->navigation->callbacks.navigate(
+            session->navigation->callbacks.pw, &navigation_info,
+            &out_value);
+    if (rc < 0) {
+        return PSCRIPT_ERROR_NATIVE;
+    }
+    *out_navigated = rc > 0 ? 1 : 0;
+    return PSCRIPT_OK;
+}
+
 PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(
         HANDLE hSession,
         const PBrowserScriptProgrammaticClickCallbacks *callbacks)

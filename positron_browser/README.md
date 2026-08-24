@@ -281,6 +281,12 @@ pending/active picker request；重复 `file.click()` 合并为成功 no-op，OP
 TEST1069 覆盖非法输入、重复 request、错误 phase、reset 和多 session 隔离；TEST262
 继续验证宿主实际队列接线。
 
+next622 增加 `PBrowser_ScriptSessionDispatchAnchorClick()`：browser layer 对宿主命中的
+受信任锚点先派发一次可取消 click，未被阻止时再以 ASSIGN 调用已注册导航适配器。
+href 只在同步调用中借用，API 不拥有网络、窗口或文档；宿主仍负责 PCore_LinkAt、网络
+请求和窗口替换。TEST1070 覆盖接受、preventDefault、导航拒绝、适配器错误和宿主 helper
+接线。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

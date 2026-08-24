@@ -695,6 +695,20 @@ typedef struct PBrowserScriptClickCallbacks {
     PBrowserScriptDispatchClickFn dispatch_click;
 } PBrowserScriptClickCallbacks;
 
+/* Product-owned trusted anchor activation. The host supplies the href from
+ * its hit-tested document link and keeps the network/window side effects.
+ * The browser layer dispatches the cancelable click through the registered
+ * click adapter; when it is not prevented, it forwards an ASSIGN navigation
+ * through the registered navigation adapter. href is UTF-8 and borrowed for
+ * this synchronous call. out_navigated is 1 only when that navigation
+ * adapter accepted the request, and 0 for preventDefault or rejection. */
+typedef struct PBrowserScriptAnchorClickInfo {
+    unsigned long size;
+    int x;
+    int y;
+    const char *href;
+} PBrowserScriptAnchorClickInfo;
+
 /* Typed host adapter for a script-visible HTMLElement.click() invocation.
  * The browser layer owns the DOM method and its synchronous dispatch entry;
  * the host receives the UTF-8 DOM id and reuses the typed click/input/change
@@ -1158,6 +1172,9 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterClickCallbacks(
  * out_default_allowed is 1 or 0 as described above. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchClickEvent(HANDLE hSession,
         const PBrowserScriptClickEventInfo *info, int *out_default_allowed);
+PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClick(
+        HANDLE hSession, const PBrowserScriptAnchorClickInfo *info,
+        int *out_navigated);
 PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(
         HANDLE hSession,
         const PBrowserScriptProgrammaticClickCallbacks *callbacks);
