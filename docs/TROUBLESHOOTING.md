@@ -61,19 +61,26 @@ next222 起的正式 gate 改用 32 位 RAPI 1。`CeRapiInitEx()` 只是让本�
 scripts\device_gate.bat -Candidate nextNNN
 ```
 
-gate 对 `CeRapiInitEx()` 使用 30 秒有界事件等待。若等待超时，会清理本地 RAPI 状态并退出，
-不会留下无限等待的 PowerShell，也不会把设备端进程当作已启动。超时、WinSock 10101 或
-远端主动关闭都表示当前 WMDC/RAPI 会话没有准备好，不是测试断言失败；先在 GUI 关闭遗留
-`test_host.exe`，断开并重新建立唯一设备连接，再重试一次。
+gate 对 `CeRapiInitEx()` 使用 30 秒有界事件等待。按微软
+[`CeRapiInitEx` API 契约](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/aa513385(v=msdn.10))，调用者只填写
+`RAPIINIT.cbSize`，然后等待 API 写回 `heRapiInit` 的完成事件；不得自行 `CreateEvent()` 并把
+句柄当作输入。若等待超时，gate 会调用 `CeRapiUninit()` 清理本地 RAPI 状态并退出，不会留下
+无限等待的 PowerShell，也不会把设备端进程当作已启动。WinSock 10101/远端主动关闭通常表示
+当前会话中断；先确认 GUI 的唯一连接和设备端遗留进程，再重试一次。单独的 30 秒超时还应
+检查 gate 是否遵守上述事件所有权，不能自动归因于主机。
 
-### `RapiMgr` 崩溃后服务仍显示 Running
+### `RapiMgr`/`WcesComm` 报无效句柄
 
-服务控制台显示 `RapiMgr` 为 Running 不能证明 RAPI 通道健康。本机 WER 曾记录
-`svchost.exe_RapiMgr` 在 23:00、23:59:59 等时刻以 `0xc0000008`（`ntdll.dll` 无效句柄）
-崩溃；此时 gate 会稳定地在 `CeRapiInitEx()` 超时，而不是返回设备测试结果。先关闭遗留
-设备进程并在 WMDC GUI 中断开/重新建立唯一连接；如果服务继续崩溃，再由用户决定是否重启
-WMDC/RapiMgr 或主机。不要把该错误归因于候选代码，也不要为非 `0x8007007E` 错误运行
-`repair_wmdc_rapi.bat` 或手工修改注册表。
+服务控制台显示 `RapiMgr` 为 Running 不能单独证明 RAPI 通道健康，但也不能据此管理或重启
+用户已经连接的 WMDC。本机 2026-08-24 的 WER 曾记录 `RapiMgr`/`WcesComm` 以
+`0xc0000008`（`ntdll.dll` 无效句柄）连续崩溃；最终取证发现每次崩溃都与错误 gate 探针对应：
+当时的脚本自建、等待并关闭了本应由 `CeRapiInitEx()` 返回的事件句柄。改为等待 API 写回的
+`heRapiInit` 后，最小和完整设备门均通过，期间没有新增服务崩溃。
+
+因此遇到同类现象时，先审计调用方句柄所有权并查看 Application log 的时间关联；不要直接
+杀死 WMDC、修改产品代码、恢复 VMID 绑定，或为非 `0x8007007E` 错误运行
+`repair_wmdc_rapi.bat`。只有正确客户端仍失败且用户确认 GUI 连接异常时，才由用户手动重建
+连接；连接动作不属于 gate 自动化。
 
 ### `CeRapiInit` 报 `0x8007007E`
 

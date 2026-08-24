@@ -287,17 +287,8 @@ public static class PositronDeviceRapi
     private static extern uint CeGetLastError();
 
     [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr CreateEvent(
-        IntPtr eventAttributes, bool manualReset, bool initialState,
-        string name);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint WaitForSingleObject(
         IntPtr handle, uint milliseconds);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CloseHandle(IntPtr handle);
 
     [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -377,29 +368,27 @@ public static class PositronDeviceRapi
     public static void Connect()
     {
         RapiInit init = new RapiInit();
-        IntPtr eventHandle;
         uint waitResult;
         int result;
 
-        eventHandle = CreateEvent(IntPtr.Zero, false, false, null);
-        if (eventHandle == IntPtr.Zero) {
-            throw new InvalidOperationException(String.Format(
-                "CreateEvent for CeRapiInitEx failed (Win32={0}).",
-                Marshal.GetLastWin32Error()));
-        }
         init.cbSize = (uint) Marshal.SizeOf(typeof(RapiInit));
-        init.heRapiInit = eventHandle;
+        // CeRapiInitEx creates this event and returns its handle.  Supplying
+        // or waiting on a caller-created event makes initialization hang.
+        init.heRapiInit = IntPtr.Zero;
         init.hrRapiInit = 0;
         result = CeRapiInitEx(ref init);
         if (result < 0) {
-            CloseHandle(eventHandle);
             throw new InvalidOperationException(String.Format(
                 "CeRapiInitEx failed (HRESULT=0x{0:x8}).",
                 unchecked((uint) result)));
         }
-        waitResult = WaitForSingleObject(eventHandle,
+        if (init.heRapiInit == IntPtr.Zero) {
+            CeRapiUninit();
+            throw new InvalidOperationException(
+                "CeRapiInitEx succeeded without returning an event handle.");
+        }
+        waitResult = WaitForSingleObject(init.heRapiInit,
                 RAPI_INIT_TIMEOUT_MS);
-        CloseHandle(eventHandle);
         if (waitResult == WAIT_TIMEOUT) {
             CeRapiUninit();
             throw new TimeoutException(
@@ -412,6 +401,12 @@ public static class PositronDeviceRapi
             throw new InvalidOperationException(String.Format(
                 "WaitForSingleObject(CeRapiInitEx) failed (Win32={0}).",
                 error));
+        }
+        if (waitResult != WAIT_OBJECT_0) {
+            CeRapiUninit();
+            throw new InvalidOperationException(String.Format(
+                "WaitForSingleObject(CeRapiInitEx) returned 0x{0:x8}.",
+                waitResult));
         }
         if (init.hrRapiInit < 0) {
             CeRapiUninit();

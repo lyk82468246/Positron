@@ -282,52 +282,29 @@ next617 的 HTTP reference/Location 产品解析已完成：
 - r1/r2 的 RAPI 失败是重连前远端关闭（Win32 10101），r3/r4 已完成部署并暴露出产品
   解析器的失败输出清理缺口；修复后 r5 通过，不能把中间候选当作最终设备证据。
 
-next618 当前候选的本地验证已完成，但设备门尚未形成证据：
+next618 当前候选的本地验证和自动设备门已经完成，尚余一项真实 SIP 人工门：
 
 - `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式重建和本批源码检查均通过；
   Release 全量重建为 16/16，test_host 为 0 error/3 个既有警告。
-- 窄门 `1066,123-125,999` 已完成 staging，但在
-  `tmp/device-runs/20260823-235833-next618-native-ime-result-final/` 的第一条
-  `CeCreateDirectory(\Temp)` 处收到 `RAPI=0x80072775`（WinSock 10101，远端主动关闭），
-  设备尚未收到 `test_host.exe`。这不是 TEST1066 失败，不能写成通过基线。
-- 重连后的第二次窄门 `tmp/device-runs/20260824-001001-next618-native-ime-result-final/`
-  也只完成 staging，打开当前 RAPI 会话后约 90 秒无进展；本地 gate 进程已停止，未产生
-  `test_host.log` 或结果文件，不能把启动头写成设备证据。
-- 第三次短探测 `tmp/device-runs/20260824-001630-next618-native-ime-result-final/` 在相同
-  RAPI 会话建立处约 30 秒无进展后停止，仍未产生设备日志；在 WMDC GUI 重新建立独占连接
-  前不再重复设备门。
-- gate 随后改用官方 `CeRapiInitEx()` 的 30 秒有界事件等待；探针
-  `tmp/device-runs/20260824-002343-next618-rapi-timeout-probe/` 明确返回连接超时并清理本地
-  状态，证明工具不会再无限挂起，但仍没有设备通过证据。
-- 最新完整窄门 `tmp/device-runs/20260824-002732-next618-native-ime-result-final/` 也在 30 秒
-  后明确超时，未部署设备程序或生成日志；阻塞仍限于 WMDC/RAPI 当前会话。
-- Windows Application Error/WER 还记录了 `svchost.exe_RapiMgr` 在 23:00、23:59:59 等时刻
-  以 `0xc0000008`（`ntdll.dll` 无效句柄）崩溃；`RapiMgr` 后续显示 Running 不能作为会话
-  健康证据。当前阻塞应按 WMDC/RapiMgr 主机故障处理，不修改产品或恢复 VMID 路径。
-- 最小化重试 `tmp/device-runs/20260824-003941-next618-rapi-retry/` 的 Debug 构建和
-  staging 成功，但 `CeRapiInitEx()` 仍在 30 秒后超时，设备端没有进程、日志或结果。
-  尝试按依赖顺序重启 `WcesComm`/`RapiMgr` 时被当前会话的服务 ACL 拒绝；两者仍为
-  `Running` 并共享 PID 38056。该操作没有修改仓库、注册表或设备；需要用户以管理员权限
-  重建 WMDC/RapiMgr 或主机连接后再继续设备门。
-- 在服务 PID 未变化的情况下，`tmp/device-runs/20260824-004241-next618-rapi-retry2/`
-  再次完成构建和 staging，但仍在 `CeRapiInitEx()` 的 30 秒有界等待处超时；未产生设备
-  进程、日志或结果，恢复门槛不变。
-- 用户要求的命令行重试 `tmp/device-runs/20260824-101131-next618-rapi-retry3/` 仍在
-  `CeRapiInitEx()` 的 30 秒有界等待处超时；构建/staging 成功但没有设备进程、日志或结果。
-  在 WMDC/RAPI 主机状态改变前不再重复探针，也不使用 Computer Use 代替用户的 GUI 连接操作。
-- 按文档重启 `C:\Windows\WindowsMobile\wmdc.exe` 后，旧 PID 20536 变为新 PID 4208；
-  UI 重启不会自动恢复设备连接。未进行 GUI 手动连接就运行的
-  `tmp/device-runs/20260824-101622-next618-after-wmdc-restart/` 仍在 `CeRapiInitEx()`
-  30 秒处超时，进一步确认设备门必须等待用户完成 WMDC GUI 的唯一连接。
-- 用户随后已在 WMDC GUI 中手动连接成功；在不再操作 WMDC 进程的前提下运行的
-  `tmp/device-runs/20260824-103254-next618-native-ime-result-final-after-manual-reconnect/`
-  仍在 `CeRapiInitEx()` 30 秒处超时，构建/staging 成功但设备端没有进程、日志或结果。
-  GUI 连接不能替代 RAPI 健康证据；下一步需用户决定主机级恢复/重启，不再清理已连接进程。
-- 以管理员权限运行的 `tmp/device-runs/20260824-103501-next618-native-ime-result-elevated-retry/`
-  仍在 `CeRapiInitEx()` 30 秒处超时；提权构建/staging 成功但未产生设备进程、日志或结果，
-  证明当前阻塞不是 gate 调用者权限。
-- 需要关闭设备/模拟器 GUI 中遗留的 `test_host.exe`，确认 WMDC 只有当前唯一连接后重新
-  断开/连接，再原样重跑窄门；恢复门槛见 `.agents/FAILED_EXPERIMENTS.md` 的 next618 条目。
+- 首次窄门在 `CeCreateDirectory(\Temp)` 收到 WinSock 10101，属于当时连接被远端关闭；
+  但随后反复出现的 `CeRapiInitEx()` 30 秒超时不是单纯主机故障。对照微软 API 契约和
+  `d2e33d42` 的变更后确认：gate 错把 `RAPIINIT.heRapiInit` 当成调用者输入，自建事件并
+  等待/关闭；该成员实际是 `CeRapiInitEx()` 返回的完成事件。错误探针还与 Application log
+  中 `WcesComm`/`RapiMgr` 的 `0xc0000008` 无效句柄崩溃逐次对应。此前“只需恢复主机”的
+  归因已被这项证据替代。
+- gate 已改为等待 API 写回的 `heRapiInit`，并保留 30 秒超时和 `CeRapiUninit()` 清理；
+  它仍只消费用户在 GUI 中建立的当前唯一连接，不连接、选择、Cradle、断开或重置设备。
+- 修复后的最小证据
+  `tmp/device-runs/20260824-105452-next618-rapi-returned-event-probe/` 为 TEST999 1/1 PASS；
+  完整窄门
+  `tmp/device-runs/20260824-105511-next618-native-ime-result-final-fixed/` 为
+  TEST1066、123–125、999 共 5/5 PASS，唯一 `TESTBENCH PASS`，`error_count=0`、
+  `fail_count=0`、`test13_route_ok=True`。修复后的两次 gate 期间没有新增 RAPI 服务崩溃。
+- 提权重试和 10 个已知 32/64 位 COM 注册值核对分别证明本次故障不是调用者权限，也不是
+  `0x8007007E` 注册路径问题；不要为相同症状运行注册修复或管理 WMDC 进程。
+- next618 的自动完成条件已经满足；晋升为完成项前只需在同一构建的 TEST65 中人工点选一个
+  多字符 SIP 候选词，确认输入框一次出现完整候选词，并核对密码、readonly、disabled、
+  maxlength 等相邻行为未退化。
 
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 

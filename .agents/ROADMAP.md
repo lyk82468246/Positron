@@ -161,10 +161,16 @@ EDIT 默认过程在 `WM_IME_COMPOSITION | GCS_RESULTSTR` 上只把候选词首�
 事务。转换失败保留原 default-procedure fallback。TEST1066 用多字节多字符候选做可重复
 自动断言；TEST123–125 继续覆盖 composition/InputEvent/KeyboardEvent 元数据。
 
+自动部分已经完成：
+`tmp/device-runs/20260824-105511-next618-native-ime-result-final-fixed/` 的
+TEST1066、123–125、999 为 5/5 PASS、零 ERROR/FAIL、唯一 `TESTBENCH PASS`。此前阻塞自动门的
+`CeRapiInitEx()` 超时已确认是 gate 的事件句柄所有权错误并已修复，不是 next618 产品失败或
+需要继续恢复主机。当前只剩 TEST65 的真实 SIP 候选词人工门。
+
 本批仍不把 OEM SIP 候选窗口、候选条视觉、真实设备字体/触摸或所有 IME 行为写成产品保证。
-完成条件是 C89、Debug/Release ARMV4I 构建、audit、`TEST1066,123-125,999` 窄门通过，
-并在 TEST65 人工点选一个多字符候选词确认输入框出现完整词。失败时先保留 WM/Core/browser
-边界，不通过重复 `WM_CHAR` 或放宽事件断言掩盖问题。
+next618 整体完成条件现在只差：在同一构建的 TEST65 人工点选一个多字符候选词，确认输入框
+一次出现完整词，并核对密码、readonly、disabled、maxlength 等相邻行为未退化。失败时先
+保留 WM/Core/browser 边界，不通过重复 `WM_CHAR` 或放宽事件断言掩盖问题。
 
 ### 13. 建立真实页面驱动的兼容队列
 

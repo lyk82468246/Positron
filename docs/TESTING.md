@@ -382,18 +382,13 @@ scripts\device_gate.bat -Candidate next618-native-ime-result-final ^
 `TEST999` 只产生一次系统提示音；真实 TEST65 需在同一构建上点选一个多字符 SIP 候选词，
 确认输入框显示完整候选词并保留其余密码/readonly/disabled/maxlength 行为。
 
-当前候选的 staging 已完成，但设备门在首条 RAPI 目录操作
-`CeCreateDirectory(\Temp)` 处收到 `RAPI=0x80072775`（WinSock 10101，远端主动关闭），
-因此尚无 `device-gate-result.txt` 或设备通过证据。先在设备/模拟器 GUI 关闭遗留
-`test_host.exe`，重新建立 WMDC 当前唯一连接，再原样重跑上面的窄门；不要把启动头、
-RAPI 环境错误或人工未执行写成 TEST1066 通过。
-
-重连后的第二次尝试完成 staging 后在打开 RAPI 会话处约 90 秒无进展，已停止本地 gate，
-同样没有 `test_host.log` 或结果文件；这仍属于 WMDC/RAPI 环境阻塞，不是测试断言结果。
-第三次短探测在相同位置约 30 秒无进展后停止；在 WMDC GUI 重新建立独占连接前不再重复。
-随后新增的 `CeRapiInitEx()` 有界连接探针 `tmp/device-runs/20260824-002343-next618-rapi-timeout-probe/`
-在 30 秒后明确返回超时，未产生设备日志；这只证明 gate 不再无限等待，不构成 TEST999 或
-TEST1066 通过。
+自动窄门已经通过：
+`tmp/device-runs/20260824-105511-next618-native-ime-result-final-fixed/` 记录
+TEST1066、123–125、999 共 5/5 PASS、零 ERROR/FAIL、唯一 `TESTBENCH PASS`。此前反复出现的
+`CeRapiInitEx()` 超时来自 gate 错把 API 输出的 `RAPIINIT.heRapiInit` 当成调用者输入；修复后
+另有 `tmp/device-runs/20260824-105452-next618-rapi-returned-event-probe/` 的 TEST999 1/1
+最小证据。next618 现在只剩上面的真实 TEST65 候选词人工步骤，不能用 TEST1066 自动断言
+替代它。
 
 ### 当前默认自动选择与人工验收包（next589 基线）
 

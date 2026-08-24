@@ -129,7 +129,16 @@ GUI 连接状态的情况下同时复用 USB 真机和 DMA emulator 当前会话
 当前连接；顺序为 `999` → `43,1064,999` → 网络可用时 `13,43,1064,999`。超时日志不得
 写成通过证据；不要修改 gate 去强杀未知设备进程。
 
-### next618 首轮窄门：WMDC 远端主动关闭 — 环境阻塞，未形成基线
+### next618 首轮窄门：远端关闭与错误的 RAPI 事件所有权 — 已修复
+
+最终结论（替代本节较早的临时归因）：首次 `CeCreateDirectory` 的 WinSock 10101 确实是
+当时远端关闭，但后续稳定的 30 秒初始化超时来自 gate 在 `d2e33d42` 引入的实现错误。
+微软契约要求 `CeRapiInitEx()` 把完成事件写回 `RAPIINIT.heRapiInit`；旧实现却调用
+`CreateEvent()` 并把自建句柄当作输入，随后等待和关闭错误的句柄。Application log 中
+`WcesComm`/`RapiMgr` 的 `0xc0000008` 无效句柄崩溃与这些错误探针逐次对应，不能再用来证明
+“主机环境自身已坏”。修复为等待 API 返回的句柄后，TEST999 最小探针及
+`TEST1066,123-125,999` 完整窄门均通过，修复后的 gate 期间没有新增服务崩溃。以下失败记录
+保留为事故时间线，不再代表当前恢复步骤。
 
 问题：在 next618 的本地 Debug 增量构建、完整 staging 和 Release 全量重建均成功后，
 窄门 `1066,123-125,999` 在 RAPI `CeCreateDirectory(\Temp)` 处失败，返回
@@ -139,7 +148,8 @@ GUI 连接状态的情况下同时复用 USB 真机和 DMA emulator 当前会话
 决定：本次只保留本地构建/静态验证，不能把该目录或启动头写成设备通过证据。不要让 gate
 增加 VMID 绑定、自动连接或远程强杀；应在设备/模拟器 GUI 关闭遗留 `test_host.exe`，
 确认 WMDC 只保留一个当前连接后重新断开/连接，再原样重跑 next618 窄门。若仍在
-`CeCreateDirectory` 失败，应继续按 WMDC/RAPI 环境阻塞处理，而不是放宽 TEST1066。
+`CeCreateDirectory` 失败，只能说明该次会话在进入 TEST1066 前中断，不得放宽 TEST1066；
+它也不能解释随后由错误事件等待造成的初始化超时。
 
 重连后的第二次尝试 `20260824-001001-next618-native-ime-result-final` 完成了同一份
 Debug staging，但在打开当前 RAPI 会话后约 90 秒没有进入目录操作、部署或设备进程阶段；
@@ -149,19 +159,20 @@ Debug staging，但在打开当前 RAPI 会话后约 90 秒没有进入目录操
 第三次短探测 `20260824-001630-next618-native-ime-result-final` 在相同的 RAPI 会话建立处
 约 30 秒无进展后停止，仍没有设备日志；在 WMDC GUI 重新建立独占连接前不得继续重复。
 
-随后把 gate 的同步 `CeRapiInit()` 改为官方 `CeRapiInitEx()` 事件等待后，
+随后把 gate 的同步 `CeRapiInit()` 改为 `CeRapiInitEx()`，但当时错误地自建并传入事件；
 `20260824-002343-next618-rapi-timeout-probe` 在 30 秒后明确返回连接超时并清理本地状态；
 该探针只验证 gate 的有界失败行为，不构成设备测试证据，也不改变“先恢复 WMDC 独占连接”的
 重试门槛。
 
 最新完整窄门 `20260824-002732-next618-native-ime-result-final` 同样在 30 秒后明确超时，
-仍未部署设备程序或生成日志；这确认阻塞仍在 WMDC/RAPI 会话，而不是 next618 断言。
+仍未部署设备程序或生成日志；它只能证明没有进入 next618 断言，不能区分主机故障与 gate
+初始化实现错误。
 
 进一步的本机 Application Error/WER 取证显示 `svchost.exe_RapiMgr` 在 2026-08-23
 23:00、23:59:59 等时刻发生 APPCRASH，异常码为 `0xc0000008`，故障模块为 `ntdll.dll`。
-服务随后可能仍显示 `Running`，但这不能证明 RAPI 会话健康。该证据把当前超时归因到
-WMDC/RapiMgr 主机环境；不要为此修改产品代码、恢复 VMID 绑定或套用只针对 `0x8007007E`
-的注册修复。恢复前提是用户在 GUI 中重建连接，必要时重启 WMDC/RapiMgr 或主机后再重跑。
+服务随后可能仍显示 `Running`，但这不能证明 RAPI 会话健康。当时将崩溃归因到主机环境，
+后续时间关联和 API 审计已经推翻该结论：错误的 gate 事件句柄才是这些无效句柄崩溃的直接
+触发因素。VMID 路径和只针对 `0x8007007E` 的注册修复仍与本次问题无关。
 
 在一次最小化恢复重试 `20260824-003941-next618-rapi-retry` 中，Debug 构建和 staging
 均成功，但 `CeRapiInitEx()` 仍在 30 秒后超时，设备端没有启动进程或日志。随后尝试按
@@ -185,12 +196,19 @@ WMDC/RapiMgr 主机环境；不要为此修改产品代码、恢复 VMID 绑定�
 用户随后确认已在 WMDC GUI 中手动连接成功；在不再触碰 WMDC 进程的前提下运行
 `20260824-103254-next618-native-ime-result-final-after-manual-reconnect`，构建和 staging
 成功，但 `CeRapiInitEx()` 仍在 30 秒处超时，设备端没有进程或日志。GUI 连接因此不能
-被误写成 RAPI 健康证据；结合此前 `WcesComm`/`RapiMgr` 的 `0xc0000008` 崩溃，下一步
-应是主机级恢复（由用户决定重启主机），而不是继续清理或重启已连接的 WMDC 进程。
+被误写成 RAPI 健康证据。当时结合 `WcesComm`/`RapiMgr` 的 `0xc0000008` 崩溃，曾误判下一步
+应是主机级恢复；后续句柄取证和修复后的成功门已经推翻该决定。
 
 随后以管理员权限运行同一窄门 `20260824-103501-next618-native-ime-result-elevated-retry`，
 构建和 staging 成功但仍在 `CeRapiInitEx()` 30 秒处超时。提权不能绕过当前 RAPI 会话
-故障，因此不应继续以切换调用者权限作为修复策略。
+故障，因此不应继续以切换调用者权限作为修复策略。后续 API 审计又证明，提权当然也不能
+修复 gate 自身的错误事件句柄。
+
+修复证据：`20260824-105452-next618-rapi-returned-event-probe` 的 TEST999 为 1/1 PASS；
+`20260824-105511-next618-native-ime-result-final-fixed` 的 TEST1066、123–125、999 为
+5/5 PASS，均为零 ERROR/FAIL、唯一 `TESTBENCH PASS`。当前不再要求主机级恢复；只要用户已
+在 WMDC GUI 中建立唯一连接，即可直接运行 gate。脚本永远不替用户完成 GUI 连接，也不应
+管理已连接的 WMDC 进程。
 
 ### 早期 loading 条 — 已替代/部分暂挂
 
