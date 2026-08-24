@@ -557,6 +557,32 @@ typedef struct PBrowserScriptNativeToggleInfo {
     int selected_after;
 } PBrowserScriptNativeToggleInfo;
 
+/* Trusted native submit/reset button activation phases. The browser layer
+ * owns the cancelable click and the conditional submit/reset event ordering;
+ * the host owns hit-testing, Core validation, the default submission/reset
+ * mutation, navigation and repaint. CLICK starts a bounded transaction only
+ * when the target is enabled and click is not prevented. COMMIT is sent after
+ * the host has queried Core validation; CANCEL is idempotent. A disabled
+ * target never dispatches click. validation_valid is consumed on COMMIT, and
+ * is ignored on CLICK/CANCEL. target_token is a stable, non-zero host token.
+ */
+#define PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK  1
+#define PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT 2
+#define PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL 3
+#define PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT 1
+#define PBROWSER_SCRIPT_NATIVE_BUTTON_RESET  2
+#define PBROWSER_SCRIPT_NATIVE_BUTTON_MAX_TARGETS 16
+typedef struct PBrowserScriptNativeButtonInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    int phase;
+    int kind;
+    int disabled;
+    int validation_valid;
+} PBrowserScriptNativeButtonInfo;
+
 /* Native file-input selection transaction phases. The browser layer owns the
  * bounded begin/commit/cancel state and the non-cancelable input -> change
  * ordering; the host still owns the system picker, file-system access and
@@ -1136,6 +1162,15 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeToggle(
         HANDLE hSession, const PBrowserScriptNativeToggleInfo *info,
         int *out_default_allowed);
 PBROWSER_API int PBrowser_ScriptSessionResetNativeToggleState(
+        HANDLE hSession);
+/* Dispatch one phase of a trusted native submit/reset button activation.
+ * CLICK emits click and opens bounded state; COMMIT emits submit or reset
+ * after an accepted host/Core default gate; CANCEL clears state. The host may
+ * perform Core/WM default action only after an accepted COMMIT. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeButton(
+        HANDLE hSession, const PBrowserScriptNativeButtonInfo *info,
+        int *out_default_allowed);
+PBROWSER_API int PBrowser_ScriptSessionResetNativeButtonState(
         HANDLE hSession);
 /* Notify the product layer about one native file-input picker transaction.
  * BEGIN opens bounded state without dispatching events. COMMIT dispatches a

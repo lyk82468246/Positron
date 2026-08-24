@@ -201,6 +201,11 @@ next623 又把受信任 checkbox/radio 激活的产品事务放入 `positron_bro
 状态提交后才按一次 `input` → `change` 派发；取消、禁用和无状态变化不伪造事件。
 宿主仍负责命中、Core mutation、重绘和 WM 键盘/鼠标副作用，`TEST1071` 覆盖产品契约与
 共享 session 的 helper 接线。
+next624 又把受信任 submit/reset 原生按钮的产品事务放入 `positron_browser.dll`：
+`PBrowser_ScriptSessionDispatchNativeButton()` 以有界 CLICK/COMMIT/CANCEL 持有 click
+取消和 submit/reset 顺序；宿主在 click 之后查询 Core validation，再执行默认提交/重置、
+导航和重绘。禁用、preventDefault、无效校验、回调错误和取消不放行默认动作，`TEST1072`
+覆盖产品契约与共享 session 的 helper 接线。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

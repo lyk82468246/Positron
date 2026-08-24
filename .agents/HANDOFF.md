@@ -16,9 +16,9 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next623，受信任 checkbox/radio 激活（自动设备门已完成）；
+- 当前能力批次：next624，受信任 submit/reset 原生按钮激活（自动设备门已完成）；
   next618 的 TEST65 真实 SIP 候选词仍待人工确认。
-- 测试编号上限：`TEST_MAX_NUMBER 1071`。
+- 测试编号上限：`TEST_MAX_NUMBER 1072`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -145,6 +145,12 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   可取消 click，只有宿主报告 Core checked-state 变化已提交后才派发一次 input→change。
   宿主仍拥有 hit-test、Core mutation、WM 默认动作、label fallback 和重绘；TEST1071 是
   产品契约及 helper 消费者回归。
+- next624 在 `positron_browser.dll` 增加 additive 的
+  `PBrowser_ScriptSessionDispatchNativeButton()` 与 reset：browser layer 对受信任
+  submit/reset 原生按钮持有最多 16 个 stable token 的 CLICK/COMMIT/CANCEL 状态，先派发
+  可取消 click；宿主在 click 之后查询 Core validation，再由 COMMIT 派发 submit 或 reset，
+  只有事件未取消时才允许默认动作。宿主仍拥有 hit-test、Core validation/default action、
+  导航、窗口和重绘；TEST1072 是产品契约及 helper 消费者回归。
 
 ## 最近验证证据
 
@@ -397,6 +403,18 @@ next623 的 trusted native toggle activation 自动门已经完成：
   `python scripts/audit_repo.py` 和窄设备门均已通过；Release/Debug 仅保留既有
   libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
 
+next624 的 trusted native submit/reset button activation 自动门已经完成：
+
+- `tmp/device-runs/20260824-131847-next624-native-button-r4/` 的
+  `device-gate-result.txt` 为 PASS，TEST1072、64、73、999 共 4/4，唯一
+  `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、`test13_route_ok=True`。
+- TEST1072 覆盖 submit/reset 的 CLICK→COMMIT 顺序、click/form 取消、无效校验时抑制
+  submit、禁用、回调错误、kind mismatch、幂等 CANCEL、16-token 容量、reset 和共享
+  session helper 接线；真实按钮触摸坐标、label 转发、窗口视觉和旋转仍不由该自动门保证。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、
+  `python scripts/audit_repo.py` 和窄设备门均已通过；Release/Debug 仅保留既有
+  libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
+
 ## 当前已知边界
 
 需要继续面对而不能用断言掩盖的边界包括：
@@ -406,7 +424,7 @@ next623 的 trusted native toggle activation 自动门已经完成：
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1070 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1072 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -441,6 +459,10 @@ next623 的 trusted native toggle activation 自动门已经完成：
 - next623 的 browser-owned trusted native toggle activation、TEST1071、Debug/Release 构建、
   C89、audit 和窄设备门已完成；tracked 改动只覆盖 `positron_browser` ABI/实现、`test_host` 消费者、
   TEST1071 与相关文档。不要把 `tmp/` 设备证据或无关工作区文件带入。
+- next624 的 browser-owned trusted native submit/reset button activation、TEST1072、
+  Debug/Release 构建、C89、audit 和窄设备门已完成；tracked 改动只覆盖 `positron_browser`
+  ABI/实现、`test_host` 消费者、TEST1072 与相关文档。不要把 `tmp/` 设备证据或无关工作区
+  文件带入。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -449,8 +471,9 @@ next623 的 trusted native toggle activation 自动门已经完成：
 ## 唯一下一步
 
 完成 next618 的一次人工 TEST65：在同一构建的真实 WM6 窗口中点选多字符 SIP 候选词，确认
-输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next622
-和 next623 本身的自动契约已经完成，但确认前不得把 OEM 窗口视觉或未验证设备行为写成产品保证；
+输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next622、
+next623 和 next624 本身的自动契约已经完成，但确认前不得把 OEM 窗口视觉或未验证设备行为
+写成产品保证；
 确认后再按路线图选择下一个产品纵切。
 
 ## next617 完成标准
@@ -525,5 +548,20 @@ next623 的 trusted native toggle activation 自动门已经完成：
 - TEST1070、230、262、999 的窄设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL；
   Debug/Release 正式构建、C89 和仓库 audit 通过。真实点击坐标、程序化 anchor click、
   target/rel/window 和视觉继续保持未覆盖边界。
+- 跟踪的默认 INI 保持自动模式和原有选择集；更新限制、路线图和交接快照，只提交本批
+  tracked 文件并推送 `main`。
+
+## next624 完成标准
+
+- `PBrowser_ScriptSessionDispatchNativeButton()` 作为 additive 稳定 C ABI，校验
+  stable token、CLICK/COMMIT/CANCEL phase、submit/reset kind 和布尔状态；browser layer
+  先派发可取消 click，宿主在 click 之后查询 Core validation，再由 COMMIT 派发 submit 或
+  reset，CANCEL 幂等，回调错误不放行默认动作。
+- `test_host` 在启用脚本且命中 submit/reset 时调用 CLICK，随后以 COMMIT 或 CANCEL 告知
+  browser DLL；宿主保留 Core validation/default action、导航、窗口和无脚本 fallback，避免
+  复制产品事件顺序。
+- TEST1072、64、73、999 的窄设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL；
+  Debug/Release 正式构建、C89 和仓库 audit 通过。真实按钮坐标、label 转发、窗口视觉、
+  旋转和其他 OEM 副作用继续保持未覆盖边界。
 - 跟踪的默认 INI 保持自动模式和原有选择集；更新限制、路线图和交接快照，只提交本批
   tracked 文件并推送 `main`。

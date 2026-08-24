@@ -72,6 +72,13 @@ next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本�
 label fallback。无脚本路径保持原有 generic click 与宿主事件 fallback。TEST1071 验证产品
 契约、无状态变化/取消/错误边界和共享 session helper 接线。
 
+next624 的 submit/reset 原生按钮路径，在启用脚本且 Core 命中按钮时先调用
+`PBrowser_ScriptSessionDispatchNativeButton(CLICK)`；click 被接受后宿主重新查询 Core
+validation，再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和
+submit/reset 事件顺序，宿主仍负责 hit-test、Core validation/default action、导航、窗口、
+重绘和 label fallback。无脚本路径保持原有 generic click 与宿主事件 fallback。TEST1072
+验证产品契约、click/form 取消、无效校验、容量/生命周期边界和共享 session helper 接线。
+
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、
 network-path 和绝对 URL 的合并，产品 DLL 随后只接受有界 HTTP(S) authority、端口和路径

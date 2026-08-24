@@ -57,6 +57,10 @@
   next623 又由 `PBrowser_ScriptSessionDispatchNativeToggle()` 持有 checkbox/radio 直接激活
   的 click 取消、有限 token 事务和提交后的 input→change 顺序；Core checked-state mutation、
   WM 鼠标/键盘默认动作、label 转发、重绘和原生视觉仍由宿主提供。
+  next624 又由 `PBrowser_ScriptSessionDispatchNativeButton()` 持有 submit/reset 原生按钮的
+  CLICK/COMMIT/CANCEL、click 取消和 submit/reset 事件顺序；宿主在 click 后提供 Core 校验，
+  仍负责默认提交/重置、导航、窗口、label 转发、重绘和原生视觉。程序化 click 与直接物理
+  label 激活不由该入口额外覆盖。
 
 ### 解除或推进条件
 

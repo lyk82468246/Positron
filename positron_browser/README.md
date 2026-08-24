@@ -294,6 +294,13 @@ session 最多 16 个 checkbox/radio stable token 的 CLICK/COMMIT/CANCEL 事务
 均有明确边界；宿主仍拥有命中、Core mutation、原生 WM 默认动作、重绘和 label/窗口副作用。
 TEST1071 覆盖接受、无变化、取消、禁用、回调错误、reset 和宿主 helper 接线。
 
+next624 增加 `PBrowser_ScriptSessionDispatchNativeButton()` 与 reset 入口，持有每个
+session 最多 16 个 submit/reset stable token 的 CLICK/COMMIT/CANCEL 事务。browser layer
+先派发一次可取消 click；宿主在 click 回调之后查询 Core validation，再由 COMMIT 派发
+submit 或 reset。禁用、preventDefault、无效校验、取消、kind mismatch、回调错误和容量
+边界不放行默认动作；宿主仍拥有命中、Core validation/default action、导航、窗口、重绘和
+label 副作用。TEST1072 覆盖产品契约、生命周期和宿主 helper 接线。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、
@@ -386,6 +393,41 @@ if (PBrowser_ScriptSessionDispatchNativeSelectKey(session, &key,
 
 该入口只负责 browser-owned 事件 contract 和取消结果；调用者仍负责 WM 消息、Core selection
 mutation、`input`/`change` commit、下拉窗口、SIP/IME 和平台副作用。
+
+受信任的 submit/reset 原生按钮使用同一 session 的 bounded transaction。CLICK 返回允许后，
+调用者重新查询 Core validation，再 COMMIT；取消、文档替换或默认动作未执行时发送 CANCEL：
+
+```c
+PBrowserScriptNativeButtonInfo button;
+int default_allowed;
+
+button.size = sizeof(button);
+button.target_token = button_token; /* non-zero, stable while attached */
+button.x = button_x;
+button.y = button_y;
+button.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
+button.disabled = 0;
+button.validation_valid = 0;
+button.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+if (PBrowser_ScriptSessionDispatchNativeButton(session, &button,
+        &default_allowed) == PSCRIPT_OK && default_allowed) {
+    button.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+    button.validation_valid = core_validation_valid ? 1 : 0;
+    if (PBrowser_ScriptSessionDispatchNativeButton(session, &button,
+            &default_allowed) == PSCRIPT_OK && default_allowed) {
+        /* perform Core submission/reset/default window action */
+    } else {
+        /* form event was cancelled or the adapter failed */
+    }
+} else {
+    button.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL;
+    PBrowser_ScriptSessionDispatchNativeButton(session, &button,
+            &default_allowed);
+}
+```
+
+`PBrowser_ScriptSessionResetNativeButtonState()` 清理控件重建前的 bounded token；Core
+validation、默认提交/重置、导航、窗口和重绘仍由调用者拥有。
 
 主要公共能力包括：
 

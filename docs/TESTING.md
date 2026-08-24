@@ -498,6 +498,29 @@ scripts\device_gate.bat -Candidate next623-native-toggle-r5 ^
 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉保证；
 真实 checkbox/radio 触摸坐标、label 转发、OEM 控件视觉和旋转仍属于累计人工门。
 
+### next624 native submit/reset button activation 自动门
+
+next624 将启用脚本时 submit/reset 原生按钮的受信任激活接入
+`PBrowser_ScriptSessionDispatchNativeButton()`：browser layer 先以 CLICK 派发可取消
+click；宿主在 click 回调之后查询 Core validation，再以 COMMIT 派发 submit 或 reset，
+CANCEL 清理 bounded state。禁用、preventDefault、无效校验、kind mismatch、回调错误、
+16-token 容量和 reset 均保持有界；宿主仍负责 hit-test、Core validation/default action、
+导航、窗口和重绘。
+
+TEST1072 覆盖 submit/reset 的 CLICK→COMMIT 顺序、click/form 取消、无效校验时抑制 submit、
+禁用、回调错误、kind mismatch、幂等 CANCEL、容量、reset 和共享 session 的宿主 helper
+路径。
+
+```bat
+scripts\device_gate.bat -Candidate next624-native-button-r4 ^
+  -EnableJavaScript ^
+  -TestSelection "1072,64,73,999"
+```
+
+`tmp/device-runs/20260824-131847-next624-native-button-r4/` 已通过 4/4，零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉保证；
+真实按钮触摸坐标、label 转发、窗口视觉和旋转仍属于累计人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

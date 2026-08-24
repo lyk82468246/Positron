@@ -3396,6 +3396,13 @@ typedef struct p_browser_script_native_toggle_state {
     int selected_before;
 } p_browser_script_native_toggle_state;
 
+typedef struct p_browser_script_native_button_state {
+    unsigned long target_token;
+    int used;
+    int active;
+    int kind;
+} p_browser_script_native_button_state;
+
 typedef struct p_browser_script_native_file_state {
     unsigned long target_token;
     int used;
@@ -3462,6 +3469,8 @@ typedef struct p_browser_script_session {
     p_browser_script_native_select_binding *native_select;
     p_browser_script_native_toggle_state native_toggle_states[
             PBROWSER_SCRIPT_NATIVE_TOGGLE_MAX_TARGETS];
+    p_browser_script_native_button_state native_button_states[
+            PBROWSER_SCRIPT_NATIVE_BUTTON_MAX_TARGETS];
     p_browser_script_native_file_state native_file_states[
             PBROWSER_SCRIPT_NATIVE_FILE_MAX_TARGETS];
     p_browser_script_native_file_picker_state native_file_picker;
@@ -4936,6 +4945,8 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->native_select = NULL;
     memset(session->native_toggle_states, 0,
             sizeof(session->native_toggle_states));
+    memset(session->native_button_states, 0,
+            sizeof(session->native_button_states));
     memset(session->native_file_states, 0,
             sizeof(session->native_file_states));
     memset(&session->native_file_picker, 0,
@@ -6784,6 +6795,187 @@ PBROWSER_API int PBrowser_ScriptSessionResetNativeToggleState(
     }
     memset(session->native_toggle_states, 0,
             sizeof(session->native_toggle_states));
+    return PSCRIPT_OK;
+}
+
+static p_browser_script_native_button_state *
+p_browser_script_native_button_state_find(
+        p_browser_script_session *session, unsigned long target_token,
+        int create)
+{
+    unsigned int i;
+    p_browser_script_native_button_state *free_state;
+
+    if (session == NULL || target_token == 0) {
+        return NULL;
+    }
+    free_state = NULL;
+    for (i = 0; i < PBROWSER_SCRIPT_NATIVE_BUTTON_MAX_TARGETS; i++) {
+        if (session->native_button_states[i].used &&
+                session->native_button_states[i].target_token ==
+                target_token) {
+            return &session->native_button_states[i];
+        }
+        if (free_state == NULL &&
+                !session->native_button_states[i].used) {
+            free_state = &session->native_button_states[i];
+        }
+    }
+    if (!create || free_state == NULL) {
+        return NULL;
+    }
+    memset(free_state, 0, sizeof(*free_state));
+    free_state->used = 1;
+    free_state->target_token = target_token;
+    return free_state;
+}
+
+static int p_browser_script_native_button_info_valid(
+        const PBrowserScriptNativeButtonInfo *info)
+{
+    if (info == NULL || info->size < sizeof(*info) ||
+            info->target_token == 0 ||
+            (info->phase != PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK &&
+            info->phase != PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT &&
+            info->phase != PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL) ||
+            (info->kind != PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT &&
+            info->kind != PBROWSER_SCRIPT_NATIVE_BUTTON_RESET) ||
+            (info->disabled != 0 && info->disabled != 1) ||
+            (info->validation_valid != 0 && info->validation_valid != 1)) {
+        return 0;
+    }
+    return 1;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeButton(
+        HANDLE hSession, const PBrowserScriptNativeButtonInfo *info,
+        int *out_default_allowed)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_button_state *state;
+    PBrowserScriptClickEventInfo click_info;
+    PBrowserScriptFormEventInfo form_info;
+    int default_allowed;
+    int rc;
+
+    if (out_default_allowed == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    *out_default_allowed = 1;
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->click == NULL ||
+            session->form_event == NULL ||
+            !p_browser_script_native_button_info_valid(info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK) {
+        state = p_browser_script_native_button_state_find(session,
+                info->target_token, 0);
+        if (state != NULL && state->active) {
+            return PSCRIPT_ERROR_GLOBAL;
+        }
+        if (info->disabled) {
+            *out_default_allowed = 0;
+            return PSCRIPT_OK;
+        }
+        state = p_browser_script_native_button_state_find(session,
+                info->target_token, 1);
+        if (state == NULL) {
+            return PSCRIPT_ERROR_NATIVE_LIMIT;
+        }
+        memset(&click_info, 0, sizeof(click_info));
+        click_info.size = sizeof(click_info);
+        click_info.x = info->x;
+        click_info.y = info->y;
+        click_info.event_type = "click";
+        click_info.bubbles = 1;
+        click_info.cancelable = 1;
+        default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchClickEvent(hSession,
+                &click_info, &default_allowed);
+        if (rc != PSCRIPT_OK) {
+            state->active = 0;
+            return rc;
+        }
+        if (!default_allowed) {
+            state->active = 0;
+            *out_default_allowed = 0;
+            return PSCRIPT_OK;
+        }
+        state->active = 1;
+        state->kind = info->kind;
+        *out_default_allowed = 1;
+        return PSCRIPT_OK;
+    }
+    state = p_browser_script_native_button_state_find(session,
+            info->target_token, 0);
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL) {
+        if (state != NULL) {
+            state->active = 0;
+        }
+        return PSCRIPT_OK;
+    }
+    if (state == NULL || !state->active || state->kind != info->kind) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state->active = 0;
+    if (info->disabled) {
+        *out_default_allowed = 0;
+        return PSCRIPT_OK;
+    }
+    if (info->kind == PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT &&
+            info->validation_valid) {
+        memset(&form_info, 0, sizeof(form_info));
+        form_info.size = sizeof(form_info);
+        form_info.x = info->x;
+        form_info.y = info->y;
+        form_info.event_type = "submit";
+        form_info.bubbles = 1;
+        form_info.cancelable = 1;
+        default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchFormEvent(hSession,
+                &form_info, &default_allowed);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+        if (!default_allowed) {
+            *out_default_allowed = 0;
+            return PSCRIPT_OK;
+        }
+    } else if (info->kind == PBROWSER_SCRIPT_NATIVE_BUTTON_RESET) {
+        memset(&form_info, 0, sizeof(form_info));
+        form_info.size = sizeof(form_info);
+        form_info.x = info->x;
+        form_info.y = info->y;
+        form_info.event_type = "reset";
+        form_info.bubbles = 1;
+        form_info.cancelable = 1;
+        default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchFormEvent(hSession,
+                &form_info, &default_allowed);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+        if (!default_allowed) {
+            *out_default_allowed = 0;
+            return PSCRIPT_OK;
+        }
+    }
+    *out_default_allowed = 1;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionResetNativeButtonState(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memset(session->native_button_states, 0,
+            sizeof(session->native_button_states));
     return PSCRIPT_OK;
 }
 

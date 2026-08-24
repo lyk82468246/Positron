@@ -254,7 +254,26 @@ session 的消费者 helper 接线。`tmp/device-runs/20260824-124858-next623-na
 C4244 警告，产品 DLL 无新增警告。本批没有新增视觉保证；
 真实触摸坐标、label 转发、OEM 控件视觉和旋转仍需累计人工观察。
 
-### 18. 建立真实页面驱动的兼容队列
+### 18. next624：受信任 submit/reset 原生按钮激活（已完成）
+
+next624 将启用脚本时 submit/reset 原生按钮的直接激活事务从宿主的 generic click +
+即时 form-event 接线迁入 `positron_browser.dll`。新增 additive
+`PBrowser_ScriptSessionDispatchNativeButton()` 与 reset 入口，为每个 session 保留最多 16
+个 stable token 的 CLICK/COMMIT/CANCEL 状态：browser layer 先派发可取消 click，宿主在
+click 回调之后查询 Core validation，再由 COMMIT 派发 submit 或 reset；CANCEL、禁用、
+preventDefault、kind mismatch、回调错误、容量和 reset 都有明确边界。
+
+宿主仍拥有 hit-test、Core validation/default action、导航、窗口、label fallback 和重绘；
+无脚本路径保持原有 generic click 与宿主事件 fallback。TEST1072 覆盖产品契约、click/form
+取消、无效校验、容量/生命周期边界以及共享 session 的消费者 helper 接线。
+`tmp/device-runs/20260824-131847-next624-native-button-r4/` 的定向设备门通过 4/4
+（TEST1072、64、73、999），零 ERROR/FAIL，唯一 `TESTBENCH PASS`；
+`python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和
+`python scripts/audit_repo.py` 均已通过，Release/Debug 只保留既有 libcss/fpmath 的 3 个
+C4244 警告，产品 DLL 无新增警告。本批没有新增视觉保证；真实按钮坐标、label 转发、窗口
+视觉和旋转仍需累计人工观察。
+
+### 19. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -265,7 +284,7 @@ C4244 警告，产品 DLL 无新增警告。本批没有新增视觉保证；
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 19. 安排新的全范围检查点
+### 20. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

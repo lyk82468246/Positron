@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1071
+#define TEST_MAX_NUMBER 1072
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -4395,6 +4395,359 @@ static BOOL test1071_browser_native_toggle_contract(void)
     return TRUE;
 }
 
+/* TEST 1072 - browser-owned trusted native submit/reset button activation. */
+typedef struct test1072_button_state {
+    int click_calls;
+    int form_calls;
+    int click_allowed;
+    int form_allowed;
+    int form_return_code;
+    char sequence[64];
+} test1072_button_state;
+
+static int test1072_button_append(test1072_button_state *state, char value)
+{
+    size_t length;
+
+    if (state == NULL) {
+        return -1;
+    }
+    length = strlen(state->sequence);
+    if (length + 1 >= sizeof(state->sequence)) {
+        return -1;
+    }
+    state->sequence[length] = value;
+    state->sequence[length + 1] = '\0';
+    return 0;
+}
+
+static int test1072_button_click(void *pw,
+        const PBrowserScriptClickEventInfo *info,
+        int *out_default_allowed)
+{
+    test1072_button_state *state;
+
+    state = (test1072_button_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptClickEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "click") != 0 ||
+            info->bubbles != 1 || info->cancelable != 1) {
+        return -1;
+    }
+    state->click_calls++;
+    if (test1072_button_append(state, 'C') != 0) {
+        return -1;
+    }
+    *out_default_allowed = state->click_allowed ? 1 : 0;
+    return 0;
+}
+
+static int test1072_button_form(void *pw,
+        const PBrowserScriptFormEventInfo *info,
+        int *out_default_allowed)
+{
+    test1072_button_state *state;
+    char marker;
+
+    state = (test1072_button_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptFormEventInfo) ||
+            info->event_type == NULL ||
+            (strcmp(info->event_type, "submit") != 0 &&
+            strcmp(info->event_type, "reset") != 0) ||
+            info->bubbles != 1 || info->cancelable != 1) {
+        return -1;
+    }
+    marker = (strcmp(info->event_type, "submit") == 0) ? 'S' : 'R';
+    state->form_calls++;
+    if (test1072_button_append(state, marker) != 0) {
+        return -1;
+    }
+    *out_default_allowed = state->form_allowed ? 1 : 0;
+    return state->form_return_code;
+}
+
+static int test1072_browser_button_host_route(
+        test1072_button_state *state, HANDLE session);
+
+static BOOL test1072_browser_native_button_contract(void)
+{
+    PBrowserScriptClickCallbacks click_callbacks;
+    PBrowserScriptFormEventCallbacks form_callbacks;
+    PBrowserScriptNativeButtonInfo info;
+    test1072_button_state state;
+    HANDLE session;
+    const char *stage;
+    int default_allowed;
+    int rc;
+    int previous_form_calls;
+    int i;
+    int ok;
+
+    memset(&click_callbacks, 0, sizeof(click_callbacks));
+    memset(&form_callbacks, 0, sizeof(form_callbacks));
+    memset(&info, 0, sizeof(info));
+    memset(&state, 0, sizeof(state));
+    state.click_allowed = 1;
+    state.form_allowed = 1;
+    info.size = sizeof(info);
+    info.target_token = 1;
+    info.x = 31;
+    info.y = 42;
+    info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+    info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
+    info.disabled = 0;
+    info.validation_valid = 1;
+    click_callbacks.size = sizeof(click_callbacks);
+    click_callbacks.pw = &state;
+    click_callbacks.dispatch_click = test1072_button_click;
+    form_callbacks.size = sizeof(form_callbacks);
+    form_callbacks.pw = &state;
+    form_callbacks.dispatch_form_event = test1072_button_form;
+    stage = "create";
+    default_allowed = 1;
+    rc = PSCRIPT_OK;
+    previous_form_calls = 0;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    ok = session != NULL;
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterClickCallbacks(session,
+                &click_callbacks) == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRegisterFormEventCallbacks(session,
+                &form_callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "submit";
+        rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "C") == 0 &&
+                state.click_calls == 1 && state.form_calls == 0;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+        if (ok) {
+            rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed);
+            ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                    strcmp(state.sequence, "CS") == 0 &&
+                    state.click_calls == 1 && state.form_calls == 1;
+        }
+    }
+    if (ok) {
+        stage = "reset";
+        state.sequence[0] = '\0';
+        info.target_token = 2;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_RESET;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "C") == 0 &&
+                state.click_calls == 2 && state.form_calls == 1;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+        if (ok) {
+            rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed);
+            ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                    strcmp(state.sequence, "CR") == 0 &&
+                    state.click_calls == 2 && state.form_calls == 2;
+        }
+    }
+    if (ok) {
+        stage = "invalid-submit";
+        state.sequence[0] = '\0';
+        previous_form_calls = state.form_calls;
+        info.target_token = 3;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
+        info.validation_valid = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "C") == 0 &&
+                state.form_calls == previous_form_calls;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+        if (ok) {
+            rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed);
+            ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                    strcmp(state.sequence, "C") == 0 &&
+                    state.form_calls == previous_form_calls;
+        }
+        info.validation_valid = 1;
+    }
+    if (ok) {
+        stage = "click-cancel";
+        state.sequence[0] = '\0';
+        previous_form_calls = state.form_calls;
+        state.click_allowed = 0;
+        info.target_token = 4;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                strcmp(state.sequence, "C") == 0 &&
+                state.form_calls == previous_form_calls;
+        state.click_allowed = 1;
+    }
+    if (ok) {
+        stage = "disabled";
+        state.sequence[0] = '\0';
+        previous_form_calls = state.form_calls;
+        info.target_token = 5;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_RESET;
+        info.disabled = 1;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                state.sequence[0] == '\0' &&
+                state.form_calls == previous_form_calls;
+        info.disabled = 0;
+    }
+    if (ok) {
+        stage = "form-cancel";
+        state.sequence[0] = '\0';
+        state.form_allowed = 0;
+        info.target_token = 6;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "C") == 0;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+        if (ok) {
+            rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed);
+            ok = rc == PSCRIPT_OK && default_allowed == 0 &&
+                    strcmp(state.sequence, "CR") == 0;
+        }
+        state.form_allowed = 1;
+    }
+    if (ok) {
+        stage = "callback-error";
+        state.sequence[0] = '\0';
+        state.form_return_code = -1;
+        info.target_token = 7;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "C") == 0;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+        if (ok) {
+            rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed);
+            ok = rc == PSCRIPT_ERROR_NATIVE && default_allowed == 1 &&
+                    strcmp(state.sequence, "CS") == 0;
+        }
+        state.form_return_code = 0;
+    }
+    if (ok) {
+        stage = "invalid-argument";
+        info.target_token = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && default_allowed == 1;
+        info.target_token = 8;
+    }
+    if (ok) {
+        stage = "mismatch-cancel";
+        state.sequence[0] = '\0';
+        info.target_token = 8;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "C") == 0;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_RESET;
+        if (ok) {
+            ok = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed) == PSCRIPT_ERROR_ARGUMENT;
+        }
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
+        if (ok) {
+            ok = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed) == PSCRIPT_OK &&
+                    PBrowser_ScriptSessionDispatchNativeButton(session,
+                    &info, &default_allowed) == PSCRIPT_OK;
+        }
+    }
+    if (ok) {
+        stage = "capacity-reset";
+        ok = PBrowser_ScriptSessionResetNativeButtonState(session) ==
+                PSCRIPT_OK;
+        state.sequence[0] = '\0';
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        for (i = 1; ok && i <= PBROWSER_SCRIPT_NATIVE_BUTTON_MAX_TARGETS;
+                i++) {
+            info.target_token = (unsigned long) i;
+            rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed);
+            ok = rc == PSCRIPT_OK && default_allowed == 1;
+            if (ok) {
+                info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL;
+                ok = PBrowser_ScriptSessionDispatchNativeButton(session,
+                        &info, &default_allowed) == PSCRIPT_OK;
+                info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+            }
+        }
+        if (ok) {
+            info.target_token = PBROWSER_SCRIPT_NATIVE_BUTTON_MAX_TARGETS +
+                    1UL;
+            rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed);
+            ok = rc == PSCRIPT_ERROR_NATIVE_LIMIT;
+        }
+        if (ok) {
+            ok = PBrowser_ScriptSessionResetNativeButtonState(session) ==
+                    PSCRIPT_OK;
+        }
+        if (ok) {
+            rc = PBrowser_ScriptSessionDispatchNativeButton(session, &info,
+                    &default_allowed);
+            ok = rc == PSCRIPT_OK && default_allowed == 1;
+            info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL;
+            if (ok) {
+                ok = PBrowser_ScriptSessionDispatchNativeButton(session,
+                        &info, &default_allowed) == PSCRIPT_OK;
+            }
+        }
+    }
+    if (ok) {
+        stage = "host-route";
+        state.sequence[0] = '\0';
+        state.click_calls = 0;
+        state.form_calls = 0;
+        ok = test1072_browser_button_host_route(&state, session) != 0;
+    }
+    if (session != NULL) {
+        if (PBrowser_ScriptSessionUnregisterFormEventCallbacks(session) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        if (PBrowser_ScriptSessionUnregisterClickCallbacks(session) !=
+                PSCRIPT_OK) {
+            ok = 0;
+        }
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1072 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1072 OK",
+            "Browser-owned native submit/reset activation dispatches click\n"
+            "and form events before an accepted host default action.");
+    return TRUE;
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 6 - libhubbub HTML tokeniser (NetSurf engine, Phase 4)           */
 /* Feeds a small HTML document to hubbub in tokeniser mode: setting a     */
@@ -6479,6 +6832,9 @@ static int pcore_browser_script_dispatch_native_toggle_phase(
         unsigned int index, int kind, int x, int y, int phase,
         int disabled, int selected_before, int selected_after,
         int *out_default_allowed);
+static int pcore_browser_script_dispatch_native_button_phase(
+        unsigned int index, int kind, int x, int y, int phase,
+        int disabled, int validation_valid, int *out_default_allowed);
 static int pcore_browser_script_dispatch_toggle_input_at(int x, int y);
 static int pcore_browser_script_dispatch_select_change_at(int x, int y);
 static int pcore_browser_script_dispatch_key_data_at(int x, int y,
@@ -12172,7 +12528,8 @@ static int pcore_restyle_form_state(HWND hwnd, int preserve_focus)
 static void pcore_handle_invalid_form(HWND hwnd,
         const PCoreFormValidationInfo *validation);
 
-static int pcore_form_button_kind_at(int x, int y, int *out_kind)
+static int pcore_form_button_control_at(int x, int y,
+        unsigned int *out_index, int *out_kind, int *out_disabled)
 {
     unsigned int index;
     int left;
@@ -12182,8 +12539,14 @@ static int pcore_form_button_kind_at(int x, int y, int *out_kind)
     int kind;
     int disabled;
 
+    if (out_index != NULL) {
+        *out_index = 0;
+    }
     if (out_kind != NULL) {
         *out_kind = 0;
+    }
+    if (out_disabled != NULL) {
+        *out_disabled = 0;
     }
     if (g_render_doc == NULL) {
         return 0;
@@ -12191,11 +12554,17 @@ static int pcore_form_button_kind_at(int x, int y, int *out_kind)
     index = 0;
     while (PCore_FormControlInfo(g_render_doc, index, &left, &top,
             &width, &height, &kind, NULL, &disabled) == 0) {
-        if ((kind == 7 || kind == 8) && !disabled && width > 0 &&
-                height > 0 && x >= left && x < left + width &&
+        if ((kind == 7 || kind == 8) && width > 0 && height > 0 &&
+                x >= left && x < left + width &&
                 y >= top && y < top + height) {
+            if (out_index != NULL) {
+                *out_index = index;
+            }
             if (out_kind != NULL) {
                 *out_kind = kind;
+            }
+            if (out_disabled != NULL) {
+                *out_disabled = disabled ? 1 : 0;
             }
             return 1;
         }
@@ -12205,6 +12574,18 @@ static int pcore_form_button_kind_at(int x, int y, int *out_kind)
         index++;
     }
     return 0;
+}
+
+static int pcore_form_button_kind_at(int x, int y, int *out_kind)
+{
+    int disabled;
+
+    if (out_kind != NULL) {
+        *out_kind = 0;
+    }
+    disabled = 0;
+    return pcore_form_button_control_at(x, y, NULL, out_kind,
+            &disabled) && !disabled;
 }
 
 static int pcore_browser_script_dispatch_form_event_at(int x, int y,
@@ -12641,6 +13022,102 @@ static int test1071_browser_toggle_host_route(
                 strcmp(state->sequence, "CIS") == 0 &&
                 state->click_calls == 1 && state->input_calls == 1 &&
                 state->change_calls == 1;
+    }
+    g_browser_script_session.document = NULL;
+    g_browser_script_session.runtime = NULL;
+    g_browser_script_session.session = NULL;
+    g_browser_script_session.bridge = NULL;
+    g_render_doc = NULL;
+    return ok;
+}
+
+static int pcore_browser_script_dispatch_native_button_phase(
+        unsigned int index, int kind, int x, int y, int phase,
+        int disabled, int validation_valid, int *out_default_allowed)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeButtonInfo info;
+    int native_kind;
+    int default_allowed;
+    int ignored_default_allowed;
+    int rc;
+
+    if (out_default_allowed == NULL) {
+        out_default_allowed = &ignored_default_allowed;
+    }
+    *out_default_allowed = 1;
+    if (g_render_doc == NULL || index == UINT_MAX ||
+            (kind != 7 && kind != 8) ||
+            (phase != PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK &&
+            phase != PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT &&
+            phase != PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL) ||
+            (disabled != 0 && disabled != 1) ||
+            (validation_valid != 0 && validation_valid != 1)) {
+        return -1;
+    }
+    bridge = g_browser_script_session.bridge;
+    if (bridge == NULL || bridge->session == NULL ||
+            (!pcore_native_script_active() &&
+            phase != PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL)) {
+        return 0;
+    }
+    native_kind = (kind == 7) ?
+            PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT :
+            PBROWSER_SCRIPT_NATIVE_BUTTON_RESET;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = (unsigned long) index + 1UL;
+    info.x = x;
+    info.y = y;
+    info.phase = phase;
+    info.kind = native_kind;
+    info.disabled = disabled ? 1 : 0;
+    info.validation_valid = validation_valid ? 1 : 0;
+    default_allowed = 1;
+    rc = PBrowser_ScriptSessionDispatchNativeButton(
+            bridge->session, &info, &default_allowed);
+    if (rc != PSCRIPT_OK) {
+        *out_default_allowed = 0;
+        return -1;
+    }
+    *out_default_allowed = default_allowed ? 1 : 0;
+    return 1;
+}
+
+static int test1072_browser_button_host_route(
+        test1072_button_state *state, HANDLE session)
+{
+    pcore_browser_script_bridge bridge_storage;
+    int default_allowed;
+    int rc;
+    int ok;
+
+    if (state == NULL || session == NULL) {
+        return 0;
+    }
+    memset(&bridge_storage, 0, sizeof(bridge_storage));
+    g_render_doc = (HANDLE) 1;
+    bridge_storage.document = g_render_doc;
+    bridge_storage.runtime = session;
+    bridge_storage.session = session;
+    g_browser_script_session.document = g_render_doc;
+    g_browser_script_session.runtime = session;
+    g_browser_script_session.session = session;
+    g_browser_script_session.bridge = &bridge_storage;
+    default_allowed = 0;
+    rc = pcore_browser_script_dispatch_native_button_phase(
+            3, 7, 44, 55, PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK,
+            0, 0, &default_allowed);
+    ok = rc == 1 && default_allowed == 1 &&
+            strcmp(state->sequence, "C") == 0 &&
+            state->click_calls == 1 && state->form_calls == 0;
+    if (ok) {
+        rc = pcore_browser_script_dispatch_native_button_phase(
+                3, 7, 44, 55, PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT,
+                0, 1, &default_allowed);
+        ok = rc == 1 && default_allowed == 1 &&
+                strcmp(state->sequence, "CS") == 0 &&
+                state->click_calls == 1 && state->form_calls == 1;
     }
     g_browser_script_session.document = NULL;
     g_browser_script_session.runtime = NULL;
@@ -14351,6 +14828,13 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int toggle_kind;
         int toggle_selected_before;
         int toggle_disabled;
+        int button_found;
+        int button_product_started;
+        int button_phase_result;
+        unsigned int button_index;
+        int button_kind;
+        int button_disabled;
+        int button_validation_valid;
         char href[1024];
 
         pcore_toggle_focus_clear();
@@ -14378,11 +14862,23 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         toggle_kind = 0;
         toggle_selected_before = 0;
         toggle_disabled = 0;
+        button_found = 0;
+        button_product_started = 0;
+        button_phase_result = 0;
+        button_index = 0;
+        button_kind = 0;
+        button_disabled = 0;
+        button_validation_valid = 0;
         if (g_render_doc != NULL &&
                 pcore_form_toggle_control_at(cx, cy + g_scroll_y,
                 &toggle_index, &toggle_kind, &toggle_selected_before,
                 &toggle_disabled)) {
             toggle_found = 1;
+        }
+        if (g_render_doc != NULL &&
+                pcore_form_button_control_at(cx, cy + g_scroll_y,
+                &button_index, &button_kind, &button_disabled)) {
+            button_found = 1;
         }
         link_found = 0;
         href[0] = '\0';
@@ -14396,8 +14892,23 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     cx, cy + g_scroll_y, href);
             return 0;
         }
+        if (button_found && pcore_native_script_active()) {
+            default_allowed = 1;
+            button_phase_result =
+                    pcore_browser_script_dispatch_native_button_phase(
+                    button_index, button_kind, cx, cy + g_scroll_y,
+                    PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK, button_disabled, 0,
+                    &default_allowed);
+            if (button_phase_result < 0 ||
+                    (button_phase_result > 0 && !default_allowed)) {
+                return 0;
+            }
+            if (button_phase_result > 0) {
+                button_product_started = 1;
+            }
+        }
         default_allowed = 1;
-        if (g_render_doc != NULL &&
+        if (g_render_doc != NULL && !button_product_started &&
                 !(toggle_found && pcore_native_script_active())) {
             default_allowed = pcore_browser_script_dispatch_click_at(cx,
                     cy + g_scroll_y);
@@ -14421,9 +14932,45 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                 toggle_product_started = 1;
             }
         }
-        if (g_render_doc != NULL &&
-                pcore_handle_form_button(hwnd, cx, cy + g_scroll_y)) {
-            return 0;
+        if (button_product_started) {
+            if (!pcore_native_script_active()) {
+                (void) pcore_browser_script_dispatch_native_button_phase(
+                        button_index, button_kind, cx, cy + g_scroll_y,
+                        PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL,
+                        button_disabled, 0, NULL);
+                return 0;
+            }
+            button_validation_valid = 0;
+            if (button_kind == 7) {
+                PCoreFormValidationInfo button_validation;
+
+                if (PCore_FormValidationAt(g_render_doc, cx,
+                        cy + g_scroll_y, &button_validation) &&
+                        button_validation.valid) {
+                    button_validation_valid = 1;
+                }
+            }
+            default_allowed = 1;
+            button_phase_result =
+                    pcore_browser_script_dispatch_native_button_phase(
+                    button_index, button_kind, cx, cy + g_scroll_y,
+                    PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT,
+                    button_disabled, button_validation_valid,
+                    &default_allowed);
+            if (button_phase_result <= 0 || !default_allowed) {
+                return 0;
+            }
+        }
+        if (g_render_doc != NULL) {
+            if (button_product_started) {
+                if (pcore_handle_form_button_default(hwnd, cx,
+                        cy + g_scroll_y, button_kind)) {
+                    return 0;
+                }
+            } else if (pcore_handle_form_button(hwnd, cx,
+                    cy + g_scroll_y)) {
+                return 0;
+            }
         }
         if (g_render_doc != NULL &&
                 pcore_handle_file_input(hwnd, cx, cy + g_scroll_y)) {
@@ -72542,6 +73089,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1069: ok = test1069_browser_native_file_picker_contract(); break;
         case 1070: ok = test1070_browser_anchor_activation_contract(); break;
         case 1071: ok = test1071_browser_native_toggle_contract(); break;
+        case 1072: ok = test1072_browser_native_button_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
