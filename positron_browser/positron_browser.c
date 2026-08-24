@@ -7804,7 +7804,11 @@ static int p_browser_script_dispatch_programmatic_click_ex(
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_RADIO &&
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT &&
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_RESET &&
-            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_FILE)) {
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_FILE &&
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_TEXT &&
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD &&
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA &&
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_SELECT)) {
         rc = binding->callbacks_ex.dispatch_generic(
                 binding->callbacks_ex.pw, info);
         return (rc < 0) ? PSCRIPT_ERROR_NATIVE : PSCRIPT_OK;
@@ -7879,6 +7883,15 @@ static int p_browser_script_dispatch_programmatic_click_ex(
         }
     } else if (target.kind == PBROWSER_SCRIPT_CLICK_TARGET_FILE) {
         action = PBROWSER_SCRIPT_CLICK_DEFAULT_FILE;
+    } else if (target.kind == PBROWSER_SCRIPT_CLICK_TARGET_TEXT ||
+            target.kind == PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD ||
+            target.kind == PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA ||
+            target.kind == PBROWSER_SCRIPT_CLICK_TARGET_SELECT) {
+        /* Text-like and select controls have no product-owned value
+         * mutation in HTMLElement.click().  Their accepted default is the
+         * host-owned native focus operation; select popup/UI remains outside
+         * this bounded transaction. */
+        action = PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS;
     }
     memset(&default_info, 0, sizeof(default_info));
     default_info.size = sizeof(default_info);

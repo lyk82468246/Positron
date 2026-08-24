@@ -106,6 +106,12 @@ next629 将同一 label 接线扩展到 text/password/textarea/select/file：启
 `SetFocus()`，或继续进入系统 file picker。目标 disabled/stale 时不派发合成 click。TEST1077
 使用真实 native EDIT/SELECT 子窗口覆盖 text、textarea、select 的 click/焦点顺序、取消和
 disabled 静默；系统 file picker、文件路径和真实 label 触摸仍由独立人工门负责。
+next630 为脚本直接调用 `HTMLElement.click()` 的 text/password/textarea/select 增加真实宿主
+接线：browser DLL 先按 target-kind 执行 disabled/typed-click 事务，宿主 bridge 保存同步的
+DOM id 并按身份调用 Core 事件传播，避免 native child window 遮挡时的坐标误命中；default
+callback 再对对应 EDIT/SELECT 执行焦点操作。TEST1078 在 render window 已附加真实子窗口后
+验证四类控件的 click/focus/focusin 顺序、select click 取消和 disabled 静默。select 下拉
+弹窗、系统 picker、SIP/IME、真实触摸和 OEM 视觉仍不由自动门保证。
 
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、

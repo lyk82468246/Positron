@@ -784,18 +784,25 @@ typedef struct PBrowserScriptProgrammaticClickCallbacks {
  * hosts that want to own the complete operation.  This additive contract
  * moves the browser-semantic ordering into positron_browser: the host only
  * resolves a supported form target, performs the core/platform default, and
- * handles non-form targets.  All strings and target pointers are borrowed
- * for the synchronous callback only. */
+ * handles non-form targets.  Text/password/textarea/select targets use a
+ * bounded focus default; the host still owns the native window and any
+ * select popup UI. All strings and target pointers are borrowed for the
+ * synchronous callback only. */
 #define PBROWSER_SCRIPT_CLICK_TARGET_CHECKBOX 1
 #define PBROWSER_SCRIPT_CLICK_TARGET_RADIO    2
 #define PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT  3
 #define PBROWSER_SCRIPT_CLICK_TARGET_RESET   4
 #define PBROWSER_SCRIPT_CLICK_TARGET_FILE    5
+#define PBROWSER_SCRIPT_CLICK_TARGET_TEXT     6
+#define PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD 7
+#define PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA 8
+#define PBROWSER_SCRIPT_CLICK_TARGET_SELECT   9
 
 #define PBROWSER_SCRIPT_CLICK_DEFAULT_TOGGLE 1
 #define PBROWSER_SCRIPT_CLICK_DEFAULT_SUBMIT 2
 #define PBROWSER_SCRIPT_CLICK_DEFAULT_RESET  3
 #define PBROWSER_SCRIPT_CLICK_DEFAULT_FILE   4
+#define PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS  5
 
 typedef struct PBrowserScriptProgrammaticClickTargetInfo {
     unsigned long size;

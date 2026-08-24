@@ -232,6 +232,12 @@ next629 将同一条 label 转发边界扩展到 text/password/textarea/select/f
 EDIT/SELECT focus 或系统 file picker 默认动作。`TEST1077` 在真实 native EDIT/SELECT 子窗口
 上验证 text、textarea、select 的 click/焦点顺序、取消和 disabled 闸门；文件 picker 模态
 对话框、真实 label 触摸、SIP/IME 和 OEM 视觉仍需独立验收。
+next630 又把脚本直接调用 `HTMLElement.click()` 的 text/password/textarea/select 目标
+接入同一条 browser-owned typed click 路径：`positron_browser.dll` 新增兼容的 target-kind
+和 `PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS` 语义，负责 disabled 抑制、click 传播和取消；
+宿主按 DOM id 派发目标事件，并在默认动作回调中聚焦真实 native 控件。select 下拉弹窗、
+WM/OEM 视觉和文件 picker 仍由宿主负责。`TEST1078` 在真实 render window 上验证四类
+控件的 click/focus/focusin 顺序、select 取消和 disabled 静默；不把下拉展开写成产品保证。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

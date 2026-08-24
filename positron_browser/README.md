@@ -333,6 +333,18 @@ click；browser layer 仍只拥有事件取消/传播，WM 控件、Core focus�
 消费者负责。TEST1077 在真实 native EDIT/SELECT 子窗口上覆盖 text/textarea/select 的事件、
 焦点、取消和 disabled 闸门；文件 picker 的模态对话框与真实触摸仍需独立人工验收。
 
+next630 扩展既有 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 的 target-kind
+集合，新增 text、password、textarea 和 select 以及
+`PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS`。浏览器层现在对这些脚本
+`HTMLElement.click()` 目标统一执行 disabled 静默、typed `click` 和取消策略，再把
+focus default-action 交给宿主；它不修改控件值，也不拥有 native HWND、select 下拉弹窗、
+系统 picker 或 WM/OEM 副作用。新增常量保持现有 size-tagged callback 结构布局不变，旧
+target-kind 的行为不变。消费者的 target callback 必须返回稳定的 DOM 几何/状态，click
+callback 应按目标身份派发（不能依赖可能被 native child window 遮挡的坐标命中），default
+callback 再执行真实控件焦点。TEST1078 在真实 render window 上覆盖 text/password/textarea/
+select 的 `click`→`focus`→`focusin` 顺序、取消和 disabled 静默；select popup 展开仍是
+宿主/OEM 的独立边界。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

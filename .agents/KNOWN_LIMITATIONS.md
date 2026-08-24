@@ -74,6 +74,12 @@
   或系统 file picker。TEST1077 已覆盖 text/textarea/select 的真实 native 子窗口事件、焦点、
   取消和 disabled 闸门，但真实 label 触摸坐标、文件 picker 模态对话框、路径写入、SIP/IME、
   OEM 视觉和其他未列入 fixture 的 labelable 边缘仍需单独人工或独立门验收。
+  next630 又把脚本直接 `HTMLElement.click()` 的 text/password/textarea/select target-kind
+  接入同一 browser-owned typed click 入口；browser layer 负责 disabled 抑制、click 传播和
+  取消，宿主按 DOM id 提供身份派发并执行 `PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS` 的 native
+  焦点副作用。TEST1078 已在真实 render window 上覆盖 click/focus/focusin、select 取消和
+  disabled 静默；select 下拉弹窗、文件 picker、真实触摸、SIP/IME、焦点视觉与 OEM 行为仍
+  由宿主负责，不能从该自动门扩张为通用浏览器保证。
 
 ### 解除或推进条件
 

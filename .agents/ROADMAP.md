@@ -345,7 +345,21 @@ TEST1077 在真实 native EDIT/SELECT 子窗口上覆盖 text、textarea、selec
 唯一 `TESTBENCH PASS`。Debug/Release、C89 和 audit 需保持既有 3 个 libcss/fpmath C4244
 警告基线；不修改 tracked INI。
 
-### 24. 建立真实页面驱动的兼容队列
+### 24. next630：programmatic native focus 纵切（已完成）
+
+next630 扩展既有 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 的
+target-kind 与 default-action 常量，覆盖脚本直接调用 `HTMLElement.click()` 的
+text/password/textarea/select。browser layer 继续持有 disabled 抑制、typed click 和取消；
+宿主 target bridge 按 DOM id 识别并派发目标，default callback 只执行真实 native EDIT/SELECT
+焦点副作用。没有新增 callback struct 字段或改变旧 target-kind 的 ABI 布局；select popup、
+文件 picker、WM/OEM 视觉与窗口副作用仍在宿主边界。
+
+TEST1078 在真实 render window 的 native 子窗口上验证四类控件的 click→focus→focusin 顺序、
+select click 取消和 disabled 静默；与 TEST1077、1076、1075、1074、1073、1072、1071、64、73、
+999 的相关回归门已通过 11/11。该批不新增人工页面门；下拉展开、真实触摸、焦点视觉、SIP/IME
+和 OEM 行为继续按累计人工风险处理。
+
+### 25. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -356,7 +370,7 @@ TEST1077 在真实 native EDIT/SELECT 子窗口上覆盖 text、textarea、selec
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 25. 安排新的全范围检查点
+### 26. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

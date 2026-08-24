@@ -621,6 +621,27 @@ scripts\device_gate.bat -Candidate next629-label-native-r9 ^
 唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有修改 tracked INI；设备门的
 `-RemoteBase` 只是为了隔离一次仍被中止实验占用的旧远端目录。
 
+### next630 programmatic native focus 自动门
+
+next630 扩展既有 programmatic `HTMLElement.click()` 产品入口，覆盖 text/password/textarea/select
+target-kind。browser layer 负责 disabled 静默、typed click 和取消；`test_host` 的 target
+bridge 保存同步 DOM id，按身份而不是布局坐标派发 click，再由 default-action callback 聚焦
+真实 native EDIT/SELECT。TEST1078 在 render window 已附加子窗口后验证四类控件的
+`click`→`focus`→`focusin` 顺序、select click `preventDefault` 和 disabled 静默；select
+下拉弹窗、系统 picker、SIP/IME、真实触摸和 OEM 视觉仍不由自动门保证。
+
+```bat
+scripts\device_gate.bat -Candidate next630-programmatic-focus-r16 ^
+  -RemoteBase "\Storage Card\Positron-device-gate" ^
+  -EnableJavaScript ^
+  -TestSelection "1078,1077,1076,1075,1074,1073,1072,1071,64,73,999"
+```
+
+`tmp/device-runs/20260824-162751-next630-programmatic-focus-r16/` 已通过 11/11，零
+`ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。窄验证
+`tmp/device-runs/20260824-162638-next630-programmatic-focus-r15/` 先单独通过
+TEST1078/229/999 3/3；tracked INI 未修改，自动模式保持不变。本批不增加人工页面门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

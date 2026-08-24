@@ -147,6 +147,9 @@ programmatic `HTMLElement.click()`（包括 disabled 抑制、typed click、subm
 submit 验证与取消、以及 file input 的 typed click 边界）/`checkValidity()`/`reportValidity()`/
 `willValidate`/`validity` 查询/`setCustomValidity()`/`validationMessage`、submit/reset/invalid/
 file-input/checkbox/radio input/change/SELECT-input/change typed dispatch entry 已由此 DLL 持有并执行；
+text/password/textarea/select 的 programmatic click 也由同一入口按新增 target-kind 统一执行
+disabled 抑制、typed click 和取消，并以 `PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS` 将焦点副作用
+交还宿主；该入口不改变控件值，也不拥有 native HWND 或 select popup；
 宿主只通过 size-tagged target/validation/default-action callback 提供控件几何、core 状态与 WM 副作用。
 native EDIT 的 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 另外由 DLL 持有
 beforeinput pending metadata、native commit 到 input、dirty tracking 和 blur/change 顺序；宿主
@@ -1025,6 +1028,16 @@ next629 不扩张公共 ABI，而是让宿主对 text/password/textarea/select/f
 窗口和重绘副作用留在消费者；无脚本路径保持原有 focus/picker fallback。TEST1077 在真实
 native EDIT/SELECT 子窗口上验证 text/textarea/select 的事件与焦点顺序、取消和 disabled 闸门；
 文件 picker 模态对话框、真实 label 坐标、SIP/IME 和 OEM 视觉仍不是本批保证。
+
+#### next630 的 programmatic native focus 边界
+
+next630 复用既有 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()`，为
+text/password/textarea/select 增加 target-kind 与 `PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS`
+语义。browser layer 负责目标存在性、disabled 静默、typed click 和取消；宿主 target bridge
+按 DOM id 提供同步身份派发，default-action callback 再聚焦真实 native EDIT/SELECT。该入口
+不修改控件值，也不拥有 HWND、select popup、系统 picker、窗口或 OEM 副作用；没有增加
+callback struct 字段。TEST1078 是 render-window 消费者契约门，自动覆盖 click/focus/focusin、
+select 取消和 disabled 静默，不能替代下拉视觉、真实触摸、SIP/IME 或焦点视觉人工验收。
 
 #### next614 的 label/control 关系边界
 

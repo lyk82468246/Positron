@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1077
+#define TEST_MAX_NUMBER 1078
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6065,6 +6065,11 @@ struct pcore_browser_script_bridge {
     int history_can_commit;
     unsigned int next_event_id;
     pcore_browser_script_event_binding *events;
+    /* HTMLElement.click() resolves its target by DOM id before the product
+     * dispatches the typed click callback.  Keep that id for the synchronous
+     * callback so native form controls are dispatched by identity rather than
+     * by a layout hit-test that can miss their overlaid child window. */
+    char *programmatic_click_element_id;
 };
 
 typedef struct pcore_browser_script_session {
@@ -6925,6 +6930,9 @@ static int g_native_label_probe_ok = 0;
 static int g_native_label_forward_probe = 0;
 static int g_native_label_forward_probe_ok = 0;
 static char g_native_label_forward_probe_detail[256];
+static int g_native_programmatic_focus_probe = 0;
+static int g_native_programmatic_focus_probe_ok = 0;
+static char g_native_programmatic_focus_probe_detail[256];
 static int g_native_toggle_key_probe = 0;
 static int g_native_toggle_key_probe_ok = 0;
 
@@ -6978,6 +6986,7 @@ static int pcore_browser_script_dispatch_anchor_click_at(int x, int y,
         const char *href);
 static int pcore_browser_script_programmatic_click_dispatch(void *pw,
         const PBrowserScriptProgrammaticClickInfo *info);
+static char *pcore_browser_script_copy_string(const char *value);
 static int pcore_browser_script_programmatic_click_target(void *pw,
         const char *element_id,
         PBrowserScriptProgrammaticClickTargetInfo *out_info);
@@ -7842,6 +7851,7 @@ static int pcore_browser_script_click_dispatch(void *pw,
         int *out_default_allowed)
 {
     pcore_browser_script_bridge *bridge;
+    char *programmatic_id;
     int result;
 
     bridge = (pcore_browser_script_bridge *) pw;
@@ -7853,9 +7863,18 @@ static int pcore_browser_script_click_dispatch(void *pw,
         return -1;
     }
     *out_default_allowed = 1;
-    result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
-            info->event_type, info->bubbles ? 1 : 0,
-            info->cancelable ? 1 : 0, out_default_allowed);
+    programmatic_id = bridge->programmatic_click_element_id;
+    bridge->programmatic_click_element_id = NULL;
+    if (programmatic_id != NULL) {
+        result = PCore_EventDispatchToId(bridge->document, programmatic_id,
+                info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, out_default_allowed);
+        free(programmatic_id);
+    } else {
+        result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
+                info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, out_default_allowed);
+    }
     return (result < 0) ? -1 : 0;
 }
 
@@ -7892,6 +7911,8 @@ static int pcore_browser_script_programmatic_click_target(void *pw,
             out_info->size < sizeof(PBrowserScriptProgrammaticClickTargetInfo)) {
         return -1;
     }
+    free(bridge->programmatic_click_element_id);
+    bridge->programmatic_click_element_id = NULL;
     out_info->found = 0;
     out_info->x = 0;
     out_info->y = 0;
@@ -7916,11 +7937,27 @@ static int pcore_browser_script_programmatic_click_target(void *pw,
         out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_RESET;
     } else if (core_kind == 10) {
         out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_FILE;
+    } else if (core_kind == 3) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_TEXT;
+    } else if (core_kind == 4) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD;
+    } else if (core_kind == 5) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA;
+    } else if (core_kind == 6) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_SELECT;
     } else {
         return 0;
     }
     out_info->disabled = core_disabled ? 1 : 0;
     out_info->found = 1;
+    if (!out_info->disabled) {
+        bridge->programmatic_click_element_id =
+                pcore_browser_script_copy_string(element_id);
+        if (bridge->programmatic_click_element_id == NULL) {
+            out_info->found = 0;
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -7992,6 +8029,28 @@ static int pcore_browser_script_programmatic_click_default(void *pw,
         if (bridge->document == g_render_doc && bridge->hwnd != NULL &&
                 pcore_queue_file_input_picker(bridge, center_x, center_y) != 0) {
             return -1;
+        }
+        return 0;
+    }
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS) {
+        int native_kind;
+
+        native_kind = 0;
+        if (info->kind == PBROWSER_SCRIPT_CLICK_TARGET_TEXT) {
+            native_kind = 3;
+        } else if (info->kind == PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD) {
+            native_kind = 4;
+        } else if (info->kind == PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA) {
+            native_kind = 5;
+        } else if (info->kind == PBROWSER_SCRIPT_CLICK_TARGET_SELECT) {
+            native_kind = 6;
+        }
+        if (native_kind == 0) {
+            return -1;
+        }
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            (void) pcore_focus_native_form_control(native_kind,
+                    center_x, center_y);
         }
         return 0;
     }
@@ -11179,6 +11238,8 @@ static void pcore_browser_script_bridge_destroy(
     bridge->history_entry_url = NULL;
     free(bridge->history_state_json);
     bridge->history_state_json = NULL;
+    free(bridge->programmatic_click_element_id);
+    bridge->programmatic_click_element_id = NULL;
     bridge->history_state_changed = 0;
     for (i = 0; i < bridge->history_push_count; i++) {
         free(bridge->history_push_urls[i]);
@@ -11514,6 +11575,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     }
     bridge->next_event_id = 1;
     bridge->events = NULL;
+    bridge->programmatic_click_element_id = NULL;
     dom_read_callbacks.size = sizeof(dom_read_callbacks);
     dom_read_callbacks.pw = bridge;
     dom_read_callbacks.has_element = pcore_browser_script_dom_has_element;
@@ -15919,6 +15981,111 @@ failed:
             sizeof(g_native_label_forward_probe_detail) - 1] = '\0';
 }
 
+/* Probe script HTMLElement.click() on native text-like/select controls after
+ * the render window has attached their real child windows.  The product DLL
+ * owns the trusted click and cancellation boundary; the host owns only the
+ * native focus side effect.  Select popup opening remains a separate WM/OEM
+ * behavior and is deliberately not asserted here. */
+static void pcore_native_programmatic_focus_probe_run(HWND hwnd)
+{
+    char events[768];
+    char error[160];
+    const char *stage;
+
+    g_native_programmatic_focus_probe_ok = 0;
+    g_native_programmatic_focus_probe_detail[0] = '\0';
+    stage = "setup";
+    memset(events, 0, sizeof(events));
+    memset(error, 0, sizeof(error));
+    if (hwnd == NULL || g_render_doc == NULL ||
+            g_native_edit_count < 3 || g_native_select_count < 1 ||
+            g_browser_script_session.runtime == NULL ||
+            g_native_edits[0].hwnd == NULL ||
+            g_native_edits[1].hwnd == NULL ||
+            g_native_edits[2].hwnd == NULL ||
+            g_native_selects[0].hwnd == NULL) {
+        goto failed;
+    }
+    stage = "text";
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';window.cancel_select=false;"
+            "document.getElementById('text').click();", -1,
+            error, sizeof(error)) != 0 ||
+            GetFocus() != g_native_edits[0].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strcmp(events, "click|text|false;focus|text|false;"
+            "focusin|text|false;") != 0) {
+        goto failed;
+    }
+    stage = "password";
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';document.getElementById('pass').click();", -1,
+            error, sizeof(error)) != 0 ||
+            GetFocus() != g_native_edits[1].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strcmp(events, "click|pass|false;focus|pass|false;"
+            "focusin|pass|false;") != 0) {
+        goto failed;
+    }
+    stage = "textarea";
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';document.getElementById('area').click();", -1,
+            error, sizeof(error)) != 0 ||
+            GetFocus() != g_native_edits[2].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strcmp(events, "click|area|false;focus|area|false;"
+            "focusin|area|false;") != 0) {
+        goto failed;
+    }
+    stage = "select";
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';window.cancel_select=false;"
+            "document.getElementById('pick').click();", -1,
+            error, sizeof(error)) != 0 ||
+            GetFocus() != g_native_selects[0].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strcmp(events, "click|pick|false;focus|pick|false;"
+            "focusin|pick|false;") != 0) {
+        goto failed;
+    }
+    stage = "select-cancel";
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';window.cancel_select=true;"
+            "document.getElementById('pick').click();", -1,
+            error, sizeof(error)) != 0 ||
+            GetFocus() != g_native_selects[0].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strcmp(events, "click|pick|true;") != 0) {
+        goto failed;
+    }
+    stage = "disabled";
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';document.getElementById('result').textContent='';"
+            "document.getElementById('disabled').click();",
+            -1, error, sizeof(error)) != 0 ||
+            GetFocus() != g_native_selects[0].hwnd ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 || strcmp(events, "") != 0) {
+        goto failed;
+    }
+    g_native_programmatic_focus_probe_ok = 1;
+    return;
+
+failed:
+    _snprintf(g_native_programmatic_focus_probe_detail,
+            sizeof(g_native_programmatic_focus_probe_detail) - 1,
+            "stage=%s events=%s script=%s edits=%u selects=%u focus=%p",
+            stage, events, error, g_native_edit_count,
+            g_native_select_count, GetFocus());
+    g_native_programmatic_focus_probe_detail[
+            sizeof(g_native_programmatic_focus_probe_detail) - 1] = '\0';
+}
+
 /* Create the full-screen render window and run its message loop until closed.
  * Assumes g_render_doc + g_doc_h + g_scroll_y are already set. Returns FALSE
  * only if the window could not be created. */
@@ -15966,6 +16133,9 @@ static BOOL show_render_window(void)
     }
     pcore_native_edits_rebuild(hwnd, 0);
     pcore_native_selects_rebuild(hwnd, 0);
+    if (g_native_programmatic_focus_probe) {
+        pcore_native_programmatic_focus_probe_run(hwnd);
+    }
     if (g_native_select_transaction_probe &&
             g_native_select_count > 0 &&
             g_native_selects[0].hwnd != NULL) {
@@ -16996,6 +17166,135 @@ static BOOL test1077_browser_label_native_control_contract(void)
             " text/textarea/select controls; accepted targets focus normally,"
             " while cancellation and disabled targets stay quiet. File picker"
             " opening remains a separate system-dialog boundary.");
+    return TRUE;
+}
+
+/* TEST 1078 - trusted programmatic click/focus for native text controls. */
+static BOOL test1078_browser_programmatic_native_focus_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='root'>"
+        "<input id='text' value='seed'>"
+        "<input id='pass' type='password' value='secret'>"
+        "<textarea id='area'>base</textarea>"
+        "<select id='pick'><option selected>Alpha</option>"
+        "<option>Beta</option></select>"
+        "<input id='disabled' disabled value='locked'>"
+        "<p id='result'>idle</p></form></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "input,textarea,select{display:block;width:220px;"
+        "height:22px;margin:2px}textarea{height:34px}"
+        "#result{display:block;width:300px;height:80px}";
+    static const char LISTENER[] =
+        "window.events='';window.cancel_select=false;"
+        "function record(e){var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+'|'+String(e.defaultPrevented)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('click',record);"
+        "document.getElementById('text').addEventListener('focus',record);"
+        "document.getElementById('text').addEventListener('focusin',record);"
+        "document.getElementById('pass').addEventListener('focus',record);"
+        "document.getElementById('pass').addEventListener('focusin',record);"
+        "document.getElementById('area').addEventListener('focus',record);"
+        "document.getElementById('area').addEventListener('focusin',record);"
+        "document.getElementById('pick').addEventListener('focus',record);"
+        "document.getElementById('pick').addEventListener('focusin',record);"
+        "document.getElementById('pick').addEventListener('click',"
+        "function(e){if(window.cancel_select)e.preventDefault();});";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[384];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/programmatic-native-focus.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 360) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_native_programmatic_focus_probe = 1;
+        g_native_programmatic_focus_probe_ok = 0;
+        g_native_programmatic_focus_probe_detail[0] = '\0';
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_programmatic_focus_probe = 0;
+        if (!g_native_programmatic_focus_probe_ok) {
+            if (g_native_programmatic_focus_probe_detail[0] != '\0') {
+                cstr_copy(error, sizeof(error),
+                        g_native_programmatic_focus_probe_detail);
+            }
+            ok = 0;
+        }
+    }
+    g_native_programmatic_focus_probe = 0;
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1078 FAIL", error[0] != '\0' ? error :
+                "programmatic native focus failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1078 OK",
+            "HTMLElement.click() dispatches a trusted click to native"
+            " text/password/textarea/select controls; accepted clicks"
+            " focus the native control, while cancellation and disabled"
+            " targets remain quiet. Select popup UI remains host/OEM-owned.");
     return TRUE;
 }
 
@@ -74818,6 +75117,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1075: ok = test1075_browser_label_button_activation_contract(); break;
         case 1076: ok = test1076_browser_label_toggle_activation_contract(); break;
         case 1077: ok = test1077_browser_label_native_control_contract(); break;
+        case 1078: ok = test1078_browser_programmatic_native_focus_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
