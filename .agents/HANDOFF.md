@@ -312,6 +312,9 @@ next618 当前候选的本地验证已完成，但设备门尚未形成证据：
 - 在服务 PID 未变化的情况下，`tmp/device-runs/20260824-004241-next618-rapi-retry2/`
   再次完成构建和 staging，但仍在 `CeRapiInitEx()` 的 30 秒有界等待处超时；未产生设备
   进程、日志或结果，恢复门槛不变。
+- 用户要求的命令行重试 `tmp/device-runs/20260824-101131-next618-rapi-retry3/` 仍在
+  `CeRapiInitEx()` 的 30 秒有界等待处超时；构建/staging 成功但没有设备进程、日志或结果。
+  在 WMDC/RAPI 主机状态改变前不再重复探针，也不使用 Computer Use 代替用户的 GUI 连接操作。
 - 需要关闭设备/模拟器 GUI 中遗留的 `test_host.exe`，确认 WMDC 只有当前唯一连接后重新
   断开/连接，再原样重跑窄门；恢复门槛见 `.agents/FAILED_EXPERIMENTS.md` 的 next618 条目。
 

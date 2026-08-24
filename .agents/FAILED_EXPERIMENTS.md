@@ -173,6 +173,10 @@ WMDC/RapiMgr 主机环境；不要为此修改产品代码、恢复 VMID 绑定�
 `20260824-004241-next618-rapi-retry2`，构建和 staging 仍成功，但同样在
 `CeRapiInitEx()` 处 30 秒超时；因此没有新增设备侧证据，也没有改变恢复门槛。
 
+按用户要求再次运行 `20260824-101131-next618-rapi-retry3`，结果仍为构建/staging 成功后
+在 `CeRapiInitEx()` 处 30 秒超时，设备侧证据仍为空；在 WMDC/RAPI 主机状态改变前不再
+继续重复该探针。
+
 ### 早期 loading 条 — 已替代/部分暂挂
 
 问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。
