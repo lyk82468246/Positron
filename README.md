@@ -187,6 +187,11 @@ next620 又把文件输入选择的产品事务加入 `positron_browser.dll`：
 BEGIN/COMMIT/CANCEL，并在提交后派发一次 `input(insertFromFile)` → `change`；宿主仍拥有
 WM6 系统 picker、文件系统、`PCore_FileInputSetPath()` 和重绘。`TEST1068` 覆盖回调、容量、
 取消和错误边界，`TEST262` 覆盖真实消费者路径；TEST232/263 的系统对话框视觉仍需人工确认。
+next621 又把 programmatic `file.click()` 的 picker 请求仲裁放入
+`positron_browser.dll`：每个脚本 session 只允许一个 pending/active request，重复请求合并，
+OPEN/CLOSE/CANCEL 和 reset 对 token/文档替换保持有界生命周期；WM6 `PostMessage`、系统
+picker、文件系统和路径写入仍由宿主负责。`TEST1069` 覆盖 ABI 阶段、重复请求、错误、
+reset 和 session 隔离；`TEST262` 覆盖真实消费者接线。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

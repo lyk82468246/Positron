@@ -3394,6 +3394,15 @@ typedef struct p_browser_script_native_file_state {
     int active;
 } p_browser_script_native_file_state;
 
+typedef struct p_browser_script_native_file_picker_state {
+    unsigned long target_token;
+    int state;
+} p_browser_script_native_file_picker_state;
+
+#define P_BROWSER_NATIVE_FILE_PICKER_NONE    0
+#define P_BROWSER_NATIVE_FILE_PICKER_PENDING 1
+#define P_BROWSER_NATIVE_FILE_PICKER_ACTIVE  2
+
 typedef struct p_browser_script_click_binding {
     PBrowserScriptClickCallbacks callbacks;
 } p_browser_script_click_binding;
@@ -3445,6 +3454,7 @@ typedef struct p_browser_script_session {
     p_browser_script_native_select_binding *native_select;
     p_browser_script_native_file_state native_file_states[
             PBROWSER_SCRIPT_NATIVE_FILE_MAX_TARGETS];
+    p_browser_script_native_file_picker_state native_file_picker;
     p_browser_script_click_binding *click;
     p_browser_script_programmatic_click_binding *programmatic_click;
     p_browser_script_form_event_binding *form_event;
@@ -4916,6 +4926,8 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->native_select = NULL;
     memset(session->native_file_states, 0,
             sizeof(session->native_file_states));
+    memset(&session->native_file_picker, 0,
+            sizeof(session->native_file_picker));
     session->click = NULL;
     session->programmatic_click = NULL;
     session->form_event = NULL;
@@ -6720,6 +6732,91 @@ PBROWSER_API int PBrowser_ScriptSessionResetNativeFileState(
     }
     memset(session->native_file_states, 0,
             sizeof(session->native_file_states));
+    return PSCRIPT_OK;
+}
+
+static int p_browser_script_native_file_picker_info_valid(
+        const PBrowserScriptNativeFilePickerInfo *info)
+{
+    if (info == NULL || info->size < sizeof(*info) ||
+            info->target_token == 0 ||
+            (info->phase != PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST &&
+            info->phase != PBROWSER_SCRIPT_NATIVE_FILE_PICKER_OPEN &&
+            info->phase != PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CLOSE &&
+            info->phase != PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL)) {
+        return 0;
+    }
+    return 1;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeFilePicker(
+        HANDLE hSession, const PBrowserScriptNativeFilePickerInfo *info,
+        int *out_accepted)
+{
+    p_browser_script_session *session;
+    p_browser_script_native_file_picker_state *state;
+
+    if (out_accepted == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    *out_accepted = 0;
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) ||
+            !p_browser_script_native_file_picker_info_valid(info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    state = &session->native_file_picker;
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST) {
+        if (state->state != P_BROWSER_NATIVE_FILE_PICKER_NONE) {
+            /* One modal picker is enough for a script turn. A second
+             * file.click() is a successful, coalesced no-op. */
+            return PSCRIPT_OK;
+        }
+        state->target_token = info->target_token;
+        state->state = P_BROWSER_NATIVE_FILE_PICKER_PENDING;
+        *out_accepted = 1;
+        return PSCRIPT_OK;
+    }
+    if (state->state == P_BROWSER_NATIVE_FILE_PICKER_NONE) {
+        /* Host cleanup may race a stale queued message; make release phases
+         * idempotent while still rejecting an invalid OPEN. */
+        if (info->phase == PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CLOSE ||
+                info->phase == PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL) {
+            return PSCRIPT_OK;
+        }
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (state->target_token != info->target_token) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (info->phase == PBROWSER_SCRIPT_NATIVE_FILE_PICKER_OPEN) {
+        if (state->state != P_BROWSER_NATIVE_FILE_PICKER_PENDING) {
+            return PSCRIPT_ERROR_GLOBAL;
+        }
+        state->state = P_BROWSER_NATIVE_FILE_PICKER_ACTIVE;
+        *out_accepted = 1;
+        return PSCRIPT_OK;
+    }
+    /* CLOSE and CANCEL both release the host-owned modal operation. Their
+     * distinction is useful to the host, but the product arbiter only needs
+     * the invariant that no later duplicate request remains active. */
+    state->target_token = 0;
+    state->state = P_BROWSER_NATIVE_FILE_PICKER_NONE;
+    *out_accepted = 1;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionResetNativeFilePickerState(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memset(&session->native_file_picker, 0,
+            sizeof(session->native_file_picker));
     return PSCRIPT_OK;
 }
 

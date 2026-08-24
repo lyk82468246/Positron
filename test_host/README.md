@@ -53,6 +53,12 @@ COMMIT，取消、失败或 stale request 提交 CANCEL。browser DLL 只负责�
 TEST1068 是产品 ABI 契约，TEST262 是自动消费者回归，TEST232/263 仍是需要真实 WM6
 对话框的人工视觉/选择验收。
 
+next621 又把 programmatic picker 的请求仲裁放入 browser DLL：本宿主在排队前发送
+`PBrowser_ScriptSessionDispatchNativeFilePicker(REQUEST)`，重复点击由 browser layer
+合并；处理宿主消息前发送 OPEN，模态 picker 返回后发送 CLOSE，投递失败或文档替换时
+发送 CANCEL。宿主只保存 HWND、document 和 file index，仍负责 `PostMessage` 与系统
+picker；TEST1069 是产品契约，TEST262 验证该消费者路径。
+
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、
 network-path 和绝对 URL 的合并，产品 DLL 随后只接受有界 HTTP(S) authority、端口和路径

@@ -273,6 +273,14 @@ next620 在现有 typed input/select callback 上增加
 reset 和容量，TEST262 覆盖 programmatic picker 的实际消费者路径；TEST232/263 仍只需人工
 确认真实系统对话框的视觉、选择和取消体验。
 
+next621 在同一文件控件边界上增加
+`PBrowser_ScriptSessionDispatchNativeFilePicker()`：每个脚本 session 只保留一个
+pending/active picker request；重复 `file.click()` 合并为成功 no-op，OPEN/CLOSE/CANCEL
+按稳定 token 校验生命周期，reset 在文档/session 销毁前清理状态。宿主仍负责
+`PostMessage`、系统对话框、文件系统和路径，API 不携带 picker handle 或文件名。
+TEST1069 覆盖非法输入、重复 request、错误 phase、reset 和多 session 隔离；TEST262
+继续验证宿主实际队列接线。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

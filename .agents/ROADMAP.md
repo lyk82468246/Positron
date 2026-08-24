@@ -205,7 +205,22 @@ TEST999 保持页面路由和退出提示音。`tmp/device-runs/20260824-112810-
 audit 均通过。TEST232/263 的真实文件选择、取消、权限、重入和视觉仍属于人工门，不由
 该自动契约冒充覆盖。
 
-### 15. 建立真实页面驱动的兼容队列
+### 15. next621：programmatic file-picker 请求仲裁（已完成）
+
+next621 将 `file.click()` 的异步 picker 请求边界从 `test_host` 全局变量迁入
+`positron_browser.dll`。新增 additive `PBrowser_ScriptSessionDispatchNativeFilePicker()`
+和 reset 入口；每个脚本 session 只保留一个 pending/active request，REQUEST 合并重复
+点击，OPEN/CLOSE/CANCEL 校验稳定 token 并清理生命周期。宿主仍持有 HWND、document、
+file index、`PostMessage`、WM6 系统 picker、文件系统和路径写入；没有 picker handle 或
+文件名进入公共 ABI。
+
+TEST1069 覆盖非法 phase/NULL output、重复 request、错误 token、重复 OPEN、活动请求
+抑制、CLOSE/CANCEL 幂等、reset 和多 session 隔离；TEST262 覆盖宿主 REQUEST→OPEN→CLOSE
+接线、取消旧值保持和 stale document 回归。`tmp/device-runs/20260824-120418-next621-file-picker-arbitration/`
+的定向设备门为 4/4 PASS、零 ERROR/FAIL；Debug/Release ARMV4I 构建、C89 检查和仓库
+audit 均通过。本批没有新增视觉保证；TEST232/263 的真实系统对话框仍需人工验收。
+
+### 16. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -216,7 +231,7 @@ audit 均通过。TEST232/263 的真实文件选择、取消、权限、重入�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 16. 安排新的全范围检查点
+### 17. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

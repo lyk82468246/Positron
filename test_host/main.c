@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1068
+#define TEST_MAX_NUMBER 1069
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3715,6 +3715,198 @@ static BOOL test1068_browser_native_file_selection_contract(void)
     return TRUE;
 }
 
+/* TEST 1069 - browser-owned programmatic file-picker arbitration. */
+static BOOL test1069_browser_native_file_picker_contract(void)
+{
+    PBrowserScriptNativeFilePickerInfo info;
+    HANDLE first;
+    HANDLE second;
+    const char *stage;
+    int accepted;
+    int rc;
+    int ok;
+
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = 17;
+    info.x = 31;
+    info.y = 42;
+    info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST;
+    first = NULL;
+    second = NULL;
+    stage = "create";
+    accepted = 0;
+    rc = PSCRIPT_OK;
+    ok = PBrowser_ScriptSessionResetNativeFilePickerState(NULL) ==
+            PSCRIPT_ERROR_ARGUMENT;
+    first = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    ok = ok && first != NULL;
+    if (ok) {
+        stage = "null-output";
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, NULL);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "invalid-phase";
+        accepted = 0;
+        info.phase = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && accepted == 0;
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST;
+    }
+    if (ok) {
+        stage = "request";
+        accepted = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = rc == PSCRIPT_OK && accepted == 1;
+    }
+    if (ok) {
+        stage = "coalesce";
+        accepted = 1;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = rc == PSCRIPT_OK && accepted == 0;
+        info.target_token = 18;
+        if (ok) {
+            accepted = 1;
+            rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                    first, &info, &accepted);
+            ok = rc == PSCRIPT_OK && accepted == 0;
+        }
+        info.target_token = 17;
+    }
+    if (ok) {
+        stage = "open";
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_OPEN;
+        info.target_token = 18;
+        accepted = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && accepted == 0;
+        info.target_token = 17;
+        if (ok) {
+            accepted = 0;
+            rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                    first, &info, &accepted);
+            ok = rc == PSCRIPT_OK && accepted == 1;
+        }
+    }
+    if (ok) {
+        stage = "active-duplicate";
+        accepted = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = rc == PSCRIPT_ERROR_GLOBAL && accepted == 0;
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST;
+        if (ok) {
+            accepted = 1;
+            rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                    first, &info, &accepted);
+            ok = rc == PSCRIPT_OK && accepted == 0;
+        }
+    }
+    if (ok) {
+        stage = "mismatched-close";
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CLOSE;
+        info.target_token = 18;
+        accepted = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT && accepted == 0;
+        info.target_token = 17;
+        if (ok) {
+            accepted = 0;
+            rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                    first, &info, &accepted);
+            ok = rc == PSCRIPT_OK && accepted == 1;
+        }
+    }
+    if (ok) {
+        stage = "idempotent-release";
+        accepted = 1;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = rc == PSCRIPT_OK && accepted == 0;
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL;
+        accepted = 1;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = ok && rc == PSCRIPT_OK && accepted == 0;
+    }
+    if (ok) {
+        stage = "cancel";
+        info.target_token = 19;
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST;
+        accepted = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = rc == PSCRIPT_OK && accepted == 1;
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL;
+        if (ok) {
+            accepted = 0;
+            rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                    first, &info, &accepted);
+            ok = rc == PSCRIPT_OK && accepted == 1;
+        }
+        if (ok) {
+            accepted = 1;
+            rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                    first, &info, &accepted);
+            ok = rc == PSCRIPT_OK && accepted == 0;
+        }
+    }
+    if (ok) {
+        stage = "reset-and-isolation";
+        info.target_token = 23;
+        info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST;
+        accepted = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                first, &info, &accepted);
+        ok = rc == PSCRIPT_OK && accepted == 1;
+        if (ok) {
+            rc = PBrowser_ScriptSessionResetNativeFilePickerState(first);
+            ok = rc == PSCRIPT_OK;
+        }
+        second = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+        ok = ok && second != NULL;
+        if (ok) {
+            accepted = 0;
+            rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                    second, &info, &accepted);
+            ok = rc == PSCRIPT_OK && accepted == 1;
+        }
+        if (ok) {
+            info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CLOSE;
+            accepted = 0;
+            rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                    first, &info, &accepted);
+            ok = rc == PSCRIPT_OK && accepted == 0;
+            info.phase = PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL;
+            accepted = 0;
+            rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+                    second, &info, &accepted);
+            ok = ok && rc == PSCRIPT_OK && accepted == 1;
+        }
+    }
+    if (first != NULL) {
+        PBrowser_ScriptSessionDestroy(first);
+    }
+    if (second != NULL) {
+        PBrowser_ScriptSessionDestroy(second);
+    }
+    if (!ok) {
+        show_error(L"TEST 1069 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1069 OK",
+            "Browser-owned file-picker arbitration coalesces duplicate\n"
+            "requests, enforces token/lifecycle phases, and resets safely.");
+    return TRUE;
+}
+
 /* -------------------------------------------------------------------- */
 /* TEST 6 - libhubbub HTML tokeniser (NetSurf engine, Phase 4)           */
 /* Feeds a small HTML document to hubbub in tokeniser mode: setting a     */
@@ -4907,6 +5099,10 @@ static void pcore_browser_script_session_destroy(void)
 {
     pcore_toggle_focus_clear();
     pcore_file_picker_clear_pending();
+    if (g_browser_script_session.session != NULL) {
+        (void) PBrowser_ScriptSessionResetNativeFilePickerState(
+                g_browser_script_session.session);
+    }
     if (g_browser_script_session.bridge != NULL) {
         pcore_browser_script_bridge_destroy(g_browser_script_session.bridge);
     }
@@ -5784,6 +5980,9 @@ static int pcore_browser_script_dispatch_file_event_at(int x, int y,
         const char *event_type);
 static int pcore_browser_script_dispatch_native_file_phase(
         unsigned int file_index, int x, int y, int phase);
+static int pcore_browser_script_dispatch_native_file_picker_phase(
+        pcore_browser_script_bridge *bridge, unsigned int file_index,
+        int x, int y, int phase, int *out_accepted);
 static int pcore_queue_file_input_picker(
         pcore_browser_script_bridge *bridge, int x, int y);
 static int pcore_browser_script_dispatch_toggle_input_at(int x, int y);
@@ -11861,6 +12060,46 @@ static int pcore_browser_script_dispatch_native_file_phase(
     return rc == PSCRIPT_OK ? 1 : -1;
 }
 
+/* Product file-picker arbitration is separate from the picker/result
+ * transaction above: the browser layer owns one pending/active request per
+ * script session, while this host keeps the HWND/document needed to run the
+ * modal WM6 dialog. */
+static int pcore_browser_script_dispatch_native_file_picker_phase(
+        pcore_browser_script_bridge *bridge, unsigned int file_index,
+        int x, int y, int phase, int *out_accepted)
+{
+    PBrowserScriptNativeFilePickerInfo info;
+    int accepted;
+    int rc;
+
+    if (out_accepted == NULL) {
+        return -1;
+    }
+    *out_accepted = 1;
+    if (bridge == NULL || bridge->session == NULL ||
+            g_browser_script_session.bridge != bridge ||
+            g_browser_script_session.session != bridge->session ||
+            ((phase == PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST ||
+            phase == PBROWSER_SCRIPT_NATIVE_FILE_PICKER_OPEN) &&
+            !pcore_native_script_active())) {
+        return 0;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = (unsigned long) file_index + 1UL;
+    info.x = x;
+    info.y = y;
+    info.phase = phase;
+    accepted = 0;
+    rc = PBrowser_ScriptSessionDispatchNativeFilePicker(
+            bridge->session, &info, &accepted);
+    if (rc != PSCRIPT_OK) {
+        return -1;
+    }
+    *out_accepted = accepted ? 1 : 0;
+    return 1;
+}
+
 /* Fallback for a host path without an active browser script session. */
 static int pcore_browser_script_dispatch_file_event_at(int x, int y,
         const char *event_type)
@@ -12582,6 +12821,8 @@ static int pcore_queue_file_input_picker(
 {
     unsigned int file_index;
     int disabled;
+    int accepted;
+    int product_result;
 
     if (bridge == NULL || bridge->document == NULL ||
             bridge->document != g_render_doc || bridge->hwnd == NULL) {
@@ -12593,9 +12834,21 @@ static int pcore_queue_file_input_picker(
             &file_index, &disabled) || disabled) {
         return 0;
     }
-    /* One script turn may call click() repeatedly.  A single native picker
-     * request is sufficient; later calls remain successful no-ops. */
+    /* Keep this host guard for a non-product/stale bridge, but let the
+     * browser session be the source of truth when it is active. */
     if (g_file_picker_active || g_file_picker_pending) {
+        return 0;
+    }
+    accepted = 1;
+    product_result = pcore_browser_script_dispatch_native_file_picker_phase(
+            bridge, file_index, x, y,
+            PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST, &accepted);
+    if (product_result < 0) {
+        return -1;
+    }
+    if (product_result > 0 && !accepted) {
+        /* One script turn may call click() repeatedly. The product arbiter
+         * coalesces later requests into the first host picker. */
         return 0;
     }
     g_file_picker_pending = 1;
@@ -12604,6 +12857,13 @@ static int pcore_queue_file_input_picker(
     g_file_picker_pending_index = file_index;
     if (!PostMessage(bridge->hwnd, WM_PCORE_FILE_PICKER, 0, 0)) {
         pcore_file_picker_clear_pending();
+        if (product_result > 0) {
+            accepted = 0;
+            (void) pcore_browser_script_dispatch_native_file_picker_phase(
+                    bridge, file_index, x, y,
+                    PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL,
+                    &accepted);
+        }
         return -1;
     }
     return 0;
@@ -12613,14 +12873,25 @@ static int pcore_process_pending_file_picker(HWND hwnd,
         pcore_file_picker_callback callback, void *pw)
 {
     unsigned int file_index;
+    int center_x;
+    int center_y;
+    int accepted;
+    int product_result;
     int result;
+    PCoreFileInputInfo info;
+    pcore_browser_script_bridge *bridge;
 
     if (!g_file_picker_pending) {
         return 0;
     }
+    bridge = g_browser_script_session.bridge;
     if (g_file_picker_pending_hwnd != hwnd ||
             g_file_picker_pending_document != g_render_doc) {
         /* A queued request cannot cross a window/document replacement. */
+        accepted = 0;
+        (void) pcore_browser_script_dispatch_native_file_picker_phase(
+                bridge, g_file_picker_pending_index, 0, 0,
+                PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL, &accepted);
         pcore_file_picker_clear_pending();
         return 0;
     }
@@ -12629,10 +12900,42 @@ static int pcore_process_pending_file_picker(HWND hwnd,
     if (g_file_picker_active) {
         return 0;
     }
+    memset(&info, 0, sizeof(info));
+    if (PCore_FileInputInfo(g_render_doc, file_index, &info,
+            NULL, 0, NULL, 0) != 0) {
+        accepted = 0;
+        (void) pcore_browser_script_dispatch_native_file_picker_phase(
+                bridge, file_index, 0, 0,
+                PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL, &accepted);
+        return 0;
+    }
+    center_x = info.x + info.width / 2;
+    center_y = info.y + info.height / 2;
+    accepted = 0;
+    product_result = pcore_browser_script_dispatch_native_file_picker_phase(
+            bridge, file_index, center_x, center_y,
+            PBROWSER_SCRIPT_NATIVE_FILE_PICKER_OPEN, &accepted);
+    if (product_result < 0 || (product_result > 0 && !accepted)) {
+        accepted = 0;
+        (void) pcore_browser_script_dispatch_native_file_picker_phase(
+                bridge, file_index, center_x, center_y,
+                PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL, &accepted);
+        return 0;
+    }
     g_file_picker_active = 1;
     result = pcore_handle_file_input_index_with_picker(hwnd, file_index,
             callback, pw);
     g_file_picker_active = 0;
+    if (product_result > 0) {
+        accepted = 0;
+        if (pcore_browser_script_dispatch_native_file_picker_phase(
+                bridge, file_index, center_x, center_y,
+                PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CLOSE,
+                &accepted) < 0) {
+            show_error(L"File picker failed",
+                    "Could not close the browser-owned picker request");
+        }
+    }
     return result;
 }
 
@@ -71476,6 +71779,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1066: ok = test1066_native_ime_result_contract(); break;
         case 1067: ok = test1067_browser_native_edit_result_contract(); break;
         case 1068: ok = test1068_browser_native_file_selection_contract(); break;
+        case 1069: ok = test1069_browser_native_file_picker_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

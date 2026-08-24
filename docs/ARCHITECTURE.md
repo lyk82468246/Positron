@@ -960,6 +960,14 @@ BEGIN/COMMIT/CANCEL phase，保存最多 16 个 token；COMMIT 只派发一次�
 picker 窗口、文件系统权限、路径和重绘仍由宿主负责。TEST1068 是 ABI 契约，TEST262 是
 消费者回归，TEST232/263 继续作为真实对话框人工门。
 
+next621 在文件选择事件事务之外，再把 programmatic `file.click()` 的 picker 请求仲裁放入
+`positron_browser.dll`。`PBrowser_ScriptSessionDispatchNativeFilePicker()` 为每个脚本
+session 保存一个 pending/active request：REQUEST 在 host 投递窗口消息前占位，OPEN 在进入
+模态 WM6 picker 前转为 active，CLOSE/CANCEL 或 reset 清理；同一 session 的重复 request
+只返回成功 no-op，不会生成第二个 picker。token、phase 和 session 生命周期均在产品层
+校验；宿主只保存 HWND/document/index 并执行 PostMessage、系统 picker、文件系统和路径
+写入。TEST1069 是离线 ABI 门，TEST262 继续验证实际宿主接线。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

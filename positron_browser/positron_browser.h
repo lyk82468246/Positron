@@ -552,6 +552,25 @@ typedef struct PBrowserScriptNativeFileSelectionInfo {
     int phase;
 } PBrowserScriptNativeFileSelectionInfo;
 
+/* Native file-picker request arbitration phases. The browser layer owns one
+ * bounded pending/active request per script session so repeated
+ * file.click() calls coalesce and stale host messages cannot reopen a picker.
+ * The host still owns PostMessage, the system picker, file-system access and
+ * the selected path. REQUEST is issued before posting a host message, OPEN
+ * immediately before entering the modal picker, and CLOSE/CANCEL release the
+ * request after the host returns or abandons it. */
+#define PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST 1
+#define PBROWSER_SCRIPT_NATIVE_FILE_PICKER_OPEN    2
+#define PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CLOSE   3
+#define PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL  4
+typedef struct PBrowserScriptNativeFilePickerInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    int phase;
+} PBrowserScriptNativeFilePickerInfo;
+
 /* Product-owned native SELECT commit. The host calls this only after its
  * native WM control and core selection mutation have succeeded. The browser
  * layer emits the non-cancelable input -> change pair in that order and keeps
@@ -1081,6 +1100,18 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeFileSelection(
 /* Drop all bounded native file-input transaction state before native controls
  * or the document are destroyed/rebuilt. */
 PBROWSER_API int PBrowser_ScriptSessionResetNativeFileState(
+        HANDLE hSession);
+/* Arbitrate one host-owned programmatic file-picker request. out_accepted is
+ * set to 1 when the phase changed product state and 0 for an idempotent
+ * coalesced/absent request. REQUEST coalesces while another token is pending
+ * or active; CLOSE/CANCEL release the matching request without owning any
+ * picker or path. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeFilePicker(
+        HANDLE hSession, const PBrowserScriptNativeFilePickerInfo *info,
+        int *out_accepted);
+/* Drop any pending/active file-picker request before a document/session is
+ * destroyed or replaced. */
+PBROWSER_API int PBrowser_ScriptSessionResetNativeFilePickerState(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
         HANDLE hSession,

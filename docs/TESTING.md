@@ -436,6 +436,27 @@ scripts\device_gate.bat -Candidate next620-native-file-selection-transaction ^
 零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增自动视觉保证；
 TEST232/263 仍需在真实 WM6 上检查系统对话框、选择后的显示、再次取消和事件 trace。
 
+### next621 native file-picker request arbitration 自动门
+
+next621 把 `file.click()` 的宿主 picker 排队边界产品化。browser layer 的
+`PBrowser_ScriptSessionDispatchNativeFilePicker()` 对每个 session 只保留一个
+pending/active request：REQUEST 合并重复点击，OPEN/CLOSE/CANCEL 和 reset 校验 token
+并清理状态；宿主仍负责 `PostMessage`、WM6 系统 picker、文件路径和文件系统权限。
+
+TEST1069 覆盖 NULL/非法 phase、REQUEST coalescing、错误 token、重复 OPEN、活动请求
+抑制、CLOSE/CANCEL 幂等、reset 和多 session 隔离；TEST262 覆盖真实宿主 queue 的
+REQUEST→OPEN→CLOSE 接线以及 stale/cancel 回归。
+
+```bat
+scripts\device_gate.bat -Candidate next621-file-picker-arbitration ^
+  -EnableJavaScript ^
+  -TestSelection "1069,262,230,999"
+```
+
+`tmp/device-runs/20260824-120418-next621-file-picker-arbitration/` 已通过 4/4，零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉保证；
+TEST232/263 仍需人工检查真实系统对话框和选择/取消体验。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

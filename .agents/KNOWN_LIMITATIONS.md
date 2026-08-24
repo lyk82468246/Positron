@@ -48,6 +48,9 @@
   next620 的 `PBrowser_ScriptSessionDispatchNativeFileSelection()` 只持有 picker 结果的
   BEGIN/COMMIT/CANCEL 事务、一次 `input(insertFromFile)` → `change` 顺序和 16-token
   bounded state；系统 picker、文件系统、路径写入、权限和视觉仍由宿主提供。
+  next621 又由 `PBrowser_ScriptSessionDispatchNativeFilePicker()` 持有 programmatic
+  picker 的单 pending/active request、重复点击合并、OPEN/CLOSE/CANCEL 和 reset；
+  `PostMessage`、系统 picker、文件系统、路径写入、权限和视觉仍由宿主提供。
 
 ### 解除或推进条件
 
@@ -125,8 +128,8 @@
   与复杂成功控件集合仍不完整。next615 已覆盖 fieldset disabled 对产品 core 验证、successful
   controls、控件信息和交互闸门的有效状态；native 窗口样式、invalid UI、SIP/IME、picker 和
   其他宿主副作用仍不由该语义自动完成，当前 label/control 也只保证上述有界关系。
-- 文件输入依赖 WM 文件选择器；next620 已把选择结果的事务和事件顺序放入 browser DLL，
-  但自动化仍无法替代真实选择、取消、重入、权限及可见性体验。
+- 文件输入依赖 WM 文件选择器；next620/621 已把选择结果事务和 programmatic request
+  仲裁放入 browser DLL，但自动化仍无法替代真实选择、取消、重入、权限及可见性体验。
 - 旋转、软键盘弹出、原生控件与 HTML 视图重排存在需要人工观察的风险。
 
 ### 解除或推进条件
