@@ -301,7 +301,22 @@ TEST1074 使用真实 render window 消息队列覆盖 ordinary、submit、reset
 `TESTBENCH PASS`。Debug/Release ARMV4I 正式构建、C89、仓库/文档 audit 均已完成；OEM
 键盘映射、焦点视觉、真实触摸和 label 的完整事务继续作为人工边界。
 
-### 21. 建立真实页面驱动的兼容队列
+### 21. next627：label→native button 受信任转发（已完成）
+
+next627 修正启用脚本时 label 命中 native button 的消费者接线：宿主仍按
+`PCore_LabelTargetAt()` 取得 label/control 关系并先派发 label 自身 click，但 ordinary、
+submit、reset target 不再走 generic form-button 路径，而是复用既有
+`PBrowser_ScriptSessionDispatchNativeButton()` 的 CLICK→COMMIT。browser layer 因此继续持有
+目标 click/form 取消与事件顺序，宿主只执行已接受的 Core 默认动作；stale 或 disabled target
+fail closed，不合成目标 click，也不落入窗口关闭 fallback。
+
+TEST1075 覆盖 ordinary、submit、reset、button click 取消、disabled 静默和 reset 值恢复；
+`tmp/device-runs/20260824-141126-next627-label-button-r2/` 的定向设备门通过 5/5
+（TEST1075、1074、1073、1072、999），零 ERROR/FAIL，唯一 `TESTBENCH PASS`。Debug 构建、
+C89 和后续 Release/audit 必须保持既有告警基线；label 的真实触摸坐标、焦点视觉、OEM 按键
+映射和其他 labelable 控件仍不由本批自动门保证。
+
+### 22. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -312,7 +327,7 @@ TEST1074 使用真实 render window 消息队列覆盖 ordinary、submit、reset
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 22. 安排新的全范围检查点
+### 23. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

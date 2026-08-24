@@ -87,7 +87,14 @@ next626 在宿主窗口增加 native button 焦点生命周期和 WM 键盘路�
 后保存 document/index/kind，Enter 在 keydown 激活，Space 在 keyup 激活，重复 keydown 只
 派发脚本 key 事件而不重复 click。宿主调用既有 `PBrowser_ScriptSessionDispatchNativeButton()`
 并保留 Core 坐标、默认动作和窗口生命周期；TEST1074 覆盖普通、submit/reset、取消、禁用
-焦点和激活后不误关闭窗口。真实 OEM 按键映射、焦点视觉和 label 的完整事务仍需人工门。
+焦点和激活后不误关闭窗口。next626 本身不覆盖真实 OEM 按键映射、焦点视觉或 label 转发；
+label→button 的自动事务见 next627，触摸和视觉仍需人工门。
+next627 将 label 命中的 button 也接入这条 browser-owned 事务：label 自身 click 先由宿主
+按物理坐标派发，目标 ordinary/submit/reset button 再由宿主用 control index/kind 调用
+`PBrowser_ScriptSessionDispatchNativeButton()`，只有 CLICK/COMMIT 未取消才执行 Core 默认动作。
+stale 或 disabled target 不合成按钮 click，也不落入关闭窗口 fallback。TEST1075 覆盖普通、
+submit、reset、取消、disabled 和 reset 值恢复；真实 label 触摸坐标、焦点视觉和 OEM 行为仍
+需要人工观察。
 
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、

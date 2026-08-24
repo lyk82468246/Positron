@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1074
+#define TEST_MAX_NUMBER 1075
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -7024,6 +7024,8 @@ static int pcore_browser_script_dispatch_form_event_bridge(
         const char *event_type);
 static int pcore_handle_form_button_default(HWND hwnd, int x, int y,
         int kind);
+static int pcore_activate_form_button(HWND hwnd, unsigned int index,
+        int kind, int x, int y);
 
 static int pcore_native_script_active(void)
 {
@@ -14396,9 +14398,12 @@ static int pcore_process_pending_file_picker(HWND hwnd,
 
 static int pcore_handle_label(HWND hwnd, int x, int y)
 {
+    unsigned int button_index;
     int target_x;
     int target_y;
     int kind;
+    int button_kind;
+    int button_disabled;
     int disabled;
     int click_allowed;
 
@@ -14418,8 +14423,20 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
         pcore_button_focus_clear();
     }
     if (kind >= 7 && kind <= 9) {
-        (void) pcore_button_focus_track_at(target_x, target_y);
-        pcore_handle_form_button(hwnd, target_x, target_y);
+        button_index = 0;
+        button_kind = 0;
+        button_disabled = 0;
+        if (pcore_form_button_control_at(target_x, target_y,
+                &button_index, &button_kind, &button_disabled) &&
+                button_kind == kind && !button_disabled) {
+            (void) pcore_button_focus_track_at(target_x, target_y);
+            (void) pcore_activate_form_button(hwnd, button_index,
+                    button_kind, target_x, target_y);
+        } else {
+            /* A disabled or stale label target must not synthesize a button
+             * click or fall through to the window-close fallback. */
+            pcore_button_focus_clear();
+        }
     } else if (kind == 10) {
         pcore_handle_file_input(hwnd, target_x, target_y);
     } else if (kind == 1 || kind == 2) {
@@ -15947,6 +15964,282 @@ static BOOL test1074_browser_native_button_keyboard_contract(void)
             "Focused native buttons consume Enter/Space, dispatch key and"
             " click/form events in order, suppress repeats and preserve"
             " cancellation without falling through to window close.");
+    return TRUE;
+}
+
+/* TEST 1075 - trusted label forwarding to native button activation. */
+static BOOL test1075_browser_label_button_activation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='root'>"
+        "<input id='field' value='seed'>"
+        "<label id='label' for='ordinary'>Activate label</label>"
+        "<button id='ordinary' type='button'>Ordinary</button>"
+        "<button id='submit' type='submit'>Submit</button>"
+        "<button id='reset' type='reset'>Reset</button>"
+        "<button id='cancel' type='button'>Cancel</button>"
+        "<button id='disabled' type='button' disabled>Disabled</button>"
+        "<p id='result'>idle</p></form></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "label,input,button{display:block;width:220px;height:24px;margin:3px}"
+        "#result{display:block;width:500px;height:80px}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function record(e){var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+'|'"
+        "+String(e.defaultPrevented)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('click',record);"
+        "root.addEventListener('submit',function(e){e.preventDefault();record(e);});"
+        "root.addEventListener('reset',record);"
+        "document.getElementById('cancel').addEventListener('click',"
+        "function(e){e.preventDefault();});";
+    static const char ORDINARY_EVENTS[] =
+        "click|label|false;click|ordinary|false;";
+    static const char SUBMIT_EVENTS[] =
+        "click|label|false;click|submit|false;submit|submit|true;";
+    static const char RESET_EVENTS[] =
+        "click|label|false;click|reset|false;reset|reset|false;";
+    static const char CANCEL_EVENTS[] =
+        "click|label|false;click|cancel|true;";
+    static const char DISABLED_EVENTS[] = "click|label|false;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char events[512];
+    char value[128];
+    char error[384];
+    const char *stage;
+    int event_bytes;
+    int value_bytes;
+    int executed;
+    int ignored;
+    int label_x;
+    int label_y;
+    int label_w;
+    int label_h;
+    int target_x;
+    int target_y;
+    int target_kind;
+    int click_x;
+    int click_y;
+    int probe_x;
+    int probe_y;
+    int probe_step_x;
+    int probe_step_y;
+    int probe_found;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(events, 0, sizeof(events));
+    memset(value, 0, sizeof(value));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    event_bytes = 0;
+    value_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    label_x = 0;
+    label_y = 0;
+    label_w = 0;
+    label_h = 0;
+    target_x = 0;
+    target_y = 0;
+    target_kind = 0;
+    click_x = 0;
+    click_y = 0;
+    probe_x = 0;
+    probe_y = 0;
+    probe_step_x = 1;
+    probe_step_y = 1;
+    probe_found = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/label-button.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 420) != 0 ||
+                PCore_NodeBox(document, "label", &label_x, &label_y,
+                &label_w, &label_h) != 0 || label_w <= 0 || label_h <= 0) {
+            ok = 0;
+        } else {
+            probe_step_x = label_w / 4;
+            probe_step_y = label_h / 4;
+            if (probe_step_x <= 0) {
+                probe_step_x = 1;
+            }
+            if (probe_step_y <= 0) {
+                probe_step_y = 1;
+            }
+            for (probe_y = label_y;
+                    probe_y < label_y + label_h && !probe_found;
+                    probe_y += probe_step_y) {
+                for (probe_x = label_x;
+                        probe_x < label_x + label_w && !probe_found;
+                        probe_x += probe_step_x) {
+                    if (PCore_LabelTargetAt(document, probe_x, probe_y,
+                            &target_x, &target_y, &target_kind) == 1 &&
+                            target_kind == 9) {
+                        click_x = probe_x;
+                        click_y = probe_y;
+                        probe_found = 1;
+                    }
+                }
+            }
+            if (!probe_found) {
+                stage = "label-probe";
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "ordinary";
+        if (!probe_found || PCore_LabelTargetAt(document, click_x, click_y,
+                &target_x, &target_y, &target_kind) != 1 ||
+                target_kind != 9 ||
+                !pcore_browser_script_dispatch_click_at(click_x, click_y) ||
+                !pcore_handle_label(NULL, click_x, click_y) ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, ORDINARY_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "submit";
+        if (PCore_NodeSetAttributeById(document, "label", "for",
+                "submit") != 0 ||
+                pcore_browser_script_session_evaluate("window.events='';",
+                -1, error, sizeof(error)) != 0 ||
+                PCore_LabelTargetAt(document, click_x, click_y,
+                &target_x, &target_y, &target_kind) != 1 ||
+                target_kind != 7 ||
+                !pcore_browser_script_dispatch_click_at(click_x, click_y) ||
+                !pcore_handle_label(NULL, click_x, click_y) ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, SUBMIT_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "reset";
+        if (pcore_browser_script_session_evaluate(
+                "window.events='';document.getElementById('field').value="
+                "'changed';", -1, error, sizeof(error)) != 0 ||
+                PCore_NodeSetAttributeById(document, "label", "for",
+                "reset") != 0 ||
+                PCore_LabelTargetAt(document, click_x, click_y,
+                &target_x, &target_y, &target_kind) != 1 ||
+                target_kind != 8 ||
+                !pcore_browser_script_dispatch_click_at(click_x, click_y) ||
+                !pcore_handle_label(NULL, click_x, click_y) ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, RESET_EVENTS) != 0 ||
+                PCore_NodeValueById(document, "field", value,
+                sizeof(value), &value_bytes) != 0 ||
+                strcmp(value, "seed") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "cancel";
+        if (PCore_NodeSetAttributeById(document, "label", "for",
+                "cancel") != 0 ||
+                pcore_browser_script_session_evaluate("window.events='';",
+                -1, error, sizeof(error)) != 0 ||
+                PCore_LabelTargetAt(document, click_x, click_y,
+                &target_x, &target_y, &target_kind) != 1 ||
+                target_kind != 9 ||
+                !pcore_browser_script_dispatch_click_at(click_x, click_y) ||
+                !pcore_handle_label(NULL, click_x, click_y) ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, CANCEL_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "disabled";
+        if (PCore_NodeSetAttributeById(document, "label", "for",
+                "disabled") != 0 ||
+                pcore_browser_script_session_evaluate("window.events='';",
+                -1, error, sizeof(error)) != 0 ||
+                PCore_LabelTargetAt(document, click_x, click_y,
+                &target_x, &target_y, &target_kind) != 1 ||
+                target_kind != 9 ||
+                !pcore_browser_script_dispatch_click_at(click_x, click_y) ||
+                !pcore_handle_label(NULL, click_x, click_y) ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, DISABLED_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (!ok && error[0] == '\0') {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%s target=%d,%d/%d events=%s value=%s",
+                stage, target_x, target_y, target_kind, events, value);
+        error[sizeof(error) - 1] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1075 FAIL", error[0] != '\0' ? error :
+                "label button activation failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1075 OK",
+            "Label activation forwards trusted button CLICK/COMMIT through"
+            " the browser transaction; ordinary, submit, reset, cancellation"
+            " and disabled targets keep their event and default-action policy.");
     return TRUE;
 }
 
@@ -73766,6 +74059,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1072: ok = test1072_browser_native_button_contract(); break;
         case 1073: ok = test1073_browser_native_ordinary_button_contract(); break;
         case 1074: ok = test1074_browser_native_button_keyboard_contract(); break;
+        case 1075: ok = test1075_browser_label_button_activation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

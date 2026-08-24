@@ -60,12 +60,14 @@
   next624 又由 `PBrowser_ScriptSessionDispatchNativeButton()` 持有 submit/reset 原生按钮的
   CLICK/COMMIT/CANCEL、click 取消和 submit/reset 事件顺序；宿主在 click 后提供 Core 校验，
   仍负责默认提交/重置、导航、窗口、label 转发、重绘和原生视觉。程序化 click 与直接物理
-  label 激活不由该入口额外覆盖。
+  label 激活不由 next624 单独定义；next627 仅把 button label 转发接入该既有入口。
   next625 又扩展该入口覆盖 ordinary `<button type="button">` 的 CLICK/COMMIT：普通按钮不
   派发 submit/reset，宿主消费已接受的默认动作，因此物理点击不再误关闭页面；普通按钮的
   键盘焦点/激活现在由宿主以 TEST1074 的消息级契约覆盖，Enter/Space 事务不再落入关闭
-  窗口 fallback；真实 OEM 按键映射、焦点视觉、触摸和 label 的完整 native button 事务仍
-  需单独人工验收。
+  窗口 fallback。next627 又让启用脚本时 label 命中的 kind=7..9 button 复用同一
+  CLICK/COMMIT 事务；label 命中、label 自身 click、Core 坐标和默认动作仍由宿主提供，
+  disabled/stale target fail closed。真实 OEM 按键映射、焦点视觉、触摸、label 几何和
+  toggle/file 等其他 labelable 控件仍需单独人工或独立门验收。
 
 ### 解除或推进条件
 

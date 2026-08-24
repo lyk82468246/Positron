@@ -1002,6 +1002,14 @@ browser layer 继续拥有 click/form 取消与事件顺序，宿主只拥有 WM
 焦点、默认动作和重绘；TEST1074 是实际窗口消息级消费者门。OEM 键盘映射、焦点视觉及
 label 点击的完整 native button 事务仍不由此 ABI 保证。
 
+next627 复用同一公共 ABI 补齐启用脚本时的 label→native button 转发。宿主仍负责
+`PCore_LabelTargetAt()` 的物理命中、label 自身 click 和 Core 坐标，但对 button target
+不再调用 generic form-button 路径，而是按稳定 control index/kind 进入已有
+`PBrowser_ScriptSessionDispatchNativeButton()` CLICK→COMMIT；因此 ordinary、submit、reset
+的取消、form-event 顺序和 disabled 静默与直接按钮激活保持一致，接受后的默认动作仍由
+宿主执行。stale/disabled target fail closed，不落入窗口关闭 fallback。TEST1075 是该消费者
+接线门；label 的真实触摸坐标、焦点视觉和其他 labelable 控件仍不是该自动门的承诺。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

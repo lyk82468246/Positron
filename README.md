@@ -211,11 +211,16 @@ next625 扩展同一入口支持普通 `<button type="button">`：browser layer 
 generic click 后误关闭窗口。`TEST1073` 覆盖普通按钮的成功、取消、禁用、非法 kind 和
 共享 session helper 路径。
 next626 为同一组受信任原生按钮补齐宿主键盘焦点与激活路由：直接命中的 enabled button
- 记录 Core 文档/控件焦点，Enter 在 keydown 激活，Space 在 keyup 激活；重复 keydown 仍可
- 交给脚本观察但不会重复执行 click→commit。事务继续复用 `positron_browser.dll`，宿主只
- 负责 WM 消息、焦点生命周期和 Core 坐标；`TEST1074` 覆盖普通、submit、reset、取消、
- 禁用和窗口不误关闭的消息级契约。真实 OEM 键盘视觉、硬件按键映射和 label 的完整产品
- 事务仍属于后续人工/独立边界。
+记录 Core 文档/控件焦点，Enter 在 keydown 激活，Space 在 keyup 激活；重复 keydown 仍可
+交给脚本观察但不会重复执行 click→commit。事务继续复用 `positron_browser.dll`，宿主只
+负责 WM 消息、焦点生命周期和 Core 坐标；`TEST1074` 覆盖普通、submit、reset、取消、
+禁用和窗口不误关闭的消息级契约。next626 本身不覆盖真实 OEM 键盘视觉、硬件按键映射或
+label 转发；label→button 的自动事务见 next627，触摸与视觉仍属于人工/独立边界。
+next627 将 label 命中的 native button 转发到同一 browser-owned CLICK→COMMIT 事务：
+ordinary、submit、reset、取消和 disabled 目标不再绕过产品按钮策略；label 自身的 click
+仍先按物理命中派发，目标按钮的默认动作只在 browser layer 未取消时执行。`TEST1075`
+覆盖 label 转发、事件顺序、reset 状态、取消和 disabled 静默；真实触摸坐标、焦点视觉、
+OEM 按键映射和其他 labelable 控件仍需人工或独立边界确认。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node

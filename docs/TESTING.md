@@ -563,6 +563,24 @@ scripts\device_gate.bat -Candidate next626-native-button-keyboard-r4 ^
 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。这是一条自动化消息/事件契约
 门；真实 OEM 键盘映射、焦点视觉、触摸和 label 的完整事务仍需累计人工验收。
 
+### next627 label→native button 转发自动门
+
+next627 修正启用脚本时 label 命中 native button 的宿主接线：label 自身 click 仍先派发，
+目标 button 改为复用 `PBrowser_ScriptSessionDispatchNativeButton()` 的 CLICK→COMMIT，而不再
+走 generic form-button 路径。普通、submit、reset 的事件取消和默认动作保持同一策略；disabled
+或 stale target 不合成 click，也不关闭窗口。TEST1075 同时覆盖 label 事件顺序、reset 值恢复、
+button click 取消和 disabled 静默，并与 1072–1074、999 回归：
+
+```bat
+scripts\device_gate.bat -Candidate next627-label-button-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "1075,1074,1073,1072,999"
+```
+
+`tmp/device-runs/20260824-141126-next627-label-button-r2/` 已通过 5/5，零 ERROR/FAIL、
+唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。这是产品/宿主事件契约自动门；label 的真实
+触摸坐标、焦点视觉、OEM 按键映射和其他 labelable 控件仍需人工或后续独立门确认。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

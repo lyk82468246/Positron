@@ -312,6 +312,13 @@ CLICK→COMMIT。browser DLL 不新增 WM 或焦点所有权，继续负责 clic
 事件顺序；普通按钮仍不产生 submit/reset。TEST1074 是宿主真实窗口消息级接线门，验证重复
 键不会重复 trusted activation，取消和 form-event default policy 不泄漏。
 
+next627 不新增 ABI，而是要求宿主在 label 命中 button 时复用同一
+`PBrowser_ScriptSessionDispatchNativeButton()` CLICK→COMMIT 入口。browser layer 因而继续
+统一 ordinary、submit、reset 的 click/form 取消与 disabled 策略；宿主只提供 label/control
+命中、稳定 token、Core validation/default action 和窗口副作用。TEST1075 覆盖 label 自身
+click 后的目标按钮事件顺序、reset 状态、取消和 disabled 静默；label 几何、触摸和焦点视觉
+仍由消费者负责。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、
