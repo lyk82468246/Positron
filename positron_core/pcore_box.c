@@ -10763,6 +10763,61 @@ PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
     return 0;
 }
 
+PCORE_API int PCore_FragmentInfoById(HANDLE hDoc, const char *fragment_id,
+        int *x, int *y, int *w, int *h)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_string *id;
+    dom_element *element;
+    struct box *box;
+    int ax;
+    int ay;
+
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL || fragment_id == NULL || fragment_id[0] == '\0') {
+        return 1;
+    }
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) fragment_id,
+            strlen(fragment_id), &id) != DOM_NO_ERR || id == NULL ||
+            dom_document_get_element_by_id(doc, id, &element) != DOM_NO_ERR ||
+            element == NULL) {
+        if (id != NULL) {
+            dom_string_unref(id);
+        }
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    dom_string_unref(id);
+    box = pcore_box_for_any_node(st->root_box, (dom_node *) element);
+    if (box == NULL || box->width <= 0 || box->height <= 0) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    if (x != NULL) {
+        *x = ax;
+    }
+    if (y != NULL) {
+        *y = ay;
+    }
+    if (w != NULL) {
+        *w = box->width;
+    }
+    if (h != NULL) {
+        *h = box->height;
+    }
+    dom_node_unref((dom_node *) element);
+    return 0;
+}
+
 static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,
         int *out_x, int *out_y, int *dirty_x, int *dirty_y,
         int *dirty_w, int *dirty_h)

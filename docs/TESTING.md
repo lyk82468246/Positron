@@ -665,6 +665,27 @@ scripts\device_gate.bat -Candidate next631-programmatic-anchor-r4 ^
 另通过 18/18，同样零错误/失败。r1 是补充的旧 fixture 证据，不作为本批最终门。
 本批未修改 tracked INI，也不新增视觉、真实触摸、SIP、旋转、picker 或网络失败人工门。
 
+### next632 同页 fragment 锚点自动门
+
+next632 将纯 fragment href 与跨页 ASSIGN 区分开：browser layer 仍先派发一次 cancelable
+click，接受后对 `#target` 提交 `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`；宿主 navigation
+adapter 把 fragment-only URL 绑定到当前页面，提交 history/hashchange，并用
+`PCore_FragmentInfoById()` 取得已布局 DOM id 的目标几何后移动自己的视口。未知 id 保持
+当前位置但不发起网络请求；`<a name>`、percent-decoding、target/rel/window 和真实页面
+滚动视觉不由该窄门扩张为通用保证。
+
+```bat
+scripts\device_gate.bat -Candidate next632-fragment-anchor-r1 ^
+  -EnableJavaScript ^
+  -TestSelection "1080,1079,1070,999"
+```
+
+`tmp/device-runs/20260824-172351-next632-fragment-anchor-r1/` 已通过 4/4，零 `ERROR`/`FAIL`、
+唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。TEST1080 覆盖 fragment/ASSIGN 分类、
+Core 几何、当前 URL 绑定、目标滚动和 unknown-id 保持位置；tracked INI 未修改。本批没有
+新增必须立即人工复核的崩溃、数据损坏或核心流程阻塞风险，真实页面的滚动/视觉仍按累计人工
+页面门处理。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

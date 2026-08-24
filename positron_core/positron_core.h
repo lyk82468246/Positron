@@ -672,6 +672,15 @@ PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
                                  int *x, int *y, int *w, int *h,
                                  char *out_href, int cap);
 
+/* Resolve a same-document fragment target by its literal UTF-8 DOM id.
+ * Geometry is returned in document CSS px after layout.  The leading '#'
+ * is not part of fragment_id.  Returns 0 for a matching, laid-out element
+ * and non-zero when the id is empty/missing, the document is not laid out,
+ * or the target has no usable box.  This narrow bridge intentionally leaves
+ * percent-decoding, <a name> aliases and scrolling policy to the host. */
+PCORE_API int PCore_FragmentInfoById(HANDLE hDoc, const char *fragment_id,
+                                    int *x, int *y, int *w, int *h);
+
 /* Activate a checkbox/radio at a document-space point. The control consumes
  * the click even when disabled or already-selected. Changed controls are
  * synchronised to libdom so later re-layouts retain their state. A union

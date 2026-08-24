@@ -355,6 +355,15 @@ next631 在不改变上述 form-click callback ABI 的前提下增加了独立�
 `preventDefault()`、缺失/容量 fail-closed 和无 href 的 generic 边界；TEST1070 继续覆盖
 导航适配器拒绝。
 
+next632 在同一锚点事务上补齐 fragment-only href 的产品导航分类：
+`PBrowser_ScriptSessionDispatchAnchorClick()` 对以 `#` 开头的 href 提交
+`PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`，其余 href 继续提交 ASSIGN。browser DLL 仍只持有
+click 取消和 typed navigation；宿主负责把片段 URL 绑定到当前页面、history/hashchange、
+目标几何查询和视口滚动。`PCore_FragmentInfoById()` 只提供已布局、literal UTF-8 DOM id
+的几何；未知目标不伪造失败或网络请求，`<a name>`、percent-decoding、target/rel/window
+和跨文档导航策略仍未覆盖。TEST1080 覆盖 fragment/ASSIGN 分类、目标几何、URL 绑定和
+未知目标保持位置。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

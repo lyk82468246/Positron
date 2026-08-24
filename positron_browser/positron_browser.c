@@ -7672,7 +7672,12 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClick(
     }
     memset(&navigation_info, 0, sizeof(navigation_info));
     navigation_info.size = sizeof(navigation_info);
-    navigation_info.kind = PBROWSER_SCRIPT_NAVIGATION_ASSIGN;
+    /* A fragment-only href cannot leave the current document.  Keep the
+     * same-document history/hashchange path distinct from network ASSIGN;
+     * the host still validates the current base URL and owns scrolling. */
+    navigation_info.kind = (info->href[0] == '#') ?
+            PBROWSER_SCRIPT_NAVIGATION_FRAGMENT :
+            PBROWSER_SCRIPT_NAVIGATION_ASSIGN;
     navigation_info.url = info->href;
     navigation_info.state_json = NULL;
     navigation_info.delta = 0;

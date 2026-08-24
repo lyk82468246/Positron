@@ -65,6 +65,13 @@ preventDefault 和 ASSIGN 导航适配，宿主不再直接为启用脚本的链
 宿主仍拥有 `PCore_LinkAt` 命中测试、网络 worker、窗口替换和无脚本 fallback。
 TEST1070 同时验证产品契约与该 helper 的消费者接线。
 
+next632 继续沿用该链接路径：fragment-only href 由 browser DLL 标记为
+`PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`，宿主的 navigation adapter 将 `#id` 绑定到当前页面
+URL，再通过 bounded `PCore_FragmentInfoById()` 取得已布局目标并移动自己的 scrollbar；
+history/hashchange、native-child reposition 和窗口/网络副作用仍归宿主，未知 id 不移动视口。
+跨页 href 仍走 ASSIGN。TEST1080 覆盖产品分类、Core 几何、fragment URL 绑定和目标滚动的
+可断言边界；percent-decoding、`<a name>`、target/rel/window 仍不由本宿主宣称支持。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

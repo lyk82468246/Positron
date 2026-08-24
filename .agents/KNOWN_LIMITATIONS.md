@@ -87,6 +87,11 @@
   真实触摸仍由宿主/后续范围负责。TEST1079 已覆盖接受导航、preventDefault、容量/缺失和无
   href 边界，TEST1070 继续覆盖导航适配器拒绝；这不等于完整 anchor activation 或现代
   浏览器导航策略。
+  next632 又把 fragment-only href（以 `#` 开头）分类为同页
+  `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
+  `PCore_FragmentInfoById()` 取得 literal UTF-8 DOM id 的目标几何并移动自己的 viewport；
+  unknown id 保持当前位置且不发起网络请求。`<a name>`、percent-decoding、target/rel/window、
+  fragment 视觉和真实触摸仍未覆盖；TEST1080 只证明产品分类、Core 几何和宿主窄接线。
 
 ### 解除或推进条件
 

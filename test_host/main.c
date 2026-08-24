@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1079
+#define TEST_MAX_NUMBER 1080
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6378,6 +6378,45 @@ static int pcore_browse_history_same_base_url(const char *left,
             memcmp(left, right, left_length) == 0;
 }
 
+/* Browser fragment navigation may arrive from an anchor as a fragment-only
+ * href.  The product browser layer deliberately keeps that borrowed href
+ * unchanged; the host expands it against the visible document URL before
+ * applying the same-base history guard. */
+static int pcore_browser_script_normalize_fragment_url(
+        const pcore_browser_script_bridge *bridge, const char *url,
+        char *out_url, int out_capacity)
+{
+    const char *hash;
+    size_t base_length;
+    size_t fragment_length;
+
+    if (bridge == NULL || url == NULL || url[0] == '\0' ||
+            out_url == NULL || out_capacity <= 0) {
+        return 0;
+    }
+    if (url[0] != '#') {
+        if (strlen(url) >= (size_t) out_capacity) {
+            return 0;
+        }
+        memcpy(out_url, url, strlen(url) + 1);
+        return 1;
+    }
+    if (bridge->history_url == NULL || bridge->history_url[0] == '\0') {
+        return 0;
+    }
+    hash = strchr(bridge->history_url, '#');
+    base_length = (hash != NULL) ?
+            (size_t) (hash - bridge->history_url) :
+            strlen(bridge->history_url);
+    fragment_length = strlen(url);
+    if (base_length + fragment_length >= (size_t) out_capacity) {
+        return 0;
+    }
+    memcpy(out_url, bridge->history_url, base_length);
+    memcpy(out_url + base_length, url, fragment_length + 1);
+    return 1;
+}
+
 /* History state URLs may change the path/query, but must remain same-origin.
  * This intentionally compares the textual scheme/authority boundary, with
  * only HTTP/HTTPS default-port normalization; it is a narrow browser-script
@@ -8672,7 +8711,8 @@ static int pcore_browser_script_dispatch_click_at(int x, int y)
 
 /* Trusted anchor activation is product-owned when a browser script session
  * is active: the browser layer dispatches the cancelable click and forwards
- * an accepted ASSIGN request through its navigation adapter. The host keeps
+ * an accepted ASSIGN or same-document FRAGMENT request through its navigation
+ * adapter. The host keeps
  * only hit-testing, network I/O and window replacement. Without scripting,
  * preserve the direct Core click fallback. */
 static int pcore_browser_script_dispatch_anchor_click_at(int x, int y,
@@ -8716,6 +8756,7 @@ static int test1070_browser_anchor_host_route(
     pcore_browser_script_bridge bridge_storage;
     int rc;
     int ok;
+    int observed_scroll;
 
     if (state == NULL || session == NULL) {
         return 0;
@@ -9838,6 +9879,46 @@ static void pcore_scroll_by(HWND hwnd, int dy)
     UpdateWindow(hwnd);
 }
 
+/* Apply the visual side of same-document fragment navigation.  Core exposes
+ * only the bounded target geometry; the host owns the viewport, scrollbar and
+ * native-child repositioning.  Unknown ids intentionally leave the current
+ * scroll position unchanged while history/hashchange still succeed. */
+static int pcore_browser_script_scroll_to_fragment(HWND hwnd,
+        const char *url)
+{
+    const char *hash;
+    char fragment_id[PCORE_SCRIPT_NAVIGATION_URL_MAX];
+    size_t length;
+    int target_y;
+
+    if (g_render_doc == NULL || url == NULL || url[0] == '\0') {
+        return 0;
+    }
+    hash = strchr(url, '#');
+    if (hash == NULL) {
+        return 0;
+    }
+    length = strlen(hash + 1);
+    if (length >= sizeof(fragment_id)) {
+        return 0;
+    }
+    if (length == 0) {
+        target_y = 0;
+    } else {
+        memcpy(fragment_id, hash + 1, length + 1);
+        if (PCore_FragmentInfoById(g_render_doc, fragment_id,
+                NULL, &target_y, NULL, NULL) != 0) {
+            return 0;
+        }
+    }
+    if (hwnd == NULL || !IsWindow(hwnd)) {
+        g_scroll_y = target_y;
+        return 1;
+    }
+    pcore_scroll_by(hwnd, target_y - g_scroll_y);
+    return 1;
+}
+
 /* Convert the core's document-space overflow viewport to the current client
  * coordinates. Retained scrollbar input never needs to invalidate the rest of
  * the page, which is important on slow WM GDI devices. */
@@ -10930,6 +11011,7 @@ static int pcore_browser_script_navigation(void *pw,
 {
     pcore_browser_script_bridge *bridge;
     const char *url;
+    char normalized_fragment_url[PCORE_SCRIPT_NAVIGATION_URL_MAX];
     char *url_copy;
     char *target_url_copy;
     char *state_copy;
@@ -11084,6 +11166,16 @@ static int pcore_browser_script_navigation(void *pw,
     if (url == NULL || url[0] == '\0' ||
             strlen(url) >= PCORE_SCRIPT_NAVIGATION_URL_MAX) {
         return 0;
+    }
+    normalized_fragment_url[0] = '\0';
+    if (info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT ||
+            info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE) {
+        if (!pcore_browser_script_normalize_fragment_url(bridge, url,
+                normalized_fragment_url,
+                sizeof(normalized_fragment_url))) {
+            return 0;
+        }
+        url = normalized_fragment_url;
     }
     if ((info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT ||
             info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE) &&
@@ -11488,6 +11580,7 @@ static int pcore_browser_script_session_navigate_fragment(const char *url,
             url, bridge->history_length) != PSCRIPT_OK) {
         return 1;
     }
+    (void) pcore_browser_script_scroll_to_fragment(bridge->hwnd, url);
     return 0;
 }
 
@@ -17510,6 +17603,226 @@ static BOOL test1079_browser_programmatic_anchor_activation_contract(void)
             "HTMLElement.click() resolves an anchor by DOM id, dispatches"
             " one cancelable click and forwards only accepted ASSIGN"
             " navigation; anchors without href remain on generic handling.");
+    return TRUE;
+}
+
+typedef struct test1080_fragment_anchor_state {
+    int click_calls;
+    int navigation_calls;
+    int navigation_result;
+    unsigned int navigation_kind;
+    char href[128];
+} test1080_fragment_anchor_state;
+
+static int test1080_fragment_anchor_click(void *pw,
+        const PBrowserScriptClickEventInfo *info,
+        int *out_default_allowed)
+{
+    test1080_fragment_anchor_state *state;
+
+    state = (test1080_fragment_anchor_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptClickEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "click") != 0) {
+        return -1;
+    }
+    state->click_calls++;
+    *out_default_allowed = 1;
+    return 0;
+}
+
+static int test1080_fragment_anchor_navigation(void *pw,
+        const PBrowserScriptNavigationInfo *info, int *out_value)
+{
+    test1080_fragment_anchor_state *state;
+    size_t length;
+
+    state = (test1080_fragment_anchor_state *) pw;
+    if (state == NULL || info == NULL || out_value == NULL ||
+            info->size < sizeof(PBrowserScriptNavigationInfo) ||
+            (info->kind != PBROWSER_SCRIPT_NAVIGATION_FRAGMENT &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_ASSIGN) ||
+            info->url == NULL) {
+        return -1;
+    }
+    length = strlen(info->url);
+    if (length >= sizeof(state->href)) {
+        return -1;
+    }
+    state->navigation_calls++;
+    state->navigation_kind = info->kind;
+    memcpy(state->href, info->url, length + 1);
+    *out_value = 0;
+    return state->navigation_result ? 1 : 0;
+}
+
+/* TEST 1080 - same-document fragment anchor activation and target scroll. */
+static BOOL test1080_browser_fragment_anchor_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><a id='jump' href='#target'>Jump</a>"
+        "<a id='top' href='#'>Top</a><div id='spacer'>spacer</div>"
+        "<h2 id='target'>Target</h2></body></html>";
+    static const char CSS[] =
+        "body{margin:8px;font:14px sans-serif}"
+        "a{display:block;height:24px;margin:4px}"
+        "#spacer{height:180px}#target{height:24px}";
+    PBrowserScriptClickCallbacks click_callbacks;
+    PBrowserScriptNavigationCallbacks navigation_callbacks;
+    PBrowserScriptAnchorClickInfo anchor_info;
+    test1080_fragment_anchor_state state;
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE session;
+    char normalized[PCORE_SCRIPT_NAVIGATION_URL_MAX];
+    char error[256];
+    int target_x;
+    int target_y;
+    int target_w;
+    int target_h;
+    int missing_y;
+    int navigated;
+    int rc;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    session = NULL;
+    memset(&state, 0, sizeof(state));
+    memset(&click_callbacks, 0, sizeof(click_callbacks));
+    memset(&navigation_callbacks, 0, sizeof(navigation_callbacks));
+    memset(&anchor_info, 0, sizeof(anchor_info));
+    memset(normalized, 0, sizeof(normalized));
+    memset(error, 0, sizeof(error));
+    target_x = 0;
+    target_y = 0;
+    target_w = 0;
+    target_h = 0;
+    missing_y = 0;
+    navigated = 0;
+    rc = PSCRIPT_OK;
+    ok = 1;
+    observed_scroll = 0;
+    state.navigation_result = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "https://example.com/fragment.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 320, 240) != 0 ||
+            PCore_FragmentInfoById(document, "target", &target_x,
+            &target_y, &target_w, &target_h) != 0 || target_y <= 0 ||
+            target_w <= 0 || target_h <= 0 ||
+            PCore_FragmentInfoById(document, "missing", NULL, &missing_y,
+            NULL, NULL) == 0) {
+        ok = 0;
+    }
+    if (ok) {
+        click_callbacks.size = sizeof(click_callbacks);
+        click_callbacks.pw = &state;
+        click_callbacks.dispatch_click = test1080_fragment_anchor_click;
+        navigation_callbacks.size = sizeof(navigation_callbacks);
+        navigation_callbacks.pw = &state;
+        navigation_callbacks.navigate = test1080_fragment_anchor_navigation;
+        session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+        if (session == NULL ||
+                PBrowser_ScriptSessionRegisterClickCallbacks(session,
+                &click_callbacks) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionRegisterNavigationCallbacks(session,
+                &navigation_callbacks) != PSCRIPT_OK) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        anchor_info.size = sizeof(anchor_info);
+        anchor_info.x = 12;
+        anchor_info.y = 34;
+        anchor_info.href = "#target";
+        navigated = 0;
+        rc = PBrowser_ScriptSessionDispatchAnchorClick(session,
+                &anchor_info, &navigated);
+        if (rc != PSCRIPT_OK || navigated != 1 || state.click_calls != 1 ||
+                state.navigation_calls != 1 ||
+                state.navigation_kind != PBROWSER_SCRIPT_NAVIGATION_FRAGMENT ||
+                strcmp(state.href, "#target") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        anchor_info.href = "/next";
+        navigated = 0;
+        rc = PBrowser_ScriptSessionDispatchAnchorClick(session,
+                &anchor_info, &navigated);
+        if (rc != PSCRIPT_OK || navigated != 1 || state.click_calls != 2 ||
+                state.navigation_calls != 2 ||
+                state.navigation_kind != PBROWSER_SCRIPT_NAVIGATION_ASSIGN ||
+                strcmp(state.href, "/next") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        pcore_browser_script_bridge bridge;
+
+        memset(&bridge, 0, sizeof(bridge));
+        bridge.history_url = "https://example.com/page#old";
+        if (!pcore_browser_script_normalize_fragment_url(&bridge, "#target",
+                normalized, sizeof(normalized)) ||
+                strcmp(normalized, "https://example.com/page#target") != 0 ||
+                !pcore_browser_script_normalize_fragment_url(&bridge,
+                "https://example.com/page#other", normalized,
+                sizeof(normalized)) ||
+                strcmp(normalized, "https://example.com/page#other") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        if (!pcore_browser_script_scroll_to_fragment(NULL,
+                "https://example.com/page#target") ||
+                g_scroll_y != target_y ||
+                pcore_browser_script_scroll_to_fragment(NULL,
+                "https://example.com/page#missing") ||
+                g_scroll_y != target_y) {
+            ok = 0;
+        }
+        observed_scroll = g_scroll_y;
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_scroll_y = 0;
+    if (session != NULL) {
+        (void) PBrowser_ScriptSessionUnregisterNavigationCallbacks(session);
+        (void) PBrowser_ScriptSessionUnregisterClickCallbacks(session);
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "target=%d,%d,%d,%d scroll=%d calls=%d/%d kind=%u href=%s "
+                "rc=%d nav=%d",
+                target_x, target_y, target_w, target_h, observed_scroll,
+                state.click_calls, state.navigation_calls,
+                state.navigation_kind, state.href, rc, navigated);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1080 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1080 OK",
+            "Fragment-only anchors use same-document navigation and target "
+            "geometry for host-owned scrolling; cross-document hrefs retain "
+            "ASSIGN behavior.");
     return TRUE;
 }
 
@@ -75334,6 +75647,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1077: ok = test1077_browser_label_native_control_contract(); break;
         case 1078: ok = test1078_browser_programmatic_native_focus_contract(); break;
         case 1079: ok = test1079_browser_programmatic_anchor_activation_contract(); break;
+        case 1080: ok = test1080_browser_fragment_anchor_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

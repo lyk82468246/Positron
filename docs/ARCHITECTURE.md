@@ -111,6 +111,9 @@ JSON-compatible global、native callback、执行预算和内存限制，但本�
 - 按 DOM id 查询已布局、带非空 `href` 的 `<a>` 几何和 UTF-8 URL（`PCore_LinkInfoById`），
   供浏览器 bridge 实现程序化锚点激活；该查询只复制到调用者缓冲区，不暴露 libdom/box
   指针，也不发起网络或窗口副作用；
+- 按 DOM id 查询已布局片段目标几何（`PCore_FragmentInfoById`），供宿主执行同页
+  fragment 滚动；该窄查询只接受 literal UTF-8 id，不负责 percent-decoding、`<a name>`、
+  history、网络或窗口副作用；
 - 按 DOM id 查询控件的约束状态（`valid`、`will_validate` 和 `PCORE_VALIDITY_*` flags），供浏览器
   bridge 或其他宿主在布局前后读取；该查询不触发 invalid 事件，也不应用 form-level no-validate
   提交按钮绕过；
@@ -1057,6 +1060,17 @@ Core 不暴露 libdom/box 指针，网络请求、窗口替换、文档生命周
 触摸仍由宿主负责。TEST1079 是该真实 script-session 消费者门，TEST1070 继续覆盖导航适配器
 拒绝；两者都不能替代完整 anchor 导航
 策略或视觉人工验收。
+
+#### next632 的同页 fragment 锚点边界
+
+next632 让 `PBrowser_ScriptSessionDispatchAnchorClick()` 把 fragment-only href（以 `#`
+开头）提交为 `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`，跨页 href 仍提交 ASSIGN；click 取消、
+导航适配器错误和原有 borrowed-string/size-tagged 契约不变。`test_host` 的 adapter 将
+片段绑定到当前 history URL，提交 `PBrowser_ScriptSessionDispatchHashNavigation()` 后，
+通过 `PCore_FragmentInfoById()` 读取目标几何并移动自己的 viewport/scrollbar；未知目标只
+更新 history/hashchange，不伪造网络请求或滚动失败。TEST1080 覆盖产品分类、literal id
+几何、fragment URL 绑定、目标滚动和 unknown-id 保持位置。percent-decoding、`<a name>`、
+target/rel/window、跨文档加载和真实页面视觉仍是后续或人工边界。
 
 #### next614 的 label/control 关系边界
 

@@ -374,7 +374,18 @@ TEST1079、1070、999 通过 3/3，
 相关累计门另通过 18/18，均零 ERROR/FAIL、唯一 `TESTBENCH PASS`。本批不新增视觉、触摸、
 SIP、旋转、picker 或失败网络人工门。
 
-### 26. 建立真实页面驱动的兼容队列
+### 26. next632：同页 fragment 锚点激活纵切（已完成）
+
+next632 在 next631 的受信任锚点事务上补齐 fragment-only href：browser layer 将以 `#` 开头
+的 href 提交为 `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`，跨页 href 继续 ASSIGN；宿主把片段
+绑定到当前 history URL，并在 hashchange/history 提交后按 `PCore_FragmentInfoById()` 的
+literal UTF-8 DOM id 几何移动 viewport。未知 id 保持位置且不发起网络请求；Core 不暴露
+内部 box/libdom 指针，percent-decoding、`<a name>`、target/rel/window 和真实视觉仍未覆盖。
+
+TEST1080 与 TEST1079、1070、999 的窄门通过 4/4，零 ERROR/FAIL、唯一 `TESTBENCH PASS`，
+并保留原有默认自动 INI。
+
+### 27. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -385,7 +396,7 @@ SIP、旋转、picker 或失败网络人工门。
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 27. 安排新的全范围检查点
+### 28. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

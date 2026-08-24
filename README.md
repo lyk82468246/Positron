@@ -261,6 +261,11 @@ ASSIGN navigation，`positron_core.dll` 的 `PCore_LinkInfoById()` 负责按 DOM
 两者的关系和所有权见
 [架构说明](docs/ARCHITECTURE.md)。
 
+next632 又补齐同页 fragment 锚点的受控激活：以 `#` 开头的 `<a href>` 在 browser layer
+中走 fragment history/hashchange，宿主用 `PCore_FragmentInfoById()` 把已布局目标滚入视口；
+未知目标保持当前滚动，跨页链接继续走 ASSIGN。`TEST1080` 已在 WM6 设备门覆盖该分类、
+几何和失败边界；`<a name>`、percent-decoding 与 target/rel/window 仍是明确限制。
+
 ## 快速开始
 
 ### 前置环境
