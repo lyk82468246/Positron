@@ -251,6 +251,13 @@ WM/OEM 视觉和文件 picker 仍由宿主负责。`TEST1078` 在真实 render w
 session heap ceiling；独立
 `positron_script.dll` 默认堆仍为
 512 KiB。它不是第二套引擎。
+
+next631 又补齐脚本 `HTMLElement.click()` 对带 `href` 锚点的受控激活：
+`positron_browser.dll` 通过独立的 programmatic-anchor callback 复用 cancelable click 与
+ASSIGN navigation，`positron_core.dll` 的 `PCore_LinkInfoById()` 负责按 DOM id 提供已布局
+几何和 UTF-8 href；网络、窗口替换、无 href generic click 和文档生命周期仍由宿主负责。
+`TEST1079` 已在 WM6 设备门覆盖接受导航、`preventDefault()`、容量/缺失和无 href generic
+边界；`TEST1070` 继续覆盖导航适配器拒绝。
 两者的关系和所有权见
 [架构说明](docs/ARCHITECTURE.md)。
 

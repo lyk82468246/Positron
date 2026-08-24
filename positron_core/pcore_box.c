@@ -10511,6 +10511,29 @@ static struct box *pcore_box_for_node(struct box *box, dom_node *node)
     return NULL;
 }
 
+/* Unlike pcore_box_for_node(), link lookup also needs ordinary inline boxes
+ * that do not carry a form gadget. Keep this traversal private so the public
+ * API exposes only the bounded geometry/copy-out contract. */
+static struct box *pcore_box_for_any_node(struct box *box, dom_node *node)
+{
+    struct box *child;
+    struct box *found;
+
+    if (box == NULL || node == NULL) {
+        return NULL;
+    }
+    if (box->node == node) {
+        return box;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        found = pcore_box_for_any_node(child, node);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
 PCORE_API int PCore_LabelTargetAt(HANDLE hDoc, int x, int y,
         int *target_x, int *target_y, int *target_kind)
 {
@@ -10645,6 +10668,99 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
         }
     }
     return rc;
+}
+
+PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
+        int *x, int *y, int *w, int *h, char *out_href, int cap)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_string *id;
+    dom_element *element;
+    dom_string *name;
+    dom_string *href;
+    struct box *box;
+    const char *name_data;
+    const char *href_data;
+    int href_len;
+    int ax;
+    int ay;
+
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL || element_id == NULL || element_id[0] == '\0' ||
+            out_href == NULL || cap <= 0) {
+        return 1;
+    }
+    if (pcore_ensure_link_strings() != 0) {
+        return 1;
+    }
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) element_id,
+            strlen(element_id), &id) != DOM_NO_ERR || id == NULL ||
+            dom_document_get_element_by_id(doc, id, &element) != DOM_NO_ERR ||
+            element == NULL) {
+        if (id != NULL) {
+            dom_string_unref(id);
+        }
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    dom_string_unref(id);
+    name = NULL;
+    if (dom_node_get_node_name((dom_node *) element, &name) != DOM_NO_ERR ||
+            name == NULL) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    name_data = dom_string_data(name);
+    if (name_data == NULL ||
+            !dom_string_caseless_isequal(name, pcore_a_name)) {
+        dom_string_unref(name);
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    dom_string_unref(name);
+    href = NULL;
+    if (dom_element_get_attribute(element, pcore_href_name, &href) !=
+            DOM_NO_ERR || href == NULL) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    href_data = dom_string_data(href);
+    href_len = (int) dom_string_byte_length(href);
+    if (href_data == NULL || href_len <= 0 || href_len >= cap) {
+        dom_string_unref(href);
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    box = pcore_box_for_any_node(st->root_box, (dom_node *) element);
+    if (box == NULL) {
+        dom_string_unref(href);
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    box_coords(box, &ax, &ay);
+    if (x != NULL) {
+        *x = ax;
+    }
+    if (y != NULL) {
+        *y = ay;
+    }
+    if (w != NULL) {
+        *w = box->width;
+    }
+    if (h != NULL) {
+        *h = box->height;
+    }
+    memcpy(out_href, href_data, (size_t) href_len);
+    out_href[href_len] = '\0';
+    dom_string_unref(href);
+    dom_node_unref((dom_node *) element);
+    return 0;
 }
 
 static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,

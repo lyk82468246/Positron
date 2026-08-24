@@ -359,7 +359,22 @@ select click 取消和 disabled 静默；与 TEST1077、1076、1075、1074、107
 999 的相关回归门已通过 11/11。该批不新增人工页面门；下拉展开、真实触摸、焦点视觉、SIP/IME
 和 OEM 行为继续按累计人工风险处理。
 
-### 25. 建立真实页面驱动的兼容队列
+### 25. next631：programmatic anchor 激活纵切（已完成）
+
+next631 在不改变 next607–630 form-click callback 布局的前提下增加独立的
+`PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks()`。宿主以
+`PCore_LinkInfoById()` 按 DOM id 返回已布局、带非空 `href` 的锚点几何和 UTF-8 URL；browser
+layer 复用 `PBrowser_ScriptSessionDispatchAnchorClick()` 的 cancelable `click` → ASSIGN
+navigation 事务。未知/无 href 元素回到 generic click，网络、窗口替换、文档生命周期和
+target/rel/window 仍由宿主负责。
+
+TEST1079 在真实 WM6 script session 上覆盖按 id 解析、一次 click、接受导航、
+`preventDefault()`、容量/缺失/无 href generic 边界；TEST1070 继续覆盖导航适配器拒绝；窄门
+TEST1079、1070、999 通过 3/3，
+相关累计门另通过 18/18，均零 ERROR/FAIL、唯一 `TESTBENCH PASS`。本批不新增视觉、触摸、
+SIP、旋转、picker 或失败网络人工门。
+
+### 26. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -370,7 +385,7 @@ select click 取消和 disabled 静默；与 TEST1077、1076、1075、1074、107
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 26. 安排新的全范围检查点
+### 27. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

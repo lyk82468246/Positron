@@ -16,10 +16,10 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next630，programmatic `HTMLElement.click()` → native text/password/textarea/select
-  focus（自动设备门已完成）；
+- 当前能力批次：next631，programmatic `HTMLElement.click()` → `<a href>` cancelable click/ASSIGN
+  navigation（自动设备门已完成）；
   next618 的 TEST65 真实 SIP 候选词仍待人工确认，file picker/真实 label 触摸仍是独立人工边界。
-- 测试编号上限：`TEST_MAX_NUMBER 1078`。
+- 测试编号上限：`TEST_MAX_NUMBER 1079`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -182,6 +182,12 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   default callback 中执行真实 native EDIT/SELECT focus。`TEST1078` 已验证 text、password、
   textarea、select 的 click/focus/focusin 顺序、select 取消和 disabled 静默；select popup、
   picker、触摸、SIP/IME、焦点视觉和 OEM 行为仍不在自动保证内。
+- next631 增加独立的 programmatic-anchor callback，不改变 next607–630 的 form-click ABI：
+  `positron_browser.dll` 对带 href 的 `HTMLElement.click()` 复用 cancelable click 与 ASSIGN
+  navigation，`positron_core.dll` 以 `PCore_LinkInfoById()` 按 DOM id 提供已布局几何和 UTF-8
+  href；未知/无 href 元素回到 generic click，网络、窗口替换和文档生命周期仍由宿主拥有。
+  `TEST1079` 已覆盖接受导航、`preventDefault()`、容量/缺失和无 href 边界；TEST1070 继续
+  覆盖导航适配器拒绝。
 
 ## 最近验证证据
 
@@ -499,6 +505,21 @@ next630 的 programmatic native focus 自动门已经完成：
   Release ARMV4I 构建、`python scripts/audit_repo.py`、文档审计和最终工作区核对。tracked
   INI 未修改，设备证据仍只在 `tmp/`。
 
+next631 的 programmatic anchor click 自动门已经完成：
+
+- `tmp/device-runs/20260824-165852-next631-programmatic-anchor-r4/` 的窄门为 PASS，
+  TEST1079、1070、999 共 3/3，唯一 `TESTBENCH PASS`，`error_count=0`、
+  `fail_count=0`、`test13_route_ok=True`；相关累计门
+  `tmp/device-runs/20260824-165225-next631-programmatic-anchor-regression-r2/`
+  另通过 18/18，同样零错误/失败。
+- TEST1079 在真实 WM6 script session 上覆盖按 DOM id 解析已布局 `<a href>`、一次
+  cancelable click、接受 ASSIGN、`preventDefault()`、容量/缺失/无 href generic 边界；
+  TEST1070 在累计门中继续覆盖导航适配器拒绝；
+  `PCore_LinkInfoById()` 只复制非空 href，网络、窗口替换和文档生命周期仍由宿主拥有。
+- `python scripts/test_c89ize.py`、Debug ARMV4I 构建和窄设备门已通过；提交前仍需完成
+  Release ARMV4I 构建、`python scripts/audit_repo.py`、文档审计和最终工作区核对。tracked
+  INI 未修改，设备证据仍只在 `tmp/`。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -532,7 +553,7 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1078 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1079 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -592,8 +613,11 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - next630 的 programmatic `HTMLElement.click()` native focus、TEST1078、C89、Debug 构建和
   相关累计设备门已完成；tracked 改动覆盖 `positron_browser` target-kind/default-action
   常量、`test_host` 的 DOM-id 事件接线与 TEST1078，以及对应 README/架构/测试/交接文档。
-  没有修改 tracked INI；提交前补跑 Release、audit 和最终 diff 检查，不要把 `tmp/` 证据
-  或无关工作区文件带入 Git。
+  没有修改 tracked INI；不要把 `tmp/` 证据或无关工作区文件带入 Git。
+- next631 的 programmatic anchor click、`PCore_LinkInfoById()`、TEST1079、C89、Debug 构建
+  和窄设备门已完成；tracked 改动只覆盖 `positron_core`/`positron_browser` 的 additive
+  ABI、`test_host` 消费者和相关文档。没有修改 tracked INI；提交前补跑 Release、audit 和
+  最终 diff 检查，不要把 `tmp/` 证据或无关工作区文件带入 Git。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -601,11 +625,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-完成 next618 的一次人工 TEST65：在同一构建的真实 WM6 窗口中点选多字符 SIP 候选词，确认
-输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next622–630
-本身的自动契约已经完成；next630 的 programmatic native focus 事件契约已自动通过，但
-select/file picker 模态框、真实 label 触摸、OEM 窗口视觉、键盘映射和 SIP/IME 仍未被自动门
-证明。确认前不得把这些行为写成产品保证；确认后再按路线图选择下一个产品纵切。
+next631 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+纵切，不要为了补编号添加孤立 API。TEST65 的多字符 SIP 候选词、select/file picker 模态框、
+真实 label 触摸、OEM 窗口视觉和键盘映射仍是独立人工边界；在人工证据出现前不得把它们写成
+通用产品保证。下一次重要产品/生命周期风险累积后，再安排新的全范围设备基线。
 
 ## next617 完成标准
 

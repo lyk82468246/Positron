@@ -662,6 +662,16 @@ PCORE_API void PCore_SetDeviceViewport(int device_width, int device_height,
 PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
                            char *out_href, int cap);
 
+/* Resolve a laid-out <a href> element by its UTF-8 DOM id. Geometry is in
+ * document CSS px and the href is copied into the caller's UTF-8 buffer.
+ * Returns 0 for a matching anchor with a non-empty href; returns non-zero
+ * when the id is missing, not an anchor, not laid out, has no href, or the
+ * output buffer is too small. This narrow lookup is used by browser-owned
+ * HTMLElement.click() navigation and does not expose the internal box tree. */
+PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
+                                 int *x, int *y, int *w, int *h,
+                                 char *out_href, int cap);
+
 /* Activate a checkbox/radio at a document-space point. The control consumes
  * the click even when disabled or already-selected. Changed controls are
  * synchronised to libdom so later re-layouts retain their state. A union

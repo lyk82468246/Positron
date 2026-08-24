@@ -80,6 +80,13 @@
   焦点副作用。TEST1078 已在真实 render window 上覆盖 click/focus/focusin、select 取消和
   disabled 静默；select 下拉弹窗、文件 picker、真实触摸、SIP/IME、焦点视觉与 OEM 行为仍
   由宿主负责，不能从该自动门扩张为通用浏览器保证。
+  next631 又以独立的 programmatic-anchor callback 补齐带 href 锚点的脚本激活：
+  `positron_browser.dll` 复用 cancelable click 与 ASSIGN navigation，`positron_core.dll` 的
+  `PCore_LinkInfoById()` 按 DOM id 提供已布局几何和非空 UTF-8 href；未知/无 href 元素回到
+  generic click。网络请求、窗口替换、文档生命周期、target/rel/window、fragment 视觉和
+  真实触摸仍由宿主/后续范围负责。TEST1079 已覆盖接受导航、preventDefault、容量/缺失和无
+  href 边界，TEST1070 继续覆盖导航适配器拒绝；这不等于完整 anchor activation 或现代
+  浏览器导航策略。
 
 ### 解除或推进条件
 

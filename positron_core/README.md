@@ -43,7 +43,8 @@ PCore_Shutdown();
 ```
 
 典型调用者还会使用 `PCore_StyleDocumentEx2` 配合 URL resolver/fetch/free 回调，
-`PCore_FetchImageResources` 获取图片，`PCore_LinkAt` 做链接命中，
+`PCore_FetchImageResources` 获取图片，`PCore_LinkAt` 做坐标命中，
+`PCore_LinkInfoById` 在布局后按 DOM id 读取带非空 `href` 的锚点几何和 UTF-8 URL，
 `PCore_FormActivateAt` / `PCore_InteractionSetAt` 驱动控件状态，
 `PCore_EventListenerAdd` / `PCore_EventDispatchAt` 接入同步 DOM 事件，以及
 `PCore_Node*ById` 读取或修改脚本需要的 DOM 属性、值和表单状态；

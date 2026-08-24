@@ -642,6 +642,29 @@ scripts\device_gate.bat -Candidate next630-programmatic-focus-r16 ^
 `tmp/device-runs/20260824-162638-next630-programmatic-focus-r15/` 先单独通过
 TEST1078/229/999 3/3；tracked INI 未修改，自动模式保持不变。本批不增加人工页面门。
 
+### next631 programmatic anchor click 自动门
+
+next631 为脚本直接调用 `HTMLElement.click()` 增加独立的 programmatic anchor target adapter，
+但不改动 next607–630 的 form-click callback 布局：宿主以 `PCore_LinkInfoById()` 按 DOM id
+提供已布局 `<a href>` 的几何和 UTF-8 URL，browser layer 复用既有 cancelable `click` 与
+ASSIGN navigation。`preventDefault()`、导航适配器拒绝、未知/无 `href` 元素都不应伪造导航；
+网络请求、窗口替换和文档生命周期仍是宿主边界。定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next631-programmatic-anchor-r4 ^
+  -RemoteBase "\Storage Card\Positron-device-gate-next631" ^
+  -EnableJavaScript ^
+  -TestSelection "1079,1078,1070,229,999"
+```
+
+`tmp/device-runs/20260824-165852-next631-programmatic-anchor-r4/` 已通过 3/3，零
+`ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`；日志中的 TEST1079 覆盖
+按 id 解析、一次 click、接受导航、`preventDefault()` 取消、容量/缺失/无 `href` generic
+边界；TEST1070 在同一累计门中继续覆盖导航适配器拒绝。相关累计门
+`tmp/device-runs/20260824-165225-next631-programmatic-anchor-regression-r2/`
+另通过 18/18，同样零错误/失败。r1 是补充的旧 fixture 证据，不作为本批最终门。
+本批未修改 tracked INI，也不新增视觉、真实触摸、SIP、旋转、picker 或网络失败人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

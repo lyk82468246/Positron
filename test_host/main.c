@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1078
+#define TEST_MAX_NUMBER 1079
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6990,6 +6990,9 @@ static char *pcore_browser_script_copy_string(const char *value);
 static int pcore_browser_script_programmatic_click_target(void *pw,
         const char *element_id,
         PBrowserScriptProgrammaticClickTargetInfo *out_info);
+static int pcore_browser_script_programmatic_anchor_target(void *pw,
+        const char *element_id,
+        PBrowserScriptProgrammaticAnchorTargetInfo *out_info);
 static int pcore_browser_script_programmatic_click_validate(void *pw,
         const PBrowserScriptProgrammaticClickInfo *info,
         const PBrowserScriptProgrammaticClickTargetInfo *target,
@@ -7958,6 +7961,36 @@ static int pcore_browser_script_programmatic_click_target(void *pw,
             return -1;
         }
     }
+    return 0;
+}
+
+static int pcore_browser_script_programmatic_anchor_target(void *pw,
+        const char *element_id,
+        PBrowserScriptProgrammaticAnchorTargetInfo *out_info)
+{
+    pcore_browser_script_bridge *bridge;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL ||
+            element_id == NULL || element_id[0] == '\0' ||
+            out_info == NULL ||
+            out_info->size < sizeof(PBrowserScriptProgrammaticAnchorTargetInfo) ||
+            out_info->href == NULL || out_info->href_capacity <= 0) {
+        return -1;
+    }
+    out_info->found = 0;
+    out_info->x = 0;
+    out_info->y = 0;
+    out_info->width = 0;
+    out_info->height = 0;
+    out_info->href[0] = '\0';
+    if (PCore_LinkInfoById(bridge->document, element_id,
+            &out_info->x, &out_info->y, &out_info->width,
+            &out_info->height, out_info->href,
+            out_info->href_capacity) != 0) {
+        return 0;
+    }
+    out_info->found = 1;
     return 0;
 }
 
@@ -11490,6 +11523,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptClickCallbacks click_callbacks;
     PBrowserScriptProgrammaticClickCallbacksEx
             programmatic_click_callbacks_ex;
+    PBrowserScriptProgrammaticAnchorCallbacks
+            programmatic_anchor_callbacks;
     PBrowserScriptFormEventCallbacks form_event_callbacks;
     PBrowserScriptInvalidCallbacks invalid_callbacks;
     PBrowserScriptNavigationCallbacks navigation_callbacks;
@@ -11662,6 +11697,11 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_programmatic_click_default;
     programmatic_click_callbacks_ex.dispatch_generic =
             pcore_browser_script_programmatic_click_dispatch;
+    programmatic_anchor_callbacks.size =
+            sizeof(programmatic_anchor_callbacks);
+    programmatic_anchor_callbacks.pw = bridge;
+    programmatic_anchor_callbacks.get_target =
+            pcore_browser_script_programmatic_anchor_target;
     form_event_callbacks.size = sizeof(form_event_callbacks);
     form_event_callbacks.pw = bridge;
     form_event_callbacks.dispatch_form_event =
@@ -11756,6 +11796,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &click_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx(session,
             &programmatic_click_callbacks_ex) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks(session,
+            &programmatic_anchor_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormEventCallbacks(session,
             &form_event_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterInvalidCallbacks(session,
@@ -17295,6 +17337,179 @@ static BOOL test1078_browser_programmatic_native_focus_contract(void)
             " text/password/textarea/select controls; accepted clicks"
             " focus the native control, while cancellation and disabled"
             " targets remain quiet. Select popup UI remains host/OEM-owned.");
+    return TRUE;
+}
+
+/* TEST 1079 - browser-owned programmatic anchor activation. */
+static BOOL test1079_browser_programmatic_anchor_activation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><a id='learn' href='/learn-more'>Learn more</a>"
+        "<a id='plain'>Plain anchor</a><p id='result'>idle</p>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "a{display:block;width:220px;height:24px;margin:4px}"
+        "#result{display:block;width:300px;height:60px}";
+    static const char LISTENER[] =
+        "window.events='';window.cancel=false;"
+        "var link=document.getElementById('learn');"
+        "var plain=document.getElementById('plain');"
+        "link.addEventListener('click',function(e){"
+        "if(window.cancel)e.preventDefault();"
+        "window.events+=e.type+'|'+String(e.defaultPrevented)+';';});"
+        "plain.addEventListener('click',function(e){"
+        "window.events+='plain|'+String(e.defaultPrevented)+';';});";
+    static const char ACCEPT[] =
+        "link.click();document.getElementById('result').textContent="
+        "window.events;";
+    static const char CANCEL[] =
+        "window.cancel=true;link.click();"
+        "document.getElementById('result').textContent=window.events;";
+    static const char GENERIC[] =
+        "window.events='';plain.click();"
+        "document.getElementById('result').textContent=window.events;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[512];
+    char result[256];
+    char href[256];
+    int executed;
+    int ignored;
+    int result_bytes;
+    int x;
+    int y;
+    int width;
+    int height;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(error, 0, sizeof(error));
+    memset(result, 0, sizeof(result));
+    memset(href, 0, sizeof(href));
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    x = 0;
+    y = 0;
+    width = 0;
+    height = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "https://example.com/", NULL, NULL, &executed, &ignored,
+            error, sizeof(error), &runtime, &bridge) != 0 ||
+            executed != 1 || ignored != 0 || runtime == NULL ||
+            bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://example.com/programmatic-anchor.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 180) != 0 ||
+                PCore_LinkInfoById(document, "learn", &x, &y, &width,
+                &height, href, sizeof(href)) != 0 ||
+                strcmp(href, "/learn-more") != 0 || width <= 0 ||
+                height <= 0) {
+            ok = 0;
+        }
+    }
+    if (ok && (PCore_LinkInfoById(document, "plain", &x, &y, &width,
+            &height, href, sizeof(href)) == 0 ||
+            PCore_LinkInfoById(document, "missing", &x, &y, &width,
+            &height, href, sizeof(href)) == 0 ||
+            PCore_LinkInfoById(document, "learn", &x, &y, &width,
+            &height, href, 4) == 0)) {
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0 ||
+                pcore_browser_script_session_evaluate(ACCEPT, -1,
+                error, sizeof(error)) != 0 ||
+                g_browser_script_session.bridge == NULL ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                "/learn-more") != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "click|false;") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        if (pcore_browser_script_session_evaluate(CANCEL, -1,
+                error, sizeof(error)) != 0 ||
+                g_browser_script_session.bridge->navigation_url != NULL ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "click|false;click|true;") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (pcore_browser_script_session_evaluate(GENERIC, -1,
+                error, sizeof(error)) != 0 ||
+                g_browser_script_session.bridge->navigation_url != NULL ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "plain|false;") != 0) {
+            ok = 0;
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s href=%s geometry=%d,%d,%d,%d",
+                    result_bytes, result, href, x, y, width, height);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1079 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1079 OK",
+            "HTMLElement.click() resolves an anchor by DOM id, dispatches"
+            " one cancelable click and forwards only accepted ASSIGN"
+            " navigation; anchors without href remain on generic handling.");
     return TRUE;
 }
 
@@ -75118,6 +75333,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1076: ok = test1076_browser_label_toggle_activation_contract(); break;
         case 1077: ok = test1077_browser_label_native_control_contract(); break;
         case 1078: ok = test1078_browser_programmatic_native_focus_contract(); break;
+        case 1079: ok = test1079_browser_programmatic_anchor_activation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

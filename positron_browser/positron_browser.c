@@ -3429,6 +3429,10 @@ typedef struct p_browser_script_programmatic_click_binding {
     PBrowserScriptProgrammaticClickCallbacksEx callbacks_ex;
 } p_browser_script_programmatic_click_binding;
 
+typedef struct p_browser_script_programmatic_anchor_binding {
+    PBrowserScriptProgrammaticAnchorCallbacks callbacks;
+} p_browser_script_programmatic_anchor_binding;
+
 typedef struct p_browser_script_form_event_binding {
     PBrowserScriptFormEventCallbacks callbacks;
 } p_browser_script_form_event_binding;
@@ -3476,6 +3480,7 @@ typedef struct p_browser_script_session {
     p_browser_script_native_file_picker_state native_file_picker;
     p_browser_script_click_binding *click;
     p_browser_script_programmatic_click_binding *programmatic_click;
+    p_browser_script_programmatic_anchor_binding *programmatic_anchor;
     p_browser_script_form_event_binding *form_event;
     p_browser_script_invalid_binding *invalid;
     p_browser_script_navigation_binding *navigation;
@@ -4953,6 +4958,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
             sizeof(session->native_file_picker));
     session->click = NULL;
     session->programmatic_click = NULL;
+    session->programmatic_anchor = NULL;
     session->form_event = NULL;
     session->invalid = NULL;
     session->navigation = NULL;
@@ -5072,6 +5078,10 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreClick", -1);
         free(session->programmatic_click);
         session->programmatic_click = NULL;
+    }
+    if (session->programmatic_anchor != NULL) {
+        free(session->programmatic_anchor);
+        session->programmatic_anchor = NULL;
     }
     if (session->form_event != NULL) {
         free(session->form_event);
@@ -7777,6 +7787,49 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacksEx(
             hSession);
 }
 
+PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptProgrammaticAnchorCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_programmatic_anchor_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptProgrammaticAnchorCallbacks) ||
+            callbacks->get_target == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->programmatic_anchor != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_programmatic_anchor_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    session->programmatic_anchor = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticAnchorCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->programmatic_anchor == NULL) {
+        return PSCRIPT_OK;
+    }
+    free(session->programmatic_anchor);
+    session->programmatic_anchor = NULL;
+    return PSCRIPT_OK;
+}
+
 static int p_browser_script_dispatch_programmatic_click_ex(
         p_browser_script_session *session,
         const PBrowserScriptProgrammaticClickInfo *info)
@@ -7809,6 +7862,34 @@ static int p_browser_script_dispatch_programmatic_click_ex(
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD &&
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA &&
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_SELECT)) {
+        if (session->programmatic_anchor != NULL) {
+            PBrowserScriptProgrammaticAnchorTargetInfo anchor_target;
+            PBrowserScriptAnchorClickInfo anchor_info;
+            char href[PBROWSER_HISTORY_URL_MAX];
+            int navigated;
+
+            memset(href, 0, sizeof(href));
+            memset(&anchor_target, 0, sizeof(anchor_target));
+            anchor_target.size = sizeof(anchor_target);
+            anchor_target.href = href;
+            anchor_target.href_capacity = sizeof(href);
+            rc = session->programmatic_anchor->callbacks.get_target(
+                    session->programmatic_anchor->callbacks.pw,
+                    info->element_id, &anchor_target);
+            if (rc < 0 || anchor_target.size < sizeof(anchor_target)) {
+                return PSCRIPT_ERROR_NATIVE;
+            }
+            if (anchor_target.found && href[0] != '\0') {
+                memset(&anchor_info, 0, sizeof(anchor_info));
+                anchor_info.size = sizeof(anchor_info);
+                anchor_info.x = anchor_target.x;
+                anchor_info.y = anchor_target.y;
+                anchor_info.href = href;
+                navigated = 0;
+                return PBrowser_ScriptSessionDispatchAnchorClick(
+                        (HANDLE) session, &anchor_info, &navigated);
+            }
+        }
         rc = binding->callbacks_ex.dispatch_generic(
                 binding->callbacks_ex.pw, info);
         return (rc < 0) ? PSCRIPT_ERROR_NATIVE : PSCRIPT_OK;

@@ -108,6 +108,9 @@ JSON-compatible global、native callback、执行预算和内存限制，但本�
   的受限 action/method/enctype override 和 multipart snapshot 语义；
 - 按 DOM id 查询已布局 form-control 几何/状态，供宿主实现程序化 activation；`PCore_FormResetAt`
   只提交 reset 状态，取消事件由宿主在调用前分发；
+- 按 DOM id 查询已布局、带非空 `href` 的 `<a>` 几何和 UTF-8 URL（`PCore_LinkInfoById`），
+  供浏览器 bridge 实现程序化锚点激活；该查询只复制到调用者缓冲区，不暴露 libdom/box
+  指针，也不发起网络或窗口副作用；
 - 按 DOM id 查询控件的约束状态（`valid`、`will_validate` 和 `PCORE_VALIDITY_*` flags），供浏览器
   bridge 或其他宿主在布局前后读取；该查询不触发 invalid 事件，也不应用 form-level no-validate
   提交按钮绕过；
@@ -150,7 +153,11 @@ file-input/checkbox/radio input/change/SELECT-input/change typed dispatch entry 
 text/password/textarea/select 的 programmatic click 也由同一入口按新增 target-kind 统一执行
 disabled 抑制、typed click 和取消，并以 `PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS` 将焦点副作用
 交还宿主；该入口不改变控件值，也不拥有 native HWND 或 select popup；
-宿主只通过 size-tagged target/validation/default-action callback 提供控件几何、core 状态与 WM 副作用。
+宿主只通过 size-tagged target/validation/default-action callback 提供控件几何、core 状态与 WM
+副作用。next631 另以独立的
+`PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks()` 接收按 DOM id 返回的已布局
+`<a href>` 几何/URL，browser layer 复用 cancelable click 与 ASSIGN navigation；
+`PCore_LinkInfoById()` 只复制非空 href，网络、窗口和文档替换仍由宿主拥有。
 native EDIT 的 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 另外由 DLL 持有
 beforeinput pending metadata、native commit 到 input、dirty tracking 和 blur/change 顺序；宿主
 仍提交 native value 并传播 core 事件。native SELECT 的
@@ -1038,6 +1045,18 @@ text/password/textarea/select 增加 target-kind 与 `PBROWSER_SCRIPT_CLICK_DEFA
 不修改控件值，也不拥有 HWND、select popup、系统 picker、窗口或 OEM 副作用；没有增加
 callback struct 字段。TEST1078 是 render-window 消费者契约门，自动覆盖 click/focus/focusin、
 select 取消和 disabled 静默，不能替代下拉视觉、真实触摸、SIP/IME 或焦点视觉人工验收。
+
+#### next631 的 programmatic anchor 激活边界
+
+next631 在不改变既有 form-click callback 布局的前提下新增独立的
+`PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks()`。宿主按 DOM id 通过
+`PCore_LinkInfoById()` 返回已布局 `<a href>` 的几何和非空 UTF-8 href，browser layer 复用
+`PBrowser_ScriptSessionDispatchAnchorClick()` 的 cancelable `click` → ASSIGN navigation
+事务；`preventDefault()`、导航拒绝和未知/无 href 元素不产生导航，后者回到 generic click。
+Core 不暴露 libdom/box 指针，网络请求、窗口替换、文档生命周期、target/rel/window 和真实
+触摸仍由宿主负责。TEST1079 是该真实 script-session 消费者门，TEST1070 继续覆盖导航适配器
+拒绝；两者都不能替代完整 anchor 导航
+策略或视觉人工验收。
 
 #### next614 的 label/control 关系边界
 

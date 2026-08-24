@@ -345,6 +345,16 @@ callback 再执行真实控件焦点。TEST1078 在真实 render window 上覆�
 select 的 `click`→`focus`→`focusin` 顺序、取消和 disabled 静默；select popup 展开仍是
 宿主/OEM 的独立边界。
 
+next631 在不改变上述 form-click callback ABI 的前提下增加了独立的
+`PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks()`。宿主以 DOM id 返回已布局
+`<a href>` 的几何和 UTF-8 URL，browser layer 复用既有 `PBrowser_ScriptSessionDispatchAnchorClick()`
+的 cancelable `click` → ASSIGN navigation 事务；`preventDefault()`、导航适配器拒绝和未知/无
+`href` 元素都保持 fail-closed 或 generic click。Core 侧对应的
+`PCore_LinkInfoById()` 只复制非空 `href`，不暴露 libdom/box 指针；网络、窗口替换和文档生命
+周期仍由宿主负责。TEST1079 在真实设备脚本 session 上覆盖按 id 解析、一次 click、接受导航、
+`preventDefault()`、缺失/容量 fail-closed 和无 href 的 generic 边界；TEST1070 继续覆盖
+导航适配器拒绝。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、
@@ -379,6 +389,8 @@ PBrowser_ScriptSessionRegisterReportValidityCallbacks(session, &report_validity)
 PBrowser_ScriptSessionRegisterCustomValidityCallbacks(session, &custom_validity);
 PBrowser_ScriptSessionRegisterDomRelationCallbacks(session, &dom_relation);
 PBrowser_ScriptSessionRegisterNavigationCallbacks(session, &navigation);
+PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks(session,
+        &programmatic_anchor);
 PBrowser_ScriptSessionEvaluateBootstrap(session);
 PBrowser_ScriptSessionEvaluate(session, "document.title", -1);
 /* PBrowser_ScriptSessionGetResult/GetError 返回借用字符串。 */

@@ -112,6 +112,12 @@ DOM id 并按身份调用 Core 事件传播，避免 native child window 遮挡�
 callback 再对对应 EDIT/SELECT 执行焦点操作。TEST1078 在 render window 已附加真实子窗口后
 验证四类控件的 click/focus/focusin 顺序、select click 取消和 disabled 静默。select 下拉
 弹窗、系统 picker、SIP/IME、真实触摸和 OEM 视觉仍不由自动门保证。
+next631 为脚本直接调用 `HTMLElement.click()` 的 `<a href>` 增加独立 anchor target adapter：
+宿主通过 `PCore_LinkInfoById()` 按 DOM id 提供已布局几何和 UTF-8 href，browser DLL 复用
+cancelable click 与 ASSIGN navigation 事务；宿主仍只拥有网络请求、窗口替换和文档生命周期。
+无 href 或未知 id 回到 generic click，`preventDefault()` 或导航适配器拒绝都不产生导航。
+TEST1079 覆盖真实脚本 session 的按 id 解析、容量/缺失、接受/取消导航和无 href 边界；
+TEST1070 保留导航适配器拒绝契约。
 
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、

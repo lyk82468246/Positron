@@ -843,6 +843,32 @@ typedef struct PBrowserScriptProgrammaticClickCallbacksEx {
     PBrowserScriptProgrammaticClickFn dispatch_generic;
 } PBrowserScriptProgrammaticClickCallbacksEx;
 
+/* Additive adapter for programmatic anchor activation. The existing Ex
+ * programmatic-click contract continues to own form controls; this separate
+ * size-tagged callback lets a host resolve an <a href> by DOM id without
+ * changing that ABI. The browser layer copies the href into the supplied
+ * UTF-8 buffer only for the synchronous callback, then reuses the trusted
+ * anchor click/navigation transaction. A zero return with found=0 lets the
+ * existing generic click path handle non-anchor elements. */
+typedef struct PBrowserScriptProgrammaticAnchorTargetInfo {
+    unsigned long size;
+    int found;
+    int x;
+    int y;
+    int width;
+    int height;
+    char *href;
+    int href_capacity;
+} PBrowserScriptProgrammaticAnchorTargetInfo;
+typedef int (*PBrowserScriptGetProgrammaticAnchorTargetFn)(void *pw,
+        const char *element_id,
+        PBrowserScriptProgrammaticAnchorTargetInfo *out_info);
+typedef struct PBrowserScriptProgrammaticAnchorCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetProgrammaticAnchorTargetFn get_target;
+} PBrowserScriptProgrammaticAnchorCallbacks;
+
 /* Typed host adapter for product-owned native form submit/reset events. The
  * browser layer owns the form-event contract and dispatch entry point; the
  * host supplies core hit-testing/propagation for the document coordinates.
@@ -1265,6 +1291,11 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx(
         HANDLE hSession,
         const PBrowserScriptProgrammaticClickCallbacksEx *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticClickCallbacksEx(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptProgrammaticAnchorCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterProgrammaticAnchorCallbacks(
         HANDLE hSession);
 /* Dispatch one script-visible HTMLElement.click() invocation through the
  * host's typed activation adapter.  When the additive Ex callbacks are
