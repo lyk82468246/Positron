@@ -481,6 +481,21 @@ typedef struct PBrowserScriptNativeEditCompositionInfo {
     const char *data;
 } PBrowserScriptNativeEditCompositionInfo;
 
+/* A complete native EDIT IME result. The browser layer treats this as the
+ * final accepted composition update: it dispatches the non-cancelable
+ * beforeinput(insertCompositionText) and compositionupdate pair, records
+ * the bounded pending input metadata and retains the result for composition
+ * end. The host must still replace native text and then call the existing
+ * native EDIT input and composition-end entries. The result string is
+ * borrowed for the synchronous call only. */
+typedef struct PBrowserScriptNativeEditResultInfo {
+    unsigned long size;
+    unsigned long target_token;
+    int x;
+    int y;
+    const char *data;
+} PBrowserScriptNativeEditResultInfo;
+
 /* Additive native EDIT adapter. The browser layer owns the bounded pending
  * beforeinput state, composition phase/preedit state, native-commit to input
  * transition, dirty tracking and blur/change ordering. The host supplies only
@@ -1007,6 +1022,11 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditComposition(
         HANDLE hSession,
         const PBrowserScriptNativeEditCompositionInfo *info,
         int *out_default_allowed);
+/* Dispatch one complete native EDIT IME result through the browser-owned
+ * composition/update and pending-input transaction. The host owns only the
+ * platform text replacement and subsequently commits native input. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchNativeEditResult(
+        HANDLE hSession, const PBrowserScriptNativeEditResultInfo *info);
 /* Notify the product layer that the native EDIT value was committed. This
  * dispatches input using the accepted beforeinput metadata, or the explicit
  * input_type/data fallback supplied in info, and marks the target dirty for a

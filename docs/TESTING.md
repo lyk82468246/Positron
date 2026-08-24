@@ -390,6 +390,29 @@ TEST1066、123–125、999 共 5/5 PASS、零 ERROR/FAIL、唯一 `TESTBENCH PAS
 最小证据。next618 现在只剩上面的真实 TEST65 候选词人工步骤，不能用 TEST1066 自动断言
 替代它。
 
+### next619 native EDIT 完整 IME result 产品事务自动门
+
+next619 将“完整 IME result 是一次 composition update 并进入 pending native commit”这一产品
+事务放入 `positron_browser.dll` 的 `PBrowser_ScriptSessionDispatchNativeEditResult()`。该入口
+只接收稳定 token、几何和借用 UTF-8 result，要求 token 已有活动 composition，校验 255 字节
+上限，并派发 `beforeinput(insertCompositionText)` → `compositionupdate`；宿主仍负责
+`ImmGetCompositionStringW`、`EM_REPLACESEL`、实际 native value mutation 和随后调用 input/end。
+因此它不会把 WM6 的 IME 窗口、SIP 候选条或 OEM 视觉行为写成公共 DLL 保证。
+
+TEST1067 是不依赖 OEM 窗口的 ABI/消费者契约，覆盖 NULL/未开始/已结束 result、容量上限、
+完整多字节 result、pending metadata 到 native input、composition end、reset 和 unregister。
+定向门：
+
+```bat
+scripts\device_gate.bat -Candidate next619-native-ime-result-transaction ^
+  -EnableJavaScript ^
+  -TestSelection "1067,1066,123-125,999"
+```
+
+`tmp/device-runs/20260824-110948-next619-native-ime-result-transaction/` 已通过 6/6，
+零 ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批没有新增视觉、触摸、
+旋转或 picker 人工门；TEST65 的真实 SIP 多字符候选词仍是 next618 的独立人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

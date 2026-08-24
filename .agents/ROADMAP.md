@@ -172,7 +172,23 @@ next618 整体完成条件现在只差：在同一构建的 TEST65 人工点选�
 一次出现完整词，并核对密码、readonly、disabled、maxlength 等相邻行为未退化。失败时先
 保留 WM/Core/browser 边界，不通过重复 `WM_CHAR` 或放宽事件断言掩盖问题。
 
-### 13. 建立真实页面驱动的兼容队列
+### 13. next619：native EDIT 完整 IME result 产品事务（已完成）
+
+next619 将完整 `GCS_RESULTSTR` 的产品事件策略补入 `positron_browser.dll`，新增 additive
+`PBrowser_ScriptSessionDispatchNativeEditResult()`。browser layer 要求 stable token 已有
+活动 composition，校验不超过 255 字节的借用 UTF-8 result，派发
+`beforeinput(insertCompositionText)` → `compositionupdate`，并把 result metadata 接入既有
+native commit → input 事务；宿主仍拥有 `ImmGetCompositionStringW`、`EM_REPLACESEL`、原生
+文本 mutation、WM_IME/SIP 窗口和平台视觉。
+
+TEST1067 覆盖 NULL/未开始/已结束 result、容量边界、完整多字节 result、pending metadata、
+native commit、composition end、reset 和 unregister；TEST1066、123–125、999 保持回归。
+`tmp/device-runs/20260824-110948-next619-native-ime-result-transaction/` 已通过 6/6，零
+ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。Debug/Release ARMV4I 构建、
+C89 检查和仓库/文档 audit 均通过。本批没有新增视觉、触摸、旋转或 picker 人工门；next618
+的 TEST65 真实 SIP 候选词仍需单独人工确认。
+
+### 14. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -183,7 +199,7 @@ next618 整体完成条件现在只差：在同一构建的 TEST65 人工点选�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 14. 安排新的全范围检查点
+### 15. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

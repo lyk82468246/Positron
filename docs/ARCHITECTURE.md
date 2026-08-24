@@ -941,6 +941,16 @@ next613 的 composition metadata 和 browser-owned commit→input 事务。若 U
 WM 控件、SIP 窗口或 OEM 候选词体验冒充成 `positron_browser.dll` 语义；TEST1066 只覆盖
 可重复的完整多字节结果落地，真实 SIP 候选窗口和视觉仍需人工验收。
 
+next619 把“完整 IME result”这项可发布的事务策略补回
+`positron_browser.dll`，但不把平台副作用搬进产品层。新增的
+`PBrowser_ScriptSessionDispatchNativeEditResult()` 要求已开始的稳定 token composition，
+校验不超过 255 字节的借用 UTF-8 result，并同步派发
+`beforeinput(insertCompositionText)` → `compositionupdate`，把同一数据接入既有 pending
+native commit → input metadata。`test_host.exe` 只将 `ImmGetCompositionStringW` 的结果交给
+该入口，然后执行 `EM_REPLACESEL`、接收 native value mutation 和调用 composition end；
+WM_IME、SIP/候选词窗口、原生控件和视觉仍归宿主。TEST1067 覆盖 invalid/capacity、生命周期、
+完整多字节结果、commit、reset 和 unregister，不宣称 OEM 输入法视觉兼容。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：
@@ -993,7 +1003,8 @@ submit-reset/invalid/report-validity/file-input/checkbox-radio-change/SELECT-inp
 composition phase/preedit policy、
 native SELECT 的 commit input/change、focus-family 顺序、单选下拉事务策略与 typed key dispatch policy 已进入
 `positron_browser.dll`；native SELECT WM 控件真正默认动作、下拉窗口/视觉、native EDIT 的 WM_IME/SIP
-与原生文本 mutation，以及其余 native form/input bridge 仍在迁移中且默认关闭；
+与原生文本 mutation，以及其余 native form/input bridge 仍在迁移中且默认关闭；完整 IME result 的
+事件事务现在由 `PBrowser_ScriptSessionDispatchNativeEditResult()` 持有，但平台文本替换仍由宿主完成；
 不能将其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。
 
 ## ABI 与所有权原则

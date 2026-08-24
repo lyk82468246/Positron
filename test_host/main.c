@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1066
+#define TEST_MAX_NUMBER 1067
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -3090,6 +3090,8 @@ static int test1061_composition_input(void *pw,
         marker = 'U';
     } else if (strcmp(info->event_type, "compositionend") == 0) {
         marker = 'E';
+    } else if (strcmp(info->event_type, "input") == 0) {
+        marker = 'I';
     } else {
         return -1;
     }
@@ -3307,6 +3309,149 @@ static BOOL test1061_browser_native_edit_composition_contract(void)
             "Browser-owned native EDIT composition start/update/end state\n"
             "preserves cancellation, bounded preedit data, adapter retry,\n"
             "reset and unregister semantics without owning WM_IME or SIP.");
+    return TRUE;
+}
+
+/* TEST 1067 - browser-owned native EDIT complete IME result transaction. */
+static BOOL test1067_browser_native_edit_result_contract(void)
+{
+    PBrowserScriptNativeEditCallbacksEx callbacks;
+    PBrowserScriptNativeEditCompositionInfo composition_info;
+    PBrowserScriptNativeEditResultInfo result_info;
+    PBrowserScriptNativeEditInputInfo commit_info;
+    test1061_native_edit_composition_state state;
+    HANDLE session;
+    const char *stage;
+    char oversized[PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES + 1];
+    const char candidate[] =
+            "\xe5\x80\x99\xe9\x80\x89\xe8\xaf\x8d";
+    unsigned int i;
+    int default_allowed;
+    int rc;
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&composition_info, 0, sizeof(composition_info));
+    memset(&result_info, 0, sizeof(result_info));
+    memset(&commit_info, 0, sizeof(commit_info));
+    memset(&state, 0, sizeof(state));
+    for (i = 0; i < sizeof(oversized) - 1; i++) {
+        oversized[i] = 'x';
+    }
+    oversized[sizeof(oversized) - 1] = '\0';
+    state.default_allowed = 1;
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &state;
+    callbacks.dispatch_input = test1061_composition_input;
+    callbacks.dispatch_change = test1056_change;
+    composition_info.size = sizeof(composition_info);
+    composition_info.target_token = 17;
+    composition_info.x = 31;
+    composition_info.y = 42;
+    composition_info.phase = PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_START;
+    composition_info.data = "";
+    result_info.size = sizeof(result_info);
+    result_info.target_token = 17;
+    result_info.x = 31;
+    result_info.y = 42;
+    result_info.data = candidate;
+    commit_info.size = sizeof(commit_info);
+    commit_info.target_token = 17;
+    commit_info.x = 31;
+    commit_info.y = 42;
+    stage = "create";
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    default_allowed = 1;
+    rc = PSCRIPT_OK;
+    ok = session != NULL;
+    if (ok) {
+        stage = "register";
+        ok = PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(
+                session, &callbacks) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "invalid-null-result";
+        rc = PBrowser_ScriptSessionDispatchNativeEditResult(
+                session, NULL);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (ok) {
+        stage = "result-before-start";
+        rc = PBrowser_ScriptSessionDispatchNativeEditResult(
+                session, &result_info);
+        ok = rc == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "start";
+        rc = PBrowser_ScriptSessionDispatchNativeEditComposition(
+                session, &composition_info, &default_allowed);
+        ok = rc == PSCRIPT_OK && default_allowed == 1 &&
+                strcmp(state.sequence, "S") == 0;
+    }
+    if (ok) {
+        stage = "oversized-result";
+        result_info.data = oversized;
+        rc = PBrowser_ScriptSessionDispatchNativeEditResult(
+                session, &result_info);
+        ok = rc == PSCRIPT_ERROR_ARGUMENT &&
+                strcmp(state.sequence, "S") == 0;
+        result_info.data = candidate;
+    }
+    if (ok) {
+        stage = "complete-result";
+        rc = PBrowser_ScriptSessionDispatchNativeEditResult(
+                session, &result_info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "SBU") == 0 &&
+                strcmp(state.input_type, "") == 0 &&
+                strcmp(state.data, candidate) == 0;
+    }
+    if (ok) {
+        stage = "native-commit";
+        rc = PBrowser_ScriptSessionDispatchNativeEditInput(
+                session, &commit_info);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "SBUI") == 0 &&
+                strcmp(state.input_type, "insertCompositionText") == 0 &&
+                strcmp(state.data, candidate) == 0 &&
+                state.is_composing == 1;
+    }
+    if (ok) {
+        stage = "composition-end";
+        composition_info.phase = PBROWSER_SCRIPT_NATIVE_EDIT_COMPOSITION_END;
+        composition_info.data = candidate;
+        rc = PBrowser_ScriptSessionDispatchNativeEditComposition(
+                session, &composition_info, &default_allowed);
+        ok = rc == PSCRIPT_OK && strcmp(state.sequence, "SBUIE") == 0;
+    }
+    if (ok) {
+        stage = "result-after-end";
+        rc = PBrowser_ScriptSessionDispatchNativeEditResult(
+                session, &result_info);
+        ok = rc == PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        stage = "reset";
+        ok = PBrowser_ScriptSessionResetNativeEditState(session) ==
+                PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "unregister";
+        ok = PBrowser_ScriptSessionUnregisterNativeEditCallbacksEx(
+                session) == PSCRIPT_OK;
+        rc = ok ? PBrowser_ScriptSessionDispatchNativeEditResult(
+                session, &result_info) : PSCRIPT_ERROR_FATAL;
+        ok = ok && rc == PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1067 FAIL", stage);
+        return FALSE;
+    }
+    show_info(L"TEST 1067 OK",
+            "Browser-owned native EDIT complete IME results dispatch one\n"
+            "bounded beforeinput/compositionupdate transaction and preserve\n"
+            "pending native commit metadata through composition end.");
     return TRUE;
 }
 
@@ -5333,6 +5478,8 @@ static void pcore_browser_script_dispatch_native_edit_blur(HWND control);
 static void pcore_browser_script_reset_native_edit_state(void);
 static int pcore_browser_script_dispatch_native_edit_composition(
         HWND control, int phase, const char *data, int *out_default_allowed);
+static void pcore_browser_script_dispatch_native_edit_result(
+        HWND control, const char *data);
 static int pcore_browser_script_dispatch_native_select_commit(HWND control);
 static int pcore_browser_script_dispatch_native_select_focus(HWND control,
         int focused);
@@ -5628,6 +5775,16 @@ static void pcore_native_edit_update_composition(HWND hwnd,
     pcore_native_edit_store_composition(native_edit, data);
 }
 
+static void pcore_native_edit_result_composition(HWND hwnd,
+        pcore_native_edit *native_edit, const char *data)
+{
+    if (native_edit == NULL || data == NULL) {
+        return;
+    }
+    pcore_browser_script_dispatch_native_edit_result(hwnd, data);
+    pcore_native_edit_store_composition(native_edit, data);
+}
+
 static void pcore_native_edit_end_composition(HWND hwnd,
         pcore_native_edit *native_edit, const char *data)
 {
@@ -5734,7 +5891,7 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                 if ((((DWORD) lp) & GCS_RESULTSTR) != 0 &&
                         pcore_native_ime_string(hwnd, GCS_RESULTSTR,
                         &ime_data)) {
-                    pcore_native_edit_update_composition(hwnd, native_edit,
+                    pcore_native_edit_result_composition(hwnd, native_edit,
                             ime_data);
                     native_edit->composition_committing = 1;
                     if (pcore_native_edit_apply_ime_result(hwnd, ime_data)) {
@@ -6697,6 +6854,32 @@ static int pcore_browser_script_dispatch_native_edit_composition(
         return 1;
     }
     return 1;
+}
+
+static void pcore_browser_script_dispatch_native_edit_result(
+        HWND control, const char *data)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeEditResultInfo info;
+    unsigned long target_token;
+    int x;
+    int y;
+
+    if (!pcore_browser_script_native_edit_geometry(control,
+            &target_token, &x, &y) || !pcore_native_script_active() ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return;
+    }
+    bridge = g_browser_script_session.bridge;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.data = data;
+    (void) PBrowser_ScriptSessionDispatchNativeEditResult(
+            bridge->session, &info);
 }
 
 static int pcore_browser_script_dispatch_native_edit_input(HWND control)
@@ -70970,6 +71153,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1064: ok = test1064_navigation_url_resolution_contract(); break;
         case 1065: ok = test1065_http_reference_product_contract(); break;
         case 1066: ok = test1066_native_ime_result_contract(); break;
+        case 1067: ok = test1067_browser_native_edit_result_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

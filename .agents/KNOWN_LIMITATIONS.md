@@ -34,7 +34,9 @@
   只迁移 native EDIT 的有界输入事务策略；`PBrowser_ScriptSessionDispatchNativeEditComposition()`
   只迁移 composition phase/data 的顺序与 bounded preedit；WM EDIT/WM_IME 消息、文本 mutation、
   SIP/候选词窗口和 OEM 行为仍由宿主提供。next618 的 `GCS_RESULTSTR` 完整候选落地只覆盖
-  已有 WM6 native EDIT 路径，不等于所有 OEM 输入法或视觉均兼容。next614 还把显式/嵌套 label-control 关联和
+  已有 WM6 native EDIT 路径，不等于所有 OEM 输入法或视觉均兼容；next619 的
+  `PBrowser_ScriptSessionDispatchNativeEditResult()` 只持有完整 result 的事件事务和 pending
+  metadata，不拥有原生文本替换或 SIP 窗口。next614 还把显式/嵌套 label-control 关联和
   labelable 控件的静态 `labels` snapshot 放入 core/browser relation bridge；next615 又把
   disabled ancestor fieldset 的有效状态（含第一个 legend 豁免和嵌套 fieldset）接入产品 core 的
   验证、successful controls、控件信息和交互闸门，但不承诺 live labels、native invalid UI 或

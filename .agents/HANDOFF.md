@@ -16,8 +16,9 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next618，WM6 native EDIT 完整 IME 候选词结果提交纵切（设备门待完成）。
-- 测试编号上限：`TEST_MAX_NUMBER 1066`。
+- 当前能力批次：next619，native EDIT 完整 IME result 产品事务（自动设备门已完成）；
+  next618 的 TEST65 真实 SIP 候选词仍待人工确认。
+- 测试编号上限：`TEST_MAX_NUMBER 1067`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -115,6 +116,12 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   selection，再沿既有 `EN_CHANGE` → Core value → browser input 路径提交，不再依赖某些
   WinCE EDIT 默认过程只生成的首个 `WM_CHAR`。TEST1066 覆盖多字节多字符候选的完整值；
   OEM SIP 候选窗口、视觉和真实设备输入仍需单独人工确认。
+- next619 在 `positron_browser.dll` 增加 additive 的
+  `PBrowser_ScriptSessionDispatchNativeEditResult()`：browser layer 校验活动 composition
+  和有界 UTF-8 result，派发 `beforeinput(insertCompositionText)` → `compositionupdate`，
+  并将 result metadata 接入既有 native commit → input 事务；宿主仍拥有
+  `ImmGetCompositionStringW`、`EM_REPLACESEL`、WM_IME/SIP 和原生文本 mutation。
+  TEST1067 覆盖生命周期、容量、完整多字节 result、commit、reset 和 unregister。
 
 ## 最近验证证据
 
@@ -306,6 +313,17 @@ next618 当前候选的本地验证和自动设备门已经完成，尚余一项
   多字符 SIP 候选词，确认输入框一次出现完整候选词，并核对密码、readonly、disabled、
   maxlength 等相邻行为未退化。
 
+next619 的产品事务自动门已经完成：
+
+- `tmp/device-runs/20260824-110948-next619-native-ime-result-transaction/` 的
+  `device-gate-result.txt` 为 PASS，TEST1067、1066、123–125、999 共 6/6，唯一
+  `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、`test13_route_ok=True`。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、`python scripts/audit_repo.py`
+  和文档审计均通过；Release/Debug 保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL
+  无新增警告。
+- 本批只新增 browser-owned result transaction ABI 和宿主消费者接线，不扩大默认 INI，
+  不新增视觉、触摸、旋转、picker 或 OEM SIP 人工门；next618 的 TEST65 人工门仍独立存在。
+
 `tmp/` 不跟踪，以上路径只用于本机证据定位；长期可追溯结论必须落在提交、源码和跟踪文档中。
 
 ## 当前已知边界
@@ -317,7 +335,7 @@ next618 当前候选的本地验证和自动设备门已经完成，尚余一项
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1065 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1067 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -335,12 +353,11 @@ next618 当前候选的本地验证和自动设备门已经完成，尚余一项
   相关 README/测试/交接文档；提交时不要把 `tmp/` 设备证据或无关工作区文件带入。
 - next617 的源码、C89、Debug/Release 构建、定向设备门、audit、Git diff 和远端状态均已在
   `f2f0dbcb` 推送前后核对；tracked 改动只覆盖该批 `positron_http` resolver、消费者和文档。
-- next618 的 Debug/Release 全量 ARMV4I rebuild、C89、audit 和文档检查均已通过；候选及
-  RAPI 有界 gate 修订已提交并推送到 `origin/main`。定向设备门先在 RAPI 远端关闭处失败，
-  重连后又在打开 RAPI 会话处挂起；新的 gate 已能在 30 秒后明确超时，因此该提交仍明确是
-  设备门未验收候选。tracked 改动只覆盖
-  `test_host` IME result 适配、TEST1066 与相关 README/测试/agent 文档；不要把 `tmp/`
-  设备证据或无关工作区文件带入。
+- next618 的 Debug/Release 全量 ARMV4I rebuild、C89、audit、RAPI gate 修复和窄设备门均已
+  完成；其唯一未完成项是用户对 TEST65 的真实 SIP 候选词人工确认。
+- next619 的 browser-owned IME result transaction、TEST1067、Debug/Release 构建、C89、audit
+  和窄设备门已完成；tracked 改动只覆盖 `positron_browser` ABI/实现、`test_host` 消费者、
+  TEST1067 与相关文档。不要把 `tmp/` 设备证据或无关工作区文件带入。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -348,9 +365,9 @@ next618 当前候选的本地验证和自动设备门已经完成，尚余一项
 
 ## 唯一下一步
 
-next618：完成 WM6 native EDIT 的完整 IME 候选词结果提交纵切，先通过 TEST1066 与相关构建，
-再用窄设备门和一次人工 TEST65 确认真实 SIP；不得把 OEM 窗口视觉或未验证设备行为写成
-产品保证。
+完成 next618 的一次人工 TEST65：在同一构建的真实 WM6 窗口中点选多字符 SIP 候选词，确认
+输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。确认前不得把
+OEM 窗口视觉或未验证设备行为写成产品保证；确认后再按路线图选择下一个产品纵切。
 
 ## next617 完成标准
 
@@ -375,3 +392,12 @@ next618：完成 WM6 native EDIT 的完整 IME 候选词结果提交纵切，先
   `python scripts/audit_repo.py` 通过；设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL。
 - 真实 SIP 候选词整词提交和视觉只在人工确认后提升为设备事实；人工未确认前继续记录为
   限制，不扩张默认 `test_host.ini` 选择集。
+
+## next619 完成标准
+
+- `PBrowser_ScriptSessionDispatchNativeEditResult()` 作为 additive 稳定 C ABI，校验活动
+  composition、UTF-8 result 容量和生命周期，并复用 browser-owned pending native commit
+  metadata；宿主不获得新的产品事件所有权。
+- TEST1067 与 TEST1066、123–125、999 的窄设备门唯一 PASS、零 ERROR/FAIL；Debug/Release
+  正式构建、C89 和仓库/文档 audit 通过。
+- 不新增视觉、触摸、旋转、picker 或 OEM SIP 人工保证；TEST65 仍按 next618 的独立人工门处理。

@@ -25,7 +25,9 @@ core propagation callback，并为每个 native EDIT 传入稳定的非零 sessi
 `PBrowser_ScriptSessionDispatchNativeEditBlur()` 只在 dirty 时派发一次 change，
 `PBrowser_ScriptSessionDispatchNativeEditComposition()` 处理 START/UPDATE/END 的
 compositionstart、insertCompositionText beforeinput、compositionupdate、compositionend
-顺序并把 UPDATE metadata 接到 native commit；
+顺序并把 UPDATE metadata 接到 native commit；`PBrowser_ScriptSessionDispatchNativeEditResult()`
+把完整 WM6 `GCS_RESULTSTR` 作为一次 browser-owned composition update，保留同一 pending
+input metadata，宿主随后只负责原生文本替换、native commit 和 composition end；
 `PBrowser_ScriptSessionResetNativeEditState()` 用于销毁/重建 native 控件时丢弃状态。
 最多跟踪 16 个 token，每个 inputType/data/preedit 字符串最多 255 字节；这些入口不拥有
 WM EDIT/WM_IME、文本 mutation、焦点窗口、SIP/IME 候选词窗口或 SELECT 控件。旧的独立 input/edit
@@ -249,6 +251,14 @@ beforeinput metadata 会与既有 native commit → input 事务衔接。宿主�
 原生文本 mutation 和平台副作用；TEST1061、TEST123–125 已在 WM6 设备门通过。next618
 在宿主边界补齐 WinCE `GCS_RESULTSTR` 的完整候选落地，但没有改变该 ABI 或把 OEM 候选词
 窗口、SIP 视觉体验伪装成 browser 兼容性保证；TEST1066 只验证可重复的多字节结果提交。
+
+next619 在同一 bounded state 上增加
+`PBrowser_ScriptSessionDispatchNativeEditResult()`：browser layer 校验稳定 token、活动
+composition 和不超过 255 字节的借用 UTF-8 result，派发
+`beforeinput(insertCompositionText)` → `compositionupdate` 并把 metadata 接入既有 native
+commit → input 事务。宿主仍拥有 `ImmGetCompositionStringW`、`EM_REPLACESEL`、WM_IME/SIP
+窗口和平台副作用；TEST1067 覆盖无效输入、容量、未开始/已结束 composition、完整 result、
+native commit、reset 和 unregister。该 API 不宣称 OEM 候选条视觉或所有输入法兼容。
 
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、

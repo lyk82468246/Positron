@@ -177,6 +177,11 @@ next618 又修正 WM6 native EDIT 对多字符 IME 候选结果的宿主落地�
 通过一次 `EM_REPLACESEL` 写入当前 composition selection，继续沿 `EN_CHANGE` 回写 Core，
 避免部分设备只留下首字符。`TEST1066` 覆盖多字节完整值；真实 SIP 候选窗口视觉与 OEM
 行为仍需设备人工确认，不能从自动门扩大为通用输入法保证。
+next619 又把完整 result 的产品事件事务加入 `positron_browser.dll`：
+`PBrowser_ScriptSessionDispatchNativeEditResult()` 校验活动 composition 和有界 UTF-8
+result，派发 `beforeinput(insertCompositionText)` → `compositionupdate` 并衔接 pending
+native commit；宿主仍拥有 `ImmGetCompositionStringW`、`EM_REPLACESEL`、SIP 窗口和平台
+视觉。`TEST1067` 覆盖生命周期、容量、commit、reset 和注销边界。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node
