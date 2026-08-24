@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1075
+#define TEST_MAX_NUMBER 1076
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -13986,6 +13986,59 @@ static int pcore_handle_form_toggle(HWND hwnd, int x, int y,
     return 1;
 }
 
+/* A label activation is a trusted activation of its associated toggle. Keep
+ * the target click and the state commit in the browser-owned transaction when
+ * scripting is active; the host supplies only the hit-tested control and the
+ * existing Core mutation/repaint path. Without scripting, preserve the
+ * direct click plus Core fallback used by the legacy host path. */
+static int pcore_activate_form_toggle(HWND hwnd, int x, int y)
+{
+    unsigned int index;
+    int kind;
+    int selected_before;
+    int disabled;
+    int default_allowed;
+    int product_toggle_started;
+    int phase_result;
+
+    index = 0;
+    kind = 0;
+    selected_before = 0;
+    disabled = 0;
+    if (!pcore_form_toggle_control_at(x, y, &index, &kind,
+            &selected_before, &disabled)) {
+        return 1;
+    }
+    if (disabled) {
+        /* The label itself has already received its click. A disabled target
+         * must not receive a synthetic target click or mutate Core state. */
+        pcore_toggle_focus_clear();
+        return 1;
+    }
+    product_toggle_started = 0;
+    if (pcore_native_script_active()) {
+        default_allowed = 1;
+        phase_result = pcore_browser_script_dispatch_native_toggle_phase(
+                index, kind, x, y,
+                PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK,
+                0, selected_before, selected_before, &default_allowed);
+        if (phase_result < 0 ||
+                (phase_result > 0 && !default_allowed)) {
+            return 1;
+        }
+        if (phase_result > 0) {
+            product_toggle_started = 1;
+        }
+    }
+    if (!product_toggle_started &&
+            !pcore_browser_script_dispatch_click_at(x, y)) {
+        return 1;
+    }
+    (void) pcore_handle_form_toggle(hwnd, x, y,
+            product_toggle_started);
+    return 1;
+}
+
 static int pcore_focus_native_form_control(int kind, int x, int y)
 {
     PCoreTextInputInfo text_info;
@@ -14404,8 +14457,6 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
     int kind;
     int button_kind;
     int button_disabled;
-    int disabled;
-    int click_allowed;
 
     if (!PCore_LabelTargetAt(g_render_doc, x, y,
             &target_x, &target_y, &kind)) {
@@ -14445,20 +14496,7 @@ static int pcore_handle_label(HWND hwnd, int x, int y)
          * target click may cancel activation; state/input/change remain
          * owned by the existing form-toggle path. Disabled controls do not
          * receive a synthetic click. */
-        disabled = 0;
-        click_allowed = 1;
-        if (pcore_form_toggle_control_at(target_x, target_y,
-                NULL, NULL, NULL, &disabled)) {
-            if (disabled) {
-                click_allowed = 0;
-            } else {
-                click_allowed = pcore_browser_script_dispatch_click_at(
-                        target_x, target_y);
-            }
-        }
-        if (click_allowed) {
-            (void) pcore_handle_form_toggle(hwnd, target_x, target_y, 0);
-        }
+        (void) pcore_activate_form_toggle(hwnd, target_x, target_y);
     } else {
         pcore_focus_native_form_control(kind, target_x, target_y);
     }
@@ -16240,6 +16278,315 @@ static BOOL test1075_browser_label_button_activation_contract(void)
             "Label activation forwards trusted button CLICK/COMMIT through"
             " the browser transaction; ordinary, submit, reset, cancellation"
             " and disabled targets keep their event and default-action policy.");
+    return TRUE;
+}
+
+/* TEST 1076 - trusted label forwarding to native checkbox/radio activation. */
+static BOOL test1076_browser_label_toggle_activation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='root'>"
+        "<label id='label' for='check'>Toggle label</label>"
+        "<input id='check' type='checkbox'>"
+        "<input id='radio-a' type='radio' name='choice' checked>"
+        "<input id='radio-b' type='radio' name='choice'>"
+        "<input id='disabled' type='checkbox' disabled>"
+        "<p id='result'>idle</p></form></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "label,input{display:block;width:220px;height:24px;margin:3px}"
+        "#result{display:block;width:500px;height:80px}";
+    static const char LISTENER[] =
+        "window.events='';window.cancel_radio=false;"
+        "function record(e){var id=String(e.target.id||'');"
+        "window.events+=e.type+'|'+id+'|'"
+        "+String(e.defaultPrevented)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('click',record);"
+        "root.addEventListener('input',record);"
+        "root.addEventListener('change',record);"
+        "document.getElementById('radio-b').addEventListener('click',"
+        "function(e){if(window.cancel_radio){e.preventDefault();}});";
+    static const char CHECK_EVENTS[] =
+        "click|label|false;click|check|false;input|check|false;"
+        "change|check|false;";
+    static const char RADIO_CANCEL_EVENTS[] =
+        "click|label|false;click|radio-b|true;";
+    static const char RADIO_EVENTS[] =
+        "click|label|false;click|radio-b|false;input|radio-b|false;"
+        "change|radio-b|false;";
+    static const char DISABLED_EVENTS[] = "click|label|false;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char events[512];
+    char error[384];
+    const char *stage;
+    int event_bytes;
+    int executed;
+    int ignored;
+    int label_x;
+    int label_y;
+    int label_w;
+    int label_h;
+    int target_x;
+    int target_y;
+    int target_kind;
+    int click_x;
+    int click_y;
+    int probe_x;
+    int probe_y;
+    int probe_step_x;
+    int probe_step_y;
+    int probe_found;
+    int index;
+    int left;
+    int top;
+    int width;
+    int height;
+    int kind;
+    int selected;
+    int disabled;
+    int check_index;
+    int radio_a_index;
+    int radio_b_index;
+    int disabled_index;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(events, 0, sizeof(events));
+    memset(error, 0, sizeof(error));
+    stage = "create";
+    event_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    label_x = 0;
+    label_y = 0;
+    label_w = 0;
+    label_h = 0;
+    target_x = 0;
+    target_y = 0;
+    target_kind = 0;
+    click_x = 0;
+    click_y = 0;
+    probe_x = 0;
+    probe_y = 0;
+    probe_step_x = 1;
+    probe_step_y = 1;
+    probe_found = 0;
+    index = 0;
+    left = 0;
+    top = 0;
+    width = 0;
+    height = 0;
+    kind = 0;
+    selected = 0;
+    disabled = 0;
+    check_index = -1;
+    radio_a_index = -1;
+    radio_b_index = -1;
+    disabled_index = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/label-toggle.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 420) != 0 ||
+                PCore_NodeBox(document, "label", &label_x, &label_y,
+                &label_w, &label_h) != 0 || label_w <= 0 || label_h <= 0) {
+            ok = 0;
+        } else {
+            probe_step_x = label_w / 4;
+            probe_step_y = label_h / 4;
+            if (probe_step_x <= 0) {
+                probe_step_x = 1;
+            }
+            if (probe_step_y <= 0) {
+                probe_step_y = 1;
+            }
+            for (probe_y = label_y;
+                    probe_y < label_y + label_h && !probe_found;
+                    probe_y += probe_step_y) {
+                for (probe_x = label_x;
+                        probe_x < label_x + label_w && !probe_found;
+                        probe_x += probe_step_x) {
+                    if (PCore_LabelTargetAt(document, probe_x, probe_y,
+                            &target_x, &target_y, &target_kind) == 1 &&
+                            target_kind == 1) {
+                        click_x = probe_x;
+                        click_y = probe_y;
+                        probe_found = 1;
+                    }
+                }
+            }
+            if (!probe_found) {
+                stage = "label-probe";
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "enumerate-controls";
+        index = 0;
+        while (PCore_FormControlInfo(document, (unsigned int) index,
+                &left, &top, &width, &height, &kind, &selected,
+                &disabled) == 0) {
+            if (kind == 1 && check_index < 0 && !disabled) {
+                check_index = index;
+            } else if (kind == 2 && radio_a_index < 0 && selected) {
+                radio_a_index = index;
+            } else if (kind == 2 && radio_b_index < 0 &&
+                    index != radio_a_index) {
+                radio_b_index = index;
+            } else if (kind == 1 && disabled && disabled_index < 0) {
+                disabled_index = index;
+            }
+            index++;
+        }
+        if (check_index < 0 || radio_a_index < 0 || radio_b_index < 0 ||
+                disabled_index < 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "label-checkbox";
+        if (PCore_LabelTargetAt(document, click_x, click_y,
+                &target_x, &target_y, &target_kind) != 1 ||
+                target_kind != 1 ||
+                !pcore_browser_script_dispatch_click_at(click_x, click_y) ||
+                !pcore_handle_label(NULL, click_x, click_y) ||
+                PCore_FormControlInfo(document, (unsigned int) check_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                !selected ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, CHECK_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "reset-radio-cancel";
+        if (PCore_NodeSetAttributeById(document, "label", "for",
+                "radio-b") != 0 ||
+                pcore_browser_script_session_evaluate(
+                "window.events='';window.cancel_radio=true;"
+                "document.getElementById('result').textContent='';", -1,
+                error, sizeof(error)) != 0 ||
+                !pcore_browser_script_dispatch_click_at(click_x, click_y) ||
+                !pcore_handle_label(NULL, click_x, click_y) ||
+                PCore_FormControlInfo(document, (unsigned int) radio_a_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                !selected ||
+                PCore_FormControlInfo(document, (unsigned int) radio_b_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                selected ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, RADIO_CANCEL_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "radio-commit";
+        if (pcore_browser_script_session_evaluate(
+                "window.events='';window.cancel_radio=false;"
+                "document.getElementById('result').textContent='';", -1,
+                error, sizeof(error)) != 0 ||
+                !pcore_browser_script_dispatch_click_at(click_x, click_y) ||
+                !pcore_handle_label(NULL, click_x, click_y) ||
+                PCore_FormControlInfo(document, (unsigned int) radio_a_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                selected ||
+                PCore_FormControlInfo(document, (unsigned int) radio_b_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, NULL) != 0 ||
+                !selected ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, RADIO_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "label-disabled";
+        if (PCore_NodeSetAttributeById(document, "label", "for",
+                "disabled") != 0 ||
+                pcore_browser_script_session_evaluate(
+                "window.events='';document.getElementById('result')"
+                ".textContent='';", -1, error, sizeof(error)) != 0 ||
+                !pcore_browser_script_dispatch_click_at(click_x, click_y) ||
+                !pcore_handle_label(NULL, click_x, click_y) ||
+                PCore_FormControlInfo(document, (unsigned int) disabled_index,
+                NULL, NULL, NULL, NULL, NULL, &selected, &disabled) != 0 ||
+                !disabled || selected ||
+                PCore_NodeTextContentById(document, "result", events,
+                sizeof(events), &event_bytes) != 0 ||
+                strcmp(events, DISABLED_EVENTS) != 0) {
+            ok = 0;
+        }
+    }
+    if (!ok && error[0] == '\0') {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%s target=%d,%d/%d events=%s selected=%d disabled=%d",
+                stage, target_x, target_y, target_kind, events, selected,
+                disabled);
+        error[sizeof(error) - 1] = '\0';
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1076 FAIL", error[0] != '\0' ? error :
+                "label checkbox/radio activation failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1076 OK",
+            "Label activation forwards trusted checkbox/radio CLICK and"
+            " COMMIT through the browser transaction; cancellation, radio"
+            " selection and disabled targets preserve their event policy.");
     return TRUE;
 }
 
@@ -74060,6 +74407,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1073: ok = test1073_browser_native_ordinary_button_contract(); break;
         case 1074: ok = test1074_browser_native_button_keyboard_contract(); break;
         case 1075: ok = test1075_browser_label_button_activation_contract(); break;
+        case 1076: ok = test1076_browser_label_toggle_activation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

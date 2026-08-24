@@ -95,6 +95,12 @@ next627 将 label 命中的 button 也接入这条 browser-owned 事务：label 
 stale 或 disabled target 不合成按钮 click，也不落入关闭窗口 fallback。TEST1075 覆盖普通、
 submit、reset、取消、disabled 和 reset 值恢复；真实 label 触摸坐标、焦点视觉和 OEM 行为仍
 需要人工观察。
+next628 将 label 命中的 checkbox/radio 也接入既有 native toggle 事务：label 自身 click
+先由宿主派发，目标 control 再按 index/kind 调用
+`PBrowser_ScriptSessionDispatchNativeToggle()` 的 CLICK→COMMIT；宿主调用
+`PCore_FormActivateAt()` 负责 Core checked/radio mutation，browser DLL 负责取消和一次
+`input` → `change`。TEST1076 覆盖 checkbox、radio 互斥、目标 click 取消和 disabled 静默；
+真实 label 触摸坐标、焦点视觉、OEM 行为及其他 labelable 控件仍需人工观察。
 
 主文档导航和外部 CSS/图片资源通过 `PHttp_ResolveReference` 消费
 `positron_http.dll` 的统一解析策略：WinINet 负责目录相对、`.`/`..`、query-only、

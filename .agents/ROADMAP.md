@@ -316,7 +316,20 @@ TEST1075 覆盖 ordinary、submit、reset、button click 取消、disabled 静�
 C89 和后续 Release/audit 必须保持既有告警基线；label 的真实触摸坐标、焦点视觉、OEM 按键
 映射和其他 labelable 控件仍不由本批自动门保证。
 
-### 22. 建立真实页面驱动的兼容队列
+### 22. next628：label→native toggle 受信任转发（已完成）
+
+next628 继续补齐 label 的消费者接线：启用脚本时，label 命中 checkbox/radio 后复用
+`PBrowser_ScriptSessionDispatchNativeToggle()` 的 CLICK→COMMIT，而不是先走 generic click
+再由宿主直接派发 input/change。Core 仍负责 checked/radio mutation 和重绘，browser layer
+继续负责目标 click 取消及一次 `input` → `change`；disabled/stale target 不合成目标 click。
+
+TEST1076 覆盖 label→checkbox、radio 互斥、目标 click `preventDefault` 和 disabled 静默；
+`tmp/device-runs/20260824-142420-next628-label-toggle-r1/` 的定向设备门通过 7/7
+（TEST1076、1075、1074、1071、64、73、999），零 ERROR/FAIL，唯一 `TESTBENCH PASS`。
+真实 label 触摸坐标、焦点视觉、OEM 行为以及 select/file/textarea 等其他 labelable 控件
+仍保持人工/独立边界。
+
+### 23. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -327,7 +340,7 @@ C89 和后续 Release/audit 必须保持既有告警基线；label 的真实触�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 23. 安排新的全范围检查点
+### 24. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

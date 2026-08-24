@@ -16,9 +16,9 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next627，label→native button 受信任转发（自动设备门已完成）；
+- 当前能力批次：next628，label→native checkbox/radio 受信任转发（自动设备门已完成）；
   next618 的 TEST65 真实 SIP 候选词仍待人工确认。
-- 测试编号上限：`TEST_MAX_NUMBER 1075`。
+- 测试编号上限：`TEST_MAX_NUMBER 1076`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -164,6 +164,11 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   命中派发，ordinary、submit、reset 目标再复用 browser-owned click/form 取消与事件顺序；
   宿主只执行已接受的 Core 默认动作，stale/disabled target 不合成 click，也不关闭窗口。
   TEST1075 覆盖普通、submit、reset、取消、disabled 和 reset 值恢复。
+- next628 在 `test_host` 把 label 命中的 checkbox/radio 转入既有
+  `PBrowser_ScriptSessionDispatchNativeToggle()` CLICK→COMMIT：label 自身 click 先按物理
+  命中派发，目标 control 再由 Core 执行 checked/radio mutation；browser layer 继续拥有目标
+  click 取消和一次 `input` → `change`，stale/disabled target 不合成 click。TEST1076 覆盖
+  checkbox、radio 互斥、preventDefault 和 disabled 静默。
 
 ## 最近验证证据
 
@@ -440,6 +445,18 @@ next627 的 trusted label→native button activation 自动门已经完成：
   Release 构建、`python scripts/audit_repo.py` 和同一窄设备门，保持既有 3 个 libcss/fpmath
   C4244 警告基线，产品 DLL 不得新增警告。
 
+next628 的 trusted label→native toggle activation 自动设备门已经完成：
+
+- `tmp/device-runs/20260824-142420-next628-label-toggle-r1/` 的
+  `device-gate-result.txt` 为 PASS，TEST1076、1075、1074、1071、64、73、999 共 7/7，唯一
+  `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、`test13_route_ok=True`。
+- TEST1076 覆盖 label→checkbox 的 click/input/change 顺序、radio 目标的 preventDefault
+  抑制和后续互斥提交，以及 disabled label 的静默；它证明产品/宿主事件事务，不证明真实
+  label 触摸坐标、焦点视觉、OEM 行为或其他 labelable 控件。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、`python scripts/audit_repo.py`
+  和同一窄设备门均已通过；Release/Debug 仅保留既有 libcss/fpmath 的 3 个 C4244 警告，
+  产品 DLL 无新增警告。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -473,7 +490,7 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1075 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1076 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -522,8 +539,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   设备证据或无关工作区文件带入。
 - next627 的宿主 label→native button forwarding、TEST1075、C89、Debug 构建和窄设备门已
   完成；tracked 改动只覆盖 `test_host` 消费者、TEST1075 与相关文档，`positron_browser`
-  公共 ABI 未扩张。提交前仍须补跑 Release、audit 和同一窄门；不要把 `tmp/` 证据或无关
-  工作区文件带入。
+  公共 ABI 未扩张；不要把 `tmp/` 证据或无关工作区文件带入。
+- next628 的宿主 label→native toggle forwarding、TEST1076、C89、Debug/Release 构建、
+  audit 和窄设备门已完成；tracked 改动只覆盖 `test_host` 消费者、TEST1076 与相关文档，
+  `positron_browser` 公共 ABI 未扩张。不要把 `tmp/` 证据或无关工作区文件带入。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -533,8 +552,9 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 完成 next618 的一次人工 TEST65：在同一构建的真实 WM6 窗口中点选多字符 SIP 候选词，确认
 输入框一次出现完整候选词，并核对密码、readonly、disabled、maxlength 行为。next622–626
-本身的自动契约已经完成，next627 的 label→button 事件契约也已自动通过；确认前不得把
-OEM 窗口视觉、键盘映射、真实 label 触摸或其他未验证设备行为写成产品保证；确认后再按
+本身的自动契约已经完成，next627 的 label→button 和 next628 的 label→toggle 事件契约也
+已自动通过；确认前不得把 OEM 窗口视觉、键盘映射、真实 label 触摸或其他未验证设备行为
+写成产品保证；确认后再按
 路线图选择下一个产品纵切。
 
 ## next617 完成标准
@@ -663,5 +683,19 @@ OEM 窗口视觉、键盘映射、真实 label 触摸或其他未验证设备行
 - TEST1075、1074、1073、1072、999 的窄设备门必须是唯一 `TESTBENCH PASS` 且无 ERROR/FAIL；
   Debug/Release 正式 ARMV4I 构建、C89 和仓库 audit 通过。真实 label 触摸坐标、焦点视觉、
   OEM 按键映射和其他 labelable 控件继续保持人工/独立边界。
+- 跟踪的默认 INI 保持自动模式和原有选择集；更新限制、路线图和交接快照，只提交本批
+  tracked 文件并推送 `main`。
+
+## next628 完成标准
+
+- `test_host` 在启用脚本且 label 命中 Core `kind=1/2` toggle 时先派发 label click，再以
+  control index/kind 调用既有 `PBrowser_ScriptSessionDispatchNativeToggle()` CLICK→COMMIT；
+  browser DLL 继续拥有目标 click 取消及 `input` → `change` 顺序，宿主只执行 Core mutation
+  与重绘。
+- disabled 或 stale label target 不合成目标 click、不改变 checked/radio 状态，也不落入窗口
+  关闭 fallback；无脚本路径继续使用原 generic fallback。
+- TEST1076、1075、1074、1071、64、73、999 的窄设备门必须是唯一 `TESTBENCH PASS` 且无
+  ERROR/FAIL；Debug/Release 正式 ARMV4I 构建、C89 和仓库 audit 通过。真实 label 触摸坐标、
+  焦点视觉、OEM 行为和其他 labelable 控件继续保持人工/独立边界。
 - 跟踪的默认 INI 保持自动模式和原有选择集；更新限制、路线图和交接快照，只提交本批
   tracked 文件并推送 `main`。

@@ -66,8 +66,11 @@
   键盘焦点/激活现在由宿主以 TEST1074 的消息级契约覆盖，Enter/Space 事务不再落入关闭
   窗口 fallback。next627 又让启用脚本时 label 命中的 kind=7..9 button 复用同一
   CLICK/COMMIT 事务；label 命中、label 自身 click、Core 坐标和默认动作仍由宿主提供，
-  disabled/stale target fail closed。真实 OEM 按键映射、焦点视觉、触摸、label 几何和
-  toggle/file 等其他 labelable 控件仍需单独人工或独立门验收。
+  disabled/stale target fail closed。next628 又让启用脚本时 label 命中的 kind=1/2
+  checkbox/radio 复用 `PBrowser_ScriptSessionDispatchNativeToggle()` CLICK/COMMIT；Core
+  checked/radio mutation 和重绘仍由宿主提供，browser layer 继续持有目标 click 取消及
+  input→change 顺序。真实 OEM 按键映射、焦点视觉、触摸、label 几何和
+  toggle/file/select/textarea 等其他 labelable 控件仍需单独人工或独立门验收。
 
 ### 解除或推进条件
 

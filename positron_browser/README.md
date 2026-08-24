@@ -318,6 +318,12 @@ next627 不新增 ABI，而是要求宿主在 label 命中 button 时复用同�
 命中、稳定 token、Core validation/default action 和窗口副作用。TEST1075 覆盖 label 自身
 click 后的目标按钮事件顺序、reset 状态、取消和 disabled 静默；label 几何、触摸和焦点视觉
 仍由消费者负责。
+next628 不新增 ABI，而是要求宿主在 label 命中 checkbox/radio 时复用既有
+`PBrowser_ScriptSessionDispatchNativeToggle()` CLICK→COMMIT 入口。browser layer 继续统一目标
+click 的取消和一次 `input` → `change`；宿主只提供 label/control 命中、稳定 token、Core
+checked/radio mutation、重绘和窗口副作用。TEST1076 覆盖 checkbox 提交、radio 互斥、目标
+click `preventDefault` 和 disabled 静默；label 几何、触摸、焦点视觉以及 select/file/textarea
+等其他 labelable 控件仍由消费者负责。
 
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、

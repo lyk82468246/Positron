@@ -581,6 +581,26 @@ scripts\device_gate.bat -Candidate next627-label-button-r2 ^
 唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。这是产品/宿主事件契约自动门；label 的真实
 触摸坐标、焦点视觉、OEM 按键映射和其他 labelable 控件仍需人工或后续独立门确认。
 
+### next628 label→native toggle 转发自动门
+
+next628 将启用脚本时 label 命中的 checkbox/radio 接入既有
+`PBrowser_ScriptSessionDispatchNativeToggle()` CLICK→COMMIT 事务：label 自身 click 仍先派发，
+目标 click 被取消时不改变 Core 状态；接受后由 Core 提交 checked/radio 状态，browser layer
+只产生一次 `input` → `change`。disabled target 不合成目标 click，也不落入关闭窗口 fallback。
+TEST1076 覆盖 checkbox 事件顺序、radio 互斥、目标 click `preventDefault` 和 disabled 静默，
+并与 1075、1074、1071、64、73、999 回归：
+
+```bat
+scripts\device_gate.bat -Candidate next628-label-toggle-r1 ^
+  -EnableJavaScript ^
+  -TestSelection "1076,1075,1074,1071,64,73,999"
+```
+
+`tmp/device-runs/20260824-142420-next628-label-toggle-r1/` 已通过 7/7，零 ERROR/FAIL、
+唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。这是产品/宿主事件契约自动门；label 的真实
+触摸坐标、焦点视觉、OEM 行为以及 select/file/textarea 等其他 labelable 控件仍需人工或独立
+门确认。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

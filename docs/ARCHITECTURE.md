@@ -1010,6 +1010,14 @@ next627 复用同一公共 ABI 补齐启用脚本时的 label→native button �
 宿主执行。stale/disabled target fail closed，不落入窗口关闭 fallback。TEST1075 是该消费者
 接线门；label 的真实触摸坐标、焦点视觉和其他 labelable 控件仍不是该自动门的承诺。
 
+next628 复用同一公共 ABI 补齐启用脚本时的 label→native toggle 转发。宿主仍负责
+`PCore_LabelTargetAt()` 的物理命中、label 自身 click、稳定 control index/kind 和 Core
+`PCore_FormActivateAt()` mutation；对 checkbox/radio target 改为进入已有
+`PBrowser_ScriptSessionDispatchNativeToggle()` CLICK→COMMIT。browser layer 因而继续持有
+目标 click 取消及一次 `input` → `change`，radio 互斥和重绘仍是 Core/宿主边界；disabled 或
+stale target 不合成目标 click。TEST1076 是该消费者接线门；label 的真实触摸坐标、焦点视觉、
+OEM 行为以及其他 labelable 控件仍不是该自动门的承诺。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

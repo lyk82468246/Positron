@@ -221,6 +221,12 @@ ordinary、submit、reset、取消和 disabled 目标不再绕过产品按钮策
 仍先按物理命中派发，目标按钮的默认动作只在 browser layer 未取消时执行。`TEST1075`
 覆盖 label 转发、事件顺序、reset 状态、取消和 disabled 静默；真实触摸坐标、焦点视觉、
 OEM 按键映射和其他 labelable 控件仍需人工或独立边界确认。
+next628 将同一条 label 转发边界扩展到 checkbox/radio：启用脚本时，label 自身 click 后，
+宿主按稳定 control index/kind 调用既有 `PBrowser_ScriptSessionDispatchNativeToggle()` 的
+CLICK→COMMIT；Core 仍负责 checked/radio 状态变更和重绘，browser layer 继续负责目标 click
+取消及一次 `input` → `change`。`TEST1076` 覆盖 checkbox、radio 互斥、preventDefault 和
+disabled 静默；真实 label 触摸坐标、焦点视觉、OEM 行为以及 select/file/textarea 等其他
+labelable 控件仍需人工或独立边界确认。
 当前还提供按 DOM id 的属性 count/name/value，以及 `getAttributeNames()`、`attributes`/`Attr`
 和受限 NamedNodeMap lookup/iterator；`Attr.value`/`nodeValue` 复用既有同步 attribute bridge，
 同 owner 的普通 map 更新可用，普通 `setNamedItem()` 跨 owner 仍 fail closed；namespace-node
