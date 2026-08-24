@@ -177,6 +177,11 @@ WMDC/RapiMgr 主机环境；不要为此修改产品代码、恢复 VMID 绑定�
 在 `CeRapiInitEx()` 处 30 秒超时，设备侧证据仍为空；在 WMDC/RAPI 主机状态改变前不再
 继续重复该探针。
 
+随后按文档重启了 `C:\Windows\WindowsMobile\wmdc.exe`（旧 PID 20536，新 PID 4208），
+但托盘 UI 重启不会自动恢复设备连接。未进行 GUI 手动连接就运行的
+`20260824-101622-next618-after-wmdc-restart` 仍在 `CeRapiInitEx()` 处超时；这次结果
+再次确认 gate 必须以用户在 WMDC GUI 中完成的唯一设备连接为前置条件。
+
 ### 早期 loading 条 — 已替代/部分暂挂
 
 问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。
