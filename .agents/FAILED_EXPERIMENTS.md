@@ -188,6 +188,10 @@ WMDC/RapiMgr 主机环境；不要为此修改产品代码、恢复 VMID 绑定�
 被误写成 RAPI 健康证据；结合此前 `WcesComm`/`RapiMgr` 的 `0xc0000008` 崩溃，下一步
 应是主机级恢复（由用户决定重启主机），而不是继续清理或重启已连接的 WMDC 进程。
 
+随后以管理员权限运行同一窄门 `20260824-103501-next618-native-ime-result-elevated-retry`，
+构建和 staging 成功但仍在 `CeRapiInitEx()` 30 秒处超时。提权不能绕过当前 RAPI 会话
+故障，因此不应继续以切换调用者权限作为修复策略。
+
 ### 早期 loading 条 — 已替代/部分暂挂
 
 问题：父窗口绘制和 `ScrollWindowEx` 产生滚动残影或卡顿，独立 `STATIC` 在 WM6 不可见。

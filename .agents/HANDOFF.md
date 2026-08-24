@@ -323,6 +323,9 @@ next618 当前候选的本地验证已完成，但设备门尚未形成证据：
   `tmp/device-runs/20260824-103254-next618-native-ime-result-final-after-manual-reconnect/`
   仍在 `CeRapiInitEx()` 30 秒处超时，构建/staging 成功但设备端没有进程、日志或结果。
   GUI 连接不能替代 RAPI 健康证据；下一步需用户决定主机级恢复/重启，不再清理已连接进程。
+- 以管理员权限运行的 `tmp/device-runs/20260824-103501-next618-native-ime-result-elevated-retry/`
+  仍在 `CeRapiInitEx()` 30 秒处超时；提权构建/staging 成功但未产生设备进程、日志或结果，
+  证明当前阻塞不是 gate 调用者权限。
 - 需要关闭设备/模拟器 GUI 中遗留的 `test_host.exe`，确认 WMDC 只有当前唯一连接后重新
   断开/连接，再原样重跑窄门；恢复门槛见 `.agents/FAILED_EXPERIMENTS.md` 的 next618 条目。
 
