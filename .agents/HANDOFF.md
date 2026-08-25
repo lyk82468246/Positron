@@ -44,9 +44,10 @@
   `removeAttribute` 保持 live 一致，其他元素返回 `undefined` 且 setter 不改变 raw 属性。
   这不触发脚本侧 MediaQueryList 事件或自动重排。
 - 测试编号上限：`TEST_MAX_NUMBER 1097`。
-- Nightly 分发脚本 `scripts\package_nightly.bat`/`.ps1` 只提取既有 Debug/Release 产物，生成
-  ZIP_STORED 的 `positron-nightly.zip` 和全量可用测试 INI；`-SkipUpload` 已验证，GitHub 上传
-  仍要求本机 `gh auth login`，当前环境的 GitHub CLI 凭据无效。
+- Nightly 分发脚本 `scripts\package_nightly.bat`/`.ps1` 只提取既有 Debug/Release 产物，默认
+  选择最近一次完整构建的一套，生成 ZIP_STORED 的 `positron-nightly.zip`；全量测试 INI 从
+  `test_host/main.c` 的实际 dispatch 动态生成。`-SkipUpload` 已验证，GitHub 上传仍要求本机
+  `gh auth login`，当前环境的 GitHub CLI 凭据无效。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`

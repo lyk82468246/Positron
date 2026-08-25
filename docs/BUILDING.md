@@ -150,19 +150,23 @@ Release 包仍需通过与风险相称的设备测试。成功编译不代表网
 
 ## Nightly 预发布包
 
-打包脚本只读取已经存在的 `bin\Release\`（或指定的 Debug）产物，不会触发编译，也不会调用
+打包脚本只读取已经存在的 `bin\Debug\`/`bin\Release\` 产物，不会触发编译，也不会调用
 `stage.bat`：
 
 ```bat
 scripts\package_nightly.bat
 ```
 
-默认从各产品工程和 `test_host` 的 Release 目录提取七个产品 DLL 与 `test_host.exe`，生成全量
-可用测试的自动 `test_host.ini`，补入运行所需字体、许可证、说明和 SHA-256 清单，然后创建
-不压缩的 `tmp\nightly\positron-nightly.zip`。可选参数：
+默认自动比较两套完整产物，选择所有八个运行时文件中“最旧的那个”仍然最新的一套；因此通常
+会选中最近一次完整的 Debug 构建（`build.bat`/`stage.bat` 默认就是 Debug），如果最近一次完整
+构建是 Release 则会选 Release。也可以显式固定配置。测试清单从当前
+`test_host/main.c` 的 `run_configured_tests` dispatch 动态生成，新增并接入 dispatch 的测试会
+自动进入下一次包，不复制 tracked smoke INI 中的缩减选择。随后脚本补入字体、许可证、说明和
+SHA-256 清单，创建不压缩的 `tmp\nightly\positron-nightly.zip`。可选参数：
 
 ```bat
 scripts\package_nightly.bat -Configuration Debug
+scripts\package_nightly.bat -Configuration Release
 scripts\package_nightly.bat -SkipUpload
 scripts\package_nightly.bat -Repository owner/repo
 ```
@@ -171,4 +175,6 @@ scripts\package_nightly.bat -Repository owner/repo
 用 `--clobber` 替换同名 `positron-nightly.zip`；它不会创建版本号。首次使用先运行
 `gh auth login -h github.com`。发布说明正文来自
 [`NIGHTLY_RELEASE.md`](NIGHTLY_RELEASE.md)，包含如何编辑/移走 INI 来选择全量或部分的自动/手动
-模式。脚本失败时不会上传不完整的 ZIP；`tmp\nightly\` 只保存本机生成物，不进入 Git。
+模式。这里的 `gh` 登录与 `git push` 使用的 Git Credential Manager 是两套独立凭据；能 push
+不代表 `gh release` 已登录。脚本失败时不会上传不完整的 ZIP；`tmp\nightly\` 只保存本机生成物，
+不进入 Git。

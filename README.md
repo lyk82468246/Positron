@@ -419,13 +419,15 @@ Storage Card 路径启动 `test_host.exe`。
 scripts\stage.bat Debug C:\WMShare\Positron-candidate
 ```
 
-如需把已经编译好的 Release 产物打成可分发的 nightly ZIP（不触发编译），运行：
+如需把已经编译好的最新完整 Debug/Release 产物打成可分发的 nightly ZIP（不触发编译），运行：
 
 ```bat
 scripts\package_nightly.bat
 ```
 
-脚本会更新固定的 `nightly` pre-release 和 `positron-nightly.zip` 资产；包内说明见
+脚本默认在 Debug 与 Release 中选择最近一次完整构建的一套，也可用
+`-Configuration Debug|Release` 固定选择；测试清单从当前 `test_host/main.c` 的实际 dispatch
+动态生成。脚本会更新固定的 `nightly` pre-release 和 `positron-nightly.zip` 资产；包内说明见
 [`Nightly 发布包`](docs/NIGHTLY_RELEASE.md)，其中包含如何通过编辑或移走 `test_host.ini`
 选择全量/部分的自动或手动测试。
 

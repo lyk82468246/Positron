@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Debug", "Release")]
-    [string] $Configuration = "Release",
+    [ValidateSet("Auto", "Debug", "Release")]
+    [string] $Configuration = "Auto",
     [string] $Repository = "",
     [string] $Tag = "nightly",
     [string] $OutputDirectory = "",
@@ -40,8 +40,47 @@ function Add-TestRange([System.Collections.Generic.List[string]] $Ranges,
         [int] $Start, [int] $End)
 {
     if ($Start -le $End) {
-        [void] $Ranges.Add(("{0}-{1}" -f $Start, $End))
+        if ($Start -eq $End) {
+            [void] $Ranges.Add(("{0}" -f $Start))
+        } else {
+            [void] $Ranges.Add(("{0}-{1}" -f $Start, $End))
+        }
     }
+}
+
+function Convert-TestNumbersToSelection([int[]] $Numbers)
+{
+    $ranges = New-Object "System.Collections.Generic.List[string]"
+    if ($null -eq $Numbers -or $Numbers.Length -eq 0) {
+        return @()
+    }
+    $start = $Numbers[0]
+    $end = $Numbers[0]
+    for ($index = 1; $index -lt $Numbers.Length; $index++) {
+        if ($Numbers[$index] -eq ($end + 1)) {
+            $end = $Numbers[$index]
+        } else {
+            Add-TestRange $ranges $start $end
+            $start = $Numbers[$index]
+            $end = $Numbers[$index]
+        }
+    }
+    Add-TestRange $ranges $start $end
+    return $ranges.ToArray()
+}
+
+function Get-ArtifactSpecs([string] $Config)
+{
+    return @(
+        @{ Relative = ("positron_tls\bin\{0}\positron_tls.dll" -f $Config); Archive = "positron_tls.dll" },
+        @{ Relative = ("positron_json\bin\{0}\positron_json.dll" -f $Config); Archive = "positron_json.dll" },
+        @{ Relative = ("positron_http\bin\{0}\positron_http.dll" -f $Config); Archive = "positron_http.dll" },
+        @{ Relative = ("positron_core\bin\{0}\positron_core.dll" -f $Config); Archive = "positron_core.dll" },
+        @{ Relative = ("positron_image\bin\{0}\positron_image.dll" -f $Config); Archive = "positron_image.dll" },
+        @{ Relative = ("positron_script\bin\{0}\positron_script.dll" -f $Config); Archive = "positron_script.dll" },
+        @{ Relative = ("positron_browser\bin\{0}\positron_browser.dll" -f $Config); Archive = "positron_browser.dll" },
+        @{ Relative = ("test_host\bin\{0}\test_host.exe" -f $Config); Archive = "test_host.exe" }
+    )
 }
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
@@ -71,23 +110,83 @@ if ($mainText -notmatch "#define\s+TEST_MAX_NUMBER\s+(\d+)") {
     throw "Could not find TEST_MAX_NUMBER in $mainSource."
 }
 $testMax = [int] $Matches[1]
-$testRanges = New-Object "System.Collections.Generic.List[string]"
-Add-TestRange $testRanges 1 22
-Add-TestRange $testRanges 24 77
-Add-TestRange $testRanges 80 998
-Add-TestRange $testRanges 1000 $testMax
-$allTests = (($testRanges.ToArray() + @("7b", "999")) -join ",")
 
-$artifactSpecs = @(
-    @{ Relative = "positron_tls\bin\$Configuration\positron_tls.dll"; Archive = "positron_tls.dll" },
-    @{ Relative = "positron_json\bin\$Configuration\positron_json.dll"; Archive = "positron_json.dll" },
-    @{ Relative = "positron_http\bin\$Configuration\positron_http.dll"; Archive = "positron_http.dll" },
-    @{ Relative = "positron_core\bin\$Configuration\positron_core.dll"; Archive = "positron_core.dll" },
-    @{ Relative = "positron_image\bin\$Configuration\positron_image.dll"; Archive = "positron_image.dll" },
-    @{ Relative = "positron_script\bin\$Configuration\positron_script.dll"; Archive = "positron_script.dll" },
-    @{ Relative = "positron_browser\bin\$Configuration\positron_browser.dll"; Archive = "positron_browser.dll" },
-    @{ Relative = "test_host\bin\$Configuration\test_host.exe"; Archive = "test_host.exe" }
-)
+$dispatchMatch = [regex]::Match($mainText,
+        "(?s)static\s+int\s+run_configured_tests\s*\(.*?default:\s*ok\s*=\s*FALSE;\s*break;")
+if (!$dispatchMatch.Success) {
+    throw "Could not find the test dispatch terminator in $mainSource."
+}
+$dispatchText = $dispatchMatch.Value
+$testNumbers = New-Object "System.Collections.Generic.List[int]"
+foreach ($match in [regex]::Matches($dispatchText, "(?m)^\s*case\s+(\d+)\s*:")) {
+    $number = [int] $match.Groups[1].Value
+    if ($number -gt $testMax) {
+        throw ("Test dispatch case {0} exceeds TEST_MAX_NUMBER {1}." -f
+                $number, $testMax)
+    }
+    if (!$testNumbers.Contains($number)) {
+        [void] $testNumbers.Add($number)
+    }
+}
+# TEST7b is a deliberate non-numeric branch beside case 7. The completion
+# beep number is read from the source instead of being copied into a range.
+if ($dispatchText -notmatch "number\s*==\s*7") {
+    throw "Could not find the TEST7/TEST7b dispatch branch in $mainSource."
+}
+if (!$testNumbers.Contains(7)) {
+    [void] $testNumbers.Add(7)
+}
+if ($mainText -notmatch "#define\s+TEST_COMPLETION_BEEP_NUMBER\s+(\d+)") {
+    throw "Could not find TEST_COMPLETION_BEEP_NUMBER in $mainSource."
+}
+$completionBeepNumber = [int] $Matches[1]
+if ($completionBeepNumber -gt $testMax) {
+    throw ("Completion beep TEST{0} exceeds TEST_MAX_NUMBER {1}." -f
+            $completionBeepNumber, $testMax)
+}
+$testNumbers.Sort()
+$allTests = ((Convert-TestNumbersToSelection $testNumbers.ToArray()) +
+        @("7b", [string] $completionBeepNumber)) -join ","
+
+$artifactCandidates = @("Debug", "Release")
+$artifactSpecs = $null
+$packageConfiguration = $Configuration
+if ($Configuration -eq "Auto") {
+    $completeConfigurations = @()
+    foreach ($candidate in $artifactCandidates) {
+        $candidateSpecs = Get-ArtifactSpecs $candidate
+        $candidateFiles = @()
+        $candidateComplete = $true
+        foreach ($spec in $candidateSpecs) {
+            $sourcePath = Join-Path $repoRoot $spec.Relative
+            if (!(Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+                $candidateComplete = $false
+                break
+            }
+            $candidateFiles += Get-Item -LiteralPath $sourcePath
+        }
+        if ($candidateComplete) {
+            $oldest = $candidateFiles[0].LastWriteTimeUtc
+            foreach ($candidateFile in $candidateFiles) {
+                if ($candidateFile.LastWriteTimeUtc -lt $oldest) {
+                    $oldest = $candidateFile.LastWriteTimeUtc
+                }
+            }
+            $completeConfigurations += [pscustomobject]@{
+                Configuration = $candidate
+                OldestArtifact = $oldest
+            }
+        }
+    }
+    if ($completeConfigurations.Count -eq 0) {
+        throw "Neither Debug nor Release has a complete set of package binaries."
+    }
+    $selected = $completeConfigurations |
+        Sort-Object -Property OldestArtifact -Descending |
+        Select-Object -First 1
+    $packageConfiguration = $selected.Configuration
+}
+$artifactSpecs = Get-ArtifactSpecs $packageConfiguration
 
 $assetSpecs = @(
     @{ Relative = "assets\fonts\PositronSymbolsBasic.ttf"; Archive = "fonts\PositronSymbolsBasic.ttf" },
@@ -124,8 +223,8 @@ try {
     $generatedUtc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     $iniLines = @(
-        "# Positron nightly: all currently available tests in automated mode.",
-        "# TEST 23, 78 and 79 are withdrawn and intentionally excluded.",
+        "# Positron nightly: all tests currently dispatched by test_host/main.c.",
+        "# The list is generated from run_configured_tests; it is not copied from the smoke INI.",
         "# Edit tests= for a partial run; change auto=0 for manual prompts.",
         "auto=1",
         "javascript=0",
@@ -140,11 +239,12 @@ try {
         "---",
         "",
         "Package metadata",
-        ("- Configuration: " + $Configuration),
+        ("- Configuration: " + $packageConfiguration),
         ("- Source commit: " + $commit),
         ("- Generated (UTC): " + $generatedUtc),
         "- Archive: positron-nightly.zip (ZIP store / no compression)",
-        ("- Available test ceiling: TEST_MAX_NUMBER " + $testMax)
+        ("- Available test ceiling: TEST_MAX_NUMBER " + $testMax),
+        ("- Generated test selection: " + $allTests)
     ) -join "`r`n"
     [IO.File]::WriteAllText($readmePath, $notes,
             (New-Object Text.UTF8Encoding($false)))
@@ -161,7 +261,7 @@ try {
 
     $manifestLines = @(
         "# SHA-256 checksums for the stored nightly package entries",
-        ("# configuration=" + $Configuration),
+        ("# configuration=" + $packageConfiguration),
         ("# commit=" + $commit)
     )
     foreach ($file in $packageFiles) {
@@ -242,6 +342,7 @@ try {
         Write-Host ("Uploaded nightly pre-release '{0}' and replaced positron-nightly.zip." -f $Tag)
     }
     Write-Host ("Stored ZIP entries: " + $entryCount)
+    Write-Host ("Package configuration: " + $packageConfiguration)
     Write-Host ("Source commit: " + $shortCommit)
 } finally {
     Pop-Location -ErrorAction SilentlyContinue

@@ -27,10 +27,15 @@ fonts\...
 
 ## 四种测试方式
 
-包内 INI 默认是“所有可用测试 + 自动断言”：`auto=1`，`javascript=0`，`tests=` 包含当前
-`TEST_MAX_NUMBER` 的全部编号，并明确排除已撤回的 TEST23、TEST78、TEST79，同时保留特殊的
-TEST7b 和 TEST999。自动模式不弹测试确认框，结果写入同目录的 `test_host.log`，失败会在
-日志中留下 `ERROR`/`FAIL`。
+包内 INI 默认是“当前源码实际 dispatch 的所有测试 + 自动断言”：`auto=1`，`javascript=0`，
+`tests=` 由脚本读取 `test_host/main.c` 的 `run_configured_tests` 自动生成，并补上特殊的
+TEST7b 和 TEST999。它不会复制 tracked `test_host/test_host.ini` 的缩减 smoke 选择；源码中
+没有实际 dispatch 的编号（包括历史撤回或尚未接入的编号）不会被伪造成可用测试。自动模式
+不弹测试确认框，结果写入同目录的 `test_host.log`，失败会在日志中留下 `ERROR`/`FAIL`。
+
+因此，新增测试时只要在源码中完成测试函数、`TEST_MAX_NUMBER`（如需）和
+`run_configured_tests` dispatch，并重新编译对应的一套完整产物，下一次打包就会自动看到新编号。
+脚本不编译；若源码和二进制不是同一提交，测试清单可能领先于二进制，发布前应先完成构建。
 
 可以直接编辑或移走 INI：
 
@@ -51,3 +56,5 @@ TEST7b 和 TEST999。自动模式不弹测试确认框，结果写入同目录�
 仓库使用固定的 `nightly` pre-release tag 和固定的 `positron-nightly.zip` 资产，不使用版本号。
 下一次上传会更新同一个 release 的说明并用 `--clobber` 替换同名 ZIP；包内
 `NIGHTLY-README.md` 和 `SHA256SUMS.txt` 会记录配置、生成时间和源 commit。
+上传依赖 GitHub CLI 的独立登录状态；它与 Git 推送所用的 Git Credential Manager 凭据分开，
+所以 Git push 成功不等于 `gh release` 已认证。
