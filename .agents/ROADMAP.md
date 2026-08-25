@@ -540,7 +540,23 @@ TEST1091 在同一文档的 320px/299px 两次样式事务中覆盖 inline/link 
 ARMV4I 增量构建和相关文档/设备门均通过；本批没有新增必须立即人工复核的视觉、触摸、SIP、
 旋转或 picker 风险。
 
-### 38. 建立真实页面驱动的兼容队列
+### 38. next644：stylesheet media DOM 反射（已完成）
+
+next644 紧接 next643 的页面样式选择，补齐页面脚本读取 stylesheet 元数据所需的最小
+DOM 语义。`positron_browser.dll` 的 bootstrap 现在为 `<link>` 与 `<style>` wrapper
+提供受限的 `media` UTF-8 反射：缺失值返回空串，setter 和 `setAttribute()`/
+`removeAttribute()` 通过既有 attribute bridge 保持 live 一致；其他元素返回 `undefined`，
+其 setter 不改变 raw 属性。该批不新增公共 C ABI，不触发脚本侧 MediaQueryList 事件，
+不自动重排，也不扩展 link 下载策略。
+
+TEST1092 覆盖初始值、缺失值、稳定 wrapper identity、raw attribute mutation、setter
+字符串化、移除恢复和非目标元素 fail-closed。定向设备门
+`tmp/device-runs/20260825-160422-next644-stylesheet-media-reflection/` 的
+TEST1090、TEST1091、TEST1092、TEST999 通过 4/4，唯一 `TESTBENCH PASS` 且零
+`ERROR`/`FAIL`；C89、Debug/Release ARMV4I 构建和仓库/文档审计均通过。本批没有新增
+必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
+
+### 39. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -551,7 +567,7 @@ ARMV4I 增量构建和相关文档/设备门均通过；本批没有新增必须
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 39. 安排新的全范围检查点
+### 40. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

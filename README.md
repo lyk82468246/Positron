@@ -336,6 +336,12 @@ screen viewport 匹配的作者样式表才参与选择；同一文档在视口�
 同时覆盖 inline/link 条件和缓存重排；与 TEST21、TEST24、TEST999 的 Debug WM6 相关门通过
 4/4。
 
+next644 在同一 browser bootstrap 中补齐 `<link>` 与 `<style>` 的 `media` 属性反射：
+缺失值为空串，setter、`setAttribute()` 和 `removeAttribute()` 保持 live UTF-8 属性一致，
+其他元素返回 `undefined` 且 setter 不改变 raw attribute。该反射不触发动态
+`MediaQueryList` 事件、自动重排或 link 下载策略。`TEST1092` 与 TEST1090、TEST1091、
+TEST999 的 WM6 Debug 定向门通过 4/4；公共 C ABI 和默认自动 INI 均未改变。
+
 ## 快速开始
 
 ### 前置环境

@@ -114,3 +114,9 @@ next643 的页面样式资源选择属于 Core：`<style media>` 与
 `PCore_StyleDocumentEx2` fetch/free callback 约定，在 320px/299px 视口验证两类条件和
 2 次 fetch/2 次 free 的缓存边界；相关 TEST21、TEST24、TEST1091 与 TEST999 设备门通过
 4/4；这不代表脚本侧动态媒体事件或其他 link-type 行为。
+
+next644 的 `media` DOM 反射属于 `positron_browser.dll`，Core 不新增接口或承担脚本
+property。Core 继续只负责 `<style media>`/`<link rel="stylesheet" media>` 的 viewport
+选择和 document-owned CSS cache；browser setter 改变 raw attribute 后，调用者如需视觉
+更新必须显式重新样式/布局。TEST1092 只验证 browser 消费者的 metadata 反射，不把它写成
+Core 自动重排保证。

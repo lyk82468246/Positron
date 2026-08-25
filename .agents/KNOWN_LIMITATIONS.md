@@ -128,7 +128,11 @@
   next643 只把 `<style media>` 与 `<link rel="stylesheet" media>` 的 UTF-8 条件用于当前
   Core CSS selection；同文档重新样式时复用已缓存的外部字节，但不实现脚本侧动态
   `MediaQueryList` 事件、完整 link 下载策略、其他 link type 或 media 相关 DOM mutation。
-  TEST1091 与 TEST999 的 Debug 门已通过。
+  TEST1091 与 TEST999 的 Debug 门已通过。next644 又在 browser bootstrap 中提供
+  `<link>` 与 `<style>` 的 bounded `media` 属性反射：缺失值为空串，setter 经既有
+  UTF-8 attribute bridge 写回并支持 `removeAttribute()` 恢复，其他元素返回 `undefined`
+  且 setter 不改变 raw 属性。该反射不触发脚本侧 MediaQueryList 事件、自动重排或 link
+  下载策略；TEST1092 与 1090/1091/999 的 Debug 门已通过。
    next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
   Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前

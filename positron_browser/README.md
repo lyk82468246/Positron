@@ -431,6 +431,13 @@ C ABI。next642 又为同一 wrapper 增加 `supports()`：只有 `<link>` 上 C
 `stylesheet`（ASCII 大小写不敏感）返回 true，其他关系词和 `a`/`area`/`form` 返回 false；
 空白 token 仍在 bootstrap 层抛出 `SyntaxError`。TEST1089/1090 是对应的自动产品/消费者门。
 
+next644 在同一 bootstrap 中为 `<link>` 与 `<style>` wrapper 增加受限的 `media` UTF-8
+属性反射：缺失值为空串，setter、`setAttribute()` 和 `removeAttribute()` 保持 live
+一致，`null` setter 按普通 `String()` 规则处理；非 `link`/`style` 元素返回 `undefined`，
+其 setter 不修改 raw attribute。该属性只反映 stylesheet metadata，不触发动态样式重排、
+MediaQueryList 事件或 link 下载策略；TEST1092 与 TEST1090/1091/999 的 WM6 定向设备门
+通过 4/4，未新增公共 C ABI。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

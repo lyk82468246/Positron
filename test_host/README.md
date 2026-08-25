@@ -137,6 +137,12 @@ next643 的 TEST1091 仍只做 Core 消费者断言：它使用同一文档在 3
 缓存使第二次样式事务不再 fetch。该测试不新增窗口、网络或视觉人工路径；与既有
 TEST21/24、TEST999 的相关设备门最终为 `21,24,1091,999`，共通过 4/4。
 
+next644 的 TEST1092 是 browser bootstrap 消费者断言：它验证 `<link>`/`<style>` 的
+`media` 初始与缺失值、稳定 wrapper identity、raw attribute mutation、setter 字符串化、
+移除恢复和非目标元素 fail-closed。fixture 不依赖网络、窗口、重排或人工视觉；定向门为
+`1090,1091,1092,999`，设备上通过 4/4。`test_host` 只编排断言，不拥有 `media` property
+语义，也没有修改 tracked 默认 INI。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

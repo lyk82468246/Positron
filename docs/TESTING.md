@@ -900,6 +900,24 @@ scripts\device_gate.bat -Candidate next643-style-media-condition ^
 文档而把缓存断言写成 4 次 fetch/4 次 free；修正为同一文档跨视口重排后重跑通过，产品
 断言未放宽。tracked INI 未修改；C89、Debug ARMV4I 增量构建和设备门均通过。
 
+### next644 stylesheet media DOM 反射自动门
+
+next644 在 browser bootstrap 中为 `<link>` 与 `<style>` 提供 bounded `media` 属性反射。
+TEST1092 覆盖初始和缺失值、稳定 wrapper identity、raw attribute 变化、setter 的字符串化、
+`removeAttribute()` 恢复，以及非目标元素的 fail-closed 行为。它不触发动态样式重排、
+MediaQueryList 事件或网络下载。
+
+```bat
+scripts\device_gate.bat -Candidate next644-stylesheet-media-reflection ^
+  -EnableJavaScript ^
+  -TestSelection "1090,1091,1092,999"
+```
+
+`tmp/device-runs/20260825-160422-next644-stylesheet-media-reflection/` 已通过 4/4，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。Debug/Release ARMV4I
+正式构建、C89 和仓库/文档审计通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、
+旋转或 picker 人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

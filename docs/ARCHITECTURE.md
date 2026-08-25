@@ -1219,6 +1219,20 @@ fetch/HTTP 的下载策略，也不把 media 属性扩张为完整 HTML link-typ
 external `<link media>` 和两次样式事务的 2 次 fetch/2 次 free 缓存契约；next643 设备门为
 `21,24,1091,999`，通过 4/4。
 
+#### next644 的 stylesheet media DOM 反射边界
+
+next644 在 `positron_browser.dll` bootstrap 中为 `<link>` 与 `<style>` wrapper 增加受限的
+`media` UTF-8 属性反射。缺失属性返回空串；setter、`setAttribute()` 与
+`removeAttribute()` 复用既有 attribute bridge，因此同一 wrapper 的 getter 与 raw
+attribute 保持 live 一致，JS 的 `null` setter 也按普通 `String()` 规则写入。由于当前
+browser 使用统一的 bounded `PElement` wrapper，非 `link`/`style` 元素的 `media` getter
+返回 `undefined`，setter fail closed，不修改其 raw `media` attribute。
+
+这只是 stylesheet metadata 反射，不拥有 CSS 重新选择、脚本侧 `MediaQueryList` 事件、
+网络下载、link type processing 或节点 mutation。`test_host.exe` 只提供 TEST1092 fixture
+与断言；TEST1090、TEST1091、TEST1092、TEST999 的定向设备门为 4/4。本批不新增公共
+C ABI，也没有视觉、触摸、SIP、旋转或 picker 人工门。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

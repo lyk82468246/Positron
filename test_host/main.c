@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1091
+#define TEST_MAX_NUMBER 1092
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -19963,6 +19963,51 @@ static BOOL test1091_core_stylesheet_media_contract(void)
             "<style media> and <link media> select only the matching author\n"
             "sheet at 320px and 299px; cached external bytes are reused\n"
             "on the second style pass (2 fetches, 2 frees total).");
+    return TRUE;
+}
+
+/* TEST 1092 - stylesheet media attributes are bounded DOM reflections. */
+static BOOL test1092_browser_stylesheet_media_reflection(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "<link id='sheet' rel='stylesheet' media='(min-width:300px)' "
+        "href='/wide.css'><style id='inline' media='screen'>"
+        "inlinecase{color:#00aa00;}</style><style id='empty'>"
+        "emptycase{color:#0000aa;}</style></head><body>"
+        "<div id='other' media='ignored'>Other</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var l=document.getElementById('sheet');"
+        "var s=document.getElementById('inline');"
+        "var e=document.getElementById('empty');"
+        "var d=document.getElementById('other');"
+        "var initial=l.media==='(min-width:300px)'&&s.media==='screen'&&e.media==='';"
+        "var identity=document.getElementsByTagName('link').item(0)===l&&"
+        "document.head.getElementsByTagName('style').item(0)===s;"
+        "l.setAttribute('media',' screen ');"
+        "var attr=l.media===' screen ';"
+        "s.media=null;"
+        "var stringified=s.media==='null'&&s.getAttribute('media')==='null';"
+        "l.removeAttribute('media');"
+        "var removed=l.media===''&&!l.hasAttribute('media');"
+        "var unsupported=d.media===undefined;d.media='ignored2';"
+        "var closed=d.getAttribute('media')==='ignored'&&d.media===undefined;"
+        "document.getElementById('result').textContent=String(initial)+'|'"
+        "+String(identity)+'|'+String(attr)+'|'+String(stringified)+'|'"
+        "+String(removed)+'|'+String(unsupported)+'|'+String(closed);";
+    static const char EXPECTED[] = "true|true|true|true|true|true|true";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1092 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1092 OK",
+            "link and style media attributes reflect live UTF-8 metadata;"
+            " unsupported element wrappers fail closed without changing raw attrs.");
     return TRUE;
 }
 
@@ -77799,6 +77844,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1089: ok = test1089_browser_anchor_rel_list_contract(); break;
         case 1090: ok = test1090_browser_rel_list_supports_contract(); break;
         case 1091: ok = test1091_core_stylesheet_media_contract(); break;
+        case 1092: ok = test1092_browser_stylesheet_media_reflection(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
