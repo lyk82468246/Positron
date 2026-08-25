@@ -686,6 +686,25 @@ Core 几何、当前 URL 绑定、目标滚动和 unknown-id 保持位置；trac
 新增必须立即人工复核的崩溃、数据损坏或核心流程阻塞风险，真实页面的滚动/视觉仍按累计人工
 页面门处理。
 
+### next633 同文档 fragment 历史遍历滚动恢复
+
+next633 修复同页 fragment 的实际历史遍历：点击或脚本 fragment 导航创建的同文档条目在
+`history.back()`、`history.forward()` 和 `history.go()` 返回时，宿主复用
+`PCore_FragmentInfoById()` 恢复目标 viewport。未知 id 保持当前位置，不发起 GET 或窗口替换；
+跨文档条目仍由原有导航路径处理。
+
+```bat
+scripts\device_gate.bat -Candidate next633-fragment-history-scroll-r2 ^
+  -EnableJavaScript ^
+  -TestSelection "1081,1080,1079,1070,999"
+```
+
+`tmp/device-runs/20260825-105254-next633-fragment-history-scroll-r2/` 已通过 5/5，零
+`ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。TEST1081 覆盖目标点击后
+滚动、同文档 back/forward 恢复和 unknown-id 保持位置；Release ARMV4I 正式构建通过，
+Release 设备探针不作为证据。该批没有新增必须立即人工复核的崩溃、数据损坏或核心流程阻塞
+风险；真实页面视觉仍按累计人工页面门处理。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

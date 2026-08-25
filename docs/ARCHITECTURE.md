@@ -1072,6 +1072,16 @@ next632 让 `PBrowser_ScriptSessionDispatchAnchorClick()` 把 fragment-only href
 几何、fragment URL 绑定、目标滚动和 unknown-id 保持位置。percent-decoding、`<a name>`、
 target/rel/window、跨文档加载和真实页面视觉仍是后续或人工边界。
 
+#### next633 的同文档 fragment 历史遍历边界
+
+next633 修正 next632 的宿主生命周期缺口：同页 fragment entry 在
+`history.back()`、`history.forward()` 或 `history.go()` 触发 browser-owned traversal 并成功
+派发 `popstate`/`hashchange` 后，`test_host` 重新用 `PCore_FragmentInfoById()` 查询当前布局
+文档中的目标几何并恢复自己的 viewport/scrollbar。未知目标保持原位置，不发起网络请求或
+文档替换；跨文档 history entry 仍交给既有导航 worker。该批不新增 browser 公共 ABI，也不
+承诺持久滚动位置、跨文档恢复、`<a name>`、percent-decoding、target/rel/window 或真实视觉。
+TEST1081 与 next632 的 TEST1080 共同覆盖该窄边界。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

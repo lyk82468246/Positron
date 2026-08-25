@@ -364,6 +364,11 @@ click 取消和 typed navigation；宿主负责把片段 URL 绑定到当前页�
 和跨文档导航策略仍未覆盖。TEST1080 覆盖 fragment/ASSIGN 分类、目标几何、URL 绑定和
 未知目标保持位置。
 
+next633 不改变 browser 公共 ABI，而是让宿主在 browser-owned history traversal 成功后复用
+同一 fragment 目标查询：`history.back()`、`history.forward()` 和 `history.go()` 返回同文档
+条目时恢复 viewport，未知目标保持位置。`positron_browser.dll` 仍只持有 history/event
+事务与回调，不拥有滚动、网络或窗口替换；TEST1081 覆盖该宿主消费者边界。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

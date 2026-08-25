@@ -266,6 +266,11 @@ next632 又补齐同页 fragment 锚点的受控激活：以 `#` 开头的 `<a h
 未知目标保持当前滚动，跨页链接继续走 ASSIGN。`TEST1080` 已在 WM6 设备门覆盖该分类、
 几何和失败边界；`<a name>`、percent-decoding 与 target/rel/window 仍是明确限制。
 
+next633 继续补齐真实页面的同页历史行为：fragment 产生的同文档条目在
+`history.back()`、`history.forward()` 和 `history.go()` 返回时恢复对应目标滚动；未知目标
+保持当前位置且不发起网络或文档替换。`TEST1081` 与相关锚点回归已在 WM6 Debug 设备门
+通过；跨文档历史与真实页面视觉仍由宿主/人工边界负责。
+
 ## 快速开始
 
 ### 前置环境

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1080
+#define TEST_MAX_NUMBER 1081
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -8756,7 +8756,6 @@ static int test1070_browser_anchor_host_route(
     pcore_browser_script_bridge bridge_storage;
     int rc;
     int ok;
-    int observed_scroll;
 
     if (state == NULL || session == NULL) {
         return 0;
@@ -11510,6 +11509,12 @@ static int pcore_browser_script_session_traverse_history(int target_index)
         free(state_copy);
         return 1;
     }
+    /* Same-document fragment entries keep the current document alive, so
+     * traversal must restore the target viewport just like a fresh fragment
+     * navigation. Unknown targets deliberately leave the existing position
+     * unchanged; history/event state remains authoritative. */
+    (void) pcore_browser_script_scroll_to_fragment(bridge->hwnd,
+            target_url);
     free(old_url);
     final_copy = pcore_browser_script_copy_string(
             pcore_browse_history_current_state());
@@ -17686,6 +17691,7 @@ static BOOL test1080_browser_fragment_anchor_contract(void)
     int navigated;
     int rc;
     int ok;
+    int observed_scroll;
 
     document = NULL;
     sheet = NULL;
@@ -17823,6 +17829,171 @@ static BOOL test1080_browser_fragment_anchor_contract(void)
             "Fragment-only anchors use same-document navigation and target "
             "geometry for host-owned scrolling; cross-document hrefs retain "
             "ASSIGN behavior.");
+    return TRUE;
+}
+
+/* TEST 1081 - same-document fragment history traversal restores scroll. */
+static BOOL test1081_browser_fragment_history_scroll(void)
+{
+    static const char URL_FIRST[] =
+        "https://example.com/page#first";
+    static const char URL_TARGET[] =
+        "https://example.com/page#target";
+    static const char URL_MISSING[] =
+        "https://example.com/page#missing";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>var ready=1;</script>"
+        "</head><body><h2 id='first'>First</h2>"
+        "<div id='spacer'>spacer</div><h2 id='target'>Target</h2>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:8px;font:14px sans-serif}"
+        "h2{display:block;height:24px;margin:4px}"
+        "#spacer{height:180px}";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[256];
+    int first_y;
+    int target_y;
+    int missing_y;
+    int executed;
+    int ignored;
+    int observed_scroll;
+    int observed_index;
+    int observed_count;
+    char observed_url[128];
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    first_y = 0;
+    target_y = 0;
+    missing_y = 0;
+    executed = -1;
+    ignored = -1;
+    observed_scroll = 0;
+    observed_index = -1;
+    observed_count = 0;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    memset(observed_url, 0, sizeof(observed_url));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_scroll_y = 0;
+    (void) pcore_browse_history_commit_navigation(URL_FIRST, 1, -1);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "https://example.com/fragment-history.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 320, 240) != 0 ||
+            PCore_FragmentInfoById(document, "first", NULL, &first_y,
+            NULL, NULL) != 0 ||
+            PCore_FragmentInfoById(document, "target", NULL, &target_y,
+            NULL, NULL) != 0 || target_y <= first_y ||
+            PCore_FragmentInfoById(document, "missing", NULL, &missing_y,
+            NULL, NULL) == 0 || missing_y != 0 ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_FIRST,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        bridge->hwnd = NULL;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_navigate_fragment(URL_TARGET, 0) !=
+                0 || g_browse_history.count != 2 ||
+                g_browse_history.index != 1 || g_scroll_y != target_y ||
+                strcmp(pcore_browse_history_current(), URL_TARGET) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (!pcore_browse_navigate_back(NULL) ||
+                g_browse_history.index != 0 || g_scroll_y != first_y ||
+                strcmp(pcore_browse_history_current(), URL_FIRST) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (!pcore_browse_navigate_forward(NULL) ||
+                g_browse_history.index != 1 || g_scroll_y != target_y ||
+                strcmp(pcore_browse_history_current(), URL_TARGET) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (pcore_browser_script_session_navigate_fragment(URL_MISSING, 0) !=
+                0 || g_browse_history.count != 3 ||
+                g_browse_history.index != 2 || g_scroll_y != target_y ||
+                !pcore_browse_navigate_back(NULL) ||
+                g_browse_history.index != 1 || g_scroll_y != target_y ||
+                strcmp(pcore_browse_history_current(), URL_TARGET) != 0 ||
+                !pcore_browse_navigate_go(NULL, 1) ||
+                g_browse_history.index != 2 || g_scroll_y != target_y ||
+                !pcore_browse_navigate_go(NULL, -1) ||
+                g_browse_history.index != 1 || g_scroll_y != target_y ||
+                strcmp(pcore_browse_history_current(), URL_TARGET) != 0) {
+            ok = 0;
+        }
+    }
+    observed_scroll = g_scroll_y;
+    observed_index = g_browse_history.index;
+    observed_count = g_browse_history.count;
+    if (pcore_browse_history_current() != NULL) {
+        cstr_copy(observed_url, sizeof(observed_url),
+                pcore_browse_history_current());
+    } else {
+        cstr_copy(observed_url, sizeof(observed_url), "(null)");
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "first=%d target=%d scroll=%d history=%d/%d url=%s",
+                    first_y, target_y, observed_scroll, observed_index,
+                    observed_count, observed_url);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1081 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1081 OK",
+            "Same-document fragment back/forward/go restores target scroll;"
+            " unknown targets keep the current viewport and no document"
+            " navigation is started.");
     return TRUE;
 }
 
@@ -75648,6 +75819,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1078: ok = test1078_browser_programmatic_native_focus_contract(); break;
         case 1079: ok = test1079_browser_programmatic_anchor_activation_contract(); break;
         case 1080: ok = test1080_browser_fragment_anchor_contract(); break;
+        case 1081: ok = test1081_browser_fragment_history_scroll(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

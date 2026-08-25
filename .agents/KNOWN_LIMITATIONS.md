@@ -1,6 +1,6 @@
 # Positron 当前已知限制
 
-更新时间：2026-08-24
+更新时间：2026-08-25
 
 本文件只记录当前仍然成立的边界，以及解除边界所需的证据。已修复问题和旧 next 流水由 Git 历史、`docs/history/` 与相关测试保存；最新候选和设备证据见 `.agents/HANDOFF.md`。
 
@@ -92,6 +92,10 @@
   `PCore_FragmentInfoById()` 取得 literal UTF-8 DOM id 的目标几何并移动自己的 viewport；
   unknown id 保持当前位置且不发起网络请求。`<a name>`、percent-decoding、target/rel/window、
   fragment 视觉和真实触摸仍未覆盖；TEST1080 只证明产品分类、Core 几何和宿主窄接线。
+  next633 已让同文档 history `back()`/`forward()`/`go()` 在 traversal 成功后恢复该目标
+  几何；未知目标保持当前位置，跨文档 traversal 仍走既有网络/窗口路径。该恢复只覆盖当前
+  已布局文档和 literal DOM id，不等于持久滚动位置、跨文档恢复或完整浏览器 history 策略；
+  TEST1081 只证明宿主窄接线。
 
 ### 解除或推进条件
 

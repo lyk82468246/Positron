@@ -72,6 +72,12 @@ history/hashchange、native-child reposition 和窗口/网络副作用仍归宿�
 跨页 href 仍走 ASSIGN。TEST1080 覆盖产品分类、Core 几何、fragment URL 绑定和目标滚动的
 可断言边界；percent-decoding、`<a name>`、target/rel/window 仍不由本宿主宣称支持。
 
+next633 补齐同文档 history traversal 的宿主副作用：`history.back()`、`history.forward()`
+和 `history.go()` 返回 fragment 条目后，宿主重新查询当前布局文档的目标几何并恢复 scrollbar
+位置；unknown-id 保持当前位置，不启动 GET 或窗口替换。跨文档 history entry 继续进入既有
+导航 worker。TEST1081 与 TEST1080、1079、1070、999 一起作为窄设备门；真实页面视觉仍需
+累计人工检查。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

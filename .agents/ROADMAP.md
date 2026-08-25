@@ -1,6 +1,6 @@
 # Positron 路线图
 
-更新时间：2026-08-24
+更新时间：2026-08-25
 
 本文件只描述未来工作，不累计已完成 next、提交记录或设备日志。当前基线见 `.agents/HANDOFF.md`，当前边界见 `.agents/KNOWN_LIMITATIONS.md`，项目使命与公共 DLL 职责见 `docs/ARCHITECTURE.md`。
 
@@ -385,7 +385,17 @@ literal UTF-8 DOM id 几何移动 viewport。未知 id 保持位置且不发起�
 TEST1080 与 TEST1079、1070、999 的窄门通过 4/4，零 ERROR/FAIL、唯一 `TESTBENCH PASS`，
 并保留原有默认自动 INI。
 
-### 27. 建立真实页面驱动的兼容队列
+### 27. next633：同文档 fragment 历史遍历滚动恢复（已完成）
+
+next633 修正 next632 遗留的真实页面行为缺口：fragment 点击产生的同文档 history 条目在
+`history.back()`、`history.forward()` 或 `history.go()` 返回时，现在由宿主复用
+`PCore_FragmentInfoById()` 恢复目标 viewport。未知目标保持当前位置，不发起网络请求或文档
+替换；跨文档条目继续走既有导航路径，browser history/event 公共 ABI 不变。
+
+TEST1081 与 TEST1080、1079、1070、999 的窄门通过 5/5，零 ERROR/FAIL、唯一
+`TESTBENCH PASS`，并保留原有默认自动 INI。
+
+### 28. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -396,7 +406,7 @@ TEST1080 与 TEST1079、1070、999 的窄门通过 4/4，零 ERROR/FAIL、唯一
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 28. 安排新的全范围检查点
+### 29. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 
