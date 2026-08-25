@@ -313,6 +313,12 @@ target 与 `_blank` 仍返回 `null`。这不是多窗口实现，不改变 open
 跨窗口 history。`TEST1087` 与 1080–1086、999 的 Debug 设备回归门（TEST1080–1087、999）
 通过 9/9。
 
+next640 把单窗口的同名复用策略补到普通 anchor：宿主读取活动 script session 的
+`window.name`，`target` 精确匹配时允许 ASSIGN、REPLACE 和 fragment 当前-context 路由，
+未知/空名称和 `_blank` 仍 fail closed。browser DLL 不创建窗口，也不把 `context_name` 扩展
+到 anchor metadata；真实多窗口、窗口生命周期和跨窗口 history 仍未实现。`TEST1088` 与
+1080–1087、999 的 Debug 设备回归门通过 10/10。
+
 ## 快速开始
 
 ### 前置环境

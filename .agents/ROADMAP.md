@@ -482,7 +482,22 @@ TEST1087 覆盖名称快照传播、匹配 named reuse、未知名称/`_blank` �
 （TEST1080–1087、999），唯一 `TESTBENCH PASS` 且无 `ERROR`/`FAIL`，`test13_route_ok=True`。
 本批不新增必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
 
-### 34. 建立真实页面驱动的兼容队列
+### 34. next640：普通 named anchor 当前 context 复用（已完成）
+
+next640 将 next639 的 bounded `window.name` 身份从 `window.open()` 扩展到普通 anchor 导航。
+`test_host` 在 navigation adapter 收到非 OPEN 的 named target 时读取活动 script session 的
+有界 `window.name`，只有名称精确相等才允许 ASSIGN、REPLACE 或 fragment 路由；窗口消息边界
+再次执行同一检查。未知名称、空名称和 `_blank` 仍 fail closed，不创建新的 HWND/global。
+公共 `PBrowserScriptNavigationInfo.context_name` 不扩张为 anchor metadata，仍保持 OPEN-only；
+该批只补齐单窗口宿主的当前-context policy，不等于真实窗口管理器。
+
+TEST1088 与 TEST1080–1087、999 的回归门使用：
+`tmp/device-runs/20260825-145401-next640-named-anchor-regression-r5/` 通过 10/10，零
+`ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。C89、Debug/Release ARMV4I、
+仓库审计、文档审计和 diff 检查均通过。本批没有新增必须立即人工复核的视觉、触摸、SIP、
+旋转或 picker 风险。
+
+### 35. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -493,7 +508,7 @@ TEST1087 覆盖名称快照传播、匹配 named reuse、未知名称/`_blank` �
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 35. 安排新的全范围检查点
+### 36. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

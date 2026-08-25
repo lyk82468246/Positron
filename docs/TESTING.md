@@ -824,6 +824,26 @@ scripts\device_gate.bat -Candidate next639-window-name-regression ^
 ARMV4I、仓库审计、文档审计和 diff 检查均已通过；本批不新增必须立即人工复核的视觉、触摸、
 SIP、旋转或 picker 风险。
 
+### next640 普通 named anchor 当前 context 自动门
+
+next640 将 next639 的单窗口 `window.name` admission 扩展到普通 anchor。宿主只在 named
+target 与活动 script session 的名称精确匹配时接受 ASSIGN、REPLACE 或 fragment 当前-context
+路由，并在窗口消息边界再次校验；未知/空名称和 `_blank` 仍 fail closed。browser DLL 的
+`context_name` 仍是 OPEN-only 尾字段，没有新增窗口或视觉保证。
+
+```bat
+scripts\device_gate.bat -Candidate next640-named-anchor-regression-r3 ^
+  -EnableJavaScript ^
+  -TestSelection "1080-1088,999"
+```
+
+`tmp/device-runs/20260825-145401-next640-named-anchor-regression-r5/` 已通过 10/10
+（TEST1080–1088、999），唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。
+TEST1088 覆盖匹配当前 `window.name` 的普通 named anchor、未知名称、空名称和异步窗口消息
+边界；1080–1087 继续保护 fragment、history、anchor metadata、target policy、window.open
+和名称恢复。C89、Debug/Release ARMV4I、仓库审计、文档审计和 diff 检查均通过；本批不新增
+必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

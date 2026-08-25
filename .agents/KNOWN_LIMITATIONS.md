@@ -113,6 +113,11 @@
   匹配 context 的请求仍 fail closed；真实多窗口、window manager、opener/noopener、close、
   跨窗口 history、持久化生命周期和视觉仍未实现。名称恢复不代表第二个 JS global，也不把
   单窗口实现扩张为多窗口保证。TEST1087 覆盖该 bounded 契约。
+  next640 将同一单窗口 admission 扩展到普通 anchor 的非 OPEN 导航：宿主读取活动 session 的
+  `window.name`，只有 named target 与其精确匹配时才允许 ASSIGN/REPLACE/FRAGMENT 等当前 context
+  路由，并在窗口消息边界再次校验；未知或空名称仍 fail closed。browser DLL 的 `context_name`
+  仍是 OPEN-only 兼容尾字段，真实多窗口、窗口 manager、opener/noopener、跨窗口 history 和
+  视觉仍未实现。TEST1088 覆盖该消费者边界。
   next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
   Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前

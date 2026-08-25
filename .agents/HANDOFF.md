@@ -16,12 +16,13 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next639，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
+- 当前能力批次：next640，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
   fragment history/hashchange + host-owned target scroll，并在同文档和跨文档 history
   back/forward/go 时恢复 bounded viewport；fragment token 按 id 优先兼容 `<a name>`，
   anchor 的 href/target/rel 现在由 Core 查询并随 browser anchor navigation 传给宿主
   （自动设备门已完成）。browser layer 还会把 raw target 分类为 bounded `target_kind`；
-  当前单窗口宿主接受 default/`_self`/`_parent`/`_top`，对 `_blank`/named 请求 fail-closed。
+  当前单窗口宿主接受 default/`_self`/`_parent`/`_top`，对 `_blank`/未知或空 named 请求
+  fail-closed；普通锚点的 named target 只有与活动 `window.name` 精确匹配时才复用当前 context。
   `window.open()` 现在只对显式 `_self`/`_parent`/`_top` 请求走当前文档导航并返回当前
   bounded global；对 named target 仅当名称与当前 `window.name` 精确匹配时复用当前
   context，DEFAULT/`_blank`/未知 named/空 URL 或 callback 注销返回 null。`window.name`
@@ -29,7 +30,7 @@
   named window 创建、第二个 global、窗口生命周期和跨窗口 history 尚未实现；next618 的
   TEST65 真实 SIP 候选词仍待人工确认，
   file picker/真实 label 触摸仍是独立人工边界。
-- 测试编号上限：`TEST_MAX_NUMBER 1087`。
+- 测试编号上限：`TEST_MAX_NUMBER 1088`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -650,6 +651,18 @@ next639 的单窗口 browsing context 身份自动门已经完成：
   设备门均已通过；仅剩最终 Git 状态、提交和推送核对。本批没有新增必须立即人工复核的视觉、
   真实触摸、SIP、旋转或 picker 门。
 
+next640 的 named anchor 当前 context 自动门已经完成：
+
+- `tmp/device-runs/20260825-145401-next640-named-anchor-regression-r5/` 的回归门为 PASS，
+  TEST1080–1088、TEST999 共 10/10，唯一 `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、
+  `test13_route_ok=True`。
+- TEST1088 覆盖普通锚点的 named ASSIGN 路由、与活动 `window.name` 的精确匹配、未知名称和
+  空名称的 fail-closed；窗口消息边界再次使用同一 context 检查。browser DLL 的
+  `context_name` 仍是 OPEN-only 尾字段，宿主通过活动 session 快照为锚点做 admission。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I、仓库审计、文档审计、diff 检查和
+  设备门均已通过；本批只改变宿主导航策略，没有新增必须立即人工复核的视觉、真实触摸、
+  SIP、旋转或 picker 门。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -682,8 +695,8 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - Anchor href/target/rel 元数据查询与受信任点击传播已有 next636 自动契约；next637 已把
   raw target 分类并让单窗口宿主对 `_blank`/named 请求 fail-closed。真实 `_blank`/named
   window 创建、窗口复用/生命周期和跨窗口 history 仍未覆盖。next638 的
-  `window.open()` 只提供显式当前-context target 的安全复用，next639 只增加匹配当前
-  `window.name` 的单窗口 named reuse，不能扩大为多窗口保证。
+  `window.open()` 只提供显式当前-context target 的安全复用，next639/640 只增加匹配当前
+  `window.name` 的单窗口 named reuse（分别覆盖 OPEN 与普通 anchor），不能扩大为多窗口保证。
 - 布局仍缺少 Grid、sticky、复杂包含块及完整表格/列表行为；float 路线已撤回。
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
@@ -786,6 +799,9 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   回归门、C89、Debug/Release、audit、文档审计和 diff 检查均已完成；tracked 改动只覆盖
   `positron_browser` additive navigation ABI、`test_host` 消费者/断言和相关文档，没有修改
   tracked INI。提交前只需完成最终 Git 状态、提交和推送核对。
+- next640 的 named anchor 当前 context admission、TEST1088、设备 10/10 回归门、C89、
+  Debug/Release、audit、文档审计和 diff 检查均已完成；tracked 改动只覆盖 `test_host` 消费者/
+  断言和相关文档，没有修改 tracked INI。提交前只需完成最终 Git 状态、提交和推送核对。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -793,12 +809,12 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next639 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+next640 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
 纵切，不要为了补编号添加孤立 API。TEST65 的多字符 SIP 候选词、select/file picker 模态框、
 真实 label 触摸、OEM 窗口视觉和键盘映射仍是独立人工边界；在人工证据出现前不得把它们写成
-通用产品保证。anchor href/target/rel 元数据与 target_kind、bounded `window.open()` 和
-匹配当前 `window.name` 的 named reuse 已有 Core/browser/host 契约，但真实 `_blank`/named
-window 创建、第二个 global、窗口复用与生命周期仍未覆盖；fragment-only 锚点继续在当前宿主路径支持有界
+通用产品保证。anchor href/target/rel 元数据与 target_kind、bounded `window.open()`、普通
+named anchor 和匹配当前 `window.name` 的 named reuse 已有 Core/browser/host 契约，但真实
+`_blank`/named window 创建、第二个 global、窗口复用与生命周期仍未覆盖；fragment-only 锚点继续在当前宿主路径支持有界
 `%HH` 解码、id 优先和 `<a name>` fallback。history traversal 只在当前宿主进程内恢复有界
 的同文档目标或跨文档条目偏移，不提供持久缓存/跨进程恢复。下一次重要产品/生命周期风险
 累积后，再安排新的全范围设备基线。

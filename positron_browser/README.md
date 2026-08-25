@@ -415,6 +415,12 @@ named target 与该快照精确匹配时复用当前 context。browser DLL 不�
 `_blank` 和没有匹配 context 的请求仍应返回 `null`。TEST1087 覆盖快照传播、名称恢复和
 单窗口 admission。
 
+next640 的普通 anchor 不新增 browser ABI 字段：browser layer 继续把 raw target 与
+`target_kind` 传给 navigation callback，宿主可在已有 session 上读取活动 `window.name`，仅对
+精确匹配的 named target 复用当前 context，并把 ASSIGN/REPLACE/FRAGMENT 路由交给自己的
+窗口/网络层。未知或空名称、`_blank` 仍由单窗口宿主 fail closed；异步消息边界的再次检查和
+真实多窗口生命周期不属于 browser DLL。TEST1088 是该 host consumer policy 的回归门。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

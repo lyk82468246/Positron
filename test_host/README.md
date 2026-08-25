@@ -118,6 +118,13 @@ next639 让 `test_host` 消费 browser DLL 的 `context_name`：当前单窗口�
 `TEST1087` 覆盖快照、恢复、匹配 named reuse 和拒绝边界，定向设备门使用
 `1080-1087,999`，本批回归门共 9/9 通过。
 
+next640 把同一 admission 规则用于普通 anchor：`test_host` 在非 OPEN navigation callback
+中读取活动 script session 的 `window.name`，只有 named target 精确匹配时才把 ASSIGN、
+REPLACE 或 fragment 请求放入当前单窗口队列；未知/空名称和 `_blank` 在 callback 与窗口
+消息边界都 fail closed。browser DLL 的 `context_name` 仍仅用于 OPEN metadata，宿主没有创建
+新的 HWND/global。`TEST1088` 覆盖匹配、未知名称、空名称和消息边界，定向设备门使用
+`1080-1088,999`，本批回归门共 10/10。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

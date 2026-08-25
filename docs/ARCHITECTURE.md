@@ -1163,6 +1163,19 @@ UTF-8 快照交给导航 callback；其他导航 kind 不使用该字段。宿�
 document，但这项实现不创建第二个 global、不提供 opener/close/window manager，也不承诺跨窗口
 history；公共 ABI 的字符串仍是借用值，宿主必须在 callback 返回前消费或复制。
 
+#### next640 的普通 named anchor 当前 context 边界
+
+next640 不改变 browser DLL 的公共 ABI：anchor navigation 仍只传 raw target 与由 browser layer
+分类得到的 `target_kind`，`context_name` 继续仅用于 `PBROWSER_SCRIPT_NAVIGATION_OPEN`。当前
+单窗口宿主在非 OPEN navigation adapter 中读取活动 script session 的 `window.name`，把普通
+anchor 的 named target 与该名称做精确匹配；ASSIGN、REPLACE、FRAGMENT 和
+FRAGMENT_REPLACE 只有匹配时才进入当前 context 队列，未知/空名称和 `_blank` 直接拒绝。
+窗口消息边界再次使用复制后的 target/context 快照校验，避免异步队列改变策略。
+
+这只是宿主的单窗口 admission，不创建新的 HWND、global 或 window manager；多窗口复用、
+opener/noopener、关闭、跨窗口 history 和视觉仍未实现。`test_host.exe` 只消费公共 callback，
+不会把 anchor 的 context 身份写进 browser DLL。TEST1088 覆盖匹配、未知名称和空名称边界。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：
