@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1096
+#define TEST_MAX_NUMBER 1097
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -20458,6 +20458,84 @@ static BOOL test1096_core_disclosure_rendering_contract(void)
     show_info(L"TEST 1096 OK",
             "closed details keep summary but hide their body, closed dialog "
             "has no box, and open disclosure elements are laid out.");
+    return TRUE;
+}
+
+/* TEST 1097 - the HTML pre wrap attribute enables pre-wrap layout. */
+static BOOL test1097_core_pre_wrap_rendering_contract(void)
+{
+    static const char WRAPPED_HTML[] =
+        "<!doctype html><html><body><pre wrap>one two three four five six "
+        "seven eight nine ten eleven twelve thirteen fourteen fifteen "
+        "sixteen seventeen eighteen nineteen twenty</pre></body></html>";
+    static const char UNWRAPPED_HTML[] =
+        "<!doctype html><html><body><pre>one two three four five six "
+        "seven eight nine ten eleven twelve thirteen fourteen fifteen "
+        "sixteen seventeen eighteen nineteen twenty</pre></body></html>";
+    HANDLE wrapped_doc = NULL;
+    HANDLE unwrapped_doc = NULL;
+    int wrapped_rc;
+    int unwrapped_rc;
+    int wrapped_w;
+    int wrapped_h;
+    int unwrapped_w;
+    int unwrapped_h;
+    int wrapped_doc_h;
+    int unwrapped_doc_h;
+    int screen_w;
+    int screen_h;
+    int pass;
+
+    wrapped_rc = 1;
+    unwrapped_rc = 1;
+    wrapped_w = 0;
+    wrapped_h = 0;
+    unwrapped_w = 0;
+    unwrapped_h = 0;
+    wrapped_doc_h = 0;
+    unwrapped_doc_h = 0;
+    wrapped_doc = PCore_ParseHTML(WRAPPED_HTML, 0);
+    unwrapped_doc = PCore_ParseHTML(UNWRAPPED_HTML, 0);
+    pass = wrapped_doc != NULL && unwrapped_doc != NULL;
+    if (pass) {
+        PCore_SetViewport(120, 320, 96);
+        pass = PCore_StyleDocument(wrapped_doc, NULL) == 0 &&
+                PCore_StyleDocument(unwrapped_doc, NULL) == 0 &&
+                PCore_LayoutDocument(wrapped_doc, 120, 320) == 0 &&
+                PCore_LayoutDocument(unwrapped_doc, 120, 320) == 0;
+    }
+    if (pass) {
+        wrapped_rc = PCore_NodeBox(wrapped_doc, "pre", NULL, NULL,
+                &wrapped_w, &wrapped_h);
+        unwrapped_rc = PCore_NodeBox(unwrapped_doc, "pre", NULL, NULL,
+                &unwrapped_w, &unwrapped_h);
+        wrapped_doc_h = PCore_DocumentHeight(wrapped_doc);
+        unwrapped_doc_h = PCore_DocumentHeight(unwrapped_doc);
+        pass = wrapped_rc == 0 && unwrapped_rc == 0 &&
+                wrapped_w > 0 && unwrapped_w > 0 &&
+                wrapped_h > unwrapped_h &&
+                wrapped_doc_h > unwrapped_doc_h;
+    }
+    if (wrapped_doc != NULL) {
+        PCore_FreeDocument(wrapped_doc);
+    }
+    if (unwrapped_doc != NULL) {
+        PCore_FreeDocument(unwrapped_doc);
+    }
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, 96);
+
+    if (!pass) {
+        show_error(L"TEST 1097 FAIL",
+                "pre wrap attribute did not enable wrapped layout");
+        return FALSE;
+    }
+    show_info(L"TEST 1097 OK",
+            "pre[wrap] uses the Core UA pre-wrap rule: the narrow viewport "
+            "wraps the code block and increases its document height.");
     return TRUE;
 }
 
@@ -78299,6 +78377,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1094: ok = test1094_core_stylesheet_rel_token_contract(); break;
         case 1095: ok = test1095_core_hidden_rendering_contract(); break;
         case 1096: ok = test1096_core_disclosure_rendering_contract(); break;
+        case 1097: ok = test1097_core_pre_wrap_rendering_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

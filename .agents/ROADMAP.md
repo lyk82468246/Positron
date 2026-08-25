@@ -618,7 +618,21 @@ TEST1093、TEST1094、TEST1095、TEST1096、TEST999 通过 8/8，唯一 `TESTBEN
 `ERROR`/`FAIL`；C89、Debug/Release ARMV4I 构建和仓库/文档审计通过。本批没有新增必须立即
 人工复核的视觉、触摸、SIP、旋转或 picker 风险。
 
-### 43. 建立真实页面驱动的兼容队列
+### 43. next649：`pre[wrap]` 默认换行（已完成）
+
+next649 在 `positron_core.dll` 的 UA stylesheet 中加入 `pre[wrap] { white-space: pre-wrap; }`，
+把 HTML 的 `wrap` 属性接入已有的保留空白与换行布局路径。普通 `<pre>` 继续保持
+`white-space: pre`，不会因为该规则改变；本批不新增公共 C ABI，也不把测试 fixture 的几何
+断言放入产品层。
+
+TEST1097 在 120px 窄视口对比带 `wrap` 属性和普通 `<pre>`，断言前者的代码块高度与文档总高度
+均增加。设备证据目录为
+`tmp/device-runs/20260825-165834-next649-pre-wrap-rendering/`，TEST21、TEST24、TEST1091、
+TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999 通过 9/9，唯一 `TESTBENCH PASS`
+且零 `ERROR`/`FAIL`；C89、Debug/Release ARMV4I 构建和仓库/文档审计通过。本批没有新增
+必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
+
+### 44. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -629,7 +643,7 @@ TEST1093、TEST1094、TEST1095、TEST1096、TEST999 通过 8/8，唯一 `TESTBEN
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 44. 安排新的全范围检查点
+### 45. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

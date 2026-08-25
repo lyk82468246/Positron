@@ -141,3 +141,9 @@ next648 又在 Core UA stylesheet 中加入披露控件的静态默认呈现：`
 summary 和 dialog 的盒状态；相关设备门 TEST21、TEST24、TEST1091、TEST1093、TEST1094、
 TEST1095、TEST1096、TEST999 通过 8/8。该能力不新增公共 C ABI，不负责 summary 激活、属性
 变化后的自动重排、模态焦点或 backdrop。
+
+next649 又在同一 UA stylesheet 中加入 `pre[wrap] { white-space: pre-wrap; }`。带 `wrap` 属性
+的 `<pre>` 在窄视口沿用 Core 的保留空白换行路径，普通 `<pre>` 仍保持 `white-space: pre`；
+TEST1097 通过 120px 视口的代码块/文档高度对照，相关设备门 TEST21、TEST24、TEST1091、
+TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999 通过 9/9。该能力不新增公共
+C ABI，也不保证完整 CSS whitespace、tab 度量或跨字体像素一致性。

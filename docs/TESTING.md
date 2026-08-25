@@ -987,6 +987,24 @@ scripts\device_gate.bat -Candidate next648-disclosure-rendering ^
 正式构建、仓库/文档审计通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或
 picker 人工门。
 
+### next649 `pre[wrap]` 默认换行自动门
+
+next649 验证 Core UA stylesheet 对 HTML `pre[wrap]` 的默认 `white-space: pre-wrap` 规则。
+TEST1097 在 120px 窄视口布局带 `wrap` 属性和普通 `<pre>` 的同一长代码串，断言带属性的
+代码块高度及文档总高度都增加；因此测试覆盖了实际换行，而不是只检查属性字符串。该门不
+依赖 JavaScript、网络、窗口或视觉检查，不新增公共 ABI，也不把完整 CSS whitespace 或字体
+像素一致性写成保证。
+
+```bat
+scripts\device_gate.bat -Candidate next649-pre-wrap-rendering ^
+  -TestSelection "21,24,1091,1093,1094,1095,1096,1097,999"
+```
+
+`tmp/device-runs/20260825-165834-next649-pre-wrap-rendering/` 已通过 9/9，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`；C89 与 Debug/Release ARMV4I
+正式构建、仓库/文档审计通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或
+picker 人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

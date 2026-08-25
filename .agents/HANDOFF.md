@@ -16,7 +16,7 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next648，页面 stylesheet `media`、disabled、rel-token 选择、hidden 与披露控件渲染 → Core 将 `<style media>` 与
+- 当前能力批次：next649，页面 stylesheet `media`、disabled、rel-token 选择、hidden、披露控件与 `pre[wrap]` 渲染 → Core 将 `<style media>` 与
   `<link rel="stylesheet" media>` 的 UTF-8 条件交给 libcss，并在同一文档重排时复用外部
   CSS cache；收集外部 stylesheet link 时会跳过存在 `disabled` 属性的 link，不 fetch、解析或
   选择其 CSS；`rel` 按 ASCII whitespace token、大小写不敏感匹配 `stylesheet`，但含
@@ -43,7 +43,7 @@
   增加了受限的 `media` UTF-8 属性反射；缺失返回空串，`setAttribute`/setter/
   `removeAttribute` 保持 live 一致，其他元素返回 `undefined` 且 setter 不改变 raw 属性。
   这不触发脚本侧 MediaQueryList 事件或自动重排。
-- 测试编号上限：`TEST_MAX_NUMBER 1096`。
+- 测试编号上限：`TEST_MAX_NUMBER 1097`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -773,6 +773,17 @@ next648 的披露控件默认呈现自动门已经完成：
 - `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、仓库/文档审计和设备门均通过；
   本批没有新增必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
 
+next649 的 `pre[wrap]` 默认换行自动门已经完成：
+
+- `tmp/device-runs/20260825-165834-next649-pre-wrap-rendering/` 的定向门为 PASS，
+  TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999
+  共 9/9，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。
+- TEST1097 在 120px 窄视口对比带 `wrap` 属性和普通 `<pre>`：前者的代码块高度及文档总高度
+  均增加，证明 Core UA `pre[wrap] { white-space: pre-wrap; }` 已接入实际布局。该批不新增
+  公共 C ABI，`test_host` 只提供对照 fixture 和几何断言。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、仓库/文档审计和设备门均通过；
+  本批没有新增必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -811,7 +822,7 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1085 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1097 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -927,11 +938,12 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next648 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+next649 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
 纵切，不要为了补编号添加孤立 API。Core 现在会按 viewport 选择 `<style media>` 与
 `<link rel="stylesheet" media>`，按 rel token 选择 stylesheet、跳过带 `disabled` 属性的外部
 stylesheet，并在同文档重排复用外部 CSS cache；UA stylesheet 对存在 `hidden` 属性的元素
-应用 `display:none`，并按 `open` 控制 `details`/`dialog` 的静态默认呈现；browser wrapper 还提供 `<link>`/`<style>` 的
+应用 `display:none`，并按 `open` 控制 `details`/`dialog` 的静态默认呈现；`pre[wrap]` 会进入
+`white-space: pre-wrap` 的窄视口换行；browser wrapper 还提供 `<link>`/`<style>` 的
 bounded `media` 反射，但
 不提供动态 MediaQueryList 事件、完整 link 下载策略或 noopener/opener 的窗口安全处理。
 TEST65 的多字符 SIP 候选词、select/file picker 模态框、

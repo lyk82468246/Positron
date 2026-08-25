@@ -1286,6 +1286,15 @@ backdrop、dialog 生命周期或完整 disclosure behavior。TEST1096 通过 cl
 `PCore_NodeBox()` 结果验证 summary、details body 和 dialog 的盒状态；TEST21、TEST24、
 TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST999 的定向设备门为 8/8。
 
+#### next649 的 `pre[wrap]` 默认换行边界
+
+next649 在 `positron_core.dll` 的 UA stylesheet 中加入 `pre[wrap] { white-space: pre-wrap; }`。
+带 `wrap` 属性的 `<pre>` 因而沿用 Core 已有的保留空白布局路径，并在窄视口按可断点换行；
+普通 `<pre>` 继续使用 `white-space: pre`。该规则不新增公共 C ABI，也不把代码块的布局断言
+迁移到 `test_host` 之外。TEST1097 在 120px 视口对照两种代码块的高度和文档总高度，相关
+TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999
+设备门为 9/9。该切片不宣称完整 CSS whitespace、tab 度量、字体 shaping 或像素级跨设备一致性。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

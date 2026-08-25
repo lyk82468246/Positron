@@ -367,6 +367,12 @@ TEST1093、TEST1094、TEST1095、TEST999 的 WM6 Debug 定向门通过 8/8。本
 `HTMLElement.open` 反射，不新增公共 C ABI，也不宣称 summary 点击、自动重排、模态焦点或
 dialog 生命周期。
 
+next649 在同一 UA stylesheet 中补齐 HTML `pre[wrap]` 的默认换行：带 `wrap` 属性的代码块使用
+`white-space: pre-wrap`，普通 `<pre>` 仍保持 `white-space: pre`。`TEST1097` 在 120px 窄视口
+对照两者的代码块和文档高度；与 TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST1095、
+TEST1096、TEST999 的 WM6 Debug 定向门通过 9/9。本批不新增公共 C ABI，也不宣称完整 CSS
+whitespace、tab 度量或跨字体像素一致性。
+
 ## 快速开始
 
 ### 前置环境

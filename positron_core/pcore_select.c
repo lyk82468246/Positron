@@ -1715,6 +1715,7 @@ static const char PCORE_UA_CSS[] =
     " background-color: transparent; border: none; padding: 0 0.1em;"
     " margin-right: 0.2em; }\n"
     "pre { font-family: monospace; white-space: pre; margin-bottom: 1em; }\n"
+    "pre[wrap] { white-space: pre-wrap; }\n"
     "body { margin: 8px; }\n"
     "p, blockquote { margin-top: 1em; margin-bottom: 1em; }\n"
     "h1 { font-size: 2em; }\n"

@@ -136,7 +136,9 @@
   CSS cascade 或隐藏状态相关的辅助技术语义。next648 又为 `details`/`dialog`/`summary` 提供
   静态 open-state 默认布局：关闭 details 隐藏非 summary 子项，关闭 dialog 不生成布局盒；仍
   不实现 summary activation、open mutation 后自动重排、modal focus、backdrop 或 dialog 生命周期。
-  TEST1091、TEST1093、TEST1094、TEST1095、TEST1096 与 TEST999 的 Debug 门已通过。next644 又在 browser bootstrap 中提供
+  next649 又把 HTML `pre[wrap]` 接入 Core UA stylesheet 的 `white-space: pre-wrap`，窄视口
+  代码块会换行并增加布局高度；这不等于完整 CSS whitespace、tab 度量或所有字体下的像素一致性。
+  TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST1097 与 TEST999 的 Debug 门已通过。next644 又在 browser bootstrap 中提供
   `<link>` 与 `<style>` 的 bounded `media` 属性反射：缺失值为空串，setter 经既有
   UTF-8 attribute bridge 写回并支持 `removeAttribute()` 恢复，其他元素返回 `undefined`
   且 setter 不改变 raw 属性。该反射不触发脚本侧 MediaQueryList 事件、自动重排或 link
@@ -302,7 +304,7 @@
 
 ### 当前边界
 
-- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1096 全覆盖。
+- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1097 全覆盖。
 - 自动日志与几何断言不能替代视觉、真实触摸、SIP、旋转、文件选择器和失败网络的人工判断。
 - `tmp/` 中设备日志和截图只在本机存在，不进入 Git；丢失本机证据后只能依赖提交中的结论和可重跑测试。
 - WMDC/RAPI 自动化默认假设已有且独占的设备连接；连接和配对本身通常仍是 GUI 操作。
