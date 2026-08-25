@@ -58,8 +58,9 @@ MessagePort/BroadcastChannel、structuredClone、PerformanceObserver/EntryList �
 navigator 方法、`screen.orientation`、window aliases、受限的当前上下文 `window.open()` 与
 `window.close()` no-op，以及稳定 element wrapper identity；这些能力不发起网络、不创建后台
 线程，并由宿主显式 timer/message pump 或同步 snapshot 驱动。`window.open()` 只有显式
-`_self`/`_parent`/`_top` 且宿主接受时返回当前 `window`；默认、`_blank` 和 named target
-返回 `null`，不会静默替换当前页面。
+`_self`/`_parent`/`_top` 且宿主接受时返回当前 `window`；named target 只有与当前
+`window.name` 精确匹配时才可复用当前 context，默认、`_blank` 和未知 named target 返回
+`null`，不会静默替换当前页面。
 当前还提供 bounded Promise 构造器、`then`/`catch`/`finally`、`resolve`/`reject` 和四种组合器；
 reaction 必须由宿主显式调用 `PBrowser_ScriptSessionRunMicrotasks()` 推进，handler 与组合器输入均受
 64 项上限。
@@ -304,6 +305,13 @@ target、`_blank` 和 named target 仍返回 `null`，不会把新窗口请求�
 features 字符串在这个有界子集中不产生窗口特性；真正的窗口创建、复用、生命周期、
 opener/noopener、跨窗口 history 和视觉仍未实现。`TEST1086` 与 1085、999 的 Debug
 设备回归门（TEST1080–1086、999）通过 8/8。
+
+next639 补齐了单窗口 browsing context 的有界身份语义：browser DLL 在
+`PBrowserScriptNavigationInfo` 兼容尾字段中传递当前 `window.name` 快照；同一宿主的
+新文档会继承这个名称，`window.open(url, 当前名称)` 可以复用当前 context，未知 named
+target 与 `_blank` 仍返回 `null`。这不是多窗口实现，不改变 opener、窗口生命周期或
+跨窗口 history。`TEST1087` 与 1080–1086、999 的 Debug 设备回归门（TEST1080–1087、999）
+通过 9/9。
 
 ## 快速开始
 

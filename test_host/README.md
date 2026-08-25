@@ -106,10 +106,17 @@ next637 复用 browser DLL 提供的 `PBrowserScriptNavigationInfo.target_kind`�
 
 next638 消费 browser DLL 的 `PBROWSER_SCRIPT_NAVIGATION_OPEN`：只有显式 `_self`、
 `_parent`、`_top` 才进入当前单窗口的普通导航队列，窗口消息边界再次检查该策略；省略
-target、`_blank`、named 和空 URL 返回 `null`，不覆盖当前页面。宿主仍负责 URL resolver、
-网络请求、文档替换、窗口/控件生命周期和视觉；features 不被解释为窗口特性。`TEST1086`
-覆盖脚本 callback 的 target_kind/原始 target、注销后的 null 结果以及宿主 admission，
-定向设备门使用 `1080-1086,999`；本批回归门共 8/8 通过。
+target、`_blank`、不匹配的 named target 和空 URL 返回 `null`，不覆盖当前页面。宿主仍负责
+URL resolver、网络请求、文档替换、窗口/控件生命周期和视觉；features 不被解释为窗口特性。
+`TEST1086` 覆盖脚本 callback 的 target_kind/原始 target、注销后的 null 结果以及宿主
+admission，定向设备门使用 `1080-1086,999`；本批回归门共 8/8 通过。
+
+next639 让 `test_host` 消费 browser DLL 的 `context_name`：当前单窗口的
+`window.name` 在文档替换前被快照，并在新的 script session 中恢复。`window.open(url,
+当前 window.name)` 进入普通当前文档导航；其他 named target、`_blank` 和空名称仍在回调
+与窗口消息边界 fail-closed。这里没有真实窗口 manager，也不创建第二个 HWND/global；
+`TEST1087` 覆盖快照、恢复、匹配 named reuse 和拒绝边界，定向设备门使用
+`1080-1087,999`，本批回归门共 9/9 通过。
 
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，

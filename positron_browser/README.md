@@ -31,8 +31,10 @@ named），因此宿主不必复制关键字解析。Core 对应的
 `PBROWSER_SCRIPT_NAVIGATION_OPEN` 请求。browser layer 只负责 URL/target 的有界参数和
 target_kind 分类；宿主接受 `_self`、`_parent` 或 `_top` 时可把请求映射为当前文档导航，
 脚本得到当前 bounded `window`。没有窗口管理器时，省略 target（DEFAULT）、`_blank` 和
-named target 必须返回 `null`；features 在当前子集中只被忽略，不创建 HWND、不改变 opener
-或安全策略。窗口创建、复用、关闭、跨窗口 history 和网络仍由宿主拥有。
+不匹配当前 `window.name` 的 named target 必须返回 `null`；匹配当前名称的 named target
+可以复用当前 context。browser layer 会把当前名称作为 OPEN metadata 的 `context_name`
+快照传给宿主；features 在当前子集中只被忽略，不创建 HWND、不改变 opener 或安全策略。
+窗口创建、复用、关闭、跨窗口 history 和网络仍由宿主拥有。
 
 native EDIT 的产品事务入口是 additive 的
 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()`。调用者提供现有的 input/change
@@ -401,9 +403,17 @@ named 交给窗口管理器或 fail-closed。`test_host` 当前选择后者，�
 
 next638 在该 ABI 上增加 `PBROWSER_SCRIPT_NAVIGATION_OPEN`。bootstrap 的
 `window.open()` 只在宿主接受显式当前上下文 target 时返回同一 bounded global；DEFAULT、
-`_blank`、named 或空 URL 返回 `null`，不会静默发起当前页导航。features 不产生窗口特性，
-真正的窗口 manager、opener/noopener、跨窗口 history 和视觉仍不在 DLL 边界内。TEST1086
-覆盖 callback metadata、注销后的 fail-closed 以及 test_host 的 current-target admission。
+`_blank`、不匹配的 named target 或空 URL 返回 `null`，不会静默发起当前页导航。features 不
+产生窗口特性，真正的窗口 manager、opener/noopener、跨窗口 history 和视觉仍不在 DLL 边界
+内。TEST1086 覆盖 callback metadata、注销后的 fail-closed 以及 test_host 的 current-target
+admission。
+
+next639 在 `PBrowserScriptNavigationInfo` 的兼容尾字段增加 `context_name`。对 OPEN 请求，
+browser bootstrap 将当前 `window.name` 作为有界借用快照传给宿主；单窗口消费者可以只在
+named target 与该快照精确匹配时复用当前 context。browser DLL 不保存跨 document 的窗口
+管理状态、不创建第二个 global；名称恢复和 context 生命周期由宿主完成。未知 named、
+`_blank` 和没有匹配 context 的请求仍应返回 `null`。TEST1087 覆盖快照传播、名称恢复和
+单窗口 admission。
 
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、

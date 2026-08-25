@@ -468,7 +468,21 @@ TEST1086 覆盖 metadata 传播、宿主 admission、new-context 拒绝和注销
 本批不创建窗口、不解释 features、不改变 heap/脚本默认开关，也不新增必须立即人工复核的
 视觉、触摸、SIP、旋转或 picker 风险。
 
-### 33. 建立真实页面驱动的兼容队列
+### 33. next639：单窗口 browsing context 身份（已完成）
+
+next639 在 `PBrowserScriptNavigationInfo` 兼容尾部增加 `context_name`，并让 browser
+bootstrap 为 `window.open()` 传递当前 bounded `window.name`。`test_host` 在文档替换前
+快照名称、在新 script session bootstrap 时恢复名称；单窗口宿主只允许 named target 与
+当前名称精确匹配时复用当前 context，未知 named、`_blank` 和其他新窗口请求继续
+fail-closed。browser DLL 不创建窗口或保存第二个 global，features、opener/noopener、
+窗口生命周期和跨窗口 history 仍是后续宿主边界。
+
+TEST1087 覆盖名称快照传播、匹配 named reuse、未知名称/`_blank` 拒绝及新 session 恢复。
+`tmp/device-runs/20260825-142743-next639-window-name-regression-r2/` 的相关回归门通过 9/9
+（TEST1080–1087、999），唯一 `TESTBENCH PASS` 且无 `ERROR`/`FAIL`，`test13_route_ok=True`。
+本批不新增必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
+
+### 34. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -479,7 +493,7 @@ TEST1086 覆盖 metadata 传播、宿主 admission、new-context 拒绝和注销
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 34. 安排新的全范围检查点
+### 35. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

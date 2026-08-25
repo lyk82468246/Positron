@@ -330,7 +330,8 @@ fixture、泵送和断言。新增的能力边界包括：
   iterator 与 storage 仍是 session 内快照/Proxy，不引入完整 DOM tree 或通用 createElement。
 - 事件与窗口：Storage/HashChange/PopState/Error/Progress/Close event 构造器，document.defaultView
   和同一 bounded global 的 window aliases；`open()` 只在宿主接受显式 `_self`/`_parent`/`_top`
-  时返回当前 global，DEFAULT/`_blank`/named 返回 null，`close()` 仍为 no-op，不创建新窗口。
+  时返回当前 global；named target 只有与当前 context 的 `window.name` 精确匹配时才可复用，
+  DEFAULT/`_blank`/未知 named 返回 null，`close()` 仍为 no-op，不创建新窗口。
 - 通信与观测：MessagePort close/messageerror、同 session `BroadcastChannel` 和
   `PerformanceObserver` 的同步 snapshot/takeRecords。消息仍通过既有 `RunMessages` pump，观测
   不监听未来异步 entries，不引入后台线程或跨页面通信。
@@ -1147,6 +1148,20 @@ URL、raw target 和 browser-owned `target_kind` 交给宿主；features 在当�
 均返回 null，不创建或替换未知 browsing context。窗口 manager、opener/noopener、close、
 跨窗口 history、网络和 HWND 生命周期继续由宿主拥有。TEST1086 覆盖 callback metadata、
 失败回退、注销和 host admission；该能力不改变 browser heap、脚本开关或公共字符串所有权。
+
+#### next639 的 browsing context `window.name` 身份边界
+
+next639 在 `PBrowserScriptNavigationInfo` 的兼容尾部追加 `context_name`。对
+`PBROWSER_SCRIPT_NAVIGATION_OPEN`，browser bootstrap 把当前 bounded `window.name` 作为借用的
+UTF-8 快照交给导航 callback；其他导航 kind 不使用该字段。宿主可以据此判断 named target
+是否就是当前 browsing context，而不必猜测窗口管理器状态。
+
+`test_host` 只有一个 context：它把 `window.name` 限制为 `PBROWSER_SCRIPT_WINDOW_NAME_MAX`
+以内的有界字符串，在文档替换前读取旧 session 的名称，并在新 script session bootstrap 时
+一次性恢复。named target 只有在与当前名称精确匹配时才复用当前 context；未知名称、空名称、
+`_blank` 和需要新窗口的其他请求继续 fail closed。名称属于 browsing context 而非单个
+document，但这项实现不创建第二个 global、不提供 opener/close/window manager，也不承诺跨窗口
+history；公共 ABI 的字符串仍是借用值，宿主必须在 callback 返回前消费或复制。
 
 #### next614 的 label/control 关系边界
 

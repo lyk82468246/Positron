@@ -107,6 +107,12 @@
   真实窗口创建、复用、关闭、opener/noopener、跨窗口 history、网络和视觉仍未实现；这
   只是安全的当前-context 导航语义，不等于多窗口兼容。TEST1086 覆盖 callback metadata、
   宿主 admission 和注销后的 fail-closed。
+  next639 又追加了 `PBrowserScriptNavigationInfo.context_name`：OPEN callback 会收到当前
+  有界 `window.name` 快照，`test_host` 只在 named target 与该名称精确匹配时复用现有单窗口，
+  并在同一 context 的新 script session 中恢复名称。未知 named、`_blank`、空名称和没有
+  匹配 context 的请求仍 fail closed；真实多窗口、window manager、opener/noopener、close、
+  跨窗口 history、持久化生命周期和视觉仍未实现。名称恢复不代表第二个 JS global，也不把
+  单窗口实现扩张为多窗口保证。TEST1087 覆盖该 bounded 契约。
   next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
   Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前

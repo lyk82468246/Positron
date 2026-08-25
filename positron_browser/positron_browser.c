@@ -1621,10 +1621,13 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "var purl=String(g.__pcoreDocumentUrl||'');"
         "var phistoryLength=Number(g.__pcoreHistoryLength||1);"
         "var phistoryStateJson=JSON.stringify(g.__pcoreHistoryState);"
+        "var pwindowInitialName=typeof g.__pcoreWindowName==='undefined'?'':"
+        "String(g.__pcoreWindowName);"
         "if(typeof phistoryStateJson!=='string'){phistoryStateJson='null';}"
         "try{delete g.__pcoreDocumentUrl;}catch(purlerror){}"
         "try{delete g.__pcoreHistoryLength;}catch(phistoryerror){}"
         "try{delete g.__pcoreHistoryState;}catch(phistorystateerror){}"
+        "try{delete g.__pcoreWindowName;}catch(pwindownameerror){}"
         "function ppartial(v,min){var u=String(v);var l=u.toLowerCase();"
         "var q=u.indexOf('?');var h=u.indexOf('#');var a;var n;var z;var s;"
         "if(q<0||(h>=0&&h<q)){q=h;}a=l.indexOf('/.%2e');"
@@ -2225,10 +2228,10 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "u=typeof url==='undefined'?'':String(url);"
         "t=typeof target==='undefined'?'':String(target);"
         "if(typeof __pcoreNavigation!=='function'||u===''){return null;}"
-        "r=__pcoreNavigation({op:'open',url:u,target:t});"
+        "r=__pcoreNavigation({op:'open',url:u,target:t,name:String(g.name)});"
         "return r===true?g:null;};"
         "g.close=function(){};"
-        "var pwindowName='';"
+        "var pwindowName=pwindowInitialName;"
         "Object.defineProperty(g,'name',{get:function(){return pwindowName;},"
         "set:function(v){pwindowName=String(v);},enumerable:true});"
         "g.navigator={userAgent:'Positron/0.1 (Windows CE)',appCodeName:'Mozilla',"
@@ -4670,6 +4673,7 @@ static int p_browser_script_navigation(void *pw,
     const char *op;
     const char *url;
     const char *target;
+    const char *context_name;
     char *state_json;
     int result;
     int out_value;
@@ -4681,6 +4685,7 @@ static int p_browser_script_navigation(void *pw,
     root = p_browser_script_args_object(args_json, args_len, &object);
     op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
     target = NULL;
+    context_name = NULL;
     if (binding == NULL || root == NULL || op == NULL ||
             binding->callbacks.navigate == NULL) {
         PJson_Free(root);
@@ -4730,10 +4735,13 @@ static int p_browser_script_navigation(void *pw,
     if (strcmp(op, "open") == 0) {
         url = PJson_GetString(object, "url");
         target = PJson_GetString(object, "target");
+        context_name = PJson_GetString(object, "name");
         if (url == NULL || url[0] == '\0' ||
                 strlen(url) >= PBROWSER_HISTORY_URL_MAX ||
                 (target != NULL &&
-                strlen(target) >= PBROWSER_SCRIPT_ANCHOR_TARGET_MAX)) {
+                strlen(target) >= PBROWSER_SCRIPT_ANCHOR_TARGET_MAX) ||
+                (context_name != NULL &&
+                strlen(context_name) >= PBROWSER_SCRIPT_WINDOW_NAME_MAX)) {
             PJson_Free(root);
             return p_browser_script_write_bool(0, out_json,
                     out_capacity, out_len);
@@ -4741,6 +4749,7 @@ static int p_browser_script_navigation(void *pw,
         info.kind = PBROWSER_SCRIPT_NAVIGATION_OPEN;
         info.url = url;
         info.target = target;
+        info.context_name = context_name;
         info.target_kind = p_browser_script_anchor_target_kind(target);
         result = binding->callbacks.navigate(binding->callbacks.pw,
                 &info, &out_value);

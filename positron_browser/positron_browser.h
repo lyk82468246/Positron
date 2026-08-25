@@ -43,6 +43,7 @@ extern "C" {
 #define PBROWSER_SCRIPT_MAX_FUNCTIONS 19
 #define PBROWSER_SCRIPT_ANCHOR_TARGET_MAX 64
 #define PBROWSER_SCRIPT_ANCHOR_REL_MAX 256
+#define PBROWSER_SCRIPT_WINDOW_NAME_MAX 64
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -979,8 +980,13 @@ typedef struct PBrowserScriptInvalidCallbacks {
  * without that target policy must return zero, so the product bootstrap
  * returns null and never silently replaces the current document. The optional features
  * argument to window.open is intentionally ignored in this bounded subset.
- * For a successful PUSH_STATE callback, out_value must receive the exposed
- * history length; other operations ignore it. */
+ * For OPEN, context_name is the current bounded window.name snapshot. It is
+ * borrowed for the callback and is present only for OPEN; a single-window
+ * host may accept a NAMED target only when target and context_name match
+ * exactly. This lets an existing named current context be reused without
+ * pretending that a new window manager exists. For a successful PUSH_STATE
+ * callback, out_value must receive the exposed history length; other
+ * operations ignore it. */
 typedef struct PBrowserScriptNavigationInfo {
     unsigned long size;
     unsigned int kind;
@@ -991,6 +997,7 @@ typedef struct PBrowserScriptNavigationInfo {
     const char *target;
     const char *rel;
     unsigned int target_kind;
+    const char *context_name;
 } PBrowserScriptNavigationInfo;
 typedef int (*PBrowserScriptNavigateFn)(void *pw,
         const PBrowserScriptNavigationInfo *info, int *out_value);

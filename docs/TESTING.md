@@ -804,6 +804,26 @@ TEST1080–1085 保留 fragment、history、anchor metadata 与 target policy �
 Debug/Release ARMV4I、仓库/文档审计仍需在提交前完成；本批不新增必须立即人工复核的视觉、
 触摸、SIP、旋转或 picker 风险。
 
+### next639 browsing context 身份自动门
+
+next639 验证 `window.name` 与 browsing context 而非 document 绑定：browser callback 传递
+`context_name` 快照，当前宿主在同一名称上复用单窗口 context，并在新 script session
+bootstrap 时恢复名称。未知 named target、`_blank` 和不匹配名称继续返回 `null`；不创建真实
+多窗口，因此没有新增视觉或人工窗口门。
+
+```bat
+scripts\device_gate.bat -Candidate next639-window-name-regression ^
+  -EnableJavaScript ^
+  -TestSelection "1080-1087,999"
+```
+
+`tmp/device-runs/20260825-142743-next639-window-name-regression-r2/` 已通过 9/9（TEST1080–1087、
+999），唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。TEST1087 覆盖
+名称快照、匹配 named reuse、未知名称/`_blank` 拒绝，以及新 session 的名称恢复；1080–1086
+继续保护 fragment、history、anchor metadata 和既有 target/open 策略。C89、Debug/Release
+ARMV4I、仓库审计、文档审计和 diff 检查均已通过；本批不新增必须立即人工复核的视觉、触摸、
+SIP、旋转或 picker 风险。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
