@@ -1248,6 +1248,19 @@ resolve、fetch/free 所有权和 document-owned cache 行为。该判断只针�
 只提供 TEST1093 的离线 fetch/free 与 computed-color 断言；TEST21、TEST24、TEST1091、
 TEST1093、TEST999 的定向设备门为 5/5。
 
+#### next646 的 stylesheet rel-token 选择边界
+
+next646 把 `positron_core.dll` 外部 stylesheet link 的 `rel` 判断从整串精确比较改为
+HTML 风格的 ASCII whitespace token 匹配，并按 ASCII 大小写不敏感识别 `stylesheet`。
+因此 `rel="preload stylesheet"` 等组合会进入既有 `media`、`disabled`、URL resolve、
+fetch/free 和 document-owned cache 流程。若 token 集合含 `alternate`，Core 仍跳过该 link；
+在没有 alternate stylesheet selection policy 时，这个 fail-closed 规则避免未选择的备用
+主题覆盖页面。
+
+该变更没有新增公共 C ABI，不实现 `type` 过滤、alternate sheet 的启用/切换、动态 link
+生命周期或脚本事件。`test_host.exe` 只提供 TEST1094 的离线 fetch/free 与 computed-color
+断言；TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST999 的定向设备门为 6/6。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

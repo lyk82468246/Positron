@@ -348,6 +348,12 @@ CSS selection，`disabled="false"` 也按属性存在处理；启用 link 仍使
 同一文档的再次样式仍复用 CSS cache。`TEST1093` 与 TEST21、TEST24、TEST1091、TEST999 的
 WM6 Debug 定向门通过 5/5；本批不扩展到 `type`、`alternate`、动态 link 生命周期或公共 C ABI。
 
+next646 让 Core 按 HTML 风格解析 stylesheet 的 `rel` token：ASCII 空白分隔、大小写混合的
+`stylesheet` token（例如 `rel="preload stylesheet"`）现在会进入既有 media、disabled、
+fetch 和 cache 流程；含 `alternate` 的 link 继续 fail closed，避免没有 alternate-sheet
+选择策略时覆盖页面。`TEST1094` 与 TEST21、TEST24、TEST1091、TEST1093、TEST999 的 WM6
+Debug 定向门通过 6/6；本批不扩展到 `type`、动态 link 生命周期或公共 C ABI。
+
 ## 快速开始
 
 ### 前置环境

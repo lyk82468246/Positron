@@ -79,6 +79,8 @@ selection context。调用者只需在每次 viewport 变化后重新调用样�
 CSS 字节会从 Core-owned cache 重用，fetch/free callback 的所有权和生命周期保持不变。
 外部 `<link rel="stylesheet">` 若存在 `disabled` 属性（包括值为 `false`），则在收集阶段
 跳过，不会 fetch、解析或附加 CSS；启用 link 仍沿用相同的 cache 和 callback 所有权。
+`rel` 按 ASCII whitespace 分隔的 token、ASCII 大小写不敏感地匹配 `stylesheet`；含
+`alternate` token 的 link 继续跳过，避免在没有备用样式表选择策略时覆盖页面。
 这项支持只控制当前 CSS selection，不新增 ABI、不产生 `MediaQueryList` 事件，也不替宿主
 决定其他 link type 的下载策略。
 
@@ -110,14 +112,15 @@ collection、shadow tree、复杂 selector、layout 或 native control 状态；
 宿主决定；脚本执行由 `positron_script`/`positron_browser` 负责。`test_host.exe` 是
 回归消费者，不是 Core 的公共 API 所有者。
 
-next643/645 的页面样式资源选择属于 Core：`<style media>` 与
+next643/645/646 的页面样式资源选择属于 Core：`<style media>` 与
 `<link rel="stylesheet" media>` 只在当前 viewport 匹配时参与 libcss selection；存在
-`disabled` 属性的外部 stylesheet link 在 fetch 前跳过，同一文档的再次样式事务复用已缓存
-的外部 CSS 字节。TEST1091/1093 通过公开的
+`disabled` 属性的外部 stylesheet link 在 fetch 前跳过，rel token 组合会按 stylesheet
+语义进入同一流程，同一文档的再次样式事务复用已缓存的外部 CSS 字节。TEST1091/1093/1094
+通过公开的
 `PCore_StyleDocumentEx2` fetch/free callback 约定，在 320px/299px 视口验证两类条件和
-禁用 link 不产生 fetch、启用 link 只产生 1 次 fetch/1 次 free 的缓存边界；相关 TEST21、
-TEST24、TEST1091、TEST1093 与 TEST999 设备门通过 5/5；这不代表脚本侧动态媒体事件、
-`type`/`alternate` 或其他 link-type 行为。
+禁用 link 不产生 fetch、启用 link 只产生 1 次 fetch/1 次 free、alternate link 不产生
+fetch 的缓存边界；相关 TEST21、TEST24、TEST1091、TEST1093、TEST1094 与 TEST999 设备门
+通过 6/6；这不代表脚本侧动态媒体事件、`type`、alternate sheet 切换或其他 link-type 行为。
 
 next644 的 `media` DOM 反射属于 `positron_browser.dll`，Core 不新增接口或承担脚本
 property。Core 继续只负责 `<style media>`/`<link rel="stylesheet" media>` 的 viewport

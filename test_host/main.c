@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1093
+#define TEST_MAX_NUMBER 1094
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -20137,6 +20137,151 @@ static BOOL test1093_core_disabled_stylesheet_contract(void)
     show_info(L"TEST 1093 OK",
             "A present link[disabled] is skipped without a fetch; the enabled "
             "link applies and its bytes are reused on the second style pass.");
+    return TRUE;
+}
+
+/* TEST 1094 - stylesheet rel values are tokenized without enabling alternates. */
+typedef struct stylesheet_rel_token_test_ctx {
+    int calls;
+    int frees;
+    int alternate_calls;
+} stylesheet_rel_token_test_ctx;
+
+static int stylesheet_rel_token_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char TOKEN_CSS[] = "tokenone{color:#00aa00;}";
+    static const char ALTERNATE_CSS[] = "alternateone{color:#aa0000;}";
+    stylesheet_rel_token_test_ctx *ctx =
+            (stylesheet_rel_token_test_ctx *) pw;
+    const char *css;
+    int len;
+    char *data;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/token.css") == 0) {
+        css = TOKEN_CSS;
+    } else if (strcmp(url, "/alternate.css") == 0) {
+        ctx->alternate_calls++;
+        css = ALTERNATE_CSS;
+    } else {
+        return 1;
+    }
+    len = (int) strlen(css);
+    data = (char *) malloc((size_t) len);
+    if (data == NULL) {
+        return 1;
+    }
+    memcpy(data, css, (size_t) len);
+    *out_data = data;
+    *out_len = len;
+    return 0;
+}
+
+static void stylesheet_rel_token_free(void *pw, char *data)
+{
+    stylesheet_rel_token_test_ctx *ctx =
+            (stylesheet_rel_token_test_ctx *) pw;
+
+    ctx->frees++;
+    free(data);
+}
+
+static int stylesheet_rel_token_cache_only_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    stylesheet_rel_token_test_ctx *ctx =
+            (stylesheet_rel_token_test_ctx *) pw;
+
+    (void) url;
+    ctx->calls++;
+    *out_data = NULL;
+    *out_len = 0;
+    return 1;
+}
+
+static BOOL test1094_core_stylesheet_rel_token_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<style>tokenone{color:#112233;}"
+        "alternateone{color:#445566;}</style>"
+        "<link rel='preload STYLESHEET' href='/token.css'>"
+        "<link rel='ALTERNATE stylesheet' href='/alternate.css'>"
+        "</head><body><tokenone>token</tokenone>"
+        "<alternateone>alternate</alternateone></body></html>";
+    HANDLE hDoc = NULL;
+    stylesheet_rel_token_test_ctx first;
+    stylesheet_rel_token_test_ctx second;
+    unsigned long token_argb = 0;
+    unsigned long alternate_argb = 0;
+    int screen_w;
+    int screen_h;
+    int screen_dpi = 96;
+    HDC screen_dc;
+    int pass;
+    char msg[256];
+
+    memset(&first, 0, sizeof(first));
+    memset(&second, 0, sizeof(second));
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        int dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
+        if (dpi > 0) {
+            screen_dpi = dpi;
+        }
+        ReleaseDC(NULL, screen_dc);
+    }
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    pass = 0;
+    if (hDoc != NULL) {
+        for (pass = 0; pass < 2; pass++) {
+            PCore_SetViewport(320, 320, screen_dpi);
+            token_argb = 0;
+            alternate_argb = 0;
+            if (PCore_StyleDocumentEx(hDoc, NULL,
+                    (pass == 0) ? stylesheet_rel_token_fetch :
+                    stylesheet_rel_token_cache_only_fetch,
+                    (pass == 0) ? stylesheet_rel_token_free : NULL,
+                    (pass == 0) ? &first : &second) != 0 ||
+                    PCore_NodeComputedColor(hDoc, "tokenone", &token_argb) != 0 ||
+                    PCore_NodeComputedColor(hDoc, "alternateone",
+                    &alternate_argb) != 0 ||
+                    (token_argb & 0x00ffffffUL) != 0x0000aa00UL ||
+                    (alternate_argb & 0x00ffffffUL) != 0x00445566UL) {
+                break;
+            }
+        }
+    }
+
+    if (hDoc != NULL) {
+        PCore_FreeDocument(hDoc);
+    }
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, screen_dpi);
+
+    if (pass != 2 || first.calls != 1 || first.frees != 1 ||
+            first.alternate_calls != 0 || second.calls != 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "pass=%d first=%d/%d alternate=%d second_calls=%d "
+                "colors=0x%06lX/0x%06lX", pass, first.calls, first.frees,
+                first.alternate_calls, second.calls,
+                token_argb & 0x00ffffffUL,
+                alternate_argb & 0x00ffffffUL);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 1094 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 1094 OK",
+            "Stylesheet rel tokens accept mixed-case whitespace-separated "
+            "tokens; alternate sheets remain fail-closed and cached relink "
+            "restyle performs no second fetch.");
     return TRUE;
 }
 
@@ -77975,6 +78120,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1091: ok = test1091_core_stylesheet_media_contract(); break;
         case 1092: ok = test1092_browser_stylesheet_media_reflection(); break;
         case 1093: ok = test1093_core_disabled_stylesheet_contract(); break;
+        case 1094: ok = test1094_core_stylesheet_rel_token_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

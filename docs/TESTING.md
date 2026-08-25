@@ -935,6 +935,23 @@ scripts\device_gate.bat -Candidate next645-stylesheet-disabled ^
 `TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。C89 与 Debug ARMV4I
 正式构建通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或 picker 人工门。
 
+### next646 stylesheet rel-token 选择自动门
+
+next646 将外部 stylesheet 的 `rel` 判断改为 ASCII whitespace 分隔、大小写不敏感的 token
+匹配。TEST1094 使用 `rel="preload STYLESHEET"` 的 enabled link 和
+`rel="ALTERNATE stylesheet"` 的备用 link，断言前者正常 fetch/应用，后者完全不 fetch、
+不覆盖 inline 基线；同一文档第二次样式事务使用 cache-only callback，不能产生第二次 fetch。
+测试不依赖 JavaScript、真实网络、窗口或视觉。
+
+```bat
+scripts\device_gate.bat -Candidate next646-stylesheet-rel-tokens ^
+  -TestSelection "21,24,1091,1093,1094,999"
+```
+
+`tmp/device-runs/20260825-162659-next646-stylesheet-rel-tokens/` 已通过 6/6，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。C89 与 Debug ARMV4I
+正式构建通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或 picker 人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

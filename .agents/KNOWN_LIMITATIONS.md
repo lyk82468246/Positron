@@ -128,13 +128,15 @@
   next643 只把 `<style media>` 与 `<link rel="stylesheet" media>` 的 UTF-8 条件用于当前
   Core CSS selection；同文档重新样式时复用已缓存的外部字节。next645 又让 Core 在收集
   外部 stylesheet 时按 HTML 属性存在性跳过 `<link disabled>`，因此被禁用的 link 不 fetch、
-  不解析也不参与 CSS selection。仍不实现脚本侧动态 `MediaQueryList` 事件、完整 link 下载
-  策略、`type`/`alternate` 等其他 link processing 或 media 相关 DOM mutation。
-  TEST1091、TEST1093 与 TEST999 的 Debug 门已通过。next644 又在 browser bootstrap 中提供
+  不解析也不参与 CSS selection。next646 又按 ASCII whitespace token、大小写不敏感地
+  识别 `stylesheet` rel，并对含 `alternate` 的 link 保持 fail closed。仍不实现脚本侧动态
+  `MediaQueryList` 事件、完整 link 下载策略、`type` 等其他 link processing 或 media 相关
+  DOM mutation。
+  TEST1091、TEST1093、TEST1094 与 TEST999 的 Debug 门已通过。next644 又在 browser bootstrap 中提供
   `<link>` 与 `<style>` 的 bounded `media` 属性反射：缺失值为空串，setter 经既有
   UTF-8 attribute bridge 写回并支持 `removeAttribute()` 恢复，其他元素返回 `undefined`
   且 setter 不改变 raw 属性。该反射不触发脚本侧 MediaQueryList 事件、自动重排或 link
-  下载策略；TEST1092 与 1090/1091/1093/999 的 Debug 门已通过。
+  下载策略；TEST1092 与 1090/1091/1093/1094/999 的 Debug 门已通过。
    next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
   Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前

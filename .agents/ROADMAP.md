@@ -572,7 +572,23 @@ TEST1091、TEST1093、TEST999 设备门通过 5/5，
 唯一 `TESTBENCH PASS` 且零 `ERROR`/`FAIL`；C89 和 Debug ARMV4I 构建通过。本批没有新增
 必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
 
-### 40. 建立真实页面驱动的兼容队列
+### 40. next646：stylesheet rel-token 选择（已完成）
+
+next646 在 `positron_core.dll` 的外部 stylesheet 资源收集路径中把 `rel` 从整串精确比较
+收敛为 HTML 风格的 ASCII whitespace token 匹配，并按 ASCII 大小写不敏感识别
+`stylesheet`。因此 `rel="preload stylesheet"` 等真实页面常见组合会参与既有的
+`media`/`disabled`/URL/fetch/cache 流程。为避免在没有 alternate-sheet selection policy
+时错误覆盖页面，含 `alternate` token 的 link 继续 fail closed；本批不恢复历史上已撤回的
+`type` 路线，不新增公共 C ABI 或动态 link 生命周期。
+
+TEST1094 在同一文档的两次样式事务中断言混合大小写与空白分隔 token 会应用 enabled CSS，
+`alternate stylesheet` 不会 fetch 或覆盖 inline 基线，第二次事务不产生第二次 fetch。设备
+证据目录为 `tmp/device-runs/20260825-162659-next646-stylesheet-rel-tokens/`，TEST21、
+TEST24、TEST1091、TEST1093、TEST1094、TEST999 通过 6/6，唯一 `TESTBENCH PASS` 且零
+`ERROR`/`FAIL`；C89 和 Debug ARMV4I 构建通过。本批没有新增必须立即人工复核的视觉、触摸、
+SIP、旋转或 picker 风险。
+
+### 41. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -583,7 +599,7 @@ TEST1091、TEST1093、TEST999 设备门通过 5/5，
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 41. 安排新的全范围检查点
+### 42. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

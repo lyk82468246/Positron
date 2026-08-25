@@ -150,6 +150,12 @@ document-owned CSS cache。定向门使用 `21,24,1091,1093,999`，设备上通�
 `test_host` 只提供 fixture、计数 callback 和断言，不拥有 Core 的资源选择语义，也没有修改
 tracked 默认 INI。
 
+next646 的 TEST1094 继续只做 Core 消费者断言：`rel` token 采用 ASCII 空白分隔和大小写
+不敏感规则，`preload STYLESHEET` link 会进入样式资源流程；含 `alternate stylesheet` 的
+link 继续不 fetch、不覆盖 inline 基线。两次同文档样式事务还验证 CSS cache 命中。定向门
+使用 `21,24,1091,1093,1094,999`，设备上通过 6/6；`test_host` 只提供离线 callback、计数
+和 computed-color 断言，不拥有 rel 选择语义，也没有修改 tracked 默认 INI。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次
