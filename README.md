@@ -360,6 +360,13 @@ next647 在 `positron_core.dll` 的 UA stylesheet 中补齐 HTML `hidden` 属性
 通过 7/7。本批复用既有 `HTMLElement.hidden` 反射，不新增公共 C ABI、脚本 mutation observer
 或完整 CSS/辅助技术语义。
 
+next648 在 `positron_core.dll` 的 UA stylesheet 中补齐披露控件的静态默认呈现：`details`/
+`dialog` 使用 block，`summary` 使用 list-item；关闭的 `details` 隐藏非 `summary` 子项，关闭的
+`dialog` 不生成布局盒，带 `open` 的两者正常布局。`TEST1096` 与 TEST21、TEST24、TEST1091、
+TEST1093、TEST1094、TEST1095、TEST999 的 WM6 Debug 定向门通过 8/8。本批复用已有
+`HTMLElement.open` 反射，不新增公共 C ABI，也不宣称 summary 点击、自动重排、模态焦点或
+dialog 生命周期。
+
 ## 快速开始
 
 ### 前置环境

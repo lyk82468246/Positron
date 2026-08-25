@@ -235,8 +235,9 @@ IDL 实现。
 textarea 布局宽度或完整 textarea Web IDL 实现。
 当前 raw metadata bridge 还为 `HTMLTextAreaElement.rows` 提供有限整数属性往返；这不等于
 textarea 布局高度或完整 textarea Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.open` 的布尔属性往返；这不等于 details 展开
-布局、summary 激活、disclosure 交互或完整 HTMLElement Web IDL 实现。
+当前 raw metadata bridge 还提供 `HTMLElement.open` 的布尔属性往返；Core 已用该属性驱动
+details/dialog 的静态默认布局，但这不等于 summary 激活、属性变化后的自动重排、modal focus、
+backdrop、dialog 生命周期或完整 HTMLElement Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.autocapitalize`、`itemValue`、`is` 的 UTF-8
 属性往返；这不等于输入法/大小写策略、microdata 解析或 customized built-in 升级。
 当前 raw metadata bridge 还提供 `HTMLElement.ariaAtomic`、`ariaBusy`、`ariaChecked`、
@@ -1272,6 +1273,18 @@ HTML 元素只要存在 `hidden` 属性，默认样式计算就会把它从布�
 cascade 或辅助技术语义。TEST1095 通过 `PCore_NodeBox()` 和后续段落的 y 坐标断言隐藏元素
 没有布局盒且不占垂直空间，同时确认可见对照元素仍有布局盒；TEST21、TEST24、TEST1091、
 TEST1093、TEST1094、TEST1095、TEST999 的定向设备门为 7/7。
+
+#### next648 的披露控件默认呈现边界
+
+next648 在 `positron_core.dll` 的 UA stylesheet 中加入 `details`/`dialog { display: block; }`、
+`summary { display: list-item; }`，并按 `open` 属性隐藏 closed details 的非 summary 子项与
+closed dialog。带 `open` 的 details body 和 dialog 恢复进入布局流；browser layer 只复用已有
+`HTMLElement.open` attribute bridge，不新增公共 C ABI，也不让 `test_host.exe` 持有这些语义。
+
+该能力是静态样式/布局契约，不实现 summary click、open mutation 后自动重排、modal focus、
+backdrop、dialog 生命周期或完整 disclosure behavior。TEST1096 通过 closed/open 对照文档的
+`PCore_NodeBox()` 结果验证 summary、details body 和 dialog 的盒状态；TEST21、TEST24、
+TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST999 的定向设备门为 8/8。
 
 #### next614 的 label/control 关系边界
 

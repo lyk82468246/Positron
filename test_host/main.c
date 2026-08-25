@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1095
+#define TEST_MAX_NUMBER 1096
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -20362,6 +20362,102 @@ static BOOL test1095_core_hidden_rendering_contract(void)
             "Core UA styling maps the HTML hidden attribute to display:none; "
             "the hidden element has no box and the following paragraph does not "
             "inherit its vertical gap.");
+    return TRUE;
+}
+
+/* TEST 1096 - disclosure elements use their open state for layout. */
+static BOOL test1096_core_disclosure_rendering_contract(void)
+{
+    static const char CLOSED_HTML[] =
+        "<!doctype html><html><body><details><summary>More</summary>"
+        "<p>closed details body</p></details><dialog>closed dialog</dialog>"
+        "</body></html>";
+    static const char OPEN_HTML[] =
+        "<!doctype html><html><body><details open><summary>More</summary>"
+        "<p>open details body</p></details><dialog open>open dialog</dialog>"
+        "</body></html>";
+    HANDLE closed_doc = NULL;
+    HANDLE open_doc = NULL;
+    int closed_details_rc;
+    int closed_summary_rc;
+    int closed_p_rc;
+    int closed_dialog_rc;
+    int open_details_rc;
+    int open_summary_rc;
+    int open_p_rc;
+    int open_dialog_rc;
+    int closed_x;
+    int closed_y;
+    int closed_w;
+    int closed_h;
+    int open_x;
+    int open_y;
+    int open_w;
+    int open_h;
+    int screen_w;
+    int screen_h;
+    int pass;
+
+    closed_details_rc = 1;
+    closed_summary_rc = 1;
+    closed_p_rc = 1;
+    closed_dialog_rc = 1;
+    open_details_rc = 1;
+    open_summary_rc = 1;
+    open_p_rc = 1;
+    open_dialog_rc = 1;
+    closed_doc = PCore_ParseHTML(CLOSED_HTML, 0);
+    open_doc = PCore_ParseHTML(OPEN_HTML, 0);
+    pass = closed_doc != NULL && open_doc != NULL;
+    if (pass) {
+        PCore_SetViewport(240, 320, 96);
+        pass = PCore_StyleDocument(closed_doc, NULL) == 0 &&
+                PCore_StyleDocument(open_doc, NULL) == 0 &&
+                PCore_LayoutDocument(closed_doc, 240, 320) == 0 &&
+                PCore_LayoutDocument(open_doc, 240, 320) == 0;
+    }
+    if (pass) {
+        closed_details_rc = PCore_NodeBox(closed_doc, "details", &closed_x,
+                &closed_y, &closed_w, &closed_h);
+        closed_summary_rc = PCore_NodeBox(closed_doc, "summary", &closed_x,
+                &closed_y, &closed_w, &closed_h);
+        closed_p_rc = PCore_NodeBox(closed_doc, "p", &closed_x, &closed_y,
+                &closed_w, &closed_h);
+        closed_dialog_rc = PCore_NodeBox(closed_doc, "dialog", &closed_x,
+                &closed_y, &closed_w, &closed_h);
+        open_details_rc = PCore_NodeBox(open_doc, "details", &open_x,
+                &open_y, &open_w, &open_h);
+        open_summary_rc = PCore_NodeBox(open_doc, "summary", &open_x,
+                &open_y, &open_w, &open_h);
+        open_p_rc = PCore_NodeBox(open_doc, "p", &open_x, &open_y, &open_w,
+                &open_h);
+        open_dialog_rc = PCore_NodeBox(open_doc, "dialog", &open_x, &open_y,
+                &open_w, &open_h);
+        pass = closed_details_rc == 0 && closed_summary_rc == 0 &&
+                closed_p_rc != 0 && closed_dialog_rc != 0 &&
+                open_details_rc == 0 && open_summary_rc == 0 &&
+                open_p_rc == 0 && open_dialog_rc == 0;
+    }
+    if (closed_doc != NULL) {
+        PCore_FreeDocument(closed_doc);
+    }
+    if (open_doc != NULL) {
+        PCore_FreeDocument(open_doc);
+    }
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, 96);
+
+    if (!pass) {
+        show_error(L"TEST 1096 FAIL",
+                "details/dialog open-state rendering contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1096 OK",
+            "closed details keep summary but hide their body, closed dialog "
+            "has no box, and open disclosure elements are laid out.");
     return TRUE;
 }
 
@@ -78202,6 +78298,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1093: ok = test1093_core_disabled_stylesheet_contract(); break;
         case 1094: ok = test1094_core_stylesheet_rel_token_contract(); break;
         case 1095: ok = test1095_core_hidden_rendering_contract(); break;
+        case 1096: ok = test1096_core_disclosure_rendering_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -16,12 +16,13 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next647，页面 stylesheet `media`、disabled、rel-token 选择与 hidden 渲染 → Core 将 `<style media>` 与
+- 当前能力批次：next648，页面 stylesheet `media`、disabled、rel-token 选择、hidden 与披露控件渲染 → Core 将 `<style media>` 与
   `<link rel="stylesheet" media>` 的 UTF-8 条件交给 libcss，并在同一文档重排时复用外部
   CSS cache；收集外部 stylesheet link 时会跳过存在 `disabled` 属性的 link，不 fetch、解析或
   选择其 CSS；`rel` 按 ASCII whitespace token、大小写不敏感匹配 `stylesheet`，但含
   `alternate` 的 link 继续 fail closed；UA stylesheet 现在把存在 `hidden` 属性的元素映射为
-  `display:none`，因此隐藏元素不会占用布局盒；它沿用 next642 的 `relList.supports()` 保守 link-type 能力探测和
+  `display:none`，因此隐藏元素不会占用布局盒；`details`/`dialog` 默认按 block 处理，关闭的
+  `details` 隐藏非 `summary` 子项，关闭的 `dialog` 不生成布局盒；它沿用 next642 的 `relList.supports()` 保守 link-type 能力探测和
   next641 的 bounded DOMTokenList 反射/枚举/变更与
   next636 的 `rel` 属性桥，不扩展公共 C ABI，也不把 `noopener` 等关系词误称为窗口安全
   策略。`<link rel="stylesheet">` 是当前唯一报告为 supported 的关系词，未实现关系词和
@@ -42,7 +43,7 @@
   增加了受限的 `media` UTF-8 属性反射；缺失返回空串，`setAttribute`/setter/
   `removeAttribute` 保持 live 一致，其他元素返回 `undefined` 且 setter 不改变 raw 属性。
   这不触发脚本侧 MediaQueryList 事件或自动重排。
-- 测试编号上限：`TEST_MAX_NUMBER 1095`。
+- 测试编号上限：`TEST_MAX_NUMBER 1096`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -760,6 +761,18 @@ next647 的 `hidden` 属性渲染自动门已经完成：
 - `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、仓库/文档审计和设备门均通过；
   本批没有新增视觉、触摸、SIP、旋转或 picker 人工门。
 
+next648 的披露控件默认呈现自动门已经完成：
+
+- `tmp/device-runs/20260825-164529-next648-disclosure-rendering/` 的定向门为 PASS，
+  TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST999 共 8/8，
+  零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。
+- TEST1096 确认 Core UA stylesheet 为 `details`/`dialog` 提供 block 默认值，`summary` 为
+  list-item；无 `open` 的 details 只保留 summary，关闭 dialog 没有布局盒；带 `open` 的
+  details body 与 dialog 均有布局盒。该批不新增公共 C ABI，也不实现 summary 点击、open
+  mutation 后自动重排、模态焦点、backdrop 或 dialog 生命周期。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、仓库/文档审计和设备门均通过；
+  本批没有新增必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -914,11 +927,11 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next647 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+next648 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
 纵切，不要为了补编号添加孤立 API。Core 现在会按 viewport 选择 `<style media>` 与
 `<link rel="stylesheet" media>`，按 rel token 选择 stylesheet、跳过带 `disabled` 属性的外部
 stylesheet，并在同文档重排复用外部 CSS cache；UA stylesheet 对存在 `hidden` 属性的元素
-应用 `display:none`；browser wrapper 还提供 `<link>`/`<style>` 的
+应用 `display:none`，并按 `open` 控制 `details`/`dialog` 的静态默认呈现；browser wrapper 还提供 `<link>`/`<style>` 的
 bounded `media` 反射，但
 不提供动态 MediaQueryList 事件、完整 link 下载策略或 noopener/opener 的窗口安全处理。
 TEST65 的多字符 SIP 候选词、select/file picker 模态框、

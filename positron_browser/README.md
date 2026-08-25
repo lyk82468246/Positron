@@ -438,6 +438,12 @@ next644 在同一 bootstrap 中为 `<link>` 与 `<style>` wrapper 增加受限�
 MediaQueryList 事件或 link 下载策略；TEST1092 与 TEST1090/1091/999 的 WM6 定向设备门
 通过 4/4，未新增公共 C ABI。
 
+next648 的 Core UA stylesheet 现在消费已有的 `HTMLElement.open` attribute reflection，提供
+`details`/`dialog`/`summary` 的静态默认布局：closed details 隐藏非 summary 子项，closed
+dialog 不生成布局盒，带 `open` 的控件恢复布局。browser DLL 仍只负责 open 属性读写；summary
+点击、属性变化后的自动重排、模态焦点、backdrop 和 dialog 生命周期不在本批范围内。TEST1096
+由 `test_host` 作为 Core 消费者验证，未新增 browser 公共 ABI。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

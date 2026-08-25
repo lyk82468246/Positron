@@ -162,6 +162,12 @@ next647 的 TEST1095 是 Core 默认呈现消费者断言：同一文档同时�
 `test_host` 只提供 fixture、布局查询和断言，不拥有 `[hidden]` UA 规则，也没有修改 tracked
 默认 INI。
 
+next648 的 TEST1096 是 Core 披露控件消费者断言：closed/open 对照文档确认 `details` 的
+`summary` 始终有盒、closed details 的非 summary body 没有盒、closed `dialog` 没有盒，
+而带 `open` 的 details body 与 dialog 均有盒。定向门使用
+`21,24,1091,1093,1094,1095,1096,999`，设备上通过 8/8；`test_host` 只提供 fixture、布局
+查询和断言，不拥有 open-state UA 语义，也没有修改 tracked 默认 INI。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

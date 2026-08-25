@@ -602,7 +602,23 @@ TEST1093、TEST1094、TEST1095、TEST999 通过 7/7，唯一 `TESTBENCH PASS` �
 `ERROR`/`FAIL`；C89、Debug/Release ARMV4I 构建和仓库/文档审计通过。本批没有新增必须
 立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
 
-### 42. 建立真实页面驱动的兼容队列
+### 42. next648：披露控件默认呈现（已完成）
+
+next648 把 `details`、`summary` 和 `dialog` 的静态默认呈现放入 `positron_core.dll` 的 UA
+stylesheet：`details`/`dialog` 为 block，`summary` 为 list-item；没有 `open` 的 details
+隐藏非 summary 子项，没有 `open` 的 dialog 不生成布局盒，带 `open` 的控件恢复布局。
+该批复用已有 `HTMLElement.open` 属性反射，不新增公共 C ABI，也不把 `test_host` 变成语义
+所有者；summary 点击、属性变化后的自动重排、modal focus/backdrop 和 dialog 生命周期仍
+保持未实现。
+
+TEST1096 同时布局 closed/open 的 details 与 dialog，断言 summary 保留、details body 和
+closed dialog 的布局盒状态。设备证据目录为
+`tmp/device-runs/20260825-164529-next648-disclosure-rendering/`，TEST21、TEST24、TEST1091、
+TEST1093、TEST1094、TEST1095、TEST1096、TEST999 通过 8/8，唯一 `TESTBENCH PASS` 且零
+`ERROR`/`FAIL`；C89、Debug/Release ARMV4I 构建和仓库/文档审计通过。本批没有新增必须立即
+人工复核的视觉、触摸、SIP、旋转或 picker 风险。
+
+### 43. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -613,7 +629,7 @@ TEST1093、TEST1094、TEST1095、TEST999 通过 7/7，唯一 `TESTBENCH PASS` �
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 43. 安排新的全范围检查点
+### 44. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

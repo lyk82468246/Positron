@@ -969,6 +969,24 @@ scripts\device_gate.bat -Candidate next647-hidden-attribute ^
 正式构建、仓库/文档审计通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或
 picker 人工门。
 
+### next648 披露控件默认呈现自动门
+
+next648 验证 Core UA stylesheet 对 `details`、`summary` 和 `dialog` 的静态 open-state 呈现。
+TEST1096 使用 closed/open 对照文档：summary 在 closed details 中保留，非 summary body 与
+closed dialog 没有 `PCore_NodeBox()`，带 `open` 的 details body 与 dialog 均有布局盒。该门不
+依赖 JavaScript、网络、窗口或视觉检查；它复用已有 `HTMLElement.open` 反射，不新增公共 ABI，
+也不宣称 summary 激活、自动重排、模态焦点、backdrop 或 dialog 生命周期。
+
+```bat
+scripts\device_gate.bat -Candidate next648-disclosure-rendering ^
+  -TestSelection "21,24,1091,1093,1094,1095,1096,999"
+```
+
+`tmp/device-runs/20260825-164529-next648-disclosure-rendering/` 已通过 8/8，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。C89 与 Debug/Release ARMV4I
+正式构建、仓库/文档审计通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或
+picker 人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

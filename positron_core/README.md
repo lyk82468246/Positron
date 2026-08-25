@@ -134,3 +134,10 @@ next647 又在 Core UA stylesheet 中提供 `[hidden] { display:none; }`。因�
 辅助技术语义。TEST1095 用隐藏/可见对照和后续段落的 `PCore_NodeBox()`/几何断言验证该
 呈现边界；相关设备门 TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST1095、TEST999
 通过 7/7。Core 没有为此新增公共 C ABI。
+
+next648 又在 Core UA stylesheet 中加入披露控件的静态默认呈现：`details`/`dialog` 为 block，
+`summary` 为 list-item；无 `open` 的 details 隐藏非 summary 子项，无 `open` 的 dialog 不生成
+布局盒，带 `open` 的控件恢复布局。TEST1096 在 closed/open 对照文档中验证 details body、
+summary 和 dialog 的盒状态；相关设备门 TEST21、TEST24、TEST1091、TEST1093、TEST1094、
+TEST1095、TEST1096、TEST999 通过 8/8。该能力不新增公共 C ABI，不负责 summary 激活、属性
+变化后的自动重排、模态焦点或 backdrop。
