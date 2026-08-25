@@ -262,9 +262,9 @@ ASSIGN navigation，`positron_core.dll` 的 `PCore_LinkInfoById()` 负责按 DOM
 [架构说明](docs/ARCHITECTURE.md)。
 
 next632 又补齐同页 fragment 锚点的受控激活：以 `#` 开头的 `<a href>` 在 browser layer
-中走 fragment history/hashchange，宿主用 `PCore_FragmentInfoById()` 把已布局目标滚入视口；
-未知目标保持当前滚动，跨页链接继续走 ASSIGN。`TEST1080` 已在 WM6 设备门覆盖该分类、
-几何和失败边界；`<a name>`、percent-decoding 与 target/rel/window 仍是明确限制。
+中走 fragment history/hashchange，宿主用 Core 的片段查询把已布局目标滚入视口；未知目标
+保持当前滚动，跨页链接继续走 ASSIGN。`TEST1080` 已在 WM6 设备门覆盖该分类、几何和失败
+边界。
 
 next633 继续补齐真实页面的同页历史行为：fragment 产生的同文档条目在
 `history.back()`、`history.forward()` 和 `history.go()` 返回时恢复对应目标滚动；未知目标
@@ -276,6 +276,12 @@ back/forward/go 重新加载目标文档后恢复该条目偏移；新条目从�
 上限裁剪。滚动数组是 `test_host` 的窗口状态，不扩张 `positron_browser.dll` ABI；持久历史、
 跨进程恢复和真实页面视觉仍不在承诺范围。`TEST1082` 已与相关锚点回归在 WM6 Debug
 设备门通过。
+
+next635 收敛了 fragment 解析的一个真实兼容缺口：`positron_core.dll` 新增
+`PCore_FragmentInfoByToken()`，先按 UTF-8 `id` 查找，再兼容 HTML 旧式 `<a name>` 锚点；
+宿主在调用前只做有界的 `%HH` 字节解码，保留 `+` 为字面字符，非法编码或未知目标不改变
+视口。该 API 仍不负责 URL、history、网络或窗口副作用，`target/rel/window` 和真实视觉
+仍是独立边界。`TEST1083` 与 1082–1070、999 的 Debug 设备门已通过 7/7。
 
 ## 快速开始
 

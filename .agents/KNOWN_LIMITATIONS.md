@@ -89,12 +89,13 @@
   浏览器导航策略。
   next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
-  `PCore_FragmentInfoById()` 取得 literal UTF-8 DOM id 的目标几何并移动自己的 viewport；
-  unknown id 保持当前位置且不发起网络请求。`<a name>`、percent-decoding、target/rel/window、
-  fragment 视觉和真实触摸仍未覆盖；TEST1080 只证明产品分类、Core 几何和宿主窄接线。
+  Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前
+  位置且不发起网络请求。next635 的 `PCore_FragmentInfoByToken()` 按 id 优先并兼容旧式
+  `<a name>`，宿主只做有界 `%HH` 解码，`+` 保持字面，非法 escape/NUL fail closed。
+  TEST1080 仍证明分类和窄接线，TEST1083 证明 token 解析及失败不变式。
   next633 已让同文档 history `back()`/`forward()`/`go()` 在 traversal 成功后恢复该目标
   几何；未知目标保持当前位置，跨文档 traversal 仍走既有网络/窗口路径。该恢复只覆盖当前
-  已布局文档和 literal DOM id，不等于持久滚动位置、跨文档恢复或完整浏览器 history 策略；
+  已布局文档和 token 目标，不等于持久滚动位置、跨文档恢复或完整浏览器 history 策略；
   TEST1081 只证明宿主窄接线。
 
 ### 解除或推进条件

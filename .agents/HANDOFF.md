@@ -16,11 +16,12 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next634，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
+- 当前能力批次：next635，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
   fragment history/hashchange + host-owned target scroll，并在同文档和跨文档 history
-  back/forward/go 时恢复 bounded viewport（自动设备门已完成）；跨页 href 仍为 ASSIGN；
-  next618 的 TEST65 真实 SIP 候选词仍待人工确认，file picker/真实 label 触摸仍是独立人工边界。
-- 测试编号上限：`TEST_MAX_NUMBER 1082`。
+  back/forward/go 时恢复 bounded viewport；fragment token 现在按 id 优先兼容 `<a name>`，
+  宿主对 URL 片段做有界 `%HH` 解码（自动设备门已完成）；跨页 href 仍为 ASSIGN；next618
+  的 TEST65 真实 SIP 候选词仍待人工确认，file picker/真实 label 触摸仍是独立人工边界。
+- 测试编号上限：`TEST_MAX_NUMBER 1083`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -191,10 +192,9 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   覆盖导航适配器拒绝。
 - next632 在同一锚点路径上把以 `#` 开头的 href 分类为
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`；宿主 adapter 绑定当前 history URL，使用
-  `PCore_FragmentInfoById()` 读取 literal UTF-8 DOM id 的目标几何并滚动自己的 viewport，
-  未知 id 保持位置且不发起网络请求。跨页 href 仍走 ASSIGN；percent-decoding、`<a name>`、
-  target/rel/window 和真实页面视觉未覆盖。TEST1080 已在 WM6 设备门覆盖分类、URL 绑定、
-  target geometry、滚动和 unknown-id 边界。
+  Core 的片段查询读取目标几何并滚动自己的 viewport，未知 token 保持位置且不发起网络请求。
+  跨页 href 仍走 ASSIGN；target/rel/window 和真实页面视觉未覆盖。TEST1080 已在 WM6 设备门
+  覆盖分类、URL 绑定、target geometry、滚动和 unknown-id 边界。
 - next633 补齐同文档 fragment history traversal 的宿主滚动恢复：`back()`、`forward()` 和
   `go()` 在 browser-owned history traversal 成功后复用 `PCore_FragmentInfoById()`，把当前
   viewport 移到目标；未知目标保持原位置，不触发网络或文档替换。`positron_browser.dll`
@@ -204,6 +204,10 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   目标文档布局完成后由 back/forward/go 恢复，new entry 默认零，短文档按 viewport 上限裁剪。
   `positron_browser.dll` 公共 ABI 未扩张；TEST1082 与 TEST1081、1080、1079、1070、999
   的 Debug 窄门已通过 6/6。
+- next635 在 `positron_core.dll` 增加 additive 的 `PCore_FragmentInfoByToken()`：先按 literal
+  UTF-8 id 匹配，再兼容 HTML 旧式 `<a name>`；`test_host` 在查询前做有界 `%HH` 字节解码，
+  `+` 保持字面，malformed/NUL/unknown token 保持滚动。TEST1083 与 1082–1070、999 的
+  Debug 窄门已通过 7/7；browser history ABI 未扩张。
 
 ## 最近验证证据
 
@@ -572,6 +576,15 @@ next634 的跨文档 history scroll 自动门已经完成：
   和 `git diff --check` 均已通过；Release 设备探针仍不作为证据。真实页面视觉、触摸、SIP、
   旋转和 picker 仍按累计人工边界处理。
 
+next635 的 fragment token 自动门已经完成：
+
+- `tmp/device-runs/20260825-112545-next635-fragment-token-r1/` 的窄门为 PASS，TEST1083、
+  1082、1081、1080、1079、1070、999 共 7/7，唯一 `TESTBENCH PASS`，`error_count=0`、
+  `fail_count=0`、`test13_route_ok=True`。
+- TEST1083 覆盖 Core id 优先、旧式 `<a name>` fallback、宿主有效 `%HH` 解码，以及 malformed/
+  unknown token 不改变 viewport；没有扩张 browser history ABI。C89、Debug ARMV4I 正式构建
+  和设备门已通过；Release、audit、文档审计及最终 Git 核对仍待完成。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -605,7 +618,7 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1082 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1083 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -682,6 +695,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   审计和 Debug 窄设备门已完成；tracked 改动只覆盖 `test_host` 消费者与相关文档，未扩张
   `positron_browser` 公共 ABI，也没有修改 tracked INI。Release 设备探针仍不计入证据；提交
   前只需完成最终 Git 状态、提交和推送核对。
+- next635 的 fragment token resolution、`PCore_FragmentInfoByToken()`、TEST1083、C89、
+  Debug 构建和 Debug 窄设备门已完成；tracked 改动覆盖 `positron_core` additive ABI、
+  `test_host` 消费者/断言和相关文档，没有修改 tracked INI。提交前补跑 Release、audit、
+  文档审计、diff 检查并完成最终 Git 状态、提交和推送核对。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -689,13 +706,13 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next634 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+next635 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
 纵切，不要为了补编号添加孤立 API。TEST65 的多字符 SIP 候选词、select/file picker 模态框、
 真实 label 触摸、OEM 窗口视觉和键盘映射仍是独立人工边界；在人工证据出现前不得把它们写成
-通用产品保证。fragment-only 锚点当前只支持 literal DOM id，`<a name>`、percent-decoding
-和 target/rel/window 仍未覆盖；history traversal 只在当前宿主进程内恢复有界的同文档目标
-或跨文档条目偏移，不提供持久缓存/跨进程恢复。下一次重要产品/生命周期风险累积后，再安排
-新的全范围设备基线。
+通用产品保证。fragment-only 锚点现在只在当前宿主路径支持有界 `%HH` 解码、id 优先和
+`<a name>` fallback，target/rel/window 仍未覆盖；history traversal 只在当前宿主进程内恢复
+有界的同文档目标或跨文档条目偏移，不提供持久缓存/跨进程恢复。下一次重要产品/生命周期
+风险累积后，再安排新的全范围设备基线。
 
 ## next617 完成标准
 

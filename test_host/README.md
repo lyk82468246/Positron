@@ -67,10 +67,12 @@ TEST1070 同时验证产品契约与该 helper 的消费者接线。
 
 next632 继续沿用该链接路径：fragment-only href 由 browser DLL 标记为
 `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`，宿主的 navigation adapter 将 `#id` 绑定到当前页面
-URL，再通过 bounded `PCore_FragmentInfoById()` 取得已布局目标并移动自己的 scrollbar；
-history/hashchange、native-child reposition 和窗口/网络副作用仍归宿主，未知 id 不移动视口。
-跨页 href 仍走 ASSIGN。TEST1080 覆盖产品分类、Core 几何、fragment URL 绑定和目标滚动的
-可断言边界；percent-decoding、`<a name>`、target/rel/window 仍不由本宿主宣称支持。
+URL，再通过 Core 的片段查询取得已布局目标并移动自己的 scrollbar；history/hashchange、
+native-child reposition 和窗口/网络副作用仍归宿主，未知目标不移动视口。跨页 href 仍走
+ASSIGN。next635 又在进入 Core 前加入有界 `%HH` 解码，并让 `PCore_FragmentInfoByToken()`
+按 id 优先、兼容旧式 `<a name>`；`+` 保持字面，非法编码保持原视口。TEST1080 覆盖产品
+分类、Core 几何、fragment URL 绑定和目标滚动，TEST1083 覆盖 token 解析及失败边界；
+target/rel/window 和真实视觉仍不由本宿主宣称支持。
 
 next633 补齐同文档 history traversal 的宿主副作用：`history.back()`、`history.forward()`
 和 `history.go()` 返回 fragment 条目后，宿主重新查询当前布局文档的目标几何并恢复 scrollbar
@@ -83,6 +85,10 @@ scroll offset，目标文档完成布局后，back/forward/go 恢复对应条目
 按可滚动最大值裁剪。该数组只属于窗口宿主，不改变 `positron_browser.dll` 的公共 history
 ABI，也不提供持久历史或跨进程恢复。TEST1082 覆盖 A→B→back/forward、new-entry zero
 和短页面 clamp；与 TEST1081、1080、1079、1070、999 一起作为定向设备门。
+
+next635 的自动门使用 `1083,1082,1081,1080,1079,1070,999`，验证产品 Core 的 id 优先、
+legacy name anchor、宿主 percent-decoding 以及 malformed/unknown token 的 no-scroll
+不变式。该门不替代真实页面视觉、触摸、SIP、旋转或系统 picker 人工验收。
 
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，

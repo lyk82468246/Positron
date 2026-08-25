@@ -111,9 +111,10 @@ JSON-compatible global、native callback、执行预算和内存限制，但本�
 - 按 DOM id 查询已布局、带非空 `href` 的 `<a>` 几何和 UTF-8 URL（`PCore_LinkInfoById`），
   供浏览器 bridge 实现程序化锚点激活；该查询只复制到调用者缓冲区，不暴露 libdom/box
   指针，也不发起网络或窗口副作用；
-- 按 DOM id 查询已布局片段目标几何（`PCore_FragmentInfoById`），供宿主执行同页
-  fragment 滚动；该窄查询只接受 literal UTF-8 id，不负责 percent-decoding、`<a name>`、
-  history、网络或窗口副作用；
+- 按 DOM id 或已解码 token 查询已布局片段目标几何（`PCore_FragmentInfoById`、
+  `PCore_FragmentInfoByToken`），供宿主执行同页 fragment 滚动；token 查询先按 literal
+  UTF-8 id 匹配，再兼容旧式 `<a name>`，但不负责 percent-decoding、history、网络或窗口
+  副作用；
 - 按 DOM id 查询控件的约束状态（`valid`、`will_validate` 和 `PCORE_VALIDITY_*` flags），供浏览器
   bridge 或其他宿主在布局前后读取；该查询不触发 invalid 事件，也不应用 form-level no-validate
   提交按钮绕过；
@@ -1067,19 +1068,19 @@ next632 让 `PBrowser_ScriptSessionDispatchAnchorClick()` 把 fragment-only href
 开头）提交为 `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`，跨页 href 仍提交 ASSIGN；click 取消、
 导航适配器错误和原有 borrowed-string/size-tagged 契约不变。`test_host` 的 adapter 将
 片段绑定到当前 history URL，提交 `PBrowser_ScriptSessionDispatchHashNavigation()` 后，
-通过 `PCore_FragmentInfoById()` 读取目标几何并移动自己的 viewport/scrollbar；未知目标只
-更新 history/hashchange，不伪造网络请求或滚动失败。TEST1080 覆盖产品分类、literal id
-几何、fragment URL 绑定、目标滚动和 unknown-id 保持位置。percent-decoding、`<a name>`、
-target/rel/window、跨文档加载和真实页面视觉仍是后续或人工边界。
+通过 Core 的片段查询读取目标几何并移动自己的 viewport/scrollbar；未知目标只更新
+history/hashchange，不伪造网络请求或滚动失败。TEST1080 覆盖产品分类、literal id 几何、
+fragment URL 绑定、目标滚动和 unknown-id 保持位置；percent-decoding、`<a name>`、
+target/rel/window、跨文档加载和真实页面视觉在后续批次分别收敛。
 
 #### next633 的同文档 fragment 历史遍历边界
 
 next633 修正 next632 的宿主生命周期缺口：同页 fragment entry 在
 `history.back()`、`history.forward()` 或 `history.go()` 触发 browser-owned traversal 并成功
-派发 `popstate`/`hashchange` 后，`test_host` 重新用 `PCore_FragmentInfoById()` 查询当前布局
+派发 `popstate`/`hashchange` 后，`test_host` 重新用 Core 的片段查询当前布局
 文档中的目标几何并恢复自己的 viewport/scrollbar。未知目标保持原位置，不发起网络请求或
 文档替换；跨文档 history entry 仍交给既有导航 worker。该批不新增 browser 公共 ABI，也不
-承诺持久滚动位置、跨文档恢复、`<a name>`、percent-decoding、target/rel/window 或真实视觉。
+承诺持久滚动位置、跨文档恢复、target/rel/window 或真实视觉。
 TEST1081 与 next632 的 TEST1080 共同覆盖该窄边界。
 
 #### next634 的跨文档 history 视口边界
@@ -1091,6 +1092,16 @@ history/session 的 URL、state、document-id 和导航投影，不拥有 HWND�
 因此没有公共 ABI 变化。该能力只覆盖同一宿主进程内的有界会话镜像，不覆盖页面缓存、持久化、
 跨进程恢复、表单状态、POST 重提交或未知 fragment 的滚动猜测。TEST1082 覆盖每条文档的
 独立偏移、新条目归零和短页面裁剪。
+
+#### next635 的 fragment token 兼容边界
+
+next635 在 `positron_core.dll` 增加 additive 的 `PCore_FragmentInfoByToken()`。该查询接收
+已解码 UTF-8 token，先使用 DOM `id`（即使同 token 的旧式 anchor 也存在，id 仍优先），找不到
+id 时再使用 libdom 的 HTML anchors collection 兼容 `<a name="...">`；只复制已布局元素的
+有用几何，不暴露 DOM/box 指针。`test_host` 在 URL 片段进入 Core 前按字节执行有界 `%HH`
+解码，不把 `+` 当空格；非法 escape、NUL 或未知 token 保持原视口。该批不改变 browser
+history ABI，也不把 URL 解析、target/rel/window、网络、窗口或视觉副作用迁入 Core。
+TEST1083 覆盖 id 优先、legacy name、percent-decoding 和失败不变式。
 
 #### next614 的 label/control 关系边界
 

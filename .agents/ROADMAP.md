@@ -406,7 +406,18 @@ TEST1082 与 TEST1081、1080、1079、1070、999 的窄门通过 6/6，零 ERROR
 `TESTBENCH PASS`；Debug/Release ARMV4I、C89、audit 和文档审计均已通过。Release 设备探针
 仍不作为证据。
 
-### 29. 建立真实页面驱动的兼容队列
+### 29. next635：fragment token 兼容（已完成）
+
+next635 把同页 fragment 目标从单一 literal DOM id 扩展为产品 Core 的 token 查询：新增
+`PCore_FragmentInfoByToken()`，先按 id 匹配，再兼容 libdom HTML anchors collection 提供的
+旧式 `<a name>`；宿主只在 URL 片段进入 Core 前做有界 `%HH` 字节解码，`+` 保持字面，非法
+编码或未知目标保持当前视口。该批保持 browser history、URL、网络和窗口副作用在原有边界。
+
+TEST1083 与 TEST1082、1081、1080、1079、1070、999 的窄门通过 7/7，零 ERROR/FAIL、唯一
+`TESTBENCH PASS`；C89 和 Debug ARMV4I 构建通过。Release、audit、文档审计和最终 Git 核对
+仍是本批交付前置条件；真实页面视觉、触摸、SIP、旋转和 picker 仍不由该自动门替代。
+
+### 30. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -417,7 +428,7 @@ TEST1082 与 TEST1081、1080、1079、1070、999 的窄门通过 6/6，零 ERROR
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 30. 安排新的全范围检查点
+### 31. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

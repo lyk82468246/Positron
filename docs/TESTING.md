@@ -724,6 +724,26 @@ scripts\device_gate.bat -Candidate next634-cross-document-history-scroll-r4 ^
 在同一窄门内。Debug ARMV4I 正式构建与 C89 检查通过；真实页面布局、触摸、SIP、旋转和
 视觉仍按累计人工门处理。
 
+### next635 fragment token 兼容自动门
+
+next635 把同页片段目标从单一 literal DOM id 扩展为产品 Core 的 token 查询：
+`PCore_FragmentInfoByToken()` 先按 id 匹配，再兼容 HTML 旧式 `<a name>`；宿主只在 URL
+片段进入 Core 前做有界 `%HH` 字节解码，`+` 保持字面，非法编码、NUL 或未知 token 不改变
+当前视口。该批不改变 browser history ABI，也不覆盖 target/rel/window、完整 URL 解析或
+真实页面视觉。
+
+```bat
+scripts\device_gate.bat -Candidate next635-fragment-token-r1 ^
+  -EnableJavaScript ^
+  -TestSelection "1083,1082,1081,1080,1079,1070,999"
+```
+
+`tmp/device-runs/20260825-112545-next635-fragment-token-r1/` 已通过 7/7，零 `ERROR`/`FAIL`、
+唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。TEST1083 自动断言 id 优先、legacy name
+anchor、有效 percent escape 和 malformed/unknown token 的 no-scroll 不变式；相关 history
+和 anchor 回归仍在同一窄门内。Debug ARMV4I 构建、C89 和设备门均通过；提交前仍需完成
+Release 构建、仓库/文档审计和最终工作区核对。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

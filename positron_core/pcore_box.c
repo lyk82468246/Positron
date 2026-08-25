@@ -38,6 +38,7 @@
 #include <dom/html/html_form_element.h>
 #include <dom/html/html_input_element.h>
 #include <dom/html/html_label_element.h>
+#include <dom/html/html_document.h>
 #include <dom/html/html_option_element.h>
 #include <dom/html/html_options_collection.h>
 #include <dom/html/html_select_element.h>
@@ -3261,6 +3262,7 @@ static int pcore_ensure_render_key(void)
 /* "a" / "href", interned once for link hit-testing. */
 static dom_string *pcore_a_name = NULL;
 static dom_string *pcore_href_name = NULL;
+static dom_string *pcore_name_attr = NULL;
 
 static int pcore_ensure_link_strings(void)
 {
@@ -3271,6 +3273,11 @@ static int pcore_ensure_link_strings(void)
     }
     if (pcore_href_name == NULL &&
             dom_string_create((const uint8_t *) "href", 4, &pcore_href_name)
+                    != DOM_NO_ERR) {
+        return 1;
+    }
+    if (pcore_name_attr == NULL &&
+            dom_string_create((const uint8_t *) "name", 4, &pcore_name_attr)
                     != DOM_NO_ERR) {
         return 1;
     }
@@ -10816,6 +10823,145 @@ PCORE_API int PCore_FragmentInfoById(HANDLE hDoc, const char *fragment_id,
     }
     dom_node_unref((dom_node *) element);
     return 0;
+}
+
+/* Copy only the geometry needed by the fragment bridge.  The node reference
+ * remains owned by the caller; the box tree borrows it for the document's
+ * layout lifetime. */
+static int pcore_fragment_info_for_node(struct box *root_box,
+        dom_node *node, int *x, int *y, int *w, int *h)
+{
+    struct box *box;
+    int ax;
+    int ay;
+
+    if (root_box == NULL || node == NULL) {
+        return 1;
+    }
+    box = pcore_box_for_any_node(root_box, node);
+    if (box == NULL || box->width <= 0 || box->height <= 0) {
+        return 1;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    if (x != NULL) {
+        *x = ax;
+    }
+    if (y != NULL) {
+        *y = ay;
+    }
+    if (w != NULL) {
+        *w = box->width;
+    }
+    if (h != NULL) {
+        *h = box->height;
+    }
+    return 0;
+}
+
+/* libdom's HTML anchors collection is deliberately used here instead of a
+ * private DOM walk: it matches the legacy HTML definition of an anchor with
+ * a name attribute and keeps the public Core ABI independent of node layout. */
+static dom_element *pcore_fragment_anchor_by_name(dom_document *doc,
+        const char *fragment_token)
+{
+    dom_html_collection *anchors;
+    dom_string *wanted;
+    dom_string *value;
+    dom_node *node;
+    dom_element *match;
+    uint32_t count;
+    uint32_t index;
+
+    anchors = NULL;
+    wanted = NULL;
+    value = NULL;
+    node = NULL;
+    match = NULL;
+    count = 0;
+    if (doc == NULL || fragment_token == NULL ||
+            dom_string_create((const uint8_t *) fragment_token,
+            strlen(fragment_token), &wanted) != DOM_NO_ERR || wanted == NULL) {
+        return NULL;
+    }
+    if (dom_html_document_get_anchors((dom_html_document *) doc,
+            &anchors) != DOM_NO_ERR || anchors == NULL ||
+            dom_html_collection_get_length(anchors, &count) != DOM_NO_ERR) {
+        if (anchors != NULL) {
+            dom_html_collection_unref(anchors);
+        }
+        dom_string_unref(wanted);
+        return NULL;
+    }
+    for (index = 0; index < count; index++) {
+        node = NULL;
+        value = NULL;
+        if (dom_html_collection_item(anchors, index, &node) != DOM_NO_ERR ||
+                node == NULL) {
+            break;
+        }
+        if (dom_element_get_attribute((dom_element *) node,
+                pcore_name_attr, &value) == DOM_NO_ERR && value != NULL &&
+                dom_string_isequal(value, wanted)) {
+            match = (dom_element *) node;
+        }
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        if (match != NULL) {
+            break;
+        }
+        dom_node_unref(node);
+        node = NULL;
+    }
+    if (node != NULL && match == NULL) {
+        dom_node_unref(node);
+    }
+    dom_html_collection_unref(anchors);
+    dom_string_unref(wanted);
+    return match;
+}
+
+PCORE_API int PCore_FragmentInfoByToken(HANDLE hDoc,
+        const char *fragment_token, int *x, int *y, int *w, int *h)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_string *id;
+    dom_element *element;
+    int result;
+
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL || fragment_token == NULL || fragment_token[0] == '\0' ||
+            pcore_ensure_link_strings() != 0) {
+        return 1;
+    }
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) fragment_token,
+            strlen(fragment_token), &id) != DOM_NO_ERR || id == NULL) {
+        return 1;
+    }
+    (void) dom_document_get_element_by_id(doc, id, &element);
+    dom_string_unref(id);
+    if (element != NULL) {
+        /* A real id wins even when its box is not usable; do not silently
+         * select a legacy name anchor behind it. */
+        result = pcore_fragment_info_for_node(st->root_box,
+                (dom_node *) element, x, y, w, h);
+        dom_node_unref((dom_node *) element);
+        return result;
+    }
+    element = pcore_fragment_anchor_by_name(doc, fragment_token);
+    if (element == NULL) {
+        return 1;
+    }
+    result = pcore_fragment_info_for_node(st->root_box,
+            (dom_node *) element, x, y, w, h);
+    dom_node_unref((dom_node *) element);
+    return result;
 }
 
 static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,

@@ -681,6 +681,16 @@ PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
 PCORE_API int PCore_FragmentInfoById(HANDLE hDoc, const char *fragment_id,
                                     int *x, int *y, int *w, int *h);
 
+/* Resolve a same-document fragment target by its decoded UTF-8 token. The
+ * lookup first uses the literal DOM id, then falls back to a legacy <a
+ * name="..."> anchor when no id target exists. Geometry is returned in
+ * document CSS px after layout. The caller owns decoding and scrolling; this
+ * additive query never exposes the DOM or box tree and returns non-zero for
+ * an empty/missing/unlaid-out/unusable target. */
+PCORE_API int PCore_FragmentInfoByToken(HANDLE hDoc,
+                                       const char *fragment_token,
+                                       int *x, int *y, int *w, int *h);
+
 /* Activate a checkbox/radio at a document-space point. The control consumes
  * the click even when disabled or already-selected. Changed controls are
  * synchronised to libdom so later re-layouts retain their state. A union

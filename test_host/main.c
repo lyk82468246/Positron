@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1082
+#define TEST_MAX_NUMBER 1083
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -10015,10 +10015,70 @@ static int pcore_scroll_to_y(HWND hwnd, int target_y)
     return 1;
 }
 
+static int pcore_browser_script_fragment_hex(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+/* Decode only the percent escapes in a URL fragment.  '+' is intentionally
+ * left literal (unlike form-urlencoded data), bytes are preserved as UTF-8,
+ * and malformed/embedded-NUL escapes fail closed without changing scroll. */
+static int pcore_browser_script_decode_fragment(const char *encoded,
+        char *decoded, int capacity)
+{
+    const char *p;
+    int out;
+    int hi;
+    int lo;
+    unsigned char value;
+
+    if (encoded == NULL || decoded == NULL || capacity <= 0) {
+        return 0;
+    }
+    p = encoded;
+    out = 0;
+    while (*p != '\0') {
+        if (out >= capacity - 1) {
+            return 0;
+        }
+        if (*p == '%') {
+            if (p[1] == '\0' || p[2] == '\0') {
+                return 0;
+            }
+            hi = pcore_browser_script_fragment_hex(p[1]);
+            lo = pcore_browser_script_fragment_hex(p[2]);
+            if (hi < 0 || lo < 0) {
+                return 0;
+            }
+            value = (unsigned char) ((hi << 4) | lo);
+            if (value == 0) {
+                return 0;
+            }
+            decoded[out++] = (char) value;
+            p += 3;
+        } else {
+            decoded[out++] = *p++;
+        }
+    }
+    decoded[out] = '\0';
+    return 1;
+}
+
 /* Apply the visual side of same-document fragment navigation.  Core exposes
  * only the bounded target geometry; the host owns the viewport, scrollbar and
- * native-child repositioning.  Unknown ids intentionally leave the current
- * scroll position unchanged while history/hashchange still succeed. */
+ * native-child repositioning.  URL percent escapes are decoded before Core
+ * resolves an id or legacy <a name> target. Unknown or malformed targets
+ * intentionally leave the current scroll position unchanged while
+ * history/hashchange still succeed. */
 static int pcore_browser_script_scroll_to_fragment(HWND hwnd,
         const char *url)
 {
@@ -10041,8 +10101,10 @@ static int pcore_browser_script_scroll_to_fragment(HWND hwnd,
     if (length == 0) {
         target_y = 0;
     } else {
-        memcpy(fragment_id, hash + 1, length + 1);
-        if (PCore_FragmentInfoById(g_render_doc, fragment_id,
+        if (!pcore_browser_script_decode_fragment(hash + 1,
+                fragment_id, sizeof(fragment_id)) ||
+                fragment_id[0] == '\0' ||
+                PCore_FragmentInfoByToken(g_render_doc, fragment_id,
                 NULL, &target_y, NULL, NULL) != 0) {
             return 0;
         }
@@ -18279,6 +18341,120 @@ static BOOL test1082_browser_cross_document_history_scroll(void)
             "Cross-document history back/forward restores each saved host "
             "viewport; new entries start at zero and short pages clamp the "
             "restored offset.");
+    return TRUE;
+}
+
+/* TEST 1083 - decoded fragment tokens and legacy named anchors. */
+static BOOL test1083_browser_fragment_token_resolution(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><title>fragment-token</title></head>"
+        "<body><div id='lead'>lead</div>"
+        "<a name='legacy-anchor'>Legacy anchor</a>"
+        "<div id='shared'>ID target</div>"
+        "<a name='shared'>Name target</a>"
+        "<div id='tail'>tail</div></body></html>";
+    static const char CSS[] =
+        "body{margin:8px;font:14px sans-serif}"
+        "#lead{height:180px}a{display:block;height:24px;margin:4px}"
+        "#shared{height:28px}#tail{height:180px}";
+    HANDLE document;
+    HANDLE sheet;
+    char error[256];
+    int legacy_y;
+    int id_y;
+    int token_y;
+    int observed_y;
+    int missing_y;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    memset(error, 0, sizeof(error));
+    legacy_y = 0;
+    id_y = 0;
+    token_y = 0;
+    observed_y = 0;
+    missing_y = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "https://example.com/fragment-token.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 320, 240) != 0 ||
+            PCore_FragmentInfoById(document, "shared", NULL, &id_y,
+            NULL, NULL) != 0 || id_y <= 0 ||
+            PCore_FragmentInfoByToken(document, "legacy-anchor", NULL,
+            &legacy_y, NULL, NULL) != 0 || legacy_y <= 0 ||
+            PCore_FragmentInfoByToken(document, "shared", NULL, &token_y,
+            NULL, NULL) != 0 || token_y != id_y ||
+            PCore_FragmentInfoByToken(document, "missing", NULL, &missing_y,
+            NULL, NULL) == 0) {
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_h = 120;
+        g_scroll_y = 0;
+        if (!pcore_browser_script_scroll_to_fragment(NULL,
+                "https://example.com/page#legacy%2Danchor") ||
+                g_scroll_y != legacy_y) {
+            ok = 0;
+        } else {
+            observed_y = g_scroll_y;
+        }
+    }
+    if (ok) {
+        if (!pcore_browser_script_scroll_to_fragment(NULL,
+                "https://example.com/page#shared") ||
+                g_scroll_y != id_y) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        observed_y = g_scroll_y;
+        if (pcore_browser_script_scroll_to_fragment(NULL,
+                "https://example.com/page#legacy%2") ||
+                g_scroll_y != observed_y ||
+                pcore_browser_script_scroll_to_fragment(NULL,
+                "https://example.com/page#legacy%ZZ") ||
+                g_scroll_y != observed_y ||
+                pcore_browser_script_scroll_to_fragment(NULL,
+                "https://example.com/page#missing") ||
+                g_scroll_y != observed_y) {
+            ok = 0;
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_h = 0;
+    g_view_h = 0;
+    g_scroll_y = 0;
+    pcore_browse_history_reset();
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "legacy=%d id=%d token=%d observed=%d missing=%d",
+                legacy_y, id_y, token_y, observed_y, missing_y);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1083 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1083 OK",
+            "Fragment scrolling decodes bounded percent escapes, resolves"
+            " legacy <a name> anchors after id lookup, and leaves the"
+            " viewport unchanged for malformed or unknown targets.");
     return TRUE;
 }
 
@@ -76106,6 +76282,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1080: ok = test1080_browser_fragment_anchor_contract(); break;
         case 1081: ok = test1081_browser_fragment_history_scroll(); break;
         case 1082: ok = test1082_browser_cross_document_history_scroll(); break;
+        case 1083: ok = test1083_browser_fragment_token_resolution(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
