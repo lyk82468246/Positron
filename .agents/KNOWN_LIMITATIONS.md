@@ -131,8 +131,10 @@
   不解析也不参与 CSS selection。next646 又按 ASCII whitespace token、大小写不敏感地
   识别 `stylesheet` rel，并对含 `alternate` 的 link 保持 fail closed。仍不实现脚本侧动态
   `MediaQueryList` 事件、完整 link 下载策略、`type` 等其他 link processing 或 media 相关
-  DOM mutation。
-  TEST1091、TEST1093、TEST1094 与 TEST999 的 Debug 门已通过。next644 又在 browser bootstrap 中提供
+  DOM mutation。next647 又在 Core UA stylesheet 中加入 `[hidden] { display:none; }`，使存在
+  `hidden` 属性的元素不生成布局盒；这只覆盖默认呈现，不实现脚本侧 mutation observer、完整
+  CSS cascade 或隐藏状态相关的辅助技术语义。
+  TEST1091、TEST1093、TEST1094、TEST1095 与 TEST999 的 Debug 门已通过。next644 又在 browser bootstrap 中提供
   `<link>` 与 `<style>` 的 bounded `media` 属性反射：缺失值为空串，setter 经既有
   UTF-8 attribute bridge 写回并支持 `removeAttribute()` 恢复，其他元素返回 `undefined`
   且 setter 不改变 raw 属性。该反射不触发脚本侧 MediaQueryList 事件、自动重排或 link

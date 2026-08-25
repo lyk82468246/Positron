@@ -952,6 +952,23 @@ scripts\device_gate.bat -Candidate next646-stylesheet-rel-tokens ^
 `TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。C89 与 Debug ARMV4I
 正式构建通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或 picker 人工门。
 
+### next647 hidden 属性默认呈现自动门
+
+next647 验证 Core UA stylesheet 对 HTML `hidden` 属性的默认呈现。TEST1095 为同一文档布局
+带 `hidden` 的 `div`、可见对照 `div` 及其后的段落：隐藏元素必须没有 `PCore_NodeBox()`，
+后续段落不能因为它产生垂直空隙；可见对照仍必须有布局盒。该门不依赖 JavaScript、网络、
+窗口或视觉检查，复用已有 `HTMLElement.hidden` 反射但不新增公共 ABI。
+
+```bat
+scripts\device_gate.bat -Candidate next647-hidden-attribute ^
+  -TestSelection "21,24,1091,1093,1094,1095,999"
+```
+
+`tmp/device-runs/20260825-163511-next647-hidden-attribute/` 已通过 7/7，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。C89 与 Debug/Release ARMV4I
+正式构建、仓库/文档审计通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或
+picker 人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

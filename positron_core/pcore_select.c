@@ -1687,6 +1687,7 @@ static const char PCORE_UA_CSS[] =
     "td, th { display: table-cell; }\n"
     "th { font-weight: bold; }\n"
     "head, title, meta, link, style, script, base { display: none; }\n"
+    "[hidden] { display: none; }\n"
     "li { display: list-item; }\n"
     "ul { padding-left: 40px; margin-top: 1.12em; margin-bottom: 1.12em;"
     " list-style-type: disc; }\n"

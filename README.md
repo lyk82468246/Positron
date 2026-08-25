@@ -354,6 +354,12 @@ fetch 和 cache 流程；含 `alternate` 的 link 继续 fail closed，避免没
 选择策略时覆盖页面。`TEST1094` 与 TEST21、TEST24、TEST1091、TEST1093、TEST999 的 WM6
 Debug 定向门通过 6/6；本批不扩展到 `type`、动态 link 生命周期或公共 C ABI。
 
+next647 在 `positron_core.dll` 的 UA stylesheet 中补齐 HTML `hidden` 属性的默认呈现：存在
+`hidden` 属性的元素现在按 `display:none` 处理，不生成布局盒；未隐藏元素的布局保持不变。
+`TEST1095` 与 TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST999 的 WM6 Debug 定向门
+通过 7/7。本批复用既有 `HTMLElement.hidden` 反射，不新增公共 C ABI、脚本 mutation observer
+或完整 CSS/辅助技术语义。
+
 ## 快速开始
 
 ### 前置环境

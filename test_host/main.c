@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1094
+#define TEST_MAX_NUMBER 1095
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -20282,6 +20282,86 @@ static BOOL test1094_core_stylesheet_rel_token_contract(void)
             "Stylesheet rel tokens accept mixed-case whitespace-separated "
             "tokens; alternate sheets remain fail-closed and cached relink "
             "restyle performs no second fetch.");
+    return TRUE;
+}
+
+/* TEST 1095 - the HTML hidden attribute removes the element from layout. */
+static BOOL test1095_core_hidden_rendering_contract(void)
+{
+    static const char HIDDEN_HTML[] =
+        "<!doctype html><html><body><div hidden>must not occupy a box</div>"
+        "<p>after</p></body></html>";
+    static const char VISIBLE_HTML[] =
+        "<!doctype html><html><body><div>occupies a box</div>"
+        "<p>after</p></body></html>";
+    HANDLE hidden_doc = NULL;
+    HANDLE visible_doc = NULL;
+    int hidden_div_rc;
+    int visible_div_rc;
+    int hidden_p_y;
+    int visible_p_y;
+    int hidden_x;
+    int hidden_w;
+    int hidden_h;
+    int visible_x;
+    int visible_w;
+    int visible_h;
+    int hidden_p_x;
+    int hidden_p_w;
+    int hidden_p_h;
+    int visible_p_x;
+    int visible_p_w;
+    int visible_p_h;
+    int screen_w;
+    int screen_h;
+    int pass;
+
+    hidden_div_rc = 1;
+    visible_div_rc = 1;
+    hidden_p_y = 0;
+    visible_p_y = 0;
+    hidden_doc = PCore_ParseHTML(HIDDEN_HTML, 0);
+    visible_doc = PCore_ParseHTML(VISIBLE_HTML, 0);
+    pass = hidden_doc != NULL && visible_doc != NULL;
+    if (pass) {
+        PCore_SetViewport(240, 320, 96);
+        pass = PCore_StyleDocument(hidden_doc, NULL) == 0 &&
+                PCore_StyleDocument(visible_doc, NULL) == 0 &&
+                PCore_LayoutDocument(hidden_doc, 240, 320) == 0 &&
+                PCore_LayoutDocument(visible_doc, 240, 320) == 0;
+    }
+    if (pass) {
+        hidden_div_rc = PCore_NodeBox(hidden_doc, "div", &hidden_x, NULL,
+                &hidden_w, &hidden_h);
+        visible_div_rc = PCore_NodeBox(visible_doc, "div", &visible_x, NULL,
+                &visible_w, &visible_h);
+        pass = hidden_div_rc != 0 && visible_div_rc == 0 &&
+                PCore_NodeBox(hidden_doc, "p", &hidden_p_x, &hidden_p_y,
+                &hidden_p_w, &hidden_p_h) == 0 &&
+                PCore_NodeBox(visible_doc, "p", &visible_p_x, &visible_p_y,
+                &visible_p_w, &visible_p_h) == 0 &&
+                hidden_p_y <= visible_p_y;
+    }
+    if (hidden_doc != NULL) {
+        PCore_FreeDocument(hidden_doc);
+    }
+    if (visible_doc != NULL) {
+        PCore_FreeDocument(visible_doc);
+    }
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, 96);
+
+    if (!pass) {
+        show_error(L"TEST 1095 FAIL", "hidden attribute layout contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1095 OK",
+            "Core UA styling maps the HTML hidden attribute to display:none; "
+            "the hidden element has no box and the following paragraph does not "
+            "inherit its vertical gap.");
     return TRUE;
 }
 
@@ -78121,6 +78201,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1092: ok = test1092_browser_stylesheet_media_reflection(); break;
         case 1093: ok = test1093_core_disabled_stylesheet_contract(); break;
         case 1094: ok = test1094_core_stylesheet_rel_token_contract(); break;
+        case 1095: ok = test1095_core_hidden_rendering_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

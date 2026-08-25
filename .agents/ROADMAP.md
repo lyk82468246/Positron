@@ -588,7 +588,21 @@ TEST24、TEST1091、TEST1093、TEST1094、TEST999 通过 6/6，唯一 `TESTBENCH
 `ERROR`/`FAIL`；C89 和 Debug ARMV4I 构建通过。本批没有新增必须立即人工复核的视觉、触摸、
 SIP、旋转或 picker 风险。
 
-### 41. 建立真实页面驱动的兼容队列
+### 41. next647：hidden 属性默认呈现（已完成）
+
+next647 在 `positron_core.dll` 的 UA stylesheet 中加入 `[hidden] { display:none; }`，让
+HTML 中存在 `hidden` 属性的元素在默认样式下不生成布局盒。该纵切补齐浏览器页面常见的
+隐藏内容契约，沿用已有的 `HTMLElement.hidden` attribute reflection；不新增公共 C ABI，
+不实现 mutation observer、完整 CSS cascade 或辅助技术语义。
+
+TEST1095 同时布局带 `hidden` 的元素和同样内容的可见元素，断言前者没有 `PCore_NodeBox()`
+盒、后续段落不产生额外垂直空隙，而可见元素仍有布局盒。设备证据目录为
+`tmp/device-runs/20260825-163511-next647-hidden-attribute/`，TEST21、TEST24、TEST1091、
+TEST1093、TEST1094、TEST1095、TEST999 通过 7/7，唯一 `TESTBENCH PASS` 且零
+`ERROR`/`FAIL`；C89、Debug/Release ARMV4I 构建和仓库/文档审计通过。本批没有新增必须
+立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
+
+### 42. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -599,7 +613,7 @@ SIP、旋转或 picker 风险。
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 42. 安排新的全范围检查点
+### 43. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

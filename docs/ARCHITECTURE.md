@@ -1261,6 +1261,18 @@ fetch/free 和 document-owned cache 流程。若 token 集合含 `alternate`，C
 生命周期或脚本事件。`test_host.exe` 只提供 TEST1094 的离线 fetch/free 与 computed-color
 断言；TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST999 的定向设备门为 6/6。
 
+#### next647 的 hidden 默认呈现边界
+
+next647 在 `positron_core.dll` 的 UA stylesheet 中加入 `[hidden] { display:none; }`。因此
+HTML 元素只要存在 `hidden` 属性，默认样式计算就会把它从布局流中移除；这是与已有
+`HTMLElement.hidden` attribute reflection 配套的呈现规则，不需要新增公共 C ABI，也不把
+`test_host.exe` 变成语义所有者。未隐藏元素仍走原有 stylesheet、样式计算和布局流程。
+
+该规则只覆盖默认呈现，不实现脚本 mutation observer、隐藏状态驱动的自动重排、完整 CSS
+cascade 或辅助技术语义。TEST1095 通过 `PCore_NodeBox()` 和后续段落的 y 坐标断言隐藏元素
+没有布局盒且不占垂直空间，同时确认可见对照元素仍有布局盒；TEST21、TEST24、TEST1091、
+TEST1093、TEST1094、TEST1095、TEST999 的定向设备门为 7/7。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

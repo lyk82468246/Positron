@@ -127,3 +127,10 @@ property。Core 继续只负责 `<style media>`/`<link rel="stylesheet" media>` 
 选择和 document-owned CSS cache；browser setter 改变 raw attribute 后，调用者如需视觉
 更新必须显式重新样式/布局。TEST1092 只验证 browser 消费者的 metadata 反射，不把它写成
 Core 自动重排保证。
+
+next647 又在 Core UA stylesheet 中提供 `[hidden] { display:none; }`。因此存在 `hidden`
+属性的元素在默认样式和布局中不生成盒，未隐藏元素保持原有流程；这与 browser 已有的
+`HTMLElement.hidden` attribute reflection 配套，但不实现 mutation observer、自动重排或
+辅助技术语义。TEST1095 用隐藏/可见对照和后续段落的 `PCore_NodeBox()`/几何断言验证该
+呈现边界；相关设备门 TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST1095、TEST999
+通过 7/7。Core 没有为此新增公共 C ABI。
