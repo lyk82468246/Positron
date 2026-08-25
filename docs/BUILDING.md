@@ -147,3 +147,28 @@ scripts\stage.bat Release C:\WMShare\Positron-release
 
 Release 包仍需通过与风险相称的设备测试。成功编译不代表网络、布局、SIP、旋转或真实页面
 已经验收。
+
+## Nightly 预发布包
+
+打包脚本只读取已经存在的 `bin\Release\`（或指定的 Debug）产物，不会触发编译，也不会调用
+`stage.bat`：
+
+```bat
+scripts\package_nightly.bat
+```
+
+默认从各产品工程和 `test_host` 的 Release 目录提取七个产品 DLL 与 `test_host.exe`，生成全量
+可用测试的自动 `test_host.ini`，补入运行所需字体、许可证、说明和 SHA-256 清单，然后创建
+不压缩的 `tmp\nightly\positron-nightly.zip`。可选参数：
+
+```bat
+scripts\package_nightly.bat -Configuration Debug
+scripts\package_nightly.bat -SkipUpload
+scripts\package_nightly.bat -Repository owner/repo
+```
+
+不带 `-SkipUpload` 时，脚本要求 GitHub CLI 已登录，并把固定 `nightly` tag 更新为 pre-release，
+用 `--clobber` 替换同名 `positron-nightly.zip`；它不会创建版本号。首次使用先运行
+`gh auth login -h github.com`。发布说明正文来自
+[`NIGHTLY_RELEASE.md`](NIGHTLY_RELEASE.md)，包含如何编辑/移走 INI 来选择全量或部分的自动/手动
+模式。脚本失败时不会上传不完整的 ZIP；`tmp\nightly\` 只保存本机生成物，不进入 Git。

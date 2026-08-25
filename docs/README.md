@@ -7,6 +7,7 @@
 
 - [架构与公共边界](ARCHITECTURE.md)：项目分层、DLL 职责、ABI、所有权和浏览器组合方式。
 - [构建与部署](BUILDING.md)：VS2008/WM6 工具链、正式构建脚本、stage 和模拟器共享目录。
+- [Nightly 发布包](NIGHTLY_RELEASE.md)：固定 nightly pre-release 的包内容、INI 操作和测试模式。
 - [测试与验收](TESTING.md)：`test_host` 配置、自动门、人工门和通过条件。
 - [故障排查](TROUBLESHOOTING.md)：构建、staging、设备、网络、布局、SIP 和脚本问题。
 - [历史里程碑](history/README.md)：早期 Phase 决策记录及其适用边界。

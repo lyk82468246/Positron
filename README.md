@@ -419,6 +419,16 @@ Storage Card 路径启动 `test_host.exe`。
 scripts\stage.bat Debug C:\WMShare\Positron-candidate
 ```
 
+如需把已经编译好的 Release 产物打成可分发的 nightly ZIP（不触发编译），运行：
+
+```bat
+scripts\package_nightly.bat
+```
+
+脚本会更新固定的 `nightly` pre-release 和 `positron-nightly.zip` 资产；包内说明见
+[`Nightly 发布包`](docs/NIGHTLY_RELEASE.md)，其中包含如何通过编辑或移走 `test_host.ini`
+选择全量/部分的自动或手动测试。
+
 ### 自动设备门
 
 先在 WMDC/Device Emulator GUI 中连接一个设备；USB 真机和 DMA emulator 均可，当前连接
