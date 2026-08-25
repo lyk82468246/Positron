@@ -91,10 +91,16 @@
   缓冲返回 href、target、rel，并由 `PBrowser_ScriptSessionDispatchAnchorClickEx()` 将
   元数据随 programmatic/物理受信任点击传给既有导航 adapter；`HTMLElement.rel` 也已反射。
   缺失属性为空，容量不足和非法元数据 fail closed。该批只完成产品到宿主的元数据契约，
-  不创建新窗口，也不决定 `_blank`/named target 的窗口复用、跨窗口 history 或关闭策略；
+  不创建新窗口，也不拥有 `_blank`/named target 的窗口复用、跨窗口 history 或关闭策略；
   URL 解析、网络、文档替换、窗口生命周期、真实触摸和视觉仍由宿主或后续范围负责。
   TEST1084 覆盖 id/坐标查询、脚本反射、导航传递和取消，1079–1083 的 fragment/历史回归
   继续保留。
+  next637 在 `PBrowserScriptNavigationInfo` 追加 `target_kind`，由 browser layer 统一分类
+  空/空白、`_self`、`_parent`、`_top`、`_blank` 和 named target；当前单窗口 `test_host`
+  对前四者继续加载当前文档，对后两者在 admission 与消息边界 fail closed，不把缺少窗口
+  管理器的请求静默降级为当前页替换。真实多窗口创建、窗口复用/生命周期、跨窗口 history、
+  opener/noopener 安全策略和视觉仍未实现；target_kind 只是可复用的产品到宿主策略输入。
+  TEST1085 覆盖该分类和拒绝边界。
   next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
   Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前

@@ -164,7 +164,9 @@ disabled 抑制、typed click 和取消，并以 `PBROWSER_SCRIPT_CLICK_DEFAULT_
 `<a href>` 几何/URL，browser layer 复用 cancelable click 与 ASSIGN navigation；next636
 新增 `PBrowser_ScriptSessionDispatchAnchorClickEx()`，让 Core/browser 按 size-tagged
 契约传播 href/target/rel，并把 `HTMLElement.rel` 作为 raw 属性反射。网络、窗口和文档
-替换仍由宿主拥有，旧 anchor 入口保持兼容。
+替换仍由宿主拥有，旧 anchor 入口保持兼容。next637 又把 raw target 分类为
+`PBROWSER_SCRIPT_NAVIGATION_TARGET_*` 并追加到 navigation info；单窗口宿主可据此在不复制
+关键字解析的情况下拒绝尚未支持的新窗口目标。
 native EDIT 的 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 另外由 DLL 持有
 beforeinput pending metadata、native commit 到 input、dirty tracking 和 blur/change 顺序；宿主
 仍提交 native value 并传播 core 事件。native SELECT 的
@@ -1120,6 +1122,19 @@ Core 不暴露 libdom/box 指针，browser layer 不创建窗口。宿主继续�
 `_self`/`_blank`/named target 的窗口复用与生命周期、跨窗口 history、真实触摸和视觉；本批
 只保证元数据查询、传播、容量边界和 `preventDefault()` 语义。TEST1084 是产品/消费者契约
 门，TEST1079–1083 与 TEST999 是相邻回归。
+
+#### next637 的 anchor target policy 边界
+
+next637 在 `positron_browser.dll` 内把 anchor 的 raw `target` 做有界 ASCII 关键字分类，
+并将 `PBROWSER_SCRIPT_NAVIGATION_TARGET_*` 及 `target_kind` 作为 `PBrowserScriptNavigationInfo`
+的兼容尾字段传给宿主。空值/空白是 DEFAULT，`_self`、`_parent`、`_top` 是当前上下文，
+`_blank` 和其他非空名称是需要新建或复用 browsing context 的 BLANK/NAMED。raw target 与
+rel 仍按原有同步借用规则传递，browser layer 不创建窗口、不拥有 history 或 URL/网络。
+
+当前 `test_host` 只有一个窗口，因此将 DEFAULT/SELF/PARENT/TOP 映射到当前文档，对 BLANK/
+NAMED 在导航回调和消息边界双重 fail-closed，避免把未实现的新窗口语义静默降级为当前页
+替换。未来窗口宿主可消费同一枚举实现创建、复用、生命周期和跨窗口 history；在此之前不能
+把 `target_kind` 传播误称为完整多窗口支持。TEST1085 覆盖分类、fragment 传播及单窗口拒绝。
 
 #### next614 的 label/control 关系边界
 

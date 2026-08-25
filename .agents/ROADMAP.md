@@ -435,7 +435,25 @@ click、导航元数据和 preventDefault；TEST1079–1083、999 作为相邻�
 通过。本批没有新增视觉或人工门；真实 `_blank`/named window 创建、跨窗口生命周期、
 target policy 和真实页面视觉仍是后续产品/宿主边界。
 
-### 31. 建立真实页面驱动的兼容队列
+### 31. next637：anchor target policy 与单窗口安全路由（已完成）
+
+next637 把 next636 已传递的 raw `target` 元数据收敛为 browser-owned 的有界策略分类：
+`PBrowserScriptNavigationInfo` 追加兼容尾字段 `target_kind`，统一区分 DEFAULT、`_self`、
+`_parent`、`_top`、`_blank` 和 named target；关键字比较只处理 ASCII 大小写与边界空白，
+原始 target/rel 借用字符串保持不变。该分类属于浏览器导航语义，不暴露窗口或 libdom 对象。
+
+当前 `test_host` 只有一个 browsing context，因此 DEFAULT/SELF/PARENT/TOP 继续映射到当前
+文档；BLANK/NAMED 在 navigation adapter 和窗口消息边界都 fail-closed，不会把尚未实现的
+新窗口请求静默变成当前页替换。未来窗口宿主可复用同一枚举实现创建、复用、生命周期和
+跨窗口 history。
+
+TEST1085 覆盖所有分类、大小写/空白、fragment 传播和单窗口拒绝；
+`tmp/device-runs/20260825-130233-next637-anchor-target-policy-r2/` 的定向门通过 8/8，
+零 `ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。C89、Debug/Release
+ARMV4I 构建、仓库/文档审计和 diff 检查均通过；本批没有新增必须立即人工复核的视觉、
+触摸、SIP、旋转或 picker 风险。
+
+### 32. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -446,7 +464,7 @@ target policy 和真实页面视觉仍是后续产品/宿主边界。
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 32. 安排新的全范围检查点
+### 33. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

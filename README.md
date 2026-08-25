@@ -290,6 +290,12 @@ next636 补齐了锚点元数据的产品通路：`positron_core.dll` 的 `PCore
 网络、`_blank`/named window 的创建与生命周期，不能把元数据契约误认为完整多窗口支持。
 `TEST1084` 与 1079–1083、999 的窄门通过 7/7，相关累计回归通过 22/22。
 
+next637 将 anchor 的 raw target 在 `positron_browser.dll` 内分类为 default、`_self`、
+`_parent`、`_top`、`_blank` 或 named，并把 bounded `target_kind` 随导航 ABI 传给宿主。
+当前单窗口 `test_host` 接受前四种当前上下文策略，对需要新窗口的 `_blank`/named 请求
+明确 fail-closed，不会静默替换当前页面；实际多窗口创建、复用、生命周期和跨窗口 history
+仍待后续窗口宿主。`TEST1085` 与 1079–1084、999 的 Debug 设备门通过 8/8。
+
 ## 快速开始
 
 ### 前置环境

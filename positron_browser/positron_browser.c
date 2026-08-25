@@ -70,6 +70,80 @@ static int p_history_state_valid(const char *state_json)
     return PBROWSER_OK;
 }
 
+/* HTML target keywords are ASCII case-insensitive. Trim only ASCII
+ * whitespace around the bounded attribute value; arbitrary names remain
+ * NAMED and are never copied or normalized here. */
+static int p_browser_script_anchor_target_equals(const char *target,
+        const char *keyword)
+{
+    const char *start;
+    const char *end;
+    const char *left;
+    const char *right;
+    char a;
+    char b;
+
+    if (target == NULL || keyword == NULL) {
+        return 0;
+    }
+    start = target;
+    while (*start == ' ' || *start == '\t' || *start == '\r' ||
+            *start == '\n' || *start == '\f') {
+        start++;
+    }
+    end = start + strlen(start);
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t' ||
+            end[-1] == '\r' || end[-1] == '\n' || end[-1] == '\f')) {
+        end--;
+    }
+    left = start;
+    right = keyword;
+    while (left < end && *right != '\0') {
+        a = *left++;
+        b = *right++;
+        if (a >= 'A' && a <= 'Z') {
+            a = (char) (a + ('a' - 'A'));
+        }
+        if (b >= 'A' && b <= 'Z') {
+            b = (char) (b + ('a' - 'A'));
+        }
+        if (a != b) {
+            return 0;
+        }
+    }
+    return left == end && *right == '\0';
+}
+
+static unsigned int p_browser_script_anchor_target_kind(const char *target)
+{
+    const char *start;
+
+    if (target == NULL) {
+        return PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT;
+    }
+    start = target;
+    while (*start == ' ' || *start == '\t' || *start == '\r' ||
+            *start == '\n' || *start == '\f') {
+        start++;
+    }
+    if (*start == '\0') {
+        return PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT;
+    }
+    if (p_browser_script_anchor_target_equals(target, "_self")) {
+        return PBROWSER_SCRIPT_NAVIGATION_TARGET_SELF;
+    }
+    if (p_browser_script_anchor_target_equals(target, "_parent")) {
+        return PBROWSER_SCRIPT_NAVIGATION_TARGET_PARENT;
+    }
+    if (p_browser_script_anchor_target_equals(target, "_top")) {
+        return PBROWSER_SCRIPT_NAVIGATION_TARGET_TOP;
+    }
+    if (p_browser_script_anchor_target_equals(target, "_blank")) {
+        return PBROWSER_SCRIPT_NAVIGATION_TARGET_BLANK;
+    }
+    return PBROWSER_SCRIPT_NAVIGATION_TARGET_NAMED;
+}
+
 static int p_history_target_valid(int target_index)
 {
     return target_index == PBROWSER_HISTORY_TARGET_NEW ||
@@ -7706,6 +7780,8 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClickEx(
     navigation_info.delta = 0;
     navigation_info.target = info->target;
     navigation_info.rel = info->rel;
+    navigation_info.target_kind = p_browser_script_anchor_target_kind(
+            info->target);
     out_value = 0;
     rc = session->navigation->callbacks.navigate(
             session->navigation->callbacks.pw, &navigation_info,

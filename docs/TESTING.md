@@ -764,6 +764,25 @@ scripts\device_gate.bat -Candidate next636-anchor-target-rel ^
 ARMV4I、仓库/文档审计和 diff 检查均通过。本批没有新增必须立即人工复核的视觉、触摸、SIP、
 旋转或 picker 风险。
 
+### next637 anchor target policy 自动门
+
+next637 让 `positron_browser.dll` 对 raw anchor target 统一输出 bounded `target_kind`，
+并在 `PBrowserScriptNavigationInfo` 的兼容尾字段中交给宿主。单窗口 `test_host` 只接受
+DEFAULT/SELF/PARENT/TOP；`_blank` 与 named target 在 admission 和窗口消息边界都拒绝，避免
+未实现的多窗口请求覆盖当前文档。真实多窗口创建、复用、跨窗口 history 和视觉仍是后续
+宿主边界，不属于本批人工保证。
+
+```bat
+scripts\device_gate.bat -Candidate next637-anchor-target-policy ^
+  -EnableJavaScript ^
+  -TestSelection "1079-1085,999"
+```
+
+`tmp/device-runs/20260825-130233-next637-anchor-target-policy-r2/` 已通过 8/8，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。TEST1085 覆盖空值、大小写/
+空白、`_self`/`_parent`/`_top`/`_blank`/named、fragment 传播以及单窗口 fail-closed；
+TEST1084 与 1079–1083 继续作为相邻回归。C89、Debug/Release ARMV4I、仓库/文档审计均通过。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

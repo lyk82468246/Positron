@@ -22,7 +22,9 @@ document、DOM、navigation、event、input、keyboard、focus、EDIT change/pos
 提供 Core 的 href、target、rel 快照时，browser layer 先派发可取消 `click`，再把同一组
 借用字符串放入 `PBrowserScriptNavigationInfo` 的导航回调；`HTMLElement.target` 与
 `HTMLElement.rel` 反射原始属性。browser DLL 不创建窗口、不解析 URL、不请求网络，也不
-决定 `_blank`/named target 的窗口复用；这些副作用仍由宿主负责。Core 对应的
+决定 `_blank`/named target 的窗口复用；这些副作用仍由宿主负责。导航回调同时收到由
+browser layer 分类的 `target_kind`（default、`_self`、`_parent`、`_top`、`_blank` 或
+named），因此宿主不必复制关键字解析。Core 对应的
 `PCore_LinkInfoByIdEx()`/`PCore_LinkAtEx()` 只复制到调用者缓冲区并在容量不足时失败。
 
 native EDIT 的产品事务入口是 additive 的
@@ -382,6 +384,13 @@ next634 继续保持这个所有权边界：跨文档 history 的滚动偏移由
 中保存，并在目标文档布局完成后恢复/按 viewport 上限裁剪；新条目默认为零。该逻辑不新增
 `PBrowser_History*` 导出，也不把窗口、持久化或页面缓存状态带入 `positron_browser.dll`。
 TEST1082 覆盖该消费者侧行为。
+
+next637 在 anchor navigation ABI 上追加 `target_kind`，由 `positron_browser.dll` 对 raw
+target 做 bounded ASCII keyword 分类。它不创建窗口，也不改变 raw target/rel 的借用寿命：
+单窗口消费者可把 default、`_self`、`_parent`、`_top` 映射到当前 context，并对 `_blank`/
+named 交给窗口管理器或 fail-closed。`test_host` 当前选择后者，防止尚未支持多窗口时误替换
+当前文档；实际窗口复用、生命周期、跨窗口 history 和视觉仍是宿主后续边界。TEST1085
+覆盖大小写/空白、所有分类、fragment 传播和单窗口拒绝策略。
 
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、

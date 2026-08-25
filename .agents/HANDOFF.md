@@ -16,14 +16,16 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next636，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
+- 当前能力批次：next637，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
   fragment history/hashchange + host-owned target scroll，并在同文档和跨文档 history
   back/forward/go 时恢复 bounded viewport；fragment token 按 id 优先兼容 `<a name>`，
   anchor 的 href/target/rel 现在由 Core 查询并随 browser anchor navigation 传给宿主
-  （自动设备门已完成）。跨页 href 仍为 ASSIGN；真实 `_blank`/named window 创建、窗口
-  生命周期和 target policy 尚未实现；next618 的 TEST65 真实 SIP 候选词仍待人工确认，
+  （自动设备门已完成）。browser layer 还会把 raw target 分类为 bounded `target_kind`；
+  当前单窗口宿主接受 default/`_self`/`_parent`/`_top`，对 `_blank`/named 请求 fail-closed。
+  跨页 href 仍为 ASSIGN；真实 `_blank`/named window 创建、窗口复用和跨窗口 history
+  尚未实现；next618 的 TEST65 真实 SIP 候选词仍待人工确认，
   file picker/真实 label 触摸仍是独立人工边界。
-- 测试编号上限：`TEST_MAX_NUMBER 1084`。
+- 测试编号上限：`TEST_MAX_NUMBER 1085`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -216,6 +218,10 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   navigation info 传播元数据；bootstrap 增加 `HTMLElement.rel` 反射。TEST1084 与
   1079–1083、999 的 Debug 窄门通过 7/7，累积回归门通过 22/22；旧 anchor 入口保留，
   窗口创建和 target policy 仍由宿主负责。
+- next637 在 `PBrowserScriptNavigationInfo` 追加兼容的 `target_kind`，由
+  `positron_browser.dll` 对 raw target 统一分类；单窗口 `test_host` 在 navigation adapter
+  与窗口消息边界只接受当前上下文策略，对 `_blank`/named 请求 fail-closed。TEST1085 与
+  1079–1084、999 的 Debug 窄门通过 8/8，未改变旧 anchor ABI。
 
 ## 最近验证证据
 
@@ -606,6 +612,17 @@ next636 的 anchor target/rel 元数据自动门已经完成：
   和 `git diff --check` 均通过；Release/Debug 仅保留既有 libcss/fpmath 的 3 个 C4244 警告。
   本批没有新增视觉、真实触摸、SIP、旋转或 picker 人工门。
 
+next637 的 anchor target policy 自动门已经完成：
+
+- `tmp/device-runs/20260825-130233-next637-anchor-target-policy-r2/` 的窄门为 PASS，
+  TEST1079–1085、999 共 8/8，唯一 `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、
+  `test13_route_ok=True`。
+- TEST1085 覆盖空/空白、大小写、`_self`/`_parent`/`_top`/`_blank`/named 分类，fragment
+  导航传播以及单窗口对新 context 的 fail-closed；TEST1084 与 1079–1083 保留相邻回归。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、`python scripts/audit_repo.py`
+  和 `git diff --check` 均通过；仅保留既有 libcss/fpmath 的 3 个 C4244 警告。本批没有新增
+  视觉、真实触摸、SIP、旋转或 picker 人工门。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -635,13 +652,14 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 需要继续面对而不能用断言掩盖的边界包括：
 
 - DOM、表单集合、历史、存储、请求响应和异步模型仍是资源有界的子集，不是完整现代浏览器。
-- Anchor href/target/rel 元数据查询与受信任点击传播已有 next636 自动契约；真实 `_blank`/
-  named window 创建、窗口复用/生命周期、跨窗口 history 和 target policy 仍未覆盖。
+- Anchor href/target/rel 元数据查询与受信任点击传播已有 next636 自动契约；next637 已把
+  raw target 分类并让单窗口宿主对 `_blank`/named 请求 fail-closed。真实 `_blank`/named
+  window 创建、窗口复用/生命周期和跨窗口 history 仍未覆盖。
 - 布局仍缺少 Grid、sticky、复杂包含块及完整表格/列表行为；float 路线已撤回。
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1084 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1085 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -727,6 +745,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   C89、Debug/Release 构建、7/7 窄门、22/22 累积门、audit、文档审计和 diff 检查均已完成；
   tracked 改动只覆盖 `positron_core`/`positron_browser` additive ABI、`test_host` 消费者/
   断言和相关文档，没有修改 tracked INI。提交前只需完成最终 Git 状态、提交和推送核对。
+- next637 的 browser-owned anchor target policy 分类、单窗口 fail-closed 路由、TEST1085、
+  C89、Debug/Release 构建、8/8 窄门、audit、文档审计和 diff 检查均已完成；tracked 改动
+  只覆盖 `positron_browser` additive ABI、`test_host` 消费者/断言和相关文档，没有修改
+  tracked INI。提交前只需完成最终 Git 状态、提交和推送核对。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -734,11 +756,12 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next636 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+next637 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
 纵切，不要为了补编号添加孤立 API。TEST65 的多字符 SIP 候选词、select/file picker 模态框、
 真实 label 触摸、OEM 窗口视觉和键盘映射仍是独立人工边界；在人工证据出现前不得把它们写成
-通用产品保证。anchor href/target/rel 元数据已有 Core/browser/host 契约，但真实 `_blank`/
-named window、窗口复用与生命周期仍未覆盖；fragment-only 锚点继续在当前宿主路径支持有界
+通用产品保证。anchor href/target/rel 元数据与 target_kind 已有 Core/browser/host 契约，
+单窗口对 `_blank`/named 已安全拒绝，但真实 `_blank`/named window、窗口复用与生命周期仍
+未覆盖；fragment-only 锚点继续在当前宿主路径支持有界
 `%HH` 解码、id 优先和 `<a name>` fallback。history traversal 只在当前宿主进程内恢复有界
 的同文档目标或跨文档条目偏移，不提供持久缓存/跨进程恢复。下一次重要产品/生命周期风险
 累积后，再安排新的全范围设备基线。

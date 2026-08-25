@@ -953,12 +953,28 @@ typedef struct PBrowserScriptInvalidCallbacks {
 #define PBROWSER_SCRIPT_NAVIGATION_FRAGMENT         9u
 #define PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE 10u
 
+/* Bounded browsing-context classification for anchor navigation. The
+ * browser DLL classifies the raw target attribute but does not create or own
+ * windows. DEFAULT means an absent/empty target; SELF, PARENT and TOP are
+ * current-context policies that a single-window host can safely map to its
+ * active document. BLANK and NAMED require a host window manager to create or
+ * select another context; a host without that capability must fail closed. */
+#define PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT 0u
+#define PBROWSER_SCRIPT_NAVIGATION_TARGET_SELF    1u
+#define PBROWSER_SCRIPT_NAVIGATION_TARGET_PARENT  2u
+#define PBROWSER_SCRIPT_NAVIGATION_TARGET_TOP     3u
+#define PBROWSER_SCRIPT_NAVIGATION_TARGET_BLANK   4u
+#define PBROWSER_SCRIPT_NAVIGATION_TARGET_NAMED   5u
+
 /* Typed navigation request passed to the host adapter. url and state_json
  * are borrowed for the duration of the callback; either may be NULL when
  * the operation does not use it. state_json is compact UTF-8 JSON. target
  * and rel are borrowed anchor metadata and are NULL for non-anchor
- * operations. For a successful PUSH_STATE callback, out_value must receive
- * the exposed history length; other operations ignore it. */
+ * operations. target_kind is one of the bounded target-policy constants
+ * above; it is DEFAULT for non-anchor operations and for an absent/empty
+ * target. The raw target remains available for a host window manager. For a
+ * successful PUSH_STATE callback, out_value must receive the exposed history
+ * length; other operations ignore it. */
 typedef struct PBrowserScriptNavigationInfo {
     unsigned long size;
     unsigned int kind;
@@ -968,6 +984,7 @@ typedef struct PBrowserScriptNavigationInfo {
     /* Optional anchor metadata. Non-anchor navigation passes NULL. */
     const char *target;
     const char *rel;
+    unsigned int target_kind;
 } PBrowserScriptNavigationInfo;
 typedef int (*PBrowserScriptNavigateFn)(void *pw,
         const PBrowserScriptNavigationInfo *info, int *out_value);

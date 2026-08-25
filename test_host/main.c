@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1084
+#define TEST_MAX_NUMBER 1085
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6055,6 +6055,7 @@ struct pcore_browser_script_bridge {
     char *navigation_url;
     char navigation_target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
     char navigation_rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
+    unsigned int navigation_target_kind;
     char *history_url;
     char *history_entry_url;
     char *history_state_json;
@@ -11215,6 +11216,9 @@ static int pcore_browser_script_dom_set_custom_validity(void *pw,
             1 : 0;
 }
 
+static int pcore_browser_script_single_window_target_allowed(
+        unsigned int target_kind);
+
 static int pcore_browser_script_navigation(void *pw,
         const PBrowserScriptNavigationInfo *info, int *out_value)
 {
@@ -11235,6 +11239,8 @@ static int pcore_browser_script_navigation(void *pw,
     *out_value = 0;
     bridge->navigation_target[0] = '\0';
     bridge->navigation_rel[0] = '\0';
+    bridge->navigation_target_kind =
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT;
     url = info->url;
     url_copy = NULL;
     target_url_copy = NULL;
@@ -11384,6 +11390,11 @@ static int pcore_browser_script_navigation(void *pw,
             strlen(info->rel) >= PBROWSER_SCRIPT_ANCHOR_REL_MAX)) {
         return 0;
     }
+    if (bridge->hwnd != NULL &&
+            !pcore_browser_script_single_window_target_allowed(
+            info->target_kind)) {
+        return 0;
+    }
     normalized_fragment_url[0] = '\0';
     if (info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT ||
             info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE) {
@@ -11427,11 +11438,26 @@ static int pcore_browser_script_navigation(void *pw,
         memcpy(bridge->navigation_rel, info->rel,
                 strlen(info->rel) + 1);
     }
+    bridge->navigation_target_kind = info->target_kind;
     if (bridge->hwnd != NULL) {
         (void) PostMessage(bridge->hwnd, WM_PCORE_SCRIPT_NAVIGATE,
                 0, 0);
     }
     return 1;
+}
+
+/* This host currently owns exactly one browsing context. Current-context
+ * target keywords can therefore be honored directly; _blank and named
+ * targets require a future window manager and must not silently replace the
+ * active document. The browser DLL already performed the bounded keyword
+ * classification, so this consumer does not duplicate string parsing. */
+static int pcore_browser_script_single_window_target_allowed(
+        unsigned int target_kind)
+{
+    return target_kind == PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT ||
+            target_kind == PBROWSER_SCRIPT_NAVIGATION_TARGET_SELF ||
+            target_kind == PBROWSER_SCRIPT_NAVIGATION_TARGET_PARENT ||
+            target_kind == PBROWSER_SCRIPT_NAVIGATION_TARGET_TOP;
 }
 
 static unsigned int pcore_browser_script_event_callback(void *pw,
@@ -11584,6 +11610,8 @@ static void pcore_browser_script_bridge_destroy(
     bridge->navigation_url = NULL;
     bridge->navigation_target[0] = '\0';
     bridge->navigation_rel[0] = '\0';
+    bridge->navigation_target_kind =
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT;
     free(bridge->history_url);
     bridge->history_url = NULL;
     free(bridge->history_entry_url);
@@ -11932,6 +11960,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     bridge->navigation_url = NULL;
     bridge->navigation_target[0] = '\0';
     bridge->navigation_rel[0] = '\0';
+    bridge->navigation_target_kind =
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT;
     bridge->history_url = pcore_browser_script_copy_string(
             (document_url != NULL) ? document_url : "");
     bridge->history_entry_url = pcore_browser_script_copy_string(
@@ -15723,6 +15753,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         char *url;
         int delta;
         int kind;
+        unsigned int target_kind;
 
         bridge = g_browser_script_session.bridge;
         if (!g_nav_loading && bridge != NULL &&
@@ -15730,9 +15761,14 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             kind = bridge->navigation_kind;
             delta = bridge->navigation_delta;
             url = bridge->navigation_url;
+            target_kind = bridge->navigation_target_kind;
             bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
             bridge->navigation_delta = 0;
             bridge->navigation_url = NULL;
+            bridge->navigation_target_kind =
+                    PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT;
+            bridge->navigation_target[0] = '\0';
+            bridge->navigation_rel[0] = '\0';
             if (kind == PCORE_SCRIPT_NAVIGATION_BACK) {
                 (void) pcore_browse_navigate_back(hwnd);
             } else if (kind == PCORE_SCRIPT_NAVIGATION_FORWARD) {
@@ -15742,19 +15778,31 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             } else if ((kind == PCORE_SCRIPT_NAVIGATION_ASSIGN ||
                     kind == PCORE_SCRIPT_NAVIGATION_RELOAD) &&
                     url != NULL) {
-                navigate_to(hwnd, url);
+                if (pcore_browser_script_single_window_target_allowed(
+                        target_kind)) {
+                    navigate_to(hwnd, url);
+                }
             } else if (kind == PCORE_SCRIPT_NAVIGATION_REPLACE &&
                     url != NULL) {
-                navigate_replace(hwnd, url);
+                if (pcore_browser_script_single_window_target_allowed(
+                        target_kind)) {
+                    navigate_replace(hwnd, url);
+                }
             } else if (kind == PCORE_SCRIPT_NAVIGATION_FRAGMENT &&
                     url != NULL) {
-                (void) pcore_browser_script_session_navigate_fragment(url,
-                        0);
+                if (pcore_browser_script_single_window_target_allowed(
+                        target_kind)) {
+                    (void) pcore_browser_script_session_navigate_fragment(
+                            url, 0);
+                }
             } else if (kind ==
                     PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE &&
                     url != NULL) {
-                (void) pcore_browser_script_session_navigate_fragment(url,
-                        1);
+                if (pcore_browser_script_single_window_target_allowed(
+                        target_kind)) {
+                    (void) pcore_browser_script_session_navigate_fragment(
+                            url, 1);
+                }
             }
             free(url);
         }
@@ -18624,6 +18672,8 @@ static BOOL test1084_browser_anchor_metadata_contract(void)
                 "/new") != 0 ||
                 strcmp(g_browser_script_session.bridge->navigation_target,
                 "_blank") != 0 ||
+                g_browser_script_session.bridge->navigation_target_kind !=
+                PBROWSER_SCRIPT_NAVIGATION_TARGET_BLANK ||
                 strcmp(g_browser_script_session.bridge->navigation_rel,
                 "noopener noreferrer") != 0 ||
                 PCore_NodeTextContentById(document, "result", result,
@@ -18639,6 +18689,8 @@ static BOOL test1084_browser_anchor_metadata_contract(void)
                 PCORE_SCRIPT_NAVIGATION_NONE;
         g_browser_script_session.bridge->navigation_target[0] = '\0';
         g_browser_script_session.bridge->navigation_rel[0] = '\0';
+        g_browser_script_session.bridge->navigation_target_kind =
+                PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT;
         if (pcore_browser_script_session_evaluate(CANCEL, -1,
                 error, sizeof(error)) != 0 ||
                 g_browser_script_session.bridge->navigation_url != NULL ||
@@ -18676,6 +18728,223 @@ static BOOL test1084_browser_anchor_metadata_contract(void)
             "Core link hit-tests and id lookups expose bounded href/target/rel"
             " metadata; browser-owned programmatic anchor activation preserves"
             " it through click cancellation and host navigation callbacks.");
+    return TRUE;
+}
+
+typedef struct test1085_anchor_target_state {
+    int click_calls;
+    int navigation_calls;
+    unsigned int navigation_kind;
+    unsigned int target_kind;
+    int target_present;
+    int rel_present;
+    char target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
+    char rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
+    char href[128];
+} test1085_anchor_target_state;
+
+static int test1085_anchor_target_click(void *pw,
+        const PBrowserScriptClickEventInfo *info,
+        int *out_default_allowed)
+{
+    test1085_anchor_target_state *state;
+
+    state = (test1085_anchor_target_state *) pw;
+    if (state == NULL || info == NULL || out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptClickEventInfo) ||
+            info->event_type == NULL ||
+            strcmp(info->event_type, "click") != 0) {
+        return -1;
+    }
+    state->click_calls++;
+    *out_default_allowed = 1;
+    return 0;
+}
+
+static int test1085_anchor_target_navigation(void *pw,
+        const PBrowserScriptNavigationInfo *info, int *out_value)
+{
+    test1085_anchor_target_state *state;
+    size_t length;
+
+    state = (test1085_anchor_target_state *) pw;
+    if (state == NULL || info == NULL || out_value == NULL ||
+            info->size < sizeof(PBrowserScriptNavigationInfo) ||
+            info->url == NULL || info->target_kind == 99u) {
+        return -1;
+    }
+    length = strlen(info->url);
+    if (length >= sizeof(state->href)) {
+        return -1;
+    }
+    state->navigation_calls++;
+    state->navigation_kind = info->kind;
+    state->target_kind = info->target_kind;
+    state->target_present = info->target != NULL;
+    state->rel_present = info->rel != NULL;
+    state->target[0] = '\0';
+    state->rel[0] = '\0';
+    if (info->target != NULL) {
+        length = strlen(info->target);
+        if (length >= sizeof(state->target)) {
+            return -1;
+        }
+        memcpy(state->target, info->target, length + 1);
+    }
+    if (info->rel != NULL) {
+        length = strlen(info->rel);
+        if (length >= sizeof(state->rel)) {
+            return -1;
+        }
+        memcpy(state->rel, info->rel, length + 1);
+    }
+    memcpy(state->href, info->url, strlen(info->url) + 1);
+    *out_value = 0;
+    return 1;
+}
+
+/* TEST 1085 - browser target policy classification and single-window gate. */
+static BOOL test1085_browser_anchor_target_policy_contract(void)
+{
+    static const char *TARGETS[] = {
+        NULL, "", " _SELF \t", "_Parent", "_TOP", "_blank", "main"
+    };
+    static const unsigned int KINDS[] = {
+        PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT,
+        PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT,
+        PBROWSER_SCRIPT_NAVIGATION_TARGET_SELF,
+        PBROWSER_SCRIPT_NAVIGATION_TARGET_PARENT,
+        PBROWSER_SCRIPT_NAVIGATION_TARGET_TOP,
+        PBROWSER_SCRIPT_NAVIGATION_TARGET_BLANK,
+        PBROWSER_SCRIPT_NAVIGATION_TARGET_NAMED
+    };
+    PBrowserScriptClickCallbacks click_callbacks;
+    PBrowserScriptNavigationCallbacks navigation_callbacks;
+    PBrowserScriptAnchorClickInfoEx anchor_info;
+    test1085_anchor_target_state state;
+    pcore_browser_script_bridge host_bridge;
+    PBrowserScriptNavigationInfo host_info;
+    HANDLE session;
+    char error[256];
+    int navigated;
+    int rc;
+    int index;
+    int ok;
+
+    memset(&click_callbacks, 0, sizeof(click_callbacks));
+    memset(&navigation_callbacks, 0, sizeof(navigation_callbacks));
+    memset(&anchor_info, 0, sizeof(anchor_info));
+    memset(&state, 0, sizeof(state));
+    memset(&host_bridge, 0, sizeof(host_bridge));
+    memset(&host_info, 0, sizeof(host_info));
+    memset(error, 0, sizeof(error));
+    session = NULL;
+    navigated = 0;
+    rc = PSCRIPT_OK;
+    index = 0;
+    ok = 1;
+    click_callbacks.size = sizeof(click_callbacks);
+    click_callbacks.pw = &state;
+    click_callbacks.dispatch_click = test1085_anchor_target_click;
+    navigation_callbacks.size = sizeof(navigation_callbacks);
+    navigation_callbacks.pw = &state;
+    navigation_callbacks.navigate = test1085_anchor_target_navigation;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    if (session == NULL ||
+            PBrowser_ScriptSessionRegisterClickCallbacks(session,
+            &click_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterNavigationCallbacks(session,
+            &navigation_callbacks) != PSCRIPT_OK) {
+        ok = 0;
+    }
+    if (ok) {
+        anchor_info.size = sizeof(anchor_info);
+        anchor_info.x = 4;
+        anchor_info.y = 8;
+        anchor_info.href = "/target-policy";
+        anchor_info.rel = "noopener";
+        for (index = 0; index < (int) (sizeof(TARGETS) / sizeof(TARGETS[0]));
+                index++) {
+            anchor_info.target = TARGETS[index];
+            navigated = 0;
+            rc = PBrowser_ScriptSessionDispatchAnchorClickEx(session,
+                    &anchor_info, &navigated);
+            if (rc != PSCRIPT_OK || navigated != 1 ||
+                    state.click_calls != index + 1 ||
+                    state.navigation_calls != index + 1 ||
+                    state.navigation_kind !=
+                    PBROWSER_SCRIPT_NAVIGATION_ASSIGN ||
+                    state.target_kind != KINDS[index] ||
+                    state.target_present != (TARGETS[index] != NULL) ||
+                    !state.rel_present || strcmp(state.rel, "noopener") != 0 ||
+                    (TARGETS[index] == NULL && state.target[0] != '\0') ||
+                    (TARGETS[index] != NULL &&
+                    strcmp(state.target, TARGETS[index]) != 0)) {
+                ok = 0;
+                break;
+            }
+        }
+    }
+    if (ok) {
+        anchor_info.href = "#target";
+        anchor_info.target = "_blank";
+        anchor_info.rel = NULL;
+        navigated = 0;
+        rc = PBrowser_ScriptSessionDispatchAnchorClickEx(session,
+                &anchor_info, &navigated);
+        ok = rc == PSCRIPT_OK && navigated == 1 &&
+                state.navigation_kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT &&
+                state.target_kind == PBROWSER_SCRIPT_NAVIGATION_TARGET_BLANK &&
+                state.rel_present == 0;
+    }
+    if (ok && (!pcore_browser_script_single_window_target_allowed(
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT) ||
+            !pcore_browser_script_single_window_target_allowed(
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_SELF) ||
+            !pcore_browser_script_single_window_target_allowed(
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_PARENT) ||
+            !pcore_browser_script_single_window_target_allowed(
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_TOP) ||
+            pcore_browser_script_single_window_target_allowed(
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_BLANK) ||
+            pcore_browser_script_single_window_target_allowed(
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_NAMED) ||
+            pcore_browser_script_single_window_target_allowed(99u))) {
+        ok = 0;
+    }
+    if (ok) {
+        host_bridge.hwnd = (HWND) 1;
+        host_info.size = sizeof(host_info);
+        host_info.kind = PBROWSER_SCRIPT_NAVIGATION_ASSIGN;
+        host_info.url = "/new-context";
+        host_info.target = "_blank";
+        host_info.target_kind = PBROWSER_SCRIPT_NAVIGATION_TARGET_BLANK;
+        host_info.rel = NULL;
+        host_info.state_json = NULL;
+        host_info.delta = 0;
+        rc = pcore_browser_script_navigation(&host_bridge, &host_info,
+                &navigated);
+        ok = rc == 0 && host_bridge.navigation_url == NULL;
+    }
+    if (session != NULL) {
+        (void) PBrowser_ScriptSessionUnregisterNavigationCallbacks(session);
+        (void) PBrowser_ScriptSessionUnregisterClickCallbacks(session);
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "index=%d rc=%d nav=%d calls=%d/%d kind=%u target=%s rel=%s",
+                index, rc, navigated, state.click_calls,
+                state.navigation_calls, state.target_kind, state.target,
+                state.rel);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1085 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1085 OK",
+            "Browser-owned anchor navigation classifies default, current,"
+            " blank and named targets once; the single-window host accepts"
+            " only current-context policies and fails closed for new contexts.");
     return TRUE;
 }
 
@@ -76505,6 +76774,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1082: ok = test1082_browser_cross_document_history_scroll(); break;
         case 1083: ok = test1083_browser_fragment_token_resolution(); break;
         case 1084: ok = test1084_browser_anchor_metadata_contract(); break;
+        case 1085: ok = test1085_browser_anchor_target_policy_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

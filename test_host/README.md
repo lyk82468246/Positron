@@ -98,6 +98,12 @@ next636 的 anchor metadata 路径使用 `PCore_LinkInfoByIdEx()`/
 programmatic click、metadata 传播和 preventDefault；定向门使用
 `1079-1084,999`，累积回归使用 `1064-1084,999`。该自动门不宣称真实多窗口创建或视觉。
 
+next637 复用 browser DLL 提供的 `PBrowserScriptNavigationInfo.target_kind`：当前单窗口
+宿主接受 default、`_self`、`_parent`、`_top`，而对 `_blank` 与 named target 在导航回调
+和窗口消息边界都 fail-closed，不把新窗口请求静默改成当前文档替换。窗口创建、复用、
+跨窗口 history 和视觉仍需未来的窗口宿主；`TEST1085` 自动覆盖分类、大小写/空白、fragment
+传播和拒绝策略。定向设备门使用 `1079-1085,999`，不修改 tracked INI。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次
