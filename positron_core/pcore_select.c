@@ -2076,6 +2076,7 @@ typedef struct pcore_collect_ctx {
     dom_string     *rel_name;   /* interned "rel"   */
     dom_string     *href_name;  /* interned "href"  */
     dom_string     *media_name; /* interned "media" */
+    dom_string     *disabled_name; /* interned "disabled" */
     dom_string     *css_value;  /* interned "stylesheet" (for rel match) */
 } pcore_collect_ctx;
 
@@ -2307,6 +2308,16 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
             dom_string *href = NULL;
             dom_string *media = NULL;
             bool is_sheet = false;
+            bool is_disabled = false;
+
+            if (cc->disabled_name != NULL &&
+                    dom_element_has_attribute(node, cc->disabled_name,
+                    &is_disabled) != DOM_NO_ERR) {
+                is_disabled = false;
+            }
+            if (is_disabled) {
+                return;   /* disabled stylesheet links are not fetched */
+            }
 
             if (dom_element_get_attribute(node, cc->rel_name, &rel) ==
                     DOM_NO_ERR && rel != NULL) {
@@ -2462,6 +2473,7 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     dom_string_create((const uint8_t *) "rel", 3, &cc.rel_name);
     dom_string_create((const uint8_t *) "href", 4, &cc.href_name);
     dom_string_create((const uint8_t *) "media", 5, &cc.media_name);
+    dom_string_create((const uint8_t *) "disabled", 8, &cc.disabled_name);
     dom_string_create((const uint8_t *) "stylesheet", 10, &cc.css_value);
     dom_string_create_interned((const uint8_t *) "style", 5,
             &inline_style_name);
@@ -2519,6 +2531,7 @@ cleanup:
     if (cc.rel_name != NULL)   { dom_string_unref(cc.rel_name); }
     if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
     if (cc.media_name != NULL) { dom_string_unref(cc.media_name); }
+    if (cc.disabled_name != NULL) { dom_string_unref(cc.disabled_name); }
     if (cc.css_value != NULL)  { dom_string_unref(cc.css_value); }
     if (inline_style_name != NULL) { dom_string_unref(inline_style_name); }
     if (pw.universal != NULL) {

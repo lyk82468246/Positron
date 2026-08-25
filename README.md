@@ -342,6 +342,12 @@ next644 在同一 browser bootstrap 中补齐 `<link>` 与 `<style>` 的 `media`
 `MediaQueryList` 事件、自动重排或 link 下载策略。`TEST1092` 与 TEST1090、TEST1091、
 TEST999 的 WM6 Debug 定向门通过 4/4；公共 C ABI 和默认自动 INI 均未改变。
 
+next645 在 `positron_core.dll` 的页面资源收集事务中尊重外部 stylesheet link 的
+`disabled` boolean 属性：存在该属性的 `<link rel="stylesheet">` 不会 fetch、解析或参与
+CSS selection，`disabled="false"` 也按属性存在处理；启用 link 仍使用既有 fetch/free 所有权，
+同一文档的再次样式仍复用 CSS cache。`TEST1093` 与 TEST21、TEST24、TEST1091、TEST999 的
+WM6 Debug 定向门通过 5/5；本批不扩展到 `type`、`alternate`、动态 link 生命周期或公共 C ABI。
+
 ## 快速开始
 
 ### 前置环境

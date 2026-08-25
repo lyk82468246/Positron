@@ -77,8 +77,10 @@ submitter、`PCore_FormControlInfo*`、表单激活和交互闸门。HTML `contr
 `<link rel="stylesheet" media>`，并把 UTF-8 media query 交给 libcss 的 stylesheet
 selection context。调用者只需在每次 viewport 变化后重新调用样式事务；同一文档的外部
 CSS 字节会从 Core-owned cache 重用，fetch/free callback 的所有权和生命周期保持不变。
+外部 `<link rel="stylesheet">` 若存在 `disabled` 属性（包括值为 `false`），则在收集阶段
+跳过，不会 fetch、解析或附加 CSS；启用 link 仍沿用相同的 cache 和 callback 所有权。
 这项支持只控制当前 CSS selection，不新增 ABI、不产生 `MediaQueryList` 事件，也不替宿主
-决定是否下载其他 link type。
+决定其他 link type 的下载策略。
 
 `PCore_NodeRelationById` 为浏览器或其他宿主提供一个稳定、只读的 DOM 关系切片：按元素 id
 查询 parent/first-child/last-child/previous-sibling/next-sibling、child count、tag/name、
@@ -108,12 +110,14 @@ collection、shadow tree、复杂 selector、layout 或 native control 状态；
 宿主决定；脚本执行由 `positron_script`/`positron_browser` 负责。`test_host.exe` 是
 回归消费者，不是 Core 的公共 API 所有者。
 
-next643 的页面样式资源选择属于 Core：`<style media>` 与
-`<link rel="stylesheet" media>` 只在当前 viewport 匹配时参与 libcss selection，
-同一文档的再次样式事务复用已缓存的外部 CSS 字节。TEST1091 通过公开的
+next643/645 的页面样式资源选择属于 Core：`<style media>` 与
+`<link rel="stylesheet" media>` 只在当前 viewport 匹配时参与 libcss selection；存在
+`disabled` 属性的外部 stylesheet link 在 fetch 前跳过，同一文档的再次样式事务复用已缓存
+的外部 CSS 字节。TEST1091/1093 通过公开的
 `PCore_StyleDocumentEx2` fetch/free callback 约定，在 320px/299px 视口验证两类条件和
-2 次 fetch/2 次 free 的缓存边界；相关 TEST21、TEST24、TEST1091 与 TEST999 设备门通过
-4/4；这不代表脚本侧动态媒体事件或其他 link-type 行为。
+禁用 link 不产生 fetch、启用 link 只产生 1 次 fetch/1 次 free 的缓存边界；相关 TEST21、
+TEST24、TEST1091、TEST1093 与 TEST999 设备门通过 5/5；这不代表脚本侧动态媒体事件、
+`type`/`alternate` 或其他 link-type 行为。
 
 next644 的 `media` DOM 反射属于 `positron_browser.dll`，Core 不新增接口或承担脚本
 property。Core 继续只负责 `<style media>`/`<link rel="stylesheet" media>` 的 viewport

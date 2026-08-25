@@ -556,7 +556,23 @@ TEST1090、TEST1091、TEST1092、TEST999 通过 4/4，唯一 `TESTBENCH PASS` �
 `ERROR`/`FAIL`；C89、Debug/Release ARMV4I 构建和仓库/文档审计均通过。本批没有新增
 必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
 
-### 39. 建立真实页面驱动的兼容队列
+### 39. next645：disabled stylesheet 选择（已完成）
+
+next645 在 `positron_core.dll` 的页面资源收集事务中补齐一个与既有 stylesheet media
+选择相邻、但边界独立的 HTML 行为：外部 `<link rel="stylesheet">` 只要存在 `disabled`
+属性，就不 fetch、不解析也不附加到 libcss selection context。属性按 HTML boolean
+presence 处理，因此 `disabled="false"` 仍然禁用；启用 link 的 fetch/free callback 和
+document-owned CSS cache 保持原有所有权。该批不恢复历史上已撤回的 `type`/`alternate`
+过滤，也不新增公共 C ABI、动态 link 生命周期或脚本事件。
+
+TEST1093 在同一文档的两次样式事务中断言被禁用 link 没有 fetch、其 CSS 不改变 computed
+color，启用 link 正常生效且第二次事务复用缓存。设备证据目录为
+`tmp/device-runs/20260825-161729-next645-stylesheet-disabled/`，其中 TEST21、TEST24、
+TEST1091、TEST1093、TEST999 设备门通过 5/5，
+唯一 `TESTBENCH PASS` 且零 `ERROR`/`FAIL`；C89 和 Debug ARMV4I 构建通过。本批没有新增
+必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
+
+### 40. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -567,7 +583,7 @@ TEST1090、TEST1091、TEST1092、TEST999 通过 4/4，唯一 `TESTBENCH PASS` �
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 40. 安排新的全范围检查点
+### 41. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

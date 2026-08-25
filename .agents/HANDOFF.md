@@ -16,9 +16,10 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next644，页面 stylesheet `media` 选择与脚本反射 → Core 将 `<style media>` 与
+- 当前能力批次：next645，页面 stylesheet `media` 选择、脚本反射与 disabled 选择 → Core 将 `<style media>` 与
   `<link rel="stylesheet" media>` 的 UTF-8 条件交给 libcss，并在同一文档重排时复用外部
-  CSS cache；它沿用 next642 的 `relList.supports()` 保守 link-type 能力探测和
+  CSS cache；收集外部 stylesheet link 时会跳过存在 `disabled` 属性的 link，不 fetch、解析或
+  选择其 CSS；它沿用 next642 的 `relList.supports()` 保守 link-type 能力探测和
   next641 的 bounded DOMTokenList 反射/枚举/变更与
   next636 的 `rel` 属性桥，不扩展公共 C ABI，也不把 `noopener` 等关系词误称为窗口安全
   策略。`<link rel="stylesheet">` 是当前唯一报告为 supported 的关系词，未实现关系词和
@@ -39,7 +40,7 @@
   增加了受限的 `media` UTF-8 属性反射；缺失返回空串，`setAttribute`/setter/
   `removeAttribute` 保持 live 一致，其他元素返回 `undefined` 且 setter 不改变 raw 属性。
   这不触发脚本侧 MediaQueryList 事件或自动重排。
-- 测试编号上限：`TEST_MAX_NUMBER 1092`。
+- 测试编号上限：`TEST_MAX_NUMBER 1093`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -723,6 +724,18 @@ next644 的 stylesheet `media` DOM 反射自动门已经完成：
 - `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和仓库/文档审计均通过；
   本批没有修改公共 C ABI 或 tracked INI，也没有新增视觉、触摸、SIP、旋转或 picker 人工门。
 
+next645 的 disabled stylesheet 选择自动门已经完成：
+
+- `tmp/device-runs/20260825-161729-next645-stylesheet-disabled/` 的定向门为 PASS，
+  TEST21、TEST24、TEST1091、TEST1093、TEST999 共 5/5，零 `ERROR`/`FAIL`，唯一
+  `TESTBENCH PASS` 且 `test13_route_ok=True`。
+- TEST1093 在同一文档的两次样式事务中确认：存在 `disabled` 属性的
+  `<link rel="stylesheet">` 不发生 fetch、不会把外部颜色写入 computed style；启用的 link
+  仍生效，第二次事务复用 document-owned CSS cache（1 次 fetch、1 次 free）。这是 Core
+  资源收集边界，不扩张为 `type`/`alternate`、动态 link 生命周期或脚本事件。
+- `python scripts/test_c89ize.py`、Debug ARMV4I 正式构建和设备门均通过；本批没有修改公共
+  C ABI 或 tracked INI，也没有新增视觉、触摸、SIP、旋转或 picker 人工门。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -877,11 +890,11 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next644 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+next645 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
 纵切，不要为了补编号添加孤立 API。Core 现在会按 viewport 选择 `<style media>` 与
-`<link rel="stylesheet" media>`，同文档重排复用外部 CSS cache；browser wrapper 还提供
-`<link>`/`<style>` 的 bounded `media` 反射，但不提供动态 MediaQueryList 事件、link 下载
-策略或 noopener/opener 的窗口安全处理。
+`<link rel="stylesheet" media>`，跳过带 `disabled` 属性的外部 stylesheet，并在同文档重排
+复用外部 CSS cache；browser wrapper 还提供 `<link>`/`<style>` 的 bounded `media` 反射，但
+不提供动态 MediaQueryList 事件、完整 link 下载策略或 noopener/opener 的窗口安全处理。
 TEST65 的多字符 SIP 候选词、select/file picker 模态框、
 真实 label 触摸、OEM 窗口视觉和键盘映射仍是独立人工边界；在人工证据出现前不得把它们写成
 通用产品保证。anchor href/target/rel 元数据与 target_kind、bounded `window.open()`、普通

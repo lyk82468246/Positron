@@ -1233,6 +1233,21 @@ browser 使用统一的 bounded `PElement` wrapper，非 `link`/`style` 元素�
 与断言；TEST1090、TEST1091、TEST1092、TEST999 的定向设备门为 4/4。本批不新增公共
 C ABI，也没有视觉、触摸、SIP、旋转或 picker 人工门。
 
+#### next645 的 disabled stylesheet 选择边界
+
+next645 在 `positron_core.dll` 的页面资源收集事务中把外部 stylesheet link 的 HTML
+`disabled` boolean 属性纳入选择闸门。`<link rel="stylesheet" disabled>`（包括
+`disabled="false"`）在 Core 收集阶段直接跳过，因此不会调用 fetch callback、解析 CSS，
+也不会附加到 libcss selection context；没有该属性的 link 保持原有 `media` 条件、URL
+resolve、fetch/free 所有权和 document-owned cache 行为。该判断只针对外部
+`<link rel="stylesheet">`，不把任意元素的 `disabled` 属性或 browser wrapper property
+扩张成动态资源生命周期。
+
+这项能力没有新增公共 C ABI，不实现 `type`/`alternate` 等历史上撤回的 link 过滤，不提供
+脚本侧 disabled mutation 后自动重新 fetch/重排或 `MediaQueryList` 事件。`test_host.exe`
+只提供 TEST1093 的离线 fetch/free 与 computed-color 断言；TEST21、TEST24、TEST1091、
+TEST1093、TEST999 的定向设备门为 5/5。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

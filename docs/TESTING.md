@@ -918,6 +918,23 @@ scripts\device_gate.bat -Candidate next644-stylesheet-media-reflection ^
 正式构建、C89 和仓库/文档审计通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、
 旋转或 picker 人工门。
 
+### next645 disabled stylesheet 选择自动门
+
+next645 在 Core 收集外部作者样式时尊重 `<link rel="stylesheet">` 的 boolean `disabled`
+属性。TEST1093 使用一个返回红色 disabled CSS、绿色 enabled CSS 的离线 fetch callback：
+带 `disabled`（即使值为 `false`）的 link 必须完全不 fetch，页面仍保留 inline 基线颜色；
+启用 link 必须生效，第二次对同一文档重新样式必须命中 CSS cache。测试同时计数 fetch/free，
+不依赖 JavaScript、网络、窗口或视觉。
+
+```bat
+scripts\device_gate.bat -Candidate next645-stylesheet-disabled ^
+  -TestSelection "21,24,1091,1093,999"
+```
+
+`tmp/device-runs/20260825-161729-next645-stylesheet-disabled/` 已通过 5/5，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。C89 与 Debug ARMV4I
+正式构建通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或 picker 人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

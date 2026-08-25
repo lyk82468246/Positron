@@ -143,6 +143,13 @@ next644 的 TEST1092 是 browser bootstrap 消费者断言：它验证 `<link>`/
 `1090,1091,1092,999`，设备上通过 4/4。`test_host` 只编排断言，不拥有 `media` property
 语义，也没有修改 tracked 默认 INI。
 
+next645 的 TEST1093 是 Core stylesheet 消费者断言：它使用离线 fetch/free callback 和同一
+文档的两次样式事务，确认带 `disabled` 属性的 `<link rel="stylesheet">` 不会 fetch、解析
+或改变 computed color（`disabled="false"` 也按属性存在处理），启用 link 仍生效并命中
+document-owned CSS cache。定向门使用 `21,24,1091,1093,999`，设备上通过 5/5；
+`test_host` 只提供 fixture、计数 callback 和断言，不拥有 Core 的资源选择语义，也没有修改
+tracked 默认 INI。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1092
+#define TEST_MAX_NUMBER 1093
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -20008,6 +20008,135 @@ static BOOL test1092_browser_stylesheet_media_reflection(void)
     show_info(L"TEST 1092 OK",
             "link and style media attributes reflect live UTF-8 metadata;"
             " unsupported element wrappers fail closed without changing raw attrs.");
+    return TRUE;
+}
+
+/* TEST 1093 - disabled external stylesheet links are not selected or fetched. */
+typedef struct stylesheet_disabled_test_ctx {
+    int calls;
+    int frees;
+    int disabled_calls;
+} stylesheet_disabled_test_ctx;
+
+static int stylesheet_disabled_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char DISABLED_CSS[] = "disabledcase{color:#aa0000;}";
+    static const char ENABLED_CSS[] = "enabledcase{color:#00aa00;}";
+    stylesheet_disabled_test_ctx *ctx =
+            (stylesheet_disabled_test_ctx *) pw;
+    const char *css;
+    int len;
+    char *data;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/off.css") == 0) {
+        ctx->disabled_calls++;
+        css = DISABLED_CSS;
+    } else if (strcmp(url, "/on.css") == 0) {
+        css = ENABLED_CSS;
+    } else {
+        return 1;
+    }
+    len = (int) strlen(css);
+    data = (char *) malloc((size_t) len);
+    if (data == NULL) {
+        return 1;
+    }
+    memcpy(data, css, (size_t) len);
+    *out_data = data;
+    *out_len = len;
+    return 0;
+}
+
+static void stylesheet_disabled_free(void *pw, char *data)
+{
+    stylesheet_disabled_test_ctx *ctx =
+            (stylesheet_disabled_test_ctx *) pw;
+
+    ctx->frees++;
+    free(data);
+}
+
+static BOOL test1093_core_disabled_stylesheet_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<style>disabledcase{color:#112233;}"
+        "enabledcase{color:#000000;}</style>"
+        "<link rel='stylesheet' disabled='false' href='/off.css'>"
+        "<link rel='stylesheet' href='/on.css'>"
+        "</head><body><disabledcase>disabled</disabledcase>"
+        "<enabledcase>enabled</enabledcase></body></html>";
+    HANDLE hDoc = NULL;
+    stylesheet_disabled_test_ctx ctx;
+    unsigned long disabled_argb = 0;
+    unsigned long enabled_argb = 0;
+    int screen_w;
+    int screen_h;
+    int screen_dpi = 96;
+    HDC screen_dc;
+    int pass;
+    char msg[256];
+
+    ctx.calls = 0;
+    ctx.frees = 0;
+    ctx.disabled_calls = 0;
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        int dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
+        if (dpi > 0) {
+            screen_dpi = dpi;
+        }
+        ReleaseDC(NULL, screen_dc);
+    }
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    pass = 0;
+    if (hDoc != NULL) {
+        for (pass = 0; pass < 2; pass++) {
+            PCore_SetViewport(320, 320, screen_dpi);
+            disabled_argb = 0;
+            enabled_argb = 0;
+            if (PCore_StyleDocumentEx(hDoc, NULL, stylesheet_disabled_fetch,
+                    stylesheet_disabled_free, &ctx) != 0 ||
+                    PCore_NodeComputedColor(hDoc, "disabledcase",
+                    &disabled_argb) != 0 ||
+                    PCore_NodeComputedColor(hDoc, "enabledcase",
+                    &enabled_argb) != 0 ||
+                    (disabled_argb & 0x00ffffffUL) != 0x00112233UL ||
+                    (enabled_argb & 0x00ffffffUL) != 0x0000aa00UL) {
+                break;
+            }
+        }
+    }
+
+    if (hDoc != NULL) {
+        PCore_FreeDocument(hDoc);
+    }
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, screen_dpi);
+
+    if (pass != 2 || ctx.calls != 1 || ctx.frees != 1 ||
+            ctx.disabled_calls != 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "pass=%d calls=%d frees=%d disabled_calls=%d "
+                "disabled=0x%06lX enabled=0x%06lX", pass, ctx.calls,
+                ctx.frees, ctx.disabled_calls,
+                disabled_argb & 0x00ffffffUL,
+                enabled_argb & 0x00ffffffUL);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 1093 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 1093 OK",
+            "A present link[disabled] is skipped without a fetch; the enabled "
+            "link applies and its bytes are reused on the second style pass.");
     return TRUE;
 }
 
@@ -77845,6 +77974,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1090: ok = test1090_browser_rel_list_supports_contract(); break;
         case 1091: ok = test1091_core_stylesheet_media_contract(); break;
         case 1092: ok = test1092_browser_stylesheet_media_reflection(); break;
+        case 1093: ok = test1093_core_disabled_stylesheet_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
