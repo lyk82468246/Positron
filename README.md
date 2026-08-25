@@ -328,6 +328,14 @@ true（ASCII 大小写不敏感），对其他元素或未实现的 link type �
 `SyntaxError`。该能力不新增公共 C ABI，不把 `noopener`/`opener` 误当成窗口安全策略。
 `TEST1089` 与 `TEST1090` 及 1080–1088、999 的 WM6 Debug 设备门通过 12/12。
 
+next643 将页面资源选择的媒体条件接入 `positron_core.dll`：`<style media>` 与
+`<link rel="stylesheet" media>` 会把 UTF-8 media query 交给 libcss，只有当前
+screen viewport 匹配的作者样式表才参与选择；同一文档在视口变化后重新样式时仍复用
+已缓存的外部 CSS 字节，不重复 fetch。该批不新增公共 C ABI，也不把 media 属性扩展
+成脚本侧动态 `MediaQueryList` 或网络下载策略。`TEST1091` 在 320px/299px 两个视口
+同时覆盖 inline/link 条件和缓存重排；与 TEST21、TEST24、TEST999 的 Debug WM6 相关门通过
+4/4。
+
 ## 快速开始
 
 ### 前置环境

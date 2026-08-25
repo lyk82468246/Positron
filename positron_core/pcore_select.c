@@ -2075,6 +2075,7 @@ typedef struct pcore_collect_ctx {
     dom_string     *link_name;  /* interned "link"  */
     dom_string     *rel_name;   /* interned "rel"   */
     dom_string     *href_name;  /* interned "href"  */
+    dom_string     *media_name; /* interned "media" */
     dom_string     *css_value;  /* interned "stylesheet" (for rel match) */
 } pcore_collect_ctx;
 
@@ -2238,7 +2239,7 @@ static css_stylesheet *pcore_parse_css_tree(pcore_collect_ctx *cc,
 /* Parse CSS and its native libcss @import tree, append only the root sheet to
  * the select context, and retain every child handle for pass-end cleanup. */
 static void pcore_add_author_css(pcore_collect_ctx *cc, const char *data,
-        int len, const char *url)
+        int len, const char *url, const char *media)
 {
     css_stylesheet *sheet;
 
@@ -2246,13 +2247,14 @@ static void pcore_add_author_css(pcore_collect_ctx *cc, const char *data,
     if (sheet == NULL) {
         return;
     }
-    css_select_ctx_append_sheet(cc->ctx, sheet, CSS_ORIGIN_AUTHOR, NULL);
+    css_select_ctx_append_sheet(cc->ctx, sheet, CSS_ORIGIN_AUTHOR, media);
 }
 
 /* DFS: collect author CSS from the page in document order - inline <style>
- * blocks (text content) and external <link rel="stylesheet" href> sheets
- * (fetched via the embedder callback, if provided). Parsed sheets are appended
- * to cc->ctx and recorded in cc->sheets[] for the caller to free. Letting a
+ * blocks and external <link rel="stylesheet" href> sheets (fetched via the
+ * embedder callback, if provided). The element's optional media attribute is
+ * passed to libcss when each sheet is attached. Parsed sheets are appended to
+ * cc->ctx and recorded in cc->sheets[] for the caller to free. Letting a
  * fetched page carry both its inline and linked CSS is what makes real pages
  * look styled rather than bare. */
 static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
@@ -2278,12 +2280,23 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
 
         if (is_style) {
             dom_string *css = NULL;
+            dom_string *media = NULL;
             if (dom_node_get_text_content(node, &css) == DOM_NO_ERR &&
                     css != NULL) {
+                const char *media_value = NULL;
+
+                if (cc->media_name != NULL &&
+                        dom_element_get_attribute(node, cc->media_name,
+                        &media) == DOM_NO_ERR && media != NULL) {
+                    media_value = dom_string_data(media);
+                }
                 pcore_add_author_css(cc, dom_string_data(css),
                         (int) dom_string_byte_length(css),
                         (cc->document_url != NULL) ? cc->document_url :
-                        "positron:inline-style");
+                        "positron:inline-style", media_value);
+                if (media != NULL) {
+                    dom_string_unref(media);
+                }
                 dom_string_unref(css);
             }
             return;   /* don't recurse into a <style>'s text children */
@@ -2292,6 +2305,7 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
         if (is_link && (cc->cache != NULL || cc->fetch != NULL)) {
             dom_string *rel = NULL;
             dom_string *href = NULL;
+            dom_string *media = NULL;
             bool is_sheet = false;
 
             if (dom_element_get_attribute(node, cc->rel_name, &rel) ==
@@ -2320,7 +2334,19 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                             reference, url, (int) sizeof(url)) == 0 &&
                             pcore_get_stylesheet_bytes(cc, url, &data, &len,
                             &owned) == 0) {
-                        pcore_add_author_css(cc, data, len, url);
+                        const char *media_value = NULL;
+
+                        if (cc->media_name != NULL &&
+                                dom_element_get_attribute(node,
+                                cc->media_name, &media) == DOM_NO_ERR &&
+                                media != NULL) {
+                            media_value = dom_string_data(media);
+                        }
+                        pcore_add_author_css(cc, data, len, url,
+                                media_value);
+                        if (media != NULL) {
+                            dom_string_unref(media);
+                        }
                         if (owned != NULL && cc->freefn != NULL) {
                             cc->freefn(cc->pw, owned);
                         }
@@ -2435,6 +2461,7 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     dom_string_create((const uint8_t *) "link", 4, &cc.link_name);
     dom_string_create((const uint8_t *) "rel", 3, &cc.rel_name);
     dom_string_create((const uint8_t *) "href", 4, &cc.href_name);
+    dom_string_create((const uint8_t *) "media", 5, &cc.media_name);
     dom_string_create((const uint8_t *) "stylesheet", 10, &cc.css_value);
     dom_string_create_interned((const uint8_t *) "style", 5,
             &inline_style_name);
@@ -2491,6 +2518,7 @@ cleanup:
     if (cc.link_name != NULL)  { dom_string_unref(cc.link_name); }
     if (cc.rel_name != NULL)   { dom_string_unref(cc.rel_name); }
     if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
+    if (cc.media_name != NULL) { dom_string_unref(cc.media_name); }
     if (cc.css_value != NULL)  { dom_string_unref(cc.css_value); }
     if (inline_style_name != NULL) { dom_string_unref(inline_style_name); }
     if (pw.universal != NULL) {

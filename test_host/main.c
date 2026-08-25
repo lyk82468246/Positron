@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1090
+#define TEST_MAX_NUMBER 1091
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -19830,6 +19830,139 @@ static BOOL test1090_browser_rel_list_supports_contract(void)
     show_info(L"TEST 1090 OK",
             "relList.supports conservatively exposes the implemented"
             " stylesheet link processing and fails closed elsewhere.");
+    return TRUE;
+}
+
+/* TEST 1091 - page stylesheet media attributes gate author sheets. */
+typedef struct stylesheet_media_test_ctx {
+    int calls;
+    int frees;
+} stylesheet_media_test_ctx;
+
+static int stylesheet_media_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char WIDE_CSS[] = "externalcase{color:#00aa00;}";
+    static const char NARROW_CSS[] = "externalcase{color:#0000aa;}";
+    stylesheet_media_test_ctx *ctx = (stylesheet_media_test_ctx *) pw;
+    const char *css;
+    int len;
+    char *data;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/wide.css") == 0) {
+        css = WIDE_CSS;
+    } else if (strcmp(url, "/narrow.css") == 0) {
+        css = NARROW_CSS;
+    } else {
+        return 1;
+    }
+    len = (int) strlen(css);
+    data = (char *) malloc((size_t) len);
+    if (data == NULL) {
+        return 1;
+    }
+    memcpy(data, css, (size_t) len);
+    *out_data = data;
+    *out_len = len;
+    return 0;
+}
+
+static void stylesheet_media_free(void *pw, char *data)
+{
+    stylesheet_media_test_ctx *ctx = (stylesheet_media_test_ctx *) pw;
+
+    ctx->frees++;
+    free(data);
+}
+
+static BOOL test1091_core_stylesheet_media_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<style media='(min-width:300px)'>"
+        "inlinecase{color:#00aa00;}"
+        "</style>"
+        "<style media='(max-width:299px)'>"
+        "inlinecase{color:#0000aa;}"
+        "</style>"
+        "<link rel='stylesheet' media='(min-width:300px)' href='/wide.css'>"
+        "<link rel='stylesheet' media='(max-width:299px)' href='/narrow.css'>"
+        "</head><body><inlinecase>inline</inlinecase>"
+        "<externalcase>external</externalcase></body></html>";
+    HANDLE hDoc = NULL;
+    stylesheet_media_test_ctx ctx;
+    unsigned long inline_argb;
+    unsigned long external_argb;
+    unsigned long inline_expected;
+    unsigned long external_expected;
+    int screen_w;
+    int screen_h;
+    int screen_dpi = 96;
+    HDC screen_dc;
+    int pass;
+    char msg[256];
+
+    ctx.calls = 0;
+    ctx.frees = 0;
+    inline_argb = 0;
+    external_argb = 0;
+    screen_dc = GetDC(NULL);
+    if (screen_dc != NULL) {
+        int dpi = GetDeviceCaps(screen_dc, LOGPIXELSY);
+        if (dpi > 0) {
+            screen_dpi = dpi;
+        }
+        ReleaseDC(NULL, screen_dc);
+    }
+
+    hDoc = PCore_ParseHTML(HTML, 0);
+    if (hDoc == NULL) {
+        pass = 0;
+    } else {
+        for (pass = 0; pass < 2; pass++) {
+            int width = (pass == 0) ? 320 : 299;
+
+            inline_expected = (width >= 300) ? 0x0000aa00UL : 0x000000aaUL;
+            external_expected = inline_expected;
+            PCore_SetViewport(width, 320, screen_dpi);
+            inline_argb = 0;
+            external_argb = 0;
+            if (PCore_StyleDocumentEx(hDoc, NULL, stylesheet_media_fetch,
+                    stylesheet_media_free, &ctx) != 0 ||
+                    PCore_NodeComputedColor(hDoc, "inlinecase", &inline_argb) != 0 ||
+                    PCore_NodeComputedColor(hDoc, "externalcase", &external_argb) != 0 ||
+                    (inline_argb & 0x00ffffffUL) != inline_expected ||
+                    (external_argb & 0x00ffffffUL) != external_expected) {
+                break;
+            }
+        }
+    }
+
+    if (hDoc != NULL) {
+        PCore_FreeDocument(hDoc);
+    }
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, screen_dpi);
+
+    if (pass != 2 || ctx.calls != 2 || ctx.frees != 2) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "pass=%d calls=%d frees=%d inline=0x%06lX external=0x%06lX",
+                pass, ctx.calls, ctx.frees,
+                inline_argb & 0x00ffffffUL, external_argb & 0x00ffffffUL);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 1091 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 1091 OK",
+            "<style media> and <link media> select only the matching author\n"
+            "sheet at 320px and 299px; cached external bytes are reused\n"
+            "on the second style pass (2 fetches, 2 frees total).");
     return TRUE;
 }
 
@@ -77665,6 +77798,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1088: ok = test1088_browser_anchor_named_context_contract(); break;
         case 1089: ok = test1089_browser_anchor_rel_list_contract(); break;
         case 1090: ok = test1090_browser_rel_list_supports_contract(); break;
+        case 1091: ok = test1091_core_stylesheet_media_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

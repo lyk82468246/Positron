@@ -525,7 +525,22 @@ TEST1080–1089、999 的 Debug 设备门 `tmp/device-runs/20260825-153256-next6
 审计、文档审计和 diff 检查通过，本批没有新增必须立即人工复核的视觉、触摸、SIP、旋转或
 picker 风险。
 
-### 37. 建立真实页面驱动的兼容队列
+### 37. next643：页面 stylesheet media 选择（已完成）
+
+next643 将 `<style media>` 与 `<link rel="stylesheet" media>` 的媒体条件迁入
+`positron_core.dll` 的资源收集路径，并交给 libcss 的 selection context。当前 viewport
+不匹配的作者样式表不再参与选择；同一文档重新样式时仍复用 document-owned external CSS
+cache，不重复 fetch。该批不新增公共 C ABI，不承诺脚本侧 `MediaQueryList` 事件、完整
+link 下载策略或其他 link type。
+
+TEST1091 在同一文档的 320px/299px 两次样式事务中覆盖 inline/link 条件和 2 次 fetch/2
+次 free 缓存契约；与既有 TEST21、TEST24、TEST999 的相关 Debug 设备门
+`tmp/device-runs/20260825-155459-next643-style-media-final/` 通过 4/4，唯一 `TESTBENCH PASS`
+且零 `ERROR`/`FAIL`。C89、Debug
+ARMV4I 增量构建和相关文档/设备门均通过；本批没有新增必须立即人工复核的视觉、触摸、SIP、
+旋转或 picker 风险。
+
+### 38. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -536,7 +551,7 @@ picker 风险。
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 38. 安排新的全范围检查点
+### 39. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

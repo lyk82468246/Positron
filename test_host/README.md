@@ -132,6 +132,11 @@ mutation、value 反射、非法 token 和非 rel 元素边界。next642 的 TES
 非法 token 仍为 `SyntaxError`。宿主不复制 link-type processing、窗口安全或导航策略；定向
 设备门使用 `1080-1090,999`，本批回归门共 12/12。
 
+next643 的 TEST1091 仍只做 Core 消费者断言：它使用同一文档在 320px/299px 两个 viewport
+重做样式，验证 `<style media>`、`<link rel="stylesheet" media>` 的选择，以及外部 CSS
+缓存使第二次样式事务不再 fetch。该测试不新增窗口、网络或视觉人工路径；与既有
+TEST21/24、TEST999 的相关设备门最终为 `21,24,1091,999`，共通过 4/4。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

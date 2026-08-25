@@ -293,8 +293,9 @@ selector、URL、storage/cookie、FormData、selection 和 synthetic event 均�
   评估三个独立 IIFE；每段都在既有 source limit 内，仍共享同一个 script context，不改变执行预算。
 
 这些 API 都是 session-scoped、内存 bounded 的兼容切片。Blob `text()`/`arrayBuffer()` 为同步
-适配，Promise、fetch、stream、真实文件句柄、跨页面 storage 同步、动态 media re-evaluation 和
-完整 URL/DOM 标准均明确不在本边界内。新增 C ABI 只追加稳定导出，不暴露 Duktape、libdom 或
+适配，Promise、fetch、stream、真实文件句柄、跨页面 storage 同步、脚本侧动态 media
+re-evaluation 和完整 URL/DOM 标准均明确不在本边界内。CSS 作者样式表的 viewport 选择由
+`positron_core.dll` 的样式事务单独负责。新增 C ABI 只追加稳定导出，不暴露 Duktape、libdom 或
 宿主私有结构。
 
 #### next442–461 的脚本平台扩展
@@ -1202,6 +1203,21 @@ next642 在同一 `PRelList` wrapper 上增加 `supports(token)`，让页面能�
 
 `test_host.exe` 只提供 TEST1090 fixture，验证 link/stylesheet 的正例、大小写、未实现关系词、
 其他元素、非 rel 元素和非法 token；next642 的 `1080-1090,999` 设备门通过 12/12。
+
+#### next643 的页面 stylesheet media 选择边界
+
+next643 把 HTML 作者样式表的媒体条件接入 `positron_core.dll` 的资源收集事务。扫描
+`<style>` 和 `<link rel="stylesheet">` 时，Core 读取可选的 `media` 属性，并把 UTF-8
+media query 作为该 stylesheet 的 selection-context 条件交给 libcss；因此同一页面的
+宽屏/窄屏作者 CSS 不会在不匹配的 viewport 中同时生效。`PCore_StyleDocumentEx2()` 的
+第二次样式事务继续从 document-owned stylesheet cache 取得外部字节，不重新 fetch；媒体
+条件会随宿主重新设置 viewport 后重新选择。
+
+这只是页面样式选择边界：Core 不新增 C ABI，不负责脚本侧 `MediaQueryList` 事件、不改变
+fetch/HTTP 的下载策略，也不把 media 属性扩张为完整 HTML link-type 生命周期。`test_host.exe`
+的 TEST1091 使用同一文档在 320px 与 299px 间重排，分别验证 inline `<style media>`、
+external `<link media>` 和两次样式事务的 2 次 fetch/2 次 free 缓存契约；next643 设备门为
+`21,24,1091,999`，通过 4/4。
 
 #### next614 的 label/control 关系边界
 

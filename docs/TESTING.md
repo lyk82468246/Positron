@@ -882,6 +882,24 @@ scripts\device_gate.bat -Candidate next642-rel-list-supports-final ^
 INI。C89、Debug/Release ARMV4I、仓库审计、文档审计和 diff 检查均通过；本批不新增视觉、
 触摸、SIP、旋转或 picker 人工门。
 
+### next643 页面 stylesheet media 自动门
+
+next643 将 `<style media>` 与 `<link rel="stylesheet" media>` 的 viewport 条件传给
+`positron_core.dll` 的 libcss selection context。TEST1091 在同一文档上先用 320px、再用
+299px 重新执行样式事务，分别断言 inline 与 external author sheet 只在匹配条件下生效，
+并断言 document-owned external CSS cache 让第二次事务维持 2 次 fetch/2 次 free 总量。
+这是一项离线 Core 契约，不要求脚本、真实网络、窗口或视觉人工验收。
+
+```bat
+scripts\device_gate.bat -Candidate next643-style-media-condition ^
+  -TestSelection "1091,999"
+```
+
+`tmp/device-runs/20260825-155459-next643-style-media-final/` 已通过 4/4（TEST21、24、1091、
+999），唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。候选阶段曾因夹具每轮新建
+文档而把缓存断言写成 4 次 fetch/4 次 free；修正为同一文档跨视口重排后重跑通过，产品
+断言未放宽。tracked INI 未修改；C89、Debug ARMV4I 增量构建和设备门均通过。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

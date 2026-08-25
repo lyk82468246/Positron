@@ -73,6 +73,13 @@ submitter、`PCore_FormControlInfo*`、表单激活和交互闸门。HTML `contr
 仍由浏览器层按自身属性提供，不把祖先 fieldset 状态写回 DOM。
 `PCore_FormResetAt` 只提交 reset 的 DOM 初始状态；可取消的 reset 事件由宿主先分发。
 
+`PCore_StyleDocumentEx2` 在收集页面作者 CSS 时也读取 `<style media>` 与
+`<link rel="stylesheet" media>`，并把 UTF-8 media query 交给 libcss 的 stylesheet
+selection context。调用者只需在每次 viewport 变化后重新调用样式事务；同一文档的外部
+CSS 字节会从 Core-owned cache 重用，fetch/free callback 的所有权和生命周期保持不变。
+这项支持只控制当前 CSS selection，不新增 ABI、不产生 `MediaQueryList` 事件，也不替宿主
+决定是否下载其他 link type。
+
 `PCore_NodeRelationById` 为浏览器或其他宿主提供一个稳定、只读的 DOM 关系切片：按元素 id
 查询 parent/first-child/last-child/previous-sibling/next-sibling、child count、tag/name、
 form owner，以及按 DOM 顺序查询 form-control count/index。它还提供 attribute count、name-at
@@ -100,3 +107,10 @@ collection、shadow tree、复杂 selector、layout 或 native control 状态；
 这是轻量网页运行核心，不承诺完整 HTML/CSS/DOM/Web 标准。URL 解析和资源传输策略由
 宿主决定；脚本执行由 `positron_script`/`positron_browser` 负责。`test_host.exe` 是
 回归消费者，不是 Core 的公共 API 所有者。
+
+next643 的页面样式资源选择属于 Core：`<style media>` 与
+`<link rel="stylesheet" media>` 只在当前 viewport 匹配时参与 libcss selection，
+同一文档的再次样式事务复用已缓存的外部 CSS 字节。TEST1091 通过公开的
+`PCore_StyleDocumentEx2` fetch/free callback 约定，在 320px/299px 视口验证两类条件和
+2 次 fetch/2 次 free 的缓存边界；相关 TEST21、TEST24、TEST1091 与 TEST999 设备门通过
+4/4；这不代表脚本侧动态媒体事件或其他 link-type 行为。

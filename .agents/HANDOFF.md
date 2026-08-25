@@ -16,7 +16,9 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next642，anchor `relList.supports()` → 保守的 link-type 能力探测；它沿用
+- 当前能力批次：next643，页面 stylesheet `media` 选择 → Core 将 `<style media>` 与
+  `<link rel="stylesheet" media>` 的 UTF-8 条件交给 libcss，并在同一文档重排时复用外部
+  CSS cache；它沿用 next642 的 `relList.supports()` 保守 link-type 能力探测和
   next641 的 bounded DOMTokenList 反射/枚举/变更与
   next636 的 `rel` 属性桥，不扩展公共 C ABI，也不把 `noopener` 等关系词误称为窗口安全
   策略。`<link rel="stylesheet">` 是当前唯一报告为 supported 的关系词，未实现关系词和
@@ -34,7 +36,7 @@
   named window 创建、第二个 global、窗口生命周期和跨窗口 history 尚未实现；next618 的
   TEST65 真实 SIP 候选词仍待人工确认，
   file picker/真实 label 触摸仍是独立人工边界。
-- 测试编号上限：`TEST_MAX_NUMBER 1090`。
+- 测试编号上限：`TEST_MAX_NUMBER 1091`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -694,6 +696,19 @@ next642 的 `relList.supports()` 自动门已经完成：
   `git diff --check` 均通过；本批只改变 browser bootstrap、TEST1090 和相关文档，没有
   修改公共 C ABI 或 tracked INI，也没有新增视觉、触摸、SIP、旋转或 picker 人工门。
 
+next643 的页面 stylesheet `media` 自动门已经完成：
+
+- `tmp/device-runs/20260825-155459-next643-style-media-final/` 的相关回归门为 PASS，
+  TEST21、TEST24、TEST1091、TEST999 共 4/4，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS` 且
+  `test13_route_ok=True`。
+- TEST1091 在同一文档的 320px/299px 两次样式事务中覆盖 `<style media>`、
+  `<link rel="stylesheet" media>` 的匹配选择，并确认外部 CSS cache 使总 fetch/free 保持
+  2/2；这是 Core 样式选择契约，不是脚本侧动态媒体事件或 link 下载策略。
+- `python scripts/test_c89ize.py` 和 Debug ARMV4I 正式构建、设备门均通过；候选阶段曾因
+  夹具每轮新建文档而观察到 4/4 fetch/free，修正为同一文档跨视口重排后通过，未放宽产品
+  断言；本批没有修改公共 C ABI 或 tracked INI，也没有新增视觉、触摸、SIP、旋转或 picker
+  人工门。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -848,9 +863,11 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next642 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
-纵切，不要为了补编号添加孤立 API。relList 现在提供 bounded token reflection 和保守的
-`supports()`（仅 `<link rel="stylesheet">` 返回 true），仍不提供 noopener/opener 的窗口安全处理。
+next643 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+纵切，不要为了补编号添加孤立 API。Core 现在会按 viewport 选择 `<style media>` 与
+`<link rel="stylesheet" media>`，同文档重排复用外部 CSS cache；relList 仍提供 bounded
+token reflection 和保守的 `supports()`（仅 `<link rel="stylesheet">` 返回 true），不提供
+noopener/opener 的窗口安全处理。
 TEST65 的多字符 SIP 候选词、select/file picker 模态框、
 真实 label 触摸、OEM 窗口视觉和键盘映射仍是独立人工边界；在人工证据出现前不得把它们写成
 通用产品保证。anchor href/target/rel 元数据与 target_kind、bounded `window.open()`、普通

@@ -125,7 +125,11 @@
   非 rel 元素仍为 null。该能力不实现完整 link-type processing、noopener/opener 窗口安全或
   live DOM mutation；关系词不会自动改变宿主窗口策略。TEST1090 与 1080–1089、999 的
   Debug 门已通过。
-  next632 又把 fragment-only href（以 `#` 开头）分类为同页
+  next643 只把 `<style media>` 与 `<link rel="stylesheet" media>` 的 UTF-8 条件用于当前
+  Core CSS selection；同文档重新样式时复用已缓存的外部字节，但不实现脚本侧动态
+  `MediaQueryList` 事件、完整 link 下载策略、其他 link type 或 media 相关 DOM mutation。
+  TEST1091 与 TEST999 的 Debug 门已通过。
+   next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
   Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前
   位置且不发起网络请求。next635 的 `PCore_FragmentInfoByToken()` 按 id 优先并兼容旧式
