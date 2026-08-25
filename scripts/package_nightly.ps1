@@ -201,8 +201,18 @@ try {
         if ($null -eq (Get-Command gh -ErrorAction SilentlyContinue)) {
             throw "GitHub CLI (gh) was not found. Install it and authenticate before uploading."
         }
-        $authOutput = & gh auth status 2>&1
-        if ($LASTEXITCODE -ne 0) {
+        # Windows PowerShell promotes native stderr to NativeCommandError when
+        # ErrorActionPreference is Stop. Capture it as text so the caller gets
+        # the actionable login guidance below instead of a truncated gh error.
+        $authPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $authOutput = & gh auth status 2>&1
+            $authExitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $authPreference
+        }
+        if ($authExitCode -ne 0) {
             $details = ($authOutput | ForEach-Object { $_.ToString() }) -join "`n"
             throw ("GitHub CLI authentication is not ready. Run 'gh auth login -h github.com'.`n{0}" -f $details.Trim())
         }
