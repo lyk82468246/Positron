@@ -90,6 +90,14 @@ next635 的自动门使用 `1083,1082,1081,1080,1079,1070,999`，验证产品 Co
 legacy name anchor、宿主 percent-decoding 以及 malformed/unknown token 的 no-scroll
 不变式。该门不替代真实页面视觉、触摸、SIP、旋转或系统 picker 人工验收。
 
+next636 的 anchor metadata 路径使用 `PCore_LinkInfoByIdEx()`/
+`PCore_LinkAtEx()` 读取 href、target、rel，并调用
+`PBrowser_ScriptSessionDispatchAnchorClickEx()`；`test_host` 的 navigation adapter 只记录
+并消费这些借用元数据，仍由宿主决定 URL 解析、网络、`_self`/`_blank`/named window 和
+文档生命周期。`TEST1084` 覆盖 id/坐标查询、缺失/容量边界、`HTMLElement.rel`、脚本
+programmatic click、metadata 传播和 preventDefault；定向门使用
+`1079-1084,999`，累积回归使用 `1064-1084,999`。该自动门不宣称真实多窗口创建或视觉。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

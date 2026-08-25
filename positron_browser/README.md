@@ -16,6 +16,15 @@
 document、DOM、navigation、event、input、keyboard、focus、EDIT change/post-change input、click、programmatic `HTMLElement.click()`、`HTMLElement.disabled`、控件与受限 form-level `checkValidity()`/`reportValidity()`、`willValidate`、`validity` 查询、`setCustomValidity()`、`validationMessage`、`required`、`readOnly`、`multiple`、`noValidate`、`formNoValidate`、`name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`min`/`max`/`step`、`pattern`/`minLength`/`maxLength`、submit/reset、invalid、file-input、checkbox/radio input/change 和 SELECT input/change 适配。这些表单属性通过既有 attribute callback bridge 实现；validation query 通过独立的 size-tagged callback 获取 core 的控件状态或 form 聚合结果，report-validity callback 负责同步 report/query 与 invalid-event 路由，custom validity 通过另一个 size-tagged UTF-8 get/set callback 获取/更新 application-owned message，`validationMessage` 在 custom message 为空时可使用宿主提供的固定英文 fallback；对程序化 click，推荐使用 Ex callback，让 DLL 负责 disabled 抑制、typed click、submit/reset 事件顺序和 submit 验证，再由宿主 default-action callback 执行 core/WM 副作用；file input 仍只由宿主排队系统 picker。系统 picker、文件系统权限和窗口生命周期仍由宿主 GUI 拥有。
 `test_host.exe` 是一个完整的组合示例，但不是私有 API 的唯一消费者。
 
+锚点激活有两层入口：旧的 `PBrowser_ScriptSessionDispatchAnchorClick()` 保持 href-only
+兼容；需要 target/rel 的消费者使用 size-tagged
+`PBrowser_ScriptSessionDispatchAnchorClickEx()`。当宿主通过 programmatic anchor callback
+提供 Core 的 href、target、rel 快照时，browser layer 先派发可取消 `click`，再把同一组
+借用字符串放入 `PBrowserScriptNavigationInfo` 的导航回调；`HTMLElement.target` 与
+`HTMLElement.rel` 反射原始属性。browser DLL 不创建窗口、不解析 URL、不请求网络，也不
+决定 `_blank`/named target 的窗口复用；这些副作用仍由宿主负责。Core 对应的
+`PCore_LinkInfoByIdEx()`/`PCore_LinkAtEx()` 只复制到调用者缓冲区并在容量不足时失败。
+
 native EDIT 的产品事务入口是 additive 的
 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()`。调用者提供现有的 input/change
 core propagation callback，并为每个 native EDIT 传入稳定的非零 session token 和文档几何；

@@ -108,8 +108,9 @@ JSON-compatible global、native callback、执行预算和内存限制，但本�
   的受限 action/method/enctype override 和 multipart snapshot 语义；
 - 按 DOM id 查询已布局 form-control 几何/状态，供宿主实现程序化 activation；`PCore_FormResetAt`
   只提交 reset 状态，取消事件由宿主在调用前分发；
-- 按 DOM id 查询已布局、带非空 `href` 的 `<a>` 几何和 UTF-8 URL（`PCore_LinkInfoById`），
-  供浏览器 bridge 实现程序化锚点激活；该查询只复制到调用者缓冲区，不暴露 libdom/box
+- 按 DOM id 或坐标查询已布局、带非空 `href` 的 `<a>` 几何和 UTF-8 href/target/rel
+  快照（`PCore_LinkInfoById`、`PCore_LinkInfoByIdEx`、`PCore_LinkAtEx`），供浏览器
+  bridge 实现程序化和物理锚点激活；这些查询只复制到调用者缓冲区，不暴露 libdom/box
   指针，也不发起网络或窗口副作用；
 - 按 DOM id 或已解码 token 查询已布局片段目标几何（`PCore_FragmentInfoById`、
   `PCore_FragmentInfoByToken`），供宿主执行同页 fragment 滚动；token 查询先按 literal
@@ -160,8 +161,10 @@ disabled 抑制、typed click 和取消，并以 `PBROWSER_SCRIPT_CLICK_DEFAULT_
 宿主只通过 size-tagged target/validation/default-action callback 提供控件几何、core 状态与 WM
 副作用。next631 另以独立的
 `PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks()` 接收按 DOM id 返回的已布局
-`<a href>` 几何/URL，browser layer 复用 cancelable click 与 ASSIGN navigation；
-`PCore_LinkInfoById()` 只复制非空 href，网络、窗口和文档替换仍由宿主拥有。
+`<a href>` 几何/URL，browser layer 复用 cancelable click 与 ASSIGN navigation；next636
+新增 `PBrowser_ScriptSessionDispatchAnchorClickEx()`，让 Core/browser 按 size-tagged
+契约传播 href/target/rel，并把 `HTMLElement.rel` 作为 raw 属性反射。网络、窗口和文档
+替换仍由宿主拥有，旧 anchor 入口保持兼容。
 native EDIT 的 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 另外由 DLL 持有
 beforeinput pending metadata、native commit 到 input、dirty tracking 和 blur/change 顺序；宿主
 仍提交 native value 并传播 core 事件。native SELECT 的
@@ -1102,6 +1105,21 @@ id 时再使用 libdom 的 HTML anchors collection 兼容 `<a name="...">`；只
 解码，不把 `+` 当空格；非法 escape、NUL 或未知 token 保持原视口。该批不改变 browser
 history ABI，也不把 URL 解析、target/rel/window、网络、窗口或视觉副作用迁入 Core。
 TEST1083 覆盖 id 优先、legacy name、percent-decoding 和失败不变式。
+
+#### next636 的 anchor target/rel 元数据边界
+
+next636 在不破坏旧 anchor 入口的前提下，把链接激活所需的有限元数据放入产品 ABI：
+`positron_core.dll` 的 `PCore_LinkAtEx()` 与 `PCore_LinkInfoByIdEx()` 对已布局 `<a href>`
+返回 href、target、rel 的调用者缓冲快照；缺失 target/rel 返回空字符串，任何容量不足均
+fail closed。`positron_browser.dll` 新增 size-tagged
+`PBrowser_ScriptSessionDispatchAnchorClickEx()`，programmatic anchor target callback
+和 `PBrowserScriptNavigationInfo` 的扩展字段把这组借用字符串随 click → navigation
+事务传递给宿主；bootstrap 的 `HTMLElement.rel` 反射与已有 `target` 反射保持一致。
+
+Core 不暴露 libdom/box 指针，browser layer 不创建窗口。宿主继续决定 URL 解析、网络请求、
+`_self`/`_blank`/named target 的窗口复用与生命周期、跨窗口 history、真实触摸和视觉；本批
+只保证元数据查询、传播、容量边界和 `preventDefault()` 语义。TEST1084 是产品/消费者契约
+门，TEST1079–1083 与 TEST999 是相邻回归。
 
 #### next614 的 label/control 关系边界
 

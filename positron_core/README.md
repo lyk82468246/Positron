@@ -44,11 +44,13 @@ PCore_Shutdown();
 
 典型调用者还会使用 `PCore_StyleDocumentEx2` 配合 URL resolver/fetch/free 回调，
 `PCore_FetchImageResources` 获取图片，`PCore_LinkAt` 做坐标命中，
-`PCore_LinkInfoById` 在布局后按 DOM id 读取带非空 `href` 的锚点几何和 UTF-8 URL，
-`PCore_FragmentInfoById` 在布局后按 literal UTF-8 DOM id 读取同页片段目标几何；新增的
+`PCore_LinkInfoById` 在布局后按 DOM id 读取带非空 `href` 的锚点几何和 UTF-8 URL；
+`PCore_LinkInfoByIdEx` 与 `PCore_LinkAtEx` 另外返回有界的 raw `target`/`rel` 元数据，
+缺失属性为空、容量不足 fail closed。`PCore_FragmentInfoById` 在布局后按 literal UTF-8
+DOM id 读取同页片段目标几何；新增的
 `PCore_FragmentInfoByToken` 在同一布局契约下先按 id 查找，再兼容旧式 `<a name>` 锚点。
-前者供浏览器 bridge 激活链接，片段查询供宿主滚动视口；这些 API 都不暴露 libdom/box
-指针，也不执行 percent-decoding、网络、历史或窗口副作用。
+链接查询供浏览器 bridge 激活链接，片段查询供宿主滚动视口；这些 API 都不暴露 libdom/box
+指针，也不执行 URL 解析、percent-decoding、网络、历史或窗口副作用。
 `PCore_FormActivateAt` / `PCore_InteractionSetAt` 驱动控件状态，
 `PCore_EventListenerAdd` / `PCore_EventDispatchAt` 接入同步 DOM 事件，以及
 `PCore_Node*ById` 读取或修改脚本需要的 DOM 属性、值和表单状态；

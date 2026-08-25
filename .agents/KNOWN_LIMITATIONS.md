@@ -87,6 +87,14 @@
   真实触摸仍由宿主/后续范围负责。TEST1079 已覆盖接受导航、preventDefault、容量/缺失和无
   href 边界，TEST1070 继续覆盖导航适配器拒绝；这不等于完整 anchor activation 或现代
   浏览器导航策略。
+  next636 在此路径上增加 `PCore_LinkAtEx()` 与 `PCore_LinkInfoByIdEx()`，按有界 UTF-8
+  缓冲返回 href、target、rel，并由 `PBrowser_ScriptSessionDispatchAnchorClickEx()` 将
+  元数据随 programmatic/物理受信任点击传给既有导航 adapter；`HTMLElement.rel` 也已反射。
+  缺失属性为空，容量不足和非法元数据 fail closed。该批只完成产品到宿主的元数据契约，
+  不创建新窗口，也不决定 `_blank`/named target 的窗口复用、跨窗口 history 或关闭策略；
+  URL 解析、网络、文档替换、窗口生命周期、真实触摸和视觉仍由宿主或后续范围负责。
+  TEST1084 覆盖 id/坐标查询、脚本反射、导航传递和取消，1079–1083 的 fragment/历史回归
+  继续保留。
   next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
   Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前

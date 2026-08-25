@@ -3259,10 +3259,12 @@ static int pcore_ensure_render_key(void)
     return 0;
 }
 
-/* "a" / "href", interned once for link hit-testing. */
+/* Link names, interned once for hit-testing and metadata queries. */
 static dom_string *pcore_a_name = NULL;
 static dom_string *pcore_href_name = NULL;
 static dom_string *pcore_name_attr = NULL;
+static dom_string *pcore_target_name = NULL;
+static dom_string *pcore_rel_name = NULL;
 
 static int pcore_ensure_link_strings(void)
 {
@@ -3279,6 +3281,16 @@ static int pcore_ensure_link_strings(void)
     if (pcore_name_attr == NULL &&
             dom_string_create((const uint8_t *) "name", 4, &pcore_name_attr)
                     != DOM_NO_ERR) {
+        return 1;
+    }
+    if (pcore_target_name == NULL &&
+            dom_string_create((const uint8_t *) "target", 6,
+            &pcore_target_name) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (pcore_rel_name == NULL &&
+            dom_string_create((const uint8_t *) "rel", 3,
+            &pcore_rel_name) != DOM_NO_ERR) {
         return 1;
     }
     return 0;
@@ -10677,6 +10689,96 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
     return rc;
 }
 
+/* Copy one link attribute without exposing a libdom string to the caller.
+ * Required attributes fail when absent or empty; optional attributes become
+ * an empty string. Capacities include the trailing NUL. */
+static int pcore_link_copy_attribute(dom_element *element,
+        dom_string *attribute, char *out, int cap, int required)
+{
+    dom_string *value;
+    const char *data;
+    int length;
+
+    if (out == NULL || cap <= 0 || element == NULL || attribute == NULL) {
+        return 1;
+    }
+    out[0] = '\0';
+    value = NULL;
+    if (dom_element_get_attribute(element, attribute, &value) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (value == NULL) {
+        return required ? 1 : 0;
+    }
+    data = dom_string_data(value);
+    length = (int) dom_string_byte_length(value);
+    if (data == NULL || length < 0 || length >= cap) {
+        dom_string_unref(value);
+        return 1;
+    }
+    if (length > 0) {
+        memcpy(out, data, (size_t) length);
+    }
+    out[length] = '\0';
+    dom_string_unref(value);
+    return required && length == 0 ? 1 : 0;
+}
+
+PCORE_API int PCore_LinkAtEx(HANDLE hDoc, int x, int y,
+        char *out_href, int href_cap, char *out_target, int target_cap,
+        char *out_rel, int rel_cap)
+{
+    dom_document *doc;
+    pcore_render *st;
+    struct box *hit;
+    struct box *b;
+    dom_string *name;
+    int is_anchor;
+
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (out_href != NULL && href_cap > 0) {
+        out_href[0] = '\0';
+    }
+    if (out_target != NULL && target_cap > 0) {
+        out_target[0] = '\0';
+    }
+    if (out_rel != NULL && rel_cap > 0) {
+        out_rel[0] = '\0';
+    }
+    if (st == NULL || out_href == NULL || href_cap <= 0 ||
+            out_target == NULL || target_cap <= 0 || out_rel == NULL ||
+            rel_cap <= 0 || pcore_ensure_link_strings() != 0) {
+        return 1;
+    }
+    hit = pcore_hit(st->root_box, x, y);
+    if (hit == NULL) {
+        return 1;
+    }
+    for (b = hit; b != NULL; b = b->parent) {
+        name = NULL;
+        is_anchor = 0;
+        if (b->node != NULL &&
+                dom_node_get_node_name(b->node, &name) == DOM_NO_ERR &&
+                name != NULL) {
+            is_anchor = dom_string_caseless_isequal(name, pcore_a_name);
+            dom_string_unref(name);
+        }
+        if (is_anchor) {
+            if (pcore_link_copy_attribute((dom_element *) b->node,
+                    pcore_href_name, out_href, href_cap, 1) != 0 ||
+                    pcore_link_copy_attribute((dom_element *) b->node,
+                    pcore_target_name, out_target, target_cap, 0) != 0 ||
+                    pcore_link_copy_attribute((dom_element *) b->node,
+                    pcore_rel_name, out_rel, rel_cap, 0) != 0) {
+                return 1;
+            }
+            return 0;
+        }
+    }
+    return 1;
+}
+
 PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
         int *x, int *y, int *w, int *h, char *out_href, int cap)
 {
@@ -10767,6 +10869,46 @@ PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
     out_href[href_len] = '\0';
     dom_string_unref(href);
     dom_node_unref((dom_node *) element);
+    return 0;
+}
+
+PCORE_API int PCore_LinkInfoByIdEx(HANDLE hDoc, const char *element_id,
+        int *x, int *y, int *w, int *h, char *out_href, int href_cap,
+        char *out_target, int target_cap, char *out_rel, int rel_cap)
+{
+    int bytes;
+    int status;
+
+    if (out_target != NULL && target_cap > 0) {
+        out_target[0] = '\0';
+    }
+    if (out_rel != NULL && rel_cap > 0) {
+        out_rel[0] = '\0';
+    }
+    if (out_href == NULL || href_cap <= 0 || out_target == NULL ||
+            target_cap <= 0 || out_rel == NULL || rel_cap <= 0) {
+        return 1;
+    }
+    if (PCore_LinkInfoById(hDoc, element_id, x, y, w, h, out_href,
+            href_cap) != 0) {
+        return 1;
+    }
+    bytes = 0;
+    status = PCore_NodeAttributeById(hDoc, element_id, "target",
+            out_target, target_cap, &bytes);
+    if (status == 2) {
+        out_target[0] = '\0';
+    } else if (status != 0 || bytes < 0 || bytes >= target_cap) {
+        return 1;
+    }
+    bytes = 0;
+    status = PCore_NodeAttributeById(hDoc, element_id, "rel",
+            out_rel, rel_cap, &bytes);
+    if (status == 2) {
+        out_rel[0] = '\0';
+    } else if (status != 0 || bytes < 0 || bytes >= rel_cap) {
+        return 1;
+    }
     return 0;
 }
 

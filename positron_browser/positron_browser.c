@@ -896,6 +896,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('formAction','formaction');"
         "PDefineString('formMethod','formmethod');"
         "PDefineString('formEnctype','formenctype');"
+        "PDefineString('rel','rel');"
         "PDefineString('min','min');"
         "PDefineString('max','max');"
         "PDefineString('step','step');"
@@ -7635,6 +7636,24 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClick(
         HANDLE hSession, const PBrowserScriptAnchorClickInfo *info,
         int *out_navigated)
 {
+    PBrowserScriptAnchorClickInfoEx extended;
+
+    if (info == NULL || info->size < sizeof(PBrowserScriptAnchorClickInfo)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memset(&extended, 0, sizeof(extended));
+    extended.size = sizeof(extended);
+    extended.x = info->x;
+    extended.y = info->y;
+    extended.href = info->href;
+    return PBrowser_ScriptSessionDispatchAnchorClickEx(hSession, &extended,
+            out_navigated);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClickEx(
+        HANDLE hSession, const PBrowserScriptAnchorClickInfoEx *info,
+        int *out_navigated)
+{
     p_browser_script_session *session;
     PBrowserScriptClickEventInfo click_info;
     PBrowserScriptNavigationInfo navigation_info;
@@ -7649,9 +7668,13 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClick(
     session = p_script_session(hSession);
     if (!p_script_session_valid(session) || session->click == NULL ||
             session->navigation == NULL || info == NULL ||
-            info->size < sizeof(PBrowserScriptAnchorClickInfo) ||
+            info->size < sizeof(PBrowserScriptAnchorClickInfoEx) ||
             info->href == NULL || info->href[0] == '\0' ||
-            strlen(info->href) >= PBROWSER_HISTORY_URL_MAX) {
+            strlen(info->href) >= PBROWSER_HISTORY_URL_MAX ||
+            (info->target != NULL &&
+            strlen(info->target) >= PBROWSER_SCRIPT_ANCHOR_TARGET_MAX) ||
+            (info->rel != NULL &&
+            strlen(info->rel) >= PBROWSER_SCRIPT_ANCHOR_REL_MAX)) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
     memset(&click_info, 0, sizeof(click_info));
@@ -7681,6 +7704,8 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClick(
     navigation_info.url = info->href;
     navigation_info.state_json = NULL;
     navigation_info.delta = 0;
+    navigation_info.target = info->target;
+    navigation_info.rel = info->rel;
     out_value = 0;
     rc = session->navigation->callbacks.navigate(
             session->navigation->callbacks.pw, &navigation_info,
@@ -7869,29 +7894,51 @@ static int p_browser_script_dispatch_programmatic_click_ex(
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_SELECT)) {
         if (session->programmatic_anchor != NULL) {
             PBrowserScriptProgrammaticAnchorTargetInfo anchor_target;
-            PBrowserScriptAnchorClickInfo anchor_info;
+            PBrowserScriptAnchorClickInfoEx anchor_info;
             char href[PBROWSER_HISTORY_URL_MAX];
+            char target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
+            char rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
             int navigated;
 
             memset(href, 0, sizeof(href));
+            memset(target, 0, sizeof(target));
+            memset(rel, 0, sizeof(rel));
             memset(&anchor_target, 0, sizeof(anchor_target));
             anchor_target.size = sizeof(anchor_target);
             anchor_target.href = href;
             anchor_target.href_capacity = sizeof(href);
+            anchor_target.target = target;
+            anchor_target.target_capacity = sizeof(target);
+            anchor_target.rel = rel;
+            anchor_target.rel_capacity = sizeof(rel);
             rc = session->programmatic_anchor->callbacks.get_target(
                     session->programmatic_anchor->callbacks.pw,
                     info->element_id, &anchor_target);
-            if (rc < 0 || anchor_target.size < sizeof(anchor_target)) {
+            if (rc < 0 || anchor_target.size <
+                    offsetof(PBrowserScriptProgrammaticAnchorTargetInfo,
+                    target)) {
                 return PSCRIPT_ERROR_NATIVE;
             }
+            /* A legacy callback may report only the v1 size. It cannot
+             * provide target/rel, so retain the old empty-metadata path. */
+            if (anchor_target.size < sizeof(anchor_target)) {
+                target[0] = '\0';
+                rel[0] = '\0';
+            }
+            anchor_target.target = target;
+            anchor_target.target_capacity = sizeof(target);
+            anchor_target.rel = rel;
+            anchor_target.rel_capacity = sizeof(rel);
             if (anchor_target.found && href[0] != '\0') {
                 memset(&anchor_info, 0, sizeof(anchor_info));
                 anchor_info.size = sizeof(anchor_info);
                 anchor_info.x = anchor_target.x;
                 anchor_info.y = anchor_target.y;
                 anchor_info.href = href;
+                anchor_info.target = target;
+                anchor_info.rel = rel;
                 navigated = 0;
-                return PBrowser_ScriptSessionDispatchAnchorClick(
+                return PBrowser_ScriptSessionDispatchAnchorClickEx(
                         (HANDLE) session, &anchor_info, &navigated);
             }
         }

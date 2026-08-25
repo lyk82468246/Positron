@@ -16,6 +16,7 @@
 #define POSITRON_BROWSER_H
 
 #include <windows.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +41,8 @@ extern "C" {
 #define PBROWSER_HISTORY_METHOD_GET 1
 
 #define PBROWSER_SCRIPT_MAX_FUNCTIONS 19
+#define PBROWSER_SCRIPT_ANCHOR_TARGET_MAX 64
+#define PBROWSER_SCRIPT_ANCHOR_REL_MAX 256
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -761,6 +764,19 @@ typedef struct PBrowserScriptAnchorClickInfo {
     const char *href;
 } PBrowserScriptAnchorClickInfo;
 
+/* Size-tagged anchor activation extension. target and rel are borrowed
+ * UTF-8 attribute values for this synchronous call; NULL means the
+ * attribute was absent. The old PBrowserScriptAnchorClickInfo entry point
+ * remains available and behaves as target=""/rel="". */
+typedef struct PBrowserScriptAnchorClickInfoEx {
+    unsigned long size;
+    int x;
+    int y;
+    const char *href;
+    const char *target;
+    const char *rel;
+} PBrowserScriptAnchorClickInfoEx;
+
 /* Typed host adapter for a script-visible HTMLElement.click() invocation.
  * The browser layer owns the DOM method and its synchronous dispatch entry;
  * the host receives the UTF-8 DOM id and reuses the typed click/input/change
@@ -846,10 +862,11 @@ typedef struct PBrowserScriptProgrammaticClickCallbacksEx {
 /* Additive adapter for programmatic anchor activation. The existing Ex
  * programmatic-click contract continues to own form controls; this separate
  * size-tagged callback lets a host resolve an <a href> by DOM id without
- * changing that ABI. The browser layer copies the href into the supplied
- * UTF-8 buffer only for the synchronous callback, then reuses the trusted
- * anchor click/navigation transaction. A zero return with found=0 lets the
- * existing generic click path handle non-anchor elements. */
+ * changing that ABI. The browser layer copies href and, when the extended
+ * fields are available, target/rel into the supplied UTF-8 buffers only for
+ * the synchronous callback, then reuses the trusted anchor
+ * click/navigation transaction. A zero return with found=0 lets the existing
+ * generic click path handle non-anchor elements. */
 typedef struct PBrowserScriptProgrammaticAnchorTargetInfo {
     unsigned long size;
     int found;
@@ -859,6 +876,10 @@ typedef struct PBrowserScriptProgrammaticAnchorTargetInfo {
     int height;
     char *href;
     int href_capacity;
+    char *target;
+    int target_capacity;
+    char *rel;
+    int rel_capacity;
 } PBrowserScriptProgrammaticAnchorTargetInfo;
 typedef int (*PBrowserScriptGetProgrammaticAnchorTargetFn)(void *pw,
         const char *element_id,
@@ -934,15 +955,19 @@ typedef struct PBrowserScriptInvalidCallbacks {
 
 /* Typed navigation request passed to the host adapter. url and state_json
  * are borrowed for the duration of the callback; either may be NULL when
- * the operation does not use it. state_json is compact UTF-8 JSON. For a
- * successful PUSH_STATE callback, out_value must receive the exposed
- * history length; other operations ignore it. */
+ * the operation does not use it. state_json is compact UTF-8 JSON. target
+ * and rel are borrowed anchor metadata and are NULL for non-anchor
+ * operations. For a successful PUSH_STATE callback, out_value must receive
+ * the exposed history length; other operations ignore it. */
 typedef struct PBrowserScriptNavigationInfo {
     unsigned long size;
     unsigned int kind;
     const char *url;
     const char *state_json;
     int delta;
+    /* Optional anchor metadata. Non-anchor navigation passes NULL. */
+    const char *target;
+    const char *rel;
 } PBrowserScriptNavigationInfo;
 typedef int (*PBrowserScriptNavigateFn)(void *pw,
         const PBrowserScriptNavigationInfo *info, int *out_value);
@@ -1281,6 +1306,9 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchClickEvent(HANDLE hSession,
         const PBrowserScriptClickEventInfo *info, int *out_default_allowed);
 PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClick(
         HANDLE hSession, const PBrowserScriptAnchorClickInfo *info,
+        int *out_navigated);
+PBROWSER_API int PBrowser_ScriptSessionDispatchAnchorClickEx(
+        HANDLE hSession, const PBrowserScriptAnchorClickInfoEx *info,
         int *out_navigated);
 PBROWSER_API int PBrowser_ScriptSessionRegisterProgrammaticClickCallbacks(
         HANDLE hSession,

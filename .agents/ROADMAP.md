@@ -417,7 +417,25 @@ TEST1083 与 TEST1082、1081、1080、1079、1070、999 的窄门通过 7/7，�
 `TESTBENCH PASS`；C89 和 Debug ARMV4I 构建通过。Release、audit、文档审计和最终 Git 核对
 仍是本批交付前置条件；真实页面视觉、触摸、SIP、旋转和 picker 仍不由该自动门替代。
 
-### 30. 建立真实页面驱动的兼容队列
+### 30. next636：anchor target/rel 元数据纵切（已完成）
+
+next636 把真实链接激活仍缺失的 target/rel 元数据通路补齐，但不越界实现窗口管理：
+`positron_core.dll` 新增 `PCore_LinkAtEx()` 与 `PCore_LinkInfoByIdEx()`，在保留旧入口的
+同时按有界 UTF-8 缓冲返回 href、target、rel；缺失 target/rel 返回空字符串，容量不足
+fail closed。`positron_browser.dll` 新增 size-tagged
+`PBrowser_ScriptSessionDispatchAnchorClickEx()`，并让 programmatic anchor callback 与
+navigation info 传递这两个借用元数据；bootstrap 增加 `HTMLElement.rel` 反射。宿主只消费
+稳定 ABI，仍负责 URL 解析、网络、窗口替换和 named/new-window 策略。
+
+TEST1084 覆盖 Core 按 id/坐标查询、缺失属性、容量边界、`a.target/a.rel`、programmatic
+click、导航元数据和 preventDefault；TEST1079–1083、999 作为相邻回归。Debug 窄设备门
+`tmp/device-runs/20260825-115309-next636-anchor-target-rel/` 通过 7/7，累积门
+`tmp/device-runs/20260825-115405-next636-anchor-target-rel-regression/` 通过 22/22，均为
+唯一 `TESTBENCH PASS` 且无 ERROR/FAIL；C89、Debug/Release ARMV4I、audit 和文档审计均
+通过。本批没有新增视觉或人工门；真实 `_blank`/named window 创建、跨窗口生命周期、
+target policy 和真实页面视觉仍是后续产品/宿主边界。
+
+### 31. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -428,7 +446,7 @@ TEST1083 与 TEST1082、1081、1080、1079、1070、999 的窄门通过 7/7，�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 31. 安排新的全范围检查点
+### 32. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

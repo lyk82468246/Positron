@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1083
+#define TEST_MAX_NUMBER 1084
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6053,6 +6053,8 @@ struct pcore_browser_script_bridge {
     int navigation_kind;
     int navigation_delta;
     char *navigation_url;
+    char navigation_target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
+    char navigation_rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
     char *history_url;
     char *history_entry_url;
     char *history_state_json;
@@ -7117,7 +7119,7 @@ static int pcore_browser_script_click_dispatch(void *pw,
         const PBrowserScriptClickEventInfo *info,
         int *out_default_allowed);
 static int pcore_browser_script_dispatch_anchor_click_at(int x, int y,
-        const char *href);
+        const char *href, const char *target, const char *rel);
 static int pcore_browser_script_programmatic_click_dispatch(void *pw,
         const PBrowserScriptProgrammaticClickInfo *info);
 static char *pcore_browser_script_copy_string(const char *value);
@@ -8109,7 +8111,9 @@ static int pcore_browser_script_programmatic_anchor_target(void *pw,
             element_id == NULL || element_id[0] == '\0' ||
             out_info == NULL ||
             out_info->size < sizeof(PBrowserScriptProgrammaticAnchorTargetInfo) ||
-            out_info->href == NULL || out_info->href_capacity <= 0) {
+            out_info->href == NULL || out_info->href_capacity <= 0 ||
+            out_info->target == NULL || out_info->target_capacity <= 0 ||
+            out_info->rel == NULL || out_info->rel_capacity <= 0) {
         return -1;
     }
     out_info->found = 0;
@@ -8118,10 +8122,14 @@ static int pcore_browser_script_programmatic_anchor_target(void *pw,
     out_info->width = 0;
     out_info->height = 0;
     out_info->href[0] = '\0';
-    if (PCore_LinkInfoById(bridge->document, element_id,
+    out_info->target[0] = '\0';
+    out_info->rel[0] = '\0';
+    if (PCore_LinkInfoByIdEx(bridge->document, element_id,
             &out_info->x, &out_info->y, &out_info->width,
             &out_info->height, out_info->href,
-            out_info->href_capacity) != 0) {
+            out_info->href_capacity, out_info->target,
+            out_info->target_capacity, out_info->rel,
+            out_info->rel_capacity) != 0) {
         return 0;
     }
     out_info->found = 1;
@@ -8811,10 +8819,10 @@ static int pcore_browser_script_dispatch_click_at(int x, int y)
  * only hit-testing, network I/O and window replacement. Without scripting,
  * preserve the direct Core click fallback. */
 static int pcore_browser_script_dispatch_anchor_click_at(int x, int y,
-        const char *href)
+        const char *href, const char *target, const char *rel)
 {
     pcore_browser_script_bridge *bridge;
-    PBrowserScriptAnchorClickInfo info;
+    PBrowserScriptAnchorClickInfoEx info;
     int navigated;
     int default_allowed;
     int rc;
@@ -8831,8 +8839,10 @@ static int pcore_browser_script_dispatch_anchor_click_at(int x, int y,
         info.x = x;
         info.y = y;
         info.href = href;
+        info.target = target;
+        info.rel = rel;
         navigated = 0;
-        rc = PBrowser_ScriptSessionDispatchAnchorClick(
+        rc = PBrowser_ScriptSessionDispatchAnchorClickEx(
                 bridge->session, &info, &navigated);
         if (rc != PSCRIPT_OK) {
             return 0;
@@ -8865,7 +8875,7 @@ static int test1070_browser_anchor_host_route(
     g_browser_script_session.session = session;
     g_browser_script_session.bridge = &bridge_storage;
     rc = pcore_browser_script_dispatch_anchor_click_at(
-            44, 55, "/host-link");
+            44, 55, "/host-link", "_self", "");
     ok = rc == 1 && state->click_calls == 5 &&
             state->navigation_calls == 4 && state->x == 44 &&
             state->y == 55 && strcmp(state->href, "/host-link") == 0;
@@ -11223,6 +11233,8 @@ static int pcore_browser_script_navigation(void *pw,
         return -1;
     }
     *out_value = 0;
+    bridge->navigation_target[0] = '\0';
+    bridge->navigation_rel[0] = '\0';
     url = info->url;
     url_copy = NULL;
     target_url_copy = NULL;
@@ -11366,6 +11378,12 @@ static int pcore_browser_script_navigation(void *pw,
             strlen(url) >= PCORE_SCRIPT_NAVIGATION_URL_MAX) {
         return 0;
     }
+    if ((info->target != NULL &&
+            strlen(info->target) >= PBROWSER_SCRIPT_ANCHOR_TARGET_MAX) ||
+            (info->rel != NULL &&
+            strlen(info->rel) >= PBROWSER_SCRIPT_ANCHOR_REL_MAX)) {
+        return 0;
+    }
     normalized_fragment_url[0] = '\0';
     if (info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT ||
             info->kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE) {
@@ -11401,6 +11419,14 @@ static int pcore_browser_script_navigation(void *pw,
         bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE;
     }
     bridge->navigation_delta = 0;
+    if (info->target != NULL) {
+        memcpy(bridge->navigation_target, info->target,
+                strlen(info->target) + 1);
+    }
+    if (info->rel != NULL) {
+        memcpy(bridge->navigation_rel, info->rel,
+                strlen(info->rel) + 1);
+    }
     if (bridge->hwnd != NULL) {
         (void) PostMessage(bridge->hwnd, WM_PCORE_SCRIPT_NAVIGATE,
                 0, 0);
@@ -11556,6 +11582,8 @@ static void pcore_browser_script_bridge_destroy(
     bridge->events = NULL;
     free(bridge->navigation_url);
     bridge->navigation_url = NULL;
+    bridge->navigation_target[0] = '\0';
+    bridge->navigation_rel[0] = '\0';
     free(bridge->history_url);
     bridge->history_url = NULL;
     free(bridge->history_entry_url);
@@ -11902,6 +11930,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
     bridge->navigation_delta = 0;
     bridge->navigation_url = NULL;
+    bridge->navigation_target[0] = '\0';
+    bridge->navigation_rel[0] = '\0';
     bridge->history_url = pcore_browser_script_copy_string(
             (document_url != NULL) ? document_url : "");
     bridge->history_entry_url = pcore_browser_script_copy_string(
@@ -15908,6 +15938,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int button_disabled;
         int button_validation_valid;
         char href[1024];
+        char target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
+        char rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
 
         pcore_toggle_focus_clear();
         pcore_button_focus_clear();
@@ -15958,14 +15990,17 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         link_found = 0;
         href[0] = '\0';
+        target[0] = '\0';
+        rel[0] = '\0';
         if (g_render_doc != NULL &&
-                PCore_LinkAt(g_render_doc, cx, cy + g_scroll_y,
-                             href, sizeof(href))) {
+                PCore_LinkAtEx(g_render_doc, cx, cy + g_scroll_y,
+                             href, sizeof(href), target, sizeof(target),
+                             rel, sizeof(rel)) == 0) {
             link_found = 1;
         }
         if (link_found && pcore_native_script_active()) {
             (void) pcore_browser_script_dispatch_anchor_click_at(
-                    cx, cy + g_scroll_y, href);
+                    cx, cy + g_scroll_y, href, target, rel);
             return 0;
         }
         if (button_found && pcore_native_script_active()) {
@@ -18455,6 +18490,192 @@ static BOOL test1083_browser_fragment_token_resolution(void)
             "Fragment scrolling decodes bounded percent escapes, resolves"
             " legacy <a name> anchors after id lookup, and leaves the"
             " viewport unchanged for malformed or unknown targets.");
+    return TRUE;
+}
+
+/* TEST 1084 - anchor target/rel metadata crosses Core and browser layers. */
+static BOOL test1084_browser_anchor_metadata_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><a id='new' href='/new' target='_blank' "
+        "rel='noopener noreferrer'>New</a>"
+        "<a id='same' href='#frag' target='_self' rel='bookmark'>Same</a>"
+        "<a id='plain' href='/plain'>Plain</a>"
+        "<div id='frag'>Fragment</div><div id='result'></div>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:8px;font:14px sans-serif}"
+        "a{display:block;height:24px;margin:4px}"
+        "#frag{height:24px}#result{height:20px}";
+    static const char SETUP[] =
+        "var n=document.getElementById('new');window.clicks=0;"
+        "n.addEventListener('click',function(){window.clicks++;});"
+        "document.getElementById('result').textContent=n.target+'|'+n.rel;";
+    static const char ACTIVATE[] =
+        "document.getElementById('new').click();"
+        "document.getElementById('result').textContent=String(window.clicks);";
+    static const char CANCEL[] =
+        "var s=document.getElementById('same');"
+        "s.addEventListener('click',function(e){e.preventDefault();});s.click();";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[512];
+    char result[256];
+    char href[256];
+    char target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
+    char rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
+    int executed;
+    int ignored;
+    int result_bytes;
+    int x;
+    int y;
+    int width;
+    int height;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(error, 0, sizeof(error));
+    memset(result, 0, sizeof(result));
+    memset(href, 0, sizeof(href));
+    memset(target, 0, sizeof(target));
+    memset(rel, 0, sizeof(rel));
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    x = 0;
+    y = 0;
+    width = 0;
+    height = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "https://example.com/", NULL, NULL, &executed, &ignored,
+            error, sizeof(error), &runtime, &bridge) != 0 ||
+            executed != 1 || ignored != 0 || runtime == NULL ||
+            bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://example.com/anchor-metadata.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 180) != 0 ||
+                PCore_LinkInfoByIdEx(document, "new", &x, &y, &width,
+                &height, href, sizeof(href), target, sizeof(target),
+                rel, sizeof(rel)) != 0 || strcmp(href, "/new") != 0 ||
+                strcmp(target, "_blank") != 0 ||
+                strcmp(rel, "noopener noreferrer") != 0 || width <= 0 ||
+                height <= 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        memset(href, 0, sizeof(href));
+        memset(target, 0, sizeof(target));
+        memset(rel, 0, sizeof(rel));
+        if (PCore_LinkAtEx(document, x + width / 2, y + height / 2,
+                href, sizeof(href), target, sizeof(target), rel,
+                sizeof(rel)) != 0 || strcmp(href, "/new") != 0 ||
+                strcmp(target, "_blank") != 0 ||
+                strcmp(rel, "noopener noreferrer") != 0 ||
+                PCore_LinkInfoByIdEx(document, "plain", NULL, NULL, NULL,
+                NULL, href, sizeof(href), target, sizeof(target), rel,
+                sizeof(rel)) != 0 || target[0] != '\0' || rel[0] != '\0' ||
+                PCore_LinkInfoByIdEx(document, "new", NULL, NULL, NULL,
+                NULL, href, sizeof(href), target, 3, rel, sizeof(rel)) == 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(SETUP, -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "_blank|noopener noreferrer") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (pcore_browser_script_session_evaluate(ACTIVATE, -1,
+                error, sizeof(error)) != 0 ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_ASSIGN ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                strcmp(g_browser_script_session.bridge->navigation_url,
+                "/new") != 0 ||
+                strcmp(g_browser_script_session.bridge->navigation_target,
+                "_blank") != 0 ||
+                strcmp(g_browser_script_session.bridge->navigation_rel,
+                "noopener noreferrer") != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, "1") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        free(g_browser_script_session.bridge->navigation_url);
+        g_browser_script_session.bridge->navigation_url = NULL;
+        g_browser_script_session.bridge->navigation_kind =
+                PCORE_SCRIPT_NAVIGATION_NONE;
+        g_browser_script_session.bridge->navigation_target[0] = '\0';
+        g_browser_script_session.bridge->navigation_rel[0] = '\0';
+        if (pcore_browser_script_session_evaluate(CANCEL, -1,
+                error, sizeof(error)) != 0 ||
+                g_browser_script_session.bridge->navigation_url != NULL ||
+                g_browser_script_session.bridge->navigation_target[0] !=
+                '\0' || g_browser_script_session.bridge->navigation_rel[0] !=
+                '\0') {
+            ok = 0;
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s href=%s target=%s rel=%s geometry=%d,%d,%d,%d",
+                    result_bytes, result, href, target, rel,
+                    x, y, width, height);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1084 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1084 OK",
+            "Core link hit-tests and id lookups expose bounded href/target/rel"
+            " metadata; browser-owned programmatic anchor activation preserves"
+            " it through click cancellation and host navigation callbacks.");
     return TRUE;
 }
 
@@ -76283,6 +76504,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1081: ok = test1081_browser_fragment_history_scroll(); break;
         case 1082: ok = test1082_browser_cross_document_history_scroll(); break;
         case 1083: ok = test1083_browser_fragment_token_resolution(); break;
+        case 1084: ok = test1084_browser_anchor_metadata_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -280,8 +280,15 @@ back/forward/go 重新加载目标文档后恢复该条目偏移；新条目从�
 next635 收敛了 fragment 解析的一个真实兼容缺口：`positron_core.dll` 新增
 `PCore_FragmentInfoByToken()`，先按 UTF-8 `id` 查找，再兼容 HTML 旧式 `<a name>` 锚点；
 宿主在调用前只做有界的 `%HH` 字节解码，保留 `+` 为字面字符，非法编码或未知目标不改变
-视口。该 API 仍不负责 URL、history、网络或窗口副作用，`target/rel/window` 和真实视觉
-仍是独立边界。`TEST1083` 与 1082–1070、999 的 Debug 设备门已通过 7/7。
+视口。该 API 仍不负责 URL、history、网络或窗口副作用。`TEST1083` 与 1082–1070、999
+的 Debug 设备门已通过 7/7。
+
+next636 补齐了锚点元数据的产品通路：`positron_core.dll` 的 `PCore_LinkInfoByIdEx()`/
+`PCore_LinkAtEx()` 返回有界 href/target/rel 快照，`positron_browser.dll` 的
+`PBrowser_ScriptSessionDispatchAnchorClickEx()` 将它们随受信任 click/navigation 传给宿主，
+并提供 `HTMLElement.rel` 反射；旧 href-only 入口保持兼容。`test_host` 仍负责 URL 解析、
+网络、`_blank`/named window 的创建与生命周期，不能把元数据契约误认为完整多窗口支持。
+`TEST1084` 与 1079–1083、999 的窄门通过 7/7，相关累计回归通过 22/22。
 
 ## 快速开始
 

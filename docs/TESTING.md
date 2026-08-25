@@ -744,6 +744,26 @@ anchor、有效 percent escape 和 malformed/unknown token 的 no-scroll 不变�
 和 anchor 回归仍在同一窄门内。Debug ARMV4I 构建、C89 和设备门均通过；提交前仍需完成
 Release 构建、仓库/文档审计和最终工作区核对。
 
+### next636 anchor target/rel 元数据自动门
+
+next636 增加 Core 的 href/target/rel 有界查询，以及 browser-owned anchor click 的
+size-tagged metadata 传播；旧 href-only 入口保持兼容。`HTMLElement.rel` 只反射 raw
+attribute，导航 URL、网络和窗口策略仍由宿主拥有；本批不实现真实 `_blank`/named window
+创建或窗口视觉。
+
+```bat
+scripts\device_gate.bat -Candidate next636-anchor-target-rel ^
+  -EnableJavaScript ^
+  -TestSelection "1079-1084,999"
+```
+
+`tmp/device-runs/20260825-115309-next636-anchor-target-rel/` 已通过 7/7；相关回归
+`tmp/device-runs/20260825-115405-next636-anchor-target-rel-regression/` 已通过 22/22，均为
+唯一 `TESTBENCH PASS` 且无 `ERROR`/`FAIL`。TEST1084 覆盖 Core id/坐标查询、缺失/容量边界、
+脚本属性反射、programmatic click 的 metadata、导航回调和 preventDefault；C89、Debug/Release
+ARMV4I、仓库/文档审计和 diff 检查均通过。本批没有新增必须立即人工复核的视觉、触摸、SIP、
+旋转或 picker 风险。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
@@ -2528,6 +2548,18 @@ staging 的 `tests=` 值，不修改 tracked ini：
 scripts\device_gate.bat -Candidate nextNNN-debug ^
   -TestSelection "190-194,999"
 ```
+
+例如 next636 的 anchor target/rel 元数据纵切使用独立 staging 覆盖，不改 tracked INI：
+
+```bat
+scripts\device_gate.bat -Candidate next636-anchor-target-rel ^
+  -EnableJavaScript -TestSelection "1079-1084,999"
+```
+
+该门验证 Core 的 href/target/rel 查询、`HTMLElement.rel`、programmatic anchor 的
+导航元数据与取消，以及 TEST999 退出提示音；通过标准是唯一 `TESTBENCH PASS`、无
+`ERROR`/`FAIL`。`_blank`/named window 的实际窗口创建和视觉仍需宿主/人工范围，不由该
+自动契约宣称覆盖。
 
 `-PlatformName`/`-DeviceName` 不用于 RAPI gate；更换设备只需先在 GUI 中切换 WMDC 当前连接。
 RAPI 1 没有安全的远端等待/终止接口，因此 gate 以完整 `TESTBENCH PASS/FAIL` 日志作为完成

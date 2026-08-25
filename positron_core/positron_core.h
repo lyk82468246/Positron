@@ -662,6 +662,18 @@ PCORE_API void PCore_SetDeviceViewport(int device_width, int device_height,
 PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
                            char *out_href, int cap);
 
+/* Hit-test a laid-out link and copy its href, target and rel attributes into
+ * caller-owned UTF-8 buffers. href is required and must be non-empty;
+ * target/rel are optional HTML attributes and are returned as empty strings
+ * when absent. All three buffers must be non-NULL and have positive
+ * capacities; the function fails closed when any value does not fit. The
+ * returned metadata is a synchronous snapshot for the host's click
+ * transaction and does not transfer DOM ownership. */
+PCORE_API int PCore_LinkAtEx(HANDLE hDoc, int x, int y,
+                             char *out_href, int href_cap,
+                             char *out_target, int target_cap,
+                             char *out_rel, int rel_cap);
+
 /* Resolve a laid-out <a href> element by its UTF-8 DOM id. Geometry is in
  * document CSS px and the href is copied into the caller's UTF-8 buffer.
  * Returns 0 for a matching anchor with a non-empty href; returns non-zero
@@ -671,6 +683,17 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
 PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
                                  int *x, int *y, int *w, int *h,
                                  char *out_href, int cap);
+
+/* Resolve a laid-out <a href> element by id and return its bounded link
+ * metadata. Geometry and href follow PCore_LinkInfoById(); target and rel
+ * are raw UTF-8 attribute values, empty when absent. This additive query is
+ * intended for browser-owned anchor activation and leaves URL resolution,
+ * window policy and network side effects to the host. */
+PCORE_API int PCore_LinkInfoByIdEx(HANDLE hDoc, const char *element_id,
+                                   int *x, int *y, int *w, int *h,
+                                   char *out_href, int href_cap,
+                                   char *out_target, int target_cap,
+                                   char *out_rel, int rel_cap);
 
 /* Resolve a same-document fragment target by its literal UTF-8 DOM id.
  * Geometry is returned in document CSS px after layout.  The leading '#'
