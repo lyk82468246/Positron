@@ -625,7 +625,7 @@ properties、节点创建、通用 mutation 或新的 core ABI。
 
 `test_host.exe` 只提供 hyperlink fixture、adapter 和 `TEST762–781` 自动断言；定向、兼容和
 缩减回归门分别为 21/21、142/142、203/203。本批未跑旧的 341 项全回归，但保留核心事件、
-TEST540 内存边界、TEST549 和 next642–781 风险区间；不涉及视觉、触摸、SIP、picker、旋转或
+TEST540 内存边界、TEST549 和 TEST642–781 风险区间；不涉及视觉、触摸、SIP、picker、旋转或
 网络失败人工门。browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆仍为
 512 KiB。
 
@@ -1189,6 +1189,19 @@ attribute bridge 写回 `rel`，非法空/含空白 token 在 bootstrap 层抛�
 导航副作用；宿主仍须自行决定关系词如何影响网络、窗口和安全策略。其 token 集合只在当前
 script session 的 bounded wrapper 中实时读取，不等于通用 live DOM、节点创建或完整 HTML
 接口继承树。TEST1089 与 1080–1088、999 的设备门通过 11/11。
+
+#### next642 的 relList.supports 边界
+
+next642 在同一 `PRelList` wrapper 上增加 `supports(token)`，让页面能够查询 Positron 当前
+确实实现的 link processing，而不是把“认识关系词”误报成完整支持。`<link>` wrapper 对
+`stylesheet`（ASCII 大小写不敏感）返回 true，因为 `positron_core.dll` 已处理
+`<link rel="stylesheet" href>` 的样式表发现、解析和资源回调；其他 link type 返回 false。
+`<a>`、`<area>` 和 `<form>` 不宣称任何关系词支持，特别是 `noopener`、`noreferrer` 和
+`opener` 仍不会改变窗口或安全策略。空 token 或含空白 token 在 bootstrap 层抛出
+`SyntaxError`，方法不新增公共 C ABI，也不拥有网络、窗口或资源生命周期。
+
+`test_host.exe` 只提供 TEST1090 fixture，验证 link/stylesheet 的正例、大小写、未实现关系词、
+其他元素、非 rel 元素和非法 token；next642 的 `1080-1090,999` 设备门通过 12/12。
 
 #### next614 的 label/control 关系边界
 

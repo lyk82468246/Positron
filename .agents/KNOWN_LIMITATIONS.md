@@ -120,8 +120,11 @@
   视觉仍未实现。TEST1088 覆盖该消费者边界。
   next641 又在 browser bootstrap 中提供了 `a`/`area`/`link`/`form` 的稳定 `relList` wrapper，
   支持 bounded DOMTokenList 读取、ASCII 大小写不敏感去重、mutation、value 反射和迭代；
-  `rel` 属性桥仍是唯一数据源，其他元素返回 null。该能力不实现 `supports()`、完整 link-type
-  processing、noopener/opener 窗口安全或 live DOM mutation；关系词不会自动改变宿主窗口策略。
+  `rel` 属性桥仍是唯一数据源，其他元素返回 null。next642 又增加了保守的 `supports()`：
+  只有 `<link>` 的 `stylesheet` 返回 true，其他关系词和 `a`/`area`/`form` 返回 false；
+  非 rel 元素仍为 null。该能力不实现完整 link-type processing、noopener/opener 窗口安全或
+  live DOM mutation；关系词不会自动改变宿主窗口策略。TEST1090 与 1080–1089、999 的
+  Debug 门已通过。
   next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
   Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前

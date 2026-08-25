@@ -426,8 +426,10 @@ next641 沿用 next636 的 `HTMLElement.rel` 反射，为 `a`、`area`、`link`�
 `contains()`、`add()`、`remove()`、`toggle()`、`replace()`、`forEach()` 和 iterator；读取按
 ASCII 大小写不敏感的 unique token 集合工作，mutation/value setter 立即反映到 `rel`，空 token
 或含空白 token 抛出 `DOMException` `SyntaxError`。其他元素返回 `null`。这只是 DOMTokenList
-反射，不实现 `supports()`、完整 link-type processing、noopener/opener 窗口安全或窗口创建，
-也不扩展公共 C ABI。TEST1089 是对应的自动产品/消费者门。
+反射，不实现完整 link-type processing、noopener/opener 窗口安全或窗口创建，也不扩展公共
+C ABI。next642 又为同一 wrapper 增加 `supports()`：只有 `<link>` 上 Core 实际处理的
+`stylesheet`（ASCII 大小写不敏感）返回 true，其他关系词和 `a`/`area`/`form` 返回 false；
+空白 token 仍在 bootstrap 层抛出 `SyntaxError`。TEST1089/1090 是对应的自动产品/消费者门。
 
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、

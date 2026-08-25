@@ -127,8 +127,10 @@ REPLACE 或 fragment 请求放入当前单窗口队列；未知/空名称和 `_b
 
 next641 的 `test_host` 只作为 `relList` 的消费者和断言宿主：产品 bootstrap 将 `rel` 暴露为
 有界 DOMTokenList，TEST1089 验证 wrapper identity、token 读取/枚举、大小写不敏感去重、
-mutation、value 反射、非法 token 和非 rel 元素边界。宿主不复制 link-type processing、
-窗口安全或导航策略；定向设备门使用 `1080-1089,999`，本批回归门共 11/11。
+mutation、value 反射、非法 token 和非 rel 元素边界。next642 的 TEST1090 只验证宿主消费
+`relList.supports()` 的保守结果：`link/stylesheet` 为 true，未实现关系词和其他元素为 false，
+非法 token 仍为 `SyntaxError`。宿主不复制 link-type processing、窗口安全或导航策略；定向
+设备门使用 `1080-1090,999`，本批回归门共 12/12。
 
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，

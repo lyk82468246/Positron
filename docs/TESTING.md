@@ -863,6 +863,25 @@ scripts\device_gate.bat -Candidate next641-anchor-rel-list-final ^
 正式构建、仓库审计、文档审计和 diff 检查均通过；tracked INI 未修改，本批不新增视觉、
 触摸、SIP、旋转或 picker 人工门。
 
+### next642 relList.supports 自动门
+
+next642 在既有 `relList` 上增加保守的 `supports()` 能力探测。TEST1090 验证 `<link>` 的
+`stylesheet`（含 ASCII 大小写）为 true，未实现的 `preload`、`a` 的 `noopener`、`form` 的
+`stylesheet` 和非 rel 元素为 false；空白 token 必须抛 `SyntaxError`。该测试只观察脚本和
+DOM 结果，不触发网络、窗口或人工视觉路径。
+
+```bat
+scripts\device_gate.bat -Candidate next642-rel-list-supports-final ^
+  -EnableJavaScript ^
+  -TestSelection "1080-1090,999"
+```
+
+`tmp/device-runs/20260825-153256-next642-rel-list-supports-final/` 已通过 12/12，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。首次候选因 TEST1090 fixture
+漏放可执行脚本而未建立测试会话，已修正 fixture 后重跑；没有放宽断言，也没有修改 tracked
+INI。C89、Debug/Release ARMV4I、仓库审计、文档审计和 diff 检查均通过；本批不新增视觉、
+触摸、SIP、旋转或 picker 人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
@@ -1060,7 +1079,7 @@ ERROR/FAIL、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。本批覆盖
 `document.links` 的 `a`/`area[href]` DFS 过滤、`document.anchors` 的 `a[name]` DFS 过滤、
 集合类型、namedItem、迭代、identity、属性增删后的快照和 document-only 边界。为控制设备
 时间，本批未重复旧的 341 项全回归；缩减门仍保留核心事件、TEST540 内存边界、TEST549 和
-next642–781 风险区间。该切片只改变同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、
+TEST642–781 风险区间。该切片只改变同步脚本 API/DOM snapshot，不涉及视觉、触摸、SIP、
 系统 picker、旋转或网络失败，因此不新增人工页面验收；tracked `test_host.ini` 继续保持
 `javascript=0`。
 

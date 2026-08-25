@@ -16,9 +16,11 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next641，anchor `relList` → bounded DOMTokenList 反射/枚举/变更；它沿用
+- 当前能力批次：next642，anchor `relList.supports()` → 保守的 link-type 能力探测；它沿用
+  next641 的 bounded DOMTokenList 反射/枚举/变更与
   next636 的 `rel` 属性桥，不扩展公共 C ABI，也不把 `noopener` 等关系词误称为窗口安全
-  策略。next640 的 fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
+  策略。`<link rel="stylesheet">` 是当前唯一报告为 supported 的关系词，未实现关系词和
+  `a`/`area`/`form` 均 fail closed。next640 的 fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
   fragment history/hashchange + host-owned target scroll，并在同文档和跨文档 history
   back/forward/go 时恢复 bounded viewport；fragment token 按 id 优先兼容 `<a name>`，
   anchor 的 href/target/rel 现在由 Core 查询并随 browser anchor navigation 传给宿主
@@ -32,7 +34,7 @@
   named window 创建、第二个 global、窗口生命周期和跨窗口 history 尚未实现；next618 的
   TEST65 真实 SIP 候选词仍待人工确认，
   file picker/真实 label 触摸仍是独立人工边界。
-- 测试编号上限：`TEST_MAX_NUMBER 1089`。
+- 测试编号上限：`TEST_MAX_NUMBER 1090`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -680,6 +682,18 @@ next641 的 anchor `relList` 自动门已经完成：
   `git diff --check` 均通过；本批只改变 browser bootstrap 和 test_host 断言，不新增视觉、
   触摸、SIP、旋转或 picker 人工门，也没有修改 tracked INI。
 
+next642 的 `relList.supports()` 自动门已经完成：
+
+- `tmp/device-runs/20260825-153256-next642-rel-list-supports-final/` 的回归门为 PASS，
+  TEST1080–1090、TEST999 共 12/12，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS` 且
+  `test13_route_ok=True`。
+- TEST1090 覆盖 `<link>` 的 `stylesheet` 正例与 ASCII 大小写、未实现 `preload`、`a` 的
+  `noopener`、`form` 的 `stylesheet`、非 rel 元素和非法 token `SyntaxError`；该方法只
+  报告 Core 已处理的 stylesheet，不改变窗口/安全策略。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、仓库审计、文档审计和
+  `git diff --check` 均通过；本批只改变 browser bootstrap、TEST1090 和相关文档，没有
+  修改公共 C ABI 或 tracked INI，也没有新增视觉、触摸、SIP、旋转或 picker 人工门。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -823,6 +837,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   audit、文档审计和 diff 检查均已完成；tracked 改动只覆盖 `positron_browser` bootstrap、
   `test_host` 消费者/断言和相关文档，没有修改公共 C ABI 或 tracked INI。提交前只需完成
   最终 Git 状态、提交和推送核对。
+- next642 的 `relList.supports()` bootstrap、TEST1090、设备 12/12 回归门、C89、Debug/Release、
+  audit、文档审计和 diff 检查均已完成；tracked 改动只覆盖 `positron_browser` bootstrap、
+  `test_host` 消费者/断言和相关文档，没有修改公共 C ABI 或 tracked INI。提交前只需完成
+  最终 Git 状态、提交和推送核对。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -830,9 +848,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next641 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
-纵切，不要为了补编号添加孤立 API。relList 当前只提供 bounded token reflection，不提供
-`supports()` 或 noopener/opener 的窗口安全处理。TEST65 的多字符 SIP 候选词、select/file picker 模态框、
+next642 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+纵切，不要为了补编号添加孤立 API。relList 现在提供 bounded token reflection 和保守的
+`supports()`（仅 `<link rel="stylesheet">` 返回 true），仍不提供 noopener/opener 的窗口安全处理。
+TEST65 的多字符 SIP 候选词、select/file picker 模态框、
 真实 label 触摸、OEM 窗口视觉和键盘映射仍是独立人工边界；在人工证据出现前不得把它们写成
 通用产品保证。anchor href/target/rel 元数据与 target_kind、bounded `window.open()`、普通
 named anchor 和匹配当前 `window.name` 的 named reuse 已有 Core/browser/host 契约，但真实

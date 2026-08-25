@@ -511,7 +511,21 @@ TEST1089 覆盖稳定 identity、读取/枚举、去重、大小写、mutation�
 `tmp/device-runs/20260825-152127-next641-anchor-rel-list-final-r2/`。本批没有新增视觉、触摸、
 SIP、旋转或 picker 人工门。
 
-### 36. 建立真实页面驱动的兼容队列
+### 36. next642：relList.supports 的保守能力探测（已完成）
+
+next642 在 next641 的 `relList` wrapper 上增加 `supports(token)`，把页面能力探测绑定到
+实际已实现的 link processing：只有 `<link>` 的 `stylesheet`（ASCII 大小写不敏感）返回
+true；`preload` 等未实现 link type、`a`/`area`/`form` 的关系词和非 rel 元素均返回 false。
+空 token 或含空白 token 由 bootstrap 层抛出 `SyntaxError`。该批不实现 `noopener`、`opener`、
+`noreferrer` 的窗口/安全处理，不新增公共 C ABI，也不改变网络或窗口所有权。
+
+TEST1090 覆盖正例、大小写、未实现关系词、元素类型、非 rel 元素和非法 token；与
+TEST1080–1089、999 的 Debug 设备门 `tmp/device-runs/20260825-153256-next642-rel-list-supports-final/`
+通过 12/12，唯一 `TESTBENCH PASS` 且零 `ERROR`/`FAIL`。C89、Debug/Release ARMV4I、仓库
+审计、文档审计和 diff 检查通过，本批没有新增必须立即人工复核的视觉、触摸、SIP、旋转或
+picker 风险。
+
+### 37. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -522,7 +536,7 @@ SIP、旋转或 picker 人工门。
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 37. 安排新的全范围检查点
+### 38. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

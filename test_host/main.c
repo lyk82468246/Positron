@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1089
+#define TEST_MAX_NUMBER 1090
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -19789,6 +19789,47 @@ static BOOL test1089_browser_anchor_rel_list_contract(void)
     show_info(L"TEST 1089 OK",
             "anchor relList reflects rel live, deduplicates ASCII-case-insensitive "
             "tokens, and supports bounded DOMTokenList mutation/iteration.");
+    return TRUE;
+}
+
+/* TEST 1090 - relList.supports reports only implemented link processing. */
+static BOOL test1090_browser_rel_list_supports_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head><body>"
+        "<p id='result'>idle</p>"
+        "<link id='sheet' rel='stylesheet noopener'>"
+        "<a id='target' href='/next' rel='noopener'>Next</a>"
+        "<form id='form' rel='stylesheet'><span>Form</span></form>"
+        "<div id='other' rel='stylesheet'></div>"
+        "</body></html>";
+    static const char PROBE[] =
+        "var link=document.getElementById('sheet');"
+        "var a=document.getElementById('target');"
+        "var form=document.getElementById('form');"
+        "var bad=false;var name='';"
+        "try{link.relList.supports('bad token');}catch(x){bad=true;name=x.name;}"
+        "document.getElementById('result').textContent="
+        "String(link.relList.supports('stylesheet'))+'|'"
+        "+String(link.relList.supports('STYLESHEET'))+'|'"
+        "+String(link.relList.supports('preload'))+'|'"
+        "+String(a.relList.supports('noopener'))+'|'"
+        "+String(form.relList.supports('stylesheet'))+'|'"
+        "+String(document.getElementById('other').relList===null)+'|'"
+        "+String(bad)+'|'+name;";
+    static const char EXPECTED[] =
+        "true|true|false|false|false|true|true|SyntaxError";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1090 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1090 OK",
+            "relList.supports conservatively exposes the implemented"
+            " stylesheet link processing and fails closed elsewhere.");
     return TRUE;
 }
 
@@ -77623,6 +77664,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1087: ok = test1087_browser_window_identity_contract(); break;
         case 1088: ok = test1088_browser_anchor_named_context_contract(); break;
         case 1089: ok = test1089_browser_anchor_rel_list_contract(); break;
+        case 1090: ok = test1090_browser_rel_list_supports_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

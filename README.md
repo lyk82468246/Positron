@@ -322,9 +322,11 @@ next640 把单窗口的同名复用策略补到普通 anchor：宿主读取活�
 next641 沿用已有的 `rel` 属性桥，为 `a`、`area`、`link`、`form` wrapper 提供稳定的
 `relList`。它支持 bounded DOMTokenList 的 `length`、`item()`、`value`、`contains()`、
 `add()`、`remove()`、`toggle()`、`replace()`、`forEach()` 和 iterator；token 读取按 ASCII
-大小写不敏感去重，写入实时反映到 `rel`，空 token 或含空白 token 会失败。该能力不新增
-公共 C ABI，不实现 `supports()`、完整 link-type processing 或 noopener/opener 窗口策略。
-`TEST1089` 与 1080–1088、999 的 WM6 Debug 设备门通过 11/11。
+大小写不敏感去重，写入实时反映到 `rel`，空 token 或含空白 token 会失败。next642 又增加
+保守的 `relList.supports()`：当前只对实际由 Core 处理的 `<link rel="stylesheet">` 返回
+true（ASCII 大小写不敏感），对其他元素或未实现的 link type 返回 false，非法 token 仍抛
+`SyntaxError`。该能力不新增公共 C ABI，不把 `noopener`/`opener` 误当成窗口安全策略。
+`TEST1089` 与 `TEST1090` 及 1080–1088、999 的 WM6 Debug 设备门通过 12/12。
 
 ## 快速开始
 
