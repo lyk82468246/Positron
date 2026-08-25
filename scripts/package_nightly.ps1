@@ -360,7 +360,21 @@ try {
             throw ("Could not inspect the nightly pre-release.`n{0}" -f
                     $viewDetails.Trim())
         }
-        $uploadArgs = @("release", "upload", $Tag, $zipPath) + $repoArgs +
+        # gh treats '#' inside an asset argument as the start of a display
+        # label. The repository path itself contains "C#", so use a path
+        # relative to the repository whenever the ZIP is under that root.
+        $uploadAssetPath = $zipPath
+        $repoPrefix = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar,
+                [IO.Path]::AltDirectorySeparatorChar) +
+                [IO.Path]::DirectorySeparatorChar
+        if ($zipPath.StartsWith($repoPrefix,
+                [StringComparison]::OrdinalIgnoreCase)) {
+            $uploadAssetPath = $zipPath.Substring($repoPrefix.Length)
+        }
+        if ($uploadAssetPath.IndexOf("#", [StringComparison]::Ordinal) -ge 0) {
+            throw "Upload asset path contains '#', which GitHub CLI reserves for asset labels. Choose an output directory without '#'."
+        }
+        $uploadArgs = @("release", "upload", $Tag, $uploadAssetPath) + $repoArgs +
                 @("--clobber")
         $uploadResult = Invoke-GhCaptured $uploadArgs
         if ($uploadResult.ExitCode -ne 0) {
