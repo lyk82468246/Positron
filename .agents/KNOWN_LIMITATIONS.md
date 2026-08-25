@@ -135,7 +135,10 @@
   fragment。它仍不是完整 WHATWG URL Standard；userinfo、IPv6、非法端口、非 HTTP(S)
   scheme、无 origin 的普通相对引用和输出容量不足会 fail closed。`test_host` 只消费该
   API，不再拥有同一套业务解析副本。
-- 没有完整页面缓存、持久历史、跨进程恢复、滚动位置恢复、表单状态恢复和 POST 重提交模型。
+- 没有完整页面缓存、持久历史、跨进程恢复、表单状态恢复和 POST 重提交模型。next634 只在
+  当前 `test_host` 进程内以有界宿主镜像保存跨文档 history 条目的 scroll offset，并在目标
+  文档布局完成后恢复/按 viewport 上限裁剪；该状态不进入 `positron_browser.dll`，进程重启
+  后不会保留。
 - 导航是否实际发起请求，以及窗口如何替换，仍需要宿主网络和窗口层参与。
 - 产品 URL/history 状态与宿主实际 I/O 仍是分层边界；HTTP resolver 的重定向链上限、旧设备
   编码、特殊 scheme、同源策略和跨文档 history 的边缘行为覆盖有限。

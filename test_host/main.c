@@ -362,7 +362,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1081
+#define TEST_MAX_NUMBER 1082
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static int test_config_space(char c)
@@ -6219,6 +6219,7 @@ typedef struct pcore_browse_history {
     char entries[PCORE_BROWSE_HISTORY_MAX][PCORE_BROWSE_HISTORY_URL_MAX];
     char states[PCORE_BROWSE_HISTORY_MAX][PCORE_BROWSE_HISTORY_STATE_MAX];
     unsigned long document_ids[PCORE_BROWSE_HISTORY_MAX];
+    int scroll_y[PCORE_BROWSE_HISTORY_MAX];
     unsigned long next_document_id;
     int count;
     int index;
@@ -6227,9 +6228,15 @@ typedef struct pcore_browse_history {
 static pcore_browse_history g_browse_history;
 static HANDLE g_browse_history_product = NULL;
 
-/* The product DLL owns the history state. This fixed-size copy is only a
- * diagnostic mirror for legacy test assertions that inspect entry geometry;
- * no navigation decision is made from it. */
+/* Implemented next to the host scrollbar code below.  Keeping this as a
+ * host-only helper avoids extending the public browser history ABI with
+ * window-specific viewport state. */
+static int pcore_scroll_to_y(HWND hwnd, int target_y);
+
+/* The product DLL owns URL/state/document-id history. This fixed-size host
+ * mirror carries those values for legacy assertions and owns only the
+ * window-specific per-entry viewport offsets; navigation policy remains in
+ * the product history API. */
 static int pcore_browse_history_product_ensure(void)
 {
     if (g_browse_history_product == NULL) {
@@ -6241,21 +6248,57 @@ static int pcore_browse_history_product_ensure(void)
 static void pcore_browse_history_product_sync(void)
 {
     int i;
+    int j;
     int count;
     int index;
+    int old_count;
+    int old_scroll[PCORE_BROWSE_HISTORY_MAX];
+    int new_scroll[PCORE_BROWSE_HISTORY_MAX];
+    unsigned char old_used[PCORE_BROWSE_HISTORY_MAX];
     const char *url;
     const char *state;
 
-    memset(&g_browse_history, 0, sizeof(g_browse_history));
-    g_browse_history.index = -1;
+    old_count = g_browse_history.count;
+    if (old_count < 0 || old_count > PCORE_BROWSE_HISTORY_MAX) {
+        old_count = 0;
+    }
+    for (i = 0; i < old_count; i++) {
+        old_scroll[i] = g_browse_history.scroll_y[i];
+        if (old_scroll[i] < 0) {
+            old_scroll[i] = 0;
+        }
+    }
+    memset(old_used, 0, sizeof(old_used));
     if (g_browse_history_product == NULL) {
+        memset(&g_browse_history, 0, sizeof(g_browse_history));
+        g_browse_history.index = -1;
         return;
     }
     count = PBrowser_HistoryCount(g_browse_history_product);
     index = PBrowser_HistoryIndex(g_browse_history_product);
     if (count < 0 || count > PCORE_BROWSE_HISTORY_MAX) {
+        memset(&g_browse_history, 0, sizeof(g_browse_history));
+        g_browse_history.index = -1;
         return;
     }
+    for (i = 0; i < count; i++) {
+        new_scroll[i] = 0;
+        url = PBrowser_HistoryEntryUrl(g_browse_history_product, i);
+        for (j = 0; j < old_count; j++) {
+            if (old_used[j] || url == NULL ||
+                    g_browse_history.document_ids[j] !=
+                    PBrowser_HistoryEntryDocumentId(
+                    g_browse_history_product, i) ||
+                    strcmp(g_browse_history.entries[j], url) != 0) {
+                continue;
+            }
+            new_scroll[i] = old_scroll[j];
+            old_used[j] = 1;
+            break;
+        }
+    }
+    memset(&g_browse_history, 0, sizeof(g_browse_history));
+    g_browse_history.index = -1;
     g_browse_history.count = count;
     g_browse_history.index = index;
     for (i = 0; i < count; i++) {
@@ -6270,7 +6313,31 @@ static void pcore_browse_history_product_sync(void)
         g_browse_history.document_ids[i] =
                 PBrowser_HistoryEntryDocumentId(
                 g_browse_history_product, i);
+        g_browse_history.scroll_y[i] = new_scroll[i];
     }
+}
+
+static void pcore_browse_history_save_scroll(void)
+{
+    if (g_browse_history.index >= 0 &&
+            g_browse_history.index < g_browse_history.count) {
+        g_browse_history.scroll_y[g_browse_history.index] =
+                (g_scroll_y >= 0) ? g_scroll_y : 0;
+    }
+}
+
+static int pcore_browse_history_scroll_at(int index)
+{
+    if (index < 0 || index >= g_browse_history.count) {
+        return 0;
+    }
+    return (g_browse_history.scroll_y[index] >= 0) ?
+            g_browse_history.scroll_y[index] : 0;
+}
+
+static int pcore_browse_history_restore_scroll(HWND hwnd, int index)
+{
+    return pcore_scroll_to_y(hwnd, pcore_browse_history_scroll_at(index));
 }
 
 static void pcore_browse_history_product_destroy(void)
@@ -6514,11 +6581,20 @@ static int pcore_browse_history_replace_state_url(const char *url,
 {
     HANDLE parsed;
     int rc;
+    int saved_scroll;
 
     if (g_browse_history_product != NULL) {
+        pcore_browse_history_save_scroll();
+        saved_scroll = pcore_browse_history_scroll_at(
+                g_browse_history.index);
         rc = PBrowser_HistoryReplaceState(
                 g_browse_history_product, url, state_json);
         pcore_browse_history_product_sync();
+        if (rc == 0 && g_browse_history.index >= 0 &&
+                g_browse_history.index < g_browse_history.count) {
+            g_browse_history.scroll_y[g_browse_history.index] =
+                    saved_scroll;
+        }
         return rc;
     }
 
@@ -6558,6 +6634,7 @@ static int pcore_browse_history_push_state(const char *url,
     int i;
 
     if (g_browse_history_product != NULL) {
+        pcore_browse_history_save_scroll();
         i = PBrowser_HistoryPushState(g_browse_history_product, url,
                 state_json);
         pcore_browse_history_product_sync();
@@ -6590,6 +6667,8 @@ static int pcore_browse_history_push_state(const char *url,
                     PCORE_BROWSE_HISTORY_STATE_MAX);
             g_browse_history.document_ids[i - 1] =
                     g_browse_history.document_ids[i];
+            g_browse_history.scroll_y[i - 1] =
+                    g_browse_history.scroll_y[i];
         }
         g_browse_history.count--;
         g_browse_history.index--;
@@ -6598,6 +6677,7 @@ static int pcore_browse_history_push_state(const char *url,
     strcpy(g_browse_history.states[g_browse_history.count], state_json);
     g_browse_history.document_ids[g_browse_history.count] =
             g_browse_history.document_ids[g_browse_history.index];
+    g_browse_history.scroll_y[g_browse_history.count] = 0;
     g_browse_history.count++;
     g_browse_history.index = g_browse_history.count - 1;
     return 0;
@@ -6624,6 +6704,7 @@ static int pcore_browse_history_commit_new(const char *url)
             strcmp(pcore_browse_history_current(), url) == 0) {
         g_browse_history.document_ids[g_browse_history.index] =
                 pcore_browse_history_new_document_id();
+        g_browse_history.scroll_y[g_browse_history.index] = 0;
         return 0;
     }
     if (g_browse_history.index + 1 < g_browse_history.count) {
@@ -6639,6 +6720,8 @@ static int pcore_browse_history_commit_new(const char *url)
                     PCORE_BROWSE_HISTORY_STATE_MAX);
             g_browse_history.document_ids[i - 1] =
                     g_browse_history.document_ids[i];
+            g_browse_history.scroll_y[i - 1] =
+                    g_browse_history.scroll_y[i];
         }
         g_browse_history.count--;
         g_browse_history.index--;
@@ -6647,6 +6730,7 @@ static int pcore_browse_history_commit_new(const char *url)
     strcpy(g_browse_history.states[g_browse_history.count], "null");
     g_browse_history.document_ids[g_browse_history.count] =
             pcore_browse_history_new_document_id();
+    g_browse_history.scroll_y[g_browse_history.count] = 0;
     g_browse_history.count++;
     g_browse_history.index = g_browse_history.count - 1;
     return 0;
@@ -6732,11 +6816,19 @@ static int pcore_browse_history_commit_target(int target_index)
 static int pcore_browse_history_commit_target_document(int target_index)
 {
     int rc;
+    int saved_scroll;
 
     if (g_browse_history_product != NULL) {
+        if (target_index < 0 || target_index >= g_browse_history.count) {
+            return 1;
+        }
+        saved_scroll = pcore_browse_history_scroll_at(target_index);
         rc = PBrowser_HistoryCommitTargetDocument(
                 g_browse_history_product, target_index);
         pcore_browse_history_product_sync();
+        if (rc == 0 && target_index < g_browse_history.count) {
+            g_browse_history.scroll_y[target_index] = saved_scroll;
+        }
         return rc;
     }
     if (pcore_browse_history_commit_target(target_index) != 0) {
@@ -6768,20 +6860,13 @@ static int pcore_browse_history_replace_current(const char *url)
     strcpy(g_browse_history.states[g_browse_history.index], "null");
     g_browse_history.document_ids[g_browse_history.index] =
             pcore_browse_history_new_document_id();
+    g_browse_history.scroll_y[g_browse_history.index] = 0;
     return 0;
 }
 
 static int pcore_browse_history_commit_navigation(const char *url,
         int method, int target_index)
 {
-    int rc;
-
-    if (g_browse_history_product != NULL) {
-        rc = PBrowser_HistoryCommitNavigation(
-                g_browse_history_product, url, method, target_index);
-        pcore_browse_history_product_sync();
-        return rc;
-    }
     if (method != 1) {
         return 1;
     }
@@ -6799,12 +6884,22 @@ static int pcore_browse_history_commit_navigation_with_state(
         const char *state_json)
 {
     int rc;
+    int saved_scroll;
+    int saved_scroll_valid;
 
     if (g_browse_history_product != NULL) {
+        saved_scroll_valid = target_index >= 0 &&
+                target_index < g_browse_history.count;
+        saved_scroll = saved_scroll_valid ?
+                pcore_browse_history_scroll_at(target_index) : 0;
         rc = PBrowser_HistoryCommitNavigationWithState(
                 g_browse_history_product, url, method, target_index,
                 state_json);
         pcore_browse_history_product_sync();
+        if (rc == 0 && saved_scroll_valid &&
+                target_index < g_browse_history.count) {
+            g_browse_history.scroll_y[target_index] = saved_scroll;
+        }
         return rc;
     }
     if (pcore_browse_history_commit_navigation(url, method,
@@ -9856,6 +9951,7 @@ static void pcore_scroll_by(HWND hwnd, int dy)
     if (applied == 0) {
         return;
     }
+    pcore_browse_history_save_scroll();
     SetScrollPos(hwnd, SB_VERT, g_scroll_y, TRUE);
     pcore_native_edits_position(hwnd);
     pcore_native_selects_position(hwnd);
@@ -9876,6 +9972,47 @@ static void pcore_scroll_by(HWND hwnd, int dy)
         InvalidateRect(hwnd, &loading_rc, FALSE);
     }
     UpdateWindow(hwnd);
+}
+
+/* Restore a history-owned viewport without exposing HWND/scrollbar state in
+ * the product browser ABI. A missing window is used by deterministic host
+ * tests and still clamps against the last known viewport height. */
+static int pcore_scroll_to_y(HWND hwnd, int target_y)
+{
+    RECT rc;
+    int viewport_h;
+    int maxpos;
+
+    if (target_y < 0) {
+        target_y = 0;
+    }
+    viewport_h = g_view_h;
+    if (hwnd != NULL && IsWindow(hwnd)) {
+        GetClientRect(hwnd, &rc);
+        viewport_h = rc.bottom - rc.top;
+    }
+    if (viewport_h < 0) {
+        viewport_h = 0;
+    }
+    maxpos = (g_doc_h > viewport_h) ? g_doc_h - viewport_h : 0;
+    if (target_y > maxpos) {
+        target_y = maxpos;
+    }
+    if (hwnd == NULL || !IsWindow(hwnd)) {
+        g_scroll_y = target_y;
+        pcore_browse_history_save_scroll();
+        return 1;
+    }
+    pcore_scroll_by(hwnd, target_y - g_scroll_y);
+    if (g_scroll_y != target_y) {
+        g_scroll_y = target_y;
+        pcore_browse_history_save_scroll();
+        pcore_set_scrollbar(hwnd);
+        pcore_native_edits_position(hwnd);
+        pcore_native_selects_position(hwnd);
+        InvalidateRect(hwnd, NULL, FALSE);
+    }
+    return 1;
 }
 
 /* Apply the visual side of same-document fragment navigation.  Core exposes
@@ -9912,6 +10049,7 @@ static int pcore_browser_script_scroll_to_fragment(HWND hwnd,
     }
     if (hwnd == NULL || !IsWindow(hwnd)) {
         g_scroll_y = target_y;
+        pcore_browse_history_save_scroll();
         return 1;
     }
     pcore_scroll_by(hwnd, target_y - g_scroll_y);
@@ -11493,6 +11631,7 @@ static int pcore_browser_script_session_traverse_history(int target_index)
         free(target_copy);
         return 1;
     }
+    pcore_browse_history_save_scroll();
     old_index = g_browse_history.index;
     if (pcore_browse_history_commit_target(target_index) != 0) {
         free(state_copy);
@@ -11511,10 +11650,16 @@ static int pcore_browser_script_session_traverse_history(int target_index)
     }
     /* Same-document fragment entries keep the current document alive, so
      * traversal must restore the target viewport just like a fresh fragment
-     * navigation. Unknown targets deliberately leave the existing position
-     * unchanged; history/event state remains authoritative. */
-    (void) pcore_browser_script_scroll_to_fragment(bridge->hwnd,
-            target_url);
+     * navigation. Non-fragment pushState entries restore their host-owned
+     * saved position; unknown fragments deliberately leave the existing
+     * position unchanged. */
+    if (strchr(target_url, '#') != NULL) {
+        (void) pcore_browser_script_scroll_to_fragment(bridge->hwnd,
+                target_url);
+    } else {
+        (void) pcore_browse_history_restore_scroll(bridge->hwnd,
+                target_index);
+    }
     free(old_url);
     final_copy = pcore_browser_script_copy_string(
             pcore_browse_history_current_state());
@@ -12043,6 +12188,9 @@ static int pcore_navigation_commit_step(HWND hwnd,
     DWORD          elapsed;
     int            script_executed;
     int            script_ignored;
+    int            history_commit_rc;
+    int            history_target_scroll;
+    int            history_target_scroll_valid;
 
     if (request->commit_stage == PCORE_NAV_COMMIT_PARSE) {
         resp = request->response;
@@ -12230,6 +12378,12 @@ static int pcore_navigation_commit_step(HWND hwnd,
     request->script_bridge = NULL;
     g_render_sheet = NULL;
     g_doc_h = PCore_DocumentHeight(g_render_doc);
+    pcore_browse_history_save_scroll();
+    history_target_scroll_valid =
+            request->history_target_index >= 0 &&
+            request->history_target_index < g_browse_history.count;
+    history_target_scroll = history_target_scroll_valid ?
+            pcore_browse_history_scroll_at(request->history_target_index) : 0;
     g_scroll_y = 0;
     cstr_copy(g_cur_host, sizeof(g_cur_host), request->host);
     cstr_copy(g_cur_path, sizeof(g_cur_path), request->path);
@@ -12238,10 +12392,20 @@ static int pcore_navigation_commit_step(HWND hwnd,
             pcore_document_url(request->host, request->path,
                     request->port, document_url,
                     sizeof(document_url)) == 0) {
-        (void) pcore_browse_history_commit_navigation_with_bridge(
+        history_commit_rc = pcore_browse_history_commit_navigation_with_bridge(
                 document_url, request->method,
                 request->history_target_index,
                 g_browser_script_session.bridge);
+        if (history_commit_rc == 0 &&
+                request->history_target_index >= 0) {
+            if (history_target_scroll_valid &&
+                    request->history_target_index < g_browse_history.count) {
+                g_browse_history.scroll_y[request->history_target_index] =
+                        history_target_scroll;
+            }
+            (void) pcore_browse_history_restore_scroll(hwnd,
+                    request->history_target_index);
+        }
     }
 
     pcore_set_scrollbar(hwnd);
@@ -15277,6 +15441,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             MoveWindow(g_nav_bar, 0, 0, cw, g_nav_bar_h, TRUE);
         }
         pcore_set_scrollbar(hwnd);
+        pcore_browse_history_save_scroll();
         pcore_native_edits_rebuild(hwnd, 1);
         pcore_native_selects_rebuild(hwnd, 1);
         SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);   /* keep SIP hidden on rotate */
@@ -17994,6 +18159,126 @@ static BOOL test1081_browser_fragment_history_scroll(void)
             "Same-document fragment back/forward/go restores target scroll;"
             " unknown targets keep the current viewport and no document"
             " navigation is started.");
+    return TRUE;
+}
+
+/* TEST 1082 - cross-document history traversal restores host scroll. */
+static BOOL test1082_browser_cross_document_history_scroll(void)
+{
+    static const char URL_A[] = "https://example.com/history-a";
+    static const char URL_B[] = "https://example.com/history-b";
+    static const char URL_C[] = "https://example.com/history-c";
+    char error[256];
+    int observed_a;
+    int observed_b;
+    int observed_new;
+    int observed_clamped;
+    int ok;
+
+    observed_a = 0;
+    observed_b = 0;
+    observed_new = -1;
+    observed_clamped = 0;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_h = 1200;
+    g_view_h = 240;
+    g_scroll_y = 0;
+    if (pcore_browse_history_commit_navigation(URL_A, 1, -1) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        g_scroll_y = 120;
+        pcore_browse_history_save_scroll();
+        if (g_browse_history.scroll_y[0] != 120 ||
+                pcore_browse_history_commit_navigation(URL_B, 1, -1) != 0 ||
+                g_browse_history.count != 2 ||
+                g_browse_history.index != 1 ||
+                g_browse_history.scroll_y[1] != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_scroll_y = 200;
+        pcore_browse_history_save_scroll();
+        if (pcore_browse_history_commit_navigation(URL_A, 1, 0) != 0 ||
+                g_browse_history.index != 0 ||
+                g_browse_history.scroll_y[0] != 120) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_scroll_y = 0;
+        (void) pcore_browse_history_restore_scroll(NULL, 0);
+        observed_a = g_scroll_y;
+        if (observed_a != 120) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        pcore_browse_history_save_scroll();
+        if (pcore_browse_history_commit_navigation(URL_B, 1, 1) != 0 ||
+                g_browse_history.index != 1 ||
+                g_browse_history.scroll_y[1] != 200) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_scroll_y = 0;
+        (void) pcore_browse_history_restore_scroll(NULL, 1);
+        observed_b = g_scroll_y;
+        if (observed_b != 200) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        pcore_browse_history_save_scroll();
+        if (pcore_browse_history_commit_navigation(URL_C, 1, -1) != 0 ||
+                g_browse_history.index != 2 ||
+                g_browse_history.scroll_y[2] != 0) {
+            ok = 0;
+        } else {
+            observed_new = g_browse_history.scroll_y[2];
+        }
+    }
+    if (ok) {
+        g_doc_h = 300;
+        g_scroll_y = 0;
+        if (pcore_browse_history_commit_navigation(URL_A, 1, 0) != 0) {
+            ok = 0;
+        } else {
+            (void) pcore_browse_history_restore_scroll(NULL, 0);
+            observed_clamped = g_scroll_y;
+            if (observed_clamped != 60) {
+                ok = 0;
+            }
+        }
+    }
+    if (!ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "a=%d b=%d new=%d clamped=%d history=%d/%d",
+                observed_a, observed_b, observed_new, observed_clamped,
+                g_browse_history.index, g_browse_history.count);
+        error[sizeof(error) - 1] = '\0';
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_h = 0;
+    g_view_h = 0;
+    g_scroll_y = 0;
+    pcore_browse_history_reset();
+    if (!ok) {
+        show_error(L"TEST 1082 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1082 OK",
+            "Cross-document history back/forward restores each saved host "
+            "viewport; new entries start at zero and short pages clamp the "
+            "restored offset.");
     return TRUE;
 }
 
@@ -75820,6 +76105,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1079: ok = test1079_browser_programmatic_anchor_activation_contract(); break;
         case 1080: ok = test1080_browser_fragment_anchor_contract(); break;
         case 1081: ok = test1081_browser_fragment_history_scroll(); break;
+        case 1082: ok = test1082_browser_cross_document_history_scroll(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

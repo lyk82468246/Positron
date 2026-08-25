@@ -269,7 +269,13 @@ next632 又补齐同页 fragment 锚点的受控激活：以 `#` 开头的 `<a h
 next633 继续补齐真实页面的同页历史行为：fragment 产生的同文档条目在
 `history.back()`、`history.forward()` 和 `history.go()` 返回时恢复对应目标滚动；未知目标
 保持当前位置且不发起网络或文档替换。`TEST1081` 与相关锚点回归已在 WM6 Debug 设备门
-通过；跨文档历史与真实页面视觉仍由宿主/人工边界负责。
+通过。
+
+next634 又补齐了跨文档 history 的宿主视口状态：离开页面时保存当前条目的滚动偏移，
+back/forward/go 重新加载目标文档后恢复该条目偏移；新条目从零开始，较短文档按当前 viewport
+上限裁剪。滚动数组是 `test_host` 的窗口状态，不扩张 `positron_browser.dll` ABI；持久历史、
+跨进程恢复和真实页面视觉仍不在承诺范围。`TEST1082` 已与相关锚点回归在 WM6 Debug
+设备门通过。
 
 ## 快速开始
 

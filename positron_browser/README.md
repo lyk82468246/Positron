@@ -369,6 +369,11 @@ next633 不改变 browser 公共 ABI，而是让宿主在 browser-owned history 
 条目时恢复 viewport，未知目标保持位置。`positron_browser.dll` 仍只持有 history/event
 事务与回调，不拥有滚动、网络或窗口替换；TEST1081 覆盖该宿主消费者边界。
 
+next634 继续保持这个所有权边界：跨文档 history 的滚动偏移由宿主在自己的 bounded mirror
+中保存，并在目标文档布局完成后恢复/按 viewport 上限裁剪；新条目默认为零。该逻辑不新增
+`PBrowser_History*` 导出，也不把窗口、持久化或页面缓存状态带入 `positron_browser.dll`。
+TEST1082 覆盖该消费者侧行为。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

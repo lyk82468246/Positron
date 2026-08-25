@@ -1082,6 +1082,16 @@ next633 修正 next632 的宿主生命周期缺口：同页 fragment entry 在
 承诺持久滚动位置、跨文档恢复、`<a name>`、percent-decoding、target/rel/window 或真实视觉。
 TEST1081 与 next632 的 TEST1080 共同覆盖该窄边界。
 
+#### next634 的跨文档 history 视口边界
+
+next634 在宿主窗口层增加有界的 history-entry 滚动镜像：滚动或离开当前文档前保存条目偏移，
+跨文档 `back`/`forward`/`go` 完成新文档布局后恢复目标条目偏移；新导航条目从零开始，恢复
+值按新文档的 `document height - viewport height` 上限裁剪。`positron_browser.dll` 仍只拥有
+history/session 的 URL、state、document-id 和导航投影，不拥有 HWND、scrollbar 或持久存储，
+因此没有公共 ABI 变化。该能力只覆盖同一宿主进程内的有界会话镜像，不覆盖页面缓存、持久化、
+跨进程恢复、表单状态、POST 重提交或未知 fragment 的滚动猜测。TEST1082 覆盖每条文档的
+独立偏移、新条目归零和短页面裁剪。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

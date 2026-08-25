@@ -705,6 +705,25 @@ scripts\device_gate.bat -Candidate next633-fragment-history-scroll-r2 ^
 Release 设备探针不作为证据。该批没有新增必须立即人工复核的崩溃、数据损坏或核心流程阻塞
 风险；真实页面视觉仍按累计人工页面门处理。
 
+### next634 跨文档 history 视口恢复自动门
+
+next634 在 `test_host` 的 bounded history mirror 中保存每个文档条目的 scroll offset。跨文档
+`back`/`forward`/`go` 的目标文档完成布局后恢复对应偏移；新条目从零开始，短文档按当前
+viewport 的最大可滚动位置裁剪。该状态不进入 `positron_browser.dll` ABI，也不宣称持久历史、
+页面缓存或跨进程恢复。
+
+```bat
+scripts\device_gate.bat -Candidate next634-cross-document-history-scroll-r4 ^
+  -EnableJavaScript ^
+  -TestSelection "1082,1081,1080,1079,1070,999"
+```
+
+`tmp/device-runs/20260825-111645-next634-cross-document-history-scroll-r4/` 已通过 6/6，零
+`ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。TEST1082 自动断言 A→B
+后 back/forward 分别恢复各自偏移、新条目归零和短页面 clamp；相关 fragment/anchor 回归仍
+在同一窄门内。Debug ARMV4I 正式构建与 C89 检查通过；真实页面布局、触摸、SIP、旋转和
+视觉仍按累计人工门处理。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

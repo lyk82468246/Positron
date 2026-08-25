@@ -78,6 +78,12 @@ next633 补齐同文档 history traversal 的宿主副作用：`history.back()`�
 导航 worker。TEST1081 与 TEST1080、1079、1070、999 一起作为窄设备门；真实页面视觉仍需
 累计人工检查。
 
+next634 为同一宿主 history mirror 增加跨文档视口状态：当前条目在滚动或导航离开前记录
+scroll offset，目标文档完成布局后，back/forward/go 恢复对应条目；新导航条目为零，短页面
+按可滚动最大值裁剪。该数组只属于窗口宿主，不改变 `positron_browser.dll` 的公共 history
+ABI，也不提供持久历史或跨进程恢复。TEST1082 覆盖 A→B→back/forward、new-entry zero
+和短页面 clamp；与 TEST1081、1080、1079、1070、999 一起作为定向设备门。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

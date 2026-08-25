@@ -16,11 +16,11 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next633，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
-  fragment history/hashchange + host-owned target scroll，并在同文档 history back/forward/go
-  时恢复目标 viewport（自动设备门已完成）；跨页 href 仍为 ASSIGN；
+- 当前能力批次：next634，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
+  fragment history/hashchange + host-owned target scroll，并在同文档和跨文档 history
+  back/forward/go 时恢复 bounded viewport（自动设备门已完成）；跨页 href 仍为 ASSIGN；
   next618 的 TEST65 真实 SIP 候选词仍待人工确认，file picker/真实 label 触摸仍是独立人工边界。
-- 测试编号上限：`TEST_MAX_NUMBER 1081`。
+- 测试编号上限：`TEST_MAX_NUMBER 1082`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -200,6 +200,10 @@ next606 是一次已完成的安全基础设施中断：把仅有互联网客户
   viewport 移到目标；未知目标保持原位置，不触发网络或文档替换。`positron_browser.dll`
   的 history/event ABI 未改变，跨文档 traversal 仍由既有导航路径处理。TEST1081 已在 WM6
   设备门覆盖点击后目标位置、back/forward、unknown-id 和无网络边界。
+- next634 在同一宿主 history mirror 中保存每个跨文档条目的 scroll offset：导航离开前保存，
+  目标文档布局完成后由 back/forward/go 恢复，new entry 默认零，短文档按 viewport 上限裁剪。
+  `positron_browser.dll` 公共 ABI 未扩张；TEST1082 与 TEST1081、1080、1079、1070、999
+  的 Debug 窄门已通过 6/6。
 
 ## 最近验证证据
 
@@ -558,6 +562,16 @@ next633 的同文档 fragment history scroll 自动门已经完成：
 - C89、Debug/Release ARMV4I 正式构建和 Debug 设备门通过；Release 设备门不作为证据，
   tracked INI 未修改，设备日志只保留在 `tmp/`。
 
+next634 的跨文档 history scroll 自动门已经完成：
+
+- `tmp/device-runs/20260825-111645-next634-cross-document-history-scroll-r4/` 的窄门为 PASS，
+  TEST1082、1081、1080、1079、1070、999 共 6/6，唯一 `TESTBENCH PASS`，`error_count=0`、
+  `fail_count=0`、`test13_route_ok=True`。
+- TEST1082 覆盖 A→B 后 back/forward 各自恢复、new entry 从零开始和短文档 clamp；相关
+  fragment/anchor 回归仍在同一门内。C89、Debug/Release ARMV4I 正式构建、audit、文档审计
+  和 `git diff --check` 均已通过；Release 设备探针仍不作为证据。真实页面视觉、触摸、SIP、
+  旋转和 picker 仍按累计人工边界处理。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -591,7 +605,7 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1079 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1082 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -664,6 +678,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   Debug 窄设备门已完成；tracked 改动只覆盖 `test_host` 消费者与相关文档，未扩张
   `positron_browser` 公共 ABI，也没有修改 tracked INI。Release 设备探针不计入证据，不要把
   `tmp/` 证据或无关工作区文件带入 Git。
+- next634 的跨文档 history scroll restore、TEST1082、C89、Debug/Release 构建、audit、文档
+  审计和 Debug 窄设备门已完成；tracked 改动只覆盖 `test_host` 消费者与相关文档，未扩张
+  `positron_browser` 公共 ABI，也没有修改 tracked INI。Release 设备探针仍不计入证据；提交
+  前只需完成最终 Git 状态、提交和推送核对。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -671,12 +689,13 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next633 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+next634 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
 纵切，不要为了补编号添加孤立 API。TEST65 的多字符 SIP 候选词、select/file picker 模态框、
 真实 label 触摸、OEM 窗口视觉和键盘映射仍是独立人工边界；在人工证据出现前不得把它们写成
 通用产品保证。fragment-only 锚点当前只支持 literal DOM id，`<a name>`、percent-decoding
-和 target/rel/window 仍未覆盖；history traversal 只恢复同文档目标。下一次重要产品/生命周期
-风险累积后，再安排新的全范围设备基线。
+和 target/rel/window 仍未覆盖；history traversal 只在当前宿主进程内恢复有界的同文档目标
+或跨文档条目偏移，不提供持久缓存/跨进程恢复。下一次重要产品/生命周期风险累积后，再安排
+新的全范围设备基线。
 
 ## next617 完成标准
 
