@@ -1176,6 +1176,20 @@ FRAGMENT_REPLACE 只有匹配时才进入当前 context 队列，未知/空名�
 opener/noopener、关闭、跨窗口 history 和视觉仍未实现。`test_host.exe` 只消费公共 callback，
 不会把 anchor 的 context 身份写进 browser DLL。TEST1088 覆盖匹配、未知名称和空名称边界。
 
+#### next641 的 anchor relList 边界
+
+next641 在 `positron_browser.dll` bootstrap 内把已有的 `rel` reflected attribute 包装为稳定的
+`relList` DOMTokenList。`a`、`area`、`link`、`form` wrapper 返回同一 session 内的同一对象，
+支持 `length`、`item()`、`value`、`contains()`、`add()`、`remove()`、`toggle()`、`replace()`、
+`forEach()` 和 iterator；读取按 ASCII 大小写不敏感的 unique token 集合解析，mutation 通过既有
+attribute bridge 写回 `rel`，非法空/含空白 token 在 bootstrap 层抛出 `SyntaxError`。非 rel 元素
+返回 `null`。该能力没有新的 C 导出或 Core ABI，`test_host` 只提供 TEST1089 fixture/断言。
+
+`relList` 不拥有 link-type processing、`supports()`、noopener/opener 安全策略、窗口创建或
+导航副作用；宿主仍须自行决定关系词如何影响网络、窗口和安全策略。其 token 集合只在当前
+script session 的 bounded wrapper 中实时读取，不等于通用 live DOM、节点创建或完整 HTML
+接口继承树。TEST1089 与 1080–1088、999 的设备门通过 11/11。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：

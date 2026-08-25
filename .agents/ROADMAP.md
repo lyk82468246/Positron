@@ -497,7 +497,21 @@ TEST1088 与 TEST1080–1087、999 的回归门使用：
 仓库审计、文档审计和 diff 检查均通过。本批没有新增必须立即人工复核的视觉、触摸、SIP、
 旋转或 picker 风险。
 
-### 35. 建立真实页面驱动的兼容队列
+### 35. next641：anchor relList 的 bounded DOMTokenList 反射（已完成）
+
+next641 沿 next636 已有的 `rel` 属性桥补齐一个可复用的页面能力，而不是把关系词处理
+复制到 `test_host`：`positron_browser.dll` bootstrap 为 `a`、`area`、`link`、`form` wrapper
+提供稳定的 `relList`，支持 `length`、`item()`、`value`、`contains()`、`add()`、`remove()`、
+`toggle()`、`replace()`、`forEach()` 和 iterator。读取按 ASCII 大小写不敏感的 unique token
+集合工作，变更实时反映到 `rel`；空 token 或含空白 token 抛出 `SyntaxError`。该批没有新增
+公共 C ABI、没有实现 `supports()`，也没有把 `noopener`/`opener` 误扩张成窗口安全策略。
+
+TEST1089 覆盖稳定 identity、读取/枚举、去重、大小写、mutation、value 反射、非法 token 和
+非 rel 元素边界；与 TEST1080–1088、999 的设备门通过 11/11，证据位于
+`tmp/device-runs/20260825-152127-next641-anchor-rel-list-final-r2/`。本批没有新增视觉、触摸、
+SIP、旋转或 picker 人工门。
+
+### 36. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -508,7 +522,7 @@ TEST1088 与 TEST1080–1087、999 的回归门使用：
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 36. 安排新的全范围检查点
+### 37. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

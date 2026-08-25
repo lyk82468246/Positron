@@ -319,6 +319,13 @@ next640 把单窗口的同名复用策略补到普通 anchor：宿主读取活�
 到 anchor metadata；真实多窗口、窗口生命周期和跨窗口 history 仍未实现。`TEST1088` 与
 1080–1087、999 的 Debug 设备回归门通过 10/10。
 
+next641 沿用已有的 `rel` 属性桥，为 `a`、`area`、`link`、`form` wrapper 提供稳定的
+`relList`。它支持 bounded DOMTokenList 的 `length`、`item()`、`value`、`contains()`、
+`add()`、`remove()`、`toggle()`、`replace()`、`forEach()` 和 iterator；token 读取按 ASCII
+大小写不敏感去重，写入实时反映到 `rel`，空 token 或含空白 token 会失败。该能力不新增
+公共 C ABI，不实现 `supports()`、完整 link-type processing 或 noopener/opener 窗口策略。
+`TEST1089` 与 1080–1088、999 的 WM6 Debug 设备门通过 11/11。
+
 ## 快速开始
 
 ### 前置环境

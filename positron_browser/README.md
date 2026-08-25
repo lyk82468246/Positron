@@ -421,6 +421,14 @@ next640 的普通 anchor 不新增 browser ABI 字段：browser layer 继续把 
 窗口/网络层。未知或空名称、`_blank` 仍由单窗口宿主 fail closed；异步消息边界的再次检查和
 真实多窗口生命周期不属于 browser DLL。TEST1088 是该 host consumer policy 的回归门。
 
+next641 沿用 next636 的 `HTMLElement.rel` 反射，为 `a`、`area`、`link`、`form` wrapper 增加
+同一 `rel` 属性上的稳定 `relList`。wrapper 提供 `length`、`item()`、`value`、
+`contains()`、`add()`、`remove()`、`toggle()`、`replace()`、`forEach()` 和 iterator；读取按
+ASCII 大小写不敏感的 unique token 集合工作，mutation/value setter 立即反映到 `rel`，空 token
+或含空白 token 抛出 `DOMException` `SyntaxError`。其他元素返回 `null`。这只是 DOMTokenList
+反射，不实现 `supports()`、完整 link-type processing、noopener/opener 窗口安全或窗口创建，
+也不扩展公共 C ABI。TEST1089 是对应的自动产品/消费者门。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、
@@ -604,7 +612,7 @@ application-owned message；getter 在没有 custom message 时可返回固定�
 脚本/设备门和相应人工门。
 
 显式启用脚本时，bootstrap 还提供受限的 `dataset`/节点 metadata、FormData/Headers/Storage/
-classList/style iterator、Headers/URLSearchParams/FormData mutation-safe snapshots、
+classList/relList/style iterator、Headers/URLSearchParams/FormData mutation-safe snapshots、
 `TextEncoder.encodeInto()`、TextDecoder 选项快照、同步 Request/Response JSON/one-shot body 与
 clone ownership、Blob/File metadata/slice/JSON、Headers `getSetCookie()`、URL authority
 userinfo/default-port 与 URLSearchParams pair/delete-value/按值查询、cookie Max-Age 删除、
@@ -612,7 +620,7 @@ AbortSignal `timeout`/`any`/`onabort`/`abort`/tags、timer extra arguments/`setI
 MessagePort/BroadcastChannel（`onmessage` 自动 start）、structuredClone、Storage/HashChange/
 PopState/Error/Progress/Close event 构造器、同步 PerformanceObserver/EntryList 快照与选项校验、
 performance entry JSON、NodeList/HTMLCollection item/namedItem/forEach/keys/values/entries/iterator、
-稳定 element/classList/style wrapper identity、
+稳定 element/classList/relList/style wrapper identity、
 DOM wrapper tags、navigator 方法、viewport 派生的 `screen.orientation`、window aliases、
 受限的当前上下文 `window.open()` 和 `window.close()` no-op，以及由宿主显式 microtask pump 驱动的 bounded Promise（含 `then`/`catch`/`finally`、
 `resolve`/`reject`、`all`/`race`/`allSettled`/`any`）。它们只在单个 session 内存中运行；

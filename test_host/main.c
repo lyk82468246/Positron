@@ -362,8 +362,12 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1088
+#define TEST_MAX_NUMBER 1089
 #define TEST_COMPLETION_BEEP_NUMBER 999
+
+static BOOL test_browser_raw_string_fixture(const char *html,
+        const char *probe, const char *expected, char *error,
+        int error_capacity);
 
 static int test_config_space(char c)
 {
@@ -19741,6 +19745,50 @@ static BOOL test1088_browser_anchor_named_context_contract(void)
     show_info(L"TEST 1088 OK",
             "Named anchor navigation reuses only the active window.name"
             " context; unknown and unnamed contexts remain fail-closed.");
+    return TRUE;
+}
+
+/* TEST 1089 - anchor relList is a live, bounded DOMTokenList reflection. */
+static BOOL test1089_browser_anchor_rel_list_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><a id='target' href='/next' rel='NOOPENER   noopener noreferrer'>Next</a>"
+        "<div id='other' rel='ignored'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var a=document.getElementById('target');var l=a.relList;"
+        "var before=l.length+'|'+l.item(0)+'|'+l.item(1)+'|'"
+        "+String(l.item(2)===null)+'|'+String(l.contains('noopener'))+'|'"
+        "+String(l.contains('NOOPENER'))+'|'+String(l.contains('missing'));"
+        "var bad=false;try{l.add('bad token');}catch(x){bad=x.name==='SyntaxError';}"
+        "var seen=[];l.forEach(function(v){seen.push(v);});"
+        "var it=l[Symbol.iterator]();var iter=[];var step;"
+        "while(!(step=it.next()).done){iter.push(step.value);}"
+        "var replaced=l.replace('NOOPENER','noreferrer2');l.add('UGC');l.add('ugc');"
+        "var forced=l.toggle('UGC',false);var toggled=l.toggle('noopener');"
+        "l.remove('NOOPENER');l.value=' External   NoOpener ';"
+        "document.getElementById('result').textContent=before+'|'"
+        "+String(l===a.relList)+'|'+String(bad)+'|'+seen.join(',')+'|'"
+        "+iter.join(',')+'|'"
+        "+String(replaced)+'|'+String(forced)+'|'+String(toggled)+'|'"
+        "+a.rel+'|'+String(l.length)+'|'+l.item(0)+'|'+l.item(1)+'|'"
+        "+String(l.contains('external'))+'|'+String(l.contains('NOOPENER'))+'|'"
+        "+String(document.getElementById('other').relList===null);";
+    static const char EXPECTED[] =
+        "2|NOOPENER|noreferrer|true|true|true|false|true|true|NOOPENER,noreferrer|"
+        "NOOPENER,noreferrer|true|false|true| External   NoOpener |2|External|"
+        "NoOpener|true|true|true";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1089 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1089 OK",
+            "anchor relList reflects rel live, deduplicates ASCII-case-insensitive "
+            "tokens, and supports bounded DOMTokenList mutation/iteration.");
     return TRUE;
 }
 
@@ -77574,6 +77622,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1086: ok = test1086_browser_window_open_contract(); break;
         case 1087: ok = test1087_browser_window_identity_contract(); break;
         case 1088: ok = test1088_browser_anchor_named_context_contract(); break;
+        case 1089: ok = test1089_browser_anchor_rel_list_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

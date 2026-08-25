@@ -844,6 +844,25 @@ TEST1088 覆盖匹配当前 `window.name` 的普通 named anchor、未知名称�
 和名称恢复。C89、Debug/Release ARMV4I、仓库审计、文档审计和 diff 检查均通过；本批不新增
 必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
 
+### next641 anchor relList 自动门
+
+next641 补齐 `a`、`area`、`link`、`form` wrapper 的 bounded `relList` DOMTokenList 反射，
+并保持 `rel` 的既有 attribute bridge 与公共 ABI 不变。TEST1089 自动断言稳定 identity、
+`length`/`item()`/`value`、ASCII 大小写不敏感去重、contains/add/remove/toggle/replace、
+forEach/iterator、非法 token 的 `SyntaxError` 和非 rel 元素的 null 边界；不把关系词处理扩张
+为窗口安全、导航或完整 link-type processing。
+
+```bat
+scripts\device_gate.bat -Candidate next641-anchor-rel-list-final ^
+  -EnableJavaScript ^
+  -TestSelection "1080-1089,999"
+```
+
+`tmp/device-runs/20260825-152127-next641-anchor-rel-list-final-r2/` 已通过 11/11，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。C89、Debug/Release ARMV4I
+正式构建、仓库审计、文档审计和 diff 检查均通过；tracked INI 未修改，本批不新增视觉、
+触摸、SIP、旋转或 picker 人工门。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
