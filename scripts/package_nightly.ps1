@@ -23,6 +23,25 @@ function Invoke-CheckedText([string] $FilePath, [string[]] $Arguments)
     return (($output | ForEach-Object { $_.ToString() }) -join "`n").Trim()
 }
 
+function Invoke-GhCaptured([string[]] $Arguments)
+{
+    # Windows PowerShell promotes native stderr to NativeCommandError when
+    # ErrorActionPreference is Stop. Keep gh's exit code and text together so
+    # expected probes (such as a missing first release) remain controllable.
+    $preference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = & gh @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $preference
+    }
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Output = $output
+    }
+}
+
 function Get-Sha256([string] $Path)
 {
     $algorithm = New-Object System.Security.Cryptography.SHA256Managed
@@ -301,43 +320,54 @@ try {
         if ($null -eq (Get-Command gh -ErrorAction SilentlyContinue)) {
             throw "GitHub CLI (gh) was not found. Install it and authenticate before uploading."
         }
-        # Windows PowerShell promotes native stderr to NativeCommandError when
-        # ErrorActionPreference is Stop. Capture it as text so the caller gets
-        # the actionable login guidance below instead of a truncated gh error.
-        $authPreference = $ErrorActionPreference
-        try {
-            $ErrorActionPreference = "Continue"
-            $authOutput = & gh auth status 2>&1
-            $authExitCode = $LASTEXITCODE
-        } finally {
-            $ErrorActionPreference = $authPreference
-        }
-        if ($authExitCode -ne 0) {
-            $details = ($authOutput | ForEach-Object { $_.ToString() }) -join "`n"
+        $authResult = Invoke-GhCaptured @("auth", "status")
+        if ($authResult.ExitCode -ne 0) {
+            $details = ($authResult.Output | ForEach-Object { $_.ToString() }) -join "`n"
             throw ("GitHub CLI authentication is not ready. Run 'gh auth login -h github.com'.`n{0}" -f $details.Trim())
         }
         $repoArgs = @()
         if (![string]::IsNullOrEmpty($Repository)) {
             $repoArgs = @("--repo", $Repository)
         }
-        $viewOutput = & gh release view $Tag @repoArgs --json tagName 2>$null
-        $releaseExists = ($LASTEXITCODE -eq 0)
-        if ($releaseExists) {
-            & gh release edit $Tag @repoArgs --title "Positron nightly" `
-                --notes-file $readmePath --prerelease
-            if ($LASTEXITCODE -ne 0) {
-                throw "Could not update the existing nightly pre-release."
+        $viewArgs = @("release", "view", $Tag) + $repoArgs +
+                @("--json", "tagName")
+        $viewResult = Invoke-GhCaptured $viewArgs
+        $viewDetails = ($viewResult.Output |
+                ForEach-Object { $_.ToString() }) -join "`n"
+        if ($viewResult.ExitCode -eq 0) {
+            $editArgs = @("release", "edit", $Tag) + $repoArgs +
+                    @("--title", "Positron nightly", "--notes-file",
+                    $readmePath, "--prerelease")
+            $editResult = Invoke-GhCaptured $editArgs
+            if ($editResult.ExitCode -ne 0) {
+                $details = ($editResult.Output |
+                        ForEach-Object { $_.ToString() }) -join "`n"
+                throw ("Could not update the existing nightly pre-release.`n{0}" -f
+                        $details.Trim())
+            }
+        } elseif ($viewDetails -match "(?i)release\s+not\s+found|not\s+found") {
+            $createArgs = @("release", "create", $Tag) + $repoArgs +
+                    @("--title", "Positron nightly", "--notes-file",
+                    $readmePath, "--prerelease", "--target", $commit)
+            $createResult = Invoke-GhCaptured $createArgs
+            if ($createResult.ExitCode -ne 0) {
+                $details = ($createResult.Output |
+                        ForEach-Object { $_.ToString() }) -join "`n"
+                throw ("Could not create the nightly pre-release.`n{0}" -f
+                        $details.Trim())
             }
         } else {
-            & gh release create $Tag @repoArgs --title "Positron nightly" `
-                --notes-file $readmePath --prerelease --target $commit
-            if ($LASTEXITCODE -ne 0) {
-                throw "Could not create the nightly pre-release."
-            }
+            throw ("Could not inspect the nightly pre-release.`n{0}" -f
+                    $viewDetails.Trim())
         }
-        & gh release upload $Tag $zipPath @repoArgs --clobber
-        if ($LASTEXITCODE -ne 0) {
-            throw "Could not upload or replace positron-nightly.zip."
+        $uploadArgs = @("release", "upload", $Tag, $zipPath) + $repoArgs +
+                @("--clobber")
+        $uploadResult = Invoke-GhCaptured $uploadArgs
+        if ($uploadResult.ExitCode -ne 0) {
+            $details = ($uploadResult.Output |
+                    ForEach-Object { $_.ToString() }) -join "`n"
+            throw ("Could not upload or replace positron-nightly.zip.`n{0}" -f
+                    $details.Trim())
         }
         Write-Host ("Uploaded nightly pre-release '{0}' and replaced positron-nightly.zip." -f $Tag)
     }
