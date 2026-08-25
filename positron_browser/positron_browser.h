@@ -952,6 +952,7 @@ typedef struct PBrowserScriptInvalidCallbacks {
 #define PBROWSER_SCRIPT_NAVIGATION_REPLACE          8u
 #define PBROWSER_SCRIPT_NAVIGATION_FRAGMENT         9u
 #define PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE 10u
+#define PBROWSER_SCRIPT_NAVIGATION_OPEN              11u
 
 /* Bounded browsing-context classification for anchor navigation. The
  * browser DLL classifies the raw target attribute but does not create or own
@@ -970,11 +971,16 @@ typedef struct PBrowserScriptInvalidCallbacks {
  * are borrowed for the duration of the callback; either may be NULL when
  * the operation does not use it. state_json is compact UTF-8 JSON. target
  * and rel are borrowed anchor metadata and are NULL for non-anchor
- * operations. target_kind is one of the bounded target-policy constants
- * above; it is DEFAULT for non-anchor operations and for an absent/empty
- * target. The raw target remains available for a host window manager. For a
- * successful PUSH_STATE callback, out_value must receive the exposed history
- * length; other operations ignore it. */
+ * operations, except OPEN where target carries window.open's second
+ * argument. target_kind is one of the bounded target-policy constants
+ * above; it is DEFAULT when an operation has no target and for an
+ * absent/empty target. The raw target remains available for a host window
+ * manager. OPEN is a request to reuse a current browsing context; a host
+ * without that target policy must return zero, so the product bootstrap
+ * returns null and never silently replaces the current document. The optional features
+ * argument to window.open is intentionally ignored in this bounded subset.
+ * For a successful PUSH_STATE callback, out_value must receive the exposed
+ * history length; other operations ignore it. */
 typedef struct PBrowserScriptNavigationInfo {
     unsigned long size;
     unsigned int kind;

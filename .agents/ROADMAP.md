@@ -453,7 +453,22 @@ TEST1085 覆盖所有分类、大小写/空白、fragment 传播和单窗口拒�
 ARMV4I 构建、仓库/文档审计和 diff 检查均通过；本批没有新增必须立即人工复核的视觉、
 触摸、SIP、旋转或 picker 风险。
 
-### 32. 建立真实页面驱动的兼容队列
+### 32. next638：bounded `window.open()` 当前上下文语义（已完成）
+
+next638 复用 `PBrowserScriptNavigationInfo` 的 target policy，增加
+`PBROWSER_SCRIPT_NAVIGATION_OPEN`。browser bootstrap 把 `window.open()` 的 URL、raw target
+和 `target_kind` 交给导航 callback；features 在当前子集中明确忽略。单窗口 `test_host` 只
+接受显式 `_self`、`_parent`、`_top`，成功时按普通当前文档导航处理并让脚本得到当前
+`window`；DEFAULT、`_blank`、named、空 URL 和注销后的 callback 返回 null。导航 adapter
+和窗口消息边界都检查该策略，避免新窗口请求静默替换当前页面。
+
+TEST1086 覆盖 metadata 传播、宿主 admission、new-context 拒绝和注销后的 fail-closed；
+`tmp/device-runs/20260825-132745-next638-window-open-regression/` 的回归门通过 8/8
+（TEST1080–1086、999），零 `ERROR`/`FAIL`、唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。
+本批不创建窗口、不解释 features、不改变 heap/脚本默认开关，也不新增必须立即人工复核的
+视觉、触摸、SIP、旋转或 picker 风险。
+
+### 33. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -464,7 +479,7 @@ ARMV4I 构建、仓库/文档审计和 diff 检查均通过；本批没有新增
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 33. 安排新的全范围检查点
+### 34. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

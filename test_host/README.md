@@ -104,6 +104,13 @@ next637 复用 browser DLL 提供的 `PBrowserScriptNavigationInfo.target_kind`�
 跨窗口 history 和视觉仍需未来的窗口宿主；`TEST1085` 自动覆盖分类、大小写/空白、fragment
 传播和拒绝策略。定向设备门使用 `1079-1085,999`，不修改 tracked INI。
 
+next638 消费 browser DLL 的 `PBROWSER_SCRIPT_NAVIGATION_OPEN`：只有显式 `_self`、
+`_parent`、`_top` 才进入当前单窗口的普通导航队列，窗口消息边界再次检查该策略；省略
+target、`_blank`、named 和空 URL 返回 `null`，不覆盖当前页面。宿主仍负责 URL resolver、
+网络请求、文档替换、窗口/控件生命周期和视觉；features 不被解释为窗口特性。`TEST1086`
+覆盖脚本 callback 的 target_kind/原始 target、注销后的 null 结果以及宿主 admission，
+定向设备门使用 `1080-1086,999`；本批回归门共 8/8 通过。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

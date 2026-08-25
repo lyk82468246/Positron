@@ -101,6 +101,12 @@
   管理器的请求静默降级为当前页替换。真实多窗口创建、窗口复用/生命周期、跨窗口 history、
   opener/noopener 安全策略和视觉仍未实现；target_kind 只是可复用的产品到宿主策略输入。
   TEST1085 覆盖该分类和拒绝边界。
+  next638 又在同一导航 callback 上增加了 `PBROWSER_SCRIPT_NAVIGATION_OPEN`：bootstrap 的
+  `window.open()` 只有在宿主接受显式 `_self`/`_parent`/`_top` 时才返回当前 bounded global，
+  默认、`_blank`、named、空 URL 或 callback 注销时返回 null。features 不产生窗口特性，
+  真实窗口创建、复用、关闭、opener/noopener、跨窗口 history、网络和视觉仍未实现；这
+  只是安全的当前-context 导航语义，不等于多窗口兼容。TEST1086 覆盖 callback metadata、
+  宿主 admission 和注销后的 fail-closed。
   next632 又把 fragment-only href（以 `#` 开头）分类为同页
   `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`：宿主绑定当前 URL，调用
   Core 片段查询取得已解码 token 的目标几何并移动自己的 viewport；unknown token 保持当前

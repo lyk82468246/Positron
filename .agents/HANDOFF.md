@@ -16,16 +16,18 @@
 ## 当前仓库基线
 
 - 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next637，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
+- 当前能力批次：next638，fragment-only `HTMLElement.click()`/物理锚点 → cancelable click/
   fragment history/hashchange + host-owned target scroll，并在同文档和跨文档 history
   back/forward/go 时恢复 bounded viewport；fragment token 按 id 优先兼容 `<a name>`，
   anchor 的 href/target/rel 现在由 Core 查询并随 browser anchor navigation 传给宿主
   （自动设备门已完成）。browser layer 还会把 raw target 分类为 bounded `target_kind`；
   当前单窗口宿主接受 default/`_self`/`_parent`/`_top`，对 `_blank`/named 请求 fail-closed。
-  跨页 href 仍为 ASSIGN；真实 `_blank`/named window 创建、窗口复用和跨窗口 history
+  `window.open()` 现在只对显式 `_self`/`_parent`/`_top` 请求走当前文档导航并返回当前
+  bounded global，DEFAULT/`_blank`/named/空 URL 或 callback 注销返回 null。跨页 href
+  仍为 ASSIGN；真实 `_blank`/named window 创建、窗口复用和跨窗口 history
   尚未实现；next618 的 TEST65 真实 SIP 候选词仍待人工确认，
   file picker/真实 label 触摸仍是独立人工边界。
-- 测试编号上限：`TEST_MAX_NUMBER 1085`。
+- 测试编号上限：`TEST_MAX_NUMBER 1086`。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
@@ -623,6 +625,17 @@ next637 的 anchor target policy 自动门已经完成：
   和 `git diff --check` 均通过；仅保留既有 libcss/fpmath 的 3 个 C4244 警告。本批没有新增
   视觉、真实触摸、SIP、旋转或 picker 人工门。
 
+next638 的 bounded `window.open()` 当前上下文自动门已经完成：
+
+- `tmp/device-runs/20260825-132745-next638-window-open-regression/` 的回归门为 PASS，
+  TEST1080–1086、TEST999 共 8/8，唯一 `TESTBENCH PASS`，`error_count=0`、`fail_count=0`、
+  `test13_route_ok=True`。
+- TEST1086 覆盖 `PBROWSER_SCRIPT_NAVIGATION_OPEN` 的 URL/raw target/target_kind 传播，
+  `_self`/`_parent`/`_top` 的当前上下文接受，DEFAULT/`_blank`/named/空 URL 拒绝，以及
+  注销 callback 后的 null 回退；TEST1085 保留 anchor target policy 相邻回归。
+- Debug 定向设备门已通过；Release ARMV4I、C89、仓库审计、文档审计和最终 Git 核对仍是
+  本批交付前置项。本批没有新增必须立即人工复核的视觉、真实触摸、SIP、旋转或 picker 门。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -654,7 +667,8 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - DOM、表单集合、历史、存储、请求响应和异步模型仍是资源有界的子集，不是完整现代浏览器。
 - Anchor href/target/rel 元数据查询与受信任点击传播已有 next636 自动契约；next637 已把
   raw target 分类并让单窗口宿主对 `_blank`/named 请求 fail-closed。真实 `_blank`/named
-  window 创建、窗口复用/生命周期和跨窗口 history 仍未覆盖。
+  window 创建、窗口复用/生命周期和跨窗口 history 仍未覆盖。next638 的
+  `window.open()` 只提供显式当前-context target 的安全复用，不能扩大为多窗口保证。
 - 布局仍缺少 Grid、sticky、复杂包含块及完整表格/列表行为；float 路线已撤回。
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
@@ -749,6 +763,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   C89、Debug/Release 构建、8/8 窄门、audit、文档审计和 diff 检查均已完成；tracked 改动
   只覆盖 `positron_browser` additive ABI、`test_host` 消费者/断言和相关文档，没有修改
   tracked INI。提交前只需完成最终 Git 状态、提交和推送核对。
+- next638 的 bounded `window.open()` 当前-context 路由、TEST1086、Debug 8/8 回归门已完成；
+  tracked 改动只覆盖 `positron_browser` additive navigation kind、`test_host` 消费者/断言和
+  相关文档，没有修改 tracked INI。提交前仍需完成 C89、Release、audit、文档审计、diff 检查、
+  最终 Git 状态、提交和推送核对。
 - 若后续出现 composition 顺序、候选词数据或 native commit→input 错误，应先保留
   browser/WM/Core 边界，不要通过跳过生命周期或放宽长度断言掩盖回归。
 - tracked INI 不应为了下一批开发永久改成人工模式或扩大默认测试集。
@@ -756,12 +774,12 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next637 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
+next638 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
 纵切，不要为了补编号添加孤立 API。TEST65 的多字符 SIP 候选词、select/file picker 模态框、
 真实 label 触摸、OEM 窗口视觉和键盘映射仍是独立人工边界；在人工证据出现前不得把它们写成
-通用产品保证。anchor href/target/rel 元数据与 target_kind 已有 Core/browser/host 契约，
-单窗口对 `_blank`/named 已安全拒绝，但真实 `_blank`/named window、窗口复用与生命周期仍
-未覆盖；fragment-only 锚点继续在当前宿主路径支持有界
+通用产品保证。anchor href/target/rel 元数据与 target_kind、bounded `window.open()` 已有
+Core/browser/host 契约，单窗口对 `_blank`/named 已安全拒绝，但真实 `_blank`/named window、
+窗口复用与生命周期仍未覆盖；fragment-only 锚点继续在当前宿主路径支持有界
 `%HH` 解码、id 优先和 `<a name>` fallback。history traversal 只在当前宿主进程内恢复有界
 的同文档目标或跨文档条目偏移，不提供持久缓存/跨进程恢复。下一次重要产品/生命周期风险
 累积后，再安排新的全范围设备基线。

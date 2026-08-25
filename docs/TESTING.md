@@ -783,6 +783,27 @@ scripts\device_gate.bat -Candidate next637-anchor-target-policy ^
 空白、`_self`/`_parent`/`_top`/`_blank`/named、fragment 传播以及单窗口 fail-closed；
 TEST1084 与 1079–1083 继续作为相邻回归。C89、Debug/Release ARMV4I、仓库/文档审计均通过。
 
+### next638 bounded `window.open()` 自动门
+
+next638 让 browser bootstrap 通过 `PBROWSER_SCRIPT_NAVIGATION_OPEN` 把
+`window.open(url,target,features)` 接到导航 callback。当前单窗口宿主只接受显式
+`_self`/`_parent`/`_top`，并在窗口消息边界再次检查；省略 target、`_blank`、named、空 URL
+或 callback 注销时返回 `null`，不静默覆盖当前页。features 在本批不解释，不引入窗口创建、
+opener/noopener、跨窗口 history 或视觉保证，因此无需新增人工页面门。
+
+```bat
+scripts\device_gate.bat -Candidate next638-window-open-regression ^
+  -EnableJavaScript ^
+  -TestSelection "1080-1086,999"
+```
+
+`tmp/device-runs/20260825-132745-next638-window-open-regression/` 已通过 8/8（TEST1080–1086、
+999），唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`。TEST1086 覆盖
+target_kind/原始 target 传播、current-context 接受、new-context 拒绝和注销后的 fail-closed；
+TEST1080–1085 保留 fragment、history、anchor metadata 与 target policy 相邻回归。C89、
+Debug/Release ARMV4I、仓库/文档审计仍需在提交前完成；本批不新增必须立即人工复核的视觉、
+触摸、SIP、旋转或 picker 风险。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

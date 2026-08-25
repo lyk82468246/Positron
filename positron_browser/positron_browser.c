@@ -2220,7 +2220,13 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "return plocation;},set:pnavigate});"
         "Object.defineProperty(pdocument,'defaultView',{get:function(){return g;},enumerable:true});"
         "g.window=g;g.self=g;g.top=g;g.parent=g;g.frames=g;g.document=pdocument;"
-        "g.closed=false;g.length=0;g.opener=null;g.open=function(url,target,features){return null;};"
+        "g.closed=false;g.length=0;g.opener=null;"
+        "g.open=function(url,target,features){var u;var t;var r;"
+        "u=typeof url==='undefined'?'':String(url);"
+        "t=typeof target==='undefined'?'':String(target);"
+        "if(typeof __pcoreNavigation!=='function'||u===''){return null;}"
+        "r=__pcoreNavigation({op:'open',url:u,target:t});"
+        "return r===true?g:null;};"
         "g.close=function(){};"
         "var pwindowName='';"
         "Object.defineProperty(g,'name',{get:function(){return pwindowName;},"
@@ -4663,6 +4669,7 @@ static int p_browser_script_navigation(void *pw,
     HANDLE state;
     const char *op;
     const char *url;
+    const char *target;
     char *state_json;
     int result;
     int out_value;
@@ -4673,6 +4680,7 @@ static int p_browser_script_navigation(void *pw,
     out_value = 0;
     root = p_browser_script_args_object(args_json, args_len, &object);
     op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
+    target = NULL;
     if (binding == NULL || root == NULL || op == NULL ||
             binding->callbacks.navigate == NULL) {
         PJson_Free(root);
@@ -4715,6 +4723,30 @@ static int p_browser_script_navigation(void *pw,
         if (info.kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE) {
             return p_browser_script_write_int(result > 0 ? out_value : 0,
                     out_json, out_capacity, out_len);
+        }
+        return p_browser_script_write_bool(result > 0, out_json,
+                out_capacity, out_len);
+    }
+    if (strcmp(op, "open") == 0) {
+        url = PJson_GetString(object, "url");
+        target = PJson_GetString(object, "target");
+        if (url == NULL || url[0] == '\0' ||
+                strlen(url) >= PBROWSER_HISTORY_URL_MAX ||
+                (target != NULL &&
+                strlen(target) >= PBROWSER_SCRIPT_ANCHOR_TARGET_MAX)) {
+            PJson_Free(root);
+            return p_browser_script_write_bool(0, out_json,
+                    out_capacity, out_len);
+        }
+        info.kind = PBROWSER_SCRIPT_NAVIGATION_OPEN;
+        info.url = url;
+        info.target = target;
+        info.target_kind = p_browser_script_anchor_target_kind(target);
+        result = binding->callbacks.navigate(binding->callbacks.pw,
+                &info, &out_value);
+        PJson_Free(root);
+        if (result < 0) {
+            return 1;
         }
         return p_browser_script_write_bool(result > 0, out_json,
                 out_capacity, out_len);

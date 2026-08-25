@@ -55,9 +55,11 @@ Request/Response JSON 与 one-shot body、clone ownership、Blob/File metadata/s
 authority/default-port 与 URLSearchParams pair/delete-value/按值查询和 mutation-safe snapshot、
 cookie Max-Age 删除、TextEncoder/TextDecoder 选项、AbortSignal 静态工厂和 tags、setImmediate、
 MessagePort/BroadcastChannel、structuredClone、PerformanceObserver/EntryList 快照与选项校验、
-navigator 方法、`screen.orientation`、window aliases/open-close no-op 和稳定 element wrapper
-identity；这些能力不发起网络、不创建后台线程，并由宿主显式 timer/message pump 或同步 snapshot
-驱动。
+navigator 方法、`screen.orientation`、window aliases、受限的当前上下文 `window.open()` 与
+`window.close()` no-op，以及稳定 element wrapper identity；这些能力不发起网络、不创建后台
+线程，并由宿主显式 timer/message pump 或同步 snapshot 驱动。`window.open()` 只有显式
+`_self`/`_parent`/`_top` 且宿主接受时返回当前 `window`；默认、`_blank` 和 named target
+返回 `null`，不会静默替换当前页面。
 当前还提供 bounded Promise 构造器、`then`/`catch`/`finally`、`resolve`/`reject` 和四种组合器；
 reaction 必须由宿主显式调用 `PBrowser_ScriptSessionRunMicrotasks()` 推进，handler 与组合器输入均受
 64 项上限。
@@ -295,6 +297,13 @@ next637 将 anchor 的 raw target 在 `positron_browser.dll` 内分类为 defaul
 当前单窗口 `test_host` 接受前四种当前上下文策略，对需要新窗口的 `_blank`/named 请求
 明确 fail-closed，不会静默替换当前页面；实际多窗口创建、复用、生命周期和跨窗口 history
 仍待后续窗口宿主。`TEST1085` 与 1079–1084、999 的 Debug 设备门通过 8/8。
+
+next638 在同一导航桥上补齐了受控的 `window.open()` 当前上下文语义：显式 `_self`、
+`_parent`、`_top` 请求交给宿主作为当前文档导航，宿主接受时脚本得到当前 `window`；省略
+target、`_blank` 和 named target 仍返回 `null`，不会把新窗口请求降级为当前页替换。
+features 字符串在这个有界子集中不产生窗口特性；真正的窗口创建、复用、生命周期、
+opener/noopener、跨窗口 history 和视觉仍未实现。`TEST1086` 与 1085、999 的 Debug
+设备回归门（TEST1080–1086、999）通过 8/8。
 
 ## 快速开始
 

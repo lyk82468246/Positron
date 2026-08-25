@@ -27,6 +27,13 @@ browser layer 分类的 `target_kind`（default、`_self`、`_parent`、`_top`�
 named），因此宿主不必复制关键字解析。Core 对应的
 `PCore_LinkInfoByIdEx()`/`PCore_LinkAtEx()` 只复制到调用者缓冲区并在容量不足时失败。
 
+`window.open(url, target, features)` 通过同一导航 callback 传递一个
+`PBROWSER_SCRIPT_NAVIGATION_OPEN` 请求。browser layer 只负责 URL/target 的有界参数和
+target_kind 分类；宿主接受 `_self`、`_parent` 或 `_top` 时可把请求映射为当前文档导航，
+脚本得到当前 bounded `window`。没有窗口管理器时，省略 target（DEFAULT）、`_blank` 和
+named target 必须返回 `null`；features 在当前子集中只被忽略，不创建 HWND、不改变 opener
+或安全策略。窗口创建、复用、关闭、跨窗口 history 和网络仍由宿主拥有。
+
 native EDIT 的产品事务入口是 additive 的
 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()`。调用者提供现有的 input/change
 core propagation callback，并为每个 native EDIT 传入稳定的非零 session token 和文档几何；
@@ -392,6 +399,12 @@ named 交给窗口管理器或 fail-closed。`test_host` 当前选择后者，�
 当前文档；实际窗口复用、生命周期、跨窗口 history 和视觉仍是宿主后续边界。TEST1085
 覆盖大小写/空白、所有分类、fragment 传播和单窗口拒绝策略。
 
+next638 在该 ABI 上增加 `PBROWSER_SCRIPT_NAVIGATION_OPEN`。bootstrap 的
+`window.open()` 只在宿主接受显式当前上下文 target 时返回同一 bounded global；DEFAULT、
+`_blank`、named 或空 URL 返回 `null`，不会静默发起当前页导航。features 不产生窗口特性，
+真正的窗口 manager、opener/noopener、跨窗口 history 和视觉仍不在 DLL 边界内。TEST1086
+覆盖 callback metadata、注销后的 fail-closed 以及 test_host 的 current-target admission。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、
@@ -584,8 +597,8 @@ MessagePort/BroadcastChannel（`onmessage` 自动 start）、structuredClone、S
 PopState/Error/Progress/Close event 构造器、同步 PerformanceObserver/EntryList 快照与选项校验、
 performance entry JSON、NodeList/HTMLCollection item/namedItem/forEach/keys/values/entries/iterator、
 稳定 element/classList/style wrapper identity、
-DOM wrapper tags、navigator 方法、viewport 派生的 `screen.orientation`、window aliases/open-close
-no-op，以及由宿主显式 microtask pump 驱动的 bounded Promise（含 `then`/`catch`/`finally`、
+DOM wrapper tags、navigator 方法、viewport 派生的 `screen.orientation`、window aliases、
+受限的当前上下文 `window.open()` 和 `window.close()` no-op，以及由宿主显式 microtask pump 驱动的 bounded Promise（含 `then`/`catch`/`finally`、
 `resolve`/`reject`、`all`/`race`/`allSettled`/`any`）。它们只在单个 session 内存中运行；
 Request/Response 不联网，MessagePort/BroadcastChannel/timeout/Promise 需宿主显式 pump，
 PerformanceObserver 只读取 observe 时已有 entries，不等于完整 DOM、fetch/stream、真实窗口

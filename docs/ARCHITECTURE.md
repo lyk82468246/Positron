@@ -329,7 +329,8 @@ fixture、泵送和断言。新增的能力边界包括：
   Symbol.iterator、`toggleAttribute()`，以及 `ownerDocument`/`isConnected`/`nodeValue` 元数据。
   iterator 与 storage 仍是 session 内快照/Proxy，不引入完整 DOM tree 或通用 createElement。
 - 事件与窗口：Storage/HashChange/PopState/Error/Progress/Close event 构造器，document.defaultView
-  和同一 bounded global 的 window aliases；`open()` 返回 null、`close()` 为 no-op，不创建新窗口。
+  和同一 bounded global 的 window aliases；`open()` 只在宿主接受显式 `_self`/`_parent`/`_top`
+  时返回当前 global，DEFAULT/`_blank`/named 返回 null，`close()` 仍为 no-op，不创建新窗口。
 - 通信与观测：MessagePort close/messageerror、同 session `BroadcastChannel` 和
   `PerformanceObserver` 的同步 snapshot/takeRecords。消息仍通过既有 `RunMessages` pump，观测
   不监听未来异步 entries，不引入后台线程或跨页面通信。
@@ -1135,6 +1136,17 @@ rel 仍按原有同步借用规则传递，browser layer 不创建窗口、不�
 NAMED 在导航回调和消息边界双重 fail-closed，避免把未实现的新窗口语义静默降级为当前页
 替换。未来窗口宿主可消费同一枚举实现创建、复用、生命周期和跨窗口 history；在此之前不能
 把 `target_kind` 传播误称为完整多窗口支持。TEST1085 覆盖分类、fragment 传播及单窗口拒绝。
+
+#### next638 的 bounded `window.open()` 当前上下文边界
+
+next638 复用同一 `PBrowserScriptNavigationInfo` callback 增加
+`PBROWSER_SCRIPT_NAVIGATION_OPEN`。bootstrap 的 `window.open(url,target,features)` 只把
+URL、raw target 和 browser-owned `target_kind` 交给宿主；features 在当前子集中不解释。
+单窗口宿主只接受 SELF/PARENT/TOP，并在消息边界再次检查，成功时把请求作为当前文档导航
+处理，脚本返回同一 bounded global。DEFAULT、BLANK、NAMED、空 URL 或注销后的 callback
+均返回 null，不创建或替换未知 browsing context。窗口 manager、opener/noopener、close、
+跨窗口 history、网络和 HWND 生命周期继续由宿主拥有。TEST1086 覆盖 callback metadata、
+失败回退、注销和 host admission；该能力不改变 browser heap、脚本开关或公共字符串所有权。
 
 #### next614 的 label/control 关系边界
 
