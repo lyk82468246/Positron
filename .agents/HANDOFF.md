@@ -838,6 +838,13 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 当前工作区与候选状态
 
+- 2026-08-26 的 Nightly ZIP 实际设备部署检查使用 Debug ZIP（19 个条目，SHA-256
+  `5C04BEA552D5D20EB76B63A912671DE05195FCA6509F9765F50F104DA4DC929C`）：当前 GUI 已连接
+  的 WMDC/RAPI 成功复制并启动了包内 `test_host.exe`；TEST1–12（含实际设备 128-DPI 的
+  TEST11）通过，TEST13 的 `example.com` 第一跳通过，但 `www.iana.org/help/example-domains`
+  在 1200 秒内没有完成，因此没有 `TESTBENCH PASS`，不能把这次运行写成全量基线。部署助手
+  遵守不远程强杀约定，超时留下的远端进程需在设备 GUI 中手动关闭后才能继续下一次设备门。
+
 - next612 的 Debug/Release 构建、C89 检查、audit 和针对性设备门均已通过；最终远端状态需在
   提交/推送后重新核对。
 - next613 的 Debug/Release ARMV4I 正式构建、C89 检查和 `python scripts/audit_repo.py` 均已通过；

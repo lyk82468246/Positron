@@ -1,8 +1,9 @@
 # Positron nightly pre-release
 
 这个 nightly 包只提取已经编译好的产物，不会触发编译。包内的 DLL、`test_host.exe`、字体和
-`test_host.ini` 必须来自同一个配置；默认脚本打包现有的 Release 输出。ZIP 使用 store 模式，
-不压缩文件内容。
+`test_host.ini` 必须来自同一个配置；脚本默认在 Debug 与 Release 中选择最近一次完整构建的
+一套，也可以用 `-Configuration Debug` 或 `-Configuration Release` 固定配置。ZIP 使用 store
+模式，不压缩文件内容。
 
 ## 运行包
 

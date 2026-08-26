@@ -127,6 +127,17 @@ static int test_host_device_dpi(void)
     return dpi;
 }
 
+/* Convert an integer CSS pixel length using the same nearest-pixel policy as
+ * NetSurf's css_unit_len2device_px().  Device-backed tests must not assume
+ * that the host is a 96-DPI screen. */
+static int test_host_css_px_to_device_px(int css_px, int dpi)
+{
+    if (dpi <= 0) {
+        dpi = 96;
+    }
+    return MulDiv(css_px, dpi, 96);
+}
+
 static void test_host_set_device_viewport(int device_width, int device_height)
 {
     PCore_SetDeviceViewport(device_width, device_height,
@@ -5564,6 +5575,8 @@ static BOOL test22_reverse_flex_padding(void)
     int screen_w;
     int screen_h;
     int screen_dpi = 96;
+    int padding_px;
+    int content_width;
     HDC screen_dc;
     char msg[256];
 
@@ -5583,6 +5596,8 @@ static BOOL test22_reverse_flex_padding(void)
         }
         ReleaseDC(NULL, screen_dc);
     }
+    padding_px = test_host_css_px_to_device_px(25, screen_dpi);
+    content_width = 224 - (padding_px * 2);
     PCore_SetViewport(224, 320, screen_dpi);
     if (PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 224, 320) != 0 ||
@@ -5605,16 +5620,17 @@ static BOOL test22_reverse_flex_padding(void)
     if (screen_h <= 0) { screen_h = 320; }
     PCore_SetViewport(screen_w, screen_h, screen_dpi);
 
-    if (x != 25 || w != 174) {
+    if (x != padding_px || w != content_width) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "main=(%d,%d) %dx%d, expect x=25 width=174", x, y, w, h);
+                  "main=(%d,%d) %dx%d, expect x=%d width=%d at dpi=%d",
+                  x, y, w, h, padding_px, content_width, screen_dpi);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 22 FAIL", msg);
         return FALSE;
     }
     show_info(L"TEST 22 OK",
               "row-reverse flex + 25px padding OK:\n"
-              "main x=25, width=174 in a 224px viewport.\n\n"
+              "main starts after DPI-scaled padding in a 224px viewport.\n\n"
               "(hidden side nav cannot push content left.)");
     return TRUE;
 }
@@ -5829,7 +5845,7 @@ static BOOL test25_svg_parse(void)
 /* margin collapse and the padding barrier that must stop that collapse. */
 /* -------------------------------------------------------------------- */
 
-static BOOL test11_measure(const char *css,
+static BOOL test11_measure(const char *css, int screen_dpi,
         int *bx, int *by, int *bw, int *bh,
         int *px, int *py, int *pw, int *ph,
         char *err, int err_cap)
@@ -5854,6 +5870,9 @@ static BOOL test11_measure(const char *css,
         goto cleanup;
     }
 
+    /* This test owns an explicit CSS-pixel viewport. Set its DPI here so the
+     * result is independent of whichever preceding test last styled a page. */
+    PCore_SetViewport(240, 320, screen_dpi);
     if (PCore_StyleDocument(hDoc, hSheet) != 0) {
         _snprintf(err, err_cap - 1, "PCore_StyleDocument failed");
         goto cleanup;
@@ -5891,10 +5910,22 @@ static BOOL test11_layout(void)
     int cpx, cpy, cpw, cph;
     int bbx, bby, bbw, bbh;
     int bpx, bpy, bpw, bph;
+    int screen_dpi;
+    int margin_px;
+    int em_px;
+    int padding_px;
+    int content_width;
     char err[128];
     char msg[512];
 
+    screen_dpi = test_host_device_dpi();
+    margin_px = test_host_css_px_to_device_px(8, screen_dpi);
+    em_px = test_host_css_px_to_device_px(16, screen_dpi);
+    padding_px = test_host_css_px_to_device_px(1, screen_dpi);
+    content_width = 240 - (margin_px * 2);
+
     if (!test11_measure(CSS_COLLAPSE,
+            screen_dpi,
             &cbx, &cby, &cbw, &cbh, &cpx, &cpy, &cpw, &cph,
             err, sizeof(err))) {
         _snprintf(msg, sizeof(msg) - 1, "collapse case: %s", err);
@@ -5903,6 +5934,7 @@ static BOOL test11_layout(void)
         return FALSE;
     }
     if (!test11_measure(CSS_BARRIER,
+            screen_dpi,
             &bbx, &bby, &bbw, &bbh, &bpx, &bpy, &bpw, &bph,
             err, sizeof(err))) {
         _snprintf(msg, sizeof(msg) - 1, "padding barrier case: %s", err);
@@ -5911,21 +5943,25 @@ static BOOL test11_layout(void)
         return FALSE;
     }
 
-    /* Horizontal body margins give x=8,w=224. NetSurf collapses the
+    /* Horizontal body margins give x=8,w=224 at 96 DPI. NetSurf collapses the
      * body's 8px top margin with the first paragraph's 1em (16px) margin
      * through its borderless div. A 1px body padding stops that collapse. */
-    if (cbx != 8 || cby != 16 || cbw != 224 ||
-            cpx != 8 || cpy != 16 || cpw != 224 ||
-            bbx != 8 || bby != 8 || bbw != 224 ||
-            bpx != 8 || bpy != 25 || bpw != 224) {
+    if (cbx != margin_px || cby != em_px || cbw != content_width ||
+            cpx != margin_px || cpy != em_px || cpw != content_width ||
+            bbx != margin_px || bby != margin_px || bbw != content_width ||
+            bpx != margin_px || bpy != margin_px + padding_px + em_px ||
+            bpw != content_width) {
         _snprintf(msg, sizeof(msg) - 1,
                   "margin geometry off:\n"
                   " collapse body=(%d,%d,%d,%d), p=(%d,%d,%d,%d)\n"
-                  "   expect body/p x8 y16 w224\n"
+                  "   expect body/p x%d y%d w%d (dpi=%d)\n"
                   " barrier body=(%d,%d,%d,%d), p=(%d,%d,%d,%d)\n"
-                  "   expect body x8 y8 w224; p x8 y25 w224",
+                  "   expect body x%d y%d w%d; p x%d y%d w%d",
                   cbx, cby, cbw, cbh, cpx, cpy, cpw, cph,
-                  bbx, bby, bbw, bbh, bpx, bpy, bpw, bph);
+                  margin_px, em_px, content_width, screen_dpi,
+                  bbx, bby, bbw, bbh, bpx, bpy, bpw, bph,
+                  margin_px, margin_px, content_width,
+                  margin_px, margin_px + padding_px + em_px, content_width);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 11 FAIL", msg);
         return FALSE;
@@ -5935,7 +5971,7 @@ static BOOL test11_layout(void)
               "Margin collapse + barrier OK:\n"
               " collapse: body y=%d, p y=%d\n"
               " padding-top:1px: body y=%d, p y=%d\n\n"
-              "Both cases keep x=8 and width=224.",
+              "Both cases keep the DPI-scaled horizontal margins and width.",
               cby, cpy, bby, bpy);
     msg[sizeof(msg) - 1] = '\0';
     show_info(L"TEST 11 OK", msg);
