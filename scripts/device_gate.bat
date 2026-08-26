@@ -7,6 +7,9 @@ if not exist "%PS32%" (
     exit /b 3
 )
 
+call "%~dp0repair_wmdc_rapi.bat" -QuietHealthy
+if errorlevel 1 exit /b %ERRORLEVEL%
+
 "%PS32%" -NoProfile -NonInteractive -ExecutionPolicy Bypass ^
     -File "%~dp0device_gate.ps1" %*
 exit /b %ERRORLEVEL%

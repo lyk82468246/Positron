@@ -48,9 +48,12 @@
   选择最近一次完整构建的一套，生成 ZIP_STORED 的 `positron-nightly.zip`；默认自动测试 INI 从
   `test_host/main.c` 的实际 dispatch 动态生成，并排除源码标记的 manual-only 测试。`-SkipUpload`
   已验证，GitHub 上传仍要求本机 `gh auth login`，当前环境的 GitHub CLI 凭据无效。
-- 2026-08-26 已将 nightly ZIP 解压到本地临时目录并核对 19 个条目；尝试用 32 位 RAPI 部署
-  时在 `CeRapiInitEx` 阶段返回 `0x8007007E`，尚未复制或启动设备端文件。需先按
-  `docs/TROUBLESHOOTING.md` 的正式入口修复主机 RAPI，再重试真实设备验收。
+- 2026-08-26 已将 nightly ZIP 解压到本地临时目录并核对 19 个条目；首次 32 位 RAPI 部署在
+  `CeRapiInitEx` 阶段返回 `0x8007007E`，未复制或启动设备端文件。现场核对发现十个 32/64 位
+  COM 值全部退回旧路径；正式修复报告 `changed=10`，同一 GUI 会话的最小 32 位连接/断开探针
+  随后返回 `S_OK`。Application 日志中的 `MsiInstaller` 1033 证明 WMDC 6.1.6965.0 曾在
+  2026-08-25 21:38:05 重新安装，足以解释先前修复为何被覆盖；没有证据把写回归因于换设备。
+  nightly 包本身仍未重新部署验收。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`

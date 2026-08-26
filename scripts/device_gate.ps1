@@ -602,7 +602,7 @@ try {
         $rapiConnected = $true
     } catch {
         if ($_.Exception.ToString() -match "8007007e") {
-            throw "WMDC is present, but its 32-bit RAPI COM proxy registration is broken (0x8007007E). Run scripts\repair_wmdc_rapi.bat once from this repository, approve UAC, then retry."
+            throw "WMDC's 32-bit RAPI client could not load a required module (0x8007007E). scripts\device_gate.bat already audits and repairs the known legacy COM paths before launch. Run scripts\repair_wmdc_rapi.bat -AuditOnly; if it reports status=PASS, investigate a missing DLL dependency instead of rewriting the known registrations."
         }
         throw "Could not open WMDC's current RAPI connection. Confirm that exactly one device is already connected in the GUI; the gate never connects, selects, cradles, starts or resets a device. $($_.Exception.Message)"
     }

@@ -84,18 +84,27 @@ gate 对 `CeRapiInitEx()` 使用 30 秒有界事件等待。按微软
 
 ### `CeRapiInit` 报 `0x8007007E`
 
-2026-08-22 的本机取证再次确认：WMDC UI、DMA 会话、`RapiMgr` 和 `WcesComm` 服务都可以正常，
+2026-08-22 的本机取证确认：WMDC UI、DMA 会话、`RapiMgr` 和 `WcesComm` 服务都可以正常，
 但旧 WMDC 安装写入的五个 RAPI 相关 COM 类仍把 DLL 路径保存为字面量
 `%windir%\system32\...`。现代 Windows 的 32 位 COM 加载路径没有按旧安装器的预期展开这些
 值，Process Monitor 可见进程在 SysWOW64 路径下继续寻找含字面 `%windir%` 的不存在文件，
 最终使 `CeRapiInit()` 返回 `0x8007007E`。因此，这个错误不等于设备没有连接。
 
-本次 next586 复现时，五个 in-process RAPI COM 类的直接激活也返回 `0x8007007E`，而 out-of-
+next586 复现时，五个 in-process RAPI COM 类的直接激活也返回 `0x8007007E`，而 out-of-
 process `RAPIMgr` 仍可用；这解释了“WMDC 看起来完全正常但 gate 不能启动”的表象。正式修复脚本
 将 Registry32/Registry64 中共 10 个已知值从旧的 `%windir%` 展开字符串规范化为现有
 SysWOW64/System32 DLL 的绝对路径，报告 `changed=10`、`status=PASS`，之后 next586 的定向、
 兼容和累计门均通过。不要因为 UI 正常就跳过 RAPI 取证，也不要手工修改未知 COM 类；若同一
 HRESULT 再次出现，先确认设备仍由 GUI 连接，再运行下面的幂等修复入口并重新执行设备门。
+
+2026-08-26 再次出现同一 HRESULT 时，Registry32/Registry64 的十个值确实全部恢复成上述旧
+`REG_EXPAND_SZ` 路径；修复报告 `changed=10`，随后使用与 gate 相同结构和位数的最小
+`CeRapiInitEx()` 探针得到 `S_OK`。这证明本次是主机注册状态发生回退，而不是当前 gate 的
+`RAPIINIT` 布局或事件等待错误。Application 日志随后给出了更直接的来源：2026-08-25
+21:38:05 的 `MsiInstaller` 1033 记录重新安装了 Windows Mobile Device Center 6.1.6965.0，
+时间晚于先前修复，足以解释安装器默认值为何重新出现。目前没有证据证明设备切换动作本身写了
+这些 HKLM 项；重启或换设备更可能只是触发新的 COM 激活，从而暴露已经回退的注册状态。若未来
+在没有 MSI 安装/修复的情况下再次回退，才需要跨该动作记录注册值或使用注册表写入跟踪。
 
 正式修复入口是：
 
@@ -103,15 +112,30 @@ HRESULT 再次出现，先确认设备仍由 GUI 连接，再运行下面的幂�
 scripts\repair_wmdc_rapi.bat
 ```
 
-脚本会自行请求真正的 Windows UAC 管理员令牌，核对 DLL、注册键和原值，只修复已知的
+脚本先以普通用户权限核对 DLL、注册键和原值；健康时直接报告 `changed=0`，不再请求 UAC。
+只有发现精确匹配的旧值时，它才请求真正的 Windows UAC 管理员令牌，只修复已知的
 `wcescommproxy.dll`、`rapistub.dll`、`rapi.dll`、`rapiproxystub.dll` 相关五个 COM 类，并同时
-验证 32/64 位注册视图。它是幂等的一次性主机修复：正常设备门本身不需要提权，复跑修复脚本
-应得到 `changed=0` 和 `status=PASS`。自动化宿主的“退出沙箱”不等于取得 Windows 管理员
-令牌；HKLM 写入必须由实际 UAC 提升完成。
+验证 32/64 位注册视图。它是幂等修复，但不能假定旧 WMDC 环境永远不会把值写回；复跑应得到
+`changed=0` 和 `status=PASS`。自动化宿主的“退出沙箱”不等于取得 Windows 管理员令牌；HKLM
+写入必须由实际 UAC 提升完成。
 
-只在错误确为 `0x8007007E` 且脚本的严格前置检查通过时使用该修复。其他 HRESULT、未知注册
-值或缺失 DLL 必须继续取证，不能手工套用注册表修改。WMDC 重装或系统更新若恢复旧式路径，
-可以在同一错误再次出现时重跑正式脚本。
+只读审计入口是：
+
+```bat
+scripts\repair_wmdc_rapi.bat -AuditOnly
+```
+
+健康时退出码为 0、`status=PASS`；发现已知旧值时不提权、不修改，退出码为 2 并报告
+`status=REPAIR_REQUIRED`。`scripts\device_gate.bat` 每次启动时会执行同一严格预检：健康时静默
+继续，发现已知旧值时才请求 UAC 修复，然后以新进程进入正式 gate。未知值或缺失 DLL 仍会让
+gate 在构建和部署前停止。
+
+只在错误确为 `0x8007007E` 且脚本的严格前置检查通过时使用该修复。Windows 对该 HRESULT 的
+定义是 [`ERROR_MOD_NOT_FOUND`](https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-)；
+它也可能指已注册 DLL 的依赖项缺失；如果 `-AuditOnly` 已经
+报告 `status=PASS`，不得继续反复改这十个值。其他 HRESULT、未知注册值或缺失 DLL 必须继续
+取证，不能手工套用注册表修改。WMDC 重装、系统更新或其他主机端修复若恢复旧式路径，可以在
+同一错误再次出现时重跑正式脚本。
 
 本次迁移前尝试过“既不绑定 VMID，也不调用 CoreCon `Connect()`，只消费
 `EnumerateConnections2()` 的现有连接”；即使 WMDC 已连接，该枚举仍为空。该方案已经撤回，

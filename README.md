@@ -449,8 +449,17 @@ TEST13 导航和 `TESTBENCH PASS`。每次运行前只回收设备端由 gate �
 `CeRapiInitEx()` 并有 30 秒超时；WMDC 会话未就绪时 gate 会清理并退出，不会无限挂起或
 把未启动的设备进程写成通过证据。
 
-如果 RAPI 初始化报告 `0x8007007E`，WMDC 的旧式 COM 路径可能未被现代 Windows 正确展开。
-运行一次下列脚本并确认 UAC；脚本只修复已知 WMDC/RAPI COM 注册，遇到未知值会拒绝修改：
+每次 gate 都会在构建前静默审计已知的 32/64 位 WMDC/RAPI COM 路径；健康主机不会提权。
+若路径被 WMDC 安装程序、系统修复或其他主机端操作恢复成已知旧值，gate 才会请求 UAC 并在
+继续前修复。也可以只做诊断而不修改注册表：
+
+```bat
+scripts\repair_wmdc_rapi.bat -AuditOnly
+```
+
+如果 RAPI 初始化报告 `0x8007007E`，它表示主机进程未能加载某个模块，不表示 GUI 中没有设备。
+需要显式修复时运行下列脚本并确认 UAC；脚本只修复已知 WMDC/RAPI COM 注册，遇到未知值会
+拒绝修改：
 
 ```bat
 scripts\repair_wmdc_rapi.bat

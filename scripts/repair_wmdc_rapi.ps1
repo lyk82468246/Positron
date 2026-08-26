@@ -1,6 +1,8 @@
 param(
     [switch] $Elevated,
-    [string] $ResultPath = ""
+    [string] $ResultPath = "",
+    [switch] $AuditOnly,
+    [switch] $QuietHealthy
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,37 +27,6 @@ function Complete-Repair([int] $exitCode)
         }
     }
     exit $exitCode
-}
-
-if (!(Test-IsAdministrator)) {
-    if ($Elevated) {
-        $messages.Add("status=FAIL")
-        $messages.Add("error=UAC elevation did not produce an administrator token.")
-        Complete-Repair 1
-    }
-    $childName = "Positron-wmdc-rapi-" +
-            [Guid]::NewGuid().ToString("N") + ".txt"
-    $childResult = Join-Path ([IO.Path]::GetTempPath()) $childName
-    $powerShell = Join-Path $PSHOME "powershell.exe"
-    $arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass " +
-            "-File `"$PSCommandPath`" -Elevated " +
-            "-ResultPath `"$childResult`""
-    try {
-        $process = Start-Process -FilePath $powerShell -Verb RunAs `
-                -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
-        if (Test-Path -LiteralPath $childResult) {
-            Get-Content -LiteralPath $childResult -Encoding UTF8
-            Remove-Item -LiteralPath $childResult -Force
-        } else {
-            Write-Error "The elevated repair did not produce a result file."
-        }
-        exit $process.ExitCode
-    } catch {
-        if (Test-Path -LiteralPath $childResult) {
-            Remove-Item -LiteralPath $childResult -Force
-        }
-        throw
-    }
 }
 
 $components = @(
@@ -134,7 +105,66 @@ try {
             })
         }
     }
+} catch {
+    $messages.Add("status=FAIL")
+    $messages.Add("error=$($_.Exception.Message)")
+    Complete-Repair 1
+}
 
+$needed = @($plans | Where-Object { $_.NeedsChange })
+if ($needed.Count -eq 0) {
+    if (!$QuietHealthy) {
+        foreach ($plan in $plans) {
+            $messages.Add("already[$($plan.View),$($plan.Clsid)]=$($plan.Target)")
+        }
+        $messages.Add("changed=0")
+        $messages.Add("status=PASS")
+    }
+    Complete-Repair 0
+}
+
+if ($AuditOnly) {
+    foreach ($plan in $needed) {
+        $messages.Add("needs-repair[$($plan.View),$($plan.Clsid)]=$($plan.Current)")
+    }
+    $messages.Add("required=$($needed.Count)")
+    $messages.Add("status=REPAIR_REQUIRED")
+    Complete-Repair 2
+}
+
+if (!(Test-IsAdministrator)) {
+    if ($Elevated) {
+        $messages.Add("status=FAIL")
+        $messages.Add("error=UAC elevation did not produce an administrator token.")
+        Complete-Repair 1
+    }
+    Write-Host "[wmdc-rapi] known legacy COM registration requires repair; approve UAC to continue."
+    $childName = "Positron-wmdc-rapi-" +
+            [Guid]::NewGuid().ToString("N") + ".txt"
+    $childResult = Join-Path ([IO.Path]::GetTempPath()) $childName
+    $powerShell = Join-Path $PSHOME "powershell.exe"
+    $arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass " +
+            "-File `"$PSCommandPath`" -Elevated " +
+            "-ResultPath `"$childResult`""
+    try {
+        $process = Start-Process -FilePath $powerShell -Verb RunAs `
+                -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
+        if (Test-Path -LiteralPath $childResult) {
+            Get-Content -LiteralPath $childResult -Encoding UTF8
+            Remove-Item -LiteralPath $childResult -Force
+        } else {
+            Write-Error "The elevated repair did not produce a result file."
+        }
+        exit $process.ExitCode
+    } catch {
+        if (Test-Path -LiteralPath $childResult) {
+            Remove-Item -LiteralPath $childResult -Force
+        }
+        throw
+    }
+}
+
+try {
     $changed = New-Object "System.Collections.Generic.List[object]"
     try {
         foreach ($plan in $plans) {
