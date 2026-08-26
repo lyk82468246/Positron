@@ -155,6 +155,26 @@ if ($dispatchText -notmatch "number\s*==\s*7") {
 if (!$testNumbers.Contains(7)) {
     [void] $testNumbers.Add(7)
 }
+
+# A manual-only fixture is a real test, but it cannot be placed in the
+# default auto=1 package: its implementation deliberately returns FALSE when
+# automation is enabled. Discover those IDs from the source message instead
+# of maintaining another hand-written test catalogue.
+$manualOnlyNumbers = New-Object "System.Collections.Generic.List[int]"
+foreach ($match in [regex]::Matches($mainText,
+        '(?m)show_error\s*\(\s*L"TEST\s+(\d+)\s+SKIPPED"\s*,\s*"This test is manual-only')) {
+    $manualNumber = [int] $match.Groups[1].Value
+    if ($manualNumber -gt $testMax) {
+        throw ("Manual-only TEST{0} exceeds TEST_MAX_NUMBER {1}." -f
+                $manualNumber, $testMax)
+    }
+    if (!$manualOnlyNumbers.Contains($manualNumber)) {
+        [void] $manualOnlyNumbers.Add($manualNumber)
+    }
+}
+foreach ($manualNumber in $manualOnlyNumbers) {
+    [void] $testNumbers.Remove($manualNumber)
+}
 if ($mainText -notmatch "#define\s+TEST_COMPLETION_BEEP_NUMBER\s+(\d+)") {
     throw "Could not find TEST_COMPLETION_BEEP_NUMBER in $mainSource."
 }
@@ -166,6 +186,8 @@ if ($completionBeepNumber -gt $testMax) {
 $testNumbers.Sort()
 $allTests = ((Convert-TestNumbersToSelection $testNumbers.ToArray()) +
         @("7b", [string] $completionBeepNumber)) -join ","
+$manualOnlyNumbers.Sort()
+$manualOnlyTests = (Convert-TestNumbersToSelection $manualOnlyNumbers.ToArray()) -join ","
 
 $artifactCandidates = @("Debug", "Release")
 $artifactSpecs = $null
@@ -249,6 +271,18 @@ try {
         "javascript=0",
         ("tests=" + $allTests)
     )
+    if ($manualOnlyNumbers.Count -gt 0) {
+        $iniLines = @(
+            "# Positron nightly: all automation-safe tests currently dispatched by test_host/main.c.",
+            "# The list is generated from run_configured_tests; it is not copied from the smoke INI.",
+            ("# Manual-only tests omitted from auto=1: " + $manualOnlyTests + "."),
+            "# For full manual coverage, append those IDs to tests=, set auto=0, and set javascript=1 when required.",
+            "# Edit tests= for a partial run; change auto=0 for manual prompts.",
+            "auto=1",
+            "javascript=0",
+            ("tests=" + $allTests)
+        )
+    }
     [IO.File]::WriteAllText($iniPath, (($iniLines -join "`r`n") + "`r`n"),
             (New-Object Text.UTF8Encoding($false)))
 
@@ -265,6 +299,12 @@ try {
         ("- Available test ceiling: TEST_MAX_NUMBER " + $testMax),
         ("- Generated test selection: " + $allTests)
     ) -join "`r`n"
+    if ($manualOnlyNumbers.Count -gt 0) {
+        $notes += @(
+            "",
+            ("- Manual-only tests omitted from auto=1: " + $manualOnlyTests)
+        ) -join "`r`n"
+    }
     [IO.File]::WriteAllText($readmePath, $notes,
             (New-Object Text.UTF8Encoding($false)))
 

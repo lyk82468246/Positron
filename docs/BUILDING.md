@@ -160,9 +160,10 @@ scripts\package_nightly.bat
 默认自动比较两套完整产物，选择所有八个运行时文件中“最旧的那个”仍然最新的一套；因此通常
 会选中最近一次完整的 Debug 构建（`build.bat`/`stage.bat` 默认就是 Debug），如果最近一次完整
 构建是 Release 则会选 Release。也可以显式固定配置。测试清单从当前
-`test_host/main.c` 的 `run_configured_tests` dispatch 动态生成，新增并接入 dispatch 的测试会
-自动进入下一次包，不复制 tracked smoke INI 中的缩减选择。随后脚本补入字体、许可证、说明和
-SHA-256 清单，创建不压缩的 `tmp\nightly\positron-nightly.zip`。可选参数：
+`test_host/main.c` 的 `run_configured_tests` dispatch 动态生成；明确标记为 `manual-only` 的
+测试会从默认 `auto=1` 清单排除，新增并接入 dispatch 的自动测试会自动进入下一次包。脚本不
+复制 tracked smoke INI 中的缩减选择。随后脚本补入字体、许可证、说明和 SHA-256 清单，创建
+不压缩的 `tmp\nightly\positron-nightly.zip`。可选参数：
 
 ```bat
 scripts\package_nightly.bat -Configuration Debug

@@ -45,9 +45,12 @@
   这不触发脚本侧 MediaQueryList 事件或自动重排。
 - 测试编号上限：`TEST_MAX_NUMBER 1097`。
 - Nightly 分发脚本 `scripts\package_nightly.bat`/`.ps1` 只提取既有 Debug/Release 产物，默认
-  选择最近一次完整构建的一套，生成 ZIP_STORED 的 `positron-nightly.zip`；全量测试 INI 从
-  `test_host/main.c` 的实际 dispatch 动态生成。`-SkipUpload` 已验证，GitHub 上传仍要求本机
-  `gh auth login`，当前环境的 GitHub CLI 凭据无效。
+  选择最近一次完整构建的一套，生成 ZIP_STORED 的 `positron-nightly.zip`；默认自动测试 INI 从
+  `test_host/main.c` 的实际 dispatch 动态生成，并排除源码标记的 manual-only 测试。`-SkipUpload`
+  已验证，GitHub 上传仍要求本机 `gh auth login`，当前环境的 GitHub CLI 凭据无效。
+- 2026-08-26 已将 nightly ZIP 解压到本地临时目录并核对 19 个条目；尝试用 32 位 RAPI 部署
+  时在 `CeRapiInitEx` 阶段返回 `0x8007007E`，尚未复制或启动设备端文件。需先按
+  `docs/TROUBLESHOOTING.md` 的正式入口修复主机 RAPI，再重试真实设备验收。
 - 跟踪的 `test_host/test_host.ini` 保持默认自动模式：
   - `javascript=0`
   - 默认选择 `13,20,27,56,58,62,64-67,73,75,999`
