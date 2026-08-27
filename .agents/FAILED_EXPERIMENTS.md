@@ -1,6 +1,6 @@
 # 失败实验与禁止恢复边界
 
-更新时间：2026-08-23
+更新时间：2026-08-27
 
 这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；
 当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
@@ -14,7 +14,7 @@
 
 ## 失败与暂挂
 
-### 2026-08-27 TEST 13 IANA 深链资源收集崩溃 — 未解决，禁止把隔离实验当修复
+### 2026-08-27 TEST 13 IANA 深链资源收集崩溃 — 已替代，禁止恢复隔离绕过
 
 现象：TEST 13 从 `example.com` 进入 IANA `help/example-domains` 时，在第二页样式/资源
 阶段失败；设备可能崩溃、停滞或需要用户手动结束进程。第一跳可完成，第三跳未到达。
@@ -24,10 +24,15 @@
 实验没有验证真实资源样式，不能作为产品修复。r48 在用户中断后没有完整结果，必须视为
 不可判定。当前工作区中的探针和短路代码也没有任何合并资格。
 
-决定：不要恢复或合并 nocollect、resource-skip、element-only、minimal-CSS 等绕过方案，
-也不要把低频计数约第 96 次访问当作稳定 DOM 根因。下一位调查者应在独立分支先清理探针，
-用干净的 Debug ARMV4I 包重现，并一次只改变一个可验证边界。完整时间线、日志目录和 WMDC
-前提见 [`IANA_NAVIGATION_CRASH_20260827.md`](../docs/history/IANA_NAVIGATION_CRASH_20260827.md)。
+替代方案：干净主线复现后，源码审查确认 `pcore_collect_resources()` 的每个递归帧都保留
+1024 字节 reference 和 2048 字节 URL 自动数组，深层 IANA DOM 会放大 WM6 UI 线程栈占用。
+next650 将这套有界 scratch 改为单次 style transaction 共享的 heap 分配，保留完整的
+fetch/cache/parse/attach/free 路径；TEST1098、TEST13 三跳、21 项相关回归及人工设备复核通过。
+
+决定：不要恢复或合并 nocollect、resource-skip、element-only、minimal-CSS 等绕过方案，也
+不要把低频计数约第 96 次访问当作稳定 DOM 根因。诊断分支的逐节点探针、IANA URL/CSS hook
+仍没有合并资格。完整时间线、解决证据和 WMDC 前提见
+[`IANA_NAVIGATION_CRASH_20260827.md`](../docs/history/IANA_NAVIGATION_CRASH_20260827.md)。
 
 ### next342 `className` raw bridge 尝试 — 已撤回
 

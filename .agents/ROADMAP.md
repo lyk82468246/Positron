@@ -632,7 +632,20 @@ TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999 通过 9/9，唯�
 且零 `ERROR`/`FAIL`；C89、Debug/Release ARMV4I 构建和仓库/文档审计通过。本批没有新增
 必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
 
-### 44. 建立真实页面驱动的兼容队列
+### 44. next650：深层 DOM 资源收集栈占用（已完成）
+
+next650 修复 TEST13 从 example.com 进入 IANA 页面时在样式/资源阶段发生的崩溃或卡死。
+`pcore_collect_resources()` 原先在每个递归帧保留 1024 字节 reference 与 2048 字节 URL
+自动数组，深层真实 DOM 会放大 WM6 UI 线程栈占用；现在由 `PCore_StyleDocumentEx2()`
+单次事务分配并共享一套有界 scratch，资源 fetch、document cache、CSS parse/attach、
+`@import`、media 和释放仍走正式路径，公共 C ABI 不变。
+
+TEST1098 覆盖 20 层 DOM 的真实外链 CSS 与第二次 cache 命中；TEST13 三跳定向门通过，相关
+资源/CSS/导航/布局回归通过 21/21，均为零 ERROR/FAIL、唯一 `TESTBENCH PASS`。用户又在
+320x320 WM6 设备上人工复核 TEST13，未见显著崩溃、卡死或布局异常。极端 DOM 深度仍应作为
+有界资源议题由真实语料驱动，不通过恢复 nocollect/resource-skip 等历史绕过处理。
+
+### 45. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -643,7 +656,7 @@ TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999 通过 9/9，唯�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 45. 安排新的全范围检查点
+### 46. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

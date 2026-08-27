@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1097
+#define TEST_MAX_NUMBER 1098
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -20572,6 +20572,128 @@ static BOOL test1097_core_pre_wrap_rendering_contract(void)
     show_info(L"TEST 1097 OK",
             "pre[wrap] uses the Core UA pre-wrap rule: the narrow viewport "
             "wraps the code block and increases its document height.");
+    return TRUE;
+}
+
+/* TEST 1098 - deep resource collection keeps URL scratch off the DFS stack. */
+typedef struct stylesheet_deep_resource_test_ctx {
+    int calls;
+    int frees;
+} stylesheet_deep_resource_test_ctx;
+
+static int stylesheet_deep_resource_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char DEEP_CSS[] = "deepresource{color:#00aa55;}";
+    stylesheet_deep_resource_test_ctx *ctx =
+            (stylesheet_deep_resource_test_ctx *) pw;
+    char *data;
+    int len;
+
+    *out_data = NULL;
+    *out_len = 0;
+    ctx->calls++;
+    if (strcmp(url, "/deep.css") != 0) {
+        return 1;
+    }
+    len = (int) strlen(DEEP_CSS);
+    data = (char *) malloc((size_t) len);
+    if (data == NULL) {
+        return 1;
+    }
+    memcpy(data, DEEP_CSS, (size_t) len);
+    *out_data = data;
+    *out_len = len;
+    return 0;
+}
+
+static void stylesheet_deep_resource_free(void *pw, char *data)
+{
+    stylesheet_deep_resource_test_ctx *ctx =
+            (stylesheet_deep_resource_test_ctx *) pw;
+
+    ctx->frees++;
+    free(data);
+}
+
+static int stylesheet_deep_resource_cache_only_fetch(void *pw,
+        const char *url, char **out_data, int *out_len)
+{
+    stylesheet_deep_resource_test_ctx *ctx =
+            (stylesheet_deep_resource_test_ctx *) pw;
+
+    (void) url;
+    ctx->calls++;
+    *out_data = NULL;
+    *out_len = 0;
+    return 1;
+}
+
+static BOOL test1098_core_deep_resource_collection_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<link rel='stylesheet' href='/deep.css'>"
+        "</head><body>"
+        "<div><div><div><div><div><div><div><div><div><div>"
+        "<div><div><div><div><div><div><div><div><div><div>"
+        "<deepresource>deep</deepresource>"
+        "</div></div></div></div></div></div></div></div></div></div>"
+        "</div></div></div></div></div></div></div></div></div></div>"
+        "</body></html>";
+    HANDLE document;
+    stylesheet_deep_resource_test_ctx first;
+    stylesheet_deep_resource_test_ctx second;
+    unsigned long first_color;
+    unsigned long second_color;
+    int screen_w;
+    int screen_h;
+    int first_ok;
+    int second_ok;
+    char msg[224];
+
+    memset(&first, 0, sizeof(first));
+    memset(&second, 0, sizeof(second));
+    first_color = 0;
+    second_color = 0;
+    document = PCore_ParseHTML(HTML, 0);
+    PCore_SetViewport(320, 320, 96);
+    first_ok = document != NULL &&
+            PCore_StyleDocumentEx(document, NULL,
+            stylesheet_deep_resource_fetch,
+            stylesheet_deep_resource_free, &first) == 0 &&
+            PCore_NodeComputedColor(document, "deepresource",
+            &first_color) == 0 &&
+            (first_color & 0x00ffffffUL) == 0x0000aa55UL;
+    second_ok = first_ok &&
+            PCore_StyleDocumentEx(document, NULL,
+            stylesheet_deep_resource_cache_only_fetch, NULL, &second) == 0 &&
+            PCore_NodeComputedColor(document, "deepresource",
+            &second_color) == 0 &&
+            (second_color & 0x00ffffffUL) == 0x0000aa55UL;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    PCore_SetViewport(screen_w, screen_h, 96);
+
+    if (!first_ok || !second_ok || first.calls != 1 || first.frees != 1 ||
+            second.calls != 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "ok=%d/%d calls=%d/%d frees=%d colors=0x%06lX/0x%06lX",
+                first_ok, second_ok, first.calls, second.calls, first.frees,
+                first_color & 0x00ffffffUL,
+                second_color & 0x00ffffffUL);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 1098 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 1098 OK",
+            "A 20-level DOM collects, parses and attaches external CSS; a "
+            "second style pass reuses the document cache without fetching.");
     return TRUE;
 }
 
@@ -78414,6 +78536,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1095: ok = test1095_core_hidden_rendering_contract(); break;
         case 1096: ok = test1096_core_disclosure_rendering_contract(); break;
         case 1097: ok = test1097_core_pre_wrap_rendering_contract(); break;
+        case 1098: ok = test1098_core_deep_resource_collection_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

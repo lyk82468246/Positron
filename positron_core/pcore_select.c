@@ -1923,6 +1923,14 @@ typedef struct pcore_stylesheet_cache {
     int bytes;
 } pcore_stylesheet_cache;
 
+#define PCORE_STYLESHEET_REFERENCE_MAX 1024
+#define PCORE_STYLESHEET_URL_MAX 2048
+
+typedef struct pcore_collect_scratch {
+    char reference[PCORE_STYLESHEET_REFERENCE_MAX];
+    char url[PCORE_STYLESHEET_URL_MAX];
+} pcore_collect_scratch;
+
 static dom_string *pcore_stylesheet_cache_key = NULL;
 
 static int pcore_ensure_stylesheet_cache_key(void)
@@ -2077,6 +2085,7 @@ typedef struct pcore_collect_ctx {
     const char     *document_url;
     const char     *url_stack[16];
     pcore_stylesheet_cache *cache; /* per-document external CSS bytes */
+    pcore_collect_scratch *scratch; /* one buffer set, not one per DFS frame */
     dom_string     *style_name; /* interned "style" */
     dom_string     *link_name;  /* interned "link"  */
     dom_string     *rel_name;   /* interned "rel"   */
@@ -2390,21 +2399,22 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                             DOM_NO_ERR && href != NULL) {
                 const char *hu8 = dom_string_data(href);
                 size_t hl = dom_string_byte_length(href);
-                if (hu8 != NULL && hl > 0) {
-                    char reference[1024];
-                    char url[2048];
+                if (hu8 != NULL && hl > 0 && cc->scratch != NULL) {
                     const char *data;
                     char *owned;
                     int len;
                     int cl;
 
-                    cl = (hl < sizeof(reference) - 1) ? (int) hl :
-                            (int) sizeof(reference) - 1;
-                    memcpy(reference, hu8, cl);
-                    reference[cl] = '\0';
+                    cl = (hl < sizeof(cc->scratch->reference) - 1) ?
+                            (int) hl :
+                            (int) sizeof(cc->scratch->reference) - 1;
+                    memcpy(cc->scratch->reference, hu8, cl);
+                    cc->scratch->reference[cl] = '\0';
                     if (pcore_resolve_css_url(cc, cc->document_url,
-                            reference, url, (int) sizeof(url)) == 0 &&
-                            pcore_get_stylesheet_bytes(cc, url, &data, &len,
+                            cc->scratch->reference, cc->scratch->url,
+                            (int) sizeof(cc->scratch->url)) == 0 &&
+                            pcore_get_stylesheet_bytes(cc, cc->scratch->url,
+                            &data, &len,
                             &owned) == 0) {
                         const char *media_value = NULL;
 
@@ -2414,7 +2424,7 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                                 media != NULL) {
                             media_value = dom_string_data(media);
                         }
-                        pcore_add_author_css(cc, data, len, url,
+                        pcore_add_author_css(cc, data, len, cc->scratch->url,
                                 media_value);
                         if (media != NULL) {
                             dom_string_unref(media);
@@ -2537,12 +2547,14 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     dom_string_create((const uint8_t *) "disabled", 8, &cc.disabled_name);
     dom_string_create_interned((const uint8_t *) "style", 5,
             &inline_style_name);
-    if (inline_style_name == NULL) {
+    cc.scratch = (pcore_collect_scratch *) malloc(sizeof(*cc.scratch));
+    if (cc.style_name == NULL || cc.link_name == NULL ||
+            cc.rel_name == NULL || cc.href_name == NULL ||
+            cc.media_name == NULL || cc.disabled_name == NULL ||
+            inline_style_name == NULL || cc.scratch == NULL) {
         goto cleanup;
     }
-    if (cc.style_name != NULL) {
-        pcore_collect_resources(&cc, root);
-    }
+    pcore_collect_resources(&cc, root);
 
     /* Optional extra author sheet supplied by the caller (may be NULL). */
     if (author != NULL) {
@@ -2592,6 +2604,7 @@ cleanup:
     if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
     if (cc.media_name != NULL) { dom_string_unref(cc.media_name); }
     if (cc.disabled_name != NULL) { dom_string_unref(cc.disabled_name); }
+    free(cc.scratch);
     if (inline_style_name != NULL) { dom_string_unref(inline_style_name); }
     if (pw.universal != NULL) {
         lwc_string_unref(pw.universal);

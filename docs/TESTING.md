@@ -1005,6 +1005,29 @@ scripts\device_gate.bat -Candidate next649-pre-wrap-rendering ^
 正式构建、仓库/文档审计通过；tracked INI 未修改，本批没有新增视觉、触摸、SIP、旋转或
 picker 人工门。
 
+### next650 深层 DOM 资源收集栈回归门
+
+next650 验证 Core 不会在递归 DOM 资源收集的每个 DFS 栈帧重复保留 stylesheet reference/URL
+scratch。TEST1098 构造 20 层嵌套 DOM 和真实 `<link rel="stylesheet">`，断言外链 CSS 被
+fetch、解析、挂载并释放，计算样式生效；同一文档的第二次样式事务必须直接复用 cache，不能
+再次调用 fetch。该测试不跳过资源处理，也不依赖 IANA 固定 URL 或 CSS。
+
+```bat
+scripts\device_gate.bat -Candidate iana-stack-scratch-r1 ^
+  -TestSelection "1098"
+scripts\device_gate.bat -Candidate iana-stack-scratch-test13-r2 ^
+  -TestSelection "13"
+scripts\device_gate.bat -Candidate iana-stack-scratch-regression-r3 ^
+  -TestSelection "13,18,20,21,24,43,45,56,58,62,64-67,73,75,1091,1093,1094,1098,999"
+```
+
+对应设备证据目录分别为 `tmp/device-runs/20260827-230326-iana-stack-scratch-r1/`、
+`tmp/device-runs/20260827-230355-iana-stack-scratch-test13-r2/` 和
+`tmp/device-runs/20260827-230531-iana-stack-scratch-regression-r3/`。三轮均唯一
+`TESTBENCH PASS` 且零 `ERROR`/`FAIL`；TEST13 完成 example.com、IANA Example Domains 和
+Reserved Domains 三跳，21 项回归通过 21/21。用户又在 320x320 WM6 设备上人工复核 TEST13，
+未见显著崩溃、卡死或布局异常。tracked INI 未修改。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

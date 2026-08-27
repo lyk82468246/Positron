@@ -26,7 +26,7 @@ API、能力或下一步的权威来源。
   的早期移植结论。
 - [next37 稳定性回退](NEXT37_ROLLBACK.md)：一组无法安全归因的 Browse 实验为何整批冻结。
 - [调试事故归档](DEBUGGING_INCIDENTS.md)：旧设备日志、混包和定位过程；其中动态状态均已过期。
-- [IANA 深链崩溃调查（2026-08-27）](IANA_NAVIGATION_CRASH_20260827.md)：TEST 13 IANA 深链未解决的设备取证、A/B 实验和后续重现门槛。
+- [IANA 深链崩溃调查（2026-08-27）](IANA_NAVIGATION_CRASH_20260827.md)：TEST 13 IANA 深链的设备取证、A/B 实验，以及 next650 的根因、修复与验收证据。
 
 Phase 文档尽量保持原始叙述，只修复因目录迁移造成的链接。若历史正文与当前共享文档冲突，
 以当前共享文档和源码为准。

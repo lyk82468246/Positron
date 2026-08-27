@@ -1,6 +1,6 @@
 # Positron 当前交接
 
-更新时间：2026-08-25
+更新时间：2026-08-27
 
 本文件只保存接手下一批工作所需的当前快照。已完成批次、旧故障和旧验收记录以 Git 历史、`docs/history/` 与本地 `tmp/device-runs/` 为准，不在这里累计。
 
@@ -15,8 +15,12 @@
 
 ## 当前仓库基线
 
-- 分支：`main`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next649，页面 stylesheet `media`、disabled、rel-token 选择、hidden、披露控件与 `pre[wrap]` 渲染 → Core 将 `<style media>` 与
+- 分支：当前候选为 `codex/iana-navigation-resource-fix-20260827`，基于 `origin/main`
+  的 `af4a63b9`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
+- 当前能力批次：next650，Core 的递归 DOM 资源收集不再为每个 DFS 栈帧保留约 3 KiB 的
+  stylesheet reference/URL 自动数组，而是在一次 style transaction 中分配并共享一套有界
+  scratch buffer；真实 fetch、document cache、CSS parse/attach、`@import`、media 与释放路径
+  保持启用。next649 的页面 stylesheet `media`、disabled、rel-token 选择、hidden、披露控件与 `pre[wrap]` 渲染 → Core 将 `<style media>` 与
   `<link rel="stylesheet" media>` 的 UTF-8 条件交给 libcss，并在同一文档重排时复用外部
   CSS cache；收集外部 stylesheet link 时会跳过存在 `disabled` 属性的 link，不 fetch、解析或
   选择其 CSS；`rel` 按 ASCII whitespace token、大小写不敏感匹配 `stylesheet`，但含
@@ -43,7 +47,7 @@
   增加了受限的 `media` UTF-8 属性反射；缺失返回空串，`setAttribute`/setter/
   `removeAttribute` 保持 live 一致，其他元素返回 `undefined` 且 setter 不改变 raw 属性。
   这不触发脚本侧 MediaQueryList 事件或自动重排。
-- 测试编号上限：`TEST_MAX_NUMBER 1097`。
+- 测试编号上限：`TEST_MAX_NUMBER 1098`。
 - Nightly 分发脚本 `scripts\package_nightly.bat`/`.ps1` 只提取既有 Debug/Release 产物，默认
   选择最近一次完整构建的一套，生成 ZIP_STORED 的 `positron-nightly.zip`；默认自动测试 INI 从
   `test_host/main.c` 的实际 dispatch 动态生成，并排除源码标记的 manual-only 测试。`-SkipUpload`
@@ -794,6 +798,24 @@ next649 的 `pre[wrap]` 默认换行自动门已经完成：
 - `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、仓库/文档审计和设备门均通过；
   本批没有新增必须立即人工复核的视觉、触摸、SIP、旋转或 picker 风险。
 
+next650 的 IANA 深链资源收集栈修复已经完成：
+
+- 干净 `origin/main` 基线 `tmp/device-runs/20260827-225240-iana-clean-r1/` 可复现 TEST13
+  只完成 1/3 跳；源码审查确认 `pcore_collect_resources()` 每个递归帧原有 1024+2048 字节
+  自动数组，会在 WM6 较小 UI 线程栈上随深层 DOM 放大。
+- 修复只把这两个有界缓冲区提升为 `PCore_StyleDocumentEx2()` 单次事务共享的 heap scratch，
+  并让 DOM 名称/属性 intern 和 scratch 分配失败统一 fail closed；没有加入 IANA URL、离线 CSS、
+  resource-skip、nocollect 或 minimal-CSS 特例，也没有改变公共 C ABI。
+- TEST1098 以 20 层嵌套 DOM、真实外链 CSS fetch/parse/attach/free 和第二次 document-cache
+  命中覆盖回归；`tmp/device-runs/20260827-230326-iana-stack-scratch-r1/` 通过 1/1。
+- `tmp/device-runs/20260827-230355-iana-stack-scratch-test13-r2/` 的真实 TEST13 三跳通过；IANA
+  `help/example-domains` 与 `domains/reserved` 均完成，资源均为 2/2/0，零 ERROR/FAIL。
+  `tmp/device-runs/20260827-230531-iana-stack-scratch-regression-r3/` 的资源缓存、CSS、导航、
+  布局/旋转相关回归通过 21/21，唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。
+- 用户在 320x320 WM6 设备上按 TEST13 路径人工复核同一候选，未见显著崩溃、卡死或布局异常。
+  `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和仓库/文档审计均通过；tracked
+  INI 未修改。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -832,7 +854,7 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1097 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1098 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 
@@ -851,9 +873,9 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
   Release 与 Debug 保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
 - next614 的 Debug/Release ARMV4I 正式构建、C89 检查和针对性设备门均已通过；Release 与 Debug
   保留既有 libcss/fpmath 的 3 个 C4244 警告，产品 DLL 无新增警告。
-- next616 的源码、C89、Debug/Release 构建、audit、离线 Debug 设备门和文档均已完成；网络
-  Debug 门已完成 example.com 第一跳，IANA 后续跳转属于外网可达性限制，不影响离线交付标准。
-  tracked 改动只覆盖宿主 URL 解析、TEST1064、
+- next616 当时的网络 Debug 门只完成 example.com 第一跳；2026-08-27 干净主线复现证明后续
+  IANA 失败不是单纯外网可达性限制。next650 已在保留真实资源处理的前提下修复递归栈占用，
+  TEST13 三跳自动门和人工设备复核均通过。next616 的 tracked 改动只覆盖宿主 URL 解析、TEST1064、
   相关 README/测试/交接文档；提交时不要把 `tmp/` 设备证据或无关工作区文件带入。
 - next617 的源码、C89、Debug/Release 构建、定向设备门、audit、Git diff 和远端状态均已在
   `f2f0dbcb` 推送前后核对；tracked 改动只覆盖该批 `positron_http` resolver、消费者和文档。
@@ -955,8 +977,10 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 
 ## 唯一下一步
 
-next649 的自动契约已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个高价值
-纵切，不要为了补编号添加孤立 API。Core 现在会按 viewport 选择 `<style media>` 与
+next650 的 IANA 深链崩溃修复已经完成；继续开发时应按路线图的真实页面/应用语料选择下一个
+高价值纵切，不要为了补编号添加孤立 API。Core 的资源收集仍遍历真实 DOM、获取并缓存外链
+字节、解析/挂载 CSS 和处理 `@import`，但 stylesheet URL scratch 只在单次样式事务分配一份，
+不再随 DFS 深度重复占用 WM6 UI 线程栈。Core 还会按 viewport 选择 `<style media>` 与
 `<link rel="stylesheet" media>`，按 rel token 选择 stylesheet、跳过带 `disabled` 属性的外部
 stylesheet，并在同文档重排复用外部 CSS cache；UA stylesheet 对存在 `hidden` 属性的元素
 应用 `display:none`，并按 `open` 控制 `details`/`dialog` 的静态默认呈现；`pre[wrap]` 会进入

@@ -1,8 +1,8 @@
 # IANA 深链崩溃调查（2026-08-27）
 
-> **未解决事故记录**：本文件记录 TEST 13 从 `example.com` 进入 IANA 页面时的失败实验。
-> 它不是修复说明，也不是新的通过基线。当前主线仍以 Git、源码和已经验收的设备日志为准；
-> 本次临时诊断代码保存在独立实验分支，不应直接合并。
+> **已解决事故记录**：本文件保留 TEST 13 从 `example.com` 进入 IANA 页面时的失败实验，
+> 并在末尾记录 next650 的根因、正式修复和通过证据。临时诊断代码仍保存在独立实验分支，
+> 不应直接合并；当前基线以 Git、源码和已经验收的设备日志为准。
 
 ## 现象与边界
 
@@ -97,9 +97,31 @@ RAPI 连接；脚本不得选择设备、绑定 VMID、自动 cradle/connect、�
 5. 修复通过后再移除诊断代码，跑相关自动回归（至少 TEST 13、外链 CSS/cache、布局/旋转
    相关门），最后才更新 `.agents/HANDOFF.md`、`.agents/KNOWN_LIMITATIONS.md` 和路线图。
 
-## 当前结论
+## 解决附录（next650）
 
-本次调查没有得到可合并修复。唯一可靠的行为结论是：完整 IANA 文档进入
-`pcore_collect_resources()` 时会触发未解释的失败/异常，而完全跳过该阶段可以通过 TEST 13。
-资源收集需要继续被隔离、缩小并用干净代码重现；任何“网络不稳定”“CSS 解析器崩溃”或
-“某个第 96 节点坏了”的说法，在获得独立证据前都只能作为假设。
+后续工作从 `origin/main` 的干净代码建立独立修复分支，未合入诊断快照。基线门
+`tmp/device-runs/20260827-225240-iana-clean-r1/` 再次只完成 TEST13 的 1/3 跳，证明去掉探针后
+故障仍存在。源码审查随后确认：递归的 `pcore_collect_resources()` 在每个 DFS 帧中声明
+1024 字节 stylesheet reference 和 2048 字节 resolved URL 自动数组；IANA 的深层 DOM 因而在
+WM6 较小 UI 线程栈上累计约 3 KiB/层，符合 CSS 内容、挂载与请求路径 A/B 均不能解除故障，
+而完全跳过遍历可以通过的既有证据。
+
+正式修复在 `PCore_StyleDocumentEx2()` 的单次样式事务中 heap 分配一套同样有界的 scratch，
+递归帧只持有其指针；URL 解析、宿主 fetch、document-owned cache、CSS 解析/挂载、`@import`、
+media 和释放路径均保持启用。DOM 名称/属性 intern 与 scratch 分配失败统一 fail closed。修复未
+加入 IANA URL、离线 CSS、resource-skip、nocollect 或 minimal-CSS 特例，也未改变公共 C ABI。
+
+验证证据：
+
+- `tmp/device-runs/20260827-230326-iana-stack-scratch-r1/`：TEST1098 通过 1/1；20 层嵌套 DOM
+  完成真实外链 CSS fetch/parse/attach/free，第二次样式事务命中 document cache。
+- `tmp/device-runs/20260827-230355-iana-stack-scratch-test13-r2/`：TEST13 三跳通过，IANA
+  `help/example-domains` 与 `domains/reserved` 均完成，资源 2/2/0，零 ERROR/FAIL。
+- `tmp/device-runs/20260827-230531-iana-stack-scratch-regression-r3/`：资源缓存、CSS、导航、
+  布局/旋转相关回归通过 21/21，唯一 `TESTBENCH PASS`，`test13_route_ok=True`。
+- 用户在 320x320 WM6 设备上按 TEST13 路径人工复核该候选，未见显著崩溃、卡死或布局异常。
+- `python scripts/test_c89ize.py`、正式 Debug/Release ARMV4I 构建和仓库/文档审计通过。
+
+因此本事故已由真实资源处理路径中的递归栈占用修复。r40 仍只是一项隔离证据，不能恢复或
+合并；r45 的约第 96 次访问也仍不是稳定 DOM 序号。资源遍历仍是递归实现，极端 DOM 深度尚无
+独立硬上限，继续作为一般有界资源限制保留。
