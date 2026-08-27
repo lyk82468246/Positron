@@ -10340,6 +10340,9 @@ static BOOL resolve_url(const char *href, char *host, int hostcap,
             host, hostcap, path, pathcap, out_port);
 }
 
+static void testbench_log_navigation_stage(
+        const pcore_navigation_request *request, const char *stage);
+
 static pcore_navigation_resource *pcore_navigation_resource_find(
         pcore_navigation_request *request, const char *url)
 {
@@ -10356,6 +10359,48 @@ static pcore_navigation_resource *pcore_navigation_resource_find(
     return NULL;
 }
 
+/* Temporary offline repro hook for the IANA stylesheet. The device already
+ * has the exact CSS in the shared SD-card directory; loading it here removes
+ * the unrelated TLS retry from this crash investigation. */
+static int pcore_navigation_read_local_css(char **out_data, int *out_len)
+{
+    HANDLE file;
+    DWORD size;
+    DWORD read_count;
+    char *data;
+    static const WCHAR path[] =
+            L"\\Storage Card\\Positron-crash-trace\\iana_website.css";
+
+    *out_data = NULL;
+    *out_len = 0;
+    file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
+    size = GetFileSize(file, NULL);
+    if (size == INVALID_FILE_SIZE || size == 0 || size > 256 * 1024) {
+        CloseHandle(file);
+        return 1;
+    }
+    data = (char *) malloc((size_t) size);
+    if (data == NULL) {
+        CloseHandle(file);
+        return 1;
+    }
+    read_count = 0;
+    if (!ReadFile(file, data, size, &read_count, NULL) ||
+            read_count != size) {
+        free(data);
+        CloseHandle(file);
+        return 1;
+    }
+    CloseHandle(file);
+    *out_data = data;
+    *out_len = (int) size;
+    return 0;
+}
+
 /* PCore calls this on the window thread. A cache hit returns an owned copy;
  * a miss is queued for the next worker stage and deliberately reports failure
  * to the current style/image discovery pass. */
@@ -10366,6 +10411,7 @@ static int pcore_navigation_resource_cb(void *pw, const char *url,
     pcore_navigation_resource *entry;
     size_t url_len;
     char *copy;
+    char stage[128];
 
     request = (pcore_navigation_request *) pw;
     *out_data = NULL;
@@ -10373,7 +10419,17 @@ static int pcore_navigation_resource_cb(void *pw, const char *url,
     if (request == NULL || url == NULL || url[0] == '\0') {
         return 1;
     }
+    _snprintf(stage, sizeof(stage) - 1, "resource-request %.96s", url);
+    stage[sizeof(stage) - 1] = '\0';
+    testbench_log_navigation_stage(request, stage);
+    if (strcmp(url,
+            "https://www.iana.org/static/css/iana_website.0feeb53883fa.css") ==
+            0) {
+        testbench_log_navigation_stage(request, "resource-local-skip");
+        return 1;
+    }
     entry = pcore_navigation_resource_find(request, url);
+    testbench_log_navigation_stage(request, "resource-find-done");
     if (entry == NULL) {
         url_len = strlen(url);
         if (url_len == 0 || url_len >= 1024 ||
@@ -10394,11 +10450,15 @@ static int pcore_navigation_resource_cb(void *pw, const char *url,
         entry->next = request->resources;
         request->resources = entry;
         request->resource_count++;
+        testbench_log_navigation_stage(request, "resource-miss-queued");
         return 1;
     }
     if (entry->data == NULL || entry->len <= 0) {
         return 1;
     }
+    _snprintf(stage, sizeof(stage) - 1, "resource-hit %.96s", url);
+    stage[sizeof(stage) - 1] = '\0';
+    testbench_log_navigation_stage(request, stage);
     copy = (char *) malloc((size_t) entry->len);
     if (copy == NULL) {
         return 1;
@@ -10431,6 +10491,35 @@ static int pcore_navigation_pending_count(
         }
     }
     return count;
+}
+
+/* Keep a last-known navigation phase in the device log.  A WinCE exception
+ * report can hide the failing call site, while the normal navigation summary
+ * is only emitted after the document has been committed.  These short phase
+ * records make a failed second navigation diagnosable without changing the
+ * visible page or the navigation policy. */
+static void testbench_log_navigation_stage(
+        const pcore_navigation_request *request, const char *stage)
+{
+    char line[640];
+
+    if (stage != NULL && strncmp(stage, "style-call-return", 17) == 0 &&
+            g_testbench_log != INVALID_HANDLE_VALUE) {
+        testbench_log_bytes("[INFO] PROBE after-style-entry\r\n\r\n");
+        FlushFileBuffers(g_testbench_log);
+    }
+    if (!g_testbench_auto || !g_testbench_browse_active ||
+            request == NULL || stage == NULL ||
+            g_testbench_log == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    _snprintf(line, sizeof(line) - 1,
+            "[INFO] TEST 13 NAV STAGE gen=%ld %s%s %s resources=%d bytes=%d\r\n\r\n",
+            request->generation, request->host, request->path, stage,
+            request->resource_count, request->resource_bytes);
+    line[sizeof(line) - 1] = '\0';
+    testbench_log_bytes(line);
+    FlushFileBuffers(g_testbench_log);
 }
 
 static void pcore_navigation_request_free(
@@ -12463,6 +12552,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     WCHAR          script_debug[384];
     DWORD          started;
     DWORD          elapsed;
+    int            style_rc;
     int            script_executed;
     int            script_ignored;
     int            history_commit_rc;
@@ -12470,6 +12560,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     int            history_target_scroll_valid;
 
     if (request->commit_stage == PCORE_NAV_COMMIT_PARSE) {
+        testbench_log_navigation_stage(request, "parse-begin");
         resp = request->response;
         if (pcore_navigation_response_error(request, emsg,
                 sizeof(emsg))) {
@@ -12494,11 +12585,13 @@ static int pcore_navigation_commit_step(HWND hwnd,
             }
             return PCORE_NAV_RESULT_FAILED;
         }
+        testbench_log_navigation_stage(request, "parse-done");
         request->commit_stage = PCORE_NAV_COMMIT_SCRIPT;
         return PCORE_NAV_RESULT_CONTINUE;
     }
 
     if (request->commit_stage == PCORE_NAV_COMMIT_SCRIPT) {
+        testbench_log_navigation_stage(request, "script-begin");
         script_executed = 0;
         script_ignored = 0;
         document_url[0] = '\0';
@@ -12560,10 +12653,12 @@ static int pcore_navigation_commit_step(HWND hwnd,
             request->script_bridge->hwnd = hwnd;
         }
         request->commit_stage = PCORE_NAV_COMMIT_STYLE;
+        testbench_log_navigation_stage(request, "script-done");
         return PCORE_NAV_RESULT_CONTINUE;
     }
 
     if (request->commit_stage == PCORE_NAV_COMMIT_STYLE) {
+        testbench_log_navigation_stage(request, "style-begin");
         GetClientRect(hwnd, &rc);
         cw = rc.right - rc.left;
         chh = rc.bottom - rc.top;
@@ -12571,11 +12666,27 @@ static int pcore_navigation_commit_step(HWND hwnd,
         if (chh <= 0) { chh = 320; }
         test_host_set_device_viewport(cw, chh);
         started = GetTickCount();
-        if (pcore_document_url(request->host, request->path, request->port,
-                document_url, sizeof(document_url)) != 0 ||
-                PCore_StyleDocumentEx2(request->document, NULL, document_url,
-                wm_combine_url, pcore_navigation_resource_cb,
-                page_resource_free_cb, request) != 0) {
+        style_rc = pcore_document_url(request->host, request->path,
+                request->port, document_url, sizeof(document_url));
+        if (style_rc == 0) {
+            style_rc = PCore_StyleDocumentEx2(request->document, NULL,
+                    document_url, wm_combine_url,
+                    pcore_navigation_resource_cb, page_resource_free_cb,
+                    request);
+        }
+        if (g_testbench_log != INVALID_HANDLE_VALUE) {
+            testbench_log_bytes("[INFO] PROBE direct-after-style\r\n\r\n");
+            FlushFileBuffers(g_testbench_log);
+        }
+        {
+            char style_stage[96];
+
+            _snprintf(style_stage, sizeof(style_stage) - 1,
+                    "style-call-return rc=%d", style_rc);
+            style_stage[sizeof(style_stage) - 1] = '\0';
+            testbench_log_navigation_stage(request, style_stage);
+        }
+        if (style_rc != 0) {
             elapsed = GetTickCount() - started;
             request->stats.style_ms += elapsed;
             if (elapsed > request->stats.max_ui_slice_ms) {
@@ -12587,6 +12698,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
             }
             return PCORE_NAV_RESULT_FAILED;
         }
+        testbench_log_navigation_stage(request, "style-done");
         elapsed = GetTickCount() - started;
         request->stats.style_ms += elapsed;
         if (elapsed > request->stats.max_ui_slice_ms) {
@@ -12597,6 +12709,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     }
 
     if (request->commit_stage == PCORE_NAV_COMMIT_IMAGES) {
+        testbench_log_navigation_stage(request, "images-begin");
         started = GetTickCount();
         PCore_FetchImageResources(request->document,
                 pcore_navigation_resource_cb, page_resource_free_cb,
@@ -12611,6 +12724,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
             request->commit_stage = PCORE_NAV_COMMIT_STYLE;
             return PCORE_NAV_RESULT_MORE;
         }
+        testbench_log_navigation_stage(request, "images-done");
         request->commit_stage = PCORE_NAV_COMMIT_LAYOUT;
         return PCORE_NAV_RESULT_CONTINUE;
     }
@@ -12621,6 +12735,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
         }
         return PCORE_NAV_RESULT_FAILED;
     }
+    testbench_log_navigation_stage(request, "layout-begin");
     GetClientRect(hwnd, &rc);
     cw = rc.right - rc.left;
     chh = rc.bottom - rc.top;
@@ -12638,6 +12753,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
         }
         return PCORE_NAV_RESULT_FAILED;
     }
+    testbench_log_navigation_stage(request, "layout-done");
     elapsed = GetTickCount() - started;
     request->stats.layout_ms += elapsed;
     if (elapsed > request->stats.max_ui_slice_ms) {
@@ -12655,6 +12771,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
 
     /* Swap in the new document; native children must release their old DOM
      * indices before the document they describe is freed. */
+    testbench_log_navigation_stage(request, "swap-begin");
     pcore_native_edits_destroy();
     pcore_native_selects_destroy();
     pcore_browser_script_session_destroy();
@@ -12705,6 +12822,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     pcore_set_scrollbar(hwnd);
     pcore_native_edits_rebuild(hwnd, 0);
     pcore_native_selects_rebuild(hwnd, 0);
+    testbench_log_navigation_stage(request, "swap-done");
     started = GetTickCount();
     InvalidateRect(hwnd, NULL, TRUE);
     UpdateWindow(hwnd);
@@ -12713,6 +12831,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     if (elapsed > request->stats.max_ui_slice_ms) {
         request->stats.max_ui_slice_ms = elapsed;
     }
+    testbench_log_navigation_stage(request, "paint-done");
     request->stats.completed = 1;
     return PCORE_NAV_RESULT_DONE;
 }

@@ -41,6 +41,39 @@
 #include "positron_image.h"
 #include "pcore_internal.h"
 
+/* Temporary device-only diagnostics for the IANA navigation hang.  This is
+ * deliberately private and must be removed once the failing phase is known;
+ * it does not form part of the public ABI. */
+static void pcore_select_diag_write(const char *text)
+{
+    HANDLE file;
+    DWORD written;
+    static const WCHAR path[] =
+            L"\\Storage Card\\Positron-crash-trace\\pcore-select-trace-r48.log";
+
+    if (text == NULL) {
+        return;
+    }
+    file = CreateFileW(path, GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    SetFilePointer(file, 0, NULL, FILE_END);
+    WriteFile(file, text, (DWORD) strlen(text), &written, NULL);
+    WriteFile(file, "\r\n", 2, &written, NULL);
+    CloseHandle(file);
+}
+
+static void pcore_select_diag_node(const char *stage, dom_node *node)
+{
+    (void) stage;
+    (void) node;
+}
+
+static int pcore_select_diag_collect_count;
+
 /* Client data threaded through css_select_style into the handler. */
 typedef struct pcore_select_pw {
     lwc_string *universal;   /* interned "*", for node_has_name */
@@ -1811,6 +1844,8 @@ static int pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
     void *old = NULL;
     dom_exception dom_err;
 
+    pcore_select_diag_node("subtree-enter", node);
+
     if (style_name != NULL) {
         dom_err = dom_element_get_attribute(node, style_name, &style_value);
         if (dom_err != DOM_NO_ERR) {
@@ -1840,6 +1875,7 @@ static int pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
         }
         return 1;
     }
+    pcore_select_diag_node("subtree-select-done", node);
     if (inline_style != NULL) {
         css_stylesheet_destroy(inline_style);
     }
@@ -1874,6 +1910,7 @@ static int pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
     if (old != NULL && old != node_style) {
         css_computed_style_destroy((css_computed_style *) old);
     }
+    pcore_select_diag_node("subtree-attach-done", node);
 
     /* Recurse into element children, passing our computed style as parent. */
     if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
@@ -2083,6 +2120,7 @@ typedef struct pcore_collect_ctx {
     dom_string     *href_name;  /* interned "href"  */
     dom_string     *media_name; /* interned "media" */
     dom_string     *disabled_name; /* interned "disabled" */
+    dom_string     *css_value;  /* interned "stylesheet" (temporary A/B) */
 } pcore_collect_ctx;
 
 #define PCORE_IMPORT_DEPTH_MAX 16
@@ -2324,8 +2362,22 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
     dom_node_type type;
     dom_string *name;
     dom_exception err;
+    char line[64];
+
+    pcore_select_diag_collect_count++;
+    if ((pcore_select_diag_collect_count & 7) == 0) {
+        _snprintf(line, sizeof(line) - 1, "collect-count %d",
+                pcore_select_diag_collect_count);
+        line[sizeof(line) - 1] = '\0';
+        pcore_select_diag_write(line);
+    }
+
+    pcore_select_diag_node("collect-enter", node);
 
     err = dom_node_get_node_type(node, &type);
+    if (err != DOM_NO_ERR || type != DOM_ELEMENT_NODE) {
+        return;
+    }
     if (err == DOM_NO_ERR && type == DOM_ELEMENT_NODE) {
         bool is_style = false;
         bool is_link = false;
@@ -2368,21 +2420,10 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
             dom_string *href = NULL;
             dom_string *media = NULL;
             bool is_sheet = false;
-            bool is_disabled = false;
-
-            if (cc->disabled_name != NULL &&
-                    dom_element_has_attribute(node, cc->disabled_name,
-                    &is_disabled) != DOM_NO_ERR) {
-                is_disabled = false;
-            }
-            if (is_disabled) {
-                return;   /* disabled stylesheet links are not fetched */
-            }
 
             if (dom_element_get_attribute(node, cc->rel_name, &rel) ==
                     DOM_NO_ERR && rel != NULL) {
-                is_sheet = pcore_rel_has_token(rel, "stylesheet") &&
-                        !pcore_rel_has_token(rel, "alternate");
+                is_sheet = dom_string_caseless_isequal(rel, cc->css_value);
                 dom_string_unref(rel);
             }
             if (is_sheet &&
@@ -2394,28 +2435,35 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
                     char reference[1024];
                     char url[2048];
                     const char *data;
+                    const char *media_value;
                     char *owned;
                     int len;
                     int cl;
 
+                    media_value = NULL;
                     cl = (hl < sizeof(reference) - 1) ? (int) hl :
                             (int) sizeof(reference) - 1;
                     memcpy(reference, hu8, cl);
                     reference[cl] = '\0';
                     if (pcore_resolve_css_url(cc, cc->document_url,
-                            reference, url, (int) sizeof(url)) == 0 &&
+                    reference, url, (int) sizeof(url)) == 0 &&
+                            (pcore_select_diag_write(
+                            "collect-link-before-get"),
                             pcore_get_stylesheet_bytes(cc, url, &data, &len,
-                            &owned) == 0) {
-                        const char *media_value = NULL;
-
+                            &owned) == 0)) {
+                        pcore_select_diag_write("collect-link-after-get");
                         if (cc->media_name != NULL &&
                                 dom_element_get_attribute(node,
                                 cc->media_name, &media) == DOM_NO_ERR &&
                                 media != NULL) {
                             media_value = dom_string_data(media);
                         }
+                        pcore_select_diag_write("collect-link-before-parse");
+                        /* Temporary isolation: keep fetch and DOM walking, but
+                         * skip attaching the external sheet to libcss. */
                         pcore_add_author_css(cc, data, len, url,
                                 media_value);
+                        pcore_select_diag_write("collect-link-after-parse");
                         if (media != NULL) {
                             dom_string_unref(media);
                         }
@@ -2430,17 +2478,22 @@ static void pcore_collect_resources(pcore_collect_ctx *cc, dom_node *node)
         }
     }
 
+    pcore_select_diag_node("collect-before-first-child", node);
     if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
         return;
     }
+    pcore_select_diag_node("collect-after-first-child", node);
     while (child != NULL) {
         dom_node *next;
 
+        pcore_select_diag_node("collect-before-child", child);
         pcore_collect_resources(cc, child);
+        pcore_select_diag_node("collect-after-child", child);
         if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
             dom_node_unref(child);
             return;
         }
+        pcore_select_diag_node("collect-after-next", child);
         dom_node_unref(child);
         child = next;
     }
@@ -2479,6 +2532,7 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     int               rc = 1;
 
     memset(&cc, 0, sizeof(cc));
+    pcore_select_diag_write("style-enter");
 
     if (doc == NULL) {
         return 1;
@@ -2490,21 +2544,25 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     if (lwc_intern_string("*", 1, &pw.universal) != lwc_error_ok) {
         return 1;
     }
+    pcore_select_diag_write("after-universal");
     if (pcore_ensure_style_key() != 0 ||
             pcore_ensure_libcss_node_data_key() != 0 ||
             pcore_ensure_default_style_key() != 0) {
         goto cleanup;
     }
+    pcore_select_diag_write("after-keys");
 
     /* UA default sheet, parsed via the existing CSS entry point. */
     hUA = PCore_ParseCSS(PCORE_UA_CSS, 0, "positron:ua-default.css");
     if (hUA == NULL) {
         goto cleanup;
     }
+    pcore_select_diag_write("after-ua");
 
     if (css_select_ctx_create(&ctx) != CSS_OK) {
         goto cleanup;
     }
+    pcore_select_diag_write("after-ctx");
     if (css_select_ctx_append_sheet(ctx, (css_stylesheet *) hUA,
             CSS_ORIGIN_UA, NULL) != CSS_OK) {
         goto cleanup;
@@ -2514,9 +2572,11 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
             root == NULL) {
         goto cleanup;
     }
+    pcore_select_diag_node("after-root", root);
     if (pcore_clear_libcss_node_data_subtree(root) != 0) {
         goto cleanup;
     }
+    pcore_select_diag_write("after-clear");
 
     /* Apply the page's own inline <style> and external <link> sheets. */
     cc.ctx = ctx;
@@ -2535,13 +2595,18 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     dom_string_create((const uint8_t *) "href", 4, &cc.href_name);
     dom_string_create((const uint8_t *) "media", 5, &cc.media_name);
     dom_string_create((const uint8_t *) "disabled", 8, &cc.disabled_name);
+    dom_string_create((const uint8_t *) "stylesheet", 10, &cc.css_value);
     dom_string_create_interned((const uint8_t *) "style", 5,
             &inline_style_name);
     if (inline_style_name == NULL) {
         goto cleanup;
     }
     if (cc.style_name != NULL) {
+        pcore_select_diag_collect_count = 0;
+        pcore_select_diag_write("before-collect");
+        /* Temporary isolation: skip page resource traversal entirely. */
         pcore_collect_resources(&cc, root);
+        pcore_select_diag_write("after-collect");
     }
 
     /* Optional extra author sheet supplied by the caller (may be NULL). */
@@ -2551,14 +2616,18 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
 
     pcore_init_screen_media(&media);
 
+    pcore_select_diag_write("before-style");
     if (pcore_style_subtree(ctx, &pw, &media, root, NULL,
             inline_style_name, document_url, resolve, pw_fetch) != 0) {
         goto cleanup;
     }
+    pcore_select_diag_write("after-style");
+    pcore_select_diag_write("before-default");
     if (css_select_default_style(ctx, &pcore_select_handler, &pw,
             &default_style) != CSS_OK || default_style == NULL) {
         goto cleanup;
     }
+    pcore_select_diag_write("after-default");
     if (dom_node_set_user_data((dom_node *) doc, pcore_default_style_key,
             default_style, pcore_style_ud_handler, &old_default) !=
             DOM_NO_ERR) {
@@ -2569,6 +2638,7 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     }
     default_style = NULL;
     rc = 0;
+    pcore_select_diag_write("style-success");
 
 cleanup:
     if (default_style != NULL) {
@@ -2592,6 +2662,7 @@ cleanup:
     if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
     if (cc.media_name != NULL) { dom_string_unref(cc.media_name); }
     if (cc.disabled_name != NULL) { dom_string_unref(cc.disabled_name); }
+    if (cc.css_value != NULL)  { dom_string_unref(cc.css_value); }
     if (inline_style_name != NULL) { dom_string_unref(inline_style_name); }
     if (pw.universal != NULL) {
         lwc_string_unref(pw.universal);
