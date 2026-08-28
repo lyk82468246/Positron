@@ -413,7 +413,7 @@ try {
         if ($rollingNightly) {
             # Move an existing lightweight/annotated tag before creating the
             # release. Versioned product tags are never changed by this script.
-            $tagRef = "repos/{0}/git/ref/tags/{1}" -f $repositoryName, $Tag
+            $tagRef = "repos/{0}/git/refs/tags/{1}" -f $repositoryName, $Tag
             $tagResult = Invoke-GhCaptured @("api", $tagRef)
             $tagDetails = ($tagResult.Output |
                     ForEach-Object { $_.ToString() }) -join "`n"
