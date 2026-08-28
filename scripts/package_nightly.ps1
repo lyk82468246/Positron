@@ -389,7 +389,7 @@ try {
         # an existing release leaves both its published_at timestamp and the
         # already-created tag unchanged, so inspect it before recreating it.
         $viewArgs = @("release", "view", $Tag) + $repoArgs +
-                @("--json", "tagName", "isImmutable")
+                @("--json", "tagName,isImmutable")
         $viewResult = Invoke-GhCaptured $viewArgs
         $viewDetails = ($viewResult.Output |
                 ForEach-Object { $_.ToString() }) -join "`n"
