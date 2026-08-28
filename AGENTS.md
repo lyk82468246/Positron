@@ -34,6 +34,20 @@
 - 构建只能通过 `scripts\build.bat` 或 `scripts\stage.bat` 的正式工程配置完成，
   不绕过解决方案直接拼装工具链。
 
+## 文档纪律
+
+- 修改 Markdown 前先以 UTF-8 整篇读取目标文件，确认标题结构和职责；不能只搜索关键词后在
+  附近追加。PowerShell 读取使用 `Get-Content -Raw -Encoding UTF8` 或等价的不截断方式。
+- 新事实应改写已有主题段落。除 `docs/history/`、失败实验和 Git 历史外，不按日期、提交或
+  next 编号记录流水账。
+- 根 README 只讲项目入口；架构/构建/测试/排障只讲稳定规则；组件 README 只讲调用和边界；
+  `.agents/` 只讲当前状态、当前限制、未来路线与可复用失败。
+- 候选目录、`tmp/device-runs/`、逐测试 OK 数量和提交清单只进入当前 handoff 或专用历史，
+  不进入面向读者的稳定文档。
+- 每次文档修改都检查整篇是否出现重复章节、过长段落、超长行和失效链接。若文件职责已经
+  失守，应先重构整体结构，不在错误结构上继续增补。
+- 提交前必须通过 `python scripts/audit_repo.py` 的文档结构门；不得通过放宽规则掩盖流水账。
+
 ## 验证与交付
 
 - 相关 C 改动先运行 `python scripts/test_c89ize.py`；提交前运行

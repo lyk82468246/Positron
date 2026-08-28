@@ -53,6 +53,32 @@ DOC_INCLUDE_EXCEPTIONS = (
     "third_party/libjpeg-turbo/POSITRON_PORT.md",
 )
 
+# These documents have deliberately narrow roles.  Generous line budgets are
+# not style targets; they are tripwires against quietly rebuilding a per-next
+# ledger in a reader guide or one-page agent snapshot.
+DOC_ROLE_LINE_LIMITS = {
+    "README.md": 300,
+    "docs/ARCHITECTURE.md": 700,
+    "docs/TESTING.md": 700,
+    ".agents/HANDOFF.md": 250,
+    ".agents/KNOWN_LIMITATIONS.md": 300,
+    ".agents/ROADMAP.md": 250,
+    "positron_browser/README.md": 300,
+    "positron_core/README.md": 260,
+    "test_host/README.md": 260,
+}
+
+DOC_STRUCTURE_PATHS = set(DOC_ROLE_LINE_LIMITS)
+DOC_STRUCTURE_PATHS.update((
+    "AGENTS.md",
+    "docs/README.md",
+    "docs/BUILDING.md",
+    "docs/TROUBLESHOOTING.md",
+    "docs/NIGHTLY_RELEASE.md",
+    ".agents/README.md",
+    ".agents/DEBUGGING.md",
+))
+
 
 def relpath(path):
     return os.path.relpath(path, ROOT).replace(os.sep, "/")
@@ -202,6 +228,92 @@ def audit_markdown_links(documents, errors):
     return document_count, link_count
 
 
+def is_stable_reader_document(name):
+    if name in (
+            "README.md", "docs/README.md", "docs/ARCHITECTURE.md",
+            "docs/BUILDING.md", "docs/TESTING.md",
+            "docs/TROUBLESHOOTING.md", "docs/NIGHTLY_RELEASE.md"):
+        return True
+    return re.match(
+        r"^(?:positron_[^/]+|test_host|assets/fonts|samples(?:/[^/]+)?)"
+        r"/README\.md$", name) is not None
+
+
+def audit_document_structure(documents, errors):
+    """Enforce document roles without treating prose wording as an API."""
+    if documents is None:
+        return 0
+    checked = 0
+    batch_re = re.compile(r"\bnext[0-9]+\b", re.IGNORECASE)
+    run_re = re.compile(r"tmp/device-runs/[0-9]", re.IGNORECASE)
+    roadmap_heading_re = re.compile(
+        r"^#{1,6}\s+.*(?:next[0-9]+|已完成)", re.IGNORECASE)
+    heading_re = re.compile(r"^#{1,2}\s+(.+?)\s*$")
+
+    for name in sorted(documents):
+        if not name.lower().endswith(".md"):
+            continue
+        if (name.startswith(DOC_EXCLUDES) and
+                name not in DOC_INCLUDE_EXCEPTIONS):
+            continue
+        if (not is_stable_reader_document(name) and
+                name not in DOC_STRUCTURE_PATHS):
+            continue
+
+        path = os.path.join(ROOT, name.replace("/", os.sep))
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                text = handle.read()
+        except (IOError, UnicodeError):
+            # The link/encoding audit reports the detailed read error.
+            continue
+
+        checked += 1
+        lines = text.splitlines()
+        limit = DOC_ROLE_LINE_LIMITS.get(name)
+        if limit is not None and len(lines) > limit:
+            errors.append("%s exceeds its %d-line role budget (%d lines)" %
+                          (name, limit, len(lines)))
+
+        if is_stable_reader_document(name):
+            match = batch_re.search(text)
+            if match is not None:
+                line = text.count("\n", 0, match.start()) + 1
+                errors.append("%s:%d contains a per-next batch reference" %
+                              (name, line))
+            match = run_re.search(text)
+            if match is not None:
+                line = text.count("\n", 0, match.start()) + 1
+                errors.append("%s:%d contains a dated local device run" %
+                              (name, line))
+
+        headings = set()
+        in_fence = False
+        for number, line_text in enumerate(lines, 1):
+            stripped = line_text.strip()
+            if stripped.startswith("```") or stripped.startswith("~~~"):
+                in_fence = not in_fence
+                continue
+            if not in_fence and not stripped.startswith("|") and len(line_text) > 240:
+                errors.append("%s:%d has a %d-character prose line" %
+                              (name, number, len(line_text)))
+            if not in_fence:
+                heading = heading_re.match(line_text)
+                if heading is not None:
+                    normalized = heading.group(1).strip().lower()
+                    if normalized in headings:
+                        errors.append("%s:%d repeats heading '%s'" %
+                                      (name, number,
+                                       heading.group(1).strip()))
+                    headings.add(normalized)
+                if (name == ".agents/ROADMAP.md" and
+                        roadmap_heading_re.match(line_text)):
+                    errors.append(
+                        "%s:%d has a completed/batch roadmap heading" %
+                        (name, number))
+    return checked
+
+
 def main():
     errors = []
     tracked = load_tracked()
@@ -221,6 +333,8 @@ def main():
         source_count += audit_project(project, tracked, errors)
 
     audit_versions(errors)
+    structured_document_count = audit_document_structure(worktree_files,
+                                                          errors)
     document_count, link_count = audit_markdown_links(worktree_files, errors)
 
     if errors:
@@ -234,6 +348,8 @@ def main():
           (project_count, source_count, tracked_note))
     print("Documentation audit OK: %d files, %d local links." %
           (document_count, link_count))
+    print("Documentation structure OK: %d role-governed files." %
+          structured_document_count)
     print("Pinned sources: Mbed TLS 2.16.12, cJSON 1.7.18.")
     return 0
 

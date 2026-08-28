@@ -46,14 +46,14 @@ VS2008 Core Connectivity（CoreCon）已经存在一个可由 `EnumerateConnecti
 活动 `ICcConnection`。两者是不同的主机端通道，不能用 CoreCon 枚举为空推断“设备未连接”，
 也不应要求用户因此重新 Cradle 或重启已经正常的 WMDC 会话。
 
-next221 使用的旧 gate 能工作，是因为它没有复用 WMDC 当前会话：脚本从正在运行的
+旧 CoreCon gate 能工作，是因为它没有复用 WMDC 当前会话：脚本从正在运行的
 `DeviceEmulator.exe` 命令行读取 VMID，在 CoreCon datastore 中匹配目标，然后显式调用
 CoreCon `Connect()`，结束时再 `Disconnect()`。这条路径完全没有调用 RAPI，所以当时无需
 修复 RAPI COM 注册，也无需管理员权限。它只证明“按 emulator VMID 主动建立 CoreCon
 部署通道”可行，不能证明 WMDC 当前连接能够被 CoreCon 直接枚举；它也不满足随意更换当前
 USB/DMA 设备且不绑定目标身份的要求。
 
-next222 起的正式 gate 改用 32 位 RAPI 1。`CeRapiInitEx()` 只是让本地客户端打开 WMDC 已有的
+正式 gate 改用 32 位 RAPI 1。`CeRapiInitEx()` 只是让本地客户端打开 WMDC 已有的
 当前会话；gate 不选择设备、不读取 VMID，也不执行启动、Cradle、断开或重置。更换设备时，
 只需先在 GUI 中让所需设备成为 WMDC 当前连接，再运行：
 
@@ -90,10 +90,10 @@ gate 对 `CeRapiInitEx()` 使用 30 秒有界事件等待。按微软
 值，Process Monitor 可见进程在 SysWOW64 路径下继续寻找含字面 `%windir%` 的不存在文件，
 最终使 `CeRapiInit()` 返回 `0x8007007E`。因此，这个错误不等于设备没有连接。
 
-next586 复现时，五个 in-process RAPI COM 类的直接激活也返回 `0x8007007E`，而 out-of-
+现场复现时，五个 in-process RAPI COM 类的直接激活也返回 `0x8007007E`，而 out-of-
 process `RAPIMgr` 仍可用；这解释了“WMDC 看起来完全正常但 gate 不能启动”的表象。正式修复脚本
 将 Registry32/Registry64 中共 10 个已知值从旧的 `%windir%` 展开字符串规范化为现有
-SysWOW64/System32 DLL 的绝对路径，报告 `changed=10`、`status=PASS`，之后 next586 的定向、
+SysWOW64/System32 DLL 的绝对路径，报告 `changed=10`、`status=PASS`，之后定向、
 兼容和累计门均通过。不要因为 UI 正常就跳过 RAPI 取证，也不要手工修改未知 COM 类；若同一
 HRESULT 再次出现，先确认设备仍由 GUI 连接，再运行下面的幂等修复入口并重新执行设备门。
 
@@ -217,7 +217,7 @@ viewport 和 DPI；不能把 96 DPI 固定成产品前提。
 
 候选词只能输入一个字符时，先记录 `WM_IME_COMPOSITION` 的 `GCS_RESULTSTR`、实际 control
 文本和 `EN_CHANGE` 次数。当前宿主会把完整结果一次性写入 composition selection；若仍只
-出现首字符，优先检查设备是否运行了包含 next618/next619 的 `test_host.exe`，以及 WMDC
+出现首字符，优先检查设备是否运行了包含完整 IME result 支持的 `test_host.exe`，以及 WMDC
 是否部署了同一 stage 目录的 DLL。只有在完整结果已经到达 control、而页面事件仍异常时，才继续
 区分 composition bridge 与测试 oracle；不要用重复发送 `WM_CHAR` 掩盖真实 IME 路径。
 

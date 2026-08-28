@@ -1,1459 +1,244 @@
 # Positron 架构与公共边界
 
-## 项目使命
+本文定义 Positron 的稳定工程边界：哪些能力属于公共 DLL，哪些属于宿主，数据和资源由谁拥有，
+以及 WM6/VS2008 对实现施加的约束。精确函数签名以各项目公开头文件为准；当前开发状态见
+[`.agents/HANDOFF.md`](../.agents/HANDOFF.md)。
 
-Positron 面向 Windows Mobile 6 Professional / Windows CE 5.2，在不替换操作系统的前提下
-补齐现代 TLS、JSON、HTTP、图像、脚本和网页运行能力。
+## 设计目标
 
-项目同时服务两类消费者：
+Positron 为 Windows Mobile 6 / Windows CE 5.2 提供可以单独消费、也可以组合使用的基础 DLL。
+公共接口刻意保持窄而明确：
 
-1. 普通 WM6 C/C++ 程序，可以单独使用一个或多个公共 DLL。
-2. 浏览器或 Positron 应用运行时，通过宿主组合这些 DLL，提供窗口、网络、DOM、布局、
-   输入、脚本和 native bridge。
+- C ABI，不向调用方暴露 C++、NetSurf、Duktape、cJSON 或 mbed TLS 内部类型；
+- 所有跨边界文本均为 UTF-8；
+- 状态通过 opaque handle 表示；
+- 每个分配结果都有明确的释放者；
+- 平台窗口、消息循环和网络调度留给宿主；
+- 资源预算和功能上限可预测，失败时 fail closed。
 
-`test_host.exe` 是回归宿主和示例消费者，不是公共 API 的所有者。
+项目不以完整现代浏览器、完整 Web 标准或桌面级并发运行时为目标。
 
-## 分层
+## 总体分层
 
 ```text
-WM6 application / test_host
-        |
-        +-- positron_tls       modern TLS
-        +-- positron_json      JSON
-        +-- positron_http ----- positron_tls
-        +-- positron_image     bitmap/SVG services
-        +-- positron_script    standalone JavaScript runtime
-        |
-        +-- positron_core
-              |
-              +-- ported NetSurf static libraries
-              +-- DOM / CSS / layout / paint / interaction
-              +-- host callbacks for URL resolution and resources
-
-        +-- positron_browser
-              |
-              +-- browser session / history / same-origin state
-              +-- script bootstrap + DOM read/write/attribute/value/checked/disabled/validation/custom-validity/form-property/navigation/location/event/native-input/key/focus/edit-input/click/programmatic-click/form-event/invalid/file-input/checkbox-radio-change/select bridge
-              +-- typed programmatic activation, native EDIT transaction and native SELECT commit/focus/
-                  single-select dropdown transaction policy
-
-Browser host = composition of positron_browser + positron_core
-               + positron_script + networking + native WM controls
+WM6 应用 / test_host.exe
+        │
+        ├── 平台窗口、消息循环、WM 控件、SIP/IME、文件选择器
+        ├── 导航事务、后台网络调度、资源获取与页面提交
+        │
+        ├── positron_browser.dll ── history、script session、DOM/Event 协调
+        ├── positron_core.dll    ── HTML/CSS/DOM、style、layout、paint、表单
+        ├── positron_script.dll  ── 有预算的通用 JavaScript runtime
+        ├── positron_image.dll   ── bitmap/SVG decode、draw、encode
+        ├── positron_http.dll    ── HTTP/1.1 与 URL reference 解析
+        ├── positron_json.dll    ── JSON parse/query/serialize
+        └── positron_tls.dll     ── TLS client、peer、listener
 ```
 
-内部 NetSurf、libdom、libcss、libhubbub、libsvgtiny 等静态库被封装在产品边界后面。
-应用程序不应包含它们的头文件，也不应依赖其符号或对象布局。
+`test_host.exe` 只是上述组合的一种实现。可复用的业务语义必须位于适当的公共 DLL；宿主只保留
+Windows Mobile 平台适配、应用策略和测试夹具。
 
 ## 公共 DLL
 
 ### `positron_tls.dll`
 
-提供两个刻意分开的 TLS 1.2 信任模型。普通 HTTPS 客户端使用嵌入式/调用方追加 CA、
-证书链和主机名验证，默认产品路径是 `PTls_ConnectVerified`；`PTls_Connect` 跳过验证，
-只保留给明确的诊断或兼容场景。
+TLS 层拥有 mbed TLS context、socket 会话、证书链、peer identity 和 listener。它提供：
 
-ABI v2 还提供 LocalSend 一类局域网 peer 所需的公共能力：持久 ECDSA P-256 自签名身份、
-证书 DER SHA-256 指纹、携带客户端证书的 peer connect、握手返回前的指纹钉扎，以及可选择
-强制客户端证书的 IPv4 TLS listener。NULL/空 pin 仅表示 discovery/TOFU，不能视为已经认证；
-已配对流量必须传入预期指纹。peer 身份属于应用的长期状态，不属于 `test_host` 或 HTTP
-模块。
+- verified 与显式 insecure 客户端连接；
+- 运行时追加根证书；
+- 读、写、关闭和线程安全错误复制；
+- identity 创建/载入、DER SHA-256 指纹；
+- 可选或强制客户端证书的 listener；
+- pin 校验的 peer 连接。
 
-初始化和清理成对进行；连接、listener 和 identity 分别由匹配的 close 入口释放。身份必须
-活得比引用它的 listener/connection 更久；销毁顺序是 connection、listener、identity、全局
-cleanup。额外根证书必须在并发连接开始前加入。线程、文件安全和失败边界以
-[`positron_tls/README.md`](../positron_tls/README.md) 及公共头为准。
+调用方拥有 host/path 等输入字符串；连接、identity 和 listener handle 必须分别由对应 close API
+释放。`PTls_LastError` 返回借用存储，跨线程或跨后续调用保留错误时应使用复制接口。
+
+TLS 版本与信任数据受 WM6 工具链和 vendored 版本限制。verified 是默认产品方向，insecure
+入口只用于明确的诊断和受控环境。
 
 ### `positron_json.dll`
 
-把 cJSON 封装为 UTF-8、opaque-handle C ABI。顶层解析结果由调用者通过 `PJson_Free`
-释放；子对象和数组项借用顶层对象的生命周期。序列化结果必须使用
-`PJson_FreeString` 释放，避免跨 CRT 释放。
+JSON 层把 cJSON 隐藏在 opaque handle 后。顶层 parse handle 由 `PJson_Free` 释放；对象成员和
+数组元素是借用子节点，随父树失效，不能单独释放。序列化字符串使用 `PJson_FreeString`，不能
+假设它与调用方 CRT heap 相同。
 
 ### `positron_http.dll`
 
-提供同步 HTTP/1.1 GET/POST 和可选的响应进度回调。HTTPS 使用 `positron_tls`，明文
-HTTP 使用 WM WinInet。响应对象无论成功或传输失败都由 `PHttp_FreeResponse` 释放。
+HTTP 层建立在 TLS 层之上，负责 HTTP/1.1 GET/POST、响应解析、有限 redirect、body 上限、
+进度回调和 reference URL 解析。它不拥有浏览窗口、历史记录或页面提交。
 
-HTTP 模块负责传输，不拥有 DOM、布局或浏览器导航策略。页面资源的调度、缓存和提交由
-浏览器宿主管理。
+`PHttp_Get*`/`PHttp_Post*` 返回的 response 必须用 `PHttp_FreeResponse` 释放。网络失败通过
+`status_code == 0` 与错误文本表达，调用方不得把非空 response 指针误判为请求成功。
 
 ### `positron_image.dll`
 
-提供保留式位图和 SVG 对象、绘制、原始像素导入和编码。输入缓冲由调用者拥有，DLL 在
-需要保留时复制数据；输出对象和缓冲必须使用匹配的 `PImage_Free*` API 释放。
+图像层是位图/SVG 的公共边界。它复制调用方输入字节或像素，内部持有解码对象，并提供：
 
-保留式图像对象具有创建线程亲和性。位图 codec 能力受设备 WM Imaging 安装情况影响；
-SVG 由固定的开源解析/栅格化链处理，不代表完整 SVG 浏览器实现。
+- BMP/PNG/JPEG/GIF 等位图解码与信息查询；
+- 从 BGR24/BGRA32 像素创建 retained bitmap；
+- 绘制到调用方 HDC；
+- PNG/JPEG/BMP/GIF 编码和配对 buffer 释放；
+- SVG 解析、尺寸查询和绘制。
+
+bitmap/SVG handle 由创建方通过对应 free API 释放。编码 buffer 必须用 `PImage_FreeBuffer`。
+HDC 仍属于调用方，图像层不创建或管理宿主窗口。
 
 ### `positron_script.dll`
 
-把 Duktape 2.7.0 封装为独立 JavaScript 执行服务。它提供持久 context、求值、模块、
-JSON-compatible global、native callback、执行预算和内存限制，但本身不创建浏览器窗口、
-不抓取资源，也不拥有 DOM。
+脚本层封装一个受预算约束的 Duktape context。它提供 UTF-8 source 求值、JSON 结果桥、受限
+native function、CommonJS 风格模块 provider 和内存/执行统计。
 
-每个 context 是调用者拥有的 opaque handle，不支持并发调用。宿主 callback 不得重入或
-销毁正在执行的 context。源码、模块数、native function 数、结果和内存都有明确上限；
-精确常量以 [`positron_script.h`](../positron_script/positron_script.h) 为准。
+每个 script handle 独立拥有 heap、模块缓存、native function 注册和错误/result 缓冲。回调同步
+运行在调用线程，不得重入、销毁当前 context 或保存借用参数指针。宿主应使用有界预算和内存
+上限，不把该运行时当作完整浏览器沙箱。
 
 ### `positron_core.dll`
 
-这是 HTML/CSS 渲染产品边界。它封装：
+Core 是渲染和文档模型的产品边界，内部静态链接移植后的 NetSurf 支持库。主要职责包括：
 
-- HTML 解析和 DOM 生命周期；
-- CSS 解析、级联、整树 computed style；
-- NetSurf layout 和 redraw；
-- GDI 绘制、命中、滚动和动态 viewport/DPI；
-- 链接、表单、文本输入、资源发现和一组 DOM 事件；
-- 表单提交同时提供显式 submitter 与 text-input 隐式 Enter 路径；两者共享首个 submitter
-  的受限 action/method/enctype override 和 multipart snapshot 语义；
-- 按 DOM id 查询已布局 form-control 几何/状态，供宿主实现程序化 activation；`PCore_FormResetAt`
-  只提交 reset 状态，取消事件由宿主在调用前分发；
-- 按 DOM id 或坐标查询已布局、带非空 `href` 的 `<a>` 几何和 UTF-8 href/target/rel
-  快照（`PCore_LinkInfoById`、`PCore_LinkInfoByIdEx`、`PCore_LinkAtEx`），供浏览器
-  bridge 实现程序化和物理锚点激活；这些查询只复制到调用者缓冲区，不暴露 libdom/box
-  指针，也不发起网络或窗口副作用；
-- 按 DOM id 或已解码 token 查询已布局片段目标几何（`PCore_FragmentInfoById`、
-  `PCore_FragmentInfoByToken`），供宿主执行同页 fragment 滚动；token 查询先按 literal
-  UTF-8 id 匹配，再兼容旧式 `<a name>`，但不负责 percent-decoding、history、网络或窗口
-  副作用；
-- 按 DOM id 查询控件的约束状态（`valid`、`will_validate` 和 `PCORE_VALIDITY_*` flags），供浏览器
-  bridge 或其他宿主在布局前后读取；该查询不触发 invalid 事件，也不应用 form-level no-validate
-  提交按钮绕过；
-- 按 DOM id 聚合查询 form 的约束状态（`PCore_FormValidationById`），供浏览器 bridge 或其他
-  宿主实现受限的 form-level `checkValidity()`；该查询忽略 form 的 `novalidate`，跳过不参与
-  constraint validation 的控件，不依赖布局，也不触发 invalid 事件、提交或 native invalid UI；
-- 按 DOM id 执行受限的 form `reportValidity()`（`PCore_FormReportValidityById`）：沿用同一候选
-  规则，按 DOM 顺序向有非空 id 的 invalid control 派发 trusted、non-bubbling、cancelable
-  `invalid` 事件，并返回聚合 valid 状态；不提供 native invalid UI、焦点/滚动、提交或本地化提示；
-- 按 DOM id 设置/读取当前控件的 application-owned custom validity message，供脚本 bridge
-  实现 `setCustomValidity()` 和 `validationMessage`；支持现有 form-control candidates，不触发
-  invalid 事件或 native invalid UI；
-- 按 DOM id 读取当前控件的 `validationMessage`（`PCore_FormGetValidationMessageById`）：
-  custom message 优先，否则按当前 flags 返回固定英文 fallback；提供完整字节长度和安全截断，
-  不做本地化或 native validation UI；
-- transport-agnostic 的 URL resolve、fetch 和 free callback。
+- UTF-8 HTML 解析为 libdom 文档；
+- CSS 解析、cascade、媒体条件和整树 computed style；
+- 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；
+- NetSurf box construction、layout、hit testing 和 GDI paint；
+- 表单值、约束验证、提交、reset 和 successful controls；
+- 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
+- 给脚本/浏览器层使用的有界 DOM、属性、关系、表单与导航查询。
 
-文档、样式表及其他返回句柄必须使用对应 `PCore_Free*` API 释放。查询接口可能返回
-借用指针或借用句柄；调用者必须遵循公共头文件中的具体生命周期说明。
+Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/free 回调完成；Core 在回调返回
+前复制需要保留的字节，再按契约调用 free。Core 也不执行 JavaScript，只发现、缓存和枚举脚本。
 
-Core 不依赖某个固定网络实现。宿主可以使用 `positron_http`、WinInet、离线 fixture 或其他
-传输，只要满足 callback 的同步所有权约定。
+文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单和交互状态。
+释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。style/layout/paint 通常属于
+同一 UI 线程；不得在后台 worker 并发操作同一个文档。
 
 ### `positron_browser.dll`
 
-这是浏览器运行时的产品组合层，不是窗口或网络实现。当前稳定切片提供独立的
-history/session opaque handle、有限同源 URL 判定、文档导航提交、push/replace state、
-后退/前进/go 目标和待提交导航投影；另提供由该 DLL 持有的浏览器脚本 session、
-host JSON callback 注册、求值和调用生命周期。它依赖 `positron_json.dll` 验证 history state，
-并依赖 `positron_script.dll` 持有脚本 context，但不依赖窗口、网络或 WM 控件。
-
-bootstrap、按 id 查询元素、读取/写入 textContent、attribute、input value、checked、`HTMLElement.disabled`/`title`/`lang`/`dir`/`hidden`/`accessKey`/`role`/`ariaLabel`/`contentEditable`、表单属性 `name`/`action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、控件约束查询、form-level `checkValidity()`/`reportValidity()` 聚合查询与 invalid-event dispatch、custom validity query/set、约束相关
-`required`/`readOnly`/`multiple`/`noValidate`/`formNoValidate`/`min`/`max`/`step`/`pattern`/`minLength`/`maxLength`、form property
-（defaultValue/defaultChecked/selectedIndex）、navigation、同文档 location/history 事件、event 的
-DOM JSON 分发以及 native input/composition/keyboard/focus-family/EDIT-change/post-change-input/click/
-programmatic `HTMLElement.click()`（包括 disabled 抑制、typed click、submit/reset 事件顺序、
-submit 验证与取消、以及 file input 的 typed click 边界）/`checkValidity()`/`reportValidity()`/
-`willValidate`/`validity` 查询/`setCustomValidity()`/`validationMessage`、submit/reset/invalid/
-file-input/checkbox/radio input/change/SELECT-input/change typed dispatch entry 已由此 DLL 持有并执行；
-text/password/textarea/select 的 programmatic click 也由同一入口按新增 target-kind 统一执行
-disabled 抑制、typed click 和取消，并以 `PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS` 将焦点副作用
-交还宿主；该入口不改变控件值，也不拥有 native HWND 或 select popup；
-宿主只通过 size-tagged target/validation/default-action callback 提供控件几何、core 状态与 WM
-副作用。next631 另以独立的
-`PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks()` 接收按 DOM id 返回的已布局
-`<a href>` 几何/URL，browser layer 复用 cancelable click 与 ASSIGN navigation；next636
-新增 `PBrowser_ScriptSessionDispatchAnchorClickEx()`，让 Core/browser 按 size-tagged
-契约传播 href/target/rel，并把 `HTMLElement.rel` 作为 raw 属性反射。网络、窗口和文档
-替换仍由宿主拥有，旧 anchor 入口保持兼容。next637 又把 raw target 分类为
-`PBROWSER_SCRIPT_NAVIGATION_TARGET_*` 并追加到 navigation info；单窗口宿主可据此在不复制
-关键字解析的情况下拒绝尚未支持的新窗口目标。
-native EDIT 的 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 另外由 DLL 持有
-beforeinput pending metadata、native commit 到 input、dirty tracking 和 blur/change 顺序；宿主
-仍提交 native value 并传播 core 事件。native SELECT 的
-`PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()` 现在由 DLL 持有 commit 后的
-input→change 顺序、single/multiple 形状校验、bounded target state，以及
-`PBrowser_ScriptSessionDispatchNativeSelectFocus()` 的焦点族顺序与 bounded focus state；
-`PBrowser_ScriptSessionDispatchNativeSelectInteraction()` 还持有单选下拉的
-begin/candidate/confirm/cancel 事务状态，只在确认且观察到候选时给宿主 commit 闸门。宿主仍
-提交 Core selection mutation、处理 WM 通知、在取消时恢复原生控件并传播 core 事件。native
-SELECT 的 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 现在持有 keydown/keyup 的
-stable-token 校验、typed key adapter 复用和 cancel/default-allowed policy；native WM 控件的
-真正默认动作、下拉窗口/视觉、composition 生命周期、系统文件选择器、焦点窗口/
-绘制调度、history/navigation side effect 和 OEM 平台副作用仍由应用宿主负责；其余 form/input
-适配会逐步迁入此 DLL。
-当前 raw metadata bridge 还提供 `HTMLElement.draggable` 的 UTF-8 属性往返；这不等于拖放手势或
-完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.tabIndex` 的有限整数往返（缺失或非法值回落
-`-1`）；这不等于焦点导航、滚动、键盘顺序或完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLInputElement.accept` 的 UTF-8 属性往返；这不等于文件
-类型解析、过滤、系统 picker 或完整 input Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLInputElement.capture` 的 UTF-8 属性往返；这不等于摄像头/
-麦克风捕获、文件类型过滤、系统 picker 或完整 input Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLInputElement.dirname` 的 UTF-8 属性往返；这不等于提交
-方向字段、编码行为或完整 input Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLInputElement.list` 的 UTF-8 属性往返；这不等于 datalist
-解析、建议项、自动完成或完整 input Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLTextAreaElement.wrap` 的 UTF-8 属性往返；这不等于软/硬
-换行布局、提交编码差异或完整 textarea Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.htmlFor` ↔ `for` 的 UTF-8 属性往返；这不等于
-label 关联、焦点转移或完整 HTMLElement Web IDL 实现。`className` 已有独立的 class/classList
-描述符，不得重复定义。
-当前 raw metadata bridge 还提供 `HTMLElement.slot` ↔ `slot` 的 UTF-8 属性往返；这不等于
-Shadow DOM 或 slot 分配。
-当前 raw metadata bridge 还提供 `HTMLElement.itemId` ↔ `itemid` 的 UTF-8 属性往返；这不等于
-microdata 解析或语义树。
-当前 raw metadata bridge 还提供 `HTMLElement.itemProp` ↔ `itemprop` 的 UTF-8 属性往返；这不
-等于 microdata token 解析或语义树。
-当前 raw metadata bridge 还提供 `HTMLElement.itemRef` ↔ `itemref` 的 UTF-8 属性往返；这不
-等于 microdata 引用解析或语义树。
-当前 raw metadata bridge 还提供 `HTMLElement.itemScope` ↔ `itemscope` 的布尔往返；这不等于
-microdata item 解析或语义树。
-当前 raw metadata bridge 还提供 `HTMLElement.itemType` ↔ `itemtype` 的 UTF-8 属性往返；这不
-等于 microdata vocabulary 解析或语义树。
-当前 raw metadata bridge 还提供 `HTMLElement.nonce` ↔ `nonce` 的 UTF-8 属性往返；这不等于
-CSP nonce 校验、安全策略、脚本执行或完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.part` ↔ `part` 的 UTF-8 属性往返；这不等于
-Shadow DOM 部件导出、CSS 选择器语义或完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.exportParts` ↔ `exportparts` 的 UTF-8 属性
-往返；这不等于 Shadow DOM 部件导出算法或完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.inert` 的布尔属性往返；这不等于焦点、键盘、
-无障碍树或完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.popover` ↔ `popover` 的 UTF-8 属性往返；这不
-等于 popover 显示/隐藏、焦点管理、top-layer 或完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.autofocus` 的布尔属性往返；这不等于焦点调度、
-窗口激活或完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLInputElement.enterKeyHint` ↔ `enterkeyhint` 的 UTF-8
-属性往返；这不等于 SIP、键盘布局、输入法策略或完整 input Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLInputElement.virtualKeyboardPolicy` ↔
-`virtualkeyboardpolicy` 的 UTF-8 属性往返；这不等于 SIP、虚拟键盘策略执行或完整 input Web
-IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLInputElement.webkitDirectory` 的布尔属性往返；这不等于
-目录 picker、目录选择语义或完整 input Web IDL 实现。
-当前 raw metadata bridge 还为 `HTMLInputElement.size` 提供有限整数属性往返；这不等于默认
-20、控件宽度、范围钳制或完整 input Web IDL 实现。
-当前 raw metadata bridge 还为 `HTMLTextAreaElement.cols` 提供有限整数属性往返；这不等于
-textarea 布局宽度或完整 textarea Web IDL 实现。
-当前 raw metadata bridge 还为 `HTMLTextAreaElement.rows` 提供有限整数属性往返；这不等于
-textarea 布局高度或完整 textarea Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.open` 的布尔属性往返；Core 已用该属性驱动
-details/dialog 的静态默认布局，next651 又为首个直接 summary 提供有界的查询、toggle 和
-browser click 接线，next652 再由宿主通过既有 key/click bridge 接入 Enter/Space 激活，
-next653 又由 Core 提供受支持目标的自然 DOM 顺序焦点快照并由宿主接入 Tab/Shift+Tab；但这
-不等于自定义 tabindex 顺序、contenteditable、完整 disclosure 事件、modal focus、backdrop、
-dialog 生命周期或完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.autocapitalize`、`itemValue`、`is` 的 UTF-8
-属性往返；这不等于输入法/大小写策略、microdata 解析或 customized built-in 升级。
-当前 raw metadata bridge 还提供 `HTMLElement.ariaAtomic`、`ariaBusy`、`ariaChecked`、
-`ariaCurrent`、`ariaDescription`、`ariaDisabled`、`ariaExpanded`、`ariaHasPopup`、`ariaHidden`、
-`ariaKeyShortcuts`、`ariaLabelledBy`、`ariaLevel`、`ariaLive`、`ariaModal`、`ariaPlaceholder`、
-`ariaPressed`、`ariaSelected` 与对应 `aria-*` 的 UTF-8 属性往返；这不等于 ARIA 语义计算、
-可访问性树、辅助技术通知、焦点/交互或完整 HTMLElement Web IDL 实现。
-当前 raw metadata bridge 还提供 `HTMLElement.ariaColCount`、`ariaColIndex`、`ariaColIndexText`、
-`ariaControls`、`ariaDescribedBy`、`ariaDetails`、`ariaErrorMessage`、`ariaFlowTo`、`ariaInvalid`、
-`ariaMultiLine`、`ariaMultiSelectable`、`ariaOrientation`、`ariaOwns`、`ariaPosInSet`、
-`ariaReadOnly`、`ariaRelevant`、`ariaRequired`、`ariaRoleDescription`、`ariaRowCount`、
-`ariaRowIndex` 与对应 `aria-*` 的 UTF-8 属性往返；这不等于 ARIA 语义计算、可访问性树、
-辅助技术通知、焦点/交互或完整 HTMLElement Web IDL 实现。
-`test_host.exe` 只通过公共 API 组合和验证这些能力，不拥有 product history、script context
-或 bootstrap 文本。
-
-#### next402–421 的脚本 session 扩展
-
-本轮新增能力仍归 `positron_browser.dll` 的产品 session 所有，而不是 `test_host.exe` 的私有
-实现：
-
-- 页面生命周期与环境快照：readyState、`hidden`/`visibilityState`、`window.name`、受控
-  navigator 字段，以及 `pagehide`/`pageshow`/`visibilitychange`；
-- 受限的 `URLSearchParams`、`URL`、session `Storage`、session cookie、`classList`、style
-  declaration、selector query 和 `FormData`；
-- input selection、numeric step、`setRangeText`、document metadata、窗口/viewport/scroll
-  状态和 target-local synthetic event；
-- 宿主显式泵送的异步队列：
-  `PBrowser_ScriptSessionRunTimers`、`PBrowser_ScriptSessionRunAnimationFrames` 和
-  `PBrowser_ScriptSessionDispatchVisibility`。
-
-这些 API 都是同步、session-scoped、受预算限制的兼容切片。计时器和 animation frame 不创建
-后台线程，viewport/scroll 不直接驱动 layout/paint，visibility 不自动连接操作系统窗口生命周期；
-宿主必须在合适的时钟、导航和窗口事件上调用对应入口，并在 session 关闭或导航替换时丢弃队列。
-selector、URL、storage/cookie、FormData、selection 和 synthetic event 均不承诺完整 Web
-标准语义。精确参数、返回值和所有权以 `positron_browser/positron_browser.h` 为准。
-
-#### next422–441 的脚本平台扩展
-
-本轮仍由 `positron_browser.dll` 持有实现，`test_host.exe` 只通过公共 session API 组合 fixture
-和断言：
-
-- 事件层增加 listener options（capture/once/passive/signal）、通用 `EventTarget`、
-  `CustomEvent`、Mouse/Keyboard/Input/Focus/Submit/MessageEvent 构造器、AbortController 和
-  元素 handler 属性；它们只在产品注册表中分发，不伪装完整 DOM 冒泡树或 native 默认动作。
-- 异步层增加 `PBrowser_ScriptSessionRunMicrotasks`、`RunIdleCallbacks`、`RunMessages`，以及
-  对应 `queueMicrotask`、`requestIdleCallback`、同窗口 `postMessage` 队列。宿主拥有时钟、pump
-  顺序和 session 关闭/导航时的丢弃策略；产品不创建后台线程。
-- 脚本 bootstrap 增加 atob/btoa、UTF-8 TextEncoder/TextDecoder、bounded Blob/File 和
-  FormData 文件值、URL `canParse`/`parse`/`toJSON`、稳定 URLSearchParams iterator、navigator
-  capability snapshot、静态 matchMedia、performance mark/measure、history
-  scrollRestoration/location JSON 与 storage event。
-- 为遵守 `positron_script` 的 `PSCRIPT_MAX_SOURCE_BYTES`，bootstrap 由公共初始化入口按顺序
-  评估三个独立 IIFE；每段都在既有 source limit 内，仍共享同一个 script context，不改变执行预算。
-
-这些 API 都是 session-scoped、内存 bounded 的兼容切片。Blob `text()`/`arrayBuffer()` 为同步
-适配，Promise、fetch、stream、真实文件句柄、跨页面 storage 同步、脚本侧动态 media
-re-evaluation 和完整 URL/DOM 标准均明确不在本边界内。CSS 作者样式表的 viewport 选择由
-`positron_core.dll` 的样式事务单独负责。新增 C ABI 只追加稳定导出，不暴露 Duktape、libdom 或
-宿主私有结构。
-
-#### next442–461 的脚本平台扩展
-
-本轮继续把完整但受控的页面数据/异步互操作能力放在 `positron_browser.dll` 的 bootstrap 中，
-`test_host.exe` 只通过公共 session 入口提供 fixture 与断言：
-
-- 事件与 DOM：对象 `handleEvent` listener、Event `initEvent`/`composed`/`cancelBubble`/
-  `returnValue`，受控 `DOMException`，`dataset` data-* 反射，以及 document/element node 常量；
-- 数据集合：FormData 的 Symbol.iterator，大小受限且不联网的 Headers（case-insensitive、append/
-  set/get/delete、forEach/iterator），同步 Request/Response 元数据和 bounded body helper；
-- 取消与调度：AbortSignal `timeout`/`any`/`onabort`，timer callback extra arguments、
-  `setImmediate`，以及通过既有 `RunMessages` pump 派送的 MessageChannel/MessagePort；
-- 工具快照：受限 `structuredClone`、navigator `javaEnabled`/`sendBeacon` 能力快照、初始化时派生的
-  `screen.orientation`，以及 URLSearchParams 的 pair sequence constructor 和按值 delete。
-
-这一批没有引入网络、Promise、fetch、stream、后台线程、DOM 树关系或旋转/布局副作用。Request/
-Response/Headers、Blob/File、structuredClone 都是 session 内存 bounded 的同步适配；MessageChannel、
-timer 和 AbortSignal timeout 必须由宿主显式泵送。Bootstrap 由公共初始化入口按顺序评估四个独立 IIFE，
-保持既有 `PSCRIPT_MAX_SOURCE_BYTES` 和执行预算不变。
-
-#### next462–481 的脚本平台扩展
-
-本轮继续由 `positron_browser.dll` 持有产品语义，`test_host.exe` 只通过公共 session 入口提供
-fixture、泵送和断言。新增的能力边界包括：
-
-- 编码与 body：`TextEncoder.encodeInto()` 的容量受限写入、`TextDecoder` 的 fatal/ignoreBOM
-  选项快照、同步 `Request.prototype.json()`/`Response.prototype.json()`、Blob-backed Request
-  clone，以及 Headers `getSetCookie()` 和 canonical iterator 视图；这些都不建立网络、Promise
-  或文件句柄。
-- 集合与 DOM：Storage named properties 和 detached `toJSON()` snapshot、classList/style 的
-  Symbol.iterator、`toggleAttribute()`，以及 `ownerDocument`/`isConnected`/`nodeValue` 元数据。
-  iterator 与 storage 仍是 session 内快照/Proxy，不引入完整 DOM tree 或通用 createElement。
-- 事件与窗口：Storage/HashChange/PopState/Error/Progress/Close event 构造器，document.defaultView
-  和同一 bounded global 的 window aliases；`open()` 只在宿主接受显式 `_self`/`_parent`/`_top`
-  时返回当前 global；named target 只有与当前 context 的 `window.name` 精确匹配时才可复用，
-  DEFAULT/`_blank`/未知 named 返回 null，`close()` 仍为 no-op，不创建新窗口。
-- 通信与观测：MessagePort close/messageerror、同 session `BroadcastChannel` 和
-  `PerformanceObserver` 的同步 snapshot/takeRecords。消息仍通过既有 `RunMessages` pump，观测
-  不监听未来异步 entries，不引入后台线程或跨页面通信。
-- 取消：`AbortSignal.abort(reason)` 与 `throwIfAborted()` 的同步 reason 传播。
-
-本批 bootstrap 由公共初始化入口按顺序评估五个独立 IIFE，仍共享同一 Duktape context，并保持
-`PSCRIPT_MAX_SOURCE_BYTES`、执行预算、opaque handle 和既有 C ABI 不变。所有新增状态都是
-session-scoped、内存 bounded；完整 Web IDL、网络/fetch/stream、transferable、持久化 storage、
-真实窗口生命周期和完整 DOM 树仍明确不在此边界内。
-
-#### next482–501 的脚本平台扩展
-
-本轮继续由 `positron_browser.dll` 持有产品语义，`test_host.exe` 只通过公共 session 入口提供
-fixture、pump 和断言。新增边界包括：
-
-- Blob/File metadata 的 `Symbol.toStringTag` 与受限 `slice()` 边界；FormData 的独立
-  `entries()`/`keys()`/`values()` snapshot、forEach snapshot 和兼容 `length` 字段；
-- Request/Response 同步 one-shot body readers（`text()`/`json()`/`arrayBuffer()`）与已消费
-  clone 错误；URL authority userinfo、默认 HTTP(S) 端口归一化、userinfo mutation 序列化和
-  URLSearchParams 按值 `has()`；cookie `Max-Age=0` 删除；
-- NodeList/HTMLCollection-like `item()`/`namedItem()`、`forEach()`、`keys()`、`values()`、`entries()`/
-  iterator、重复 `getElementById()` 的稳定 wrapper identity、dataset
-  named keys/`toJSON()`；Event phase constants/timestamp 与 dispatch 后 state reset；
-- MessagePort started/closed、BroadcastChannel clone error/closed、PerformanceObserverEntryList
-  的 indexed/iterable/`toJSON()` snapshot，以及 performance `clearResourceTimings()`/`toJSON()`。
-
-这些能力都是单 session、内存 bounded 的同步或宿主显式 pump 语义，不引入网络、Promise、stream、
-完整 URL Standard、DOM tree、后台线程、跨页面通信、真实窗口生命周期或 native 输入副作用。公共
-初始化入口现在按顺序评估六个独立 IIFE，共享同一 Duktape context，并保持
-`PSCRIPT_MAX_SOURCE_BYTES`、既有执行预算、opaque handle 和 C ABI 不变。
-
-#### next502–521 的脚本平台互操作性强化
-
-本批仍由 `positron_browser.dll` 持有产品语义，`test_host.exe` 只通过公共 session 入口提供
-fixture、显式 pump 和断言；没有新增公共 C ABI。新增边界包括：
-
-- Headers 的独立 iterator/forEach snapshot；Request/Response clone 对内存 body、headers 和
-  bounded metadata 的 ownership 隔离，并提供诊断用 JSON snapshot；
-- URLSearchParams 的 mutation-safe iterator/forEach，FormData 对无名 Blob 的默认 `blob` 文件名
-  和显式 filename 保留；
-- Storage/DOM wrapper 的 `Symbol.toStringTag`、classList 空白/空 token 的 SyntaxError 边界、
-  classList/style identity，以及 dataset tag；
-- performance entry 的 `toJSON()`、PerformanceObserver 的 `supportedEntryTypes` 与冲突/空
-  `observe()` 选项校验；MessagePort 的 `onmessage` 自动 `start()`；AbortSignal/Controller 和
-  Blob/File 的 bounded metadata tags/JSON。
-
-这些语义全部 session-scoped、内存 bounded；Request/Response 不联网，MessagePort 和
-PerformanceObserver 仍依赖宿主显式 pump 或同步快照。它们不等价于完整 Fetch、Streams、DOM
-tree、Web IDL serialization 或后台浏览器调度。公共 bootstrap 现在按顺序评估七个独立 IIFE，
-共享同一 Duktape context，并保持 `PSCRIPT_MAX_SOURCE_BYTES`、既有执行预算、opaque handle 和
-C ABI 不变。
-
-#### next522–541 的受控 Promise 扩展
-
-本批仍由 `positron_browser.dll` 持有产品语义，`test_host.exe` 只通过公共 session 入口提供
-fixture、显式 microtask pump 和断言；没有新增公共 C ABI。bootstrap 第八个 IIFE 提供：
-
-- bounded Promise 构造器、`then`/`catch`/`finally` 链和同步 executor one-shot 语义；
-- `resolve`/`reject`、thenable assimilation，以及 `all`/`race`/`allSettled`/`any` 组合器；
-- 构造器错误、抛出 handler、rejection recovery、AggregateError-like 全拒绝结果、Promise
-  `Symbol.toStringTag` 和 64 项 handler/input 限制。
-
-Promise reaction 只进入现有 session 的 `queueMicrotask` 队列，由宿主显式调用公共
-`PBrowser_ScriptSessionRunMicrotasks()`（内部转发到 bootstrap pump）推进；产品不创建后台线程、隐式 event loop、网络、fetch、stream、
-文件句柄或跨 session 调度。组合器当前接受 bounded array-like 输入，超限或非法输入受控拒绝。
-这些语义是内存内兼容切片，不代表完整 ECMAScript Promise/iterator/host scheduling 标准；公共
-初始化入口现在按顺序评估九个独立 IIFE，仍共享同一 Duktape context，并保持
-`PSCRIPT_MAX_SOURCE_BYTES`、既有执行预算、opaque handle 和 C ABI 不变。
-
-#### next542–561 的 DOM 关系与表单集合边界
-
-本批把树关系的最小可用纵切放在正确的产品层，而不是留在 `test_host.exe`：
-
-- `positron_core.dll` 导出 `PCore_NodeRelationById()`。调用者用文档句柄、元素 id、关系常量
-  和可选索引查询父元素、首/尾子元素、前/后兄弟、子元素数量、tag/name、form owner，或按
-  DOM 顺序查询 form control 数量/项。字符串结果使用 UTF-8 probe/truncation 约定，计数通过
-  `out_number` 返回；缺失 id、越界和不支持关系都以明确的 fail-closed 结果返回。
-- `positron_browser.dll` 通过独立的 size-tagged `PBrowserScriptDomRelationCallbacks` 注册
-  该查询，并在 bootstrap 中包装为 `parentElement`、`firstChild`/`lastChild`、兄弟节点、
-  `children`/`childElementCount`、`tagName`/`nodeName`/`localName`、`contains()`、基础
-  `compareDocumentPosition()`、受限 `matches()`/`closest()`、元素作用域
-  `querySelector()`/`querySelectorAll()` 以及 form `elements` 的 `item()`/`namedItem()`。
-- 关系对象是同一脚本 session 内稳定的 wrapper，但底层查询是 ID-addressable、同步、只读
-  snapshot。此批不提供通用 Node mutation、文本节点遍历、shadow tree、复杂 CSS selector、
-  layout/native control 查询，也不把 libdom 类型暴露到公共 ABI。
-
-`test_host.exe` 只实现 callback adapter、fixture 和 TEST542–561 断言；它不是关系 API 的所有者。
-这组 API 仅在显式 `javascript=1` 的 browser session 中可见，默认 Browse 路径不变。
-
-#### next562–581 的属性集合边界
-
-本批继续沿用同一产品分层，把属性集合查询和受控属性 wrapper 放在 core/browser DLL，而不是
-放进 `test_host.exe`：
-
-- `positron_core.dll` 的 `PCore_NodeRelationById()` 增加 attribute count、name-at 和 value-at
-  三个关系常量。调用者仍使用 UTF-8 probe/truncation 和 `out_number` 计数约定；属性按 libdom
-  parser order 枚举，越界、缺失 id 和 DOM 错误 fail closed。
-- `positron_browser.dll` 复用现有 relation callback 槽位，在第十个 bootstrap IIFE 中提供
-  `Element.getAttributeNames()`、`hasAttributes()`、`attributes`、`getAttributeNode()`、
-  `setAttributeNode()` 和 `removeAttributeNode()`；NamedNodeMap 提供 `length`、`item()`、
-  `getNamedItem()`、`setNamedItem()`、`removeNamedItem()`、iterator 和 indexed slots 0–7。
-  Attr wrapper 提供 `nodeType`、`nodeName`、`name`、`value`、`nodeValue`、`specified`、
-  `ownerElement` 和稳定 identity；value/nodeValue mutation 复用既有 attribute callback，
-  跨 owner 绑定和缺失删除返回 null，不伪造节点转移。
-- 该集合是同步、ID-addressable、session-scoped 的 bounded view；不暴露 libdom 对象，不实现
-  namespaces、prefix/localName、通用节点创建、live collection、完整 Web IDL descriptors、
-  layout 或 native control side effect。浏览器 session 为这层 bootstrap 使用 576 KiB heap
-  ceiling；独立 `positron_script` context 的 512 KiB 默认值和公共 ABI 不变。
-
-`test_host.exe` 只实现 callback adapter、fixture 和 TEST562–581 断言；它不是属性 API 的所有者。
-这组 API 仍只在显式 `javascript=1` 的 browser session 中可见，默认 Browse 路径不变。
-
-#### next582 的 childNodes 与 CharacterData 边界
-
-本批仍把 DOM 语义放在 core/browser 产品 DLL，只让 `test_host.exe` 提供 fixture、callback
-adapter 和断言：
-
-- `positron_core.dll` 的 `PCore_NodeRelationById()` 追加 `CHILD_NODE_*` 关系常量。调用者
-  可以按 ID-addressable 元素查询所有直接 childNodes 的数量、节点类型、节点名、节点值、
-  textContent 和可用的子元素 id；文本、注释和无 id 元素不会被旧的 `children` 关系过滤掉。
-  返回仍遵循 UTF-8 probe/truncation、`out_number` 和 0/2/1 的成功/缺失/错误约定。
-- `positron_browser.dll` 在第十一个 bootstrap IIFE 中包装这些关系，提供有界 `childNodes`
-  NodeList、`item()`/iterator、稳定的 text/comment/id-less element wrapper、`nodeType`/
-  `nodeName`/`nodeValue`/`textContent`/`data`/`length`、`substringData()`、父子/兄弟以及
-  `firstElementChild`/`nextElementSibling` 等 element-sibling 视图，并补齐 `Node` 常量。
-- childNodes 是同步、session-scoped、只读 snapshot；有 id 的元素复用既有 element wrapper，
-  其余节点用 owner+index 的不透明内部 token 表示。它不提供通用文本节点 mutation、节点创建、
-  live collection、shadow tree、布局或 native control side effect。浏览器 bootstrap 现在按
-  十一个顺序 IIFE 评估，576 KiB browser heap ceiling 和独立 script 的 512 KiB 默认值不变。
-
-`test_host.exe` 只实现 callback adapter、fixture 和 TEST582–601 断言；这组 API 仍只在显式
-`javascript=1` 的 browser session 中可见，默认 Browse 路径不变。
-
-#### next583 的 Node 身份、根节点与位置边界
-
-本批不扩展 core relation ABI，而是在既有 childNodes snapshot 上补齐一组只读 Node 兼容方法：
-
-- `positron_browser.dll` 为 ID-addressable element、文本/注释/id-less element wrapper 和
-  `document` 提供稳定的 `isSameNode()`、受限 `isEqualNode()`、`getRootNode()`、
-  `compareDocumentPosition()` 与 `contains()`；未知对象、跨快照或缺失 parent 链返回
-  `false`/`33`，不伪造节点身份。
-- `Node` 增加六个 document-position 常量。元素、字符数据与 document 暴露必要的
-  `nodeType`/`nodeName`/`nodeValue`/`ownerDocument`/`parentNode`/`isConnected` 元数据；
-  `getRootNode({composed: ...})` 在当前无 shadow tree 的边界内返回同一 session document。
-- 位置计算只沿当前 ID-addressable parent 与 childNodes snapshot 走，支持同一受控树内的
-  祖先、直接字符/元素子节点和兄弟顺序；不实现完整 document order、shadow DOM、节点创建、
-  live collection 或 mutation。`isEqualNode()` 也只比较当前 bounded metadata/text snapshot，
-  不声称完整 Web IDL 深结构相等。
-- bootstrap 现在按十二个顺序 IIFE 评估，browser session 仍使用 576 KiB heap ceiling，
-  独立 `positron_script` 默认堆仍为 512 KiB。`test_host.exe` 只提供 fixture、adapter 和
-  `TEST602–621` 断言。
-
-本批仍只改变脚本状态/API，不触及窗口绘制、真实触摸、SIP、旋转、系统 picker 或网络；默认
-`javascript=0` 路径不变，也不需要人工页面验收。
-
-#### next584 的 DOM 集合遍历边界
-
-本批不扩展 core relation ABI，而是在既有同步 DOM snapshot 上补齐集合协议：
-
-- `positron_browser.dll` 为 `childNodes`、`children`、`form.elements` 和元素作用域
-  `querySelectorAll()` 结果提供 `forEach()`、`keys()`、`values()`、`entries()`、可复用的默认
-  iterator 以及 `Symbol.toStringTag`。`children` 和 `form.elements` 保留 `item()`/`namedItem()`；
-  元素作用域查询使用 `NodeList` 类型标识，避免把 HTMLCollection 的命名查找混入查询结果。
-- 迭代器在创建时固定当前集合长度，返回值、键和 `[index,value]` 对都只引用当前 session 内的
-  wrapper snapshot；非函数 `forEach` callback 抛出 `TypeError`，不会改变集合或宿主 DOM。
-- 集合仍是同步、只读、session-scoped 的有限数组视图，不提供 live 更新、节点创建、通用 DOM
-  mutation、完整 Web IDL descriptor、复杂 selector、layout 或 native control side effect；
-  `test_host.exe` 只提供 fixture、callback adapter 和 `TEST622–641` 断言。
-- bootstrap 现在按十三个顺序 IIFE 评估，browser session 仍使用 576 KiB heap ceiling，独立
-  `positron_script` 默认堆仍为 512 KiB；本批不涉及窗口绘制、真实触摸、SIP、旋转、系统 picker
-  或网络，因此不新增人工页面验收。
-
-#### next585 的 document 结构节点边界
-
-本批为既有 ID-addressable DOM snapshot 增加最小的文档结构入口，仍把产品语义放在 core/browser
-DLL，`test_host.exe` 只提供 fixture、callback adapter 和断言：
-
-- `positron_core.dll` 在既有 `PCore_NodeRelationById()` 入口上增加三个保留结构 token：
-  `__positron_document_element__`、`__positron_document_head__` 和
-  `__positron_document_body__`。真实 HTML `id` 查找优先于 token fallback；因此普通页面 id
-  仍保持原有身份，结构 token 只映射 parser 得到的 document root 及其直接 `head`/`body`
-  元素。既有 UTF-8 probe/truncation、0/2/1 返回和 opaque document ownership 不变。
-- `positron_browser.dll` 将这三个 token 暴露为稳定的 `documentElement`、`head`、`body`
-  wrapper，并让已有 parent/child/sibling、`children`/`childNodes`、元素作用域 selector、
-  identity/root/position/contains 和 collection protocol 复用同一 wrapper cache。文档级
-  selector 在 next589 扩展前仅增加 `html`、`:root`、`head`、`body` 四种结构查询；其他
-  document selector 当时继续 fail closed。
-- `documentElement.parentNode` 返回当前 document，而 `parentElement` 为空；`head`/`body`
-  的 parent/sibling/children 关系则沿结构 token 返回。结构节点没有伪造 HTML `id`，不引入
-  通用节点创建、outerHTML、DOM mutation、live collection、shadow tree、layout 或 native
-  control side effect。
-- 本批使原先因缺少 root parent 而被视为 disconnected 的 bounded ID 子树能够在同一 body
-  snapshot 中排序；因此 `TEST549` 的 root/form 位置断言从 fail-closed `33` 更新为同一文档
-  中的顺序值 `4`，这是结构入口的预期语义扩展而不是放宽断言。
-
-本批 bootstrap 仍按十三个既有 IIFE 顺序评估，browser session heap ceiling 为 576 KiB，独立
-`positron_script` 默认堆为 512 KiB。`TEST642–661` 只验证同步脚本 API 和 DOM snapshot，
-不触及窗口绘制、真实触摸、SIP、旋转、系统 picker 或网络，因此不新增人工页面验收。
-
-#### next586 的 DocumentType 边界
-
-next586 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。浏览器 session 为 `document.doctype` 创建一个稳定、只读的 synthetic wrapper，提供
-`name`、`nodeType`、`nodeName`、owner/root/position/contains、identity/equality 和字符串
-brand；它是没有 child 的 leaf。document 的 `childNodes` 以 `[doctype, documentElement]` 为顺序
-快照，`document.children` 仍是 element-only，因此 doctype 不会伪装成普通 HTML element。
-
-该边界不承诺完整 HTML doctype parser、public core doctype token、节点创建、mutation、live
-collection、outerHTML 或完整 document tree；wrapper 只复用既有 session-scoped relation/Node
-snapshot 和 fail-closed position semantics。`test_host.exe` 仅提供 fixture、callback adapter
-和自动断言，不拥有该 API。browser bootstrap 仍为十三个 IIFE，session heap ceiling 仍为
-576 KiB，独立 `positron_script` 默认堆仍为 512 KiB；本批不涉及视觉、触摸、SIP、picker、旋转
-或网络，因此不新增人工页面验收。
-
-#### next587 的 Node URL 与 namespace 边界
-
-next587 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。browser-owned 的 document、DocumentType、HTML element、CharacterData 和 Attr wrapper
-提供只读 `baseURI`、`namespaceURI`、`prefix`、`lookupNamespaceURI()` 与
-`isDefaultNamespace()`。`baseURI` 读取当前 session 的 `location.href`，因此在受控
-`history.replaceState()` 后反映新的 URL；它不是完整 URL Standard parser，也不建立新的网络
-或文档生命周期。
-
-HTML element wrapper 的 `namespaceURI` 为 HTML namespace；document、DocumentType、文本/注释
-和普通 Attr wrapper 的 namespace 视图为 null。`xml` prefix 映射到 XML namespace，未知 prefix
-和不支持的 namespace 请求返回 null/false；Attr 的有限查询沿 owner element 上下文工作。
-`prefix` 为只读 null。该边界不实现 XML/namespace parser、`createElementNS()`、prefix 或
-namespace mutation、完整 namespace tree、live collection 或通用 DOM mutation；`test_host.exe`
-只提供 URL fixture、callback adapter 和自动断言，不能成为 API 所有者。browser bootstrap 仍为
-十三个 IIFE，session heap ceiling 为 576 KiB，独立 `positron_script` 默认堆仍为 512 KiB；
-本批仅覆盖同步脚本 API/DOM snapshot，不新增人工页面验收。
-
-#### next588 的 HTMLCollection 查询边界
-
-next588 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。browser-owned 的 document 与 HTML element wrapper 现在提供
-`getElementsByTagName()` 和 `getElementsByClassName()`：HTML tag 查询按大小写归一并支持
-`*`，class 查询把规范化后的多个 token 作为合取条件；element 查询沿当前 bounded relation
-树按深度优先文档顺序返回并排除 owner，document 查询额外包含 structural `documentElement`。
-结果是静态 HTMLCollection snapshot，支持 `item()`、`namedItem()`、`forEach()`、`keys()`、
-`values()`、`entries()`、默认 iterator 和 `Symbol.toStringTag`。空白或未知输入返回空集合，
-不改变 document tree，也不引入 live 更新、通用 CSS selector、节点创建、mutation、layout 或
-namespace 语义。
-
-这组查询只复用现有 browser relation callback 和 wrapper identity，不新增 core ABI；
-`test_host.exe` 仅提供 fixture、adapter 和 `TEST702–721` 自动断言。新增 bootstrap 后，
-576 KiB browser session ceiling 在既有 TEST540 Promise boundary 上稳定触发内存上限，因此
-当前 browser session ceiling 为 608 KiB；独立 `positron_script` context 的 512 KiB 默认堆、
-公共 ABI 和断言均未放宽。定向、兼容和相邻回归门分别为 21/21、82/82、301/301，均不涉及
-视觉、真实触摸、SIP、旋转、picker 或网络失败反馈，因此不新增人工页面验收。
-
-#### next589 的 document selector 边界
-
-next589 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。`document.querySelector()` 与 `document.querySelectorAll()` 现在复用 element 作用域的
-bounded matcher 和 wrapper cache：支持 HTML tag（含大小写归一）、`#id`、class、有限
-attribute、compound、`*` 和 `:root`；`querySelector()` 返回 DFS 文档顺序中的首个匹配，
-`querySelectorAll()` 返回按同一顺序排列的 NodeList snapshot。document root 参与匹配，
-head/body 结构 wrapper 保持既有 identity，结果集合沿现有 `item()`、迭代器和
-`Symbol.toStringTag` 协议工作。
-
-空白、缺失和包含 `>`、`+`、`~` 的组合器返回 null/空 NodeList；这是 fail-closed 的受限
-selector 入口，不是完整 CSS parser，不提供 live collection、节点创建、mutation、layout 或
-shadow tree。`test_host.exe` 只提供 fixture、adapter 和 `TEST722–741` 自动断言；本批不新增
-core ABI、视觉/触摸/SIP/picker/旋转/网络人工门。browser session 仍使用 608 KiB ceiling，
-独立 `positron_script` 默认堆仍为 512 KiB。
-
-#### next590 的 document named collection 边界
-
-next590 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。`document.getElementsByName(name)` 在当前 bounded relation snapshot 上精确匹配显式
-`name` 属性，按 DFS 文档顺序返回 NodeList snapshot；`document.forms`、`document.images` 和
-`document.scripts` 则通过既有 tag traversal 返回静态 HTMLCollection。四种入口都复用当前
-`item()`、`namedItem()`、`forEach()`、iterator、`Symbol.toStringTag` 和稳定 wrapper identity，
-但每次查询只反映当时的 session snapshot，不提供 live collection、通用 named properties、
-节点创建、通用 mutation、完整 HTML parser 或新的 core ABI。
-
-`test_host.exe` 只提供 named-collection fixture、adapter 和 `TEST742–761` 自动断言；本批
-定向、兼容和相邻回归门分别为 21/21、122/122、341/341，均不涉及视觉、触摸、SIP、系统
-picker、旋转或网络失败人工门。browser session 仍使用 608 KiB ceiling，独立
-`positron_script` 默认堆仍为 512 KiB。
-
-#### next591 的 document hyperlink collections 边界
-
-next591 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。`document.links` 在当前 bounded traversal 上筛选显式 `href` 的 `a`/`area` 元素，
-`document.anchors` 筛选显式 `name` 的 `a` 元素；两者按 DFS 文档顺序返回静态
-HTMLCollection，并复用 `item()`、`namedItem()`、迭代协议和稳定 wrapper identity。属性
-增删只影响后续查询，不提供 live collection、链接 URL 解析、导航副作用、通用 named
-properties、节点创建、通用 mutation 或新的 core ABI。
-
-`test_host.exe` 只提供 hyperlink fixture、adapter 和 `TEST762–781` 自动断言；定向、兼容和
-缩减回归门分别为 21/21、142/142、203/203。本批未跑旧的 341 项全回归，但保留核心事件、
-TEST540 内存边界、TEST549 和 TEST642–781 风险区间；不涉及视觉、触摸、SIP、picker、旋转或
-网络失败人工门。browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆仍为
-512 KiB。
-
-#### next592 的 namespace-aware collection 边界
-
-next592 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。document 与 HTML element wrapper 都提供 `getElementsByTagNameNS(namespace, localName)`：
-namespace 接受 `*` 或精确字符串，localName 接受 `*` 或大小写敏感字符串；document 结果包含
-`documentElement`，element 结果只遍历后代并排除 owner。查询复用已有 namespace metadata、DFS
-traversal、`HTMLCollection` 协议和稳定 wrapper identity，返回同步静态 snapshot；null、空或
-未知 namespace/localName fail closed。
-
-这组入口不解析 XML/SVG namespace，不修改 prefix 或节点，不提供 live collection、完整 Web IDL、
-通用 DOM mutation 或新的 core ABI。`test_host.exe` 只提供 fixture、adapter 和 `TEST782–801`
-自动断言；定向、兼容和缩减回归门分别为 21/21、162/162、223/223，证据位于
-`tmp/device-runs/20260822-192042-next592-r2/`、`tmp/device-runs/20260822-192203-next592-compat-r1/`
-和 `tmp/device-runs/20260822-192923-next592-regression-r1/`。本批只涉及同步脚本 API/DOM
-snapshot，不涉及视觉、触摸、SIP、系统 picker、旋转或网络失败人工门；browser session 仍使用
-608 KiB ceiling，独立 `positron_script` 默认堆仍为 512 KiB。
-
-#### next593 的 namespace-aware attribute lookup 边界
-
-next593 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。现有 attribute snapshot 上新增只读的 `getAttributeNS(namespace, localName)`、
-`hasAttributeNS()` 和 `getAttributeNodeNS()`；返回的 Attr wrapper 还暴露一致的
-`namespaceURI`、`prefix` 和 `localName`。null 与空 namespace 都表示无 namespace，已知的
-`xml`/`xmlns` 前缀分别映射到 XML/XMLNS namespace，未知前缀或 namespace 请求 fail closed。
-Attr 的 value/nodeValue 仍通过同 owner 的现有同步 bridge 读取/写回。
-
-这不是 namespace parser 或 mutation API：本批不提供 `setAttributeNS()`、`removeAttributeNS()`、
-XML/SVG parser、prefix mutation、节点创建或 live collection，也不引入新的 core ABI。
-`test_host.exe` 只提供 fixture、adapter 和 `TEST802–821` 自动断言；定向、兼容和缩减回归门分别为
-21/21、182/182、243/243，证据位于
-`tmp/device-runs/20260822-201726-next593-r2/`、
-`tmp/device-runs/20260822-201838-next593-compat-r2/` 和
-`tmp/device-runs/20260822-202712-next593-regression-r2/`。本批不涉及视觉、触摸、SIP、picker、
-旋转或网络失败人工门。browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
-仍为 512 KiB。
-
-#### next594 的 NamedNodeMap namespace lookup 边界
-
-next594 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。既有 `NamedNodeMap` 现在提供只读的 `getNamedItemNS(namespace, localName)`，复用
-next593 的 null/空 namespace、XML/XMLNS 已知前缀、未知输入 fail-closed、大小写敏感
-localName、String coercion 和稳定 Attr wrapper 语义；同一 map 对后续 attribute 增删和值更新
-保持可观察。
-
-本批不提供 `setNamedItemNS()`、`removeNamedItemNS()`、XML/SVG parser、namespace mutation、
-节点创建或 live collection，也不引入新的 core ABI。`test_host.exe` 只提供 fixture、adapter 和
-`TEST822–841` 自动断言；定向门 21/21、缩减回归 263/263，证据位于
-`tmp/device-runs/20260822-204905-next594-r1/` 和
-`tmp/device-runs/20260822-205012-next594-regression-r1/`。本批不涉及视觉、触摸、SIP、picker、
-旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
-仍为 512 KiB。
-
-#### next595 的 lookupPrefix 边界
-
-next595 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共
-relation ABI。document、DocumentType、HTML element、CharacterData 和 Attr wrapper 现在都
-提供只读 `lookupPrefix(namespace)`：有限的 XML namespace 映射返回 `xml`；XMLNS namespace
-只在相应 `xmlns:*` Attr 上返回 `xmlns`；HTML default namespace、null/空值、未知 URI 与未知
-Attr prefix 均返回 `null`。参数做有限 String coercion，结果不会改变 wrapper metadata。
-
-这不是 namespace declaration/parser 或 mutation API：本批不提供 `setAttributeNS()`、
-`removeAttributeNS()`、prefix mutation、节点创建、live collection 或新的 core ABI。
-`test_host.exe` 只提供 fixture、adapter 和 `TEST842–861` 自动断言；定向门 21/21、缩减回归
-283/283，证据位于 `tmp/device-runs/20260822-211732-next595-r1/` 和
-`tmp/device-runs/20260822-211920-next595-regression-r1/`。本批不涉及视觉、触摸、SIP、picker、
-旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
-仍为 512 KiB。
-
-#### next596 的 namespace mutation 边界
-
-next596 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。元素 wrapper 现在提供 `setAttributeNS(namespace, qualifiedName, value)` 与
-`removeAttributeNS(namespace, localName)`：null/空 namespace 只接受无前缀名称，XML/XMLNS
-只接受对应的 `xml`/`xmlns` 前缀，且未知 URI、未知 prefix、空名称和多重冒号安全无操作。
-成功写入复用既有 attribute bridge，因此已有 namespace read API、Attr identity 和属性 map
-观察语义保持一致。
-
-这不是完整 DOM NamespaceError 或 namespace parser：本批不提供 namespace declaration 解析、
-XML/SVG parser、节点创建、live collection 或新的 core ABI。`test_host.exe` 只提供 fixture、
-adapter 和 `TEST862–881` 自动断言；定向门 21/21、缩减回归 303/303，证据位于
-`tmp/device-runs/20260823-095421-next596-r2/` 和
-`tmp/device-runs/20260823-095546-next596-regression-r1/`。本批不涉及视觉、触摸、SIP、picker、
-旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
-仍为 512 KiB。
-
-#### next597 的 NamedNodeMap/Attr namespace mutation 边界
-
-next597 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。既有 `NamedNodeMap` 现在提供受控的 `setNamedItemNS(namespace-aware Attr)` 与
-`removeNamedItemNS(namespace, localName)`，元素 wrapper 另外提供 `setAttributeNodeNS(Attr)`。
-这些入口复用 next596 的 null/空 namespace、XML/XMLNS 已知前缀和 `Attr` live wrapper；跨 owner
-传入的 Attr 只把名称和值复制到目标 owner，source `ownerElement` 与 wrapper identity 不转移。
-成功替换返回目标 owner 的旧 Attr，缺失项返回 null；未知 URI/prefix、非法 qualified name、非
-Attr 输入和不支持的 namespace 组合均 fail closed。
-
-这仍不是完整 DOM ownership 或 NamespaceError 实现：本批不解析 namespace declaration，不提供
-XML/SVG parser、节点创建、live collection、通用 DOM mutation 或新的 core ABI。`test_host.exe`
-只提供 fixture、adapter 和 `TEST882–901` 自动断言；定向门 21/21、namespace 缩减回归 101/101，
-证据位于 `tmp/device-runs/20260823-103228-next597-r3/` 和
-`tmp/device-runs/20260823-103700-next597-regression-r2/`。本批不涉及视觉、触摸、SIP、picker、
-旋转或网络失败人工门；browser session 仍使用 608 KiB ceiling，独立 `positron_script` 默认堆
-仍为 512 KiB。
-
-#### next598 的 Attr leaf-node 边界
-
-next598 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation
-ABI。Attr wrapper 现在提供 `isId`、可读写的 `textContent`、空的 `childNodes`、
-`hasChildNodes()`、null 的 `parentNode`/`parentElement`/首尾子节点/兄弟节点，以及
-identity-based `isSameNode()` 和受控的 `isEqualNode()`。`textContent`、`value`、`nodeValue`
-共用既有 attribute bridge；`isEqualNode()` 只比较 Attr nodeType/name/value，不能替代完整 DOM
-深结构相等。Attr 的 `ownerElement` 仍是 owner metadata，不是 tree parent。
-
-空 child collection 每次读取均是有界空 snapshot，支持 `item()` 和 iterator；调用者对返回数组的
-修改不会写回 DOM。`test_host.exe` 只提供 fixture、adapter 和 `TEST902–921` 自动断言；定向门
-21/21、缩减回归 121/121，证据位于 `tmp/device-runs/20260823-105508-next598/` 和
-`tmp/device-runs/20260823-105630-next598-regression/`。本批不提供通用 DOM tree、Attr parent
-挂接、节点创建、live collection 或新的 core ABI，也不涉及视觉、触摸、SIP、picker、旋转或网络
-失败人工门。
-
-#### next599 的 Attr detached-node relation 边界
-
-next599 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` 的公共 relation ABI。
-Attr wrapper 的 `isConnected` 固定为 false，`getRootNode()` 返回 Attr 自身并忽略 bounded
-`composed` 选项；`contains()` 只对自身返回 true。`compareDocumentPosition()` 对自身返回 0，
-对其他 Attr、owner element、null 或非法对象返回固定 `33`，即
-`Node.DOCUMENT_POSITION_DISCONNECTED | Node.DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC`，不猜测
-脱离树节点之间的顺序。`ownerElement` 仍是 owner metadata，不是 parent；Attr 也没有 child tree。
-
-`test_host.exe` 只提供 fixture、adapter 和 `TEST922–941` 自动断言；定向门 21/21、缩减回归
-141/141，证据位于 `tmp/device-runs/20260823-111516-next599/` 和
-`tmp/device-runs/20260823-111631-next599-regression/`。本批不提供通用 DOM tree、节点创建、
-live collection 或新的 core ABI，也不涉及视觉、触摸、SIP、picker、旋转或网络失败人工门。
-
-#### next600 的 child-wrapper containment 边界
-
-next600 仍把语义放在 `positron_browser.dll`，复用已有 `__pcoreNodeContains12` relation bridge，
-不扩展 `positron_core.dll` ABI。`childNodes` 返回的文本、注释和无 id 子节点 wrapper 现在提供
-`contains()`：wrapper 自身返回 true，已知父元素可包含其直接子节点；兄弟、owner metadata、
-document、null 和非法对象返回 false。无 id 子节点仍使用同步 bounded snapshot，不能因此创建
-通用 child tree 或 live collection。
-
-`test_host.exe` 只提供 fixture、adapter 和 `TEST942–961` 自动断言；定向门 21/21、缩减回归
-161/161，证据位于 `tmp/device-runs/20260823-113402-next600/` 和
-`tmp/device-runs/20260823-113512-next600-regression/`。本批不提供文本 mutation、节点创建、
-新的 core ABI，也不涉及视觉、触摸、SIP、picker、旋转或网络失败人工门。
-
-#### next601 的 DocumentType 外部子集元数据边界
-
-next601 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。既有
-`document.doctype` wrapper 现在提供只读 `publicId`、`systemId` 和 `internalSubset`；当前
-HTML doctype 的值固定为空字符串、空字符串和 `null`。字段在 bootstrap 时定义为不可写、不可
-配置、可枚举属性，并随 frozen DocumentType snapshot 保持不变；它们不伪造外部 DTD、实体或
-解析器，也不改变 owner/root/position/contains、namespace 或 baseURI。
-
-`test_host.exe` 只提供 fixture、adapter 和 `TEST962–981` 自动断言；定向门 21/21、缩减回归
-181/181，证据位于 `tmp/device-runs/20260823-115525-next601/` 和
-`tmp/device-runs/20260823-115645-next601-regression/`。本批不新增 core ABI、DTD/实体解析、
-节点 mutation 或人工视觉/触摸/SIP/picker/旋转/网络失败门。
-
-#### next602 的 DocumentType entities/notations 边界
-
-next602 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。既有
-`document.doctype` wrapper 现在提供两个独立、稳定、冻结的空 `NamedNodeMap` snapshot：
-`entities` 与 `notations`。它们的 `length` 为 0，固定 indexed slots、`item()`、named/namespace
-lookup 和 iterator 都 fail closed/立即结束，并暴露 `NamedNodeMap` 的有限 branding；
-`setNamedItem*()`/`removeNamedItem*()` 不改变状态。该边界不解析 DTD/实体、不创建 Attr/节点，
-也不把 parser token 偷渡进 core；browser bootstrap 通过 lazy helper 复用既有 `m10(null)`，
-避免重复实现造成 session heap 压力。
-
-`test_host.exe` 只提供 fixture、adapter 和 `TEST982–998` 自动断言；定向门 18/18、缩减回归
-198/198，证据位于 `tmp/device-runs/20260823-122704-next602/` 和
-`tmp/device-runs/20260823-122827-next602-regression/`。首次长回归发现重复 map bootstrap 会在
-TEST901 越过既有脚本堆上限，随后改为复用 helper 后通过，未提高预算。本批不新增 core ABI、
-DTD/实体解析、节点 mutation 或人工视觉/触摸/SIP/picker/旋转/网络失败门。
-
-#### next603 的 NamedNodeMap 迭代边界
-
-next603 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。普通属性
-`NamedNodeMap` 与 doctype 的空 `entities`/`notations` map 现在提供有界的 `forEach()`、`keys()`、
-`values()`、`entries()` 和默认 values iterator。每次迭代读取当前属性名的同步 snapshot，
-Attr wrapper 复用既有 session identity；iterator 对象自身可迭代，`forEach` 传递 Attr、索引、
-map 与 `thisArg`，非法 callback 抛出受控 `TypeError`。这些方法不创建节点、不提供 live collection、
-DTD/实体解析或异步调度。
-
-`test_host.exe` 只提供 fixture、adapter 和 `TEST1000–1017` 自动断言；定向门 19/19、缩减回归
-216/216，证据位于 `tmp/device-runs/20260823-125404-next603-r2/` 和
-`tmp/device-runs/20260823-131725-next603-regression-final/`。回归选择把特殊 TEST999 从数字区间
-中拆出后通过；本批不新增 core ABI、节点 mutation 或人工视觉/触摸/SIP/picker/旋转/网络失败门。
-
-#### next604 的 HTMLCollection named projection 边界
-
-next604 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。所有已有的静态
-`HTMLCollection` snapshot（包括 `children`、`form.elements`、tag/class/namespace 查询和文档
-named collections）现在在创建时为非空元素定义只读、不可枚举的 `id` 与 `name` 直达属性；属性值
-复用该 snapshot 中的 element wrapper，方法名、`length`、数字索引和 `namedItem()` 保持原有
-优先级。`NodeList` 查询结果不获得这组 named projection，未知名称和空 collection 仍 fail closed，
-属性不会随 DOM 或属性 mutation live 更新。该实现不创建节点、不构造 Proxy、不改变 relation
-bridge，也不提供通用 DOM mutation 或 live collection。
-
-`test_host.exe` 只提供 tree/form fixture、adapter 和 `TEST1018–1035` 自动断言；定向门
-`TEST1018–1035,999` 通过 19/19，缩减回归 `TEST802–998,1000–1035,999` 通过 234/234，
-证据位于 `tmp/device-runs/20260823-134449-next604-r2/` 和
-`tmp/device-runs/20260823-134557-next604-regression/`。两次最终运行均无 ERROR/FAIL、唯一
-`TESTBENCH PASS` 且 `test13_route_ok=True`；本批只涉及同步 snapshot API，不新增视觉、触摸、
-SIP、picker、旋转或网络失败人工门。
-
-#### next605 的 form.elements RadioNodeList 边界
-
-next605 继续把语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。只有
-`form.elements` 这个已标记的 HTMLCollection 对重复 `id`/`name` 做分组：唯一匹配仍返回原
-element，多个匹配返回静态 `RadioNodeList` snapshot；`item()`、数组索引、有限迭代器和
-`Symbol.toStringTag` 复用既有 collection decorator，`value` getter 读取当前已选 radio，
-setter 只选择同值 radio。缺失名称返回 `null`，普通 HTMLCollection 仍然使用首匹配
-`namedItem()`，因此该特殊分组不会泄漏到其他 collection 或 NodeList。
-
-RadioNodeList 的缓存只在当前脚本 session 内按控件 token 复用，direct named property 是
-不可枚举、不可写、不可配置的 snapshot；不承诺 live `HTMLFormControlsCollection`、fieldset/
-label 关联、节点创建、通用 mutation 或跨 session identity。新增 bootstrap 使 browser session
-heap ceiling 从 608 KiB 调整到 624 KiB；独立 `positron_script` 的 512 KiB 默认堆、公共 C ABI、
-所有权和宿主职责不变。`test_host.exe` 只提供 fixture 与断言。
-
-`TEST1036–1053,999` 定向门通过 19/19，`TEST802–998,1000–1053,999` 缩减回归通过
-252/252，证据分别位于 `tmp/device-runs/20260823-142518-next605-r2/` 和
-`tmp/device-runs/20260823-142642-next605-regression-r2/`；两次最终运行均无 ERROR/FAIL、
-唯一 `TESTBENCH PASS` 且 `test13_route_ok=True`。中途首次回归在 608 KiB 下由 TEST901 暴露
-堆上限，单测确认 624 KiB 是本批的最小通过调整；未放宽断言。本批只涉及同步脚本 API/DOM
-snapshot，不新增视觉、触摸、SIP、picker、旋转或网络失败人工门。
-
-#### next608 的 native EDIT 输入事务边界
-
-next608 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。新增的
-`PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 与三个同步入口把 native EDIT 的
-beforeinput 接受/取消、pending input metadata、native value commit 到 input、dirty tracking
-和 blur 时一次性 change 顺序放在 browser session 内；目标使用宿主提供的非零 session token，
-几何仍以文档 CSS 像素传入。pending/type/data 有界为最多 16 个 token、每个字符串 255 字节，
-session 销毁或宿主重建 native controls 时可显式 reset。
-
-`test_host.exe` 只提供 WM EDIT 消息、`PCore_TextInputSetValue()` 文本同步、控件几何和 core
-事件传播 callback；它不再保存 pending input 或 change-pending 状态。WM 控件、composition
-生命周期、SIP/IME、焦点窗口、文本 mutation、native SELECT 和系统 picker 仍是宿主边界，
-因此本批不宣称 OEM 候选词或完整 composition 兼容。TEST1056 覆盖接受/取消、commit metadata、
-dirty/blur、reset/unregister；TEST228–230、1055、999 保持回归覆盖。证据位于
-`tmp/device-runs/20260823-172005-next608-native-edit-r2/` 和
-`tmp/device-runs/20260823-172030-next608-native-edit-regression/`，均为唯一 PASS、零
-ERROR/FAIL、路由正确。本批不新增视觉、触摸、旋转、picker 或 OEM SIP/IME 人工门。
-
-#### next609 的 native SELECT commit 边界
-
-next609 继续把产品语义放在 `positron_browser.dll`，不扩展 `positron_core.dll` ABI。新增的
-`PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()` 与
-`PBrowser_ScriptSessionDispatchNativeSelectCommit()` 接收宿主完成 Core selection mutation
-后的稳定 token、几何和选择快照；browser layer 对每次成功 commit 同步发出不可取消的
-`input` → `change`，并保持同一 token 的 single/multiple 形状不变。最多跟踪 16 个 token，
-宿主在 native 控件销毁/重建前调用 `PBrowser_ScriptSessionResetNativeSelectState()`。
-
-`test_host.exe` 仍负责 WM SELECT 键盘消息、typed key callback 的 default-allowed 结果、
-`PCore_SelectSetOptionSelected()`/多选 mutation、窗口重绘和平台副作用；它不保存 input/change
-顺序状态。TEST1057 覆盖注册、重复注册、非法快照、input→change、adapter error、形状冲突、
-reset 和 unregister；TEST67、TEST71、TEST118、TEST999 的 next609 设备门通过。该批不宣称
-OEM SIP/IME、候选词或完整 native keyboard 默认动作兼容，也不新增视觉人工门。
-
-#### next610 的 native SELECT 焦点族边界
-
-next610 继续把可发布的焦点语义放在 `positron_browser.dll`，不扩展
-`positron_core.dll` ABI。`PBrowser_ScriptSessionDispatchNativeSelectFocus()` 接收宿主提供的
-稳定 token、几何和 focused 状态；browser layer 对每个 token 保持有界焦点状态，focused=1
-同步派发不可取消的 `focus` → `focusin`，focused=0 同步派发 `blur` → `focusout`，重复状态
-通知不重复派发，adapter 失败不提交新状态以便调用者重试。状态和 commit 的 16-token 上限
-共用 native SELECT session，宿主在控件销毁/重建前继续调用
-`PBrowser_ScriptSessionResetNativeSelectState()`。
-
-`test_host.exe` 只把 WM `CBN/LBN_SETFOCUS`、`CBN/LBN_KILLFOCUS` 转换为该入口，并继续负责
-`PCore_InteractionSetAt()`、控件焦点窗口、重绘和无脚本 fallback；它不再保存 SELECT 焦点族
-顺序或重复通知状态。TEST1058 覆盖非法值、顺序、幂等、callback 失败恢复、多 token、reset
-和 unregister；TEST67、TEST71、TEST1057、TEST999 的 next610 设备门通过。本批不宣称下拉
-展开/关闭视觉、WM 键盘默认动作、SIP/IME 候选词或其他 OEM 行为兼容。
-
-#### next611 的 native SELECT 单选下拉事务边界
-
-next611 继续把可发布的事务策略放在 `positron_browser.dll`，不扩展
-`positron_core.dll` ABI。`PBrowser_ScriptSessionDispatchNativeSelectInteraction()` 为单选
-COMBOBOX 接收稳定 token、几何、选择快照和 begin/candidate/confirm/cancel phase；browser
-layer 只保存有界候选状态，确认且候选存在时返回 `out_should_commit=1`，取消或无候选确认
-不派发 input/change。交付前先调用 interaction END，再由宿主调用既有
-`PBrowser_ScriptSessionDispatchNativeSelectCommit()`。
-
-`test_host.exe` 仍负责 WM `CBN_DROPDOWN`/`CBN_SELCHANGE`/`CBN_SELENDOK`/`CBN_SELENDCANCEL`
-通知、Core selection mutation、取消时 `CB_SETCURSEL` 回滚、控件重绘以及无脚本即时回退；
-`CBN_CLOSEUP` 只作为中性关闭提示，不提前结束事务，因为 WM 允许 `CBN_SELCHANGE` 在其前后
-到达。不会把 COMBOBOX 下拉窗口、键盘默认动作、SIP/IME 或 OEM 视觉伪装成 browser 语义。TEST1059
-覆盖 interaction ABI 的非法输入、候选抑制、确认/取消、无候选确认、reset/unregister；TEST67
-的合成 WM 探针覆盖 Core 延迟 mutation、取消回滚和确认提交。
-
-#### next612 的 native SELECT 键盘边界
-
-next612 继续把可发布的键盘事件策略放在 `positron_browser.dll`，不扩展
-`positron_core.dll` ABI。`PBrowser_ScriptSessionDispatchNativeSelectKey()` 接收宿主提供的
-稳定 token、文档几何、`keydown`/`keyup` phase 和 Enter/Arrow 元数据，复用已注册的
-`PBrowserScriptKeyCallbacks`，并把 callback 的 cancel/default-allowed 结果返回给宿主；
-adapter 失败时保持 fail-open 的 WM 兼容回退。browser layer 不模拟 COMBOBOX 默认动作，
-也不拥有 Core selection mutation。
-
-`test_host.exe` 仍负责将 WM key message 转成该入口、依据结果决定是否调用原生控件、接收
-`CBN_SELCHANGE` 并更新 Core。TEST1060 覆盖 ABI 的 phase/token/metadata、取消、失败、reset
-和注销；TEST118 在真实 WM6 页面上证明未取消的 ArrowDown 同时移动 COMBOBOX 和 Core selection。
-Enter 的平台提交、下拉窗口、SIP/IME composition、视觉和 OEM 副作用继续属于宿主边界，
-不能由该自动门扩展为完整键盘或移动端兼容性声明。
-
-#### next613 的 native EDIT composition 边界
-
-next613 继续把 native EDIT 的可发布 composition 语义放在 `positron_browser.dll`，不扩展
-`positron_core.dll` ABI。新增的 `PBrowser_ScriptSessionDispatchNativeEditComposition()`
-接收宿主提供的稳定 token、几何、START/UPDATE/END phase 和借用的 UTF-8 数据；browser
-layer 在最多 16 个 token 的 native EDIT 状态中保存不超过 255 字节的最后 preedit，并以
-`compositionstart`、不可取消的 `beforeinput(insertCompositionText)` →
-`compositionupdate` → `compositionend` 顺序调用既有 input callback。START 的 callback
-取消会返回 `out_default_allowed=0`，UPDATE 的 beforeinput metadata 会复用 next608 的
-native commit → input 事务，END 允许 NULL 数据回放最后一次 preedit。
-
-`test_host.exe` 仍负责 WM_IME、ImmGetCompositionStringW、SIP/候选词窗口、原生 EDIT
-文本 mutation、WM_CHAR 抑制和平台重绘；它只把平台 phase/data 转换成该 ABI，不保存产品
-事件顺序。TEST1061 覆盖顺序、取消、adapter 失败重试、显式/隐式 END、reset 和 unregister；
-TEST123–125 在真实 WM6 上保持 composition/InputEvent/KeyboardEvent 元数据回归。该批不
-宣称 OEM 候选词整词提交、SIP 视觉、触摸、旋转或其他平台副作用兼容。
-
-next618 仍不扩张 browser ABI：宿主在收到 WM_IME 的 `GCS_RESULTSTR` 后，先通过
-`ImmGetCompositionStringW` 取得完整结果并转换为 UTF-8，再用一次 `EM_REPLACESEL` 写入
-当前 native EDIT composition selection；由既有 `EN_CHANGE` 回写 Core，继续复用
-next613 的 composition metadata 和 browser-owned commit→input 事务。若 UTF-8 转换失败，
-宿主保留原来的 EDIT default-procedure fallback。这样修正的是 WinCE 平台副作用，不把
-WM 控件、SIP 窗口或 OEM 候选词体验冒充成 `positron_browser.dll` 语义；TEST1066 只覆盖
-可重复的完整多字节结果落地，真实 SIP 候选窗口和视觉仍需人工验收。
-
-next619 把“完整 IME result”这项可发布的事务策略补回
-`positron_browser.dll`，但不把平台副作用搬进产品层。新增的
-`PBrowser_ScriptSessionDispatchNativeEditResult()` 要求已开始的稳定 token composition，
-校验不超过 255 字节的借用 UTF-8 result，并同步派发
-`beforeinput(insertCompositionText)` → `compositionupdate`，把同一数据接入既有 pending
-native commit → input metadata。`test_host.exe` 只将 `ImmGetCompositionStringW` 的结果交给
-该入口，然后执行 `EM_REPLACESEL`、接收 native value mutation 和调用 composition end；
-WM_IME、SIP/候选词窗口、原生控件和视觉仍归宿主。TEST1067 覆盖 invalid/capacity、生命周期、
-完整多字节结果、commit、reset 和 unregister，不宣称 OEM 输入法视觉兼容。
-
-next620 把文件输入 picker 返回后的产品事务放入
-`positron_browser.dll`，但不搬迁平台 picker。新增
-`PBrowser_ScriptSessionDispatchNativeFileSelection()` 接收稳定的 file-control token 和
-BEGIN/COMMIT/CANCEL phase，保存最多 16 个 token；COMMIT 只派发一次不可取消的
-`input`（`inputType="insertFromFile"`）→ `change`，CANCEL 幂等且不派发事件。宿主在打开
-`GetOpenFileNameEx` 前 BEGIN，Core 通过 `PCore_FileInputSetPath()` 写入成功后 COMMIT；
-picker 窗口、文件系统权限、路径和重绘仍由宿主负责。TEST1068 是 ABI 契约，TEST262 是
-消费者回归，TEST232/263 继续作为真实对话框人工门。
-
-next621 在文件选择事件事务之外，再把 programmatic `file.click()` 的 picker 请求仲裁放入
-`positron_browser.dll`。`PBrowser_ScriptSessionDispatchNativeFilePicker()` 为每个脚本
-session 保存一个 pending/active request：REQUEST 在 host 投递窗口消息前占位，OPEN 在进入
-模态 WM6 picker 前转为 active，CLOSE/CANCEL 或 reset 清理；同一 session 的重复 request
-只返回成功 no-op，不会生成第二个 picker。token、phase 和 session 生命周期均在产品层
-校验；宿主只保存 HWND/document/index 并执行 PostMessage、系统 picker、文件系统和路径
-写入。TEST1069 是离线 ABI 门，TEST262 继续验证实际宿主接线。
-
-next622 再把受信任物理锚点点击的默认动作接入 `positron_browser.dll`：
-`PBrowser_ScriptSessionDispatchAnchorClick()` 接收宿主命中的 href，先复用 browser-owned
-可取消 click；只有未被阻止时才向已注册导航适配器提交 ASSIGN。href、命中测试、网络
-请求、窗口替换和文档生命周期仍由宿主拥有，公共 API 不暴露 core/link/window 类型。
-TEST1070 是产品契约及宿主 helper 接线门。
-
-next623 将受信任 checkbox/radio 激活的事务边界继续放入 `positron_browser.dll`：
-`PBrowser_ScriptSessionDispatchNativeToggle()` 对每个 session 保留最多 16 个 stable token，
-先派发可取消 click；宿主报告 Core checked 状态提交后，browser layer 才按一次不可取消的
-`input` → `change` 派发，取消、禁用和无状态变化不派发伪造事件。宿主仍负责命中、Core
-mutation、WM 鼠标/键盘默认动作、重绘和 label/窗口副作用；公共 ABI 不暴露 core 控件或
-原生窗口。TEST1071 是产品契约与宿主 helper 接线门。
-
-next624 将受信任 submit/reset 原生按钮的事务边界继续放入 `positron_browser.dll`：
-`PBrowser_ScriptSessionDispatchNativeButton()` 对每个 session 保留最多 16 个 stable token，
-先派发可取消 click；宿主在 click 回调之后查询 Core validation，再由 COMMIT 派发 submit
-或 reset，CANCEL 幂等且不伪造事件。宿主仍负责命中、Core validation/default action、导航、
-窗口、重绘和 label/窗口副作用；公共 ABI 不暴露 core 控件或原生窗口。TEST1072 是产品
-契约与宿主 helper 接线门。
-
-next625 扩展该 native button ABI 接受普通 `kind=9`（`<button type="button">`）：browser
-layer 仍按 CLICK→COMMIT 持有可取消 click 事务，但普通按钮不派发 submit/reset；宿主在
-COMMIT 被接受后消费该按钮默认动作，避免 generic click 路径误触发窗口关闭。普通按钮的
-hit-test、Core/WM 副作用、键盘焦点、label 转发和重绘仍由宿主持有；TEST1073 验证产品
-契约和 helper 消费者路径。
-
-next626 没有新增公共 ABI，而是补齐宿主对同一 native button 事务的键盘入口：宿主保存
-enabled button 的 document/index/kind 焦点，向 browser layer 派发 typed `keydown`/`keyup`，
-并在 Enter 的 keydown 或 Space 的 keyup 上复用 CLICK→COMMIT。重复 keydown 只保留脚本可见
-的 key 事件，不重复产生 trusted click；焦点失效、控件禁用或文档销毁时清空 pending 状态。
-browser layer 继续拥有 click/form 取消与事件顺序，宿主只拥有 WM 消息、Core 命中/坐标、
-焦点、默认动作和重绘；TEST1074 是实际窗口消息级消费者门。OEM 键盘映射、焦点视觉及
-label 点击的完整 native button 事务仍不由此 ABI 保证。
-
-next627 复用同一公共 ABI 补齐启用脚本时的 label→native button 转发。宿主仍负责
-`PCore_LabelTargetAt()` 的物理命中、label 自身 click 和 Core 坐标，但对 button target
-不再调用 generic form-button 路径，而是按稳定 control index/kind 进入已有
-`PBrowser_ScriptSessionDispatchNativeButton()` CLICK→COMMIT；因此 ordinary、submit、reset
-的取消、form-event 顺序和 disabled 静默与直接按钮激活保持一致，接受后的默认动作仍由
-宿主执行。stale/disabled target fail closed，不落入窗口关闭 fallback。TEST1075 是该消费者
-接线门；label 的真实触摸坐标、焦点视觉和其他 labelable 控件仍不是该自动门的承诺。
-
-next628 复用同一公共 ABI 补齐启用脚本时的 label→native toggle 转发。宿主仍负责
-`PCore_LabelTargetAt()` 的物理命中、label 自身 click、稳定 control index/kind 和 Core
-`PCore_FormActivateAt()` mutation；对 checkbox/radio target 改为进入已有
-`PBrowser_ScriptSessionDispatchNativeToggle()` CLICK→COMMIT。browser layer 因而继续持有
-目标 click 取消及一次 `input` → `change`，radio 互斥和重绘仍是 Core/宿主边界；disabled 或
-stale target 不合成目标 click。TEST1076 是该消费者接线门；label 的真实触摸坐标、焦点视觉、
-OEM 行为以及其他 labelable 控件仍不是该自动门的承诺。
-
-next629 不扩张公共 ABI，而是让宿主对 text/password/textarea/select/file label target 复用
-既有 browser click adapter：browser layer 同步派发目标的可取消 `click`，宿主只在目标未被
-取消且未 disabled/stale 时执行 native EDIT/SELECT `SetFocus()` 或进入系统 file picker。
-因此目标 click 的事件传播/取消留在 browser layer，WM 控件、Core interaction、picker、路径、
-窗口和重绘副作用留在消费者；无脚本路径保持原有 focus/picker fallback。TEST1077 在真实
-native EDIT/SELECT 子窗口上验证 text/textarea/select 的事件与焦点顺序、取消和 disabled 闸门；
-文件 picker 模态对话框、真实 label 坐标、SIP/IME 和 OEM 视觉仍不是本批保证。
-
-#### next630 的 programmatic native focus 边界
-
-next630 复用既有 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()`，为
-text/password/textarea/select 增加 target-kind 与 `PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS`
-语义。browser layer 负责目标存在性、disabled 静默、typed click 和取消；宿主 target bridge
-按 DOM id 提供同步身份派发，default-action callback 再聚焦真实 native EDIT/SELECT。该入口
-不修改控件值，也不拥有 HWND、select popup、系统 picker、窗口或 OEM 副作用；没有增加
-callback struct 字段。TEST1078 是 render-window 消费者契约门，自动覆盖 click/focus/focusin、
-select 取消和 disabled 静默，不能替代下拉视觉、真实触摸、SIP/IME 或焦点视觉人工验收。
-
-#### next631 的 programmatic anchor 激活边界
-
-next631 在不改变既有 form-click callback 布局的前提下新增独立的
-`PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks()`。宿主按 DOM id 通过
-`PCore_LinkInfoById()` 返回已布局 `<a href>` 的几何和非空 UTF-8 href，browser layer 复用
-`PBrowser_ScriptSessionDispatchAnchorClick()` 的 cancelable `click` → ASSIGN navigation
-事务；`preventDefault()`、导航拒绝和未知/无 href 元素不产生导航，后者回到 generic click。
-Core 不暴露 libdom/box 指针，网络请求、窗口替换、文档生命周期、target/rel/window 和真实
-触摸仍由宿主负责。TEST1079 是该真实 script-session 消费者门，TEST1070 继续覆盖导航适配器
-拒绝；两者都不能替代完整 anchor 导航
-策略或视觉人工验收。
-
-#### next632 的同页 fragment 锚点边界
-
-next632 让 `PBrowser_ScriptSessionDispatchAnchorClick()` 把 fragment-only href（以 `#`
-开头）提交为 `PBROWSER_SCRIPT_NAVIGATION_FRAGMENT`，跨页 href 仍提交 ASSIGN；click 取消、
-导航适配器错误和原有 borrowed-string/size-tagged 契约不变。`test_host` 的 adapter 将
-片段绑定到当前 history URL，提交 `PBrowser_ScriptSessionDispatchHashNavigation()` 后，
-通过 Core 的片段查询读取目标几何并移动自己的 viewport/scrollbar；未知目标只更新
-history/hashchange，不伪造网络请求或滚动失败。TEST1080 覆盖产品分类、literal id 几何、
-fragment URL 绑定、目标滚动和 unknown-id 保持位置；percent-decoding、`<a name>`、
-target/rel/window、跨文档加载和真实页面视觉在后续批次分别收敛。
-
-#### next633 的同文档 fragment 历史遍历边界
-
-next633 修正 next632 的宿主生命周期缺口：同页 fragment entry 在
-`history.back()`、`history.forward()` 或 `history.go()` 触发 browser-owned traversal 并成功
-派发 `popstate`/`hashchange` 后，`test_host` 重新用 Core 的片段查询当前布局
-文档中的目标几何并恢复自己的 viewport/scrollbar。未知目标保持原位置，不发起网络请求或
-文档替换；跨文档 history entry 仍交给既有导航 worker。该批不新增 browser 公共 ABI，也不
-承诺持久滚动位置、跨文档恢复、target/rel/window 或真实视觉。
-TEST1081 与 next632 的 TEST1080 共同覆盖该窄边界。
-
-#### next634 的跨文档 history 视口边界
-
-next634 在宿主窗口层增加有界的 history-entry 滚动镜像：滚动或离开当前文档前保存条目偏移，
-跨文档 `back`/`forward`/`go` 完成新文档布局后恢复目标条目偏移；新导航条目从零开始，恢复
-值按新文档的 `document height - viewport height` 上限裁剪。`positron_browser.dll` 仍只拥有
-history/session 的 URL、state、document-id 和导航投影，不拥有 HWND、scrollbar 或持久存储，
-因此没有公共 ABI 变化。该能力只覆盖同一宿主进程内的有界会话镜像，不覆盖页面缓存、持久化、
-跨进程恢复、表单状态、POST 重提交或未知 fragment 的滚动猜测。TEST1082 覆盖每条文档的
-独立偏移、新条目归零和短页面裁剪。
-
-#### next635 的 fragment token 兼容边界
-
-next635 在 `positron_core.dll` 增加 additive 的 `PCore_FragmentInfoByToken()`。该查询接收
-已解码 UTF-8 token，先使用 DOM `id`（即使同 token 的旧式 anchor 也存在，id 仍优先），找不到
-id 时再使用 libdom 的 HTML anchors collection 兼容 `<a name="...">`；只复制已布局元素的
-有用几何，不暴露 DOM/box 指针。`test_host` 在 URL 片段进入 Core 前按字节执行有界 `%HH`
-解码，不把 `+` 当空格；非法 escape、NUL 或未知 token 保持原视口。该批不改变 browser
-history ABI，也不把 URL 解析、target/rel/window、网络、窗口或视觉副作用迁入 Core。
-TEST1083 覆盖 id 优先、legacy name、percent-decoding 和失败不变式。
-
-#### next636 的 anchor target/rel 元数据边界
-
-next636 在不破坏旧 anchor 入口的前提下，把链接激活所需的有限元数据放入产品 ABI：
-`positron_core.dll` 的 `PCore_LinkAtEx()` 与 `PCore_LinkInfoByIdEx()` 对已布局 `<a href>`
-返回 href、target、rel 的调用者缓冲快照；缺失 target/rel 返回空字符串，任何容量不足均
-fail closed。`positron_browser.dll` 新增 size-tagged
-`PBrowser_ScriptSessionDispatchAnchorClickEx()`，programmatic anchor target callback
-和 `PBrowserScriptNavigationInfo` 的扩展字段把这组借用字符串随 click → navigation
-事务传递给宿主；bootstrap 的 `HTMLElement.rel` 反射与已有 `target` 反射保持一致。
-
-Core 不暴露 libdom/box 指针，browser layer 不创建窗口。宿主继续决定 URL 解析、网络请求、
-`_self`/`_blank`/named target 的窗口复用与生命周期、跨窗口 history、真实触摸和视觉；本批
-只保证元数据查询、传播、容量边界和 `preventDefault()` 语义。TEST1084 是产品/消费者契约
-门，TEST1079–1083 与 TEST999 是相邻回归。
-
-#### next637 的 anchor target policy 边界
-
-next637 在 `positron_browser.dll` 内把 anchor 的 raw `target` 做有界 ASCII 关键字分类，
-并将 `PBROWSER_SCRIPT_NAVIGATION_TARGET_*` 及 `target_kind` 作为 `PBrowserScriptNavigationInfo`
-的兼容尾字段传给宿主。空值/空白是 DEFAULT，`_self`、`_parent`、`_top` 是当前上下文，
-`_blank` 和其他非空名称是需要新建或复用 browsing context 的 BLANK/NAMED。raw target 与
-rel 仍按原有同步借用规则传递，browser layer 不创建窗口、不拥有 history 或 URL/网络。
-
-当前 `test_host` 只有一个窗口，因此将 DEFAULT/SELF/PARENT/TOP 映射到当前文档，对 BLANK/
-NAMED 在导航回调和消息边界双重 fail-closed，避免把未实现的新窗口语义静默降级为当前页
-替换。未来窗口宿主可消费同一枚举实现创建、复用、生命周期和跨窗口 history；在此之前不能
-把 `target_kind` 传播误称为完整多窗口支持。TEST1085 覆盖分类、fragment 传播及单窗口拒绝。
-
-#### next638 的 bounded `window.open()` 当前上下文边界
-
-next638 复用同一 `PBrowserScriptNavigationInfo` callback 增加
-`PBROWSER_SCRIPT_NAVIGATION_OPEN`。bootstrap 的 `window.open(url,target,features)` 只把
-URL、raw target 和 browser-owned `target_kind` 交给宿主；features 在当前子集中不解释。
-单窗口宿主只接受 SELF/PARENT/TOP，并在消息边界再次检查，成功时把请求作为当前文档导航
-处理，脚本返回同一 bounded global。DEFAULT、BLANK、NAMED、空 URL 或注销后的 callback
-均返回 null，不创建或替换未知 browsing context。窗口 manager、opener/noopener、close、
-跨窗口 history、网络和 HWND 生命周期继续由宿主拥有。TEST1086 覆盖 callback metadata、
-失败回退、注销和 host admission；该能力不改变 browser heap、脚本开关或公共字符串所有权。
-
-#### next639 的 browsing context `window.name` 身份边界
-
-next639 在 `PBrowserScriptNavigationInfo` 的兼容尾部追加 `context_name`。对
-`PBROWSER_SCRIPT_NAVIGATION_OPEN`，browser bootstrap 把当前 bounded `window.name` 作为借用的
-UTF-8 快照交给导航 callback；其他导航 kind 不使用该字段。宿主可以据此判断 named target
-是否就是当前 browsing context，而不必猜测窗口管理器状态。
-
-`test_host` 只有一个 context：它把 `window.name` 限制为 `PBROWSER_SCRIPT_WINDOW_NAME_MAX`
-以内的有界字符串，在文档替换前读取旧 session 的名称，并在新 script session bootstrap 时
-一次性恢复。named target 只有在与当前名称精确匹配时才复用当前 context；未知名称、空名称、
-`_blank` 和需要新窗口的其他请求继续 fail closed。名称属于 browsing context 而非单个
-document，但这项实现不创建第二个 global、不提供 opener/close/window manager，也不承诺跨窗口
-history；公共 ABI 的字符串仍是借用值，宿主必须在 callback 返回前消费或复制。
-
-#### next640 的普通 named anchor 当前 context 边界
-
-next640 不改变 browser DLL 的公共 ABI：anchor navigation 仍只传 raw target 与由 browser layer
-分类得到的 `target_kind`，`context_name` 继续仅用于 `PBROWSER_SCRIPT_NAVIGATION_OPEN`。当前
-单窗口宿主在非 OPEN navigation adapter 中读取活动 script session 的 `window.name`，把普通
-anchor 的 named target 与该名称做精确匹配；ASSIGN、REPLACE、FRAGMENT 和
-FRAGMENT_REPLACE 只有匹配时才进入当前 context 队列，未知/空名称和 `_blank` 直接拒绝。
-窗口消息边界再次使用复制后的 target/context 快照校验，避免异步队列改变策略。
-
-这只是宿主的单窗口 admission，不创建新的 HWND、global 或 window manager；多窗口复用、
-opener/noopener、关闭、跨窗口 history 和视觉仍未实现。`test_host.exe` 只消费公共 callback，
-不会把 anchor 的 context 身份写进 browser DLL。TEST1088 覆盖匹配、未知名称和空名称边界。
-
-#### next641 的 anchor relList 边界
-
-next641 在 `positron_browser.dll` bootstrap 内把已有的 `rel` reflected attribute 包装为稳定的
-`relList` DOMTokenList。`a`、`area`、`link`、`form` wrapper 返回同一 session 内的同一对象，
-支持 `length`、`item()`、`value`、`contains()`、`add()`、`remove()`、`toggle()`、`replace()`、
-`forEach()` 和 iterator；读取按 ASCII 大小写不敏感的 unique token 集合解析，mutation 通过既有
-attribute bridge 写回 `rel`，非法空/含空白 token 在 bootstrap 层抛出 `SyntaxError`。非 rel 元素
-返回 `null`。该能力没有新的 C 导出或 Core ABI，`test_host` 只提供 TEST1089 fixture/断言。
-
-`relList` 不拥有 link-type processing、`supports()`、noopener/opener 安全策略、窗口创建或
-导航副作用；宿主仍须自行决定关系词如何影响网络、窗口和安全策略。其 token 集合只在当前
-script session 的 bounded wrapper 中实时读取，不等于通用 live DOM、节点创建或完整 HTML
-接口继承树。TEST1089 与 1080–1088、999 的设备门通过 11/11。
-
-#### next642 的 relList.supports 边界
-
-next642 在同一 `PRelList` wrapper 上增加 `supports(token)`，让页面能够查询 Positron 当前
-确实实现的 link processing，而不是把“认识关系词”误报成完整支持。`<link>` wrapper 对
-`stylesheet`（ASCII 大小写不敏感）返回 true，因为 `positron_core.dll` 已处理
-`<link rel="stylesheet" href>` 的样式表发现、解析和资源回调；其他 link type 返回 false。
-`<a>`、`<area>` 和 `<form>` 不宣称任何关系词支持，特别是 `noopener`、`noreferrer` 和
-`opener` 仍不会改变窗口或安全策略。空 token 或含空白 token 在 bootstrap 层抛出
-`SyntaxError`，方法不新增公共 C ABI，也不拥有网络、窗口或资源生命周期。
-
-`test_host.exe` 只提供 TEST1090 fixture，验证 link/stylesheet 的正例、大小写、未实现关系词、
-其他元素、非 rel 元素和非法 token；next642 的 `1080-1090,999` 设备门通过 12/12。
-
-#### next643 的页面 stylesheet media 选择边界
-
-next643 把 HTML 作者样式表的媒体条件接入 `positron_core.dll` 的资源收集事务。扫描
-`<style>` 和 `<link rel="stylesheet">` 时，Core 读取可选的 `media` 属性，并把 UTF-8
-media query 作为该 stylesheet 的 selection-context 条件交给 libcss；因此同一页面的
-宽屏/窄屏作者 CSS 不会在不匹配的 viewport 中同时生效。`PCore_StyleDocumentEx2()` 的
-第二次样式事务继续从 document-owned stylesheet cache 取得外部字节，不重新 fetch；媒体
-条件会随宿主重新设置 viewport 后重新选择。
-
-这只是页面样式选择边界：Core 不新增 C ABI，不负责脚本侧 `MediaQueryList` 事件、不改变
-fetch/HTTP 的下载策略，也不把 media 属性扩张为完整 HTML link-type 生命周期。`test_host.exe`
-的 TEST1091 使用同一文档在 320px 与 299px 间重排，分别验证 inline `<style media>`、
-external `<link media>` 和两次样式事务的 2 次 fetch/2 次 free 缓存契约；next643 设备门为
-`21,24,1091,999`，通过 4/4。
-
-#### next644 的 stylesheet media DOM 反射边界
-
-next644 在 `positron_browser.dll` bootstrap 中为 `<link>` 与 `<style>` wrapper 增加受限的
-`media` UTF-8 属性反射。缺失属性返回空串；setter、`setAttribute()` 与
-`removeAttribute()` 复用既有 attribute bridge，因此同一 wrapper 的 getter 与 raw
-attribute 保持 live 一致，JS 的 `null` setter 也按普通 `String()` 规则写入。由于当前
-browser 使用统一的 bounded `PElement` wrapper，非 `link`/`style` 元素的 `media` getter
-返回 `undefined`，setter fail closed，不修改其 raw `media` attribute。
-
-这只是 stylesheet metadata 反射，不拥有 CSS 重新选择、脚本侧 `MediaQueryList` 事件、
-网络下载、link type processing 或节点 mutation。`test_host.exe` 只提供 TEST1092 fixture
-与断言；TEST1090、TEST1091、TEST1092、TEST999 的定向设备门为 4/4。本批不新增公共
-C ABI，也没有视觉、触摸、SIP、旋转或 picker 人工门。
-
-#### next645 的 disabled stylesheet 选择边界
-
-next645 在 `positron_core.dll` 的页面资源收集事务中把外部 stylesheet link 的 HTML
-`disabled` boolean 属性纳入选择闸门。`<link rel="stylesheet" disabled>`（包括
-`disabled="false"`）在 Core 收集阶段直接跳过，因此不会调用 fetch callback、解析 CSS，
-也不会附加到 libcss selection context；没有该属性的 link 保持原有 `media` 条件、URL
-resolve、fetch/free 所有权和 document-owned cache 行为。该判断只针对外部
-`<link rel="stylesheet">`，不把任意元素的 `disabled` 属性或 browser wrapper property
-扩张成动态资源生命周期。
-
-这项能力没有新增公共 C ABI，不实现 `type`/`alternate` 等历史上撤回的 link 过滤，不提供
-脚本侧 disabled mutation 后自动重新 fetch/重排或 `MediaQueryList` 事件。`test_host.exe`
-只提供 TEST1093 的离线 fetch/free 与 computed-color 断言；TEST21、TEST24、TEST1091、
-TEST1093、TEST999 的定向设备门为 5/5。
-
-#### next646 的 stylesheet rel-token 选择边界
-
-next646 把 `positron_core.dll` 外部 stylesheet link 的 `rel` 判断从整串精确比较改为
-HTML 风格的 ASCII whitespace token 匹配，并按 ASCII 大小写不敏感识别 `stylesheet`。
-因此 `rel="preload stylesheet"` 等组合会进入既有 `media`、`disabled`、URL resolve、
-fetch/free 和 document-owned cache 流程。若 token 集合含 `alternate`，Core 仍跳过该 link；
-在没有 alternate stylesheet selection policy 时，这个 fail-closed 规则避免未选择的备用
-主题覆盖页面。
-
-该变更没有新增公共 C ABI，不实现 `type` 过滤、alternate sheet 的启用/切换、动态 link
-生命周期或脚本事件。`test_host.exe` 只提供 TEST1094 的离线 fetch/free 与 computed-color
-断言；TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST999 的定向设备门为 6/6。
-
-#### next647 的 hidden 默认呈现边界
-
-next647 在 `positron_core.dll` 的 UA stylesheet 中加入 `[hidden] { display:none; }`。因此
-HTML 元素只要存在 `hidden` 属性，默认样式计算就会把它从布局流中移除；这是与已有
-`HTMLElement.hidden` attribute reflection 配套的呈现规则，不需要新增公共 C ABI，也不把
-`test_host.exe` 变成语义所有者。未隐藏元素仍走原有 stylesheet、样式计算和布局流程。
-
-该规则只覆盖默认呈现，不实现脚本 mutation observer、隐藏状态驱动的自动重排、完整 CSS
-cascade 或辅助技术语义。TEST1095 通过 `PCore_NodeBox()` 和后续段落的 y 坐标断言隐藏元素
-没有布局盒且不占垂直空间，同时确认可见对照元素仍有布局盒；TEST21、TEST24、TEST1091、
-TEST1093、TEST1094、TEST1095、TEST999 的定向设备门为 7/7。
-
-#### next648 的披露控件默认呈现边界
-
-next648 在 `positron_core.dll` 的 UA stylesheet 中加入 `details`/`dialog { display: block; }`、
-`summary { display: list-item; }`，并按 `open` 属性隐藏 closed details 的非 summary 子项与
-closed dialog。带 `open` 的 details body 和 dialog 恢复进入布局流；browser layer 只复用已有
-`HTMLElement.open` attribute bridge，不新增公共 C ABI，也不让 `test_host.exe` 持有这些语义。
-
-该能力是静态样式/布局契约，不实现 summary click、open mutation 后自动重排、modal focus、
-backdrop、dialog 生命周期或完整 disclosure behavior。TEST1096 通过 closed/open 对照文档的
-`PCore_NodeBox()` 结果验证 summary、details body 和 dialog 的盒状态；TEST21、TEST24、
-TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST999 的定向设备门为 8/8。
-
-#### next649 的 `pre[wrap]` 默认换行边界
-
-next649 在 `positron_core.dll` 的 UA stylesheet 中加入 `pre[wrap] { white-space: pre-wrap; }`。
-带 `wrap` 属性的 `<pre>` 因而沿用 Core 已有的保留空白布局路径，并在窄视口按可断点换行；
-普通 `<pre>` 继续使用 `white-space: pre`。该规则不新增公共 C ABI，也不把代码块的布局断言
-迁移到 `test_host` 之外。TEST1097 在 120px 视口对照两种代码块的高度和文档总高度，相关
-TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999
-设备门为 9/9。该切片不宣称完整 CSS whitespace、tab 度量、字体 shaping 或像素级跨设备一致性。
-
-#### next651 的 summary 激活边界
-
-next651 将第一条直接 `<summary>` trigger 的展开/收起语义归入产品 DLL。`positron_core.dll`
-提供 `PCore_DisclosureInfoById()` / `PCore_DisclosureInfoAt()` 查询已布局 summary 的 CSS
-px 几何与父 `details` 的 boolean `open` 状态，并提供对应的 `PCore_DisclosureToggleById()` /
-`PCore_DisclosureToggleAt()` DOM mutation。查询只接受直接父节点为 `<details>` 且是其首个直接
-`summary` 的元素；未布局、非首个 summary 或没有可用盒时 fail closed。toggle 只改变 DOM
-属性，不隐式执行 style/layout；消费者必须显式完成后续样式、布局和绘制事务。
-
-`positron_browser.dll` 在既有 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()`
-typed adapter 中增加 disclosure target/default。browser layer 负责一次可取消的 `click`、
-`preventDefault()` 与 default-action 顺序；宿主通过 Core 按 id 解析目标、执行 toggle，并在
-活动渲染页排队完整 style/layout 重排。物理点击同样由宿主命中后复用 browser click 传播和
-Core point toggle。`test_host.exe` 只提供 callback consumer 与 TEST1099 fixture，不拥有
-disclosure 状态。
-
-该切片不实现 summary 键盘激活、dialog 的 modal focus/backdrop/lifecycle、完整 disclosure
-事件/辅助技术语义或通用 DOM 自动重排。TEST1099 与 TEST1095–1098、TEST999 的定向设备门
-已在 WM6 通过 6/6。
-
-#### next652 的 summary 键盘激活边界
-
-next652 沿用 next651 的首个直接 summary 几何和 Core toggle，不增加公共 C ABI。Core 将合法
-summary 纳入 `PCore_InteractionSetAt(..., PCORE_INTERACTION_FOCUS)` 的交互命中链；宿主在
-WM 消息边界保存有界几何快照，并在每次按键前用 `PCore_DisclosureInfoAt()` 验证快照仍指向
-同一布局盒，几何变化时 fail closed。browser layer 的既有 key callback 派发可取消 keydown
-和不可取消 keyup，宿主随后复用 click 事件传播；Enter 在 keydown、Space 在 keyup 执行
-`PCore_DisclosureToggleAt()`，重复 keydown 不重复 click，keydown 的 `preventDefault()` 阻止
-默认动作。宿主仍拥有 WM 事件、窗口焦点和 style/layout 重排；Core 不拥有消息泵或绘制。
-
-TEST1100 在实际 render window 中覆盖焦点命中、Enter/Space 时序、repeat 去重和取消后的
-`details.open` 不变；TEST1095–1099、999 与 TEST1100 的 WM6 Debug 定向门为 8/8（证据目录：
-`tmp/device-runs/20260828-214751-next652-disclosure-keyboard-r6/`）。该能力
-不是完整 Tab 顺序、键盘焦点滚动、辅助技术事件或 dialog modal 行为的承诺。
-
-#### next653 的自然顺序焦点边界
-
-next653 在 `positron_core.dll` 新增 additive `PCore_FocusTargetInfo()`。它以已布局的 DOM
-文档顺序逐项返回启用且有正几何的受支持 form-control、非空 `href` anchor 和每个 details
-的首个直接 summary；返回值只有 CSS px 的位置、尺寸和 kind，调用者通过 index 查询，查询
-本身不保留窗口或事件状态。hidden、disabled、空 href、无布局盒和 file-picker 控件不进入
-列表；该 API 明确忽略 `tabindex`、contenteditable、dialog modal 规则，且对过深 DOM 使用
-有界遍历。
-
-`test_host.exe` 在消息边界保存当前快照，向 browser DLL 的既有 key/focus bridge 派发键盘
-和 focus-family 事件，再负责 native EDIT/SELECT `SetFocus()`、Core interaction、滚动和
-重绘。browser DLL 没有新增 ABI，也不拥有 WM 窗口或 scrollbar。TEST1101 在真实 render
-window 验证候选顺序、disabled/hidden/空 href 排除、native child 切换、focusin/focusout、
-末端环回、Shift+Tab、repeat/cancelable Tab 和 off-screen reveal；
-`tmp/device-runs/20260828-224321-next653-sequential-focus-r6/` 的 TEST1095–1101、999
-设备门为 8/8 PASS。file picker 键盘默认动作、完整辅助技术事件、自定义 tabindex、
-contenteditable、dialog modal/backdrop/lifecycle 和 OEM 焦点视觉仍是未覆盖边界。
-
-#### next614 的 label/control 关系边界
-
-next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：
-`positron_core.dll` 的 `PCore_NodeRelationById()` 增加 label-control、control-label-count
-和 control-label-at 三个只读关系；`positron_browser.dll` 将其包装为
-`HTMLLabelElement.control` 与控件的 `labels` 静态 NodeList。显式 `for` 优先指向同文档的
-labelable input（排除 hidden）、select、textarea 或 button；没有 `for` 时只取 label 内第一个
-可寻址的嵌套控件。无效目标、无 ID label、非控件、hidden 和越界索引 fail closed。
-
-这是一组同步、session-scoped snapshot，不是 live `HTMLFormControlsCollection`，也不实现
-节点创建、mutation 或完整 labelable 元素集合。fieldset disabled 的有效状态由
-`positron_core.dll` 的统一判定提供给验证、successful controls、控件信息和交互闸门；它支持
-第一个 legend 后代豁免和嵌套 fieldset，但不等于完整 live DOM，也不替宿主完成 native 窗口样式、
-invalid UI、SIP/IME 或文件选择器副作用。`test_host.exe` 仅提供 fixture、callback adapter 和
-TEST1062/1063 断言；新的 core/browser ABI 可由其他消费者复用，宿主仍拥有窗口、焦点、原生
-控件和视觉副作用。
-
-#### next615 的 fieldset disabled 边界
-
-next615 将 form-control 的有效 disabled 状态集中到 `pcore_node_effectively_disabled()`：元素
-自身的 `disabled` 属性优先；没有自身属性时，祖先 disabled fieldset 会使 input、button、
-select、textarea 失效，但该 fieldset 的第一个直接 legend 及其后代豁免，嵌套 fieldset 仍按
-各自祖先逐层计算。该判定在 `positron_core.dll` 内被验证、成功控件序列化、默认 submitter、
-`PCore_FormControlInfo*`、表单激活和交互状态查询复用，因此动态修改 `fieldset.disabled` 不必
-重建 layout 才能更新这些语义；HTML `control.disabled` 仍只反射元素自身属性。
-
-该批不宣称完整 HTML fieldset/live DOM 标准、native 控件视觉或 invalid UI；WM 窗口样式、真实
-触摸、SIP/IME、文件选择器和其他平台副作用仍由宿主负责。`test_host.exe` 只提供 TEST1063
-fixture/断言与设备门消费者。
-
-## 独立 JavaScript 与浏览器 JavaScript
-
-项目只有一套 JavaScript 引擎实现：`positron_script.dll` 内的 Duktape。
-
-“独立 JavaScript”指普通应用直接创建 `PScript` context，执行与网页无关的脚本。
-“浏览器 JavaScript”指产品浏览器层和宿主在显式开关开启时：
-
-1. browser layer 持有 `positron_script` context，并按 DOM 顺序驱动 classic inline/external script；
-2. browser layer 通过稳定 ABI 注册宿主提供的 typed DOM 读写/attribute/value/checked/`HTMLElement.disabled`/`title`/`lang`/`dir`/`hidden`/`accessKey`/`role`/`ariaLabel`/`contentEditable`/validation query（包括 form-level 聚合）/custom-validity/form/constraint-related reflected properties（含 `name`、form `action`/`method`/`enctype`/`target`/`autocomplete`/`acceptCharset`、submitter `formAction`/`formMethod`/`formEnctype`、控件 `placeholder`/`autocomplete`/`inputMode`/`type`、`pattern`/`minLength`/`maxLength`）/form-property/navigation 适配，承接同文档 location/history 事件分发和 native input/composition/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click（包括 typed click、disabled 抑制、验证与 submit/reset 事件顺序；file input 只承接 typed click，系统 picker 仍由宿主触发）/submit-reset/invalid/file-input/checkbox/radio input/change/SELECT-input/change dispatch contract；native EDIT 的事务状态由 `PBrowser_ScriptSessionRegisterNativeEditCallbacksEx()` 持有，native SELECT 的 commit input→change、focus-family、单选下拉 interaction 和 key dispatch/default-allowed policy 由 `PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx()`、`PBrowser_ScriptSessionDispatchNativeSelectInteraction()` 与 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 持有，宿主只提供 value/selection/focus transition、WM phase 与 core propagation；
-2a. report-validity callback 只返回同步 valid 结果并路由可寻址控件的 trusted `invalid` 事件；
-    它不负责 native invalid UI、焦点/滚动或表单提交。
-3. browser layer 持有并执行产品 bootstrap，并在 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 中执行程序化表单激活策略；宿主 Ex callback 只提供 target lookup、submit validation、default action 和非表单 click 传播；native EDIT/SELECT Ex callback 只提供 value/selection commit、composition phase/data、焦点转换后的 core 事件传播；native SELECT 键盘取消通过 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 返回 default-allowed；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
-4. 宿主继续提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
-
-next651 的 disclosure activation 也遵循同一所有权边界：Core 提供已布局首个直接 summary
-的几何/状态查询和 `details.open` DOM toggle，browser layer 提供程序化 click 的可取消事件
-与 typed default 顺序，宿主负责 Core 调用、活动页 style/layout 重排和窗口/触摸副作用。
-next652 的键盘补齐继续复用既有 key/click callback；browser layer 负责 key 事件传播，宿主
-只负责有限焦点快照、WM 时序和 accepted default 上的 Core toggle，不在 `test_host` 中复制
-DOM 或 disclosure 状态机。
-
-因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
-history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/value/checked/disabled/validation-query/custom-validity/constraint-reflection/form-property、ID-addressable
-DOM relation/form collection/label-control snapshot、navigation/location-event/native-input/keyboard/focus/EDIT-change/post-change-input/click/programmatic-click/
-submit-reset/invalid/report-validity/file-input/checkbox-radio-change/SELECT-input/change dispatch entry，及
-程序化 click 的 typed activation policy、native EDIT 的 beforeinput/input/dirty/change 事务策略与
-composition phase/preedit policy、
-native SELECT 的 commit input/change、focus-family 顺序、单选下拉事务策略与 typed key dispatch policy 已进入
-`positron_browser.dll`；native SELECT WM 控件真正默认动作、下拉窗口/视觉、native EDIT 的 WM_IME/SIP
-与原生文本 mutation、文件 picker/文件系统，以及其余 native form/input bridge 仍在迁移中且
-默认关闭；完整 IME result 的事件事务现在由
-`PBrowser_ScriptSessionDispatchNativeEditResult()` 持有，文件选择后的事件事务由
-`PBrowser_ScriptSessionDispatchNativeFileSelection()` 持有，但平台副作用仍由宿主完成；不能将
-其描述为完整 `window`、DOM、Web API 或 URL Standard 实现。
-
-## ABI 与所有权原则
-
-- 公共导出保持 `extern "C"` C ABI，兼容 MSVC 9.0 和 ARMV4I。
-- 文本接口使用 UTF-8；UTF-16 只留在 WM UI/消息边界。
-- 外部只能看到 opaque handle、size-tagged data 或明确稳定的结构体。
-- 在哪个 DLL 分配的内存，就由该 DLL 提供的释放函数回收。
-- 借用结果必须标注有效期，不能由调用者释放。
-- 新增接口优先兼容扩展；不能通过暴露第三方对象快速绕过边界。
-- `test_host` 可以演示和验证 API，但不得成为只有它才能使用的隐含接口。
-
-## 平台与移植策略
-
-目标工具链是 VS2008 SP1、Windows Mobile 6 Professional SDK、C89/ARMV4I。上游 C99
-代码通过仓库脚本做可重复转换；不得在正式构建之外维护另一套手工编译路径。
-
-WM6 已有且足够的能力优先复用，例如 GDI、WinInet、WM Imaging、CryptoAPI 和 native
-EDIT/SELECT 控件。系统能力无法满足现代要求时，再封装或移植成熟上游组件。
-
-每个第三方组件必须记录：
-
-- 固定版本或提交；
-- 官方来源；
-- 原始许可证；
-- Positron 本地补丁或生成过程；
-- 与公共 DLL 的隔离方式。
-
-根 [`THIRD_PARTY.md`](../THIRD_PARTY.md) 是第三方总索引，各组件目录中的 `UPSTREAM.md`
-或 `POSITRON_PORT.md` 记录局部来源和移植差异。
-
-## 非目标
-
-当前架构不承诺：
-
-- 完整现代浏览器兼容性；
-- 完整 HTML、CSS、DOM、SVG、URL 或 Web API 标准；
-- 在 UI 线程之外并发操作 DOM/GDI；
-- 让应用直接链接 NetSurf、Duktape 或其他 vendored 内部 ABI；
-- 用 `test_host` 的私有行为替代公共 DLL 设计。
-
-具体尚未实现的能力见
-[`.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
+Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
+
+- 有界 history entries、same-document state 和 traversal；
+- 浏览器 script session 与 bootstrap；
+- DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
+- Event、input、keyboard、focus、composition、click 和导航协调；
+- timer、animation frame、microtask、idle、message 和页面生命周期队列；
+- native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
+
+它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须
+同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互
+独立，销毁顺序由宿主明确管理。
+
+浏览器 JavaScript 与 `positron_script.dll` 共用 Duktape 实现，但角色不同：Script DLL 是通用
+嵌入服务；Browser DLL 负责把有限 Web 对象和事件语义组合到一个页面 session。浏览器脚本仍
+需要宿主提供真实 DOM、平台默认动作、导航和窗口生命周期。
+
+## 内部静态库
+
+以下工程是实现细节，不是供第三方应用直接链接的顶层 ABI：
+
+- `positron_netsurf`、`positron_hubbub`、`positron_libcss`、`positron_libdom`；
+- `positron_expat`、`positron_libsvgtiny`、`positron_libjpeg`；
+- 其他只为公共 DLL 提供目标文件的移植工程。
+
+它们按“一库一工程”隔离上游 include 命名冲突和对象名冲突。外部应用若直接链接这些静态库，
+将绕过 Positron 的 ABI、所有权和兼容性保证。
+
+## 宿主职责
+
+宿主拥有所有与具体应用或 Windows Mobile UI 绑定的行为：
+
+- 顶层窗口、消息循环、滚动条和 DPI/旋转通知；
+- native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；
+- 后台线程、导航取消、loading 状态与页面 swap；
+- DNS/TCP/TLS/HTTP 组合策略和资源调度；
+- 新窗口、外部协议、下载和文件系统权限策略；
+- 把 Core 文档回调注册到 Browser session；
+- 决定何时启用浏览器 JavaScript；
+- 应用级崩溃恢复、持久化和日志。
+
+宿主可以实现这些策略，但不得复制已经属于公共 DLL 的 URL、history、DOM、事件、表单或图像
+业务语义。发现可复用语义仍滞留在 `test_host` 时，应把它视为架构债务并迁移到相应 DLL。
+
+## 页面加载与提交
+
+推荐的主文档事务如下：
+
+1. UI 线程记录导航意图和当前页面，但不立即销毁旧文档。
+2. worker 获取主文档及可并行准备的网络资源；网络层不触碰 DOM/NetSurf 状态。
+3. UI 线程解析 HTML，创建候选文档。
+4. 通过 Core 的 resolver/fetch 回调准备 CSS、`@import`、图片和 script cache。
+5. UI 线程完成 style、layout 和首帧可绘制性检查。
+6. 候选成功后原子提交页面与 history；失败则释放候选并保留旧页。
+7. 交互、旋转或动态 DOM 修改按需重新 style/layout/paint。
+
+任何后台线程都不能持有 DOM 节点、computed style、box tree 或 HDC。失败日志应区分 DNS、TCP、
+TLS、证书、HTTP、资源、解析、style、layout 和提交阶段。
+
+## 脚本与事件组合
+
+浏览器脚本默认关闭。显式启用时，宿主按以下原则组合：
+
+1. Core 发现并缓存 classic script；
+2. Browser session 注册有界 DOM/Event/platform callbacks；
+3. 按文档顺序执行允许的 inline/external script；
+4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；
+5. Core 执行 DOM/form/default mutation；
+6. Browser 派发 mutation 后的 `input`、`change`、focus 或 lifecycle 事件；
+7. 宿主按需重新 layout/paint，并在页面替换时销毁 session 与文档。
+
+事件顺序、取消和状态提交必须由产品层确定，不能依赖 test fixture 的偶然消息顺序。真实 SIP、
+OEM IME、系统 picker 和窗口创建仍需要设备人工验收。
+
+## ABI 与所有权规则
+
+### 字符串
+
+- 跨公共边界的字符串一律 UTF-8，除非参数明确是 Win32 `WCHAR`/HDC 等平台类型。
+- 输入字符串在调用返回后仍由调用方拥有，DLL 不保存指针，除非 API 明确说明会复制。
+- 借用字符串只在头文件规定的 mutation 或 handle 生命周期内有效。
+- probe/capacity API 必须 NUL 终止可写缓冲，并报告完整所需字节数。
+
+### Handle 与内存
+
+- opaque handle 不是 Win32 kernel handle，不使用 `CloseHandle`。
+- 创建与销毁 API 必须配对；子节点和查询结果若为借用值，不得单独 free。
+- DLL 分配的公开 buffer 必须由同一 DLL 的配对函数释放，不能跨 CRT heap 使用 `free`。
+- 销毁父对象后，所有借用节点、字符串、buffer 和 callback token 立即失效。
+
+### ABI 演进
+
+- 已发布结构体通过 `cbSize` 或显式 ABI 版本演进；新字段追加，不改变旧字段布局。
+- 新能力优先新增函数或 `Ex` 入口，不静默改变旧入口含义。
+- 无效参数、容量不足、越界、错 origin 和错状态必须返回稳定错误，不能部分提交。
+- 公共头文件是精确契约；README 只解释调用模式，不复制整套声明。
+
+## 线程与重入
+
+- TLS/HTTP 可以在宿主 worker 使用，但每个连接/response 的并发所有权必须唯一。
+- Core document、layout、paint 和 Browser script session 默认由单一 UI 线程串行驱动。
+- 同步 callback 不得重入触发它的 session，也不得在回调中销毁父 handle。
+- 页面替换、取消和关闭必须先阻止新回调，再释放平台控件、script session、Core document 和
+  history/app state；具体顺序以拥有关系为准。
+
+## 平台与移植约束
+
+所有产品 C 代码必须兼容 VS2008 的 C89 方言和 WM6 ARMV4I：
+
+- 不使用块中声明、`for (int ...)`、designated initializer 或 C99-only CRT；
+- 缺失 CRT/Win32 API 通过 `compat/` 中可审计 shim 解决；
+- 第三方 C99 降级应由可重复、幂等的转换脚本完成；
+- 使用正式 `.sln`/`.vcproj` 构建，不用现代桌面编译结果代替目标构建；
+- vendored 源码保持版本、许可证、生成步骤和本地补丁记录。
+
+移植代码的正确性需要三层证据：转换器回归、VS2008 ARMV4I 构建、真实设备行为。只满足其中
+一层不足以成为产品基线。
+
+## 明确非目标
+
+- TLS 1.3、HTTP/2、HTTP/3 或现代浏览器级网络栈；
+- 完整 WHATWG URL、DOM、HTML、CSSOM、Web API 或 ECMAScript host environment；
+- 完整 CSS Grid、任意 float/position/table 边界和桌面级字体排版；
+- 多窗口浏览器、完整 modal dialog/backdrop 或持久化浏览历史；
+- 在 DLL 内接管应用消息循环、系统 picker、OEM IME 或设备连接；
+- 把 `test_host.exe` 变成产品依赖。
+
+当前具体支持范围与剩余缺口见[已知限制](../.agents/KNOWN_LIMITATIONS.md)。

@@ -1,25 +1,23 @@
-# `positron_core`
+# `positron_core.dll`
 
-`positron_core.dll` 是 Positron 的 HTML/CSS/DOM/rendering 产品边界。它把移植的
-NetSurf、libdom、libcss、hubbub、parserutils 和绘制适配封装起来，向应用提供
-UTF-8、opaque `HANDLE` 的解析、样式、布局、绘制、命中、表单、资源和 DOM 事件 API。
+`positron_core.dll` 是 Positron 的 HTML/CSS/DOM/layout/paint 产品边界。它把移植后的 NetSurf、
+libdom、libcss、hubbub 和图像适配隐藏在 UTF-8、opaque `HANDLE` 的公共 C ABI 后。
 
-## 输出与依赖
+Core 不创建窗口、不运行消息循环、不连接网络，也不执行 JavaScript。应用只应链接公共 import
+library，不应直接包含 NetSurf/libdom/libcss 头或依赖内部静态库符号。
+
+## 产物与依赖
 
 - 工程：`positron_core.vcproj`
-- 输出：`bin\Debug\positron_core.dll`、对应 `.lib`
 - 公共头：`positron_core.h`
-- 链接的内部静态库：`positron_hubbub`、`positron_netsurf`、`positron_libcss`、
-  `positron_libdom`、`positron_image`
-- 网络不内置：由调用者通过 fetch/resolve callback 提供，可使用 `positron_http`
+- 输出：`bin\<Configuration>\positron_core.dll` 与 import library
+- 内部静态依赖：hubbub、NetSurf support、libcss、libdom、image adapter
+- 运行时产品依赖：`positron_image.dll`
+- 可选组合：宿主用 `positron_http.dll` 实现 Core 的 fetch/resolve callbacks
 
-应用只应链接 `positron_core.lib` 并部署 `positron_core.dll` 及其产品 DLL 依赖；
-不要直接包含 NetSurf/libdom/libcss 头文件。Core 不创建窗口、不实现消息循环，也不
-自行连接网络。
+其他项目链接 `positron_core.lib`，部署 Core、Image 及应用实际使用的其他 DLL。
 
-## 其他项目如何调用
-
-最小的文档到绘制流水线是：
+## 最小调用流程
 
 ```c
 #include "positron_core.h"
@@ -30,147 +28,115 @@ HANDLE sheet;
 if (PCore_Init() != 0) {
     return 1;
 }
+
 doc = PCore_ParseHTML(html_utf8, html_bytes);
-sheet = PCore_ParseCSS(css_utf8, css_bytes, page_url);
+sheet = PCore_ParseCSS(css_utf8, css_bytes, page_url_utf8);
 if (doc != NULL && sheet != NULL &&
         PCore_StyleDocument(doc, sheet) == 0 &&
         PCore_LayoutDocument(doc, viewport_w, viewport_h) == 0) {
     PCore_PaintDocument(doc, hdc, scroll_x, scroll_y);
 }
+
 PCore_FreeStylesheet(sheet);
 PCore_FreeDocument(doc);
 PCore_Shutdown();
 ```
 
-典型调用者还会使用 `PCore_StyleDocumentEx2` 配合 URL resolver/fetch/free 回调，
-`PCore_FetchImageResources` 获取图片，`PCore_LinkAt` 做坐标命中，
-`PCore_LinkInfoById` 在布局后按 DOM id 读取带非空 `href` 的锚点几何和 UTF-8 URL；
-`PCore_LinkInfoByIdEx` 与 `PCore_LinkAtEx` 另外返回有界的 raw `target`/`rel` 元数据，
-缺失属性为空、容量不足 fail closed。`PCore_FragmentInfoById` 在布局后按 literal UTF-8
-DOM id 读取同页片段目标几何；新增的
-`PCore_FragmentInfoByToken` 在同一布局契约下先按 id 查找，再兼容旧式 `<a name>` 锚点。
-链接查询供浏览器 bridge 激活链接，片段查询供宿主滚动视口；这些 API 都不暴露 libdom/box
-指针，也不执行 URL 解析、percent-decoding、网络、历史或窗口副作用。
-`PCore_FormActivateAt` / `PCore_InteractionSetAt` 驱动控件状态，
-`PCore_EventListenerAdd` / `PCore_EventDispatchAt` 接入同步 DOM 事件，以及
-`PCore_Node*ById` 读取或修改脚本需要的 DOM 属性、值和表单状态；
-`PCore_FormControlInfoById` 可在布局后按 DOM id 查询控件几何、kind、selected 和 disabled
-状态，供浏览器宿主实现程序化控件 activation；`PCore_FormControlValidationById` 可在布局前后
-查询控件的 `valid`、`will_validate` 和 `PCORE_VALIDITY_*` flags，供脚本 bridge 或其他宿主
-读取约束状态；`PCore_FormValidationById` 可在布局前后按 form 的 DOM id 聚合查询当前控件的
-约束结果（忽略 form `novalidate`，跳过自身或 disabled fieldset 继承的 disabled、readonly、
-submit 等不参与候选），供脚本
-bridge 实现受限的 form-level `checkValidity()`；`PCore_FormReportValidityById` 在同一候选规则上
-收集 invalid controls，并按 DOM 顺序向有非空 id 的控件派发 trusted、non-bubbling、cancelable
-`invalid` 事件。`PCore_FormSetCustomValidityById` 与 `PCore_FormGetCustomValidityById` 可按 id
-设置/读取 application-owned custom validity message，覆盖当前 form-control candidates；
-`PCore_FormGetValidationMessageById` 在 custom message 为空时按当前 validity flags 返回固定的
-英文 fallback，并提供完整字节长度和安全截断。查询/设置不应用 form-level no-validate 提交按钮
-绕过，也不提供 native invalid UI、焦点/滚动、提交或本地化错误提示；report API 的 boolean
-结果不受 `preventDefault()` 改变。fieldset disabled 的有效状态由 core 统一计算：第一个
-legend 后代豁免，嵌套 fieldset 逐层继承；该判定也用于 successful-control 序列化、默认
-submitter、`PCore_FormControlInfo*`、表单激活和交互闸门。HTML `control.disabled` 的属性反射
-仍由浏览器层按自身属性提供，不把祖先 fieldset 状态写回 DOM。
-`PCore_FormResetAt` 只提交 reset 的 DOM 初始状态；可取消的 reset 事件由宿主先分发。
+DOM 或控件状态改变后，调用方负责重新执行所需的 style/layout，再 paint。HDC、viewport、滚动
+位置和失效区域始终属于宿主。
 
-`PCore_StyleDocumentEx2` 在收集页面作者 CSS 时也读取 `<style media>` 与
-`<link rel="stylesheet" media>`，并把 UTF-8 media query 交给 libcss 的 stylesheet
-selection context。调用者只需在每次 viewport 变化后重新调用样式事务；同一文档的外部
-CSS 字节会从 Core-owned cache 重用，fetch/free callback 的所有权和生命周期保持不变。
-外部 `<link rel="stylesheet">` 若存在 `disabled` 属性（包括值为 `false`），则在收集阶段
-跳过，不会 fetch、解析或附加 CSS；启用 link 仍沿用相同的 cache 和 callback 所有权。
-`rel` 按 ASCII whitespace 分隔的 token、ASCII 大小写不敏感地匹配 `stylesheet`；含
-`alternate` token 的 link 继续跳过，避免在没有备用样式表选择策略时覆盖页面。
-这项支持只控制当前 CSS selection，不新增 ABI、不产生 `MediaQueryList` 事件，也不替宿主
-决定其他 link type 的下载策略。
+## 资源获取
 
-`PCore_NodeRelationById` 为浏览器或其他宿主提供一个稳定、只读的 DOM 关系切片：按元素 id
-查询 parent/first-child/last-child/previous-sibling/next-sibling、child count、tag/name、
-form owner，以及按 DOM 顺序查询 form-control count/index。它还提供 attribute count、name-at
-和 value-at 关系，供浏览器层构造 parser-order 的 `Attr`/NamedNodeMap 视图；next614 增加
-label-control、control-label-count 和 control-label-at 关系，支持显式 `for` 与嵌套 label，
-仅覆盖 input（排除 hidden）、select、textarea、button。字符串结果遵循
-UTF-8 probe 和安全截断约定，计数通过 `out_number` 返回；缺失 id、越界索引和不支持的关系会
-fail closed；label-at 只返回有可寻址 DOM id 的 label。`CHILD_NODE_*` 关系另提供所有直接 childNodes 的数量、类型、name/value、
-textContent 和可用子元素 id，因此文本、注释和无 id 元素不会被旧的 element-only collection
-过滤；next585 另外为没有 HTML `id` 的 document root、直接 `head` 和直接 `body` 提供三个
-保留结构 token（`PCORE_DOCUMENT_ELEMENT_TOKEN`、`PCORE_DOCUMENT_HEAD_TOKEN`、
-`PCORE_DOCUMENT_BODY_TOKEN`）。真实 id 查找优先，token 只作为结构 fallback，因此可以在
-同一关系桥上构造 `documentElement`/`head`/`body` 的稳定 wrapper。该 API 不暴露 libdom
-对象，不实现通用节点创建或 mutation、属性 namespace、live
-collection、shadow tree、复杂 selector、layout 或 native control 状态；结果只在同步 callback
-期间作为 UTF-8 snapshot 借用。
+真实页面通常使用 `PCore_StyleDocumentEx2`：
 
-`PCore_Init` 与 `PCore_Shutdown` 成对使用；文档、样式表和其他返回句柄分别用
-`PCore_FreeDocument`、`PCore_FreeStylesheet` 及头文件指定的 `PCore_Free*` 释放。
-字符串和 callback 缓冲的借用期限以头文件为准。DOM/GDI 操作遵循宿主的 UI 线程
-纪律；布局后才能绘制，DOM 写入后需要重新样式/布局。
+- resolver 把 stylesheet、`@import` 和 `url()` reference 与 owning base URL 合并；
+- fetch 返回临时资源字节；
+- Core 在同步 callback 返回前复制需要保留的数据；
+- Core 随后调用配对 free callback；
+- 同一文档的成功资源进入有界 cache，重排可复用而不重新联网。
+
+图片和 script discovery 使用对应的 fetch/enumeration API。Core 只负责发现、缓存和解释，不
+调度 worker、不拥有 HTTP response，也不执行 script。网络失败应由宿主分类和记录。
+
+## 能力分组
+
+### 解析、样式与布局
+
+- HTML → libdom document；
+- CSS parse、UA/author cascade、media 条件与 inheritance；
+- `<style>`、外链 stylesheet、`@import` 和 inline style；
+- box construction、normalisation、layout、geometry、scroll extent；
+- GDI paint、clip、文字、border、背景和 retained image carrier。
+
+Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代浏览器。具体缺口见已知限制。
+
+### 查询与命中
+
+布局后可按坐标或 DOM id 查询链接、片段、控件、summary 和 box geometry。扩展查询把 href、
+target、rel 等 UTF-8 元数据复制到调用方缓冲；容量不足或 stale layout 会 fail closed。
+
+片段 token 按支持的 id/name 规则解析，但 history、URL percent-decoding、viewport scroll 和窗口
+副作用仍属于 Browser/宿主。
+
+### DOM 与关系 bridge
+
+`PCore_Node*ById` 提供有界 text、attribute、value、checked 和结构查询。关系 API 覆盖：
+
+- parent/child/sibling 与结构 root tokens；
+- element attributes 与 childNodes snapshot；
+- form owner、form controls 和 label/control；
+- script/runtime 所需的有限 element metadata。
+
+结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、
+MutationObserver、Shadow DOM 或通用 selector engine API。
+
+### 表单与 validation
+
+Core 持有控件值、checked/selected、disabled/fieldset 继承、required/range/step/pattern/custom
+validity、submission、multipart、reset 和 successful controls 等产品语义。
+
+Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action，再按结果派发 input、
+change、submit/reset 或 invalid。系统 picker、native validation UI、本地化提示、SIP/IME 和 WM
+控件视觉不属于 Core。
+
+### 交互与事件
+
+Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispatch 和可聚焦目标枚举。
+Browser 决定脚本事件/默认动作事务，宿主把 WM 消息和 native 控件状态映射进来。
+
+键盘顺序、focus scroll 和 native HWND 切换需要三层共同完成；Core 不调用 `SetFocus`，也不创建
+控件窗口。
+
+## 所有权
+
+- `PCore_Init`/`PCore_Shutdown` 成对；实现为进程级引用计数。
+- `PCore_ParseHTML` 的 document 用 `PCore_FreeDocument`。
+- `PCore_ParseCSS` 的 stylesheet 用 `PCore_FreeStylesheet`。
+- 文档拥有 DOM、computed styles、box tree、资源 cache、image carriers、表单和交互状态。
+- 从文档查询得到的借用数据在 document free、相关 mutation 或重新 layout 后失效。
+- fetch 输入由宿主持有；Core 只保留自己复制的内容，并按契约调用宿主 free callback。
+- DLL 返回的专用 buffer/handle 必须使用头文件指定的 `PCore_Free*`，不能跨 CRT heap 释放。
+
+同一 document 默认只由一个 UI 线程串行操作。不要从网络 worker 并发调用 parse/style/layout/
+paint，也不要在同步 Core callback 中销毁当前文档。
+
+## 宿主应负责什么
+
+- HWND、消息循环、DPI/旋转、scrollbar、invalid region 和 HDC；
+- HTTP/TLS、后台 worker、取消、loading 和候选页面提交；
+- native EDIT/SELECT/button/file picker 与 SIP/IME；
+- history、浏览器 script session 和新窗口/外部协议策略；
+- 失败回滚、日志、持久化和应用生命周期。
+
+完整浏览器组合可参考 [`../test_host/README.md`](../test_host/README.md)，但通用 DOM、表单、
+layout 或事件策略不得复制回宿主。
 
 ## 当前边界
 
-这是轻量网页运行核心，不承诺完整 HTML/CSS/DOM/Web 标准。URL 解析和资源传输策略由
-宿主决定；脚本执行由 `positron_script`/`positron_browser` 负责。`test_host.exe` 是
-回归消费者，不是 Core 的公共 API 所有者。
+- 不支持完整现代 HTML/CSS/DOM；float、复杂 table/position、Grid、custom properties 等仍有限。
+- 字体、SVG、图像格式和高 DPI 结果受 WM6 GDI/依赖版本限制。
+- Core resource cache、DOM bridge、表单集合和深度/数量均有固定预算。
+- Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。
+- 精确 API、返回码、结构布局和借用期限以 [`positron_core.h`](positron_core.h) 为准。
 
-next643/645/646 的页面样式资源选择属于 Core：`<style media>` 与
-`<link rel="stylesheet" media>` 只在当前 viewport 匹配时参与 libcss selection；存在
-`disabled` 属性的外部 stylesheet link 在 fetch 前跳过，rel token 组合会按 stylesheet
-语义进入同一流程，同一文档的再次样式事务复用已缓存的外部 CSS 字节。TEST1091/1093/1094
-通过公开的
-`PCore_StyleDocumentEx2` fetch/free callback 约定，在 320px/299px 视口验证两类条件和
-禁用 link 不产生 fetch、启用 link 只产生 1 次 fetch/1 次 free、alternate link 不产生
-fetch 的缓存边界；相关 TEST21、TEST24、TEST1091、TEST1093、TEST1094 与 TEST999 设备门
-通过 6/6；这不代表脚本侧动态媒体事件、`type`、alternate sheet 切换或其他 link-type 行为。
-
-next644 的 `media` DOM 反射属于 `positron_browser.dll`，Core 不新增接口或承担脚本
-property。Core 继续只负责 `<style media>`/`<link rel="stylesheet" media>` 的 viewport
-选择和 document-owned CSS cache；browser setter 改变 raw attribute 后，调用者如需视觉
-更新必须显式重新样式/布局。TEST1092 只验证 browser 消费者的 metadata 反射，不把它写成
-Core 自动重排保证。
-
-next647 又在 Core UA stylesheet 中提供 `[hidden] { display:none; }`。因此存在 `hidden`
-属性的元素在默认样式和布局中不生成盒，未隐藏元素保持原有流程；这与 browser 已有的
-`HTMLElement.hidden` attribute reflection 配套，但不实现 mutation observer、自动重排或
-辅助技术语义。TEST1095 用隐藏/可见对照和后续段落的 `PCore_NodeBox()`/几何断言验证该
-呈现边界；相关设备门 TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST1095、TEST999
-通过 7/7。Core 没有为此新增公共 C ABI。
-
-next648 又在 Core UA stylesheet 中加入披露控件的静态默认呈现：`details`/`dialog` 为 block，
-`summary` 为 list-item；无 `open` 的 details 隐藏非 summary 子项，无 `open` 的 dialog 不生成
-布局盒，带 `open` 的控件恢复布局。TEST1096 在 closed/open 对照文档中验证 details body、
-summary 和 dialog 的盒状态；相关设备门 TEST21、TEST24、TEST1091、TEST1093、TEST1094、
-TEST1095、TEST1096、TEST999 通过 8/8。该能力不新增公共 C ABI，不负责 summary 激活、属性
-变化后的自动重排、模态焦点或 backdrop。
-
-next649 又在同一 UA stylesheet 中加入 `pre[wrap] { white-space: pre-wrap; }`。带 `wrap` 属性
-的 `<pre>` 在窄视口沿用 Core 的保留空白换行路径，普通 `<pre>` 仍保持 `white-space: pre`；
-TEST1097 通过 120px 视口的代码块/文档高度对照，相关设备门 TEST21、TEST24、TEST1091、
-TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999 通过 9/9。该能力不新增公共
-C ABI，也不保证完整 CSS whitespace、tab 度量或跨字体像素一致性。
-
-next651 将第一条直接 `<summary>` trigger 的展开/收起语义正式放入 Core。新增
-`PCore_DisclosureInfoById()`、`PCore_DisclosureInfoAt()` 查询已布局 summary 的 CSS px
-几何和父 `details` 的 boolean `open` 状态，`PCore_DisclosureToggleById()` /
-`PCore_DisclosureToggleAt()` 负责切换该属性。查询和切换只接受直接父节点为 `<details>` 且
-是首个直接 `summary` 的元素；没有布局盒、目标不是首个 summary 或目标不存在时 fail closed。
-Toggle 是 DOM-only mutation，不隐式执行样式或布局；调用者应在绘制或再次查询前显式调用
-`PCore_StyleDocument()` 与 `PCore_LayoutDocument()`。Core 不拥有窗口、事件派发或重绘。
-
-TEST1099 覆盖 id/坐标解析、closed/open 盒状态、后续内容重排，以及为 browser consumer
-提供的 toggle 结果；WM6 定向门与 TEST1095–1098、TEST999 通过 6/6。该切片不扩展为
-summary 键盘激活、dialog modal/backdrop/lifecycle 或通用 DOM 自动重排保证。
-
-next652 让首个直接 `<summary>` 成为 Core 交互命中链中的可聚焦目标。Core 不新增键盘 ABI，
-仍由消费者在 WM 消息边界读取已布局几何并调用既有 `PCore_DisclosureInfoAt()`/
-`PCore_DisclosureToggleAt()`；因此 Enter/Space 的时序、脚本 key/click 取消和重排调度属于
-宿主与 browser bridge 的组合，而不是 Core 内部消息泵。`TEST1100` 在实际 render window
-中验证 Enter keydown、Space keyup、repeat 去重和 keydown `preventDefault()`；该批不提供
-Tab 遍历、完整 disclosure/辅助技术事件或 dialog modal/backdrop/lifecycle。
-
-next653 增加 additive `PCore_FocusTargetInfo()`，为消费者提供有界的自然 DOM 顺序焦点快照。
-每次查询返回已布局、启用且有正几何的受支持 form-control、非空 `href` anchor 或每个
-`details` 的首个直接 summary 的 CSS px 位置、尺寸和 kind；form kind 沿用
-`PCore_FormControlInfo()` 的 1..10 值，link/disclosure 使用 11/12。hidden、disabled、空
-href、无布局盒和 file-picker 控件被排除，查询不解释 `tabindex`、contenteditable 或 dialog
-modal 规则，并以固定深度上限 fail closed。Core 不拥有窗口、焦点、滚动、事件派发或重绘；
-消费者应在重排后重新查询快照。`TEST1101` 和 WM6 定向门 1095–1101、999 已验证该契约。
+整体所有权见 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
