@@ -8083,7 +8083,8 @@ static int p_browser_script_dispatch_programmatic_click_ex(
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_TEXT &&
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD &&
             target.kind != PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA &&
-            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_SELECT)) {
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_SELECT &&
+            target.kind != PBROWSER_SCRIPT_CLICK_TARGET_DISCLOSURE)) {
         if (session->programmatic_anchor != NULL) {
             PBrowserScriptProgrammaticAnchorTargetInfo anchor_target;
             PBrowserScriptAnchorClickInfoEx anchor_info;
@@ -8208,6 +8209,8 @@ static int p_browser_script_dispatch_programmatic_click_ex(
         }
     } else if (target.kind == PBROWSER_SCRIPT_CLICK_TARGET_FILE) {
         action = PBROWSER_SCRIPT_CLICK_DEFAULT_FILE;
+    } else if (target.kind == PBROWSER_SCRIPT_CLICK_TARGET_DISCLOSURE) {
+        action = PBROWSER_SCRIPT_CLICK_DEFAULT_DISCLOSURE;
     } else if (target.kind == PBROWSER_SCRIPT_CLICK_TARGET_TEXT ||
             target.kind == PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD ||
             target.kind == PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA ||

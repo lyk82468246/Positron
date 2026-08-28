@@ -10553,6 +10553,351 @@ static struct box *pcore_box_for_any_node(struct box *box, dom_node *node)
     return NULL;
 }
 
+/* Resolve the first direct summary trigger of a details element. The
+ * returned parent is retained by dom_node_get_parent_node and belongs to the
+ * caller. Later summary elements are intentionally not activation targets;
+ * this keeps the bounded implementation aligned with the HTML trigger rule
+ * without exposing DOM nodes through the public ABI. */
+static int pcore_disclosure_details_for_summary(dom_node *summary,
+        dom_element **out_details)
+{
+    dom_node *parent;
+    dom_node *child;
+    dom_node *next;
+    int first_summary;
+
+    if (out_details != NULL) {
+        *out_details = NULL;
+    }
+    if (summary == NULL || out_details == NULL ||
+            !pcore_node_name_is(summary, "summary")) {
+        return 0;
+    }
+    parent = NULL;
+    if (dom_node_get_parent_node(summary, &parent) != DOM_NO_ERR ||
+            parent == NULL || !pcore_node_name_is(parent, "details")) {
+        if (parent != NULL) {
+            dom_node_unref(parent);
+        }
+        return 0;
+    }
+    child = NULL;
+    if (dom_node_get_first_child(parent, &child) != DOM_NO_ERR) {
+        dom_node_unref(parent);
+        return 0;
+    }
+    first_summary = 0;
+    while (child != NULL) {
+        if (pcore_node_name_is(child, "summary")) {
+            first_summary = (child == summary) ? 1 : 0;
+            dom_node_unref(child);
+            child = NULL;
+            break;
+        }
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            child = NULL;
+            break;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    if (!first_summary) {
+        dom_node_unref(parent);
+        return 0;
+    }
+    *out_details = (dom_element *) parent;
+    return 1;
+}
+
+static int pcore_disclosure_read_open(dom_element *details, int *out_open)
+{
+    dom_string *name;
+    bool present;
+
+    if (out_open != NULL) {
+        *out_open = 0;
+    }
+    if (details == NULL) {
+        return 0;
+    }
+    name = NULL;
+    if (dom_string_create((const uint8_t *) "open", 4, &name) !=
+            DOM_NO_ERR || name == NULL) {
+        return 0;
+    }
+    present = false;
+    if (dom_element_has_attribute(details, name, &present) != DOM_NO_ERR) {
+        dom_string_unref(name);
+        return 0;
+    }
+    dom_string_unref(name);
+    if (out_open != NULL) {
+        *out_open = present ? 1 : 0;
+    }
+    return 1;
+}
+
+static int pcore_disclosure_toggle_details(dom_element *details,
+        int *out_open)
+{
+    dom_string *name;
+    dom_string *value;
+    bool present;
+    dom_exception err;
+
+    if (out_open != NULL) {
+        *out_open = 0;
+    }
+    if (details == NULL) {
+        return -1;
+    }
+    name = NULL;
+    value = NULL;
+    present = false;
+    if (dom_string_create((const uint8_t *) "open", 4, &name) !=
+            DOM_NO_ERR || name == NULL ||
+            dom_element_has_attribute(details, name, &present) !=
+            DOM_NO_ERR) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return -1;
+    }
+    if (present) {
+        err = dom_element_remove_attribute(details, name);
+    } else {
+        if (dom_string_create((const uint8_t *) "", 0, &value) !=
+                DOM_NO_ERR || value == NULL) {
+            dom_string_unref(name);
+            return -1;
+        }
+        err = dom_element_set_attribute(details, name, value);
+    }
+    if (value != NULL) {
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    if (err != DOM_NO_ERR) {
+        return -1;
+    }
+    if (out_open != NULL) {
+        *out_open = present ? 0 : 1;
+    }
+    return 1;
+}
+
+static int pcore_disclosure_summary_box_info(pcore_render *st,
+        dom_node *summary, struct box *summary_box, int *x, int *y,
+        int *w, int *h, int *open, dom_element **out_details)
+{
+    dom_element *details;
+    int is_open;
+    int ax;
+    int ay;
+
+    if (out_details != NULL) {
+        *out_details = NULL;
+    }
+    if (st == NULL || summary == NULL || summary_box == NULL ||
+            summary_box->width <= 0 || summary_box->height <= 0 ||
+            out_details == NULL) {
+        return 0;
+    }
+    details = NULL;
+    if (!pcore_disclosure_details_for_summary(summary, &details) ||
+            details == NULL || !pcore_disclosure_read_open(details,
+            &is_open)) {
+        if (details != NULL) {
+            dom_node_unref((dom_node *) details);
+        }
+        return 0;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(summary_box, &ax, &ay);
+    if (x != NULL) { *x = ax; }
+    if (y != NULL) { *y = ay; }
+    if (w != NULL) { *w = summary_box->width; }
+    if (h != NULL) { *h = summary_box->height; }
+    if (open != NULL) { *open = is_open; }
+    *out_details = details;
+    return 1;
+}
+
+static dom_element *pcore_box_element_by_id(dom_document *doc,
+        const char *element_id)
+{
+    dom_string *id;
+    dom_element *element;
+
+    if (doc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return NULL;
+    }
+    id = NULL;
+    element = NULL;
+    if (dom_string_create((const uint8_t *) element_id,
+            strlen(element_id), &id) != DOM_NO_ERR || id == NULL ||
+            dom_document_get_element_by_id(doc, id, &element) !=
+            DOM_NO_ERR) {
+        if (id != NULL) {
+            dom_string_unref(id);
+        }
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return NULL;
+    }
+    dom_string_unref(id);
+    return element;
+}
+
+static int pcore_disclosure_info_at_internal(pcore_render *st, int x,
+        int y, int *summary_x, int *summary_y, int *summary_w,
+        int *summary_h, int *open, dom_element **out_details)
+{
+    struct box *hit;
+    struct box *box;
+    dom_element *details;
+
+    if (out_details != NULL) {
+        *out_details = NULL;
+    }
+    if (st == NULL || out_details == NULL) {
+        return 0;
+    }
+    hit = pcore_hit(st->root_box, x, y);
+    for (box = hit; box != NULL; box = box->parent) {
+        if (box->node == NULL || !pcore_node_name_is(box->node,
+                "summary")) {
+            continue;
+        }
+        details = NULL;
+        if (pcore_disclosure_summary_box_info(st, box->node, box,
+                summary_x, summary_y, summary_w, summary_h, open,
+                &details)) {
+            *out_details = details;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+PCORE_API int PCore_DisclosureInfoById(HANDLE hDoc,
+        const char *summary_id, int *x, int *y, int *w, int *h,
+        int *open)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_element *summary;
+    dom_element *details;
+    struct box *box;
+    int result;
+
+    if (x != NULL) { *x = 0; }
+    if (y != NULL) { *y = 0; }
+    if (w != NULL) { *w = 0; }
+    if (h != NULL) { *h = 0; }
+    if (open != NULL) { *open = 0; }
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL || summary_id == NULL || summary_id[0] == '\0') {
+        return 1;
+    }
+    summary = pcore_box_element_by_id(doc, summary_id);
+    if (summary == NULL) {
+        return 1;
+    }
+    box = pcore_box_for_any_node(st->root_box, (dom_node *) summary);
+    details = NULL;
+    result = pcore_disclosure_summary_box_info(st, (dom_node *) summary,
+            box, x, y, w, h, open, &details);
+    if (details != NULL) {
+        dom_node_unref((dom_node *) details);
+    }
+    dom_node_unref((dom_node *) summary);
+    return result ? 0 : 1;
+}
+
+PCORE_API int PCore_DisclosureInfoAt(HANDLE hDoc, int x, int y,
+        int *summary_x, int *summary_y, int *summary_w, int *summary_h,
+        int *open)
+{
+    pcore_render *st;
+    dom_element *details;
+    int result;
+
+    if (summary_x != NULL) { *summary_x = 0; }
+    if (summary_y != NULL) { *summary_y = 0; }
+    if (summary_w != NULL) { *summary_w = 0; }
+    if (summary_h != NULL) { *summary_h = 0; }
+    if (open != NULL) { *open = 0; }
+    st = pcore_get_render((dom_document *) hDoc);
+    details = NULL;
+    result = pcore_disclosure_info_at_internal(st, x, y, summary_x,
+            summary_y, summary_w, summary_h, open, &details);
+    if (details != NULL) {
+        dom_node_unref((dom_node *) details);
+    }
+    return result;
+}
+
+PCORE_API int PCore_DisclosureToggleById(HANDLE hDoc,
+        const char *summary_id, int *open_after)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_element *summary;
+    dom_element *details;
+    struct box *box;
+    int result;
+
+    if (open_after != NULL) { *open_after = 0; }
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL || summary_id == NULL || summary_id[0] == '\0') {
+        return 0;
+    }
+    summary = pcore_box_element_by_id(doc, summary_id);
+    if (summary == NULL) {
+        return 0;
+    }
+    box = pcore_box_for_any_node(st->root_box, (dom_node *) summary);
+    details = NULL;
+    result = pcore_disclosure_summary_box_info(st, (dom_node *) summary,
+            box, NULL, NULL, NULL, NULL, NULL, &details);
+    if (result) {
+        result = pcore_disclosure_toggle_details(details, open_after);
+    }
+    if (details != NULL) {
+        dom_node_unref((dom_node *) details);
+    }
+    dom_node_unref((dom_node *) summary);
+    return result;
+}
+
+PCORE_API int PCore_DisclosureToggleAt(HANDLE hDoc, int x, int y,
+        int *open_after)
+{
+    pcore_render *st;
+    dom_element *details;
+    int result;
+
+    if (open_after != NULL) { *open_after = 0; }
+    st = pcore_get_render((dom_document *) hDoc);
+    details = NULL;
+    result = pcore_disclosure_info_at_internal(st, x, y, NULL, NULL,
+            NULL, NULL, NULL, &details);
+    if (result) {
+        result = pcore_disclosure_toggle_details(details, open_after);
+    }
+    if (details != NULL) {
+        dom_node_unref((dom_node *) details);
+    }
+    return result;
+}
+
 PCORE_API int PCore_LabelTargetAt(HANDLE hDoc, int x, int y,
         int *target_x, int *target_y, int *target_kind)
 {

@@ -1,6 +1,6 @@
 # Positron 当前交接
 
-更新时间：2026-08-27
+更新时间：2026-08-28
 
 本文件只保存接手下一批工作所需的当前快照。已完成批次、旧故障和旧验收记录以 Git 历史、`docs/history/` 与本地 `tmp/device-runs/` 为准，不在这里累计。
 
@@ -15,9 +15,9 @@
 
 ## 当前仓库基线
 
-- 分支：当前候选为 `codex/iana-navigation-resource-fix-20260827`，基于 `origin/main`
-  的 `af4a63b9`；交付前后必须重新核对远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next650，Core 的递归 DOM 资源收集不再为每个 DFS 栈帧保留约 3 KiB 的
+- 分支：当前候选在 `main`，最近已验证的主线基线包含 `8048554c`；交付后仍须重新核对
+  HEAD、远端和工作区，不能沿用本文件中的 Git 结论。
+- 当前能力批次：next651，Core 的递归 DOM 资源收集不再为每个 DFS 栈帧保留约 3 KiB 的
   stylesheet reference/URL 自动数组，而是在一次 style transaction 中分配并共享一套有界
   scratch buffer；真实 fetch、document cache、CSS parse/attach、`@import`、media 与释放路径
   保持启用。next649 的页面 stylesheet `media`、disabled、rel-token 选择、hidden、披露控件与 `pre[wrap]` 渲染 → Core 将 `<style media>` 与
@@ -46,8 +46,11 @@
   file picker/真实 label 触摸仍是独立人工边界。next644 又为 `<link>` 与 `<style>` wrapper
   增加了受限的 `media` UTF-8 属性反射；缺失返回空串，`setAttribute`/setter/
   `removeAttribute` 保持 live 一致，其他元素返回 `undefined` 且 setter 不改变 raw 属性。
-  这不触发脚本侧 MediaQueryList 事件或自动重排。
-- 测试编号上限：`TEST_MAX_NUMBER 1098`。
+  这不触发脚本侧 MediaQueryList 事件或自动重排。next651 已把首个直接 summary 的
+  id/坐标查询、open toggle 和 `HTMLElement.click()` typed default 接入产品边界；host 只
+  调用 Core 并为活动渲染页排队 style/layout。toggle 仍是 DOM-only，summary 键盘激活、
+  dialog modal focus/backdrop/lifecycle 仍未实现。
+- 测试编号上限：`TEST_MAX_NUMBER 1099`。
 - Nightly 分发脚本 `scripts\package_nightly.bat`/`.ps1` 只提取既有 Debug/Release 产物，默认
   选择最近一次完整构建的一套，生成 ZIP_STORED 的 `positron-nightly.zip`；默认自动测试 INI 从
   `test_host/main.c` 的实际 dispatch 动态生成，并排除源码标记的 manual-only 测试。无
@@ -818,6 +821,21 @@ next650 的 IANA 深链资源收集栈修复已经完成：
   `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和仓库/文档审计均通过；tracked
   INI 未修改。
 
+next651 的 disclosure activation 自动门已经完成：
+
+- `tmp/device-runs/20260828-210534-next651-disclosure-activation-r4/` 的定向门为 PASS，
+  TEST1095、1096、1097、1098、1099、999 共 6/6，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`
+  且 `test13_route_ok=True`；设备屏幕报告为 240x320。
+- `positron_core.dll` 提供首个直接 summary 的 id/坐标查询与 `details.open` toggle；
+  `positron_browser.dll` 的程序化 click adapter 提供 disclosure target/default；host 只
+  通过稳定 ABI 执行 Core mutation，并为活动页排队完整 style/layout。TEST1099 同时覆盖
+  closed/open 盒状态、后续段落下移、cancelable click、`preventDefault()` 和 open 反射。
+- Core toggle 是 DOM-only；summary 键盘激活、完整 disclosure/辅助技术事件、dialog modal
+  focus/backdrop/lifecycle 和真实触摸视觉仍是后续边界。首次组合门因累积临时 staging 目录
+  耗尽设备存储而失败，清理本批明确创建的临时目录后重跑通过，不记为代码回归。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和仓库/文档审计均通过；
+  tracked INI 未修改。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -856,7 +874,7 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1098 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1099 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 

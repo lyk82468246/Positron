@@ -373,6 +373,14 @@ next649 在同一 UA stylesheet 中补齐 HTML `pre[wrap]` 的默认换行：带
 TEST1096、TEST999 的 WM6 Debug 定向门通过 9/9。本批不新增公共 C ABI，也不宣称完整 CSS
 whitespace、tab 度量或跨字体像素一致性。
 
+next651 把第一条直接 `<summary>` 的展开/收起行为放入 `positron_core.dll`：
+`PCore_DisclosureInfoById/At()` 查询已布局触发器，`PCore_DisclosureToggleById/At()` 切换
+父 `details` 的 boolean `open` 属性；调用者需显式重新样式和布局。`positron_browser.dll`
+的程序化 `HTMLElement.click()` adapter 负责可取消 click 与 default-action 顺序，宿主只调用
+Core 并安排重排；物理点击复用相同的命中/事件路径。`TEST1099` 与 1095–1098、999 在 WM6
+通过 6/6。该切片不承诺 summary 键盘激活、dialog 模态焦点/backdrop/lifecycle 或通用 DOM
+自动重排。
+
 ## 快速开始
 
 ### 前置环境

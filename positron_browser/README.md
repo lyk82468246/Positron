@@ -444,6 +444,16 @@ dialog 不生成布局盒，带 `open` 的控件恢复布局。browser DLL 仍�
 点击、属性变化后的自动重排、模态焦点、backdrop 和 dialog 生命周期不在本批范围内。TEST1096
 由 `test_host` 作为 Core 消费者验证，未新增 browser 公共 ABI。
 
+next651 扩展既有 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` typed
+adapter，增加 `PBROWSER_SCRIPT_CLICK_TARGET_DISCLOSURE` 与
+`PBROWSER_SCRIPT_CLICK_DEFAULT_DISCLOSURE`。宿主的 target callback 对已布局的首个直接
+`summary` 返回 Core 几何；browser layer 仍统一派发可取消 `click`，只有未调用
+`preventDefault()` 才向 default callback 交还 disclosure action。宿主随后调用
+`PCore_DisclosureToggleById()` 并为活动渲染页安排既有 style/layout 重排；browser DLL 不
+持有 DOM、窗口、绘制或 dialog 生命周期。物理点击可以复用同一 click 传播与 Core point
+toggle，但真实触摸、键盘 summary 激活和 dialog modal/backdrop 仍是消费者边界。TEST1099
+验证该程序化 target/default 接线和 `details.open` 状态。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

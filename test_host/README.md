@@ -173,6 +173,13 @@ next649 的 TEST1097 是 Core `pre[wrap]` 消费者断言：在 120px 窄视口�
 实际布局。定向门使用 `21,24,1091,1093,1094,1095,1096,1097,999`，设备上通过 9/9；
 `test_host` 只提供对照 fixture 和几何断言，不拥有 UA 规则，也没有修改 tracked 默认 INI。
 
+next651 的 TEST1099 是 disclosure 的产品消费者断言：fixture 通过 Core 查询并按坐标切换
+首个直接 `summary`，显式重新样式/布局后确认 body 出现且后续内容下移；随后启用浏览器
+JavaScript，验证 `HTMLElement.click()` 的可取消 click、`preventDefault()` 和
+`details.open` 反射。`test_host` 的 target/default callback 只负责调用 Core 和排队活动页的
+重排，不拥有 disclosure 语义。定向门使用 `1095-1099,999`（需 `-EnableJavaScript`），设备
+上通过 6/6；真实触摸、summary 键盘操作和 dialog 模态视觉仍需另行验收。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

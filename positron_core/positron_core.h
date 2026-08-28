@@ -723,6 +723,33 @@ PCORE_API int PCore_FormActivateAt(HANDLE hDoc, int x, int y,
                                   int *dirty_x, int *dirty_y,
                                   int *dirty_w, int *dirty_h);
 
+/* Resolve the first, direct <summary> trigger of a laid-out <details>
+ * element. Geometry is returned in document CSS px and open receives the
+ * current boolean presence of the parent details' `open` attribute. The
+ * summary is addressed by its UTF-8 DOM id; the API does not expose libdom
+ * nodes and returns non-zero when the id is absent, not a valid trigger, or
+ * the trigger has no laid-out box. */
+PCORE_API int PCore_DisclosureInfoById(HANDLE hDoc,
+        const char *summary_id, int *x, int *y, int *w, int *h,
+        int *open);
+
+/* Resolve a trusted point on the first <summary> trigger of a laid-out
+ * <details>. Returns 1 when a trigger was hit, 0 otherwise. `open` receives
+ * the parent details state when non-NULL. */
+PCORE_API int PCore_DisclosureInfoAt(HANDLE hDoc, int x, int y,
+        int *summary_x, int *summary_y, int *summary_w, int *summary_h,
+        int *open);
+
+/* Toggle the parent details' open attribute for a summary addressed by id or
+ * a document-space point. Returns 1 when the summary consumed the request,
+ * 0 when no laid-out summary was resolved, and -1 on a DOM mutation error.
+ * The mutation is DOM-only: callers must run PCore_StyleDocument and
+ * PCore_LayoutDocument before painting or querying the new box tree. */
+PCORE_API int PCore_DisclosureToggleById(HANDLE hDoc,
+        const char *summary_id, int *open_after);
+PCORE_API int PCore_DisclosureToggleAt(HANDLE hDoc, int x, int y,
+        int *open_after);
+
 /* Dynamic CSS selector state supplied by an embedder. Focus, active and hover
  * nodes are document-owned references consumed by the normal libcss selector
  * callbacks during the next PCore_StyleDocument[Ex] pass. SetAt resolves the

@@ -645,7 +645,29 @@ TEST1098 覆盖 20 层 DOM 的真实外链 CSS 与第二次 cache 命中；TEST1
 320x320 WM6 设备上人工复核 TEST13，未见显著崩溃、卡死或布局异常。极端 DOM 深度仍应作为
 有界资源议题由真实语料驱动，不通过恢复 nocollect/resource-skip 等历史绕过处理。
 
-### 45. 建立真实页面驱动的兼容队列
+### 45. next651：披露控件 summary 激活（已完成）
+
+next651 把第一条直接 `<summary>` trigger 的展开/收起语义放入产品 DLL。`positron_core.dll`
+新增 `PCore_DisclosureInfoById()`、`PCore_DisclosureInfoAt()`、
+`PCore_DisclosureToggleById()` 和 `PCore_DisclosureToggleAt()`：只接受已经布局的
+`<details>` 首个直接 `summary`，返回 CSS px 几何和 `open` 状态，并通过 boolean `open`
+属性完成 DOM mutation。该 mutation 不隐式重建样式或布局，调用者必须在绘制或再次查询盒树前
+显式运行 `PCore_StyleDocument()` 与 `PCore_LayoutDocument()`。
+
+`positron_browser.dll` 的既有程序化 `HTMLElement.click()` typed adapter 新增 disclosure
+target/default；浏览器层负责可取消 `click` 的顺序和 `preventDefault()`，宿主只解析 Core
+target、执行 Core toggle，并为当前渲染页排队既有的完整 style/layout 重排。物理 summary 点击
+复用同一 Core hit-test 和 browser click 传播路径。`test_host.exe` 只是该 ABI 的消费者，未
+持有 disclosure 语义。
+
+TEST1099 覆盖 id/坐标解析、首个 summary 限定、closed/open 盒状态、后续内容下移、程序化
+click 的取消与 `details.open` 反射；设备证据目录为
+`tmp/device-runs/20260828-210534-next651-disclosure-activation-r4/`，TEST1095–1099、999
+通过 6/6，唯一 `TESTBENCH PASS` 且零 `ERROR`/`FAIL`。C89、Debug/Release ARMV4I 构建和
+仓库审计通过。本批仍不实现 summary 键盘激活、dialog modal focus/backdrop/lifecycle，也不
+把属性 mutation 自动重排扩展为 Core 的隐式保证。
+
+### 46. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -656,7 +678,7 @@ TEST1098 覆盖 20 层 DOM 的真实外链 CSS 与第二次 cache 命中；TEST1
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 46. 安排新的全范围检查点
+### 47. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

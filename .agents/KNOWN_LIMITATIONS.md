@@ -134,15 +134,18 @@
   DOM mutation。next647 又在 Core UA stylesheet 中加入 `[hidden] { display:none; }`，使存在
   `hidden` 属性的元素不生成布局盒；这只覆盖默认呈现，不实现脚本侧 mutation observer、完整
   CSS cascade 或隐藏状态相关的辅助技术语义。next648 又为 `details`/`dialog`/`summary` 提供
-  静态 open-state 默认布局：关闭 details 隐藏非 summary 子项，关闭 dialog 不生成布局盒；仍
-  不实现 summary activation、open mutation 后自动重排、modal focus、backdrop 或 dialog 生命周期。
+  静态 open-state 默认布局：关闭 details 隐藏非 summary 子项，关闭 dialog 不生成布局盒。
+  next651 又为首个直接 summary 提供 Core 的 id/坐标查询与 open toggle，并让 browser 的
+  `HTMLElement.click()` typed adapter 传播可取消 click、执行 Core default 和安排活动页重排；
+  toggle 仍是 DOM-only，调用者必须显式 style/layout。尚不实现 summary 键盘激活、完整
+  disclosure/辅助技术事件、dialog modal focus、backdrop 或 dialog 生命周期。
   next649 又把 HTML `pre[wrap]` 接入 Core UA stylesheet 的 `white-space: pre-wrap`，窄视口
   代码块会换行并增加布局高度；这不等于完整 CSS whitespace、tab 度量或所有字体下的像素一致性。
   next650 又把递归资源收集中的 stylesheet reference/URL 自动数组改为单次 style transaction
   共享的有界 heap scratch；真实 fetch/cache/parse/attach/free 路径不变，TEST13 的 IANA 三跳和
   TEST1098 深层 DOM 外链 CSS/cache 契约已在 WM6 通过。资源遍历本身仍是递归实现；极端或恶意
   深度的 DOM 尚无独立硬深度上限，不能把这次修复外推为任意深度文档都安全。
-  TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST1098 与 TEST999 的 Debug 门已通过。next644 又在 browser bootstrap 中提供
+  TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST1098、TEST1099 与 TEST999 的 Debug 门已通过。next644 又在 browser bootstrap 中提供
   `<link>` 与 `<style>` 的 bounded `media` 属性反射：缺失值为空串，setter 经既有
   UTF-8 attribute bridge 写回并支持 `removeAttribute()` 恢复，其他元素返回 `undefined`
   且 setter 不改变 raw 属性。该反射不触发脚本侧 MediaQueryList 事件、自动重排或 link
@@ -308,7 +311,7 @@
 
 ### 当前边界
 
-- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1098 全覆盖。
+- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1099 全覆盖。
 - 自动日志与几何断言不能替代视觉、真实触摸、SIP、旋转、文件选择器和失败网络的人工判断。
 - `tmp/` 中设备日志和截图只在本机存在，不进入 Git；丢失本机证据后只能依赖提交中的结论和可重跑测试。
 - WMDC/RAPI 自动化默认假设已有且独占的设备连接；连接和配对本身通常仍是 GUI 操作。

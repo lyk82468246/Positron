@@ -236,7 +236,8 @@ textarea 布局宽度或完整 textarea Web IDL 实现。
 当前 raw metadata bridge 还为 `HTMLTextAreaElement.rows` 提供有限整数属性往返；这不等于
 textarea 布局高度或完整 textarea Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.open` 的布尔属性往返；Core 已用该属性驱动
-details/dialog 的静态默认布局，但这不等于 summary 激活、属性变化后的自动重排、modal focus、
+details/dialog 的静态默认布局，next651 又为首个直接 summary 提供有界的查询、toggle 和
+browser click 接线，但这不等于 summary 键盘激活、完整 disclosure 事件、modal focus、
 backdrop、dialog 生命周期或完整 HTMLElement Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.autocapitalize`、`itemValue`、`is` 的 UTF-8
 属性往返；这不等于输入法/大小写策略、microdata 解析或 customized built-in 升级。
@@ -1295,6 +1296,26 @@ next649 在 `positron_core.dll` 的 UA stylesheet 中加入 `pre[wrap] { white-s
 TEST21、TEST24、TEST1091、TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999
 设备门为 9/9。该切片不宣称完整 CSS whitespace、tab 度量、字体 shaping 或像素级跨设备一致性。
 
+#### next651 的 summary 激活边界
+
+next651 将第一条直接 `<summary>` trigger 的展开/收起语义归入产品 DLL。`positron_core.dll`
+提供 `PCore_DisclosureInfoById()` / `PCore_DisclosureInfoAt()` 查询已布局 summary 的 CSS
+px 几何与父 `details` 的 boolean `open` 状态，并提供对应的 `PCore_DisclosureToggleById()` /
+`PCore_DisclosureToggleAt()` DOM mutation。查询只接受直接父节点为 `<details>` 且是其首个直接
+`summary` 的元素；未布局、非首个 summary 或没有可用盒时 fail closed。toggle 只改变 DOM
+属性，不隐式执行 style/layout；消费者必须显式完成后续样式、布局和绘制事务。
+
+`positron_browser.dll` 在既有 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()`
+typed adapter 中增加 disclosure target/default。browser layer 负责一次可取消的 `click`、
+`preventDefault()` 与 default-action 顺序；宿主通过 Core 按 id 解析目标、执行 toggle，并在
+活动渲染页排队完整 style/layout 重排。物理点击同样由宿主命中后复用 browser click 传播和
+Core point toggle。`test_host.exe` 只提供 callback consumer 与 TEST1099 fixture，不拥有
+disclosure 状态。
+
+该切片不实现 summary 键盘激活、dialog 的 modal focus/backdrop/lifecycle、完整 disclosure
+事件/辅助技术语义或通用 DOM 自动重排。TEST1099 与 TEST1095–1098、TEST999 的定向设备门
+已在 WM6 通过 6/6。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：
@@ -1338,6 +1359,10 @@ fixture/断言与设备门消费者。
     它不负责 native invalid UI、焦点/滚动或表单提交。
 3. browser layer 持有并执行产品 bootstrap，并在 `PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx()` 中执行程序化表单激活策略；宿主 Ex callback 只提供 target lookup、submit validation、default action 和非表单 click 传播；native EDIT/SELECT Ex callback 只提供 value/selection commit、composition phase/data、焦点转换后的 core 事件传播；native SELECT 键盘取消通过 `PBrowser_ScriptSessionDispatchNativeSelectKey()` 返回 default-allowed；后续把其余 form/input callback 实现从 `test_host` 迁入 browser layer；
 4. 宿主继续提供资源、窗口和控件回调，browser layer 在页面提交、失败或关闭时释放 context 和 bridge。
+
+next651 的 disclosure activation 也遵循同一所有权边界：Core 提供已布局首个直接 summary
+的几何/状态查询和 `details.open` DOM toggle，browser layer 提供程序化 click 的可取消事件
+与 typed default 顺序，宿主负责 Core 调用、活动页 style/layout 重排和窗口/触摸副作用。
 
 因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
 history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/value/checked/disabled/validation-query/custom-validity/constraint-reflection/form-property、ID-addressable

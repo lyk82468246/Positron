@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1098
+#define TEST_MAX_NUMBER 1099
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -7264,6 +7264,7 @@ static int pcore_activate_form_button(HWND hwnd, unsigned int index,
         int kind, int x, int y);
 static int pcore_focus_native_form_control(int kind, int x, int y);
 static int pcore_handle_file_input(HWND hwnd, int x, int y);
+static int pcore_handle_disclosure(HWND hwnd, int x, int y);
 
 static int pcore_native_script_active(void)
 {
@@ -8146,6 +8147,19 @@ static int pcore_browser_script_programmatic_click_target(void *pw,
     out_info->disabled = 0;
     core_kind = 0;
     core_disabled = 0;
+    if (PCore_DisclosureInfoById(bridge->document, element_id,
+            &out_info->x, &out_info->y, &out_info->width,
+            &out_info->height, NULL) == 0) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_DISCLOSURE;
+        out_info->found = 1;
+        bridge->programmatic_click_element_id =
+                pcore_browser_script_copy_string(element_id);
+        if (bridge->programmatic_click_element_id == NULL) {
+            out_info->found = 0;
+            return -1;
+        }
+        return 0;
+    }
     if (PCore_FormControlInfoById(bridge->document, element_id,
             &out_info->x, &out_info->y, &out_info->width,
             &out_info->height, &core_kind, NULL, &core_disabled) != 0) {
@@ -8281,6 +8295,16 @@ static int pcore_browser_script_programmatic_click_default(void *pw,
         if (bridge->hwnd != NULL) {
             pcore_invalidate_form_dirty(bridge->hwnd, dirty_x, dirty_y,
                     dirty_w, dirty_h);
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 0;
+    }
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_DISCLOSURE) {
+        if (PCore_DisclosureToggleById(bridge->document,
+                info->element_id, NULL) < 0) {
+            return -1;
+        }
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
             pcore_request_interaction_restyle(bridge->hwnd);
         }
         return 0;
@@ -11030,28 +11054,66 @@ static int pcore_browser_script_dom_set_attribute(void *pw, const char *id,
         const char *name, const char *value)
 {
     pcore_browser_script_bridge *bridge;
+    int changed;
+    int i;
+    int is_open;
+    char c;
 
     bridge = (pcore_browser_script_bridge *) pw;
     if (bridge == NULL || bridge->document == NULL || id == NULL ||
             name == NULL || value == NULL) {
         return -1;
     }
-    return PCore_NodeSetAttributeById(bridge->document, id, name, value) == 0 ?
-            1 : 0;
+    changed = PCore_NodeSetAttributeById(bridge->document, id, name, value) ==
+            0 ? 1 : 0;
+    is_open = (strlen(name) == 4);
+    for (i = 0; is_open && i < 4; i++) {
+        c = name[i];
+        if (c >= 'A' && c <= 'Z') {
+            c = (char) (c + ('a' - 'A'));
+        }
+        if (c != "open"[i]) {
+            is_open = 0;
+        }
+    }
+    if (changed && is_open && bridge->document == g_render_doc &&
+            bridge->hwnd != NULL) {
+        pcore_request_interaction_restyle(bridge->hwnd);
+    }
+    return changed;
 }
 
 static int pcore_browser_script_dom_remove_attribute(void *pw,
         const char *id, const char *name)
 {
     pcore_browser_script_bridge *bridge;
+    int changed;
+    int i;
+    int is_open;
+    char c;
 
     bridge = (pcore_browser_script_bridge *) pw;
     if (bridge == NULL || bridge->document == NULL || id == NULL ||
             name == NULL) {
         return -1;
     }
-    return PCore_NodeRemoveAttributeById(bridge->document, id, name) == 0 ?
-            1 : 0;
+    changed = PCore_NodeRemoveAttributeById(bridge->document, id, name) ==
+            0 ? 1 : 0;
+    is_open = (strlen(name) == 4);
+    for (i = 0; is_open && i < 4; i++) {
+        c = name[i];
+        if (c >= 'A' && c <= 'Z') {
+            c = (char) (c + ('a' - 'A'));
+        }
+        if (c != "open"[i]) {
+            is_open = 0;
+        }
+    }
+    if (changed && is_open && bridge->document == g_render_doc &&
+            bridge->hwnd != NULL) {
+        pcore_request_interaction_restyle(bridge->hwnd);
+    }
+    return changed;
 }
 
 static int pcore_browser_script_dom_get_value(void *pw, const char *id,
@@ -14386,6 +14448,21 @@ static void pcore_invalidate_form_dirty(HWND hwnd,
     InvalidateRect(hwnd, &dirty, FALSE);
 }
 
+/* Disclosure state lives in positron_core. The host only forwards a trusted
+ * point and schedules the existing full style/layout transaction so that
+ * opening or closing a details element reflows all following content. */
+static int pcore_handle_disclosure(HWND hwnd, int x, int y)
+{
+    int result;
+
+    result = PCore_DisclosureToggleAt(g_render_doc, x, y, NULL);
+    if (result > 0) {
+        pcore_request_interaction_restyle(hwnd);
+        return 1;
+    }
+    return 0;
+}
+
 static int pcore_form_toggle_control_at(int x, int y,
         unsigned int *out_index, int *out_kind, int *out_selected,
         int *out_disabled)
@@ -16162,6 +16239,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int toggle_kind;
         int toggle_selected_before;
         int toggle_disabled;
+        int disclosure_found;
         int button_found;
         int button_product_started;
         int button_phase_result;
@@ -16199,6 +16277,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         toggle_kind = 0;
         toggle_selected_before = 0;
         toggle_disabled = 0;
+        disclosure_found = 0;
         button_found = 0;
         button_product_started = 0;
         button_phase_result = 0;
@@ -16229,6 +16308,11 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                              href, sizeof(href), target, sizeof(target),
                              rel, sizeof(rel)) == 0) {
             link_found = 1;
+        }
+        if (g_render_doc != NULL &&
+                PCore_DisclosureInfoAt(g_render_doc, cx, cy + g_scroll_y,
+                NULL, NULL, NULL, NULL, NULL) == 1) {
+            disclosure_found = 1;
         }
         if (link_found && pcore_native_script_active()) {
             (void) pcore_browser_script_dispatch_anchor_click_at(
@@ -16326,6 +16410,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         if (g_render_doc != NULL &&
                 pcore_handle_label(hwnd, cx, cy + g_scroll_y)) {
+            return 0;
+        }
+        if (disclosure_found) {
+            (void) pcore_handle_disclosure(hwnd, cx, cy + g_scroll_y);
             return 0;
         }
         /* Document-space point = client point + scroll (scroll_x is 0). If it
@@ -20518,6 +20606,7 @@ static BOOL test1097_core_pre_wrap_rendering_contract(void)
     int unwrapped_h;
     int wrapped_doc_h;
     int unwrapped_doc_h;
+    char error[256];
     int screen_w;
     int screen_h;
     int pass;
@@ -20565,8 +20654,13 @@ static BOOL test1097_core_pre_wrap_rendering_contract(void)
     PCore_SetViewport(screen_w, screen_h, 96);
 
     if (!pass) {
+        _snprintf(error, sizeof(error) - 1,
+                "rc=%d/%d box=%d,%d/%d,%d doc=%d/%d",
+                wrapped_rc, unwrapped_rc, wrapped_w, wrapped_h,
+                unwrapped_w, unwrapped_h, wrapped_doc_h, unwrapped_doc_h);
+        error[sizeof(error) - 1] = '\0';
         show_error(L"TEST 1097 FAIL",
-                "pre wrap attribute did not enable wrapped layout");
+                error);
         return FALSE;
     }
     show_info(L"TEST 1097 OK",
@@ -20694,6 +20788,147 @@ static BOOL test1098_core_deep_resource_collection_contract(void)
     show_info(L"TEST 1098 OK",
             "A 20-level DOM collects, parses and attaches external CSS; a "
             "second style pass reuses the document cache without fetching.");
+    return TRUE;
+}
+
+/* TEST 1099 - summary activation toggles details through the product path. */
+static BOOL test1099_browser_disclosure_activation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<details id='details'><summary id='summary'>More</summary>"
+        "<p id='body'>closed body</p></details>"
+        "<p id='after'>after</p>"
+        "<p id='result'>pending</p>"
+        "<script>var d=document.getElementById('details');"
+        "var s=document.getElementById('summary');var events='';var count=0;"
+        "s.addEventListener('click',function(e){events+=e.type+'|'"
+        "+String(e.defaultPrevented)+';';count++;"
+        "if(count===2)e.preventDefault();});"
+        "s.click();var first=d.open;s.click();var second=d.open;"
+        "document.getElementById('result').textContent=events+'|'"
+        "+String(first)+'|'+String(second);</script>"
+        "</body></html>";
+    HANDLE document;
+    char result[256];
+    char open_value[8];
+    char error[320];
+    int summary_x;
+    int summary_y;
+    int summary_w;
+    int summary_h;
+    int open;
+    int open_after;
+    int body_x;
+    int body_y;
+    int body_w;
+    int body_h;
+    int closed_after_y;
+    int opened_after_y;
+    int executed;
+    int ignored;
+    int bytes;
+    int open_bytes;
+    int ok;
+
+    document = NULL;
+    memset(result, 0, sizeof(result));
+    memset(open_value, 0, sizeof(open_value));
+    memset(error, 0, sizeof(error));
+    summary_x = 0;
+    summary_y = 0;
+    summary_w = 0;
+    summary_h = 0;
+    open = 0;
+    open_after = 0;
+    body_x = 0;
+    body_y = 0;
+    body_w = 0;
+    body_h = 0;
+    closed_after_y = 0;
+    opened_after_y = 0;
+    executed = -1;
+    ignored = -1;
+    bytes = 0;
+    open_bytes = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || PCore_StyleDocument(document, NULL) != 0 ||
+            PCore_LayoutDocument(document, 320, 240) != 0 ||
+            PCore_DisclosureInfoById(document, "summary", &summary_x,
+            &summary_y, &summary_w, &summary_h, &open) != 0 ||
+            open != 0 || summary_w <= 0 || summary_h <= 0 ||
+            PCore_DisclosureInfoById(document, "details", NULL, NULL,
+            NULL, NULL, NULL) == 0 ||
+            PCore_FragmentInfoById(document, "body", &body_x, &body_y,
+            &body_w, &body_h) == 0 ||
+            PCore_FragmentInfoById(document, "after", NULL, &closed_after_y,
+            NULL, NULL) != 0) {
+        ok = 0;
+    }
+    if (ok && (PCore_DisclosureInfoAt(document,
+            summary_x + summary_w / 2, summary_y + summary_h / 2,
+            NULL, NULL, NULL, NULL, &open) != 1 || open != 0 ||
+            PCore_DisclosureToggleAt(document,
+            summary_x + summary_w / 2, summary_y + summary_h / 2,
+            &open_after) != 1 || open_after != 1 ||
+            PCore_StyleDocument(document, NULL) != 0 ||
+            PCore_LayoutDocument(document, 320, 240) != 0 ||
+            PCore_FragmentInfoById(document, "body", &body_x, &body_y,
+            &body_w, &body_h) != 0 || body_w <= 0 || body_h <= 0 ||
+            PCore_FragmentInfoById(document, "after", NULL, &opened_after_y,
+            NULL, NULL) != 0)) {
+        ok = 0;
+    }
+    if (ok && (opened_after_y <= closed_after_y ||
+            PCore_DisclosureToggleById(document, "summary",
+            &open_after) != 1 || open_after != 0 ||
+            PCore_StyleDocument(document, NULL) != 0 ||
+            PCore_LayoutDocument(document, 320, 240) != 0 ||
+            PCore_FragmentInfoById(document, "body", NULL, NULL,
+            NULL, NULL) == 0)) {
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        if (pcore_browser_execute_inline_scripts(document, 1, &executed,
+                &ignored, error, sizeof(error)) != 0 || executed != 1 ||
+                ignored != 0 || PCore_NodeTextContentById(document, "result",
+                result, sizeof(result), &bytes) != 0 ||
+                strcmp(result, "click|false;click|false;|true|true") != 0 ||
+                PCore_NodeAttributeById(document, "details", "open",
+                open_value, sizeof(open_value), &open_bytes) != 0 ||
+                open_bytes != 0 || open_value[0] != '\0') {
+            ok = 0;
+        }
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    pcore_browser_script_session_destroy();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "summary=%d,%d,%d,%d open=%d/%d after=%d/%d "
+                    "result[%d]=%s executed=%d ignored=%d",
+                    summary_x, summary_y, summary_w, summary_h, open,
+                    open_after, closed_after_y, opened_after_y, bytes,
+                    result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1099 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1099 OK",
+            "Core resolves and toggles the first summary trigger;"
+            " HTMLElement.click() dispatches a cancelable click, updates"
+            " details.open, reflows after a style/layout pass, and honors"
+            " preventDefault on a second activation.");
     return TRUE;
 }
 
@@ -78537,6 +78772,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1096: ok = test1096_core_disclosure_rendering_contract(); break;
         case 1097: ok = test1097_core_pre_wrap_rendering_contract(); break;
         case 1098: ok = test1098_core_deep_resource_collection_contract(); break;
+        case 1099: ok = test1099_browser_disclosure_activation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

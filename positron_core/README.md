@@ -147,3 +147,15 @@ next649 又在同一 UA stylesheet 中加入 `pre[wrap] { white-space: pre-wrap;
 TEST1097 通过 120px 视口的代码块/文档高度对照，相关设备门 TEST21、TEST24、TEST1091、
 TEST1093、TEST1094、TEST1095、TEST1096、TEST1097、TEST999 通过 9/9。该能力不新增公共
 C ABI，也不保证完整 CSS whitespace、tab 度量或跨字体像素一致性。
+
+next651 将第一条直接 `<summary>` trigger 的展开/收起语义正式放入 Core。新增
+`PCore_DisclosureInfoById()`、`PCore_DisclosureInfoAt()` 查询已布局 summary 的 CSS px
+几何和父 `details` 的 boolean `open` 状态，`PCore_DisclosureToggleById()` /
+`PCore_DisclosureToggleAt()` 负责切换该属性。查询和切换只接受直接父节点为 `<details>` 且
+是首个直接 `summary` 的元素；没有布局盒、目标不是首个 summary 或目标不存在时 fail closed。
+Toggle 是 DOM-only mutation，不隐式执行样式或布局；调用者应在绘制或再次查询前显式调用
+`PCore_StyleDocument()` 与 `PCore_LayoutDocument()`。Core 不拥有窗口、事件派发或重绘。
+
+TEST1099 覆盖 id/坐标解析、closed/open 盒状态、后续内容重排，以及为 browser consumer
+提供的 toggle 结果；WM6 定向门与 TEST1095–1098、TEST999 通过 6/6。该切片不扩展为
+summary 键盘激活、dialog modal/backdrop/lifecycle 或通用 DOM 自动重排保证。

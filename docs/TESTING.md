@@ -1028,6 +1028,30 @@ scripts\device_gate.bat -Candidate iana-stack-scratch-regression-r3 ^
 Reserved Domains 三跳，21 项回归通过 21/21。用户又在 320x320 WM6 设备上人工复核 TEST13，
 未见显著崩溃、卡死或布局异常。tracked INI 未修改。
 
+### next651 summary 激活自动门
+
+next651 验证披露控件从产品 Core 到 browser adapter 的完整窄纵切。TEST1099 在 closed
+`details` 中通过 `PCore_DisclosureInfoById/At()` 解析首个直接 `summary`，用
+`PCore_DisclosureToggleAt/ById()` 切换 `open`，重新样式/布局后确认 body 出现且后续段落
+下移；随后开启浏览器 JavaScript，验证 `HTMLElement.click()` 的可取消 click、
+`preventDefault()`、`details.open` 反射和 typed default callback。测试还确认非首个/非
+summary 目标不会误命中。Core toggle 本身是 DOM-only mutation，自动门不会把隐式重排写成
+公共保证。
+
+```bat
+scripts\device_gate.bat -Candidate next651-disclosure-activation-r4 ^
+  -Configuration Debug ^
+  -RemoteBase "\Storage Card\Positron-device-gate-next651" ^
+  -EnableJavaScript ^
+  -TestSelection "1095-1099,999"
+```
+
+`tmp/device-runs/20260828-210534-next651-disclosure-activation-r4/` 已通过 6/6，唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL` 且 `test13_route_ok=True`；设备屏幕为 240x320。该门
+不替代 summary 键盘激活、真实触摸坐标、dialog modal/backdrop/lifecycle 或视觉人工验收。
+首次尝试使用累积的临时 staging 目录时设备返回存储空间不足；清理本批明确创建的临时目录后，
+同一 GUI-connected WMDC/RAPI 连接重跑通过，不能将前次资源耗尽记录为代码回归。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：
