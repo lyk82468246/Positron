@@ -57,7 +57,10 @@ TEST263）会从 `auto=1` 清单中排除，避免启动后被测试自身判为
 ## 发布方式
 
 仓库使用固定的 `nightly` pre-release tag 和固定的 `positron-nightly.zip` 资产，不使用版本号。
-下一次上传会更新同一个 release 的说明并用 `--clobber` 替换同名 ZIP；包内
-`NIGHTLY-README.md` 和 `SHA256SUMS.txt` 会记录配置、生成时间和源 commit。
+每次上传都会先把 `nightly` tag 对齐到本次源 commit，再重建同名 release，以刷新 GitHub 的
+发布日期；随后用 `--clobber` 替换同名 ZIP。这样 release 页面显示的提交、日期和包内容保持
+一致。包内 `NIGHTLY-README.md` 和 `SHA256SUMS.txt` 会记录配置、生成时间和源 commit。
+该流程只允许改变滚动的 `nightly` tag；版本化产品 tag 不会被移动。若现有 release 已被
+GitHub 标记为 immutable，脚本会在删除或移动前失败并保留原 release。
 上传依赖 GitHub CLI 的独立登录状态；它与 Git 推送所用的 Git Credential Manager 凭据分开，
 所以 Git push 成功不等于 `gh release` 已认证。

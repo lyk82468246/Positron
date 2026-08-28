@@ -369,23 +369,80 @@ try {
         if (![string]::IsNullOrEmpty($Repository)) {
             $repoArgs = @("--repo", $Repository)
         }
+        $repoViewArgs = @("repo", "view")
+        if (![string]::IsNullOrEmpty($Repository)) {
+            $repoViewArgs += $Repository
+        }
+        $repoViewArgs += @("--json", "nameWithOwner", "--jq", ".nameWithOwner")
+        $repoResult = Invoke-GhCaptured $repoViewArgs
+        $repoDetails = ($repoResult.Output |
+                ForEach-Object { $_.ToString() }) -join "`n"
+        if ($repoResult.ExitCode -ne 0 -or
+                [string]::IsNullOrEmpty($repoDetails.Trim())) {
+            throw ("Could not determine the GitHub repository for nightly publishing.`n{0}" -f
+                    $repoDetails.Trim())
+        }
+        $repositoryName = $repoDetails.Trim()
+        $rollingNightly = ($Tag -eq "nightly")
+
+        # A rolling nightly must represent the current source commit. Editing
+        # an existing release leaves both its published_at timestamp and the
+        # already-created tag unchanged, so inspect it before recreating it.
         $viewArgs = @("release", "view", $Tag) + $repoArgs +
-                @("--json", "tagName")
+                @("--json", "tagName", "isImmutable")
         $viewResult = Invoke-GhCaptured $viewArgs
         $viewDetails = ($viewResult.Output |
                 ForEach-Object { $_.ToString() }) -join "`n"
+        $releaseExists = $false
         if ($viewResult.ExitCode -eq 0) {
-            $editArgs = @("release", "edit", $Tag) + $repoArgs +
-                    @("--title", "Positron nightly", "--notes-file",
-                    $readmePath, "--prerelease")
-            $editResult = Invoke-GhCaptured $editArgs
-            if ($editResult.ExitCode -ne 0) {
-                $details = ($editResult.Output |
+            $releaseExists = $true
+            try {
+                $releaseInfo = $viewDetails | ConvertFrom-Json
+            } catch {
+                throw ("Could not parse the existing nightly pre-release metadata.`n{0}" -f
+                        $viewDetails.Trim())
+            }
+            if ($releaseInfo.isImmutable -eq $true -and $rollingNightly) {
+                throw ("The existing nightly pre-release is immutable; it cannot be refreshed. Tag={0}" -f $Tag)
+            }
+        } elseif ($viewDetails -notmatch "(?i)release\s+not\s+found|not\s+found") {
+            throw ("Could not inspect the nightly pre-release.`n{0}" -f
+                    $viewDetails.Trim())
+        }
+
+        if ($rollingNightly) {
+            # Move an existing lightweight/annotated tag before creating the
+            # release. Versioned product tags are never changed by this script.
+            $tagRef = "repos/{0}/git/ref/tags/{1}" -f $repositoryName, $Tag
+            $tagResult = Invoke-GhCaptured @("api", $tagRef)
+            $tagDetails = ($tagResult.Output |
+                    ForEach-Object { $_.ToString() }) -join "`n"
+            if ($tagResult.ExitCode -eq 0) {
+                $moveTagResult = Invoke-GhCaptured @("api", "--method", "PATCH",
+                        $tagRef, "-f", ("sha=" + $commit), "-F", "force=true")
+                if ($moveTagResult.ExitCode -ne 0) {
+                    $details = ($moveTagResult.Output |
+                            ForEach-Object { $_.ToString() }) -join "`n"
+                    throw ("Could not move the nightly tag to source commit {0}.`n{1}" -f
+                            $shortCommit, $details.Trim())
+                }
+            } elseif ($tagDetails -notmatch "(?i)not found|404") {
+                throw ("Could not inspect the nightly tag.`n{0}" -f $tagDetails.Trim())
+            }
+        }
+
+        if ($releaseExists -and $rollingNightly) {
+            $deleteArgs = @("release", "delete", $Tag) + $repoArgs + @("--yes")
+            $deleteResult = Invoke-GhCaptured $deleteArgs
+            if ($deleteResult.ExitCode -ne 0) {
+                $details = ($deleteResult.Output |
                         ForEach-Object { $_.ToString() }) -join "`n"
-                throw ("Could not update the existing nightly pre-release.`n{0}" -f
+                throw ("Could not replace the existing nightly pre-release.`n{0}" -f
                         $details.Trim())
             }
-        } elseif ($viewDetails -match "(?i)release\s+not\s+found|not\s+found") {
+        }
+
+        if (!$releaseExists -or $rollingNightly) {
             $createArgs = @("release", "create", $Tag) + $repoArgs +
                     @("--title", "Positron nightly", "--notes-file",
                     $readmePath, "--prerelease", "--target", $commit)
@@ -396,9 +453,17 @@ try {
                 throw ("Could not create the nightly pre-release.`n{0}" -f
                         $details.Trim())
             }
-        } else {
-            throw ("Could not inspect the nightly pre-release.`n{0}" -f
-                    $viewDetails.Trim())
+        } elseif (!$rollingNightly) {
+            $editArgs = @("release", "edit", $Tag) + $repoArgs +
+                    @("--title", "Positron nightly", "--notes-file",
+                    $readmePath, "--prerelease")
+            $editResult = Invoke-GhCaptured $editArgs
+            if ($editResult.ExitCode -ne 0) {
+                $details = ($editResult.Output |
+                        ForEach-Object { $_.ToString() }) -join "`n"
+                throw ("Could not update the existing pre-release.`n{0}" -f
+                        $details.Trim())
+            }
         }
         # gh treats '#' inside an asset argument as the start of a display
         # label. The repository path itself contains "C#", so use a path

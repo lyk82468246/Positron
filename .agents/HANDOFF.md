@@ -50,8 +50,10 @@
 - 测试编号上限：`TEST_MAX_NUMBER 1098`。
 - Nightly 分发脚本 `scripts\package_nightly.bat`/`.ps1` 只提取既有 Debug/Release 产物，默认
   选择最近一次完整构建的一套，生成 ZIP_STORED 的 `positron-nightly.zip`；默认自动测试 INI 从
-  `test_host/main.c` 的实际 dispatch 动态生成，并排除源码标记的 manual-only 测试。`-SkipUpload`
-  已验证，GitHub 上传仍要求本机 `gh auth login`，当前环境的 GitHub CLI 凭据无效。
+  `test_host/main.c` 的实际 dispatch 动态生成，并排除源码标记的 manual-only 测试。无
+  `-SkipUpload` 时会把滚动 `nightly` tag 对齐到源提交、重建既有 pre-release 以刷新发布日期，
+  再用 `--clobber` 替换 ZIP；版本化产品 tag 不会移动。`-SkipUpload` 已验证，GitHub 上传仍要求
+  本机 `gh auth login`。
 - 2026-08-26 已将 nightly ZIP 解压到本地临时目录并核对 19 个条目；首次 32 位 RAPI 部署在
   `CeRapiInitEx` 阶段返回 `0x8007007E`，未复制或启动设备端文件。现场核对发现十个 32/64 位
   COM 值全部退回旧路径；正式修复报告 `changed=10`，同一 GUI 会话的最小 32 位连接/断开探针

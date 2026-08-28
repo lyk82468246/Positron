@@ -427,8 +427,9 @@ scripts\package_nightly.bat
 
 脚本默认在 Debug 与 Release 中选择最近一次完整构建的一套，也可用
 `-Configuration Debug|Release` 固定选择；测试清单从当前 `test_host/main.c` 的实际 dispatch
-动态生成，并自动排除源码标记的 manual-only 测试。脚本会更新固定的 `nightly` pre-release
-和 `positron-nightly.zip` 资产；包内说明见
+动态生成，并自动排除源码标记的 manual-only 测试。脚本会把滚动 `nightly` tag 对齐到当前源
+commit，重建固定的 pre-release 以刷新发布日期，并替换 `positron-nightly.zip` 资产；版本化
+产品 tag 不会被移动。包内说明见
 [`Nightly 发布包`](docs/NIGHTLY_RELEASE.md)，其中包含如何通过编辑或移走 `test_host.ini`
 选择全量/部分的自动或手动测试。
 

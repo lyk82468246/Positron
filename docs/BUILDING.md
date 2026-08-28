@@ -172,10 +172,11 @@ scripts\package_nightly.bat -SkipUpload
 scripts\package_nightly.bat -Repository owner/repo
 ```
 
-不带 `-SkipUpload` 时，脚本要求 GitHub CLI 已登录，并把固定 `nightly` tag 更新为 pre-release，
-用 `--clobber` 替换同名 `positron-nightly.zip`；它不会创建版本号。首次使用先运行
+不带 `-SkipUpload` 时，脚本要求 GitHub CLI 已登录；它会把滚动 `nightly` tag 对齐到当前源
+commit，重建固定的 pre-release 以刷新发布日期，并用 `--clobber` 替换同名
+`positron-nightly.zip`。它不会创建版本号，也不会移动版本化产品 tag。首次使用先运行
 `gh auth login -h github.com`。发布说明正文来自
 [`NIGHTLY_RELEASE.md`](NIGHTLY_RELEASE.md)，包含如何编辑/移走 INI 来选择全量或部分的自动/手动
 模式。这里的 `gh` 登录与 `git push` 使用的 Git Credential Manager 是两套独立凭据；能 push
-不代表 `gh release` 已登录。脚本失败时不会上传不完整的 ZIP；`tmp\nightly\` 只保存本机生成物，
-不进入 Git。
+不代表 `gh release` 已登录。若固定 release 已 immutable，脚本会在删除或移动前停止；其他失败
+不会上传不完整的 ZIP。`tmp\nightly\` 只保存本机生成物，不进入 Git。
