@@ -159,3 +159,10 @@ Toggle 是 DOM-only mutation，不隐式执行样式或布局；调用者应在�
 TEST1099 覆盖 id/坐标解析、closed/open 盒状态、后续内容重排，以及为 browser consumer
 提供的 toggle 结果；WM6 定向门与 TEST1095–1098、TEST999 通过 6/6。该切片不扩展为
 summary 键盘激活、dialog modal/backdrop/lifecycle 或通用 DOM 自动重排保证。
+
+next652 让首个直接 `<summary>` 成为 Core 交互命中链中的可聚焦目标。Core 不新增键盘 ABI，
+仍由消费者在 WM 消息边界读取已布局几何并调用既有 `PCore_DisclosureInfoAt()`/
+`PCore_DisclosureToggleAt()`；因此 Enter/Space 的时序、脚本 key/click 取消和重排调度属于
+宿主与 browser bridge 的组合，而不是 Core 内部消息泵。`TEST1100` 在实际 render window
+中验证 Enter keydown、Space keyup、repeat 去重和 keydown `preventDefault()`；该批不提供
+Tab 遍历、完整 disclosure/辅助技术事件或 dialog modal/backdrop/lifecycle。

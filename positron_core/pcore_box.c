@@ -10284,9 +10284,13 @@ static void pcore_radio_deselect_group(struct box *box,
     }
 }
 
+static int pcore_disclosure_details_for_summary(dom_node *summary,
+        dom_element **out_details);
+
 static dom_node *pcore_interaction_node(struct box *hit, int focus)
 {
     struct box *box;
+    dom_element *details;
     bool effective_disabled;
 
     for (box = hit; box != NULL; box = box->parent) {
@@ -10302,6 +10306,17 @@ static dom_node *pcore_interaction_node(struct box *hit, int focus)
                 pcore_node_name_is(box->node, "a") &&
                 pcore_node_has_attr(box->node, "href")) {
             return box->node;
+        }
+        if (box->node != NULL &&
+                pcore_node_name_is(box->node, "summary")) {
+            details = NULL;
+            if (pcore_disclosure_details_for_summary(box->node,
+                    &details)) {
+                if (details != NULL) {
+                    dom_node_unref((dom_node *) details);
+                }
+                return box->node;
+            }
         }
         if (!focus && box->node != NULL &&
                 pcore_node_name_is(box->node, "label")) {

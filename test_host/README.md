@@ -180,6 +180,13 @@ JavaScript，验证 `HTMLElement.click()` 的可取消 click、`preventDefault()
 重排，不拥有 disclosure 语义。定向门使用 `1095-1099,999`（需 `-EnableJavaScript`），设备
 上通过 6/6；真实触摸、summary 键盘操作和 dialog 模态视觉仍需另行验收。
 
+next652 的 TEST1100 在真实 render window 中验证 summary 的键盘消费者路径：先以
+`PCore_InteractionSetAt()`/Core 几何记录焦点，Enter 在 keydown 切换，Space 在 keyup 切换，
+重复 Enter 不重复 click，summary 的 `keydown.preventDefault()` 阻止切换而仍保留 keyup。
+宿主只拥有 WM 消息、有限几何焦点快照和重排调度；事件由 browser bridge 派发，`open` 状态
+由 Core 修改。定向门使用 `1095-1100,999`（需 `-EnableJavaScript`），WM6 Debug 通过 8/8；
+这不是 Tab 遍历、完整辅助技术事件或 dialog modal 行为的保证。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

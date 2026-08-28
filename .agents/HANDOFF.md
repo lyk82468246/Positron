@@ -17,7 +17,7 @@
 
 - 分支：当前候选在 `main`，最近已验证的主线基线包含 `8048554c`；交付后仍须重新核对
   HEAD、远端和工作区，不能沿用本文件中的 Git 结论。
-- 当前能力批次：next651，Core 的递归 DOM 资源收集不再为每个 DFS 栈帧保留约 3 KiB 的
+- 当前能力批次：next652，Core 的递归 DOM 资源收集不再为每个 DFS 栈帧保留约 3 KiB 的
   stylesheet reference/URL 自动数组，而是在一次 style transaction 中分配并共享一套有界
   scratch buffer；真实 fetch、document cache、CSS parse/attach、`@import`、media 与释放路径
   保持启用。next649 的页面 stylesheet `media`、disabled、rel-token 选择、hidden、披露控件与 `pre[wrap]` 渲染 → Core 将 `<style media>` 与
@@ -47,10 +47,11 @@
   增加了受限的 `media` UTF-8 属性反射；缺失返回空串，`setAttribute`/setter/
   `removeAttribute` 保持 live 一致，其他元素返回 `undefined` 且 setter 不改变 raw 属性。
   这不触发脚本侧 MediaQueryList 事件或自动重排。next651 已把首个直接 summary 的
-  id/坐标查询、open toggle 和 `HTMLElement.click()` typed default 接入产品边界；host 只
-  调用 Core 并为活动渲染页排队 style/layout。toggle 仍是 DOM-only，summary 键盘激活、
+  id/坐标查询、open toggle 和 `HTMLElement.click()` typed default 接入产品边界；next652
+  又让 Core 把合法 summary 纳入 focus interaction，宿主通过既有 key/click bridge 接入
+  Enter/Space 键盘激活，并在几何快照变化时 fail closed。toggle 仍是 DOM-only，Tab 焦点遍历、
   dialog modal focus/backdrop/lifecycle 仍未实现。
-- 测试编号上限：`TEST_MAX_NUMBER 1099`。
+- 测试编号上限：`TEST_MAX_NUMBER 1100`。
 - Nightly 分发脚本 `scripts\package_nightly.bat`/`.ps1` 只提取既有 Debug/Release 产物，默认
   选择最近一次完整构建的一套，生成 ZIP_STORED 的 `positron-nightly.zip`；默认自动测试 INI 从
   `test_host/main.c` 的实际 dispatch 动态生成，并排除源码标记的 manual-only 测试。无
@@ -836,6 +837,21 @@ next651 的 disclosure activation 自动门已经完成：
 - `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建和仓库/文档审计均通过；
   tracked INI 未修改。
 
+next652 的 summary 键盘激活自动门已经完成：
+
+- `tmp/device-runs/20260828-214751-next652-disclosure-keyboard-r6/` 的定向门为 PASS，
+  TEST1095、1096、1097、1098、1099、1100、999 共 8/8，零 `ERROR`/`FAIL`，唯一
+  `TESTBENCH PASS` 且 `test13_route_ok=True`；设备屏幕报告为 240x320。
+- Core 的交互命中链现在识别合法首个直接 summary 为 focus/active target；host 保存有界
+  几何快照并在按键前校验，browser 的既有 key/click bridge 负责事件传播。TEST1100 确认
+  Enter 在 keydown、Space 在 keyup 各只激活一次，repeat keydown 不重复 click，keydown
+  `preventDefault()` 保持 `details.open` 不变而 keyup 仍可观察。
+- 本批不新增公共 C ABI；宿主仍拥有 WM 消息、窗口焦点和 style/layout 重排，Core 仍只拥有
+  DOM interaction/toggle。Tab 遍历、键盘焦点滚动、完整 disclosure/辅助技术事件、dialog
+  modal focus/backdrop/lifecycle 和真实触摸视觉仍是后续人工/功能边界。
+- `python scripts/test_c89ize.py`、Debug/Release ARMV4I 正式构建、仓库/文档审计和相关设备
+  门均通过；tracked INI 未修改。
+
 next623 的 trusted native toggle activation 自动门已经完成：
 
 - `tmp/device-runs/20260824-124858-next623-native-toggle-r5/` 的
@@ -874,7 +890,7 @@ next624 的 trusted native submit/reset button activation 自动门已经完成�
 - SIP/IME、候选词、旋转、文件选择器和视觉几何仍可能需要真实设备人工验收。
 - Mbed TLS 2.16.12 已停止维护；peer 模式仍只有 TLS 1.2/IPv4，私钥为未加密 PEM，同步
   DNS 解析本身不能取消。详细安全契约见 `positron_tls/README.md`。
-- 更新批次的针对性回归很强，但不能被表述为 TEST1–1099 的最新全范围覆盖。
+- 更新批次的针对性回归很强，但不能被表述为 TEST1–1100 的最新全范围覆盖。
 
 详细的当前边界与解除条件见 `.agents/KNOWN_LIMITATIONS.md`。
 

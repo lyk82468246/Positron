@@ -381,6 +381,13 @@ Core 并安排重排；物理点击复用相同的命中/事件路径。`TEST109
 通过 6/6。该切片不承诺 summary 键盘激活、dialog 模态焦点/backdrop/lifecycle 或通用 DOM
 自动重排。
 
+next652 补齐同一首个直接 summary 的键盘激活：宿主记录已命中的 summary 几何，Core 将其
+作为可聚焦/可激活的交互目标；Enter 在 keydown 激活，Space 在 keyup 激活，重复 keydown
+不会重复 click，脚本取消 keydown 会阻止默认切换。键盘事件仍通过 `positron_browser.dll`
+的既有 key/click bridge 派发，`positron_core.dll` 执行 `details.open` toggle，宿主只负责
+WM 消息和重排调度。TEST1095–1100 与 TEST999 在 WM6 Debug 定向门通过 8/8；该批仍不实现
+Tab 焦点遍历、完整 disclosure/辅助技术事件或 dialog modal/backdrop/lifecycle。
+
 ## 快速开始
 
 ### 前置环境

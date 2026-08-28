@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1099
+#define TEST_MAX_NUMBER 1100
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -6000,6 +6000,9 @@ static int    g_overflow_pointer = 0;
 static int    g_mouse_tracking = 0;
 static int    g_native_button_key_probe = 0;
 static int    g_native_button_key_probe_ok = 0;
+static int    g_native_disclosure_key_probe = 0;
+static int    g_native_disclosure_key_probe_ok = 0;
+static char   g_native_disclosure_key_probe_detail[512];
 static HANDLE g_toggle_focus_document = NULL;
 static unsigned int g_toggle_focus_index = 0;
 static int    g_toggle_focus_kind = 0;
@@ -6009,6 +6012,13 @@ static unsigned int g_button_focus_index = 0;
 static int    g_button_focus_kind = 0;
 static int    g_button_focus_valid = 0;
 static int    g_button_space_pending = 0;
+static HANDLE g_disclosure_focus_document = NULL;
+static int    g_disclosure_focus_x = 0;
+static int    g_disclosure_focus_y = 0;
+static int    g_disclosure_focus_w = 0;
+static int    g_disclosure_focus_h = 0;
+static int    g_disclosure_focus_valid = 0;
+static int    g_disclosure_space_pending = 0;
 static int    g_file_picker_pending = 0;
 static int    g_file_picker_active = 0;
 static HANDLE g_file_picker_pending_document = NULL;
@@ -6164,10 +6174,22 @@ static void pcore_button_focus_clear(void)
     g_button_space_pending = 0;
 }
 
+static void pcore_disclosure_focus_clear(void)
+{
+    g_disclosure_focus_document = NULL;
+    g_disclosure_focus_x = 0;
+    g_disclosure_focus_y = 0;
+    g_disclosure_focus_w = 0;
+    g_disclosure_focus_h = 0;
+    g_disclosure_focus_valid = 0;
+    g_disclosure_space_pending = 0;
+}
+
 static void pcore_browser_script_session_destroy(void)
 {
     pcore_toggle_focus_clear();
     pcore_button_focus_clear();
+    pcore_disclosure_focus_clear();
     pcore_file_picker_clear_pending();
     if (g_browser_script_session.session != NULL) {
         (void) PBrowser_ScriptSessionResetNativeFilePickerState(
@@ -7265,6 +7287,10 @@ static int pcore_activate_form_button(HWND hwnd, unsigned int index,
 static int pcore_focus_native_form_control(int kind, int x, int y);
 static int pcore_handle_file_input(HWND hwnd, int x, int y);
 static int pcore_handle_disclosure(HWND hwnd, int x, int y);
+static int pcore_disclosure_focus_track_at(int x, int y);
+static int pcore_disclosure_focus_current(int *out_x, int *out_y);
+static int pcore_handle_disclosure_keyboard(HWND hwnd, UINT msg,
+        WPARAM wp, LPARAM lp, int system_key);
 
 static int pcore_native_script_active(void)
 {
@@ -9600,6 +9626,7 @@ static void pcore_native_focus_changed(HWND control)
     }
     pcore_toggle_focus_clear();
     pcore_button_focus_clear();
+    pcore_disclosure_focus_clear();
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
                 PCore_TextInputInfo(g_render_doc,
@@ -9649,6 +9676,7 @@ static void pcore_native_focus_lost(HWND control)
     }
     pcore_toggle_focus_clear();
     pcore_button_focus_clear();
+    pcore_disclosure_focus_clear();
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control) {
             pcore_browser_script_dispatch_native_edit_blur(control);
@@ -14448,6 +14476,78 @@ static void pcore_invalidate_form_dirty(HWND hwnd,
     InvalidateRect(hwnd, &dirty, FALSE);
 }
 
+/* A summary is a document control rather than a native child window. Keep a
+ * bounded geometry snapshot for keyboard activation and validate it against
+ * the current laid-out box before consuming a key. Without a node handle or
+ * an id in this host-side state, an unexpected reflow must fail closed rather
+ * than activating a different summary that moved into the old point. */
+static int pcore_disclosure_focus_track_at(int x, int y)
+{
+    int summary_x;
+    int summary_y;
+    int summary_w;
+    int summary_h;
+
+    summary_x = 0;
+    summary_y = 0;
+    summary_w = 0;
+    summary_h = 0;
+    if (g_render_doc == NULL ||
+            PCore_DisclosureInfoAt(g_render_doc, x, y,
+            &summary_x, &summary_y, &summary_w, &summary_h, NULL) != 1 ||
+            summary_w <= 0 || summary_h <= 0) {
+        pcore_disclosure_focus_clear();
+        return 0;
+    }
+    pcore_toggle_focus_clear();
+    pcore_button_focus_clear();
+    g_disclosure_focus_document = g_render_doc;
+    g_disclosure_focus_x = summary_x;
+    g_disclosure_focus_y = summary_y;
+    g_disclosure_focus_w = summary_w;
+    g_disclosure_focus_h = summary_h;
+    g_disclosure_focus_valid = 1;
+    g_disclosure_space_pending = 0;
+    return 1;
+}
+
+static int pcore_disclosure_focus_current(int *out_x, int *out_y)
+{
+    int summary_x;
+    int summary_y;
+    int summary_w;
+    int summary_h;
+
+    if (!g_disclosure_focus_valid ||
+            g_disclosure_focus_document != g_render_doc ||
+            g_render_doc == NULL || g_disclosure_focus_w <= 0 ||
+            g_disclosure_focus_h <= 0) {
+        return 0;
+    }
+    summary_x = 0;
+    summary_y = 0;
+    summary_w = 0;
+    summary_h = 0;
+    if (PCore_DisclosureInfoAt(g_render_doc,
+            g_disclosure_focus_x + g_disclosure_focus_w / 2,
+            g_disclosure_focus_y + g_disclosure_focus_h / 2,
+            &summary_x, &summary_y, &summary_w, &summary_h, NULL) != 1 ||
+            summary_x != g_disclosure_focus_x ||
+            summary_y != g_disclosure_focus_y ||
+            summary_w != g_disclosure_focus_w ||
+            summary_h != g_disclosure_focus_h) {
+        pcore_disclosure_focus_clear();
+        return 0;
+    }
+    if (out_x != NULL) {
+        *out_x = summary_x + summary_w / 2;
+    }
+    if (out_y != NULL) {
+        *out_y = summary_y + summary_h / 2;
+    }
+    return 1;
+}
+
 /* Disclosure state lives in positron_core. The host only forwards a trusted
  * point and schedules the existing full style/layout transaction so that
  * opening or closing a details element reflows all following content. */
@@ -14458,6 +14558,66 @@ static int pcore_handle_disclosure(HWND hwnd, int x, int y)
     result = PCore_DisclosureToggleAt(g_render_doc, x, y, NULL);
     if (result > 0) {
         pcore_request_interaction_restyle(hwnd);
+        return 1;
+    }
+    return 0;
+}
+
+/* HTML summary keyboard activation follows the native button timing shape:
+ * Enter commits on keydown, while Space commits on keyup. Keydown remains
+ * cancelable; a held key dispatches repeat events but never repeats the
+ * trusted click. The browser event bridge owns propagation/cancellation and
+ * Core owns the open-state mutation; this host function only joins them at
+ * the WM message boundary. */
+static int pcore_handle_disclosure_keyboard(HWND hwnd, UINT msg,
+        WPARAM wp, LPARAM lp, int system_key)
+{
+    int x;
+    int y;
+    int keydown;
+    int keyup;
+
+    if (wp != VK_SPACE && wp != VK_RETURN) {
+        return 0;
+    }
+    if (!g_disclosure_focus_valid ||
+            g_disclosure_focus_document != g_render_doc) {
+        return 0;
+    }
+    if (!pcore_disclosure_focus_current(&x, &y)) {
+        /* A previously focused summary moved or disappeared after a reflow.
+         * Consume this activation key without falling through to the window
+         * close fallback used by an otherwise unfocused render view. */
+        return 1;
+    }
+    keydown = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
+    keyup = (msg == WM_KEYUP || msg == WM_SYSKEYUP);
+    if (keydown) {
+        if (!pcore_browser_script_dispatch_key_at(x, y, "keydown",
+                wp, lp, system_key, 0)) {
+            return 1;
+        }
+        if ((lp & 0x40000000L) != 0) {
+            return 1;
+        }
+        if (wp == VK_SPACE) {
+            g_disclosure_space_pending = 1;
+            return 1;
+        }
+        if (pcore_browser_script_dispatch_click_at(x, y)) {
+            (void) pcore_handle_disclosure(hwnd, x, y);
+        }
+        return 1;
+    }
+    if (keyup) {
+        (void) pcore_browser_script_dispatch_key_at(x, y, "keyup",
+                wp, lp, system_key, 0);
+        if (wp == VK_SPACE && g_disclosure_space_pending) {
+            g_disclosure_space_pending = 0;
+            if (pcore_browser_script_dispatch_click_at(x, y)) {
+                (void) pcore_handle_disclosure(hwnd, x, y);
+            }
+        }
         return 1;
     }
     return 0;
@@ -14510,6 +14670,7 @@ static void pcore_toggle_focus_set(unsigned int index, int kind)
         pcore_toggle_focus_clear();
         return;
     }
+    pcore_disclosure_focus_clear();
     pcore_button_focus_clear();
     g_toggle_focus_document = g_render_doc;
     g_toggle_focus_index = index;
@@ -14572,6 +14733,7 @@ static void pcore_button_focus_set(unsigned int index, int kind)
         return;
     }
     pcore_toggle_focus_clear();
+    pcore_disclosure_focus_clear();
     g_button_focus_document = g_render_doc;
     g_button_focus_index = index;
     g_button_focus_kind = kind;
@@ -15671,6 +15833,111 @@ static void pcore_native_button_key_probe_run(HWND parent)
     PostMessage(parent, WM_CLOSE, 0, 0);
 }
 
+static void pcore_native_disclosure_key_probe_run(HWND parent)
+{
+    int summary_x;
+    int summary_y;
+    int summary_w;
+    int summary_h;
+    int open;
+    int ok;
+    const char *stage;
+
+    if (!g_native_disclosure_key_probe || parent == NULL ||
+            g_render_doc == NULL) {
+        return;
+    }
+    summary_x = 0;
+    summary_y = 0;
+    summary_w = 0;
+    summary_h = 0;
+    open = 0;
+    stage = "initial";
+    g_native_disclosure_key_probe_detail[0] = '\0';
+    ok = PCore_DisclosureInfoById(g_render_doc, "summary", &summary_x,
+            &summary_y, &summary_w, &summary_h, &open) == 0 &&
+            summary_w > 0 && summary_h > 0 && !open;
+    SetFocus(parent);
+    stage = "focus-summary";
+    if (ok && (PCore_InteractionSetAt(g_render_doc,
+            summary_x + summary_w / 2, summary_y + summary_h / 2,
+            PCORE_INTERACTION_FOCUS) <= 0 ||
+            !pcore_disclosure_focus_track_at(summary_x + summary_w / 2,
+            summary_y + summary_h / 2))) {
+        ok = 0;
+    }
+    if (ok) {
+        /* Enter activates on keydown, while its keyup is still delivered to
+         * script and consumed by the focused summary. */
+        stage = "enter";
+        (void) SendMessage(parent, WM_KEYDOWN, VK_RETURN, 0);
+        (void) SendMessage(parent, WM_KEYUP, VK_RETURN, 0);
+        if (PCore_DisclosureInfoById(g_render_doc, "summary", NULL, NULL,
+                NULL, NULL, &open) != 0 || !open) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        /* A held Enter produces a repeat key event but must not emit a second
+         * trusted click or toggle. */
+        stage = "enter-repeat";
+        (void) SendMessage(parent, WM_KEYDOWN, VK_RETURN, 0x40000000L);
+        (void) SendMessage(parent, WM_KEYUP, VK_RETURN, 0);
+        if (PCore_DisclosureInfoById(g_render_doc, "summary", NULL, NULL,
+                NULL, NULL, &open) != 0 || !open) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        /* Space commits on keyup and therefore closes the details exactly
+         * once after its keydown/keyup pair. */
+        stage = "space";
+        (void) SendMessage(parent, WM_KEYDOWN, VK_SPACE, 0);
+        (void) SendMessage(parent, WM_KEYUP, VK_SPACE, 0);
+        if (PCore_DisclosureInfoById(g_render_doc, "summary", NULL, NULL,
+                NULL, NULL, &open) != 0 || open) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "focus-cancel-summary";
+        summary_x = 0;
+        summary_y = 0;
+        summary_w = 0;
+        summary_h = 0;
+        open = 0;
+        ok = PCore_DisclosureInfoById(g_render_doc, "cancel-summary",
+                &summary_x, &summary_y, &summary_w, &summary_h, &open) == 0 &&
+                summary_w > 0 && summary_h > 0 && !open &&
+                PCore_InteractionSetAt(g_render_doc,
+                summary_x + summary_w / 2, summary_y + summary_h / 2,
+                PCORE_INTERACTION_FOCUS) > 0 &&
+                pcore_disclosure_focus_track_at(summary_x + summary_w / 2,
+                summary_y + summary_h / 2);
+    }
+    if (ok) {
+        /* A prevented keydown suppresses both the trusted click and the
+         * details mutation, while keyup remains observable. */
+        stage = "cancel-enter";
+        (void) SendMessage(parent, WM_KEYDOWN, VK_RETURN, 0);
+        (void) SendMessage(parent, WM_KEYUP, VK_RETURN, 0);
+        if (PCore_DisclosureInfoById(g_render_doc, "cancel-summary", NULL,
+                NULL, NULL, NULL, &open) != 0 || open) {
+            ok = 0;
+        }
+    }
+    if (!ok) {
+        _snprintf(g_native_disclosure_key_probe_detail,
+                sizeof(g_native_disclosure_key_probe_detail) - 1,
+                "stage=%s summary=%d,%d,%d,%d open=%d",
+                stage, summary_x, summary_y, summary_w, summary_h, open);
+        g_native_disclosure_key_probe_detail[
+                sizeof(g_native_disclosure_key_probe_detail) - 1] = '\0';
+    }
+    g_native_disclosure_key_probe_ok = ok;
+    PostMessage(parent, WM_CLOSE, 0, 0);
+}
+
 static void pcore_navigation_cleanup(void)
 {
     if (g_nav_thread != NULL) {
@@ -16176,6 +16443,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         if (LOWORD(wp) == WA_INACTIVE) {
             pcore_toggle_focus_clear();
             pcore_button_focus_clear();
+            pcore_disclosure_focus_clear();
             if (g_render_doc != NULL &&
                     PCore_InteractionClear(g_render_doc,
                             PCORE_INTERACTION_FOCUS |
@@ -16189,6 +16457,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         break;
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
+        if (pcore_handle_disclosure_keyboard(hwnd, msg, wp, lp,
+                msg == WM_SYSKEYDOWN)) {
+            return 0;
+        }
         if (pcore_handle_toggle_keyboard(hwnd, msg, wp, lp,
                 msg == WM_SYSKEYDOWN)) {
             return 0;
@@ -16218,6 +16490,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         return 0;
     case WM_KEYUP:
     case WM_SYSKEYUP:
+        if (pcore_handle_disclosure_keyboard(hwnd, msg, wp, lp,
+                msg == WM_SYSKEYUP)) {
+            return 0;
+        }
         if (pcore_handle_toggle_keyboard(hwnd, msg, wp, lp,
                 msg == WM_SYSKEYUP)) {
             return 0;
@@ -16253,6 +16529,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
 
         pcore_toggle_focus_clear();
         pcore_button_focus_clear();
+        pcore_disclosure_focus_clear();
         if (g_render_doc != NULL &&
                 PCore_OverflowPointer(g_render_doc, PCORE_POINTER_DOWN,
                         cx, cy + g_scroll_y)) {
@@ -16270,6 +16547,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         if (g_render_doc != NULL) {
             (void) pcore_toggle_focus_track_at(cx, cy + g_scroll_y);
+            (void) pcore_disclosure_focus_track_at(cx, cy + g_scroll_y);
         }
         toggle_found = 0;
         toggle_product_started = 0;
@@ -16475,6 +16753,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         g_overflow_pointer = 0;
         pcore_toggle_focus_clear();
         pcore_button_focus_clear();
+        pcore_disclosure_focus_clear();
         KillTimer(hwnd, PCORE_HOVER_TIMER);
         g_mouse_tracking = 0;
         g_interaction_restyle_pending = 0;
@@ -17011,6 +17290,9 @@ static BOOL show_render_window(void)
     }
     if (g_native_button_key_probe) {
         pcore_native_button_key_probe_run(hwnd);
+    }
+    if (g_native_disclosure_key_probe) {
+        pcore_native_disclosure_key_probe_run(hwnd);
     }
     /* Read-only view: hide the SIP button and keep the keyboard down. */
     SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
@@ -20929,6 +21211,158 @@ static BOOL test1099_browser_disclosure_activation_contract(void)
             " HTMLElement.click() dispatches a cancelable click, updates"
             " details.open, reflows after a style/layout pass, and honors"
             " preventDefault on a second activation.");
+    return TRUE;
+}
+
+/* TEST 1100 - summary Enter/Space keyboard activation contract. */
+static BOOL test1100_browser_disclosure_keyboard_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='root'>"
+        "<details id='details'><summary id='summary'>More</summary>"
+        "<p id='body'>Body</p></details>"
+        "<details id='cancel-details'><summary id='cancel-summary'>Cancel"
+        "</summary><p>Cancelled body</p></details>"
+        "<p id='result'>idle</p></div></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "summary{width:220px;height:24px}"
+        "p{width:220px;height:24px;margin:3px}"
+        "#result{width:500px;height:120px}";
+    static const char LISTENER[] =
+        "window.events='';"
+        "function record(e){var id=String(e.target.id||'');"
+        "var key=String(e.key||'');"
+        "window.events+=e.type+'|'+id+'|'+key+'|'"
+        "+String(e.defaultPrevented)+';';"
+        "document.getElementById('result').textContent=window.events;}"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('keydown',record);"
+        "root.addEventListener('keyup',record);"
+        "root.addEventListener('click',record);"
+        "document.getElementById('cancel-summary').addEventListener('keydown',"
+        "function(e){e.preventDefault();});";
+    static const char EXPECTED[] =
+        "keydown|summary|Enter|false;"
+        "click|summary||false;"
+        "keyup|summary|Enter|false;"
+        "keydown|summary|Enter|false;"
+        "keyup|summary|Enter|false;"
+        "keydown|summary|Space|false;"
+        "keyup|summary|Space|false;"
+        "click|summary||false;"
+        "keydown|cancel-summary|Enter|true;"
+        "keyup|cancel-summary|Enter|false;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[1024];
+    char error[384];
+    int bytes;
+    int executed;
+    int ignored;
+    int open;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    open = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_native_disclosure_key_probe_ok = 0;
+    _snprintf(g_native_disclosure_key_probe_detail,
+            sizeof(g_native_disclosure_key_probe_detail) - 1,
+            "not-run");
+    g_native_disclosure_key_probe_detail[
+            sizeof(g_native_disclosure_key_probe_detail) - 1] = '\0';
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/disclosure-keyboard.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 260) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_native_disclosure_key_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_disclosure_key_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (!g_native_disclosure_key_probe_ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "native disclosure key probe failed: %s",
+                g_native_disclosure_key_probe_detail[0] != '\0' ?
+                g_native_disclosure_key_probe_detail : "no detail");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (PCore_DisclosureInfoById(document, "summary", NULL, NULL,
+            NULL, NULL, &open) != 0 || open ||
+            PCore_DisclosureInfoById(document, "cancel-summary", NULL, NULL,
+            NULL, NULL, &open) != 0 || open ||
+            PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &bytes) != 0 || strcmp(result, EXPECTED) != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "actual[%d]=%s open=%d", bytes, result, open);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1100 FAIL", error[0] != '\0' ? error :
+                "summary keyboard activation failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1100 OK",
+            "Focused summaries activate on Enter keydown and Space keyup;"
+            " repeat keydowns do not duplicate clicks, cancelable keydown"
+            " suppresses activation, and key events remain observable.");
     return TRUE;
 }
 
@@ -78773,6 +79207,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1097: ok = test1097_core_pre_wrap_rendering_contract(); break;
         case 1098: ok = test1098_core_deep_resource_collection_contract(); break;
         case 1099: ok = test1099_browser_disclosure_activation_contract(); break;
+        case 1100: ok = test1100_browser_disclosure_keyboard_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

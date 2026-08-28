@@ -1052,6 +1052,28 @@ scripts\device_gate.bat -Candidate next651-disclosure-activation-r4 ^
 首次尝试使用累积的临时 staging 目录时设备返回存储空间不足；清理本批明确创建的临时目录后，
 同一 GUI-connected WMDC/RAPI 连接重跑通过，不能将前次资源耗尽记录为代码回归。
 
+### next652 summary 键盘激活自动门
+
+next652 在同一 render window 中验证首个直接 summary 的键盘消费者路径。TEST1100 先用
+`PCore_InteractionSetAt()` 建立焦点，再检查 Enter 在 `keydown`、Space 在 `keyup` 执行
+一次 click/toggle；重复 Enter 的 keydown 只报告事件而不重复 click，目标 keydown 的
+`preventDefault()` 同时阻止 click 和 `details.open` mutation，keyup 仍可观察。该门复用
+browser 的既有 key/click bridge，不把键盘状态机或 DOM 语义复制进测试宿主之外。
+
+```bat
+scripts\device_gate.bat -Candidate next652-disclosure-keyboard-r6 ^
+  -Configuration Debug ^
+  -RemoteBase "\Storage Card\Positron-device-gate-next652" ^
+  -EnableJavaScript ^
+  -TestSelection "1095-1100,999"
+```
+
+`tmp/device-runs/20260828-214751-next652-disclosure-keyboard-r6/` 的自动门为 PASS：
+TEST1095–1100、TEST999 共 8/8，唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，设备屏幕
+240x320，`test13_route_ok=True`。该证据覆盖消息、事件和 Core 状态，不替代 Tab 遍历、
+真实触摸、键盘焦点滚动、SIP/IME、辅助技术事件或 dialog modal/backdrop/lifecycle 的人工
+验收。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

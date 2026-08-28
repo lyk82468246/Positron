@@ -237,8 +237,9 @@ textarea 布局宽度或完整 textarea Web IDL 实现。
 textarea 布局高度或完整 textarea Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.open` 的布尔属性往返；Core 已用该属性驱动
 details/dialog 的静态默认布局，next651 又为首个直接 summary 提供有界的查询、toggle 和
-browser click 接线，但这不等于 summary 键盘激活、完整 disclosure 事件、modal focus、
-backdrop、dialog 生命周期或完整 HTMLElement Web IDL 实现。
+browser click 接线，next652 再由宿主通过既有 key/click bridge 接入 Enter/Space 激活；但这
+不等于 Tab 焦点遍历、完整 disclosure 事件、modal focus、backdrop、dialog 生命周期或完整
+HTMLElement Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.autocapitalize`、`itemValue`、`is` 的 UTF-8
 属性往返；这不等于输入法/大小写策略、microdata 解析或 customized built-in 升级。
 当前 raw metadata bridge 还提供 `HTMLElement.ariaAtomic`、`ariaBusy`、`ariaChecked`、
@@ -1316,6 +1317,21 @@ disclosure 状态。
 事件/辅助技术语义或通用 DOM 自动重排。TEST1099 与 TEST1095–1098、TEST999 的定向设备门
 已在 WM6 通过 6/6。
 
+#### next652 的 summary 键盘激活边界
+
+next652 沿用 next651 的首个直接 summary 几何和 Core toggle，不增加公共 C ABI。Core 将合法
+summary 纳入 `PCore_InteractionSetAt(..., PCORE_INTERACTION_FOCUS)` 的交互命中链；宿主在
+WM 消息边界保存有界几何快照，并在每次按键前用 `PCore_DisclosureInfoAt()` 验证快照仍指向
+同一布局盒，几何变化时 fail closed。browser layer 的既有 key callback 派发可取消 keydown
+和不可取消 keyup，宿主随后复用 click 事件传播；Enter 在 keydown、Space 在 keyup 执行
+`PCore_DisclosureToggleAt()`，重复 keydown 不重复 click，keydown 的 `preventDefault()` 阻止
+默认动作。宿主仍拥有 WM 事件、窗口焦点和 style/layout 重排；Core 不拥有消息泵或绘制。
+
+TEST1100 在实际 render window 中覆盖焦点命中、Enter/Space 时序、repeat 去重和取消后的
+`details.open` 不变；TEST1095–1099、999 与 TEST1100 的 WM6 Debug 定向门为 8/8（证据目录：
+`tmp/device-runs/20260828-214751-next652-disclosure-keyboard-r6/`）。该能力
+不是完整 Tab 顺序、键盘焦点滚动、辅助技术事件或 dialog modal 行为的承诺。
+
 #### next614 的 label/control 关系边界
 
 next614 沿既有 DOM relation callback 把 label 与控件的最小关联迁入产品 DLL：
@@ -1363,6 +1379,9 @@ fixture/断言与设备门消费者。
 next651 的 disclosure activation 也遵循同一所有权边界：Core 提供已布局首个直接 summary
 的几何/状态查询和 `details.open` DOM toggle，browser layer 提供程序化 click 的可取消事件
 与 typed default 顺序，宿主负责 Core 调用、活动页 style/layout 重排和窗口/触摸副作用。
+next652 的键盘补齐继续复用既有 key/click callback；browser layer 负责 key 事件传播，宿主
+只负责有限焦点快照、WM 时序和 accepted default 上的 Core toggle，不在 `test_host` 中复制
+DOM 或 disclosure 状态机。
 
 因此浏览器绑定不是第二个引擎，也不应把 Duktape 或 libdom 类型暴露成公共 ABI。当前
 history/session、脚本 context 所有权、bootstrap 和 DOM 读写/attribute/value/checked/disabled/validation-query/custom-validity/constraint-reflection/form-property、ID-addressable

@@ -454,6 +454,13 @@ adapter，增加 `PBROWSER_SCRIPT_CLICK_TARGET_DISCLOSURE` 与
 toggle，但真实触摸、键盘 summary 激活和 dialog modal/backdrop 仍是消费者边界。TEST1099
 验证该程序化 target/default 接线和 `details.open` 状态。
 
+next652 不新增 browser ABI：宿主的 summary 键盘路径通过既有
+`PBrowser_ScriptSessionDispatchKeyEvent()` 派发可取消 keydown 与不可取消 keyup，随后
+复用既有 click callback；Core consumer 在 accepted default 上执行 `open` toggle。Enter
+在 keydown 激活，Space 在 keyup 激活，repeat keydown 不会重复 default，keydown
+`preventDefault()` 会阻止 click/toggle。`TEST1100` 覆盖该组合路径；browser DLL 仍不拥有
+Tab 焦点遍历、窗口/SIP、完整 disclosure/辅助技术事件或 dialog 生命周期。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

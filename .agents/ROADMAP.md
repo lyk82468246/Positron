@@ -667,7 +667,22 @@ click 的取消与 `details.open` 反射；设备证据目录为
 仓库审计通过。本批仍不实现 summary 键盘激活、dialog modal focus/backdrop/lifecycle，也不
 把属性 mutation 自动重排扩展为 Core 的隐式保证。
 
-### 46. 建立真实页面驱动的兼容队列
+### 46. next652：披露控件 summary 键盘激活（已完成）
+
+next652 沿用 next651 的首个直接 summary 目标，把键盘默认动作补进产品组合。Core 将合法
+summary 纳入 `PCore_InteractionSetAt(..., PCORE_INTERACTION_FOCUS)` 的 focus/active 命中
+链；宿主保存有界几何快照并在每次按键前用 `PCore_DisclosureInfoAt()` 校验，快照失配时
+不激活。browser layer 复用既有 key/click bridge：Enter 在 keydown、Space 在 keyup 触发
+一次 click 与 Core `open` toggle，repeat keydown 不重复 default，keydown `preventDefault()`
+阻止 click/toggle，而 keyup 仍正常派发。
+
+TEST1100 在真实 render window 中覆盖焦点建立、Enter/Space 时序、repeat 去重和取消不变式；
+设备证据目录为 `tmp/device-runs/20260828-214751-next652-disclosure-keyboard-r6/`，
+TEST1095–1100、999 通过 8/8，唯一 `TESTBENCH PASS` 且零 `ERROR`/`FAIL`。C89、Debug/Release
+ARMV4I 构建和仓库/文档审计通过。本批不实现 Tab 焦点遍历、键盘焦点滚动、完整 disclosure/
+辅助技术事件或 dialog modal focus/backdrop/lifecycle。
+
+### 47. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -678,7 +693,7 @@ click 的取消与 `details.open` 反射；设备证据目录为
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 47. 安排新的全范围检查点
+### 48. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 
