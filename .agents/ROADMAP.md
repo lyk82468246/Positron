@@ -682,7 +682,23 @@ TEST1095–1100、999 通过 8/8，唯一 `TESTBENCH PASS` 且零 `ERROR`/`FAIL`
 ARMV4I 构建和仓库/文档审计通过。本批不实现 Tab 焦点遍历、键盘焦点滚动、完整 disclosure/
 辅助技术事件或 dialog modal focus/backdrop/lifecycle。
 
-### 47. 建立真实页面驱动的兼容队列
+### 47. next653：自然顺序 Tab 焦点遍历（已完成）
+
+next653 为 `positron_core.dll` 增加 additive `PCore_FocusTargetInfo()`，按 DOM 文档顺序
+枚举已布局、启用的受支持 form-control、非空 `href` anchor 和每个 `details` 的首个直接
+summary，并返回有界 CSS px 几何与类型。file picker、hidden/disabled/无 href 目标不进入
+列表；查询不读取或解释 `tabindex`，也不拥有窗口或键盘消息。
+
+`test_host.exe` 通过该快照在 WM 消息边界实现 Tab/Shift+Tab 环回、native EDIT/SELECT 与
+Core target 的切换、focus/focusin/blur/focusout 派发、目标滚动及 keydown cancel/repeat
+策略；browser DLL 复用既有 key/focus bridge，没有新增 ABI。TEST1101 在真实 render window
+中覆盖候选顺序、disabled/hidden/空 href 排除、native child、scroll reveal、事件、环回、
+Shift+Tab 和取消。设备证据目录为 `tmp/device-runs/20260828-224321-next653-sequential-focus-r6/`，
+TEST1095–1101、999 通过 8/8，唯一 `TESTBENCH PASS` 且零 `ERROR`/`FAIL`；Debug/Release
+ARMV4I、C89 和仓库/文档审计均通过。本批不宣称自定义 tabindex、contenteditable、file
+picker 键盘默认动作、dialog modal/backdrop/lifecycle 或 OEM 焦点视觉。
+
+### 48. 建立真实页面驱动的兼容队列
 
 在迁移工作之外，维护一个小而固定的页面/交互语料，用它选择下一项 DOM、CSS、表单或 JavaScript 能力。优先处理：
 
@@ -693,7 +709,7 @@ ARMV4I 构建和仓库/文档审计通过。本批不实现 Tab 焦点遍历、�
 
 只有不涉及上述真实缺口时，才考虑独立 Web API 补齐。
 
-### 48. 安排新的全范围检查点
+### 49. 安排新的全范围检查点
 
 next255 之后的批次主要依赖目标门和相关回归。满足以下任一条件时，安排一次新的全范围设备基线，而不是每批都运行：
 

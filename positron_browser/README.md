@@ -461,6 +461,13 @@ next652 不新增 browser ABI：宿主的 summary 键盘路径通过既有
 `preventDefault()` 会阻止 click/toggle。`TEST1100` 覆盖该组合路径；browser DLL 仍不拥有
 Tab 焦点遍历、窗口/SIP、完整 disclosure/辅助技术事件或 dialog 生命周期。
 
+next653 不新增 browser ABI。宿主通过既有 `PBrowser_ScriptSessionDispatchKeyEvent()` 和
+`PBrowser_ScriptSessionDispatchFocusEvent()` 消费 Core 的 `PCore_FocusTargetInfo()` 快照，
+在 WM 消息边界派发 Tab keydown/keyup 与 focus-family 事件；browser DLL 继续只持有脚本
+事件传播和取消结果，不持有 DOM 顺序、native HWND、滚动或窗口生命周期。TEST1101 验证
+该组合消费者路径；自定义 `tabindex`、contenteditable、file picker 键盘默认动作、dialog
+modal/backdrop/lifecycle 和 OEM 焦点视觉仍不属于 browser ABI 保证。
+
 next614 在同一 relation callback 上增加 bounded label/control 语义：`HTMLLabelElement.control`
 处理非空 `for` 指向和无 `for` 时的第一个嵌套 labelable 控件；input（排除 hidden）、select、
 textarea、button 的 `labels` 返回按文档顺序的静态 NodeList。无效 `for`、非控件、hidden、

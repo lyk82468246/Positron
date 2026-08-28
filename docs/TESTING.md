@@ -1074,6 +1074,26 @@ TEST1095–1100、TEST999 共 8/8，唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`
 真实触摸、键盘焦点滚动、SIP/IME、辅助技术事件或 dialog modal/backdrop/lifecycle 的人工
 验收。
 
+### next653 自然顺序 Tab 焦点自动门
+
+TEST1101 使用真实 render window 和启用 JavaScript 的 fixture，检查 Core
+`PCore_FocusTargetInfo()` 的 DOM 顺序、disabled/hidden/空 href 排除，以及宿主在同一条
+WM 消息路径上切换 Core link/button/summary 与 native EDIT。探针还检查首尾环回、Shift+Tab、
+滚动到屏幕外目标、focusin/focusout、重复 Tab 和脚本 `preventDefault()`。
+
+```bat
+scripts\device_gate.bat -Candidate next653-sequential-focus-r6 ^
+  -Configuration Debug ^
+  -RemoteBase "\Storage Card\Positron-device-gate-next653" ^
+  -EnableJavaScript ^
+  -TestSelection "1095-1101,999"
+```
+
+`tmp/device-runs/20260828-224321-next653-sequential-focus-r6/` 为 PASS：TEST1095–1101、
+TEST999 共 8/8，唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，设备屏幕 240x320 且
+`test13_route_ok=True`。该门不等于自定义 `tabindex`、contenteditable、file picker 键盘
+默认动作、dialog modal/backdrop/lifecycle、SIP/IME 或 OEM 焦点视觉保证。
+
 ### 当前默认自动选择与人工验收包（next589 基线）
 
 工作区当前的 `test_host/test_host.ini` 保持自动模式，并使用窄的 smoke 选择：

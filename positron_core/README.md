@@ -166,3 +166,11 @@ next652 让首个直接 `<summary>` 成为 Core 交互命中链中的可聚焦�
 宿主与 browser bridge 的组合，而不是 Core 内部消息泵。`TEST1100` 在实际 render window
 中验证 Enter keydown、Space keyup、repeat 去重和 keydown `preventDefault()`；该批不提供
 Tab 遍历、完整 disclosure/辅助技术事件或 dialog modal/backdrop/lifecycle。
+
+next653 增加 additive `PCore_FocusTargetInfo()`，为消费者提供有界的自然 DOM 顺序焦点快照。
+每次查询返回已布局、启用且有正几何的受支持 form-control、非空 `href` anchor 或每个
+`details` 的首个直接 summary 的 CSS px 位置、尺寸和 kind；form kind 沿用
+`PCore_FormControlInfo()` 的 1..10 值，link/disclosure 使用 11/12。hidden、disabled、空
+href、无布局盒和 file-picker 控件被排除，查询不解释 `tabindex`、contenteditable 或 dialog
+modal 规则，并以固定深度上限 fail closed。Core 不拥有窗口、焦点、滚动、事件派发或重绘；
+消费者应在重排后重新查询快照。`TEST1101` 和 WM6 定向门 1095–1101、999 已验证该契约。

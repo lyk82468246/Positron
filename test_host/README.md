@@ -187,6 +187,14 @@ next652 的 TEST1100 在真实 render window 中验证 summary 的键盘消费�
 由 Core 修改。定向门使用 `1095-1100,999`（需 `-EnableJavaScript`），WM6 Debug 通过 8/8；
 这不是 Tab 遍历、完整辅助技术事件或 dialog modal 行为的保证。
 
+next653 的 TEST1101 在真实 render window 中消费 Core `PCore_FocusTargetInfo()`，按自然 DOM
+顺序在同一宿主窗口内遍历 link、button、summary 和 native EDIT/SELECT；宿主保存当前几何
+快照，在 WM_KEYDOWN/UP 边界复用 browser key/focus bridge，并负责 `SetFocus()`、滚动和重绘。
+首尾环回、Shift+Tab、disabled/hidden/空 href 排除、focusin/focusout、重复和取消 Tab 均由
+自动探针断言。定向门使用 `1095-1101,999`（需 `-EnableJavaScript`），WM6 Debug 通过 8/8；
+该宿主路径不覆盖自定义 tabindex、contenteditable、file picker 键盘默认动作、dialog modal
+生命周期或 OEM 焦点视觉。
+
 next623 的 checkbox/radio 直接鼠标和键盘激活路径，在启用脚本且 Core 命中 toggle 时先调用
 `PBrowser_ScriptSessionDispatchNativeToggle(CLICK)`；允许后宿主执行 `PCore_FormActivateAt()`，
 再以 COMMIT 或 CANCEL 告知 browser DLL。产品层负责 click 取消、禁用抑制和一次

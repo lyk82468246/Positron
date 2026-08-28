@@ -440,6 +440,30 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
                                        int *kind, int *selected,
                                        int *disabled);
 
+/* Bounded natural-order keyboard focus snapshot. The index follows DOM
+ * document order and includes laid-out, enabled supported form controls,
+ * anchors with a non-empty href, and the first direct summary of each visible
+ * details. File-picker controls are intentionally omitted because their
+ * system dialog remains a separate host-owned interaction. Form-control kind
+ * values are the same 1..10 values returned by PCore_FormControlInfo; link and
+ * disclosure summaries use the two constants below. Hidden boxes and
+ * non-summary descendants of closed disclosure boxes, plus disabled controls,
+ * are omitted. This narrow query intentionally ignores
+ * tabindex, contenteditable, dialog modal focus, and other full browser focus
+ * policy. Returns 0 for one target and non-zero when the index is absent, the
+ * document is not laid out, or output is NULL. */
+#define PCORE_FOCUS_TARGET_LINK       11
+#define PCORE_FOCUS_TARGET_DISCLOSURE 12
+typedef struct PCoreFocusTargetInfo {
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+} PCoreFocusTargetInfo;
+PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
+                                   PCoreFocusTargetInfo *out_info);
+
 /* Resolve a file gadget at a document-space point. `file_index` is the
  * file-only index accepted by PCore_FileInputInfo/SetPath. A disabled gadget
  * still consumes the point. Returns 1 for a file gadget and 0 otherwise. */

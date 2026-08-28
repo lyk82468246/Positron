@@ -73,6 +73,10 @@ extern const struct gui_layout_table pcore_gdi_layout;
 
 static struct box *pcore_hit(struct box *box, int px, int py);
 static struct box *pcore_box_for_node(struct box *box, dom_node *node);
+static struct box *pcore_box_for_any_node(struct box *box, dom_node *node);
+static int pcore_disclosure_summary_box_info(struct pcore_render *st,
+        dom_node *summary, struct box *summary_box, int *x, int *y,
+        int *w, int *h, int *open, dom_element **out_details);
 static int pcore_utf8_character_count(const char *text,
         unsigned int *out_count);
 static int pcore_range_default_value(dom_node *node, char *buffer,
@@ -4526,6 +4530,222 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
     }
     dom_node_unref((dom_node *) element);
     return 0;
+}
+
+static int pcore_focus_form_kind(struct form_control *gadget)
+{
+    if (gadget == NULL) {
+        return 0;
+    }
+    if (gadget->type == GADGET_CHECKBOX) {
+        return 1;
+    }
+    if (gadget->type == GADGET_RADIO) {
+        return 2;
+    }
+    if (gadget->type == GADGET_TEXTBOX) {
+        return 3;
+    }
+    if (gadget->type == GADGET_PASSWORD) {
+        return 4;
+    }
+    if (gadget->type == GADGET_TEXTAREA) {
+        return 5;
+    }
+    if (gadget->type == GADGET_SELECT) {
+        return 6;
+    }
+    if (gadget->type == GADGET_SUBMIT) {
+        return 7;
+    }
+    if (gadget->type == GADGET_RESET) {
+        return 8;
+    }
+    if (gadget->type == GADGET_BUTTON) {
+        return 9;
+    }
+    if (gadget->type == GADGET_FILE) {
+        return 10;
+    }
+    return 0;
+}
+
+static int pcore_focus_target_for_element(pcore_render *st,
+        dom_node *node, PCoreFocusTargetInfo *out_info)
+{
+    struct box *box;
+    struct form_control *gadget;
+    bool effective_disabled;
+    dom_string *href;
+    dom_element *details;
+    int ax;
+    int ay;
+    int kind;
+
+    if (st == NULL || node == NULL || out_info == NULL) {
+        return 0;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    box = NULL;
+    gadget = NULL;
+    if (pcore_node_name_is(node, "input") ||
+            pcore_node_name_is(node, "textarea") ||
+            pcore_node_name_is(node, "select") ||
+            pcore_node_name_is(node, "button")) {
+        box = pcore_box_for_node(st->root_box, node);
+        if (box != NULL) {
+            gadget = box->gadget;
+        }
+        kind = pcore_focus_form_kind(gadget);
+        effective_disabled = (gadget != NULL) ? gadget->disabled : false;
+        if (kind == 0 || kind == 10 || box == NULL || box->width <= 0 ||
+                box->height <= 0 ||
+                pcore_node_effectively_disabled(node, NULL,
+                &effective_disabled) != 0 || effective_disabled) {
+            return 0;
+        }
+        ax = 0;
+        ay = 0;
+        box_coords(box, &ax, &ay);
+        out_info->x = ax;
+        out_info->y = ay;
+        out_info->width = box->width;
+        out_info->height = box->height;
+        out_info->kind = kind;
+        return 1;
+    }
+    if (pcore_node_name_is(node, "a")) {
+        href = NULL;
+        if (pcore_ensure_link_strings() != 0 ||
+                dom_element_get_attribute((dom_element *) node,
+                pcore_href_name, &href) != DOM_NO_ERR || href == NULL ||
+                dom_string_byte_length(href) == 0) {
+            if (href != NULL) {
+                dom_string_unref(href);
+            }
+            return 0;
+        }
+        dom_string_unref(href);
+        box = pcore_box_for_any_node(st->root_box, node);
+        if (box == NULL || box->width <= 0 || box->height <= 0) {
+            return 0;
+        }
+        ax = 0;
+        ay = 0;
+        box_coords(box, &ax, &ay);
+        out_info->x = ax;
+        out_info->y = ay;
+        out_info->width = box->width;
+        out_info->height = box->height;
+        out_info->kind = PCORE_FOCUS_TARGET_LINK;
+        return 1;
+    }
+    if (pcore_node_name_is(node, "summary")) {
+        details = NULL;
+        box = pcore_box_for_any_node(st->root_box, node);
+        if (box == NULL ||
+                !pcore_disclosure_summary_box_info(st, node, box,
+                &out_info->x, &out_info->y, &out_info->width,
+                &out_info->height, NULL, &details)) {
+            if (details != NULL) {
+                dom_node_unref((dom_node *) details);
+            }
+            return 0;
+        }
+        if (details != NULL) {
+            dom_node_unref((dom_node *) details);
+        }
+        out_info->kind = PCORE_FOCUS_TARGET_DISCLOSURE;
+        return 1;
+    }
+    return 0;
+}
+
+/* Walk the DOM in document order with an explicit depth cap. Focus queries
+ * are occasional input operations, not a second retained target list; the
+ * cap keeps a malicious/deep document from turning a public query into an
+ * unbounded native stack walk. */
+static int pcore_focus_target_walk(pcore_render *st, dom_node *node,
+        unsigned int target, unsigned int *current,
+        PCoreFocusTargetInfo *out_info, unsigned int depth)
+{
+    dom_node_type node_type;
+    dom_node *child;
+    dom_node *next;
+    PCoreFocusTargetInfo candidate;
+    int found;
+
+    if (st == NULL || node == NULL || current == NULL || out_info == NULL ||
+            depth > 64U) {
+        return 0;
+    }
+    node_type = DOM_NODE_TYPE_COUNT;
+    if (dom_node_get_node_type(node, &node_type) != DOM_NO_ERR) {
+        return 0;
+    }
+    if (node_type == DOM_ELEMENT_NODE &&
+            pcore_focus_target_for_element(st, node, &candidate)) {
+        if (*current == target) {
+            *out_info = candidate;
+            return 1;
+        }
+        if (*current < UINT_MAX) {
+            *current += 1;
+        }
+    }
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return 0;
+    }
+    while (child != NULL) {
+        found = pcore_focus_target_walk(st, child, target, current,
+                out_info, depth + 1U);
+        if (found) {
+            dom_node_unref(child);
+            return 1;
+        }
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return 0;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    return 0;
+}
+
+PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
+        PCoreFocusTargetInfo *out_info)
+{
+    dom_document *doc;
+    dom_element *root;
+    pcore_render *st;
+    unsigned int current;
+    int found;
+
+    if (out_info == NULL) {
+        return 1;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL || doc == NULL) {
+        return 1;
+    }
+    root = NULL;
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        if (root != NULL) {
+            dom_node_unref((dom_node *) root);
+        }
+        return 1;
+    }
+    current = 0;
+    found = pcore_focus_target_walk(st, (dom_node *) root, index,
+            &current, out_info, 0);
+    dom_node_unref((dom_node *) root);
+    return found ? 0 : 1;
 }
 
 static struct box *pcore_file_input_at_index(struct box *box,

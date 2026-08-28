@@ -237,9 +237,10 @@ textarea 布局宽度或完整 textarea Web IDL 实现。
 textarea 布局高度或完整 textarea Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.open` 的布尔属性往返；Core 已用该属性驱动
 details/dialog 的静态默认布局，next651 又为首个直接 summary 提供有界的查询、toggle 和
-browser click 接线，next652 再由宿主通过既有 key/click bridge 接入 Enter/Space 激活；但这
-不等于 Tab 焦点遍历、完整 disclosure 事件、modal focus、backdrop、dialog 生命周期或完整
-HTMLElement Web IDL 实现。
+browser click 接线，next652 再由宿主通过既有 key/click bridge 接入 Enter/Space 激活，
+next653 又由 Core 提供受支持目标的自然 DOM 顺序焦点快照并由宿主接入 Tab/Shift+Tab；但这
+不等于自定义 tabindex 顺序、contenteditable、完整 disclosure 事件、modal focus、backdrop、
+dialog 生命周期或完整 HTMLElement Web IDL 实现。
 当前 raw metadata bridge 还提供 `HTMLElement.autocapitalize`、`itemValue`、`is` 的 UTF-8
 属性往返；这不等于输入法/大小写策略、microdata 解析或 customized built-in 升级。
 当前 raw metadata bridge 还提供 `HTMLElement.ariaAtomic`、`ariaBusy`、`ariaChecked`、
@@ -1331,6 +1332,24 @@ TEST1100 在实际 render window 中覆盖焦点命中、Enter/Space 时序、re
 `details.open` 不变；TEST1095–1099、999 与 TEST1100 的 WM6 Debug 定向门为 8/8（证据目录：
 `tmp/device-runs/20260828-214751-next652-disclosure-keyboard-r6/`）。该能力
 不是完整 Tab 顺序、键盘焦点滚动、辅助技术事件或 dialog modal 行为的承诺。
+
+#### next653 的自然顺序焦点边界
+
+next653 在 `positron_core.dll` 新增 additive `PCore_FocusTargetInfo()`。它以已布局的 DOM
+文档顺序逐项返回启用且有正几何的受支持 form-control、非空 `href` anchor 和每个 details
+的首个直接 summary；返回值只有 CSS px 的位置、尺寸和 kind，调用者通过 index 查询，查询
+本身不保留窗口或事件状态。hidden、disabled、空 href、无布局盒和 file-picker 控件不进入
+列表；该 API 明确忽略 `tabindex`、contenteditable、dialog modal 规则，且对过深 DOM 使用
+有界遍历。
+
+`test_host.exe` 在消息边界保存当前快照，向 browser DLL 的既有 key/focus bridge 派发键盘
+和 focus-family 事件，再负责 native EDIT/SELECT `SetFocus()`、Core interaction、滚动和
+重绘。browser DLL 没有新增 ABI，也不拥有 WM 窗口或 scrollbar。TEST1101 在真实 render
+window 验证候选顺序、disabled/hidden/空 href 排除、native child 切换、focusin/focusout、
+末端环回、Shift+Tab、repeat/cancelable Tab 和 off-screen reveal；
+`tmp/device-runs/20260828-224321-next653-sequential-focus-r6/` 的 TEST1095–1101、999
+设备门为 8/8 PASS。file picker 键盘默认动作、完整辅助技术事件、自定义 tabindex、
+contenteditable、dialog modal/backdrop/lifecycle 和 OEM 焦点视觉仍是未覆盖边界。
 
 #### next614 的 label/control 关系边界
 

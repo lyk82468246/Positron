@@ -388,6 +388,16 @@ next652 补齐同一首个直接 summary 的键盘激活：宿主记录已命中
 WM 消息和重排调度。TEST1095–1100 与 TEST999 在 WM6 Debug 定向门通过 8/8；该批仍不实现
 Tab 焦点遍历、完整 disclosure/辅助技术事件或 dialog modal/backdrop/lifecycle。
 
+next653 补齐受支持目标的自然 DOM 顺序 Tab 遍历。`positron_core.dll` 新增
+`PCore_FocusTargetInfo()`，为已布局且启用的 form-control、非空 `href` anchor 和首个直接
+summary 返回有界 CSS px 几何/类型；hidden、disabled、空 href 与 file-picker 控件被排除，
+`tabindex` 自定义顺序和完整浏览器焦点策略仍不在范围内。`test_host.exe` 只负责 WM
+Tab/Shift+Tab 路由、native EDIT/SELECT 子窗口切换、焦点事件桥接和目标滚动；browser DLL
+复用既有 key/focus bridge。TEST1101 在实际 render window 中覆盖顺序、环回、Shift+Tab、
+native child、滚动、focusin/focusout、repeat 与 `preventDefault()`；TEST1095–1101 与
+TEST999 在 WM6 Debug 定向门通过 8/8。file picker 键盘默认动作、contenteditable、dialog
+modal/backdrop/lifecycle、OEM 焦点视觉仍需单独处理。
+
 ## 快速开始
 
 ### 前置环境

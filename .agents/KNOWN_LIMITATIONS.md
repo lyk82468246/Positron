@@ -1,6 +1,6 @@
 # Positron 当前已知限制
 
-更新时间：2026-08-25
+更新时间：2026-08-28
 
 本文件只记录当前仍然成立的边界，以及解除边界所需的证据。已修复问题和旧 next 流水由 Git 历史、`docs/history/` 与相关测试保存；最新候选和设备证据见 `.agents/HANDOFF.md`。
 
@@ -138,9 +138,12 @@
   next651 又为首个直接 summary 提供 Core 的 id/坐标查询与 open toggle，并让 browser 的
   `HTMLElement.click()` typed adapter 传播可取消 click、执行 Core default 和安排活动页重排；
   next652 再将合法 summary 纳入 Core focus interaction，由宿主通过既有 key/click bridge
-  接入 Enter/Space 激活，并在有界几何快照失配时 fail closed。toggle 仍是 DOM-only，调用者
-  必须显式 style/layout。尚不实现 Tab 焦点遍历、键盘焦点滚动、完整 disclosure/辅助技术
-  事件、dialog modal focus、backdrop 或 dialog 生命周期。
+  接入 Enter/Space 激活，并在有界几何快照失配时 fail closed。next653 再由 Core 提供自然
+  DOM 顺序的有界焦点目标查询，宿主接入 Tab/Shift+Tab、跨 native/core 焦点切换、焦点事件
+  和目标滚动；file picker、hidden/disabled/无 href 目标不会进入该列表。toggle 仍是
+  DOM-only，调用者必须显式 style/layout。尚不实现 tabindex 自定义顺序、contenteditable、
+  file picker 键盘默认动作、完整 disclosure/辅助技术事件、dialog modal focus、backdrop 或
+  dialog 生命周期。
   next649 又把 HTML `pre[wrap]` 接入 Core UA stylesheet 的 `white-space: pre-wrap`，窄视口
   代码块会换行并增加布局高度；这不等于完整 CSS whitespace、tab 度量或所有字体下的像素一致性。
   next650 又把递归资源收集中的 stylesheet reference/URL 自动数组改为单次 style transaction
@@ -313,7 +316,7 @@
 
 ### 当前边界
 
-- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1100 全覆盖。
+- 最近一次全范围自动设备基线是 next255；后续能力有针对性门和相关回归门，但不能称为最新 TEST1–1101 全覆盖。
 - 自动日志与几何断言不能替代视觉、真实触摸、SIP、旋转、文件选择器和失败网络的人工判断。
 - `tmp/` 中设备日志和截图只在本机存在，不进入 Git；丢失本机证据后只能依赖提交中的结论和可重跑测试。
 - WMDC/RAPI 自动化默认假设已有且独占的设备连接；连接和配对本身通常仍是 GUI 操作。

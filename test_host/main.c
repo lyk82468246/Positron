@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1100
+#define TEST_MAX_NUMBER 1101
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -6003,6 +6003,9 @@ static int    g_native_button_key_probe_ok = 0;
 static int    g_native_disclosure_key_probe = 0;
 static int    g_native_disclosure_key_probe_ok = 0;
 static char   g_native_disclosure_key_probe_detail[512];
+static int    g_native_sequential_focus_probe = 0;
+static int    g_native_sequential_focus_probe_ok = 0;
+static char   g_native_sequential_focus_probe_detail[512];
 static HANDLE g_toggle_focus_document = NULL;
 static unsigned int g_toggle_focus_index = 0;
 static int    g_toggle_focus_kind = 0;
@@ -6019,6 +6022,14 @@ static int    g_disclosure_focus_w = 0;
 static int    g_disclosure_focus_h = 0;
 static int    g_disclosure_focus_valid = 0;
 static int    g_disclosure_space_pending = 0;
+static HANDLE g_sequential_focus_document = NULL;
+static unsigned int g_sequential_focus_index = 0;
+static int    g_sequential_focus_kind = 0;
+static int    g_sequential_focus_x = 0;
+static int    g_sequential_focus_y = 0;
+static int    g_sequential_focus_w = 0;
+static int    g_sequential_focus_h = 0;
+static int    g_sequential_focus_valid = 0;
 static int    g_file_picker_pending = 0;
 static int    g_file_picker_active = 0;
 static HANDLE g_file_picker_pending_document = NULL;
@@ -6185,11 +6196,24 @@ static void pcore_disclosure_focus_clear(void)
     g_disclosure_space_pending = 0;
 }
 
+static void pcore_sequential_focus_clear(void)
+{
+    g_sequential_focus_document = NULL;
+    g_sequential_focus_index = 0;
+    g_sequential_focus_kind = 0;
+    g_sequential_focus_x = 0;
+    g_sequential_focus_y = 0;
+    g_sequential_focus_w = 0;
+    g_sequential_focus_h = 0;
+    g_sequential_focus_valid = 0;
+}
+
 static void pcore_browser_script_session_destroy(void)
 {
     pcore_toggle_focus_clear();
     pcore_button_focus_clear();
     pcore_disclosure_focus_clear();
+    pcore_sequential_focus_clear();
     pcore_file_picker_clear_pending();
     if (g_browser_script_session.session != NULL) {
         (void) PBrowser_ScriptSessionResetNativeFilePickerState(
@@ -7291,6 +7315,13 @@ static int pcore_disclosure_focus_track_at(int x, int y);
 static int pcore_disclosure_focus_current(int *out_x, int *out_y);
 static int pcore_handle_disclosure_keyboard(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp, int system_key);
+static int pcore_sequential_focus_move(HWND hwnd, int backwards,
+        int dispatch_key, WPARAM wp, LPARAM lp, int system_key);
+static int pcore_sequential_focus_capture_native(HWND control);
+static int pcore_handle_sequential_tab(HWND hwnd, UINT msg, WPARAM wp,
+        LPARAM lp, int system_key);
+static int pcore_handle_sequential_link_keyboard(HWND hwnd, UINT msg,
+        WPARAM wp, LPARAM lp, int system_key);
 
 static int pcore_native_script_active(void)
 {
@@ -7688,6 +7719,13 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                     (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) ?
                     "keydown" : "keyup", wp, lp,
                     (msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) ? 1 : 0) == 0) {
+                return 0;
+            }
+            if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) &&
+                    wp == VK_TAB &&
+                    pcore_sequential_focus_move(GetParent(hwnd),
+                    GetKeyState(VK_SHIFT) < 0, 0, wp, lp,
+                    msg == WM_SYSKEYDOWN)) {
                 return 0;
             }
             if (msg == WM_KEYDOWN && wp == VK_BACK &&
@@ -8444,6 +8482,31 @@ static int pcore_browser_script_dispatch_key_at(int x, int y,
             ((GetKeyState(VK_MENU) < 0) ? 1 : 0);
     return pcore_browser_script_dispatch_key_data_at(x, y,
             event_type, &key_data, is_composing);
+}
+
+static void pcore_browser_script_dispatch_focus_at(int x, int y,
+        const char *event_type, int bubbles)
+{
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptFocusEventInfo focus_info;
+
+    if (event_type == NULL || g_render_doc == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.runtime == NULL ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return;
+    }
+    bridge = g_browser_script_session.bridge;
+    memset(&focus_info, 0, sizeof(focus_info));
+    focus_info.size = sizeof(focus_info);
+    focus_info.x = x;
+    focus_info.y = y;
+    focus_info.event_type = event_type;
+    focus_info.bubbles = bubbles ? 1 : 0;
+    focus_info.cancelable = 0;
+    (void) PBrowser_ScriptSessionDispatchFocusEvent(bridge->session,
+            &focus_info);
 }
 
 static int pcore_browser_script_dispatch_char_at(int x, int y,
@@ -9559,6 +9622,13 @@ static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
             (msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) ? 1 : 0) == 0) {
         return 0;
     }
+    if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) &&
+            wp == VK_TAB &&
+            pcore_sequential_focus_move(GetParent(hwnd),
+            GetKeyState(VK_SHIFT) < 0, 0, wp, lp,
+            msg == WM_SYSKEYDOWN)) {
+        return 0;
+    }
     if ((msg == WM_CHAR || msg == WM_SYSCHAR) &&
             native_select != NULL) {
         if (pcore_native_script_active()) {
@@ -9639,6 +9709,7 @@ static void pcore_native_focus_changed(HWND control)
             if (result > 0) {
                 pcore_request_interaction_restyle(GetParent(control));
             }
+            (void) pcore_sequential_focus_capture_native(control);
             pcore_browser_script_dispatch_control_event(control,
                     "focus", 0);
             pcore_browser_script_dispatch_control_event(control,
@@ -9658,6 +9729,7 @@ static void pcore_native_focus_changed(HWND control)
             if (result > 0) {
                 pcore_request_interaction_restyle(GetParent(control));
             }
+            (void) pcore_sequential_focus_capture_native(control);
             (void) pcore_browser_script_dispatch_native_select_focus(control,
                     1);
             return;
@@ -14799,6 +14871,463 @@ static int pcore_button_focus_current(int *out_x, int *out_y,
     return 1;
 }
 
+#define PCORE_SEQUENTIAL_FOCUS_MAX 128
+
+static int pcore_sequential_focus_kind_native(int kind)
+{
+    return kind >= 3 && kind <= 6;
+}
+
+static void pcore_sequential_focus_store(unsigned int index,
+        const PCoreFocusTargetInfo *info)
+{
+    if (info == NULL) {
+        pcore_sequential_focus_clear();
+        return;
+    }
+    g_sequential_focus_document = g_render_doc;
+    g_sequential_focus_index = index;
+    g_sequential_focus_kind = info->kind;
+    g_sequential_focus_x = info->x;
+    g_sequential_focus_y = info->y;
+    g_sequential_focus_w = info->width;
+    g_sequential_focus_h = info->height;
+    g_sequential_focus_valid = 1;
+}
+
+static int pcore_sequential_focus_current(PCoreFocusTargetInfo *out_info)
+{
+    PCoreFocusTargetInfo info;
+
+    if (!g_sequential_focus_valid ||
+            g_sequential_focus_document != g_render_doc ||
+            g_render_doc == NULL) {
+        return 0;
+    }
+    memset(&info, 0, sizeof(info));
+    if (PCore_FocusTargetInfo(g_render_doc, g_sequential_focus_index,
+            &info) != 0 || info.kind != g_sequential_focus_kind ||
+            info.x != g_sequential_focus_x ||
+            info.y != g_sequential_focus_y ||
+            info.width != g_sequential_focus_w ||
+            info.height != g_sequential_focus_h) {
+        pcore_sequential_focus_clear();
+        return 0;
+    }
+    if (out_info != NULL) {
+        *out_info = info;
+    }
+    return 1;
+}
+
+static int pcore_sequential_focus_target_at(int x, int y,
+        unsigned int *out_index, PCoreFocusTargetInfo *out_info)
+{
+    PCoreFocusTargetInfo info;
+    unsigned int index;
+
+    for (index = 0; index < PCORE_SEQUENTIAL_FOCUS_MAX; index++) {
+        memset(&info, 0, sizeof(info));
+        if (PCore_FocusTargetInfo(g_render_doc, index, &info) != 0) {
+            break;
+        }
+        if (info.width > 0 && info.height > 0 &&
+                x >= info.x && x < info.x + info.width &&
+                y >= info.y && y < info.y + info.height) {
+            if (out_index != NULL) {
+                *out_index = index;
+            }
+            if (out_info != NULL) {
+                *out_info = info;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void pcore_sequential_focus_track_at(int x, int y)
+{
+    unsigned int index;
+    PCoreFocusTargetInfo info;
+
+    if (g_render_doc == NULL ||
+            !pcore_sequential_focus_target_at(x, y, &index, &info)) {
+        pcore_sequential_focus_clear();
+        return;
+    }
+    pcore_sequential_focus_store(index, &info);
+}
+
+static HWND pcore_sequential_focus_native_window(
+        const PCoreFocusTargetInfo *target)
+{
+    PCoreTextInputInfo text_info;
+    PCoreSelectInfo select_info;
+    unsigned int i;
+    int multiline;
+    int kind;
+
+    if (target == NULL || g_render_doc == NULL) {
+        return NULL;
+    }
+    if (target->kind >= 3 && target->kind <= 5) {
+        for (i = 0; i < g_native_edit_count; i++) {
+            multiline = 0;
+            if (g_native_edits[i].hwnd == NULL ||
+                    PCore_TextInputInfo(g_render_doc,
+                    g_native_edits[i].text_index, &text_info, NULL, 0) != 0 ||
+                    PCore_TextInputIsMultiline(g_render_doc,
+                    g_native_edits[i].text_index, &multiline) != 0) {
+                continue;
+            }
+            kind = multiline ? 5 : (text_info.password ? 4 : 3);
+            if (kind == target->kind && text_info.x == target->x &&
+                    text_info.y == target->y &&
+                    text_info.width == target->width &&
+                    text_info.height == target->height) {
+                return g_native_edits[i].hwnd;
+            }
+        }
+    } else if (target->kind == 6) {
+        for (i = 0; i < g_native_select_count; i++) {
+            if (g_native_selects[i].hwnd == NULL ||
+                    PCore_SelectInfo(g_render_doc,
+                    g_native_selects[i].select_index, &select_info) != 0) {
+                continue;
+            }
+            if (select_info.x == target->x &&
+                    select_info.y == target->y &&
+                    select_info.width == target->width &&
+                    select_info.height == target->height) {
+                return g_native_selects[i].hwnd;
+            }
+        }
+    }
+    return NULL;
+}
+
+static int pcore_sequential_focus_capture_native(HWND control)
+{
+    PCoreTextInputInfo text_info;
+    PCoreSelectInfo select_info;
+    PCoreFocusTargetInfo target;
+    unsigned int i;
+    unsigned int target_index;
+    int multiline;
+    int target_kind;
+
+    if (control == NULL || g_render_doc == NULL) {
+        return 0;
+    }
+    memset(&target, 0, sizeof(target));
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd != control ||
+                PCore_TextInputInfo(g_render_doc,
+                g_native_edits[i].text_index, &text_info, NULL, 0) != 0 ||
+                PCore_TextInputIsMultiline(g_render_doc,
+                g_native_edits[i].text_index, &multiline) != 0) {
+            continue;
+        }
+        target_kind = multiline ? 5 : (text_info.password ? 4 : 3);
+        for (target_index = 0;
+                target_index < PCORE_SEQUENTIAL_FOCUS_MAX;
+                target_index++) {
+            if (PCore_FocusTargetInfo(g_render_doc, target_index,
+                    &target) != 0) {
+                break;
+            }
+            if (target.kind == target_kind && target.x == text_info.x &&
+                    target.y == text_info.y &&
+                    target.width == text_info.width &&
+                    target.height == text_info.height) {
+                pcore_sequential_focus_store(target_index, &target);
+                return 1;
+            }
+        }
+        break;
+    }
+    for (i = 0; i < g_native_select_count; i++) {
+        if (g_native_selects[i].hwnd != control ||
+                PCore_SelectInfo(g_render_doc,
+                g_native_selects[i].select_index, &select_info) != 0) {
+            continue;
+        }
+        for (target_index = 0;
+                target_index < PCORE_SEQUENTIAL_FOCUS_MAX;
+                target_index++) {
+            if (PCore_FocusTargetInfo(g_render_doc, target_index,
+                    &target) != 0) {
+                break;
+            }
+            if (target.kind == 6 && target.x == select_info.x &&
+                    target.y == select_info.y &&
+                    target.width == select_info.width &&
+                    target.height == select_info.height) {
+                pcore_sequential_focus_store(target_index, &target);
+                return 1;
+            }
+        }
+        break;
+    }
+    pcore_sequential_focus_clear();
+    return 0;
+}
+
+static void pcore_sequential_focus_dispatch_change(
+        const PCoreFocusTargetInfo *old_target, int old_native)
+{
+    if (old_target != NULL && !old_native) {
+        pcore_browser_script_dispatch_focus_at(
+                old_target->x + old_target->width / 2,
+                old_target->y + old_target->height / 2, "blur", 0);
+        pcore_browser_script_dispatch_focus_at(
+                old_target->x + old_target->width / 2,
+                old_target->y + old_target->height / 2, "focusout", 1);
+    }
+}
+
+static void pcore_sequential_focus_prepare_core(
+        const PCoreFocusTargetInfo *target)
+{
+    int x;
+    int y;
+
+    if (target == NULL) {
+        pcore_toggle_focus_clear();
+        pcore_button_focus_clear();
+        pcore_disclosure_focus_clear();
+        return;
+    }
+    x = target->x + target->width / 2;
+    y = target->y + target->height / 2;
+    if (target->kind == 1 || target->kind == 2) {
+        (void) pcore_toggle_focus_track_at(x, y);
+    } else if (target->kind >= 7 && target->kind <= 9) {
+        (void) pcore_button_focus_track_at(x, y);
+    } else if (target->kind == PCORE_FOCUS_TARGET_DISCLOSURE) {
+        (void) pcore_disclosure_focus_track_at(x, y);
+    } else {
+        pcore_toggle_focus_clear();
+        pcore_button_focus_clear();
+        pcore_disclosure_focus_clear();
+    }
+}
+
+static void pcore_sequential_focus_reveal(HWND hwnd,
+        const PCoreFocusTargetInfo *target)
+{
+    RECT client;
+    int viewport_height;
+    int target_scroll;
+
+    if (hwnd == NULL || target == NULL || !IsWindow(hwnd)) {
+        return;
+    }
+    GetClientRect(hwnd, &client);
+    viewport_height = client.bottom - client.top;
+    if (viewport_height <= 0) {
+        return;
+    }
+    target_scroll = g_scroll_y;
+    if (target->y < g_scroll_y + 4) {
+        target_scroll = target->y - 4;
+    } else if (target->y + target->height >
+            g_scroll_y + viewport_height - 4) {
+        target_scroll = target->y + target->height - viewport_height + 4;
+    }
+    if (target_scroll != g_scroll_y) {
+        (void) pcore_scroll_to_y(hwnd, target_scroll);
+    }
+}
+
+static int pcore_sequential_focus_apply(HWND hwnd, unsigned int index,
+        const PCoreFocusTargetInfo *target)
+{
+    PCoreFocusTargetInfo old_target;
+    HWND native_window;
+    int old_valid;
+    int old_native;
+    int new_native;
+    int x;
+    int y;
+    int result;
+
+    if (hwnd == NULL || target == NULL || g_render_doc == NULL ||
+            target->width <= 0 || target->height <= 0) {
+        return 0;
+    }
+    old_valid = pcore_sequential_focus_current(&old_target);
+    if (old_valid && old_target.kind == target->kind &&
+            old_target.x == target->x && old_target.y == target->y &&
+            old_target.width == target->width &&
+            old_target.height == target->height) {
+        return 1;
+    }
+    old_native = old_valid && pcore_sequential_focus_kind_native(
+            old_target.kind) && GetFocus() != hwnd;
+    new_native = pcore_sequential_focus_kind_native(target->kind);
+    pcore_sequential_focus_dispatch_change(old_valid ? &old_target : NULL,
+            old_native);
+    pcore_sequential_focus_reveal(hwnd, target);
+    if (new_native) {
+        native_window = pcore_sequential_focus_native_window(target);
+        if (native_window == NULL || !IsWindowEnabled(native_window)) {
+            return 0;
+        }
+        SetFocus(native_window);
+        if (GetFocus() != native_window) {
+            return 0;
+        }
+        pcore_sequential_focus_store(index, target);
+        return 1;
+    }
+    SetFocus(hwnd);
+    if (GetFocus() != hwnd) {
+        return 0;
+    }
+    x = target->x + target->width / 2;
+    y = target->y + target->height / 2;
+    result = PCore_InteractionSetAt(g_render_doc, x, y,
+            PCORE_INTERACTION_FOCUS);
+    if (result < 0) {
+        return 0;
+    }
+    pcore_sequential_focus_prepare_core(target);
+    pcore_sequential_focus_store(index, target);
+    if (result > 0) {
+        pcore_request_interaction_restyle(hwnd);
+    }
+    pcore_browser_script_dispatch_focus_at(x, y, "focus", 0);
+    pcore_browser_script_dispatch_focus_at(x, y, "focusin", 1);
+    return 1;
+}
+
+static int pcore_sequential_focus_move(HWND hwnd, int backwards,
+        int dispatch_key, WPARAM wp, LPARAM lp, int system_key)
+{
+    PCoreFocusTargetInfo current_target;
+    PCoreFocusTargetInfo next_target;
+    unsigned int count;
+    unsigned int current_index;
+    unsigned int next_index;
+    int current_valid;
+    int default_allowed;
+
+    if (hwnd == NULL || g_render_doc == NULL) {
+        return 0;
+    }
+    current_valid = pcore_sequential_focus_current(&current_target);
+    current_index = g_sequential_focus_index;
+    if (dispatch_key && current_valid) {
+        default_allowed = pcore_browser_script_dispatch_key_at(
+                current_target.x + current_target.width / 2,
+                current_target.y + current_target.height / 2,
+                "keydown", wp, lp, system_key, 0);
+        if (!default_allowed || (lp & 0x40000000L) != 0) {
+            return 1;
+        }
+    }
+    count = 0;
+    while (count < PCORE_SEQUENTIAL_FOCUS_MAX) {
+        memset(&next_target, 0, sizeof(next_target));
+        if (PCore_FocusTargetInfo(g_render_doc, count,
+                &next_target) != 0) {
+            break;
+        }
+        count++;
+    }
+    if (count == 0) {
+        return 0;
+    }
+    if (!current_valid || current_index >= count) {
+        next_index = backwards ? count - 1 : 0;
+    } else if (backwards) {
+        next_index = (current_index == 0) ? count - 1 :
+                current_index - 1;
+    } else {
+        next_index = (current_index + 1 >= count) ? 0 :
+                current_index + 1;
+    }
+    if (PCore_FocusTargetInfo(g_render_doc, next_index,
+            &next_target) != 0) {
+        return 1;
+    }
+    (void) pcore_sequential_focus_apply(hwnd, next_index, &next_target);
+    return 1;
+}
+
+static int pcore_handle_sequential_tab(HWND hwnd, UINT msg, WPARAM wp,
+        LPARAM lp, int system_key)
+{
+    PCoreFocusTargetInfo target;
+
+    if (wp != VK_TAB) {
+        return 0;
+    }
+    if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
+        return pcore_sequential_focus_move(hwnd,
+                GetKeyState(VK_SHIFT) < 0, 1, wp, lp, system_key);
+    }
+    if (msg == WM_KEYUP || msg == WM_SYSKEYUP) {
+        if (pcore_sequential_focus_current(&target)) {
+            (void) pcore_browser_script_dispatch_key_at(
+                    target.x + target.width / 2,
+                    target.y + target.height / 2,
+                    "keyup", wp, lp, system_key, 0);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pcore_handle_sequential_link_keyboard(HWND hwnd, UINT msg,
+        WPARAM wp, LPARAM lp, int system_key)
+{
+    PCoreFocusTargetInfo target;
+    char href[1024];
+    char link_target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
+    char rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
+    int x;
+    int y;
+
+    if (wp != VK_RETURN || !g_sequential_focus_valid ||
+            g_sequential_focus_kind != PCORE_FOCUS_TARGET_LINK) {
+        return 0;
+    }
+    if (!pcore_sequential_focus_current(&target)) {
+        return 1;
+    }
+    x = target.x + target.width / 2;
+    y = target.y + target.height / 2;
+    if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
+        if (!pcore_browser_script_dispatch_key_at(x, y, "keydown",
+                wp, lp, system_key, 0) || (lp & 0x40000000L) != 0) {
+            return 1;
+        }
+        href[0] = '\0';
+        link_target[0] = '\0';
+        rel[0] = '\0';
+        if (PCore_LinkAtEx(g_render_doc, x, y, href, sizeof(href),
+                link_target, sizeof(link_target), rel, sizeof(rel)) != 0) {
+            return 1;
+        }
+        if (pcore_native_script_active()) {
+            (void) pcore_browser_script_dispatch_anchor_click_at(
+                    x, y, href, link_target, rel);
+        } else {
+            navigate_to(hwnd, href);
+        }
+        return 1;
+    }
+    if (msg == WM_KEYUP || msg == WM_SYSKEYUP) {
+        (void) pcore_browser_script_dispatch_key_at(x, y, "keyup",
+                wp, lp, system_key, 0);
+        return 1;
+    }
+    return 0;
+}
+
 static int pcore_form_toggle_activate(int x, int y,
         int product_toggle_started, int *dirty_x, int *dirty_y,
         int *dirty_w, int *dirty_h)
@@ -15938,6 +16467,207 @@ static void pcore_native_disclosure_key_probe_run(HWND parent)
     PostMessage(parent, WM_CLOSE, 0, 0);
 }
 
+/* Probe the bounded natural-order focus list through the same WM key paths a
+ * user exercises.  Core owns the document-order snapshot; this host owns
+ * native EDIT/SELECT focus, scrolling, and the message boundary. */
+static void pcore_native_sequential_focus_probe_run(HWND parent)
+{
+    static const char *target_ids[] = {
+        "first", "text", "button", "summary", "last"
+    };
+    static const int target_kinds[] = {
+        PCORE_FOCUS_TARGET_LINK, 3, 9,
+        PCORE_FOCUS_TARGET_DISCLOSURE, PCORE_FOCUS_TARGET_LINK
+    };
+    static const char EXPECTED_EVENTS[] =
+        "in:first;out:first;in:text;out:text;in:button;out:button;"
+        "in:summary;out:summary;in:last;out:last;in:first;out:first;"
+        "in:last;";
+    PCoreFocusTargetInfo expected[5];
+    PCoreFocusTargetInfo current;
+    HWND native_window;
+    RECT client;
+    char events[2048];
+    char error[192];
+    const char *stage;
+    unsigned int count;
+    unsigned int i;
+    int x;
+    int y;
+    int width;
+    int height;
+    int ok;
+
+    g_native_sequential_focus_probe_ok = 0;
+    g_native_sequential_focus_probe_detail[0] = '\0';
+    memset(expected, 0, sizeof(expected));
+    memset(&current, 0, sizeof(current));
+    memset(events, 0, sizeof(events));
+    memset(error, 0, sizeof(error));
+    stage = "setup";
+    count = 0;
+    i = 0;
+    native_window = NULL;
+    ok = parent != NULL && g_render_doc != NULL &&
+            g_browser_script_session.runtime != NULL &&
+            g_browser_script_session.bridge != NULL;
+    if (!ok) {
+        goto failed;
+    }
+
+    stage = "targets";
+    for (i = 0; i < 5U; i++) {
+        if (PCore_FocusTargetInfo(g_render_doc, i, &expected[i]) != 0) {
+            stage = "target-query";
+            goto failed;
+        }
+        if (expected[i].kind != target_kinds[i]) {
+            stage = "target-kind";
+            goto failed;
+        }
+        if (expected[i].width <= 0 || expected[i].height <= 0) {
+            stage = "target-size";
+            goto failed;
+        }
+        if (PCore_FragmentInfoById(g_render_doc, target_ids[i], &x, &y,
+                &width, &height) != 0 || expected[i].x != x ||
+                expected[i].y != y || expected[i].width != width ||
+                expected[i].height != height) {
+            stage = "target-geometry";
+            goto failed;
+        }
+        if (i > 0 && expected[i].y < expected[i - 1].y) {
+            stage = "target-order";
+            goto failed;
+        }
+        count++;
+    }
+    if (PCore_FocusTargetInfo(g_render_doc, count, &current) == 0) {
+        stage = "target-count";
+        goto failed;
+    }
+    if (!GetClientRect(parent, &client) || expected[4].y <= client.bottom) {
+        stage = "target-scroll";
+        goto failed;
+    }
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';window.prevent_tab=false;", -1,
+            error, sizeof(error)) != 0) {
+        stage = "reset-events";
+        goto failed;
+    }
+
+    pcore_sequential_focus_clear();
+    SetFocus(parent);
+    stage = "tab-first";
+    (void) SendMessage(parent, WM_KEYDOWN, VK_TAB, 0);
+    (void) SendMessage(parent, WM_KEYUP, VK_TAB, 0);
+    if (!pcore_sequential_focus_current(&current) ||
+            g_sequential_focus_index != 0 || current.kind != target_kinds[0] ||
+            GetFocus() != parent) {
+        goto failed;
+    }
+
+    stage = "tab-native";
+    (void) SendMessage(parent, WM_KEYDOWN, VK_TAB, 0);
+    native_window = pcore_sequential_focus_native_window(&expected[1]);
+    if (native_window == NULL || GetFocus() != native_window ||
+            !pcore_sequential_focus_current(&current) ||
+            g_sequential_focus_index != 1 || current.kind != target_kinds[1]) {
+        goto failed;
+    }
+    (void) SendMessage(native_window, WM_KEYUP, VK_TAB, 0);
+
+    stage = "tab-button";
+    (void) SendMessage(native_window, WM_KEYDOWN, VK_TAB, 0);
+    (void) SendMessage(parent, WM_KEYUP, VK_TAB, 0);
+    if (!pcore_sequential_focus_current(&current) ||
+            g_sequential_focus_index != 2 || current.kind != target_kinds[2] ||
+            GetFocus() != parent) {
+        goto failed;
+    }
+
+    stage = "tab-summary";
+    (void) SendMessage(parent, WM_KEYDOWN, VK_TAB, 0);
+    (void) SendMessage(parent, WM_KEYUP, VK_TAB, 0);
+    if (!pcore_sequential_focus_current(&current) ||
+            g_sequential_focus_index != 3 || current.kind != target_kinds[3] ||
+            GetFocus() != parent) {
+        goto failed;
+    }
+
+    stage = "tab-last";
+    (void) SendMessage(parent, WM_KEYDOWN, VK_TAB, 0);
+    (void) SendMessage(parent, WM_KEYUP, VK_TAB, 0);
+    if (!pcore_sequential_focus_current(&current) ||
+            g_sequential_focus_index != 4 || current.kind != target_kinds[4] ||
+            GetFocus() != parent || g_scroll_y <= 0 ||
+            !GetClientRect(parent, &client) ||
+            expected[4].y < g_scroll_y ||
+            expected[4].y + expected[4].height >
+            g_scroll_y + (client.bottom - client.top)) {
+        goto failed;
+    }
+
+    stage = "tab-wrap";
+    (void) SendMessage(parent, WM_KEYDOWN, VK_TAB, 0);
+    (void) SendMessage(parent, WM_KEYUP, VK_TAB, 0);
+    if (!pcore_sequential_focus_current(&current) ||
+            g_sequential_focus_index != 0 || current.kind != target_kinds[0]) {
+        goto failed;
+    }
+
+    stage = "shift-tab";
+    (void) pcore_sequential_focus_move(parent, 1, 0, VK_TAB, 0, 0);
+    if (!pcore_sequential_focus_current(&current) ||
+            g_sequential_focus_index != 4 || current.kind != target_kinds[4]) {
+        goto failed;
+    }
+
+    stage = "cancel-tab";
+    if (pcore_browser_script_session_evaluate(
+            "window.prevent_tab=true;", -1, error, sizeof(error)) != 0) {
+        goto failed;
+    }
+    (void) SendMessage(parent, WM_KEYDOWN, VK_TAB, 0);
+    (void) SendMessage(parent, WM_KEYUP, VK_TAB, 0);
+    if (!pcore_sequential_focus_current(&current) ||
+            g_sequential_focus_index != 4 || current.kind != target_kinds[4]) {
+        goto failed;
+    }
+    (void) SendMessage(parent, WM_KEYDOWN, VK_TAB, 0x40000000L);
+    (void) SendMessage(parent, WM_KEYUP, VK_TAB, 0);
+    if (!pcore_sequential_focus_current(&current) ||
+            g_sequential_focus_index != 4 || current.kind != target_kinds[4]) {
+        goto failed;
+    }
+    if (pcore_browser_script_session_evaluate(
+            "document.getElementById('result').textContent=window.events;",
+            -1, error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 ||
+            strcmp(events, EXPECTED_EVENTS) != 0) {
+        stage = "focus-events";
+        goto failed;
+    }
+    ok = 1;
+    goto done;
+
+failed:
+    _snprintf(g_native_sequential_focus_probe_detail,
+            sizeof(g_native_sequential_focus_probe_detail) - 1,
+            "stage=%s target=%u count=%u index=%u kind=%d scroll=%d focus=%p events=%s",
+            stage, i, count, g_sequential_focus_index,
+            g_sequential_focus_kind, g_scroll_y, GetFocus(), events);
+    g_native_sequential_focus_probe_detail[
+            sizeof(g_native_sequential_focus_probe_detail) - 1] = '\0';
+    ok = 0;
+
+done:
+    g_native_sequential_focus_probe_ok = ok;
+    PostMessage(parent, WM_CLOSE, 0, 0);
+}
+
 static void pcore_navigation_cleanup(void)
 {
     if (g_nav_thread != NULL) {
@@ -16444,6 +17174,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             pcore_toggle_focus_clear();
             pcore_button_focus_clear();
             pcore_disclosure_focus_clear();
+            pcore_sequential_focus_clear();
             if (g_render_doc != NULL &&
                     PCore_InteractionClear(g_render_doc,
                             PCORE_INTERACTION_FOCUS |
@@ -16457,6 +17188,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         break;
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
+        if (pcore_handle_sequential_tab(hwnd, msg, wp, lp,
+                msg == WM_SYSKEYDOWN)) {
+            return 0;
+        }
         if (pcore_handle_disclosure_keyboard(hwnd, msg, wp, lp,
                 msg == WM_SYSKEYDOWN)) {
             return 0;
@@ -16466,6 +17201,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             return 0;
         }
         if (pcore_handle_button_keyboard(hwnd, msg, wp, lp,
+                msg == WM_SYSKEYDOWN)) {
+            return 0;
+        }
+        if (pcore_handle_sequential_link_keyboard(hwnd, msg, wp, lp,
                 msg == WM_SYSKEYDOWN)) {
             return 0;
         }
@@ -16490,6 +17229,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         return 0;
     case WM_KEYUP:
     case WM_SYSKEYUP:
+        if (pcore_handle_sequential_tab(hwnd, msg, wp, lp,
+                msg == WM_SYSKEYUP)) {
+            return 0;
+        }
         if (pcore_handle_disclosure_keyboard(hwnd, msg, wp, lp,
                 msg == WM_SYSKEYUP)) {
             return 0;
@@ -16499,6 +17242,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             return 0;
         }
         if (pcore_handle_button_keyboard(hwnd, msg, wp, lp,
+                msg == WM_SYSKEYUP)) {
+            return 0;
+        }
+        if (pcore_handle_sequential_link_keyboard(hwnd, msg, wp, lp,
                 msg == WM_SYSKEYUP)) {
             return 0;
         }
@@ -16530,6 +17277,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         pcore_toggle_focus_clear();
         pcore_button_focus_clear();
         pcore_disclosure_focus_clear();
+        pcore_sequential_focus_clear();
         if (g_render_doc != NULL &&
                 PCore_OverflowPointer(g_render_doc, PCORE_POINTER_DOWN,
                         cx, cy + g_scroll_y)) {
@@ -16548,6 +17296,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         if (g_render_doc != NULL) {
             (void) pcore_toggle_focus_track_at(cx, cy + g_scroll_y);
             (void) pcore_disclosure_focus_track_at(cx, cy + g_scroll_y);
+            pcore_sequential_focus_track_at(cx, cy + g_scroll_y);
         }
         toggle_found = 0;
         toggle_product_started = 0;
@@ -16754,6 +17503,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         pcore_toggle_focus_clear();
         pcore_button_focus_clear();
         pcore_disclosure_focus_clear();
+        pcore_sequential_focus_clear();
         KillTimer(hwnd, PCORE_HOVER_TIMER);
         g_mouse_tracking = 0;
         g_interaction_restyle_pending = 0;
@@ -17293,6 +18043,9 @@ static BOOL show_render_window(void)
     }
     if (g_native_disclosure_key_probe) {
         pcore_native_disclosure_key_probe_run(hwnd);
+    }
+    if (g_native_sequential_focus_probe) {
+        pcore_native_sequential_focus_probe_run(hwnd);
     }
     /* Read-only view: hide the SIP button and keep the keyboard down. */
     SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
@@ -21363,6 +22116,147 @@ static BOOL test1100_browser_disclosure_keyboard_contract(void)
             "Focused summaries activate on Enter keydown and Space keyup;"
             " repeat keydowns do not duplicate clicks, cancelable keydown"
             " suppresses activation, and key events remain observable.");
+    return TRUE;
+}
+
+/* TEST 1101 - bounded natural-order Tab traversal across core/native targets. */
+static BOOL test1101_browser_sequential_focus_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='root'>"
+        "<a id='first' href='#first'>First</a>"
+        "<input id='text' type='text' value='text'>"
+        "<input id='disabled' type='text' disabled value='disabled'>"
+        "<input id='hidden' type='hidden' value='hidden'>"
+        "<button id='button' type='button'>Button</button>"
+        "<details id='details'><summary id='summary'>Summary</summary>"
+        "<p>closed body</p></details>"
+        "<div id='gap'>scroll gap</div>"
+        "<a id='empty' href=''>Empty</a>"
+        "<a id='last' href='#last'>Last</a>"
+        "<div id='result'>idle</div></div></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "a,input,button,summary{display:block;width:180px;height:24px;"
+        "margin:3px}"
+        "#gap{height:380px}#result{display:none}";
+    static const char LISTENER[] =
+        "window.events='';window.prevent_tab=false;"
+        "var root=document.getElementById('root');"
+        "root.addEventListener('focusin',function(e){"
+        "window.events+='in:'+String(e.target.id||'')+';';});"
+        "root.addEventListener('focusout',function(e){"
+        "window.events+='out:'+String(e.target.id||'')+';';});"
+        "root.addEventListener('keydown',function(e){"
+        "if(e.key==='Tab'&&window.prevent_tab)e.preventDefault();});";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[2048];
+    char error[512];
+    int bytes;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_native_sequential_focus_probe_ok = 0;
+    _snprintf(g_native_sequential_focus_probe_detail,
+            sizeof(g_native_sequential_focus_probe_detail) - 1,
+            "not-run");
+    g_native_sequential_focus_probe_detail[
+            sizeof(g_native_sequential_focus_probe_detail) - 1] = '\0';
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/sequential-focus.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 260) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_native_sequential_focus_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_sequential_focus_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (!g_native_sequential_focus_probe_ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "native sequential focus probe failed: %s",
+                g_native_sequential_focus_probe_detail[0] != '\0' ?
+                g_native_sequential_focus_probe_detail : "no detail");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &bytes) != 0 ||
+            strcmp(result,
+            "in:first;out:first;in:text;out:text;in:button;out:button;"
+            "in:summary;out:summary;in:last;out:last;in:first;out:first;"
+            "in:last;") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "actual[%d]=%s", bytes, result);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1101 FAIL", error[0] != '\0' ? error :
+                "sequential keyboard focus failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1101 OK",
+            "Natural-order Tab and Shift+Tab traverse enabled laid-out core"
+            " targets plus native text controls, wrap at the ends, reveal"
+            " off-screen targets, and honor cancelable/repeat Tab keydowns.");
     return TRUE;
 }
 
@@ -79208,6 +80102,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1098: ok = test1098_core_deep_resource_collection_contract(); break;
         case 1099: ok = test1099_browser_disclosure_activation_contract(); break;
         case 1100: ok = test1100_browser_disclosure_keyboard_contract(); break;
+        case 1101: ok = test1101_browser_sequential_focus_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
