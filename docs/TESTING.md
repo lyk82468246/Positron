@@ -187,6 +187,8 @@ RAPI 没有安全的通用远端终止语义。超时会保存可取得的日志
 - 系统文件选择器、窗口返回和取消后的状态；
 - loading、失败网络、旧页保留和深层真实导航。
 
+contenteditable 的自动 fixture 只证明有效 editing host 的 WM EDIT 代理、`beforeinput` 取消、Core 文本提交和 `input` 顺序；它不证明 caret/selection、真实 SIP 候选词、完整 IME composition 或 OEM 键盘体验。这些仍应在设备人工矩阵中观察，除非本批没有触及相关路径。
+
 低风险视觉或输入变化可以累计若干批次后集中验收。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即复核，不能等待累计窗口。
 
 ### 人工记录

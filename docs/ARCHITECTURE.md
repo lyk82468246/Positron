@@ -89,13 +89,15 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - NetSurf box construction、layout、hit testing 和 GDI paint；
 - 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
 - 表单值、约束验证、提交、reset 和 successful controls；
-- 单元素 `contenteditable` 的祖先继承、有效模式和有界 UTF-8 纯文本 mutation；
+- 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 给脚本/浏览器层使用的有界 DOM、属性、关系、表单与导航查询。
 
 Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/free 回调完成；Core 在回调返回前复制需要保留的字节，再按契约调用 free。Core 也不执行 JavaScript，只发现、缓存和枚举脚本。
 
 文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单和交互状态。释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。style/layout/paint 通常属于同一 UI 线程；不得在后台 worker 并发操作同一个文档。
+
+`PCore_ContentEditableTargetInfo` 是宿主的 native editing-host 快照：它只返回已布局、可见且带非空 id 的有效 editing host，按 DOM 顺序限制为每页 16 个，文本限制为 8192 个 UTF-8 字节。嵌套且仅继承编辑状态的后代归最近 editing host 所有，不会产生第二个窗口。快照的几何和字符串只在当前文档/layout 仍有效时使用；文档 mutation 或重排后宿主应重新枚举并重建窗口。
 
 ### `positron_browser.dll`
 
@@ -128,12 +130,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 宿主拥有所有与具体应用或 Windows Mobile UI 绑定的行为：
 
 - 顶层窗口、消息循环、滚动条和 DPI/旋转通知；
-- native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；
+- native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位和销毁；
 - 后台线程、导航取消、loading 状态与页面 swap；
 - DNS/TCP/TLS/HTTP 组合策略和资源调度；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
-- 把 Core 的 contenteditable 状态/文本 callback 注册到 Browser session，并保留输入事务的顺序；
+- 把 Core 的 contenteditable 状态/文本 callback 注册到 Browser session，并把 WM/native 输入接到 `beforeinput`→Core mutation→`input` 顺序；宿主只保留窗口、焦点、坐标和原生默认动作；
 - 从 Browser 读取活动 modal id，并在 WM_PAINT 中调用 Core 的 modal paint 组合入口；
 - 决定何时启用浏览器 JavaScript；
 - 应用级崩溃恢复、持久化和日志。
@@ -161,7 +163,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 1. Core 发现并缓存 classic script；
 2. Browser session 注册有界 DOM/Event/platform callbacks；
 3. 按文档顺序执行允许的 inline/external script；
-4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；
+4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；WM6 `EDIT` 可能在 `WM_CHAR` 默认处理完成前发送 `EN_CHANGE`，宿主必须在默认处理返回后读取最终值，避免把旧值提交为一次 mutation；
 5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation；
 6. Browser 派发 mutation 后的 `input`、`change`、focus 或 lifecycle 事件；
 7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；

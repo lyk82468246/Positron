@@ -89,6 +89,8 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 `PCore_ContentEditableSetTextById` 只允许有效的可编辑元素写入不超过 `PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES` 的合法 UTF-8 文本，并用一个文本节点替换该元素的子内容。它不派发事件，也不实现 caret、selection、富文本、designMode 或 IME；宿主应先通过 Browser 的现有 `beforeinput` 事务，获准后调用该 mutation，再派发 `input` 并按需重新 style/layout/paint。该 API 的失败码区分 DOM/目标、不可编辑和文本边界，避免把普通 `textContent` 写入误当作用户编辑。
 
+`PCore_ContentEditableTargetInfo` 为 WM/native 宿主提供已布局 editing host 的有界快照：只枚举带非空 `id`、可见且有正尺寸 box 的有效 host，按 DOM 顺序最多 `PCORE_CONTENTEDITABLE_TARGET_MAX`（16）个；每个 host 的文本最多 8192 个 UTF-8 字节。嵌套但仅继承编辑状态的后代不单独出现。宿主可用快照中的几何和复制出的 id/text 创建代理窗口；任何 DOM mutation、重排或页面替换后都必须重新查询，不能缓存旧几何或字符串。
+
 ### 表单与 validation
 
 Core 持有控件值、checked/selected、disabled/fieldset 继承、required/range/step/pattern/custom validity、submission、multipart、reset 和 successful controls 等产品语义。
@@ -135,7 +137,7 @@ paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
 - HWND、消息循环、DPI/旋转、scrollbar、invalid region 和 HDC；
 - HTTP/TLS、后台 worker、取消、loading 和候选页面提交；
 - native EDIT/SELECT/button/file picker 与 SIP/IME；
-- contenteditable 的窗口/焦点、caret/selection、键盘和 IME 接线；宿主按 Browser 的 `beforeinput` 取消结果调用 Core 的受限文本 mutation；
+- contenteditable 的 WM EDIT 窗口、焦点、键盘和 IME 接线；宿主按 Browser 的 `beforeinput` 取消结果调用 Core 的受限文本 mutation。Core 只提供 editing-host 快照和文本状态，不创建窗口，也不保存第二份编辑模型；caret/selection、富文本和完整 IME 仍不在此边界内；
 - history、浏览器 script session 和新窗口/外部协议策略；
 - 失败回滚、日志、持久化和应用生命周期。
 

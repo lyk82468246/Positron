@@ -76,13 +76,13 @@ Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 di
 
 注册 `PBrowserScriptContentEditableCallbacks` 后，Browser 为每个元素暴露只读的 `isContentEditable`。该查询由宿主转给 Core，因而也能正确处理没有 id 的祖先和 `true`/空值、`false`、`plaintext-only`、未知值继承。`contentEditable` 仍是原始 attribute reflection，不应拿它代替有效状态。
 
-`innerText` getter 读取 Core 的文本快照；对有效可编辑元素的 setter 走 `__pcoreSetContentEditableText`，由宿主调用 `PCore_ContentEditableSetTextById` 执行有界合法 UTF-8 纯文本替换。setter 是程序化 mutation，不自动产生 `beforeinput`/`input`；真实键盘、SIP/IME 或其他输入源必须沿用已有 typed input 事务：先派发可取消 `beforeinput`，仅在允许后 mutation，再派发 `input`。当前边界是单元素纯文本，不包含 caret/selection、富文本、designMode、剪贴板或原生编辑窗口。
+`innerText` getter 读取 Core 的文本快照；对有效可编辑元素的 setter 走 `__pcoreSetContentEditableText`，由宿主调用 `PCore_ContentEditableSetTextById` 执行有界合法 UTF-8 纯文本替换。setter 是程序化 mutation，不自动产生 `beforeinput`/`input`。宿主若把 Core 的 editing-host 快照映射为 WM EDIT，真实键盘、SIP/IME 或其他输入源必须沿用已有 typed input 事务：先派发可取消 `beforeinput`，仅在允许后提交原生文本并调用 Core mutation，再派发 `input`；Browser 只决定事件、取消和顺序，不创建 HWND。当前边界是单元素纯文本，不包含 caret/selection、富文本、designMode、剪贴板或完整 IME 语义。
 
 ### Event 与平台事务
 
 Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click、form、invalid 和 navigation。对于 native 控件，推荐使用相应的 `Ex` 注册和 transaction dispatch：
 
-- native EDIT：beforeinput、composition/result、commit→input、dirty、blur→change；
+- native EDIT（包括宿主为 contenteditable 创建的代理）：beforeinput、composition/result、commit→input、dirty、blur→change；
 - native SELECT：focus、key、dropdown candidate/confirm/cancel、commit→input/change；
 - checkbox/radio：click、Core mutation 后的 input/change；
 - button：click、validation、submit/reset/default action；
@@ -133,7 +133,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
-- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台焦点。CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期和其他浏览器焦点策略未实现。`contenteditable` 目前只提供单元素纯文本状态/mutation 与事件编排边界，caret/selection、富文本、designMode 和 IME 仍未实现。
+- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台焦点。CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期和其他浏览器焦点策略未实现。`contenteditable` 目前只提供单元素纯文本状态/mutation 与事件、WM EDIT 事务边界；caret/selection、富文本、designMode 和完整 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 

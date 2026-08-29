@@ -79,13 +79,13 @@ callback 同步且不可重入。页面替换时先停止新消息和事务，�
 
 ### Native EDIT/SELECT/button/file
 
-WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生 `input`、`change`、submit/reset 等后续事件。
+WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生 `input`、`change`、submit/reset 等后续事件。对 contenteditable，宿主从 `PCore_ContentEditableTargetInfo` 枚举带 id 的已布局 editing host，创建最多 16 个 WM multiline EDIT 代理；`WM_CHAR` 默认处理返回后才回读最终文本并调用 Core mutation。这样可吸收 WM6 在默认处理期间提前发送的 `EN_CHANGE`，避免把旧值或空值提交为一次 input。
 
 系统 picker、文件路径、SIP/IME、HWND、COMBOBOX popup 和真实焦点仍属于宿主。synthetic 消息只能做自动契约，不能替代 OEM 设备人工验收。
 
 ### 单元素 `contenteditable`
 
-`test_host` 只把 `PBrowserScriptContentEditableCallbacks` 接到当前 Core 文档，并负责在真实输入源中编排 `beforeinput`、允许后的 `PCore_ContentEditableSetTextById` 和 `input`。Browser/Core 共同提供有效状态与有界纯文本替换；宿主不保存第二份编辑模型。当前测试覆盖继承、`false`/未知值、`plaintext-only`、合法 UTF-8、失效目标和取消回滚，不代表 caret/selection、富文本、designMode 或 OEM IME 已实现。
+`test_host` 把 `PBrowserScriptContentEditableCallbacks` 接到当前 Core 文档，并负责在真实输入源中编排 `beforeinput`、允许后的 `PCore_ContentEditableSetTextById` 和 `input`。宿主窗口只保存代理 HWND、editing-host id 和短暂的原生值，不保存第二份编辑模型；Browser/Core 共同提供有效状态与有界纯文本替换。当前测试覆盖继承、`false`/未知值、`plaintext-only`、合法 UTF-8、失效目标、取消回滚以及 WM EDIT 的允许/取消顺序，不代表 caret/selection、富文本、designMode 或 OEM IME 已实现。
 
 ### 绘制与交互
 
