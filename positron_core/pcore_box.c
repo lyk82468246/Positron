@@ -12416,3 +12416,144 @@ PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
 
     html_redraw((struct content *) &st->content, &data, &clip, &rc);
 }
+
+/* Compose a modal presentation after the normal document has been painted.
+ * WM6's GDI path has no reliable alpha compositor, so the public contract
+ * uses one deterministic solid backdrop colour and redraws the addressed
+ * dialog above it. The host supplies the Browser-owned active modal id; Core
+ * supplies the document geometry and redraw ordering. */
+static int pcore_paint_modal_overlay(pcore_render *st, dom_document *doc,
+        HDC hdc, int scroll_x, int scroll_y, const char *dialog_id)
+{
+    dom_string *id_name;
+    dom_element *element;
+    struct box *dialog_box;
+    RECT viewport_rect;
+    RECT paint_rect;
+    RECT dialog_rect;
+    RECT dialog_clip;
+    HBRUSH backdrop;
+    int id_length;
+    int ax;
+    int ay;
+    int status;
+    struct redraw_context rc;
+    struct content_redraw_data data;
+    struct rect clip;
+    struct { HDC hdc; } pv;
+
+    if (st == NULL || doc == NULL || hdc == NULL || dialog_id == NULL ||
+            dialog_id[0] == '\0') {
+        return PCORE_MODAL_PAINT_NONE;
+    }
+    id_length = 0;
+    while (id_length < PCORE_MODAL_DIALOG_ID_MAX &&
+            dialog_id[id_length] != '\0') {
+        id_length++;
+    }
+    SetRect(&viewport_rect, 0, 0, st->vw, st->vh);
+    /* Use the full logical viewport here. GDI still applies the HDC's
+     * invalid-region clip during FillRect/html_redraw, while GetClipBox can
+     * report a transient or implementation-specific region on WM6 memory
+     * and window DCs. Using that region as the composition bounds could leave
+     * the visible modal backdrop partially unpainted. */
+    paint_rect = viewport_rect;
+    backdrop = CreateSolidBrush((COLORREF) 0x00c0c0c0UL);
+    if (backdrop != NULL) {
+        FillRect(hdc, &paint_rect, backdrop);
+        DeleteObject(backdrop);
+    } else {
+        FillRect(hdc, &paint_rect,
+                (HBRUSH) GetStockObject(GRAY_BRUSH));
+    }
+    status = PCORE_MODAL_PAINT_BACKDROP_ONLY;
+    id_name = NULL;
+    element = NULL;
+    dialog_box = NULL;
+    if (id_length <= 0 || id_length >= PCORE_MODAL_DIALOG_ID_MAX ||
+            dom_string_create((const uint8_t *) dialog_id,
+            (size_t) id_length, &id_name) != DOM_NO_ERR || id_name == NULL ||
+            dom_document_get_element_by_id(doc, id_name, &element) !=
+            DOM_NO_ERR || element == NULL ||
+            !pcore_node_name_is((dom_node *) element, "dialog") ||
+            !pcore_node_has_attr((dom_node *) element, "open")) {
+        if (id_name != NULL) {
+            dom_string_unref(id_name);
+        }
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return status;
+    }
+    dom_string_unref(id_name);
+    id_name = NULL;
+    dialog_box = pcore_box_for_any_node(st->root_box,
+            (dom_node *) element);
+    if (dialog_box == NULL || dialog_box->width <= 0 ||
+            dialog_box->height <= 0) {
+        dom_node_unref((dom_node *) element);
+        return status;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(dialog_box, &ax, &ay);
+    SetRect(&dialog_rect, ax - scroll_x, ay - scroll_y,
+            ax - scroll_x + dialog_box->width,
+            ay - scroll_y + dialog_box->height);
+    if (!IntersectRect(&dialog_clip, &paint_rect, &dialog_rect)) {
+        dom_node_unref((dom_node *) element);
+        return status;
+    }
+    pv.hdc = hdc;
+    memset(&rc, 0, sizeof(rc));
+    rc.background_images = true;
+    rc.plot = &pcore_gdi_plotters;
+    rc.priv = &pv;
+    memset(&data, 0, sizeof(data));
+    data.x = -scroll_x;
+    data.y = -scroll_y;
+    data.width = st->vw;
+    data.height = st->vh;
+    data.background_colour = 0x00ffffff;
+    data.scale = 1.0f;
+    clip.x0 = dialog_clip.left;
+    clip.y0 = dialog_clip.top;
+    clip.x1 = dialog_clip.right;
+    clip.y1 = dialog_clip.bottom;
+    html_redraw((struct content *) &st->content, &data, &clip, &rc);
+    status = PCORE_MODAL_PAINT_APPLIED;
+    dom_node_unref((dom_node *) element);
+    return status;
+}
+
+PCORE_API int PCore_PaintDocumentWithModal(HANDLE hDoc, HDC hdc,
+        int scroll_x, int scroll_y, const char *dialog_id)
+{
+    pcore_render *st;
+    int saved_dc;
+    int status;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL || hdc == NULL) {
+        return -1;
+    }
+    /* NetSurf's GDI plotter installs a clip for each redraw operation and
+     * leaves the last one selected. Restore the caller's DC state before the
+     * composition pass; otherwise the backdrop can inherit a child-box clip
+     * and leave the rest of the viewport untouched. */
+    saved_dc = SaveDC(hdc);
+    PCore_PaintDocument(hDoc, hdc, scroll_x, scroll_y);
+    if (saved_dc > 0) {
+        RestoreDC(hdc, saved_dc);
+    }
+    if (dialog_id == NULL || dialog_id[0] == '\0') {
+        return PCORE_MODAL_PAINT_NONE;
+    }
+    saved_dc = SaveDC(hdc);
+    status = pcore_paint_modal_overlay(st, (dom_document *) hDoc, hdc,
+            scroll_x, scroll_y, dialog_id);
+    if (saved_dc > 0) {
+        RestoreDC(hdc, saved_dc);
+    }
+    return status;
+}

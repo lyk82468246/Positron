@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1107
+#define TEST_MAX_NUMBER 1108
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -6015,6 +6015,10 @@ static char   g_native_modal_backdrop_probe_detail[512];
 static int    g_native_dialog_form_probe = 0;
 static int    g_native_dialog_form_probe_ok = 0;
 static char   g_native_dialog_form_probe_detail[512];
+static int    g_native_modal_paint_probe = 0;
+static int    g_native_modal_paint_probe_ok = 0;
+static char   g_native_modal_paint_probe_detail[512];
+static int    g_native_modal_paint_branch_seen = 0;
 static HANDLE g_toggle_focus_document = NULL;
 static unsigned int g_toggle_focus_index = 0;
 static int    g_toggle_focus_kind = 0;
@@ -6060,6 +6064,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define WM_PCORE_INTERACTION_RESTYLE (WM_APP + 6)
 #define WM_PCORE_SCRIPT_NAVIGATE (WM_APP + 7)
 #define WM_PCORE_FILE_PICKER (WM_APP + 8)
+#define WM_PCORE_MODAL_PAINT_PROBE (WM_APP + 9)
 #define PCORE_SCRIPT_NAVIGATION_NONE 0
 #define PCORE_SCRIPT_NAVIGATION_BACK 1
 #define PCORE_SCRIPT_NAVIGATION_ASSIGN 2
@@ -7337,6 +7342,21 @@ static int pcore_handle_sequential_link_keyboard(HWND hwnd, UINT msg,
 static void pcore_native_modal_focus_probe_run(HWND parent);
 static void pcore_native_modal_backdrop_probe_run(HWND parent);
 static void pcore_native_dialog_form_probe_run(HWND parent);
+static void pcore_native_modal_paint_probe_check(HWND parent, HDC hdc);
+static void pcore_native_modal_paint_probe_run(HWND parent);
+
+/* A compatible WM6 bitmap may use RGB565 even when the requested brush is
+ * RGB888. Accept the bounded conversion error while still requiring all
+ * three channels to remain close to the deterministic backdrop colour. */
+static int pcore_color_close(COLORREF actual, COLORREF expected, int tolerance)
+{
+    return abs((int) GetRValue(actual) - (int) GetRValue(expected)) <=
+            tolerance &&
+            abs((int) GetGValue(actual) - (int) GetGValue(expected)) <=
+            tolerance &&
+            abs((int) GetBValue(actual) - (int) GetBValue(expected)) <=
+            tolerance;
+}
 
 static int pcore_native_script_active(void)
 {
@@ -17407,6 +17427,95 @@ done:
     PostMessage(parent, WM_CLOSE, 0, 0);
 }
 
+/* Confirm that the normal WM_PAINT path composes the Core modal backdrop and
+ * then redraws the open dialog above it. This probes the actual window DC,
+ * not only the off-screen Core paint API. */
+static void pcore_native_modal_paint_probe_check(HWND parent, HDC hdc)
+{
+    RECT client;
+    RECT paint_clip;
+    COLORREF outside;
+    COLORREF inside;
+    int dialog_x;
+    int dialog_y;
+    int dialog_w;
+    int dialog_h;
+    int branch_seen;
+    int clip_status;
+    int samples_in_clip;
+    int ok;
+
+    g_native_modal_paint_probe_ok = 0;
+    g_native_modal_paint_probe_detail[0] = '\0';
+    dialog_x = 0;
+    dialog_y = 0;
+    dialog_w = 0;
+    dialog_h = 0;
+    branch_seen = g_native_modal_paint_branch_seen;
+    SetRect(&paint_clip, 0, 0, 0, 0);
+    clip_status = ERROR;
+    samples_in_clip = 0;
+    outside = 0;
+    inside = 0;
+    ok = parent != NULL && g_render_doc != NULL && hdc != NULL;
+    if (ok) {
+        GetClientRect(parent, &client);
+        ok = client.right > 4 && client.bottom > 4 &&
+                PCore_FragmentInfoById(g_render_doc, "dialog", &dialog_x,
+                &dialog_y, &dialog_w, &dialog_h) == 0 && dialog_w > 0 &&
+                dialog_h > 0 && dialog_x + dialog_w / 2 < client.right &&
+                dialog_y + dialog_h / 2 < client.bottom;
+    }
+    if (ok) {
+        clip_status = GetClipBox(hdc, &paint_clip);
+        samples_in_clip = clip_status != ERROR &&
+                2 >= paint_clip.left && 2 < paint_clip.right &&
+                2 >= paint_clip.top && 2 < paint_clip.bottom &&
+                dialog_x + dialog_w / 2 >= paint_clip.left &&
+                dialog_x + dialog_w / 2 < paint_clip.right &&
+                dialog_y + dialog_h / 2 >= paint_clip.top &&
+                dialog_y + dialog_h / 2 < paint_clip.bottom;
+        outside = GetPixel(hdc, 2, 2);
+        inside = GetPixel(hdc, dialog_x + dialog_w / 2,
+                dialog_y + dialog_h / 2);
+        /* A WM_PAINT update region is allowed to cover neither probe point;
+         * in that case the untouched surface is not evidence of a failed
+         * composition. The off-screen contract above already checks both
+         * pixels; here require the visual branch and only compare pixels when
+         * the current update region contains both samples. */
+        ok = branch_seen &&
+                (!samples_in_clip ||
+                (pcore_color_close(outside, RGB(192, 192, 192), 8) &&
+                inside == RGB(0, 0, 255)));
+    }
+    if (!ok) {
+        _snprintf(g_native_modal_paint_probe_detail,
+                sizeof(g_native_modal_paint_probe_detail) - 1,
+                "outside=%06lX inside=%06lX dialog=%d,%d,%d,%d branch=%d "
+                "clip=%d,%d,%d,%d",
+                outside & 0x00ffffffUL, inside & 0x00ffffffUL,
+                dialog_x, dialog_y, dialog_w, dialog_h, branch_seen,
+                paint_clip.left, paint_clip.top, paint_clip.right,
+                paint_clip.bottom);
+        g_native_modal_paint_probe_detail[
+                sizeof(g_native_modal_paint_probe_detail) - 1] = '\0';
+    }
+    g_native_modal_paint_probe_ok = ok;
+    g_native_modal_paint_probe = 0;
+    PostMessage(parent, WM_CLOSE, 0, 0);
+}
+
+static void pcore_native_modal_paint_probe_run(HWND parent)
+{
+    HDC hdc;
+
+    hdc = (parent != NULL) ? GetDC(parent) : NULL;
+    pcore_native_modal_paint_probe_check(parent, hdc);
+    if (hdc != NULL) {
+        ReleaseDC(parent, hdc);
+    }
+}
+
 static void pcore_navigation_cleanup(void)
 {
     if (g_nav_thread != NULL) {
@@ -17428,6 +17537,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC         hdc;
+        char        modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+        int         modal_scope;
 
         hdc = BeginPaint(hwnd, &ps);
         /* Repaint only the invalid region. When scrolling, that is just the
@@ -17502,7 +17613,22 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             GetClientRect(hwnd, &rcc);
             PCore_NsRenderTest(hdc, rcc.right - rcc.left, rcc.bottom - rcc.top);
         } else if (g_render_doc != NULL) {
-            PCore_PaintDocument(g_render_doc, hdc, 0, g_scroll_y);
+            modal_scope = pcore_sequential_focus_scope(modal_id,
+                    sizeof(modal_id));
+            if (modal_scope > 0) {
+                g_native_modal_paint_branch_seen = 1;
+                (void) PCore_PaintDocumentWithModal(g_render_doc, hdc, 0,
+                        g_scroll_y, modal_id);
+            } else {
+                PCore_PaintDocument(g_render_doc, hdc, 0, g_scroll_y);
+            }
+        }
+        if (g_native_modal_paint_probe && g_render_doc != NULL) {
+            /* Sample before EndPaint while the just-composed client DC is
+             * still the authoritative surface. The posted probe message is
+             * only a fallback for platforms that do not deliver WM_PAINT
+             * synchronously. */
+            pcore_native_modal_paint_probe_check(hwnd, hdc);
         }
         EndPaint(hwnd, &ps);
         if (g_testbench_auto) {
@@ -17510,6 +17636,11 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         return 0;
     }
+    case WM_PCORE_MODAL_PAINT_PROBE:
+        if (g_native_modal_paint_probe) {
+            pcore_native_modal_paint_probe_run(hwnd);
+        }
+        return 0;
     case WM_ERASEBKGND:
         return 1;   /* WM_PAINT clears the invalid region itself; skip erase */
     case WM_SIZE: {
@@ -18772,8 +18903,25 @@ static BOOL show_render_window(void)
     }
     g_testbench_render_paints = 0;
     ShowWindow(hwnd, SW_SHOW);
-    UpdateWindow(hwnd);
+    /* Some WM6 shells create a visible window without leaving a pending
+     * update region. Force one complete first paint so visual probes inspect
+     * the same Core/WM path users see rather than the class background. */
+    InvalidateRect(hwnd, NULL, TRUE);
+    if (g_native_modal_paint_probe) {
+        /* Send the pending paint synchronously for the visual probe. On some
+         * WM6 shells UpdateWindow leaves the paint message queued until the
+         * loop starts, allowing a posted probe to sample the class
+         * background before Core has run. */
+        SendMessage(hwnd, WM_PAINT, 0, 0);
+    } else {
+        UpdateWindow(hwnd);
+    }
     SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
+    if (g_native_modal_paint_probe) {
+        if (!PostMessage(hwnd, WM_PCORE_MODAL_PAINT_PROBE, 0, 0)) {
+            pcore_native_modal_paint_probe_run(hwnd);
+        }
+    }
     if (g_native_label_probe && g_native_edit_count > 0 &&
             g_native_edits[0].hwnd != NULL) {
         int label_x;
@@ -23918,6 +24066,245 @@ static BOOL test1107_browser_dialog_form_submission_contract(void)
             " navigation; Browser and the WM host preserve validation and"
             " cancelable submit ordering before direct close/returnValue for"
             " trusted, programmatic and implicit submissions.");
+    return TRUE;
+}
+
+/* TEST 1108 - top-layer/backdrop paint ordering through Core and WM. */
+static BOOL test1108_browser_modal_paint_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<dialog id='dialog'></dialog>"
+        "<script>var d=document.getElementById('dialog');"
+        "d.showModal();</script></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#ff0000}"
+        "body{width:100%;height:100%;background:#ff0000}"
+        "dialog{display:block;width:120px;height:80px;margin:40px;"
+        "padding:0;border:0;background:#0000ff}";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF before_outside;
+    COLORREF before_dialog;
+    COLORREF modal_outside;
+    COLORREF modal_dialog;
+    COLORREF stale_outside;
+    COLORREF plain_outside;
+    int dialog_x;
+    int dialog_y;
+    int dialog_w;
+    int dialog_h;
+    int vw;
+    int vh;
+    int executed;
+    int ignored;
+    int modal_status;
+    int stale_status;
+    int plain_status;
+    int active_bytes;
+    char active_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    char error[512];
+    char detail[512];
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    before_outside = 0;
+    before_dialog = 0;
+    modal_outside = 0;
+    modal_dialog = 0;
+    stale_outside = 0;
+    plain_outside = 0;
+    dialog_x = 0;
+    dialog_y = 0;
+    dialog_w = 0;
+    dialog_h = 0;
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    executed = -1;
+    ignored = -1;
+    modal_status = -1;
+    stale_status = -1;
+    plain_status = -1;
+    active_bytes = 0;
+    memset(active_id, 0, sizeof(active_id));
+    memset(error, 0, sizeof(error));
+    memset(detail, 0, sizeof(detail));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    test_host_set_device_viewport(vw, vh);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/modal-paint.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, vw, vh) != 0 ||
+                PCore_FragmentInfoById(document, "dialog", &dialog_x,
+                &dialog_y, &dialog_w, &dialog_h) != 0 || dialog_w <= 0 ||
+                dialog_h <= 0 || dialog_x + dialog_w / 2 >= vw ||
+                dialog_y + dialog_h / 2 >= vh ||
+                PBrowser_ScriptSessionGetActiveDialogId(bridge->session,
+                active_id, sizeof(active_id), &active_bytes) != PSCRIPT_OK ||
+                strcmp(active_id, "dialog") != 0 || active_bytes != 6) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        screen_dc = GetDC(NULL);
+        memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+        bitmap = (screen_dc != NULL) ?
+                CreateCompatibleBitmap(screen_dc, vw, vh) : NULL;
+        if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+        SetRect(&rect, 0, 0, vw, vh);
+        FillRect(memory_dc, &rect,
+                (HBRUSH) GetStockObject(WHITE_BRUSH));
+        PCore_PaintDocument(document, memory_dc, 0, 0);
+        before_outside = GetPixel(memory_dc, 2, 2);
+        before_dialog = GetPixel(memory_dc,
+                dialog_x + dialog_w / 2, dialog_y + dialog_h / 2);
+        FillRect(memory_dc, &rect,
+                (HBRUSH) GetStockObject(WHITE_BRUSH));
+        modal_status = PCore_PaintDocumentWithModal(document, memory_dc,
+                0, 0, "dialog");
+        modal_outside = GetPixel(memory_dc, 2, 2);
+        modal_dialog = GetPixel(memory_dc,
+                dialog_x + dialog_w / 2, dialog_y + dialog_h / 2);
+        FillRect(memory_dc, &rect,
+                (HBRUSH) GetStockObject(WHITE_BRUSH));
+        stale_status = PCore_PaintDocumentWithModal(document, memory_dc,
+                0, 0, "stale-dialog");
+        stale_outside = GetPixel(memory_dc, 2, 2);
+        FillRect(memory_dc, &rect,
+                (HBRUSH) GetStockObject(WHITE_BRUSH));
+        plain_status = PCore_PaintDocumentWithModal(document, memory_dc,
+                0, 0, NULL);
+        plain_outside = GetPixel(memory_dc, 2, 2);
+        SelectObject(memory_dc, old_bitmap);
+        DeleteObject(bitmap);
+        DeleteDC(memory_dc);
+        ReleaseDC(NULL, screen_dc);
+        memory_dc = NULL;
+        bitmap = NULL;
+        screen_dc = NULL;
+        if (modal_status != PCORE_MODAL_PAINT_APPLIED ||
+                before_outside != RGB(255, 0, 0) ||
+                before_dialog != RGB(0, 0, 255) ||
+                !pcore_color_close(modal_outside, RGB(192, 192, 192), 8) ||
+                modal_dialog != RGB(0, 0, 255) ||
+                stale_status != PCORE_MODAL_PAINT_BACKDROP_ONLY ||
+                !pcore_color_close(stale_outside, RGB(192, 192, 192), 8) ||
+                plain_status != PCORE_MODAL_PAINT_NONE ||
+                plain_outside != RGB(255, 0, 0)) {
+            _snprintf(detail, sizeof(detail) - 1,
+                    "status=%d/%d/%d pixels=%06lX/%06lX -> %06lX/%06lX "
+                    "stale=%06lX plain=%06lX dialog=%d,%d,%d,%d",
+                    modal_status, stale_status, plain_status,
+                    before_outside & 0x00ffffffUL,
+                    before_dialog & 0x00ffffffUL,
+                    modal_outside & 0x00ffffffUL,
+                    modal_dialog & 0x00ffffffUL,
+                    stale_outside & 0x00ffffffUL,
+                    plain_outside & 0x00ffffffUL,
+                    dialog_x, dialog_y, dialog_w, dialog_h);
+            detail[sizeof(detail) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        g_native_modal_paint_branch_seen = 0;
+        g_native_modal_paint_probe = 1;
+        g_native_modal_paint_probe_ok = 0;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_modal_paint_probe = 0;
+        if (ok && !g_native_modal_paint_probe_ok) {
+            _snprintf(error, sizeof(error) - 1,
+                    "native modal paint probe failed: %s",
+                    g_native_modal_paint_probe_detail[0] != '\0' ?
+                    g_native_modal_paint_probe_detail : "no detail");
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (memory_dc != NULL) {
+        if (old_bitmap != NULL) {
+            SelectObject(memory_dc, old_bitmap);
+        }
+        if (bitmap != NULL) {
+            DeleteObject(bitmap);
+        }
+        DeleteDC(memory_dc);
+    }
+    if (screen_dc != NULL) {
+        ReleaseDC(NULL, screen_dc);
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    test_host_set_device_viewport(vw, vh);
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1, "%s", detail);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1108 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1108 OK",
+            "Core paints a deterministic WM6 modal backdrop over the visible"
+            " document, redraws the active dialog above it, and fails closed"
+            " to a backdrop when Browser state names a stale dialog.");
     return TRUE;
 }
 
@@ -81770,6 +82157,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1105: ok = test1105_browser_dialog_focus_scope_contract(); break;
         case 1106: ok = test1106_browser_dialog_backdrop_pointer_contract(); break;
         case 1107: ok = test1107_browser_dialog_form_submission_contract(); break;
+        case 1108: ok = test1108_browser_modal_paint_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

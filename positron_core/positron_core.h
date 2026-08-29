@@ -667,6 +667,27 @@ PCORE_API int PCore_ListItemGeometry(HANDLE hDoc, unsigned int index,
 PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
                                    int scroll_x, int scroll_y);
 
+/* Modal paint result values. */
+#define PCORE_MODAL_PAINT_NONE          0
+#define PCORE_MODAL_PAINT_APPLIED       1
+#define PCORE_MODAL_PAINT_BACKDROP_ONLY 2
+
+/* Paint the document and, when dialog_id is non-empty, compose the bounded
+ * modal presentation in the same device context. The normal document is
+ * painted first; an opaque WM6-safe backdrop then covers the visible
+ * viewport, and the open <dialog> addressed by dialog_id is redrawn above
+ * it. dialog_id is borrowed UTF-8 and must be shorter than
+ * PCORE_MODAL_DIALOG_ID_MAX. A NULL or empty id performs an ordinary paint
+ * and returns PCORE_MODAL_PAINT_NONE. An unknown, closed, unlaid-out or
+ * id-less dialog still paints the backdrop and returns
+ * PCORE_MODAL_PAINT_BACKDROP_ONLY, allowing a host with stale Browser state
+ * to fail closed without exposing the page behind a modal. Returns -1 for an
+ * invalid document/HDC or other paint setup failure. */
+#define PCORE_MODAL_DIALOG_ID_MAX 128
+PCORE_API int PCore_PaintDocumentWithModal(HANDLE hDoc, HDC hdc,
+                                   int scroll_x, int scroll_y,
+                                   const char *dialog_id);
+
 /* Total laid-out document height in device px (the value is from the most
  * recent PCore_LayoutDocument). Lets the application size a scrollbar. */
 PCORE_API int PCore_DocumentHeight(HANDLE hDoc);
