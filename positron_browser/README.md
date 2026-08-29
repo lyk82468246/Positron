@@ -52,6 +52,7 @@ Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把
 - parent/child/sibling、attributes、childNodes、form owner 和 label/control 关系；
 - form properties、control collection 与 selected state；
 - validity、custom validity、report validity 和 validation message；
+- `contenteditable` 有效状态、`isContentEditable`/`innerText` 的有界纯文本桥；
 - event listener、navigation 和平台默认动作。
 
 Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实文档状态。callback 参数和输出缓冲只在调用期间借用，不得缓存。
@@ -70,6 +71,12 @@ Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 di
 - 对 `method="dialog"` 的表单，宿主先让 Core 完成约束验证并解析最近祖先 dialog 与 submitter value，再派发可取消的 `submit`。事件允许默认动作后，调用 `PBrowser_ScriptSessionCloseDialogById` 可执行 `dialog.close(value)`：更新 `returnValue`、派发 `close`，不先派发 `cancel`，也不发起网络导航。显式点击、脚本 `click()` 和单行输入的隐式 Enter 可共用这条组合路径。
 
 这些方法属于 Browser 的脚本语义，不创建 HWND，也不直接绘制 top layer、backdrop 或系统模态窗口。宿主可把活动 id 同时交给 Core 的 `PCore_PaintDocumentWithModal`，由 Core 在普通文档绘制后组合有界实体色 backdrop 和指定 dialog 的重绘；Browser 仍只拥有生命周期状态。宿主必须自己决定初始焦点、native HWND 切换、滚动可见性和焦点视觉，跨文档 modal 生命周期仍未覆盖。
+
+### 单元素 `contenteditable`
+
+注册 `PBrowserScriptContentEditableCallbacks` 后，Browser 为每个元素暴露只读的 `isContentEditable`。该查询由宿主转给 Core，因而也能正确处理没有 id 的祖先和 `true`/空值、`false`、`plaintext-only`、未知值继承。`contentEditable` 仍是原始 attribute reflection，不应拿它代替有效状态。
+
+`innerText` getter 读取 Core 的文本快照；对有效可编辑元素的 setter 走 `__pcoreSetContentEditableText`，由宿主调用 `PCore_ContentEditableSetTextById` 执行有界合法 UTF-8 纯文本替换。setter 是程序化 mutation，不自动产生 `beforeinput`/`input`；真实键盘、SIP/IME 或其他输入源必须沿用已有 typed input 事务：先派发可取消 `beforeinput`，仅在允许后 mutation，再派发 `input`。当前边界是单元素纯文本，不包含 caret/selection、富文本、designMode、剪贴板或原生编辑窗口。
 
 ### Event 与平台事务
 
@@ -126,7 +133,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
-- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台焦点。CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期和其他浏览器焦点策略未实现。`contenteditable` 也未实现。
+- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台焦点。CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期和其他浏览器焦点策略未实现。`contenteditable` 目前只提供单元素纯文本状态/mutation 与事件编排边界，caret/selection、富文本、designMode 和 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 

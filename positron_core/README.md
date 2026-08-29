@@ -83,6 +83,12 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 
+### 单元素 `contenteditable`
+
+`PCore_ContentEditableInfoById` 解析元素及其祖先的 `contenteditable` 枚举值：空值/`true` 进入普通纯文本模式，`plaintext-only` 进入显式纯文本模式，`false` 禁用，未知值继续向祖先继承。返回值同时报告有效模式和当前 `textContent` 的 UTF-8 字节数；查询不要求 style/layout，id 不存在或结构不完整时 fail closed。
+
+`PCore_ContentEditableSetTextById` 只允许有效的可编辑元素写入不超过 `PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES` 的合法 UTF-8 文本，并用一个文本节点替换该元素的子内容。它不派发事件，也不实现 caret、selection、富文本、designMode 或 IME；宿主应先通过 Browser 的现有 `beforeinput` 事务，获准后调用该 mutation，再派发 `input` 并按需重新 style/layout/paint。该 API 的失败码区分 DOM/目标、不可编辑和文本边界，避免把普通 `textContent` 写入误当作用户编辑。
+
 ### 表单与 validation
 
 Core 持有控件值、checked/selected、disabled/fieldset 继承、required/range/step/pattern/custom validity、submission、multipart、reset 和 successful controls 等产品语义。
@@ -129,6 +135,7 @@ paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
 - HWND、消息循环、DPI/旋转、scrollbar、invalid region 和 HDC；
 - HTTP/TLS、后台 worker、取消、loading 和候选页面提交；
 - native EDIT/SELECT/button/file picker 与 SIP/IME；
+- contenteditable 的窗口/焦点、caret/selection、键盘和 IME 接线；宿主按 Browser 的 `beforeinput` 取消结果调用 Core 的受限文本 mutation；
 - history、浏览器 script session 和新窗口/外部协议策略；
 - 失败回滚、日志、持久化和应用生命周期。
 

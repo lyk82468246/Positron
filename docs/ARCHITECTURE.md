@@ -89,6 +89,7 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - NetSurf box construction、layout、hit testing 和 GDI paint；
 - 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
 - 表单值、约束验证、提交、reset 和 successful controls；
+- 单元素 `contenteditable` 的祖先继承、有效模式和有界 UTF-8 纯文本 mutation；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 给脚本/浏览器层使用的有界 DOM、属性、关系、表单与导航查询。
 
@@ -103,6 +104,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 有界 history entries、same-document state 和 traversal；
 - 浏览器 script session 与 bootstrap；
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
+- `isContentEditable`/`innerText` 的有界单元素纯文本桥；
 - Event、input、keyboard、focus、composition、click 和导航协调；
 - timer、animation frame、microtask、idle、message 和页面生命周期队列；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
@@ -131,6 +133,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - DNS/TCP/TLS/HTTP 组合策略和资源调度；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
+- 把 Core 的 contenteditable 状态/文本 callback 注册到 Browser session，并保留输入事务的顺序；
 - 从 Browser 读取活动 modal id，并在 WM_PAINT 中调用 Core 的 modal paint 组合入口；
 - 决定何时启用浏览器 JavaScript；
 - 应用级崩溃恢复、持久化和日志。
@@ -159,7 +162,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 2. Browser session 注册有界 DOM/Event/platform callbacks；
 3. 按文档顺序执行允许的 inline/external script；
 4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；
-5. Core 执行 DOM/form/default mutation；
+5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation；
 6. Browser 派发 mutation 后的 `input`、`change`、focus 或 lifecycle 事件；
 7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；
 8. 页面替换时销毁 session 与文档。

@@ -73,7 +73,7 @@ DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM 
 
 ### Core 与 Browser callbacks
 
-宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、表单、validation 和事件。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的 Core mutation、WM 默认动作和导航副作用。
+宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、表单、validation、`contenteditable` 状态和事件。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的 Core mutation、WM 默认动作和导航副作用。
 
 callback 同步且不可重入。页面替换时先停止新消息和事务，再销毁 native 控件、Browser session 和 Core document，避免 stale token 或借用指针逃逸。
 
@@ -82,6 +82,10 @@ callback 同步且不可重入。页面替换时先停止新消息和事务，�
 WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生 `input`、`change`、submit/reset 等后续事件。
 
 系统 picker、文件路径、SIP/IME、HWND、COMBOBOX popup 和真实焦点仍属于宿主。synthetic 消息只能做自动契约，不能替代 OEM 设备人工验收。
+
+### 单元素 `contenteditable`
+
+`test_host` 只把 `PBrowserScriptContentEditableCallbacks` 接到当前 Core 文档，并负责在真实输入源中编排 `beforeinput`、允许后的 `PCore_ContentEditableSetTextById` 和 `input`。Browser/Core 共同提供有效状态与有界纯文本替换；宿主不保存第二份编辑模型。当前测试覆盖继承、`false`/未知值、`plaintext-only`、合法 UTF-8、失效目标和取消回滚，不代表 caret/selection、富文本、designMode 或 OEM IME 已实现。
 
 ### 绘制与交互
 

@@ -9,7 +9,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前 Git 与工作区
 
 - 分支：`main`，接管时与 `origin/main` 同步。
-- 当前产品代码基线：`0f728645`（next660 的 modal backdrop paint composition）。
+- 当前产品代码基线：`9eebbef6`（next661，单元素 `contenteditable` 纵切）；上一已推送基线为 `7fff4448`。
 - Core 现在报告稳定的有效表单方法常量，并为显式 submitter 或单行输入隐式提交解析最近祖先 dialog id 与 submitter value。Browser 提供按 id 直接执行 `dialog.close(value)` 的会话边界；参考宿主只在 validation 和可取消 `submit` 均允许后调用它，不生成网络导航，也不错误派发 `cancel`。Core 还提供 `PCore_PaintDocumentWithModal`：普通文档绘制后覆盖有界实体色 backdrop，并按 Browser 的活动 id 重绘已打开的 dialog；next658 的 backdrop 指针策略和此前的 modal 焦点/Escape 边界保持不变。
 - `tmp/` 保存本地设备日志和截图，不跟踪。
 
@@ -40,24 +40,25 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - `<details>/<summary>` 支持 click 与 Enter/Space 激活、取消和 DOM 状态同步。
 - 支持的链接、summary、native EDIT/SELECT/button/file 等目标，以及带有效非负 `tabindex` 的普通布局元素按有界顺序响应 Tab/Shift+Tab：正值升序、同值 DOM 稳定排序，随后零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍被排除。Browser 报告活动 modal id 后，宿主可用 Core 的 scoped snapshot 将顺序焦点限制在 dialog 子树；宿主仍同步焦点事件、原生焦点和滚动可见性。
 - `<dialog>` 的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id 查询、宿主驱动的 Escape 请求桥接、有界 backdrop 指针策略、`method="dialog"` 默认动作和 Core modal paint 已形成契约。显式点击、脚本 `click()` 和单行输入隐式 Enter 都遵循 validation→可取消 submit→直接 close/returnValue；CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 仍未实现。
+- 单元素 `contenteditable` 已形成 Core/Browser 边界：Core 解析祖先继承并限制合法 UTF-8 纯文本 mutation，Browser 暴露 `isContentEditable` 与 `innerText` 桥，宿主按 `beforeinput` 取消结果决定 mutation 后再派发 `input`。当前不包含 caret/selection、富文本、designMode、剪贴板或原生编辑窗口。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1108。
+- `TEST_MAX_NUMBER`：1109。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next660：
+当前最新产品门为 next661：
 
-- 本地目录：`tmp/device-runs/20260829-193908-next660-modal-paint/`；
-- 选择：TEST1106、TEST1107、TEST1108 与 TEST999；
+- 本地目录：`tmp/device-runs/20260829-203313-next661-contenteditable-regression/`；
+- 选择：TEST94、TEST1108、TEST1109 与 TEST999；
 - 结果：4/4，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
 - 设备：640x480，dpi=192；该门使用当前 WMDC GUI 会话并完成了 staging、远端启动、日志回收和退出提示音。
 
-该门验证已有 Browser `<dialog>` 生命周期、Escape 请求桥接、modal 子树焦点范围和真实 WM backdrop 指针路径，并验证 Core 的普通绘制→实体色 backdrop→活动 dialog 重绘顺序、失效 id 的 fail-closed 结果、WM_PAINT 接线以及 16 位色深下的量化容差。它是定向门，不是全量回归。
+该门验证 `positron_script` native callback 容量扩展后的脚本回归、Core/Browser 单元素 `contenteditable` 状态与纯文本 mutation、宿主编排的 `beforeinput` 取消→mutation→`input` 顺序，并重跑 next660 的 modal paint 与退出提示音回归。它是定向门，不是全量回归。
 
 最近一次完整编号范围基线仍是 next255，早于当前多批能力；此后主要使用定向门和相邻回归。因此，累积风险达到路线图条件时必须安排新的全量 checkpoint，不能把多个窄门宣称为全量覆盖。
 
@@ -71,6 +72,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - native EDIT/SELECT、真实 file picker、旋转和 DPI 路径。
 - 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
+- contenteditable 的真实焦点、caret/selection、键盘、SIP/IME 和不同 DPI 下的文本视觉仍属于可累计人工风险；离线 1109 已自动覆盖状态、mutation、取消回滚和事件顺序。
 
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
@@ -78,7 +80,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 - 真实页面兼容性仍缺少固定、小型、可重复的 corpus；TEST13 只是单一网络哨兵。
 - `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围、有界 backdrop 指针策略和 Core 实体色 modal paint；当前表单桥要求最近祖先 dialog 有非空 id。CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
-- `contenteditable`、design mode、富文本编辑和动态焦点区域尚未实现。
+- `contenteditable` 仅有单元素纯文本状态/mutation 与宿主事件编排；caret/selection、富文本、designMode、剪贴板、原生编辑窗口和动态焦点区域尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
 - 多窗口、持久 history、完整下载/外部协议策略仍属于宿主或未实现范围。
@@ -89,7 +91,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 唯一下一步
 
-以已验证的离线对话框语料为基础，next661 唯一推进一个最小 `contenteditable` 单元素编辑纵切：Core 提供可编辑状态与受限文本 mutation，Browser/宿主保持现有事件和 native 输入事务边界。不要在该批混入跨文档 modal 生命周期、复杂富文本或无关 CSS 扩张。
+以已验证的离线 `contenteditable` 语料为基础，next662 唯一推进单元素编辑的宿主输入接线：把现有 WM/native 输入坐标、焦点和文本替换接到 Browser 的 `beforeinput` 事务与 Core 的受限 mutation，仍不引入 caret 以外的富文本、designMode、跨文档 modal 或无关 CSS 扩张。
 
 优先场景应同时满足：
 
@@ -101,8 +103,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 下一步完成标准
 
-- 固定 fixture 自动验证单元素 `contenteditable` 的状态、文本 mutation、事件顺序和失效回滚，不依赖外网；
-- 编辑语义进入 Core/Browser 公共 DLL，宿主只提供 WM/native 输入接线与失效调度，不新增 test-host-only 产品策略；
+- 固定 fixture 已自动验证单元素 `contenteditable` 的状态、文本 mutation、事件顺序和失效回滚，不依赖外网；
+- next662 应让真实 WM/native 输入只提供坐标、焦点和文本替换接线，沿用 Browser 的 `beforeinput` 事务与 Core mutation，不新增 test-host-only 产品策略；
 - `python scripts/test_c89ize.py` 与 `python scripts/audit_repo.py` 通过；
 - VS2008 ARMV4I 正式构建通过，staging 无混包；
 - 定向设备门及直接相邻回归全部通过，日志唯一 PASS、零 ERROR/FAIL；
