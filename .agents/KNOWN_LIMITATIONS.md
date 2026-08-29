@@ -26,7 +26,7 @@
 - HTML/CSS/DOM 由固定版本 NetSurf 支持库移植而来，不等于现代浏览器当前实现。
 - CSS Grid、完整 float、完整 positioned layout、复杂 table/caption/column/baseline、完整 generated content 与自定义 counter style 未覆盖。
 - 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。
-- `details`/`summary`、`hidden` 等只有受限静态或交互子集；`dialog` 已有 Browser 脚本的 show/showModal/close/requestClose、returnValue 和 cancel/close 事件，但没有完整 top layer、backdrop、focus trap、Esc/背景点击策略或跨文档生命周期。
+- `details`/`summary`、`hidden` 等只有受限静态或交互子集；`dialog` 已有 Browser 脚本的 show/showModal/close/requestClose、returnValue、cancel/close 事件和宿主驱动的 Escape 请求桥接，但没有完整 top layer、backdrop、focus trap、背景点击策略或跨文档生命周期。Browser 不自动接管平台消息；宿主必须显式调用该桥接。
 - Core 已支持有界的自定义 `tabindex` 顺序：正值升序（同值保持 DOM 顺序），随后是零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍会被排除。完整浏览器焦点策略、modal focus trap、动态焦点区域和跨窗口焦点仍未实现。
 - `contenteditable`、design mode 和富文本编辑未实现。
 - 字体 fallback 使用 bundled 子集与系统 GDI，不能保证桌面浏览器字形、kerning、emoji 彩色渲染或抗锯齿一致。

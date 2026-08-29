@@ -9,8 +9,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前 Git 与工作区
 
 - 分支：`main`，接管时与 `origin/main` 同步。
-- 当前产品代码基线：`0b5575f7`（next655 的 Browser `<dialog>` 有界脚本生命周期）。
-- 本批把 `show()`、`showModal()`、`close()`、`requestClose()`、`returnValue` 以及 `cancel`/`close` 事件语义放入 `positron_browser.dll`，`test_host.exe` 只增加离线契约；没有修改工程配置或 tracked 测试选择。
+- 当前产品代码基线：`65ca722e`（next656 的 Browser `<dialog>` Escape 请求桥接）。
+- 本批在 Browser 中增加 `PBrowser_ScriptSessionRequestDialogClose`，把宿主平台关闭手势交给活动 modal 的 `requestClose()`；`test_host.exe` 只负责 `VK_ESCAPE` 接线和离线契约，未增加 native function，也没有修改工程配置或 tracked 测试选择。
 - `tmp/` 保存本地设备日志和截图，不跟踪。
 
 ## 当前中期里程碑
@@ -39,24 +39,25 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - 深层 DOM 资源准备使用单个事务级 heap scratch，避免大批固定栈缓冲耗尽 WM6 线程栈。
 - `<details>/<summary>` 支持 click 与 Enter/Space 激活、取消和 DOM 状态同步。
 - 支持的链接、summary、native EDIT/SELECT/button/file 等目标，以及带有效非负 `tabindex` 的普通布局元素按有界顺序响应 Tab/Shift+Tab：正值升序、同值 DOM 稳定排序，随后零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍被排除。宿主同步焦点事件、原生焦点和滚动可见性。
+- `<dialog>` 的 show/showModal/close/requestClose、returnValue、cancel/close 事件和宿主驱动的 Escape 请求桥接已在 Browser 中形成有界契约；top layer/backdrop、焦点陷阱、背景点击、`method="dialog"` 提交和跨文档 modal 仍未实现。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1103。
+- `TEST_MAX_NUMBER`：1104。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next655：
+当前最新产品门为 next656：
 
-- 本地目录：`tmp/device-runs/20260829-113535-next655-dialog-r2/`；
-- 选择：TEST1099、TEST1103 与 TEST999；
-- 结果：3/3，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
+- 本地目录：`tmp/device-runs/20260829-121044-next656-dialog-escape/`；
+- 选择：TEST1099、TEST1103、TEST1104 与 TEST999；
+- 结果：4/4，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
 - 设备：640x480，dpi=192；该门使用当前 WMDC GUI 会话并完成了 staging、远端启动、日志回收和退出提示音。
 
-该门验证 details 回归，以及 Browser `<dialog>` 的 show/showModal/close/requestClose、`returnValue`、单 session modal 互斥、可取消 cancel 和非冒泡 close 事件，并验证退出提示音。它是定向门，不是全量回归。
+该门验证 details 回归，以及 Browser `<dialog>` 的 show/showModal/close/requestClose、`returnValue`、单 session modal 互斥、可取消 cancel、非冒泡 close 事件和宿主 Escape 请求桥接，并验证退出提示音。它是定向门，不是全量回归。
 
 最近一次完整编号范围基线仍是 next255，早于当前多批能力；此后主要使用定向门和相邻回归。因此，累积风险达到路线图条件时必须安排新的全量 checkpoint，不能把多个窄门宣称为全量覆盖。
 
@@ -75,7 +76,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前未决风险
 
 - 真实页面兼容性仍缺少固定、小型、可重复的 corpus；TEST13 只是单一网络哨兵。
-- `<dialog>` 仅有已验证的有界脚本生命周期；top layer/backdrop、focus trap、Esc/背景点击策略、`method="dialog"` 提交和跨文档 modal 生命周期尚未实现。
+- `<dialog>` 仅有已验证的有界脚本生命周期和宿主驱动的 Escape→`requestClose()` 桥接；top layer/backdrop、focus trap、背景点击策略、`method="dialog"` 提交和跨文档 modal 生命周期尚未实现。
 - `contenteditable`、design mode、富文本编辑和动态焦点区域尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
@@ -87,7 +88,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 唯一下一步
 
-以 TEST1103 的离线对话框语料为下一个可重复场景，下一步从 top layer/backdrop、焦点陷阱、Esc/背景点击、`method="dialog"` 提交或 contenteditable 中选择一个高价值缺口；不要为增加编号而拆分能力。
+以 TEST1103/1104 的离线对话框语料为下一个可重复场景，下一步从 top layer/backdrop、焦点陷阱、背景点击、`method="dialog"` 提交或 contenteditable 中选择一个高价值缺口；不要为增加编号而拆分能力。
 
 优先场景应同时满足：
 
