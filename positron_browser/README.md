@@ -66,8 +66,9 @@ Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 di
 - `open` 继续反映 DOM 属性，属性变化通过宿主的 DOM callback 进入正常 restyle/layout 调度，`oncancel`/`onclose` 与 `addEventListener` 均可使用。
 - 宿主收到平台 Escape 等关闭手势后，可调用 `PBrowser_ScriptSessionRequestDialogClose` 将该手势交给当前 modal；有活动 modal 时即使 `cancel` 阻止关闭也会报告已处理，无活动 modal 时则由宿主决定后续行为。
 - 宿主处理顺序 Tab 时，可调用 `PBrowser_ScriptSessionGetActiveDialogId` 读取当前 modal 的 UTF-8 DOM id；返回空字符串表示没有 modal。再把这个 id 交给 Core 的 `PCore_FocusTargetInfoWithin`，即可将 Tab/Shift+Tab 限定在该 dialog 子树内。该 API 只报告 Browser 状态，不改变焦点，也不创建或绘制窗口。
+- 宿主处理指针时，可把 client 坐标换算为 document 坐标，用活动 id 对应的 Core 几何做有界命中测试：dialog 外部调用 `PBrowser_ScriptSessionRequestDialogClose`，内部继续交给普通控件命中；即使 `cancel` 阻止关闭，宿主也应消费这次 backdrop 点击。Browser 只提供生命周期桥，不自行读取窗口坐标。
 
-这些方法属于 Browser 的脚本语义，不创建 HWND，也不替宿主绘制 top layer、backdrop 或系统模态窗口。宿主必须自己决定初始焦点、native HWND 切换、滚动可见性和焦点视觉；背景点击策略、`method="dialog"` 提交和跨文档 modal 生命周期仍由后续纵切处理。
+这些方法属于 Browser 的脚本语义，不创建 HWND，也不替宿主绘制 top layer、backdrop 或系统模态窗口。宿主必须自己决定初始焦点、native HWND 切换、滚动可见性和焦点视觉；背景点击的几何命中和平台消息仍由宿主完成，`method="dialog"` 提交和跨文档 modal 生命周期仍未覆盖。
 
 ### Event 与平台事务
 
@@ -124,7 +125,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
-- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询和宿主驱动的 Escape→`requestClose()` 桥接；宿主可组合 Core 的 scoped focus snapshot 实现顺序 Tab/Shift+Tab 焦点范围，但 Browser 不自动接管平台焦点。top layer/backdrop、背景点击、`method="dialog"` 提交和跨文档 modal 生命周期未实现。`contenteditable` 与其他浏览器焦点策略也未实现。
+- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()` 桥接和参考宿主的有界 backdrop 点击策略；宿主可组合 Core 的 scoped focus snapshot 实现顺序 Tab/Shift+Tab 焦点范围，但 Browser 不自动接管平台焦点。top-layer/backdrop 视觉、`method="dialog"` 提交和跨文档 modal 生命周期未实现。`contenteditable` 与其他浏览器焦点策略也未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 
