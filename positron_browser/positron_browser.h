@@ -213,6 +213,25 @@ typedef struct PBrowserScriptDomWriteCallbacks {
     PBrowserScriptSetTextFn set_text;
 } PBrowserScriptDomWriteCallbacks;
 
+/* Typed host adapter for the bounded single-element contenteditable
+ * boundary. The browser DLL owns the JSON bridge and `isContentEditable`
+ * property; the host reads effective state and performs a plain-text Core
+ * mutation. Neither callback dispatches input events: a host must retain the
+ * existing beforeinput cancellation -> mutation -> input ordering. The
+ * getter returns >0 for an editable element, 0 for a non-editable element and
+ * <0 on adapter failure. The setter returns >0 on success, 0 when the target
+ * is unavailable/not editable and <0 on adapter failure. */
+typedef int (*PBrowserScriptGetContentEditableFn)(void *pw, const char *id,
+        int *out_editable);
+typedef int (*PBrowserScriptSetContentEditableTextFn)(void *pw,
+        const char *id, const char *text);
+typedef struct PBrowserScriptContentEditableCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetContentEditableFn get_editable;
+    PBrowserScriptSetContentEditableTextFn set_text;
+} PBrowserScriptContentEditableCallbacks;
+
 /* Typed host adapters for product-owned form value callbacks. The browser
  * DLL parses and encodes the JSON value requests; the host only reads or
  * updates its core document through these UTF-8 callbacks. get_value follows
@@ -1145,6 +1164,11 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomRelationCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacks(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptContentEditableCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterContentEditableCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomValueCallbacks(
         HANDLE hSession, const PBrowserScriptDomValueCallbacks *callbacks);

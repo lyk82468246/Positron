@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1108
+#define TEST_MAX_NUMBER 1109
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -11078,6 +11078,49 @@ static int pcore_browser_script_dom_set_text(void *pw, const char *id,
             1 : 0;
 }
 
+static int pcore_browser_script_content_editable_get(void *pw,
+        const char *id, int *out_editable)
+{
+    pcore_browser_script_bridge *bridge;
+    PCoreContentEditableInfo info;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            out_editable == NULL) {
+        return -1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (PCore_ContentEditableInfoById(bridge->document, id, &info) != 0) {
+        /* Stale wrappers read like ordinary disconnected elements. */
+        *out_editable = 0;
+        return 0;
+    }
+    *out_editable = info.editable;
+    return 0;
+}
+
+static int pcore_browser_script_content_editable_set(void *pw,
+        const char *id, const char *text)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            text == NULL) {
+        return -1;
+    }
+    result = PCore_ContentEditableSetTextById(bridge->document, id, text);
+    if (result == 0) {
+        return 1;
+    }
+    if (result == 2 || result == 3) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_write_int(int value, char *out_json,
         int out_capacity, int *out_len)
 {
@@ -12338,6 +12381,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
+    PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptFormCallbacks form_callbacks;
@@ -12458,6 +12502,12 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_write_callbacks.size = sizeof(dom_write_callbacks);
     dom_write_callbacks.pw = bridge;
     dom_write_callbacks.set_text = pcore_browser_script_dom_set_text;
+    content_editable_callbacks.size = sizeof(content_editable_callbacks);
+    content_editable_callbacks.pw = bridge;
+    content_editable_callbacks.get_editable =
+            pcore_browser_script_content_editable_get;
+    content_editable_callbacks.set_text =
+            pcore_browser_script_content_editable_set;
     dom_value_callbacks.size = sizeof(dom_value_callbacks);
     dom_value_callbacks.pw = bridge;
     dom_value_callbacks.get_value = pcore_browser_script_dom_get_value;
@@ -12606,6 +12656,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacks(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
+            &content_editable_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomValueCallbacks(session,
             &dom_value_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomCheckedCallbacks(session,
@@ -12648,8 +12700,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &event_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterNavigationCallbacks(session,
             &navigation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionEvaluateBootstrap(session) !=
-            PSCRIPT_OK) {
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity, "DOM bootstrap",
                 PBrowser_ScriptSessionGetError(session));
         pcore_browser_script_bridge_destroy(bridge);
@@ -24305,6 +24356,187 @@ static BOOL test1108_browser_modal_paint_contract(void)
             "Core paints a deterministic WM6 modal backdrop over the visible"
             " document, redraws the active dialog above it, and fails closed"
             " to a backdrop when Browser state names a stale dialog.");
+    return TRUE;
+}
+
+/* TEST 1109 - bounded single-element contenteditable state and editing. */
+static BOOL test1109_browser_content_editable_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='host' contenteditable='true'><div id='editor'>seed</div>"
+        "<div id='blocked' contenteditable='false'>blocked</div></div>"
+        "<div contenteditable='true'><span id='inherited'>leaf</span></div>"
+        "<div id='unknown' contenteditable='maybe'>unknown</div>"
+        "<div id='plain' contenteditable='plaintext-only'>plain</div>"
+        "<p id='result'>idle</p>"
+        "<script>window.events='';"
+        "function record(e){if(e.data==='cancel'&&e.type==='beforeinput')"
+        "{e.preventDefault();}window.events+=(window.events===''?'':'|')+"
+        "e.type+':'+e.inputType+':'+e.data+':'+String(e.defaultPrevented);};"
+        "document.getElementById('editor').addEventListener('beforeinput',"
+        "record,false);document.getElementById('editor').addEventListener("
+        "'input',record,false);</script></body></html>";
+    static const PCoreInputEventDataEx INSERT = {
+        sizeof(PCoreInputEventDataEx), "insertText", "!", 0
+    };
+    static const PCoreInputEventDataEx CANCEL = {
+        sizeof(PCoreInputEventDataEx), "insertText", "cancel", 0
+    };
+    static const char EXPECTED_EVENTS[] =
+        "beforeinput:insertText:!:false|input:insertText:!:false|"
+        "beforeinput:insertText:cancel:true|host-edit!";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreContentEditableInfo info;
+    PCoreContentEditableInfo inherited;
+    PCoreContentEditableInfo blocked;
+    PCoreContentEditableInfo unknown;
+    PCoreContentEditableInfo plain;
+    char text[512];
+    char error[512];
+    int bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    default_allowed = 0;
+    dispatch_result = -1;
+    ok = 1;
+    memset(&info, 0, sizeof(info));
+    memset(&inherited, 0, sizeof(inherited));
+    memset(&blocked, 0, sizeof(blocked));
+    memset(&unknown, 0, sizeof(unknown));
+    memset(&plain, 0, sizeof(plain));
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        info.size = sizeof(info);
+        inherited.size = sizeof(inherited);
+        blocked.size = sizeof(blocked);
+        unknown.size = sizeof(unknown);
+        plain.size = sizeof(plain);
+        if (PCore_ContentEditableInfoById(document, "editor", &info) != 0 ||
+                info.editable != 1 ||
+                info.mode != PCORE_CONTENTEDITABLE_MODE_TEXT ||
+                info.text_bytes != 4 ||
+                PCore_ContentEditableInfoById(document, "inherited",
+                &inherited) != 0 || inherited.editable != 1 ||
+                PCore_ContentEditableInfoById(document, "blocked", &blocked)
+                != 0 || blocked.editable != 0 ||
+                PCore_ContentEditableInfoById(document, "unknown", &unknown)
+                != 0 || unknown.editable != 0 ||
+                PCore_ContentEditableInfoById(document, "plain", &plain) !=
+                0 || plain.editable != 1 ||
+                plain.mode != PCORE_CONTENTEDITABLE_MODE_PLAINTEXT_ONLY) {
+            ok = 0;
+        }
+    }
+    if (ok && pcore_browser_script_session_evaluate(
+            "document.getElementById('result').textContent="
+            "String(document.getElementById('editor').isContentEditable)+'|'+"
+            "String(document.getElementById('blocked').isContentEditable)+'|'+"
+            "String(document.getElementById('inherited').isContentEditable)+'|'+"
+            "String(document.getElementById('unknown').isContentEditable)+'|'+"
+            "String(document.getElementById('plain').isContentEditable);", -1,
+            error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(document, "result", text, sizeof(text),
+            &bytes) != 0 || strcmp(text, "true|false|true|false|true") != 0) {
+        ok = 0;
+    }
+    if (ok && pcore_browser_script_session_evaluate(
+            "document.getElementById('editor').innerText='script-edit';", -1,
+            error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(document, "editor", text, sizeof(text),
+            &bytes) != 0 || strcmp(text, "script-edit") != 0) {
+        ok = 0;
+    }
+    if (ok && (PCore_ContentEditableSetTextById(document, "editor",
+            "host-edit") != 0 ||
+            PCore_ContentEditableSetTextById(document, "blocked", "bad") !=
+            2 || PCore_ContentEditableSetTextById(document, "missing", "bad")
+            != 1 || PCore_ContentEditableSetTextById(document, "editor",
+            "\xff") != 3 ||
+            PCore_NodeTextContentById(document, "editor", text, sizeof(text),
+            &bytes) != 0 || strcmp(text, "host-edit") != 0)) {
+        ok = 0;
+    }
+    if (ok) {
+        default_allowed = 0;
+        dispatch_result = PCore_EventDispatchInputExToId(document, "editor",
+                "beforeinput", 1, 1, &INSERT, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1 ||
+                PCore_ContentEditableSetTextById(document, "editor",
+                "host-edit!") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        default_allowed = 0;
+        dispatch_result = PCore_EventDispatchInputExToId(document, "editor",
+                "input", 1, 0, &INSERT, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        default_allowed = 1;
+        dispatch_result = PCore_EventDispatchInputExToId(document, "editor",
+                "beforeinput", 1, 1, &CANCEL, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 0 ||
+                PCore_NodeTextContentById(document, "editor", text,
+                sizeof(text), &bytes) != 0 || strcmp(text, "host-edit!") !=
+                0 || pcore_browser_script_session_evaluate(
+                "document.getElementById('result').textContent="
+                "window.events+'|'+document.getElementById('editor').textContent;",
+                -1, error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", text,
+                sizeof(text), &bytes) != 0 || strcmp(text, EXPECTED_EVENTS) !=
+                0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1109 FAIL", error[0] != '\0' ? error :
+                "contenteditable state, mutation or event transaction did "
+                "not match");
+        return FALSE;
+    }
+    show_info(L"TEST 1109 OK",
+            "Core resolved inherited contenteditable state and bounded plain"
+            " text mutation; Browser exposed isContentEditable/innerText and"
+            " the host preserved beforeinput cancellation then input ordering.");
     return TRUE;
 }
 
@@ -82158,6 +82390,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1106: ok = test1106_browser_dialog_backdrop_pointer_contract(); break;
         case 1107: ok = test1107_browser_dialog_form_submission_contract(); break;
         case 1108: ok = test1108_browser_modal_paint_contract(); break;
+        case 1109: ok = test1109_browser_content_editable_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

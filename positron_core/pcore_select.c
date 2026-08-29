@@ -20,6 +20,7 @@
  */
 
 #include <windows.h>
+#include <limits.h>
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>   /* malloc / free (box geometry) */
@@ -4138,6 +4139,50 @@ PCORE_API int PCore_GetScript(HANDLE hDoc, unsigned int index,
 static dom_element *pcore_document_structural_element(dom_document *doc,
         const char *element_id);
 
+static int pcore_contenteditable_utf8_valid(const char *text)
+{
+    const unsigned char *p;
+    unsigned int cp;
+    int need;
+    int i;
+
+    if (text == NULL) {
+        return 0;
+    }
+    p = (const unsigned char *) text;
+    while (*p != 0) {
+        if (*p < 0x80) {
+            p++;
+            continue;
+        }
+        if (*p >= 0xc2 && *p <= 0xdf) {
+            need = 1;
+            cp = *p & 0x1f;
+        } else if (*p >= 0xe0 && *p <= 0xef) {
+            need = 2;
+            cp = *p & 0x0f;
+        } else if (*p >= 0xf0 && *p <= 0xf4) {
+            need = 3;
+            cp = *p & 0x07;
+        } else {
+            return 0;
+        }
+        for (i = 1; i <= need; i++) {
+            if (p[i] == 0 || (p[i] & 0xc0) != 0x80) {
+                return 0;
+            }
+            cp = (cp << 6) | (p[i] & 0x3f);
+        }
+        if ((need == 2 && cp < 0x800) ||
+                (need == 3 && cp < 0x10000) ||
+                (cp >= 0xd800 && cp <= 0xdfff) || cp > 0x10ffff) {
+            return 0;
+        }
+        p += need + 1;
+    }
+    return 1;
+}
+
 static dom_element *pcore_element_by_id(dom_document *doc,
         const char *element_id)
 {
@@ -5590,6 +5635,221 @@ PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
     dom_string_unref(content);
     dom_node_unref((dom_node *) element);
     return 0;
+}
+
+/* Resolve the enumerated contenteditable attribute while retaining the
+ * browser's inheritance rule. The input node is owned by the caller and is
+ * consumed by this helper; every parent returned by libdom is released before
+ * the result is returned. Unknown values inherit from the parent. */
+static int pcore_contenteditable_mode_take(dom_node *node, int *out_mode)
+{
+    dom_string *name;
+    dom_string *value;
+    dom_node *parent;
+    dom_node_type node_type;
+    const char *data;
+    const char *token;
+    size_t length;
+    size_t start;
+    size_t end;
+    size_t token_length;
+    size_t i;
+    int mode;
+    int recognized;
+
+    if (out_mode != NULL) {
+        *out_mode = PCORE_CONTENTEDITABLE_MODE_NONE;
+    }
+    if (node == NULL || out_mode == NULL) {
+        if (node != NULL) {
+            dom_node_unref(node);
+        }
+        return 1;
+    }
+    name = NULL;
+    if (dom_string_create((const uint8_t *) "contenteditable", 15,
+            &name) != DOM_NO_ERR || name == NULL) {
+        dom_node_unref(node);
+        return 1;
+    }
+    mode = PCORE_CONTENTEDITABLE_MODE_NONE;
+    while (node != NULL) {
+        if (dom_node_get_node_type(node, &node_type) != DOM_NO_ERR) {
+            dom_string_unref(name);
+            dom_node_unref(node);
+            return 1;
+        }
+        if (node_type != DOM_ELEMENT_NODE) {
+            dom_node_unref(node);
+            break;
+        }
+        value = NULL;
+        if (dom_element_get_attribute((dom_element *) node, name, &value) !=
+                DOM_NO_ERR) {
+            dom_string_unref(name);
+            dom_node_unref(node);
+            return 1;
+        }
+        recognized = 0;
+        if (value != NULL) {
+            data = dom_string_data(value);
+            length = dom_string_byte_length(value);
+            if (data == NULL && length != 0) {
+                dom_string_unref(value);
+                dom_string_unref(name);
+                dom_node_unref(node);
+                return 1;
+            }
+            start = 0;
+            end = length;
+            while (start < end && (data[start] == ' ' ||
+                    data[start] == '\t' || data[start] == '\r' ||
+                    data[start] == '\n' || data[start] == '\f')) {
+                start++;
+            }
+            while (end > start && (data[end - 1] == ' ' ||
+                    data[end - 1] == '\t' || data[end - 1] == '\r' ||
+                    data[end - 1] == '\n' || data[end - 1] == '\f')) {
+                end--;
+            }
+            token = NULL;
+            if (start == end) {
+                recognized = 1;
+                mode = PCORE_CONTENTEDITABLE_MODE_TEXT;
+            } else if (end - start == 4) {
+                token = "true";
+            } else if (end - start == 5) {
+                token = "false";
+            } else if (end - start == 14) {
+                token = "plaintext-only";
+            }
+            if (!recognized && token != NULL) {
+                token_length = strlen(token);
+                if (token_length == end - start) {
+                    recognized = 1;
+                    for (i = 0; i < token_length; i++) {
+                        char a;
+                        char b;
+
+                        a = data[start + i];
+                        b = token[i];
+                        if (a >= 'A' && a <= 'Z') {
+                            a = (char) (a + ('a' - 'A'));
+                        }
+                        if (a != b) {
+                            recognized = 0;
+                            break;
+                        }
+                    }
+                    if (recognized) {
+                        mode = (token[0] == 'f') ?
+                                PCORE_CONTENTEDITABLE_MODE_NONE :
+                                (token[0] == 'p' ?
+                                PCORE_CONTENTEDITABLE_MODE_PLAINTEXT_ONLY :
+                                PCORE_CONTENTEDITABLE_MODE_TEXT);
+                    }
+                }
+            }
+            dom_string_unref(value);
+        }
+        if (recognized) {
+            dom_string_unref(name);
+            dom_node_unref(node);
+            *out_mode = mode;
+            return 0;
+        }
+        parent = NULL;
+        if (dom_node_get_parent_node(node, &parent) != DOM_NO_ERR) {
+            dom_string_unref(name);
+            dom_node_unref(node);
+            return 1;
+        }
+        dom_node_unref(node);
+        node = parent;
+    }
+    dom_string_unref(name);
+    *out_mode = PCORE_CONTENTEDITABLE_MODE_NONE;
+    return 0;
+}
+
+PCORE_API int PCore_ContentEditableInfoById(HANDLE hDoc,
+        const char *element_id, PCoreContentEditableInfo *out_info)
+{
+    dom_element *element;
+    dom_string *content;
+    int mode;
+    size_t bytes;
+
+    if (out_info == NULL || out_info->size < sizeof(*out_info) ||
+            hDoc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return 1;
+    }
+    out_info->editable = 0;
+    out_info->mode = PCORE_CONTENTEDITABLE_MODE_NONE;
+    out_info->text_bytes = 0;
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    content = NULL;
+    if (dom_node_get_text_content((dom_node *) element, &content) !=
+            DOM_NO_ERR || content == NULL) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    bytes = dom_string_byte_length(content);
+    dom_string_unref(content);
+    if (bytes > (size_t) INT_MAX ||
+            pcore_contenteditable_mode_take((dom_node *) element, &mode) !=
+            0) {
+        return 1;
+    }
+    out_info->mode = mode;
+    out_info->editable = mode != PCORE_CONTENTEDITABLE_MODE_NONE ? 1 : 0;
+    out_info->text_bytes = (int) bytes;
+    return 0;
+}
+
+PCORE_API int PCore_ContentEditableSetTextById(HANDLE hDoc,
+        const char *element_id, const char *text)
+{
+    dom_element *element;
+    dom_string *content;
+    int mode;
+    size_t bytes;
+    dom_exception error;
+
+    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0' ||
+            text == NULL) {
+        return 1;
+    }
+    bytes = strlen(text);
+    if (bytes > PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES) {
+        return 3;
+    }
+    /* The core is UTF-8 at its public boundary. Keep malformed input from
+     * entering the DOM even though libdom itself stores byte strings. */
+    if (!pcore_contenteditable_utf8_valid(text)) {
+        return 3;
+    }
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    if (pcore_contenteditable_mode_take((dom_node *) element, &mode) != 0) {
+        return 1;
+    }
+    if (mode == PCORE_CONTENTEDITABLE_MODE_NONE) {
+        return 2;
+    }
+    content = NULL;
+    if (dom_string_create((const uint8_t *) text, bytes, &content) !=
+            DOM_NO_ERR || content == NULL) {
+        return 1;
+    }
+    error = dom_node_set_text_content((dom_node *) element, content);
+    dom_string_unref(content);
+    return (error == DOM_NO_ERR) ? 0 : 1;
 }
 
 PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,

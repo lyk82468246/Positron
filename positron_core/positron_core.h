@@ -238,6 +238,41 @@ PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
         char *text, int text_capacity, int *out_bytes);
 PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
         const char *element_id, const char *text);
+
+/* Minimal single-element contenteditable boundary for browser/runtime hosts.
+ * The effective state walks the element's ancestors: an explicit true or
+ * empty value enables editing, false disables it, plaintext-only enables the
+ * bounded plain-text mode, and an unknown value inherits.  `mode` is zero
+ * when the effective element is not editable, one for the ordinary bounded
+ * text mode and two for plaintext-only.  text_bytes is the current UTF-8
+ * textContent byte count.  The query is DOM-only and does not require style
+ * or layout. */
+#define PCORE_CONTENTEDITABLE_MODE_NONE          0
+#define PCORE_CONTENTEDITABLE_MODE_TEXT          1
+#define PCORE_CONTENTEDITABLE_MODE_PLAINTEXT_ONLY 2
+#define PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES     8192
+typedef struct PCoreContentEditableInfo {
+    unsigned long size;
+    int editable;
+    int mode;
+    int text_bytes;
+} PCoreContentEditableInfo;
+
+/* Read the effective contenteditable state of the element addressed by its
+ * UTF-8 id. Returns 0 for an existing element, or non-zero for invalid input,
+ * an absent id, a short output structure or a DOM failure. */
+PCORE_API int PCore_ContentEditableInfoById(HANDLE hDoc,
+        const char *element_id, PCoreContentEditableInfo *out_info);
+
+/* Replace one editable element's textContent with bounded valid UTF-8 plain
+ * text. This intentionally collapses child markup into one text node and
+ * never dispatches input events; the Browser/host input transaction owns
+ * beforeinput cancellation and input dispatch. Returns 0 on success, 1 for
+ * invalid/absent DOM, 2 when the effective element is not editable, and 3
+ * when the text exceeds PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES or is invalid
+ * UTF-8. */
+PCORE_API int PCore_ContentEditableSetTextById(HANDLE hDoc,
+        const char *element_id, const char *text);
 /* Minimal UTF-8 attribute boundary for script/runtime hosts. The getter
  * returns 0 when present, 2 when the element exists but the attribute does
  * not, and 1 for invalid input/DOM failure. out_bytes excludes the NUL. */

@@ -822,6 +822,13 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "get:function(){return __pcoreGetText({id:this.__id});},"
         "set:function(v){if(!__pcoreSetText({id:this.__id,text:String(v)}))"
         "{throw new Error('textContent update failed');}}});"
+        "Object.defineProperty(PElement.prototype,'innerText',{"
+        "get:function(){return __pcoreGetText({id:this.__id});},"
+        "set:function(v){var s=String(v);var ok;"
+        "if(this.isContentEditable&&typeof __pcoreSetContentEditableText==='function')"
+        "{ok=__pcoreSetContentEditableText({id:this.__id,text:s});}"
+        "else{ok=__pcoreSetText({id:this.__id,text:s});}"
+        "if(!ok){throw new Error('innerText update failed');}}});"
         "PElement.prototype.getAttribute=function(name){"
         "return __pcoreGetAttribute({id:this.__id,name:String(name)});};"
         "PElement.prototype.hasAttribute=function(name){"
@@ -936,6 +943,10 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PDefineString('role','role');"
         "PDefineString('ariaLabel','aria-label');"
         "PDefineString('contentEditable','contenteditable');"
+        "Object.defineProperty(PElement.prototype,'isContentEditable',{"
+        "get:function(){if(typeof __pcoreGetContentEditable!=='function'){"
+        "return false;}return !!__pcoreGetContentEditable({id:this.__id});},"
+        "enumerable:true,configurable:true});"
         "PDefineString('draggable','draggable');"
         "PDefineString('accept','accept');"
         "PDefineString('capture','capture');"
@@ -3523,6 +3534,10 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptDomWriteCallbacks callbacks;
 } p_browser_script_dom_write_binding;
 
+typedef struct p_browser_script_content_editable_binding {
+    PBrowserScriptContentEditableCallbacks callbacks;
+} p_browser_script_content_editable_binding;
+
 typedef struct p_browser_script_dom_value_binding {
     PBrowserScriptDomValueCallbacks callbacks;
 } p_browser_script_dom_value_binding;
@@ -3673,6 +3688,7 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_read_binding *dom_read;
     p_browser_script_dom_relation_binding *dom_relation;
     p_browser_script_dom_write_binding *dom_write;
+    p_browser_script_content_editable_binding *content_editable;
     p_browser_script_dom_value_binding *dom_value;
     p_browser_script_dom_checked_binding *dom_checked;
     p_browser_script_form_binding *form;
@@ -4301,6 +4317,64 @@ static int p_browser_script_dom_set_text(void *pw,
     int changed;
 
     binding = (p_browser_script_dom_write_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    text = (object != NULL) ? PJson_GetString(object, "text") : NULL;
+    if (binding == NULL || root == NULL || id == NULL || text == NULL ||
+            binding->callbacks.set_text == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    changed = binding->callbacks.set_text(binding->callbacks.pw, id, text);
+    PJson_Free(root);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_content_editable_get(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_content_editable_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int editable;
+    int result;
+
+    binding = (p_browser_script_content_editable_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    editable = 0;
+    result = binding != NULL && root != NULL && id != NULL &&
+            binding->callbacks.get_editable != NULL &&
+            binding->callbacks.get_editable(binding->callbacks.pw, id,
+            &editable) >= 0;
+    PJson_Free(root);
+    if (!result) {
+        return 1;
+    }
+    return p_browser_script_write_bool(editable > 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_content_editable_set(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_content_editable_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    const char *text;
+    int changed;
+
+    binding = (p_browser_script_content_editable_binding *) pw;
     object = NULL;
     root = p_browser_script_args_object(args_json, args_len, &object);
     id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
@@ -5182,6 +5256,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_read = NULL;
     session->dom_relation = NULL;
     session->dom_write = NULL;
+    session->content_editable = NULL;
     session->dom_value = NULL;
     session->dom_checked = NULL;
     session->form = NULL;
@@ -5247,6 +5322,14 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreSetText", -1);
         free(session->dom_write);
         session->dom_write = NULL;
+    }
+    if (session->content_editable != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetContentEditable", -1);
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreSetContentEditableText", -1);
+        free(session->content_editable);
+        session->content_editable = NULL;
     }
     if (session->dom_value != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -5719,6 +5802,72 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
     free(session->dom_write);
     session->dom_write = NULL;
     return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptContentEditableCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_content_editable_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptContentEditableCallbacks) ||
+            callbacks->get_editable == NULL || callbacks->set_text == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->content_editable != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_content_editable_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetContentEditable", -1,
+            p_browser_script_content_editable_get, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetContentEditableText", -1,
+            p_browser_script_content_editable_set, binding);
+    if (rc != PSCRIPT_OK) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetContentEditable", -1);
+        free(binding);
+        return rc;
+    }
+    session->content_editable = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterContentEditableCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+    int second_rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->content_editable == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetContentEditable", -1);
+    second_rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetContentEditableText", -1);
+    free(session->content_editable);
+    session->content_editable = NULL;
+    return (rc != PSCRIPT_OK) ? rc : second_rc;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomValueCallbacks(
