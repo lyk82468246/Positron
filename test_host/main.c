@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1105
+#define TEST_MAX_NUMBER 1106
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -6009,6 +6009,9 @@ static char   g_native_sequential_focus_probe_detail[512];
 static int    g_native_modal_focus_probe = 0;
 static int    g_native_modal_focus_probe_ok = 0;
 static char   g_native_modal_focus_probe_detail[512];
+static int    g_native_modal_backdrop_probe = 0;
+static int    g_native_modal_backdrop_probe_ok = 0;
+static char   g_native_modal_backdrop_probe_detail[512];
 static HANDLE g_toggle_focus_document = NULL;
 static unsigned int g_toggle_focus_index = 0;
 static int    g_toggle_focus_kind = 0;
@@ -7329,6 +7332,7 @@ static int pcore_handle_sequential_tab(HWND hwnd, UINT msg, WPARAM wp,
 static int pcore_handle_sequential_link_keyboard(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp, int system_key);
 static void pcore_native_modal_focus_probe_run(HWND parent);
+static void pcore_native_modal_backdrop_probe_run(HWND parent);
 
 static int pcore_native_script_active(void)
 {
@@ -7387,6 +7391,78 @@ static int pcore_browser_script_request_dialog_close(void)
         return 0;
     }
     return handled ? 1 : 0;
+}
+
+/* Route a document-space pointer against the active script-owned modal. The
+ * host owns hit testing because only it knows the client point and scroll;
+ * Browser owns the cancelable requestClose/close lifecycle. Return 0 when no
+ * modal is active, 1 when the modal consumed a backdrop click, and 2 when the
+ * point is inside the modal and should continue through normal control hit
+ * testing. If the modal state or geometry cannot be read, consume the point
+ * fail-closed so it can never fall through to the page-background close path. */
+static int pcore_browser_script_modal_pointer(HWND hwnd, int x, int y)
+{
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    int modal_bytes;
+    int dialog_x;
+    int dialog_y;
+    int dialog_w;
+    int dialog_h;
+    int handled;
+    int closed;
+    int rc;
+
+    if (!pcore_native_script_active() ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return 0;
+    }
+    memset(modal_id, 0, sizeof(modal_id));
+    modal_bytes = 0;
+    rc = PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &modal_bytes);
+    if (rc != PSCRIPT_OK) {
+        return 1;
+    }
+    if (modal_bytes == 0 || modal_id[0] == '\0') {
+        return 0;
+    }
+    if (modal_bytes < 0 || modal_bytes >= (int) sizeof(modal_id) ||
+            modal_id[modal_bytes] != '\0') {
+        return 1;
+    }
+    dialog_x = 0;
+    dialog_y = 0;
+    dialog_w = 0;
+    dialog_h = 0;
+    if (PCore_FragmentInfoById(g_render_doc, modal_id, &dialog_x,
+            &dialog_y, &dialog_w, &dialog_h) != 0 || dialog_w <= 0 ||
+            dialog_h <= 0) {
+        return 1;
+    }
+    if (x >= dialog_x && x < dialog_x + dialog_w &&
+            y >= dialog_y && y < dialog_y + dialog_h) {
+        return 2;
+    }
+    handled = 0;
+    closed = 0;
+    if (PBrowser_ScriptSessionRequestDialogClose(
+            g_browser_script_session.bridge->session, "", &handled,
+            &closed) != PSCRIPT_OK) {
+        return 1;
+    }
+    if (closed) {
+        pcore_toggle_focus_clear();
+        pcore_button_focus_clear();
+        pcore_disclosure_focus_clear();
+        pcore_sequential_focus_clear();
+        if (hwnd != NULL) {
+            pcore_request_interaction_restyle(hwnd);
+        }
+    }
+    /* A modal consumes its backdrop even when cancel was prevented. */
+    return 1;
 }
 
 static int pcore_native_codepoint_utf8(unsigned long value, char *out,
@@ -16923,6 +16999,170 @@ static void pcore_native_modal_focus_probe_run(HWND parent)
     PostMessage(parent, WM_CLOSE, 0, 0);
 }
 
+/* Probe the real WM pointer path for modal backdrop policy. An accepted
+ * backdrop request closes the dialog without allowing the page's background
+ * tap fallback to destroy the render window. A prevented cancel still
+ * consumes the backdrop, and an inert point inside the dialog remains inside
+ * the modal instead of falling through to that same fallback. */
+static void pcore_native_modal_backdrop_probe_run(HWND parent)
+{
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    char result[512];
+    char error[512];
+    const char *stage;
+    RECT client;
+    int active_bytes;
+    int dialog_x;
+    int dialog_y;
+    int dialog_w;
+    int dialog_h;
+    int outside_x;
+    int outside_y;
+    int inside_x;
+    int inside_y;
+    int result_bytes;
+    int rc;
+    int ok;
+
+    memset(modal_id, 0, sizeof(modal_id));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    stage = "setup";
+    active_bytes = 0;
+    dialog_x = 0;
+    dialog_y = 0;
+    dialog_w = 0;
+    dialog_h = 0;
+    outside_x = 0;
+    outside_y = 0;
+    inside_x = 0;
+    inside_y = 0;
+    result_bytes = 0;
+    rc = PSCRIPT_OK;
+    ok = parent != NULL && g_render_doc != NULL &&
+            g_browser_script_session.bridge != NULL &&
+            g_browser_script_session.bridge->session != NULL;
+    if (!ok) {
+        goto failed;
+    }
+    stage = "active-id";
+    if (PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            strcmp(modal_id, "dialog") != 0 || active_bytes != 6 ||
+            PCore_FragmentInfoById(g_render_doc, modal_id, &dialog_x,
+            &dialog_y, &dialog_w, &dialog_h) != 0 || dialog_w <= 0 ||
+            dialog_h <= 0 || !GetClientRect(parent, &client)) {
+        goto failed;
+    }
+    if (dialog_x > 3) {
+        outside_x = dialog_x - 2;
+        outside_y = dialog_y + dialog_h / 2;
+    } else if (dialog_x + dialog_w + 3 < client.right) {
+        outside_x = dialog_x + dialog_w + 2;
+        outside_y = dialog_y + dialog_h / 2;
+    } else if (dialog_y > 3) {
+        outside_x = dialog_x + dialog_w / 2;
+        outside_y = dialog_y - 2;
+    } else {
+        outside_x = dialog_x + dialog_w / 2;
+        outside_y = dialog_y + dialog_h + 2;
+    }
+    inside_x = dialog_x + dialog_w / 2;
+    inside_y = dialog_y + dialog_h / 2;
+    if (outside_x < client.left || outside_x >= client.right ||
+            outside_y < client.top || outside_y >= client.bottom ||
+            (outside_x >= dialog_x && outside_x < dialog_x + dialog_w &&
+             outside_y >= dialog_y && outside_y < dialog_y + dialog_h)) {
+        stage = "outside-point";
+        goto failed;
+    }
+    stage = "accepted-backdrop";
+    (void) SendMessage(parent, WM_LBUTTONDOWN, MK_LBUTTON,
+            MAKELPARAM((short) outside_x, (short) outside_y));
+    if (!IsWindow(parent) || PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            active_bytes != 0 || modal_id[0] != '\0' ||
+            pcore_browser_script_session_evaluate(
+            "document.getElementById('result').textContent="
+            "events+'|'+String(d.open);", -1, error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, "cancel;close;|false") != 0) {
+        goto failed;
+    }
+    stage = "reopen";
+    if (pcore_browser_script_session_evaluate(
+            "events='';window.block=true;d.showModal();", -1,
+            error, sizeof(error)) != 0 ||
+            PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            strcmp(modal_id, "dialog") != 0 || active_bytes != 6) {
+        goto failed;
+    }
+    stage = "inside-point";
+    (void) SendMessage(parent, WM_LBUTTONDOWN, MK_LBUTTON,
+            MAKELPARAM((short) inside_x, (short) inside_y));
+    if (!IsWindow(parent) || PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            strcmp(modal_id, "dialog") != 0 || active_bytes != 6) {
+        goto failed;
+    }
+    stage = "blocked-backdrop";
+    (void) SendMessage(parent, WM_LBUTTONDOWN, MK_LBUTTON,
+            MAKELPARAM((short) outside_x, (short) outside_y));
+    if (!IsWindow(parent) || PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            strcmp(modal_id, "dialog") != 0 || active_bytes != 6 ||
+            pcore_browser_script_session_evaluate(
+            "document.getElementById('result').textContent="
+            "events+'|'+String(d.open);", -1, error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, "cancel;|true") != 0) {
+        goto failed;
+    }
+    stage = "allowed-backdrop";
+    if (pcore_browser_script_session_evaluate(
+            "window.block=false;", -1, error, sizeof(error)) != 0) {
+        goto failed;
+    }
+    (void) SendMessage(parent, WM_LBUTTONDOWN, MK_LBUTTON,
+            MAKELPARAM((short) outside_x, (short) outside_y));
+    if (!IsWindow(parent) || PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            active_bytes != 0 || modal_id[0] != '\0' ||
+            pcore_browser_script_session_evaluate(
+            "document.getElementById('result').textContent="
+            "events+'|'+String(d.open);", -1, error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", result,
+            sizeof(result), &result_bytes) != 0 ||
+            strcmp(result, "cancel;cancel;close;|false") != 0) {
+        goto failed;
+    }
+    ok = 1;
+    goto done;
+
+failed:
+    _snprintf(g_native_modal_backdrop_probe_detail,
+            sizeof(g_native_modal_backdrop_probe_detail) - 1,
+            "stage=%s active=%s bytes=%d result=%s error=%s rc=%d",
+            stage, modal_id, active_bytes, result,
+            error[0] != '\0' ? error : "(none)", rc);
+    g_native_modal_backdrop_probe_detail[
+            sizeof(g_native_modal_backdrop_probe_detail) - 1] = '\0';
+    ok = 0;
+
+done:
+    g_native_modal_backdrop_probe_ok = ok;
+    PostMessage(parent, WM_CLOSE, 0, 0);
+}
+
 static void pcore_navigation_cleanup(void)
 {
     if (g_nav_thread != NULL) {
@@ -17530,10 +17770,18 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int button_kind;
         int button_disabled;
         int button_validation_valid;
+        int modal_pointer;
+        int modal_inside;
         char href[1024];
         char target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
         char rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
 
+        modal_pointer = pcore_browser_script_modal_pointer(hwnd, cx,
+                cy + g_scroll_y);
+        modal_inside = modal_pointer == 2;
+        if (modal_pointer == 1) {
+            return 0;
+        }
         pcore_toggle_focus_clear();
         pcore_button_focus_clear();
         pcore_disclosure_focus_clear();
@@ -17707,6 +17955,11 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
          * lands on a link, follow it; otherwise a tap closes the view. */
         if (link_found) {
             navigate_to(hwnd, href);
+        } else if (modal_inside) {
+            /* A modal's inert interior is still part of the dialog, not a
+             * page-background tap. Leave it open when no control consumed the
+             * point. */
+            return 0;
         } else {
             DestroyWindow(hwnd);
         }
@@ -18309,6 +18562,9 @@ static BOOL show_render_window(void)
     }
     if (g_native_modal_focus_probe) {
         pcore_native_modal_focus_probe_run(hwnd);
+    }
+    if (g_native_modal_backdrop_probe) {
+        pcore_native_modal_backdrop_probe_run(hwnd);
     }
     /* Read-only view: hide the SIP button and keep the keyboard down. */
     SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
@@ -22984,6 +23240,133 @@ static BOOL test1105_browser_dialog_focus_scope_contract(void)
             " subtree to host Tab and Shift+Tab navigation; positive"
             " tabindex ordering, wraparound, Browser active-id reporting"
             " and scope release after close are all enforced.");
+    return TRUE;
+}
+
+/* TEST 1106 - modal backdrop pointer policy through the native window path. */
+static BOOL test1106_browser_dialog_backdrop_pointer_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<a id='outside' href='/outside'>Outside</a>"
+        "<dialog id='dialog'><p id='inside'>Inside dialog</p></dialog>"
+        "<a id='after' href='/after'>After</a>"
+        "<p id='result'>pending</p>"
+        "<script>var d=document.getElementById('dialog');"
+        "window.events='';window.block=false;"
+        "d.addEventListener('cancel',function(e){events+='cancel;';"
+        "if(window.block){e.preventDefault();}});"
+        "d.addEventListener('close',function(e){events+='close;';});"
+        "d.showModal();</script></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "a{display:block;width:180px;height:24px;margin:3px}"
+        "dialog{display:block;width:150px;height:80px;margin:20px;"
+        "border:2px solid #4060a0;padding:8px}"
+        "#result{display:block;width:260px;height:36px;margin:4px}";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[512];
+    char error[512];
+    int executed;
+    int ignored;
+    int bytes;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    bytes = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_native_modal_backdrop_probe_ok = 0;
+    _snprintf(g_native_modal_backdrop_probe_detail,
+            sizeof(g_native_modal_backdrop_probe_detail) - 1,
+            "not-run");
+    g_native_modal_backdrop_probe_detail[
+            sizeof(g_native_modal_backdrop_probe_detail) - 1] = '\0';
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/dialog-backdrop-pointer.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 360) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        g_native_modal_backdrop_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_modal_backdrop_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (ok && !g_native_modal_backdrop_probe_ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "native modal backdrop probe failed: %s",
+                g_native_modal_backdrop_probe_detail[0] != '\0' ?
+                g_native_modal_backdrop_probe_detail : "no detail");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &bytes) != 0 ||
+            strcmp(result, "cancel;cancel;close;|false") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "actual[%d]=%s", bytes, result);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (!ok) {
+        show_error(L"TEST 1106 FAIL", error[0] != '\0' ? error :
+                "modal backdrop pointer policy failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1106 OK",
+            "An active modal consumes backdrop clicks, routes accepted"
+            " clicks through cancel/close, keeps prevented cancellation open"
+            " and prevents inert dialog interior taps from closing the view.");
     return TRUE;
 }
 
@@ -80834,6 +81217,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1103: ok = test1103_browser_dialog_lifecycle_contract(); break;
         case 1104: ok = test1104_browser_dialog_escape_bridge_contract(); break;
         case 1105: ok = test1105_browser_dialog_focus_scope_contract(); break;
+        case 1106: ok = test1106_browser_dialog_backdrop_pointer_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
