@@ -64,7 +64,7 @@
 
 ### 表单、输入与可访问交互
 
-- 依据实际流程补 custom `tabindex`、focus order、dialog/modal、contenteditable 或其他缺口。
+- 依据实际流程继续补 dialog/modal、contenteditable 或其他焦点策略缺口；保持已实现的有界 `tabindex` 排序与 Core/宿主事务边界。
 - 保持 native 控件 mutation、Browser event policy 与 Core form state 的事务顺序。
 - 扩充真实 SIP/IME、硬键盘、SELECT popup、file picker 和旋转的成批人工矩阵。
 - 对 disabled/hidden/stale target 一律 fail closed，不为通过测试绕过生命周期检查。

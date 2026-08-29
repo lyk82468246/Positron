@@ -69,7 +69,7 @@ Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click�
 
 通用顺序由 Browser 决定。宿主仍拥有 WM 消息、控件窗口、Core mutation、picker、SIP/IME、HDC、网络和页面生命周期。
 
-每个事务使用稳定非零 token，并受固定容量限制。控件销毁、文档替换或 session reset 前，宿主必须调用相应 reset/unregister 入口。stale token、非法 phase、几何变化或 adapter error 会 fail closed，不允许部分默认动作。
+每个事务使用稳定非零 token，并受固定容量限制。控件销毁、文档替换或 session reset 前，宿主必须调用相应 reset/unregister 入口。stale token、非法 phase、几何变化或 adapter error 会 fail closed，不允许部分默认动作。键盘焦点顺序由 Core 的 `PCore_FocusTargetInfo` 提供；Browser 只负责把宿主的 WM key transaction 按取消和默认动作规则分发给当前目标。
 
 ### Navigation 与 target
 
@@ -111,7 +111,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
-- 自定义 `tabindex`、`contenteditable`、完整 dialog modal/backdrop/lifecycle 未实现。
+- 完整 dialog modal/backdrop/lifecycle、contenteditable 和其他浏览器焦点策略未实现；Core 目前只提供有界的 `tabindex` 顺序快照。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 

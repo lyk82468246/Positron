@@ -27,7 +27,7 @@
 - CSS Grid、完整 float、完整 positioned layout、复杂 table/caption/column/baseline、完整 generated content 与自定义 counter style 未覆盖。
 - 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。
 - `details`/`summary`、`dialog`、`hidden` 等只有受限静态或交互子集；没有完整 modal dialog、backdrop、focus trap、top layer 和生命周期。
-- 自定义 `tabindex` 顺序未实现；当前键盘遍历使用受支持目标的自然 DOM 顺序。
+- Core 已支持有界的自定义 `tabindex` 顺序：正值升序（同值保持 DOM 顺序），随后是零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍会被排除。完整浏览器焦点策略、modal focus trap、动态焦点区域和跨窗口焦点仍未实现。
 - `contenteditable`、design mode 和富文本编辑未实现。
 - 字体 fallback 使用 bundled 子集与系统 GDI，不能保证桌面浏览器字形、kerning、emoji 彩色渲染或抗锯齿一致。
 - WM6 高 DPI、字体度量和设备色深会产生量化差异；自动像素断言不能取代整体视觉判断。

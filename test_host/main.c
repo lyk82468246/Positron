@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1101
+#define TEST_MAX_NUMBER 1102
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -22257,6 +22257,130 @@ static BOOL test1101_browser_sequential_focus_contract(void)
             "Natural-order Tab and Shift+Tab traverse enabled laid-out core"
             " targets plus native text controls, wrap at the ends, reveal"
             " off-screen targets, and honor cancelable/repeat Tab keydowns.");
+    return TRUE;
+}
+
+/* TEST 1102 - bounded custom tabindex ordering and generic targets. */
+static BOOL test1102_browser_tabindex_order_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head></head><body><div id='root'>"
+        "<a id='natural' href='#natural'>Natural</a>"
+        "<input id='high' type='text' tabindex='9' value='high'>"
+        "<button id='low' type='button' tabindex='2'>Low</button>"
+        "<a id='tie' href='#tie' tabindex=' 2 '>Tie</a>"
+        "<div id='zero' tabindex='0'>Zero</div>"
+        "<div id='generic' tabindex='1'>Generic</div>"
+        "<input id='negative' type='text' tabindex='-1' value='negative'>"
+        "<input id='malformed' type='text' tabindex='oops' value='malformed'>"
+        "<button id='disabled' type='button' tabindex='1' disabled>Disabled"
+        "</button>"
+        "<a id='empty' href='' tabindex='3'>Custom empty</a>"
+        "<div id='result'>idle</div></div></body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "#natural,#high,#low,#tie,#zero,#generic,#negative,#malformed,"
+        "#disabled,#empty{display:block;width:180px;height:24px;margin:3px}"
+        "#result{display:none}";
+    static const char *TARGET_IDS[] = {
+        "generic", "low", "tie", "empty", "high", "natural", "zero",
+        "malformed"
+    };
+    static const int TARGET_KINDS[] = {
+        PCORE_FOCUS_TARGET_GENERIC, 9, PCORE_FOCUS_TARGET_LINK,
+        PCORE_FOCUS_TARGET_GENERIC, 3, PCORE_FOCUS_TARGET_LINK,
+        PCORE_FOCUS_TARGET_GENERIC, 3
+    };
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFocusTargetInfo info;
+    int expected_x;
+    int expected_y;
+    int expected_w;
+    int expected_h;
+    int generic_x;
+    int generic_y;
+    unsigned int i;
+    char error[512];
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    generic_x = 0;
+    generic_y = 0;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL) {
+        ok = 0;
+        _snprintf(error, sizeof(error) - 1, "parse failed");
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/tabindex-order.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 260) != 0) {
+            ok = 0;
+            _snprintf(error, sizeof(error) - 1,
+                    "style/layout failed");
+        }
+    }
+    for (i = 0; ok && i < 8U; i++) {
+        memset(&info, 0, sizeof(info));
+        expected_x = 0;
+        expected_y = 0;
+        expected_w = 0;
+        expected_h = 0;
+        if (PCore_FocusTargetInfo(document, i, &info) != 0 ||
+                info.kind != TARGET_KINDS[i] || info.width <= 0 ||
+                info.height <= 0 ||
+                PCore_FragmentInfoById(document, TARGET_IDS[i],
+                &expected_x, &expected_y, &expected_w, &expected_h) != 0 ||
+                info.x != expected_x || info.y != expected_y ||
+                info.width != expected_w || info.height != expected_h) {
+            ok = 0;
+            _snprintf(error, sizeof(error) - 1,
+                    "order[%u] id=%s kind=%d geom=%d,%d,%d,%d",
+                    i, TARGET_IDS[i], info.kind, info.x, info.y,
+                    info.width, info.height);
+            error[sizeof(error) - 1] = '\0';
+            break;
+        }
+        if (i == 0U) {
+            generic_x = info.x + info.width / 2;
+            generic_y = info.y + info.height / 2;
+        }
+    }
+    if (ok && PCore_FocusTargetInfo(document, 8U, &info) == 0) {
+        ok = 0;
+        _snprintf(error, sizeof(error) - 1,
+                "excluded negative/disabled targets were returned");
+        error[sizeof(error) - 1] = '\0';
+    }
+    if (ok && (PCore_InteractionSetAt(document, generic_x, generic_y,
+            PCORE_INTERACTION_FOCUS) < 0 ||
+            PCore_InteractionClear(document, PCORE_INTERACTION_FOCUS) < 0)) {
+        ok = 0;
+        _snprintf(error, sizeof(error) - 1,
+                "generic tabindex interaction failed");
+        error[sizeof(error) - 1] = '\0';
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1102 FAIL", error[0] != '\0' ? error :
+                "tabindex ordering failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1102 OK",
+            "Positive tabindex values sort before the stable zero/default"
+            " DOM order, negative and disabled targets are excluded, and"
+            " arbitrary laid-out elements with valid tabindex values can be"
+            " focused through the Core interaction bridge.");
     return TRUE;
 }
 
@@ -80103,6 +80227,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1099: ok = test1099_browser_disclosure_activation_contract(); break;
         case 1100: ok = test1100_browser_disclosure_keyboard_contract(); break;
         case 1101: ok = test1101_browser_sequential_focus_contract(); break;
+        case 1102: ok = test1102_browser_tabindex_order_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

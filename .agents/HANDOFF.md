@@ -9,8 +9,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前 Git 与工作区
 
 - 分支：`main`，接管时与 `origin/main` 同步。
-- 当前产品代码基线：`ed87f732`（next653 natural keyboard focus traversal）。
-- 本次中断任务仅重整文档和文档审计，不改变产品 C/ABI、工程配置或 tracked 测试选择。
+- 当前产品代码基线：`dd532ea0`（next654 的有界自定义 `tabindex` 顺序与普通元素焦点支持）。
+- 本批把焦点资格与排序放入 `positron_core.dll`，`test_host.exe` 只增加离线契约和现有 WM 焦点接线；没有修改工程配置或 tracked 测试选择。
 - `tmp/` 保存本地设备日志和截图，不跟踪。
 
 ## 当前中期里程碑
@@ -38,25 +38,25 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - 页面导航保留旧页到候选文档成功提交；主文档和资源网络阶段与 UI 文档操作分离。
 - 深层 DOM 资源准备使用单个事务级 heap scratch，避免大批固定栈缓冲耗尽 WM6 线程栈。
 - `<details>/<summary>` 支持 click 与 Enter/Space 激活、取消和 DOM 状态同步。
-- 支持的链接、summary、native EDIT/SELECT/button/file 等目标按自然 DOM 顺序响应 Tab/Shift+Tab，并同步焦点事件、原生焦点和滚动可见性。自定义 `tabindex` 排序仍未实现。
+- 支持的链接、summary、native EDIT/SELECT/button/file 等目标，以及带有效非负 `tabindex` 的普通布局元素按有界顺序响应 Tab/Shift+Tab：正值升序、同值 DOM 稳定排序，随后零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍被排除。宿主同步焦点事件、原生焦点和滚动可见性。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1101。
+- `TEST_MAX_NUMBER`：1102。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next653：
+当前最新产品门为 next654：
 
-- 本地目录：`tmp/device-runs/20260828-224321-next653-sequential-focus-r6/`；
-- 选择：TEST1095–1101 与 TEST999；
-- 结果：8/8，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
-- 设备：240x320；真实 Browse 路由哨兵判定为通过。
+- 本地目录：`tmp/device-runs/20260829-110144-next654-tabindex/`；
+- 选择：TEST1101、TEST1102 与 TEST999；
+- 结果：3/3，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
+- 设备：640x480，dpi=192；该门使用当前 WMDC GUI 会话并完成了 staging、远端启动、日志回收和退出提示音。
 
-该门验证 disclosure keyboard activation、自然顺序 Tab/Shift+Tab、原生与非原生目标切换、焦点事件、disabled/hidden 过滤、滚动可见性和退出提示音。它是定向门，不是全量回归。
+该门验证自然与自定义顺序 Tab/Shift+Tab、正值稳定排序、普通元素焦点、负值/disabled 过滤、原生与非原生目标切换、焦点事件、滚动可见性和退出提示音。它是定向门，不是全量回归。
 
 最近一次完整编号范围基线仍是 next255，早于当前多批能力；此后主要使用定向门和相邻回归。因此，累积风险达到路线图条件时必须安排新的全量 checkpoint，不能把多个窄门宣称为全量覆盖。
 
@@ -68,13 +68,14 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - SIP 候选词整词提交；
 - bitmap/SVG、表格、列表和常见布局的可见结果；
 - native EDIT/SELECT、真实 file picker、旋转和 DPI 路径。
+- 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
 
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
 
 - 真实页面兼容性仍缺少固定、小型、可重复的 corpus；TEST13 只是单一网络哨兵。
-- 自定义 `tabindex`、`contenteditable`、完整 dialog/modal/backdrop/lifecycle 尚未实现。
+- `contenteditable`、完整 dialog/modal/backdrop/lifecycle、focus trap 和动态焦点区域尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
 - 多窗口、持久 history、完整下载/外部协议策略仍属于宿主或未实现范围。
@@ -85,7 +86,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 唯一下一步
 
-先建立兼容性 corpus 的第一个固定场景，并从该场景选择一个能贯穿 Core、Browser、宿主和自动设备门的高价值缺口；不要预先假定具体 API 或测试编号。
+以 TEST1102 的离线焦点语料为第一个可重复场景，下一步从同一流程选择 dialog/modal 生命周期或 contenteditable 中的一个高价值缺口；不要为增加编号而拆分能力。
 
 优先场景应同时满足：
 

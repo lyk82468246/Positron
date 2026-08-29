@@ -126,14 +126,14 @@ scripts\device_gate.bat -Candidate feature-name
 
 ```bat
 scripts\device_gate.bat -Candidate feature-name ^
-  -TestSelection "1095-1101,999"
+  -TestSelection "1095-1102,999"
 ```
 
 需要实验性浏览器脚本时显式加：
 
 ```bat
 scripts\device_gate.bat -Candidate feature-name ^
-  -EnableJavaScript -TestSelection "1095-1101,999"
+  -EnableJavaScript -TestSelection "1095-1102,999"
 ```
 
 脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和自动判门。每次运行使用唯一设备目录，本地证据保存在 `tmp/device-runs/`，不会纳入 Git。

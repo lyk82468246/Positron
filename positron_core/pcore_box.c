@@ -612,6 +612,110 @@ static int pcore_node_attr_unsigned(dom_node *node, const char *attr,
     return 1;
 }
 
+/* Parse the signed integer grammar used by the tabindex content attribute.
+ * Keep this parser locale-independent and bounded: the WM6 CRT's strtol is
+ * not a suitable HTML parser, and an overflowing value must not wrap into a
+ * different focus order. Leading/trailing HTML ASCII whitespace and an
+ * optional sign are accepted. */
+static int pcore_dom_tabindex_integer(dom_string *value, int *out_value)
+{
+    const unsigned char *data;
+    size_t length;
+    size_t index;
+    unsigned int result;
+    unsigned int digit;
+    unsigned int limit;
+    int negative;
+
+    if (value == NULL || out_value == NULL) {
+        return 0;
+    }
+    data = (const unsigned char *) dom_string_data(value);
+    length = dom_string_byte_length(value);
+    index = 0;
+    while (index < length && (data[index] == ' ' || data[index] == '\t' ||
+            data[index] == '\r' || data[index] == '\n' ||
+            data[index] == '\f')) {
+        index++;
+    }
+    negative = 0;
+    if (index < length && (data[index] == '+' || data[index] == '-')) {
+        negative = data[index] == '-' ? 1 : 0;
+        index++;
+    }
+    if (index >= length || data[index] < '0' || data[index] > '9') {
+        return 0;
+    }
+    limit = negative ? (unsigned int) INT_MAX + 1U :
+            (unsigned int) INT_MAX;
+    result = 0;
+    while (index < length && data[index] >= '0' && data[index] <= '9') {
+        digit = (unsigned int) (data[index] - '0');
+        if (result > (limit - digit) / 10U) {
+            return 0;
+        }
+        result = result * 10U + digit;
+        index++;
+    }
+    while (index < length && (data[index] == ' ' || data[index] == '\t' ||
+            data[index] == '\r' || data[index] == '\n' ||
+            data[index] == '\f')) {
+        index++;
+    }
+    if (index != length) {
+        return 0;
+    }
+    if (negative) {
+        *out_value = result == (unsigned int) INT_MAX + 1U ? INT_MIN :
+                -(int) result;
+    } else {
+        *out_value = (int) result;
+    }
+    return 1;
+}
+
+/* Return the raw tabindex state without conflating an absent attribute with
+ * a malformed one. Natural controls treat malformed/missing values as the
+ * default (zero) group; arbitrary elements require a present, valid value to
+ * become keyboard-focusable. */
+static int pcore_node_attr_tabindex(dom_node *node, int *out_value,
+        int *out_present, int *out_valid)
+{
+    dom_string *name;
+    dom_string *value;
+
+    if (out_value != NULL) {
+        *out_value = 0;
+    }
+    if (out_present != NULL) {
+        *out_present = 0;
+    }
+    if (out_valid != NULL) {
+        *out_valid = 0;
+    }
+    name = NULL;
+    value = NULL;
+    if (node == NULL || out_value == NULL || out_present == NULL ||
+            out_valid == NULL || dom_string_create((const uint8_t *)
+            "tabindex", 8, &name) != DOM_NO_ERR || name == NULL) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        return 0;
+    }
+    if (dom_element_get_attribute(node, name, &value) != DOM_NO_ERR) {
+        dom_string_unref(name);
+        return 0;
+    }
+    if (value != NULL) {
+        *out_present = 1;
+        *out_valid = pcore_dom_tabindex_integer(value, out_value);
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return 1;
+}
+
 /* HTML number controls use a deliberately small ASCII grammar. Validate the
  * spelling before calling strtod so the C runtime cannot accept hexadecimal,
  * NaN/Infinity or locale-specific forms that are not valid HTML numbers. */
@@ -4570,8 +4674,39 @@ static int pcore_focus_form_kind(struct form_control *gadget)
     return 0;
 }
 
+static int pcore_focus_generic_target(pcore_render *st, dom_node *node,
+        int tabindex_present, int tabindex_valid, int tabindex,
+        PCoreFocusTargetInfo *out_info, int *out_tabindex)
+{
+    struct box *box;
+    int ax;
+    int ay;
+
+    if (st == NULL || node == NULL || out_info == NULL ||
+            !tabindex_present || !tabindex_valid || tabindex < 0) {
+        return 0;
+    }
+    box = pcore_box_for_any_node(st->root_box, node);
+    if (box == NULL || box->width <= 0 || box->height <= 0) {
+        return 0;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    out_info->x = ax;
+    out_info->y = ay;
+    out_info->width = box->width;
+    out_info->height = box->height;
+    out_info->kind = PCORE_FOCUS_TARGET_GENERIC;
+    if (out_tabindex != NULL) {
+        *out_tabindex = tabindex;
+    }
+    return 1;
+}
+
 static int pcore_focus_target_for_element(pcore_render *st,
-        dom_node *node, PCoreFocusTargetInfo *out_info)
+        dom_node *node, PCoreFocusTargetInfo *out_info,
+        int *out_tabindex)
 {
     struct box *box;
     struct form_control *gadget;
@@ -4581,8 +4716,16 @@ static int pcore_focus_target_for_element(pcore_render *st,
     int ax;
     int ay;
     int kind;
+    int tabindex;
+    int tabindex_present;
+    int tabindex_valid;
 
-    if (st == NULL || node == NULL || out_info == NULL) {
+    if (out_tabindex != NULL) {
+        *out_tabindex = 0;
+    }
+    if (st == NULL || node == NULL || out_info == NULL ||
+            !pcore_node_attr_tabindex(node, &tabindex, &tabindex_present,
+            &tabindex_valid)) {
         return 0;
     }
     memset(out_info, 0, sizeof(*out_info));
@@ -4597,11 +4740,18 @@ static int pcore_focus_target_for_element(pcore_render *st,
             gadget = box->gadget;
         }
         kind = pcore_focus_form_kind(gadget);
+        if (kind == 0) {
+            return pcore_focus_generic_target(st, node, tabindex_present,
+                    tabindex_valid, tabindex, out_info, out_tabindex);
+        }
         effective_disabled = (gadget != NULL) ? gadget->disabled : false;
         if (kind == 0 || kind == 10 || box == NULL || box->width <= 0 ||
                 box->height <= 0 ||
                 pcore_node_effectively_disabled(node, NULL,
                 &effective_disabled) != 0 || effective_disabled) {
+            return 0;
+        }
+        if (tabindex_present && tabindex_valid && tabindex < 0) {
             return 0;
         }
         ax = 0;
@@ -4612,107 +4762,169 @@ static int pcore_focus_target_for_element(pcore_render *st,
         out_info->width = box->width;
         out_info->height = box->height;
         out_info->kind = kind;
+        if (out_tabindex != NULL && tabindex_present && tabindex_valid) {
+            *out_tabindex = tabindex;
+        }
         return 1;
     }
     if (pcore_node_name_is(node, "a")) {
         href = NULL;
-        if (pcore_ensure_link_strings() != 0 ||
+        if (pcore_ensure_link_strings() == 0 &&
                 dom_element_get_attribute((dom_element *) node,
-                pcore_href_name, &href) != DOM_NO_ERR || href == NULL ||
-                dom_string_byte_length(href) == 0) {
-            if (href != NULL) {
-                dom_string_unref(href);
+                pcore_href_name, &href) == DOM_NO_ERR && href != NULL &&
+                dom_string_byte_length(href) != 0) {
+            if (!(tabindex_present && tabindex_valid && tabindex < 0)) {
+                box = pcore_box_for_any_node(st->root_box, node);
+                if (box != NULL && box->width > 0 && box->height > 0) {
+                    ax = 0;
+                    ay = 0;
+                    box_coords(box, &ax, &ay);
+                    out_info->x = ax;
+                    out_info->y = ay;
+                    out_info->width = box->width;
+                    out_info->height = box->height;
+                    out_info->kind = PCORE_FOCUS_TARGET_LINK;
+                    if (out_tabindex != NULL && tabindex_present &&
+                            tabindex_valid) {
+                        *out_tabindex = tabindex;
+                    }
+                    dom_string_unref(href);
+                    return 1;
+                }
             }
-            return 0;
         }
-        dom_string_unref(href);
-        box = pcore_box_for_any_node(st->root_box, node);
-        if (box == NULL || box->width <= 0 || box->height <= 0) {
-            return 0;
+        if (href != NULL) {
+            dom_string_unref(href);
         }
-        ax = 0;
-        ay = 0;
-        box_coords(box, &ax, &ay);
-        out_info->x = ax;
-        out_info->y = ay;
-        out_info->width = box->width;
-        out_info->height = box->height;
-        out_info->kind = PCORE_FOCUS_TARGET_LINK;
-        return 1;
+        return pcore_focus_generic_target(st, node, tabindex_present,
+                tabindex_valid, tabindex, out_info, out_tabindex);
     }
     if (pcore_node_name_is(node, "summary")) {
+        if (tabindex_present && tabindex_valid && tabindex < 0) {
+            return 0;
+        }
         details = NULL;
         box = pcore_box_for_any_node(st->root_box, node);
-        if (box == NULL ||
-                !pcore_disclosure_summary_box_info(st, node, box,
+        if (box != NULL && pcore_disclosure_summary_box_info(st, node, box,
                 &out_info->x, &out_info->y, &out_info->width,
                 &out_info->height, NULL, &details)) {
             if (details != NULL) {
                 dom_node_unref((dom_node *) details);
             }
-            return 0;
+            out_info->kind = PCORE_FOCUS_TARGET_DISCLOSURE;
+            if (out_tabindex != NULL && tabindex_present && tabindex_valid) {
+                *out_tabindex = tabindex;
+            }
+            return 1;
         }
         if (details != NULL) {
             dom_node_unref((dom_node *) details);
         }
-        out_info->kind = PCORE_FOCUS_TARGET_DISCLOSURE;
-        return 1;
+        return pcore_focus_generic_target(st, node, tabindex_present,
+                tabindex_valid, tabindex, out_info, out_tabindex);
     }
-    return 0;
+    return pcore_focus_generic_target(st, node, tabindex_present,
+            tabindex_valid, tabindex, out_info, out_tabindex);
 }
 
-/* Walk the DOM in document order with an explicit depth cap. Focus queries
- * are occasional input operations, not a second retained target list; the
- * cap keeps a malicious/deep document from turning a public query into an
- * unbounded native stack walk. */
-static int pcore_focus_target_walk(pcore_render *st, dom_node *node,
-        unsigned int target, unsigned int *current,
-        PCoreFocusTargetInfo *out_info, unsigned int depth)
+/* Collect a bounded natural-order snapshot before sorting the positive
+ * tabindex group. The stable insertion sort below preserves document order
+ * for equal values and for the default/zero group. The candidate array lives
+ * on the heap so a page with many focus targets cannot consume the small
+ * device thread stack. */
+#define PCORE_FOCUS_TARGET_MAX 256U
+#define PCORE_FOCUS_WALK_DEPTH_MAX 64U
+
+typedef struct pcore_focus_candidate {
+    PCoreFocusTargetInfo info;
+    int tabindex;
+} pcore_focus_candidate;
+
+static void pcore_focus_target_collect(pcore_render *st, dom_node *node,
+        pcore_focus_candidate *items, unsigned int *count, int *overflow,
+        int *failed, unsigned int depth)
 {
     dom_node_type node_type;
     dom_node *child;
     dom_node *next;
     PCoreFocusTargetInfo candidate;
-    int found;
+    int candidate_tabindex;
 
-    if (st == NULL || node == NULL || current == NULL || out_info == NULL ||
-            depth > 64U) {
-        return 0;
+    if (st == NULL || node == NULL || items == NULL || count == NULL ||
+            overflow == NULL || failed == NULL || *overflow || *failed ||
+            depth > PCORE_FOCUS_WALK_DEPTH_MAX) {
+        return;
     }
     node_type = DOM_NODE_TYPE_COUNT;
     if (dom_node_get_node_type(node, &node_type) != DOM_NO_ERR) {
-        return 0;
+        *failed = 1;
+        return;
     }
     if (node_type == DOM_ELEMENT_NODE &&
-            pcore_focus_target_for_element(st, node, &candidate)) {
-        if (*current == target) {
-            *out_info = candidate;
-            return 1;
+            pcore_focus_target_for_element(st, node, &candidate,
+            &candidate_tabindex)) {
+        if (*count >= PCORE_FOCUS_TARGET_MAX) {
+            *overflow = 1;
+            return;
         }
-        if (*current < UINT_MAX) {
-            *current += 1;
-        }
+        items[*count].info = candidate;
+        items[*count].tabindex = candidate_tabindex;
+        *count += 1;
     }
     child = NULL;
     if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
-        return 0;
+        *failed = 1;
+        return;
     }
     while (child != NULL) {
-        found = pcore_focus_target_walk(st, child, target, current,
-                out_info, depth + 1U);
-        if (found) {
-            dom_node_unref(child);
-            return 1;
-        }
+        pcore_focus_target_collect(st, child, items, count, overflow,
+                failed, depth + 1U);
         next = NULL;
         if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
             dom_node_unref(child);
-            return 0;
+            *failed = 1;
+            return;
         }
         dom_node_unref(child);
         child = next;
     }
-    return 0;
+}
+
+static int pcore_focus_candidate_after(const pcore_focus_candidate *left,
+        const pcore_focus_candidate *right)
+{
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+    if (left->tabindex <= 0) {
+        return right->tabindex > 0;
+    }
+    if (right->tabindex <= 0) {
+        return 0;
+    }
+    return left->tabindex > right->tabindex;
+}
+
+static void pcore_focus_target_sort(pcore_focus_candidate *items,
+        unsigned int count)
+{
+    pcore_focus_candidate key;
+    unsigned int i;
+    unsigned int j;
+
+    if (items == NULL) {
+        return;
+    }
+    for (i = 1; i < count; i++) {
+        key = items[i];
+        j = i;
+        while (j > 0 && pcore_focus_candidate_after(&items[j - 1],
+                &key)) {
+            items[j] = items[j - 1];
+            j--;
+        }
+        items[j] = key;
+    }
 }
 
 PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
@@ -4721,8 +4933,10 @@ PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
     dom_document *doc;
     dom_element *root;
     pcore_render *st;
-    unsigned int current;
-    int found;
+    pcore_focus_candidate *candidates;
+    unsigned int count;
+    int overflow;
+    int failed;
 
     if (out_info == NULL) {
         return 1;
@@ -4733,19 +4947,38 @@ PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
     if (st == NULL || doc == NULL) {
         return 1;
     }
+    candidates = (pcore_focus_candidate *) malloc(
+            sizeof(*candidates) * PCORE_FOCUS_TARGET_MAX);
+    if (candidates == NULL) {
+        return 1;
+    }
     root = NULL;
     if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
             root == NULL) {
         if (root != NULL) {
             dom_node_unref((dom_node *) root);
         }
+        free(candidates);
         return 1;
     }
-    current = 0;
-    found = pcore_focus_target_walk(st, (dom_node *) root, index,
-            &current, out_info, 0);
+    count = 0;
+    overflow = 0;
+    failed = 0;
+    pcore_focus_target_collect(st, (dom_node *) root, candidates, &count,
+            &overflow, &failed, 0);
     dom_node_unref((dom_node *) root);
-    return found ? 0 : 1;
+    if (failed || overflow) {
+        free(candidates);
+        return 1;
+    }
+    pcore_focus_target_sort(candidates, count);
+    if (index >= count) {
+        free(candidates);
+        return 1;
+    }
+    *out_info = candidates[index].info;
+    free(candidates);
+    return 0;
 }
 
 static struct box *pcore_file_input_at_index(struct box *box,
@@ -10512,6 +10745,9 @@ static dom_node *pcore_interaction_node(struct box *hit, int focus)
     struct box *box;
     dom_element *details;
     bool effective_disabled;
+    int tabindex;
+    int tabindex_present;
+    int tabindex_valid;
 
     for (box = hit; box != NULL; box = box->parent) {
         if (box->gadget != NULL) {
@@ -10537,6 +10773,12 @@ static dom_node *pcore_interaction_node(struct box *hit, int focus)
                 }
                 return box->node;
             }
+        }
+        if (focus && box->node != NULL &&
+                pcore_node_attr_tabindex(box->node, &tabindex,
+                &tabindex_present, &tabindex_valid) && tabindex_present &&
+                tabindex_valid) {
+            return box->node;
         }
         if (!focus && box->node != NULL &&
                 pcore_node_name_is(box->node, "label")) {

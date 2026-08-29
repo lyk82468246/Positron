@@ -440,20 +440,23 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
                                        int *kind, int *selected,
                                        int *disabled);
 
-/* Bounded natural-order keyboard focus snapshot. The index follows DOM
- * document order and includes laid-out, enabled supported form controls,
- * anchors with a non-empty href, and the first direct summary of each visible
- * details. File-picker controls are intentionally omitted because their
- * system dialog remains a separate host-owned interaction. Form-control kind
- * values are the same 1..10 values returned by PCore_FormControlInfo; link and
- * disclosure summaries use the two constants below. Hidden boxes and
- * non-summary descendants of closed disclosure boxes, plus disabled controls,
- * are omitted. This narrow query intentionally ignores
- * tabindex, contenteditable, dialog modal focus, and other full browser focus
- * policy. Returns 0 for one target and non-zero when the index is absent, the
- * document is not laid out, or output is NULL. */
+/* Bounded sequential keyboard-focus snapshot. Positive tabindex values come
+ * first in ascending order (document order is stable for ties), followed by
+ * the zero/default group in document order. Negative or otherwise ineligible
+ * targets are omitted. The snapshot includes laid-out, enabled supported form
+ * controls, anchors with a non-empty href, the first direct summary of each
+ * visible details, and arbitrary laid-out elements carrying a valid
+ * non-negative tabindex. File-picker controls remain omitted because their
+ * system dialog is a separate host-owned interaction. Form-control kind
+ * values are the same 1..10 values returned by PCore_FormControlInfo; link,
+ * disclosure and generic tabindex targets use the constants below. Hidden
+ * boxes and non-summary descendants of closed disclosure boxes are omitted.
+ * The query is bounded by the Core focus snapshot budget and returns 0 for
+ * one target and non-zero when the index is absent, the document is not laid
+ * out, the budget is exceeded, or output is NULL. */
 #define PCORE_FOCUS_TARGET_LINK       11
 #define PCORE_FOCUS_TARGET_DISCLOSURE 12
+#define PCORE_FOCUS_TARGET_GENERIC    13
 typedef struct PCoreFocusTargetInfo {
     int x;
     int y;
