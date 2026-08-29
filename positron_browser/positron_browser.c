@@ -849,16 +849,33 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "function pselection(owner){var id=owner.__id;var s=g.__pcoreSelections[id];"
         "if(!s){s={start:0,end:0,direction:'none'};g.__pcoreSelections[id]=s;}"
         "return s;}"
-        "function pselectionLimit(owner){var v;try{v=String(owner.value||'');}"
+        "function pselectionNative(owner){var q,s;"
+        "if(!owner||!owner.isContentEditable||typeof g.__pcoreGetContentEditableSelection!=="
+        "'function'){return null;}try{q=g.__pcoreGetContentEditableSelection("
+        "{id:owner.__id});}catch(selectionGetError){return null;}"
+        "if(!q||typeof q.start!=='number'||typeof q.end!=='number'||"
+        "typeof q.direction!=='string'){return null;}s=pselection(owner);"
+        "s.start=q.start;s.end=q.end;s.direction=q.direction;return q;}"
+        "function pselectionLimit(owner){var v;try{v=owner.isContentEditable?"
+        "String(owner.innerText||''):String(owner.value||'');}"
         "catch(selectionValueError){v='';}return v.length;}"
         "Object.defineProperty(PElement.prototype,'selectionStart',{get:function(){"
-        "var s=pselection(this);var n=pselectionLimit(this);return s.start>n?n:s.start;}});"
+        "var q=pselectionNative(this);var s=q!==null?q:pselection(this);"
+        "var n=pselectionLimit(this);return s.start<0?0:(s.start>n?n:s.start);}});"
         "Object.defineProperty(PElement.prototype,'selectionEnd',{get:function(){"
-        "var s=pselection(this);var n=pselectionLimit(this);return s.end>n?n:s.end;}});"
+        "var q=pselectionNative(this);var s=q!==null?q:pselection(this);"
+        "var n=pselectionLimit(this);return s.end<0?0:(s.end>n?n:s.end);}});"
         "Object.defineProperty(PElement.prototype,'selectionDirection',{"
-        "get:function(){return pselection(this).direction;},set:function(v){"
+        "get:function(){var q=pselectionNative(this);return q!==null?q.direction:"
+        "pselection(this).direction;},set:function(v){"
         "var d=String(v);pselection(this).direction=(d==='forward'||"
-        "d==='backward'||d==='none')?d:'none';}});"
+        "d==='backward'||d==='none')?d:'none';pselectionSync(this,"
+        "pselection(this));}});"
+        "function pselectionSync(owner,s){var d;"
+        "if(!owner||!owner.isContentEditable||typeof g.__pcoreSetContentEditableSelection!=="
+        "'function'){return;}d=s.direction==='forward'?1:(s.direction==='backward'?2:0);"
+        "try{g.__pcoreSetContentEditableSelection({id:owner.__id,start:s.start,"
+        "end:s.end,direction:d});}catch(selectionSetError){}}"
         "PElement.prototype.setSelectionRange=function(start,end,direction){"
         "var s=pselection(this);var n=pselectionLimit(this);var a=Number(start);"
         "var b=Number(end);if(a!==a){a=0;}if(b!==b){b=0;}a=Math.floor(a);"
@@ -866,9 +883,10 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(b>n){b=n;}if(b<a){a=b;}s.start=a;s.end=b;"
         "if(arguments.length>2){s.direction=String(direction)==='forward'||"
         "String(direction)==='backward'?String(direction):'none';}else{"
-        "s.direction='none';}};"
+        "s.direction='none';}pselectionSync(this,s);};"
         "PElement.prototype.select=function(){var s=pselection(this);"
-        "s.start=0;s.end=pselectionLimit(this);s.direction='none';};"
+        "s.start=0;s.end=pselectionLimit(this);s.direction='none';"
+        "pselectionSync(this,s);};"
         "function pnumberInput(owner){var t=String(owner.type).toLowerCase();"
         "if(t!=='number'&&t!=='range'){throw new Error('number input required');}"
         "return Number(owner.value);}" 
@@ -3538,6 +3556,10 @@ typedef struct p_browser_script_content_editable_binding {
     PBrowserScriptContentEditableCallbacks callbacks;
 } p_browser_script_content_editable_binding;
 
+typedef struct p_browser_script_content_editable_selection_binding {
+    PBrowserScriptContentEditableSelectionCallbacks callbacks;
+} p_browser_script_content_editable_selection_binding;
+
 typedef struct p_browser_script_dom_value_binding {
     PBrowserScriptDomValueCallbacks callbacks;
 } p_browser_script_dom_value_binding;
@@ -3689,6 +3711,8 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_relation_binding *dom_relation;
     p_browser_script_dom_write_binding *dom_write;
     p_browser_script_content_editable_binding *content_editable;
+    p_browser_script_content_editable_selection_binding *
+            content_editable_selection;
     p_browser_script_dom_value_binding *dom_value;
     p_browser_script_dom_checked_binding *dom_checked;
     p_browser_script_form_binding *form;
@@ -3900,6 +3924,40 @@ static int p_browser_script_write_int(int value, char *out_json,
     }
     number[length] = '\0';
     memcpy(out_json, number, (size_t) length + 1);
+    *out_len = length;
+    return 0;
+}
+
+static int p_browser_script_write_content_editable_selection(int start,
+        int end, int direction, char *out_json, int out_capacity,
+        int *out_len)
+{
+    const char *direction_name;
+    char value[128];
+    int length;
+
+    if (start < 0 || end < 0 || direction <
+            PBROWSER_SCRIPT_CONTENT_SELECTION_NONE || direction >
+            PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD || out_json == NULL ||
+            out_len == NULL || out_capacity <= 0) {
+        return 1;
+    }
+    if (direction == PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD) {
+        direction_name = "forward";
+    } else if (direction == PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+        direction_name = "backward";
+    } else {
+        direction_name = "none";
+    }
+    length = _snprintf(value, sizeof(value) - 1,
+            "{\"start\":%d,\"end\":%d,\"direction\":\"%s\"}",
+            start, end, direction_name);
+    if (length < 0 || length >= (int) sizeof(value) - 1 ||
+            length >= out_capacity) {
+        return 1;
+    }
+    value[length] = '\0';
+    memcpy(out_json, value, (size_t) length + 1);
     *out_len = length;
     return 0;
 }
@@ -4385,6 +4443,81 @@ static int p_browser_script_content_editable_set(void *pw,
         return 1;
     }
     changed = binding->callbacks.set_text(binding->callbacks.pw, id, text);
+    PJson_Free(root);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_content_editable_selection_get(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_content_editable_selection_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int start;
+    int end;
+    int direction;
+    int result;
+
+    binding = (p_browser_script_content_editable_selection_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    start = 0;
+    end = 0;
+    direction = PBROWSER_SCRIPT_CONTENT_SELECTION_NONE;
+    if (binding == NULL || root == NULL || id == NULL ||
+            binding->callbacks.get_selection == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    result = binding->callbacks.get_selection(binding->callbacks.pw, id,
+            &start, &end, &direction);
+    PJson_Free(root);
+    if (result < 0) {
+        return 1;
+    }
+    if (result == 0) {
+        return p_browser_script_write_null(out_json, out_capacity, out_len);
+    }
+    return p_browser_script_write_content_editable_selection(start, end,
+            direction, out_json, out_capacity, out_len);
+}
+
+static int p_browser_script_content_editable_selection_set(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_content_editable_selection_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int start;
+    int end;
+    int direction;
+    int changed;
+
+    binding = (p_browser_script_content_editable_selection_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    start = (object != NULL) ? PJson_GetInt(object, "start") : -1;
+    end = (object != NULL) ? PJson_GetInt(object, "end") : -1;
+    direction = (object != NULL) ? PJson_GetInt(object, "direction") : -1;
+    if (binding == NULL || root == NULL || id == NULL || start < 0 ||
+            end < 0 || direction < PBROWSER_SCRIPT_CONTENT_SELECTION_NONE ||
+            direction > PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD ||
+            binding->callbacks.set_selection == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    changed = binding->callbacks.set_selection(binding->callbacks.pw, id,
+            start, end, direction);
     PJson_Free(root);
     if (changed < 0) {
         return 1;
@@ -5257,6 +5390,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_relation = NULL;
     session->dom_write = NULL;
     session->content_editable = NULL;
+    session->content_editable_selection = NULL;
     session->dom_value = NULL;
     session->dom_checked = NULL;
     session->form = NULL;
@@ -5330,6 +5464,14 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreSetContentEditableText", -1);
         free(session->content_editable);
         session->content_editable = NULL;
+    }
+    if (session->content_editable_selection != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetContentEditableSelection", -1);
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreSetContentEditableSelection", -1);
+        free(session->content_editable_selection);
+        session->content_editable_selection = NULL;
     }
     if (session->dom_value != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -5867,6 +6009,73 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterContentEditableCallbacks(
             "__pcoreSetContentEditableText", -1);
     free(session->content_editable);
     session->content_editable = NULL;
+    return (rc != PSCRIPT_OK) ? rc : second_rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableSelectionCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptContentEditableSelectionCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_content_editable_selection_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptContentEditableSelectionCallbacks) ||
+            callbacks->get_selection == NULL ||
+            callbacks->set_selection == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->content_editable_selection != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_content_editable_selection_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetContentEditableSelection", -1,
+            p_browser_script_content_editable_selection_get, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetContentEditableSelection", -1,
+            p_browser_script_content_editable_selection_set, binding);
+    if (rc != PSCRIPT_OK) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetContentEditableSelection", -1);
+        free(binding);
+        return rc;
+    }
+    session->content_editable_selection = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterContentEditableSelectionCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+    int second_rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->content_editable_selection == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetContentEditableSelection", -1);
+    second_rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetContentEditableSelection", -1);
+    free(session->content_editable_selection);
+    session->content_editable_selection = NULL;
     return (rc != PSCRIPT_OK) ? rc : second_rc;
 }
 

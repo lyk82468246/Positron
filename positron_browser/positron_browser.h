@@ -232,6 +232,29 @@ typedef struct PBrowserScriptContentEditableCallbacks {
     PBrowserScriptSetContentEditableTextFn set_text;
 } PBrowserScriptContentEditableCallbacks;
 
+/* Optional native selection adapter for the bounded contenteditable
+ * surface. Offsets use JavaScript UTF-16 code units (the same units exposed
+ * by selectionStart/selectionEnd), and direction is one of the three
+ * PBROWSER_SCRIPT_CONTENT_SELECTION_* constants below. The getter returns
+ * >0 when the addressed editing host currently has a native selection, 0
+ * when it is not materialized by the host and <0 on adapter failure. The
+ * setter returns >0 when the host applied the requested range, 0 when the
+ * target is unavailable and <0 on adapter failure. Browser keeps a small
+ * script-side fallback when no native surface is available. */
+#define PBROWSER_SCRIPT_CONTENT_SELECTION_NONE      0
+#define PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD   1
+#define PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD  2
+typedef int (*PBrowserScriptGetContentEditableSelectionFn)(void *pw,
+        const char *id, int *out_start, int *out_end, int *out_direction);
+typedef int (*PBrowserScriptSetContentEditableSelectionFn)(void *pw,
+        const char *id, int start, int end, int direction);
+typedef struct PBrowserScriptContentEditableSelectionCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetContentEditableSelectionFn get_selection;
+    PBrowserScriptSetContentEditableSelectionFn set_selection;
+} PBrowserScriptContentEditableSelectionCallbacks;
+
 /* Typed host adapters for product-owned form value callbacks. The browser
  * DLL parses and encodes the JSON value requests; the host only reads or
  * updates its core document through these UTF-8 callbacks. get_value follows
@@ -1169,6 +1192,11 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableCallbacks(
         HANDLE hSession,
         const PBrowserScriptContentEditableCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterContentEditableCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableSelectionCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptContentEditableSelectionCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterContentEditableSelectionCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomValueCallbacks(
         HANDLE hSession, const PBrowserScriptDomValueCallbacks *callbacks);

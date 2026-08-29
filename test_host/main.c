@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1110
+#define TEST_MAX_NUMBER 1111
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -7196,6 +7196,8 @@ typedef struct pcore_native_edit {
     char *content_editable_id;
     int native_change_expected;
     int native_mutation_in_progress;
+    int native_selection_direction;
+    int native_selection_direction_valid;
     unsigned int pending_high_surrogate;
     UINT pending_high_message;
     LPARAM pending_high_lparam;
@@ -7270,6 +7272,162 @@ static int pcore_native_edit_geometry_info(
     if (out_disabled != NULL) {
         *out_disabled = text_info.disabled;
     }
+    return 1;
+}
+
+/* WM EDIT stores CRLF for multiline values while the Core/Browser boundary
+ * exposes JavaScript UTF-16 offsets over logical LF text. Keep the small
+ * selection bridge in the host's platform adapter and translate the one
+ * line-ending difference at the boundary. */
+static int pcore_native_edit_selection_load_text(HWND hwnd, WCHAR **out_text,
+        int *out_length)
+{
+    WCHAR *text;
+    int length;
+
+    if (hwnd == NULL || out_text == NULL || out_length == NULL) {
+        return 0;
+    }
+    *out_text = NULL;
+    *out_length = 0;
+    length = GetWindowTextLengthW(hwnd);
+    if (length < 0) {
+        return 0;
+    }
+    text = (WCHAR *) malloc((size_t) (length + 1) * sizeof(WCHAR));
+    if (text == NULL) {
+        return 0;
+    }
+    if (GetWindowTextW(hwnd, text, length + 1) < 0) {
+        free(text);
+        return 0;
+    }
+    text[length] = L'\0';
+    *out_text = text;
+    *out_length = length;
+    return 1;
+}
+
+static int pcore_native_edit_selection_position(const WCHAR *text,
+        int text_length, int position, int to_native)
+{
+    int i;
+    int logical;
+
+    if (text == NULL || text_length < 0) {
+        return 0;
+    }
+    if (position < 0) {
+        position = 0;
+    }
+    if (to_native) {
+        logical = 0;
+        i = 0;
+        while (i < text_length && logical < position) {
+            if (text[i] == L'\r' && i + 1 < text_length &&
+                    text[i + 1] == L'\n') {
+                i += 2;
+            } else {
+                i++;
+            }
+            logical++;
+        }
+        return i;
+    }
+    if (position > text_length) {
+        position = text_length;
+    }
+    logical = 0;
+    i = 0;
+    while (i < text_length && i < position) {
+        if (text[i] == L'\r' && i + 1 < text_length &&
+                text[i + 1] == L'\n') {
+            if (i + 1 >= position) {
+                return logical + 1;
+            }
+            i += 2;
+        } else {
+            i++;
+        }
+        logical++;
+    }
+    return logical;
+}
+
+static int pcore_native_edit_selection_snapshot(
+        const pcore_native_edit *native_edit, int *out_start, int *out_end,
+        int *out_direction)
+{
+    DWORD native_start;
+    DWORD native_end;
+    WCHAR *text;
+    int text_length;
+    int start;
+    int end;
+
+    if (native_edit == NULL || native_edit->hwnd == NULL ||
+            out_start == NULL || out_end == NULL || out_direction == NULL) {
+        return 0;
+    }
+    native_start = 0;
+    native_end = 0;
+    SendMessage(native_edit->hwnd, EM_GETSEL, (WPARAM) &native_start,
+            (LPARAM) &native_end);
+    if (native_start > (DWORD) INT_MAX) {
+        native_start = (DWORD) INT_MAX;
+    }
+    if (native_end > (DWORD) INT_MAX) {
+        native_end = (DWORD) INT_MAX;
+    }
+    if (!pcore_native_edit_selection_load_text(native_edit->hwnd, &text,
+            &text_length)) {
+        return 0;
+    }
+    start = pcore_native_edit_selection_position(text, text_length,
+            (int) native_start, 0);
+    end = pcore_native_edit_selection_position(text, text_length,
+            (int) native_end, 0);
+    free(text);
+    if (end < start) {
+        end = start;
+    }
+    *out_start = start;
+    *out_end = end;
+    *out_direction = native_edit->native_selection_direction_valid ?
+            native_edit->native_selection_direction :
+            PBROWSER_SCRIPT_CONTENT_SELECTION_NONE;
+    return 1;
+}
+
+static int pcore_native_edit_selection_apply(pcore_native_edit *native_edit,
+        int start, int end, int direction)
+{
+    WCHAR *text;
+    int text_length;
+    int native_start;
+    int native_end;
+
+    if (native_edit == NULL || native_edit->hwnd == NULL || start < 0 ||
+            end < 0 || direction < PBROWSER_SCRIPT_CONTENT_SELECTION_NONE ||
+            direction > PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+        return 0;
+    }
+    if (!pcore_native_edit_selection_load_text(native_edit->hwnd, &text,
+            &text_length)) {
+        return 0;
+    }
+    native_start = pcore_native_edit_selection_position(text, text_length,
+            start, 1);
+    native_end = pcore_native_edit_selection_position(text, text_length,
+            end, 1);
+    free(text);
+    if (native_end < native_start) {
+        native_end = native_start;
+    }
+    SendMessage(native_edit->hwnd, EM_SETSEL, (WPARAM) native_start,
+            (LPARAM) native_end);
+    native_edit->native_selection_direction = direction;
+    native_edit->native_selection_direction_valid = 1;
     return 1;
 }
 
@@ -7873,9 +8031,10 @@ static void pcore_native_edit_result_probe_run(void)
 }
 
 /* Exercise the real WM EDIT proxy used for a contenteditable editing host.
- * This probe deliberately uses the native selection (select-all) only to
- * keep the test deterministic; Core still receives one bounded text value
- * and Browser owns the cancelable beforeinput/input ordering. */
+ * The probe uses bounded native selection ranges for deterministic input and
+ * verifies that Browser's UTF-16 selection API reaches the same HWND. Core
+ * still receives one bounded text value and Browser owns the cancelable
+ * beforeinput/input ordering. */
 static void pcore_native_contenteditable_probe_run(HWND parent)
 {
     pcore_native_edit *native_edit;
@@ -7890,6 +8049,9 @@ static void pcore_native_contenteditable_probe_run(HWND parent)
     int native_length;
     int text_result;
     int result_result;
+    int selection_start;
+    int selection_end;
+    int selection_direction;
     const char *stage;
 
     g_native_contenteditable_probe_ok = 0;
@@ -7900,6 +8062,9 @@ static void pcore_native_contenteditable_probe_run(HWND parent)
     native_length = 0;
     text_result = 0;
     result_result = 0;
+    selection_start = -1;
+    selection_end = -1;
+    selection_direction = -1;
     stage = "setup";
     memset(events, 0, sizeof(events));
     memset(text, 0, sizeof(text));
@@ -7943,6 +8108,21 @@ static void pcore_native_contenteditable_probe_run(HWND parent)
             sizeof(events), NULL)) != 0 || strcmp(events,
             "beforeinput|insertText|!|false|input|insertText|!|false") !=
             0) {
+        goto failed;
+    }
+    stage = "selection";
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "e.setSelectionRange(0,1,'forward');"
+            "document.getElementById('result').textContent="
+            "e.selectionStart+'|'+e.selectionEnd+'|'+e.selectionDirection;",
+            -1, error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL) != 0 || strcmp(events, "0|1|forward") != 0 ||
+            !pcore_native_edit_selection_snapshot(native_edit,
+            &selection_start, &selection_end, &selection_direction) ||
+            selection_start != 0 || selection_end != 1 ||
+            selection_direction != PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD) {
         goto failed;
     }
     if (pcore_browser_script_session_evaluate(
@@ -9534,6 +9714,10 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
     unsigned int i;
     unsigned int slot;
     char *focus_content_id;
+    int focus_selection_valid;
+    int focus_selection_start;
+    int focus_selection_end;
+    int focus_selection_direction;
     WCHAR *wide_value;
     char *value;
     char *id;
@@ -9551,6 +9735,10 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
     focus_slot = UINT_MAX;
     focus_text_index = UINT_MAX;
     focus_content_id = NULL;
+    focus_selection_valid = 0;
+    focus_selection_start = 0;
+    focus_selection_end = 0;
+    focus_selection_direction = PBROWSER_SCRIPT_CONTENT_SELECTION_NONE;
     if (old_focus != NULL) {
         for (i = 0; i < g_native_edit_count; i++) {
             if (g_native_edits[i].hwnd == old_focus) {
@@ -9562,6 +9750,10 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
                         strcpy(focus_content_id,
                                 g_native_edits[i].content_editable_id);
                     }
+                    focus_selection_valid =
+                            pcore_native_edit_selection_snapshot(
+                            &g_native_edits[i], &focus_selection_start,
+                            &focus_selection_end, &focus_selection_direction);
                 } else {
                     focus_text_index = g_native_edits[i].text_index;
                 }
@@ -9806,14 +9998,20 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
     } else if (focus_text_index != UINT_MAX && focus_text_index < form_count) {
         focus_slot = focus_text_index;
     }
-    free(focus_content_id);
     if (focus_slot != UINT_MAX && focus_slot < total_count &&
             items[focus_slot].hwnd != NULL &&
             IsWindowEnabled(items[focus_slot].hwnd)) {
         SetFocus(items[focus_slot].hwnd);
-        SendMessage(items[focus_slot].hwnd, EM_SETSEL,
-                0, (LPARAM) -1);
+        if (focus_content_id != NULL && focus_selection_valid) {
+            (void) pcore_native_edit_selection_apply(&items[focus_slot],
+                    focus_selection_start, focus_selection_end,
+                    focus_selection_direction);
+        } else {
+            SendMessage(items[focus_slot].hwnd, EM_SETSEL,
+                    0, (LPARAM) -1);
+        }
     }
+    free(focus_content_id);
 }
 
 static void pcore_native_edit_changed(HWND edit)
@@ -9897,6 +10095,9 @@ static void pcore_native_edit_changed(HWND edit)
                 (unsigned int) (stored_index - 1), value);
     }
     if (set_result == 0) {
+        if (native_edit->content_editable) {
+            native_edit->native_selection_direction_valid = 0;
+        }
         (void) pcore_browser_script_dispatch_native_edit_input(edit);
     }
     if (g_native_edit_probe && stored_index == 1 &&
@@ -11519,6 +11720,61 @@ static int pcore_browser_script_content_editable_set(void *pw,
     return -1;
 }
 
+static pcore_native_edit *pcore_native_edit_content_by_id(const char *id)
+{
+    unsigned int i;
+
+    if (id == NULL || id[0] == '\0' || g_native_edits == NULL) {
+        return NULL;
+    }
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].content_editable &&
+                g_native_edits[i].content_editable_id != NULL &&
+                strcmp(g_native_edits[i].content_editable_id, id) == 0 &&
+                g_native_edits[i].hwnd != NULL) {
+            return &g_native_edits[i];
+        }
+    }
+    return NULL;
+}
+
+static int pcore_browser_script_content_editable_selection_get(void *pw,
+        const char *id, int *out_start, int *out_end, int *out_direction)
+{
+    pcore_native_edit *native_edit;
+
+    (void) pw;
+    if (out_start == NULL || out_end == NULL || out_direction == NULL) {
+        return -1;
+    }
+    *out_start = 0;
+    *out_end = 0;
+    *out_direction = PBROWSER_SCRIPT_CONTENT_SELECTION_NONE;
+    native_edit = pcore_native_edit_content_by_id(id);
+    if (native_edit == NULL) {
+        return 0;
+    }
+    if (!pcore_native_edit_selection_snapshot(native_edit, out_start,
+            out_end, out_direction)) {
+        return -1;
+    }
+    return 1;
+}
+
+static int pcore_browser_script_content_editable_selection_set(void *pw,
+        const char *id, int start, int end, int direction)
+{
+    pcore_native_edit *native_edit;
+
+    (void) pw;
+    native_edit = pcore_native_edit_content_by_id(id);
+    if (native_edit == NULL) {
+        return 0;
+    }
+    return pcore_native_edit_selection_apply(native_edit, start, end,
+            direction) ? 1 : -1;
+}
+
 static int pcore_browser_script_write_int(int value, char *out_json,
         int out_capacity, int *out_len)
 {
@@ -12780,6 +13036,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
+    PBrowserScriptContentEditableSelectionCallbacks
+            content_editable_selection_callbacks;
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptFormCallbacks form_callbacks;
@@ -12906,6 +13164,13 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_content_editable_get;
     content_editable_callbacks.set_text =
             pcore_browser_script_content_editable_set;
+    content_editable_selection_callbacks.size =
+            sizeof(content_editable_selection_callbacks);
+    content_editable_selection_callbacks.pw = bridge;
+    content_editable_selection_callbacks.get_selection =
+            pcore_browser_script_content_editable_selection_get;
+    content_editable_selection_callbacks.set_selection =
+            pcore_browser_script_content_editable_selection_set;
     dom_value_callbacks.size = sizeof(dom_value_callbacks);
     dom_value_callbacks.pw = bridge;
     dom_value_callbacks.get_value = pcore_browser_script_dom_get_value;
@@ -13056,6 +13321,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
             &content_editable_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterContentEditableSelectionCallbacks(
+            session, &content_editable_selection_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomValueCallbacks(session,
             &dom_value_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomCheckedCallbacks(session,
@@ -25139,8 +25406,43 @@ static BOOL test1110_browser_native_contenteditable_contract(void)
     }
     show_info(L"TEST 1110 OK",
             "A real WM multiline EDIT proxy exposed a bounded contenteditable"
-            " host, preserved native focus and routed allowed/canceled"
-            " beforeinput through Core mutation and Browser input events.");
+            " host, synchronized UTF-16 selection, preserved native focus and"
+            " routed allowed/canceled beforeinput through Core mutation and"
+            " Browser input events.");
+    return TRUE;
+}
+
+/* TEST 1111 - contenteditable selection range contract. */
+static BOOL test1111_browser_contenteditable_selection_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target' contenteditable='true'>abcdef</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var e=document.getElementById('target');"
+        "e.setSelectionRange(1,3,'backward');"
+        "var first=e.selectionStart+'|'+e.selectionEnd+'|'"
+        "+e.selectionDirection;e.select();"
+        "var second=e.selectionStart+'|'+e.selectionEnd+'|'"
+        "+e.selectionDirection;e.setSelectionRange(-4,99,'bad');"
+        "document.getElementById('result').textContent=first+'|'"
+        "+second+'|'+e.selectionStart+'|'+e.selectionEnd+'|'"
+        "+e.selectionDirection;";
+    static const char EXPECTED[] =
+        "1|3|backward|0|6|none|0|6|none";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1111 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1111 OK",
+            "Contenteditable selectionStart/End/Direction now use bounded"
+            " UTF-16 ranges, with a script fallback when no native host is"
+            " materialized.");
     return TRUE;
 }
 
@@ -82996,6 +83298,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1108: ok = test1108_browser_modal_paint_contract(); break;
         case 1109: ok = test1109_browser_content_editable_contract(); break;
         case 1110: ok = test1110_browser_native_contenteditable_contract(); break;
+        case 1111: ok = test1111_browser_contenteditable_selection_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
