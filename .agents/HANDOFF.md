@@ -8,7 +8,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`；当前工作区产品提交为 `bda3767c`，next666 文档修订待完成后一起推送。
+- 分支：`main`；工作区与 `origin/main` 已同步；产品提交为 `bda3767c`，文档快照提交为 `10401db2`。
 - 当前产品代码基线：`bda3767c`（next666，单元素 `contenteditable` 的 WM EDIT 键盘扩展、捕获丢失和焦点切换选区保持）；上一产品基线为 `89fe44c9`（next665，无修饰鼠标拖选的连续范围/方向通知）。
 - Core 现在报告稳定的有效表单方法常量，并为显式 submitter 或单行输入隐式提交解析最近祖先 dialog id 与 submitter value。Browser 提供按 id 直接执行 `dialog.close(value)` 的会话边界；参考宿主只在 validation 和可取消 `submit` 均允许后调用它，不生成网络导航，也不错误派发 `cancel`。Core 还提供 `PCore_PaintDocumentWithModal`：普通文档绘制后覆盖有界实体色 backdrop，并按 Browser 的活动 id 重绘已打开的 dialog；next658 的 backdrop 指针策略和此前的 modal 焦点/Escape 边界保持不变。
 - `tmp/` 保存本地设备日志和截图，不跟踪。
