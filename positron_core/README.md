@@ -122,7 +122,7 @@ Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispa
 - 不支持完整现代 HTML/CSS/DOM；float、复杂 table/position、Grid、custom properties 等仍有限。
 - 字体、SVG、图像格式和高 DPI 结果受 WM6 GDI/依赖版本限制。
 - Core resource cache、DOM bridge、表单集合和深度/数量均有固定预算。
-- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，但不实现完整 modal、focus trap、contenteditable 或其他浏览器焦点策略。
+- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素；Core 只把 `<dialog open>` 纳入静态布局，不实现 top layer、backdrop、modal focus trap、contenteditable 或其他浏览器焦点策略。对话框脚本生命周期由 `positron_browser.dll` 提供。
 - Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。
 - 精确 API、返回码、结构布局和借用期限以 [`positron_core.h`](positron_core.h) 为准。
 

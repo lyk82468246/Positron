@@ -56,6 +56,17 @@ Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把
 
 Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实文档状态。callback 参数和输出缓冲只在调用期间借用，不得缓存。
 
+### `dialog` 生命周期
+
+启用浏览器 JavaScript 后，`<dialog>` 元素提供一个有界的生命周期接口：
+
+- `show()` 和 `showModal()` 要求元素已连接且当前未打开；同一 session 同时只允许一个由 `showModal()` 打开的对话框；
+- `close(value)` 移除 `open`、更新 `returnValue` 并同步派发非冒泡的 `close`；不带参数时把返回值重置为空字符串；
+- `requestClose(value)` 先派发可取消的非冒泡 `cancel`，只有未被 `preventDefault()` 阻止时才执行 `close(value)`；
+- `open` 继续反映 DOM 属性，属性变化通过宿主的 DOM callback 进入正常 restyle/layout 调度，`oncancel`/`onclose` 与 `addEventListener` 均可使用。
+
+这些方法属于 Browser 的脚本语义，不创建 HWND，也不替宿主绘制 top layer、backdrop 或系统模态窗口。焦点陷阱、Esc/背景点击策略、`method="dialog"` 提交和跨文档 modal 生命周期仍由后续纵切处理。
+
 ### Event 与平台事务
 
 Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click、form、invalid 和 navigation。对于 native 控件，推荐使用相应的 `Ex` 注册和 transaction dispatch：
@@ -111,7 +122,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
-- 完整 dialog modal/backdrop/lifecycle、contenteditable 和其他浏览器焦点策略未实现；Core 目前只提供有界的 `tabindex` 顺序快照。
+- `dialog` 只有上述有界脚本生命周期；top layer/backdrop、焦点陷阱、Esc/背景点击、`method="dialog"` 提交和跨文档 modal 生命周期未实现。`contenteditable` 与其他浏览器焦点策略也未实现；Core 目前只提供有界的 `tabindex` 顺序快照。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 
