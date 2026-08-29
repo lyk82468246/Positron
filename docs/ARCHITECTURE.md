@@ -1,13 +1,10 @@
 # Positron 架构与公共边界
 
-本文定义 Positron 的稳定工程边界：哪些能力属于公共 DLL，哪些属于宿主，数据和资源由谁拥有，
-以及 WM6/VS2008 对实现施加的约束。精确函数签名以各项目公开头文件为准；当前开发状态见
-[`.agents/HANDOFF.md`](../.agents/HANDOFF.md)。
+本文定义 Positron 的稳定工程边界：哪些能力属于公共 DLL，哪些属于宿主，数据和资源由谁拥有，以及 WM6/VS2008 对实现施加的约束。精确函数签名以各项目公开头文件为准；当前开发状态见 [`.agents/HANDOFF.md`](../.agents/HANDOFF.md)。
 
 ## 设计目标
 
-Positron 为 Windows Mobile 6 / Windows CE 5.2 提供可以单独消费、也可以组合使用的基础 DLL。
-公共接口刻意保持窄而明确：
+Positron 为 Windows Mobile 6 / Windows CE 5.2 提供可以单独消费、也可以组合使用的基础 DLL。公共接口刻意保持窄而明确：
 
 - C ABI，不向调用方暴露 C++、NetSurf、Duktape、cJSON 或 mbed TLS 内部类型；
 - 所有跨边界文本均为 UTF-8；
@@ -35,8 +32,7 @@ WM6 应用 / test_host.exe
         └── positron_tls.dll     ── TLS client、peer、listener
 ```
 
-`test_host.exe` 只是上述组合的一种实现。可复用的业务语义必须位于适当的公共 DLL；宿主只保留
-Windows Mobile 平台适配、应用策略和测试夹具。
+`test_host.exe` 只是上述组合的一种实现。可复用的业务语义必须位于适当的公共 DLL；宿主只保留 Windows Mobile 平台适配、应用策略和测试夹具。
 
 ## 公共 DLL
 
@@ -51,25 +47,19 @@ TLS 层拥有 mbed TLS context、socket 会话、证书链、peer identity 和 l
 - 可选或强制客户端证书的 listener；
 - pin 校验的 peer 连接。
 
-调用方拥有 host/path 等输入字符串；连接、identity 和 listener handle 必须分别由对应 close API
-释放。`PTls_LastError` 返回借用存储，跨线程或跨后续调用保留错误时应使用复制接口。
+调用方拥有 host/path 等输入字符串；连接、identity 和 listener handle 必须分别由对应 close API 释放。`PTls_LastError` 返回借用存储，跨线程或跨后续调用保留错误时应使用复制接口。
 
-TLS 版本与信任数据受 WM6 工具链和 vendored 版本限制。verified 是默认产品方向，insecure
-入口只用于明确的诊断和受控环境。
+TLS 版本与信任数据受 WM6 工具链和 vendored 版本限制。verified 是默认产品方向，insecure 入口只用于明确的诊断和受控环境。
 
 ### `positron_json.dll`
 
-JSON 层把 cJSON 隐藏在 opaque handle 后。顶层 parse handle 由 `PJson_Free` 释放；对象成员和
-数组元素是借用子节点，随父树失效，不能单独释放。序列化字符串使用 `PJson_FreeString`，不能
-假设它与调用方 CRT heap 相同。
+JSON 层把 cJSON 隐藏在 opaque handle 后。顶层 parse handle 由 `PJson_Free` 释放；对象成员和数组元素是借用子节点，随父树失效，不能单独释放。序列化字符串使用 `PJson_FreeString`，不能假设它与调用方 CRT heap 相同。
 
 ### `positron_http.dll`
 
-HTTP 层建立在 TLS 层之上，负责 HTTP/1.1 GET/POST、响应解析、有限 redirect、body 上限、
-进度回调和 reference URL 解析。它不拥有浏览窗口、历史记录或页面提交。
+HTTP 层建立在 TLS 层之上，负责 HTTP/1.1 GET/POST、响应解析、有限 redirect、body 上限、进度回调和 reference URL 解析。它不拥有浏览窗口、历史记录或页面提交。
 
-`PHttp_Get*`/`PHttp_Post*` 返回的 response 必须用 `PHttp_FreeResponse` 释放。网络失败通过
-`status_code == 0` 与错误文本表达，调用方不得把非空 response 指针误判为请求成功。
+`PHttp_Get*`/`PHttp_Post*` 返回的 response 必须用 `PHttp_FreeResponse` 释放。网络失败通过 `status_code == 0` 与错误文本表达，调用方不得把非空 response 指针误判为请求成功。
 
 ### `positron_image.dll`
 
@@ -81,17 +71,13 @@ HTTP 层建立在 TLS 层之上，负责 HTTP/1.1 GET/POST、响应解析、有�
 - PNG/JPEG/BMP/GIF 编码和配对 buffer 释放；
 - SVG 解析、尺寸查询和绘制。
 
-bitmap/SVG handle 由创建方通过对应 free API 释放。编码 buffer 必须用 `PImage_FreeBuffer`。
-HDC 仍属于调用方，图像层不创建或管理宿主窗口。
+bitmap/SVG handle 由创建方通过对应 free API 释放。编码 buffer 必须用 `PImage_FreeBuffer`。HDC 仍属于调用方，图像层不创建或管理宿主窗口。
 
 ### `positron_script.dll`
 
-脚本层封装一个受预算约束的 Duktape context。它提供 UTF-8 source 求值、JSON 结果桥、受限
-native function、CommonJS 风格模块 provider 和内存/执行统计。
+脚本层封装一个受预算约束的 Duktape context。它提供 UTF-8 source 求值、JSON 结果桥、受限 native function、CommonJS 风格模块 provider 和内存/执行统计。
 
-每个 script handle 独立拥有 heap、模块缓存、native function 注册和错误/result 缓冲。回调同步
-运行在调用线程，不得重入、销毁当前 context 或保存借用参数指针。宿主应使用有界预算和内存
-上限，不把该运行时当作完整浏览器沙箱。
+每个 script handle 独立拥有 heap、模块缓存、native function 注册和错误/result 缓冲。回调同步运行在调用线程，不得重入、销毁当前 context 或保存借用参数指针。宿主应使用有界预算和内存上限，不把该运行时当作完整浏览器沙箱。
 
 ### `positron_core.dll`
 
@@ -105,12 +91,9 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 给脚本/浏览器层使用的有界 DOM、属性、关系、表单与导航查询。
 
-Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/free 回调完成；Core 在回调返回
-前复制需要保留的字节，再按契约调用 free。Core 也不执行 JavaScript，只发现、缓存和枚举脚本。
+Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/free 回调完成；Core 在回调返回前复制需要保留的字节，再按契约调用 free。Core 也不执行 JavaScript，只发现、缓存和枚举脚本。
 
-文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单和交互状态。
-释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。style/layout/paint 通常属于
-同一 UI 线程；不得在后台 worker 并发操作同一个文档。
+文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单和交互状态。释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。style/layout/paint 通常属于同一 UI 线程；不得在后台 worker 并发操作同一个文档。
 
 ### `positron_browser.dll`
 
@@ -123,13 +106,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - timer、animation frame、microtask、idle、message 和页面生命周期队列；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
 
-它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须
-同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互
-独立，销毁顺序由宿主明确管理。
+它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。
 
-浏览器 JavaScript 与 `positron_script.dll` 共用 Duktape 实现，但角色不同：Script DLL 是通用
-嵌入服务；Browser DLL 负责把有限 Web 对象和事件语义组合到一个页面 session。浏览器脚本仍
-需要宿主提供真实 DOM、平台默认动作、导航和窗口生命周期。
+浏览器 JavaScript 与 `positron_script.dll` 共用 Duktape 实现，但角色不同：Script DLL 是通用嵌入服务；Browser DLL 负责把有限 Web 对象和事件语义组合到一个页面 session。浏览器脚本仍需要宿主提供真实 DOM、平台默认动作、导航和窗口生命周期。
 
 ## 内部静态库
 
@@ -139,8 +118,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - `positron_expat`、`positron_libsvgtiny`、`positron_libjpeg`；
 - 其他只为公共 DLL 提供目标文件的移植工程。
 
-它们按“一库一工程”隔离上游 include 命名冲突和对象名冲突。外部应用若直接链接这些静态库，
-将绕过 Positron 的 ABI、所有权和兼容性保证。
+它们按“一库一工程”隔离上游 include 命名冲突和对象名冲突。外部应用若直接链接这些静态库，将绕过 Positron 的 ABI、所有权和兼容性保证。
 
 ## 宿主职责
 
@@ -155,8 +133,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 决定何时启用浏览器 JavaScript；
 - 应用级崩溃恢复、持久化和日志。
 
-宿主可以实现这些策略，但不得复制已经属于公共 DLL 的 URL、history、DOM、事件、表单或图像
-业务语义。发现可复用语义仍滞留在 `test_host` 时，应把它视为架构债务并迁移到相应 DLL。
+宿主可以实现这些策略，但不得复制已经属于公共 DLL 的 URL、history、DOM、事件、表单或图像业务语义。发现可复用语义仍滞留在 `test_host` 时，应把它视为架构债务并迁移到相应 DLL。
 
 ## 页面加载与提交
 
@@ -170,8 +147,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 6. 候选成功后原子提交页面与 history；失败则释放候选并保留旧页。
 7. 交互、旋转或动态 DOM 修改按需重新 style/layout/paint。
 
-任何后台线程都不能持有 DOM 节点、computed style、box tree 或 HDC。失败日志应区分 DNS、TCP、
-TLS、证书、HTTP、资源、解析、style、layout 和提交阶段。
+任何后台线程都不能持有 DOM 节点、computed style、box tree 或 HDC。失败日志应区分 DNS、TCP、TLS、证书、HTTP、资源、解析、style、layout 和提交阶段。
 
 ## 脚本与事件组合
 
@@ -185,8 +161,7 @@ TLS、证书、HTTP、资源、解析、style、layout 和提交阶段。
 6. Browser 派发 mutation 后的 `input`、`change`、focus 或 lifecycle 事件；
 7. 宿主按需重新 layout/paint，并在页面替换时销毁 session 与文档。
 
-事件顺序、取消和状态提交必须由产品层确定，不能依赖 test fixture 的偶然消息顺序。真实 SIP、
-OEM IME、系统 picker 和窗口创建仍需要设备人工验收。
+事件顺序、取消和状态提交必须由产品层确定，不能依赖 test fixture 的偶然消息顺序。真实 SIP、OEM IME、系统 picker 和窗口创建仍需要设备人工验收。
 
 ## ABI 与所有权规则
 
@@ -216,8 +191,7 @@ OEM IME、系统 picker 和窗口创建仍需要设备人工验收。
 - TLS/HTTP 可以在宿主 worker 使用，但每个连接/response 的并发所有权必须唯一。
 - Core document、layout、paint 和 Browser script session 默认由单一 UI 线程串行驱动。
 - 同步 callback 不得重入触发它的 session，也不得在回调中销毁父 handle。
-- 页面替换、取消和关闭必须先阻止新回调，再释放平台控件、script session、Core document 和
-  history/app state；具体顺序以拥有关系为准。
+- 页面替换、取消和关闭必须先阻止新回调，再释放平台控件、script session、Core document 和 history/app state；具体顺序以拥有关系为准。
 
 ## 平台与移植约束
 
@@ -229,8 +203,7 @@ OEM IME、系统 picker 和窗口创建仍需要设备人工验收。
 - 使用正式 `.sln`/`.vcproj` 构建，不用现代桌面编译结果代替目标构建；
 - vendored 源码保持版本、许可证、生成步骤和本地补丁记录。
 
-移植代码的正确性需要三层证据：转换器回归、VS2008 ARMV4I 构建、真实设备行为。只满足其中
-一层不足以成为产品基线。
+移植代码的正确性需要三层证据：转换器回归、VS2008 ARMV4I 构建、真实设备行为。只满足其中一层不足以成为产品基线。
 
 ## 明确非目标
 

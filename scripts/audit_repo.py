@@ -53,22 +53,27 @@ DOC_INCLUDE_EXCEPTIONS = (
     "third_party/libjpeg-turbo/POSITRON_PORT.md",
 )
 
-# These documents have deliberately narrow roles.  Generous line budgets are
-# not style targets; they are tripwires against quietly rebuilding a per-next
-# ledger in a reader guide or one-page agent snapshot.
-DOC_ROLE_LINE_LIMITS = {
-    "README.md": 300,
-    "docs/ARCHITECTURE.md": 700,
-    "docs/TESTING.md": 700,
-    ".agents/HANDOFF.md": 250,
-    ".agents/KNOWN_LIMITATIONS.md": 300,
-    ".agents/ROADMAP.md": 250,
-    "positron_browser/README.md": 300,
-    "positron_core/README.md": 260,
-    "test_host/README.md": 260,
+# These documents have deliberately narrow roles.  The generous limits count
+# non-whitespace characters, so changing Markdown wrapping cannot make a
+# document pass or fail.  They are gross-growth tripwires, not writing targets.
+DOC_ROLE_TEXT_LIMITS = {
+    "README.md": 24000,
+    "docs/ARCHITECTURE.md": 60000,
+    "docs/TESTING.md": 60000,
+    ".agents/HANDOFF.md": 24000,
+    ".agents/KNOWN_LIMITATIONS.md": 40000,
+    ".agents/ROADMAP.md": 30000,
+    "positron_browser/README.md": 30000,
+    "positron_core/README.md": 30000,
+    "test_host/README.md": 30000,
 }
 
-DOC_STRUCTURE_PATHS = set(DOC_ROLE_LINE_LIMITS)
+# A paragraph or individual list item this large is almost certainly carrying
+# several batches or topics.  It remains deliberately high so ordinary long
+# technical explanations are not forced into artificial fragments.
+DOC_PROSE_BLOCK_LIMIT = 3000
+
+DOC_STRUCTURE_PATHS = set(DOC_ROLE_TEXT_LIMITS)
 DOC_STRUCTURE_PATHS.update((
     "AGENTS.md",
     "docs/README.md",
@@ -82,6 +87,11 @@ DOC_STRUCTURE_PATHS.update((
 
 def relpath(path):
     return os.path.relpath(path, ROOT).replace(os.sep, "/")
+
+
+def normalized_text_size(text):
+    """Measure content scale independently from wrapping and blank lines."""
+    return len(re.sub(r"\s+", "", text))
 
 
 def load_tracked():
@@ -239,6 +249,69 @@ def is_stable_reader_document(name):
         r"/README\.md$", name) is not None
 
 
+def iter_markdown_prose_blocks(lines):
+    """Yield semantic prose blocks without depending on physical wrapping."""
+    blocks = []
+    current = []
+    chunk_start = 0
+    in_fence = False
+
+    def emit_chunk(chunk, start):
+        if not chunk:
+            return []
+        stripped = [line.strip() for line in chunk]
+        if (stripped[0].startswith("#") or
+                stripped[0].startswith(">") or
+                stripped[0].startswith("<") or
+                stripped[0].startswith("|") or
+                chunk[0].startswith("    ") or
+                re.match(r"^\[[^]]+\]:", stripped[0]) or
+                re.match(r"^(?:---+|\*\*\*+|___+)$", stripped[0])):
+            return []
+
+        marker_re = re.compile(r"^\s*(?:[-+*]|[0-9]+[.)])\s+")
+        if marker_re.match(chunk[0]):
+            items = []
+            item = []
+            item_start = start
+            for offset, line in enumerate(chunk):
+                if marker_re.match(line):
+                    if item:
+                        items.append((item_start, " ".join(item)))
+                    item_start = start + offset
+                    item = [marker_re.sub("", line, count=1).strip()]
+                elif item:
+                    item.append(line.strip())
+            if item:
+                items.append((item_start, " ".join(item)))
+            return items
+
+        return [(start, " ".join(stripped))]
+
+    for number, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            if not in_fence:
+                blocks.extend(emit_chunk(current, chunk_start))
+                current = []
+                chunk_start = 0
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if not stripped:
+            blocks.extend(emit_chunk(current, chunk_start))
+            current = []
+            chunk_start = 0
+            continue
+        if not current:
+            chunk_start = number
+        current.append(line)
+
+    blocks.extend(emit_chunk(current, chunk_start))
+    return blocks
+
+
 def audit_document_structure(documents, errors):
     """Enforce document roles without treating prose wording as an API."""
     if documents is None:
@@ -270,10 +343,21 @@ def audit_document_structure(documents, errors):
 
         checked += 1
         lines = text.splitlines()
-        limit = DOC_ROLE_LINE_LIMITS.get(name)
-        if limit is not None and len(lines) > limit:
-            errors.append("%s exceeds its %d-line role budget (%d lines)" %
-                          (name, limit, len(lines)))
+        limit = DOC_ROLE_TEXT_LIMITS.get(name)
+        normalized_size = normalized_text_size(text)
+        if limit is not None and normalized_size > limit:
+            errors.append(
+                "%s exceeds its %d-character role-size tripwire "
+                "(%d non-whitespace characters)" %
+                (name, limit, normalized_size))
+
+        for start, prose in iter_markdown_prose_blocks(lines):
+            prose_size = normalized_text_size(prose)
+            if prose_size > DOC_PROSE_BLOCK_LIMIT:
+                errors.append(
+                    "%s:%d has an oversized semantic prose block "
+                    "(%d non-whitespace characters)" %
+                    (name, start, prose_size))
 
         if is_stable_reader_document(name):
             match = batch_re.search(text)
@@ -294,9 +378,6 @@ def audit_document_structure(documents, errors):
             if stripped.startswith("```") or stripped.startswith("~~~"):
                 in_fence = not in_fence
                 continue
-            if not in_fence and not stripped.startswith("|") and len(line_text) > 240:
-                errors.append("%s:%d has a %d-character prose line" %
-                              (name, number, len(line_text)))
             if not in_fence:
                 heading = heading_re.match(line_text)
                 if heading is not None:

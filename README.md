@@ -1,11 +1,8 @@
 # Positron
 
-Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础设施与轻量网页运行时。
-它把 TLS、JSON、HTTP、图像、脚本、HTML/CSS/DOM/layout 和浏览器会话能力封装为可由旧式
-Win32/WinCE 应用调用的 DLL，同时保持 VS2008、C89 和设备资源约束。
+Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础设施与轻量网页运行时。它把 TLS、JSON、HTTP、图像、脚本、HTML/CSS/DOM/layout 和浏览器会话能力封装为可由旧式 Win32/WinCE 应用调用的 DLL，同时保持 VS2008、C89 和设备资源约束。
 
-项目的目标不是复刻现代桌面浏览器，而是在 WM6 上提供一组可组合、可测试、边界清楚的公共
-能力。`test_host.exe` 是这些 DLL 的回归宿主和示例消费者，不是产品 API 的所有者。
+项目的目标不是复刻现代桌面浏览器，而是在 WM6 上提供一组可组合、可测试、边界清楚的公共能力。`test_host.exe` 是这些 DLL 的回归宿主和示例消费者，不是产品 API 的所有者。
 
 ## 当前定位
 
@@ -15,9 +12,7 @@ Win32/WinCE 应用调用的 DLL，同时保持 VS2008、C89 和设备资源约�
 - 运行方式：各 DLL 可独立使用，也可由宿主组合成受限的网页浏览体验。
 - 成熟度：持续开发中的兼容层；已经有真实设备回归，但不能视为现代 Web 平台或通用安全浏览器。
 
-浏览器 JavaScript 默认关闭。独立 `positron_script.dll` 与浏览器脚本绑定共用同一套 Duktape
-引擎；前者是通用嵌入式脚本服务，后者是由 `positron_browser.dll` 和宿主共同提供的受限 Web
-组合，不是第二个 JavaScript 引擎。
+浏览器 JavaScript 默认关闭。独立 `positron_script.dll` 与浏览器脚本绑定共用同一套 Duktape 引擎；前者是通用嵌入式脚本服务，后者是由 `positron_browser.dll` 和宿主共同提供的受限 Web 组合，不是第二个 JavaScript 引擎。
 
 ## 发布的公共 DLL
 
@@ -31,8 +26,7 @@ Win32/WinCE 应用调用的 DLL，同时保持 VS2008、C89 和设备资源约�
 | `positron_core.dll` | HTML/CSS/DOM、样式、layout、绘制、表单和交互模型 | `PCore_Init`、`PCore_ParseHTML`、style/layout/paint API |
 | `positron_browser.dll` | history/session、脚本 bootstrap、DOM/Event 与平台回调协调 | `PBrowser_HistoryCreate`、`PBrowser_ScriptSessionCreate` |
 
-精确签名、错误码和所有权以各项目的公开头文件为准。调用示例和边界说明见对应子目录的
-README；整体所有权与数据流见[架构文档](docs/ARCHITECTURE.md)。
+精确签名、错误码和所有权以各项目的公开头文件为准。调用示例和边界说明见对应子目录的 README；整体所有权与数据流见[架构文档](docs/ARCHITECTURE.md)。
 
 ## 快速开始
 
@@ -63,8 +57,7 @@ scripts\build.bat Release
 scripts\build.bat Debug rebuild
 ```
 
-不要绕过解决方案直接拼装 ARM 编译器命令。完整工具链、产物目录和常见错误见
-[构建指南](docs/BUILDING.md)。
+不要绕过解决方案直接拼装 ARM 编译器命令。完整工具链、产物目录和常见错误见 [构建指南](docs/BUILDING.md)。
 
 ### 生成可运行目录
 
@@ -74,21 +67,17 @@ scripts\build.bat Debug rebuild
 scripts\stage.bat Debug C:\WMShare\Positron
 ```
 
-在设备的共享目录中运行 `test_host.exe`。若要使用自动设备门，必须先在 WMDC 或 Device
-Emulator GUI 中手动连接唯一目标，然后执行：
+在设备的共享目录中运行 `test_host.exe`。若要使用自动设备门，必须先在 WMDC 或 Device Emulator GUI 中手动连接唯一目标，然后执行：
 
 ```bat
 scripts\device_gate.bat -Candidate local-check
 ```
 
-设备门只消费 WMDC 当前连接，不选择设备、不绑定 VMID，也不替用户启动或 cradle 设备。
-测试模式、INI 配置、自动与人工验收的区别见[测试指南](docs/TESTING.md)。
+设备门只消费 WMDC 当前连接，不选择设备、不绑定 VMID，也不替用户启动或 cradle 设备。测试模式、INI 配置、自动与人工验收的区别见[测试指南](docs/TESTING.md)。
 
 ### Nightly 包
 
-`scripts\package_nightly.bat` 从当前各项目最新构建产物生成仅存储 ZIP，并覆盖 GitHub 上固定的
-nightly pre-release。它不会触发构建，因此运行前应先完成所需配置的 build/stage。详情见
-[Nightly 发布说明](docs/NIGHTLY_RELEASE.md)。
+`scripts\package_nightly.bat` 从当前各项目最新构建产物生成仅存储 ZIP，并覆盖 GitHub 上固定的 nightly pre-release。它不会触发构建，因此运行前应先完成所需配置的 build/stage。详情见 [Nightly 发布说明](docs/NIGHTLY_RELEASE.md)。
 
 ## 仓库结构
 
@@ -115,20 +104,14 @@ nightly pre-release。它不会触发构建，因此运行前应先完成所需�
 - [第三方清单](THIRD_PARTY.md)：版本、来源、许可证与再发布注意事项。
 - [当前开发状态](.agents/HANDOFF.md)：仅用于接管当前工作，不是长期产品说明。
 
-逐批开发记录不写入 README。需要追溯某次变更时，请使用 Git 历史；需要理解旧阶段或事故时，
-查看 [`docs/history/`](docs/history/README.md)。
+逐批开发记录不写入 README。需要追溯某次变更时，请使用 Git 历史；需要理解旧阶段或事故时，查看 [`docs/history/`](docs/history/README.md)。
 
 ## 兼容性与安全边界
 
-Positron 的一些依赖为了 VS2008/C89 兼容而固定在旧版本，其中包括已结束上游支持的组件。
-发布者必须结合自己的威胁模型审查证书、协议、解析器和第三方安全公告。项目不提供 TLS 1.3、
-完整现代 Web API、完整 CSS 或任意网站兼容性保证。
+Positron 的一些依赖为了 VS2008/C89 兼容而固定在旧版本，其中包括已结束上游支持的组件。发布者必须结合自己的威胁模型审查证书、协议、解析器和第三方安全公告。项目不提供 TLS 1.3、完整现代 Web API、完整 CSS 或任意网站兼容性保证。
 
-默认应使用 verified TLS/HTTP 路径；不安全连接入口只用于明确的诊断或受控环境。浏览器 JavaScript
-仍是显式 opt-in，启用它不等于获得完整浏览器安全沙箱。
+默认应使用 verified TLS/HTTP 路径；不安全连接入口只用于明确的诊断或受控环境。浏览器 JavaScript 仍是显式 opt-in，启用它不等于获得完整浏览器安全沙箱。
 
 ## 许可证
 
-原创 Positron 代码适用根目录 [LICENSE](LICENSE)。vendored 依赖保留各自许可证；其中编入
-NetSurf browser 源码的二进制受 GPLv2 义务约束。分发前请阅读 [THIRD_PARTY.md](THIRD_PARTY.md)
-及依赖目录中的原始许可证。该说明不是法律意见。
+原创 Positron 代码适用根目录 [LICENSE](LICENSE)。vendored 依赖保留各自许可证；其中编入 NetSurf browser 源码的二进制受 GPLv2 义务约束。分发前请阅读 [THIRD_PARTY.md](THIRD_PARTY.md) 及依赖目录中的原始许可证。该说明不是法律意见。

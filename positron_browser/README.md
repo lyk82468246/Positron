@@ -1,8 +1,6 @@
 # `positron_browser.dll`
 
-`positron_browser.dll` 是无窗口的浏览器会话组合层。它拥有 history、浏览器 script session、
-bootstrap、DOM/Event adapter 和 native 控件事务策略，但不创建窗口、不抓取网络、不持有 Core
-document，也不直接操作 WM 控件。
+`positron_browser.dll` 是无窗口的浏览器会话组合层。它拥有 history、浏览器 script session、bootstrap、DOM/Event adapter 和 native 控件事务策略，但不创建窗口、不抓取网络、不持有 Core document，也不直接操作 WM 控件。
 
 ## 产物与依赖
 
@@ -12,24 +10,19 @@ document，也不直接操作 WM 控件。
 - 运行时依赖：`positron_script.dll`、`positron_json.dll`
 - 典型组合：宿主另行使用 `positron_core.dll`、HTTP/TLS、窗口和 native 控件
 
-其他项目链接 `positron_browser.lib` 并部署三个 DLL。不要复制 Browser 内部结构，也不要把
-`test_host.exe` 当作运行时依赖。
+其他项目链接 `positron_browser.lib` 并部署三个 DLL。不要复制 Browser 内部结构，也不要把 `test_host.exe` 当作运行时依赖。
 
 ## 能力分组
 
 ### History
 
-`PBrowser_History*` 管理有界的进程内条目、当前位置、state、same-document 操作和 traversal。
-URL/state 查询返回借用字符串，在同一 history handle 的下一次 mutation 或 destroy 后失效。
+`PBrowser_History*` 管理有界的进程内条目、当前位置、state、same-document 操作和 traversal。URL/state 查询返回借用字符串，在同一 history handle 的下一次 mutation 或 destroy 后失效。
 
-History 只决定条目语义，不请求 URL、不保存文档、不创建窗口，也不持久化到磁盘。宿主只有在
-页面真正提交后才应 commit 新导航；失败候选不得污染 history。
+History 只决定条目语义，不请求 URL、不保存文档、不创建窗口，也不持久化到磁盘。宿主只有在页面真正提交后才应 commit 新导航；失败候选不得污染 history。
 
 ### Script session
 
-`PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context，`Destroy` 释放 bootstrap、队列、
-native function 和事务状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但
-它的 Web host objects 由 Browser callbacks 提供。
+`PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context，`Destroy` 释放 bootstrap、队列、native function 和事务状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但它的 Web host objects 由 Browser callbacks 提供。
 
 典型生命周期：
 
@@ -53,8 +46,7 @@ PBrowser_HistoryDestroy(history);
 
 ### DOM、表单与 validation adapters
 
-Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把当前 Core document 的受限
-查询和 mutation 映射为：
+Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把当前 Core document 的受限查询和 mutation 映射为：
 
 - element/text/attribute/value/checked 读写；
 - parent/child/sibling、attributes、childNodes、form owner 和 label/control 关系；
@@ -62,13 +54,11 @@ Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把
 - validity、custom validity、report validity 和 validation message；
 - event listener、navigation 和平台默认动作。
 
-Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实文档
-状态。callback 参数和输出缓冲只在调用期间借用，不得缓存。
+Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实文档状态。callback 参数和输出缓冲只在调用期间借用，不得缓存。
 
 ### Event 与平台事务
 
-Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click、form、invalid 和
-navigation。对于 native 控件，推荐使用相应的 `Ex` 注册和 transaction dispatch：
+Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click、form、invalid 和 navigation。对于 native 控件，推荐使用相应的 `Ex` 注册和 transaction dispatch：
 
 - native EDIT：beforeinput、composition/result、commit→input、dirty、blur→change；
 - native SELECT：focus、key、dropdown candidate/confirm/cancel、commit→input/change；
@@ -77,30 +67,21 @@ navigation。对于 native 控件，推荐使用相应的 `Ex` 注册和 transac
 - file input：picker request/open/close/cancel 与 selection input/change；
 - anchor/disclosure/programmatic click：可取消 click 与有界默认动作。
 
-通用顺序由 Browser 决定。宿主仍拥有 WM 消息、控件窗口、Core mutation、picker、SIP/IME、
-HDC、网络和页面生命周期。
+通用顺序由 Browser 决定。宿主仍拥有 WM 消息、控件窗口、Core mutation、picker、SIP/IME、HDC、网络和页面生命周期。
 
-每个事务使用稳定非零 token，并受固定容量限制。控件销毁、文档替换或 session reset 前，宿主
-必须调用相应 reset/unregister 入口。stale token、非法 phase、几何变化或 adapter error 会
-fail closed，不允许部分默认动作。
+每个事务使用稳定非零 token，并受固定容量限制。控件销毁、文档替换或 session reset 前，宿主必须调用相应 reset/unregister 入口。stale token、非法 phase、几何变化或 adapter error 会 fail closed，不允许部分默认动作。
 
 ### Navigation 与 target
 
-Browser 可把 anchor/programmatic navigation 分类为 assign、replace、fragment、reload、history
-traversal 或 open，并把 target 分类为默认、`_self`、`_parent`、`_top`、`_blank` 或 named。
+Browser 可把 anchor/programmatic navigation 分类为 assign、replace、fragment、reload、history traversal 或 open，并把 target 分类为默认、`_self`、`_parent`、`_top`、`_blank` 或 named。
 
-它不解析完整 URL、不连接网络、不创建 HWND，也不决定下载和外部协议。单窗口宿主可以接受
-当前-context target，并对 `_blank` 或不匹配的 named target 保守返回失败。target、rel、URL 和
-context name 都是同步借用快照。
+它不解析完整 URL、不连接网络、不创建 HWND，也不决定下载和外部协议。单窗口宿主可以接受当前-context target，并对 `_blank` 或不匹配的 named target 保守返回失败。target、rel、URL 和 context name 都是同步借用快照。
 
 ### 队列与生命周期
 
-Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility 和
-page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或
-无限 event loop。
+Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
 
-页面替换时应先停止新平台回调，再清理队列和 native transaction，销毁 script session，最后
-释放宿主持有的 Core document。不得从 Browser callback 内重入或销毁当前 session。
+页面替换时应先停止新平台回调，再清理队列和 native transaction，销毁 script session，最后释放宿主持有的 Core document。不得从 Browser callback 内重入或销毁当前 session。
 
 ## 典型 Core 组合
 
@@ -115,8 +96,7 @@ page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱�
 7. mutation 后重新 layout/paint；
 8. 导航候选成功后提交 history，再销毁旧 session/document。
 
-完整组合示例见 [`../test_host/`](../test_host/README.md)，但产品应用应根据自己的窗口、网络和
-安全策略实现 callbacks。
+完整组合示例见 [`../test_host/`](../test_host/README.md)，但产品应用应根据自己的窗口、网络和安全策略实现 callbacks。
 
 ## 所有权与错误
 
@@ -135,5 +115,4 @@ page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱�
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 
-整体分层见 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)，当前限制见
-[`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
+整体分层见 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)，当前限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。

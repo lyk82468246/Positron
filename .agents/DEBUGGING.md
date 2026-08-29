@@ -1,8 +1,6 @@
 # Agent 调试纪律
 
-通用构建、stage、设备、网络、布局、SIP 和 JavaScript 排错步骤见
-[`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md)。本文件只规定 agent 如何取证、
-保护工作区和更新动态状态。
+通用构建、stage、设备、网络、布局、SIP 和 JavaScript 排错步骤见 [`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md)。本文件只规定 agent 如何取证、保护工作区和更新动态状态。
 
 ## 修改前
 
@@ -26,8 +24,7 @@
 - 先排除旧进程、全局 DLL 复用、混包、设备时间和网络变化。
 - 保持失败候选可辨认，不把它写成基线。
 - 不提高预算、删除测试或扩大容差来掩盖生命周期、布局或输入问题。
-- 若实验造成真实页面回归，撤回默认路径，并把根因、禁用边界和重启门槛写入
-  `FAILED_EXPERIMENTS.md`。
+- 若实验造成真实页面回归，撤回默认路径，并把根因、禁用边界和重启门槛写入 `FAILED_EXPERIMENTS.md`。
 
 ## 文档更新
 
@@ -38,9 +35,6 @@
 - `KNOWN_LIMITATIONS.md` 只保留仍存在的能力边界。
 - 面向读者的稳定能力才更新根 README 或 `docs/`。
 - next 细节由 Git、测试源码和必要的失败记录保存，不复制到四份文档。
-- 同一主题已有章节时原地改写并删除旧结论；发现重复标题、批次堆叠或数百行单段时，先做
-  整体重构，再继续记录当前事实。
+- 同一主题已有章节时原地改写并删除旧结论；发现重复标题、批次堆叠或一个语义段落承载多个主题时，先做整体重构，再继续记录当前事实。不得用固定列宽折行来伪装结构改善。
 
-旧的日期化调试流水已归档到
-[`../docs/history/DEBUGGING_INCIDENTS.md`](../docs/history/DEBUGGING_INCIDENTS.md)，仅供调查旧问题，
-其中的“当前”不再有效。
+旧的日期化调试流水已归档到 [`../docs/history/DEBUGGING_INCIDENTS.md`](../docs/history/DEBUGGING_INCIDENTS.md)，仅供调查旧问题，其中的“当前”不再有效。

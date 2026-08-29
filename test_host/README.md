@@ -1,10 +1,8 @@
 # `test_host.exe`
 
-`test_host.exe` 是 Positron 公共 DLL 的回归宿主、设备验收程序和组合示例。它不是公共库，也不
-属于最终应用必须部署的业务核心。
+`test_host.exe` 是 Positron 公共 DLL 的回归宿主、设备验收程序和组合示例。它不是公共库，也不属于最终应用必须部署的业务核心。
 
-宿主的职责是把 WM6 窗口/消息、native 控件、网络 I/O、设备文件系统和测试 fixture 接到公共
-DLL；可复用的 URL、history、DOM、Event、表单、图像或 script-session 语义必须位于相应 DLL。
+宿主的职责是把 WM6 窗口/消息、native 控件、网络 I/O、设备文件系统和测试 fixture 接到公共 DLL；可复用的 URL、history、DOM、Event、表单、图像或 script-session 语义必须位于相应 DLL。
 
 ## 产物与依赖
 
@@ -15,8 +13,7 @@ DLL；可复用的 URL、history、DOM、Event、表单、图像或 script-sessi
 - 动态依赖：TLS、JSON、HTTP、Image、Script、Core、Browser DLL
 - 平台依赖：`aygshell`、common controls、WinINet 和 WM6 GUI/IME/picker
 
-宿主还为低层移植工程提供直接回归，但外部产品应用不应模仿这种静态库测试链接方式；应用只
-消费顶层公共 DLL。
+宿主还为低层移植工程提供直接回归，但外部产品应用不应模仿这种静态库测试链接方式；应用只消费顶层公共 DLL。
 
 ## 构建与运行
 
@@ -27,11 +24,9 @@ scripts\build.bat
 scripts\stage.bat Debug C:\WMShare\Positron
 ```
 
-`stage.bat` 会先构建，再把同一配置的 EXE、DLL、字体和 tracked INI 放入隔离目录。不要手工从
-不同配置或不同时间的输出目录拼包；Windows CE 还可能继续复用旧进程加载的 DLL。
+`stage.bat` 会先构建，再把同一配置的 EXE、DLL、字体和 tracked INI 放入隔离目录。不要手工从不同配置或不同时间的输出目录拼包；Windows CE 还可能继续复用旧进程加载的 DLL。
 
-在设备 File Explorer 中运行 staging 目录里的 `test_host.exe`，或在用户已通过 GUI 建立唯一
-WMDC 连接后运行自动设备门：
+在设备 File Explorer 中运行 staging 目录里的 `test_host.exe`，或在用户已通过 GUI 建立唯一 WMDC 连接后运行自动设备门：
 
 ```bat
 scripts\device_gate.bat -Candidate local-check
@@ -53,8 +48,7 @@ tests=13,20,27,999
 - `javascript=1`：显式启用实验性的 Browser script session。
 - `tests=`：接受编号、范围及源码明确支持的特殊编号。
 
-没有 INI 或 INI 无效时，宿主退回内置分组选择。移走 INI 不是“自动全量”；全量自动清单由
-nightly/device tooling 从当前源码 dispatch 生成。
+没有 INI 或 INI 无效时，宿主退回内置分组选择。移走 INI 不是“自动全量”；全量自动清单由 nightly/device tooling 从当前源码 dispatch 生成。
 
 ## 测试层次
 
@@ -67,48 +61,35 @@ nightly/device tooling 从当前源码 dispatch 生成。
 - history、navigation、script session、DOM bridge 和平台事务；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
-编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败
-文本表达，不在 README 复制逐编号清单。
+编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
 
 ## 浏览器组合边界
 
 ### 页面导航
 
-宿主持有后台网络 worker、loading/取消、候选文档和窗口 swap。旧页保持可绘制，直到新页面
-完成 parse/resource/style/layout 并可提交。URL reference 解析调用 `positron_http.dll`；history
-提交调用 `positron_browser.dll`。
+宿主持有后台网络 worker、loading/取消、候选文档和窗口 swap。旧页保持可绘制，直到新页面完成 parse/resource/style/layout 并可提交。URL reference 解析调用 `positron_http.dll`；history 提交调用 `positron_browser.dll`。
 
-DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM node、box、computed
-style 或 HDC。
+DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM node、box、computed style 或 HDC。
 
 ### Core 与 Browser callbacks
 
-宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、
-表单、validation 和事件。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的
-Core mutation、WM 默认动作和导航副作用。
+宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、表单、validation 和事件。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的 Core mutation、WM 默认动作和导航副作用。
 
-callback 同步且不可重入。页面替换时先停止新消息和事务，再销毁 native 控件、Browser session
-和 Core document，避免 stale token 或借用指针逃逸。
+callback 同步且不可重入。页面替换时先停止新消息和事务，再销毁 native 控件、Browser session 和 Core document，避免 stale token 或借用指针逃逸。
 
 ### Native EDIT/SELECT/button/file
 
-WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。
-只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生
-`input`、`change`、submit/reset 等后续事件。
+WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生 `input`、`change`、submit/reset 等后续事件。
 
-系统 picker、文件路径、SIP/IME、HWND、COMBOBOX popup 和真实焦点仍属于宿主。synthetic 消息
-只能做自动契约，不能替代 OEM 设备人工验收。
+系统 picker、文件路径、SIP/IME、HWND、COMBOBOX popup 和真实焦点仍属于宿主。synthetic 消息只能做自动契约，不能替代 OEM 设备人工验收。
 
 ### 绘制与交互
 
-Core 提供 layout、paint、link/control/fragment geometry 和可聚焦目标。宿主持有 scrollbar、
-DPI/旋转、HDC、native child reposition 和 `SetFocus`。几何或 document token 不一致时，操作
-应 fail closed 并等待下一次有效 layout。
+Core 提供 layout、paint、link/control/fragment geometry 和可聚焦目标。宿主持有 scrollbar、DPI/旋转、HDC、native child reposition 和 `SetFocus`。几何或 document token 不一致时，操作应 fail closed 并等待下一次有效 layout。
 
 ## 自动与人工结果
 
-`auto=1` 的完整通过需要：每个所选测试完成、零 `ERROR`/`FAIL`、唯一 `TESTBENCH PASS`，并且
-真实 Browse fixture 的页面序列正确。进程退出、提示音或部分 `OK` 都不够。
+`auto=1` 的完整通过需要：每个所选测试完成、零 `ERROR`/`FAIL`、唯一 `TESTBENCH PASS`，并且真实 Browse fixture 的页面序列正确。进程退出、提示音或部分 `OK` 都不够。
 
 下列内容仍需人工观察：
 
@@ -132,15 +113,13 @@ DPI/旋转、HDC、native child reposition 和 `SetFocus`。几何或 document t
 6. 使用 staging override 选择本批测试，不永久扩大 tracked smoke INI；
 7. 不向 README、架构或测试指南追加本批设备流水。
 
-如果实现记录只修改 `test_host`，应先检查是不是把产品能力错误地放进了测试平台。只有平台
-窗口、WM 消息、设备 GUI、网络调度和 fixture 本身才通常应独占宿主修改。
+如果实现记录只修改 `test_host`，应先检查是不是把产品能力错误地放进了测试平台。只有平台窗口、WM 消息、设备 GUI、网络调度和 fixture 本身才通常应独占宿主修改。
 
 ## 故障排查
 
 - 先核对进程是否真正退出、EXE/DLL 是否来自同一 build、INI 是否在同目录。
 - 读取完整 `test_host.log`，不要从提示音或最后一个对话框推断全批。
 - 网络问题区分 DNS、TCP、TLS、证书、HTTP、redirect、resource 和 page commit。
-- WMDC/RAPI、混包、SIP/IME 和高 DPI 的详细流程见
-  [`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md)。
+- WMDC/RAPI、混包、SIP/IME 和高 DPI 的详细流程见 [`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md)。
 
 公共所有权见 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
