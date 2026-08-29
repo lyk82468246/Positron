@@ -9,8 +9,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前 Git 与工作区
 
 - 分支：`main`，接管时与 `origin/main` 同步。
-- 当前产品代码基线：`fde6cfab`（next658 的 modal backdrop 指针策略）。
-- next657 的 Core scoped focus snapshot、Browser active modal id 和 Escape→`requestClose()` 桥接保持不变；本批在宿主 WM 指针边界增加活动 modal 的 document-space 几何命中。dialog 外部统一走 Browser `requestClose()`，取消关闭仍消费 backdrop，dialog 内部无控件的点击不再落入“关闭整个视图”的页面背景回退路径。
+- 当前产品代码基线：`78aca745`（next659 的 dialog 表单默认动作）。
+- Core 现在报告稳定的有效表单方法常量，并为显式 submitter 或单行输入隐式提交解析最近祖先 dialog id 与 submitter value。Browser 提供按 id 直接执行 `dialog.close(value)` 的会话边界；参考宿主只在 validation 和可取消 `submit` 均允许后调用它，不生成网络导航，也不错误派发 `cancel`。next658 的 backdrop 指针策略和此前的 modal 焦点/Escape 边界保持不变。
 - `tmp/` 保存本地设备日志和截图，不跟踪。
 
 ## 当前中期里程碑
@@ -39,25 +39,25 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - 深层 DOM 资源准备使用单个事务级 heap scratch，避免大批固定栈缓冲耗尽 WM6 线程栈。
 - `<details>/<summary>` 支持 click 与 Enter/Space 激活、取消和 DOM 状态同步。
 - 支持的链接、summary、native EDIT/SELECT/button/file 等目标，以及带有效非负 `tabindex` 的普通布局元素按有界顺序响应 Tab/Shift+Tab：正值升序、同值 DOM 稳定排序，随后零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍被排除。Browser 报告活动 modal id 后，宿主可用 Core 的 scoped snapshot 将顺序焦点限制在 dialog 子树；宿主仍同步焦点事件、原生焦点和滚动可见性。
-- `<dialog>` 的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id 查询、宿主驱动的 Escape 请求桥接和有界 backdrop 指针策略已形成契约；top-layer/backdrop 视觉、`method="dialog"` 提交和跨文档 modal 仍未实现。
+- `<dialog>` 的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id 查询、宿主驱动的 Escape 请求桥接、有界 backdrop 指针策略和 `method="dialog"` 默认动作已形成契约。显式点击、脚本 `click()` 和单行输入隐式 Enter 都遵循 validation→可取消 submit→直接 close/returnValue；top-layer/backdrop 视觉和跨文档 modal 仍未实现。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1106。
+- `TEST_MAX_NUMBER`：1107。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next658：
+当前最新产品门为 next659：
 
-- 本地目录：`tmp/device-runs/20260829-124432-next658-dialog-backdrop/`；
-- 选择：TEST1103、TEST1104、TEST1105、TEST1106 与 TEST999；
-- 结果：5/5，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
+- 本地目录：`tmp/device-runs/20260829-190719-next659-dialog-form/`；
+- 选择：TEST1103、TEST1104、TEST1105、TEST1106、TEST1107 与 TEST999；
+- 结果：6/6，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
 - 设备：640x480，dpi=192；该门使用当前 WMDC GUI 会话并完成了 staging、远端启动、日志回收和退出提示音。
 
-该门验证 Browser `<dialog>` 的 show/showModal/close/requestClose、`returnValue`、单 session modal 互斥、可取消 cancel、非冒泡 close 事件、Escape 请求桥接、modal 子树焦点范围和真实 WM backdrop 指针路径：接受的外部点击关闭，阻止 cancel 仍消费点击，dialog 内部空白不关闭视图，并验证退出提示音。它是定向门，不是全量回归。
+该门验证 Browser `<dialog>` 的生命周期、Escape 请求桥接、modal 子树焦点范围和真实 WM backdrop 指针路径，并新增表单 `method`/submitter `formmethod` 覆盖、无祖先 dialog 的 fail-closed、显式与隐式提交、可取消 `submit`、直接 `close`/`returnValue` 和无网络导航断言。它是定向门，不是全量回归。
 
 最近一次完整编号范围基线仍是 next255，早于当前多批能力；此后主要使用定向门和相邻回归。因此，累积风险达到路线图条件时必须安排新的全量 checkpoint，不能把多个窄门宣称为全量覆盖。
 
@@ -76,7 +76,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前未决风险
 
 - 真实页面兼容性仍缺少固定、小型、可重复的 corpus；TEST13 只是单一网络哨兵。
-- `<dialog>` 已有已验证的有界脚本生命周期、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围和有界 backdrop 指针策略；top-layer/backdrop 视觉、`method="dialog"` 提交和跨文档 modal 生命周期尚未实现。初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
+- `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围和有界 backdrop 指针策略；当前表单桥要求最近祖先 dialog 有非空 id。top-layer/backdrop 视觉和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
 - `contenteditable`、design mode、富文本编辑和动态焦点区域尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
@@ -88,7 +88,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 唯一下一步
 
-以 TEST1103/1104/1105/1106 的离线对话框语料为可重复场景，下一步从 top-layer/backdrop 视觉、`method="dialog"` 提交或 contenteditable 中选择一个高价值缺口；不要为增加编号而拆分能力。
+以 TEST1103—1107 的离线对话框语料为可重复场景，next660 唯一推进 top-layer/backdrop 视觉：活动 modal 应在普通文档之上绘制，backdrop 覆盖可视 viewport，同时保持当前已验证的焦点、指针和关闭事务。不要在该批混入 contenteditable 或跨文档生命周期。
 
 优先场景应同时满足：
 
@@ -100,8 +100,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 下一步完成标准
 
-- corpus fixture、预期行为和失败分类写入测试源码或专用 fixture，不写入稳定文档流水账；
-- 对应纵切在公共 DLL 和宿主之间职责清楚，无新增 test-host-only 产品语义；
+- 固定 fixture 自动验证普通内容、backdrop、活动 modal 的绘制层次和 viewport 覆盖，不依赖外网；
+- 绘制/层叠语义进入公共 DLL，宿主只提供 viewport、HDC、活动 modal id 与失效调度，不新增 test-host-only 产品策略；
 - `python scripts/test_c89ize.py` 与 `python scripts/audit_repo.py` 通过；
 - VS2008 ARMV4I 正式构建通过，staging 无混包；
 - 定向设备门及直接相邻回归全部通过，日志唯一 PASS、零 ERROR/FAIL；

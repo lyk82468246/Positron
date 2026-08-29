@@ -89,6 +89,8 @@ Core 持有控件值、checked/selected、disabled/fieldset 继承、required/ra
 
 Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action，再按结果派发 input、change、submit/reset 或 invalid。系统 picker、native validation UI、本地化提示、SIP/IME 和 WM 控件视觉不属于 Core。
 
+`PCore_FormSubmission*` 使用 `PCORE_FORM_METHOD_*` 常量报告有效提交方法。`method="dialog"` 或 submitter 的 `formmethod="dialog"` 不生成网络 action/body；调用方改用 `PCore_FormDialogSubmissionAt` 或 `PCore_FormDialogSubmissionForTextInput` 两阶段查询，取得最近祖先 dialog 的 UTF-8 id 和 submitter value。Core 在查询时执行约束验证，但不派发 `submit`/`close`、不改变 `open`，这些事务仍由 Browser 和宿主完成。当前 Browser 组合按 id 寻址，因此无 id 或不在 dialog 内的目标会被消费并 fail closed。
+
 ### 交互与事件
 
 Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispatch 和可聚焦目标枚举。Browser 决定脚本事件/默认动作事务，宿主把 WM 消息和 native 控件状态映射进来。
@@ -122,7 +124,7 @@ Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispa
 - 不支持完整现代 HTML/CSS/DOM；float、复杂 table/position、Grid、custom properties 等仍有限。
 - 字体、SVG、图像格式和高 DPI 结果受 WM6 GDI/依赖版本限制。
 - Core resource cache、DOM bridge、表单集合和深度/数量均有固定预算。
-- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；Core 只把 `<dialog open>` 纳入静态布局，不绘制 top layer/backdrop，也不自行决定初始焦点、背景点击或跨窗口焦点策略。对话框脚本生命周期和活动 modal id 由 `positron_browser.dll` 提供，宿主可据此实现顺序 Tab 焦点范围。
+- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；Core 只把 `<dialog open>` 纳入静态布局，不绘制 top layer/backdrop，也不自行决定初始焦点、背景点击或跨窗口焦点策略。Core 可解析有界的 dialog 表单默认动作；脚本生命周期、活动 modal id 和实际关闭仍由 `positron_browser.dll` 提供。
 - Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。
 - 精确 API、返回码、结构布局和借用期限以 [`positron_core.h`](positron_core.h) 为准。
 
