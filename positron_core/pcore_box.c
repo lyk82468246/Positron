@@ -4636,6 +4636,310 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
     return 0;
 }
 
+/* Return the effective contenteditable mode only for an editing host. A
+ * descendant that inherits its parent's mode is part of that host, not a
+ * second native editing surface. The parent reference returned by libdom is
+ * released before this helper returns. */
+#define PCORE_FOCUS_WALK_DEPTH_MAX 64U
+
+static int pcore_contenteditable_host_mode(dom_node *node, int *out_mode)
+{
+    dom_node *parent;
+    dom_node_type parent_type;
+    int mode;
+    int parent_mode;
+
+    if (out_mode != NULL) {
+        *out_mode = PCORE_CONTENTEDITABLE_MODE_NONE;
+    }
+    if (node == NULL || out_mode == NULL ||
+            pcore_contenteditable_mode(node, &mode) != 0 ||
+            mode == PCORE_CONTENTEDITABLE_MODE_NONE) {
+        return 0;
+    }
+    parent = NULL;
+    if (dom_node_get_parent_node(node, &parent) != DOM_NO_ERR) {
+        return 0;
+    }
+    if (parent != NULL) {
+        parent_type = DOM_NODE_TYPE_COUNT;
+        if (dom_node_get_node_type(parent, &parent_type) != DOM_NO_ERR) {
+            dom_node_unref(parent);
+            return 0;
+        }
+        if (parent_type == DOM_ELEMENT_NODE &&
+                pcore_contenteditable_mode(parent, &parent_mode) == 0 &&
+                parent_mode != PCORE_CONTENTEDITABLE_MODE_NONE) {
+            dom_node_unref(parent);
+            return 0;
+        }
+        dom_node_unref(parent);
+    }
+    *out_mode = mode;
+    return 1;
+}
+
+static int pcore_contenteditable_id_present(dom_node *node)
+{
+    dom_string *name;
+    dom_string *value;
+    const char *data;
+    size_t length;
+    int present;
+
+    if (node == NULL) {
+        return 0;
+    }
+    name = NULL;
+    value = NULL;
+    if (dom_string_create((const uint8_t *) "id", 2, &name) !=
+            DOM_NO_ERR || name == NULL ||
+            dom_element_get_attribute((dom_element *) node, name, &value) !=
+            DOM_NO_ERR) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        return 0;
+    }
+    data = (value != NULL) ? dom_string_data(value) : NULL;
+    length = (value != NULL) ? dom_string_byte_length(value) : 0;
+    present = value != NULL && length > 0 && data != NULL;
+    if (value != NULL) {
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return present;
+}
+
+static void pcore_contenteditable_box_geometry(struct box *box, int *x,
+        int *y, int *w, int *h)
+{
+    int ax;
+    int ay;
+
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    if (x != NULL) {
+        *x = ax - box->border[LEFT].width;
+    }
+    if (y != NULL) {
+        *y = ay - box->border[TOP].width;
+    }
+    if (w != NULL) {
+        *w = box->border[LEFT].width + box->padding[LEFT] + box->width +
+                box->padding[RIGHT] + box->border[RIGHT].width;
+    }
+    if (h != NULL) {
+        *h = box->border[TOP].width + box->padding[TOP] + box->height +
+                box->padding[BOTTOM] + box->border[BOTTOM].width;
+    }
+}
+
+/* Walk the styled DOM in document order and copy one bounded editing-host
+ * snapshot. Return 1 when the requested target was found, 2 when a caller
+ * buffer was too small, 0 when the subtree has no such target, and -1 on a
+ * DOM/layout failure. */
+static int pcore_contenteditable_target_walk(pcore_render *st,
+        dom_node *node, unsigned int depth, unsigned int wanted,
+        unsigned int *seen, PCoreContentEditableTargetInfo *out_info,
+        char *element_id, int id_capacity, char *text, int text_capacity)
+{
+    dom_node_type node_type;
+    dom_node *child;
+    dom_node *next;
+    dom_string *id_name;
+    dom_string *id_value;
+    dom_string *content;
+    struct box *box;
+    const char *id_data;
+    const char *text_data;
+    size_t id_length;
+    size_t text_length;
+    int mode;
+    int ax;
+    int ay;
+    int width;
+    int height;
+    int status;
+    int copy_length;
+    int result;
+
+    if (st == NULL || node == NULL || seen == NULL || out_info == NULL ||
+            depth > PCORE_FOCUS_WALK_DEPTH_MAX) {
+        return -1;
+    }
+    node_type = DOM_NODE_TYPE_COUNT;
+    if (dom_node_get_node_type(node, &node_type) != DOM_NO_ERR) {
+        return -1;
+    }
+    if (node_type == DOM_ELEMENT_NODE &&
+            pcore_contenteditable_host_mode(node, &mode) &&
+            pcore_contenteditable_id_present(node)) {
+        id_name = NULL;
+        id_value = NULL;
+        content = NULL;
+        if (dom_string_create((const uint8_t *) "id", 2, &id_name) !=
+                DOM_NO_ERR || id_name == NULL ||
+                dom_element_get_attribute((dom_element *) node, id_name,
+                &id_value) != DOM_NO_ERR || id_value == NULL ||
+                dom_node_get_text_content(node, &content) != DOM_NO_ERR ||
+                content == NULL) {
+            if (content != NULL) {
+                dom_string_unref(content);
+            }
+            if (id_value != NULL) {
+                dom_string_unref(id_value);
+            }
+            if (id_name != NULL) {
+                dom_string_unref(id_name);
+            }
+            return -1;
+        }
+        id_data = dom_string_data(id_value);
+        text_data = dom_string_data(content);
+        id_length = dom_string_byte_length(id_value);
+        text_length = dom_string_byte_length(content);
+        box = pcore_box_for_any_node(st->root_box, node);
+        if ((id_data == NULL && id_length != 0) ||
+                (text_data == NULL && text_length != 0) ||
+                id_length > (size_t) INT_MAX ||
+                text_length > (size_t) INT_MAX ||
+                text_length > PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES) {
+            dom_string_unref(content);
+            dom_string_unref(id_value);
+            dom_string_unref(id_name);
+            return -1;
+        }
+        if (box != NULL) {
+            pcore_contenteditable_box_geometry(box, &ax, &ay, &width,
+                    &height);
+            if (width > 0 && height > 0) {
+                if (*seen == wanted) {
+                    memset(out_info, 0, sizeof(*out_info));
+                    out_info->size = sizeof(*out_info);
+                    out_info->x = ax;
+                    out_info->y = ay;
+                    out_info->width = width;
+                    out_info->height = height;
+                    out_info->mode = mode;
+                    out_info->text_bytes = (int) text_length;
+                    out_info->id_bytes = (int) id_length;
+                    status = 0;
+                    if (element_id != NULL && id_capacity > 0) {
+                        copy_length = (id_capacity - 1 <
+                                (int) id_length) ? id_capacity - 1 :
+                                (int) id_length;
+                        if (copy_length > 0) {
+                            memcpy(element_id, id_data,
+                                    (size_t) copy_length);
+                        }
+                        element_id[copy_length] = '\0';
+                        if ((size_t) id_capacity <= id_length) {
+                            status = 2;
+                        }
+                    }
+                    if (text != NULL && text_capacity > 0) {
+                        copy_length = (text_capacity - 1 <
+                                (int) text_length) ? text_capacity - 1 :
+                                (int) text_length;
+                        if (copy_length > 0) {
+                            memcpy(text, text_data, (size_t) copy_length);
+                        }
+                        text[copy_length] = '\0';
+                        if ((size_t) text_capacity <= text_length) {
+                            status = 2;
+                        }
+                    }
+                    dom_string_unref(content);
+                    dom_string_unref(id_value);
+                    dom_string_unref(id_name);
+                    return status == 2 ? 2 : 1;
+                }
+                if (*seen == UINT_MAX) {
+                    dom_string_unref(content);
+                    dom_string_unref(id_value);
+                    dom_string_unref(id_name);
+                    return -1;
+                }
+                *seen += 1;
+            }
+        }
+        dom_string_unref(content);
+        dom_string_unref(id_value);
+        dom_string_unref(id_name);
+    }
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return -1;
+    }
+    while (child != NULL) {
+        result = pcore_contenteditable_target_walk(st, child, depth + 1U,
+                wanted, seen, out_info, element_id, id_capacity, text,
+                text_capacity);
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return -1;
+        }
+        dom_node_unref(child);
+        if (result != 0) {
+            if (next != NULL) {
+                dom_node_unref(next);
+            }
+            return result;
+        }
+        child = next;
+    }
+    return 0;
+}
+
+PCORE_API int PCore_ContentEditableTargetInfo(HANDLE hDoc,
+        unsigned int index, PCoreContentEditableTargetInfo *out_info,
+        char *element_id, int id_capacity, char *text, int text_capacity)
+{
+    dom_document *doc;
+    dom_element *root;
+    pcore_render *st;
+    unsigned int seen;
+    int result;
+
+    if (out_info == NULL || out_info->size < sizeof(*out_info) ||
+            hDoc == NULL || index >= PCORE_CONTENTEDITABLE_TARGET_MAX) {
+        return 1;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->size = sizeof(*out_info);
+    if (element_id != NULL && id_capacity > 0) {
+        element_id[0] = '\0';
+    }
+    if (text != NULL && text_capacity > 0) {
+        text[0] = '\0';
+    }
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL) {
+        return 1;
+    }
+    root = NULL;
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        if (root != NULL) {
+            dom_node_unref((dom_node *) root);
+        }
+        return 1;
+    }
+    seen = 0;
+    result = pcore_contenteditable_target_walk(st, (dom_node *) root, 0,
+            index, &seen, out_info, element_id, id_capacity, text,
+            text_capacity);
+    dom_node_unref((dom_node *) root);
+    return result == 1 || result == 2 ? (result == 2 ? 2 : 0) : 1;
+}
+
 static int pcore_focus_form_kind(struct form_control *gadget)
 {
     if (gadget == NULL) {
@@ -4719,6 +5023,7 @@ static int pcore_focus_target_for_element(pcore_render *st,
     int tabindex;
     int tabindex_present;
     int tabindex_valid;
+    int contenteditable_mode;
 
     if (out_tabindex != NULL) {
         *out_tabindex = 0;
@@ -4762,6 +5067,26 @@ static int pcore_focus_target_for_element(pcore_render *st,
         out_info->width = box->width;
         out_info->height = box->height;
         out_info->kind = kind;
+        if (out_tabindex != NULL && tabindex_present && tabindex_valid) {
+            *out_tabindex = tabindex;
+        }
+        return 1;
+    }
+    if (pcore_contenteditable_host_mode(node, &contenteditable_mode) &&
+            pcore_contenteditable_id_present(node)) {
+        if (tabindex_present && tabindex_valid && tabindex < 0) {
+            return 0;
+        }
+        box = pcore_box_for_any_node(st->root_box, node);
+        if (box == NULL || box->width <= 0 || box->height <= 0) {
+            return 0;
+        }
+        pcore_contenteditable_box_geometry(box, &ax, &ay, NULL, NULL);
+        out_info->x = ax;
+        out_info->y = ay;
+        pcore_contenteditable_box_geometry(box, NULL, NULL,
+                &out_info->width, &out_info->height);
+        out_info->kind = PCORE_FOCUS_TARGET_CONTENTEDITABLE;
         if (out_tabindex != NULL && tabindex_present && tabindex_valid) {
             *out_tabindex = tabindex;
         }
@@ -4833,7 +5158,6 @@ static int pcore_focus_target_for_element(pcore_render *st,
  * on the heap so a page with many focus targets cannot consume the small
  * device thread stack. */
 #define PCORE_FOCUS_TARGET_MAX 256U
-#define PCORE_FOCUS_WALK_DEPTH_MAX 64U
 
 typedef struct pcore_focus_candidate {
     PCoreFocusTargetInfo info;

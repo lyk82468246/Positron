@@ -273,6 +273,30 @@ PCORE_API int PCore_ContentEditableInfoById(HANDLE hDoc,
  * UTF-8. */
 PCORE_API int PCore_ContentEditableSetTextById(HANDLE hDoc,
         const char *element_id, const char *text);
+
+/* Bounded laid-out editing-host snapshot for a native/browser host. Only
+ * effective editing hosts with a non-empty id, a visible box and at most
+ * PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES of UTF-8 text are returned. A nested
+ * editable descendant is not a second host: the nearest effective editing
+ * ancestor owns the native surface. DOM order is stable and the index is
+ * bounded by PCORE_CONTENTEDITABLE_TARGET_MAX. The output structure must be
+ * size-tagged; id/text buffers are optional probes and report byte counts
+ * excluding their terminating NUL. Return 0 for a target, 1 for an absent
+ * target/layout or DOM failure, and 2 when a supplied buffer is too small. */
+#define PCORE_CONTENTEDITABLE_TARGET_MAX 16U
+typedef struct PCoreContentEditableTargetInfo {
+    unsigned long size;
+    int x;
+    int y;
+    int width;
+    int height;
+    int mode;
+    int text_bytes;
+    int id_bytes;
+} PCoreContentEditableTargetInfo;
+PCORE_API int PCore_ContentEditableTargetInfo(HANDLE hDoc,
+        unsigned int index, PCoreContentEditableTargetInfo *out_info,
+        char *element_id, int id_capacity, char *text, int text_capacity);
 /* Minimal UTF-8 attribute boundary for script/runtime hosts. The getter
  * returns 0 when present, 2 when the element exists but the attribute does
  * not, and 1 for invalid input/DOM failure. out_bytes excludes the NUL. */
@@ -492,6 +516,7 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
 #define PCORE_FOCUS_TARGET_LINK       11
 #define PCORE_FOCUS_TARGET_DISCLOSURE 12
 #define PCORE_FOCUS_TARGET_GENERIC    13
+#define PCORE_FOCUS_TARGET_CONTENTEDITABLE 14
 typedef struct PCoreFocusTargetInfo {
     int x;
     int y;

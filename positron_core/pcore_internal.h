@@ -45,6 +45,11 @@ css_computed_style *pcore_document_default_style(struct dom_document *doc);
 int pcore_node_effectively_disabled(struct dom_node *node, bool *applies,
         bool *disabled);
 
+/* Resolve the effective contenteditable mode for a borrowed element node.
+ * Unlike the public DOM query this helper does not consume the node
+ * reference; it is used by layout/focus snapshots inside the core DLL. */
+int pcore_contenteditable_mode(struct dom_node *node, int *out_mode);
+
 /* The engine's unit-conversion context (viewport + dpi), for feeding NetSurf
  * layout's html_content.unit_len_ctx. Implemented in pcore_select.c. */
 const css_unit_ctx *pcore_get_unit_ctx(void);

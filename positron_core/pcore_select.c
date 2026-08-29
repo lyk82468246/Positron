@@ -5772,6 +5772,17 @@ static int pcore_contenteditable_mode_take(dom_node *node, int *out_mode)
     return 0;
 }
 
+int pcore_contenteditable_mode(dom_node *node, int *out_mode)
+{
+    if (node == NULL || out_mode == NULL) {
+        if (out_mode != NULL) {
+            *out_mode = PCORE_CONTENTEDITABLE_MODE_NONE;
+        }
+        return 1;
+    }
+    return pcore_contenteditable_mode_take(dom_node_ref(node), out_mode);
+}
+
 PCORE_API int PCore_ContentEditableInfoById(HANDLE hDoc,
         const char *element_id, PCoreContentEditableInfo *out_info)
 {

@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1109
+#define TEST_MAX_NUMBER 1110
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -6019,6 +6019,9 @@ static int    g_native_modal_paint_probe = 0;
 static int    g_native_modal_paint_probe_ok = 0;
 static char   g_native_modal_paint_probe_detail[512];
 static int    g_native_modal_paint_branch_seen = 0;
+static int    g_native_contenteditable_probe = 0;
+static int    g_native_contenteditable_probe_ok = 0;
+static char   g_native_contenteditable_probe_detail[512];
 static HANDLE g_toggle_focus_document = NULL;
 static unsigned int g_toggle_focus_index = 0;
 static int    g_toggle_focus_kind = 0;
@@ -7186,7 +7189,13 @@ static const char *pcore_browse_history_navigation_state(const char *url,
 typedef struct pcore_native_edit {
     HWND hwnd;
     unsigned int text_index;
+    unsigned int contenteditable_index;
+    unsigned long target_token;
+    int content_editable;
     int multiline;
+    char *content_editable_id;
+    int native_change_expected;
+    int native_mutation_in_progress;
     unsigned int pending_high_surrogate;
     UINT pending_high_message;
     LPARAM pending_high_lparam;
@@ -7195,6 +7204,74 @@ typedef struct pcore_native_edit {
     char *composition_data;
     WNDPROC original_proc;
 } pcore_native_edit;
+
+/* Resolve one native EDIT's current Core geometry. Form controls retain the
+ * historical TextInputInfo path; contenteditable entries use the bounded
+ * layout snapshot and are addressed by editing-host index. */
+static int pcore_native_edit_geometry_info(
+        const pcore_native_edit *native_edit, int *out_x, int *out_y,
+        int *out_width, int *out_height, int *out_password,
+        int *out_disabled)
+{
+    PCoreTextInputInfo text_info;
+    PCoreContentEditableTargetInfo content_info;
+
+    if (native_edit == NULL || g_render_doc == NULL) {
+        return 0;
+    }
+    if (native_edit->content_editable) {
+        memset(&content_info, 0, sizeof(content_info));
+        content_info.size = sizeof(content_info);
+        if (PCore_ContentEditableTargetInfo(g_render_doc,
+                native_edit->contenteditable_index, &content_info,
+                NULL, 0, NULL, 0) != 0) {
+            return 0;
+        }
+        if (out_x != NULL) {
+            *out_x = content_info.x;
+        }
+        if (out_y != NULL) {
+            *out_y = content_info.y;
+        }
+        if (out_width != NULL) {
+            *out_width = content_info.width;
+        }
+        if (out_height != NULL) {
+            *out_height = content_info.height;
+        }
+        if (out_password != NULL) {
+            *out_password = 0;
+        }
+        if (out_disabled != NULL) {
+            *out_disabled = 0;
+        }
+        return 1;
+    }
+    memset(&text_info, 0, sizeof(text_info));
+    if (PCore_TextInputInfo(g_render_doc, native_edit->text_index,
+            &text_info, NULL, 0) != 0) {
+        return 0;
+    }
+    if (out_x != NULL) {
+        *out_x = text_info.x;
+    }
+    if (out_y != NULL) {
+        *out_y = text_info.y;
+    }
+    if (out_width != NULL) {
+        *out_width = text_info.width;
+    }
+    if (out_height != NULL) {
+        *out_height = text_info.height;
+    }
+    if (out_password != NULL) {
+        *out_password = text_info.password;
+    }
+    if (out_disabled != NULL) {
+        *out_disabled = text_info.disabled;
+    }
+    return 1;
+}
 
 static pcore_native_edit *g_native_edits = NULL;
 static unsigned int g_native_edit_count = 0;
@@ -7233,6 +7310,8 @@ static int pcore_browser_script_dispatch_input_event(HWND control,
 static int pcore_browser_script_dispatch_input_event_ex(HWND control,
         const char *event_type, const char *input_type, const char *data,
         int cancelable, int is_composing);
+static int pcore_browser_script_session_evaluate(const char *source,
+        int source_len, char *error, int error_capacity);
 static int pcore_browser_script_dispatch_native_edit_beforeinput(
         HWND control, const char *input_type, const char *data,
         int cancelable, int is_composing);
@@ -7243,6 +7322,7 @@ static int pcore_browser_script_dispatch_native_edit_composition(
         HWND control, int phase, const char *data, int *out_default_allowed);
 static void pcore_browser_script_dispatch_native_edit_result(
         HWND control, const char *data);
+static void pcore_native_edit_changed(HWND edit);
 static int pcore_browser_script_dispatch_native_select_commit(HWND control);
 static int pcore_browser_script_dispatch_native_select_focus(HWND control,
         int focused);
@@ -7600,9 +7680,18 @@ static int pcore_native_edit_dispatch_beforeinput(HWND hwnd,
 {
     int default_allowed;
 
+    if (native_edit != NULL) {
+        /* Older WinCE EDIT controls can emit more than one EN_CHANGE for a
+         * single WM mutation. Consume at most one as the matching Browser
+         * input transaction; spurious notifications must not manufacture an
+         * empty input event. */
+        native_edit->native_change_expected = 1;
+    }
     default_allowed = pcore_browser_script_dispatch_input_event(hwnd,
             input_type, data);
-    (void) native_edit;
+    if (native_edit != NULL && !default_allowed) {
+        native_edit->native_change_expected = 0;
+    }
     return default_allowed;
 }
 
@@ -7781,6 +7870,114 @@ static void pcore_native_edit_result_probe_run(void)
     pcore_native_edit_end_composition(hwnd, native_edit,
             g_native_ime_candidate);
     g_native_ime_result_probe_ok = 1;
+}
+
+/* Exercise the real WM EDIT proxy used for a contenteditable editing host.
+ * This probe deliberately uses the native selection (select-all) only to
+ * keep the test deterministic; Core still receives one bounded text value
+ * and Browser owns the cancelable beforeinput/input ordering. */
+static void pcore_native_contenteditable_probe_run(HWND parent)
+{
+    pcore_native_edit *native_edit;
+    char events[512];
+    char text[256];
+    char error[192];
+    unsigned int i;
+    int found;
+    int bytes;
+    int width;
+    int height;
+    int native_length;
+    int text_result;
+    int result_result;
+    const char *stage;
+
+    g_native_contenteditable_probe_ok = 0;
+    g_native_contenteditable_probe_detail[0] = '\0';
+    native_edit = NULL;
+    found = 0;
+    bytes = 0;
+    native_length = 0;
+    text_result = 0;
+    result_result = 0;
+    stage = "setup";
+    memset(events, 0, sizeof(events));
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].content_editable &&
+                g_native_edits[i].hwnd != NULL) {
+            native_edit = &g_native_edits[i];
+            found = 1;
+            break;
+        }
+    }
+    if (!found || parent == NULL ||
+            !pcore_native_edit_geometry_info(native_edit, NULL, NULL,
+            &width, &height, NULL, NULL) || width <= 0 || height <= 0) {
+        _snprintf(g_native_contenteditable_probe_detail,
+                sizeof(g_native_contenteditable_probe_detail) - 1,
+                "missing native editing host count=%u", g_native_edit_count);
+        g_native_contenteditable_probe_detail[
+                sizeof(g_native_contenteditable_probe_detail) - 1] = '\0';
+        return;
+    }
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';", -1, error, sizeof(error)) != 0) {
+        stage = "reset-before";
+        goto failed;
+    }
+    stage = "first-char";
+    SetFocus(native_edit->hwnd);
+    SendMessage(native_edit->hwnd, EM_SETSEL, 0, (LPARAM) -1);
+    SendMessage(native_edit->hwnd, WM_CHAR, (WPARAM) '!', 0);
+    text_result = PCore_NodeTextContentById(g_render_doc, "editor", text,
+            sizeof(text), &bytes);
+    result_result = 0;
+    native_length = GetWindowTextLengthW(native_edit->hwnd);
+    if (text_result != 0 || strcmp(text, "!") != 0 ||
+            pcore_browser_script_session_evaluate(
+            "document.getElementById('result').textContent=window.events;",
+            -1, error, sizeof(error)) != 0 ||
+            (result_result = PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL)) != 0 || strcmp(events,
+            "beforeinput|insertText|!|false|input|insertText|!|false") !=
+            0) {
+        goto failed;
+    }
+    if (pcore_browser_script_session_evaluate(
+            "window.events='';", -1, error, sizeof(error)) != 0) {
+        stage = "reset-after";
+        goto failed;
+    }
+    stage = "cancel-char";
+    SendMessage(native_edit->hwnd, EM_SETSEL, 0, (LPARAM) -1);
+    SendMessage(native_edit->hwnd, WM_CHAR, (WPARAM) 'x', 0);
+    text_result = PCore_NodeTextContentById(g_render_doc, "editor", text,
+            sizeof(text), &bytes);
+    result_result = 0;
+    if (text_result != 0 || strcmp(text, "!") != 0 ||
+            pcore_browser_script_session_evaluate(
+            "document.getElementById('result').textContent=window.events;",
+            -1, error, sizeof(error)) != 0 ||
+            (result_result = PCore_NodeTextContentById(g_render_doc, "result", events,
+            sizeof(events), NULL)) != 0 || strcmp(events,
+            "beforeinput|insertText|x|true") != 0) {
+        goto failed;
+    }
+    g_native_contenteditable_probe_ok = 1;
+    return;
+
+failed:
+    _snprintf(g_native_contenteditable_probe_detail,
+            sizeof(g_native_contenteditable_probe_detail) - 1,
+            "stage=%s text_rc=%d result_rc=%d native_len=%d expected=%d "
+            "events=%s text=%s error=%s",
+            stage, text_result, result_result, native_length,
+            native_edit != NULL ? native_edit->native_change_expected : -1,
+            events, text, error);
+    g_native_contenteditable_probe_detail[
+            sizeof(g_native_contenteditable_probe_detail) - 1] = '\0';
 }
 
 static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
@@ -7978,6 +8175,19 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                         input_type, input_char) == 0) {
                     return 0;
                 }
+                if (native_edit->content_editable && input_type != NULL) {
+                    /* WinCE can notify EN_CHANGE before the EDIT has
+                     * committed its WM_CHAR. Defer that notification until
+                     * the default procedure has returned, then read the
+                     * final native value exactly once. */
+                    native_edit->native_mutation_in_progress = 1;
+                    native_result = (original != NULL) ?
+                            CallWindowProc(original, hwnd, msg, wp, lp) :
+                            DefWindowProc(hwnd, msg, wp, lp);
+                    native_edit->native_mutation_in_progress = 0;
+                    pcore_native_edit_changed(hwnd);
+                    return native_result;
+                }
             }
             if (msg == WM_PASTE &&
                     pcore_native_edit_dispatch_beforeinput(hwnd, native_edit,
@@ -8041,10 +8251,11 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
     pcore_browser_script_bridge *bridge;
     PBrowserScriptEditEventInfo edit_event_info;
     PBrowserScriptFocusEventInfo focus_info;
-    PCoreTextInputInfo text_info;
     unsigned int i;
     int x;
     int y;
+    int width;
+    int height;
     int is_edit_event;
     int is_focus_event;
     int rc;
@@ -8062,11 +8273,12 @@ static void pcore_browser_script_dispatch_control_event(HWND control,
     is_edit_event = strcmp(event_type, "change") == 0;
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
-                PCore_TextInputInfo(g_render_doc,
-                        g_native_edits[i].text_index, &text_info,
-                        NULL, 0) == 0) {
-            x = text_info.x + text_info.width / 2;
-            y = text_info.y + text_info.height / 2;
+                pcore_native_edit_geometry_info(&g_native_edits[i],
+                        &x, &y, &width, &height, NULL, NULL)) {
+            /* The helper returns the rectangle origin; events target its
+             * stable center just like the legacy form path. */
+            x += width / 2;
+            y += height / 2;
             if (is_focus_event && bridge != NULL &&
                     bridge->session != NULL) {
                 memset(&focus_info, 0, sizeof(focus_info));
@@ -8694,10 +8906,11 @@ static int pcore_browser_script_dispatch_char_at(int x, int y,
 static int pcore_browser_script_dispatch_key_event(HWND control,
         const char *event_type, WPARAM wp, LPARAM lp, int system_key)
 {
-    PCoreTextInputInfo text_info;
     unsigned int i;
     int x;
     int y;
+    int width;
+    int height;
 
     if (control == NULL || event_type == NULL || g_render_doc == NULL ||
             g_browser_script_session.document != g_render_doc ||
@@ -8706,11 +8919,10 @@ static int pcore_browser_script_dispatch_key_event(HWND control,
     }
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
-                PCore_TextInputInfo(g_render_doc,
-                        g_native_edits[i].text_index, &text_info,
-                        NULL, 0) == 0) {
-            x = text_info.x + text_info.width / 2;
-            y = text_info.y + text_info.height / 2;
+                pcore_native_edit_geometry_info(&g_native_edits[i],
+                        &x, &y, &width, &height, NULL, NULL)) {
+            x += width / 2;
+            y += height / 2;
             return pcore_browser_script_dispatch_key_at(x, y,
                     event_type, wp, lp, system_key,
                     g_native_edits[i].composition_active);
@@ -8778,10 +8990,11 @@ static int pcore_browser_script_dispatch_char_event(HWND control,
         const char *event_type, unsigned long codepoint, LPARAM lp,
         int system_key)
 {
-    PCoreTextInputInfo text_info;
     unsigned int i;
     int x;
     int y;
+    int width;
+    int height;
 
     if (control == NULL || event_type == NULL || g_render_doc == NULL ||
             g_browser_script_session.document != g_render_doc ||
@@ -8790,11 +9003,10 @@ static int pcore_browser_script_dispatch_char_event(HWND control,
     }
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
-                PCore_TextInputInfo(g_render_doc,
-                        g_native_edits[i].text_index, &text_info,
-                        NULL, 0) == 0) {
-            x = text_info.x + text_info.width / 2;
-            y = text_info.y + text_info.height / 2;
+                pcore_native_edit_geometry_info(&g_native_edits[i],
+                        &x, &y, &width, &height, NULL, NULL)) {
+            x += width / 2;
+            y += height / 2;
             return pcore_browser_script_dispatch_char_at(x, y,
                     event_type, codepoint, lp, system_key,
                     g_native_edits[i].composition_active);
@@ -8834,8 +9046,9 @@ static int pcore_browser_script_dispatch_select_char_event(HWND control,
 static int pcore_browser_script_native_edit_geometry(HWND control,
         unsigned long *out_token, int *out_x, int *out_y)
 {
-    PCoreTextInputInfo text_info;
     unsigned int i;
+    int width;
+    int height;
 
     if (control == NULL || out_token == NULL || out_x == NULL ||
             out_y == NULL || g_render_doc == NULL) {
@@ -8843,12 +9056,11 @@ static int pcore_browser_script_native_edit_geometry(HWND control,
     }
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
-                PCore_TextInputInfo(g_render_doc,
-                        g_native_edits[i].text_index, &text_info,
-                        NULL, 0) == 0) {
-            *out_token = (unsigned long) g_native_edits[i].text_index + 1UL;
-            *out_x = text_info.x + text_info.width / 2;
-            *out_y = text_info.y + text_info.height / 2;
+                pcore_native_edit_geometry_info(&g_native_edits[i],
+                        out_x, out_y, &width, &height, NULL, NULL)) {
+            *out_token = g_native_edits[i].target_token;
+            *out_x += width / 2;
+            *out_y += height / 2;
             return 1;
         }
     }
@@ -9034,11 +9246,12 @@ static int pcore_browser_script_dispatch_input_data_event(HWND control,
         int cancelable, int is_composing)
 {
     pcore_browser_script_bridge *bridge;
-    PCoreTextInputInfo text_info;
     PBrowserScriptInputEventInfo input_info;
     unsigned int i;
     int x;
     int y;
+    int width;
+    int height;
     int default_allowed;
     int rc;
 
@@ -9054,11 +9267,10 @@ static int pcore_browser_script_dispatch_input_data_event(HWND control,
     bridge = g_browser_script_session.bridge;
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
-                PCore_TextInputInfo(g_render_doc,
-                        g_native_edits[i].text_index, &text_info,
-                        NULL, 0) == 0) {
-            x = text_info.x + text_info.width / 2;
-            y = text_info.y + text_info.height / 2;
+                pcore_native_edit_geometry_info(&g_native_edits[i],
+                        &x, &y, &width, &height, NULL, NULL)) {
+            x += width / 2;
+            y += height / 2;
             if (strcmp(event_type, "beforeinput") == 0) {
                 return pcore_browser_script_dispatch_native_edit_beforeinput(
                         control, input_type, (data != NULL) ? data : "",
@@ -9266,6 +9478,8 @@ static void pcore_native_edits_destroy(void)
             g_native_edits[i].hwnd = NULL;
         }
         pcore_native_edit_clear_composition(&g_native_edits[i]);
+        free(g_native_edits[i].content_editable_id);
+        g_native_edits[i].content_editable_id = NULL;
     }
     free(g_native_edits);
     g_native_edits = NULL;
@@ -9276,7 +9490,6 @@ static void pcore_native_edits_destroy(void)
 static void pcore_native_edits_position(HWND parent)
 {
     RECT client;
-    PCoreTextInputInfo info;
     unsigned int i;
     int top;
     int left;
@@ -9289,15 +9502,13 @@ static void pcore_native_edits_position(HWND parent)
     GetClientRect(parent, &client);
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == NULL ||
-                PCore_TextInputInfo(g_render_doc,
-                        g_native_edits[i].text_index,
-                        &info, NULL, 0) != 0) {
+                !pcore_native_edit_geometry_info(&g_native_edits[i],
+                        &left, &top, &width, &height, NULL, NULL)) {
             continue;
         }
-        left = info.x;
-        top = info.y - g_scroll_y;
-        width = (info.width > 0) ? info.width : 1;
-        height = (info.height > 0) ? info.height : 1;
+        top -= g_scroll_y;
+        width = (width > 0) ? width : 1;
+        height = (height > 0) ? height : 1;
         MoveWindow(g_native_edits[i].hwnd, left, top,
                 width, height, TRUE);
         if (left + width <= client.left || left >= client.right ||
@@ -9313,12 +9524,19 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
 {
     pcore_native_edit *items;
     PCoreTextInputInfo info;
+    PCoreContentEditableTargetInfo content_info;
     HWND old_focus;
-    unsigned int focus_index;
-    unsigned int count;
+    unsigned int focus_slot;
+    unsigned int focus_text_index;
+    unsigned int form_count;
+    unsigned int content_count;
+    unsigned int total_count;
     unsigned int i;
+    unsigned int slot;
+    char *focus_content_id;
     WCHAR *wide_value;
     char *value;
+    char *id;
     char *edit_value;
     DWORD style;
     int edit_value_cap;
@@ -9326,39 +9544,74 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
     int source_index;
     int target_index;
     int value_cap;
+    int id_cap;
     int wide_cap;
 
     old_focus = preserve_focus ? GetFocus() : NULL;
-    focus_index = UINT_MAX;
+    focus_slot = UINT_MAX;
+    focus_text_index = UINT_MAX;
+    focus_content_id = NULL;
     if (old_focus != NULL) {
         for (i = 0; i < g_native_edit_count; i++) {
             if (g_native_edits[i].hwnd == old_focus) {
-                focus_index = g_native_edits[i].text_index;
+                if (g_native_edits[i].content_editable &&
+                        g_native_edits[i].content_editable_id != NULL) {
+                    focus_content_id = (char *) malloc(strlen(
+                            g_native_edits[i].content_editable_id) + 1);
+                    if (focus_content_id != NULL) {
+                        strcpy(focus_content_id,
+                                g_native_edits[i].content_editable_id);
+                    }
+                } else {
+                    focus_text_index = g_native_edits[i].text_index;
+                }
                 break;
             }
         }
     }
     pcore_native_edits_destroy();
     if (parent == NULL || g_render_doc == NULL) {
+        free(focus_content_id);
         return;
     }
-    count = 0;
-    while (PCore_TextInputInfo(g_render_doc, count,
+    form_count = 0;
+    while (PCore_TextInputInfo(g_render_doc, form_count,
             NULL, NULL, 0) == 0) {
-        count++;
+        if (form_count == UINT_MAX) {
+            free(focus_content_id);
+            return;
+        }
+        form_count++;
     }
-    if (count == 0) {
+    content_count = 0;
+    while (content_count < PCORE_CONTENTEDITABLE_TARGET_MAX) {
+        memset(&content_info, 0, sizeof(content_info));
+        content_info.size = sizeof(content_info);
+        if (PCore_ContentEditableTargetInfo(g_render_doc, content_count,
+                &content_info, NULL, 0, NULL, 0) != 0) {
+            break;
+        }
+        content_count++;
+    }
+    if (form_count > UINT_MAX - content_count) {
+        free(focus_content_id);
         return;
     }
-    items = (pcore_native_edit *) calloc(count,
+    total_count = form_count + content_count;
+    if (total_count == 0) {
+        free(focus_content_id);
+        return;
+    }
+    items = (pcore_native_edit *) calloc(total_count,
             sizeof(pcore_native_edit));
     if (items == NULL) {
+        free(focus_content_id);
         return;
     }
     g_native_edits = items;
-    g_native_edit_count = count;
+    g_native_edit_count = total_count;
     g_native_edit_syncing = 1;
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < form_count; i++) {
         memset(&info, 0, sizeof(info));
         if (PCore_TextInputInfo(g_render_doc, i, &info,
                 NULL, 0) != 0 ||
@@ -9423,6 +9676,9 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
                 parent, (HMENU) (INT_PTR) (1000 + i),
                 GetModuleHandle(NULL), NULL);
         items[i].text_index = i;
+        items[i].contenteditable_index = UINT_MAX;
+        items[i].target_token = (unsigned long) i + 1UL;
+        items[i].content_editable = 0;
         items[i].multiline = multiline;
         if (edit_value != value) {
             free(edit_value);
@@ -9447,13 +9703,115 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
             EnableWindow(items[i].hwnd, FALSE);
         }
     }
+    for (i = 0; i < content_count; i++) {
+        slot = form_count + i;
+        memset(&content_info, 0, sizeof(content_info));
+        content_info.size = sizeof(content_info);
+        if (PCore_ContentEditableTargetInfo(g_render_doc, i,
+                &content_info, NULL, 0, NULL, 0) != 0 ||
+                content_info.id_bytes < 1 || content_info.text_bytes < 0) {
+            continue;
+        }
+        id = (char *) malloc((size_t) content_info.id_bytes + 1);
+        value = (char *) malloc((size_t) content_info.text_bytes + 1);
+        if (id == NULL || value == NULL) {
+            free(id);
+            free(value);
+            continue;
+        }
+        id_cap = content_info.id_bytes + 1;
+        value_cap = content_info.text_bytes + 1;
+        memset(&content_info, 0, sizeof(content_info));
+        content_info.size = sizeof(content_info);
+        if (PCore_ContentEditableTargetInfo(g_render_doc, i,
+                &content_info, id, id_cap, value, value_cap) != 0) {
+            free(id);
+            free(value);
+            continue;
+        }
+        edit_value = value;
+        wide_cap = content_info.text_bytes + 1;
+        if (content_info.text_bytes <= INT_MAX / 2) {
+            edit_value_cap = content_info.text_bytes * 2 + 1;
+            edit_value = (char *) malloc((size_t) edit_value_cap);
+            if (edit_value != NULL) {
+                source_index = 0;
+                target_index = 0;
+                while (value[source_index] != '\0' &&
+                        target_index + 2 < edit_value_cap) {
+                    if (value[source_index] == '\n') {
+                        edit_value[target_index++] = '\r';
+                    }
+                    edit_value[target_index++] = value[source_index++];
+                }
+                edit_value[target_index] = '\0';
+                wide_cap = edit_value_cap;
+            } else {
+                edit_value = value;
+            }
+        }
+        wide_value = (WCHAR *) malloc((size_t) wide_cap * sizeof(WCHAR));
+        if (wide_value == NULL) {
+            if (edit_value != value) {
+                free(edit_value);
+            }
+            free(value);
+            free(id);
+            continue;
+        }
+        utf8_to_wide(edit_value, -1, wide_value, wide_cap);
+        style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT |
+                ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL;
+        items[slot].hwnd = CreateWindowW(L"EDIT", wide_value, style,
+                content_info.x, content_info.y - g_scroll_y,
+                (content_info.width > 0) ? content_info.width : 1,
+                (content_info.height > 0) ? content_info.height : 1,
+                parent, (HMENU) (INT_PTR) (1000 + slot),
+                GetModuleHandle(NULL), NULL);
+        items[slot].text_index = UINT_MAX;
+        items[slot].contenteditable_index = i;
+        items[slot].target_token = (unsigned long) slot + 1UL;
+        items[slot].content_editable = 1;
+        items[slot].multiline = 1;
+        items[slot].content_editable_id = id;
+        id = NULL;
+        if (edit_value != value) {
+            free(edit_value);
+        }
+        free(value);
+        free(wide_value);
+        if (items[slot].hwnd == NULL) {
+            continue;
+        }
+        SetWindowLong(items[slot].hwnd, GWL_USERDATA, (LONG) (slot + 1));
+        items[slot].original_proc = (WNDPROC) SetWindowLong(
+                items[slot].hwnd, GWL_WNDPROC, (LONG) pcore_native_edit_proc);
+        SendMessage(items[slot].hwnd, WM_SETFONT,
+                (WPARAM) GetStockObject(SYSTEM_FONT), TRUE);
+        SendMessage(items[slot].hwnd, EM_LIMITTEXT,
+                (WPARAM) PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES, 0);
+    }
     g_native_edit_syncing = 0;
     pcore_native_edits_position(parent);
-    if (focus_index != UINT_MAX && focus_index < count &&
-            items[focus_index].hwnd != NULL &&
-            IsWindowEnabled(items[focus_index].hwnd)) {
-        SetFocus(items[focus_index].hwnd);
-        SendMessage(items[focus_index].hwnd, EM_SETSEL,
+    if (focus_content_id != NULL) {
+        for (i = form_count; i < total_count; i++) {
+            if (items[i].content_editable &&
+                    items[i].content_editable_id != NULL &&
+                    strcmp(items[i].content_editable_id,
+                    focus_content_id) == 0) {
+                focus_slot = i;
+                break;
+            }
+        }
+    } else if (focus_text_index != UINT_MAX && focus_text_index < form_count) {
+        focus_slot = focus_text_index;
+    }
+    free(focus_content_id);
+    if (focus_slot != UINT_MAX && focus_slot < total_count &&
+            items[focus_slot].hwnd != NULL &&
+            IsWindowEnabled(items[focus_slot].hwnd)) {
+        SetFocus(items[focus_slot].hwnd);
+        SendMessage(items[focus_slot].hwnd, EM_SETSEL,
                 0, (LPARAM) -1);
     }
 }
@@ -9462,6 +9820,7 @@ static void pcore_native_edit_changed(HWND edit)
 {
     WCHAR *wide_value;
     char *value;
+    pcore_native_edit *native_edit;
     LONG stored_index;
     int set_result;
     int wide_len;
@@ -9471,8 +9830,22 @@ static void pcore_native_edit_changed(HWND edit)
         return;
     }
     stored_index = GetWindowLong(edit, GWL_USERDATA);
-    if (stored_index <= 0) {
+    if (stored_index <= 0 ||
+            (unsigned long) stored_index > (unsigned long)
+            g_native_edit_count) {
         return;
+    }
+    native_edit = &g_native_edits[stored_index - 1];
+    if (native_edit->content_editable &&
+            native_edit->native_mutation_in_progress) {
+        return;
+    }
+    if (native_edit->content_editable &&
+            !native_edit->native_change_expected) {
+        return;
+    }
+    if (native_edit->content_editable) {
+        native_edit->native_change_expected = 0;
     }
     SendMessage(edit, EM_FMTLINES, FALSE, 0);
     wide_len = GetWindowTextLengthW(edit);
@@ -9498,12 +9871,36 @@ static void pcore_native_edit_changed(HWND edit)
                 value, utf8_len, NULL, NULL);
     }
     value[utf8_len] = '\0';
-    set_result = PCore_TextInputSetValue(g_render_doc,
-            (unsigned int) (stored_index - 1), value);
+    if (native_edit->content_editable) {
+        int source_index;
+        int target_index;
+
+        source_index = 0;
+        target_index = 0;
+        while (value[source_index] != '\0') {
+            if (value[source_index] == '\r') {
+                value[target_index++] = '\n';
+                source_index++;
+                if (value[source_index] == '\n') {
+                    source_index++;
+                }
+            } else {
+                value[target_index++] = value[source_index++];
+            }
+        }
+        value[target_index] = '\0';
+        set_result = (native_edit->content_editable_id != NULL) ?
+                PCore_ContentEditableSetTextById(g_render_doc,
+                native_edit->content_editable_id, value) : 1;
+    } else {
+        set_result = PCore_TextInputSetValue(g_render_doc,
+                (unsigned int) (stored_index - 1), value);
+    }
     if (set_result == 0) {
         (void) pcore_browser_script_dispatch_native_edit_input(edit);
     }
-    if (g_native_edit_probe && stored_index == 1) {
+    if (g_native_edit_probe && stored_index == 1 &&
+            !native_edit->content_editable) {
         g_native_edit_probe_seen = 1;
         g_native_edit_probe_set_result = set_result;
         g_native_edit_probe_value[0] = '\0';
@@ -9844,9 +10241,12 @@ static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
 
 static void pcore_native_focus_changed(HWND control)
 {
-    PCoreTextInputInfo text_info;
     PCoreSelectInfo select_info;
     unsigned int i;
+    int x;
+    int y;
+    int width;
+    int height;
     int result;
 
     if (control == NULL || g_render_doc == NULL ||
@@ -9858,12 +10258,10 @@ static void pcore_native_focus_changed(HWND control)
     pcore_disclosure_focus_clear();
     for (i = 0; i < g_native_edit_count; i++) {
         if (g_native_edits[i].hwnd == control &&
-                PCore_TextInputInfo(g_render_doc,
-                        g_native_edits[i].text_index,
-                        &text_info, NULL, 0) == 0) {
+                pcore_native_edit_geometry_info(&g_native_edits[i],
+                        &x, &y, &width, &height, NULL, NULL)) {
             result = PCore_InteractionSetAt(g_render_doc,
-                    text_info.x + text_info.width / 2,
-                    text_info.y + text_info.height / 2,
+                    x + width / 2, y + height / 2,
                     PCORE_INTERACTION_FOCUS);
             if (result > 0) {
                 pcore_request_interaction_restyle(GetParent(control));
@@ -15178,7 +15576,8 @@ static int pcore_button_focus_current(int *out_x, int *out_y,
 
 static int pcore_sequential_focus_kind_native(int kind)
 {
-    return kind >= 3 && kind <= 6;
+    return (kind >= 3 && kind <= 6) ||
+            kind == PCORE_FOCUS_TARGET_CONTENTEDITABLE;
 }
 
 static int pcore_sequential_focus_info_at(const char *modal_id,
@@ -15306,11 +15705,15 @@ static void pcore_sequential_focus_track_at(int x, int y)
 static HWND pcore_sequential_focus_native_window(
         const PCoreFocusTargetInfo *target)
 {
-    PCoreTextInputInfo text_info;
     PCoreSelectInfo select_info;
     unsigned int i;
     int multiline;
     int kind;
+    int x;
+    int y;
+    int width;
+    int height;
+    int password;
 
     if (target == NULL || g_render_doc == NULL) {
         return NULL;
@@ -15319,17 +15722,30 @@ static HWND pcore_sequential_focus_native_window(
         for (i = 0; i < g_native_edit_count; i++) {
             multiline = 0;
             if (g_native_edits[i].hwnd == NULL ||
-                    PCore_TextInputInfo(g_render_doc,
-                    g_native_edits[i].text_index, &text_info, NULL, 0) != 0 ||
+                    g_native_edits[i].content_editable ||
+                    !pcore_native_edit_geometry_info(&g_native_edits[i],
+                    &x, &y, &width, &height, &password, NULL) ||
                     PCore_TextInputIsMultiline(g_render_doc,
                     g_native_edits[i].text_index, &multiline) != 0) {
                 continue;
             }
-            kind = multiline ? 5 : (text_info.password ? 4 : 3);
-            if (kind == target->kind && text_info.x == target->x &&
-                    text_info.y == target->y &&
-                    text_info.width == target->width &&
-                    text_info.height == target->height) {
+            kind = multiline ? 5 : (password ? 4 : 3);
+            if (kind == target->kind && x == target->x &&
+                    y == target->y && width == target->width &&
+                    height == target->height) {
+                return g_native_edits[i].hwnd;
+            }
+        }
+    } else if (target->kind == PCORE_FOCUS_TARGET_CONTENTEDITABLE) {
+        for (i = 0; i < g_native_edit_count; i++) {
+            if (g_native_edits[i].hwnd == NULL ||
+                    !g_native_edits[i].content_editable ||
+                    !pcore_native_edit_geometry_info(&g_native_edits[i],
+                    &x, &y, &width, &height, NULL, NULL)) {
+                continue;
+            }
+            if (x == target->x && y == target->y &&
+                    width == target->width && height == target->height) {
                 return g_native_edits[i].hwnd;
             }
         }
@@ -15353,13 +15769,17 @@ static HWND pcore_sequential_focus_native_window(
 
 static int pcore_sequential_focus_capture_native(HWND control)
 {
-    PCoreTextInputInfo text_info;
     PCoreSelectInfo select_info;
     PCoreFocusTargetInfo target;
     unsigned int i;
     unsigned int target_index;
     int multiline;
     int target_kind;
+    int x;
+    int y;
+    int width;
+    int height;
+    int password;
     char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
     int scope;
 
@@ -15373,14 +15793,23 @@ static int pcore_sequential_focus_capture_native(HWND control)
     }
     memset(&target, 0, sizeof(target));
     for (i = 0; i < g_native_edit_count; i++) {
-        if (g_native_edits[i].hwnd != control ||
-                PCore_TextInputInfo(g_render_doc,
-                g_native_edits[i].text_index, &text_info, NULL, 0) != 0 ||
-                PCore_TextInputIsMultiline(g_render_doc,
-                g_native_edits[i].text_index, &multiline) != 0) {
+        if (g_native_edits[i].hwnd != control) {
             continue;
         }
-        target_kind = multiline ? 5 : (text_info.password ? 4 : 3);
+        if (!pcore_native_edit_geometry_info(&g_native_edits[i],
+                &x, &y, &width, &height, &password, NULL)) {
+            continue;
+        }
+        if (g_native_edits[i].content_editable) {
+            target_kind = PCORE_FOCUS_TARGET_CONTENTEDITABLE;
+        } else {
+            multiline = 0;
+            if (PCore_TextInputIsMultiline(g_render_doc,
+                    g_native_edits[i].text_index, &multiline) != 0) {
+                continue;
+            }
+            target_kind = multiline ? 5 : (password ? 4 : 3);
+        }
         for (target_index = 0;
                 target_index < PCORE_SEQUENTIAL_FOCUS_MAX;
                 target_index++) {
@@ -15388,10 +15817,9 @@ static int pcore_sequential_focus_capture_native(HWND control)
                     target_index, &target) != 0) {
                 break;
             }
-            if (target.kind == target_kind && target.x == text_info.x &&
-                    target.y == text_info.y &&
-                    target.width == text_info.width &&
-                    target.height == text_info.height) {
+            if (target.kind == target_kind && target.x == x &&
+                    target.y == y && target.width == width &&
+                    target.height == height) {
                 pcore_sequential_focus_store(target_index, &target);
                 return 1;
             }
@@ -18968,6 +19396,9 @@ static BOOL show_render_window(void)
         UpdateWindow(hwnd);
     }
     SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
+    if (g_native_contenteditable_probe) {
+        pcore_native_contenteditable_probe_run(hwnd);
+    }
     if (g_native_modal_paint_probe) {
         if (!PostMessage(hwnd, WM_PCORE_MODAL_PAINT_PROBE, 0, 0)) {
             pcore_native_modal_paint_probe_run(hwnd);
@@ -24537,6 +24968,179 @@ static BOOL test1109_browser_content_editable_contract(void)
             "Core resolved inherited contenteditable state and bounded plain"
             " text mutation; Browser exposed isContentEditable/innerText and"
             " the host preserved beforeinput cancellation then input ordering.");
+    return TRUE;
+}
+
+/* TEST 1110 - native WM contenteditable editing-host bridge. */
+static BOOL test1110_browser_native_contenteditable_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='editor' contenteditable='true'>seed</div>"
+        "<div id='outer' contenteditable='true'><span id='leaf'>leaf</span>"
+        "</div><div id='blocked' contenteditable='false'>blocked</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font:14px sans-serif;color:#111;}"
+        "#editor,#outer,#blocked{display:block;width:220px;height:40px;"
+        "margin:4px;padding:2px;border:1px solid #555;background:#fff;}";
+    static const char LISTENER[] =
+        "window.events='';function record(e){"
+        "if(e.type==='beforeinput'&&e.data==='x'){e.preventDefault();}"
+        "window.events+=(window.events===''?'':'|')+e.type+'|'+"
+        "String(e.inputType||'')+'|'+String(e.data||'')+'|'+"
+        "String(e.defaultPrevented);}"
+        "var e=document.getElementById('editor');"
+        "e.addEventListener('beforeinput',record,false);"
+        "e.addEventListener('input',record,false);";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreContentEditableTargetInfo target;
+    PCoreFocusTargetInfo focus;
+    char id[64];
+    char value[128];
+    char text[512];
+    char error[512];
+    int executed;
+    int ignored;
+    int bytes;
+    int focus_count;
+    int focus_found;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&target, 0, sizeof(target));
+    memset(&focus, 0, sizeof(focus));
+    memset(id, 0, sizeof(id));
+    memset(value, 0, sizeof(value));
+    memset(text, 0, sizeof(text));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    bytes = 0;
+    focus_count = 0;
+    focus_found = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/native-contenteditable.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 320, 240) != 0 ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        target.size = sizeof(target);
+        if (PCore_ContentEditableTargetInfo(document, 0, &target, id,
+                sizeof(id), value, sizeof(value)) != 0 ||
+                strcmp(id, "editor") != 0 || strcmp(value, "seed") != 0 ||
+                target.mode != PCORE_CONTENTEDITABLE_MODE_TEXT ||
+                target.width <= 0 || target.height <= 0 ||
+                target.id_bytes != 6 || target.text_bytes != 4) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        memset(&target, 0, sizeof(target));
+        target.size = sizeof(target);
+        memset(id, 0, sizeof(id));
+        memset(value, 0, sizeof(value));
+        if (PCore_ContentEditableTargetInfo(document, 1, &target, id,
+                sizeof(id), value, sizeof(value)) != 0 ||
+                strcmp(id, "outer") != 0 || strcmp(value, "leaf") != 0 ||
+                PCore_ContentEditableTargetInfo(document, 2, &target, NULL,
+                0, NULL, 0) == 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        for (focus_count = 0; focus_count < 32; focus_count++) {
+            memset(&focus, 0, sizeof(focus));
+            if (PCore_FocusTargetInfo(document, (unsigned int) focus_count,
+                    &focus) != 0) {
+                break;
+            }
+            if (focus.kind == PCORE_FOCUS_TARGET_CONTENTEDITABLE) {
+                focus_found = 1;
+            }
+        }
+        if (!focus_found) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_native_contenteditable_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_contenteditable_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (ok && !g_native_contenteditable_probe_ok) {
+        _snprintf(error, sizeof(error) - 1, "%s",
+                g_native_contenteditable_probe_detail[0] != '\0' ?
+                g_native_contenteditable_probe_detail :
+                "native contenteditable probe did not complete");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (PCore_NodeTextContentById(document, "editor", text,
+            sizeof(text), &bytes) != 0 || strcmp(text, "!") != 0 ||
+            PCore_NodeTextContentById(document, "result", value,
+            sizeof(value), NULL) != 0 || strcmp(value,
+            "beforeinput|insertText|x|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "text=%s events=%s", text, value);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1110 FAIL", error[0] != '\0' ? error :
+                "native contenteditable editing host failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1110 OK",
+            "A real WM multiline EDIT proxy exposed a bounded contenteditable"
+            " host, preserved native focus and routed allowed/canceled"
+            " beforeinput through Core mutation and Browser input events.");
     return TRUE;
 }
 
@@ -82391,6 +82995,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1107: ok = test1107_browser_dialog_form_submission_contract(); break;
         case 1108: ok = test1108_browser_modal_paint_contract(); break;
         case 1109: ok = test1109_browser_content_editable_contract(); break;
+        case 1110: ok = test1110_browser_native_contenteditable_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
