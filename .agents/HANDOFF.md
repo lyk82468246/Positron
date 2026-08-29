@@ -9,7 +9,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前 Git 与工作区
 
 - 分支：`main`，接管时与 `origin/main` 同步。
-- 当前产品代码基线：`dd532ea0`（next654 的有界自定义 `tabindex` 顺序与普通元素焦点支持）。
+- 当前产品代码基线：`c610c1f2`（next654 的有界自定义 `tabindex` 顺序与普通元素焦点支持）。
 - 本批把焦点资格与排序放入 `positron_core.dll`，`test_host.exe` 只增加离线契约和现有 WM 焦点接线；没有修改工程配置或 tracked 测试选择。
 - `tmp/` 保存本地设备日志和截图，不跟踪。
 
