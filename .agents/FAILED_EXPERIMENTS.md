@@ -1,6 +1,6 @@
 # 失败实验与禁止恢复边界
 
-更新时间：2026-08-27
+更新时间：2026-08-29
 
 这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
@@ -12,6 +12,14 @@
 - **环境误报**：失败来自旧进程、DLL 混用或设备环境，仍需保留流程护栏。
 
 ## 失败与暂挂
+
+### next663 首轮设备门：Browser native callback 槽位不足 — 已替代
+
+问题：为 contenteditable 增加两个 selection callback 后，首轮 `1111,1110,1109,999` 设备门在 TEST1109 的 DOM bootstrap 阶段失败。源码和 staging 构建均成功，RAPI 部署也完成；失败发生在设备脚本 session 注册阶段，而不是 WMDC、Core 文档或测试断言。根因是 Browser 组合原本恰好占满 `PSCRIPT_MAX_NATIVE_FUNCTIONS=21` 个槽位，新 selection getter/setter 使注册超过上限。
+
+替代方案：把脚本 DLL 的公共上限提升到 23，保留固定槽位和 fail-closed 注册错误，不通过跳过 selection callback 或删减 Browser bridge 来绕过。第二轮同一设备门使用完整 Debug staging，通过 TEST1109、1110、1111、999（4/4，唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`）。
+
+决定：后续再增加 Browser 全局 callback 前，必须先核对当前实际注册数量和脚本槽位余量；若需要扩容，优先在 `positron_script` 公共常量中明确调整并更新资源预算文档，不能让 DOM bootstrap 在设备上静默失败。
 
 ### 2026-08-27 TEST 13 IANA 深链资源收集崩溃 — 已替代，禁止恢复隔离绕过
 

@@ -99,6 +99,8 @@ Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/
 
 `PCore_ContentEditableTargetInfo` 是宿主的 native editing-host 快照：它只返回已布局、可见且带非空 id 的有效 editing host，按 DOM 顺序限制为每页 16 个，文本限制为 8192 个 UTF-8 字节。嵌套且仅继承编辑状态的后代归最近 editing host 所有，不会产生第二个窗口。快照的几何和字符串只在当前文档/layout 仍有效时使用；文档 mutation 或重排后宿主应重新枚举并重建窗口。
 
+Core 不保存编辑选区，也不重新派发 `selectionchange`。Browser 以 JavaScript UTF-16 code-unit 偏移提供 `selectionStart`、`selectionEnd` 和 `selectionDirection`，并在范围实际改变时分发一次非冒泡、不可取消的 `selectionchange`；宿主可通过 `PBrowserScriptContentEditableSelectionCallbacks` 把这些范围映射到原生 EDIT，再用 `PBrowser_ScriptSessionNotifyContentEditableSelection` 报告原生范围变化。无法物化原生窗口时 Browser 保留脚本侧回退；宿主不得在 Core 中复制第二份文本或选区模型。
+
 ### `positron_browser.dll`
 
 Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
@@ -106,7 +108,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 有界 history entries、same-document state 和 traversal；
 - 浏览器 script session 与 bootstrap；
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
-- `isContentEditable`/`innerText` 的有界单元素纯文本桥；
+- `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、focus、composition、click 和导航协调；
 - timer、animation frame、microtask、idle、message 和页面生命周期队列；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
@@ -135,7 +137,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - DNS/TCP/TLS/HTTP 组合策略和资源调度；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
-- 把 Core 的 contenteditable 状态/文本 callback 注册到 Browser session，并把 WM/native 输入接到 `beforeinput`→Core mutation→`input` 顺序；宿主只保留窗口、焦点、坐标和原生默认动作；
+- 把 Core 的 contenteditable 状态/文本 callback 和 selection callback 注册到 Browser session，并把 WM/native 输入接到 `beforeinput`→Core mutation→`input` 顺序；宿主只保留窗口、焦点、坐标和原生选区，在范围变化后调用 Browser 的通知入口，不经 Core 重复派发 `selectionchange`；
 - 从 Browser 读取活动 modal id，并在 WM_PAINT 中调用 Core 的 modal paint 组合入口；
 - 决定何时启用浏览器 JavaScript；
 - 应用级崩溃恢复、持久化和日志。
@@ -164,8 +166,8 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 2. Browser session 注册有界 DOM/Event/platform callbacks；
 3. 按文档顺序执行允许的 inline/external script；
 4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；WM6 `EDIT` 可能在 `WM_CHAR` 默认处理完成前发送 `EN_CHANGE`，宿主必须在默认处理返回后读取最终值，避免把旧值提交为一次 mutation；
-5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation；
-6. Browser 派发 mutation 后的 `input`、`change`、focus 或 lifecycle 事件；
+5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation，Browser 的脚本 selection API 在可用时同步宿主原生选区；
+6. Browser 派发 mutation 后的 `input`、`change`、focus、`selectionchange` 或 lifecycle 事件；原生选区通知必须先由 Browser 去重，不能由宿主和 Core 各发一次；
 7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；
 8. 页面替换时销毁 session 与文档。
 
