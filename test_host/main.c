@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1106
+#define TEST_MAX_NUMBER 1107
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -6012,6 +6012,9 @@ static char   g_native_modal_focus_probe_detail[512];
 static int    g_native_modal_backdrop_probe = 0;
 static int    g_native_modal_backdrop_probe_ok = 0;
 static char   g_native_modal_backdrop_probe_detail[512];
+static int    g_native_dialog_form_probe = 0;
+static int    g_native_dialog_form_probe_ok = 0;
+static char   g_native_dialog_form_probe_detail[512];
 static HANDLE g_toggle_focus_document = NULL;
 static unsigned int g_toggle_focus_index = 0;
 static int    g_toggle_focus_kind = 0;
@@ -7333,6 +7336,7 @@ static int pcore_handle_sequential_link_keyboard(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp, int system_key);
 static void pcore_native_modal_focus_probe_run(HWND parent);
 static void pcore_native_modal_backdrop_probe_run(HWND parent);
+static void pcore_native_dialog_form_probe_run(HWND parent);
 
 static int pcore_native_script_active(void)
 {
@@ -14473,6 +14477,88 @@ static int pcore_browser_script_dispatch_file_event_at(int x, int y,
     return pcore_browser_script_dispatch_select_change_at(x, y);
 }
 
+/* Core resolves form ownership, effective method, nearest dialog and the
+ * submitter value. Browser owns the direct close/returnValue/close-event
+ * lifecycle. This host function only joins those DLL boundaries to the WM
+ * default-action path and never treats method=dialog as a navigation. */
+static int pcore_handle_dialog_form_default(HWND hwnd, int x, int y,
+        unsigned int text_index, int from_text_input)
+{
+    PCoreDialogFormSubmissionInfo info;
+    char *dialog_id;
+    char *return_value;
+    int result;
+    int closed;
+
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (from_text_input) {
+        result = PCore_FormDialogSubmissionForTextInput(g_render_doc,
+                text_index, &info, NULL, 0, NULL, 0);
+    } else {
+        result = PCore_FormDialogSubmissionAt(g_render_doc, x, y, &info,
+                NULL, 0, NULL, 0);
+    }
+    if (result == 0) {
+        return 0;
+    }
+    if (result == 2 || result == 5) {
+        return 1;
+    }
+    if (result != 4 || info.dialog_id_bytes <= 0 ||
+            info.return_value_bytes < 0 ||
+            info.dialog_id_bytes >= PBROWSER_SCRIPT_DIALOG_ID_MAX ||
+            info.return_value_bytes >= PBROWSER_SCRIPT_DIALOG_VALUE_MAX) {
+        show_error(L"Dialog form failed",
+                "Could not resolve the bounded dialog form result");
+        return 1;
+    }
+    dialog_id = (char *) malloc((size_t) info.dialog_id_bytes + 1);
+    return_value = (char *) malloc(
+            (size_t) info.return_value_bytes + 1);
+    if (dialog_id == NULL || return_value == NULL) {
+        free(dialog_id);
+        free(return_value);
+        show_error(L"Dialog form failed", "Out of memory");
+        return 1;
+    }
+    if (from_text_input) {
+        result = PCore_FormDialogSubmissionForTextInput(g_render_doc,
+                text_index, &info, dialog_id,
+                info.dialog_id_bytes + 1, return_value,
+                info.return_value_bytes + 1);
+    } else {
+        result = PCore_FormDialogSubmissionAt(g_render_doc, x, y, &info,
+                dialog_id, info.dialog_id_bytes + 1, return_value,
+                info.return_value_bytes + 1);
+    }
+    closed = 0;
+    if (result == 1 && pcore_native_script_active() &&
+            g_browser_script_session.bridge != NULL &&
+            g_browser_script_session.bridge->session != NULL) {
+        if (PBrowser_ScriptSessionCloseDialogById(
+                g_browser_script_session.bridge->session, dialog_id,
+                return_value, &closed) != PSCRIPT_OK) {
+            result = 4;
+        }
+    }
+    if (result == 1 && closed) {
+        pcore_toggle_focus_clear();
+        pcore_button_focus_clear();
+        pcore_disclosure_focus_clear();
+        pcore_sequential_focus_clear();
+        if (hwnd != NULL) {
+            pcore_request_interaction_restyle(hwnd);
+        }
+    } else if (result != 1) {
+        show_error(L"Dialog form failed",
+                "The form changed while its dialog result was committed");
+    }
+    free(dialog_id);
+    free(return_value);
+    return 1;
+}
+
 static int pcore_handle_form_button_default(HWND hwnd, int x, int y,
         int kind)
 {
@@ -14523,6 +14609,9 @@ static int pcore_handle_form_button_default(HWND hwnd, int x, int y,
             pcore_handle_invalid_form(hwnd, &validation);
         }
         return 1;
+    }
+    if (result == 6) {
+        return pcore_handle_dialog_form_default(hwnd, x, y, 0, 0);
     }
     if (result == 3) {
         navigate_multipart_submission(hwnd,
@@ -14611,6 +14700,14 @@ static void pcore_handle_form_enter(HWND hwnd, unsigned int text_index)
         if (PCore_FormValidationForTextInput(g_render_doc, text_index,
                 &validation)) {
             pcore_handle_invalid_form(hwnd, &validation);
+        }
+        return;
+    }
+    if (result == 6) {
+        if (pcore_browser_script_dispatch_form_event_for_text_input(
+                text_index, "submit")) {
+            (void) pcore_handle_dialog_form_default(hwnd, 0, 0,
+                    text_index, 1);
         }
         return;
     }
@@ -17163,6 +17260,153 @@ done:
     PostMessage(parent, WM_CLOSE, 0, 0);
 }
 
+static int pcore_native_dialog_form_read_state(char *out, int capacity,
+        char *error, int error_capacity)
+{
+    int bytes;
+
+    if (out == NULL || capacity <= 0 || error == NULL ||
+            error_capacity <= 0) {
+        return 0;
+    }
+    out[0] = '\0';
+    bytes = 0;
+    if (pcore_browser_script_session_evaluate(
+            "document.getElementById('result').textContent="
+            "events+'|'+String(d.open)+'|'+d.returnValue;", -1,
+            error, error_capacity) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", out,
+            capacity, &bytes) != 0 || bytes < 0 || bytes >= capacity) {
+        return 0;
+    }
+    return 1;
+}
+
+/* Exercise method=dialog through trusted pointer, canceled submit,
+ * HTMLElement.click() and native EDIT implicit submission. Core supplies the
+ * nearest dialog id and submitter value; Browser owns submit cancellation and
+ * direct close lifecycle; the host contributes only the WM entry points. */
+static void pcore_native_dialog_form_probe_run(HWND parent)
+{
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    char state[512];
+    char error[512];
+    const char *stage;
+    int active_bytes;
+    int accept_x;
+    int accept_y;
+    int accept_w;
+    int accept_h;
+    int accept_kind;
+    int accept_disabled;
+    int ok;
+
+    memset(modal_id, 0, sizeof(modal_id));
+    memset(state, 0, sizeof(state));
+    memset(error, 0, sizeof(error));
+    stage = "setup";
+    active_bytes = 0;
+    accept_x = 0;
+    accept_y = 0;
+    accept_w = 0;
+    accept_h = 0;
+    accept_kind = 0;
+    accept_disabled = 0;
+    ok = parent != NULL && g_render_doc != NULL &&
+            g_browser_script_session.bridge != NULL &&
+            g_browser_script_session.bridge->session != NULL;
+    if (!ok) {
+        goto failed;
+    }
+    if (PCore_FormControlInfoById(g_render_doc, "accept", &accept_x,
+            &accept_y, &accept_w, &accept_h, &accept_kind, NULL,
+            &accept_disabled) != 0 || accept_kind != 7 ||
+            accept_disabled || accept_w <= 0 || accept_h <= 0 ||
+            PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            strcmp(modal_id, "dialog") != 0 || active_bytes != 6) {
+        goto failed;
+    }
+    stage = "trusted-submit";
+    (void) SendMessage(parent, WM_LBUTTONDOWN, MK_LBUTTON,
+            MAKELPARAM((short) (accept_x + accept_w / 2),
+            (short) (accept_y + accept_h / 2)));
+    if (!IsWindow(parent) || PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            active_bytes != 0 || modal_id[0] != '\0' ||
+            !pcore_native_dialog_form_read_state(state, sizeof(state),
+            error, sizeof(error)) ||
+            strcmp(state, "submit;close;|false|accepted") != 0) {
+        goto failed;
+    }
+    stage = "canceled-submit";
+    if (pcore_browser_script_session_evaluate(
+            "events='';window.block=true;d.showModal();", -1,
+            error, sizeof(error)) != 0) {
+        goto failed;
+    }
+    (void) SendMessage(parent, WM_LBUTTONDOWN, MK_LBUTTON,
+            MAKELPARAM((short) (accept_x + accept_w / 2),
+            (short) (accept_y + accept_h / 2)));
+    if (!IsWindow(parent) || PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            strcmp(modal_id, "dialog") != 0 || active_bytes != 6 ||
+            !pcore_native_dialog_form_read_state(state, sizeof(state),
+            error, sizeof(error)) ||
+            strcmp(state, "submit;|true|accepted") != 0) {
+        goto failed;
+    }
+    stage = "programmatic-submit";
+    if (pcore_browser_script_session_evaluate(
+            "events='';window.block=false;accept.click();", -1,
+            error, sizeof(error)) != 0 ||
+            PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            active_bytes != 0 || modal_id[0] != '\0' ||
+            !pcore_native_dialog_form_read_state(state, sizeof(state),
+            error, sizeof(error)) ||
+            strcmp(state, "submit;close;|false|accepted") != 0) {
+        goto failed;
+    }
+    stage = "implicit-submit";
+    if (g_native_edit_count == 0 || g_native_edits[0].hwnd == NULL ||
+            pcore_browser_script_session_evaluate(
+            "events='';d.showModal();", -1, error, sizeof(error)) != 0) {
+        goto failed;
+    }
+    (void) SendMessage(g_native_edits[0].hwnd, WM_KEYDOWN,
+            VK_RETURN, 0);
+    if (!IsWindow(parent) || PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
+            active_bytes != 0 || modal_id[0] != '\0' ||
+            !pcore_native_dialog_form_read_state(state, sizeof(state),
+            error, sizeof(error)) ||
+            strcmp(state, "submit;close;|false|accepted") != 0) {
+        goto failed;
+    }
+    ok = 1;
+    goto done;
+
+failed:
+    _snprintf(g_native_dialog_form_probe_detail,
+            sizeof(g_native_dialog_form_probe_detail) - 1,
+            "stage=%s active=%s bytes=%d state=%s error=%s",
+            stage, modal_id, active_bytes, state,
+            error[0] != '\0' ? error : "(none)");
+    g_native_dialog_form_probe_detail[
+            sizeof(g_native_dialog_form_probe_detail) - 1] = '\0';
+    ok = 0;
+
+done:
+    g_native_dialog_form_probe_ok = ok;
+    PostMessage(parent, WM_CLOSE, 0, 0);
+}
+
 static void pcore_navigation_cleanup(void)
 {
     if (g_nav_thread != NULL) {
@@ -18565,6 +18809,9 @@ static BOOL show_render_window(void)
     }
     if (g_native_modal_backdrop_probe) {
         pcore_native_modal_backdrop_probe_run(hwnd);
+    }
+    if (g_native_dialog_form_probe) {
+        pcore_native_dialog_form_probe_run(hwnd);
     }
     /* Read-only view: hide the SIP button and keep the keyboard down. */
     SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
@@ -23367,6 +23614,310 @@ static BOOL test1106_browser_dialog_backdrop_pointer_contract(void)
             "An active modal consumes backdrop clicks, routes accepted"
             " clicks through cancel/close, keeps prevented cancellation open"
             " and prevents inert dialog interior taps from closing the view.");
+    return TRUE;
+}
+
+/* TEST 1107 - method=dialog form submission across Core, Browser and WM. */
+static BOOL test1107_browser_dialog_form_submission_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<dialog id='dialog'>"
+        "<form id='dialog-form' action='/dialog' method='dialog'>"
+        "<input id='field' name='field' value='alpha'>"
+        "<button id='accept' type='submit' name='choice' "
+        "value='accepted'>Accept</button>"
+        "<button id='network' type='submit' name='choice' "
+        "value='network' formmethod='get'>Network</button>"
+        "</form>"
+        "<form id='override-form' action='/override' method='get'>"
+        "<button id='override-dialog' type='submit' "
+        "formmethod='dialog' value='override'>Override</button>"
+        "</form></dialog>"
+        "<form id='orphan-form' action='/orphan' method='dialog'>"
+        "<button id='orphan' type='submit' value='orphan'>Orphan</button>"
+        "</form><p id='result'>pending</p>"
+        "<script>var d=document.getElementById('dialog');"
+        "var f=document.getElementById('dialog-form');"
+        "var accept=document.getElementById('accept');"
+        "window.events='';window.block=false;"
+        "f.addEventListener('submit',function(e){events+='submit;';"
+        "if(window.block){e.preventDefault();}});"
+        "d.addEventListener('cancel',function(e){events+='cancel;';});"
+        "d.addEventListener('close',function(e){events+='close;';});"
+        "d.showModal();</script></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "dialog{display:block;width:210px;height:190px;margin:12px;"
+        "border:2px solid #4060a0;padding:8px}"
+        "input,button{display:block;width:180px;height:24px;margin:4px}"
+        "#result{display:block;width:290px;height:40px;margin:4px}";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormSubmissionInfo submission;
+    PCoreDialogFormSubmissionInfo dialog_info;
+    char dialog_id[64];
+    char return_value[64];
+    char action[128];
+    char body[256];
+    char method_attr[32];
+    char result_text[512];
+    char error[512];
+    const char *stage;
+    int executed;
+    int ignored;
+    int result_bytes;
+    int accept_x;
+    int accept_y;
+    int accept_w;
+    int accept_h;
+    int network_x;
+    int network_y;
+    int network_w;
+    int network_h;
+    int override_x;
+    int override_y;
+    int override_w;
+    int override_h;
+    int orphan_x;
+    int orphan_y;
+    int orphan_w;
+    int orphan_h;
+    int result;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&submission, 0, sizeof(submission));
+    memset(&dialog_info, 0, sizeof(dialog_info));
+    memset(dialog_id, 0, sizeof(dialog_id));
+    memset(return_value, 0, sizeof(return_value));
+    memset(action, 0, sizeof(action));
+    memset(body, 0, sizeof(body));
+    memset(method_attr, 0, sizeof(method_attr));
+    memset(result_text, 0, sizeof(result_text));
+    memset(error, 0, sizeof(error));
+    stage = "parse";
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    accept_x = 0;
+    accept_y = 0;
+    accept_w = 0;
+    accept_h = 0;
+    network_x = 0;
+    network_y = 0;
+    network_w = 0;
+    network_h = 0;
+    override_x = 0;
+    override_y = 0;
+    override_w = 0;
+    override_h = 0;
+    orphan_x = 0;
+    orphan_y = 0;
+    orphan_w = 0;
+    orphan_h = 0;
+    result = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_native_dialog_form_probe_ok = 0;
+    _snprintf(g_native_dialog_form_probe_detail,
+            sizeof(g_native_dialog_form_probe_detail) - 1, "not-run");
+    g_native_dialog_form_probe_detail[
+            sizeof(g_native_dialog_form_probe_detail) - 1] = '\0';
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/dialog-form.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 420) != 0 ||
+                PCore_FormControlInfoById(document, "accept", &accept_x,
+                &accept_y, &accept_w, &accept_h, NULL, NULL, NULL) != 0 ||
+                PCore_FormControlInfoById(document, "network", &network_x,
+                &network_y, &network_w, &network_h, NULL, NULL, NULL) != 0 ||
+                PCore_FormControlInfoById(document, "override-dialog",
+                &override_x, &override_y, &override_w, &override_h, NULL,
+                NULL, NULL) != 0 ||
+                PCore_FormControlInfoById(document, "orphan", &orphan_x,
+                &orphan_y, &orphan_w, &orphan_h, NULL, NULL, NULL) != 0 ||
+                accept_w <= 0 || accept_h <= 0 || network_w <= 0 ||
+                network_h <= 0 || override_w <= 0 || override_h <= 0 ||
+                orphan_w <= 0 || orphan_h <= 0) {
+            ok = 0;
+        } else {
+            accept_x += accept_w / 2;
+            accept_y += accept_h / 2;
+            network_x += network_w / 2;
+            network_y += network_h / 2;
+            override_x += override_w / 2;
+            override_y += override_h / 2;
+            orphan_x += orphan_w / 2;
+            orphan_y += orphan_h / 2;
+            (void) PCore_NodeAttributeById(document, "dialog-form",
+                    "method", method_attr, sizeof(method_attr),
+                    &result_bytes);
+        }
+    }
+    if (ok) {
+        stage = "generic-dialog";
+        memset(&submission, 0, sizeof(submission));
+        result = PCore_FormSubmissionAt(document, accept_x, accept_y,
+                &submission, action, sizeof(action), body, sizeof(body));
+        if (result != 6 ||
+                submission.method != PCORE_FORM_METHOD_DIALOG) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "explicit-dialog";
+        memset(&dialog_info, 0, sizeof(dialog_info));
+        dialog_info.size = sizeof(dialog_info);
+        result = PCore_FormDialogSubmissionAt(document, accept_x, accept_y,
+                &dialog_info, NULL, 0, NULL, 0);
+        if (result != 4 || dialog_info.dialog_id_bytes != 6 ||
+                dialog_info.return_value_bytes != 8 ||
+                PCore_FormDialogSubmissionAt(document, accept_x, accept_y,
+                &dialog_info, dialog_id, sizeof(dialog_id), return_value,
+                sizeof(return_value)) != 1 ||
+                strcmp(dialog_id, "dialog") != 0 ||
+                strcmp(return_value, "accepted") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "implicit-dialog";
+        memset(&dialog_info, 0, sizeof(dialog_info));
+        dialog_info.size = sizeof(dialog_info);
+        if (PCore_FormDialogSubmissionForTextInput(document, 0,
+                &dialog_info, dialog_id, sizeof(dialog_id), return_value,
+                sizeof(return_value)) != 1 ||
+                strcmp(dialog_id, "dialog") != 0 ||
+                strcmp(return_value, "accepted") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "submitter-dialog-override";
+        memset(&dialog_info, 0, sizeof(dialog_info));
+        dialog_info.size = sizeof(dialog_info);
+        if (PCore_FormDialogSubmissionAt(document, override_x, override_y,
+                &dialog_info, dialog_id, sizeof(dialog_id), return_value,
+                sizeof(return_value)) != 1 ||
+                strcmp(dialog_id, "dialog") != 0 ||
+                strcmp(return_value, "override") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "submitter-network-override";
+        memset(&dialog_info, 0, sizeof(dialog_info));
+        dialog_info.size = sizeof(dialog_info);
+        memset(&submission, 0, sizeof(submission));
+        if (PCore_FormDialogSubmissionAt(document, network_x, network_y,
+                &dialog_info, dialog_id, sizeof(dialog_id), return_value,
+                sizeof(return_value)) != 0 ||
+                PCore_FormSubmissionAt(document, network_x, network_y,
+                &submission, action, sizeof(action), body, sizeof(body)) !=
+                1 || submission.method != PCORE_FORM_METHOD_GET ||
+                strcmp(body, "field=alpha&choice=network") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "orphan-dialog";
+        memset(&dialog_info, 0, sizeof(dialog_info));
+        dialog_info.size = sizeof(dialog_info);
+        memset(&submission, 0, sizeof(submission));
+        if (PCore_FormDialogSubmissionAt(document, orphan_x, orphan_y,
+                &dialog_info, dialog_id, sizeof(dialog_id), return_value,
+                sizeof(return_value)) != 2 ||
+                PCore_FormSubmissionAt(document, orphan_x, orphan_y,
+                &submission, action, sizeof(action), body, sizeof(body)) !=
+                6 || submission.method != PCORE_FORM_METHOD_DIALOG) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "native-window";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        g_native_dialog_form_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_dialog_form_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (ok && !g_native_dialog_form_probe_ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "native dialog form probe failed: %s",
+                g_native_dialog_form_probe_detail[0] != '\0' ?
+                g_native_dialog_form_probe_detail : "no detail");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    stage = ok ? "native-result" : stage;
+    if (ok && (PCore_NodeTextContentById(document, "result", result_text,
+            sizeof(result_text), &result_bytes) != 0 ||
+            strcmp(result_text, "submit;close;|false|accepted") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "actual[%d]=%s", result_bytes, result_text);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s result=%d method=%d raw-method=%s action=%s "
+                    "id=%s value=%s body=%s", stage, result,
+                    submission.method, method_attr, action, dialog_id,
+                    return_value, body);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1107 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1107 OK",
+            "Core resolves method=dialog and submitter overrides without"
+            " navigation; Browser and the WM host preserve validation and"
+            " cancelable submit ordering before direct close/returnValue for"
+            " trusted, programmatic and implicit submissions.");
     return TRUE;
 }
 
@@ -81218,6 +81769,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1104: ok = test1104_browser_dialog_escape_bridge_contract(); break;
         case 1105: ok = test1105_browser_dialog_focus_scope_contract(); break;
         case 1106: ok = test1106_browser_dialog_backdrop_pointer_contract(); break;
+        case 1107: ok = test1107_browser_dialog_form_submission_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

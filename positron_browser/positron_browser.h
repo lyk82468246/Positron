@@ -1196,6 +1196,16 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchKeyEvent(HANDLE hSession,
  * UTF-8, borrowed for the call, and may be NULL for the empty value. */
 PBROWSER_API int PBrowser_ScriptSessionRequestDialogClose(HANDLE hSession,
         const char *return_value, int *out_handled, int *out_closed);
+/* Directly close one open script-owned dialog addressed by UTF-8 DOM id.
+ * This follows dialog.close(value): it updates returnValue and dispatches
+ * close without a preceding cancel event. It is the Browser-side default
+ * action for a Core-resolved method="dialog" form after validation and the
+ * cancelable submit event have both succeeded. out_closed is 1 only when the
+ * id resolved to an open dialog and close committed. Strings are borrowed for
+ * the call, may not exceed the bounded dialog constants, and return_value may
+ * be NULL for the empty value. */
+PBROWSER_API int PBrowser_ScriptSessionCloseDialogById(HANDLE hSession,
+        const char *dialog_id, const char *return_value, int *out_closed);
 /* Read the id of the current script-owned modal dialog. The returned id is
  * UTF-8 and excludes the terminating NUL from out_bytes. An empty string and
  * zero bytes mean that no modal is active. The caller may probe with

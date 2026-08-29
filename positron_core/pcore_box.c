@@ -10088,15 +10088,24 @@ static int pcore_form_submission_method(
         dom_html_form_element *form, dom_node *activated)
 {
     if (activated != NULL &&
+            pcore_attr_value_is(activated, "formmethod", "dialog")) {
+        return PCORE_FORM_METHOD_DIALOG;
+    }
+    if (activated != NULL &&
             pcore_attr_value_is(activated, "formmethod", "post")) {
-        return 2;
+        return PCORE_FORM_METHOD_POST;
     }
     if (activated != NULL &&
             pcore_attr_value_is(activated, "formmethod", "get")) {
-        return 1;
+        return PCORE_FORM_METHOD_GET;
+    }
+    if (form != NULL && pcore_attr_value_is((dom_node *) form,
+            "method", "dialog")) {
+        return PCORE_FORM_METHOD_DIALOG;
     }
     return (form != NULL && pcore_attr_value_is((dom_node *) form,
-            "method", "post")) ? 2 : 1;
+            "method", "post")) ? PCORE_FORM_METHOD_POST :
+            PCORE_FORM_METHOD_GET;
 }
 
 static int pcore_form_submission_multipart(
@@ -10145,7 +10154,7 @@ static int pcore_form_submission(pcore_render *st,
     action_string = NULL;
     default_submit = NULL;
     memset(&buffer, 0, sizeof(buffer));
-    method = 1;
+    method = PCORE_FORM_METHOD_GET;
     result = 4;
     if (choose_default) {
         default_error = 0;
@@ -10162,14 +10171,21 @@ static int pcore_form_submission(pcore_render *st,
         result = 5;
         goto form_submission_done;
     }
+    method = pcore_form_submission_method(form, activated);
+    if (out_info != NULL) {
+        out_info->method = method;
+    }
+    if (method == PCORE_FORM_METHOD_DIALOG) {
+        result = 6;
+        goto form_submission_done;
+    }
     action_string = pcore_form_submission_action(form, activated);
     if (action_string == NULL) {
         goto form_submission_done;
     }
-    method = pcore_form_submission_method(form, activated);
-    if (method == 2) {
+    if (method == PCORE_FORM_METHOD_POST) {
         if (pcore_form_submission_multipart(form, activated)) {
-            method = 3;
+            method = PCORE_FORM_METHOD_MULTIPART;
         }
     }
     action_data = (action_string != NULL) ?
@@ -10180,7 +10196,7 @@ static int pcore_form_submission(pcore_render *st,
         out_info->method = method;
         out_info->action_bytes = (int) action_length;
     }
-    if (method == 3) {
+    if (method == PCORE_FORM_METHOD_MULTIPART) {
         result = 3;
         goto form_submission_done;
     }
@@ -10296,6 +10312,246 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
     }
     result = pcore_form_submission(st, form, NULL, 1, out_info,
             action, action_capacity, body, body_capacity);
+    dom_node_unref((dom_node *) form);
+    return result;
+}
+
+static dom_node *pcore_form_dialog_ancestor(dom_html_form_element *form)
+{
+    dom_node *current;
+    dom_node *parent;
+
+    current = (form != NULL) ? dom_node_ref((dom_node *) form) : NULL;
+    while (current != NULL) {
+        parent = NULL;
+        if (dom_node_get_parent_node(current, &parent) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return NULL;
+        }
+        dom_node_unref(current);
+        current = parent;
+        if (current != NULL && pcore_node_name_is(current, "dialog")) {
+            return current;
+        }
+    }
+    return NULL;
+}
+
+static dom_string *pcore_form_submitter_value(dom_node *activated)
+{
+    dom_string *value;
+
+    value = NULL;
+    if (activated == NULL) {
+        return NULL;
+    }
+    if (pcore_node_name_is(activated, "button")) {
+        if (dom_html_button_element_get_value(
+                (dom_html_button_element *) activated, &value) !=
+                DOM_NO_ERR) {
+            value = NULL;
+        }
+    } else if (pcore_node_name_is(activated, "input")) {
+        if (dom_html_input_element_get_value(
+                (dom_html_input_element *) activated, &value) !=
+                DOM_NO_ERR) {
+            value = NULL;
+        }
+    }
+    return value;
+}
+
+static int pcore_form_dialog_submission(pcore_render *st,
+        dom_html_form_element *form, dom_node *activated,
+        int choose_default, PCoreDialogFormSubmissionInfo *out_info,
+        char *dialog_id, int dialog_id_capacity,
+        char *return_value, int return_value_capacity)
+{
+    PCoreFormValidationInfo validation;
+    dom_node *default_submit;
+    dom_node *dialog;
+    dom_string *id;
+    dom_string *value;
+    const char *id_data;
+    const char *value_data;
+    size_t id_length;
+    size_t value_length;
+    int default_error;
+    int result;
+
+    if (dialog_id != NULL && dialog_id_capacity > 0) {
+        dialog_id[0] = '\0';
+    }
+    if (return_value != NULL && return_value_capacity > 0) {
+        return_value[0] = '\0';
+    }
+    if (out_info == NULL || out_info->size < sizeof(*out_info) ||
+            dialog_id_capacity < 0 || return_value_capacity < 0 ||
+            (dialog_id == NULL && dialog_id_capacity != 0) ||
+            (dialog_id != NULL && dialog_id_capacity == 0) ||
+            (return_value == NULL && return_value_capacity != 0) ||
+            (return_value != NULL && return_value_capacity == 0)) {
+        return 4;
+    }
+    out_info->dialog_id_bytes = 0;
+    out_info->return_value_bytes = 0;
+    if (st == NULL || form == NULL) {
+        return 0;
+    }
+    default_submit = NULL;
+    dialog = NULL;
+    id = NULL;
+    value = NULL;
+    result = 4;
+    if (choose_default) {
+        default_error = 0;
+        default_submit = pcore_form_first_submit(form, &default_error);
+        if (default_error) {
+            goto dialog_submission_done;
+        }
+        activated = default_submit;
+    }
+    if (pcore_form_submission_method(form, activated) !=
+            PCORE_FORM_METHOD_DIALOG) {
+        result = 0;
+        goto dialog_submission_done;
+    }
+    if (!pcore_form_validate(st, form, activated, &validation)) {
+        goto dialog_submission_done;
+    }
+    if (!validation.valid) {
+        result = 5;
+        goto dialog_submission_done;
+    }
+    dialog = pcore_form_dialog_ancestor(form);
+    if (dialog == NULL) {
+        result = 2;
+        goto dialog_submission_done;
+    }
+    id = pcore_event_element_id((dom_event_target *) dialog);
+    if (id == NULL || dom_string_byte_length(id) == 0) {
+        result = 2;
+        goto dialog_submission_done;
+    }
+    value = pcore_form_submitter_value(activated);
+    id_data = dom_string_data(id);
+    id_length = dom_string_byte_length(id);
+    value_data = (value != NULL) ? dom_string_data(value) : "";
+    value_length = (value != NULL) ? dom_string_byte_length(value) : 0;
+    if (id_data == NULL || id_length > (size_t) INT_MAX ||
+            value_length > (size_t) INT_MAX ||
+            (value_length > 0 && value_data == NULL)) {
+        goto dialog_submission_done;
+    }
+    out_info->dialog_id_bytes = (int) id_length;
+    out_info->return_value_bytes = (int) value_length;
+    if (dialog_id == NULL ||
+            dialog_id_capacity <= (int) id_length ||
+            return_value == NULL ||
+            return_value_capacity <= (int) value_length) {
+        goto dialog_submission_done;
+    }
+    memcpy(dialog_id, id_data, id_length);
+    dialog_id[id_length] = '\0';
+    if (value_length > 0) {
+        memcpy(return_value, value_data, value_length);
+    }
+    return_value[value_length] = '\0';
+    result = 1;
+
+dialog_submission_done:
+    if (value != NULL) {
+        dom_string_unref(value);
+    }
+    if (id != NULL) {
+        dom_string_unref(id);
+    }
+    if (dialog != NULL) {
+        dom_node_unref(dialog);
+    }
+    if (default_submit != NULL) {
+        dom_node_unref(default_submit);
+    }
+    return result;
+}
+
+PCORE_API int PCore_FormDialogSubmissionAt(HANDLE hDoc, int x, int y,
+        PCoreDialogFormSubmissionInfo *out_info,
+        char *dialog_id, int dialog_id_capacity,
+        char *return_value, int return_value_capacity)
+{
+    pcore_render *st;
+    struct box *hit;
+    struct box *box;
+    struct form_control *control;
+    dom_html_form_element *form;
+    bool effective_disabled;
+    int result;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL) {
+        return 0;
+    }
+    hit = pcore_hit(st->root_box, x, y);
+    for (box = hit; box != NULL && box->gadget == NULL;
+            box = box->parent) {
+        /* Resolve submit-button text to its gadget-bearing ancestor. */
+    }
+    control = (box != NULL) ? box->gadget : NULL;
+    if (control == NULL || control->type != GADGET_SUBMIT) {
+        return 0;
+    }
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
+        return 0;
+    }
+    form = pcore_control_form(control);
+    if (form == NULL) {
+        return 0;
+    }
+    result = pcore_form_dialog_submission(st, form, control->node, 0,
+            out_info, dialog_id, dialog_id_capacity, return_value,
+            return_value_capacity);
+    dom_node_unref((dom_node *) form);
+    return result;
+}
+
+PCORE_API int PCore_FormDialogSubmissionForTextInput(HANDLE hDoc,
+        unsigned int text_index, PCoreDialogFormSubmissionInfo *out_info,
+        char *dialog_id, int dialog_id_capacity,
+        char *return_value, int return_value_capacity)
+{
+    pcore_render *st;
+    struct box *box;
+    struct form_control *control;
+    dom_html_form_element *form;
+    unsigned int current;
+    bool effective_disabled;
+    int result;
+
+    st = pcore_get_render((dom_document *) hDoc);
+    current = 0;
+    box = (st != NULL) ?
+            pcore_text_input_at(st->root_box, text_index, &current) : NULL;
+    control = (box != NULL) ? box->gadget : NULL;
+    if (control == NULL ||
+            (control->type != GADGET_TEXTBOX &&
+            control->type != GADGET_PASSWORD)) {
+        return 0;
+    }
+    effective_disabled = control->disabled;
+    if (pcore_node_effectively_disabled(control->node, NULL,
+            &effective_disabled) != 0 || effective_disabled) {
+        return 0;
+    }
+    form = pcore_control_form(control);
+    if (form == NULL) {
+        return 0;
+    }
+    result = pcore_form_dialog_submission(st, form, NULL, 1, out_info,
+            dialog_id, dialog_id_capacity, return_value,
+            return_value_capacity);
     dom_node_unref((dom_node *) form);
     return result;
 }

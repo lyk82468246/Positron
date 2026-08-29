@@ -953,6 +953,17 @@ typedef struct PCoreFormSubmissionInfo {
     int body_bytes;
 } PCoreFormSubmissionInfo;
 
+#define PCORE_FORM_METHOD_GET        1
+#define PCORE_FORM_METHOD_POST       2
+#define PCORE_FORM_METHOD_MULTIPART  3
+#define PCORE_FORM_METHOD_DIALOG     4
+
+typedef struct PCoreDialogFormSubmissionInfo {
+    unsigned long size;
+    int dialog_id_bytes;
+    int return_value_bytes;
+} PCoreDialogFormSubmissionInfo;
+
 /* Constraint-validation result for one form submission target. The first
  * invalid control uses PCore_FormControlInfo kind values and absolute
  * document CSS-px geometry so a platform host can reveal and focus it. */
@@ -1129,9 +1140,9 @@ PCORE_API int PCore_FormGetCustomValidityForTextarea(HANDLE hDoc,
                                     char *message, unsigned int capacity);
 
 /* Build the application/x-www-form-urlencoded successful-control set for a
- * submit button at a document-space point. method is 1 for GET, 2 for an
- * urlencoded POST and 3 for unsupported multipart POST. action/body receive
- * UTF-8 and are NUL-terminated when their capacities are positive.
+ * submit button at a document-space point. method uses the
+ * PCORE_FORM_METHOD_* constants. action/body receive UTF-8 and are
+ * NUL-terminated when their capacities are positive.
  *
  * Return values:
  *   0: no button at the point
@@ -1140,6 +1151,7 @@ PCORE_API int PCore_FormGetCustomValidityForTextarea(HANDLE hDoc,
  *   3: multipart/file submission is not implemented
  *   4: DOM/allocation/output-buffer failure
  *   5: constraint validation blocked submission
+ *   6: effective method is dialog; use PCore_FormDialogSubmissionAt
  *
  * The successful-control policy follows NetSurf form.c: disabled or unnamed
  * controls and unchecked checkbox/radio inputs are skipped, selected options
@@ -1159,6 +1171,38 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
                                     PCoreFormSubmissionInfo *out_info,
                                     char *action, int action_capacity,
                                     char *body, int body_capacity);
+
+/* Resolve the default action of a method="dialog" form submission without
+ * exposing DOM nodes. The explicit form addresses a laid-out submit button
+ * by document-space point; the implicit form uses the first enabled submit
+ * button owned by one enumerated single-line text/password control. A
+ * successful result returns the nearest ancestor dialog's non-empty UTF-8 id
+ * and the submitter's optional value. Both byte counts exclude NUL and are
+ * reported on a size probe; capacities must include the complete string and
+ * terminator. The form is constraint-validated before any result is exposed.
+ *
+ * Return values:
+ *   0: no matching submit target, or its effective method is not dialog
+ *   1: dialog id and return value are complete
+ *   2: method=dialog consumed submission, but no addressable ancestor dialog
+ *   4: DOM/output-buffer failure
+ *   5: constraint validation blocked submission
+ *
+ * This query does not dispatch submit/close events or mutate `open`; the
+ * Browser session owns that lifecycle after the host accepts the submit
+ * event. A dialog without an id is deliberately unaddressable by the current
+ * bounded Browser DOM bridge and therefore returns 2 without navigation. */
+PCORE_API int PCore_FormDialogSubmissionAt(HANDLE hDoc, int x, int y,
+                                    PCoreDialogFormSubmissionInfo *out_info,
+                                    char *dialog_id, int dialog_id_capacity,
+                                    char *return_value,
+                                    int return_value_capacity);
+PCORE_API int PCore_FormDialogSubmissionForTextInput(HANDLE hDoc,
+                                    unsigned int text_index,
+                                    PCoreDialogFormSubmissionInfo *out_info,
+                                    char *dialog_id, int dialog_id_capacity,
+                                    char *return_value,
+                                    int return_value_capacity);
 
 typedef struct PCoreMultipartSubmissionInfo {
     int action_bytes;

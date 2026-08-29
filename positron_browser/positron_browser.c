@@ -814,6 +814,10 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "return owner.open?2:1;};"
         "g.__pcoreDialogActiveId=function(){var owner=pDialogActiveModal();"
         "return owner===null?'':String(owner.__id||'');};"
+        "g.__pcoreDialogCloseById=function(id,value){var owner;"
+        "owner=g.document&&g.document.getElementById(String(id||''));"
+        "if(!owner||owner.localName!=='dialog'||!owner.open){return 0;}"
+        "owner.close(value===undefined?'':value);return owner.open?0:1;};"
         "Object.defineProperty(PElement.prototype,'textContent',{"
         "get:function(){return __pcoreGetText({id:this.__id});},"
         "set:function(v){if(!__pcoreSetText({id:this.__id,text:String(v)}))"
@@ -6262,6 +6266,64 @@ PBROWSER_API int PBrowser_ScriptSessionRequestDialogClose(HANDLE hSession,
     }
     cleanup_rc = PScript_Evaluate(session->runtime,
             "delete this.__pcoreDialogRequestValue;", -1);
+    if (rc == PSCRIPT_OK && cleanup_rc != PSCRIPT_OK) {
+        rc = cleanup_rc;
+    }
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionCloseDialogById(HANDLE hSession,
+        const char *dialog_id, const char *return_value, int *out_closed)
+{
+    p_browser_script_session *session;
+    const char *value;
+    const char *result;
+    int rc;
+    int cleanup_rc;
+
+    if (out_closed != NULL) {
+        *out_closed = 0;
+    }
+    session = p_script_session(hSession);
+    value = (return_value != NULL) ? return_value : "";
+    if (!p_script_session_valid(session) || dialog_id == NULL ||
+            dialog_id[0] == '\0' || out_closed == NULL ||
+            strlen(dialog_id) >= PBROWSER_SCRIPT_DIALOG_ID_MAX ||
+            strlen(value) >= PBROWSER_SCRIPT_DIALOG_VALUE_MAX) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = PScript_SetGlobalString(session->runtime,
+            "__pcoreDialogCloseId", -1, dialog_id, -1);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    rc = PScript_SetGlobalString(session->runtime,
+            "__pcoreDialogCloseValue", -1, value, -1);
+    if (rc != PSCRIPT_OK) {
+        (void) PScript_Evaluate(session->runtime,
+                "delete this.__pcoreDialogCloseId;", -1);
+        return rc;
+    }
+    rc = PScript_Evaluate(session->runtime,
+            "typeof __pcoreDialogCloseById==='function'?"
+            "__pcoreDialogCloseById(__pcoreDialogCloseId,"
+            "__pcoreDialogCloseValue):0;", -1);
+    if (rc == PSCRIPT_OK) {
+        result = PScript_GetResult(session->runtime);
+        if (result == NULL) {
+            rc = PSCRIPT_ERROR_EVALUATION;
+        } else if (strcmp(result, "0") == 0) {
+            rc = PSCRIPT_OK;
+        } else if (strcmp(result, "1") == 0) {
+            *out_closed = 1;
+            rc = PSCRIPT_OK;
+        } else {
+            rc = PSCRIPT_ERROR_EVALUATION;
+        }
+    }
+    cleanup_rc = PScript_Evaluate(session->runtime,
+            "delete this.__pcoreDialogCloseId;"
+            "delete this.__pcoreDialogCloseValue;", -1);
     if (rc == PSCRIPT_OK && cleanup_rc != PSCRIPT_OK) {
         rc = cleanup_rc;
     }
