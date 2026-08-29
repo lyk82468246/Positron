@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1113
+#define TEST_MAX_NUMBER 1114
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -7201,6 +7201,10 @@ typedef struct pcore_native_edit {
     int native_selection_mouse_active;
     int native_selection_mouse_anchor;
     int native_selection_mouse_anchor_valid;
+    int native_selection_keyboard_active;
+    int native_selection_keyboard_anchor;
+    int native_selection_keyboard_anchor_valid;
+    int native_selection_shift_down;
     unsigned int pending_high_surrogate;
     UINT pending_high_message;
     LPARAM pending_high_lparam;
@@ -7528,7 +7532,8 @@ static void pcore_native_edit_selection_mouse_begin(
     native_edit->native_selection_mouse_active = 1;
     native_edit->native_selection_mouse_anchor_valid = 0;
     native_edit->native_selection_direction_valid = 0;
-    if ((wp & MK_SHIFT) != 0 || GetKeyState(VK_SHIFT) < 0 ||
+    if ((wp & MK_SHIFT) != 0 || native_edit->native_selection_shift_down ||
+            GetKeyState(VK_SHIFT) < 0 ||
             !pcore_native_edit_selection_native_range(native_edit,
             &native_start, &native_end)) {
         return;
@@ -7554,6 +7559,105 @@ static void pcore_native_edit_selection_mouse_update(
     }
 }
 
+static int pcore_native_edit_selection_navigation_key(UINT msg, WPARAM wp)
+{
+    if (msg != WM_KEYDOWN) {
+        return 0;
+    }
+    return wp == VK_LEFT || wp == VK_RIGHT || wp == VK_UP ||
+            wp == VK_DOWN || wp == VK_HOME || wp == VK_END;
+}
+
+static void pcore_native_edit_selection_keyboard_begin(
+        pcore_native_edit *native_edit)
+{
+    int native_start;
+    int native_end;
+    int anchor;
+    int shift;
+    int previous_direction;
+    int previous_direction_valid;
+
+    if (native_edit == NULL || native_edit->native_selection_keyboard_active) {
+        return;
+    }
+    previous_direction = native_edit->native_selection_direction;
+    previous_direction_valid = native_edit->native_selection_direction_valid;
+    native_edit->native_selection_keyboard_active = 1;
+    native_edit->native_selection_keyboard_anchor_valid = 0;
+    native_edit->native_selection_direction_valid = 0;
+    if (!pcore_native_edit_selection_native_range(native_edit,
+            &native_start, &native_end)) {
+        return;
+    }
+    shift = native_edit->native_selection_shift_down ||
+            GetKeyState(VK_SHIFT) < 0;
+    anchor = native_end;
+    if (native_start == native_end) {
+        anchor = native_start;
+    } else if (shift && previous_direction_valid) {
+        if (previous_direction ==
+                PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD) {
+            anchor = native_start;
+        } else if (previous_direction ==
+                PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+            anchor = native_end;
+        }
+    } else if (!shift && previous_direction_valid &&
+            previous_direction ==
+            PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+        anchor = native_start;
+    }
+    native_edit->native_selection_keyboard_anchor = anchor;
+    native_edit->native_selection_keyboard_anchor_valid = 1;
+}
+
+static void pcore_native_edit_selection_keyboard_direction(
+        pcore_native_edit *native_edit)
+{
+    int native_start;
+    int native_end;
+    int direction;
+
+    if (native_edit == NULL ||
+            !native_edit->native_selection_keyboard_active ||
+            !native_edit->native_selection_keyboard_anchor_valid ||
+            !pcore_native_edit_selection_native_range(native_edit,
+            &native_start, &native_end)) {
+        if (native_edit != NULL) {
+            native_edit->native_selection_direction_valid = 0;
+        }
+        return;
+    }
+    if (native_end <= native_start) {
+        direction = PBROWSER_SCRIPT_CONTENT_SELECTION_NONE;
+    } else if (native_edit->native_selection_keyboard_anchor <= native_start) {
+        direction = PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD;
+    } else if (native_edit->native_selection_keyboard_anchor >= native_end) {
+        direction = PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD;
+    } else {
+        native_edit->native_selection_direction_valid = 0;
+        return;
+    }
+    native_edit->native_selection_direction = direction;
+    native_edit->native_selection_direction_valid = 1;
+}
+
+static void pcore_native_edit_selection_keyboard_update(
+        pcore_native_edit *native_edit, int final_update)
+{
+    if (native_edit == NULL ||
+            !native_edit->native_selection_keyboard_active) {
+        return;
+    }
+    pcore_native_edit_selection_keyboard_direction(native_edit);
+    pcore_native_edit_selection_changed(native_edit, 1);
+    if (final_update) {
+        native_edit->native_selection_keyboard_active = 0;
+        native_edit->native_selection_keyboard_anchor_valid = 0;
+    }
+}
+
 static pcore_native_edit *g_native_edits = NULL;
 static unsigned int g_native_edit_count = 0;
 static int g_native_edit_syncing = 0;
@@ -7566,6 +7670,9 @@ static char g_native_edit_probe_value[32];
 static int g_native_contenteditable_mouse_probe = 0;
 static int g_native_contenteditable_mouse_probe_ok = 0;
 static char g_native_contenteditable_mouse_probe_detail[512];
+static int g_native_contenteditable_keyboard_probe = 0;
+static int g_native_contenteditable_keyboard_probe_ok = 0;
+static char g_native_contenteditable_keyboard_probe_detail[512];
 static int g_native_form_enter_probe = 0;
 static int g_native_form_enter_probe_seen = 0;
 static int g_native_form_enter_probe_ok = 0;
@@ -8419,6 +8526,223 @@ static void pcore_native_contenteditable_mouse_probe_run(HWND parent)
     g_native_contenteditable_mouse_probe_ok = 1;
 }
 
+static void pcore_native_contenteditable_keyboard_probe_run(HWND parent)
+{
+    pcore_native_edit *native_edit;
+    char result[512];
+    char error[256];
+    const char *stage;
+    unsigned int i;
+    int found;
+    int anchor_x;
+    int anchor_y;
+    int left_x;
+    int left_y;
+
+    g_native_contenteditable_keyboard_probe_ok = 0;
+    g_native_contenteditable_keyboard_probe_detail[0] = '\0';
+    native_edit = NULL;
+    stage = "find-edit";
+    found = 0;
+    anchor_x = 0;
+    anchor_y = 0;
+    left_x = 0;
+    left_y = 0;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    if (parent == NULL) {
+        _snprintf(g_native_contenteditable_keyboard_probe_detail,
+                sizeof(g_native_contenteditable_keyboard_probe_detail) - 1,
+                "missing render parent");
+        g_native_contenteditable_keyboard_probe_detail[
+                sizeof(g_native_contenteditable_keyboard_probe_detail) - 1] =
+                '\0';
+        return;
+    }
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].content_editable &&
+                g_native_edits[i].hwnd != NULL) {
+            native_edit = &g_native_edits[i];
+            found = 1;
+            break;
+        }
+    }
+    if (!found || !pcore_native_edit_mouse_point_for_char(native_edit->hwnd,
+            4, &anchor_x, &anchor_y) ||
+            !pcore_native_edit_mouse_point_for_char(native_edit->hwnd,
+            1, &left_x, &left_y)) {
+        _snprintf(g_native_contenteditable_keyboard_probe_detail,
+                sizeof(g_native_contenteditable_keyboard_probe_detail) - 1,
+                "missing edit or EM_POSFROMCHAR points count=%u",
+                g_native_edit_count);
+        g_native_contenteditable_keyboard_probe_detail[
+                sizeof(g_native_contenteditable_keyboard_probe_detail) - 1] =
+                '\0';
+        return;
+    }
+    stage = "listener";
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "window.kCount=0;window.kValid=true;window.kDirs='';"
+            "function kRecord(ev){var t=ev.target;var d=t.selectionDirection;"
+            "var a=t.selectionStart;var b=t.selectionEnd;"
+            "if(t.id!=='editor'||ev.isTrusted!==true||ev.bubbles!==false||"
+            "ev.cancelable!==false){window.kValid=false;}"
+            "if(a>b){window.kValid=false;}"
+            "window.kDirs+=(window.kDirs===''?'':',')+d;window.kCount++;}"
+            "e.addEventListener('selectionchange',kRecord,false);",
+            -1, error, sizeof(error)) != 0) {
+        goto failed;
+    }
+    SetFocus(native_edit->hwnd);
+
+    stage = "keyboard-backward";
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "e.setSelectionRange(4,4,'none');window.kCount=0;"
+            "window.kValid=true;window.kDirs='';", -1, error,
+            sizeof(error)) != 0) {
+        goto failed;
+    }
+    SendMessage(native_edit->hwnd, WM_KEYDOWN, VK_SHIFT, 0);
+    SendMessage(native_edit->hwnd, WM_KEYDOWN, VK_LEFT, 0);
+    /* SendMessage does not update WinCE's keyboard-state table, so the
+     * default EDIT procedure cannot observe synthetic Shift in this probe.
+     * Replace only the native range between key-down and key-up; the
+     * subclass still has to infer the bounded direction from its Shift
+     * anchor and report the resulting trusted event. */
+    SendMessage(native_edit->hwnd, EM_SETSEL, 3, 4);
+    if (pcore_browser_script_session_evaluate(
+            "window.kCount=0;window.kValid=true;window.kDirs='';", -1,
+            error, sizeof(error)) != 0) {
+        goto failed;
+    }
+    SendMessage(native_edit->hwnd, WM_KEYUP, VK_LEFT, 0);
+    SendMessage(native_edit->hwnd, WM_KEYUP, VK_SHIFT, 0);
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "document.getElementById('result').textContent="
+            "(window.kValid&&window.kCount===1&&window.kDirs==='backward'&&"
+            "e.selectionStart===3&&e.selectionEnd===4&&"
+            "e.selectionDirection==='backward')?'keyboard-backward-ok':"
+            "'keyboard-backward-bad|'+window.kCount+'|'+window.kDirs+'|'"
+            "+e.selectionStart+'|'+e.selectionEnd+'|'"
+            "+e.selectionDirection;", -1, error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", result,
+            sizeof(result), NULL) != 0 ||
+            strcmp(result, "keyboard-backward-ok") != 0) {
+        goto failed;
+    }
+
+    stage = "keyboard-forward";
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "e.setSelectionRange(2,2,'none');window.kCount=0;"
+            "window.kValid=true;window.kDirs='';", -1, error,
+            sizeof(error)) != 0) {
+        goto failed;
+    }
+    SendMessage(native_edit->hwnd, WM_KEYDOWN, VK_SHIFT, 0);
+    SendMessage(native_edit->hwnd, WM_KEYDOWN, VK_RIGHT, 0);
+    SendMessage(native_edit->hwnd, EM_SETSEL, 2, 3);
+    if (pcore_browser_script_session_evaluate(
+            "window.kCount=0;window.kValid=true;window.kDirs='';", -1,
+            error, sizeof(error)) != 0) {
+        goto failed;
+    }
+    SendMessage(native_edit->hwnd, WM_KEYUP, VK_RIGHT, 0);
+    SendMessage(native_edit->hwnd, WM_KEYUP, VK_SHIFT, 0);
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "document.getElementById('result').textContent="
+            "(window.kValid&&window.kCount===1&&window.kDirs==='forward'&&"
+            "e.selectionStart===2&&e.selectionEnd===3&&"
+            "e.selectionDirection==='forward')?'keyboard-forward-ok':"
+            "'keyboard-forward-bad|'+window.kCount+'|'+window.kDirs+'|'"
+            "+e.selectionStart+'|'+e.selectionEnd+'|'"
+            "+e.selectionDirection;", -1, error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", result,
+            sizeof(result), NULL) != 0 ||
+            strcmp(result, "keyboard-forward-ok") != 0) {
+        goto failed;
+    }
+
+    stage = "capture-loss";
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "e.setSelectionRange(4,4,'none');window.kCount=0;"
+            "window.kValid=true;window.kDirs='';", -1, error,
+            sizeof(error)) != 0) {
+        goto failed;
+    }
+    SetFocus(native_edit->hwnd);
+    SendMessage(native_edit->hwnd, WM_LBUTTONDOWN, MK_LBUTTON,
+            MAKELPARAM(anchor_x, anchor_y));
+    SendMessage(native_edit->hwnd, WM_MOUSEMOVE, MK_LBUTTON,
+            MAKELPARAM(left_x, left_y));
+    SendMessage(native_edit->hwnd, WM_CAPTURECHANGED, 0, 0);
+    SendMessage(native_edit->hwnd, WM_LBUTTONUP, 0,
+            MAKELPARAM(left_x, left_y));
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "document.getElementById('result').textContent="
+            "(window.kValid&&window.kCount===1&&window.kDirs==='backward'&&"
+            "e.selectionStart===1&&e.selectionEnd===4&&"
+            "e.selectionDirection==='backward')?'capture-loss-ok':"
+            "'capture-loss-bad|'+window.kCount+'|'+window.kDirs+'|'"
+            "+e.selectionStart+'|'+e.selectionEnd+'|'"
+            "+e.selectionDirection;", -1, error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", result,
+            sizeof(result), NULL) != 0 ||
+            strcmp(result, "capture-loss-ok") != 0) {
+        goto failed;
+    }
+
+    stage = "focus-loss";
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "e.setSelectionRange(4,4,'none');window.kCount=0;"
+            "window.kValid=true;window.kDirs='';", -1, error,
+            sizeof(error)) != 0) {
+        goto failed;
+    }
+    SetFocus(native_edit->hwnd);
+    SendMessage(native_edit->hwnd, WM_LBUTTONDOWN, MK_LBUTTON,
+            MAKELPARAM(anchor_x, anchor_y));
+    SendMessage(native_edit->hwnd, WM_MOUSEMOVE, MK_LBUTTON,
+            MAKELPARAM(left_x, left_y));
+    SetFocus(parent);
+    SendMessage(native_edit->hwnd, WM_LBUTTONUP, 0,
+            MAKELPARAM(left_x, left_y));
+    SetFocus(native_edit->hwnd);
+    if (pcore_browser_script_session_evaluate(
+            "var e=document.getElementById('editor');"
+            "document.getElementById('result').textContent="
+            "(window.kValid&&window.kCount===1&&window.kDirs==='backward'&&"
+            "e.selectionStart===1&&e.selectionEnd===4&&"
+            "e.selectionDirection==='backward')?'focus-loss-ok':"
+            "'focus-loss-bad|'+window.kCount+'|'+window.kDirs+'|'"
+            "+e.selectionStart+'|'+e.selectionEnd+'|'"
+            "+e.selectionDirection;", -1, error, sizeof(error)) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "result", result,
+            sizeof(result), NULL) != 0 ||
+            strcmp(result, "focus-loss-ok") != 0) {
+        goto failed;
+    }
+    g_native_contenteditable_keyboard_probe_ok = 1;
+    return;
+
+failed:
+    _snprintf(g_native_contenteditable_keyboard_probe_detail,
+            sizeof(g_native_contenteditable_keyboard_probe_detail) - 1,
+            "stage=%s result=%s error=%s points=%d,%d/%d,%d focus=%p",
+            stage, result, error, anchor_x, anchor_y, left_x, left_y,
+            GetFocus());
+    g_native_contenteditable_keyboard_probe_detail[
+            sizeof(g_native_contenteditable_keyboard_probe_detail) - 1] =
+            '\0';
+}
+
 static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp)
 {
@@ -8447,6 +8771,13 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
         if (g_native_edits[i].hwnd == hwnd) {
             native_edit = &g_native_edits[i];
             original = g_native_edits[i].original_proc;
+            if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) &&
+                    wp == VK_SHIFT) {
+                native_edit->native_selection_shift_down = 1;
+            } else if ((msg == WM_KEYUP || msg == WM_SYSKEYUP) &&
+                    wp == VK_SHIFT) {
+                native_edit->native_selection_shift_down = 0;
+            }
             if (msg == WM_IME_STARTCOMPOSITION &&
                     pcore_native_script_active()) {
                 pcore_native_edit_flush_surrogate(hwnd, native_edit);
@@ -8643,8 +8974,21 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                     "deleteContentBackward", "") == 0) {
                 return 0;
             }
+            if (native_edit->content_editable &&
+                    pcore_native_edit_selection_navigation_key(msg, wp)) {
+                pcore_native_edit_selection_keyboard_begin(native_edit);
+            }
             break;
         }
+    }
+    if (native_edit != NULL && msg == WM_KEYDOWN &&
+            native_edit->content_editable &&
+            native_edit->native_selection_keyboard_active) {
+        native_result = (original != NULL) ?
+                CallWindowProc(original, hwnd, msg, wp, lp) :
+                DefWindowProc(hwnd, msg, wp, lp);
+        pcore_native_edit_selection_keyboard_update(native_edit, 0);
+        return native_result;
     }
     if (native_edit != NULL && msg == WM_LBUTTONDOWN) {
         native_result = (original != NULL) ?
@@ -8665,6 +9009,53 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
         pcore_native_edit_selection_mouse_update(native_edit, 0);
         return native_result;
     }
+    if (native_edit != NULL &&
+            (msg == WM_KEYUP || msg == WM_SYSKEYUP) &&
+            native_edit->content_editable &&
+            native_edit->native_selection_keyboard_active) {
+        native_result = (original != NULL) ?
+                CallWindowProc(original, hwnd, msg, wp, lp) :
+                DefWindowProc(hwnd, msg, wp, lp);
+        pcore_native_edit_selection_keyboard_update(native_edit, 1);
+        return native_result;
+    }
+    if (native_edit != NULL &&
+            (msg == WM_CAPTURECHANGED || msg == WM_CANCELMODE) &&
+            native_edit->content_editable) {
+        native_result = (original != NULL) ?
+                CallWindowProc(original, hwnd, msg, wp, lp) :
+                DefWindowProc(hwnd, msg, wp, lp);
+        /* A cancelled drag can lose capture without ever delivering
+         * WM_LBUTTONUP. Finalise the bounded direction before returning; the
+         * Browser entry point deduplicates this against any later mouse-up
+         * or focus notification. */
+        if (native_edit->native_selection_mouse_active) {
+            pcore_native_edit_selection_mouse_update(native_edit, 1);
+        } else if (native_edit->native_selection_keyboard_active) {
+            pcore_native_edit_selection_keyboard_update(native_edit, 1);
+        } else {
+            pcore_native_edit_selection_changed(native_edit, 1);
+        }
+        return native_result;
+    }
+    if (native_edit != NULL &&
+            (msg == WM_KILLFOCUS || msg == WM_SETFOCUS) &&
+            native_edit->content_editable) {
+        native_result = (original != NULL) ?
+                CallWindowProc(original, hwnd, msg, wp, lp) :
+                DefWindowProc(hwnd, msg, wp, lp);
+        /* Focus changes are another legal interruption point for a native
+         * selection gesture. Keep the last bounded direction, finish any
+         * active gesture, and refresh the Browser-side snapshot on both
+         * sides of the focus transition. */
+        if (native_edit->native_selection_mouse_active) {
+            pcore_native_edit_selection_mouse_update(native_edit, 1);
+        } else if (native_edit->native_selection_keyboard_active) {
+            pcore_native_edit_selection_keyboard_update(native_edit, 1);
+        }
+        pcore_native_edit_selection_changed(native_edit, 1);
+        return native_result;
+    }
     if (native_edit != NULL && msg == WM_LBUTTONUP) {
         native_result = (original != NULL) ?
                 CallWindowProc(original, hwnd, msg, wp, lp) :
@@ -8673,7 +9064,9 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                 native_edit->native_selection_mouse_active) {
             pcore_native_edit_selection_mouse_update(native_edit, 1);
         } else if (native_edit->content_editable) {
-            native_edit->native_selection_direction_valid = 0;
+            /* Capture may have finalised the drag before button-up reaches
+             * this subclass. Keep that final direction and let the Browser
+             * callback deduplicate the harmless refresh. */
             pcore_native_edit_selection_changed(native_edit, 1);
         }
         return native_result;
@@ -8684,7 +9077,10 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                 CallWindowProc(original, hwnd, msg, wp, lp) :
                 DefWindowProc(hwnd, msg, wp, lp);
         if (native_edit->content_editable) {
-            native_edit->native_selection_direction_valid = 0;
+            /* Keep the last bounded direction across modifier key-up. A
+             * Shift+arrow gesture has already established its anchor and a
+             * later Shift release must not turn the same range into an
+             * unrelated `none` selection or emit a duplicate event. */
             pcore_native_edit_selection_changed(native_edit, 1);
         }
         return native_result;
@@ -19974,6 +20370,9 @@ static BOOL show_render_window(void)
     if (g_native_contenteditable_mouse_probe) {
         pcore_native_contenteditable_mouse_probe_run(hwnd);
     }
+    if (g_native_contenteditable_keyboard_probe) {
+        pcore_native_contenteditable_keyboard_probe_run(hwnd);
+    }
     if (g_native_modal_paint_probe) {
         if (!PostMessage(hwnd, WM_PCORE_MODAL_PAINT_PROBE, 0, 0)) {
             pcore_native_modal_paint_probe_run(hwnd);
@@ -25893,6 +26292,101 @@ static BOOL test1113_browser_native_contenteditable_mouse_selection_contract(voi
             "A WM multiline EDIT drag reports bounded trusted selectionchange"
             " updates continuously, preserves backward/forward direction and"
             " suppresses repeated native ranges.");
+    return TRUE;
+}
+
+/* TEST 1114 - native contenteditable keyboard/capture/focus contract. */
+static BOOL test1114_browser_native_contenteditable_keyboard_selection_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='editor' contenteditable='true'>abcdef</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font:14px sans-serif;color:#111;}"
+        "#editor{display:block;width:240px;height:40px;margin:4px;"
+        "padding:2px;border:1px solid #555;background:#fff;}";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[512];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/contenteditable-keyboard.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 240) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        g_native_contenteditable_keyboard_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_contenteditable_keyboard_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (ok && !g_native_contenteditable_keyboard_probe_ok) {
+        _snprintf(error, sizeof(error) - 1, "%s",
+                g_native_contenteditable_keyboard_probe_detail[0] != '\0' ?
+                g_native_contenteditable_keyboard_probe_detail :
+                "native keyboard selection probe did not complete");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1114 FAIL", error[0] != '\0' ? error :
+                "native contenteditable keyboard selection failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1114 OK",
+            "Native contenteditable Shift+arrow extension preserves bounded"
+            " direction; capture loss and focus changes finalise gestures"
+            " without duplicate selectionchange events.");
     return TRUE;
 }
 
@@ -83751,6 +84245,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1111: ok = test1111_browser_contenteditable_selection_contract(); break;
         case 1112: ok = test1112_browser_contenteditable_selectionchange_contract(); break;
         case 1113: ok = test1113_browser_native_contenteditable_mouse_selection_contract(); break;
+        case 1114: ok = test1114_browser_native_contenteditable_keyboard_selection_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
