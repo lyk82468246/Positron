@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1104
+#define TEST_MAX_NUMBER 1105
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -6006,6 +6006,9 @@ static char   g_native_disclosure_key_probe_detail[512];
 static int    g_native_sequential_focus_probe = 0;
 static int    g_native_sequential_focus_probe_ok = 0;
 static char   g_native_sequential_focus_probe_detail[512];
+static int    g_native_modal_focus_probe = 0;
+static int    g_native_modal_focus_probe_ok = 0;
+static char   g_native_modal_focus_probe_detail[512];
 static HANDLE g_toggle_focus_document = NULL;
 static unsigned int g_toggle_focus_index = 0;
 static int    g_toggle_focus_kind = 0;
@@ -6030,6 +6033,8 @@ static int    g_sequential_focus_y = 0;
 static int    g_sequential_focus_w = 0;
 static int    g_sequential_focus_h = 0;
 static int    g_sequential_focus_valid = 0;
+static char   g_sequential_focus_modal_id[
+        PBROWSER_SCRIPT_DIALOG_ID_MAX] = "";
 static int    g_file_picker_pending = 0;
 static int    g_file_picker_active = 0;
 static HANDLE g_file_picker_pending_document = NULL;
@@ -6206,6 +6211,7 @@ static void pcore_sequential_focus_clear(void)
     g_sequential_focus_w = 0;
     g_sequential_focus_h = 0;
     g_sequential_focus_valid = 0;
+    g_sequential_focus_modal_id[0] = '\0';
 }
 
 static void pcore_browser_script_session_destroy(void)
@@ -7322,12 +7328,44 @@ static int pcore_handle_sequential_tab(HWND hwnd, UINT msg, WPARAM wp,
         LPARAM lp, int system_key);
 static int pcore_handle_sequential_link_keyboard(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp, int system_key);
+static void pcore_native_modal_focus_probe_run(HWND parent);
 
 static int pcore_native_script_active(void)
 {
     return g_render_doc != NULL &&
             g_browser_script_session.document == g_render_doc &&
             g_browser_script_session.runtime != NULL;
+}
+
+/* A modal dialog is a browser-owned state bit, while the actual focus
+ * candidates remain a Core concern. Keep the bridge query bounded and fail
+ * closed: an active script session whose modal state cannot be read must not
+ * leak Tab navigation to the page background. */
+static int pcore_sequential_focus_scope(char *out_modal_id,
+        int out_capacity)
+{
+    int out_bytes;
+    int rc;
+
+    if (out_modal_id == NULL || out_capacity <= 0) {
+        return -1;
+    }
+    out_modal_id[0] = '\0';
+    if (!pcore_native_script_active() ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return 0;
+    }
+    out_bytes = 0;
+    rc = PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, out_modal_id,
+            out_capacity, &out_bytes);
+    if (rc != PSCRIPT_OK || out_bytes < 0 || out_bytes >= out_capacity ||
+            out_modal_id[out_bytes] != '\0') {
+        out_modal_id[0] = '\0';
+        return -1;
+    }
+    return out_bytes > 0 ? 1 : 0;
 }
 
 static int pcore_browser_script_request_dialog_close(void)
@@ -14899,10 +14937,28 @@ static int pcore_sequential_focus_kind_native(int kind)
     return kind >= 3 && kind <= 6;
 }
 
+static int pcore_sequential_focus_info_at(const char *modal_id,
+        unsigned int index, PCoreFocusTargetInfo *out_info)
+{
+    if (modal_id != NULL && modal_id[0] != '\0') {
+        return PCore_FocusTargetInfoWithin(g_render_doc, modal_id, index,
+                out_info);
+    }
+    return PCore_FocusTargetInfo(g_render_doc, index, out_info);
+}
+
 static void pcore_sequential_focus_store(unsigned int index,
         const PCoreFocusTargetInfo *info)
 {
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    int scope;
+
     if (info == NULL) {
+        pcore_sequential_focus_clear();
+        return;
+    }
+    scope = pcore_sequential_focus_scope(modal_id, sizeof(modal_id));
+    if (scope < 0) {
         pcore_sequential_focus_clear();
         return;
     }
@@ -14913,21 +14969,37 @@ static void pcore_sequential_focus_store(unsigned int index,
     g_sequential_focus_y = info->y;
     g_sequential_focus_w = info->width;
     g_sequential_focus_h = info->height;
+    if (scope > 0) {
+        memcpy(g_sequential_focus_modal_id, modal_id,
+                sizeof(g_sequential_focus_modal_id));
+    } else {
+        g_sequential_focus_modal_id[0] = '\0';
+    }
     g_sequential_focus_valid = 1;
 }
 
 static int pcore_sequential_focus_current(PCoreFocusTargetInfo *out_info)
 {
     PCoreFocusTargetInfo info;
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    int scope;
 
     if (!g_sequential_focus_valid ||
             g_sequential_focus_document != g_render_doc ||
             g_render_doc == NULL) {
         return 0;
     }
+    scope = pcore_sequential_focus_scope(modal_id, sizeof(modal_id));
+    if (scope < 0 || (scope > 0 &&
+            strcmp(modal_id, g_sequential_focus_modal_id) != 0) ||
+            (scope == 0 && g_sequential_focus_modal_id[0] != '\0')) {
+        pcore_sequential_focus_clear();
+        return 0;
+    }
     memset(&info, 0, sizeof(info));
-    if (PCore_FocusTargetInfo(g_render_doc, g_sequential_focus_index,
-            &info) != 0 || info.kind != g_sequential_focus_kind ||
+    if (pcore_sequential_focus_info_at(scope > 0 ? modal_id : NULL,
+            g_sequential_focus_index, &info) != 0 ||
+            info.kind != g_sequential_focus_kind ||
             info.x != g_sequential_focus_x ||
             info.y != g_sequential_focus_y ||
             info.width != g_sequential_focus_w ||
@@ -14945,11 +15017,18 @@ static int pcore_sequential_focus_target_at(int x, int y,
         unsigned int *out_index, PCoreFocusTargetInfo *out_info)
 {
     PCoreFocusTargetInfo info;
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
     unsigned int index;
+    int scope;
 
+    scope = pcore_sequential_focus_scope(modal_id, sizeof(modal_id));
+    if (scope < 0) {
+        return 0;
+    }
     for (index = 0; index < PCORE_SEQUENTIAL_FOCUS_MAX; index++) {
         memset(&info, 0, sizeof(info));
-        if (PCore_FocusTargetInfo(g_render_doc, index, &info) != 0) {
+        if (pcore_sequential_focus_info_at(scope > 0 ? modal_id : NULL,
+                index, &info) != 0) {
             break;
         }
         if (info.width > 0 && info.height > 0 &&
@@ -15037,8 +15116,15 @@ static int pcore_sequential_focus_capture_native(HWND control)
     unsigned int target_index;
     int multiline;
     int target_kind;
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    int scope;
 
     if (control == NULL || g_render_doc == NULL) {
+        return 0;
+    }
+    scope = pcore_sequential_focus_scope(modal_id, sizeof(modal_id));
+    if (scope < 0) {
+        pcore_sequential_focus_clear();
         return 0;
     }
     memset(&target, 0, sizeof(target));
@@ -15054,8 +15140,8 @@ static int pcore_sequential_focus_capture_native(HWND control)
         for (target_index = 0;
                 target_index < PCORE_SEQUENTIAL_FOCUS_MAX;
                 target_index++) {
-            if (PCore_FocusTargetInfo(g_render_doc, target_index,
-                    &target) != 0) {
+            if (pcore_sequential_focus_info_at(scope > 0 ? modal_id : NULL,
+                    target_index, &target) != 0) {
                 break;
             }
             if (target.kind == target_kind && target.x == text_info.x &&
@@ -15077,8 +15163,8 @@ static int pcore_sequential_focus_capture_native(HWND control)
         for (target_index = 0;
                 target_index < PCORE_SEQUENTIAL_FOCUS_MAX;
                 target_index++) {
-            if (PCore_FocusTargetInfo(g_render_doc, target_index,
-                    &target) != 0) {
+            if (pcore_sequential_focus_info_at(scope > 0 ? modal_id : NULL,
+                    target_index, &target) != 0) {
                 break;
             }
             if (target.kind == 6 && target.x == select_info.x &&
@@ -15234,9 +15320,15 @@ static int pcore_sequential_focus_move(HWND hwnd, int backwards,
     unsigned int next_index;
     int current_valid;
     int default_allowed;
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    int scope;
 
     if (hwnd == NULL || g_render_doc == NULL) {
         return 0;
+    }
+    scope = pcore_sequential_focus_scope(modal_id, sizeof(modal_id));
+    if (scope < 0) {
+        return 1;
     }
     current_valid = pcore_sequential_focus_current(&current_target);
     current_index = g_sequential_focus_index;
@@ -15252,8 +15344,8 @@ static int pcore_sequential_focus_move(HWND hwnd, int backwards,
     count = 0;
     while (count < PCORE_SEQUENTIAL_FOCUS_MAX) {
         memset(&next_target, 0, sizeof(next_target));
-        if (PCore_FocusTargetInfo(g_render_doc, count,
-                &next_target) != 0) {
+        if (pcore_sequential_focus_info_at(scope > 0 ? modal_id : NULL,
+                count, &next_target) != 0) {
             break;
         }
         count++;
@@ -15270,8 +15362,8 @@ static int pcore_sequential_focus_move(HWND hwnd, int backwards,
         next_index = (current_index + 1 >= count) ? 0 :
                 current_index + 1;
     }
-    if (PCore_FocusTargetInfo(g_render_doc, next_index,
-            &next_target) != 0) {
+    if (pcore_sequential_focus_info_at(scope > 0 ? modal_id : NULL,
+            next_index, &next_target) != 0) {
         return 1;
     }
     (void) pcore_sequential_focus_apply(hwnd, next_index, &next_target);
@@ -16689,6 +16781,148 @@ done:
     PostMessage(parent, WM_CLOSE, 0, 0);
 }
 
+/* Probe the modal focus scope through the real WM key path. Browser owns the
+ * active dialog id; Core owns the bounded subtree snapshot; the host only
+ * applies the selected geometry to its render window. Background targets must
+ * never receive sequential Tab while the modal is active. */
+static void pcore_native_modal_focus_probe_run(HWND parent)
+{
+    static const char *target_ids[] = {
+        "low", "high", "normal", "generic"
+    };
+    static const int target_kinds[] = {
+        PCORE_FOCUS_TARGET_LINK, PCORE_FOCUS_TARGET_LINK,
+        PCORE_FOCUS_TARGET_LINK, PCORE_FOCUS_TARGET_GENERIC
+    };
+    PCoreFocusTargetInfo expected;
+    PCoreFocusTargetInfo current;
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    char error[256];
+    const char *stage;
+    unsigned int i;
+    int expected_x;
+    int expected_y;
+    int expected_w;
+    int expected_h;
+    int active_bytes;
+    int probe_bytes;
+    int open_rc;
+    int ok;
+
+    memset(error, 0, sizeof(error));
+    memset(modal_id, 0, sizeof(modal_id));
+    memset(&current, 0, sizeof(current));
+    stage = "setup";
+    i = 0;
+    active_bytes = 0;
+    probe_bytes = 0;
+    open_rc = -1;
+    ok = parent != NULL && g_render_doc != NULL &&
+            g_browser_script_session.bridge != NULL &&
+            g_browser_script_session.bridge->session != NULL;
+    if (ok && PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, modal_id,
+            sizeof(modal_id), &active_bytes) != PSCRIPT_OK) {
+        stage = "active-id";
+        ok = 0;
+    }
+    if (ok && (strcmp(modal_id, "dialog") != 0 || active_bytes != 6 ||
+            PBrowser_ScriptSessionGetActiveDialogId(
+            g_browser_script_session.bridge->session, NULL, 0,
+            &probe_bytes) != PSCRIPT_OK || probe_bytes != active_bytes)) {
+        stage = "active-id-value";
+        ok = 0;
+    }
+    for (i = 0; ok && i < 4U; i++) {
+        memset(&expected, 0, sizeof(expected));
+        expected_x = 0;
+        expected_y = 0;
+        expected_w = 0;
+        expected_h = 0;
+        if (PCore_FocusTargetInfoWithin(g_render_doc, "dialog", i,
+                &expected) != 0 || expected.kind != target_kinds[i] ||
+                expected.width <= 0 || expected.height <= 0 ||
+                PCore_FragmentInfoById(g_render_doc, target_ids[i],
+                &expected_x, &expected_y, &expected_w, &expected_h) != 0 ||
+                expected.x != expected_x || expected.y != expected_y ||
+                expected.width != expected_w ||
+                expected.height != expected_h) {
+            stage = "scope-snapshot";
+            ok = 0;
+            break;
+        }
+    }
+    if (ok) {
+        memset(&expected, 0, sizeof(expected));
+        if (PCore_FocusTargetInfoWithin(g_render_doc, "dialog", 4,
+                &expected) == 0 || PCore_FocusTargetInfoWithin(
+                g_render_doc, "missing-dialog", 0, &expected) == 0) {
+            stage = "scope-boundary";
+            ok = 0;
+        }
+    }
+    if (ok) {
+        pcore_sequential_focus_clear();
+        SetFocus(parent);
+        for (i = 0; i < 4U; i++) {
+            stage = "tab-scope";
+            (void) SendMessage(parent, WM_KEYDOWN, VK_TAB, 0);
+            (void) SendMessage(parent, WM_KEYUP, VK_TAB, 0);
+            memset(&current, 0, sizeof(current));
+            if (!pcore_sequential_focus_current(&current) ||
+                    g_sequential_focus_index != i ||
+                    strcmp(g_sequential_focus_modal_id, "dialog") != 0 ||
+                    current.kind != target_kinds[i]) {
+                ok = 0;
+                break;
+            }
+        }
+    }
+    if (ok) {
+        stage = "tab-wrap";
+        (void) SendMessage(parent, WM_KEYDOWN, VK_TAB, 0);
+        (void) SendMessage(parent, WM_KEYUP, VK_TAB, 0);
+        if (!pcore_sequential_focus_current(&current) ||
+                g_sequential_focus_index != 0 ||
+                strcmp(g_sequential_focus_modal_id, "dialog") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "shift-tab-wrap";
+        (void) pcore_sequential_focus_move(parent, 1, 0, VK_TAB, 0, 0);
+        if (!pcore_sequential_focus_current(&current) ||
+                g_sequential_focus_index != 3 ||
+                strcmp(g_sequential_focus_modal_id, "dialog") != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "close-scope";
+        if (pcore_browser_script_session_evaluate(
+                "document.getElementById('dialog').close();", -1,
+                error, sizeof(error)) != 0 ||
+                PBrowser_ScriptSessionGetActiveDialogId(
+                g_browser_script_session.bridge->session, modal_id,
+                sizeof(modal_id), &open_rc) != PSCRIPT_OK ||
+                open_rc != 0 || modal_id[0] != '\0') {
+            ok = 0;
+        }
+    }
+    if (!ok) {
+        _snprintf(g_native_modal_focus_probe_detail,
+                sizeof(g_native_modal_focus_probe_detail) - 1,
+                "stage=%s index=%u scope=%s active=%s bytes=%d probe=%d error=%s",
+                stage, i, g_sequential_focus_modal_id, modal_id,
+                active_bytes, probe_bytes,
+                error[0] != '\0' ? error : "(none)");
+        g_native_modal_focus_probe_detail[
+                sizeof(g_native_modal_focus_probe_detail) - 1] = '\0';
+    }
+    g_native_modal_focus_probe_ok = ok;
+    PostMessage(parent, WM_CLOSE, 0, 0);
+}
+
 static void pcore_navigation_cleanup(void)
 {
     if (g_nav_thread != NULL) {
@@ -18072,6 +18306,9 @@ static BOOL show_render_window(void)
     }
     if (g_native_sequential_focus_probe) {
         pcore_native_sequential_focus_probe_run(hwnd);
+    }
+    if (g_native_modal_focus_probe) {
+        pcore_native_modal_focus_probe_run(hwnd);
     }
     /* Read-only view: hide the SIP button and keep the keyboard down. */
     SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
@@ -22635,6 +22872,118 @@ static BOOL test1104_browser_dialog_escape_bridge_contract(void)
             " Browser requestClose bridge; cancellation consumes Escape"
             " without closing, while an accepted request commits close and"
             " returnValue, and an inactive session is left untouched.");
+    return TRUE;
+}
+
+/* TEST 1105 - modal dialog focus scope across Browser, Core and host Tab. */
+static BOOL test1105_browser_dialog_focus_scope_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<a id='outside' href='#outside'>Outside</a>"
+        "<dialog id='dialog'>"
+        "<a id='high' href='#high' tabindex='4'>High</a>"
+        "<a id='low' href='#low' tabindex='1'>Low</a>"
+        "<a id='normal' href='#normal'>Normal</a>"
+        "<div id='generic' tabindex='0'>Generic</div>"
+        "</dialog>"
+        "<a id='after' href='#after'>After</a>"
+        "<script>document.getElementById('dialog').showModal();</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{font:14px sans-serif;margin:8px}"
+        "#outside,#after,dialog a,dialog div{display:block;"
+        "width:180px;height:24px;margin:3px}"
+        "dialog{display:block;border:1px solid #4060a0;padding:4px;"
+        "margin:4px}"
+        "#dialog{height:150px}";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[512];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_native_modal_focus_probe_ok = 0;
+    _snprintf(g_native_modal_focus_probe_detail,
+            sizeof(g_native_modal_focus_probe_detail) - 1,
+            "not-run");
+    g_native_modal_focus_probe_detail[
+            sizeof(g_native_modal_focus_probe_detail) - 1] = '\0';
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/dialog-focus-scope.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 260) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        g_native_modal_focus_probe = 1;
+        if (!show_render_window()) {
+            ok = 0;
+        }
+        g_native_modal_focus_probe = 0;
+        g_render_doc = NULL;
+        g_render_sheet = NULL;
+    }
+    if (!g_native_modal_focus_probe_ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "native modal focus probe failed: %s",
+                g_native_modal_focus_probe_detail[0] != '\0' ?
+                g_native_modal_focus_probe_detail : "no detail");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1105 FAIL", error[0] != '\0' ? error :
+                "modal focus scope failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1105 OK",
+            "An active modal dialog exposes only its bounded Core focus"
+            " subtree to host Tab and Shift+Tab navigation; positive"
+            " tabindex ordering, wraparound, Browser active-id reporting"
+            " and scope release after close are all enforced.");
     return TRUE;
 }
 
@@ -80484,6 +80833,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1102: ok = test1102_browser_tabindex_order_contract(); break;
         case 1103: ok = test1103_browser_dialog_lifecycle_contract(); break;
         case 1104: ok = test1104_browser_dialog_escape_bridge_contract(); break;
+        case 1105: ok = test1105_browser_dialog_focus_scope_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

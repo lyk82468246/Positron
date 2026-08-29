@@ -466,6 +466,16 @@ typedef struct PCoreFocusTargetInfo {
 } PCoreFocusTargetInfo;
 PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
                                    PCoreFocusTargetInfo *out_info);
+/* Query the same bounded sequential-focus snapshot below one element. The
+ * element is resolved by its UTF-8 DOM id; the scoped element itself is
+ * included when it is focusable, followed by its descendants in the same
+ * positive-tabindex/DOM order as PCore_FocusTargetInfo. This is intended for
+ * a host-owned modal focus scope. It does not create native windows or change
+ * the document's focus state. Returns 0 for one target and non-zero when the
+ * id, layout, index or bounded snapshot is unavailable. */
+PCORE_API int PCore_FocusTargetInfoWithin(HANDLE hDoc,
+        const char *ancestor_id, unsigned int index,
+        PCoreFocusTargetInfo *out_info);
 
 /* Resolve a file gadget at a document-space point. `file_index` is the
  * file-only index accepted by PCore_FileInputInfo/SetPath. A disabled gadget

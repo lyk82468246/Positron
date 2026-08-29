@@ -808,12 +808,12 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "pDialogRequired(this);if(!this.open){return;}e=new PEvent('cancel',{"
         "bubbles:false,cancelable:true});e.isTrusted=false;"
         "if(!this.dispatchEvent(e)){return;}this.close(arguments.length>0?value:'');};"
-        "g.__pcoreDialogRequestClose=function(value){var id=pDialogModalId;"
-        "var owner;if(id===''){return 0;}owner=g.document&&"
-        "g.document.getElementById?g.document.getElementById(id):null;"
-        "if(owner===null||owner.localName!=='dialog'||!owner.open){"
-        "pDialogRelease(owner);return 0;}owner.requestClose(value===undefined?"
-        "'':value);return owner.open?2:1;};"
+        "g.__pcoreDialogRequestClose=function(value){var owner;"
+        "owner=pDialogActiveModal();if(owner===null){return 0;}"
+        "owner.requestClose(value===undefined?'':value);"
+        "return owner.open?2:1;};"
+        "g.__pcoreDialogActiveId=function(){var owner=pDialogActiveModal();"
+        "return owner===null?'':String(owner.__id||'');};"
         "Object.defineProperty(PElement.prototype,'textContent',{"
         "get:function(){return __pcoreGetText({id:this.__id});},"
         "set:function(v){if(!__pcoreSetText({id:this.__id,text:String(v)}))"
@@ -6266,6 +6266,47 @@ PBROWSER_API int PBrowser_ScriptSessionRequestDialogClose(HANDLE hSession,
         rc = cleanup_rc;
     }
     return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionGetActiveDialogId(HANDLE hSession,
+        char *out_id, int out_capacity, int *out_bytes)
+{
+    p_browser_script_session *session;
+    const char *result;
+    size_t length;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (out_id != NULL && out_capacity > 0) {
+        out_id[0] = '\0';
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || out_bytes == NULL ||
+            out_capacity < 0 || (out_id == NULL && out_capacity != 0) ||
+            (out_id != NULL && out_capacity == 0)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (PScript_Evaluate(session->runtime,
+            "typeof __pcoreDialogActiveId==='function'?"
+            "__pcoreDialogActiveId():'';", -1) != PSCRIPT_OK) {
+        return PSCRIPT_ERROR_EVALUATION;
+    }
+    result = PScript_GetResult(session->runtime);
+    if (result == NULL) {
+        return PSCRIPT_ERROR_EVALUATION;
+    }
+    length = strlen(result);
+    *out_bytes = (int) length;
+    if (out_id == NULL) {
+        return PSCRIPT_OK;
+    }
+    if (length >= (size_t) out_capacity ||
+            length >= PBROWSER_SCRIPT_DIALOG_ID_MAX) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memcpy(out_id, result, length + 1);
+    return PSCRIPT_OK;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterFocusCallbacks(

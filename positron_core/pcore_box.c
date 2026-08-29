@@ -4927,46 +4927,28 @@ static void pcore_focus_target_sort(pcore_focus_candidate *items,
     }
 }
 
-PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
-        PCoreFocusTargetInfo *out_info)
+static int pcore_focus_target_info_from_root(pcore_render *st,
+        dom_node *root, unsigned int index, PCoreFocusTargetInfo *out_info)
 {
-    dom_document *doc;
-    dom_element *root;
-    pcore_render *st;
     pcore_focus_candidate *candidates;
     unsigned int count;
     int overflow;
     int failed;
 
-    if (out_info == NULL) {
+    if (st == NULL || root == NULL || out_info == NULL) {
         return 1;
     }
     memset(out_info, 0, sizeof(*out_info));
-    doc = (dom_document *) hDoc;
-    st = pcore_get_render(doc);
-    if (st == NULL || doc == NULL) {
-        return 1;
-    }
     candidates = (pcore_focus_candidate *) malloc(
             sizeof(*candidates) * PCORE_FOCUS_TARGET_MAX);
     if (candidates == NULL) {
         return 1;
     }
-    root = NULL;
-    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
-            root == NULL) {
-        if (root != NULL) {
-            dom_node_unref((dom_node *) root);
-        }
-        free(candidates);
-        return 1;
-    }
     count = 0;
     overflow = 0;
     failed = 0;
-    pcore_focus_target_collect(st, (dom_node *) root, candidates, &count,
-            &overflow, &failed, 0);
-    dom_node_unref((dom_node *) root);
+    pcore_focus_target_collect(st, root, candidates, &count, &overflow,
+            &failed, 0);
     if (failed || overflow) {
         free(candidates);
         return 1;
@@ -4979,6 +4961,80 @@ PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
     *out_info = candidates[index].info;
     free(candidates);
     return 0;
+}
+
+PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
+        PCoreFocusTargetInfo *out_info)
+{
+    dom_document *doc;
+    dom_element *root;
+    pcore_render *st;
+    int result;
+
+    if (out_info == NULL) {
+        return 1;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL || doc == NULL) {
+        return 1;
+    }
+    root = NULL;
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        if (root != NULL) {
+            dom_node_unref((dom_node *) root);
+        }
+        return 1;
+    }
+    result = pcore_focus_target_info_from_root(st, (dom_node *) root,
+            index, out_info);
+    dom_node_unref((dom_node *) root);
+    return result;
+}
+
+PCORE_API int PCore_FocusTargetInfoWithin(HANDLE hDoc,
+        const char *ancestor_id, unsigned int index,
+        PCoreFocusTargetInfo *out_info)
+{
+    dom_document *doc;
+    dom_string *id;
+    dom_element *ancestor;
+    pcore_render *st;
+    int result;
+
+    if (out_info == NULL) {
+        return 1;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    doc = (dom_document *) hDoc;
+    if (doc == NULL || ancestor_id == NULL || ancestor_id[0] == '\0') {
+        return 1;
+    }
+    st = pcore_get_render(doc);
+    if (st == NULL) {
+        return 1;
+    }
+    id = NULL;
+    ancestor = NULL;
+    if (dom_string_create((const uint8_t *) ancestor_id,
+            strlen(ancestor_id), &id) != DOM_NO_ERR || id == NULL ||
+            dom_document_get_element_by_id(doc, id, &ancestor) !=
+            DOM_NO_ERR || ancestor == NULL) {
+        if (id != NULL) {
+            dom_string_unref(id);
+        }
+        if (ancestor != NULL) {
+            dom_node_unref((dom_node *) ancestor);
+        }
+        return 1;
+    }
+    dom_string_unref(id);
+    result = pcore_focus_target_info_from_root(st,
+            (dom_node *) ancestor, index, out_info);
+    dom_node_unref((dom_node *) ancestor);
+    return result;
 }
 
 static struct box *pcore_file_input_at_index(struct box *box,

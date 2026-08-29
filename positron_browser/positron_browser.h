@@ -45,6 +45,7 @@ extern "C" {
 #define PBROWSER_SCRIPT_ANCHOR_REL_MAX 256
 #define PBROWSER_SCRIPT_WINDOW_NAME_MAX 64
 #define PBROWSER_SCRIPT_DIALOG_VALUE_MAX 1024
+#define PBROWSER_SCRIPT_DIALOG_ID_MAX 1024
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -1195,6 +1196,14 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchKeyEvent(HANDLE hSession,
  * UTF-8, borrowed for the call, and may be NULL for the empty value. */
 PBROWSER_API int PBrowser_ScriptSessionRequestDialogClose(HANDLE hSession,
         const char *return_value, int *out_handled, int *out_closed);
+/* Read the id of the current script-owned modal dialog. The returned id is
+ * UTF-8 and excludes the terminating NUL from out_bytes. An empty string and
+ * zero bytes mean that no modal is active. The caller may probe with
+ * out_id=NULL and out_capacity=0; otherwise the capacity must include the
+ * complete string and its NUL. A too-small output buffer returns
+ * PSCRIPT_ERROR_ARGUMENT and still reports the required byte count. */
+PBROWSER_API int PBrowser_ScriptSessionGetActiveDialogId(HANDLE hSession,
+        char *out_id, int out_capacity, int *out_bytes);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFocusCallbacks(
         HANDLE hSession, const PBrowserScriptFocusCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusCallbacks(
