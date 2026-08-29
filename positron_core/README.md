@@ -97,6 +97,21 @@ Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispa
 
 `PCore_FocusTargetInfo` 返回有界的键盘焦点快照：正值 `tabindex` 按数值升序排列，同值保持 DOM 顺序，随后是缺省/零值组的 DOM 顺序；负值、disabled、hidden、未布局目标和 file picker 会被排除。除支持的链接、表单控件和 `summary` 外，带有效非负 `tabindex` 的普通布局元素也会以 `PCORE_FOCUS_TARGET_GENERIC` 返回。`PCore_FocusTargetInfoWithin` 用 UTF-8 DOM id 将同一快照限制在某个已布局祖先及其后代内，顺序和预算保持一致，适合宿主实现 modal 的 Tab/Shift+Tab 范围。两者都只返回几何与 kind，不改变焦点；focus scroll、native HWND 切换以及把 Browser 报告的活动 modal id 接入消息循环仍由宿主完成；Core 不调用 `SetFocus`，也不创建控件窗口。
 
+### Modal presentation
+
+宿主先从 Browser session 读取活动 modal 的 UTF-8 id，再在普通文档绘制后调用 `PCore_PaintDocumentWithModal`：
+
+```c
+int paint_result;
+
+paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
+        active_modal_id);
+```
+
+该入口先完成普通 `PCore_PaintDocument`，随后在当前 viewport 上覆盖不透明的 `RGB(192,192,192)` WM6 安全遮罩，并把指定的 `<dialog open>` 盒子限制在其几何区域内重绘。`PCORE_MODAL_PAINT_APPLIED` 表示对话框也已重绘；id 过期、对话框已关闭、尚未 layout 或没有可用盒子时仍返回 `PCORE_MODAL_PAINT_BACKDROP_ONLY`，以免把 modal 后的页面泄露出来。传入 `NULL` 或空 id 等同普通绘制并返回 `PCORE_MODAL_PAINT_NONE`。
+
+`dialog_id` 是借用的 UTF-8 字符串，长度必须小于 `PCORE_MODAL_DIALOG_ID_MAX`；文档、HDC、滚动位置和失效区域仍由宿主拥有。实现尊重 HDC 的 GDI invalid-region clip，并在组合步骤间恢复绘制状态。该能力是有界的实体色遮罩与盒子重绘，不等同于 CSS `::backdrop`、透明合成、多个 modal 或跨文档 top layer。
+
 ## 所有权
 
 - `PCore_Init`/`PCore_Shutdown` 成对；实现为进程级引用计数。
@@ -124,7 +139,7 @@ Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispa
 - 不支持完整现代 HTML/CSS/DOM；float、复杂 table/position、Grid、custom properties 等仍有限。
 - 字体、SVG、图像格式和高 DPI 结果受 WM6 GDI/依赖版本限制。
 - Core resource cache、DOM bridge、表单集合和深度/数量均有固定预算。
-- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；Core 只把 `<dialog open>` 纳入静态布局，不绘制 top layer/backdrop，也不自行决定初始焦点、背景点击或跨窗口焦点策略。Core 可解析有界的 dialog 表单默认动作；脚本生命周期、活动 modal id 和实际关闭仍由 `positron_browser.dll` 提供。
+- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；`PCore_PaintDocumentWithModal` 可按宿主提供的活动 id 在已 layout 的 `<dialog open>` 之上组合实体色遮罩与对话框重绘。Core 不自行决定初始焦点、背景点击或跨窗口焦点策略；脚本生命周期、活动 modal id 和实际关闭仍由 `positron_browser.dll` 提供。
 - Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。
 - 精确 API、返回码、结构布局和借用期限以 [`positron_core.h`](positron_core.h) 为准。
 

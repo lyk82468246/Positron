@@ -87,6 +87,7 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - CSS 解析、cascade、媒体条件和整树 computed style；
 - 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
+- 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
 - 表单值、约束验证、提交、reset 和 successful controls；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 给脚本/浏览器层使用的有界 DOM、属性、关系、表单与导航查询。
@@ -130,6 +131,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - DNS/TCP/TLS/HTTP 组合策略和资源调度；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
+- 从 Browser 读取活动 modal id，并在 WM_PAINT 中调用 Core 的 modal paint 组合入口；
 - 决定何时启用浏览器 JavaScript；
 - 应用级崩溃恢复、持久化和日志。
 
@@ -159,7 +161,8 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；
 5. Core 执行 DOM/form/default mutation；
 6. Browser 派发 mutation 后的 `input`、`change`、focus 或 lifecycle 事件；
-7. 宿主按需重新 layout/paint，并在页面替换时销毁 session 与文档。
+7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；
+8. 页面替换时销毁 session 与文档。
 
 事件顺序、取消和状态提交必须由产品层确定，不能依赖 test fixture 的偶然消息顺序。真实 SIP、OEM IME、系统 picker 和窗口创建仍需要设备人工验收。
 
@@ -210,7 +213,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - TLS 1.3、HTTP/2、HTTP/3 或现代浏览器级网络栈；
 - 完整 WHATWG URL、DOM、HTML、CSSOM、Web API 或 ECMAScript host environment；
 - 完整 CSS Grid、任意 float/position/table 边界和桌面级字体排版；
-- 多窗口浏览器、完整 modal dialog/backdrop 或持久化浏览历史；
+- 多窗口浏览器、完整现代 modal dialog/backdrop（仅支持有界实体色组合）或持久化浏览历史；
 - 在 DLL 内接管应用消息循环、系统 picker、OEM IME 或设备连接；
 - 把 `test_host.exe` 变成产品依赖。
 
