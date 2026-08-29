@@ -765,7 +765,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "return !!__pcoreHasElement({id:this.__id});},enumerable:true});"
         "PElement.prototype.click=function(){"
         "if(!__pcoreClick({id:this.__id})){throw new Error('click failed');}};"
-        "var pDialogModalOwner=null;"
+        "var pDialogModalOwner=null;var pDialogModalId='';"
         "function pDialogError(message){"
         "if(typeof g.DOMException==='function'){"
         "return new g.DOMException(message,'InvalidStateError');}"
@@ -773,9 +773,12 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "function pDialogRequired(owner){"
         "if(!owner||owner.localName!=='dialog'){"
         "throw new TypeError('dialog required');}return owner;}"
+        "function pDialogRelease(owner){if(owner===null||"
+        "pDialogModalOwner===owner||pDialogModalId===owner.__id){"
+        "pDialogModalOwner=null;pDialogModalId='';}}"
         "function pDialogActiveModal(){var owner=pDialogModalOwner;"
         "if(owner!==null&&(!owner.isConnected||!owner.open)){"
-        "pDialogModalOwner=null;owner=null;}return owner;}"
+        "pDialogRelease(owner);owner=null;}return owner;}"
         "function pDialogEvent(owner,type,cancelable){var e=new PEvent(type,{"
         "bubbles:false,cancelable:!!cancelable});e.isTrusted=false;"
         "return owner.dispatchEvent(e);}"
@@ -795,16 +798,22 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "'dialog is already open');}owner=pDialogActiveModal();"
         "if(owner!==null&&owner!==this){throw pDialogError("
         "'another modal dialog is already open');}this.setAttribute('open','');"
-        "pDialogModalOwner=this;};"
+        "pDialogModalOwner=this;pDialogModalId=this.__id;};"
         "PElement.prototype.close=function(value){var hadOpen;"
         "pDialogRequired(this);hadOpen=this.open;if(!hadOpen){return;}"
         "this.__dialogReturnValue=arguments.length>0?String(value):'';"
-        "this.removeAttribute('open');if(pDialogModalOwner===this){"
-        "pDialogModalOwner=null;}pDialogEvent(this,'close',false);};"
+        "this.removeAttribute('open');pDialogRelease(this);"
+        "pDialogEvent(this,'close',false);};"
         "PElement.prototype.requestClose=function(value){var e;"
         "pDialogRequired(this);if(!this.open){return;}e=new PEvent('cancel',{"
         "bubbles:false,cancelable:true});e.isTrusted=false;"
         "if(!this.dispatchEvent(e)){return;}this.close(arguments.length>0?value:'');};"
+        "g.__pcoreDialogRequestClose=function(value){var id=pDialogModalId;"
+        "var owner;if(id===''){return 0;}owner=g.document&&"
+        "g.document.getElementById?g.document.getElementById(id):null;"
+        "if(owner===null||owner.localName!=='dialog'||!owner.open){"
+        "pDialogRelease(owner);return 0;}owner.requestClose(value===undefined?"
+        "'':value);return owner.open?2:1;};"
         "Object.defineProperty(PElement.prototype,'textContent',{"
         "get:function(){return __pcoreGetText({id:this.__id});},"
         "set:function(v){if(!__pcoreSetText({id:this.__id,text:String(v)}))"
@@ -816,9 +825,11 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "PElement.prototype.setAttribute=function(name,value){"
         "if(!__pcoreSetAttribute({id:this.__id,name:String(name),"
         "value:String(value)})){throw new Error('setAttribute failed');}};"
-        "PElement.prototype.removeAttribute=function(name){"
-        "if(!__pcoreRemoveAttribute({id:this.__id,name:String(name)}))"
-        "{throw new Error('removeAttribute failed');}};"
+        "PElement.prototype.removeAttribute=function(name){var n=String(name);"
+        "var changed=__pcoreRemoveAttribute({id:this.__id,name:n});"
+        "if(!changed){throw new Error('removeAttribute failed');}"
+        "if(n.toLowerCase()==='open'&&this.localName==='dialog'){"
+        "pDialogRelease(this);}};"
         "Object.defineProperty(PElement.prototype,'value',{"
         "get:function(){return __pcoreGetValue({id:this.__id});},"
         "set:function(v){if(!__pcoreSetValue({id:this.__id,value:String(v)}))"
@@ -6195,6 +6206,66 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchKeyEvent(HANDLE hSession,
     }
     *out_default_allowed = default_allowed ? 1 : 0;
     return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRequestDialogClose(HANDLE hSession,
+        const char *return_value, int *out_handled, int *out_closed)
+{
+    p_browser_script_session *session;
+    const char *value;
+    const char *result;
+    int rc;
+    int cleanup_rc;
+
+    if (out_handled != NULL) {
+        *out_handled = 0;
+    }
+    if (out_closed != NULL) {
+        *out_closed = 0;
+    }
+    session = p_script_session(hSession);
+    value = (return_value != NULL) ? return_value : "";
+    if (!p_script_session_valid(session) || out_handled == NULL ||
+            out_closed == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (strlen(value) >= PBROWSER_SCRIPT_DIALOG_VALUE_MAX) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = PScript_SetGlobalString(session->runtime,
+            "__pcoreDialogRequestValue", -1, value, -1);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    rc = PScript_Evaluate(session->runtime,
+            "typeof __pcoreDialogRequestClose==='function'?"
+            "__pcoreDialogRequestClose(__pcoreDialogRequestValue):0;", -1);
+    if (rc != PSCRIPT_OK) {
+        (void) PScript_Evaluate(session->runtime,
+                "delete this.__pcoreDialogRequestValue;", -1);
+        return rc;
+    }
+    result = PScript_GetResult(session->runtime);
+    if (result == NULL) {
+        rc = PSCRIPT_ERROR_EVALUATION;
+    } else if (strcmp(result, "0") == 0) {
+        rc = PSCRIPT_OK;
+    } else if (strcmp(result, "1") == 0) {
+        *out_handled = 1;
+        *out_closed = 1;
+        rc = PSCRIPT_OK;
+    } else if (strcmp(result, "2") == 0) {
+        *out_handled = 1;
+        rc = PSCRIPT_OK;
+    } else {
+        rc = PSCRIPT_ERROR_EVALUATION;
+    }
+    cleanup_rc = PScript_Evaluate(session->runtime,
+            "delete this.__pcoreDialogRequestValue;", -1);
+    if (rc == PSCRIPT_OK && cleanup_rc != PSCRIPT_OK) {
+        rc = cleanup_rc;
+    }
+    return rc;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterFocusCallbacks(

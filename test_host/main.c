@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1103
+#define TEST_MAX_NUMBER 1104
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -7328,6 +7328,27 @@ static int pcore_native_script_active(void)
     return g_render_doc != NULL &&
             g_browser_script_session.document == g_render_doc &&
             g_browser_script_session.runtime != NULL;
+}
+
+static int pcore_browser_script_request_dialog_close(void)
+{
+    pcore_browser_script_bridge *bridge;
+    int handled;
+    int closed;
+
+    if (!pcore_native_script_active() ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return 0;
+    }
+    bridge = g_browser_script_session.bridge;
+    handled = 0;
+    closed = 0;
+    if (PBrowser_ScriptSessionRequestDialogClose(bridge->session, "",
+            &handled, &closed) != PSCRIPT_OK) {
+        return 0;
+    }
+    return handled ? 1 : 0;
 }
 
 static int pcore_native_codepoint_utf8(unsigned long value, char *out,
@@ -17220,6 +17241,11 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         case VK_PRIOR: pcore_scroll_by(hwnd, -120);  break;
         case VK_NEXT:  pcore_scroll_by(hwnd, 120);   break;
         case VK_ESCAPE:
+            if (pcore_browser_script_request_dialog_close()) {
+                break;
+            }
+            DestroyWindow(hwnd);
+            break;
         case VK_RETURN:
             DestroyWindow(hwnd);
             break;
@@ -22464,6 +22490,151 @@ static BOOL test1103_browser_dialog_lifecycle_contract(void)
             "Browser dialog elements support bounded show/showModal/close"
             " and requestClose lifecycles, returnValue, modal exclusivity"
             " and cancelable cancel followed by non-cancelable close events.");
+    return TRUE;
+}
+
+/* TEST 1104 - host-driven Escape requestClose bridge. */
+static BOOL test1104_browser_dialog_escape_bridge_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<dialog id='dialog'>Dialog</dialog>"
+        "<p id='result'>pending</p>"
+        "<script>var d=document.getElementById('dialog');"
+        "window.events='';window.block=true;"
+        "d.addEventListener('cancel',function(e){events+='cancel:';"
+        "events+=e.defaultPrevented?'1;':'0;';"
+        "if(window.block){e.preventDefault();}});"
+        "d.addEventListener('close',function(e){events+='close:';"
+        "events+=e.defaultPrevented?'1;':'0;';});"
+        "d.showModal();</script></body></html>";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[512];
+    char error[384];
+    int executed;
+    int ignored;
+    int bytes;
+    int handled;
+    int closed;
+    int rc;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    bytes = 0;
+    handled = 0;
+    closed = 0;
+    rc = PSCRIPT_OK;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = NULL;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionRequestDialogClose(
+                g_browser_script_session.bridge->session, "blocked",
+                &handled, &closed);
+        if (rc != PSCRIPT_OK || handled != 1 || closed != 0) {
+            ok = 0;
+            _snprintf(error, sizeof(error) - 1,
+                    "blocked rc=%d handled=%d closed=%d", rc, handled,
+                    closed);
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    if (ok && pcore_browser_script_session_evaluate(
+            "window.block=false;", -1, error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        handled = 0;
+        closed = 0;
+        rc = PBrowser_ScriptSessionRequestDialogClose(
+                g_browser_script_session.bridge->session, "escape",
+                &handled, &closed);
+        if (rc != PSCRIPT_OK || handled != 1 || closed != 1) {
+            ok = 0;
+            _snprintf(error, sizeof(error) - 1,
+                    "allowed rc=%d handled=%d closed=%d", rc, handled,
+                    closed);
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    if (ok) {
+        handled = 0;
+        closed = 0;
+        rc = PBrowser_ScriptSessionRequestDialogClose(
+                g_browser_script_session.bridge->session, "ignored",
+                &handled, &closed);
+        if (rc != PSCRIPT_OK || handled != 0 || closed != 0) {
+            ok = 0;
+            _snprintf(error, sizeof(error) - 1,
+                    "inactive rc=%d handled=%d closed=%d", rc, handled,
+                    closed);
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    if (ok && pcore_browser_script_session_evaluate(
+            "document.getElementById('result').textContent=events+'|'"
+            "+String(d.open)+'|'+d.returnValue;", -1, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && (PCore_NodeTextContentById(document, "result", result,
+            sizeof(result), &bytes) != 0 ||
+            strcmp(result, "cancel:0;cancel:0;close:0;|false|escape") != 0)) {
+        ok = 0;
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s", bytes, result);
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1104 FAIL", error[0] != '\0' ? error :
+                "host dialog Escape bridge failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1104 OK",
+            "The host can route Escape to the active modal through the"
+            " Browser requestClose bridge; cancellation consumes Escape"
+            " without closing, while an accepted request commits close and"
+            " returnValue, and an inactive session is left untouched.");
     return TRUE;
 }
 
@@ -80312,6 +80483,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1101: ok = test1101_browser_sequential_focus_contract(); break;
         case 1102: ok = test1102_browser_tabindex_order_contract(); break;
         case 1103: ok = test1103_browser_dialog_lifecycle_contract(); break;
+        case 1104: ok = test1104_browser_dialog_escape_bridge_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

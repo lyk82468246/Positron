@@ -44,6 +44,7 @@ extern "C" {
 #define PBROWSER_SCRIPT_ANCHOR_TARGET_MAX 64
 #define PBROWSER_SCRIPT_ANCHOR_REL_MAX 256
 #define PBROWSER_SCRIPT_WINDOW_NAME_MAX 64
+#define PBROWSER_SCRIPT_DIALOG_VALUE_MAX 1024
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -1186,6 +1187,14 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterKeyCallbacks(
  * success out_default_allowed is 1 or 0 as described above. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchKeyEvent(HANDLE hSession,
         const PBrowserScriptKeyEventInfo *info, int *out_default_allowed);
+/* Ask the active script-owned modal dialog to run requestClose(). The host
+ * supplies the platform gesture (for example Escape); this API only applies
+ * the browser-side cancel/close lifecycle. out_handled is set when an active
+ * modal existed, including when its cancel event prevented closing, and
+ * out_closed is set only when the close event was committed. return_value is
+ * UTF-8, borrowed for the call, and may be NULL for the empty value. */
+PBROWSER_API int PBrowser_ScriptSessionRequestDialogClose(HANDLE hSession,
+        const char *return_value, int *out_handled, int *out_closed);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFocusCallbacks(
         HANDLE hSession, const PBrowserScriptFocusCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusCallbacks(
