@@ -85,7 +85,7 @@ WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser
 
 ### 单元素 `contenteditable`
 
-`test_host` 把 `PBrowserScriptContentEditableCallbacks` 与 `PBrowserScriptContentEditableSelectionCallbacks` 接到当前 Core 文档，并负责在真实输入源中编排 `beforeinput`、允许后的 `PCore_ContentEditableSetTextById` 和 `input`。Browser 维护脚本可见的 `selectionStart`/`selectionEnd`/`selectionDirection` 与 `selectionchange` 事件；宿主只在存在原生 editing host 时读写对应 HWND，将 multiline 的 CRLF 位置转换为逻辑 UTF-16 位置，并在原生消息完成后调用 Browser 的通知入口。宿主窗口不保存第二份文本模型，也不经 Core 再派发选区事件。当前测试覆盖继承、`false`/未知值、`plaintext-only`、合法 UTF-8、失效目标、取消回滚、WM EDIT 的允许/取消顺序、selection range 和原生 selectionchange；Range/Selection 对象、连续鼠标拖选语义、富文本、designMode 或 OEM IME 仍未实现。
+`test_host` 把 `PBrowserScriptContentEditableCallbacks` 与 `PBrowserScriptContentEditableSelectionCallbacks` 接到当前 Core 文档，并负责在真实输入源中编排 `beforeinput`、允许后的 `PCore_ContentEditableSetTextById` 和 `input`。Browser 维护脚本可见的 `selectionStart`/`selectionEnd`/`selectionDirection` 与 `selectionchange` 事件；宿主只在存在原生 editing host 时读写对应 HWND，将 multiline 的 CRLF 位置转换为逻辑 UTF-16 位置，在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 期间保留短暂 anchor，并在原生消息完成后调用 Browser 的通知入口。宿主窗口不保存第二份文本模型，也不经 Core 再派发选区事件。当前测试覆盖继承、`false`/未知值、`plaintext-only`、合法 UTF-8、失效目标、取消回滚、WM EDIT 的允许/取消顺序、selection range、原生 selectionchange 和无修饰鼠标拖选的连续方向；Range/Selection 对象、Shift/捕获丢失等拖选边界、富文本、designMode 或 OEM IME 仍未实现。
 
 ### 绘制与交互
 

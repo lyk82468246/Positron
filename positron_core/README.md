@@ -87,7 +87,7 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 `PCore_ContentEditableInfoById` 解析元素及其祖先的 `contenteditable` 枚举值：空值/`true` 进入普通纯文本模式，`plaintext-only` 进入显式纯文本模式，`false` 禁用，未知值继续向祖先继承。返回值同时报告有效模式和当前 `textContent` 的 UTF-8 字节数；查询不要求 style/layout，id 不存在或结构不完整时 fail closed。
 
-`PCore_ContentEditableSetTextById` 只允许有效的可编辑元素写入不超过 `PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES` 的合法 UTF-8 文本，并用一个文本节点替换该元素的子内容。它不派发事件，也不保存 caret/selection；这些脚本语义由 Browser 的 `selectionStart`/`selectionEnd`/`selectionDirection` 和有界 `selectionchange` 提供，原生窗口同步则通过 Browser 的 selection callback 由宿主完成。宿主应先通过 Browser 的现有 `beforeinput` 事务，获准后调用该 mutation，再派发 `input` 并按需重新 style/layout/paint。该 API 的失败码区分 DOM/目标、不可编辑和文本边界，避免把普通 `textContent` 写入误当作用户编辑。
+`PCore_ContentEditableSetTextById` 只允许有效的可编辑元素写入不超过 `PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES` 的合法 UTF-8 文本，并用一个文本节点替换该元素的子内容。它不派发事件，也不保存 caret/selection；这些脚本语义由 Browser 的 `selectionStart`/`selectionEnd`/`selectionDirection` 和有界 `selectionchange` 提供，原生窗口同步则通过 Browser 的 selection callback 由宿主完成。参考宿主对无修饰 WM EDIT 拖选的范围和方向跟踪也留在平台接线，不进入 Core 文档状态。宿主应先通过 Browser 的现有 `beforeinput` 事务，获准后调用该 mutation，再派发 `input` 并按需重新 style/layout/paint。该 API 的失败码区分 DOM/目标、不可编辑和文本边界，避免把普通 `textContent` 写入误当作用户编辑。
 
 `PCore_ContentEditableTargetInfo` 为 WM/native 宿主提供已布局 editing host 的有界快照：只枚举带非空 `id`、可见且有正尺寸 box 的有效 host，按 DOM 顺序最多 `PCORE_CONTENTEDITABLE_TARGET_MAX`（16）个；每个 host 的文本最多 8192 个 UTF-8 字节。嵌套但仅继承编辑状态的后代不单独出现。宿主可用快照中的几何和复制出的 id/text 创建代理窗口；任何 DOM mutation、重排或页面替换后都必须重新查询，不能缓存旧几何或字符串。
 
@@ -137,7 +137,7 @@ paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
 - HWND、消息循环、DPI/旋转、scrollbar、invalid region 和 HDC；
 - HTTP/TLS、后台 worker、取消、loading 和候选页面提交；
 - native EDIT/SELECT/button/file picker 与 SIP/IME；
-- contenteditable 的 WM EDIT 窗口、焦点、键盘和 IME 接线；宿主按 Browser 的 `beforeinput` 取消结果调用 Core 的受限文本 mutation，使用 Browser 的 selection callback 同步原生范围，并在原生范围改变后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`。Core 只提供 editing-host 快照和文本状态，不创建窗口，也不保存第二份编辑模型或重新派发 `selectionchange`；Range/Selection 对象、富文本和完整 IME 仍不在此边界内；
+- contenteditable 的 WM EDIT 窗口、焦点、键盘和 IME 接线；宿主按 Browser 的 `beforeinput` 取消结果调用 Core 的受限文本 mutation，使用 Browser 的 selection callback 同步原生范围，并在原生范围改变后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`。无修饰鼠标拖选的 anchor 与默认消息跟踪也由宿主维护。Core 只提供 editing-host 快照和文本状态，不创建窗口，也不保存第二份编辑模型或重新派发 `selectionchange`；Range/Selection 对象、富文本和完整 IME 仍不在此边界内；
 - history、浏览器 script session 和新窗口/外部协议策略；
 - 失败回滚、日志、持久化和应用生命周期。
 
