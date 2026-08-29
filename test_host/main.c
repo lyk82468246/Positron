@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1111
+#define TEST_MAX_NUMBER 1112
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -7431,6 +7431,33 @@ static int pcore_native_edit_selection_apply(pcore_native_edit *native_edit,
     return 1;
 }
 
+static void pcore_native_edit_selection_changed(
+        pcore_native_edit *native_edit, int trusted)
+{
+    pcore_browser_script_bridge *bridge;
+    int start;
+    int end;
+    int direction;
+    int changed;
+
+    if (native_edit == NULL || !native_edit->content_editable ||
+            native_edit->content_editable_id == NULL || g_render_doc == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.bridge->session == NULL) {
+        return;
+    }
+    if (!pcore_native_edit_selection_snapshot(native_edit, &start, &end,
+            &direction)) {
+        return;
+    }
+    bridge = g_browser_script_session.bridge;
+    changed = 0;
+    (void) PBrowser_ScriptSessionNotifyContentEditableSelection(
+            bridge->session, native_edit->content_editable_id, start, end,
+            direction, trusted ? 1 : 0, &changed);
+}
+
 static pcore_native_edit *g_native_edits = NULL;
 static unsigned int g_native_edit_count = 0;
 static int g_native_edit_syncing = 0;
@@ -8088,7 +8115,8 @@ static void pcore_native_contenteditable_probe_run(HWND parent)
         return;
     }
     if (pcore_browser_script_session_evaluate(
-            "window.events='';", -1, error, sizeof(error)) != 0) {
+            "window.events='';window.selectionEvents='';window.selectionCount=0;",
+            -1, error, sizeof(error)) != 0) {
         stage = "reset-before";
         goto failed;
     }
@@ -8102,11 +8130,13 @@ static void pcore_native_contenteditable_probe_run(HWND parent)
     native_length = GetWindowTextLengthW(native_edit->hwnd);
     if (text_result != 0 || strcmp(text, "!") != 0 ||
             pcore_browser_script_session_evaluate(
-            "document.getElementById('result').textContent=window.events;",
+            "document.getElementById('result').textContent=window.events+'#'+"
+            "window.selectionEvents+'|'+window.selectionCount;",
             -1, error, sizeof(error)) != 0 ||
             (result_result = PCore_NodeTextContentById(g_render_doc, "result", events,
             sizeof(events), NULL)) != 0 || strcmp(events,
-            "beforeinput|insertText|!|false|input|insertText|!|false") !=
+            "beforeinput|insertText|!|false|input|insertText|!|false#"
+            "selectionchange|editor|false|false|1") !=
             0) {
         goto failed;
     }
@@ -8386,6 +8416,18 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
             }
             break;
         }
+    }
+    if (native_edit != NULL &&
+            (msg == WM_KEYUP || msg == WM_SYSKEYUP ||
+            msg == WM_LBUTTONUP)) {
+        native_result = (original != NULL) ?
+                CallWindowProc(original, hwnd, msg, wp, lp) :
+                DefWindowProc(hwnd, msg, wp, lp);
+        if (native_edit->content_editable) {
+            native_edit->native_selection_direction_valid = 0;
+            pcore_native_edit_selection_changed(native_edit, 1);
+        }
+        return native_result;
     }
     return (original != NULL) ?
             CallWindowProc(original, hwnd, msg, wp, lp) :
@@ -10099,6 +10141,9 @@ static void pcore_native_edit_changed(HWND edit)
             native_edit->native_selection_direction_valid = 0;
         }
         (void) pcore_browser_script_dispatch_native_edit_input(edit);
+        if (native_edit->content_editable) {
+            pcore_native_edit_selection_changed(native_edit, 1);
+        }
     }
     if (g_native_edit_probe && stored_index == 1 &&
             !native_edit->content_editable) {
@@ -25253,14 +25298,19 @@ static BOOL test1110_browser_native_contenteditable_contract(void)
         "#editor,#outer,#blocked{display:block;width:220px;height:40px;"
         "margin:4px;padding:2px;border:1px solid #555;background:#fff;}";
     static const char LISTENER[] =
-        "window.events='';function record(e){"
+        "window.events='';window.selectionEvents='';window.selectionCount=0;"
+        "function record(e){"
+        "if(e.type==='selectionchange'){window.selectionEvents+=(window.selectionEvents===''?'':'|')+"
+        "e.type+'|'+e.target.id+'|'+String(e.bubbles)+'|'+String(e.cancelable);"
+        "window.selectionCount++;return;}"
         "if(e.type==='beforeinput'&&e.data==='x'){e.preventDefault();}"
         "window.events+=(window.events===''?'':'|')+e.type+'|'+"
         "String(e.inputType||'')+'|'+String(e.data||'')+'|'+"
         "String(e.defaultPrevented);}"
         "var e=document.getElementById('editor');"
         "e.addEventListener('beforeinput',record,false);"
-        "e.addEventListener('input',record,false);";
+        "e.addEventListener('input',record,false);"
+        "e.addEventListener('selectionchange',record,false);";
     HANDLE document;
     HANDLE sheet;
     HANDLE runtime;
@@ -25443,6 +25493,41 @@ static BOOL test1111_browser_contenteditable_selection_contract(void)
             "Contenteditable selectionStart/End/Direction now use bounded"
             " UTF-16 ranges, with a script fallback when no native host is"
             " materialized.");
+    return TRUE;
+}
+
+/* TEST 1112 - bounded contenteditable selectionchange notification. */
+static BOOL test1112_browser_contenteditable_selectionchange_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target' contenteditable='true'>abcdef</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var e=document.getElementById('target');var events='';var count=0;"
+        "function record(ev){events+=(events===''?'':';')+ev.type+'|'"
+        "+ev.target.id+'|'+String(ev.bubbles)+'|'+String(ev.cancelable);"
+        "count++;}e.addEventListener('selectionchange',record,false);"
+        "e.setSelectionRange(1,3,'backward');"
+        "e.setSelectionRange(1,3,'backward');e.selectionDirection='forward';"
+        "e.select();e.select();document.getElementById('result').textContent="
+        "events+'|'+count+'|'+e.selectionStart+'|'+e.selectionEnd+'|'"
+        "+e.selectionDirection;";
+    static const char EXPECTED[] =
+        "selectionchange|target|false|false;selectionchange|target|false|false;"
+        "selectionchange|target|false|false|3|0|6|none";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1112 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1112 OK",
+            "Contenteditable selectionchange is emitted only for a changed"
+            " bounded range, uses a non-bubbling/non-cancelable event, and"
+            " keeps repeated range assignments silent.");
     return TRUE;
 }
 
@@ -83299,6 +83384,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1109: ok = test1109_browser_content_editable_contract(); break;
         case 1110: ok = test1110_browser_native_contenteditable_contract(); break;
         case 1111: ok = test1111_browser_contenteditable_selection_contract(); break;
+        case 1112: ok = test1112_browser_contenteditable_selectionchange_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

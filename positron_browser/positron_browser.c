@@ -868,25 +868,53 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "Object.defineProperty(PElement.prototype,'selectionDirection',{"
         "get:function(){var q=pselectionNative(this);return q!==null?q.direction:"
         "pselection(this).direction;},set:function(v){"
-        "var d=String(v);pselection(this).direction=(d==='forward'||"
-        "d==='backward'||d==='none')?d:'none';pselectionSync(this,"
-        "pselection(this));}});"
-        "function pselectionSync(owner,s){var d;"
-        "if(!owner||!owner.isContentEditable||typeof g.__pcoreSetContentEditableSelection!=="
-        "'function'){return;}d=s.direction==='forward'?1:(s.direction==='backward'?2:0);"
-        "try{g.__pcoreSetContentEditableSelection({id:owner.__id,start:s.start,"
+        "var s=pselection(this);var oldStart=s.start;var oldEnd=s.end;"
+        "var oldDirection=s.direction;var d=String(v);s.direction=(d==='forward'||"
+        "d==='backward'||d==='none')?d:'none';pselectionSync(this,s,oldStart,"
+        "oldEnd,oldDirection);}});"
+        "function pselectionDirectionValue(d){return d===1?'forward':(d===2?"
+        "'backward':'none');}"
+        "function pselectionChange(owner,start,end,direction,trusted){var s;var e;"
+        "if(!owner||!owner.isContentEditable){return false;}s=pselection(owner);"
+        "if(s.start===start&&s.end===end&&s.direction===direction){return false;}"
+        "s.start=start;s.end=end;s.direction=direction;e=new PEvent('selectionchange',"
+        "{bubbles:false,cancelable:false});e.isTrusted=!!trusted;owner.dispatchEvent(e);"
+        "return true;}"
+        "function pselectionProgrammaticChange(owner,s,oldStart,oldEnd,oldDirection){var e;"
+        "if(!owner||!owner.isContentEditable||oldStart===s.start&&oldEnd===s.end&&"
+        "oldDirection===s.direction){return false;}e=new PEvent('selectionchange',"
+        "{bubbles:false,cancelable:false});e.isTrusted=false;owner.dispatchEvent(e);"
+        "return true;}"
+        "function pselectionSync(owner,s,oldStart,oldEnd,oldDirection){var d;"
+        "if(!owner||!owner.isContentEditable||oldStart===s.start&&oldEnd===s.end&&"
+        "oldDirection===s.direction){return;}d=s.direction==='forward'?1:(s.direction==='backward'?2:0);"
+        "if(typeof g.__pcoreSetContentEditableSelection==='function'){try{"
+        "g.__pcoreSetContentEditableSelection({id:owner.__id,start:s.start,"
         "end:s.end,direction:d});}catch(selectionSetError){}}"
+        "pselectionProgrammaticChange(owner,s,oldStart,oldEnd,oldDirection);}"
+        "g.__pcoreNotifyContentEditableSelection=function(info){var id;var owner;"
+        "var a;var b;var d;var n;var direction;id=info&&info.id!==undefined?"
+        "String(info.id):'';owner=g.document&&g.document.getElementById?"
+        "g.document.getElementById(id):null;if(!owner||!owner.isContentEditable){return false;}"
+        "a=Number(info&&info.start);b=Number(info&&info.end);d=Number(info&&info.direction);"
+        "if(!isFinite(a)||!isFinite(b)){return false;}a=Math.floor(a);b=Math.floor(b);"
+        "n=pselectionLimit(owner);if(a<0){a=0;}if(b<0){b=0;}if(a>n){a=n;}"
+        "if(b>n){b=n;}if(b<a){a=b;}direction=pselectionDirectionValue(d);"
+        "return pselectionChange(owner,a,b,direction,!!(info&&info.trusted));};"
         "PElement.prototype.setSelectionRange=function(start,end,direction){"
-        "var s=pselection(this);var n=pselectionLimit(this);var a=Number(start);"
+        "var s=pselection(this);var oldStart=s.start;var oldEnd=s.end;"
+        "var oldDirection=s.direction;var n=pselectionLimit(this);var a=Number(start);"
         "var b=Number(end);if(a!==a){a=0;}if(b!==b){b=0;}a=Math.floor(a);"
         "b=Math.floor(b);if(a<0){a=0;}if(b<0){b=0;}if(a>n){a=n;}"
         "if(b>n){b=n;}if(b<a){a=b;}s.start=a;s.end=b;"
         "if(arguments.length>2){s.direction=String(direction)==='forward'||"
         "String(direction)==='backward'?String(direction):'none';}else{"
-        "s.direction='none';}pselectionSync(this,s);};"
+        "s.direction='none';}pselectionSync(this,s,oldStart,oldEnd,"
+        "oldDirection);};"
         "PElement.prototype.select=function(){var s=pselection(this);"
+        "var oldStart=s.start;var oldEnd=s.end;var oldDirection=s.direction;"
         "s.start=0;s.end=pselectionLimit(this);s.direction='none';"
-        "pselectionSync(this,s);};"
+        "pselectionSync(this,s,oldStart,oldEnd,oldDirection);};"
         "function pnumberInput(owner){var t=String(owner.type).toLowerCase();"
         "if(t!=='number'&&t!=='range'){throw new Error('number input required');}"
         "return Number(owner.value);}" 
@@ -4523,7 +4551,7 @@ static int p_browser_script_content_editable_selection_set(void *pw,
         return 1;
     }
     return p_browser_script_write_bool(changed > 0, out_json,
-            out_capacity, out_len);
+        out_capacity, out_len);
 }
 
 static int p_browser_script_dom_get_value(void *pw,
@@ -6077,6 +6105,61 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterContentEditableSelectionCallbac
     free(session->content_editable_selection);
     session->content_editable_selection = NULL;
     return (rc != PSCRIPT_OK) ? rc : second_rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionNotifyContentEditableSelection(
+        HANDLE hSession, const char *element_id, int start, int end,
+        int direction, int trusted, int *out_changed)
+{
+    p_browser_script_session *session;
+    char id_json[2048];
+    char args[2304];
+    const char *result;
+    int escaped;
+    int length;
+    int changed;
+    int rc;
+
+    if (out_changed != NULL) {
+        *out_changed = 0;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || element_id == NULL ||
+            element_id[0] == '\0' || start < 0 || end < 0 ||
+            direction < PBROWSER_SCRIPT_CONTENT_SELECTION_NONE ||
+            direction > PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    id_json[0] = '"';
+    escaped = p_browser_script_json_escape(element_id, id_json + 1,
+            (int) sizeof(id_json) - 3);
+    if (escaped < 0 || escaped + 2 >= (int) sizeof(id_json)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    id_json[escaped + 1] = '"';
+    id_json[escaped + 2] = '\0';
+    length = _snprintf(args, sizeof(args) - 1,
+            "[{\"id\":%s,\"start\":%d,\"end\":%d,"
+            "\"direction\":%d,\"trusted\":%s}]", id_json, start,
+            end, direction, trusted ? "true" : "false");
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    args[length] = '\0';
+    rc = PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreNotifyContentEditableSelection", args);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    result = PBrowser_ScriptSessionGetResult(hSession);
+    changed = result != NULL && strcmp(result, "true") == 0;
+    if (!changed) {
+        return PSCRIPT_OK;
+    }
+    if (out_changed != NULL) {
+        *out_changed = 1;
+    }
+    return PSCRIPT_OK;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomValueCallbacks(

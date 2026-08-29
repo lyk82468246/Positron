@@ -1198,6 +1198,14 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableSelectionCallbacks
         const PBrowserScriptContentEditableSelectionCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterContentEditableSelectionCallbacks(
         HANDLE hSession);
+/* Notify the Browser that a host-native contenteditable range changed. The
+ * Browser updates its bounded script-side selection state and dispatches a
+ * non-bubbling, non-cancelable `selectionchange` event only when the range
+ * actually changed. `trusted` is normalized to zero or one. out_changed may
+ * be NULL; when supplied it is set to one only when an event was emitted. */
+PBROWSER_API int PBrowser_ScriptSessionNotifyContentEditableSelection(
+        HANDLE hSession, const char *element_id, int start, int end,
+        int direction, int trusted, int *out_changed);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomValueCallbacks(
         HANDLE hSession, const PBrowserScriptDomValueCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomValueCallbacks(
