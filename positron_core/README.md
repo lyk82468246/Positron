@@ -93,7 +93,7 @@ Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action
 
 Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispatch 和可聚焦目标枚举。Browser 决定脚本事件/默认动作事务，宿主把 WM 消息和 native 控件状态映射进来。
 
-`PCore_FocusTargetInfo` 返回有界的键盘焦点快照：正值 `tabindex` 按数值升序排列，同值保持 DOM 顺序，随后是缺省/零值组的 DOM 顺序；负值、disabled、hidden、未布局目标和 file picker 会被排除。除支持的链接、表单控件和 `summary` 外，带有效非负 `tabindex` 的普通布局元素也会以 `PCORE_FOCUS_TARGET_GENERIC` 返回。键盘顺序、focus scroll 和 native HWND 切换仍需要三层共同完成；Core 不调用 `SetFocus`，也不创建控件窗口。
+`PCore_FocusTargetInfo` 返回有界的键盘焦点快照：正值 `tabindex` 按数值升序排列，同值保持 DOM 顺序，随后是缺省/零值组的 DOM 顺序；负值、disabled、hidden、未布局目标和 file picker 会被排除。除支持的链接、表单控件和 `summary` 外，带有效非负 `tabindex` 的普通布局元素也会以 `PCORE_FOCUS_TARGET_GENERIC` 返回。`PCore_FocusTargetInfoWithin` 用 UTF-8 DOM id 将同一快照限制在某个已布局祖先及其后代内，顺序和预算保持一致，适合宿主实现 modal 的 Tab/Shift+Tab 范围。两者都只返回几何与 kind，不改变焦点；focus scroll、native HWND 切换以及把 Browser 报告的活动 modal id 接入消息循环仍由宿主完成；Core 不调用 `SetFocus`，也不创建控件窗口。
 
 ## 所有权
 
@@ -122,7 +122,7 @@ Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispa
 - 不支持完整现代 HTML/CSS/DOM；float、复杂 table/position、Grid、custom properties 等仍有限。
 - 字体、SVG、图像格式和高 DPI 结果受 WM6 GDI/依赖版本限制。
 - Core resource cache、DOM bridge、表单集合和深度/数量均有固定预算。
-- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素；Core 只把 `<dialog open>` 纳入静态布局，不实现 top layer、backdrop、modal focus trap、contenteditable 或其他浏览器焦点策略。对话框脚本生命周期由 `positron_browser.dll` 提供。
+- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；Core 只把 `<dialog open>` 纳入静态布局，不绘制 top layer/backdrop，也不自行决定初始焦点、背景点击或跨窗口焦点策略。对话框脚本生命周期和活动 modal id 由 `positron_browser.dll` 提供，宿主可据此实现顺序 Tab 焦点范围。
 - Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。
 - 精确 API、返回码、结构布局和借用期限以 [`positron_core.h`](positron_core.h) 为准。
 

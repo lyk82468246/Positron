@@ -64,7 +64,7 @@
 
 ### 表单、输入与可访问交互
 
-- 依据实际流程在已有有界 `dialog` 脚本生命周期和宿主 Escape 请求桥接之上继续补 top layer/backdrop、焦点陷阱、背景点击、`method="dialog"` 或 contenteditable 等缺口；保持已实现的有界 `tabindex` 排序与 Core/宿主事务边界。
+- 依据实际流程在已有有界 `dialog` 脚本生命周期、活动 modal id、Escape 请求桥接和宿主顺序 Tab 子树范围之上继续补 top layer/backdrop、背景点击、`method="dialog"` 或 contenteditable 等缺口；保持已实现的有界 `tabindex` 排序与 Core/宿主事务边界。
 - 保持 native 控件 mutation、Browser event policy 与 Core form state 的事务顺序。
 - 扩充真实 SIP/IME、硬键盘、SELECT popup、file picker 和旋转的成批人工矩阵。
 - 对 disabled/hidden/stale target 一律 fail closed，不为通过测试绕过生命周期检查。
