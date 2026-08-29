@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1102
+#define TEST_MAX_NUMBER 1103
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 static BOOL test_browser_raw_string_fixture(const char *html,
@@ -22381,6 +22381,89 @@ static BOOL test1102_browser_tabindex_order_contract(void)
             " DOM order, negative and disabled targets are excluded, and"
             " arbitrary laid-out elements with valid tabindex values can be"
             " focused through the Core interaction bridge.");
+    return TRUE;
+}
+
+/* TEST 1103 - bounded dialog lifecycle and cancel/close events. */
+static BOOL test1103_browser_dialog_lifecycle_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<dialog id='dialog'>Dialog</dialog>"
+        "<dialog id='other'>Other</dialog>"
+        "<p id='result'>pending</p>"
+        "<script>var d=document.getElementById('dialog');"
+        "var o=document.getElementById('other');var result='';var events='';"
+        "function mark(v){result+=v?'1':'0';}"
+        "d.addEventListener('cancel',function(e){events+='cancel:';"
+        "events+=e.defaultPrevented?'1;':'0;';});"
+        "d.addEventListener('close',function(e){events+='close:';"
+        "events+=e.defaultPrevented?'1;':'0;';});"
+        "mark(!d.open&&d.returnValue==='');"
+        "d.show();mark(d.open);"
+        "try{d.show();mark(false);}catch(e){mark(e.name==='InvalidStateError');}"
+        "d.close('accepted');mark(!d.open&&d.returnValue==='accepted');"
+        "d.showModal();mark(d.open);"
+        "d.addEventListener('cancel',function(e){e.preventDefault();"
+        "events+='blocked;';},{once:true});"
+        "d.requestClose('blocked');mark(d.open&&d.returnValue==='accepted');"
+        "d.requestClose('dismissed');mark(!d.open&&d.returnValue==='dismissed');"
+        "d.requestClose('ignored');mark(!d.open&&d.returnValue==='dismissed');"
+        "d.showModal();try{o.showModal();mark(false);}catch(e){"
+        "mark(e.name==='InvalidStateError');}d.close();mark(!d.open&&"
+        "d.returnValue==='');o.showModal();mark(o.open);o.close('other');"
+        "mark(!o.open&&o.returnValue==='other');"
+        "document.getElementById('result').textContent=result+'|'+events;"
+        "</script></body></html>";
+    HANDLE document;
+    char result[512];
+    char error[384];
+    int executed;
+    int ignored;
+    int bytes;
+    int ok;
+
+    document = NULL;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    bytes = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_inline_scripts(document, 1, &executed,
+            &ignored, error, sizeof(error)) != 0 || executed != 1 ||
+            ignored != 0 || PCore_NodeTextContentById(document, "result",
+            result, sizeof(result), &bytes) != 0 ||
+            strcmp(result,
+            "111111111111|close:0;cancel:0;blocked;cancel:0;close:0;"
+            "close:0;") != 0) {
+        ok = 0;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    pcore_browser_script_session_destroy();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result[%d]=%s executed=%d ignored=%d", bytes,
+                    result, executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1103 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1103 OK",
+            "Browser dialog elements support bounded show/showModal/close"
+            " and requestClose lifecycles, returnValue, modal exclusivity"
+            " and cancelable cancel followed by non-cancelable close events.");
     return TRUE;
 }
 
@@ -80228,6 +80311,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1100: ok = test1100_browser_disclosure_keyboard_contract(); break;
         case 1101: ok = test1101_browser_sequential_focus_contract(); break;
         case 1102: ok = test1102_browser_tabindex_order_contract(); break;
+        case 1103: ok = test1103_browser_dialog_lifecycle_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
