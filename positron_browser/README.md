@@ -80,7 +80,7 @@ Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 di
 
 `selectionStart`、`selectionEnd` 和 `selectionDirection` 使用 JavaScript UTF-16 code-unit 偏移。调用 `setSelectionRange()` 或 `select()` 时，Browser 先更新有界脚本状态，再尝试通过可选的 `PBrowserScriptContentEditableSelectionCallbacks` 同步宿主的原生 editing host；没有原生窗口（例如离线 fixture 或未布局的后代元素）时保留脚本侧回退。宿主的 multiline EDIT 适配器负责把 CRLF 原生位置转换为 Core/Browser 的逻辑 LF 位置。
 
-当范围或方向实际改变时，Browser 只分发一次非冒泡、不可取消的 `selectionchange`；重复赋值保持静默。脚本修改产生不可信事件，宿主在原生 caret/range 更新后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection` 时可标记为可信。该入口负责校验、去重、更新脚本状态和事件分发；宿主不应再通过 Core 重新派发同一事件。参考宿主已将无修饰 WM EDIT 鼠标拖选的 down/move/up 范围通知接入此入口；Browser 本身不拥有 HWND、鼠标 capture 或平台 hit-test。当前仍只覆盖单元素纯文本，不包含 Range/Selection 对象、Shift/捕获丢失等拖选边界、富文本、designMode、剪贴板或完整 IME 语义。
+当范围或方向实际改变时，Browser 只分发一次非冒泡、不可取消的 `selectionchange`；重复赋值保持静默。脚本修改产生不可信事件，宿主在原生 caret/range 更新后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection` 时可标记为可信。该入口负责校验、去重、更新脚本状态和事件分发；宿主不应再通过 Core 重新派发同一事件。参考宿主已将无修饰 WM EDIT 鼠标拖选、Shift/方向键扩展，以及 capture/cancel/focus 中断后的范围通知接入此入口；Browser 本身不拥有 HWND、键盘状态、鼠标 capture 或平台 hit-test。当前仍只覆盖单元素纯文本，不包含 Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode、剪贴板或完整 IME 语义。
 
 ### Event 与平台事务
 
@@ -137,7 +137,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
-- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台焦点。CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期和其他浏览器焦点策略未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选通知；Range/Selection 对象、Shift/捕获丢失等拖选边界、富文本、designMode 和完整 IME 仍未实现。
+- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台焦点。CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期和其他浏览器焦点策略未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 
