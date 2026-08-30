@@ -27,19 +27,16 @@
 
 ## 近期目标
 
-### 建立第一个 compatibility corpus 场景
+### 安排后续的全量设备 checkpoint
 
-选择一个已经遇到过真实用户价值、又能离线固定主要输入的页面/交互场景。fixture 应包含：
+沿用当前源码 dispatch 动态生成的 automation-safe 选择，覆盖首个离线 corpus 流程及其相邻基础设施回归。checkpoint 应包含：
 
-- 代表性 HTML/CSS/资源；
-- 一个完整用户流程，而非单一 getter/setter；
-- 明确的几何、状态、事件、导航或失败回滚断言；
-- 必要时附一个真实网络哨兵，但不能让网络成为契约测试前提；
-- 可复用的失败分类和最小人工观察清单。
+- 与产品代码同一次构建的完整 staging；
+- 当前 dispatch 中所有 automation-safe 测试，排除 manual-only fixture；
+- TEST999 完成提示音与唯一 `TESTBENCH PASS` 判定；
+- 可追溯的设备日志和构建/RAPI/断言/环境失败分类。
 
-### 安排新的全量设备 checkpoint
-
-在 compatibility corpus 的第一个纵切完成，或更早触及 ABI、资源生命周期、layout/input/network 基础设施时，生成当前源码全量自动清单并运行新 checkpoint。它必须与窄 smoke、manual-only fixture 和真实网络风险分开记录。
+checkpoint 完成后，再从已有 corpus 暴露的实际缺口选择第二条离线流程；新 fixture 仍应包含代表性 HTML/CSS/资源、完整用户动作、几何/状态/事件/导航或回滚断言，并保持网络不成为契约测试前提。
 
 ### 继续清理产品所有权
 

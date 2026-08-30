@@ -59,6 +59,7 @@ tests=13,20,27,999
 - HTML/CSS/DOM、style/layout/paint、图片/SVG 和资源 cache；
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
+- 固定离线 compatibility corpus，把 contenteditable、dialog/form、same-document navigation 和失败回滚组合成可重复的完整流程；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。

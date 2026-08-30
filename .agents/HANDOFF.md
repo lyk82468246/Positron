@@ -8,8 +8,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`；产品代码提交为 `c0c4ba0e`（next668），当前文档与该代码快照同步。
-- 当前产品代码基线：`c0c4ba0e`（next668，单元素 `contenteditable` 的受限 CF_UNICODETEXT 粘贴/剪切与 WM_COPY 边界、折叠选区 no-op、超长/非 Unicode fail-closed 和 WinCE 原生 WM_CUT 重入保护）；上一产品基线为 `abeedb66`（next667，CF_UNICODETEXT 粘贴/剪切事务、取消回滚和选区同步）。
+- 分支：`main`；产品代码提交为 `88d68ebd`（next669），本文件更新后工作区应保持 clean。
+- 当前产品代码基线：`88d68ebd`（next669，首个离线 compatibility corpus 完整流程）；上一产品基线为 `c0c4ba0e`（next668，单元素 `contenteditable` 的受限 CF_UNICODETEXT 粘贴/剪切与 WM_COPY 边界、折叠选区 no-op、超长/非 Unicode fail-closed 和 WinCE 原生 WM_CUT 重入保护）。
 - Core 现在报告稳定的有效表单方法常量，并为显式 submitter 或单行输入隐式提交解析最近祖先 dialog id 与 submitter value。Browser 提供按 id 直接执行 `dialog.close(value)` 的会话边界；参考宿主只在 validation 和可取消 `submit` 均允许后调用它，不生成网络导航，也不错误派发 `cancel`。Core 还提供 `PCore_PaintDocumentWithModal`：普通文档绘制后覆盖有界实体色 backdrop，并按 Browser 的活动 id 重绘已打开的 dialog；next658 的 backdrop 指针策略和此前的 modal 焦点/Escape 边界保持不变。
 - `tmp/` 保存本地设备日志和截图，不跟踪。
 
@@ -19,7 +19,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-建立一组小而固定的真实页面与交互兼容性语料，依据实际缺口选择下一个高价值纵切。不得只为增加测试编号而拆分能力，也不得把产品语义继续堆在 `test_host`。
+完成 next669 之后的全量自动设备 checkpoint，确认动态 dispatch 生成的 automation-safe 测试集合与同批 staging 在真实设备上保持一致，再依据 corpus 暴露的实际缺口选择下一条高价值纵切。不得只为增加测试编号而拆分能力，也不得把产品语义继续堆在 `test_host`。
 
 ## 已验证产品事实
 
@@ -41,24 +41,25 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - 支持的链接、summary、native EDIT/SELECT/button/file 等目标，以及带有效非负 `tabindex` 的普通布局元素按有界顺序响应 Tab/Shift+Tab：正值升序、同值 DOM 稳定排序，随后零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍被排除。Browser 报告活动 modal id 后，宿主可用 Core 的 scoped snapshot 将顺序焦点限制在 dialog 子树；宿主仍同步焦点事件、原生焦点和滚动可见性。
 - `<dialog>` 的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id 查询、宿主驱动的 Escape 请求桥接、有界 backdrop 指针策略、`method="dialog"` 默认动作和 Core modal paint 已形成契约。显式点击、脚本 `click()` 和单行输入隐式 Enter 都遵循 validation→可取消 submit→直接 close/returnValue；CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 仍未实现。
 - 单元素 `contenteditable` 已形成 Core/Browser/宿主边界：Core 解析祖先继承并限制合法 UTF-8 纯文本 mutation，Browser 暴露 `isContentEditable`/`innerText`、`selectionStart`/`selectionEnd`/`selectionDirection` 与 typed input 事务，宿主为带 id 且已布局的有效 editing host 创建有界 WM multiline EDIT 代理。允许的 `WM_CHAR` 在默认处理完成后回读最终文本并派发 `input`；取消的 `beforeinput` 不修改 Core，重复/提前 `EN_CHANGE` 不会制造空事件。Browser 选区偏移使用 UTF-16 code unit；宿主将 WM EDIT 的 CRLF 位置转换为逻辑 LF，并在可用时同步原生 HWND。无修饰鼠标拖选以及 Shift/方向键扩展由宿主短暂保存 anchor；捕获丢失、取消模式和焦点切换会先结束手势，再通过 Browser 的去重通知入口刷新范围。宿主对 `WM_PASTE`/`WM_CUT` 只接受有界 `CF_UNICODETEXT`，把规范化后的 UTF-8 data 交给 `beforeinput`，允许后执行 native default，再提交 Core/input 和折叠选区；`WM_COPY` 只写入非空的有界 Unicode 选区，折叠选区保持现有剪贴板不变；格式缺失、超长或读取失败时 fail closed。为兼容 WinCE 原生剪切的内部重入，宿主只在外层 `WM_CUT` 默认处理期间放行同一 HWND 的嵌套 `WM_COPY`。每页最多 16 个宿主、文本最多 8192 UTF-8 字节；嵌套继承后代不重复创建 host。
+- 离线 compatibility corpus 的第一条完整流程已加入 TEST1117：固定 HTML/CSS 在无网络条件下串联 contenteditable 取消与提交、selectionchange、required dialog validation、`method="dialog"` close/returnValue、same-document fragment 导航、跨 origin 候选回滚和 history back。几何、状态、事件、导航和失败不变性都由自动断言覆盖；它是回归夹具，不改变公共 ABI，也不把页面语义移入宿主。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1116。
+- `TEST_MAX_NUMBER`：1117。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next668：
+当前最新产品门为 next669：
 
-- 本地目录：`tmp/device-runs/20260830-110912-next668-final/`；
-- 选择：TEST1112、TEST1113、TEST1114、TEST1115、TEST1116 与 TEST999；
-- 结果：6/6，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
+- 本地目录：`tmp/device-runs/20260830-115654-next669-corpus-final/`；
+- 选择：TEST1081、TEST1107、TEST1114、TEST1115、TEST1116、TEST1117 与 TEST999；
+- 结果：7/7，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
 - 设备：640x480，dpi=192；该门使用当前 WMDC GUI 会话并完成了 staging、远端启动、日志回收和退出提示音。
 
-该门验证 Core/Browser 单元素 `contenteditable` 状态与纯文本 mutation、真实 WM multiline EDIT 代理、提前 `EN_CHANGE` 的延迟回读、宿主编排的 `beforeinput` 取消→mutation→`input` 顺序、脚本侧 bounded selection range、有界且去重的 `selectionchange`、原生 EDIT 的 UTF-16/CRLF 选区同步、WM EDIT 连续鼠标拖选的范围/方向通知、Shift/方向键选区方向保持、捕获丢失和焦点切换的手势收尾、原生选区通知路径，以及受限 `CF_UNICODETEXT` 粘贴/剪切的精确 `beforeinput.data`、取消回滚、Core 单次提交、折叠 caret/selectionchange 同步、`WM_COPY` 非空选区复制、折叠复制 no-op、超长 UTF-8 与非 Unicode 格式的 fail-closed 行为，并重跑退出提示音回归。它是定向门，不是全量回归。
+该门除重跑 next668 的 contenteditable/剪贴板相邻回归和 TEST1081 的 fragment history 外，首次自动验证 TEST1117 的离线完整流程：高 DPI 下 640×480 设备几何、固定 dialog/form/contenteditable/link 盒、beforeinput 取消与允许后的 mutation/input/change、selectionchange 去重、required validation 不关闭 dialog、`method="dialog"` 的 submit/close/returnValue、same-document fragment history、错误候选不改写现有 history，以及 back traversal 后的最终状态。它是定向门，不是全量回归。
 
 最近一次完整编号范围基线仍是 next255，早于当前多批能力；此后主要使用定向门和相邻回归。因此，累积风险达到路线图条件时必须安排新的全量 checkpoint，不能把多个窄门宣称为全量覆盖。
 
@@ -73,12 +74,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
+- TEST1117 是无网络自动夹具，没有新增必须立即人工复核的风险；其 dialog 视觉、链接触摸、滚动/旋转和不同 DPI 的整体呈现仍按既有规则累计人工验收。
 
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
 
-- 真实页面兼容性仍缺少固定、小型、可重复的 corpus；TEST13 只是单一网络哨兵。
+- 已建立一个固定、小型、可重复的离线 corpus 场景，但目前只有一条流程；它不能代表任意真实网站，TEST13 仍只是单一网络哨兵。
 - `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围、有界 backdrop 指针策略和 Core 实体色 modal paint；当前表单桥要求最近祖先 dialog 有非空 id。CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
@@ -91,7 +93,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 唯一下一步
 
-next669 只建立第一个离线 compatibility-corpus 场景：从已经验证的 `contenteditable`、dialog、表单和导航夹具中选一条完整用户流程，固定 HTML/CSS/资源与关键状态、事件和几何断言，并把失败分类接入现有自动门；不新增孤立 API，也不把 WM6 剪贴板、Range/Selection 对象、完整 ClipboardEvent/async clipboard、富文本转换、designMode、跨文档 modal 或无关 CSS 扩张塞入同一批。next668 已完成宿主 `WM_COPY`、折叠选区 no-op、超长/非 Unicode fail-closed 以及 WinCE `WM_CUT` 内部重入保护；next667 的 `CF_UNICODETEXT` paste/cut data、取消、Core mutation、input 和选区同步，next666 的键盘扩展/中断收尾、next665 的无修饰鼠标拖选和 next664 的去重 `selectionchange` 仍由 Browser 公共 DLL 统一拥有。
+next670 安排一次新的全量自动设备 checkpoint：沿用当前源码 dispatch 动态生成的 automation-safe 选择，覆盖 TEST1117 及其相邻基础设施回归，并保留 TEST999。它只验证当前已完成能力的组合和 staging 一致性，不在同一批加入新的 API、人工 fixture 或无关 CSS/剪贴板扩张；全量通过后再从 corpus 暴露的实际缺口选择下一条纵向能力。
 
 优先场景应同时满足：
 
@@ -103,10 +105,9 @@ next669 只建立第一个离线 compatibility-corpus 场景：从已经验证�
 
 ## 下一步完成标准
 
-- 固定 fixture 已自动验证单元素 `contenteditable` 的状态、文本 mutation、事件顺序和失效回滚，不依赖外网；
-- next668 的 Browser 事件/选区语义仍位于公共 DLL；`test_host` 只提供原生 HWND 的剪贴板读写、选区读取、UTF-16/CRLF 平台转换、`WM_COPY`/`WM_CUT` 默认消息包裹和 fixture，不得把 ClipboardEvent/async clipboard 或 Range/Selection 模型复制回宿主；WinCE 原生剪切内部重入的放行只属于宿主消息适配。
-- `python scripts/test_c89ize.py` 与 `python scripts/audit_repo.py` 通过；
-- VS2008 ARMV4I 正式构建通过，staging 无混包；
-- 定向设备门及直接相邻回归全部通过，日志唯一 PASS、零 ERROR/FAIL；
-- 需要的人工风险已完成或明确进入可累计清单；
-- handoff 覆盖更新为新的当前快照，ROADMAP 只保留仍未完成工作。
+- 全量选择由当前 `run_configured_tests` dispatch 动态生成，排除 manual-only fixture，并包含 TEST1117 与 TEST999；
+- VS2008 ARMV4I 正式构建和完整 staging 来自同一配置、同一源码提交，无旧 EXE/DLL 混包；
+- 全量设备门中每个所选测试都有完成记录，日志唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，退出提示音只请求一次；
+- 全量门后保留一份可追溯的 `tmp/device-runs/` 证据，并把失败按构建、RAPI、测试断言或设备环境分类；
+- `python scripts/test_c89ize.py`、`python scripts/audit_repo.py` 和 `git diff --check` 通过；
+- handoff 覆盖为 checkpoint 快照，ROADMAP 只保留下一条未完成的纵向能力。

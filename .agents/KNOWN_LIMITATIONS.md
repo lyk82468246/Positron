@@ -86,6 +86,7 @@
 ## 测试覆盖
 
 - 最近开发主要使用定向设备门；多批窄门不等于新的全量范围基线。
+- 已有一个离线 compatibility-corpus 场景（TEST1117），把固定 HTML/CSS 中的 contenteditable、dialog validation、`method="dialog"` close、same-document history 和失败候选回滚串成一条自动流程；它只覆盖这一条流程，不代表任意真实网站或完整 Web 标准。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。
