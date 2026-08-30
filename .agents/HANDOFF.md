@@ -8,10 +8,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`；next674 已完成产品实现、宿主接线、自动断言和文档快照，提交后工作区应保持 clean。
+- 分支：`main`；next675 已完成产品实现、宿主接线、自动断言和文档快照，提交后工作区应保持 clean。
 - next672 在 next671 的离线候选流程上补齐了宿主级过时导航事务：每个候选独占 worker handle 和取消标志；新导航会按 generation 退休旧候选，旧 worker 的进度/完成消息不能触碰当前候选；退休请求保留自己的 response、资源队列和线程，直到完成消息或关闭清理后释放。退休队列固定为 4 个请求，满载时新导航 fail closed；取消检查位于 worker 的阶段边界和 PHttp 返回边界，未改变公共 DLL ABI。
 - next673 在上述导航事务上补齐了资源终态分类：每个资源沿 `pending` 单向进入 `ready`、`failed` 或 `cancelled`；失败按 resolve、transport、HTTP、budget、memory 分类，取消不计入网络失败。宿主日志输出有界的终态/错误计数，response 与资源缓冲仍由拥有它们的候选回收；没有改变公共 DLL ABI，也没有把强制中断阻塞 socket 伪装成已完成。
 - next674 在资源终态分类之上加入了固定的 transport 重试预算：每个资源最多重试 2 次（最多 3 次尝试），只有 `status_code == 0` 的 transport 失败可重试；resolve、HTTP、budget、memory 和 cancelled 结果保持首个终态，预算耗尽后记录 `retry_exhausted` 并保持 transport failure。日志增加 attempts/retries/exhausted 计数，仍不改变公共 DLL ABI。
+- next675 在资源终态和重试预算之上加入宿主级候选提交门：样式表与 `@import` 在 style pass 中标为 required，脚本与图片标为 optional；发现外部 CSS 后会回到 worker，layout/swap 前重新汇总 pending、cancelled、required-failed 和 optional-failed。required 失败、未收敛或取消候选不会 teardown、swap 或更新 history；只有 READY gate 才提交。optional 失败继续交给 Core 的 fallback 路径。该策略只属于宿主 telemetry 和调度，不改变公共 DLL ABI；TEST1122 覆盖两种失败策略。
 - next671 在 next670 的离线 corpus 基础上补齐了跨文档候选的 page teardown：Browser 提供一次性的 `visibilitychange`/`pagehide`/`unload` 与页面队列清理入口，宿主只在候选完成提交前调用；失败候选继续保留旧页。脚本 native function 预算按设备验证从 23 增加到有界的 24，为一个产品消费者回调保留槽位。
 - next670 在 next669 的离线 corpus 基础上修复了 collapsed-border 的重复 DPI 换算、浏览器 `classList.toggle` 的参数个数语义、无 DOM bootstrap 回退，以及高 DPI 重排后 block 文本盒的 label 命中关联；同时将浏览器 session 堆上限固定为经设备二分验证的 646 KiB，并恢复稳定的 TEST3/TEST5 网络哨兵组合。
 - 上一产品基线为 `88d68ebd`（next669，首个离线 compatibility corpus 完整流程）；更早基线为 `c0c4ba0e`（next668，单元素 `contenteditable` 的受限 CF_UNICODETEXT 粘贴/剪切与 WM_COPY 边界、折叠选区 no-op、超长/非 Unicode fail-closed 和 WinCE 原生 WM_CUT 重入保护）。
@@ -24,7 +25,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-推进 next675：在资源失败分类和 transport 重试预算之上，定义候选页面的资源提交门；必需资源失败时保持旧页，可降级资源按明确策略继续，取消候选不得提交。
+推进 next676：补齐资源降级结果的可观察性，在不暴露公共 ABI 的前提下给出有界的失败资源摘要与 fallback 结果，并验证 required/optional 分类在重复资源和深层 `@import` 中保持一致。
 
 ## 已验证产品事实
 
@@ -41,7 +42,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - 常用 block/inline/flex/table、图片/SVG、背景、列表、有限定位、表单控件、验证、提交与 reset 已有设备回归；这不代表完整 CSS/HTML。
 - Browser 层提供有界 history、same-document state、script session、DOM/Event/input/navigation callbacks，以及 timer/microtask/lifecycle 和 native 控件事务协调。
 - 页面导航保留旧页到候选文档成功提交；主文档和资源网络阶段与 UI 文档操作分离。
-- 资源准备在宿主内记录 `pending`、`ready`、`failed`、`cancelled` 四种终态；失败摘要区分 resolve、transport、HTTP、budget、memory，transport 失败最多重试 2 次（每项最多 3 次尝试），HTTP、resolve、budget、memory 和取消不重试，取消单独计数且不重新暴露为可用缓存。该摘要是导航调度 telemetry，不是公共 Core/Browser ABI。
+- 资源准备在宿主内记录 `pending`、`ready`、`failed`、`cancelled` 四种终态；失败摘要区分 resolve、transport、HTTP、budget、memory，transport 失败最多重试 2 次（每项最多 3 次尝试），HTTP、resolve、budget、memory 和取消不重试，取消单独计数且不重新暴露为可用缓存。样式表与 `@import` 进入 required 提交门，脚本与图片进入 optional 提交门；layout/swap 前必须重新检查 gate，required 失败、未收敛或取消保留旧页，optional 失败允许提交并使用 Core fallback。该摘要和 gate 是导航调度 telemetry，不是公共 Core/Browser ABI。
 - 深层 DOM 资源准备使用单个事务级 heap scratch，避免大批固定栈缓冲耗尽 WM6 线程栈。
 - `<details>/<summary>` 支持 click 与 Enter/Space 激活、取消和 DOM 状态同步。
 - 支持的链接、summary、native EDIT/SELECT/button/file 等目标，以及带有效非负 `tabindex` 的普通布局元素按有界顺序响应 Tab/Shift+Tab：正值升序、同值 DOM 稳定排序，随后零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍被排除。Browser 报告活动 modal id 后，宿主可用 Core 的 scoped snapshot 将顺序焦点限制在 dialog 子树；宿主仍同步焦点事件、原生焦点和滚动可见性。
@@ -52,17 +53,26 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - TEST1119 覆盖资源准备期间的新旧候选交错、generation 取消、过时进度/完成消息隔离、退休请求回收和最新候选提交。
 - TEST1120 固定 ready、HTTP、transport、budget 和 cancelled 五种资源结果，自动断言终态计数、错误分类、缓存回调可见性和有界资源字节；它验证宿主 telemetry，不宣称完整网络重试策略。
 - TEST1121 固定一次可恢复 transport 失败、一次重试预算耗尽，以及 HTTP、resolve、budget、cancelled 的不可重试结果；自动断言每项 attempts/retries、最终分类、缓存可见性和有界计数。
+- TEST1122 固定必需 stylesheet 失败与可选 image 失败：前者必须保留旧 document/history 且不触发提交，后者允许候选提交并记录 optional failure 与 Core fallback 结果。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1121。
+- `TEST_MAX_NUMBER`：1122。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next674 定向门；最近一次稳定全量 checkpoint 仍为 next670：
+当前最新产品门为 next675 直接相邻回归门；最近一次稳定全量 checkpoint 仍为 next670：
+
+- next675 回归目录：`tmp/device-runs/20260830-201218-next675-regression/`；
+- 动态选择：`1117-1122,999`，7 项；7/7 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
+- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging；TEST1122 验证 required stylesheet 失败保留旧页/history、optional image 失败提交候选并记录 gate 结果。
+
+- next675 定向目录：`tmp/device-runs/20260830-201133-next675-gate2/`；
+- 动态选择：`1122,999`，2 项；2/2 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
+- 设备：同一 640x480、dpi=192 WMDC GUI 会话与正式 Debug staging。
 
 - next674 定向目录：`tmp/device-runs/20260830-194038-next674-final2/`；
 - 动态选择：`1117,1118,1119,1120,1121,999`，6 项；6/6 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
@@ -88,12 +98,13 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
 - TEST1117、TEST1118、TEST1119、TEST1120 与 TEST1121 都是无网络自动夹具，没有新增必须立即人工复核的风险；其 dialog、候选页面视觉、链接触摸、滚动/旋转和不同 DPI 的整体呈现仍按既有规则累计人工验收。TEST1121 的重试计数是宿主调度契约，不能替代真实网络恢复体验。
+- TEST1122 同样是无网络自动夹具，没有新增必须立即人工复核的风险；required stylesheet 失败时旧页保留、optional image 失败时 Core fallback 的视觉细节仍可与既有失败网络/布局风险一起累计观察。
 
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
 
-- 已建立五条固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119/1120/1121 已覆盖候选取消、资源终态 telemetry 和有界 transport 重试，但取消仍是协作式的，不能保证正在阻塞的 PHttp 调用立即返回；宿主尚未提供必需/可选资源的部分提交 UI 策略。
+- 已建立六条固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119/1120/1121/1122 已覆盖候选取消、资源终态 telemetry、有界 transport 重试和 required/optional 提交门，但取消仍是协作式的，不能保证正在阻塞的 PHttp 调用立即返回；宿主尚未提供面向用户的逐资源 UI，也不能保证任意真实站点的 fallback 视觉。
 - `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围、有界 backdrop 指针策略和 Core 实体色 modal paint；当前表单桥要求最近祖先 dialog 有非空 id。CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
@@ -106,7 +117,7 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 
 ## 唯一下一步
 
-next675 建立资源失败后的候选提交门：在 next674 的终态分类和 transport 重试预算之上，为主文档、样式等必需资源与图片/脚本等可降级资源定义明确策略；必需资源失败或候选取消时保持当前页面，只有满足提交门的候选才触发 teardown、swap 和 history 更新。不得把“部分资源可用”隐式当成成功，也不把阻塞 socket 的强制中断写成契约。
+next676 补齐资源降级结果的可观察性：为 next675 的 required/optional gate 增加有界失败资源摘要与 fallback 结果记录，并验证重复资源和深层 `@import` 不会改变分类、计数或提交决策。不得把宿主 telemetry 扩展成公共 ABI，也不把阻塞 socket 的强制中断写成契约。
 
 优先场景应同时满足：
 
@@ -118,9 +129,9 @@ next675 建立资源失败后的候选提交门：在 next674 的终态分类和
 
 ## 下一步完成标准
 
-- next675 的必需/可降级资源提交门完全离线固定，自动断言覆盖资源分类、候选取消、旧页保留、teardown、swap、history 和缓存回收；
+- next676 的失败资源摘要与 fallback 结果有界、可重复且不改变公共 ABI；自动断言覆盖 required/optional 分类在重复资源和深层 `@import` 中的一致性、gate 计数、候选提交和旧页保留；
 - 可复用的 URL/history/DOM/Event/资源生命周期语义位于 Core 或 Browser，`test_host` 只负责 WM 接线、调度和夹具；
 - VS2008 ARMV4I 正式构建、同批 staging、C89 回归和仓库审计通过，无旧 EXE/DLL 混包；
-- next675 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，并保留可追溯的 `tmp/device-runs/` 证据；
+- next675 定向门及直接相邻回归已唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，并保留可追溯的 `tmp/device-runs/` 证据；next676 完成后也必须满足同一门槛；
 - 视觉、触摸、SIP/IME、picker 或旋转等无法自动判断的风险进入既有人工累计清单，不以人工缺席伪造自动通过；
-- handoff 覆盖为 next674 快照，ROADMAP 只保留下一条未完成的纵向能力。
+- handoff 覆盖为 next675 快照，ROADMAP 只保留下一条未完成的纵向能力。

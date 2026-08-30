@@ -66,7 +66,7 @@
 - 当前是单窗口/单 browsing context 组合；`_blank`、未知 named target、第二个 global、opener、跨窗口 history 和真实窗口复用未实现或保守拒绝。
 - `window.open()` 仅在允许复用当前 context 的受限 target 上工作，不创建新的 WM 顶层窗口。
 - download、外部协议、权限、文件系统和应用跳转策略仍由宿主决定。
-- 后台网络阶段已经与 UI 文档提交分开；较新的导航会以 generation 退休旧候选，并在 worker 完成后回收其 response、资源队列和线程。退休队列固定为有界容量，达到上限时新的导航会 fail closed 并保留当前页。资源项只在宿主 telemetry 中记录 `pending`、`ready`、`failed` 或 `cancelled`，失败分类为 resolve、transport、HTTP、budget、memory；transport 失败每项最多重试 2 次（最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试，预算耗尽保持 transport failure。尚无必需/可降级资源的部分提交 UI 策略。取消是协作式的：如果 worker 已进入阻塞的 PHttp 调用，不能保证立即中断 socket；DOM parse/style/layout/paint 仍在单一 UI 线程，复杂页面可能造成短时卡顿。
+- 后台网络阶段已经与 UI 文档提交分开；较新的导航会以 generation 退休旧候选，并在 worker 完成后回收其 response、资源队列和线程。退休队列固定为有界容量，达到上限时新的导航会 fail closed 并保留当前页。资源项只在宿主 telemetry 中记录 `pending`、`ready`、`failed` 或 `cancelled`，失败分类为 resolve、transport、HTTP、budget、memory；transport 失败每项最多重试 2 次（最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试，预算耗尽保持 transport failure。宿主将样式表/`@import` 标为 required，将脚本/图片标为 optional，并在 layout/swap 前汇总资源 gate；required 失败、未收敛的 pending 或 cancellation 保留旧 document/history，optional 失败允许候选提交并交给 Core 的 alt/src/default-style fallback。该策略没有通用逐资源 UI，也不能保证任意真实站点的 fallback 视觉。取消是协作式的：如果 worker 已进入阻塞的 PHttp 调用，不能保证立即中断 socket；DOM parse/style/layout/paint 仍在单一 UI 线程，复杂页面可能造成短时卡顿。
 
 ## Native 控件、SIP 与设备 UI
 
@@ -87,7 +87,7 @@
 ## 测试覆盖
 
 - next670 已建立一次 1080 项动态全量自动设备 checkpoint；后续定向门仍不能替代下一次按风险触发的全量范围基线。
-- 已有五条离线 compatibility-corpus 流程：TEST1117 覆盖 contenteditable、dialog validation、`method="dialog"` close、same-document history 和失败候选回滚；TEST1118 进一步覆盖重复外链 script/SVG 资源准备、失败候选保留旧页、成功提交时的一次性页面 teardown、旧队列清理和 history 更新；TEST1119 覆盖资源准备期间的新旧候选交错、generation 取消、过时进度/完成消息隔离、退休请求回收和最新候选提交；TEST1120 覆盖资源 ready、HTTP、transport、budget、cancelled 终态、错误分类、缓存可见性和资源字节预算；TEST1121 覆盖可恢复 transport、重试预算耗尽和 HTTP/resolve/budget/cancelled 的不可重试决策。它们仍只是固定夹具，不代表任意真实网站或完整 Web 标准。
+- 已有六条离线 compatibility-corpus 流程：TEST1117 覆盖 contenteditable、dialog validation、`method="dialog"` close、same-document history 和失败候选回滚；TEST1118 进一步覆盖重复外链 script/SVG 资源准备、失败候选保留旧页、成功提交时的一次性页面 teardown、旧队列清理和 history 更新；TEST1119 覆盖资源准备期间的新旧候选交错、generation 取消、过时进度/完成消息隔离、退休请求回收和最新候选提交；TEST1120 覆盖资源 ready、HTTP、transport、budget、cancelled 终态、错误分类、缓存可见性和资源字节预算；TEST1121 覆盖可恢复 transport、重试预算耗尽和 HTTP/resolve/budget/cancelled 的不可重试决策；TEST1122 覆盖 required stylesheet 失败保留旧页/history，以及 optional image 失败提交 fallback 候选和 gate 统计。它们仍只是固定夹具，不代表任意真实网站或完整 Web 标准。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

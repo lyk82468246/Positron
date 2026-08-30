@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1121
+#define TEST_MAX_NUMBER 1122
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6164,6 +6164,12 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_RESOURCE_READY 1
 #define PCORE_NAV_RESOURCE_FAILED 2
 #define PCORE_NAV_RESOURCE_CANCELLED 3
+#define PCORE_NAV_RESOURCE_OPTIONAL 0
+#define PCORE_NAV_RESOURCE_REQUIRED 1
+#define PCORE_NAV_GATE_READY 0
+#define PCORE_NAV_GATE_PENDING 1
+#define PCORE_NAV_GATE_REQUIRED_FAILED 2
+#define PCORE_NAV_GATE_CANCELLED 3
 #define PCORE_NAV_FAILURE_NONE 0
 #define PCORE_NAV_FAILURE_RESOLVE 1
 #define PCORE_NAV_FAILURE_TRANSPORT 2
@@ -6188,6 +6194,7 @@ typedef struct pcore_navigation_resource {
     int retry_count;
     int state;
     int failure_class;
+    int required;
 } pcore_navigation_resource;
 
 typedef struct pcore_browser_script_bridge pcore_browser_script_bridge;
@@ -6394,6 +6401,9 @@ typedef struct pcore_navigation_stats {
     int resource_failures_http;
     int resource_failures_budget;
     int resource_failures_memory;
+    int resource_required_failed;
+    int resource_optional_failed;
+    int resource_commit_gate;
     int resource_bytes;
     int budget_rejected;
     int completed;
@@ -6426,6 +6436,7 @@ typedef struct pcore_navigation_request {
     pcore_navigation_resource *resources;
     int            resource_count;
     int            resource_bytes;
+    int            resource_policy;
     int            worker_stage;
     int            worker_resume_stage;
     int            commit_stage;
@@ -12651,6 +12662,7 @@ static void testbench_log_navigation(
             "%d/%d/%d/%d/%d/%d\n"
             "resource fail resolve/transport/http/budget/memory="
             "%d/%d/%d/%d/%d\n"
+            "resource gate/required-failed/optional-failed=%d/%d/%d\n"
             "resource attempts/retries/exhausted=%d/%d/%d\n"
             "bytes=%d doc-retry=%d\n"
             "core layout total=%lums box/first/settle/final="
@@ -12678,6 +12690,9 @@ static void testbench_log_navigation(
             request->stats.resource_failures_http,
             request->stats.resource_failures_budget,
             request->stats.resource_failures_memory,
+            request->stats.resource_commit_gate,
+            request->stats.resource_required_failed,
+            request->stats.resource_optional_failed,
             request->stats.resource_attempts,
             request->stats.resource_retries,
             request->stats.resource_retry_exhausted,
@@ -13110,10 +13125,18 @@ static int pcore_navigation_resource_cb(void *pw, const char *url,
         memcpy(entry->url, url, url_len + 1);
         entry->state = PCORE_NAV_RESOURCE_PENDING;
         entry->failure_class = PCORE_NAV_FAILURE_NONE;
+        entry->required = request->resource_policy ==
+                PCORE_NAV_RESOURCE_REQUIRED;
         entry->next = request->resources;
         request->resources = entry;
         request->resource_count++;
         return 1;
+    }
+    if (request->resource_policy == PCORE_NAV_RESOURCE_REQUIRED) {
+        /* A URL may first be discovered by an optional pass and later be
+         * referenced by the document's required stylesheet graph. Upgrade
+         * the single shared entry before consulting its terminal state. */
+        entry->required = 1;
     }
     if (entry->state == PCORE_NAV_RESOURCE_FAILED ||
             entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
@@ -13157,6 +13180,86 @@ static int pcore_navigation_pending_count(
         }
     }
     return count;
+}
+
+static int pcore_navigation_resource_pending_total(
+        const pcore_navigation_request *request)
+{
+    const pcore_navigation_resource *entry;
+    int count;
+
+    count = 0;
+    if (request == NULL) {
+        return 0;
+    }
+    for (entry = request->resources; entry != NULL; entry = entry->next) {
+        if (entry->state == PCORE_NAV_RESOURCE_PENDING) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/* The host owns the candidate commit policy. CSS discovered while styling is
+ * required; scripts and images are optional and may fall back to Core's
+ * built-in behavior. A candidate is never swapped while a required resource
+ * failed, a resource is still pending, or cancellation left a terminal mark. */
+static int pcore_navigation_resource_commit_gate(
+        pcore_navigation_request *request)
+{
+    pcore_navigation_resource *entry;
+    int required_failed;
+    int optional_failed;
+    int pending;
+    int cancelled;
+
+    required_failed = 0;
+    optional_failed = 0;
+    pending = 0;
+    cancelled = 0;
+    if (request != NULL) {
+        for (entry = request->resources; entry != NULL;
+                entry = entry->next) {
+            if (entry->state == PCORE_NAV_RESOURCE_PENDING) {
+                pending++;
+            } else if (entry->state == PCORE_NAV_RESOURCE_FAILED) {
+                if (entry->required) {
+                    required_failed++;
+                } else {
+                    optional_failed++;
+                }
+            } else if (entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
+                cancelled++;
+            }
+        }
+    }
+    if (request != NULL) {
+        request->stats.resource_required_failed = required_failed;
+        request->stats.resource_optional_failed = optional_failed;
+    }
+    if (cancelled > 0) {
+        if (request != NULL) {
+            request->stats.resource_commit_gate = PCORE_NAV_GATE_CANCELLED;
+        }
+        return PCORE_NAV_GATE_CANCELLED;
+    }
+    if (pending > 0) {
+        if (request != NULL) {
+            request->stats.resource_commit_gate = PCORE_NAV_GATE_PENDING;
+        }
+        return PCORE_NAV_GATE_PENDING;
+    }
+    if (required_failed > 0) {
+        if (request != NULL) {
+            request->stats.resource_commit_gate =
+                    PCORE_NAV_GATE_REQUIRED_FAILED;
+        }
+        return PCORE_NAV_GATE_REQUIRED_FAILED;
+    }
+    if (request != NULL) {
+        request->stats.resource_commit_gate = PCORE_NAV_GATE_READY;
+    }
+    return PCORE_NAV_GATE_READY;
 }
 
 static int pcore_navigation_is_cancelled(
@@ -15645,6 +15748,8 @@ static int pcore_navigation_commit_step(HWND hwnd,
     DWORD          elapsed;
     int            script_executed;
     int            script_ignored;
+    int            style_result;
+    int            resource_gate;
     int            history_commit_rc;
     int            history_target_scroll;
     int            history_target_scroll_valid;
@@ -15699,6 +15804,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
                     sizeof(g_browser_script_initial_window_name),
                     g_browser_script_context_window_name);
         }
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
         if (g_browser_javascript_enabled &&
                 pcore_document_url(request->host, request->path,
                 request->port, document_url, sizeof(document_url)) == 0 &&
@@ -15708,6 +15814,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
             pcore_browser_script_error(emsg, sizeof(emsg),
                     "script resource discovery", NULL);
         }
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
         if (g_browser_javascript_enabled &&
                 pcore_navigation_pending_count(request) > 0) {
             request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
@@ -15757,11 +15864,17 @@ static int pcore_navigation_commit_step(HWND hwnd,
         if (chh <= 0) { chh = 320; }
         test_host_set_device_viewport(cw, chh);
         started = GetTickCount();
-        if (pcore_document_url(request->host, request->path, request->port,
-                document_url, sizeof(document_url)) != 0 ||
-                PCore_StyleDocumentEx2(request->document, NULL, document_url,
-                wm_combine_url, pcore_navigation_resource_cb,
-                page_resource_free_cb, request) != 0) {
+        style_result = pcore_document_url(request->host, request->path,
+                request->port, document_url, sizeof(document_url));
+        if (style_result == 0) {
+            request->resource_policy = PCORE_NAV_RESOURCE_REQUIRED;
+            style_result = PCore_StyleDocumentEx2(request->document, NULL,
+                    document_url, wm_combine_url,
+                    pcore_navigation_resource_cb, page_resource_free_cb,
+                    request);
+            request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        }
+        if (style_result != 0) {
             elapsed = GetTickCount() - started;
             request->stats.style_ms += elapsed;
             if (elapsed > request->stats.max_ui_slice_ms) {
@@ -15773,10 +15886,16 @@ static int pcore_navigation_commit_step(HWND hwnd,
             }
             return PCORE_NAV_RESULT_FAILED;
         }
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
         elapsed = GetTickCount() - started;
         request->stats.style_ms += elapsed;
         if (elapsed > request->stats.max_ui_slice_ms) {
             request->stats.max_ui_slice_ms = elapsed;
+        }
+        if (pcore_navigation_pending_count(request) > 0) {
+            request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
+            request->worker_resume_stage = PCORE_NAV_COMMIT_STYLE;
+            return PCORE_NAV_RESULT_MORE;
         }
         request->commit_stage = PCORE_NAV_COMMIT_IMAGES;
         return PCORE_NAV_RESULT_CONTINUE;
@@ -15784,9 +15903,11 @@ static int pcore_navigation_commit_step(HWND hwnd,
 
     if (request->commit_stage == PCORE_NAV_COMMIT_IMAGES) {
         started = GetTickCount();
-        PCore_FetchImageResources(request->document,
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        (void) PCore_FetchImageResources(request->document,
                 pcore_navigation_resource_cb, page_resource_free_cb,
                 request, NULL, NULL);
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
         elapsed = GetTickCount() - started;
         request->stats.images_ms += elapsed;
         if (elapsed > request->stats.max_ui_slice_ms) {
@@ -15794,8 +15915,25 @@ static int pcore_navigation_commit_step(HWND hwnd,
         }
         if (pcore_navigation_pending_count(request) > 0) {
             request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
+            request->worker_resume_stage = PCORE_NAV_COMMIT_STYLE;
             request->commit_stage = PCORE_NAV_COMMIT_STYLE;
             return PCORE_NAV_RESULT_MORE;
+        }
+        resource_gate = pcore_navigation_resource_commit_gate(request);
+        if (resource_gate != PCORE_NAV_GATE_READY) {
+            if (report_errors) {
+                if (resource_gate == PCORE_NAV_GATE_REQUIRED_FAILED) {
+                    show_error(L"Navigation failed",
+                            "Required navigation resource failed");
+                } else if (resource_gate == PCORE_NAV_GATE_CANCELLED) {
+                    show_error(L"Navigation cancelled",
+                            "Navigation resource work was cancelled");
+                } else {
+                    show_error(L"Navigation failed",
+                            "Navigation resources are incomplete");
+                }
+            }
+            return PCORE_NAV_RESULT_FAILED;
         }
         request->commit_stage = PCORE_NAV_COMMIT_LAYOUT;
         return PCORE_NAV_RESULT_CONTINUE;
@@ -15923,9 +16061,11 @@ static int pcore_navigation_commit_step(HWND hwnd,
 static void pcore_navigation_finish(HWND hwnd,
         pcore_navigation_request *request)
 {
+    (void) pcore_navigation_resource_commit_gate(request);
     request->stats.total_ms = GetTickCount() - request->stats.started_tick;
     request->stats.resources_queued = request->resource_count;
-    request->stats.resources_pending = pcore_navigation_pending_count(request);
+    request->stats.resources_pending =
+            pcore_navigation_resource_pending_total(request);
     request->stats.resource_bytes = request->resource_bytes;
     g_nav_last_stats = request->stats;
     g_nav_last_stats_valid = 1;
@@ -29906,6 +30046,366 @@ static BOOL test1121_navigation_resource_retry_budget(void)
             "Transport failures retried at most twice; a recovered resource "
             "became ready, an exhausted resource stayed transport-failed, "
             "and HTTP/resolve/budget/cancelled outcomes were not retried.");
+    return TRUE;
+}
+
+/* TEST 1122 - the host commit gate distinguishes required stylesheet work
+ * from optional script/image work. Required resource failure must leave the
+ * visible document and history untouched; optional failure may commit the
+ * candidate so Core can render its normal fallback (for example an image
+ * alt-text). The fixture drives the real parse/style/image/layout sequence
+ * with deterministic offline callbacks and no WMDC/network dependency. */
+static BOOL test1122_navigation_resource_commit_gate(void)
+{
+    static const char OLD_URL[] =
+        "https://positron.local/gate/old.html";
+    static const char OLD_HTML[] =
+        "<!doctype html><html><body><p id='state'>old</p></body></html>";
+    static const char OLD_CSS[] =
+        "body{display:block;width:220px;height:80px;}"
+        "#state{display:block;width:140px;height:24px;}";
+    static const char REQUIRED_URL[] =
+        "https://positron.local/gate/required.css";
+    static const char REQUIRED_HTML[] =
+        "<!doctype html><html><head><link rel='stylesheet' "
+        "href='https://positron.local/gate/required.css'></head>"
+        "<body><p id='state'>required</p></body></html>";
+    static const char OPTIONAL_URL[] =
+        "https://positron.local/gate/optional.html";
+    static const char OPTIONAL_IMAGE_URL[] =
+        "https://positron.local/gate/missing.png";
+    static const char OPTIONAL_HTML[] =
+        "<!doctype html><html><body><img id='missing' "
+        "src='https://positron.local/gate/missing.png' alt='fallback'>"
+        "<p id='state'>optional</p></body></html>";
+    pcore_navigation_request *required_request;
+    pcore_navigation_request *optional_request;
+    pcore_navigation_resource *entry;
+    PHttpResponse *response;
+    HANDLE old_document;
+    HANDLE old_sheet;
+    char old_text[64];
+    char optional_text[64];
+    char error[512];
+    char saved_host[sizeof(g_cur_host)];
+    char saved_path[sizeof(g_cur_path)];
+    char saved_initial_name[sizeof(g_browser_script_initial_window_name)];
+    char saved_context_name[sizeof(g_browser_script_context_window_name)];
+    int saved_port;
+    int saved_javascript;
+    int saved_scroll;
+    int saved_doc_h;
+    int saved_view_h;
+    int saved_loading;
+    int result;
+    int steps;
+    int required_pending_seen;
+    int optional_pending_seen;
+    int old_text_bytes;
+    int optional_text_bytes;
+    int ok;
+
+    required_request = NULL;
+    optional_request = NULL;
+    entry = NULL;
+    response = NULL;
+    old_document = NULL;
+    old_sheet = NULL;
+    memset(old_text, 0, sizeof(old_text));
+    memset(optional_text, 0, sizeof(optional_text));
+    memset(error, 0, sizeof(error));
+    memcpy(saved_host, g_cur_host, sizeof(saved_host));
+    memcpy(saved_path, g_cur_path, sizeof(saved_path));
+    memcpy(saved_initial_name, g_browser_script_initial_window_name,
+            sizeof(saved_initial_name));
+    memcpy(saved_context_name, g_browser_script_context_window_name,
+            sizeof(saved_context_name));
+    saved_port = g_cur_port;
+    saved_javascript = g_browser_javascript_enabled;
+    saved_scroll = g_scroll_y;
+    saved_doc_h = g_doc_h;
+    saved_view_h = g_view_h;
+    saved_loading = g_nav_loading;
+    result = PCORE_NAV_RESULT_CONTINUE;
+    steps = 0;
+    required_pending_seen = 0;
+    optional_pending_seen = 0;
+    old_text_bytes = 0;
+    optional_text_bytes = 0;
+    ok = 1;
+
+    if (g_render_doc != NULL || g_nav_request != NULL || g_nav_loading) {
+        cstr_copy(error, sizeof(error), "navigation globals were not idle");
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_nav_request = NULL;
+    g_nav_loading = 0;
+    g_browser_javascript_enabled = 0;
+    cstr_copy(g_cur_host, sizeof(g_cur_host), "positron.local");
+    cstr_copy(g_cur_path, sizeof(g_cur_path), "/gate/old.html");
+    g_cur_port = 443;
+    pcore_browse_history_reset();
+    if (ok && pcore_browse_history_commit_navigation(OLD_URL, 1,
+            PCORE_BROWSE_HISTORY_TARGET_NEW) != 0) {
+        cstr_copy(error, sizeof(error), "old history entry failed");
+        ok = 0;
+    }
+    if (ok) {
+        old_document = PCore_ParseHTML(OLD_HTML, (int) sizeof(OLD_HTML) - 1);
+        old_sheet = PCore_ParseCSS(OLD_CSS, (int) sizeof(OLD_CSS) - 1,
+                OLD_URL);
+        if (old_document == NULL || old_sheet == NULL) {
+            cstr_copy(error, sizeof(error), "old document setup failed");
+            ok = 0;
+        } else if (PCore_StyleDocument(old_document, old_sheet) != 0 ||
+                PCore_LayoutDocument(old_document, 224, 120) != 0) {
+            cstr_copy(error, sizeof(error), "old document layout failed");
+            ok = 0;
+        } else {
+            g_render_doc = old_document;
+            g_render_sheet = old_sheet;
+            g_doc_h = PCore_DocumentHeight(old_document);
+            g_view_h = 120;
+            g_scroll_y = 0;
+        }
+    }
+
+    if (ok) {
+        required_request = (pcore_navigation_request *) malloc(
+                sizeof(*required_request));
+        response = test1118_response(200, REQUIRED_HTML);
+        if (required_request == NULL || response == NULL) {
+            cstr_copy(error, sizeof(error),
+                    "required candidate allocation failed");
+            if (required_request != NULL) {
+                free(required_request);
+                required_request = NULL;
+            }
+            ok = 0;
+        } else {
+            memset(required_request, 0, sizeof(*required_request));
+            cstr_copy(required_request->host,
+                    sizeof(required_request->host), "positron.local");
+            cstr_copy(required_request->path,
+                    sizeof(required_request->path), "/gate/required.html");
+            required_request->port = 443;
+            required_request->method = 1;
+            required_request->response = response;
+            required_request->commit_stage = PCORE_NAV_COMMIT_PARSE;
+            required_request->history_target_index =
+                    PCORE_BROWSE_HISTORY_TARGET_NEW;
+            required_request->generation = ++g_nav_generation;
+            required_request->stats.started_tick = GetTickCount();
+            response = NULL;
+            g_nav_request = required_request;
+            g_nav_loading = 1;
+        }
+    }
+    while (ok && required_request != NULL &&
+            result != PCORE_NAV_RESULT_FAILED &&
+            result != PCORE_NAV_RESULT_DONE && steps < 12) {
+        result = pcore_navigation_commit_step(NULL, required_request, 0);
+        steps++;
+        if (result == PCORE_NAV_RESULT_MORE) {
+            entry = pcore_navigation_resource_find(required_request,
+                    REQUIRED_URL);
+            if (entry == NULL || entry->state != PCORE_NAV_RESOURCE_PENDING ||
+                    entry->required != 1) {
+                cstr_copy(error, sizeof(error),
+                        "required stylesheet was not queued as required");
+                ok = 0;
+                break;
+            }
+            required_pending_seen = 1;
+            pcore_navigation_resource_fail(required_request, entry,
+                    PCORE_NAV_FAILURE_HTTP);
+        }
+    }
+    if (ok && required_request != NULL &&
+            (result != PCORE_NAV_RESULT_FAILED || !required_pending_seen ||
+            required_request->stats.resource_commit_gate !=
+                    PCORE_NAV_GATE_REQUIRED_FAILED ||
+            required_request->stats.resource_required_failed != 1 ||
+            required_request->stats.resource_optional_failed != 0 ||
+            g_render_doc != old_document ||
+            PBrowser_HistoryCount(g_browse_history_product) != 1 ||
+            strcmp(pcore_browse_history_current(), OLD_URL) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "state", old_text,
+                    sizeof(old_text), &old_text_bytes) != 0 ||
+            strcmp(old_text, "old") != 0 || required_request->stats.completed)) {
+        _snprintf(error, sizeof(error) - 1,
+                "required result=%d/%d gate=%d req=%d opt=%d page=%d "
+                "history=%d text=%s",
+                result, required_pending_seen,
+                required_request != NULL ?
+                required_request->stats.resource_commit_gate : -1,
+                required_request != NULL ?
+                required_request->stats.resource_required_failed : -1,
+                required_request != NULL ?
+                required_request->stats.resource_optional_failed : -1,
+                g_render_doc == old_document,
+                (g_browse_history_product != NULL) ?
+                PBrowser_HistoryCount(g_browse_history_product) : -1,
+                old_text);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (required_request != NULL) {
+        pcore_navigation_finish(NULL, required_request);
+        required_request = NULL;
+    }
+
+    result = PCORE_NAV_RESULT_CONTINUE;
+    steps = 0;
+    if (ok) {
+        optional_request = (pcore_navigation_request *) malloc(
+                sizeof(*optional_request));
+        response = test1118_response(200, OPTIONAL_HTML);
+        if (optional_request == NULL || response == NULL) {
+            cstr_copy(error, sizeof(error),
+                    "optional candidate allocation failed");
+            if (optional_request != NULL) {
+                free(optional_request);
+                optional_request = NULL;
+            }
+            ok = 0;
+        } else {
+            memset(optional_request, 0, sizeof(*optional_request));
+            cstr_copy(optional_request->host,
+                    sizeof(optional_request->host), "positron.local");
+            cstr_copy(optional_request->path,
+                    sizeof(optional_request->path), "/gate/optional.html");
+            optional_request->port = 443;
+            optional_request->method = 1;
+            optional_request->response = response;
+            optional_request->commit_stage = PCORE_NAV_COMMIT_PARSE;
+            optional_request->history_target_index =
+                    PCORE_BROWSE_HISTORY_TARGET_NEW;
+            optional_request->generation = ++g_nav_generation;
+            optional_request->stats.started_tick = GetTickCount();
+            response = NULL;
+            g_nav_request = optional_request;
+            g_nav_loading = 1;
+        }
+    }
+    while (ok && optional_request != NULL &&
+            result != PCORE_NAV_RESULT_FAILED &&
+            result != PCORE_NAV_RESULT_DONE && steps < 12) {
+        result = pcore_navigation_commit_step(NULL, optional_request, 0);
+        steps++;
+        if (result == PCORE_NAV_RESULT_MORE) {
+            entry = pcore_navigation_resource_find(optional_request,
+                    OPTIONAL_IMAGE_URL);
+            if (entry == NULL || entry->state != PCORE_NAV_RESOURCE_PENDING ||
+                    entry->required != PCORE_NAV_RESOURCE_OPTIONAL) {
+                cstr_copy(error, sizeof(error),
+                        "optional image was not queued as optional");
+                ok = 0;
+                break;
+            }
+            optional_pending_seen = 1;
+            pcore_navigation_resource_fail(optional_request, entry,
+                    PCORE_NAV_FAILURE_HTTP);
+        }
+    }
+    if (ok && optional_request != NULL &&
+            (result != PCORE_NAV_RESULT_DONE || !optional_pending_seen ||
+            optional_request->stats.resource_commit_gate !=
+                    PCORE_NAV_GATE_READY ||
+            optional_request->stats.resource_required_failed != 0 ||
+            optional_request->stats.resource_optional_failed != 1 ||
+            !optional_request->stats.completed || g_render_doc == old_document ||
+            PBrowser_HistoryCount(g_browse_history_product) != 2 ||
+            strcmp(pcore_browse_history_current(), OPTIONAL_URL) != 0 ||
+            PCore_NodeTextContentById(g_render_doc, "state", optional_text,
+                    sizeof(optional_text), &optional_text_bytes) != 0 ||
+            strcmp(optional_text, "optional") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "optional result=%d/%d gate=%d req=%d opt=%d page=%d "
+                "history=%d text=%s",
+                result, optional_pending_seen,
+                optional_request != NULL ?
+                optional_request->stats.resource_commit_gate : -1,
+                optional_request != NULL ?
+                optional_request->stats.resource_required_failed : -1,
+                optional_request != NULL ?
+                optional_request->stats.resource_optional_failed : -1,
+                g_render_doc != old_document,
+                (g_browse_history_product != NULL) ?
+                PBrowser_HistoryCount(g_browse_history_product) : -1,
+                optional_text);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (result == PCORE_NAV_RESULT_DONE) {
+        old_document = NULL;
+    }
+    if (optional_request != NULL &&
+            (result == PCORE_NAV_RESULT_DONE || !ok)) {
+        pcore_navigation_finish(NULL, optional_request);
+        optional_request = NULL;
+    }
+    if (response != NULL) {
+        PHttp_FreeResponse(response);
+        response = NULL;
+    }
+    if (required_request != NULL) {
+        pcore_navigation_request_free(required_request);
+        required_request = NULL;
+    }
+    if (optional_request != NULL) {
+        pcore_navigation_request_free(optional_request);
+        optional_request = NULL;
+    }
+    pcore_browser_script_session_destroy();
+    if (g_render_doc != NULL) {
+        if (g_render_doc == old_document) {
+            old_document = NULL;
+        }
+        PCore_FreeDocument(g_render_doc);
+        g_render_doc = NULL;
+    }
+    if (g_render_sheet != NULL) {
+        if (g_render_sheet == old_sheet) {
+            old_sheet = NULL;
+        }
+        PCore_FreeStylesheet(g_render_sheet);
+        g_render_sheet = NULL;
+    }
+    if (old_document != NULL) {
+        PCore_FreeDocument(old_document);
+        old_document = NULL;
+    }
+    if (old_sheet != NULL) {
+        PCore_FreeStylesheet(old_sheet);
+        old_sheet = NULL;
+    }
+    pcore_browse_history_reset();
+    g_nav_request = NULL;
+    g_nav_loading = saved_loading;
+    g_browser_javascript_enabled = saved_javascript;
+    memcpy(g_cur_host, saved_host, sizeof(g_cur_host));
+    memcpy(g_cur_path, saved_path, sizeof(g_cur_path));
+    g_cur_port = saved_port;
+    memcpy(g_browser_script_initial_window_name, saved_initial_name,
+            sizeof(g_browser_script_initial_window_name));
+    memcpy(g_browser_script_context_window_name, saved_context_name,
+            sizeof(g_browser_script_context_window_name));
+    g_scroll_y = saved_scroll;
+    g_doc_h = saved_doc_h;
+    g_view_h = saved_view_h;
+    if (!ok) {
+        show_error(L"TEST 1122 FAIL", error[0] != '\0' ? error :
+                "navigation resource commit gate failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1122 OK",
+            "Required stylesheet failure preserved the old page and history;"
+            " optional image failure committed the candidate with Core's"
+            " fallback path and recorded the resource gate outcome.");
     return TRUE;
 }
 
@@ -87936,6 +88436,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1119: ok = test1119_navigation_supersede_transaction(); break;
         case 1120: ok = test1120_navigation_resource_terminals(); break;
         case 1121: ok = test1121_navigation_resource_retry_budget(); break;
+        case 1122: ok = test1122_navigation_resource_commit_gate(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

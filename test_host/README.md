@@ -70,7 +70,7 @@ tests=13,20,27,999
 
 宿主持有后台网络 worker、loading/取消、候选文档和窗口 swap。旧页保持可绘制，直到新页面完成 parse/resource/style/layout 并可提交。较新的导航可以取代仍在准备的候选：每个候选独占自己的 worker、response 和资源队列，generation 只允许最新候选的进度、完成和提交消息生效；退休候选在 worker 收尾后才释放，退休队列达到固定上限时新导航 fail closed 并保持当前页。URL reference 解析调用 `positron_http.dll`；history 提交调用 `positron_browser.dll`。
 
-每个候选资源在宿主内沿 `pending` 单向进入 `ready`、`failed` 或 `cancelled`。失败摘要区分 resolve、transport、HTTP、budget 和 memory；transport 失败每项最多重试 2 次（总计最多 3 次尝试），HTTP、resolve、budget、memory 和取消不重试；预算耗尽仍是 transport failure。取消单独计数，不会被重新当作网络失败，也不会通过缓存回调提供数据。摘要用于日志和导航调度，不改变 Core/Browser 的公共 ABI；必需/可降级资源的部分提交 UI 策略尚未实现。
+每个候选资源在宿主内沿 `pending` 单向进入 `ready`、`failed` 或 `cancelled`。失败摘要区分 resolve、transport、HTTP、budget 和 memory；transport 失败每项最多重试 2 次（总计最多 3 次尝试），HTTP、resolve、budget、memory 和取消不重试；预算耗尽仍是 transport failure。取消单独计数，不会被重新当作网络失败，也不会通过缓存回调提供数据。样式表与 `@import` 标为 required，脚本与图片标为 optional；style pass 发现新的 pending 时回到 worker，layout/swap 前重新计算 gate。required 失败、未收敛或取消保留旧页，optional 失败允许候选提交并交给 Core fallback。摘要和 gate 只用于日志与导航调度，不改变 Core/Browser 的公共 ABI；宿主没有通用逐资源提交 UI。
 
 DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM node、box、computed style 或 HDC。
 

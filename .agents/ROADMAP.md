@@ -27,13 +27,13 @@
 
 ## 近期目标
 
-### 资源失败后的候选提交门
+### 资源降级结果的可观察性
 
-下一条纵向能力是 next675：在资源终态和 transport 重试预算已经明确之后，为候选定义必需资源与可降级资源的提交门。主文档、样式等必需资源失败时必须保留当前页面；图片、脚本等可降级资源只有在显式策略允许时才继续；候选取消或 generation 过时不得触发 teardown、swap 或 history 更新。
+下一条纵向能力是 next676：在当前资源提交门之上，为失败资源提供有界、可读且可自动断言的摘要，并记录 Core fallback 的实际结果。重复资源和深层 `@import` 必须保持一致的 required/optional 分类、计数和提交决策；失败摘要不能泄露不受控的 URL/正文，也不能扩展公共 Core/Browser ABI。
 
-next675 的语料应固定一条必需资源失败、一条可降级资源失败和一条全成功候选，自动断言旧 document/session 保持、资源缓存可见性、teardown 次数、候选提交、history 和退休请求回收。不得把“部分资源可用”隐式当成成功，也不把阻塞 socket 的强制中断或外网端点写入契约；真实网络仍只作为独立哨兵。通用提交语义若暴露公共 API 缺口，应先进入 Core/Browser，再由宿主负责 WM 日志与调度。
+next676 的语料应固定重复 stylesheet、深层 `@import`、重复 image/script 和 required/optional 混合失败，自动断言资源去重、gate 统计、旧页保留、候选提交及 fallback 结果。不得把“部分资源可用”隐式当成成功，也不把阻塞 socket 的强制中断或外网端点写入契约；真实网络仍只作为独立哨兵。通用可观察性若暴露公共 API 缺口，应先进入 Core/Browser，再由宿主负责 WM 日志与调度。
 
-next674 已固定每项最多 2 次 transport 重试（总计最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试；后续批次必须保持这条边界。完成 next674 后，再按风险累计条件安排更宽回归或新的全量 checkpoint；不要把一次全量门当成永久覆盖，也不要为增加测试编号拆分能力。
+后续实现必须保持现有 transport 重试边界：每项最多 2 次重试（总计最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试。按风险累计条件安排更宽回归或新的全量 checkpoint；不要把一次全量门当成永久覆盖，也不要为增加测试编号拆分能力。
 
 ### 继续清理产品所有权
 
