@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1119
+#define TEST_MAX_NUMBER 1120
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6159,6 +6159,17 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_MAX_RESOURCES 64
 #define PCORE_NAV_RESOURCE_BYTES_MAX (2 * 1024 * 1024)
 #define PCORE_NAV_RETIRED_MAX 4
+#define PCORE_NAV_RESOURCE_PENDING 0
+#define PCORE_NAV_RESOURCE_READY 1
+#define PCORE_NAV_RESOURCE_FAILED 2
+#define PCORE_NAV_RESOURCE_CANCELLED 3
+#define PCORE_NAV_FAILURE_NONE 0
+#define PCORE_NAV_FAILURE_RESOLVE 1
+#define PCORE_NAV_FAILURE_TRANSPORT 2
+#define PCORE_NAV_FAILURE_HTTP 3
+#define PCORE_NAV_FAILURE_BUDGET 4
+#define PCORE_NAV_FAILURE_MEMORY 5
+#define PCORE_NAV_FAILURE_CANCELLED 6
 
 typedef struct pcore_navigation_progress_message {
     LONG generation;
@@ -6172,6 +6183,8 @@ typedef struct pcore_navigation_resource {
     char *data;
     int len;
     int attempted;
+    int state;
+    int failure_class;
 } pcore_navigation_resource;
 
 typedef struct pcore_browser_script_bridge pcore_browser_script_bridge;
@@ -6368,6 +6381,13 @@ typedef struct pcore_navigation_stats {
     int resources_queued;
     int resources_fetched;
     int resources_failed;
+    int resources_cancelled;
+    int resources_pending;
+    int resource_failures_resolve;
+    int resource_failures_transport;
+    int resource_failures_http;
+    int resource_failures_budget;
+    int resource_failures_memory;
     int resource_bytes;
     int budget_rejected;
     int completed;
@@ -12621,7 +12641,11 @@ static void testbench_log_navigation(
     _snprintf(body, sizeof(body) - 1,
             "completed=%d total/net/maxUI=%lu/%lu/%lums\n"
             "parse/style/images/layout/paint=%lu/%lu/%lu/%lu/%lums\n"
-            "resources queued/ok/fail/rounds=%d/%d/%d/%d bytes=%d retry=%d\n"
+            "resources q/ok/fail/cancel/pending/rounds="
+            "%d/%d/%d/%d/%d/%d\n"
+            "resource fail resolve/transport/http/budget/memory="
+            "%d/%d/%d/%d/%d\n"
+            "bytes=%d retry=%d\n"
             "core layout total=%lums box/first/settle/final="
             "%lu/%lu/%lu/%lums pass=%d\n"
             "box tree/image/reuse/markup-first=%lu/%lu/%u/%u\n"
@@ -12639,7 +12663,14 @@ static void testbench_log_navigation(
             request->stats.resources_queued,
             request->stats.resources_fetched,
             request->stats.resources_failed,
+            request->stats.resources_cancelled,
+            request->stats.resources_pending,
             request->stats.worker_rounds,
+            request->stats.resource_failures_resolve,
+            request->stats.resource_failures_transport,
+            request->stats.resource_failures_http,
+            request->stats.resource_failures_budget,
+            request->stats.resource_failures_memory,
             request->stats.resource_bytes,
             request->stats.document_retries,
             (unsigned long) request->stats.core_layout.total_ms,
@@ -13030,9 +13061,11 @@ static pcore_navigation_resource *pcore_navigation_resource_find(
     return NULL;
 }
 
-/* PCore calls this on the window thread. A cache hit returns an owned copy;
- * a miss is queued for the next worker stage and deliberately reports failure
- * to the current style/image discovery pass. */
+/* PCore calls this on the window thread. A ready cache hit returns an owned
+ * copy; a pending miss is queued for the next worker stage and deliberately
+ * reports failure to the current style/image discovery pass. Terminal
+ * failures and cancellations stay terminal so a later style pass cannot
+ * mistake them for work that still needs fetching. */
 static int pcore_navigation_resource_cb(void *pw, const char *url,
         char **out_data, int *out_len)
 {
@@ -13065,9 +13098,15 @@ static int pcore_navigation_resource_cb(void *pw, const char *url,
             return 1;
         }
         memcpy(entry->url, url, url_len + 1);
+        entry->state = PCORE_NAV_RESOURCE_PENDING;
+        entry->failure_class = PCORE_NAV_FAILURE_NONE;
         entry->next = request->resources;
         request->resources = entry;
         request->resource_count++;
+        return 1;
+    }
+    if (entry->state == PCORE_NAV_RESOURCE_FAILED ||
+            entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
         return 1;
     }
     if (entry->data == NULL || entry->len <= 0) {
@@ -13078,6 +13117,8 @@ static int pcore_navigation_resource_cb(void *pw, const char *url,
         return 1;
     }
     memcpy(copy, entry->data, (size_t) entry->len);
+    entry->state = PCORE_NAV_RESOURCE_READY;
+    entry->failure_class = PCORE_NAV_FAILURE_NONE;
     *out_data = copy;
     *out_len = entry->len;
     return 0;
@@ -13100,7 +13141,8 @@ static int pcore_navigation_pending_count(
         return 0;
     }
     for (entry = request->resources; entry != NULL; entry = entry->next) {
-        if (!entry->attempted) {
+        if (entry->state == PCORE_NAV_RESOURCE_PENDING &&
+                !entry->attempted) {
             count++;
         }
     }
@@ -13111,6 +13153,129 @@ static int pcore_navigation_is_cancelled(
         const pcore_navigation_request *request)
 {
     return request != NULL && request->cancel_requested != 0;
+}
+
+static void pcore_navigation_resource_fail(
+        pcore_navigation_request *request,
+        pcore_navigation_resource *entry, int failure_class)
+{
+    if (request == NULL || entry == NULL ||
+            entry->state == PCORE_NAV_RESOURCE_READY ||
+            entry->state == PCORE_NAV_RESOURCE_FAILED ||
+            entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
+        return;
+    }
+    entry->state = PCORE_NAV_RESOURCE_FAILED;
+    entry->failure_class = failure_class;
+    entry->attempted = 1;
+    request->stats.resources_failed++;
+    switch (failure_class) {
+    case PCORE_NAV_FAILURE_RESOLVE:
+        request->stats.resource_failures_resolve++;
+        break;
+    case PCORE_NAV_FAILURE_TRANSPORT:
+        request->stats.resource_failures_transport++;
+        break;
+    case PCORE_NAV_FAILURE_HTTP:
+        request->stats.resource_failures_http++;
+        break;
+    case PCORE_NAV_FAILURE_BUDGET:
+        request->stats.resource_failures_budget++;
+        break;
+    case PCORE_NAV_FAILURE_MEMORY:
+        request->stats.resource_failures_memory++;
+        break;
+    default:
+        break;
+    }
+}
+
+static void pcore_navigation_resource_cancel(
+        pcore_navigation_request *request,
+        pcore_navigation_resource *entry)
+{
+    if (request == NULL || entry == NULL ||
+            entry->state == PCORE_NAV_RESOURCE_READY ||
+            entry->state == PCORE_NAV_RESOURCE_FAILED ||
+            entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
+        return;
+    }
+    entry->state = PCORE_NAV_RESOURCE_CANCELLED;
+    entry->failure_class = PCORE_NAV_FAILURE_CANCELLED;
+    entry->attempted = 1;
+    request->stats.resources_cancelled++;
+}
+
+static void pcore_navigation_resource_cancel_all(
+        pcore_navigation_request *request)
+{
+    pcore_navigation_resource *entry;
+
+    if (request == NULL) {
+        return;
+    }
+    for (entry = request->resources; entry != NULL; entry = entry->next) {
+        pcore_navigation_resource_cancel(request, entry);
+    }
+}
+
+/* Record one completed worker response. The response remains owned by the
+ * caller, while the request receives a bounded copy only for a successful
+ * body. Every other outcome becomes one terminal, classified entry. */
+static int pcore_navigation_resource_store_response(
+        pcore_navigation_request *request,
+        pcore_navigation_resource *entry, const PHttpResponse *response)
+{
+    char *data;
+
+    if (request == NULL || entry == NULL ||
+            entry->state == PCORE_NAV_RESOURCE_FAILED ||
+            entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
+        return 1;
+    }
+    if (pcore_navigation_is_cancelled(request)) {
+        pcore_navigation_resource_cancel(request, entry);
+        return 1;
+    }
+    if (entry->state == PCORE_NAV_RESOURCE_READY &&
+            entry->data != NULL && entry->len > 0) {
+        return 0;
+    }
+    if (response == NULL || response->status_code == 0) {
+        pcore_navigation_resource_fail(request, entry,
+                PCORE_NAV_FAILURE_TRANSPORT);
+        return 1;
+    }
+    if (response->status_code != 200 || response->body == NULL ||
+            response->body_len <= 0) {
+        pcore_navigation_resource_fail(request, entry,
+                PCORE_NAV_FAILURE_HTTP);
+        return 1;
+    }
+    if (request->resource_bytes < 0 ||
+            request->resource_bytes > PCORE_NAV_RESOURCE_BYTES_MAX ||
+            response->body_len > PCORE_NAV_RESOURCE_BYTES_MAX -
+                    request->resource_bytes) {
+        request->stats.budget_rejected++;
+        pcore_navigation_resource_fail(request, entry,
+                PCORE_NAV_FAILURE_BUDGET);
+        return 1;
+    }
+    data = (char *) malloc((size_t) response->body_len);
+    if (data == NULL) {
+        pcore_navigation_resource_fail(request, entry,
+                PCORE_NAV_FAILURE_MEMORY);
+        return 1;
+    }
+    memcpy(data, response->body, (size_t) response->body_len);
+    entry->data = data;
+    entry->len = response->body_len;
+    entry->attempted = 1;
+    entry->state = PCORE_NAV_RESOURCE_READY;
+    entry->failure_class = PCORE_NAV_FAILURE_NONE;
+    request->resource_bytes += response->body_len;
+    request->stats.resources_fetched++;
+    return 0;
 }
 
 static void pcore_navigation_request_close_worker(
@@ -13436,8 +13601,6 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
     char host[256];
     char path[1024];
     int port;
-    char *data;
-    int fetched;
 
     request = (pcore_navigation_request *) param;
     if (pcore_navigation_is_cancelled(request)) {
@@ -13464,16 +13627,20 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
             if (pcore_navigation_is_cancelled(request)) {
                 break;
             }
-            if (entry->attempted) {
+            if (entry->attempted ||
+                    entry->state != PCORE_NAV_RESOURCE_PENDING) {
                 continue;
             }
             entry->attempted = 1;
-            fetched = 0;
             port = request->port;
             if (!resolve_url_from(request->host, request->path,
                     request->port, entry->url, host, sizeof(host), path,
                     sizeof(path), &port)) {
-                request->stats.resources_failed++;
+                if (pcore_navigation_is_cancelled(request)) {
+                    break;
+                }
+                pcore_navigation_resource_fail(request, entry,
+                        PCORE_NAV_FAILURE_RESOLVE);
                 continue;
             }
             resp = pcore_navigation_get(request, host, port, path);
@@ -13483,33 +13650,17 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                 }
                 break;
             }
-            if (resp != NULL && resp->status_code == 200 &&
-                    resp->body != NULL && resp->body_len > 0 &&
-                    resp->body_len <= PCORE_NAV_RESOURCE_BYTES_MAX -
-                            request->resource_bytes) {
-                data = (char *) malloc((size_t) resp->body_len);
-                if (data != NULL) {
-                    memcpy(data, resp->body, (size_t) resp->body_len);
-                    entry->data = data;
-                    entry->len = resp->body_len;
-                    request->resource_bytes += resp->body_len;
-                    request->stats.resources_fetched++;
-                    fetched = 1;
-                }
-            } else if (resp != NULL && resp->body_len >
-                    PCORE_NAV_RESOURCE_BYTES_MAX -
-                            request->resource_bytes) {
-                request->stats.budget_rejected++;
-            }
-            if (!fetched) {
-                request->stats.resources_failed++;
-            }
+            (void) pcore_navigation_resource_store_response(request, entry,
+                    resp);
             if (resp != NULL) {
                 PHttp_FreeResponse(resp);
             }
         }
     }
 done:
+    if (pcore_navigation_is_cancelled(request)) {
+        pcore_navigation_resource_cancel_all(request);
+    }
     request->stats.network_ms += GetTickCount() -
             request->stats.worker_started_tick;
     PostMessage(request->hwnd, WM_PCORE_NAV_DONE,
@@ -15711,6 +15862,7 @@ static void pcore_navigation_finish(HWND hwnd,
 {
     request->stats.total_ms = GetTickCount() - request->stats.started_tick;
     request->stats.resources_queued = request->resource_count;
+    request->stats.resources_pending = pcore_navigation_pending_count(request);
     request->stats.resource_bytes = request->resource_bytes;
     g_nav_last_stats = request->stats;
     g_nav_last_stats_valid = 1;
@@ -28315,6 +28467,8 @@ static int test1118_seed_navigation_resource(
     memcpy(entry->data, data, (size_t) len);
     entry->len = len;
     entry->attempted = 1;
+    entry->state = PCORE_NAV_RESOURCE_READY;
+    entry->failure_class = PCORE_NAV_FAILURE_NONE;
     request->resource_bytes += len;
     return 0;
 }
@@ -28852,6 +29006,9 @@ static int test1119_add_resource(pcore_navigation_request *request,
     memcpy(entry->data, data, (size_t) len);
     entry->len = len;
     entry->attempted = attempted ? 1 : 0;
+    entry->state = attempted ? PCORE_NAV_RESOURCE_READY :
+            PCORE_NAV_RESOURCE_PENDING;
+    entry->failure_class = PCORE_NAV_FAILURE_NONE;
     entry->next = request->resources;
     request->resources = entry;
     request->resource_count++;
@@ -29256,6 +29413,200 @@ static BOOL test1119_navigation_supersede_transaction(void)
     return TRUE;
 }
 
+static pcore_navigation_resource *test1120_queue_resource(
+        pcore_navigation_request *request, const char *url)
+{
+    pcore_navigation_resource *entry;
+    char *data;
+    int len;
+
+    data = NULL;
+    len = 0;
+    if (pcore_navigation_resource_cb(request, url, &data, &len) != 1 ||
+            data != NULL || len != 0) {
+        if (data != NULL) {
+            page_resource_free_cb(NULL, data);
+        }
+        return NULL;
+    }
+    entry = pcore_navigation_resource_find(request, url);
+    if (entry != NULL && entry->state == PCORE_NAV_RESOURCE_PENDING &&
+            !entry->attempted) {
+        return entry;
+    }
+    return NULL;
+}
+
+/* TEST 1120 - resource terminal states and error classes remain explicit.
+ * The fixture is offline: synthetic responses cover ready/HTTP/transport/
+ * budget outcomes and one pending entry is cancelled as a resource stage
+ * closes. A later cache callback must return only the ready body, never make a
+ * failed or cancelled entry look pending again. */
+static BOOL test1120_navigation_resource_terminals(void)
+{
+    static const char SUCCESS_URL[] = "/terminal/ready.bin";
+    static const char HTTP_URL[] = "/terminal/http.bin";
+    static const char TRANSPORT_URL[] = "/terminal/transport.bin";
+    static const char BUDGET_URL[] = "/terminal/budget.bin";
+    static const char CANCEL_URL[] = "/terminal/cancel.bin";
+    static const char SUCCESS_BODY[] = "ok";
+    pcore_navigation_request *request;
+    pcore_navigation_resource *ready;
+    pcore_navigation_resource *http;
+    pcore_navigation_resource *transport;
+    pcore_navigation_resource *budget;
+    pcore_navigation_resource *cancel;
+    PHttpResponse response;
+    char *data;
+    int len;
+    int cache_ready;
+    int terminal_unavailable;
+    int ok;
+    char error[512];
+
+    request = (pcore_navigation_request *) malloc(sizeof(*request));
+    ready = NULL;
+    http = NULL;
+    transport = NULL;
+    budget = NULL;
+    cancel = NULL;
+    data = NULL;
+    len = 0;
+    cache_ready = 0;
+    terminal_unavailable = 0;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    if (request == NULL) {
+        show_error(L"TEST 1120 FAIL", "request allocation failed");
+        return FALSE;
+    }
+    memset(request, 0, sizeof(*request));
+    cstr_copy(request->host, sizeof(request->host), "offline.test");
+    cstr_copy(request->path, sizeof(request->path), "/terminal/page.html");
+    request->port = 443;
+    request->method = 1;
+
+    ready = test1120_queue_resource(request, SUCCESS_URL);
+    http = test1120_queue_resource(request, HTTP_URL);
+    transport = test1120_queue_resource(request, TRANSPORT_URL);
+    budget = test1120_queue_resource(request, BUDGET_URL);
+    cancel = test1120_queue_resource(request, CANCEL_URL);
+    if (ready == NULL || http == NULL || transport == NULL ||
+            budget == NULL || cancel == NULL) {
+        cstr_copy(error, sizeof(error), "resource queue preparation failed");
+        ok = 0;
+    }
+    if (!ok) {
+        pcore_navigation_request_free(request);
+        show_error(L"TEST 1120 FAIL", error);
+        return FALSE;
+    }
+
+    memset(&response, 0, sizeof(response));
+    response.status_code = 200;
+    response.body = (char *) SUCCESS_BODY;
+    response.body_len = (int) sizeof(SUCCESS_BODY) - 1;
+    if (ok && pcore_navigation_resource_store_response(request, ready,
+            &response) != 0) {
+        cstr_copy(error, sizeof(error), "ready response was rejected");
+        ok = 0;
+    }
+    memset(&response, 0, sizeof(response));
+    response.status_code = 503;
+    if (ok && pcore_navigation_resource_store_response(request, http,
+            &response) == 0) {
+        cstr_copy(error, sizeof(error), "HTTP failure was accepted");
+        ok = 0;
+    }
+    memset(&response, 0, sizeof(response));
+    if (ok && pcore_navigation_resource_store_response(request, transport,
+            &response) == 0) {
+        cstr_copy(error, sizeof(error), "transport failure was accepted");
+        ok = 0;
+    }
+    memset(&response, 0, sizeof(response));
+    response.status_code = 200;
+    response.body = (char *) SUCCESS_BODY;
+    response.body_len = PCORE_NAV_RESOURCE_BYTES_MAX;
+    if (ok && pcore_navigation_resource_store_response(request, budget,
+            &response) == 0) {
+        cstr_copy(error, sizeof(error), "budget failure was accepted");
+        ok = 0;
+    }
+    pcore_navigation_resource_cancel_all(request);
+    request->stats.resources_queued = request->resource_count;
+    request->stats.resources_pending = pcore_navigation_pending_count(request);
+
+    data = NULL;
+    len = 0;
+    cache_ready = pcore_navigation_resource_cb(request, SUCCESS_URL,
+            &data, &len) == 0 && data != NULL && len ==
+            (int) sizeof(SUCCESS_BODY) - 1 && memcmp(data, SUCCESS_BODY,
+            (size_t) len) == 0;
+    if (data != NULL) {
+        page_resource_free_cb(NULL, data);
+        data = NULL;
+    }
+    terminal_unavailable = pcore_navigation_resource_cb(request, HTTP_URL,
+            &data, &len) == 1 && data == NULL && len == 0;
+    terminal_unavailable = terminal_unavailable &&
+            pcore_navigation_resource_cb(request, CANCEL_URL, &data, &len) ==
+            1 && data == NULL && len == 0;
+    if (ready->state != PCORE_NAV_RESOURCE_READY ||
+            ready->failure_class != PCORE_NAV_FAILURE_NONE ||
+            http->state != PCORE_NAV_RESOURCE_FAILED ||
+            http->failure_class != PCORE_NAV_FAILURE_HTTP ||
+            transport->state != PCORE_NAV_RESOURCE_FAILED ||
+            transport->failure_class != PCORE_NAV_FAILURE_TRANSPORT ||
+            budget->state != PCORE_NAV_RESOURCE_FAILED ||
+            budget->failure_class != PCORE_NAV_FAILURE_BUDGET ||
+            cancel->state != PCORE_NAV_RESOURCE_CANCELLED ||
+            cancel->failure_class != PCORE_NAV_FAILURE_CANCELLED ||
+            request->resource_count != 5 ||
+            request->stats.resources_queued != 5 ||
+            request->stats.resources_fetched != 1 ||
+            request->stats.resources_failed != 3 ||
+            request->stats.resources_cancelled != 1 ||
+            request->stats.resources_pending != 0 ||
+            request->stats.resource_failures_resolve != 0 ||
+            request->stats.resource_failures_transport != 1 ||
+            request->stats.resource_failures_http != 1 ||
+            request->stats.resource_failures_budget != 1 ||
+            request->stats.resource_failures_memory != 0 ||
+            request->stats.budget_rejected != 1 ||
+            request->resource_bytes != (int) sizeof(SUCCESS_BODY) - 1 ||
+            !cache_ready || !terminal_unavailable) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "states=%d/%d/%d/%d/%d classes=%d/%d/%d/%d/%d "
+                    "counts=%d/%d/%d/%d bytes=%d cache=%d/%d",
+                    ready->state, http->state, transport->state,
+                    budget->state, cancel->state,
+                    ready->failure_class, http->failure_class,
+                    transport->failure_class, budget->failure_class,
+                    cancel->failure_class,
+                    request->stats.resources_fetched,
+                    request->stats.resources_failed,
+                    request->stats.resources_cancelled,
+                    request->stats.resources_pending,
+                    request->resource_bytes, cache_ready,
+                    terminal_unavailable);
+            error[sizeof(error) - 1] = '\0';
+        }
+        ok = 0;
+    }
+    pcore_navigation_request_free(request);
+    if (!ok) {
+        show_error(L"TEST 1120 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1120 OK",
+            "Offline resource terminal states distinguished ready, HTTP, "
+            "transport, budget and cancelled outcomes; bounded counters and "
+            "cache callbacks kept failed/cancelled entries unavailable.");
+    return TRUE;
+}
+
 static BOOL test12_render(void)
 {
     static const char *HTML =
@@ -29484,8 +29835,9 @@ static BOOL test_browse(void)
                 "total/net/maxUI=%lu/%lu/%lums\n"
                 "parse/style/img/layout/paint=\n"
                 "%lu/%lu/%lu/%lu/%lums\n"
-                "res q/ok/f/r=%d/%d/%d/%d retry=%d\n"
-                "bytes doc/cache=%d/%d reject=%d\n"
+                "res q/ok/f/c/p/r=%d/%d/%d/%d/%d/%d\n"
+                "res fail r/t/h/b/m=%d/%d/%d/%d/%d\n"
+                "bytes doc/cache=%d/%d reject=%d retry=%d\n"
                 "layout total=%lums pass=%d\n"
                 "box/first/settle/final/other=\n"
                 "%lu/%lu/%lu/%lu/%lums",
@@ -29501,11 +29853,18 @@ static BOOL test_browse(void)
                 g_nav_last_stats.resources_queued,
                 g_nav_last_stats.resources_fetched,
                 g_nav_last_stats.resources_failed,
+                g_nav_last_stats.resources_cancelled,
+                g_nav_last_stats.resources_pending,
                 g_nav_last_stats.worker_rounds,
-                g_nav_last_stats.document_retries,
+                g_nav_last_stats.resource_failures_resolve,
+                g_nav_last_stats.resource_failures_transport,
+                g_nav_last_stats.resource_failures_http,
+                g_nav_last_stats.resource_failures_budget,
+                g_nav_last_stats.resource_failures_memory,
                 g_nav_last_stats.document_bytes,
                 g_nav_last_stats.resource_bytes,
                 g_nav_last_stats.budget_rejected,
+                g_nav_last_stats.document_retries,
                 (unsigned long) g_nav_last_stats.core_layout.total_ms,
                 g_nav_last_stats.core_layout.settling_pass,
                 (unsigned long)
@@ -33048,6 +33407,8 @@ static BOOL test43_navigation_resource_transaction(void)
     memcpy(entry->data, "css", 3);
     entry->len = 3;
     entry->attempted = 1;
+    entry->state = PCORE_NAV_RESOURCE_READY;
+    entry->failure_class = PCORE_NAV_FAILURE_NONE;
     request->resource_bytes = 3;
     data = NULL;
     len = 0;
@@ -33068,7 +33429,8 @@ static BOOL test43_navigation_resource_transaction(void)
     }
     entry = pcore_navigation_resource_find(request, "/img/missing.png");
     if (entry != NULL) {
-        entry->attempted = 1;   /* model one failed worker attempt */
+        pcore_navigation_resource_fail(request, entry,
+                PCORE_NAV_FAILURE_HTTP);
     }
 
     if (!root_ok || !absolute_ok || !retry_eof_ok || !retry_dns_ok ||
@@ -87266,6 +87628,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1117: ok = test1117_browser_offline_compatibility_corpus(); break;
         case 1118: ok = test1118_browser_offline_candidate_lifecycle(); break;
         case 1119: ok = test1119_navigation_supersede_transaction(); break;
+        case 1120: ok = test1120_navigation_resource_terminals(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

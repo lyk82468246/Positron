@@ -40,6 +40,8 @@ tests=1-5 7b 13 20,999
 
 自动模式只证明断言、资源计数、消息路径和首帧没有失败。它不能证明字体、边距、抗锯齿、触摸命中、系统 picker 或 OEM 输入法体验。
 
+涉及导航的自动日志还会给出资源 `queued/ready/failed/cancelled/pending` 计数和 resolve、transport、HTTP、budget、memory 失败分类。完成的候选应没有未处理的 `pending` 项；`cancelled` 是独立终态，不应被当作网络失败。该摘要属于宿主 telemetry，不是公共 DLL ABI。
+
 ### 手动模式
 
 `auto=0` 时保留启动确认、测试说明和人工关闭流程。可视页面通常停留在设备上，验收者按说明操作后用 `Esc`、页面空白处或测试明确提供的关闭入口继续。
@@ -208,7 +210,7 @@ contenteditable 的自动 fixture 证明有效 editing host 的 WM EDIT 代理�
 
 WM6 镜像的系统时间经常过旧。证书测试前先校准时间，并把失败分为：DNS、TCP、TLS handshake、证书/hostname、HTTP status、redirect、资源获取、页面解析和最终提交。
 
-离线 fixture 用于稳定契约；真实网页用于集成哨兵。真实端点的暂时不可达不能通过放宽离线断言解决，离线契约通过也不能证明任意互联网网站兼容。
+离线 fixture 用于稳定契约；真实网页用于集成哨兵。真实端点的暂时不可达不能通过放宽离线断言解决，离线契约通过也不能证明任意互联网网站兼容。资源失败应依据日志分类处理；当前宿主尚未提供自动重试或部分资源 UI 策略，不能把取消、预算拒绝或 HTTP 错误误报为成功。
 
 ## 候选成为基线
 
