@@ -135,7 +135,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
 - 顶层窗口、消息循环、滚动条和 DPI/旋转通知；
 - native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位、销毁并跟踪其平台鼠标/键盘选区；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、写入和所有权也只属于宿主；
-- 后台线程、导航取消、loading 状态与页面 swap；候选成功时在旧 document/session 仍有效的窗口内调用 Browser teardown，再停止 native 回调、释放旧对象并提交新页；
+- 后台线程、导航取消、loading 状态与页面 swap；较新的导航可以取代仍在准备的候选，宿主用 generation 门控 worker 完成、进度和提交消息，并让退休候选持有自己的线程、response、资源队列和脚本对象直到 worker 收尾；退休队列有固定上限，达到上限时新导航 fail closed 而不改变当前页；候选成功时在旧 document/session 仍有效的窗口内调用 Browser teardown，再停止 native 回调、释放旧对象并提交新页；
 - DNS/TCP/TLS/HTTP 组合策略和资源调度；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
@@ -151,7 +151,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 推荐的主文档事务如下：
 
 1. UI 线程记录导航意图和当前页面，但不立即销毁旧文档。
-2. worker 获取主文档及可并行准备的网络资源；网络层不触碰 DOM/NetSurf 状态。
+2. worker 获取主文档及可并行准备的网络资源；网络层不触碰 DOM/NetSurf 状态。较新的导航会使旧候选进入 retired 状态，旧 worker 的完成和进度消息不得越过 generation 门控；仍在收尾的退休候选数量受宿主固定上限约束。
 3. UI 线程解析 HTML，创建候选文档。
 4. 通过 Core 的 resolver/fetch 回调准备 CSS、`@import`、图片和 script cache。
 5. UI 线程完成 style、layout 和首帧可绘制性检查。
@@ -204,6 +204,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - Core document、layout、paint 和 Browser script session 默认由单一 UI 线程串行驱动。
 - 同步 callback 不得重入触发它的 session，也不得在回调中销毁父 handle。
 - 页面替换、取消和关闭必须先阻止新回调，再释放平台控件、script session、Core document 和 history/app state；具体顺序以拥有关系为准。
+- 导航取消是宿主与网络层之间的协作式边界：generation 立即阻止过时结果提交，worker 在网络调用边界检查取消并在完成消息后释放退休请求；公共 HTTP 调用正在阻塞时不保证立即中断 socket，宿主不得把“已请求取消”误报为“网络已即时停止”。
 
 ## 平台与移植约束
 

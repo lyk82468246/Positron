@@ -68,7 +68,7 @@ tests=13,20,27,999
 
 ### 页面导航
 
-宿主持有后台网络 worker、loading/取消、候选文档和窗口 swap。旧页保持可绘制，直到新页面完成 parse/resource/style/layout 并可提交。URL reference 解析调用 `positron_http.dll`；history 提交调用 `positron_browser.dll`。
+宿主持有后台网络 worker、loading/取消、候选文档和窗口 swap。旧页保持可绘制，直到新页面完成 parse/resource/style/layout 并可提交。较新的导航可以取代仍在准备的候选：每个候选独占自己的 worker、response 和资源队列，generation 只允许最新候选的进度、完成和提交消息生效；退休候选在 worker 收尾后才释放，退休队列达到固定上限时新导航 fail closed 并保持当前页。URL reference 解析调用 `positron_http.dll`；history 提交调用 `positron_browser.dll`。
 
 DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM node、box、computed style 或 HDC。
 

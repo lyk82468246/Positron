@@ -8,7 +8,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`；next671 已完成产品实现、宿主接线和文档快照，提交后工作区应保持 clean。
+- 分支：`main`；next672 已完成产品实现、宿主接线、自动断言和文档快照，提交后工作区应保持 clean。
+- next672 在 next671 的离线候选流程上补齐了宿主级过时导航事务：每个候选独占 worker handle 和取消标志；新导航会按 generation 退休旧候选，旧 worker 的进度/完成消息不能触碰当前候选；退休请求保留自己的 response、资源队列和线程，直到完成消息或关闭清理后释放。退休队列固定为 4 个请求，满载时新导航 fail closed；取消检查位于 worker 的阶段边界和 PHttp 返回边界，未改变公共 DLL ABI。
 - next671 在 next670 的离线 corpus 基础上补齐了跨文档候选的 page teardown：Browser 提供一次性的 `visibilitychange`/`pagehide`/`unload` 与页面队列清理入口，宿主只在候选完成提交前调用；失败候选继续保留旧页。脚本 native function 预算按设备验证从 23 增加到有界的 24，为一个产品消费者回调保留槽位。
 - next670 在 next669 的离线 corpus 基础上修复了 collapsed-border 的重复 DPI 换算、浏览器 `classList.toggle` 的参数个数语义、无 DOM bootstrap 回退，以及高 DPI 重排后 block 文本盒的 label 命中关联；同时将浏览器 session 堆上限固定为经设备二分验证的 646 KiB，并恢复稳定的 TEST3/TEST5 网络哨兵组合。
 - 上一产品基线为 `88d68ebd`（next669，首个离线 compatibility corpus 完整流程）；更早基线为 `c0c4ba0e`（next668，单元素 `contenteditable` 的受限 CF_UNICODETEXT 粘贴/剪切与 WM_COPY 边界、折叠选区 no-op、超长/非 Unicode fail-closed 和 WinCE 原生 WM_CUT 重入保护）。
@@ -21,7 +22,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-推进 next672：在已有离线候选流程上补齐“过时/取消导航不会污染当前页”的单一纵向能力。用两个确定性候选和资源回调覆盖 generation、取消、候选资源清理、旧 session 保留与最终提交；通用导航/资源语义进入 Core 或 Browser，宿主只保留调度和 WM 接线。
+推进 next673：把资源阶段的成功、失败和取消终态区分开，并提供有界、可验证的宿主摘要；取消不得伪装成网络失败或成功，旧页保留与最新候选提交规则不变。
 
 ## 已验证产品事实
 
@@ -48,18 +49,18 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1118。
+- `TEST_MAX_NUMBER`：1119。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next671 定向门；最近一次稳定全量 checkpoint 仍为 next670：
+当前最新产品门为 next672 定向门；最近一次稳定全量 checkpoint 仍为 next670：
 
-- next671 定向目录：`tmp/device-runs/20260830-182712-next671-final-corpus/`；
-- 动态选择：`1117,1118,999`，3 项；3/3 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging；TEST1118 覆盖失败回滚、资源准备、teardown 顺序、队列清理和 history 提交，TEST999 请求一次提示音。
+- next672 定向目录：`tmp/device-runs/20260830-190107-next672-final2/`；
+- 动态选择：`1117,1118,1119,999`，4 项；4/4 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
+- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging；TEST1119 覆盖资源准备期间的新旧候选交错、generation 取消、过时消息隔离、退休请求回收和最新候选提交。
 
 - 全量目录：`tmp/device-runs/20260830-163642-next670-full-final/`；
 - 动态选择：`1-22,24-77,80-231,233-262,264-448,482-998,1000-1117,7b,999`，共 1080 项；仅排除 manual-only 的 TEST232/TEST263；
@@ -80,13 +81,13 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 - 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
-- TEST1117 与 TEST1118 都是无网络自动夹具，没有新增必须立即人工复核的风险；其 dialog、候选页面视觉、链接触摸、滚动/旋转和不同 DPI 的整体呈现仍按既有规则累计人工验收。
+- TEST1117、TEST1118 与 TEST1119 都是无网络自动夹具，没有新增必须立即人工复核的风险；其 dialog、候选页面视觉、链接触摸、滚动/旋转和不同 DPI 的整体呈现仍按既有规则累计人工验收。
 
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
 
-- 已建立两条固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵，候选取消/过时 generation 尚未由独立流程覆盖。
+- 已建立三条固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119 已覆盖候选取消的宿主事务，但取消仍是协作式的，不能保证正在阻塞的 PHttp 调用立即返回。
 - `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围、有界 backdrop 指针策略和 Core 实体色 modal paint；当前表单桥要求最近祖先 dialog 有非空 id。CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
@@ -99,7 +100,7 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 
 ## 唯一下一步
 
-next672 建立离线候选取消/过时 generation 流程：让两个确定性候选在资源准备期间交错，验证旧页仍可绘制、过时请求不会提交 history 或替换 session、其资源与队列会被释放，而最新候选可以继续完成并提交。先在 Browser/Core 明确 generation 与取消的所有权，再由宿主接入调度和自动断言；不把网络端点或视觉人工操作写成自动契约。
+next673 建立资源终态与失败分类流程：让一个候选同时包含成功、可分类失败和被取消的资源阶段，验证计数、日志摘要、响应/资源回收与旧页保留一致；取消不被记录为网络失败，最新候选仍可按既有 generation 规则提交。不把阻塞 socket 的强制中断或外网端点写成契约。
 
 优先场景应同时满足：
 
@@ -111,9 +112,9 @@ next672 建立离线候选取消/过时 generation 流程：让两个确定性�
 
 ## 下一步完成标准
 
-- next672 的两个候选、资源回调和取消时序完全离线固定，自动断言覆盖 generation、旧页保留、资源清理、最终页面和 history 的主要结果；
+- next673 的成功、失败和取消资源终态完全离线固定，自动断言覆盖终态计数、错误分类、回收路径、旧页保留和最终提交的主要结果；
 - 可复用的 URL/history/DOM/Event/资源生命周期语义位于 Core 或 Browser，`test_host` 只负责 WM 接线、调度和夹具；
 - VS2008 ARMV4I 正式构建、同批 staging、C89 回归和仓库审计通过，无旧 EXE/DLL 混包；
-- next672 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，并保留可追溯的 `tmp/device-runs/` 证据；
+- next673 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，并保留可追溯的 `tmp/device-runs/` 证据；
 - 视觉、触摸、SIP/IME、picker 或旋转等无法自动判断的风险进入既有人工累计清单，不以人工缺席伪造自动通过；
 - handoff 覆盖为 next672 快照，ROADMAP 只保留下一条未完成的纵向能力。

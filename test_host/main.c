@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1118
+#define TEST_MAX_NUMBER 1119
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6158,6 +6158,13 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_COMMIT_LAYOUT 5
 #define PCORE_NAV_MAX_RESOURCES 64
 #define PCORE_NAV_RESOURCE_BYTES_MAX (2 * 1024 * 1024)
+#define PCORE_NAV_RETIRED_MAX 4
+
+typedef struct pcore_navigation_progress_message {
+    LONG generation;
+    int received;
+    int total;
+} pcore_navigation_progress_message;
 
 typedef struct pcore_navigation_resource {
     struct pcore_navigation_resource *next;
@@ -6375,6 +6382,10 @@ typedef struct pcore_navigation_stats {
 typedef struct pcore_navigation_request {
     HWND           hwnd;
     LONG           generation;
+    HANDLE         worker_thread;
+    volatile LONG  cancel_requested;
+    int            retired;
+    struct pcore_navigation_request *retired_next;
     char           host[256];
     char           path[1024];
     int            port;
@@ -6399,8 +6410,8 @@ typedef struct pcore_navigation_request {
     pcore_navigation_stats stats;
 } pcore_navigation_request;
 
-static HANDLE                    g_nav_thread = NULL;
 static pcore_navigation_request *g_nav_request = NULL;
+static pcore_navigation_request *g_nav_retired_requests = NULL;
 static HWND                      g_nav_bar = NULL;
 static int                       g_nav_bar_h = 0;
 static LONG                      g_nav_generation = 0;
@@ -13096,6 +13107,23 @@ static int pcore_navigation_pending_count(
     return count;
 }
 
+static int pcore_navigation_is_cancelled(
+        const pcore_navigation_request *request)
+{
+    return request != NULL && request->cancel_requested != 0;
+}
+
+static void pcore_navigation_request_close_worker(
+        pcore_navigation_request *request)
+{
+    if (request == NULL || request->worker_thread == NULL) {
+        return;
+    }
+    WaitForSingleObject(request->worker_thread, INFINITE);
+    CloseHandle(request->worker_thread);
+    request->worker_thread = NULL;
+}
+
 static void pcore_navigation_request_free(
         pcore_navigation_request *request)
 {
@@ -13104,6 +13132,7 @@ static void pcore_navigation_request_free(
     if (request == NULL) {
         return;
     }
+    pcore_navigation_request_close_worker(request);
     if (request->response != NULL) {
         PHttp_FreeResponse(request->response);
     }
@@ -13127,6 +13156,86 @@ static void pcore_navigation_request_free(
         entry = next;
     }
     free(request);
+}
+
+static void pcore_navigation_discard_progress_messages(HWND hwnd)
+{
+    MSG message;
+
+    if (hwnd == NULL) {
+        return;
+    }
+    while (PeekMessage(&message, hwnd, WM_PCORE_NAV_PROGRESS,
+            WM_PCORE_NAV_PROGRESS, PM_REMOVE)) {
+        if (message.lParam != 0) {
+            free((void *) message.lParam);
+        }
+    }
+}
+
+static void pcore_navigation_retired_remove(
+        pcore_navigation_request *request)
+{
+    pcore_navigation_request **link;
+
+    if (request == NULL) {
+        return;
+    }
+    link = &g_nav_retired_requests;
+    while (*link != NULL) {
+        if (*link == request) {
+            *link = request->retired_next;
+            request->retired_next = NULL;
+            request->retired = 0;
+            return;
+        }
+        link = &(*link)->retired_next;
+    }
+}
+
+static void pcore_navigation_retire(pcore_navigation_request *request)
+{
+    if (request == NULL || request->retired) {
+        return;
+    }
+    InterlockedExchange((LONG *) &request->cancel_requested, 1);
+    request->retired = 1;
+    request->retired_next = g_nav_retired_requests;
+    g_nav_retired_requests = request;
+}
+
+static int pcore_navigation_retired_count(void)
+{
+    pcore_navigation_request *request;
+    int count;
+
+    count = 0;
+    for (request = g_nav_retired_requests; request != NULL;
+            request = request->retired_next) {
+        count++;
+    }
+    return count;
+}
+
+/* Invalidate the current request without touching the visible document. A
+ * worker that is already running remains owned by the retired request until
+ * its completion message is observed; freeing it here would leave the
+ * worker's callback and WM message with a dangling request pointer. */
+static void pcore_navigation_cancel_active(void)
+{
+    pcore_navigation_request *request;
+
+    request = g_nav_request;
+    ++g_nav_generation;
+    if (request == NULL) {
+        return;
+    }
+    g_nav_request = NULL;
+    pcore_navigation_retire(request);
+    if (request->worker_thread == NULL) {
+        pcore_navigation_retired_remove(request);
+        pcore_navigation_request_free(request);
+    }
 }
 
 /* A resize must never start a network request. PCore's document stylesheet
@@ -13157,10 +13266,14 @@ static void pcore_navigation_set_loading(HWND hwnd, int loading)
         if (g_nav_bar_h < 6) {
             g_nav_bar_h = 6;
         }
-        g_nav_bar = CreateWindowExW(0, PROGRESS_CLASS, NULL,
-                WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
-                0, 0, width, g_nav_bar_h, hwnd, NULL,
-                GetModuleHandle(NULL), NULL);
+        if (g_nav_bar == NULL) {
+            g_nav_bar = CreateWindowExW(0, PROGRESS_CLASS, NULL,
+                    WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
+                    0, 0, width, g_nav_bar_h, hwnd, NULL,
+                    GetModuleHandle(NULL), NULL);
+        } else {
+            MoveWindow(g_nav_bar, 0, 0, width, g_nav_bar_h, TRUE);
+        }
         if (g_nav_bar != NULL) {
             SendMessage(g_nav_bar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
             SendMessage(g_nav_bar, PBM_SETPOS, 0, 0);
@@ -13189,11 +13302,12 @@ static void pcore_navigation_set_loading(HWND hwnd, int loading)
 static void pcore_navigation_progress(void *pw, int received, int total)
 {
     pcore_navigation_request *request;
+    pcore_navigation_progress_message *message;
     int percent;
     int post;
 
     request = (pcore_navigation_request *) pw;
-    if (request == NULL) {
+    if (request == NULL || pcore_navigation_is_cancelled(request)) {
         return;
     }
     post = 0;
@@ -13219,8 +13333,18 @@ static void pcore_navigation_progress(void *pw, int received, int total)
     request->progress_last_total = total;
     request->progress_last_percent = percent;
     request->progress_last_received = received;
-    PostMessage(request->hwnd, WM_PCORE_NAV_PROGRESS,
-            (WPARAM) received, (LPARAM) total);
+    message = (pcore_navigation_progress_message *) malloc(
+            sizeof(*message));
+    if (message == NULL) {
+        return;
+    }
+    message->generation = request->generation;
+    message->received = received;
+    message->total = total;
+    if (!PostMessage(request->hwnd, WM_PCORE_NAV_PROGRESS, 0,
+            (LPARAM) message)) {
+        free(message);
+    }
 }
 
 static PHttpResponse *pcore_navigation_get(
@@ -13316,8 +13440,18 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
     int fetched;
 
     request = (pcore_navigation_request *) param;
+    if (pcore_navigation_is_cancelled(request)) {
+        goto done;
+    }
     if (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) {
         request->response = pcore_navigation_fetch_document(request);
+        if (pcore_navigation_is_cancelled(request)) {
+            if (request->response != NULL) {
+                PHttp_FreeResponse(request->response);
+                request->response = NULL;
+            }
+            goto done;
+        }
         if (request->response != NULL &&
                 request->response->status_code == 200 &&
                 request->response->body != NULL &&
@@ -13327,6 +13461,9 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
     } else {
         for (entry = request->resources; entry != NULL;
                 entry = entry->next) {
+            if (pcore_navigation_is_cancelled(request)) {
+                break;
+            }
             if (entry->attempted) {
                 continue;
             }
@@ -13340,6 +13477,12 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                 continue;
             }
             resp = pcore_navigation_get(request, host, port, path);
+            if (pcore_navigation_is_cancelled(request)) {
+                if (resp != NULL) {
+                    PHttp_FreeResponse(resp);
+                }
+                break;
+            }
             if (resp != NULL && resp->status_code == 200 &&
                     resp->body != NULL && resp->body_len > 0 &&
                     resp->body_len <= PCORE_NAV_RESOURCE_BYTES_MAX -
@@ -13366,6 +13509,7 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
             }
         }
     }
+done:
     request->stats.network_ms += GetTickCount() -
             request->stats.worker_started_tick;
     PostMessage(request->hwnd, WM_PCORE_NAV_DONE,
@@ -13378,11 +13522,15 @@ static int pcore_navigation_start_worker(
 {
     DWORD thread_id;
 
+    if (request == NULL || pcore_navigation_is_cancelled(request) ||
+            request->worker_thread != NULL) {
+        return 1;
+    }
     request->stats.worker_started_tick = GetTickCount();
     request->stats.worker_rounds++;
-    g_nav_thread = CreateThread(NULL, 0, pcore_navigation_worker,
+    request->worker_thread = CreateThread(NULL, 0, pcore_navigation_worker,
             request, 0, &thread_id);
-    return (g_nav_thread != NULL) ? 0 : 1;
+    return (request->worker_thread != NULL) ? 0 : 1;
 }
 
 static HANDLE pcore_browser_script_args_object(const char *args_json,
@@ -15382,7 +15530,13 @@ static int pcore_navigation_commit_step(HWND hwnd,
     }
 
     if (request->commit_stage == PCORE_NAV_COMMIT_STYLE) {
-        GetClientRect(hwnd, &rc);
+        rc.left = 0;
+        rc.top = 0;
+        rc.right = 224;
+        rc.bottom = 320;
+        if (hwnd != NULL) {
+            GetClientRect(hwnd, &rc);
+        }
         cw = rc.right - rc.left;
         chh = rc.bottom - rc.top;
         if (cw <= 0) { cw = 224; }
@@ -15439,7 +15593,13 @@ static int pcore_navigation_commit_step(HWND hwnd,
         }
         return PCORE_NAV_RESULT_FAILED;
     }
-    GetClientRect(hwnd, &rc);
+    rc.left = 0;
+    rc.top = 0;
+    rc.right = 224;
+    rc.bottom = 320;
+    if (hwnd != NULL) {
+        GetClientRect(hwnd, &rc);
+    }
     cw = rc.right - rc.left;
     chh = rc.bottom - rc.top;
     if (cw <= 0) { cw = 224; }
@@ -15674,13 +15834,28 @@ static int navigate_to_request_ex(HWND hwnd, const char *href,
         const char *content_type, int history_target_index)
 {
     pcore_navigation_request *request;
+    int superseded;
 
+    superseded = 0;
     if (g_nav_loading) {
-        return 1;
+        if (pcore_navigation_retired_count() >= PCORE_NAV_RETIRED_MAX) {
+            show_error(L"Navigation busy",
+                    "Too many superseded navigations are still shutting down");
+            return 1;
+        }
+        /* A newer navigation supersedes the current candidate. Keep the
+         * visible document untouched; the old request is retired until its
+         * worker completion message closes the worker and frees its owned
+         * response/resources. */
+        pcore_navigation_cancel_active();
+        superseded = 1;
     }
     request = pcore_navigation_request_create_ex(hwnd, href, method,
             body, body_len, content_type);
     if (request == NULL) {
+        if (superseded) {
+            pcore_navigation_set_loading(hwnd, 0);
+        }
         show_error(L"Navigation failed",
                 "Invalid URL, oversized form target, or out of memory");
         return 1;
@@ -20056,14 +20231,13 @@ static void pcore_native_modal_paint_probe_run(HWND parent)
 
 static void pcore_navigation_cleanup(void)
 {
-    if (g_nav_thread != NULL) {
-        WaitForSingleObject(g_nav_thread, INFINITE);
-        CloseHandle(g_nav_thread);
-        g_nav_thread = NULL;
-    }
-    if (g_nav_request != NULL) {
-        pcore_navigation_request_free(g_nav_request);
-        g_nav_request = NULL;
+    pcore_navigation_request *request;
+
+    pcore_navigation_cancel_active();
+    while (g_nav_retired_requests != NULL) {
+        request = g_nav_retired_requests;
+        pcore_navigation_retired_remove(request);
+        pcore_navigation_request_free(request);
     }
     g_nav_loading = 0;
 }
@@ -20308,14 +20482,21 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             return 0;
         }
         break;
-    case WM_PCORE_NAV_PROGRESS:
-        if (g_nav_loading && g_nav_bar != NULL) {
+    case WM_PCORE_NAV_PROGRESS: {
+        pcore_navigation_progress_message *message;
+
+        message = (pcore_navigation_progress_message *) lp;
+        if (message == NULL) {
+            return 0;
+        }
+        if (g_nav_loading && g_nav_bar != NULL &&
+                message->generation == g_nav_generation) {
             int received;
             int total;
             int pos;
 
-            received = (int) wp;
-            total = (int) lp;
+            received = message->received;
+            total = message->total;
             if (total >= 0) {
                 g_nav_determinate = 1;
                 if (total == 0 || received >= total) {
@@ -20332,17 +20513,19 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                 SendMessage(g_nav_bar, PBM_SETPOS, 0, 0);
             }
         }
+        free(message);
         return 0;
+    }
     case WM_PCORE_NAV_DONE: {
         pcore_navigation_request *request;
 
         request = (pcore_navigation_request *) lp;
-        if (g_nav_thread != NULL) {
-            WaitForSingleObject(g_nav_thread, INFINITE);
-            CloseHandle(g_nav_thread);
-            g_nav_thread = NULL;
+        if (request == NULL) {
+            return 0;
         }
-        if (request == g_nav_request &&
+        pcore_navigation_request_close_worker(request);
+        if (request == g_nav_request && !request->retired &&
+                !pcore_navigation_is_cancelled(request) &&
                 request->generation == g_nav_generation) {
             request->commit_stage =
                     (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) ?
@@ -20354,6 +20537,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             if (pcore_navigation_post_continue(hwnd, request) != 0) {
                 pcore_navigation_finish(hwnd, request);
             }
+        } else {
+            pcore_navigation_retired_remove(request);
+            pcore_navigation_request_free(request);
         }
         return 0;
     }
@@ -20362,7 +20548,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int result;
 
         request = (pcore_navigation_request *) lp;
-        if (request != g_nav_request ||
+        if (request == NULL || request->retired ||
+                pcore_navigation_is_cancelled(request) ||
+                request != g_nav_request ||
                 request->generation != g_nav_generation) {
             return 0;
         }
@@ -20412,7 +20600,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         unsigned int target_kind;
 
         bridge = g_browser_script_session.bridge;
-        if (!g_nav_loading && bridge != NULL &&
+        if (bridge != NULL &&
                 bridge->navigation_kind != PCORE_SCRIPT_NAVIGATION_NONE) {
             kind = bridge->navigation_kind;
             delta = bridge->navigation_delta;
@@ -20944,6 +21132,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         g_browser_script_context_window_name[0] = '\0';
         SHSipPreference(hwnd, SIP_FORCEDOWN);
         pcore_navigation_set_loading(hwnd, 0);
+        pcore_navigation_discard_progress_messages(hwnd);
         PostQuitMessage(0);
         return 0;
     }
@@ -28610,6 +28799,460 @@ static BOOL test1118_browser_offline_candidate_lifecycle(void)
             " SVG resources, preserved the old page on a failed response, and"
             " committed a new document with one-shot pagehide/unload teardown"
             " and old queue cleanup.");
+    return TRUE;
+}
+
+typedef struct test1119_worker_context {
+    HANDLE started;
+    HANDLE release;
+} test1119_worker_context;
+
+static DWORD WINAPI test1119_resource_worker(LPVOID param)
+{
+    test1119_worker_context *context;
+
+    context = (test1119_worker_context *) param;
+    if (context == NULL || context->started == NULL ||
+            context->release == NULL) {
+        return 1;
+    }
+    SetEvent(context->started);
+    WaitForSingleObject(context->release, INFINITE);
+    return 0;
+}
+
+static int test1119_add_resource(pcore_navigation_request *request,
+        const char *url, const char *data, int len, int attempted)
+{
+    pcore_navigation_resource *entry;
+    size_t url_len;
+
+    if (request == NULL || url == NULL || data == NULL || len <= 0) {
+        return 1;
+    }
+    url_len = strlen(url);
+    if (url_len == 0 || url_len >= 1024 || len >
+            PCORE_NAV_RESOURCE_BYTES_MAX - request->resource_bytes) {
+        return 1;
+    }
+    entry = (pcore_navigation_resource *) malloc(sizeof(*entry));
+    if (entry == NULL) {
+        return 1;
+    }
+    memset(entry, 0, sizeof(*entry));
+    entry->url = (char *) malloc(url_len + 1);
+    entry->data = (char *) malloc((size_t) len);
+    if (entry->url == NULL || entry->data == NULL) {
+        free(entry->url);
+        free(entry->data);
+        free(entry);
+        return 1;
+    }
+    memcpy(entry->url, url, url_len + 1);
+    memcpy(entry->data, data, (size_t) len);
+    entry->len = len;
+    entry->attempted = attempted ? 1 : 0;
+    entry->next = request->resources;
+    request->resources = entry;
+    request->resource_count++;
+    request->resource_bytes += len;
+    return 0;
+}
+
+/* TEST 1119 - an offline navigation supersede keeps the visible page and
+ * lets the newest candidate commit. The older resource-stage request is held
+ * at a deterministic boundary, retired by generation, and released only
+ * after its worker completion message; stale progress/continue messages must
+ * not alter the newer candidate. */
+static BOOL test1119_navigation_supersede_transaction(void)
+{
+    static const char OLD_URL[] =
+        "https://positron.local/supersede-old.html";
+    static const char OLD_HTML[] =
+        "<!doctype html><html><body><p id='visible'>old</p></body></html>";
+    static const char OLD_CSS[] =
+        "body{display:block;width:220px;height:80px;}"
+        "#visible{display:block;width:140px;height:24px;}";
+    static const char STALE_BODY[] = "stale resource bytes";
+    static const char NEW_URL[] =
+        "https://positron.local/supersede-new.html";
+    static const char NEW_HTML[] =
+        "<!doctype html><html><head></head><body>"
+        "<img id='winner-image' src='/winner.svg' alt='winner'>"
+        "<p id='winner'>new</p></body></html>";
+    static const char NEW_SVG[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'>"
+        "<rect width='12' height='8' fill='blue'/></svg>";
+    pcore_navigation_request *stale_request;
+    pcore_navigation_request *new_request;
+    PHttpResponse *response;
+    HANDLE old_document;
+    HANDLE old_sheet;
+    HANDLE saved_render_doc;
+    HANDLE saved_render_sheet;
+    pcore_navigation_request *saved_request;
+    HANDLE started_event;
+    HANDLE release_event;
+    test1119_worker_context worker_context;
+    char saved_host[sizeof(g_cur_host)];
+    char saved_path[sizeof(g_cur_path)];
+    char winner[64];
+    char error[512];
+    pcore_navigation_progress_message *progress;
+    PCoreImageDecodeStats image_stats;
+    int saved_port;
+    int saved_loading;
+    int saved_javascript;
+    int saved_scroll;
+    int saved_doc_h;
+    int saved_view_h;
+    int old_generation;
+    int new_generation;
+    int result;
+    int steps;
+    int result_bytes;
+    int found_images;
+    int fetched_images;
+    int stale_retired;
+    int stale_message_ignored;
+    int old_document_freed;
+    int ok;
+
+    stale_request = NULL;
+    new_request = NULL;
+    response = NULL;
+    old_document = NULL;
+    old_sheet = NULL;
+    saved_render_doc = g_render_doc;
+    saved_render_sheet = g_render_sheet;
+    saved_request = g_nav_request;
+    started_event = NULL;
+    release_event = NULL;
+    worker_context.started = NULL;
+    worker_context.release = NULL;
+    memcpy(saved_host, g_cur_host, sizeof(saved_host));
+    memcpy(saved_path, g_cur_path, sizeof(saved_path));
+    saved_port = g_cur_port;
+    saved_loading = g_nav_loading;
+    saved_javascript = g_browser_javascript_enabled;
+    saved_scroll = g_scroll_y;
+    saved_doc_h = g_doc_h;
+    saved_view_h = g_view_h;
+    memset(winner, 0, sizeof(winner));
+    memset(error, 0, sizeof(error));
+    memset(&image_stats, 0, sizeof(image_stats));
+    progress = NULL;
+    old_generation = 0;
+    new_generation = 0;
+    result = PCORE_NAV_RESULT_FAILED;
+    steps = 0;
+    result_bytes = 0;
+    found_images = 0;
+    fetched_images = 0;
+    stale_retired = 0;
+    stale_message_ignored = 0;
+    old_document_freed = 0;
+    ok = 1;
+
+    if (g_render_doc != NULL || g_nav_request != NULL || g_nav_loading ||
+            g_nav_retired_requests != NULL) {
+        cstr_copy(error, sizeof(error), "navigation globals were not idle");
+        show_error(L"TEST 1119 FAIL", error);
+        return FALSE;
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_nav_request = NULL;
+    g_nav_loading = 0;
+    g_browser_javascript_enabled = 0;
+    pcore_browse_history_reset();
+    if (ok && pcore_browse_history_commit_navigation(OLD_URL, 1,
+            PCORE_BROWSE_HISTORY_TARGET_NEW) != 0) {
+        cstr_copy(error, sizeof(error), "old history entry failed");
+        ok = 0;
+    }
+    if (ok) {
+        old_document = PCore_ParseHTML(OLD_HTML, sizeof(OLD_HTML) - 1);
+        old_sheet = PCore_ParseCSS(OLD_CSS, sizeof(OLD_CSS) - 1, OLD_URL);
+        if (old_document == NULL || old_sheet == NULL ||
+                PCore_StyleDocument(old_document, old_sheet) != 0 ||
+                PCore_LayoutDocument(old_document, 240, 120) != 0) {
+            cstr_copy(error, sizeof(error), "old page preparation failed");
+            ok = 0;
+        } else {
+            g_render_doc = old_document;
+            old_document = NULL;
+            g_render_sheet = old_sheet;
+            old_sheet = NULL;
+            g_doc_h = PCore_DocumentHeight(g_render_doc);
+            g_view_h = 120;
+            g_scroll_y = 0;
+            cstr_copy(g_cur_host, sizeof(g_cur_host), "positron.local");
+            cstr_copy(g_cur_path, sizeof(g_cur_path),
+                    "/supersede-old.html");
+            g_cur_port = 443;
+        }
+    }
+    if (ok) {
+        stale_request = (pcore_navigation_request *) malloc(
+                sizeof(*stale_request));
+        response = test1118_response(200, STALE_BODY);
+        started_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+        release_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+        worker_context.started = started_event;
+        worker_context.release = release_event;
+        if (stale_request == NULL || response == NULL ||
+                started_event == NULL || release_event == NULL) {
+            cstr_copy(error, sizeof(error), "stale candidate allocation failed");
+            ok = 0;
+        } else {
+            memset(stale_request, 0, sizeof(*stale_request));
+            stale_request->hwnd = NULL;
+            cstr_copy(stale_request->host, sizeof(stale_request->host),
+                    "positron.local");
+            cstr_copy(stale_request->path, sizeof(stale_request->path),
+                    "/supersede-stale.html");
+            stale_request->port = 443;
+            stale_request->method = 1;
+            stale_request->response = response;
+            stale_request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
+            stale_request->commit_stage = PCORE_NAV_COMMIT_STYLE;
+            stale_request->stats.started_tick = GetTickCount();
+            response = NULL;
+            if (test1119_add_resource(stale_request,
+                    "/stale.css", STALE_BODY,
+                    (int) sizeof(STALE_BODY) - 1, 0) != 0) {
+                cstr_copy(error, sizeof(error),
+                        "stale resource preparation failed");
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        stale_request->worker_thread = CreateThread(NULL, 0,
+                test1119_resource_worker, &worker_context, 0, NULL);
+        if (stale_request->worker_thread == NULL ||
+                WaitForSingleObject(started_event, 5000) != WAIT_OBJECT_0) {
+            cstr_copy(error, sizeof(error), "stale worker did not start");
+            ok = 0;
+        } else {
+            old_generation = ++g_nav_generation;
+            stale_request->generation = old_generation;
+            g_nav_request = stale_request;
+            g_nav_loading = 1;
+        }
+    }
+    if (ok) {
+        pcore_navigation_cancel_active();
+        stale_retired = g_nav_request == NULL &&
+                g_nav_retired_requests == stale_request &&
+                stale_request->retired &&
+                stale_request->cancel_requested != 0 &&
+                g_render_doc != NULL &&
+                PBrowser_HistoryCount(g_browse_history_product) == 1;
+        if (!stale_retired) {
+            cstr_copy(error, sizeof(error),
+                    "stale candidate was not retired safely");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        new_request = (pcore_navigation_request *) malloc(
+                sizeof(*new_request));
+        response = test1118_response(200, NEW_HTML);
+        if (new_request == NULL || response == NULL) {
+            cstr_copy(error, sizeof(error), "new candidate allocation failed");
+            ok = 0;
+        } else {
+            memset(new_request, 0, sizeof(*new_request));
+            cstr_copy(new_request->host, sizeof(new_request->host),
+                    "positron.local");
+            cstr_copy(new_request->path, sizeof(new_request->path),
+                    "/supersede-new.html");
+            new_request->port = 443;
+            new_request->method = 1;
+            new_request->response = response;
+            new_request->commit_stage = PCORE_NAV_COMMIT_PARSE;
+            new_request->history_target_index =
+                    PCORE_BROWSE_HISTORY_TARGET_NEW;
+            new_request->stats.started_tick = GetTickCount();
+            response = NULL;
+            if (test1119_add_resource(new_request, "/winner.svg", NEW_SVG,
+                    (int) sizeof(NEW_SVG) - 1, 1) != 0) {
+                cstr_copy(error, sizeof(error),
+                        "new resource preparation failed");
+                ok = 0;
+            } else {
+                new_generation = ++g_nav_generation;
+                new_request->generation = new_generation;
+                g_nav_request = new_request;
+                g_nav_loading = 1;
+            }
+        }
+    }
+    if (ok) {
+        /* These messages represent the old worker's late delivery. The
+         * generation checks must leave the newest request and visible page
+         * untouched. */
+        PCoreWndProc(NULL, WM_PCORE_NAV_CONTINUE, 0,
+                (LPARAM) stale_request);
+        progress = (pcore_navigation_progress_message *) malloc(
+                sizeof(*progress));
+        if (progress != NULL) {
+            progress->generation = old_generation;
+            progress->received = 999;
+            progress->total = 1000;
+            PCoreWndProc(NULL, WM_PCORE_NAV_PROGRESS, 0,
+                    (LPARAM) progress);
+            progress = NULL;
+        }
+        stale_message_ignored = g_nav_request == new_request &&
+                g_render_doc != NULL &&
+                PBrowser_HistoryCount(g_browse_history_product) == 1;
+        if (!stale_message_ignored) {
+            cstr_copy(error, sizeof(error),
+                    "stale navigation message changed current state");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        SetEvent(release_event);
+        if (WaitForSingleObject(stale_request->worker_thread, 5000) !=
+                WAIT_OBJECT_0) {
+            cstr_copy(error, sizeof(error), "stale worker did not release");
+            ok = 0;
+        } else {
+            PCoreWndProc(NULL, WM_PCORE_NAV_DONE, 0,
+                    (LPARAM) stale_request);
+            stale_request = NULL;
+            if (g_nav_retired_requests != NULL ||
+                    g_nav_request != new_request) {
+                cstr_copy(error, sizeof(error),
+                        "retired candidate was not reclaimed");
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        result = pcore_navigation_commit_step(NULL, new_request, 0);
+        steps = 1;
+        while (result == PCORE_NAV_RESULT_CONTINUE && steps < 8) {
+            result = pcore_navigation_commit_step(NULL, new_request, 0);
+            steps++;
+        }
+        if (result != PCORE_NAV_RESULT_DONE ||
+                PCore_NodeTextContentById(g_render_doc, "winner", winner,
+                sizeof(winner), &result_bytes) != 0 ||
+                strcmp(winner, "new") != 0 ||
+                PCore_FetchImageResources(g_render_doc, NULL, NULL, NULL,
+                &found_images, &fetched_images) != 0 || found_images != 1 ||
+                fetched_images != 1 ||
+                PCore_GetImageDecodeStats(g_render_doc, &image_stats) != 0 ||
+                image_stats.svg_creates == 0 ||
+                PBrowser_HistoryCount(g_browse_history_product) != 2 ||
+                strcmp(pcore_browse_history_current(), NEW_URL) != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "new result=%d/%d text[%d]=%s image=%d/%d svg=%u "
+                    "history=%d",
+                    result, steps, result_bytes, winner, found_images,
+                    fetched_images, image_stats.svg_creates,
+                    PBrowser_HistoryCount(g_browse_history_product));
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        } else {
+            pcore_navigation_finish(NULL, new_request);
+            new_request = NULL;
+            old_document_freed = 1;
+        }
+    }
+    if (release_event != NULL) {
+        SetEvent(release_event);
+    }
+    /* The host cleanup below owns any request still active or retired. Keep
+     * local aliases only for requests that were never attached to host state
+     * (for example an allocation failure before activation). */
+    if (stale_request != NULL &&
+            (stale_request == g_nav_request || stale_request->retired)) {
+        stale_request = NULL;
+    }
+    if (new_request != NULL &&
+            (new_request == g_nav_request || new_request->retired)) {
+        new_request = NULL;
+    }
+    pcore_navigation_cleanup();
+    if (progress != NULL) {
+        free(progress);
+        progress = NULL;
+    }
+    if (response != NULL) {
+        PHttp_FreeResponse(response);
+        response = NULL;
+    }
+    if (stale_request != NULL) {
+        pcore_navigation_retired_remove(stale_request);
+        pcore_navigation_request_free(stale_request);
+        stale_request = NULL;
+    }
+    if (new_request != NULL) {
+        pcore_navigation_retired_remove(new_request);
+        pcore_navigation_request_free(new_request);
+        new_request = NULL;
+    }
+    if (g_render_doc != NULL) {
+        PCore_FreeDocument(g_render_doc);
+        g_render_doc = NULL;
+    }
+    if (g_render_sheet != NULL) {
+        PCore_FreeStylesheet(g_render_sheet);
+        g_render_sheet = NULL;
+    }
+    if (old_document != NULL) {
+        PCore_FreeDocument(old_document);
+        old_document = NULL;
+    }
+    if (old_sheet != NULL) {
+        PCore_FreeStylesheet(old_sheet);
+        old_sheet = NULL;
+    }
+    if (started_event != NULL) {
+        CloseHandle(started_event);
+        started_event = NULL;
+    }
+    if (release_event != NULL) {
+        CloseHandle(release_event);
+        release_event = NULL;
+    }
+    pcore_browse_history_reset();
+    g_render_doc = saved_render_doc;
+    g_render_sheet = saved_render_sheet;
+    g_nav_request = saved_request;
+    g_nav_loading = saved_loading;
+    g_browser_javascript_enabled = saved_javascript;
+    memcpy(g_cur_host, saved_host, sizeof(g_cur_host));
+    memcpy(g_cur_path, saved_path, sizeof(g_cur_path));
+    g_cur_port = saved_port;
+    g_scroll_y = saved_scroll;
+    g_doc_h = saved_doc_h;
+    g_view_h = saved_view_h;
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "retired=%d stale=%d oldfreed=%d generation=%d/%d "
+                    "winner=%s",
+                    stale_retired, stale_message_ignored,
+                    old_document_freed, old_generation, new_generation,
+                    winner);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1119 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1119 OK",
+            "An obsolete resource-stage navigation was retired by generation "
+            "without changing the visible page; stale progress/continue "
+            "messages were ignored, its owned request was reclaimed, and the "
+            "new offline candidate prepared resources and committed history.");
     return TRUE;
 }
 
@@ -86622,6 +87265,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1116: ok = test1116_browser_native_contenteditable_clipboard_edge_contract(); break;
         case 1117: ok = test1117_browser_offline_compatibility_corpus(); break;
         case 1118: ok = test1118_browser_offline_candidate_lifecycle(); break;
+        case 1119: ok = test1119_navigation_supersede_transaction(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
