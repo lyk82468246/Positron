@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1124
+#define TEST_MAX_NUMBER 1125
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6188,7 +6188,6 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_FAILURE_BUDGET PBROWSER_NAVIGATION_FAILURE_BUDGET
 #define PCORE_NAV_FAILURE_MEMORY PBROWSER_NAVIGATION_FAILURE_MEMORY
 #define PCORE_NAV_FAILURE_CANCELLED PBROWSER_NAVIGATION_FAILURE_CANCELLED
-
 typedef struct pcore_navigation_progress_message {
     LONG generation;
     int received;
@@ -12642,6 +12641,10 @@ static void pcore_native_select_transaction_probe_run(HWND parent)
     g_native_select_transaction_probe_ok = 1;
 }
 
+static int pcore_navigation_candidate_result(
+        const pcore_navigation_request *request,
+        PBrowserNavigationCandidateResult *result);
+
 static void testbench_log_navigation(
         const pcore_navigation_request *request)
 {
@@ -12650,10 +12653,21 @@ static void testbench_log_navigation(
     WCHAR wide_title[384];
     unsigned long image_known;
     unsigned long image_other;
+    PBrowserNavigationCandidateResult candidate;
 
     if (!g_testbench_auto || !g_testbench_browse_active ||
             request == NULL) {
         return;
+    }
+    memset(&candidate, 0, sizeof(candidate));
+    candidate.generation = 0;
+    candidate.current_generation = 0;
+    candidate.result = -1;
+    candidate.state = -1;
+    if (pcore_navigation_candidate_result(request, &candidate) != 0) {
+        candidate.current = 0;
+        candidate.cancel_requested = 0;
+        candidate.retired = 0;
     }
     image_known = request->stats.core_image.svg_setup_ms +
             request->stats.core_image.svg_parse_ms +
@@ -12667,6 +12681,8 @@ static void testbench_log_navigation(
             sizeof(wide_title) / sizeof(wide_title[0]));
     _snprintf(body, sizeof(body) - 1,
             "completed=%d total/net/maxUI=%lu/%lu/%lums\n"
+            "candidate gen/current-gen/state/result/current/cancel/retired="
+            "%lu/%lu/%d/%d/%d/%d/%d\n"
             "parse/style/images/layout/paint=%lu/%lu/%lu/%lu/%lums\n"
             "resources q/ok/fail/cancel/pending/rounds="
             "%d/%d/%d/%d/%d/%d\n"
@@ -12686,6 +12702,13 @@ static void testbench_log_navigation(
             (unsigned long) request->stats.total_ms,
             (unsigned long) request->stats.network_ms,
             (unsigned long) request->stats.max_ui_slice_ms,
+            candidate.generation,
+            candidate.current_generation,
+            candidate.state,
+            candidate.result,
+            candidate.current,
+            candidate.cancel_requested,
+            candidate.retired,
             (unsigned long) request->stats.parse_ms,
             (unsigned long) request->stats.style_ms,
             (unsigned long) request->stats.images_ms,
@@ -13188,6 +13211,22 @@ static unsigned long pcore_navigation_candidate_generation(
         return 0;
     }
     return info.generation;
+}
+
+/* Candidate result classification is a Browser-owned snapshot. The host
+ * consumes it for diagnostics and must not infer cancelled/stale outcomes
+ * from its own worker or message flags. */
+static int pcore_navigation_candidate_result(
+        const pcore_navigation_request *request,
+        PBrowserNavigationCandidateResult *result)
+{
+    if (request == NULL || request->candidate == NULL || result == NULL) {
+        return 1;
+    }
+    memset(result, 0, sizeof(*result));
+    result->size = sizeof(*result);
+    return PBrowser_NavigationCandidateGetResult(request->candidate,
+            (unsigned long) g_nav_generation, result) == PBROWSER_OK ? 0 : 1;
 }
 
 static int pcore_navigation_resource_info(
@@ -31182,6 +31221,178 @@ static BOOL test1124_navigation_candidate_lifecycle(void)
             "Browser-owned candidate handles kept generation admission, "
             "cancellation, retirement and committed/failed terminal states "
             "explicit; stale generations could not commit.");
+    return TRUE;
+}
+
+/* TEST 1125 - Browser derives one bounded result classification for every
+ * candidate snapshot. A cancellation request remains pending until retire;
+ * a retired candidate is cancelled only while its generation is current and
+ * becomes stale when a newer generation is observed. */
+static BOOL test1125_navigation_candidate_results(void)
+{
+    HANDLE success;
+    HANDLE failure;
+    HANDLE cancelled;
+    HANDLE stale;
+    PBrowserNavigationCandidateResult result;
+    char error[512];
+    int ok;
+
+    success = NULL;
+    failure = NULL;
+    cancelled = NULL;
+    stale = NULL;
+    memset(&result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    ok = 1;
+
+    success = PBrowser_NavigationCandidateCreate(801);
+    failure = PBrowser_NavigationCandidateCreate(802);
+    cancelled = PBrowser_NavigationCandidateCreate(803);
+    stale = PBrowser_NavigationCandidateCreate(804);
+    if (success == NULL || failure == NULL || cancelled == NULL ||
+            stale == NULL) {
+        cstr_copy(error, sizeof(error), "candidate result allocation failed");
+        ok = 0;
+    }
+    if (ok) {
+        result.size = sizeof(result) - 1;
+        if (PBrowser_NavigationCandidateGetResult(success, 801, &result) !=
+                PBROWSER_ERROR_ARGUMENT ||
+                PBrowser_NavigationCandidateGetResult(success, 801, NULL) !=
+                PBROWSER_ERROR_ARGUMENT) {
+            cstr_copy(error, sizeof(error),
+                    "invalid result snapshot arguments were accepted");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        result.size = sizeof(result);
+        if (PBrowser_NavigationCandidateGetResult(success, 801, &result) !=
+                PBROWSER_OK ||
+                result.result !=
+                PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING ||
+                result.state != PBROWSER_NAVIGATION_CANDIDATE_ACTIVE ||
+                !result.current || result.cancel_requested || result.retired) {
+            cstr_copy(error, sizeof(error),
+                    "pending candidate result was inconsistent");
+            ok = 0;
+        }
+    }
+    if (ok &&
+            (PBrowser_NavigationCandidateMarkCommitted(success, 801) !=
+            PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error), "commit result transition failed");
+        ok = 0;
+    }
+    if (ok) {
+        memset(&result, 0, sizeof(result));
+        result.size = sizeof(result);
+        if (PBrowser_NavigationCandidateGetResult(success, 801, &result) !=
+                PBROWSER_OK ||
+                result.result !=
+                PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED ||
+                result.state != PBROWSER_NAVIGATION_CANDIDATE_COMMITTED ||
+                !result.current ||
+                PBrowser_NavigationCandidateGetResult(success, 899,
+                &result) != PBROWSER_OK ||
+                result.result !=
+                PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED ||
+                result.current) {
+            cstr_copy(error, sizeof(error),
+                    "committed result was not terminal");
+            ok = 0;
+        }
+    }
+    if (ok && PBrowser_NavigationCandidateMarkFailed(failure) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "failure result transition failed");
+        ok = 0;
+    }
+    if (ok) {
+        memset(&result, 0, sizeof(result));
+        result.size = sizeof(result);
+        if (PBrowser_NavigationCandidateGetResult(failure, 802, &result) !=
+                PBROWSER_OK ||
+                result.result != PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED ||
+                result.state != PBROWSER_NAVIGATION_CANDIDATE_FAILED ||
+                !result.current) {
+            cstr_copy(error, sizeof(error),
+                    "failed result was not terminal");
+            ok = 0;
+        }
+    }
+    if (ok &&
+            (PBrowser_NavigationCandidateRequestCancel(cancelled) !=
+            PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error), "cancel request failed");
+        ok = 0;
+    }
+    if (ok) {
+        memset(&result, 0, sizeof(result));
+        result.size = sizeof(result);
+        if (PBrowser_NavigationCandidateGetResult(cancelled, 803, &result) !=
+                PBROWSER_OK ||
+                result.result != PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING ||
+                result.state != PBROWSER_NAVIGATION_CANDIDATE_ACTIVE ||
+                !result.cancel_requested || result.retired) {
+            cstr_copy(error, sizeof(error),
+                    "cancel request completed too early");
+            ok = 0;
+        }
+    }
+    if (ok && PBrowser_NavigationCandidateRetire(cancelled) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cancelled candidate retire failed");
+        ok = 0;
+    }
+    if (ok) {
+        memset(&result, 0, sizeof(result));
+        result.size = sizeof(result);
+        if (PBrowser_NavigationCandidateGetResult(cancelled, 803, &result) !=
+                PBROWSER_OK ||
+                result.result !=
+                PBROWSER_NAVIGATION_CANDIDATE_RESULT_CANCELLED ||
+                result.state != PBROWSER_NAVIGATION_CANDIDATE_RETIRED ||
+                !result.current || !result.cancel_requested ||
+                !result.retired ||
+                PBrowser_NavigationCandidateGetResult(cancelled, 804,
+                &result) != PBROWSER_OK ||
+                result.result != PBROWSER_NAVIGATION_CANDIDATE_RESULT_STALE ||
+                result.current) {
+            cstr_copy(error, sizeof(error),
+                    "cancelled/stale result distinction failed");
+            ok = 0;
+        }
+    }
+    if (ok && PBrowser_NavigationCandidateRetire(stale) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "stale candidate retire failed");
+        ok = 0;
+    }
+    if (ok) {
+        memset(&result, 0, sizeof(result));
+        result.size = sizeof(result);
+        if (PBrowser_NavigationCandidateGetResult(stale, 805, &result) !=
+                PBROWSER_OK ||
+                result.result != PBROWSER_NAVIGATION_CANDIDATE_RESULT_STALE ||
+                result.state != PBROWSER_NAVIGATION_CANDIDATE_RETIRED ||
+                result.current || !result.retired) {
+            cstr_copy(error, sizeof(error),
+                    "stale result snapshot was inconsistent");
+            ok = 0;
+        }
+    }
+    PBrowser_NavigationCandidateDestroy(success);
+    PBrowser_NavigationCandidateDestroy(failure);
+    PBrowser_NavigationCandidateDestroy(cancelled);
+    PBrowser_NavigationCandidateDestroy(stale);
+    if (!ok) {
+        show_error(L"TEST 1125 FAIL", error[0] != '\0' ? error :
+                "navigation candidate result classification failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1125 OK",
+            "Browser result snapshots distinguished pending, committed, "
+            "failed, cancelled and stale candidates without host-owned "
+            "completion rules.");
     return TRUE;
 }
 
@@ -89212,6 +89423,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1122: ok = test1122_navigation_resource_commit_gate(); break;
         case 1123: ok = test1123_navigation_resource_observability(); break;
         case 1124: ok = test1124_navigation_candidate_lifecycle(); break;
+        case 1125: ok = test1125_navigation_candidate_results(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

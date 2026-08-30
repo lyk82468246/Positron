@@ -28,7 +28,7 @@ extern "C" {
 #  define PBROWSER_API __declspec(dllimport)
 #endif
 
-#define PBROWSER_ABI_VERSION 0x00010001UL
+#define PBROWSER_ABI_VERSION 0x00010002UL
 
 #define PBROWSER_HISTORY_MAX 16
 #define PBROWSER_HISTORY_URL_MAX 1024
@@ -253,6 +253,12 @@ PBROWSER_API int PBrowser_NavigationResourceGetStats(HANDLE hTransaction,
 #define PBROWSER_NAVIGATION_CANDIDATE_FAILED 2
 #define PBROWSER_NAVIGATION_CANDIDATE_RETIRED 3
 
+#define PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING 0
+#define PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED 1
+#define PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED 2
+#define PBROWSER_NAVIGATION_CANDIDATE_RESULT_CANCELLED 3
+#define PBROWSER_NAVIGATION_CANDIDATE_RESULT_STALE 4
+
 typedef struct PBrowserNavigationCandidateInfo {
     unsigned long size;
     unsigned long generation;
@@ -262,6 +268,24 @@ typedef struct PBrowserNavigationCandidateInfo {
     int current;
     int can_apply;
 } PBrowserNavigationCandidateInfo;
+
+/* A result snapshot is derived from the candidate state and the caller's
+ * current generation; it never changes the handle. PENDING means an active
+ * candidate still owns the current generation. COMMITTED and FAILED remain
+ * terminal even when the caller later reports another current generation.
+ * CANCELLED describes a retired candidate whose generation is still current;
+ * STALE describes any non-committed candidate whose generation is no longer
+ * current. A cancellation request by itself is not completion. */
+typedef struct PBrowserNavigationCandidateResult {
+    unsigned long size;
+    unsigned long generation;
+    unsigned long current_generation;
+    int result;
+    int state;
+    int current;
+    int cancel_requested;
+    int retired;
+} PBrowserNavigationCandidateResult;
 
 PBROWSER_API HANDLE PBrowser_NavigationCandidateCreate(
         unsigned long generation);
@@ -277,6 +301,9 @@ PBROWSER_API int PBrowser_NavigationCandidateMarkFailed(HANDLE hCandidate);
 PBROWSER_API int PBrowser_NavigationCandidateGetInfo(HANDLE hCandidate,
         unsigned long current_generation,
         PBrowserNavigationCandidateInfo *out_info);
+PBROWSER_API int PBrowser_NavigationCandidateGetResult(HANDLE hCandidate,
+        unsigned long current_generation,
+        PBrowserNavigationCandidateResult *out_result);
 
 /* Synchronous JSON callback shape shared with positron_script. The callback
  * runs on the caller's thread and must not re-enter or destroy its session.

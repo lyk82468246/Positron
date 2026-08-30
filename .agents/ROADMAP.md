@@ -27,11 +27,11 @@
 
 ## 近期目标
 
-### 候选完成结果与遥测边界
+### 资源 gate 与候选结果关联
 
-下一条纵向能力是 next679：在保持 Browser candidate handle、资源事务和宿主 worker/页面提交边界不变的前提下，审查候选完成结果与宿主日志之间是否仍有重复的可复用语义。若确有跨宿主稳定需求，只把有界、与窗口/网络/Core document 无关的结果摘要放入 Browser；不要把 loading 展示、WM 消息、线程句柄、response 或应用级日志格式塞入公共 ABI。
+下一条纵向能力是 next680：在保持 Browser candidate result snapshot 与 navigation resource transaction 分开拥有的前提下，验证一次页面提交如何同时满足两者的 gate。目标是让宿主只组合 Browser 已有的结果，不在 `test_host` 复制“资源失败却提交”或“候选过时却 teardown”的业务规则；不要把 loading 展示、WM 消息、线程句柄、response 或应用级日志格式塞进公共 ABI。
 
-next679 的语料应固定一个成功、失败、取消和过时完成的结果序列，自动断言 Browser candidate 的 terminal info 与宿主日志互相一致，且失败/过时候选不触发 page teardown 或 history commit。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容；不得把阻塞 socket 的强制中断写成契约。
+next680 的语料应固定 required 资源成功、required 资源失败、optional 资源失败、候选取消和过时完成的组合序列，自动断言 Browser 资源 gate、candidate result 和宿主页面/history 行为一致。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容；不得把阻塞 socket 的强制中断写成契约。
 
 实现必须保持现有资源事务边界：资源终态、成功字节、required/optional gate、hash-only 摘要和 fallback observation 继续由 Browser 拥有；transport 失败每项最多 2 次重试（总计最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试。按风险累计条件安排更宽回归或新的全量 checkpoint；不要为增加测试编号拆分能力。
 

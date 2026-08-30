@@ -1,6 +1,6 @@
 # `positron_browser.dll`
 
-`positron_browser.dll` 是无窗口的浏览器会话组合层。它拥有 history、浏览器 script session、bootstrap、DOM/Event adapter、native 控件事务策略，以及候选导航的身份和生命周期状态，但不创建窗口、不抓取网络、不持有 Core document，也不直接操作 WM 控件。
+`positron_browser.dll` 是无窗口的浏览器会话组合层。它拥有 history、浏览器 script session、bootstrap、DOM/Event adapter、native 控件事务策略，以及候选导航的身份、生命周期和结果摘要，但不创建窗口、不抓取网络、不持有 Core document，也不直接操作 WM 控件。
 
 ## 产物与依赖
 
@@ -186,6 +186,27 @@ by the caller. These APIs never abort a blocked socket, post a window message,
 or perform page teardown/history commit. A failed or retired candidate must
 not call the page-teardown entry or mutate history.
 
+`PBrowser_NavigationCandidateGetResult` provides a second, read-only snapshot
+for cross-host diagnostics. It derives `PENDING`, `COMMITTED`, `FAILED`,
+`CANCELLED` or `STALE` from the Browser state and the caller's current
+generation: a cancellation request remains pending until retirement, a
+retired candidate is cancelled while its generation is still current, and a
+non-terminal candidate whose generation no longer matches is stale. Committed
+and failed results remain terminal even when a later navigation changes the
+current generation. The host may copy this bounded result into its own log,
+but must not reimplement the classification or treat it as a network error
+message.
+
+```c
+PBrowserNavigationCandidateResult result;
+
+memset(&result, 0, sizeof(result));
+result.size = sizeof(result);
+PBrowser_NavigationCandidateGetResult(candidate, current_generation,
+        &result);
+/* result.result is a PBROWSER_NAVIGATION_CANDIDATE_RESULT_* value. */
+```
+
 ### 队列与生命周期
 
 Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
@@ -211,7 +232,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 
 - History 和 script-session handle 由 Browser 创建/销毁，不使用 `CloseHandle`。
 - 导航资源事务 handle、URL 副本和资源字节均由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationResourceDestroy`，调用方需要自己的数据时使用 `PBrowser_NavigationResourceCopyData`。
-- 导航 candidate handle、generation、取消/退休标志和 committed/failed 终态由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationCandidateDestroy`，不得用 `CloseHandle` 或复制内部状态。
+- 导航 candidate handle、generation、取消/退休标志、committed/failed 终态和结果分类由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationCandidateDestroy`，不得用 `CloseHandle` 或复制内部状态。结果结构是同步借用快照，调用方只应复制值，不得把它当作可释放对象。
 - History 返回的 entry/state 字符串是借用值，调用方不得 free。
 - callback table 和 `pw` 由宿主持有，必须活到 unregister 或 session destroy。
 - callback 中的字符串、event info 和输出缓冲只在同步调用期间有效。

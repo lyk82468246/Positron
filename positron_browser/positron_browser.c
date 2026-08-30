@@ -1604,6 +1604,34 @@ static int p_navigation_candidate_can_apply(
             !cancel_requested && !retired;
 }
 
+static int p_navigation_candidate_result(
+        const p_browser_navigation_candidate *candidate,
+        unsigned long current_generation)
+{
+    LONG state;
+
+    if (!p_navigation_candidate_valid(candidate)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    state = InterlockedCompareExchange((LONG *) &candidate->state, 0, 0);
+    if (state == PBROWSER_NAVIGATION_CANDIDATE_COMMITTED) {
+        return PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED;
+    }
+    if (state == PBROWSER_NAVIGATION_CANDIDATE_FAILED) {
+        return PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED;
+    }
+    if (candidate->generation != current_generation) {
+        return PBROWSER_NAVIGATION_CANDIDATE_RESULT_STALE;
+    }
+    if (state == PBROWSER_NAVIGATION_CANDIDATE_RETIRED) {
+        return PBROWSER_NAVIGATION_CANDIDATE_RESULT_CANCELLED;
+    }
+    if (state == PBROWSER_NAVIGATION_CANDIDATE_ACTIVE) {
+        return PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING;
+    }
+    return PBROWSER_ERROR_STATE;
+}
+
 PBROWSER_API HANDLE PBrowser_NavigationCandidateCreate(
         unsigned long generation)
 {
@@ -1747,6 +1775,42 @@ PBROWSER_API int PBrowser_NavigationCandidateGetInfo(HANDLE hCandidate,
             current_generation);
     out_info->can_apply = p_navigation_candidate_can_apply(candidate,
             current_generation);
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationCandidateGetResult(HANDLE hCandidate,
+        unsigned long current_generation,
+        PBrowserNavigationCandidateResult *out_result)
+{
+    p_browser_navigation_candidate *candidate;
+    unsigned long size;
+    LONG state;
+    int result;
+
+    candidate = p_navigation_candidate(hCandidate);
+    if (out_result == NULL || out_result->size <
+            sizeof(PBrowserNavigationCandidateResult) ||
+            !p_navigation_candidate_valid(candidate)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    result = p_navigation_candidate_result(candidate, current_generation);
+    if (result < 0) {
+        return result;
+    }
+    size = out_result->size;
+    state = InterlockedCompareExchange((LONG *) &candidate->state, 0, 0);
+    memset(out_result, 0, sizeof(*out_result));
+    out_result->size = size;
+    out_result->generation = candidate->generation;
+    out_result->current_generation = current_generation;
+    out_result->result = result;
+    out_result->state = (int) state;
+    out_result->current = p_navigation_candidate_current(candidate,
+            current_generation);
+    out_result->cancel_requested = (int) InterlockedCompareExchange(
+            (LONG *) &candidate->cancel_requested, 0, 0);
+    out_result->retired = (int) InterlockedCompareExchange(
+            (LONG *) &candidate->retired, 0, 0);
     return PBROWSER_OK;
 }
 
