@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1116
+#define TEST_MAX_NUMBER 1117
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -27597,6 +27597,434 @@ static BOOL test1115_browser_native_contenteditable_clipboard_contract(void)
 static BOOL test1116_browser_native_contenteditable_clipboard_edge_contract(void)
 {
     return test_native_contenteditable_clipboard_contract(1);
+}
+
+/* TEST 1117 - first offline compatibility-corpus user flow. The fixture
+ * keeps the page, stylesheet and interaction data in this one deterministic
+ * scene: edit text, reject an invalid dialog submission, accept it, follow a
+ * same-document link and traverse back. Core owns geometry/form/text state;
+ * Browser owns events/dialog/history; the host only joins the existing typed
+ * transaction entry points for this regression consumer. */
+static BOOL test1117_browser_offline_compatibility_corpus(void)
+{
+    static const char URL[] = "https://positron.local/corpus/start";
+    static const char HTML[] =
+        "<!doctype html><html><head><title>Offline corpus</title></head>"
+        "<body><dialog id='dialog'><form id='form' action='/save' method='dialog'>"
+        "<label id='label' for='title'>Title</label>"
+        "<input id='title' name='title' required value=''>"
+        "<div id='editor' contenteditable='true'>draft</div>"
+        "<button id='accept' type='submit' name='action' value='save'>"
+        "Save</button></form></dialog>"
+        "<div id='app'><h1 id='heading'>Offline task</h1>"
+        "<p id='status'>draft</p></div>"
+        "<a id='link' href='#saved'>Saved section</a>"
+        "<section id='saved'><p id='result'>pending</p></section>"
+        "<script>"
+        "var d=document.getElementById('dialog');"
+        "var f=document.getElementById('form');"
+        "var title=document.getElementById('title');"
+        "var e=document.getElementById('editor');"
+        "var save=document.getElementById('accept');"
+        "var link=document.getElementById('link');"
+        "window.events='';"
+        "function mark(v){window.events+=(window.events===''?'':'|')+v;}"
+        "d.addEventListener('cancel',function(){mark('cancel');});"
+        "d.addEventListener('close',function(){mark('close:'+d.returnValue);});"
+        "f.addEventListener('submit',function(){mark('submit:'+title.value);});"
+        "e.addEventListener('beforeinput',function(ev){"
+        "mark('beforeinput:'+ev.inputType+':'+String(ev.data||''));"
+        "if(ev.data==='!'){ev.preventDefault();}});"
+        "e.addEventListener('input',function(ev){"
+        "mark('input:'+ev.inputType+':'+String(ev.data||''));});"
+        "e.addEventListener('change',function(){mark('change');});"
+        "e.addEventListener('selectionchange',function(){mark('selection');});"
+        "link.addEventListener('click',function(){mark('link');});"
+        "addEventListener('hashchange',function(){mark('hashchange');});"
+        "addEventListener('popstate',function(){mark('popstate');});"
+        "d.showModal();</script></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff;}"
+        "body{font:14px sans-serif;color:#111;padding:8px;}"
+        "#app{width:280px;margin:0 auto;padding:8px;"
+        "border:1px solid #4060a0;background:#f4f8ff;}"
+        "dialog{display:block;width:220px;height:150px;margin:8px;"
+        "padding:8px;border:2px solid #304060;background:#fff;}"
+        "input,button{display:block;width:190px;height:24px;margin:4px;}"
+        "#editor{display:block;width:190px;height:32px;margin:4px;"
+        "padding:2px;border:1px solid #555;background:#fff;}"
+        "#link{display:block;width:220px;height:24px;margin:8px;}"
+        "#saved{display:block;margin:8px;padding:6px;"
+        "border:1px solid #789;background:#fff;}";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreContentEditableTargetInfo editable;
+    PCoreFormValidationInfo validation;
+    PBrowserScriptNativeEditInputInfo edit_info;
+    PBrowserScriptNativeEditInputInfo commit_info;
+    char id[64];
+    char editor_text[256];
+    char link_href[128];
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    char result[1024];
+    char error[768];
+    const char *current;
+    const char *stage;
+    int executed;
+    int ignored;
+    int bytes;
+    int dialog_x;
+    int dialog_y;
+    int dialog_w;
+    int dialog_h;
+    int editor_x;
+    int editor_y;
+    int editor_w;
+    int editor_h;
+    int save_x;
+    int save_y;
+    int save_w;
+    int save_h;
+    int save_kind;
+    int save_disabled;
+    int link_x;
+    int link_y;
+    int link_w;
+    int link_h;
+    int default_allowed;
+    int changed;
+    int rc;
+    int target_index;
+    int history_count;
+    int history_index;
+    BOOL ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&editable, 0, sizeof(editable));
+    memset(&validation, 0, sizeof(validation));
+    memset(&edit_info, 0, sizeof(edit_info));
+    memset(&commit_info, 0, sizeof(commit_info));
+    memset(id, 0, sizeof(id));
+    memset(editor_text, 0, sizeof(editor_text));
+    memset(link_href, 0, sizeof(link_href));
+    memset(modal_id, 0, sizeof(modal_id));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    current = NULL;
+    stage = "setup";
+    executed = -1;
+    ignored = -1;
+    bytes = 0;
+    dialog_x = 0;
+    dialog_y = 0;
+    dialog_w = 0;
+    dialog_h = 0;
+    editor_x = 0;
+    editor_y = 0;
+    editor_w = 0;
+    editor_h = 0;
+    save_x = 0;
+    save_y = 0;
+    save_w = 0;
+    save_h = 0;
+    save_kind = 0;
+    save_disabled = 0;
+    link_x = 0;
+    link_y = 0;
+    link_w = 0;
+    link_h = 0;
+    default_allowed = 1;
+    changed = 0;
+    rc = PSCRIPT_OK;
+    target_index = -1;
+    history_count = 0;
+    history_index = -1;
+    ok = TRUE;
+
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    pcore_browse_history_reset();
+    if (pcore_browse_history_commit_navigation(URL, 1, -1) != 0) {
+        ok = FALSE;
+    }
+    if (ok) {
+        stage = "parse-and-script";
+        document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+        if (document == NULL ||
+                pcore_browser_execute_scripts_with_history(document, 1, 0,
+                URL, 1, 0, 1, "null", NULL, NULL, &executed, &ignored,
+                error, sizeof(error), &runtime, &bridge) != 0 ||
+                executed != 1 || ignored != 0 || runtime == NULL ||
+                bridge == NULL) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        stage = "style-and-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/corpus.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 640, 480) != 0) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        stage = "geometry";
+        editable.size = sizeof(editable);
+        if (PCore_ContentEditableTargetInfo(document, 0, &editable, id,
+                sizeof(id), editor_text, sizeof(editor_text)) != 0 ||
+                strcmp(id, "editor") != 0 || strcmp(editor_text, "draft") != 0 ||
+                editable.width <= 0 || editable.height <= 0 ||
+                PCore_FragmentInfoById(document, "dialog", &dialog_x,
+                &dialog_y, &dialog_w, &dialog_h) != 0 || dialog_w <= 0 ||
+                dialog_h <= 0 || dialog_x < 0 || dialog_y < 0 ||
+                dialog_x + dialog_w > 640 || dialog_y + dialog_h > 480 ||
+                PCore_FormControlInfoById(document, "accept", &save_x, &save_y,
+                &save_w, &save_h, &save_kind, NULL, &save_disabled) != 0 ||
+                save_kind != 7 || save_disabled || save_w <= 0 ||
+                save_h <= 0 || PCore_LinkInfoById(document, "link",
+                &link_x, &link_y, &link_w, &link_h, link_href,
+                sizeof(link_href)) != 0 || strcmp(link_href, "#saved") != 0 ||
+                link_w <= 0 || link_h <= 0 || editable.x < dialog_x ||
+                editable.y < dialog_y || editable.x + editable.width >
+                dialog_x + dialog_w || editable.y + editable.height >
+                dialog_y + dialog_h) {
+            _snprintf(error, sizeof(error) - 1,
+                    "contenteditable=%d,%d,%d,%d id=%s text=%s dialog=%d,%d,%d,%d "
+                    "save=%d,%d,%d,%d/%d/%d link=%d,%d,%d,%d href=%s",
+                    editable.x, editable.y, editable.width, editable.height,
+                    id, editor_text, dialog_x, dialog_y, dialog_w, dialog_h,
+                    save_x, save_y, save_w, save_h, save_kind, save_disabled,
+                    link_x, link_y, link_w, link_h, link_href);
+            error[sizeof(error) - 1] = '\0';
+            ok = FALSE;
+        } else {
+            editor_x = editable.x;
+            editor_y = editable.y;
+            editor_w = editable.width;
+            editor_h = editable.height;
+        }
+    }
+    if (ok) {
+        stage = "session-attach";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+    }
+    if (ok) {
+        stage = "contenteditable-cancel";
+        edit_info.size = sizeof(edit_info);
+        edit_info.target_token = 1117;
+        edit_info.x = editor_x + editor_w / 2;
+        edit_info.y = editor_y + editor_h / 2;
+        edit_info.input_type = "insertText";
+        edit_info.data = "!";
+        edit_info.cancelable = 1;
+        edit_info.is_composing = 0;
+        default_allowed = 1;
+        rc = PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
+                g_browser_script_session.session, &edit_info,
+                &default_allowed);
+        if (rc != PSCRIPT_OK || default_allowed != 0 ||
+                PCore_NodeTextContentById(document, "editor", editor_text,
+                sizeof(editor_text), &bytes) != 0 ||
+                strcmp(editor_text, "draft") != 0) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        stage = "contenteditable-commit";
+        edit_info.data = "?";
+        default_allowed = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
+                g_browser_script_session.session, &edit_info,
+                &default_allowed);
+        commit_info.size = sizeof(commit_info);
+        commit_info.target_token = edit_info.target_token;
+        commit_info.x = edit_info.x;
+        commit_info.y = edit_info.y;
+        if (rc != PSCRIPT_OK || default_allowed != 1 ||
+                PCore_ContentEditableSetTextById(document, "editor",
+                "draft?") != 0 ||
+                PBrowser_ScriptSessionDispatchNativeEditInput(
+                g_browser_script_session.session, &commit_info) !=
+                PSCRIPT_OK || PBrowser_ScriptSessionDispatchNativeEditBlur(
+                g_browser_script_session.session, &commit_info) !=
+                PSCRIPT_OK || PCore_NodeTextContentById(document, "editor",
+                editor_text, sizeof(editor_text), &bytes) != 0 ||
+                strcmp(editor_text, "draft?") != 0) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        stage = "selection";
+        changed = 0;
+        if (PBrowser_ScriptSessionNotifyContentEditableSelection(
+                g_browser_script_session.session, "editor", 0, 6,
+                PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD, 1,
+                &changed) != PSCRIPT_OK || changed != 1 ||
+                PBrowser_ScriptSessionNotifyContentEditableSelection(
+                g_browser_script_session.session, "editor", 0, 6,
+                PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD, 1,
+                &changed) != PSCRIPT_OK || changed != 0 ||
+                pcore_browser_script_session_evaluate(
+                "document.getElementById('result').textContent="
+                "e.innerText+'|'+e.selectionStart+'|'+e.selectionEnd+'|'"
+                "+e.selectionDirection;", -1, error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &bytes) != 0 ||
+                strcmp(result, "draft?|0|6|forward") != 0) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        stage = "invalid-dialog-submit";
+        if (PCore_FormValidationAt(document, save_x + save_w / 2,
+                save_y + save_h / 2, &validation) == 0 || validation.valid ||
+                validation.invalid_count <= 0) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        /* Keep the invalid candidate out of the host default-action path so
+         * this corpus assertion never opens native validation UI. Browser
+         * still dispatches the trusted click and asks Core for validation. */
+        g_render_doc = NULL;
+        if (pcore_browser_script_session_evaluate("save.click();", -1,
+                error, sizeof(error)) != 0 ||
+                PBrowser_ScriptSessionGetActiveDialogId(
+                g_browser_script_session.session, modal_id, sizeof(modal_id),
+                &bytes) != PSCRIPT_OK || strcmp(modal_id, "dialog") != 0 ||
+                bytes != 6) {
+            ok = FALSE;
+        }
+        g_render_doc = document;
+    }
+    if (ok) {
+        stage = "accepted-dialog-submit";
+        if (pcore_browser_script_session_evaluate(
+                "title.value='Ready';save.click();", -1, error,
+                sizeof(error)) != 0 ||
+                PBrowser_ScriptSessionGetActiveDialogId(
+                g_browser_script_session.session, modal_id, sizeof(modal_id),
+                &bytes) != PSCRIPT_OK || bytes != 0 || modal_id[0] != '\0' ||
+                g_browse_history.count != 1 || g_browse_history.index != 0) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        stage = "fragment-navigation";
+        if (pcore_browser_script_session_evaluate("link.click();", -1,
+                error, sizeof(error)) != 0 ||
+                g_browser_script_session.bridge == NULL ||
+                g_browser_script_session.bridge->navigation_kind !=
+                PCORE_SCRIPT_NAVIGATION_FRAGMENT ||
+                g_browser_script_session.bridge->navigation_url == NULL ||
+                pcore_browser_script_session_navigate_fragment(
+                g_browser_script_session.bridge->navigation_url, 0) != 0 ||
+                g_browse_history.count != 2 || g_browse_history.index != 1) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        stage = "navigation-rollback";
+        history_count = g_browse_history.count;
+        history_index = g_browse_history.index;
+        current = pcore_browse_history_current();
+        if (current == NULL ||
+                pcore_browser_script_session_navigate_fragment(
+                "https://other.invalid/corpus#bad", 0) == 0 ||
+                g_browse_history.count != history_count ||
+                g_browse_history.index != history_index ||
+                pcore_browse_history_current() == NULL ||
+                strcmp(pcore_browse_history_current(), current) != 0) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        stage = "history-back";
+        if (pcore_browser_script_session_evaluate("history.back();", -1,
+                error, sizeof(error)) != 0 ||
+                (current = pcore_browse_history_back_target(&target_index)) ==
+                NULL || target_index != 0 ||
+                pcore_browser_script_session_traverse_history(target_index) !=
+                0 || g_browse_history.index != 0 ||
+                strcmp(pcore_browse_history_current(), URL) != 0) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        stage = "final-state";
+        if (pcore_browser_script_session_evaluate(
+                "document.getElementById('result').textContent="
+                "String(d.open)+'|'+d.returnValue+'|'+title.value+'|'"
+                "+e.innerText+'|'+location.href+'|'"
+                "+String(events.indexOf('beforeinput:insertText:!')>=0)+'|'"
+                "+String(events.indexOf('input:insertText:?')>=0)+'|'"
+                "+String(events.indexOf('change')>=0)+'|'"
+                "+String(events.indexOf('selection')>=0)+'|'"
+                "+String(events.indexOf('submit:Ready')>=0)+'|'"
+                "+String(events.indexOf('close:save')>=0)+'|'"
+                "+String(events.indexOf('link')>=0)+'|'"
+                "+String(events.indexOf('hashchange')>=0)+'|'"
+                "+String(events.indexOf('popstate')>=0);", -1, error,
+                sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &bytes) != 0 ||
+                strcmp(result,
+                "false|save|Ready|draft?|https://positron.local/corpus/start|"
+                "true|true|true|true|true|true|true|true|true") != 0) {
+            ok = FALSE;
+        }
+    }
+
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    pcore_browse_history_reset();
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s result[%d]=%s history=%d/%d target=%d",
+                    stage, bytes, result, history_count, history_index,
+                    target_index);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1117 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1117 OK",
+            "Offline corpus flow covered bounded layout and contenteditable"
+            " input/selection, invalid-dialog rollback, method=dialog close,"
+            " fragment navigation, failed-candidate history preservation and"
+            " same-document back traversal without network I/O.");
+    return TRUE;
 }
 
 static BOOL test12_render(void)
@@ -85457,6 +85885,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1114: ok = test1114_browser_native_contenteditable_keyboard_selection_contract(); break;
         case 1115: ok = test1115_browser_native_contenteditable_clipboard_contract(); break;
         case 1116: ok = test1116_browser_native_contenteditable_clipboard_edge_contract(); break;
+        case 1117: ok = test1117_browser_offline_compatibility_corpus(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
