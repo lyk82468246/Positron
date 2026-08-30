@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1122
+#define TEST_MAX_NUMBER 1123
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6164,12 +6164,18 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_RESOURCE_READY 1
 #define PCORE_NAV_RESOURCE_FAILED 2
 #define PCORE_NAV_RESOURCE_CANCELLED 3
+#define PCORE_NAV_RESOURCE_ROLE_NONE 0
+#define PCORE_NAV_RESOURCE_ROLE_STYLESHEET 1
+#define PCORE_NAV_RESOURCE_ROLE_SCRIPT 2
+#define PCORE_NAV_RESOURCE_ROLE_IMAGE 4
 #define PCORE_NAV_RESOURCE_OPTIONAL 0
 #define PCORE_NAV_RESOURCE_REQUIRED 1
 #define PCORE_NAV_GATE_READY 0
 #define PCORE_NAV_GATE_PENDING 1
 #define PCORE_NAV_GATE_REQUIRED_FAILED 2
 #define PCORE_NAV_GATE_CANCELLED 3
+#define PCORE_NAV_RESOURCE_SUMMARY_MAX 4
+#define PCORE_NAV_RESOURCE_SUMMARY_CAPACITY 320
 #define PCORE_NAV_FAILURE_NONE 0
 #define PCORE_NAV_FAILURE_RESOLVE 1
 #define PCORE_NAV_FAILURE_TRANSPORT 2
@@ -6195,6 +6201,7 @@ typedef struct pcore_navigation_resource {
     int state;
     int failure_class;
     int required;
+    int role_mask;
 } pcore_navigation_resource;
 
 typedef struct pcore_browser_script_bridge pcore_browser_script_bridge;
@@ -6404,6 +6411,13 @@ typedef struct pcore_navigation_stats {
     int resource_required_failed;
     int resource_optional_failed;
     int resource_commit_gate;
+    int resource_fallback_images;
+    int resource_fallback_scripts;
+    int resource_fallback_other;
+    int resource_fallback_observed;
+    int resource_failure_summary_count;
+    int resource_failure_summary_truncated;
+    char resource_failure_summary[PCORE_NAV_RESOURCE_SUMMARY_CAPACITY];
     int resource_bytes;
     int budget_rejected;
     int completed;
@@ -6437,6 +6451,7 @@ typedef struct pcore_navigation_request {
     int            resource_count;
     int            resource_bytes;
     int            resource_policy;
+    int            resource_role_mask;
     int            worker_stage;
     int            worker_resume_stage;
     int            commit_stage;
@@ -12636,7 +12651,7 @@ static void testbench_log_navigation(
         const pcore_navigation_request *request)
 {
     char title[384];
-    char body[1024];
+    char body[2048];
     WCHAR wide_title[384];
     unsigned long image_known;
     unsigned long image_other;
@@ -12663,6 +12678,8 @@ static void testbench_log_navigation(
             "resource fail resolve/transport/http/budget/memory="
             "%d/%d/%d/%d/%d\n"
             "resource gate/required-failed/optional-failed=%d/%d/%d\n"
+            "resource fallback image/script/other/observed=%d/%d/%d/%d\n"
+            "resource failure summary=%s truncated=%d\n"
             "resource attempts/retries/exhausted=%d/%d/%d\n"
             "bytes=%d doc-retry=%d\n"
             "core layout total=%lums box/first/settle/final="
@@ -12693,6 +12710,13 @@ static void testbench_log_navigation(
             request->stats.resource_commit_gate,
             request->stats.resource_required_failed,
             request->stats.resource_optional_failed,
+            request->stats.resource_fallback_images,
+            request->stats.resource_fallback_scripts,
+            request->stats.resource_fallback_other,
+            request->stats.resource_fallback_observed,
+            request->stats.resource_failure_summary[0] != '\0' ?
+                    request->stats.resource_failure_summary : "none",
+            request->stats.resource_failure_summary_truncated,
             request->stats.resource_attempts,
             request->stats.resource_retries,
             request->stats.resource_retry_exhausted,
@@ -13086,6 +13110,149 @@ static pcore_navigation_resource *pcore_navigation_resource_find(
     return NULL;
 }
 
+static void pcore_navigation_text_append(char *out, int capacity, int *used,
+        const char *part)
+{
+    int length;
+
+    if (out == NULL || used == NULL || part == NULL || capacity <= 0 ||
+            *used < 0 || *used >= capacity) {
+        return;
+    }
+    if (*used > 0) {
+        if (*used >= capacity - 1) {
+            return;
+        }
+        out[(*used)++] = '+';
+    }
+    length = (int) strlen(part);
+    if (length > capacity - 1 - *used) {
+        length = capacity - 1 - *used;
+    }
+    if (length > 0) {
+        memcpy(out + *used, part, (size_t) length);
+        *used += length;
+    }
+    out[*used] = '\0';
+}
+
+static void pcore_navigation_resource_role_text(int role_mask, char *out,
+        int capacity)
+{
+    int used;
+
+    if (out == NULL || capacity <= 0) {
+        return;
+    }
+    out[0] = '\0';
+    used = 0;
+    if (role_mask & PCORE_NAV_RESOURCE_ROLE_STYLESHEET) {
+        pcore_navigation_text_append(out, capacity, &used, "style");
+    }
+    if (role_mask & PCORE_NAV_RESOURCE_ROLE_SCRIPT) {
+        pcore_navigation_text_append(out, capacity, &used, "script");
+    }
+    if (role_mask & PCORE_NAV_RESOURCE_ROLE_IMAGE) {
+        pcore_navigation_text_append(out, capacity, &used, "image");
+    }
+    if (used == 0) {
+        cstr_copy(out, capacity, "other");
+    }
+}
+
+static const char *pcore_navigation_resource_failure_name(int failure_class)
+{
+    switch (failure_class) {
+    case PCORE_NAV_FAILURE_RESOLVE:
+        return "resolve";
+    case PCORE_NAV_FAILURE_TRANSPORT:
+        return "transport";
+    case PCORE_NAV_FAILURE_HTTP:
+        return "http";
+    case PCORE_NAV_FAILURE_BUDGET:
+        return "budget";
+    case PCORE_NAV_FAILURE_MEMORY:
+        return "memory";
+    case PCORE_NAV_FAILURE_CANCELLED:
+        return "cancelled";
+    default:
+        return "unknown";
+    }
+}
+
+static unsigned long pcore_navigation_resource_hash(const char *url)
+{
+    unsigned long hash;
+
+    hash = 2166136261UL;
+    if (url != NULL) {
+        while (*url != '\0') {
+            hash ^= (unsigned long) (unsigned char) *url++;
+            hash *= 16777619UL;
+        }
+    }
+    return hash;
+}
+
+/* Rebuild the bounded failure list from final resource roles. A URL is never
+ * copied to telemetry; the stable hash only lets a reader distinguish entries
+ * without leaking a page's path or query string. Rebuilding at the gate also
+ * means a URL upgraded from optional to required is reported consistently. */
+static void pcore_navigation_resource_summary_rebuild(
+        pcore_navigation_request *request)
+{
+    pcore_navigation_resource *entry;
+    char role[32];
+    char item[96];
+    int used;
+    int length;
+
+    if (request == NULL) {
+        return;
+    }
+    request->stats.resource_failure_summary[0] = '\0';
+    request->stats.resource_failure_summary_count = 0;
+    request->stats.resource_failure_summary_truncated = 0;
+    used = 0;
+    for (entry = request->resources; entry != NULL; entry = entry->next) {
+        if (entry->state != PCORE_NAV_RESOURCE_FAILED &&
+                entry->state != PCORE_NAV_RESOURCE_CANCELLED) {
+            continue;
+        }
+        if (request->stats.resource_failure_summary_count >=
+                PCORE_NAV_RESOURCE_SUMMARY_MAX) {
+            request->stats.resource_failure_summary_truncated++;
+            continue;
+        }
+        pcore_navigation_resource_role_text(entry->role_mask, role,
+                sizeof(role));
+        length = _snprintf(item, sizeof(item) - 1, "%s/%s#%08lX", role,
+                pcore_navigation_resource_failure_name(entry->failure_class),
+                pcore_navigation_resource_hash(entry->url));
+        item[sizeof(item) - 1] = '\0';
+        if (length < 0 || length >= (int) sizeof(item) - 1) {
+            request->stats.resource_failure_summary_truncated++;
+            continue;
+        }
+        if (used > 0) {
+            if (used >= PCORE_NAV_RESOURCE_SUMMARY_CAPACITY - 1) {
+                request->stats.resource_failure_summary_truncated++;
+                continue;
+            }
+            request->stats.resource_failure_summary[used++] = '|';
+        }
+        if (length > PCORE_NAV_RESOURCE_SUMMARY_CAPACITY - 1 - used) {
+            request->stats.resource_failure_summary_truncated++;
+            continue;
+        }
+        memcpy(request->stats.resource_failure_summary + used, item,
+                (size_t) length);
+        used += length;
+        request->stats.resource_failure_summary[used] = '\0';
+        request->stats.resource_failure_summary_count++;
+    }
+}
+
 /* PCore calls this on the window thread. A ready cache hit returns an owned
  * copy; a pending miss is queued for the next worker stage and deliberately
  * reports failure to the current style/image discovery pass. Terminal
@@ -13127,11 +13294,13 @@ static int pcore_navigation_resource_cb(void *pw, const char *url,
         entry->failure_class = PCORE_NAV_FAILURE_NONE;
         entry->required = request->resource_policy ==
                 PCORE_NAV_RESOURCE_REQUIRED;
+        entry->role_mask = request->resource_role_mask;
         entry->next = request->resources;
         request->resources = entry;
         request->resource_count++;
         return 1;
     }
+    entry->role_mask |= request->resource_role_mask;
     if (request->resource_policy == PCORE_NAV_RESOURCE_REQUIRED) {
         /* A URL may first be discovered by an optional pass and later be
          * referenced by the document's required stylesheet graph. Upgrade
@@ -13236,6 +13405,7 @@ static int pcore_navigation_resource_commit_gate(
     if (request != NULL) {
         request->stats.resource_required_failed = required_failed;
         request->stats.resource_optional_failed = optional_failed;
+        pcore_navigation_resource_summary_rebuild(request);
     }
     if (cancelled > 0) {
         if (request != NULL) {
@@ -13260,6 +13430,39 @@ static int pcore_navigation_resource_commit_gate(
         request->stats.resource_commit_gate = PCORE_NAV_GATE_READY;
     }
     return PCORE_NAV_GATE_READY;
+}
+
+/* Once layout has succeeded, record which Core fallback families were
+ * exercised by optional failures. This is intentionally a coarse host
+ * observation: the public Core ABI does not expose its internal box type or
+ * image carrier, while the documented fallback contract is stable. */
+static void pcore_navigation_observe_fallbacks(
+        pcore_navigation_request *request)
+{
+    pcore_navigation_resource *entry;
+
+    if (request == NULL || !request->stats.core_box_valid) {
+        return;
+    }
+    request->stats.resource_fallback_images = 0;
+    request->stats.resource_fallback_scripts = 0;
+    request->stats.resource_fallback_other = 0;
+    request->stats.resource_fallback_observed = 1;
+    for (entry = request->resources; entry != NULL; entry = entry->next) {
+        if (entry->state != PCORE_NAV_RESOURCE_FAILED || entry->required) {
+            continue;
+        }
+        if (entry->role_mask & PCORE_NAV_RESOURCE_ROLE_IMAGE) {
+            request->stats.resource_fallback_images++;
+        }
+        if (entry->role_mask & PCORE_NAV_RESOURCE_ROLE_SCRIPT) {
+            request->stats.resource_fallback_scripts++;
+        }
+        if ((entry->role_mask & (PCORE_NAV_RESOURCE_ROLE_IMAGE |
+                PCORE_NAV_RESOURCE_ROLE_SCRIPT)) == 0) {
+            request->stats.resource_fallback_other++;
+        }
+    }
 }
 
 static int pcore_navigation_is_cancelled(
@@ -15805,6 +16008,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
                     g_browser_script_context_window_name);
         }
         request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_SCRIPT;
         if (g_browser_javascript_enabled &&
                 pcore_document_url(request->host, request->path,
                 request->port, document_url, sizeof(document_url)) == 0 &&
@@ -15815,6 +16019,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
                     "script resource discovery", NULL);
         }
         request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_NONE;
         if (g_browser_javascript_enabled &&
                 pcore_navigation_pending_count(request) > 0) {
             request->worker_stage = PCORE_NAV_STAGE_RESOURCES;
@@ -15868,11 +16073,14 @@ static int pcore_navigation_commit_step(HWND hwnd,
                 request->port, document_url, sizeof(document_url));
         if (style_result == 0) {
             request->resource_policy = PCORE_NAV_RESOURCE_REQUIRED;
+            request->resource_role_mask =
+                    PCORE_NAV_RESOURCE_ROLE_STYLESHEET;
             style_result = PCore_StyleDocumentEx2(request->document, NULL,
                     document_url, wm_combine_url,
                     pcore_navigation_resource_cb, page_resource_free_cb,
                     request);
             request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+            request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_NONE;
         }
         if (style_result != 0) {
             elapsed = GetTickCount() - started;
@@ -15904,10 +16112,12 @@ static int pcore_navigation_commit_step(HWND hwnd,
     if (request->commit_stage == PCORE_NAV_COMMIT_IMAGES) {
         started = GetTickCount();
         request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_IMAGE;
         (void) PCore_FetchImageResources(request->document,
                 pcore_navigation_resource_cb, page_resource_free_cb,
                 request, NULL, NULL);
         request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_NONE;
         elapsed = GetTickCount() - started;
         request->stats.images_ms += elapsed;
         if (elapsed > request->stats.max_ui_slice_ms) {
@@ -15982,6 +16192,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     request->stats.core_image_valid =
             PCore_GetImageDecodeStats(request->document,
                     &request->stats.core_image) == 0;
+    pcore_navigation_observe_fallbacks(request);
 
     /* A successful cross-document commit is the last moment when the old
      * script session and document are both alive. Let the product Browser
@@ -30230,6 +30441,9 @@ static BOOL test1122_navigation_resource_commit_gate(void)
                     PCORE_NAV_GATE_REQUIRED_FAILED ||
             required_request->stats.resource_required_failed != 1 ||
             required_request->stats.resource_optional_failed != 0 ||
+            required_request->stats.resource_failure_summary_count != 1 ||
+            strstr(required_request->stats.resource_failure_summary,
+                    "style/http#") == NULL ||
             g_render_doc != old_document ||
             PBrowser_HistoryCount(g_browse_history_product) != 1 ||
             strcmp(pcore_browse_history_current(), OLD_URL) != 0 ||
@@ -30317,6 +30531,11 @@ static BOOL test1122_navigation_resource_commit_gate(void)
                     PCORE_NAV_GATE_READY ||
             optional_request->stats.resource_required_failed != 0 ||
             optional_request->stats.resource_optional_failed != 1 ||
+            optional_request->stats.resource_failure_summary_count != 1 ||
+            strstr(optional_request->stats.resource_failure_summary,
+                    "image/http#") == NULL ||
+            optional_request->stats.resource_fallback_images != 1 ||
+            optional_request->stats.resource_fallback_observed != 1 ||
             !optional_request->stats.completed || g_render_doc == old_document ||
             PBrowser_HistoryCount(g_browse_history_product) != 2 ||
             strcmp(pcore_browse_history_current(), OPTIONAL_URL) != 0 ||
@@ -30406,6 +30625,303 @@ static BOOL test1122_navigation_resource_commit_gate(void)
             "Required stylesheet failure preserved the old page and history;"
             " optional image failure committed the candidate with Core's"
             " fallback path and recorded the resource gate outcome.");
+    return TRUE;
+}
+
+/* TEST 1123 - resource telemetry stays bounded and stable when one URL is
+ * referenced repeatedly or discovered through a deep stylesheet import. The
+ * fixture also lays out an optional failed image so the host records Core's
+ * fallback family, while failed script work is recorded as skipped. */
+static BOOL test1123_navigation_resource_observability(void)
+{
+    static const char DOCUMENT_URL[] =
+        "https://positron.local/observe/page.html";
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<link rel='stylesheet' href='https://positron.local/observe/root.css'>"
+        "<script src='https://positron.local/observe/app.js'></script>"
+        "<script src='https://positron.local/observe/app.js'></script>"
+        "</head><body>"
+        "<img id='broken-one' src='https://positron.local/observe/missing.png' "
+        "alt='image fallback'>"
+        "<img id='broken-two' src='https://positron.local/observe/missing.png' "
+        "alt='image fallback'>"
+        "<p id='state'>observer</p></body></html>";
+    static const char ROOT_CSS[] =
+        "@import 'nested/one.css';body{background:#fff;}";
+    static const char NESTED_CSS[] =
+        "@import '../deep/two.css';p{color:#123456;}";
+    static const char DEEP_CSS[] =
+        "#state{display:block;width:120px;height:20px;}";
+    static const char SCRIPT_URL[] =
+        "https://positron.local/observe/app.js";
+    static const char IMAGE_URL[] =
+        "https://positron.local/observe/missing.png";
+    static const char ROOT_URL[] =
+        "https://positron.local/observe/root.css";
+    static const char NESTED_URL[] =
+        "https://positron.local/observe/nested/one.css";
+    static const char DEEP_URL[] =
+        "https://positron.local/observe/deep/two.css";
+    pcore_navigation_request *request;
+    pcore_navigation_resource *entry;
+    pcore_navigation_resource *root;
+    pcore_navigation_resource *nested;
+    pcore_navigation_resource *deep;
+    pcore_navigation_resource *script;
+    pcore_navigation_resource *image;
+    const char *source;
+    char error[512];
+    char summary[PCORE_NAV_RESOURCE_SUMMARY_CAPACITY];
+    int saved_javascript;
+    int screen_w;
+    int screen_h;
+    int style_result;
+    int pending;
+    int filled;
+    int style_rounds;
+    int gate;
+    int img_x;
+    int img_y;
+    int img_w;
+    int img_h;
+    int ok;
+
+    request = NULL;
+    entry = NULL;
+    root = NULL;
+    nested = NULL;
+    deep = NULL;
+    script = NULL;
+    image = NULL;
+    source = NULL;
+    memset(error, 0, sizeof(error));
+    memset(summary, 0, sizeof(summary));
+    saved_javascript = g_browser_javascript_enabled;
+    screen_w = GetSystemMetrics(SM_CXSCREEN);
+    screen_h = GetSystemMetrics(SM_CYSCREEN);
+    if (screen_w <= 0) { screen_w = 240; }
+    if (screen_h <= 0) { screen_h = 320; }
+    style_result = 1;
+    pending = 0;
+    filled = 0;
+    style_rounds = 0;
+    gate = PCORE_NAV_GATE_PENDING;
+    img_x = 0;
+    img_y = 0;
+    img_w = 0;
+    img_h = 0;
+    ok = 1;
+
+    if (g_render_doc != NULL || g_nav_request != NULL || g_nav_loading ||
+            g_nav_retired_requests != NULL) {
+        cstr_copy(error, sizeof(error), "navigation globals were not idle");
+        ok = 0;
+    }
+    g_browser_javascript_enabled = 0;
+    if (ok) {
+        request = (pcore_navigation_request *) malloc(sizeof(*request));
+        if (request == NULL) {
+            cstr_copy(error, sizeof(error), "request allocation failed");
+            ok = 0;
+        } else {
+            memset(request, 0, sizeof(*request));
+            cstr_copy(request->host, sizeof(request->host), "positron.local");
+            cstr_copy(request->path, sizeof(request->path),
+                    "/observe/page.html");
+            request->port = 443;
+            request->method = 1;
+            request->stats.started_tick = GetTickCount();
+            request->resource_policy = PCORE_NAV_RESOURCE_REQUIRED;
+            request->resource_role_mask =
+                    PCORE_NAV_RESOURCE_ROLE_STYLESHEET;
+            request->document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+            if (request->document == NULL) {
+                cstr_copy(error, sizeof(error), "observer document parse failed");
+                ok = 0;
+            }
+        }
+    }
+
+    while (ok && style_rounds < 6) {
+        request->resource_policy = PCORE_NAV_RESOURCE_REQUIRED;
+        request->resource_role_mask =
+                PCORE_NAV_RESOURCE_ROLE_STYLESHEET;
+        style_result = PCore_StyleDocumentEx2(request->document, NULL,
+                DOCUMENT_URL, wm_combine_url,
+                pcore_navigation_resource_cb, page_resource_free_cb, request);
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_NONE;
+        style_rounds++;
+        if (style_result != 0) {
+            cstr_copy(error, sizeof(error), "observer stylesheet pass failed");
+            ok = 0;
+            break;
+        }
+        pending = pcore_navigation_pending_count(request);
+        if (pending == 0) {
+            break;
+        }
+        filled = 0;
+        for (entry = request->resources; entry != NULL;
+                entry = entry->next) {
+            if (entry->state != PCORE_NAV_RESOURCE_PENDING ||
+                    entry->attempted) {
+                continue;
+            }
+            source = NULL;
+            if (strcmp(entry->url, ROOT_URL) == 0) {
+                source = ROOT_CSS;
+            } else if (strcmp(entry->url, NESTED_URL) == 0) {
+                source = NESTED_CSS;
+            } else if (strcmp(entry->url, DEEP_URL) == 0) {
+                source = DEEP_CSS;
+            }
+            if (source == NULL || test1118_seed_navigation_resource(request,
+                    entry->url, source, (int) strlen(source)) != 0) {
+                cstr_copy(error, sizeof(error),
+                        "unknown or unseedable stylesheet resource");
+                ok = 0;
+                break;
+            }
+            filled++;
+        }
+        if (ok && filled == 0) {
+            cstr_copy(error, sizeof(error),
+                    "stylesheet pass left an unfillable pending resource");
+            ok = 0;
+        }
+    }
+    if (ok && pending != 0) {
+        cstr_copy(error, sizeof(error), "deep stylesheet imports did not converge");
+        ok = 0;
+    }
+    if (ok) {
+        root = pcore_navigation_resource_find(request, ROOT_URL);
+        nested = pcore_navigation_resource_find(request, NESTED_URL);
+        deep = pcore_navigation_resource_find(request, DEEP_URL);
+        if (root == NULL || nested == NULL || deep == NULL ||
+                root->state != PCORE_NAV_RESOURCE_READY ||
+                nested->state != PCORE_NAV_RESOURCE_READY ||
+                deep->state != PCORE_NAV_RESOURCE_READY ||
+                root->required != 1 || nested->required != 1 ||
+                deep->required != 1 ||
+                root->role_mask != PCORE_NAV_RESOURCE_ROLE_STYLESHEET ||
+                nested->role_mask != PCORE_NAV_RESOURCE_ROLE_STYLESHEET ||
+                deep->role_mask != PCORE_NAV_RESOURCE_ROLE_STYLESHEET ||
+                request->resource_count != 3) {
+            cstr_copy(error, sizeof(error),
+                    "deep stylesheet role or dedupe state was inconsistent");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_SCRIPT;
+        if (PCore_FetchScriptResourcesEx(request->document, DOCUMENT_URL,
+                wm_combine_url, pcore_navigation_resource_cb,
+                page_resource_free_cb, request, NULL, NULL) != 0) {
+            cstr_copy(error, sizeof(error), "script resource scan failed");
+            ok = 0;
+        }
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_NONE;
+    }
+    if (ok) {
+        script = pcore_navigation_resource_find(request, SCRIPT_URL);
+        if (script == NULL || script->state != PCORE_NAV_RESOURCE_PENDING ||
+                script->required != 0 ||
+                script->role_mask != PCORE_NAV_RESOURCE_ROLE_SCRIPT ||
+                request->resource_count != 4) {
+            cstr_copy(error, sizeof(error),
+                    "duplicate script was not one optional resource");
+            ok = 0;
+        } else {
+            pcore_navigation_resource_fail(request, script,
+                    PCORE_NAV_FAILURE_HTTP);
+        }
+    }
+    if (ok) {
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_IMAGE;
+        if (PCore_FetchImageResources(request->document,
+                pcore_navigation_resource_cb, page_resource_free_cb,
+                request, NULL, NULL) != 0) {
+            cstr_copy(error, sizeof(error), "image resource scan failed");
+            ok = 0;
+        }
+        request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
+        request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_NONE;
+    }
+    if (ok) {
+        image = pcore_navigation_resource_find(request, IMAGE_URL);
+        if (image == NULL || image->state != PCORE_NAV_RESOURCE_PENDING ||
+                image->required != 0 ||
+                image->role_mask != PCORE_NAV_RESOURCE_ROLE_IMAGE ||
+                request->resource_count != 5) {
+            cstr_copy(error, sizeof(error),
+                    "duplicate image was not one optional resource");
+            ok = 0;
+        } else {
+            pcore_navigation_resource_fail(request, image,
+                    PCORE_NAV_FAILURE_HTTP);
+        }
+    }
+    if (ok) {
+        gate = pcore_navigation_resource_commit_gate(request);
+        memcpy(summary, request->stats.resource_failure_summary,
+                sizeof(summary));
+        if (gate != PCORE_NAV_GATE_READY ||
+                request->stats.resource_required_failed != 0 ||
+                request->stats.resource_optional_failed != 2 ||
+                request->stats.resource_failure_summary_count != 2 ||
+                request->stats.resource_failure_summary_truncated != 0 ||
+                strstr(summary, "script/http#") == NULL ||
+                strstr(summary, "image/http#") == NULL ||
+                strstr(summary, "app.js") != NULL ||
+                strstr(summary, "missing.png") != NULL) {
+            cstr_copy(error, sizeof(error),
+                    "bounded failure summary or gate was inconsistent");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        PCore_SetViewport(240, 120, 96);
+        if (PCore_LayoutDocument(request->document, 240, 120) != 0 ||
+                PCore_GetBoxStats(request->document,
+                &request->stats.core_box) != 0) {
+            cstr_copy(error, sizeof(error), "fallback layout observation failed");
+            ok = 0;
+        } else {
+            request->stats.core_box_valid = 1;
+            pcore_navigation_observe_fallbacks(request);
+            if (PCore_NodeBox(request->document, "img", &img_x, &img_y,
+                    &img_w, &img_h) != 0 || img_w <= 0 || img_h <= 0 ||
+                    request->stats.resource_fallback_images != 1 ||
+                    request->stats.resource_fallback_scripts != 1 ||
+                    request->stats.resource_fallback_other != 0 ||
+                    request->stats.resource_fallback_observed != 1) {
+                cstr_copy(error, sizeof(error),
+                        "Core fallback result was not observed");
+                ok = 0;
+            }
+        }
+    }
+    if (request != NULL) {
+        pcore_navigation_request_free(request);
+        request = NULL;
+    }
+    test_host_set_device_viewport(screen_w, screen_h);
+    g_browser_javascript_enabled = saved_javascript;
+    if (!ok) {
+        show_error(L"TEST 1123 FAIL", error[0] != '\0' ? error :
+                "navigation resource observability failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1123 OK",
+            "Repeated resources and a deep @import tree kept one bounded"
+            " role per URL; failure telemetry stayed hash-only, while Core"
+            " image fallback and skipped script work were observed.");
     return TRUE;
 }
 
@@ -88437,6 +88953,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1120: ok = test1120_navigation_resource_terminals(); break;
         case 1121: ok = test1121_navigation_resource_retry_budget(); break;
         case 1122: ok = test1122_navigation_resource_commit_gate(); break;
+        case 1123: ok = test1123_navigation_resource_observability(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -27,11 +27,11 @@
 
 ## 近期目标
 
-### 资源降级结果的可观察性
+### 退休候选 telemetry 隔离
 
-下一条纵向能力是 next676：在当前资源提交门之上，为失败资源提供有界、可读且可自动断言的摘要，并记录 Core fallback 的实际结果。重复资源和深层 `@import` 必须保持一致的 required/optional 分类、计数和提交决策；失败摘要不能泄露不受控的 URL/正文，也不能扩展公共 Core/Browser ABI。
+下一条纵向能力是 next677：把取消/过时候选的终态与有界资源摘要纳入统一审计，确保 retired worker 的失败、摘要和 fallback 结果不污染当前候选 telemetry。取消与失败分类必须互斥，现有 required/optional 提交门、transport 重试边界和公共 Core/Browser ABI 保持不变。
 
-next676 的语料应固定重复 stylesheet、深层 `@import`、重复 image/script 和 required/optional 混合失败，自动断言资源去重、gate 统计、旧页保留、候选提交及 fallback 结果。不得把“部分资源可用”隐式当成成功，也不把阻塞 socket 的强制中断或外网端点写入契约；真实网络仍只作为独立哨兵。通用可观察性若暴露公共 API 缺口，应先进入 Core/Browser，再由宿主负责 WM 日志与调度。
+next677 的语料应固定一个正在准备的旧候选、一个新候选及各自混合资源失败，自动断言当前候选 gate/summary、旧候选回收和日志隔离。摘要继续限制为 role/failure#hash 等不泄露原始 URL 的有界内容；不得把“部分资源可用”隐式当成成功，也不把阻塞 socket 的强制中断或外网端点写入契约。通用可观察性若暴露公共 API 缺口，应先进入 Core/Browser，再由宿主负责 WM 日志与调度。
 
 后续实现必须保持现有 transport 重试边界：每项最多 2 次重试（总计最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试。按风险累计条件安排更宽回归或新的全量 checkpoint；不要把一次全量门当成永久覆盖，也不要为增加测试编号拆分能力。
 

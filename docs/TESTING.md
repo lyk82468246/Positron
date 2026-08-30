@@ -40,7 +40,7 @@ tests=1-5 7b 13 20,999
 
 自动模式只证明断言、资源计数、消息路径和首帧没有失败。它不能证明字体、边距、抗锯齿、触摸命中、系统 picker 或 OEM 输入法体验。
 
-涉及导航的自动日志还会给出资源 `queued/ready/failed/cancelled/pending` 计数、resolve/transport/HTTP/budget/memory 失败分类，以及 `attempts/retries/exhausted` 计数和 `gate/required-failed/optional-failed` 结果。transport 失败每项最多重试 2 次（最多 3 次尝试）；HTTP、resolve、budget、memory 和取消不重试。style pass 发现新的 pending 时会回到 worker；layout/swap 前必须重新检查 gate，required stylesheet/`@import` 失败、未收敛或取消会保留旧页，optional image/script 失败可在 Core fallback 下继续。完成的候选应没有未处理的 `pending` 项；`cancelled` 是独立终态，不应被当作网络失败。该摘要属于宿主 telemetry，不是公共 DLL ABI。
+涉及导航的自动日志还会给出资源 `queued/ready/failed/cancelled/pending` 计数、resolve/transport/HTTP/budget/memory 失败分类，以及 `attempts/retries/exhausted` 计数和 `gate/required-failed/optional-failed` 结果。transport 失败每项最多重试 2 次（最多 3 次尝试）；HTTP、resolve、budget、memory 和取消不重试。style pass 发现新的 pending 时会回到 worker；layout/swap 前必须重新检查 gate，required stylesheet/`@import` 失败、未收敛或取消会保留旧页，optional image/script 失败可在 Core fallback 下继续。完成的候选应没有未处理的 `pending` 项；`cancelled` 是独立终态，不应被当作网络失败。日志还可输出最多 4 项不含原始 URL 的 `role/failure#hash` 失败摘要，以及 image/script/other/observed fallback family 的粗粒度计数；它们只用于宿主 telemetry，不是公共 DLL ABI，也不提供逐资源视觉保证。TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation。
 
 ### 手动模式
 
@@ -210,7 +210,7 @@ contenteditable 的自动 fixture 证明有效 editing host 的 WM EDIT 代理�
 
 WM6 镜像的系统时间经常过旧。证书测试前先校准时间，并把失败分为：DNS、TCP、TLS handshake、证书/hostname、HTTP status、redirect、资源获取、页面解析和最终提交。
 
-离线 fixture 用于稳定契约；真实网页用于集成哨兵。真实端点的暂时不可达不能通过放宽离线断言解决，离线契约通过也不能证明任意互联网网站兼容。资源失败应依据日志分类处理；宿主只对 transport 失败提供每项最多 2 次的有界重试，取消、预算拒绝或 HTTP/resolve/memory 错误不会重试。样式表/`@import` 属于 required，失败或未收敛时不提交候选；图片/script 属于 optional，失败时可在 Core fallback 下继续。当前没有通用的逐资源用户界面，不能把宿主 gate telemetry 当成完整浏览器降级体验。
+离线 fixture 用于稳定契约；真实网页用于集成哨兵。真实端点的暂时不可达不能通过放宽离线断言解决，离线契约通过也不能证明任意互联网网站兼容。资源失败应依据日志分类处理；宿主只对 transport 失败提供每项最多 2 次的有界重试，取消、预算拒绝或 HTTP/resolve/memory 错误不会重试。样式表/`@import` 属于 required，失败或未收敛时不提交候选；图片/script 属于 optional，失败时可在 Core fallback 下继续。日志中的失败摘要最多 4 项，格式为不含原始 URL 的 `role/failure#hash`；`resource fallback image/script/other/observed` 只表示宿主观察到的 fallback family，不提供逐资源 UI 或视觉保证。TEST1123 在离线夹具中覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation。不能把宿主 gate telemetry 当成完整浏览器降级体验。
 
 ## 候选成为基线
 

@@ -97,7 +97,7 @@ Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/
 
 资源请求的 `pending`、`ready`、`failed`、`cancelled` 终态及 resolve、transport、HTTP、budget、memory 失败分类属于宿主的导航调度 telemetry，不是 Core 的公共 ABI。宿主可对 `status_code == 0` 的 transport 失败按固定预算重试（当前每项最多 2 次重试、3 次尝试），但 HTTP、resolve、budget、memory 和取消不得重试；预算耗尽仍是 `failed/transport`。宿主必须把成功字节复制到候选自己的缓存，并让失败或取消保持不可用；取消不能伪装成网络失败或成功。
 
-页面提交策略由宿主决定：主文档必须先成功，样式表和 `@import` 在 style pass 中归为 required，脚本与图片归为 optional。宿主在 layout/swap 前必须重新检查资源 gate；required 失败、仍有未收敛的 pending 或候选取消时保留旧 document/session/history，不触发 teardown 或 swap。optional 失败可以继续提交，Core 按既定的 alt/src/default-style fallback 绘制。required/optional 分类和 gate 统计是宿主策略，不是公共 Core/Browser ABI，也不提供通用逐资源 UI。
+页面提交策略由宿主决定：主文档必须先成功，样式表和 `@import` 在 style pass 中归为 required，脚本与图片归为 optional。宿主在 layout/swap 前必须重新检查资源 gate；required 失败、仍有未收敛的 pending 或候选取消时保留旧 document/session/history，不触发 teardown 或 swap。optional 失败可以继续提交，Core 按既定的 alt/src/default-style fallback 绘制。宿主可为日志输出最多 4 项不含原始 URL 的 `role/failure#hash` 失败摘要，并在 layout 成功后记录 image/script/other fallback family 的粗粒度观测；这些 required/optional 分类、gate 统计和观测是宿主策略，不是公共 Core/Browser ABI，也不提供通用逐资源 UI。
 
 文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单和交互状态。释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。style/layout/paint 通常属于同一 UI 线程；不得在后台 worker 并发操作同一个文档。
 
@@ -158,8 +158,8 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 2. worker 获取主文档及可并行准备的网络资源；网络层不触碰 DOM/NetSurf 状态。较新的导航会使旧候选进入 retired 状态，旧 worker 的完成和进度消息不得越过 generation 门控；仍在收尾的退休候选数量受宿主固定上限约束。
 3. UI 线程解析 HTML，创建候选文档。
 4. 通过 Core 的 resolver/fetch 回调准备 CSS、`@import`、图片和 script cache；宿主为每项资源记录有界的终态和失败分类，并仅对 transport 失败执行固定的最多 2 次重试，取消项不能被后续样式阶段当作待获取资源。
-5. style/image pass 若发现新的 pending 资源则回到 worker；样式表与 `@import` 按 required 策略，图片与 script 按 optional 策略。
-6. UI 线程在 layout/swap 前重新计算资源 gate。required 失败、未收敛 pending 或取消时只释放候选，保留旧页、旧 session 和旧队列；optional 失败在 Core fallback 可用时允许继续。
+5. style/image pass 若发现新的 pending 资源则回到 worker；样式表与 `@import` 按 required 策略，图片与 script 按 optional 策略。重复 URL 共享宿主资源条目，并保留 stylesheet/script/image 的 role bitmask。
+6. UI 线程在 layout/swap 前重新计算资源 gate，同时重建最多 4 项 hash-only failure summary；required 失败、未收敛 pending 或取消时只释放候选，保留旧页、旧 session 和旧队列；optional 失败在 Core fallback 可用时允许继续，并在 layout 成功后记录粗粒度 fallback family 观测。
 7. gate READY 后，在旧 document/session 仍有效时调用 Browser teardown，停止旧页回调并原子提交页面与 history。
 8. 交互、旋转或动态 DOM 修改按需重新 style/layout/paint。
 
