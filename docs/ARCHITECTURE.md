@@ -23,7 +23,7 @@ WM6 应用 / test_host.exe
         ├── 平台窗口、消息循环、WM 控件、SIP/IME、文件选择器
         ├── 应用导航策略、后台网络调度、资源 I/O、WM 接线与页面提交策略
         │
-        ├── positron_browser.dll ── history、script session、DOM/Event、资源事务
+        ├── positron_browser.dll ── history/viewport snapshots、script session、DOM/Event、资源事务
         ├── positron_core.dll    ── HTML/CSS/DOM、style、layout、paint、表单
         ├── positron_script.dll  ── 有预算的通用 JavaScript runtime
         ├── positron_image.dll   ── bitmap/SVG decode、draw、encode
@@ -111,7 +111,7 @@ Core 不保存编辑选区，也不重新派发 `selectionchange`。Browser 以 
 
 Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
-- 有界 history entries、same-document state 和 traversal；
+- 有界 history entries、每项 viewport snapshot、same-document state 和 traversal；
 - 浏览器 script session 与 bootstrap；
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
@@ -121,7 +121,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 导航资源事务：按 URL 去重并合并 role/policy，拥有资源字节、终态、失败分类、transport 重试预算、required/optional commit gate、hash-only failure summary 和 fallback observation。
 - 导航候选生命周期：以 opaque handle 拥有不可变 generation、取消请求、退休状态和 committed/failed 终态，并提供当前 generation 的 `CanApply` 提交资格与 pending/committed/failed/cancelled/stale 结果摘要；`PBrowser_NavigationCommitGetInfo` 只读组合该结果与独立资源 gate，`PBrowser_NavigationCleanupGetInfo` 在释放前复制 candidate result 与完整有界 resource observation；两个入口都不接管任一 handle 的所有权。
 
-它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。
+它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。每个 history entry 还由 Browser 保存非负的 `(scroll_x, scroll_y)` viewport snapshot；该快照随 entry 的新建、裁剪、replace 和 traversal 规则维护，但 Browser 不知道文档高度、不访问 HWND，也不替宿主做 clamp。
 
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
 
@@ -163,15 +163,16 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
 推荐的主文档事务如下：
 
-1. UI 线程记录导航意图和当前页面，但不立即销毁旧文档。
+1. UI 线程记录导航意图和当前页面；在离开当前 entry 前，把宿主 viewport 通过 `PBrowser_HistorySetEntryScroll` 写回 Browser，但不立即销毁旧文档。
 2. worker 获取主文档及可并行准备的网络资源；网络层不触碰 DOM/NetSurf 状态。宿主为候选创建 Browser handle，并在较新的导航到来时请求取消、退休旧 handle；旧 worker 的完成和进度消息必须同时通过宿主消息身份与 `PBrowser_NavigationCandidateCanApply` 的 generation 门控，仍在收尾的退休候选数量受宿主固定上限约束。
 3. UI 线程解析 HTML，创建候选文档。
 4. 通过 Core 的 resolver/fetch 回调发现 CSS、`@import`、图片和 script；宿主为每项调用 Browser 资源事务的 register/begin-attempt，并把网络结果、成功字节、失败分类或取消提交回 Browser。取消项不会被后续样式阶段当作待获取资源。
 5. style/image pass 若发现新的 pending 资源则回到 worker；样式表与 `@import` 按 required policy，图片与 script 按 optional policy。重复 URL 由 Browser 事务去重并合并 stylesheet/script/image role bitmask；宿主只保留 URL 到 Browser resource index 的短引用。
 6. UI 线程在 layout/swap 前读取 Browser 的 `PBrowser_NavigationCommitGetInfo` 与 resource stats；组合快照为 PENDING 时继续等待资源，其他非 READY 结果禁止 swap，并在失败/取消/过时时释放候选、保留旧页、旧 session 和旧队列；optional 失败在 Core fallback 可用时允许继续，并在 layout 成功后通知 Browser 记录 fallback family 观测。宿主日志可读取最多 4 项 hash-only failure summary，但不拥有或重建摘要。
-7. 组合快照 READY 且最终 candidate 重检通过后，在旧 document/session 仍有效时调用 Browser teardown，停止旧页回调并原子提交页面与 history。
-8. worker 已收尾后、销毁 request 的 candidate/resource handle 前，失败或过时 request 先取消剩余 pending 资源；宿主调用 `PBrowser_NavigationCleanupGetInfo` 复制终态、gate、pending、`can_release` 和有界 failure/fallback 观测。正常路径要求 `can_release` 为非零；若观测仍为 0，宿主必须 fail closed、记录异常并完成成对的最终释放，不能把它当作成功提交。复制值在 handle 销毁后仍可用于日志。
-9. 交互、旋转或动态 DOM 修改按需重新 style/layout/paint。
+7. 组合快照 READY 且最终 candidate 重检通过后，在旧 document/session 仍有效时调用 Browser teardown，停止旧页回调并原子提交页面与 history；新 entry 的 viewport 初始为 `(0, 0)`。
+8. history traversal 或 same-document fragment 完成后，宿主用 `PBrowser_HistoryEntryScroll` 读取目标 entry 的快照，再按新 document/client area clamp 并应用到 scrollbar/HWND。Browser 只提供值，不执行滚动副作用。
+9. worker 已收尾后、销毁 request 的 candidate/resource handle 前，失败或过时 request 先取消剩余 pending 资源；宿主调用 `PBrowser_NavigationCleanupGetInfo` 复制终态、gate、pending、`can_release` 和有界 failure/fallback 观测。正常路径要求 `can_release` 为非零；若观测仍为 0，宿主必须 fail closed、记录异常并完成成对的最终释放，不能把它当作成功提交。复制值在 handle 销毁后仍可用于日志。
+10. 交互、旋转或动态 DOM 修改按需重新 style/layout/paint。
 
 任何后台线程都不能持有 DOM 节点、computed style、box tree 或 HDC。失败日志应区分 DNS、TCP、TLS、证书、HTTP、资源、解析、style、layout 和提交阶段。
 

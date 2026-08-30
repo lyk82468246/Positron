@@ -78,6 +78,8 @@ tests=13,20,27,999
 
 worker 收尾后、释放 request 前，宿主调用 `PBrowser_NavigationCleanupGetInfo` 读取 Browser 的清理快照。失败或被取代的 request 先取消剩余 pending 资源；成功 request 必须已有 committed candidate 和 READY resource gate。宿主只把 `decision`、终态、gate、pending、`can_release` 以及有界失败/fallback 观测复制到日志统计，然后销毁 candidate/resource handles；快照是调用方自己的值，不能借用 handle 内部存储。pending 工作或 committed/non-ready 不一致会保持 `can_release=0`，不会被当作成功提交。这个清理入口不拥有 worker、response、窗口或应用日志语义。
 
+History entry 的 viewport snapshot 也由 `positron_browser.dll` 持有。宿主在离开当前页面前调用 `PBrowser_HistorySetEntryScroll` 保存当前坐标，在提交新文档或完成 history traversal 后用 `PBrowser_HistoryEntryScroll` 读取目标坐标，再根据当前文档高度和 client area 调用自己的 scrollbar/HWND 逻辑进行 clamp。宿主不再维护第二份按 entry 保存的滚动数组；Browser 不访问窗口，也不替宿主决定横纵坐标的物理单位。
+
 DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM node、box、computed style 或 HDC。
 
 ### Core 与 Browser callbacks

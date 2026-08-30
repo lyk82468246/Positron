@@ -24,6 +24,8 @@ typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
     char states[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_STATE_MAX];
     unsigned long document_ids[PBROWSER_HISTORY_MAX];
+    int scroll_x[PBROWSER_HISTORY_MAX];
+    int scroll_y[PBROWSER_HISTORY_MAX];
     unsigned long next_document_id;
     int count;
     int index;
@@ -284,6 +286,42 @@ PBROWSER_API unsigned long PBrowser_HistoryEntryDocumentId(HANDLE hHistory,
     return history->document_ids[index];
 }
 
+PBROWSER_API int PBrowser_HistoryEntryScroll(HANDLE hHistory, int index,
+        int *out_scroll_x, int *out_scroll_y)
+{
+    p_browser_history *history;
+
+    history = p_history(hHistory);
+    if (!p_history_valid(history) || out_scroll_x == NULL ||
+            out_scroll_y == NULL) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    if (index < 0 || index >= history->count) {
+        return PBROWSER_ERROR_RANGE;
+    }
+    *out_scroll_x = history->scroll_x[index];
+    *out_scroll_y = history->scroll_y[index];
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_HistorySetEntryScroll(HANDLE hHistory, int index,
+        int scroll_x, int scroll_y)
+{
+    p_browser_history *history;
+
+    history = p_history(hHistory);
+    if (!p_history_valid(history)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    if (index < 0 || index >= history->count || scroll_x < 0 ||
+            scroll_y < 0) {
+        return PBROWSER_ERROR_RANGE;
+    }
+    history->scroll_x[index] = scroll_x;
+    history->scroll_y[index] = scroll_y;
+    return PBROWSER_OK;
+}
+
 PBROWSER_API const char *PBrowser_HistoryCurrentUrl(HANDLE hHistory)
 {
     p_browser_history *history;
@@ -476,6 +514,8 @@ PBROWSER_API int PBrowser_HistoryPushState(HANDLE hHistory,
             memcpy(history->states[i - 1], history->states[i],
                     PBROWSER_HISTORY_STATE_MAX);
             history->document_ids[i - 1] = history->document_ids[i];
+            history->scroll_x[i - 1] = history->scroll_x[i];
+            history->scroll_y[i - 1] = history->scroll_y[i];
         }
         history->count--;
         history->index--;
@@ -486,6 +526,8 @@ PBROWSER_API int PBrowser_HistoryPushState(HANDLE hHistory,
     }
     history->document_ids[history->count] =
             history->document_ids[history->index];
+    history->scroll_x[history->count] = 0;
+    history->scroll_y[history->count] = 0;
     history->count++;
     history->index = history->count - 1;
     return PBROWSER_OK;
@@ -502,6 +544,8 @@ static int p_history_commit_new(p_browser_history *history, const char *url)
             strcmp(PBrowser_HistoryCurrentUrl((HANDLE) history), url) == 0) {
         history->document_ids[history->index] =
                 p_history_new_document_id(history);
+        history->scroll_x[history->index] = 0;
+        history->scroll_y[history->index] = 0;
         return PBROWSER_OK;
     }
     if (history->index + 1 < history->count) {
@@ -514,6 +558,8 @@ static int p_history_commit_new(p_browser_history *history, const char *url)
             memcpy(history->states[i - 1], history->states[i],
                     PBROWSER_HISTORY_STATE_MAX);
             history->document_ids[i - 1] = history->document_ids[i];
+            history->scroll_x[i - 1] = history->scroll_x[i];
+            history->scroll_y[i - 1] = history->scroll_y[i];
         }
         history->count--;
         history->index--;
@@ -522,6 +568,8 @@ static int p_history_commit_new(p_browser_history *history, const char *url)
     memcpy(history->states[history->count], "null", 5);
     history->document_ids[history->count] =
             p_history_new_document_id(history);
+    history->scroll_x[history->count] = 0;
+    history->scroll_y[history->count] = 0;
     history->count++;
     history->index = history->count - 1;
     return PBROWSER_OK;
@@ -573,6 +621,8 @@ PBROWSER_API int PBrowser_HistoryReplaceCurrent(HANDLE hHistory,
     memcpy(history->states[history->index], "null", 5);
     history->document_ids[history->index] =
             p_history_new_document_id(history);
+    history->scroll_x[history->index] = 0;
+    history->scroll_y[history->index] = 0;
     return PBROWSER_OK;
 }
 

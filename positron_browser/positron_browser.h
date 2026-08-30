@@ -28,7 +28,7 @@ extern "C" {
 #  define PBROWSER_API __declspec(dllimport)
 #endif
 
-#define PBROWSER_ABI_VERSION 0x00010004UL
+#define PBROWSER_ABI_VERSION 0x00010005UL
 
 #define PBROWSER_HISTORY_MAX 16
 #define PBROWSER_HISTORY_URL_MAX 1024
@@ -76,6 +76,16 @@ PBROWSER_API const char *PBrowser_HistoryEntryUrl(HANDLE hHistory, int index);
 PBROWSER_API const char *PBrowser_HistoryEntryState(HANDLE hHistory, int index);
 PBROWSER_API unsigned long PBrowser_HistoryEntryDocumentId(HANDLE hHistory,
         int index);
+
+/* History-entry viewport snapshots are opaque, non-negative application
+ * coordinates. The browser layer stores them with the entry but never
+ * clamps them against a document or touches a window; the host applies its
+ * own viewport/document bounds when restoring the snapshot. Both output
+ * pointers are required. */
+PBROWSER_API int PBrowser_HistoryEntryScroll(HANDLE hHistory, int index,
+        int *out_scroll_x, int *out_scroll_y);
+PBROWSER_API int PBrowser_HistorySetEntryScroll(HANDLE hHistory, int index,
+        int scroll_x, int scroll_y);
 
 /* URL policy used by history state operations. This is intentionally a
  * narrow textual same-origin check, not a complete URL Standard parser. */

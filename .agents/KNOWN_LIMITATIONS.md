@@ -62,7 +62,7 @@
 ## History、导航与窗口
 
 - history 是进程内、有界条目集合，不持久化到磁盘，也不恢复跨进程页面状态。
-- same-document 与跨文档 scroll restore 只覆盖当前宿主保存的有界 viewport 信息。
+- same-document 与跨文档 scroll restore 只覆盖 Browser entry 保存的有界 page-level viewport snapshot；参考宿主目前只把垂直值应用到自己的 scrollbar，并按当前 document/client extent clamp。嵌套 overflow 容器、完整横向滚动和跨窗口恢复仍未实现。
 - 当前是单窗口/单 browsing context 组合；`_blank`、未知 named target、第二个 global、opener、跨窗口 history 和真实窗口复用未实现或保守拒绝。
 - `window.open()` 仅在允许复用当前 context 的受限 target 上工作，不创建新的 WM 顶层窗口。
 - download、外部协议、权限、文件系统和应用跳转策略仍由宿主决定。
@@ -90,6 +90,7 @@
 ## 测试覆盖
 
 - next670 已建立一次 1080 项动态全量自动设备 checkpoint；后续定向门仍不能替代下一次按风险触发的全量范围基线。
+- TEST1081/TEST1082 覆盖 Browser-owned history viewport snapshot 的 fragment/traversal 保持、新 entry 清零、横向值存取、宿主 clamp 和非法参数 fail closed；
 - 已有十一条离线 compatibility-corpus 流程，仍不代表任意真实网站或完整 Web 标准：
   - TEST1117–TEST1119 覆盖 contenteditable/dialog/history 组合、重复资源准备、失败旧页保留、页面 teardown、generation 取消、过时消息隔离、退休请求回收和最新候选提交；
   - TEST1120–TEST1123 覆盖 Browser 资源事务终态、失败分类、transport 重试预算、required/optional gate、重复 script/image、三层 `@import`、最多 4 项 hash-only 摘要和 layout 后 fallback family 观测；

@@ -18,7 +18,20 @@
 
 `PBrowser_History*` 管理有界的进程内条目、当前位置、state、same-document 操作和 traversal。URL/state 查询返回借用字符串，在同一 history handle 的下一次 mutation 或 destroy 后失效。
 
-History 只决定条目语义，不请求 URL、不保存文档、不创建窗口，也不持久化到磁盘。宿主只有在页面真正提交后才应 commit 新导航；失败候选不得污染 history。
+每个条目还可以保存一个有界的 `(scroll_x, scroll_y)` viewport snapshot。坐标是调用方约定的非负整数；Browser 只随条目保存和搬移它们，不知道文档高度、不创建窗口，也不负责 clamp。宿主在真正提交页面或完成 traversal 后读取快照，再按自己的 client area 和 document extent 应用它：
+
+```c
+int scroll_x;
+int scroll_y;
+
+PBrowser_HistorySetEntryScroll(history, entry_index, 0, current_scroll_y);
+if (PBrowser_HistoryEntryScroll(history, entry_index,
+        &scroll_x, &scroll_y) == PBROWSER_OK) {
+    host_scroll_to(scroll_x, scroll_y); /* host clamps to its document */
+}
+```
+
+新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState` 与 history traversal 保留已有 snapshot，`pushState` 的新 entry 从零开始，history 达到上限裁剪时 snapshot 与 URL/state 一起移动。History 只决定条目语义，不请求 URL、不保存文档、不创建窗口，也不持久化到磁盘。宿主只有在页面真正提交后才应 commit 新导航；失败候选不得污染 history。
 
 ### Script session
 
@@ -298,7 +311,8 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 5. 把 WM 输入转换为 Browser typed transaction；
 6. 只在 Browser 允许默认动作后修改 Core/native 控件；
 7. mutation 后重新 layout/paint；
-8. 导航候选成功后，在旧 document/session 仍有效时调用 Browser 的 page-teardown 入口，再销毁旧 session/document 并提交新页面与 history；失败候选保留旧页及其队列。
+8. 在导航或 fragment/traversal 改变页面前，把当前 viewport 写入对应 history entry；目标页面提交后读取目标 snapshot，并由宿主 clamp/apply；
+9. 导航候选成功后，在旧 document/session 仍有效时调用 Browser 的 page-teardown 入口，再销毁旧 session/document 并提交新页面与 history；失败候选保留旧页及其队列。
 
 完整组合示例见 [`../test_host/`](../test_host/README.md)，但产品应用应根据自己的窗口、网络和安全策略实现 callbacks。
 
@@ -308,6 +322,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 - 导航资源事务 handle、URL 副本和资源字节均由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationResourceDestroy`，调用方需要自己的数据时使用 `PBrowser_NavigationResourceCopyData`。
 - 导航 candidate handle、generation、取消/退休标志、committed/failed 终态和结果分类由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationCandidateDestroy`，不得用 `CloseHandle` 或复制内部状态。结果结构是同步借用快照，调用方只应复制值，不得把它当作可释放对象。
 - History 返回的 entry/state 字符串是借用值，调用方不得 free。
+- History 的 viewport snapshot 由 Browser entry 拥有；`PBrowser_HistoryEntryScroll` 只写入调用方提供的两个整数，`PBrowser_HistorySetEntryScroll` 不保存指针。Browser 不替宿主 clamp、滚动窗口或绘制页面。
 - callback table 和 `pw` 由宿主持有，必须活到 unregister 或 session destroy。
 - callback 中的字符串、event info 和输出缓冲只在同步调用期间有效。
 - 结构体必须设置正确 `cbSize`；较小旧结构保持兼容，未知布局应拒绝。
