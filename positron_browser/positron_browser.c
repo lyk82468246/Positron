@@ -1902,6 +1902,101 @@ PBROWSER_API int PBrowser_NavigationCommitGetInfo(HANDLE hCandidate,
     return PBROWSER_OK;
 }
 
+static int p_navigation_cleanup_decision(
+        const PBrowserNavigationCandidateResult *candidate,
+        const PBrowserNavigationResourceStats *resource,
+        int *out_can_release)
+{
+    int resource_pending;
+
+    if (candidate == NULL || resource == NULL || out_can_release == NULL) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    *out_can_release = 0;
+    if (candidate->result <
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING ||
+            candidate->result > PBROWSER_NAVIGATION_CANDIDATE_RESULT_STALE ||
+            resource->resource_commit_gate < PBROWSER_NAVIGATION_GATE_READY ||
+            resource->resource_commit_gate >
+            PBROWSER_NAVIGATION_GATE_CANCELLED ||
+            resource->resources_pending < 0) {
+        return PBROWSER_ERROR_STATE;
+    }
+    resource_pending = resource->resources_pending > 0 ||
+            resource->resource_commit_gate == PBROWSER_NAVIGATION_GATE_PENDING;
+    if (resource_pending) {
+        return PBROWSER_NAVIGATION_CLEANUP_RESOURCE_PENDING;
+    }
+    if (candidate->result == PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING) {
+        return PBROWSER_NAVIGATION_CLEANUP_CANDIDATE_PENDING;
+    }
+    if (candidate->result == PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED) {
+        if (resource->resource_commit_gate != PBROWSER_NAVIGATION_GATE_READY) {
+            return PBROWSER_NAVIGATION_CLEANUP_INCONSISTENT;
+        }
+        *out_can_release = 1;
+        return PBROWSER_NAVIGATION_CLEANUP_COMMITTED;
+    }
+    if (candidate->result == PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED) {
+        *out_can_release = 1;
+        return PBROWSER_NAVIGATION_CLEANUP_FAILED;
+    }
+    if (candidate->result ==
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_CANCELLED) {
+        *out_can_release = 1;
+        return PBROWSER_NAVIGATION_CLEANUP_CANCELLED;
+    }
+    if (candidate->result == PBROWSER_NAVIGATION_CANDIDATE_RESULT_STALE) {
+        *out_can_release = 1;
+        return PBROWSER_NAVIGATION_CLEANUP_STALE;
+    }
+    return PBROWSER_ERROR_STATE;
+}
+
+PBROWSER_API int PBrowser_NavigationCleanupGetInfo(HANDLE hCandidate,
+        HANDLE hTransaction, unsigned long current_generation,
+        PBrowserNavigationCleanupInfo *out_info)
+{
+    PBrowserNavigationCandidateResult candidate;
+    PBrowserNavigationResourceStats resource;
+    unsigned long size;
+    int can_release;
+    int decision;
+    int rc;
+
+    if (out_info == NULL || out_info->size <
+            sizeof(PBrowserNavigationCleanupInfo)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    memset(&candidate, 0, sizeof(candidate));
+    candidate.size = sizeof(candidate);
+    rc = PBrowser_NavigationCandidateGetResult(hCandidate,
+            current_generation, &candidate);
+    if (rc != PBROWSER_OK) {
+        return rc;
+    }
+    memset(&resource, 0, sizeof(resource));
+    resource.size = sizeof(resource);
+    rc = PBrowser_NavigationResourceGetStats(hTransaction, &resource);
+    if (rc != PBROWSER_OK) {
+        return rc;
+    }
+    decision = p_navigation_cleanup_decision(&candidate, &resource,
+            &can_release);
+    if (decision < 0) {
+        return decision;
+    }
+    size = out_info->size;
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->size = size;
+    out_info->current_generation = current_generation;
+    out_info->decision = decision;
+    out_info->can_release = can_release;
+    out_info->candidate = candidate;
+    out_info->resource = resource;
+    return PBROWSER_OK;
+}
+
 static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
     "(function(g){"
         "function PElement(id){this.__id=id;}"

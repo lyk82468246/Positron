@@ -27,13 +27,13 @@
 
 ## 近期目标
 
-### 提交后终态与清理观测
+### 真实页面组合缺口
 
-下一条纵向能力是 next681：在不把资源事务、候选 handle 或页面对象重新复制到 `test_host` 的前提下，补齐一次导航完成/失败后的终态清理观测。目标是让宿主能够在释放 request 前确认 Browser 的 terminal candidate result、resource gate、fallback summary 和资源回收边界彼此一致；不要把 response、线程句柄、窗口消息或应用日志格式塞进公共 ABI。
+下一条纵向能力是 next682：从现有真实页面哨兵和离线 compatibility corpus 中选定一个可复现的用户可见组合缺口，完成从公共 DLL 语义到宿主接线、自动断言和设备证据的一条完整路径。选题必须先由源码、日志或截图证明问题边界，不能凭空扩张 API，也不能把页面业务规则塞回 `test_host`。
 
-next681 的语料应固定成功提交、required 失败、optional fallback、候选取消和 stale completion 的清理序列，自动断言终态快照在 request cleanup 前可读、释放后不再借用数据，旧候选不会触发当前页面 teardown/history，且资源事务不会跨候选泄漏。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容；不得把阻塞 socket 的强制中断写成契约。
+优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
-实现必须保持现有资源事务和 candidate/result 边界：终态、成功字节、required/optional gate、hash-only 摘要、fallback observation、generation、取消/退休和组合 decision 继续由 Browser 拥有；transport 失败每项最多 2 次重试（总计最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试。按风险累计条件安排更宽回归或新的全量 checkpoint；不要为增加测试编号拆分能力。
+next682 的完成证据应包括定向自动断言、直接相邻回归和风险相称的设备门；视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，也不要在没有实际缺口证据时提前选择实现方向。
 
 ### 继续清理产品所有权
 

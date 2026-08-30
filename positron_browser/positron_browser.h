@@ -28,7 +28,7 @@ extern "C" {
 #  define PBROWSER_API __declspec(dllimport)
 #endif
 
-#define PBROWSER_ABI_VERSION 0x00010003UL
+#define PBROWSER_ABI_VERSION 0x00010004UL
 
 #define PBROWSER_HISTORY_MAX 16
 #define PBROWSER_HISTORY_URL_MAX 1024
@@ -334,6 +334,33 @@ PBROWSER_API int PBrowser_NavigationCandidateGetInfo(HANDLE hCandidate,
 PBROWSER_API int PBrowser_NavigationCandidateGetResult(HANDLE hCandidate,
         unsigned long current_generation,
         PBrowserNavigationCandidateResult *out_result);
+
+/* A cleanup snapshot is taken before either independent handle is destroyed.
+ * It copies the candidate result and full bounded resource observation into
+ * caller-owned storage; it never retains a handle or changes candidate state.
+ * Resource gate/summary fields may refresh as in ResourceGetStats.
+ * can_release is nonzero only after candidate work and resource work are
+ * settled, and a committed candidate has a READY resource gate. */
+#define PBROWSER_NAVIGATION_CLEANUP_CANDIDATE_PENDING 0
+#define PBROWSER_NAVIGATION_CLEANUP_RESOURCE_PENDING 1
+#define PBROWSER_NAVIGATION_CLEANUP_COMMITTED 2
+#define PBROWSER_NAVIGATION_CLEANUP_FAILED 3
+#define PBROWSER_NAVIGATION_CLEANUP_CANCELLED 4
+#define PBROWSER_NAVIGATION_CLEANUP_STALE 5
+#define PBROWSER_NAVIGATION_CLEANUP_INCONSISTENT 6
+
+typedef struct PBrowserNavigationCleanupInfo {
+    unsigned long size;
+    unsigned long current_generation;
+    int decision;
+    int can_release;
+    PBrowserNavigationCandidateResult candidate;
+    PBrowserNavigationResourceStats resource;
+} PBrowserNavigationCleanupInfo;
+
+PBROWSER_API int PBrowser_NavigationCleanupGetInfo(HANDLE hCandidate,
+        HANDLE hTransaction, unsigned long current_generation,
+        PBrowserNavigationCleanupInfo *out_info);
 
 /* Synchronous JSON callback shape shared with positron_script. The callback
  * runs on the caller's thread and must not re-enter or destroy its session.

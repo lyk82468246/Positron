@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1126
+#define TEST_MAX_NUMBER 1127
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6416,6 +6416,11 @@ typedef struct pcore_navigation_stats {
     char resource_failure_summary[PCORE_NAV_RESOURCE_SUMMARY_CAPACITY];
     int resource_bytes;
     int budget_rejected;
+    int cleanup_decision;
+    int cleanup_candidate_result;
+    int cleanup_resource_gate;
+    int cleanup_resource_pending;
+    int cleanup_can_release;
     int completed;
     PCoreLayoutStats core_layout;
     int core_layout_valid;
@@ -12647,6 +12652,13 @@ static int pcore_navigation_candidate_result(
 static int pcore_navigation_commit_info(
         const pcore_navigation_request *request,
         PBrowserNavigationCommitInfo *info);
+static int pcore_navigation_cleanup_info(
+        const pcore_navigation_request *request,
+        PBrowserNavigationCleanupInfo *info);
+static void pcore_navigation_prepare_cleanup(
+        pcore_navigation_request *request);
+static int pcore_navigation_cleanup_capture(
+        pcore_navigation_request *request);
 
 static void testbench_log_navigation(
         const pcore_navigation_request *request)
@@ -12696,6 +12708,8 @@ static void testbench_log_navigation(
             "%lu/%lu/%d/%d/%d/%d/%d\n"
             "commit decision/candidate/resource/can-commit="
             "%d/%d/%d/%d\n"
+            "cleanup decision/candidate/resource/pending/can-release="
+            "%d/%d/%d/%d/%d\n"
             "parse/style/images/layout/paint=%lu/%lu/%lu/%lu/%lums\n"
             "resources q/ok/fail/cancel/pending/rounds="
             "%d/%d/%d/%d/%d/%d\n"
@@ -12726,6 +12740,11 @@ static void testbench_log_navigation(
             commit.candidate_result,
             commit.resource_gate,
             commit.can_commit,
+            request->stats.cleanup_decision,
+            request->stats.cleanup_candidate_result,
+            request->stats.cleanup_resource_gate,
+            request->stats.cleanup_resource_pending,
+            request->stats.cleanup_can_release,
             (unsigned long) request->stats.parse_ms,
             (unsigned long) request->stats.style_ms,
             (unsigned long) request->stats.images_ms,
@@ -13264,6 +13283,80 @@ static int pcore_navigation_commit_info(
             info) == PBROWSER_OK ? 0 : 1;
 }
 
+/* The Browser owns the terminal snapshot used at request cleanup. The host
+ * copies only bounded values into its diagnostic stats and never retains the
+ * nested handles or resource summary storage. */
+static int pcore_navigation_cleanup_info(
+        const pcore_navigation_request *request,
+        PBrowserNavigationCleanupInfo *info)
+{
+    if (request == NULL || request->candidate == NULL ||
+            request->resource_transaction == NULL || info == NULL) {
+        return 1;
+    }
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    return PBrowser_NavigationCleanupGetInfo(request->candidate,
+            request->resource_transaction, (unsigned long) g_nav_generation,
+            info) == PBROWSER_OK ? 0 : 1;
+}
+
+/* A request may be released after a failed worker start or a superseding
+ * completion without passing through the normal commit path. Join the worker
+ * first, then settle any remaining Browser resource entries and make an
+ * otherwise-active candidate terminal before taking the cleanup snapshot. */
+static void pcore_navigation_prepare_cleanup(
+        pcore_navigation_request *request)
+{
+    PBrowserNavigationCandidateResult result;
+
+    if (request == NULL) {
+        return;
+    }
+    if (request->resource_transaction != NULL) {
+        (void) PBrowser_NavigationResourceCancelAll(
+                request->resource_transaction);
+    }
+    if (request->candidate == NULL) {
+        return;
+    }
+    memset(&result, 0, sizeof(result));
+    result.size = sizeof(result);
+    if (PBrowser_NavigationCandidateGetResult(request->candidate,
+            (unsigned long) g_nav_generation, &result) == PBROWSER_OK &&
+            result.result == PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING) {
+        (void) PBrowser_NavigationCandidateMarkFailed(request->candidate);
+    }
+}
+
+static int pcore_navigation_cleanup_capture(
+        pcore_navigation_request *request)
+{
+    PBrowserNavigationCleanupInfo info;
+
+    if (request == NULL) {
+        return 1;
+    }
+    request->stats.cleanup_decision = -1;
+    request->stats.cleanup_candidate_result = -1;
+    request->stats.cleanup_resource_gate = -1;
+    request->stats.cleanup_resource_pending = -1;
+    request->stats.cleanup_can_release = 0;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (pcore_navigation_cleanup_info(request, &info) != 0) {
+        return 1;
+    }
+    request->stats.cleanup_decision = info.decision;
+    request->stats.cleanup_candidate_result = info.candidate.result;
+    request->stats.cleanup_resource_gate =
+            info.resource.resource_commit_gate;
+    request->stats.cleanup_resource_pending =
+            info.resource.resources_pending;
+    request->stats.cleanup_can_release = info.can_release;
+    return info.can_release ? 0 : 1;
+}
+
 static int pcore_navigation_resource_info(
         const pcore_navigation_request *request,
         const pcore_navigation_resource *entry,
@@ -13651,6 +13744,8 @@ static void pcore_navigation_request_free(
         return;
     }
     pcore_navigation_request_close_worker(request);
+    pcore_navigation_prepare_cleanup(request);
+    (void) pcore_navigation_cleanup_capture(request);
     if (request->response != NULL) {
         PHttp_FreeResponse(request->response);
     }
@@ -16337,6 +16432,16 @@ static void pcore_navigation_finish(HWND hwnd,
     (void) pcore_navigation_resource_commit_gate(request);
     request->stats.total_ms = GetTickCount() - request->stats.started_tick;
     (void) pcore_navigation_resource_stats_sync(request);
+    if (!request->stats.completed &&
+            request->resource_transaction != NULL) {
+        /* A failed or superseded request owns no visible page. Settle any
+         * remaining pending entries before observing the release boundary so
+         * destroying the transaction cannot abandon worker-owned state. */
+        (void) PBrowser_NavigationResourceCancelAll(
+                request->resource_transaction);
+        (void) pcore_navigation_resource_commit_gate(request);
+        (void) pcore_navigation_resource_stats_sync(request);
+    }
     request->stats.resources_pending =
             pcore_navigation_resource_pending_total(request);
     /* Browser owns the candidate terminal state. The host records timing
@@ -16351,6 +16456,7 @@ static void pcore_navigation_finish(HWND hwnd,
                     request->candidate);
         }
     }
+    (void) pcore_navigation_cleanup_capture(request);
     g_nav_last_stats = request->stats;
     g_nav_last_stats_valid = 1;
     testbench_log_navigation(request);
@@ -16457,6 +16563,10 @@ static pcore_navigation_request *pcore_navigation_request_create_ex(
     request->worker_stage = PCORE_NAV_STAGE_DOCUMENT;
     request->commit_stage = PCORE_NAV_COMMIT_NONE;
     request->stats.started_tick = GetTickCount();
+    request->stats.cleanup_decision = -1;
+    request->stats.cleanup_candidate_result = -1;
+    request->stats.cleanup_resource_gate = -1;
+    request->stats.cleanup_resource_pending = -1;
     return request;
 }
 
@@ -31729,6 +31839,501 @@ static BOOL test1126_navigation_commit_consistency(void)
             "Browser composed resource and candidate gates: optional failure"
             " remained committable, required/cancelled/stale/terminal states"
             " stayed fail-closed, and the host consumed one bounded decision.");
+    return TRUE;
+}
+
+static int test1127_expect_cleanup(
+        HANDLE candidate, HANDLE transaction, unsigned long generation,
+        int expected_decision, int expected_candidate_result,
+        int expected_resource_gate, int expected_resource_pending,
+        int expected_can_release, int expected_optional_failed,
+        int expected_fallback_images, char *error, int error_capacity)
+{
+    PBrowserNavigationCleanupInfo info;
+    int rc;
+
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    rc = PBrowser_NavigationCleanupGetInfo(candidate, transaction,
+            generation, &info);
+    if (rc != PBROWSER_OK || info.decision != expected_decision ||
+            info.candidate.result != expected_candidate_result ||
+            info.resource.resource_commit_gate != expected_resource_gate ||
+            info.resource.resources_pending != expected_resource_pending ||
+            info.can_release != expected_can_release ||
+            info.resource.resource_optional_failed !=
+            expected_optional_failed ||
+            info.resource.resource_fallback_images !=
+            expected_fallback_images ||
+            info.resource.resource_fallback_observed !=
+            (expected_fallback_images > 0 ? 1 : 0)) {
+        if (error != NULL && error_capacity > 0) {
+            _snprintf(error, error_capacity - 1,
+                    "cleanup rc=%d decision=%d/%d candidate=%d/%d "
+                    "gate=%d/%d pending=%d/%d can=%d/%d optional=%d/%d "
+                    "fallback=%d/%d/%d",
+                    rc, info.decision, expected_decision,
+                    info.candidate.result, expected_candidate_result,
+                    info.resource.resource_commit_gate,
+                    expected_resource_gate,
+                    info.resource.resources_pending,
+                    expected_resource_pending,
+                    info.can_release, expected_can_release,
+                    info.resource.resource_optional_failed,
+                    expected_optional_failed,
+                    info.resource.resource_fallback_images,
+                    expected_fallback_images,
+                    info.resource.resource_fallback_observed);
+            error[error_capacity - 1] = '\0';
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/* TEST 1127 - cleanup snapshots settle the Browser-owned candidate/resource
+ * pair before the host releases its request. It covers successful commit,
+ * required failure, optional fallback, cancellation and stale completion,
+ * then verifies the real host finish path copies the bounded observation
+ * before destroying both handles. */
+static BOOL test1127_navigation_cleanup_snapshot(void)
+{
+    static const char REQUIRED_URL[] =
+        "https://positron.local/cleanup/required.css";
+    static const char OPTIONAL_URL[] =
+        "https://positron.local/cleanup/optional.png";
+    static const char BODY[] = "body{}";
+    HANDLE candidate;
+    HANDLE transaction;
+    HANDLE failed_candidate;
+    HANDLE failed_transaction;
+    HANDLE draining_candidate;
+    HANDLE draining_transaction;
+    HANDLE cancelled_candidate;
+    HANDLE cancelled_transaction;
+    HANDLE inconsistent_candidate;
+    HANDLE inconsistent_transaction;
+    pcore_navigation_request *success_request;
+    pcore_navigation_request *failed_request;
+    PBrowserNavigationCleanupInfo info;
+    PBrowserNavigationCleanupInfo released_snapshot;
+    char error[512];
+    int required_index;
+    int optional_index;
+    int rc;
+    int ok;
+    int snapshot_saved;
+
+    candidate = NULL;
+    transaction = NULL;
+    failed_candidate = NULL;
+    failed_transaction = NULL;
+    draining_candidate = NULL;
+    draining_transaction = NULL;
+    cancelled_candidate = NULL;
+    cancelled_transaction = NULL;
+    inconsistent_candidate = NULL;
+    inconsistent_transaction = NULL;
+    success_request = NULL;
+    failed_request = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(&released_snapshot, 0, sizeof(released_snapshot));
+    memset(error, 0, sizeof(error));
+    required_index = -1;
+    optional_index = -1;
+    ok = 1;
+    snapshot_saved = 0;
+
+    candidate = PBrowser_NavigationCandidateCreate(1001);
+    transaction = PBrowser_NavigationResourceCreate();
+    failed_candidate = PBrowser_NavigationCandidateCreate(1002);
+    failed_transaction = PBrowser_NavigationResourceCreate();
+    draining_candidate = PBrowser_NavigationCandidateCreate(1003);
+    draining_transaction = PBrowser_NavigationResourceCreate();
+    cancelled_candidate = PBrowser_NavigationCandidateCreate(1004);
+    cancelled_transaction = PBrowser_NavigationResourceCreate();
+    inconsistent_candidate = PBrowser_NavigationCandidateCreate(1005);
+    inconsistent_transaction = PBrowser_NavigationResourceCreate();
+    if (candidate == NULL || transaction == NULL ||
+            failed_candidate == NULL || failed_transaction == NULL ||
+            draining_candidate == NULL || draining_transaction == NULL ||
+            cancelled_candidate == NULL || cancelled_transaction == NULL ||
+            inconsistent_candidate == NULL ||
+            inconsistent_transaction == NULL) {
+        cstr_copy(error, sizeof(error), "cleanup snapshot allocation failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationResourceRegister(transaction, REQUIRED_URL,
+            PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+            &required_index) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cleanup required setup failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(candidate, transaction, 1001,
+            PBROWSER_NAVIGATION_CLEANUP_RESOURCE_PENDING,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_PENDING, 1, 0, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && (PBrowser_NavigationResourceBeginAttempt(transaction,
+            required_index) != PBROWSER_OK ||
+            PBrowser_NavigationResourceSetData(transaction, required_index,
+            BODY, sizeof(BODY) - 1) != PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error), "cleanup ready transition failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(candidate, transaction, 1001,
+            PBROWSER_NAVIGATION_CLEANUP_CANDIDATE_PENDING,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_READY, 0, 0, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationResourceRegister(transaction, OPTIONAL_URL,
+            PBROWSER_NAVIGATION_RESOURCE_OPTIONAL,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE,
+            &optional_index) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cleanup optional setup failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_NavigationResourceBeginAttempt(transaction,
+            optional_index) != PBROWSER_OK ||
+            PBrowser_NavigationResourceFail(transaction, optional_index,
+            PBROWSER_NAVIGATION_FAILURE_HTTP) != PBROWSER_OK ||
+            PBrowser_NavigationResourceObserveFallbacks(transaction) !=
+            PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error), "cleanup fallback transition failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(candidate, transaction, 1001,
+            PBROWSER_NAVIGATION_CLEANUP_CANDIDATE_PENDING,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_READY, 0, 0, 1, 1, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationCandidateMarkCommitted(candidate, 1001) !=
+            PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cleanup commit transition failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(candidate, transaction, 1001,
+            PBROWSER_NAVIGATION_CLEANUP_COMMITTED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED,
+            PBROWSER_NAVIGATION_GATE_READY, 0, 1, 1, 1, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        released_snapshot.size = sizeof(released_snapshot);
+        if (PBrowser_NavigationCleanupGetInfo(candidate, transaction, 1001,
+                &released_snapshot) != PBROWSER_OK) {
+            cstr_copy(error, sizeof(error),
+                    "cleanup snapshot could not be copied before release");
+            ok = 0;
+        } else {
+            snapshot_saved = 1;
+        }
+    }
+
+    if (ok && PBrowser_NavigationResourceRegister(failed_transaction,
+            REQUIRED_URL, PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+            &required_index) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cleanup failure setup failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationResourceFail(failed_transaction,
+            required_index, PBROWSER_NAVIGATION_FAILURE_HTTP) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cleanup required failure failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(failed_candidate, failed_transaction,
+            1002, PBROWSER_NAVIGATION_CLEANUP_CANDIDATE_PENDING,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_REQUIRED_FAILED, 0, 0, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationCandidateMarkFailed(failed_candidate) !=
+            PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cleanup failed candidate transition failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(failed_candidate, failed_transaction,
+            1002, PBROWSER_NAVIGATION_CLEANUP_FAILED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED,
+            PBROWSER_NAVIGATION_GATE_REQUIRED_FAILED, 0, 1, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+
+    if (ok && PBrowser_NavigationResourceRegister(draining_transaction,
+            REQUIRED_URL, PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+            &required_index) != PBROWSER_OK ||
+            (ok && PBrowser_NavigationCandidateMarkFailed(
+            draining_candidate) != PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error), "cleanup draining setup failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(draining_candidate,
+            draining_transaction, 1003,
+            PBROWSER_NAVIGATION_CLEANUP_RESOURCE_PENDING,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED,
+            PBROWSER_NAVIGATION_GATE_PENDING, 1, 0, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationResourceCancelAll(draining_transaction) !=
+            PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cleanup draining cancel failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(draining_candidate,
+            draining_transaction, 1003,
+            PBROWSER_NAVIGATION_CLEANUP_FAILED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED,
+            PBROWSER_NAVIGATION_GATE_CANCELLED, 0, 1, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+
+    if (ok && PBrowser_NavigationResourceRegister(cancelled_transaction,
+            REQUIRED_URL, PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+            &required_index) != PBROWSER_OK ||
+            (ok && PBrowser_NavigationResourceCancel(cancelled_transaction,
+            required_index) != PBROWSER_OK) ||
+            (ok && PBrowser_NavigationCandidateRequestCancel(
+            cancelled_candidate) != PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error), "cleanup cancellation setup failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(cancelled_candidate,
+            cancelled_transaction, 1004,
+            PBROWSER_NAVIGATION_CLEANUP_CANDIDATE_PENDING,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_CANCELLED, 0, 0, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationCandidateRetire(cancelled_candidate) !=
+            PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cleanup cancellation retire failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(cancelled_candidate,
+            cancelled_transaction, 1004,
+            PBROWSER_NAVIGATION_CLEANUP_CANCELLED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_CANCELLED,
+            PBROWSER_NAVIGATION_GATE_CANCELLED, 0, 1, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(cancelled_candidate,
+            cancelled_transaction, 1005,
+            PBROWSER_NAVIGATION_CLEANUP_STALE,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_STALE,
+            PBROWSER_NAVIGATION_GATE_CANCELLED, 0, 1, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+
+    if (ok && PBrowser_NavigationResourceRegister(
+            inconsistent_transaction, REQUIRED_URL,
+            PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+            &required_index) != PBROWSER_OK ||
+            (ok && PBrowser_NavigationCandidateMarkCommitted(
+            inconsistent_candidate, 1005) != PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error), "cleanup inconsistency setup failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(inconsistent_candidate,
+            inconsistent_transaction, 1005,
+            PBROWSER_NAVIGATION_CLEANUP_RESOURCE_PENDING,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED,
+            PBROWSER_NAVIGATION_GATE_PENDING, 1, 0, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationResourceCancelAll(
+            inconsistent_transaction) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "cleanup inconsistency cancel failed");
+        ok = 0;
+    }
+    if (ok && test1127_expect_cleanup(inconsistent_candidate,
+            inconsistent_transaction, 1005,
+            PBROWSER_NAVIGATION_CLEANUP_INCONSISTENT,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED,
+            PBROWSER_NAVIGATION_GATE_CANCELLED, 0, 0, 0, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+
+    if (ok) {
+        info.size = sizeof(info) - 1;
+        rc = PBrowser_NavigationCleanupGetInfo(candidate, transaction, 1001,
+                &info);
+        info.size = sizeof(info);
+        if (rc != PBROWSER_ERROR_ARGUMENT ||
+                PBrowser_NavigationCleanupGetInfo(NULL, transaction, 1001,
+                &info) != PBROWSER_ERROR_ARGUMENT ||
+                PBrowser_NavigationCleanupGetInfo(candidate, NULL, 1001,
+                &info) != PBROWSER_ERROR_ARGUMENT ||
+                PBrowser_NavigationCleanupGetInfo(candidate, transaction,
+                1001, NULL) != PBROWSER_ERROR_ARGUMENT) {
+            cstr_copy(error, sizeof(error),
+                    "invalid cleanup snapshot arguments were accepted");
+            ok = 0;
+        }
+    }
+
+    /* Exercise the host release boundary: finish copies the Browser snapshot
+     * to the last-navigation diagnostics before request_free destroys both
+     * handles. */
+    if (ok) {
+        success_request = (pcore_navigation_request *) malloc(
+                sizeof(*success_request));
+        if (success_request == NULL) {
+            cstr_copy(error, sizeof(error),
+                    "cleanup success request allocation failed");
+            ok = 0;
+        } else {
+            memset(success_request, 0, sizeof(*success_request));
+            success_request->candidate = PBrowser_NavigationCandidateCreate(
+                    (unsigned long) g_nav_generation);
+            success_request->resource_transaction =
+                    PBrowser_NavigationResourceCreate();
+            success_request->stats.completed = 1;
+            success_request->stats.started_tick = GetTickCount();
+            if (success_request->candidate == NULL ||
+                    success_request->resource_transaction == NULL ||
+                    PBrowser_NavigationResourceRegister(
+                    success_request->resource_transaction, OPTIONAL_URL,
+                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL,
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE,
+                    &optional_index) != PBROWSER_OK ||
+                    PBrowser_NavigationResourceFail(
+                    success_request->resource_transaction, optional_index,
+                    PBROWSER_NAVIGATION_FAILURE_HTTP) != PBROWSER_OK ||
+                    PBrowser_NavigationResourceObserveFallbacks(
+                    success_request->resource_transaction) != PBROWSER_OK) {
+                cstr_copy(error, sizeof(error),
+                        "cleanup success request setup failed");
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        pcore_navigation_finish(NULL, success_request);
+        success_request = NULL;
+        if (!g_nav_last_stats_valid ||
+                g_nav_last_stats.cleanup_decision !=
+                PBROWSER_NAVIGATION_CLEANUP_COMMITTED ||
+                g_nav_last_stats.cleanup_candidate_result !=
+                PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED ||
+                g_nav_last_stats.cleanup_resource_gate !=
+                PBROWSER_NAVIGATION_GATE_READY ||
+                g_nav_last_stats.cleanup_resource_pending != 0 ||
+                g_nav_last_stats.cleanup_can_release != 1 ||
+                g_nav_last_stats.resource_optional_failed != 1 ||
+                g_nav_last_stats.resource_fallback_images != 1 ||
+                g_nav_last_stats.resource_fallback_observed != 1) {
+            cstr_copy(error, sizeof(error),
+                    "host success cleanup observation was inconsistent");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        failed_request = (pcore_navigation_request *) malloc(
+                sizeof(*failed_request));
+        if (failed_request == NULL) {
+            cstr_copy(error, sizeof(error),
+                    "cleanup failed request allocation failed");
+            ok = 0;
+        } else {
+            memset(failed_request, 0, sizeof(*failed_request));
+            failed_request->candidate = PBrowser_NavigationCandidateCreate(
+                    (unsigned long) g_nav_generation);
+            failed_request->resource_transaction =
+                    PBrowser_NavigationResourceCreate();
+            failed_request->stats.started_tick = GetTickCount();
+            if (failed_request->candidate == NULL ||
+                    failed_request->resource_transaction == NULL ||
+                    PBrowser_NavigationResourceRegister(
+                    failed_request->resource_transaction, REQUIRED_URL,
+                    PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+                    &required_index) != PBROWSER_OK) {
+                cstr_copy(error, sizeof(error),
+                        "cleanup failed request setup failed");
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        pcore_navigation_finish(NULL, failed_request);
+        failed_request = NULL;
+        if (!g_nav_last_stats_valid ||
+                g_nav_last_stats.cleanup_decision !=
+                PBROWSER_NAVIGATION_CLEANUP_FAILED ||
+                g_nav_last_stats.cleanup_candidate_result !=
+                PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED ||
+                g_nav_last_stats.cleanup_resource_gate !=
+                PBROWSER_NAVIGATION_GATE_CANCELLED ||
+                g_nav_last_stats.cleanup_resource_pending != 0 ||
+                g_nav_last_stats.cleanup_can_release != 1 ||
+                g_nav_last_stats.resources_cancelled != 1) {
+            cstr_copy(error, sizeof(error),
+                    "host failed cleanup observation was inconsistent");
+            ok = 0;
+        }
+    }
+
+    if (success_request != NULL) {
+        pcore_navigation_request_free(success_request);
+    }
+    if (failed_request != NULL) {
+        pcore_navigation_request_free(failed_request);
+    }
+    PBrowser_NavigationCandidateDestroy(candidate);
+    PBrowser_NavigationResourceDestroy(transaction);
+    PBrowser_NavigationCandidateDestroy(failed_candidate);
+    PBrowser_NavigationResourceDestroy(failed_transaction);
+    PBrowser_NavigationCandidateDestroy(draining_candidate);
+    PBrowser_NavigationResourceDestroy(draining_transaction);
+    PBrowser_NavigationCandidateDestroy(cancelled_candidate);
+    PBrowser_NavigationResourceDestroy(cancelled_transaction);
+    PBrowser_NavigationCandidateDestroy(inconsistent_candidate);
+    PBrowser_NavigationResourceDestroy(inconsistent_transaction);
+    if (ok && (!snapshot_saved ||
+            released_snapshot.decision !=
+            PBROWSER_NAVIGATION_CLEANUP_COMMITTED ||
+            released_snapshot.candidate.result !=
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED ||
+            released_snapshot.resource.resource_commit_gate !=
+            PBROWSER_NAVIGATION_GATE_READY ||
+            released_snapshot.resource.resource_optional_failed != 1 ||
+            released_snapshot.resource.resource_fallback_images != 1 ||
+            released_snapshot.resource.resource_failure_summary[0] == '\0')) {
+        cstr_copy(error, sizeof(error),
+                "copied cleanup snapshot changed after handle release");
+        ok = 0;
+    }
+    if (!ok) {
+        show_error(L"TEST 1127 FAIL", error[0] != '\0' ? error :
+                "navigation cleanup snapshot failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1127 OK",
+            "Browser cleanup snapshots kept candidate/resource terminal state"
+            " bounded through success, required failure, optional fallback,"
+            " cancellation and stale completion; host copied the snapshot"
+            " before releasing each request.");
     return TRUE;
 }
 
@@ -89761,6 +90366,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1124: ok = test1124_navigation_candidate_lifecycle(); break;
         case 1125: ok = test1125_navigation_candidate_results(); break;
         case 1126: ok = test1126_navigation_commit_consistency(); break;
+        case 1127: ok = test1127_navigation_cleanup_snapshot(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

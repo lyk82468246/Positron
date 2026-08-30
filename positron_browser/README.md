@@ -174,6 +174,47 @@ candidate after the host's final layout/swap boundary. The host may log the
 snapshot, but must not reproduce these classifications from worker flags or
 resource counters.
 
+### Navigation cleanup snapshot
+
+`PBrowser_NavigationCleanupGetInfo` is the last observation before a host
+releases the two independent handles for one request. It copies the candidate
+result and the complete bounded resource stats—including the resource gate,
+pending count, hash-only failure summary and fallback-family counters—into a
+caller-owned `PBrowserNavigationCleanupInfo`. The output does not retain either
+handle and remains valid after both handles are destroyed.
+
+The snapshot does not settle work itself. The host first joins the request's
+worker and settles any remaining resource entries (normally with
+`PBrowser_NavigationResourceCancelAll` for a failed or superseded request),
+then makes an otherwise-active candidate terminal and reads the snapshot. A
+`can_release` value of `1` means there is no pending candidate/resource work;
+`COMMITTED` additionally requires a `READY` resource gate. Pending work reports
+`PBROWSER_NAVIGATION_CLEANUP_CANDIDATE_PENDING` or
+`PBROWSER_NAVIGATION_CLEANUP_RESOURCE_PENDING` with `can_release == 0`, while a
+committed candidate paired with a non-ready settled gate reports
+`PBROWSER_NAVIGATION_CLEANUP_INCONSISTENT` and must not be treated as a
+successful commit. Terminal failed,
+cancelled and stale candidates are releasable once their resource transaction
+is settled.
+
+```c
+PBrowserNavigationCleanupInfo cleanup;
+
+memset(&cleanup, 0, sizeof(cleanup));
+cleanup.size = sizeof(cleanup);
+/* Join the worker and settle/categorize the request before this call. */
+if (PBrowser_NavigationCleanupGetInfo(candidate, tx,
+        current_generation, &cleanup) == PBROWSER_OK &&
+        cleanup.can_release) {
+    /* Copy any needed fields, then destroy candidate and tx. */
+}
+```
+
+The API is synchronous and only provides product-owned state. It does not
+expose response bytes, threads, windows, messages or application log text,
+and it does not replace the final `PBrowser_NavigationCandidateMarkCommitted`
+check used at the page-swap boundary.
+
 ### Navigation candidate lifecycle
 
 `PBrowser_NavigationCandidate*` owns the admission state for one pending
