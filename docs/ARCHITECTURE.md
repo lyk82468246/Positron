@@ -21,7 +21,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 提供可以单独消费、也可
 WM6 应用 / test_host.exe
         │
         ├── 平台窗口、消息循环、WM 控件、SIP/IME、文件选择器
-        ├── 导航候选、后台网络调度、资源 I/O、取消与页面提交策略
+        ├── 应用导航策略、后台网络调度、资源 I/O、WM 接线与页面提交策略
         │
         ├── positron_browser.dll ── history、script session、DOM/Event、资源事务
         ├── positron_core.dll    ── HTML/CSS/DOM、style、layout、paint、表单
@@ -119,8 +119,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - timer、animation frame、microtask、idle、message 和页面生命周期队列，以及显式的 document visibility/pagehide/unload teardown 与队列清理入口；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
 - 导航资源事务：按 URL 去重并合并 role/policy，拥有资源字节、终态、失败分类、transport 重试预算、required/optional commit gate、hash-only failure summary 和 fallback observation。
+- 导航候选生命周期：以 opaque handle 拥有不可变 generation、取消请求、退休状态和 committed/failed 终态，并提供当前 generation 的 `CanApply` 提交资格。
 
 它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。
+
+候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，只有通过才能运行页面提交，随后标记 committed 或 failed。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
 
 浏览器 JavaScript 与 `positron_script.dll` 共用 Duktape 实现，但角色不同：Script DLL 是通用嵌入服务；Browser DLL 负责把有限 Web 对象和事件语义组合到一个页面 session。浏览器脚本仍需要宿主提供真实 DOM、平台默认动作、导航和窗口生命周期。
 
@@ -140,7 +143,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
 - 顶层窗口、消息循环、滚动条和 DPI/旋转通知；
 - native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位、销毁并跟踪其平台鼠标/键盘选区；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、写入和所有权也只属于宿主；
-- 后台线程、导航取消、loading 状态与页面 swap；较新的导航可以取代仍在准备的候选，宿主用 generation 门控 worker 完成、进度和提交消息，并让退休候选持有自己的线程、response、资源队列和脚本对象直到 worker 收尾；退休队列有固定上限，达到上限时新导航 fail closed 而不改变当前页；候选成功时在旧 document/session 仍有效的窗口内调用 Browser teardown，再停止 native 回调、释放旧对象并提交新页；
+- 后台线程、loading 状态与页面 swap；较新的导航可以取代仍在准备的候选，宿主为每个请求保存 Browser 的 candidate handle，以宿主 generation 计数器构造并门控 worker 完成、进度和提交消息，再让退休候选持有自己的线程、response、资源队列和脚本对象直到 worker 收尾；Browser handle 拥有该候选的 generation、取消请求、退休状态和提交资格，宿主只拥有退休队列与平台回收；退休队列有固定上限，达到上限时新导航 fail closed 而不改变当前页；候选成功时在旧 document/session 仍有效的窗口内调用 Browser teardown，再停止 native 回调、释放旧对象并提交新页；
 - DNS/TCP/TLS/HTTP 组合策略、worker、取消时机和资源调度；宿主通过 Browser 资源事务注册 URL 并提交 attempt/data/failure/cancel 结果，决定何时重试、何时运行 style/layout、何时提交页面。资源终态、成功字节、预算、required/optional gate、失败摘要和 fallback 计数由 Browser 拥有，宿主读取统计用于 loading、日志和应用策略，不复制第二份资源状态或数据；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
@@ -160,7 +163,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 推荐的主文档事务如下：
 
 1. UI 线程记录导航意图和当前页面，但不立即销毁旧文档。
-2. worker 获取主文档及可并行准备的网络资源；网络层不触碰 DOM/NetSurf 状态。较新的导航会使旧候选进入 retired 状态，旧 worker 的完成和进度消息不得越过 generation 门控；仍在收尾的退休候选数量受宿主固定上限约束。
+2. worker 获取主文档及可并行准备的网络资源；网络层不触碰 DOM/NetSurf 状态。宿主为候选创建 Browser handle，并在较新的导航到来时请求取消、退休旧 handle；旧 worker 的完成和进度消息必须同时通过宿主消息身份与 `PBrowser_NavigationCandidateCanApply` 的 generation 门控，仍在收尾的退休候选数量受宿主固定上限约束。
 3. UI 线程解析 HTML，创建候选文档。
 4. 通过 Core 的 resolver/fetch 回调发现 CSS、`@import`、图片和 script；宿主为每项调用 Browser 资源事务的 register/begin-attempt，并把网络结果、成功字节、失败分类或取消提交回 Browser。取消项不会被后续样式阶段当作待获取资源。
 5. style/image pass 若发现新的 pending 资源则回到 worker；样式表与 `@import` 按 required policy，图片与 script 按 optional policy。重复 URL 由 Browser 事务去重并合并 stylesheet/script/image role bitmask；宿主只保留 URL 到 Browser resource index 的短引用。

@@ -8,9 +8,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。next672–676 的过时导航、资源终态/重试、提交门和摘要观测，以及本批 next677 的资源事务所有权迁移，均已提交；这些能力的逐批细节以 Git 历史为准。
-- 当前候选生命周期仍由宿主管理：宿主拥有 worker、generation、response、取消和页面 swap；Browser 只接收同步回调，不访问网络或 Core document。
-- 本批 next677 已将资源事务从 `test_host` 私有结构迁入 `positron_browser.dll`：Browser 现在拥有 URL 去重、role/policy、资源字节、终态、失败分类、重试预算、commit gate、hash-only 摘要和 fallback 计数；宿主只保留 URL→resource-index 短引用并负责网络调度。
+- 分支：`main`。next672–677 的过时导航、资源终态/重试、提交门、摘要观测和资源事务所有权迁移，以及本批 next678 的候选生命周期所有权，均已提交；这些能力的逐批细节以 Git 历史为准。
+- next678 已把候选 generation、取消请求、退休状态、提交资格和 committed/failed 终态迁入 `positron_browser.dll` 的 opaque handle。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列和页面 swap，不把线程、窗口、网络或 Core document 带入 Browser ABI。
+- Browser 现在同时拥有 URL 去重、role/policy、资源字节、终态、失败分类、重试预算、commit gate、hash-only 摘要、fallback 计数和候选 admission 状态；宿主只保留 URL→resource-index 短引用、candidate handle 和平台调度状态。
 - 上一产品基线为 `88d68ebd`（next669，首个离线 compatibility corpus 完整流程）；更早基线为 `c0c4ba0e`（next668，单元素 `contenteditable` 的受限 CF_UNICODETEXT 粘贴/剪切与 WM_COPY 边界）。
 - Core 现在报告稳定的有效表单方法常量，并为显式 submitter 或单行输入隐式提交解析最近祖先 dialog id 与 submitter value。Browser 提供按 id 直接执行 `dialog.close(value)` 的会话边界；参考宿主只在 validation 和可取消 `submit` 均允许后调用它，不生成网络导航，也不错误派发 `cancel`。Core 还提供 `PCore_PaintDocumentWithModal`：普通文档绘制后覆盖有界实体色 backdrop，并按 Browser 的活动 id 重绘已打开的 dialog；next658 的 backdrop 指针策略和此前的 modal 焦点/Escape 边界保持不变。
 - `tmp/` 保存本地设备日志和截图，不跟踪。
@@ -21,7 +21,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-next677 的资源事务所有权迁移已经完成并保持公共 ABI 可消费：Browser 负责资源状态、数据、gate 和摘要，宿主只负责 URL 引用、网络 worker、取消/重试时机和页面提交。当前下一条纵向能力是 next678：把候选 generation/retired 生命周期中仍可复用的状态边界继续从宿主私有结构抽到 Browser。
+next678 的候选生命周期所有权迁移已经完成并保持公共 ABI 可消费：Browser 通过 `PBrowser_NavigationCandidate*` 负责 candidate generation、取消/退休、`CanApply` admission 和 committed/failed 终态；宿主只负责 opaque handle 的线程、消息、退休队列、网络/资源调度和页面提交。当前下一条纵向能力是 next679：在不扩大 Browser 对窗口、网络或 Core document 的依赖前，评估候选完成结果与宿主日志之间是否仍有重复的可复用语义。
 
 ## 已验证产品事实
 
@@ -36,8 +36,8 @@ next677 的资源事务所有权迁移已经完成并保持公共 ABI 可消费�
 
 - HTML/CSS/DOM、整树 style、NetSurf layout/redraw、GDI 绘制与资源缓存已形成正式 Core 路径。
 - 常用 block/inline/flex/table、图片/SVG、背景、列表、有限定位、表单控件、验证、提交与 reset 已有设备回归；这不代表完整 CSS/HTML。
-- Browser 层提供有界 history、same-document state、script session、DOM/Event/input/navigation callbacks，以及 timer/microtask/lifecycle、native 控件事务和导航资源事务协调。
-- 页面导航保留旧页到候选文档成功提交；主文档和资源网络阶段与 UI 文档操作分离。候选 generation/retired worker 仍由宿主管理，旧候选的回收不能越过 generation 门。
+- Browser 层提供有界 history、same-document state、script session、DOM/Event/input/navigation callbacks，以及 timer/microtask/lifecycle、native 控件事务、导航资源事务和候选生命周期协调。
+- 页面导航保留旧页到候选文档成功提交；主文档和资源网络阶段与 UI 文档操作分离。Browser candidate handle 拥有 generation、取消/退休和提交资格，宿主用它门控 worker 完成/进度消息并在 worker 收尾后回收旧候选；旧候选不能越过 generation 门。
 - Browser 资源事务按 URL 去重并拥有 `pending`、`ready`、`failed`、`cancelled` 四种终态、成功字节、失败分类、required/optional gate、transport 重试预算、最多 4 项 hash-only 摘要和 fallback family 计数。宿主负责网络 I/O、worker、取消/重试时机和页面提交，只保留 URL→resource-index 短引用；HTTP、resolve、budget、memory 和取消不重试，取消也不会重新暴露为可用缓存。
 - 深层 DOM 资源准备使用单个事务级 heap scratch，避免大批固定栈缓冲耗尽 WM6 线程栈。
 - `<details>/<summary>` 支持 click 与 Enter/Space 激活、取消和 DOM 状态同步。
@@ -51,17 +51,22 @@ next677 的资源事务所有权迁移已经完成并保持公共 ABI 可消费�
 - TEST1121 固定一次可恢复 transport 失败、一次重试预算耗尽，以及 HTTP、resolve、budget、cancelled 的不可重试结果；自动断言 Browser 事务的 attempts/retries、最终分类、缓存可见性和有界计数。
 - TEST1122 固定必需 stylesheet 失败与可选 image 失败：前者必须保留旧 document/history 且不触发提交，后者允许候选提交并通过 Browser gate 记录 optional failure 与 Core fallback 结果。
 - TEST1123 固定重复 script/image、三层 `@import` 和混合 optional 失败：自动断言 Browser 按 URL 去重、role 升级、最多 4 项 hash-only 摘要、旧 URL/正文不泄露，以及 layout 后 Core image fallback 与 skipped script 的粗粒度观测。宿主只提供网络/worker 夹具和日志适配。
+- TEST1124 固定三个 Browser candidate handle：自动断言 active generation admission、取消后不可提交、退休幂等、stale generation 隔离以及 committed/failed 终态不可复用。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1123。
+- `TEST_MAX_NUMBER`：1124。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next677 资源事务所有权回归；最近一次稳定全量 checkpoint 仍为 next670：
+当前最新产品门为 next678 候选生命周期所有权回归；最近一次稳定全量 checkpoint 仍为 next670：
+
+- next678 最终定向目录：`tmp/device-runs/20260830-224449-next678-final/`；
+- 动态选择：`1118-1124,999`，8 项；8/8 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
+- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging。TEST1119 验证宿主以 Browser candidate handle 门控新旧 worker，TEST1124 验证 Browser candidate generation、取消、退休和终态 API；TEST1118、1120–1123 继续验证原有资源/提交契约。
 
 - next677 定向目录：`tmp/device-runs/20260830-215254-next677-browser-resource-ownership-final/`；
 - 动态选择：`43,1120-1123,999`，6 项；6/6 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
@@ -107,13 +112,13 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
 - TEST1117、TEST1118、TEST1119、TEST1120 与 TEST1121 都是无网络自动夹具，没有新增必须立即人工复核的风险；其 dialog、候选页面视觉、链接触摸、滚动/旋转和不同 DPI 的整体呈现仍按既有规则累计人工验收。TEST1121 的重试计数是宿主调度契约，不能替代真实网络恢复体验。
-- TEST1122 与 TEST1123 同样是无网络自动夹具，没有新增必须立即人工复核的风险；required stylesheet 失败时旧页保留、optional image 失败时 Core fallback 的视觉细节仍可与既有失败网络/布局风险一起累计观察。TEST1123 的 hash-only 摘要和 family 计数只证明宿主观测边界，不证明任意站点的 fallback 视觉或逐资源 UI。
+- TEST1122、TEST1123 与 TEST1124 同样是无网络自动夹具，没有新增必须立即人工复核的风险；required stylesheet 失败时旧页保留、optional image 失败时 Core fallback 的视觉细节仍可与既有失败网络/布局风险一起累计观察。TEST1123 的 hash-only 摘要和 family 计数只证明宿主观测边界，不证明任意站点的 fallback 视觉或逐资源 UI；TEST1124 的 candidate handle 状态断言也不替代真实 worker 阻塞、触摸或窗口视觉验收。
 
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
 
-- 已建立七条固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119/1120/1121/1122/1123 已覆盖候选取消、Browser 资源事务终态、有界 transport 重试、required/optional 提交门及重复/深层资源的摘要观测，但取消仍是协作式的，不能保证正在阻塞的 PHttp 调用立即返回；宿主尚未提供面向用户的逐资源 UI，也不能保证任意真实站点的 fallback 视觉或精确逐元素 fallback 归因。
+- 已建立八条固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119/1120/1121/1122/1123/1124 已覆盖候选取消、Browser candidate admission/终态、Browser 资源事务终态、有界 transport 重试、required/optional 提交门及重复/深层资源的摘要观测，但取消仍是协作式的，不能保证正在阻塞的 PHttp 调用立即返回；宿主尚未提供面向用户的逐资源 UI，也不能保证任意真实站点的 fallback 视觉或精确逐元素 fallback 归因。
 - `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围、有界 backdrop 指针策略和 Core 实体色 modal paint；当前表单桥要求最近祖先 dialog 有非空 id。CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
@@ -126,7 +131,7 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 
 ## 唯一下一步
 
-next678 评估并迁移候选 generation/retired 生命周期中仍可复用的状态边界到 Browser。Browser 资源事务已拥有资源状态、字节、gate、摘要和 fallback 观测；下一步只处理候选身份、取消/退休和提交资格，不把 worker、线程、窗口、网络或 Core document 指针带入公共 ABI。旧候选的失败、过时完成和回收不得污染当前候选，也不得触发 page teardown 或 history commit。
+next678 已完成候选 generation/retired 生命周期边界迁移：Browser candidate handle 拥有候选身份、取消/退休、`CanApply` 和 committed/failed 终态；宿主仍拥有 worker、线程、窗口、网络、退休队列和页面提交。下一步 next679 只评估候选完成结果与宿主日志之间是否仍有可复用的重复语义，不把 worker、窗口、网络或 Core document 指针带入公共 ABI。旧候选的失败、过时完成和回收不得污染当前候选，也不得触发 page teardown 或 history commit。
 
 优先场景应同时满足：
 
@@ -138,9 +143,9 @@ next678 评估并迁移候选 generation/retired 生命周期中仍可复用的�
 
 ## 下一步完成标准
 
-- next678 的候选生命周期边界有界、可重复且不改变既有资源事务契约；自动断言覆盖新旧候选交错、过时完成、取消、退休回收和提交资格隔离，并保持失败候选不触发 teardown/history；next677 的 Browser 资源事务与 TEST1120–1123 已验证资源状态、摘要、gate 和 fallback 边界；
-- 可复用的 URL/history/DOM/Event/资源生命周期语义位于 Core 或 Browser，`test_host` 只负责 WM 接线、调度和夹具；候选 generation/retired 状态在 next678 中继续评估其归属；
+- next678 的候选生命周期边界有界、可重复且不改变既有资源事务契约；自动断言覆盖新旧候选交错、过时完成、取消、退休回收和提交资格隔离，并保持失败候选不触发 teardown/history；next677 的 Browser 资源事务与 TEST1120–1124 已验证资源状态、摘要、gate、fallback 和 candidate handle 边界；
+- 可复用的 URL/history/DOM/Event/资源/候选生命周期语义位于 Core 或 Browser，`test_host` 只负责 WM 接线、调度和夹具；next678 已移除宿主候选 generation/cancel/retired 字段，只保留 opaque handle、线程和退休链表。
 - VS2008 ARMV4I 正式构建、同批 staging、C89 回归和仓库审计通过，无旧 EXE/DLL 混包；
-- next677 定向门及直接相邻回归已唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，并保留可追溯的 `tmp/device-runs/` 证据；
+- next678 定向门及直接相邻回归已唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，并保留可追溯的 `tmp/device-runs/` 证据；
 - 视觉、触摸、SIP/IME、picker 或旋转等无法自动判断的风险进入既有人工累计清单，不以人工缺席伪造自动通过；
-- handoff 覆盖为 next677 快照，ROADMAP 只保留 next678 这一条未完成的纵向能力。
+- handoff 覆盖为 next678 快照，ROADMAP 只保留 next679 这一条未完成的纵向能力。

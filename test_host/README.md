@@ -72,7 +72,7 @@ tests=13,20,27,999
 
 ### 页面导航
 
-宿主持有后台网络 worker、loading/取消、候选文档和窗口 swap。旧页保持可绘制，直到新页面完成 parse/resource/style/layout 并可提交。较新的导航可以取代仍在准备的候选：每个候选独占自己的 worker、response 和资源队列，generation 只允许最新候选的进度、完成和提交消息生效；退休候选在 worker 收尾后才释放，退休队列达到固定上限时新导航 fail closed 并保持当前页。URL reference 解析调用 `positron_http.dll`；history 提交调用 `positron_browser.dll`。
+宿主持有后台网络 worker、loading/取消、候选文档和窗口 swap。旧页保持可绘制，直到新页面完成 parse/resource/style/layout 并可提交。较新的导航可以取代仍在准备的候选：宿主为每个候选创建 `PBrowser_NavigationCandidateCreate` handle，每个候选独占自己的 worker、response 和资源队列；Browser handle 拥有 generation、取消请求、退休状态和 committed/failed 终态，宿主用 `PBrowser_NavigationCandidateCanApply` 只允许最新候选的进度、完成和提交消息生效。退休候选在 worker 收尾后才释放，退休队列达到固定上限时新导航 fail closed 并保持当前页。URL reference 解析调用 `positron_http.dll`；history 提交调用 `positron_browser.dll`。
 
 每个候选拥有一个 `PBrowser_NavigationResourceCreate` 事务；Browser 在该事务中按 UTF-8 URL 去重并拥有 `pending`→`ready`/`failed`/`cancelled` 终态、成功字节、required/optional gate、失败摘要和 fallback 计数。宿主只保留 URL 到 Browser resource index 的短引用，负责 DNS/TCP/TLS/HTTP、worker、取消时机和页面提交，并通过 `BeginAttempt`、`SetData`、`Fail` 或 `Cancel` 提交结果。transport 失败由宿主按 Browser 的固定预算决定是否重试（每项最多 2 次，总计最多 3 次尝试）；HTTP、resolve、budget、memory 和取消不重试。样式表与 `@import` 标为 required，脚本与图片标为 optional；style pass 发现新的 pending 时回到 worker，layout/swap 前从 Browser 读取 gate。相同 URL（包括重复脚本/图片和深层 `@import`）共享一个事务条目并合并 stylesheet/script/image role bitmask。required 失败、未收敛或取消保留旧页，optional 失败允许候选提交并交给 Core fallback。宿主日志读取 Browser 提供的最多 4 项不含原始 URL 的 `role/failure#hash` 摘要和 fallback family 计数；宿主不复制资源状态、字节或摘要，也没有通用逐资源提交 UI。
 

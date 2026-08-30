@@ -24,7 +24,7 @@ Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础�
 | `positron_image.dll` | 位图/SVG 解码、绘制与编码 | `PImage_CreateBitmapFromMemory`、`PImage_DrawBitmap` |
 | `positron_script.dll` | 有预算的独立 JavaScript context、JSON bridge 与模块加载 | `PScript_CreateEx`、`PScript_Evaluate`、`PScript_Destroy` |
 | `positron_core.dll` | HTML/CSS/DOM、样式、layout、绘制、表单和交互模型 | `PCore_Init`、`PCore_ParseHTML`、style/layout/paint API |
-| `positron_browser.dll` | history/session、脚本 bootstrap、DOM/Event 与平台回调协调 | `PBrowser_HistoryCreate`、`PBrowser_ScriptSessionCreate` |
+| `positron_browser.dll` | history/session、脚本 bootstrap、DOM/Event、候选导航生命周期与平台回调协调 | `PBrowser_HistoryCreate`、`PBrowser_ScriptSessionCreate`、`PBrowser_NavigationCandidateCreate` |
 
 精确签名、错误码和所有权以各项目的公开头文件为准。调用示例和边界说明见对应子目录的 README；整体所有权与数据流见[架构文档](docs/ARCHITECTURE.md)。
 

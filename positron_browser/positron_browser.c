@@ -1,5 +1,5 @@
 /*
- * positron_browser.c - host-independent browser history/session state.
+ * positron_browser.c - host-independent browser session and navigation state.
  *
  * C89 only. No window, network, DOM or JavaScript dependency belongs here;
  * those concerns are composed by a browser host around this DLL.
@@ -1554,6 +1554,199 @@ PBROWSER_API int PBrowser_NavigationResourceGetStats(HANDLE hTransaction,
             sizeof(out_stats->resource_failure_summary));
     out_stats->resource_bytes = transaction->resource_bytes;
     out_stats->budget_rejected = failures_budget;
+    return PBROWSER_OK;
+}
+
+typedef struct p_browser_navigation_candidate {
+    unsigned long generation;
+    volatile LONG state;
+    volatile LONG cancel_requested;
+    volatile LONG retired;
+} p_browser_navigation_candidate;
+
+static p_browser_navigation_candidate *p_navigation_candidate(
+        HANDLE hCandidate)
+{
+    return (p_browser_navigation_candidate *) hCandidate;
+}
+
+static int p_navigation_candidate_valid(
+        const p_browser_navigation_candidate *candidate)
+{
+    return candidate != NULL;
+}
+
+static int p_navigation_candidate_current(
+        const p_browser_navigation_candidate *candidate,
+        unsigned long current_generation)
+{
+    return p_navigation_candidate_valid(candidate) &&
+            candidate->generation == current_generation;
+}
+
+static int p_navigation_candidate_can_apply(
+        const p_browser_navigation_candidate *candidate,
+        unsigned long current_generation)
+{
+    LONG state;
+    LONG cancel_requested;
+    LONG retired;
+
+    if (!p_navigation_candidate_valid(candidate)) {
+        return 0;
+    }
+    state = InterlockedCompareExchange((LONG *) &candidate->state, 0, 0);
+    cancel_requested = InterlockedCompareExchange(
+            (LONG *) &candidate->cancel_requested, 0, 0);
+    retired = InterlockedCompareExchange((LONG *) &candidate->retired, 0, 0);
+    return candidate->generation == current_generation &&
+            state == PBROWSER_NAVIGATION_CANDIDATE_ACTIVE &&
+            !cancel_requested && !retired;
+}
+
+PBROWSER_API HANDLE PBrowser_NavigationCandidateCreate(
+        unsigned long generation)
+{
+    p_browser_navigation_candidate *candidate;
+
+    candidate = (p_browser_navigation_candidate *) malloc(
+            sizeof(*candidate));
+    if (candidate == NULL) {
+        return NULL;
+    }
+    memset(candidate, 0, sizeof(*candidate));
+    candidate->generation = generation;
+    InterlockedExchange((LONG *) &candidate->state,
+            PBROWSER_NAVIGATION_CANDIDATE_ACTIVE);
+    return (HANDLE) candidate;
+}
+
+PBROWSER_API void PBrowser_NavigationCandidateDestroy(HANDLE hCandidate)
+{
+    free(p_navigation_candidate(hCandidate));
+}
+
+PBROWSER_API int PBrowser_NavigationCandidateRequestCancel(
+        HANDLE hCandidate)
+{
+    p_browser_navigation_candidate *candidate;
+    LONG state;
+
+    candidate = p_navigation_candidate(hCandidate);
+    if (!p_navigation_candidate_valid(candidate)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    state = InterlockedCompareExchange((LONG *) &candidate->state, 0, 0);
+    if (state == PBROWSER_NAVIGATION_CANDIDATE_COMMITTED ||
+            state == PBROWSER_NAVIGATION_CANDIDATE_FAILED) {
+        return PBROWSER_ERROR_STATE;
+    }
+    InterlockedExchange((LONG *) &candidate->cancel_requested, 1);
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationCandidateRetire(HANDLE hCandidate)
+{
+    p_browser_navigation_candidate *candidate;
+
+    candidate = p_navigation_candidate(hCandidate);
+    if (!p_navigation_candidate_valid(candidate)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    if (InterlockedCompareExchange((LONG *) &candidate->state, 0, 0) ==
+            PBROWSER_NAVIGATION_CANDIDATE_RETIRED) {
+        return PBROWSER_OK;
+    }
+    if (InterlockedCompareExchange((LONG *) &candidate->state, 0, 0) !=
+            PBROWSER_NAVIGATION_CANDIDATE_ACTIVE) {
+        return PBROWSER_ERROR_STATE;
+    }
+    InterlockedExchange((LONG *) &candidate->cancel_requested, 1);
+    InterlockedExchange((LONG *) &candidate->retired, 1);
+    InterlockedExchange((LONG *) &candidate->state,
+            PBROWSER_NAVIGATION_CANDIDATE_RETIRED);
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationCandidateCanApply(HANDLE hCandidate,
+        unsigned long current_generation)
+{
+    p_browser_navigation_candidate *candidate;
+
+    candidate = p_navigation_candidate(hCandidate);
+    if (!p_navigation_candidate_valid(candidate)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    return p_navigation_candidate_can_apply(candidate, current_generation);
+}
+
+PBROWSER_API int PBrowser_NavigationCandidateMarkCommitted(
+        HANDLE hCandidate, unsigned long current_generation)
+{
+    p_browser_navigation_candidate *candidate;
+
+    candidate = p_navigation_candidate(hCandidate);
+    if (!p_navigation_candidate_valid(candidate)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    if (!p_navigation_candidate_can_apply(candidate, current_generation) ||
+            InterlockedCompareExchange((LONG *) &candidate->state,
+            PBROWSER_NAVIGATION_CANDIDATE_COMMITTED,
+            PBROWSER_NAVIGATION_CANDIDATE_ACTIVE) !=
+            PBROWSER_NAVIGATION_CANDIDATE_ACTIVE) {
+        return PBROWSER_ERROR_STATE;
+    }
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationCandidateMarkFailed(HANDLE hCandidate)
+{
+    p_browser_navigation_candidate *candidate;
+
+    candidate = p_navigation_candidate(hCandidate);
+    if (!p_navigation_candidate_valid(candidate)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    if (InterlockedCompareExchange((LONG *) &candidate->state, 0, 0) ==
+            PBROWSER_NAVIGATION_CANDIDATE_FAILED) {
+        return PBROWSER_OK;
+    }
+    if (InterlockedCompareExchange((LONG *) &candidate->state, 0, 0) !=
+            PBROWSER_NAVIGATION_CANDIDATE_ACTIVE) {
+        return PBROWSER_ERROR_STATE;
+    }
+    InterlockedExchange((LONG *) &candidate->state,
+            PBROWSER_NAVIGATION_CANDIDATE_FAILED);
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationCandidateGetInfo(HANDLE hCandidate,
+        unsigned long current_generation,
+        PBrowserNavigationCandidateInfo *out_info)
+{
+    p_browser_navigation_candidate *candidate;
+    unsigned long size;
+
+    candidate = p_navigation_candidate(hCandidate);
+    if (out_info == NULL || out_info->size <
+            sizeof(PBrowserNavigationCandidateInfo) ||
+            !p_navigation_candidate_valid(candidate)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    size = out_info->size;
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->size = size;
+    out_info->generation = candidate->generation;
+    out_info->state = (int) InterlockedCompareExchange(
+            (LONG *) &candidate->state, 0, 0);
+    out_info->cancel_requested = (int) InterlockedCompareExchange(
+            (LONG *) &candidate->cancel_requested, 0, 0);
+    out_info->retired = (int) InterlockedCompareExchange(
+            (LONG *) &candidate->retired, 0, 0);
+    out_info->current = p_navigation_candidate_current(candidate,
+            current_generation);
+    out_info->can_apply = p_navigation_candidate_can_apply(candidate,
+            current_generation);
     return PBROWSER_OK;
 }
 

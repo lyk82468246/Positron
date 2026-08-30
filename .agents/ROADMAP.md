@@ -27,11 +27,11 @@
 
 ## 近期目标
 
-### 候选生命周期所有权
+### 候选完成结果与遥测边界
 
-下一条纵向能力是 next678：在保持宿主 worker、网络 I/O、窗口和页面提交策略不变的前提下，评估并迁移候选 generation/retired 生命周期中仍可复用的状态边界到 Browser。目标是让 Browser 能以明确的 opaque handle 表达候选身份、取消/退休和提交资格，宿主只负责线程、消息和平台副作用；不得把宿主调度细节或 Core document 指针带入公共 ABI。
+下一条纵向能力是 next679：在保持 Browser candidate handle、资源事务和宿主 worker/页面提交边界不变的前提下，审查候选完成结果与宿主日志之间是否仍有重复的可复用语义。若确有跨宿主稳定需求，只把有界、与窗口/网络/Core document 无关的结果摘要放入 Browser；不要把 loading 展示、WM 消息、线程句柄、response 或应用级日志格式塞入公共 ABI。
 
-next678 的语料应固定至少一个新旧候选交错、过时完成消息、取消和退休回收场景，自动断言当前候选不会被旧候选污染，且失败候选不触发 Browser page teardown 或 history commit。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容；不得把阻塞 socket 的强制中断写成契约。
+next679 的语料应固定一个成功、失败、取消和过时完成的结果序列，自动断言 Browser candidate 的 terminal info 与宿主日志互相一致，且失败/过时候选不触发 page teardown 或 history commit。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容；不得把阻塞 socket 的强制中断写成契约。
 
 实现必须保持现有资源事务边界：资源终态、成功字节、required/optional gate、hash-only 摘要和 fallback observation 继续由 Browser 拥有；transport 失败每项最多 2 次重试（总计最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试。按风险累计条件安排更宽回归或新的全量 checkpoint；不要为增加测试编号拆分能力。
 

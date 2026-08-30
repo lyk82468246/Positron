@@ -1,6 +1,6 @@
 # `positron_browser.dll`
 
-`positron_browser.dll` 是无窗口的浏览器会话组合层。它拥有 history、浏览器 script session、bootstrap、DOM/Event adapter 和 native 控件事务策略，但不创建窗口、不抓取网络、不持有 Core document，也不直接操作 WM 控件。
+`positron_browser.dll` 是无窗口的浏览器会话组合层。它拥有 history、浏览器 script session、bootstrap、DOM/Event adapter、native 控件事务策略，以及候选导航的身份和生命周期状态，但不创建窗口、不抓取网络、不持有 Core document，也不直接操作 WM 控件。
 
 ## 产物与依赖
 
@@ -141,6 +141,51 @@ PBrowser_NavigationResourceDestroy(tx);
 
 `SetData` copies the input into Browser-owned storage; the caller still owns `bytes`. Failed or cancelled attempts use `Fail`/`Cancel`, and `ShouldRetry` only permits transport retries within the fixed budget. `GetStats` supplies the gate counters and bounded summary for logs. `CopyData` returns a caller-owned copy of a ready resource. The APIs are synchronous and must be serialized by the caller; they do not normalize URLs, cache across transactions, create threads, or retain Core document pointers.
 
+### Navigation candidate lifecycle
+
+`PBrowser_NavigationCandidate*` owns the admission state for one pending
+document without owning the document itself. The handle stores an immutable
+generation and the states `ACTIVE`, `RETIRED`, `COMMITTED` or `FAILED`, plus a
+cooperatively polled cancellation flag. `PBrowser_NavigationCandidateCanApply`
+requires both an active, uncancelled handle and the host's current generation;
+`MarkCommitted` enforces the same check, so a late worker message cannot commit
+an older candidate. `RequestCancel` and `Retire` are separate operations:
+cancel asks the worker to stop, while retire makes the candidate permanently
+ineligible and is idempotent.
+
+The host owns the monotonic counter, worker/thread, response, resource
+transaction, WM messages and page swap. It should create a candidate when it
+assigns a generation, request cancellation before retiring a superseded
+candidate, keep the opaque handle reachable until the worker completion is
+consumed, and then mark the current candidate committed or failed:
+
+```c
+HANDLE candidate;
+PBrowserNavigationCandidateInfo info;
+int network_or_document_failure;
+
+candidate = PBrowser_NavigationCandidateCreate(next_generation);
+/* The host starts its worker and keeps candidate with that request. */
+PBrowser_NavigationCandidateRequestCancel(candidate); /* when superseded */
+PBrowser_NavigationCandidateRetire(candidate);
+/* On UI completion, compare against the host's current generation. */
+if (PBrowser_NavigationCandidateCanApply(candidate, current_generation)) {
+    PBrowser_NavigationCandidateMarkCommitted(candidate, current_generation);
+} else if (network_or_document_failure) {
+    PBrowser_NavigationCandidateMarkFailed(candidate);
+} else {
+    /* stale or retired: discard without page teardown/history mutation */
+}
+PBrowser_NavigationCandidateGetInfo(candidate, current_generation, &info);
+PBrowser_NavigationCandidateDestroy(candidate);
+```
+
+The cancellation flag is safe for a worker to poll while the host requests
+cancellation; other state transitions and info snapshots must be serialized
+by the caller. These APIs never abort a blocked socket, post a window message,
+or perform page teardown/history commit. A failed or retired candidate must
+not call the page-teardown entry or mutate history.
+
 ### 队列与生命周期
 
 Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
@@ -166,6 +211,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 
 - History 和 script-session handle 由 Browser 创建/销毁，不使用 `CloseHandle`。
 - 导航资源事务 handle、URL 副本和资源字节均由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationResourceDestroy`，调用方需要自己的数据时使用 `PBrowser_NavigationResourceCopyData`。
+- 导航 candidate handle、generation、取消/退休标志和 committed/failed 终态由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationCandidateDestroy`，不得用 `CloseHandle` 或复制内部状态。
 - History 返回的 entry/state 字符串是借用值，调用方不得 free。
 - callback table 和 `pw` 由宿主持有，必须活到 unregister 或 session destroy。
 - callback 中的字符串、event info 和输出缓冲只在同步调用期间有效。

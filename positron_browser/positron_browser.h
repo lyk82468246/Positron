@@ -28,7 +28,7 @@ extern "C" {
 #  define PBROWSER_API __declspec(dllimport)
 #endif
 
-#define PBROWSER_ABI_VERSION 0x00010000UL
+#define PBROWSER_ABI_VERSION 0x00010001UL
 
 #define PBROWSER_HISTORY_MAX 16
 #define PBROWSER_HISTORY_URL_MAX 1024
@@ -239,6 +239,44 @@ PBROWSER_API int PBrowser_NavigationResourceObserveFallbacks(
         HANDLE hTransaction);
 PBROWSER_API int PBrowser_NavigationResourceGetStats(HANDLE hTransaction,
         PBrowserNavigationResourceStats *out_stats);
+
+/* Navigation candidate identity and lifecycle. A candidate is the Browser
+ * owned admission record for one pending document. It carries only a
+ * generation and lifecycle flags; it never references a window, worker,
+ * network response or Core document. The host may use CanApply before every
+ * UI-side continuation and must retire a superseded candidate before its
+ * worker is allowed to deliver completion. Cancellation is safe to request
+ * while a worker polls the handle; other state transitions and info snapshots
+ * are synchronous and the caller must serialize access to one handle. */
+#define PBROWSER_NAVIGATION_CANDIDATE_ACTIVE 0
+#define PBROWSER_NAVIGATION_CANDIDATE_COMMITTED 1
+#define PBROWSER_NAVIGATION_CANDIDATE_FAILED 2
+#define PBROWSER_NAVIGATION_CANDIDATE_RETIRED 3
+
+typedef struct PBrowserNavigationCandidateInfo {
+    unsigned long size;
+    unsigned long generation;
+    int state;
+    int cancel_requested;
+    int retired;
+    int current;
+    int can_apply;
+} PBrowserNavigationCandidateInfo;
+
+PBROWSER_API HANDLE PBrowser_NavigationCandidateCreate(
+        unsigned long generation);
+PBROWSER_API void PBrowser_NavigationCandidateDestroy(HANDLE hCandidate);
+PBROWSER_API int PBrowser_NavigationCandidateRequestCancel(
+        HANDLE hCandidate);
+PBROWSER_API int PBrowser_NavigationCandidateRetire(HANDLE hCandidate);
+PBROWSER_API int PBrowser_NavigationCandidateCanApply(HANDLE hCandidate,
+        unsigned long current_generation);
+PBROWSER_API int PBrowser_NavigationCandidateMarkCommitted(
+        HANDLE hCandidate, unsigned long current_generation);
+PBROWSER_API int PBrowser_NavigationCandidateMarkFailed(HANDLE hCandidate);
+PBROWSER_API int PBrowser_NavigationCandidateGetInfo(HANDLE hCandidate,
+        unsigned long current_generation,
+        PBrowserNavigationCandidateInfo *out_info);
 
 /* Synchronous JSON callback shape shared with positron_script. The callback
  * runs on the caller's thread and must not re-enter or destroy its session.

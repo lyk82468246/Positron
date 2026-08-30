@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1123
+#define TEST_MAX_NUMBER 1124
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6428,10 +6428,8 @@ typedef struct pcore_navigation_stats {
 
 typedef struct pcore_navigation_request {
     HWND           hwnd;
-    LONG           generation;
+    HANDLE         candidate;
     HANDLE         worker_thread;
-    volatile LONG  cancel_requested;
-    int            retired;
     struct pcore_navigation_request *retired_next;
     char           host[256];
     char           path[1024];
@@ -13124,6 +13122,74 @@ static int pcore_navigation_resource_ensure(
     return request->resource_transaction != NULL ? 0 : 1;
 }
 
+/* Candidate identity, cancellation and retirement live in Browser. The host
+ * keeps only the opaque handle and its worker/list linkage; no duplicate
+ * lifecycle flags are allowed here. */
+static int pcore_navigation_candidate_ensure(
+        pcore_navigation_request *request, unsigned long generation)
+{
+    PBrowserNavigationCandidateInfo info;
+
+    if (request == NULL) {
+        return 1;
+    }
+    if (request->candidate == NULL) {
+        request->candidate = PBrowser_NavigationCandidateCreate(generation);
+        return request->candidate != NULL ? 0 : 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (PBrowser_NavigationCandidateGetInfo(request->candidate,
+            generation, &info) != PBROWSER_OK ||
+            info.generation != generation) {
+        return 1;
+    }
+    return 0;
+}
+
+static int pcore_navigation_request_assign_generation(
+        pcore_navigation_request *request, int *out_generation)
+{
+    LONG generation;
+
+    if (request == NULL) {
+        return 1;
+    }
+    generation = ++g_nav_generation;
+    if (pcore_navigation_candidate_ensure(request,
+            (unsigned long) generation) != 0) {
+        return 1;
+    }
+    if (out_generation != NULL) {
+        *out_generation = (int) generation;
+    }
+    return 0;
+}
+
+static int pcore_navigation_candidate_info(
+        const pcore_navigation_request *request,
+        PBrowserNavigationCandidateInfo *info)
+{
+    if (request == NULL || request->candidate == NULL || info == NULL) {
+        return 1;
+    }
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    return PBrowser_NavigationCandidateGetInfo(request->candidate,
+            (unsigned long) g_nav_generation, info) == PBROWSER_OK ? 0 : 1;
+}
+
+static unsigned long pcore_navigation_candidate_generation(
+        const pcore_navigation_request *request)
+{
+    PBrowserNavigationCandidateInfo info;
+
+    if (pcore_navigation_candidate_info(request, &info) != 0) {
+        return 0;
+    }
+    return info.generation;
+}
+
 static int pcore_navigation_resource_info(
         const pcore_navigation_request *request,
         const pcore_navigation_resource *entry,
@@ -13345,7 +13411,29 @@ static void pcore_navigation_observe_fallbacks(
 static int pcore_navigation_is_cancelled(
         const pcore_navigation_request *request)
 {
-    return request != NULL && request->cancel_requested != 0;
+    PBrowserNavigationCandidateInfo info;
+
+    return pcore_navigation_candidate_info(request, &info) == 0 &&
+            info.cancel_requested != 0;
+}
+
+static int pcore_navigation_is_retired(
+        const pcore_navigation_request *request)
+{
+    PBrowserNavigationCandidateInfo info;
+
+    return pcore_navigation_candidate_info(request, &info) == 0 &&
+            info.retired != 0;
+}
+
+static int pcore_navigation_can_apply(
+        const pcore_navigation_request *request)
+{
+    if (request == NULL || request->candidate == NULL) {
+        return 0;
+    }
+    return PBrowser_NavigationCandidateCanApply(request->candidate,
+            (unsigned long) g_nav_generation) > 0;
 }
 
 static void pcore_navigation_resource_begin_attempt(
@@ -13505,6 +13593,10 @@ static void pcore_navigation_request_free(
         PBrowser_NavigationResourceDestroy(request->resource_transaction);
         request->resource_transaction = NULL;
     }
+    if (request->candidate != NULL) {
+        PBrowser_NavigationCandidateDestroy(request->candidate);
+        request->candidate = NULL;
+    }
     entry = request->resources;
     while (entry != NULL) {
         pcore_navigation_resource *next;
@@ -13545,7 +13637,6 @@ static void pcore_navigation_retired_remove(
         if (*link == request) {
             *link = request->retired_next;
             request->retired_next = NULL;
-            request->retired = 0;
             return;
         }
         link = &(*link)->retired_next;
@@ -13554,11 +13645,28 @@ static void pcore_navigation_retired_remove(
 
 static void pcore_navigation_retire(pcore_navigation_request *request)
 {
-    if (request == NULL || request->retired) {
+    pcore_navigation_request *cursor;
+
+    if (request == NULL) {
         return;
     }
-    InterlockedExchange((LONG *) &request->cancel_requested, 1);
-    request->retired = 1;
+    for (cursor = g_nav_retired_requests; cursor != NULL;
+            cursor = cursor->retired_next) {
+        if (cursor == request) {
+            return;
+        }
+    }
+    if (request->candidate == NULL &&
+            pcore_navigation_candidate_ensure(request,
+            (unsigned long) g_nav_generation) != 0) {
+        return;
+    }
+    if (PBrowser_NavigationCandidateRequestCancel(request->candidate) !=
+            PBROWSER_OK ||
+            PBrowser_NavigationCandidateRetire(request->candidate) !=
+            PBROWSER_OK) {
+        return;
+    }
     request->retired_next = g_nav_retired_requests;
     g_nav_retired_requests = request;
 }
@@ -13576,10 +13684,11 @@ static int pcore_navigation_retired_count(void)
     return count;
 }
 
-/* Invalidate the current request without touching the visible document. A
- * worker that is already running remains owned by the retired request until
- * its completion message is observed; freeing it here would leave the
- * worker's callback and WM message with a dangling request pointer. */
+/* Invalidate the current request without touching the visible document. The
+ * Browser candidate owns cancellation/retirement; the host increments its
+ * message-generation counter and keeps the request alive until the worker's
+ * completion message is observed. Freeing it here would leave the worker's
+ * callback and WM message with a dangling request pointer. */
 static void pcore_navigation_cancel_active(void)
 {
     pcore_navigation_request *request;
@@ -13697,7 +13806,8 @@ static void pcore_navigation_progress(void *pw, int received, int total)
     if (message == NULL) {
         return;
     }
-    message->generation = request->generation;
+    message->generation = (LONG) pcore_navigation_candidate_generation(
+            request);
     message->received = received;
     message->total = total;
     if (!PostMessage(request->hwnd, WM_PCORE_NAV_PROGRESS, 0,
@@ -13875,7 +13985,8 @@ done:
     request->stats.network_ms += GetTickCount() -
             request->stats.worker_started_tick;
     PostMessage(request->hwnd, WM_PCORE_NAV_DONE,
-            (WPARAM) request->generation, (LPARAM) request);
+            (WPARAM) pcore_navigation_candidate_generation(request),
+            (LPARAM) request);
     return 0;
 }
 
@@ -16119,6 +16230,18 @@ static void pcore_navigation_finish(HWND hwnd,
     (void) pcore_navigation_resource_stats_sync(request);
     request->stats.resources_pending =
             pcore_navigation_resource_pending_total(request);
+    /* Browser owns the candidate terminal state. The host records timing
+     * and performs platform cleanup, but it cannot turn a failed or stale
+     * request into a committed page. */
+    if (request->candidate != NULL) {
+        if (request->stats.completed) {
+            (void) PBrowser_NavigationCandidateMarkCommitted(
+                    request->candidate, (unsigned long) g_nav_generation);
+        } else {
+            (void) PBrowser_NavigationCandidateMarkFailed(
+                    request->candidate);
+        }
+    }
     g_nav_last_stats = request->stats;
     g_nav_last_stats_valid = 1;
     testbench_log_navigation(request);
@@ -16272,7 +16395,14 @@ static int navigate_to_request_ex(HWND hwnd, const char *href,
         return 1;
     }
     request->history_target_index = history_target_index;
-    request->generation = ++g_nav_generation;
+    if (pcore_navigation_request_assign_generation(request, NULL) != 0) {
+        if (superseded) {
+            pcore_navigation_set_loading(hwnd, 0);
+        }
+        show_error(L"Navigation failed", "Candidate allocation failed");
+        pcore_navigation_request_free(request);
+        return 1;
+    }
     g_nav_request = request;
     pcore_navigation_set_loading(hwnd, 1);
     if (pcore_navigation_start_worker(request) != 0) {
@@ -20842,7 +20972,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             KillTimer(hwnd, PCORE_NAV_COMMIT_TIMER);
             if (g_nav_request != NULL) {
                 SendMessage(hwnd, WM_PCORE_NAV_CONTINUE,
-                        (WPARAM) g_nav_request->generation,
+                        (WPARAM) pcore_navigation_candidate_generation(
+                                g_nav_request),
                         (LPARAM) g_nav_request);
             }
             return 0;
@@ -20935,9 +21066,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             return 0;
         }
         pcore_navigation_request_close_worker(request);
-        if (request == g_nav_request && !request->retired &&
+        if (request == g_nav_request && !pcore_navigation_is_retired(request) &&
                 !pcore_navigation_is_cancelled(request) &&
-                request->generation == g_nav_generation) {
+                pcore_navigation_can_apply(request)) {
             request->commit_stage =
                     (request->worker_stage == PCORE_NAV_STAGE_DOCUMENT) ?
                     PCORE_NAV_COMMIT_PARSE :
@@ -20959,10 +21090,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         int result;
 
         request = (pcore_navigation_request *) lp;
-        if (request == NULL || request->retired ||
+        if (request == NULL || pcore_navigation_is_retired(request) ||
                 pcore_navigation_is_cancelled(request) ||
                 request != g_nav_request ||
-                request->generation != g_nav_generation) {
+                !pcore_navigation_can_apply(request)) {
             return 0;
         }
         result = pcore_navigation_commit_step(hwnd, request, 1);
@@ -28989,11 +29120,18 @@ static BOOL test1118_browser_offline_candidate_lifecycle(void)
             failed_request->method = 1;
             failed_request->response = response;
             failed_request->commit_stage = PCORE_NAV_COMMIT_PARSE;
-            failed_request->generation = ++g_nav_generation;
-            failed_request->stats.started_tick = GetTickCount();
             response = NULL;
-            g_nav_request = failed_request;
-            g_nav_loading = 1;
+            if (pcore_navigation_request_assign_generation(
+                    failed_request, NULL) != 0) {
+                cstr_copy(error, sizeof(error),
+                        "failed candidate identity allocation failed");
+                ok = 0;
+            }
+            failed_request->stats.started_tick = GetTickCount();
+            if (ok) {
+                g_nav_request = failed_request;
+                g_nav_loading = 1;
+            }
         }
     }
     if (ok) {
@@ -29055,11 +29193,18 @@ static BOOL test1118_browser_offline_candidate_lifecycle(void)
             candidate_request->history_target_index =
                     PCORE_BROWSE_HISTORY_TARGET_NEW;
             candidate_request->commit_stage = PCORE_NAV_COMMIT_PARSE;
-            candidate_request->generation = ++g_nav_generation;
-            candidate_request->stats.started_tick = GetTickCount();
             response = NULL;
-            g_nav_request = candidate_request;
-            g_nav_loading = 1;
+            if (pcore_navigation_request_assign_generation(
+                    candidate_request, NULL) != 0) {
+                cstr_copy(error, sizeof(error),
+                        "candidate identity allocation failed");
+                ok = 0;
+            }
+            candidate_request->stats.started_tick = GetTickCount();
+            if (ok) {
+                g_nav_request = candidate_request;
+                g_nav_loading = 1;
+            }
         }
     }
     if (ok) {
@@ -29482,18 +29627,23 @@ static BOOL test1119_navigation_supersede_transaction(void)
             cstr_copy(error, sizeof(error), "stale worker did not start");
             ok = 0;
         } else {
-            old_generation = ++g_nav_generation;
-            stale_request->generation = old_generation;
-            g_nav_request = stale_request;
-            g_nav_loading = 1;
+            if (pcore_navigation_request_assign_generation(
+                    stale_request, &old_generation) != 0) {
+                cstr_copy(error, sizeof(error),
+                        "stale candidate identity allocation failed");
+                ok = 0;
+            } else {
+                g_nav_request = stale_request;
+                g_nav_loading = 1;
+            }
         }
     }
     if (ok) {
         pcore_navigation_cancel_active();
         stale_retired = g_nav_request == NULL &&
                 g_nav_retired_requests == stale_request &&
-                stale_request->retired &&
-                stale_request->cancel_requested != 0 &&
+                pcore_navigation_is_retired(stale_request) &&
+                pcore_navigation_is_cancelled(stale_request) &&
                 g_render_doc != NULL &&
                 PBrowser_HistoryCount(g_browse_history_product) == 1;
         if (!stale_retired) {
@@ -29529,10 +29679,15 @@ static BOOL test1119_navigation_supersede_transaction(void)
                         "new resource preparation failed");
                 ok = 0;
             } else {
-                new_generation = ++g_nav_generation;
-                new_request->generation = new_generation;
-                g_nav_request = new_request;
-                g_nav_loading = 1;
+                if (pcore_navigation_request_assign_generation(
+                        new_request, &new_generation) != 0) {
+                    cstr_copy(error, sizeof(error),
+                            "new candidate identity allocation failed");
+                    ok = 0;
+                } else {
+                    g_nav_request = new_request;
+                    g_nav_loading = 1;
+                }
             }
         }
     }
@@ -29618,11 +29773,13 @@ static BOOL test1119_navigation_supersede_transaction(void)
      * local aliases only for requests that were never attached to host state
      * (for example an allocation failure before activation). */
     if (stale_request != NULL &&
-            (stale_request == g_nav_request || stale_request->retired)) {
+            (stale_request == g_nav_request ||
+            pcore_navigation_is_retired(stale_request))) {
         stale_request = NULL;
     }
     if (new_request != NULL &&
-            (new_request == g_nav_request || new_request->retired)) {
+            (new_request == g_nav_request ||
+            pcore_navigation_is_retired(new_request))) {
         new_request = NULL;
     }
     pcore_navigation_cleanup();
@@ -30072,15 +30229,23 @@ static BOOL test1121_navigation_resource_retry_budget(void)
     if (ok) {
         pcore_navigation_resource_fail(request, resolve,
                 PCORE_NAV_FAILURE_RESOLVE);
-        request->cancel_requested = 1;
+        if (pcore_navigation_candidate_ensure(request,
+                (unsigned long) g_nav_generation) != 0 ||
+                PBrowser_NavigationCandidateRequestCancel(
+                request->candidate) != PBROWSER_OK) {
+            cstr_copy(error, sizeof(error),
+                    "candidate cancellation setup failed");
+            ok = 0;
+        }
         memset(&response, 0, sizeof(response));
-        if (pcore_navigation_resource_should_retry(request, cancel,
+        if (ok && pcore_navigation_resource_should_retry(request, cancel,
                 &response)) {
             cstr_copy(error, sizeof(error), "cancelled resource was retried");
             ok = 0;
         }
-        pcore_navigation_resource_cancel(request, cancel);
-        request->cancel_requested = 0;
+        if (ok) {
+            pcore_navigation_resource_cancel(request, cancel);
+        }
     }
 
     (void) pcore_navigation_resource_stats_sync(request);
@@ -30334,11 +30499,18 @@ static BOOL test1122_navigation_resource_commit_gate(void)
             required_request->commit_stage = PCORE_NAV_COMMIT_PARSE;
             required_request->history_target_index =
                     PCORE_BROWSE_HISTORY_TARGET_NEW;
-            required_request->generation = ++g_nav_generation;
-            required_request->stats.started_tick = GetTickCount();
             response = NULL;
-            g_nav_request = required_request;
-            g_nav_loading = 1;
+            if (pcore_navigation_request_assign_generation(
+                    required_request, NULL) != 0) {
+                cstr_copy(error, sizeof(error),
+                        "required candidate identity allocation failed");
+                ok = 0;
+            }
+            required_request->stats.started_tick = GetTickCount();
+            if (ok) {
+                g_nav_request = required_request;
+                g_nav_loading = 1;
+            }
         }
     }
     while (ok && required_request != NULL &&
@@ -30429,11 +30601,18 @@ static BOOL test1122_navigation_resource_commit_gate(void)
             optional_request->commit_stage = PCORE_NAV_COMMIT_PARSE;
             optional_request->history_target_index =
                     PCORE_BROWSE_HISTORY_TARGET_NEW;
-            optional_request->generation = ++g_nav_generation;
-            optional_request->stats.started_tick = GetTickCount();
             response = NULL;
-            g_nav_request = optional_request;
-            g_nav_loading = 1;
+            if (pcore_navigation_request_assign_generation(
+                    optional_request, NULL) != 0) {
+                cstr_copy(error, sizeof(error),
+                        "optional candidate identity allocation failed");
+                ok = 0;
+            }
+            optional_request->stats.started_tick = GetTickCount();
+            if (ok) {
+                g_nav_request = optional_request;
+                g_nav_loading = 1;
+            }
         }
     }
     while (ok && optional_request != NULL &&
@@ -30890,6 +31069,119 @@ static BOOL test1123_navigation_resource_observability(void)
             "Repeated resources and a deep @import tree kept one bounded"
             " role per URL; failure telemetry stayed hash-only, while Core"
             " image fallback and skipped script work were observed.");
+    return TRUE;
+}
+
+/* TEST 1124 - Browser owns candidate identity and terminal lifecycle. The
+ * host only receives an opaque handle: cancellation makes an active
+ * candidate ineligible, retirement is idempotent, stale generations cannot
+ * commit, and committed/failed candidates cannot be reused. */
+static BOOL test1124_navigation_candidate_lifecycle(void)
+{
+    HANDLE cancelled;
+    HANDLE committed;
+    HANDLE failed;
+    PBrowserNavigationCandidateInfo info;
+    char error[512];
+    int ok;
+
+    cancelled = NULL;
+    committed = NULL;
+    failed = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(error, 0, sizeof(error));
+    ok = 1;
+
+    cancelled = PBrowser_NavigationCandidateCreate(701);
+    committed = PBrowser_NavigationCandidateCreate(702);
+    failed = PBrowser_NavigationCandidateCreate(703);
+    if (cancelled == NULL || committed == NULL || failed == NULL) {
+        cstr_copy(error, sizeof(error), "candidate allocation failed");
+        ok = 0;
+    }
+    if (ok) {
+        info.size = sizeof(info);
+        if (PBrowser_NavigationCandidateGetInfo(cancelled, 701, &info) !=
+                PBROWSER_OK || info.generation != 701 ||
+                info.state != PBROWSER_NAVIGATION_CANDIDATE_ACTIVE ||
+                info.cancel_requested || info.retired || !info.current ||
+                !info.can_apply ||
+                PBrowser_NavigationCandidateCanApply(cancelled, 701) != 1 ||
+                PBrowser_NavigationCandidateCanApply(cancelled, 700) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "active candidate admission was inconsistent");
+            ok = 0;
+        }
+    }
+    if (ok &&
+            (PBrowser_NavigationCandidateRequestCancel(cancelled) !=
+            PBROWSER_OK ||
+            PBrowser_NavigationCandidateCanApply(cancelled, 701) != 0 ||
+            PBrowser_NavigationCandidateRetire(cancelled) != PBROWSER_OK ||
+            PBrowser_NavigationCandidateRetire(cancelled) != PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error),
+                "cancel/retire transition was not idempotent");
+        ok = 0;
+    }
+    if (ok) {
+        memset(&info, 0, sizeof(info));
+        info.size = sizeof(info);
+        if (PBrowser_NavigationCandidateGetInfo(cancelled, 701, &info) !=
+                PBROWSER_OK ||
+                info.state != PBROWSER_NAVIGATION_CANDIDATE_RETIRED ||
+                !info.cancel_requested || !info.retired || !info.current ||
+                info.can_apply ||
+                PBrowser_NavigationCandidateMarkFailed(cancelled) !=
+                PBROWSER_ERROR_STATE) {
+            cstr_copy(error, sizeof(error),
+                    "retired candidate remained admissible");
+            ok = 0;
+        }
+    }
+    if (ok &&
+            (PBrowser_NavigationCandidateCanApply(committed, 701) != 0 ||
+            PBrowser_NavigationCandidateMarkCommitted(committed, 701) !=
+            PBROWSER_ERROR_STATE ||
+            PBrowser_NavigationCandidateMarkCommitted(committed, 702) !=
+            PBROWSER_OK ||
+            PBrowser_NavigationCandidateRequestCancel(committed) !=
+            PBROWSER_ERROR_STATE)) {
+        cstr_copy(error, sizeof(error),
+                "generation or committed transition was inconsistent");
+        ok = 0;
+    }
+    if (ok) {
+        memset(&info, 0, sizeof(info));
+        info.size = sizeof(info);
+        if (PBrowser_NavigationCandidateGetInfo(committed, 702, &info) !=
+                PBROWSER_OK ||
+                info.state != PBROWSER_NAVIGATION_CANDIDATE_COMMITTED ||
+                !info.current || info.can_apply) {
+            cstr_copy(error, sizeof(error),
+                    "committed candidate info was inconsistent");
+            ok = 0;
+        }
+    }
+    if (ok &&
+            (PBrowser_NavigationCandidateMarkFailed(failed) != PBROWSER_OK ||
+            PBrowser_NavigationCandidateMarkFailed(failed) != PBROWSER_OK ||
+            PBrowser_NavigationCandidateCanApply(failed, 703) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "failed candidate transition was not terminal");
+        ok = 0;
+    }
+    PBrowser_NavigationCandidateDestroy(cancelled);
+    PBrowser_NavigationCandidateDestroy(committed);
+    PBrowser_NavigationCandidateDestroy(failed);
+    if (!ok) {
+        show_error(L"TEST 1124 FAIL", error[0] != '\0' ? error :
+                "navigation candidate lifecycle failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1124 OK",
+            "Browser-owned candidate handles kept generation admission, "
+            "cancellation, retirement and committed/failed terminal states "
+            "explicit; stale generations could not commit.");
     return TRUE;
 }
 
@@ -88919,6 +89211,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1121: ok = test1121_navigation_resource_retry_budget(); break;
         case 1122: ok = test1122_navigation_resource_commit_gate(); break;
         case 1123: ok = test1123_navigation_resource_observability(); break;
+        case 1124: ok = test1124_navigation_candidate_lifecycle(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
