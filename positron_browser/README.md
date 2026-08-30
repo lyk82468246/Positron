@@ -78,7 +78,7 @@ Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 di
 
 `innerText` getter 读取 Core 的文本快照；对有效可编辑元素的 setter 走 `__pcoreSetContentEditableText`，由宿主调用 `PCore_ContentEditableSetTextById` 执行有界合法 UTF-8 纯文本替换。setter 是程序化 mutation，不自动产生 `beforeinput`/`input`。宿主若把 Core 的 editing-host 快照映射为 WM EDIT，真实键盘、SIP/IME 或其他输入源必须沿用已有 typed input 事务：先派发可取消 `beforeinput`，仅在允许后提交原生文本并调用 Core mutation，再派发 `input`；Browser 只决定事件、取消和顺序，不创建 HWND。
 
-剪贴板不是 Browser 直接访问的系统 API。宿主可以在 WM EDIT 的 `WM_PASTE`/`WM_CUT` 路径读取选中文本或 `CF_UNICODETEXT`，将 CRLF 规范化为逻辑 UTF-8 后传给 `PBrowser_ScriptSessionDispatchNativeEditBeforeInput`；允许后执行 native default，再用 `PBrowser_ScriptSessionDispatchNativeEditInput` 和 selection notification 完成事务。当前边界只承诺单元素纯文本、`CF_UNICODETEXT` 和小于 `PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES` 的 UTF-8 data；格式缺失、读取失败或超长时宿主应在 native mutation 前 fail closed。Browser 不提供 `ClipboardEvent`、async clipboard 或格式转换。
+剪贴板不是 Browser 直接访问的系统 API。宿主可以在 WM EDIT 的 `WM_PASTE`/`WM_CUT`/`WM_COPY` 路径读取 `CF_UNICODETEXT` 或选中文本，将 CRLF 规范化为逻辑 UTF-8 后传给 `PBrowser_ScriptSessionDispatchNativeEditBeforeInput`；允许后执行 native default，再用 `PBrowser_ScriptSessionDispatchNativeEditInput` 和 selection notification 完成事务。`WM_COPY` 的折叠选区由宿主保持为 no-op，不产生空格式。当前边界只承诺单元素纯文本、`CF_UNICODETEXT` 和小于 `PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES` 的 UTF-8 data；格式缺失、读取失败或超长时宿主应在 native mutation 前 fail closed。Browser 不提供 `ClipboardEvent`、async clipboard 或格式转换，也不拥有 WinCE 原生 `WM_CUT` 内部重入策略。
 
 `selectionStart`、`selectionEnd` 和 `selectionDirection` 使用 JavaScript UTF-16 code-unit 偏移。调用 `setSelectionRange()` 或 `select()` 时，Browser 先更新有界脚本状态，再尝试通过可选的 `PBrowserScriptContentEditableSelectionCallbacks` 同步宿主的原生 editing host；没有原生窗口（例如离线 fixture 或未布局的后代元素）时保留脚本侧回退。宿主的 multiline EDIT 适配器负责把 CRLF 原生位置转换为 Core/Browser 的逻辑 LF 位置。
 
@@ -88,7 +88,7 @@ Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 di
 
 Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click、form、invalid 和 navigation。对于 native 控件，推荐使用相应的 `Ex` 注册和 transaction dispatch：
 
-- native EDIT（包括宿主为 contenteditable 创建的代理）：beforeinput、composition/result、commit→input、dirty、blur→change，以及 contenteditable 选区同步和有界 `selectionchange`；宿主可将有界 `CF_UNICODETEXT` paste/cut data 作为 beforeinput payload；
+- native EDIT（包括宿主为 contenteditable 创建的代理）：beforeinput、composition/result、commit→input、dirty、blur→change，以及 contenteditable 选区同步和有界 `selectionchange`；宿主可将有界 `CF_UNICODETEXT` paste/cut/copy data 作为 beforeinput payload，复制的折叠选区由宿主在 Browser 事务之外判定为 no-op；
 - native SELECT：focus、key、dropdown candidate/confirm/cancel、commit→input/change；
 - checkbox/radio：click、Core mutation 后的 input/change；
 - button：click、validation、submit/reset/default action；
@@ -141,7 +141,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
 - `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台焦点。CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期和其他浏览器焦点策略未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
-- contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。
+- contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 
 整体分层见 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)，当前限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。

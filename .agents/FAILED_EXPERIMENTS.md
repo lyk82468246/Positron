@@ -1,6 +1,6 @@
 # 失败实验与禁止恢复边界
 
-更新时间：2026-08-29
+更新时间：2026-08-30
 
 这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
@@ -152,6 +152,14 @@
 随后以管理员权限运行同一窄门 `20260824-103501-next618-native-ime-result-elevated-retry`，构建和 staging 成功但仍在 `CeRapiInitEx()` 30 秒处超时。提权不能绕过当前 RAPI 会话故障，因此不应继续以切换调用者权限作为修复策略。后续 API 审计又证明，提权当然也不能修复 gate 自身的错误事件句柄。
 
 修复证据：`20260824-105452-next618-rapi-returned-event-probe` 的 TEST999 为 1/1 PASS；`20260824-105511-next618-native-ime-result-final-fixed` 的 TEST1066、123–125、999 为 5/5 PASS，均为零 ERROR/FAIL、唯一 `TESTBENCH PASS`。当前不再要求主机级恢复；只要用户已在 WMDC GUI 中建立唯一连接，即可直接运行 gate。脚本永远不替用户完成 GUI 连接，也不应管理已连接的 WMDC 进程。
+
+### next668 首轮 `WM_COPY` 拦截：破坏原生 `WM_CUT` — 已替代
+
+问题：为 contenteditable 增加外部 `WM_COPY` 处理后，首轮设备门的 TEST1115 粘贴仍通过，但剪切只留下原文；WinCE 的 EDIT 默认 `WM_CUT` 会在删除前对同一 HWND 内部重入 `WM_COPY`，直接拦截该重入会让原生默认动作提前中止。该问题不是 Browser 事务或剪贴板格式失败。
+
+替代方案：宿主在外层 `WM_CUT` 调用原生默认过程期间设置短暂的 per-edit guard，仅放行同一 HWND 的嵌套 `WM_COPY`；外部 `WM_COPY` 仍执行有界选区读取、折叠 no-op 和超长/非 Unicode fail-closed 规则。修复后的 next668 定向门已通过 TEST1112–1116 与 TEST999（6/6，唯一 `TESTBENCH PASS`）。
+
+决定：不得删除 guard 后把所有 `WM_COPY` 都交给原生控件，也不得对所有消息全局放行；若未来扩展剪贴板消息，必须先验证 WinCE 原生默认过程的重入顺序，并保持外部消息与内部重入边界分离。
 
 ### 早期 loading 条 — 已替代/部分暂挂
 

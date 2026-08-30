@@ -101,7 +101,7 @@ Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/
 
 Core 不保存编辑选区，也不重新派发 `selectionchange`。Browser 以 JavaScript UTF-16 code-unit 偏移提供 `selectionStart`、`selectionEnd` 和 `selectionDirection`，并在范围实际改变时分发一次非冒泡、不可取消的 `selectionchange`；宿主可通过 `PBrowserScriptContentEditableSelectionCallbacks` 把这些范围映射到原生 EDIT，再用 `PBrowser_ScriptSessionNotifyContentEditableSelection` 报告原生范围变化。WM EDIT 宿主对无修饰鼠标拖选和 Shift/方向键扩展保留短暂 anchor，在默认消息完成后报告有序范围和方向；捕获丢失、取消模式或焦点切换会先结束未完成手势，再由 Browser 去重通知。无法物化原生窗口时 Browser 保留脚本侧回退。宿主不得在 Core 中复制第二份文本或选区模型。
 
-受限剪贴板事务同样由宿主负责平台接线：宿主从 `WM_PASTE` 读取 `CF_UNICODETEXT`，或从原生选区取得 `WM_CUT` data，将 CRLF 规范化为 UTF-8 后交给 Browser 的 `beforeinput`；事件未取消时才允许 native default，再调用 Core 文本 mutation、Browser `input` 和选区通知。Core 不读取系统剪贴板、不保存 clipboard handle；格式缺失、超长或读取失败必须在 native mutation 前 fail closed。
+受限剪贴板事务同样由宿主负责平台接线：宿主从 `WM_PASTE` 读取 `CF_UNICODETEXT`，从原生选区取得 `WM_COPY` data，或从 `WM_CUT` 取得 data，将 CRLF 规范化为 UTF-8 后交给 Browser 的 `beforeinput`；`WM_COPY` 的折叠选区不改写剪贴板，粘贴/复制数据超长、格式缺失或读取失败时在 native mutation 前 fail closed。对 `WM_CUT`，事件未取消时才允许 native default，再调用 Core 文本 mutation、Browser `input` 和选区通知；WinCE 原生 EDIT 在该默认动作中可能内部重入 `WM_COPY`，宿主只对同一外层剪切临时放行该重入。Core 不读取系统剪贴板、不保存 clipboard handle。
 
 ### `positron_browser.dll`
 
@@ -134,12 +134,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 宿主拥有所有与具体应用或 Windows Mobile UI 绑定的行为：
 
 - 顶层窗口、消息循环、滚动条和 DPI/旋转通知；
-- native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位、销毁并跟踪其平台鼠标/键盘选区；受限 `WM_PASTE`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、写入和所有权也只属于宿主；
+- native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位、销毁并跟踪其平台鼠标/键盘选区；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、写入和所有权也只属于宿主；
 - 后台线程、导航取消、loading 状态与页面 swap；
 - DNS/TCP/TLS/HTTP 组合策略和资源调度；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
-- 把 Core 的 contenteditable 状态/文本 callback 和 selection callback 注册到 Browser session，并把 WM/native 输入接到 `beforeinput`→Core mutation→`input` 顺序；宿主只保留窗口、焦点、坐标、键盘/拖选 anchor、Shift 状态和原生选区，在范围变化或捕获/焦点中断后调用 Browser 的通知入口，不经 Core 重复派发 `selectionchange`；对 `WM_PASTE`/`WM_CUT`，宿主读取并规范化有界 `CF_UNICODETEXT`，让 Browser 决定取消后再执行 native default；
+- 把 Core 的 contenteditable 状态/文本 callback 和 selection callback 注册到 Browser session，并把 WM/native 输入接到 `beforeinput`→Core mutation→`input` 顺序；宿主只保留窗口、焦点、坐标、键盘/拖选 anchor、Shift 状态和原生选区，在范围变化或捕获/焦点中断后调用 Browser 的通知入口，不经 Core 重复派发 `selectionchange`；对 `WM_PASTE`/`WM_COPY`/`WM_CUT`，宿主读取并规范化有界 `CF_UNICODETEXT`，让 Browser 决定取消后再执行 native default，折叠复制保持原剪贴板不变，并对 WinCE `WM_CUT` 的同一 HWND 内部 `WM_COPY` 重入做局部放行；
 - 从 Browser 读取活动 modal id，并在 WM_PAINT 中调用 Core 的 modal paint 组合入口；
 - 决定何时启用浏览器 JavaScript；
 - 应用级崩溃恢复、持久化和日志。
@@ -167,8 +167,8 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 1. Core 发现并缓存 classic script；
 2. Browser session 注册有界 DOM/Event/platform callbacks；
 3. 按文档顺序执行允许的 inline/external script；
-4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；WM6 `EDIT` 可能在 `WM_CHAR` 默认处理完成前发送 `EN_CHANGE`，宿主必须在默认处理返回后读取最终值，避免把旧值提交为一次 mutation；`WM_PASTE`/`WM_CUT` 只在可复制出有界 `CF_UNICODETEXT` data 时进入 contenteditable 事务；
-5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation，Browser 的脚本 selection API 在可用时同步宿主原生选区；原生 WM EDIT 的无修饰 down/move/up 或 Shift/方向键默认处理返回后，宿主用短暂 anchor 计算方向，并在捕获/取消/焦点中断时收尾，再通知 Browser；paste/cut 还必须在 native default 前完成 clipboard data 的格式和容量检查；
+4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；WM6 `EDIT` 可能在 `WM_CHAR` 默认处理完成前发送 `EN_CHANGE`，宿主必须在默认处理返回后读取最终值，避免把旧值提交为一次 mutation；`WM_PASTE`/`WM_CUT`/`WM_COPY` 只在可取得有界 `CF_UNICODETEXT` data 时进入 contenteditable 事务，折叠复制直接 no-op；
+5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation，Browser 的脚本 selection API 在可用时同步宿主原生选区；原生 WM EDIT 的无修饰 down/move/up 或 Shift/方向键默认处理返回后，宿主用短暂 anchor 计算方向，并在捕获/取消/焦点中断时收尾，再通知 Browser；paste/copy/cut 还必须在 native default 前完成 clipboard data 的格式和容量检查，且不得让宿主复制一份 Browser 的 Range/Selection 模型；
 6. Browser 派发 mutation 后的 `input`、`change`、focus、`selectionchange` 或 lifecycle 事件；原生选区通知必须先由 Browser 去重，不能由宿主和 Core 各发一次；
 7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；
 8. 页面替换时销毁 session 与文档。
@@ -222,7 +222,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - TLS 1.3、HTTP/2、HTTP/3 或现代浏览器级网络栈；
 - 完整 WHATWG URL、DOM、HTML、CSSOM、Web API 或 ECMAScript host environment；
 - 完整 CSS Grid、任意 float/position/table 边界和桌面级字体排版；
-- 通用 ClipboardEvent、async clipboard、CF_TEXT/富文本转换或跨应用剪贴板格式互操作；当前宿主只提供有界 `CF_UNICODETEXT` contenteditable paste/cut 接线；
+- 通用 ClipboardEvent、async clipboard、CF_TEXT/富文本转换或跨应用剪贴板格式互操作；当前宿主只提供有界 `CF_UNICODETEXT` contenteditable paste/copy/cut 接线；
 - 多窗口浏览器、完整现代 modal dialog/backdrop（仅支持有界实体色组合）或持久化浏览历史；
 - 在 DLL 内接管应用消息循环、系统 picker、OEM IME 或设备连接；
 - 把 `test_host.exe` 变成产品依赖。
