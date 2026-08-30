@@ -27,13 +27,13 @@
 
 ## 近期目标
 
-### 资源 gate 与候选结果关联
+### 提交后终态与清理观测
 
-下一条纵向能力是 next680：在保持 Browser candidate result snapshot 与 navigation resource transaction 分开拥有的前提下，验证一次页面提交如何同时满足两者的 gate。目标是让宿主只组合 Browser 已有的结果，不在 `test_host` 复制“资源失败却提交”或“候选过时却 teardown”的业务规则；不要把 loading 展示、WM 消息、线程句柄、response 或应用级日志格式塞进公共 ABI。
+下一条纵向能力是 next681：在不把资源事务、候选 handle 或页面对象重新复制到 `test_host` 的前提下，补齐一次导航完成/失败后的终态清理观测。目标是让宿主能够在释放 request 前确认 Browser 的 terminal candidate result、resource gate、fallback summary 和资源回收边界彼此一致；不要把 response、线程句柄、窗口消息或应用日志格式塞进公共 ABI。
 
-next680 的语料应固定 required 资源成功、required 资源失败、optional 资源失败、候选取消和过时完成的组合序列，自动断言 Browser 资源 gate、candidate result 和宿主页面/history 行为一致。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容；不得把阻塞 socket 的强制中断写成契约。
+next681 的语料应固定成功提交、required 失败、optional fallback、候选取消和 stale completion 的清理序列，自动断言终态快照在 request cleanup 前可读、释放后不再借用数据，旧候选不会触发当前页面 teardown/history，且资源事务不会跨候选泄漏。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容；不得把阻塞 socket 的强制中断写成契约。
 
-实现必须保持现有资源事务边界：资源终态、成功字节、required/optional gate、hash-only 摘要和 fallback observation 继续由 Browser 拥有；transport 失败每项最多 2 次重试（总计最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试。按风险累计条件安排更宽回归或新的全量 checkpoint；不要为增加测试编号拆分能力。
+实现必须保持现有资源事务和 candidate/result 边界：终态、成功字节、required/optional gate、hash-only 摘要、fallback observation、generation、取消/退休和组合 decision 继续由 Browser 拥有；transport 失败每项最多 2 次重试（总计最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试。按风险累计条件安排更宽回归或新的全量 checkpoint；不要为增加测试编号拆分能力。
 
 ### 继续清理产品所有权
 

@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1125
+#define TEST_MAX_NUMBER 1126
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -12644,6 +12644,9 @@ static void pcore_native_select_transaction_probe_run(HWND parent)
 static int pcore_navigation_candidate_result(
         const pcore_navigation_request *request,
         PBrowserNavigationCandidateResult *result);
+static int pcore_navigation_commit_info(
+        const pcore_navigation_request *request,
+        PBrowserNavigationCommitInfo *info);
 
 static void testbench_log_navigation(
         const pcore_navigation_request *request)
@@ -12654,6 +12657,7 @@ static void testbench_log_navigation(
     unsigned long image_known;
     unsigned long image_other;
     PBrowserNavigationCandidateResult candidate;
+    PBrowserNavigationCommitInfo commit;
 
     if (!g_testbench_auto || !g_testbench_browse_active ||
             request == NULL) {
@@ -12664,10 +12668,17 @@ static void testbench_log_navigation(
     candidate.current_generation = 0;
     candidate.result = -1;
     candidate.state = -1;
+    memset(&commit, 0, sizeof(commit));
+    commit.decision = -1;
+    commit.candidate_result = -1;
+    commit.resource_gate = -1;
     if (pcore_navigation_candidate_result(request, &candidate) != 0) {
         candidate.current = 0;
         candidate.cancel_requested = 0;
         candidate.retired = 0;
+    }
+    if (pcore_navigation_commit_info(request, &commit) != 0) {
+        commit.can_commit = 0;
     }
     image_known = request->stats.core_image.svg_setup_ms +
             request->stats.core_image.svg_parse_ms +
@@ -12683,6 +12694,8 @@ static void testbench_log_navigation(
             "completed=%d total/net/maxUI=%lu/%lu/%lums\n"
             "candidate gen/current-gen/state/result/current/cancel/retired="
             "%lu/%lu/%d/%d/%d/%d/%d\n"
+            "commit decision/candidate/resource/can-commit="
+            "%d/%d/%d/%d\n"
             "parse/style/images/layout/paint=%lu/%lu/%lu/%lu/%lums\n"
             "resources q/ok/fail/cancel/pending/rounds="
             "%d/%d/%d/%d/%d/%d\n"
@@ -12709,6 +12722,10 @@ static void testbench_log_navigation(
             candidate.current,
             candidate.cancel_requested,
             candidate.retired,
+            commit.decision,
+            commit.candidate_result,
+            commit.resource_gate,
+            commit.can_commit,
             (unsigned long) request->stats.parse_ms,
             (unsigned long) request->stats.style_ms,
             (unsigned long) request->stats.images_ms,
@@ -13227,6 +13244,24 @@ static int pcore_navigation_candidate_result(
     result->size = sizeof(*result);
     return PBrowser_NavigationCandidateGetResult(request->candidate,
             (unsigned long) g_nav_generation, result) == PBROWSER_OK ? 0 : 1;
+}
+
+/* The Browser owns the composition of candidate admission and resource gate.
+ * The host consumes this bounded snapshot at the page-commit boundary and
+ * must not reconstruct the decision from worker or resource flags. */
+static int pcore_navigation_commit_info(
+        const pcore_navigation_request *request,
+        PBrowserNavigationCommitInfo *info)
+{
+    if (request == NULL || request->candidate == NULL ||
+            request->resource_transaction == NULL || info == NULL) {
+        return 1;
+    }
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    return PBrowser_NavigationCommitGetInfo(request->candidate,
+            request->resource_transaction, (unsigned long) g_nav_generation,
+            info) == PBROWSER_OK ? 0 : 1;
 }
 
 static int pcore_navigation_resource_info(
@@ -15944,7 +15979,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     int            script_executed;
     int            script_ignored;
     int            style_result;
-    int            resource_gate;
+    PBrowserNavigationCommitInfo commit_info;
     int            history_commit_rc;
     int            history_target_scroll;
     int            history_target_scroll_valid;
@@ -16075,6 +16110,11 @@ static int pcore_navigation_commit_step(HWND hwnd,
             request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_NONE;
         }
         if (style_result != 0) {
+            /* A terminal required-resource failure can make Core's style
+             * pass return nonzero before the later image-stage gate. Refresh
+             * the Browser-owned gate here so old-page preservation remains
+             * observable and the host does not lose the failure reason. */
+            (void) pcore_navigation_resource_commit_gate(request);
             elapsed = GetTickCount() - started;
             request->stats.style_ms += elapsed;
             if (elapsed > request->stats.max_ui_slice_ms) {
@@ -16121,18 +16161,38 @@ static int pcore_navigation_commit_step(HWND hwnd,
             request->commit_stage = PCORE_NAV_COMMIT_STYLE;
             return PCORE_NAV_RESULT_MORE;
         }
-        resource_gate = pcore_navigation_resource_commit_gate(request);
-        if (resource_gate != PCORE_NAV_GATE_READY) {
+        memset(&commit_info, 0, sizeof(commit_info));
+        if (pcore_navigation_commit_info(request, &commit_info) != 0) {
             if (report_errors) {
-                if (resource_gate == PCORE_NAV_GATE_REQUIRED_FAILED) {
+                show_error(L"Navigation failed",
+                        "Could not inspect the navigation commit gate");
+            }
+            return PCORE_NAV_RESULT_FAILED;
+        }
+        (void) pcore_navigation_resource_stats_sync(request);
+        if (commit_info.decision != PBROWSER_NAVIGATION_COMMIT_READY) {
+            if (report_errors) {
+                if (commit_info.decision ==
+                        PBROWSER_NAVIGATION_COMMIT_REQUIRED_FAILED) {
                     show_error(L"Navigation failed",
                             "Required navigation resource failed");
-                } else if (resource_gate == PCORE_NAV_GATE_CANCELLED) {
+                } else if (commit_info.decision ==
+                        PBROWSER_NAVIGATION_COMMIT_RESOURCE_CANCELLED) {
                     show_error(L"Navigation cancelled",
                             "Navigation resource work was cancelled");
+                } else if (commit_info.decision ==
+                        PBROWSER_NAVIGATION_COMMIT_CANDIDATE_STALE) {
+                    show_error(L"Navigation superseded",
+                            "The navigation candidate is no longer current");
+                } else if (commit_info.decision ==
+                        PBROWSER_NAVIGATION_COMMIT_CANDIDATE_CANCELLED ||
+                        commit_info.decision ==
+                        PBROWSER_NAVIGATION_COMMIT_CANDIDATE_CANCEL_REQUESTED) {
+                    show_error(L"Navigation cancelled",
+                            "The navigation candidate was cancelled");
                 } else {
                     show_error(L"Navigation failed",
-                            "Navigation resources are incomplete");
+                            "Navigation commit prerequisites are incomplete");
                 }
             }
             return PCORE_NAV_RESULT_FAILED;
@@ -16147,6 +16207,16 @@ static int pcore_navigation_commit_step(HWND hwnd,
         }
         return PCORE_NAV_RESULT_FAILED;
     }
+    memset(&commit_info, 0, sizeof(commit_info));
+    if (pcore_navigation_commit_info(request, &commit_info) != 0 ||
+            commit_info.decision != PBROWSER_NAVIGATION_COMMIT_READY) {
+        if (report_errors) {
+            show_error(L"Navigation superseded",
+                    "Navigation commit prerequisites changed before layout");
+        }
+        return PCORE_NAV_RESULT_FAILED;
+    }
+    (void) pcore_navigation_resource_stats_sync(request);
     rc.left = 0;
     rc.top = 0;
     rc.right = 224;
@@ -31393,6 +31463,272 @@ static BOOL test1125_navigation_candidate_results(void)
             "Browser result snapshots distinguished pending, committed, "
             "failed, cancelled and stale candidates without host-owned "
             "completion rules.");
+    return TRUE;
+}
+
+static int test1126_expect_commit(
+        HANDLE candidate, HANDLE transaction, unsigned long generation,
+        int expected_decision, int expected_candidate_result,
+        int expected_resource_gate, int expected_can_commit,
+        char *error, int error_capacity)
+{
+    PBrowserNavigationCommitInfo info;
+    int rc;
+
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    rc = PBrowser_NavigationCommitGetInfo(candidate, transaction,
+            generation, &info);
+    if (rc != PBROWSER_OK || info.decision != expected_decision ||
+            info.candidate_result != expected_candidate_result ||
+            info.resource_gate != expected_resource_gate ||
+            info.can_commit != expected_can_commit) {
+        if (error != NULL && error_capacity > 0) {
+            _snprintf(error, error_capacity - 1,
+                    "commit rc=%d decision=%d/%d candidate=%d/%d "
+                    "resource=%d/%d can=%d/%d",
+                    rc, info.decision, expected_decision,
+                    info.candidate_result, expected_candidate_result,
+                    info.resource_gate, expected_resource_gate,
+                    info.can_commit, expected_can_commit);
+            error[error_capacity - 1] = '\0';
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/* TEST 1126 - one Browser-owned snapshot combines an independent resource
+ * transaction with a candidate result. It proves that required/optional
+ * resource outcomes, cancellation and stale/terminal candidate states all
+ * produce an explicit commit decision without host-side classification. */
+static BOOL test1126_navigation_commit_consistency(void)
+{
+    static const char REQUIRED_URL[] =
+        "https://positron.local/commit/required.css";
+    static const char OPTIONAL_URL[] =
+        "https://positron.local/commit/optional.png";
+    static const char BODY[] = "body{}";
+    HANDLE candidate;
+    HANDLE transaction;
+    HANDLE failed_candidate;
+    HANDLE failed_transaction;
+    HANDLE resource_cancel_candidate;
+    HANDLE resource_cancel_transaction;
+    HANDLE cancel_candidate;
+    HANDLE cancel_transaction;
+    HANDLE stale_candidate;
+    HANDLE stale_transaction;
+    HANDLE committed_candidate;
+    HANDLE committed_transaction;
+    PBrowserNavigationCommitInfo info;
+    char error[512];
+    int required_index;
+    int optional_index;
+    int rc;
+    int ok;
+
+    candidate = NULL;
+    transaction = NULL;
+    failed_candidate = NULL;
+    failed_transaction = NULL;
+    resource_cancel_candidate = NULL;
+    resource_cancel_transaction = NULL;
+    cancel_candidate = NULL;
+    cancel_transaction = NULL;
+    stale_candidate = NULL;
+    stale_transaction = NULL;
+    committed_candidate = NULL;
+    committed_transaction = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(error, 0, sizeof(error));
+    required_index = -1;
+    optional_index = -1;
+    ok = 1;
+
+    candidate = PBrowser_NavigationCandidateCreate(901);
+    transaction = PBrowser_NavigationResourceCreate();
+    failed_candidate = PBrowser_NavigationCandidateCreate(902);
+    failed_transaction = PBrowser_NavigationResourceCreate();
+    resource_cancel_candidate = PBrowser_NavigationCandidateCreate(903);
+    resource_cancel_transaction = PBrowser_NavigationResourceCreate();
+    cancel_candidate = PBrowser_NavigationCandidateCreate(904);
+    cancel_transaction = PBrowser_NavigationResourceCreate();
+    stale_candidate = PBrowser_NavigationCandidateCreate(905);
+    stale_transaction = PBrowser_NavigationResourceCreate();
+    committed_candidate = PBrowser_NavigationCandidateCreate(906);
+    committed_transaction = PBrowser_NavigationResourceCreate();
+    if (candidate == NULL || transaction == NULL ||
+            failed_candidate == NULL || failed_transaction == NULL ||
+            resource_cancel_candidate == NULL ||
+            resource_cancel_transaction == NULL || cancel_candidate == NULL ||
+            cancel_transaction == NULL || stale_candidate == NULL ||
+            stale_transaction == NULL || committed_candidate == NULL ||
+            committed_transaction == NULL) {
+        cstr_copy(error, sizeof(error), "commit snapshot allocation failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_NavigationResourceRegister(transaction, REQUIRED_URL,
+            PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+            &required_index) != PBROWSER_OK ||
+            PBrowser_NavigationResourceRegister(transaction, OPTIONAL_URL,
+            PBROWSER_NAVIGATION_RESOURCE_OPTIONAL,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE,
+            &optional_index) != PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error), "commit snapshot resource setup failed");
+        ok = 0;
+    }
+    if (ok && test1126_expect_commit(candidate, transaction, 901,
+            PBROWSER_NAVIGATION_COMMIT_RESOURCE_PENDING,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_PENDING, 0, error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && (PBrowser_NavigationResourceBeginAttempt(transaction,
+            required_index) != PBROWSER_OK ||
+            PBrowser_NavigationResourceSetData(transaction, required_index,
+            BODY, sizeof(BODY) - 1) != PBROWSER_OK ||
+            PBrowser_NavigationResourceBeginAttempt(transaction,
+            optional_index) != PBROWSER_OK ||
+            PBrowser_NavigationResourceFail(transaction, optional_index,
+            PBROWSER_NAVIGATION_FAILURE_HTTP) != PBROWSER_OK)) {
+        cstr_copy(error, sizeof(error), "commit snapshot resource transition failed");
+        ok = 0;
+    }
+    if (ok && test1126_expect_commit(candidate, transaction, 901,
+            PBROWSER_NAVIGATION_COMMIT_READY,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_READY, 1, error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationCandidateMarkCommitted(candidate, 901) !=
+            PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "commit snapshot terminal transition failed");
+        ok = 0;
+    }
+    if (ok && test1126_expect_commit(candidate, transaction, 999,
+            PBROWSER_NAVIGATION_COMMIT_CANDIDATE_COMMITTED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED,
+            PBROWSER_NAVIGATION_GATE_READY, 0, error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationResourceRegister(failed_transaction,
+            REQUIRED_URL, PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+            &required_index) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "required failure setup failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationResourceFail(failed_transaction,
+            required_index, PBROWSER_NAVIGATION_FAILURE_HTTP) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "required failure transition failed");
+        ok = 0;
+    }
+    if (ok && test1126_expect_commit(failed_candidate, failed_transaction,
+            902, PBROWSER_NAVIGATION_COMMIT_REQUIRED_FAILED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_REQUIRED_FAILED, 0, error,
+            sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationResourceRegister(
+            resource_cancel_transaction, REQUIRED_URL,
+            PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+            &required_index) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "resource cancellation setup failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationResourceCancel(resource_cancel_transaction,
+            required_index) != PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "resource cancellation transition failed");
+        ok = 0;
+    }
+    if (ok && test1126_expect_commit(resource_cancel_candidate,
+            resource_cancel_transaction, 903,
+            PBROWSER_NAVIGATION_COMMIT_RESOURCE_CANCELLED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_CANCELLED, 0, error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationCandidateRequestCancel(cancel_candidate) !=
+            PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "candidate cancel request failed");
+        ok = 0;
+    }
+    if (ok && test1126_expect_commit(cancel_candidate, cancel_transaction,
+            904, PBROWSER_NAVIGATION_COMMIT_CANDIDATE_CANCEL_REQUESTED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING,
+            PBROWSER_NAVIGATION_GATE_READY, 0, error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationCandidateRetire(cancel_candidate) !=
+            PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "candidate retirement failed");
+        ok = 0;
+    }
+    if (ok && test1126_expect_commit(cancel_candidate, cancel_transaction,
+            904, PBROWSER_NAVIGATION_COMMIT_CANDIDATE_CANCELLED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_CANCELLED,
+            PBROWSER_NAVIGATION_GATE_READY, 0, error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && test1126_expect_commit(stale_candidate, stale_transaction, 999,
+            PBROWSER_NAVIGATION_COMMIT_CANDIDATE_STALE,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_STALE,
+            PBROWSER_NAVIGATION_GATE_READY, 0, error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok && PBrowser_NavigationCandidateMarkFailed(committed_candidate) !=
+            PBROWSER_OK) {
+        cstr_copy(error, sizeof(error), "failed candidate transition failed");
+        ok = 0;
+    }
+    if (ok && test1126_expect_commit(committed_candidate,
+            committed_transaction, 906,
+            PBROWSER_NAVIGATION_COMMIT_CANDIDATE_FAILED,
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED,
+            PBROWSER_NAVIGATION_GATE_READY, 0, error, sizeof(error)) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        info.size = sizeof(info) - 1;
+        rc = PBrowser_NavigationCommitGetInfo(candidate, transaction, 901,
+                &info);
+        if (rc != PBROWSER_ERROR_ARGUMENT ||
+                PBrowser_NavigationCommitGetInfo(candidate, transaction, 901,
+                NULL) != PBROWSER_ERROR_ARGUMENT ||
+                PBrowser_NavigationCommitGetInfo(NULL, transaction, 901,
+                &info) != PBROWSER_ERROR_ARGUMENT ||
+                PBrowser_NavigationCommitGetInfo(candidate, NULL, 901,
+                &info) != PBROWSER_ERROR_ARGUMENT) {
+            cstr_copy(error, sizeof(error),
+                    "invalid commit snapshot arguments were accepted");
+            ok = 0;
+        }
+    }
+    PBrowser_NavigationCandidateDestroy(candidate);
+    PBrowser_NavigationResourceDestroy(transaction);
+    PBrowser_NavigationCandidateDestroy(failed_candidate);
+    PBrowser_NavigationResourceDestroy(failed_transaction);
+    PBrowser_NavigationCandidateDestroy(resource_cancel_candidate);
+    PBrowser_NavigationResourceDestroy(resource_cancel_transaction);
+    PBrowser_NavigationCandidateDestroy(cancel_candidate);
+    PBrowser_NavigationResourceDestroy(cancel_transaction);
+    PBrowser_NavigationCandidateDestroy(stale_candidate);
+    PBrowser_NavigationResourceDestroy(stale_transaction);
+    PBrowser_NavigationCandidateDestroy(committed_candidate);
+    PBrowser_NavigationResourceDestroy(committed_transaction);
+    if (!ok) {
+        show_error(L"TEST 1126 FAIL", error[0] != '\0' ? error :
+                "navigation commit consistency failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1126 OK",
+            "Browser composed resource and candidate gates: optional failure"
+            " remained committable, required/cancelled/stale/terminal states"
+            " stayed fail-closed, and the host consumed one bounded decision.");
     return TRUE;
 }
 
@@ -89424,6 +89760,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1123: ok = test1123_navigation_resource_observability(); break;
         case 1124: ok = test1124_navigation_candidate_lifecycle(); break;
         case 1125: ok = test1125_navigation_candidate_results(); break;
+        case 1126: ok = test1126_navigation_commit_consistency(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

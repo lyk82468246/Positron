@@ -28,7 +28,7 @@ extern "C" {
 #  define PBROWSER_API __declspec(dllimport)
 #endif
 
-#define PBROWSER_ABI_VERSION 0x00010002UL
+#define PBROWSER_ABI_VERSION 0x00010003UL
 
 #define PBROWSER_HISTORY_MAX 16
 #define PBROWSER_HISTORY_URL_MAX 1024
@@ -239,6 +239,36 @@ PBROWSER_API int PBrowser_NavigationResourceObserveFallbacks(
         HANDLE hTransaction);
 PBROWSER_API int PBrowser_NavigationResourceGetStats(HANDLE hTransaction,
         PBrowserNavigationResourceStats *out_stats);
+
+/* A commit snapshot composes two independently owned Browser handles without
+ * merging their storage or transitioning either handle. Resource gate and
+ * summary fields may be refreshed as in ResourceCommitGate; MarkCommitted
+ * still rechecks the candidate before changing its terminal state. */
+#define PBROWSER_NAVIGATION_COMMIT_READY 0
+#define PBROWSER_NAVIGATION_COMMIT_RESOURCE_PENDING 1
+#define PBROWSER_NAVIGATION_COMMIT_REQUIRED_FAILED 2
+#define PBROWSER_NAVIGATION_COMMIT_RESOURCE_CANCELLED 3
+#define PBROWSER_NAVIGATION_COMMIT_CANDIDATE_CANCEL_REQUESTED 4
+#define PBROWSER_NAVIGATION_COMMIT_CANDIDATE_CANCELLED 5
+#define PBROWSER_NAVIGATION_COMMIT_CANDIDATE_STALE 6
+#define PBROWSER_NAVIGATION_COMMIT_CANDIDATE_FAILED 7
+#define PBROWSER_NAVIGATION_COMMIT_CANDIDATE_COMMITTED 8
+
+typedef struct PBrowserNavigationCommitInfo {
+    unsigned long size;
+    unsigned long current_generation;
+    int decision;
+    int candidate_result;
+    int resource_gate;
+    int candidate_current;
+    int candidate_cancel_requested;
+    int candidate_retired;
+    int can_commit;
+} PBrowserNavigationCommitInfo;
+
+PBROWSER_API int PBrowser_NavigationCommitGetInfo(HANDLE hCandidate,
+        HANDLE hTransaction, unsigned long current_generation,
+        PBrowserNavigationCommitInfo *out_info);
 
 /* Navigation candidate identity and lifecycle. A candidate is the Browser
  * owned admission record for one pending document. It carries only a

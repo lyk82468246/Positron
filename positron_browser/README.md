@@ -141,6 +141,39 @@ PBrowser_NavigationResourceDestroy(tx);
 
 `SetData` copies the input into Browser-owned storage; the caller still owns `bytes`. Failed or cancelled attempts use `Fail`/`Cancel`, and `ShouldRetry` only permits transport retries within the fixed budget. `GetStats` supplies the gate counters and bounded summary for logs. `CopyData` returns a caller-owned copy of a ready resource. The APIs are synchronous and must be serialized by the caller; they do not normalize URLs, cache across transactions, create threads, or retain Core document pointers.
 
+### Candidate/resource commit snapshot
+
+`PBrowser_NavigationCommitGetInfo` composes a candidate handle and its
+independent resource transaction at the page-commit boundary. It does not
+merge either handle or perform a transition. The bounded snapshot reports the
+candidate result, resource gate and `can_commit` flag in one call:
+
+```c
+PBrowserNavigationCommitInfo commit;
+
+memset(&commit, 0, sizeof(commit));
+commit.size = sizeof(commit);
+if (PBrowser_NavigationCommitGetInfo(
+        candidate, tx, current_generation, &commit) == PBROWSER_OK &&
+        commit.decision == PBROWSER_NAVIGATION_COMMIT_READY &&
+        commit.can_commit) {
+    /* Parse/layout/swap are still owned by the host. */
+}
+```
+
+`READY` requires an active, current, uncancelled candidate and a ready
+resource gate. The call does not transition either handle; it may refresh the
+resource transaction's derived gate/summary fields. `RESOURCE_PENDING`, `REQUIRED_FAILED` and
+`RESOURCE_CANCELLED` describe the resource side; `CANDIDATE_CANCEL_REQUESTED`,
+`CANDIDATE_CANCELLED`, `CANDIDATE_STALE`, `CANDIDATE_FAILED` and
+`CANDIDATE_COMMITTED` describe candidate-side exclusion. Optional resource
+failures remain compatible with `READY`, while required failures and any
+cancelled resource remain fail-closed. The snapshot is synchronous;
+`PBrowser_NavigationCandidateMarkCommitted` must still recheck the
+candidate after the host's final layout/swap boundary. The host may log the
+snapshot, but must not reproduce these classifications from worker flags or
+resource counters.
+
 ### Navigation candidate lifecycle
 
 `PBrowser_NavigationCandidate*` owns the admission state for one pending

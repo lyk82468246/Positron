@@ -1814,6 +1814,94 @@ PBROWSER_API int PBrowser_NavigationCandidateGetResult(HANDLE hCandidate,
     return PBROWSER_OK;
 }
 
+static int p_navigation_commit_decision(
+        const PBrowserNavigationCandidateResult *candidate,
+        int resource_gate, int *out_can_commit)
+{
+    if (candidate == NULL || out_can_commit == NULL) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    *out_can_commit = 0;
+    if (candidate->result == PBROWSER_NAVIGATION_CANDIDATE_RESULT_COMMITTED) {
+        return PBROWSER_NAVIGATION_COMMIT_CANDIDATE_COMMITTED;
+    }
+    if (candidate->result == PBROWSER_NAVIGATION_CANDIDATE_RESULT_FAILED) {
+        return PBROWSER_NAVIGATION_COMMIT_CANDIDATE_FAILED;
+    }
+    if (candidate->result == PBROWSER_NAVIGATION_CANDIDATE_RESULT_STALE) {
+        return PBROWSER_NAVIGATION_COMMIT_CANDIDATE_STALE;
+    }
+    if (candidate->result ==
+            PBROWSER_NAVIGATION_CANDIDATE_RESULT_CANCELLED) {
+        return PBROWSER_NAVIGATION_COMMIT_CANDIDATE_CANCELLED;
+    }
+    if (candidate->result != PBROWSER_NAVIGATION_CANDIDATE_RESULT_PENDING) {
+        return PBROWSER_ERROR_STATE;
+    }
+    if (candidate->cancel_requested || candidate->retired) {
+        return PBROWSER_NAVIGATION_COMMIT_CANDIDATE_CANCEL_REQUESTED;
+    }
+    if (resource_gate == PBROWSER_NAVIGATION_GATE_PENDING) {
+        return PBROWSER_NAVIGATION_COMMIT_RESOURCE_PENDING;
+    }
+    if (resource_gate == PBROWSER_NAVIGATION_GATE_REQUIRED_FAILED) {
+        return PBROWSER_NAVIGATION_COMMIT_REQUIRED_FAILED;
+    }
+    if (resource_gate == PBROWSER_NAVIGATION_GATE_CANCELLED) {
+        return PBROWSER_NAVIGATION_COMMIT_RESOURCE_CANCELLED;
+    }
+    if (resource_gate == PBROWSER_NAVIGATION_GATE_READY) {
+        *out_can_commit = 1;
+        return PBROWSER_NAVIGATION_COMMIT_READY;
+    }
+    return PBROWSER_ERROR_STATE;
+}
+
+PBROWSER_API int PBrowser_NavigationCommitGetInfo(HANDLE hCandidate,
+        HANDLE hTransaction, unsigned long current_generation,
+        PBrowserNavigationCommitInfo *out_info)
+{
+    PBrowserNavigationCandidateResult candidate;
+    unsigned long size;
+    int resource_gate;
+    int can_commit;
+    int decision;
+    int rc;
+
+    if (out_info == NULL || out_info->size <
+            sizeof(PBrowserNavigationCommitInfo)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    memset(&candidate, 0, sizeof(candidate));
+    candidate.size = sizeof(candidate);
+    rc = PBrowser_NavigationCandidateGetResult(hCandidate,
+            current_generation, &candidate);
+    if (rc != PBROWSER_OK) {
+        return rc;
+    }
+    resource_gate = PBrowser_NavigationResourceCommitGate(hTransaction);
+    if (resource_gate < 0) {
+        return resource_gate;
+    }
+    decision = p_navigation_commit_decision(&candidate, resource_gate,
+            &can_commit);
+    if (decision < 0) {
+        return decision;
+    }
+    size = out_info->size;
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->size = size;
+    out_info->current_generation = current_generation;
+    out_info->decision = decision;
+    out_info->candidate_result = candidate.result;
+    out_info->resource_gate = resource_gate;
+    out_info->candidate_current = candidate.current;
+    out_info->candidate_cancel_requested = candidate.cancel_requested;
+    out_info->candidate_retired = candidate.retired;
+    out_info->can_commit = can_commit;
+    return PBROWSER_OK;
+}
+
 static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
     "(function(g){"
         "function PElement(id){this.__id=id;}"
