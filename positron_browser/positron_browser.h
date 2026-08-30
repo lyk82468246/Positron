@@ -54,6 +54,8 @@ extern "C" {
 #define PBROWSER_ERROR_STATE (-4)
 #define PBROWSER_ERROR_RANGE (-5)
 #define PBROWSER_ERROR_METHOD (-6)
+#define PBROWSER_ERROR_MEMORY (-7)
+#define PBROWSER_ERROR_NOT_FOUND (-8)
 
 /* Returns the major/minor ABI version encoded as 0xMMMMmmmm. */
 PBROWSER_API unsigned long PBrowser_AbiVersion(void);
@@ -123,6 +125,120 @@ PBROWSER_API int PBrowser_HistoryNavigationIndex(HANDLE hHistory,
         const char *url, int method, int target_index);
 PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         const char *url, int method, int target_index);
+
+/* Host-independent navigation resource transaction. The handle owns a
+ * bounded, deduplicated set of resource records for one candidate page. It
+ * does not create threads, perform network I/O, or reference a Core
+ * document; a host supplies attempts and successful bytes through these
+ * calls, then asks for the commit gate before swapping the page. */
+#define PBROWSER_NAVIGATION_RESOURCE_MAX 64
+#define PBROWSER_NAVIGATION_RESOURCE_URL_MAX PBROWSER_HISTORY_URL_MAX
+#define PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX (2UL * 1024UL * 1024UL)
+#define PBROWSER_NAVIGATION_RESOURCE_RETRY_LIMIT 2
+#define PBROWSER_NAVIGATION_RESOURCE_SUMMARY_MAX 4
+#define PBROWSER_NAVIGATION_RESOURCE_SUMMARY_CAPACITY 320
+
+#define PBROWSER_NAVIGATION_RESOURCE_PENDING 0
+#define PBROWSER_NAVIGATION_RESOURCE_READY 1
+#define PBROWSER_NAVIGATION_RESOURCE_FAILED 2
+#define PBROWSER_NAVIGATION_RESOURCE_CANCELLED 3
+
+#define PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE 0u
+#define PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET 1u
+#define PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT 2u
+#define PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE 4u
+
+#define PBROWSER_NAVIGATION_RESOURCE_OPTIONAL 0
+#define PBROWSER_NAVIGATION_RESOURCE_REQUIRED 1
+
+#define PBROWSER_NAVIGATION_GATE_READY 0
+#define PBROWSER_NAVIGATION_GATE_PENDING 1
+#define PBROWSER_NAVIGATION_GATE_REQUIRED_FAILED 2
+#define PBROWSER_NAVIGATION_GATE_CANCELLED 3
+
+#define PBROWSER_NAVIGATION_FAILURE_NONE 0
+#define PBROWSER_NAVIGATION_FAILURE_RESOLVE 1
+#define PBROWSER_NAVIGATION_FAILURE_TRANSPORT 2
+#define PBROWSER_NAVIGATION_FAILURE_HTTP 3
+#define PBROWSER_NAVIGATION_FAILURE_BUDGET 4
+#define PBROWSER_NAVIGATION_FAILURE_MEMORY 5
+#define PBROWSER_NAVIGATION_FAILURE_CANCELLED 6
+
+typedef struct PBrowserNavigationResourceInfo {
+    unsigned long size;
+    int state;
+    int failure_class;
+    int required;
+    unsigned int role_mask;
+    int attempted;
+    int attempt_count;
+    int retry_count;
+    int data_bytes;
+} PBrowserNavigationResourceInfo;
+
+typedef struct PBrowserNavigationResourceStats {
+    unsigned long size;
+    int resource_count;
+    int resources_ready;
+    int resources_fetched;
+    int resources_failed;
+    int resources_cancelled;
+    int resources_pending;
+    int resource_attempts;
+    int resource_retries;
+    int resource_retry_exhausted;
+    int resource_failures_resolve;
+    int resource_failures_transport;
+    int resource_failures_http;
+    int resource_failures_budget;
+    int resource_failures_memory;
+    int resource_required_failed;
+    int resource_optional_failed;
+    int resource_commit_gate;
+    int resource_fallback_images;
+    int resource_fallback_scripts;
+    int resource_fallback_other;
+    int resource_fallback_observed;
+    int resource_failure_summary_count;
+    int resource_failure_summary_truncated;
+    char resource_failure_summary[
+            PBROWSER_NAVIGATION_RESOURCE_SUMMARY_CAPACITY];
+    int resource_bytes;
+    int budget_rejected;
+} PBrowserNavigationResourceStats;
+
+/* The returned HANDLE is an opaque Browser-owned transaction, not a Win32
+ * kernel handle. All records remain index-stable until destroy. Calls are
+ * synchronous and the caller must serialize access to one transaction. */
+PBROWSER_API HANDLE PBrowser_NavigationResourceCreate(void);
+PBROWSER_API void PBrowser_NavigationResourceDestroy(HANDLE hTransaction);
+PBROWSER_API int PBrowser_NavigationResourceRegister(HANDLE hTransaction,
+        const char *url, int required, unsigned int role_mask,
+        int *out_index);
+PBROWSER_API int PBrowser_NavigationResourceFind(HANDLE hTransaction,
+        const char *url, int *out_index);
+PBROWSER_API int PBrowser_NavigationResourceGet(HANDLE hTransaction,
+        int index, PBrowserNavigationResourceInfo *out_info);
+PBROWSER_API int PBrowser_NavigationResourceGetUrl(HANDLE hTransaction,
+        int index, char *out_url, int out_capacity, int *out_len);
+PBROWSER_API int PBrowser_NavigationResourceCopyData(HANDLE hTransaction,
+        int index, char *out_data, int out_capacity, int *out_len);
+PBROWSER_API int PBrowser_NavigationResourceSetData(HANDLE hTransaction,
+        int index, const char *data, int data_len);
+PBROWSER_API int PBrowser_NavigationResourceBeginAttempt(HANDLE hTransaction,
+        int index);
+PBROWSER_API int PBrowser_NavigationResourceShouldRetry(HANDLE hTransaction,
+        int index, int transport_failure, int *out_retry);
+PBROWSER_API int PBrowser_NavigationResourceFail(HANDLE hTransaction,
+        int index, int failure_class);
+PBROWSER_API int PBrowser_NavigationResourceCancel(HANDLE hTransaction,
+        int index);
+PBROWSER_API int PBrowser_NavigationResourceCancelAll(HANDLE hTransaction);
+PBROWSER_API int PBrowser_NavigationResourceCommitGate(HANDLE hTransaction);
+PBROWSER_API int PBrowser_NavigationResourceObserveFallbacks(
+        HANDLE hTransaction);
+PBROWSER_API int PBrowser_NavigationResourceGetStats(HANDLE hTransaction,
+        PBrowserNavigationResourceStats *out_stats);
 
 /* Synchronous JSON callback shape shared with positron_script. The callback
  * runs on the caller's thread and must not re-enter or destroy its session.

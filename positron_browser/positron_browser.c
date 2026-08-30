@@ -752,8 +752,813 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
     return "null";
 }
 
-    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
-        "(function(g){"
+typedef struct p_browser_navigation_resource {
+    char url[PBROWSER_NAVIGATION_RESOURCE_URL_MAX];
+    char *data;
+    int data_len;
+    int state;
+    int failure_class;
+    int required;
+    unsigned int role_mask;
+    int attempted;
+    int attempt_count;
+    int retry_count;
+} p_browser_navigation_resource;
+
+typedef struct p_browser_navigation_transaction {
+    p_browser_navigation_resource resources[
+            PBROWSER_NAVIGATION_RESOURCE_MAX];
+    int resource_count;
+    int resource_bytes;
+    int resources_fetched;
+    int fallback_images;
+    int fallback_scripts;
+    int fallback_other;
+    int fallback_observed;
+    int resource_commit_gate;
+    int required_failed;
+    int optional_failed;
+    char failure_summary[PBROWSER_NAVIGATION_RESOURCE_SUMMARY_CAPACITY];
+    int failure_summary_count;
+    int failure_summary_truncated;
+}
+        p_browser_navigation_transaction;
+
+static p_browser_navigation_transaction *p_navigation_transaction(
+        HANDLE hTransaction)
+{
+    return (p_browser_navigation_transaction *) hTransaction;
+}
+
+static int p_navigation_transaction_valid(
+        const p_browser_navigation_transaction *transaction)
+{
+    return transaction != NULL;
+}
+
+static int p_navigation_resource_index_valid(
+        const p_browser_navigation_transaction *transaction, int index)
+{
+    return p_navigation_transaction_valid(transaction) && index >= 0 &&
+            index < transaction->resource_count;
+}
+
+static p_browser_navigation_resource *p_navigation_resource_at(
+        p_browser_navigation_transaction *transaction, int index)
+{
+    if (!p_navigation_resource_index_valid(transaction, index)) {
+        return NULL;
+    }
+    return &transaction->resources[index];
+}
+
+static const p_browser_navigation_resource *p_navigation_resource_at_const(
+        const p_browser_navigation_transaction *transaction, int index)
+{
+    if (!p_navigation_resource_index_valid(transaction, index)) {
+        return NULL;
+    }
+    return &transaction->resources[index];
+}
+
+static int p_navigation_resource_role_valid(unsigned int role_mask)
+{
+    return (role_mask & ~(PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET |
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT |
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE)) == 0;
+}
+
+static int p_navigation_resource_failure_valid(int failure_class)
+{
+    return failure_class >= PBROWSER_NAVIGATION_FAILURE_RESOLVE &&
+            failure_class <= PBROWSER_NAVIGATION_FAILURE_CANCELLED;
+}
+
+static void p_navigation_resource_copy(char *out, int capacity,
+        const char *value)
+{
+    int length;
+
+    if (out == NULL || capacity <= 0) {
+        return;
+    }
+    if (value == NULL) {
+        out[0] = '\0';
+        return;
+    }
+    length = (int) strlen(value);
+    if (length >= capacity) {
+        length = capacity - 1;
+    }
+    if (length > 0) {
+        memcpy(out, value, (size_t) length);
+    }
+    out[length] = '\0';
+}
+
+static void p_navigation_resource_role_text(unsigned int role_mask,
+        char *out, int capacity)
+{
+    int used;
+    const char *part;
+    int length;
+
+    if (out == NULL || capacity <= 0) {
+        return;
+    }
+    out[0] = '\0';
+    used = 0;
+    if (role_mask & PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET) {
+        part = "style";
+        length = (int) strlen(part);
+        if (used > 0 && used < capacity - 1) {
+            out[used++] = '+';
+        }
+        if (length > capacity - 1 - used) {
+            length = capacity - 1 - used;
+        }
+        if (length > 0) {
+            memcpy(out + used, part, (size_t) length);
+            used += length;
+        }
+        out[used] = '\0';
+    }
+    if (role_mask & PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT) {
+        part = "script";
+        length = (int) strlen(part);
+        if (used > 0 && used < capacity - 1) {
+            out[used++] = '+';
+        }
+        if (length > capacity - 1 - used) {
+            length = capacity - 1 - used;
+        }
+        if (length > 0) {
+            memcpy(out + used, part, (size_t) length);
+            used += length;
+        }
+        out[used] = '\0';
+    }
+    if (role_mask & PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE) {
+        part = "image";
+        length = (int) strlen(part);
+        if (used > 0 && used < capacity - 1) {
+            out[used++] = '+';
+        }
+        if (length > capacity - 1 - used) {
+            length = capacity - 1 - used;
+        }
+        if (length > 0) {
+            memcpy(out + used, part, (size_t) length);
+            used += length;
+        }
+        out[used] = '\0';
+    }
+    if (used == 0) {
+        p_navigation_resource_copy(out, capacity, "other");
+    }
+}
+
+static const char *p_navigation_resource_failure_name(int failure_class)
+{
+    switch (failure_class) {
+    case PBROWSER_NAVIGATION_FAILURE_RESOLVE:
+        return "resolve";
+    case PBROWSER_NAVIGATION_FAILURE_TRANSPORT:
+        return "transport";
+    case PBROWSER_NAVIGATION_FAILURE_HTTP:
+        return "http";
+    case PBROWSER_NAVIGATION_FAILURE_BUDGET:
+        return "budget";
+    case PBROWSER_NAVIGATION_FAILURE_MEMORY:
+        return "memory";
+    case PBROWSER_NAVIGATION_FAILURE_CANCELLED:
+        return "cancelled";
+    default:
+        return "unknown";
+    }
+}
+
+static unsigned long p_navigation_resource_hash(const char *url)
+{
+    unsigned long hash;
+
+    hash = 2166136261UL;
+    if (url != NULL) {
+        while (*url != '\0') {
+            hash ^= (unsigned long) (unsigned char) *url++;
+            hash *= 16777619UL;
+        }
+    }
+    return hash;
+}
+
+static void p_navigation_resource_summary_rebuild(
+        p_browser_navigation_transaction *transaction)
+{
+    p_browser_navigation_resource *entry;
+    char role[32];
+    char item[96];
+    int used;
+    int length;
+
+    if (!p_navigation_transaction_valid(transaction)) {
+        return;
+    }
+    transaction->failure_summary[0] = '\0';
+    transaction->failure_summary_count = 0;
+    transaction->failure_summary_truncated = 0;
+    used = 0;
+    for (entry = transaction->resources;
+            entry < transaction->resources + transaction->resource_count;
+            entry++) {
+        if (entry->state != PBROWSER_NAVIGATION_RESOURCE_FAILED &&
+                entry->state != PBROWSER_NAVIGATION_RESOURCE_CANCELLED) {
+            continue;
+        }
+        if (transaction->failure_summary_count >=
+                PBROWSER_NAVIGATION_RESOURCE_SUMMARY_MAX) {
+            transaction->failure_summary_truncated++;
+            continue;
+        }
+        p_navigation_resource_role_text(entry->role_mask, role,
+                sizeof(role));
+        length = _snprintf(item, sizeof(item) - 1, "%s/%s#%08lX", role,
+                p_navigation_resource_failure_name(entry->failure_class),
+                p_navigation_resource_hash(entry->url));
+        item[sizeof(item) - 1] = '\0';
+        if (length < 0 || length >= (int) sizeof(item) - 1) {
+            transaction->failure_summary_truncated++;
+            continue;
+        }
+        if (used > 0) {
+            if (used >= PBROWSER_NAVIGATION_RESOURCE_SUMMARY_CAPACITY - 1) {
+                transaction->failure_summary_truncated++;
+                continue;
+            }
+            transaction->failure_summary[used++] = '|';
+        }
+        if (length > PBROWSER_NAVIGATION_RESOURCE_SUMMARY_CAPACITY - 1 -
+                used) {
+            transaction->failure_summary_truncated++;
+            continue;
+        }
+        memcpy(transaction->failure_summary + used, item, (size_t) length);
+        used += length;
+        transaction->failure_summary[used] = '\0';
+        transaction->failure_summary_count++;
+    }
+}
+
+static void p_navigation_resource_fail_entry(
+        p_browser_navigation_transaction *transaction,
+        p_browser_navigation_resource *entry, int failure_class)
+{
+    if (transaction == NULL || entry == NULL ||
+            !p_navigation_resource_failure_valid(failure_class) ||
+            failure_class == PBROWSER_NAVIGATION_FAILURE_CANCELLED ||
+            entry->state == PBROWSER_NAVIGATION_RESOURCE_READY ||
+            entry->state == PBROWSER_NAVIGATION_RESOURCE_FAILED ||
+            entry->state == PBROWSER_NAVIGATION_RESOURCE_CANCELLED) {
+        return;
+    }
+    entry->state = PBROWSER_NAVIGATION_RESOURCE_FAILED;
+    entry->failure_class = failure_class;
+    entry->attempted = 1;
+}
+
+PBROWSER_API HANDLE PBrowser_NavigationResourceCreate(void)
+{
+    p_browser_navigation_transaction *transaction;
+
+    transaction = (p_browser_navigation_transaction *) malloc(
+            sizeof(*transaction));
+    if (transaction == NULL) {
+        return NULL;
+    }
+    memset(transaction, 0, sizeof(*transaction));
+    transaction->resource_commit_gate = PBROWSER_NAVIGATION_GATE_PENDING;
+    return (HANDLE) transaction;
+}
+
+PBROWSER_API void PBrowser_NavigationResourceDestroy(HANDLE hTransaction)
+{
+    p_browser_navigation_transaction *transaction;
+    int i;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (transaction == NULL) {
+        return;
+    }
+    for (i = 0; i < transaction->resource_count; i++) {
+        free(transaction->resources[i].data);
+        transaction->resources[i].data = NULL;
+    }
+    free(transaction);
+}
+
+PBROWSER_API int PBrowser_NavigationResourceRegister(HANDLE hTransaction,
+        const char *url, int required, unsigned int role_mask, int *out_index)
+{
+    p_browser_navigation_transaction *transaction;
+    p_browser_navigation_resource *entry;
+    size_t url_len;
+    int i;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (out_index == NULL || !p_navigation_transaction_valid(transaction) ||
+            url == NULL || url[0] == '\0' ||
+            !p_navigation_resource_role_valid(role_mask) ||
+            (required != PBROWSER_NAVIGATION_RESOURCE_OPTIONAL &&
+            required != PBROWSER_NAVIGATION_RESOURCE_REQUIRED)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    url_len = strlen(url);
+    if (url_len >= PBROWSER_NAVIGATION_RESOURCE_URL_MAX) {
+        return PBROWSER_ERROR_LIMIT;
+    }
+    for (i = 0; i < transaction->resource_count; i++) {
+        entry = &transaction->resources[i];
+        if (strcmp(entry->url, url) == 0) {
+            entry->role_mask |= role_mask;
+            if (required == PBROWSER_NAVIGATION_RESOURCE_REQUIRED) {
+                entry->required = PBROWSER_NAVIGATION_RESOURCE_REQUIRED;
+            }
+            *out_index = i;
+            return PBROWSER_OK;
+        }
+    }
+    if (transaction->resource_count >= PBROWSER_NAVIGATION_RESOURCE_MAX) {
+        return PBROWSER_ERROR_LIMIT;
+    }
+    entry = &transaction->resources[transaction->resource_count];
+    memset(entry, 0, sizeof(*entry));
+    memcpy(entry->url, url, url_len + 1);
+    entry->state = PBROWSER_NAVIGATION_RESOURCE_PENDING;
+    entry->failure_class = PBROWSER_NAVIGATION_FAILURE_NONE;
+    entry->required = required;
+    entry->role_mask = role_mask;
+    *out_index = transaction->resource_count;
+    transaction->resource_count++;
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceFind(HANDLE hTransaction,
+        const char *url, int *out_index)
+{
+    p_browser_navigation_transaction *transaction;
+    int i;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (out_index == NULL || !p_navigation_transaction_valid(transaction) ||
+            url == NULL) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    for (i = 0; i < transaction->resource_count; i++) {
+        if (strcmp(transaction->resources[i].url, url) == 0) {
+            *out_index = i;
+            return PBROWSER_OK;
+        }
+    }
+    *out_index = -1;
+    return PBROWSER_ERROR_NOT_FOUND;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceGet(HANDLE hTransaction,
+        int index, PBrowserNavigationResourceInfo *out_info)
+{
+    p_browser_navigation_transaction *transaction;
+    const p_browser_navigation_resource *entry;
+    unsigned long size;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (out_info == NULL || out_info->size <
+            sizeof(PBrowserNavigationResourceInfo)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    entry = p_navigation_resource_at_const(transaction, index);
+    if (entry == NULL) {
+        return PBROWSER_ERROR_RANGE;
+    }
+    size = out_info->size;
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->size = size;
+    out_info->state = entry->state;
+    out_info->failure_class = entry->failure_class;
+    out_info->required = entry->required;
+    out_info->role_mask = entry->role_mask;
+    out_info->attempted = entry->attempted;
+    out_info->attempt_count = entry->attempt_count;
+    out_info->retry_count = entry->retry_count;
+    out_info->data_bytes = entry->data_len;
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceGetUrl(HANDLE hTransaction,
+        int index, char *out_url, int out_capacity, int *out_len)
+{
+    p_browser_navigation_transaction *transaction;
+    const p_browser_navigation_resource *entry;
+    int length;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (out_len == NULL || out_capacity < 0) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    entry = p_navigation_resource_at_const(transaction, index);
+    if (entry == NULL) {
+        return PBROWSER_ERROR_RANGE;
+    }
+    length = (int) strlen(entry->url);
+    *out_len = length;
+    if (out_url == NULL || out_capacity == 0) {
+        return PBROWSER_OK;
+    }
+    if (out_capacity <= length) {
+        out_url[0] = '\0';
+        return PBROWSER_ERROR_LIMIT;
+    }
+    memcpy(out_url, entry->url, (size_t) length + 1);
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceCopyData(HANDLE hTransaction,
+        int index, char *out_data, int out_capacity, int *out_len)
+{
+    p_browser_navigation_transaction *transaction;
+    const p_browser_navigation_resource *entry;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (out_len == NULL || out_capacity < 0) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    entry = p_navigation_resource_at_const(transaction, index);
+    if (entry == NULL) {
+        return PBROWSER_ERROR_RANGE;
+    }
+    if (entry->state != PBROWSER_NAVIGATION_RESOURCE_READY ||
+            entry->data == NULL || entry->data_len <= 0) {
+        *out_len = 0;
+        return PBROWSER_ERROR_STATE;
+    }
+    *out_len = entry->data_len;
+    if (out_data == NULL || out_capacity == 0) {
+        return PBROWSER_OK;
+    }
+    if (out_capacity < entry->data_len) {
+        return PBROWSER_ERROR_LIMIT;
+    }
+    memcpy(out_data, entry->data, (size_t) entry->data_len);
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceSetData(HANDLE hTransaction,
+        int index, const char *data, int data_len)
+{
+    p_browser_navigation_transaction *transaction;
+    p_browser_navigation_resource *entry;
+    char *copy;
+
+    transaction = p_navigation_transaction(hTransaction);
+    entry = p_navigation_resource_at(transaction, index);
+    if (entry == NULL || data == NULL || data_len <= 0) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    if (entry->state == PBROWSER_NAVIGATION_RESOURCE_FAILED ||
+            entry->state == PBROWSER_NAVIGATION_RESOURCE_CANCELLED) {
+        return PBROWSER_ERROR_STATE;
+    }
+    if (entry->state == PBROWSER_NAVIGATION_RESOURCE_READY) {
+        return PBROWSER_OK;
+    }
+    if (transaction->resource_bytes < 0 ||
+            transaction->resource_bytes >
+            (int) PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX ||
+            data_len > (int) PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX -
+            transaction->resource_bytes) {
+        p_navigation_resource_fail_entry(transaction, entry,
+                PBROWSER_NAVIGATION_FAILURE_BUDGET);
+        return PBROWSER_ERROR_LIMIT;
+    }
+    copy = (char *) malloc((size_t) data_len);
+    if (copy == NULL) {
+        p_navigation_resource_fail_entry(transaction, entry,
+                PBROWSER_NAVIGATION_FAILURE_MEMORY);
+        return PBROWSER_ERROR_MEMORY;
+    }
+    memcpy(copy, data, (size_t) data_len);
+    entry->data = copy;
+    entry->data_len = data_len;
+    entry->attempted = 1;
+    entry->state = PBROWSER_NAVIGATION_RESOURCE_READY;
+    entry->failure_class = PBROWSER_NAVIGATION_FAILURE_NONE;
+    transaction->resource_bytes += data_len;
+    transaction->resources_fetched++;
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceBeginAttempt(HANDLE hTransaction,
+        int index)
+{
+    p_browser_navigation_transaction *transaction;
+    p_browser_navigation_resource *entry;
+
+    transaction = p_navigation_transaction(hTransaction);
+    entry = p_navigation_resource_at(transaction, index);
+    if (entry == NULL) {
+        return PBROWSER_ERROR_RANGE;
+    }
+    if (entry->state != PBROWSER_NAVIGATION_RESOURCE_PENDING) {
+        return PBROWSER_ERROR_STATE;
+    }
+    entry->attempted = 1;
+    entry->attempt_count++;
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceShouldRetry(HANDLE hTransaction,
+        int index, int transport_failure, int *out_retry)
+{
+    p_browser_navigation_transaction *transaction;
+    p_browser_navigation_resource *entry;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (out_retry == NULL) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    *out_retry = 0;
+    entry = p_navigation_resource_at(transaction, index);
+    if (entry == NULL) {
+        return PBROWSER_ERROR_RANGE;
+    }
+    if (entry->state != PBROWSER_NAVIGATION_RESOURCE_PENDING) {
+        return PBROWSER_OK;
+    }
+    if (transport_failure && entry->retry_count <
+            PBROWSER_NAVIGATION_RESOURCE_RETRY_LIMIT) {
+        entry->retry_count++;
+        *out_retry = 1;
+    }
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceFail(HANDLE hTransaction,
+        int index, int failure_class)
+{
+    p_browser_navigation_transaction *transaction;
+    p_browser_navigation_resource *entry;
+
+    transaction = p_navigation_transaction(hTransaction);
+    entry = p_navigation_resource_at(transaction, index);
+    if (entry == NULL || !p_navigation_resource_failure_valid(failure_class) ||
+            failure_class == PBROWSER_NAVIGATION_FAILURE_CANCELLED) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    if (entry->state == PBROWSER_NAVIGATION_RESOURCE_READY) {
+        return PBROWSER_ERROR_STATE;
+    }
+    if (entry->state == PBROWSER_NAVIGATION_RESOURCE_FAILED ||
+            entry->state == PBROWSER_NAVIGATION_RESOURCE_CANCELLED) {
+        return PBROWSER_OK;
+    }
+    p_navigation_resource_fail_entry(transaction, entry, failure_class);
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceCancel(HANDLE hTransaction,
+        int index)
+{
+    p_browser_navigation_transaction *transaction;
+    p_browser_navigation_resource *entry;
+
+    transaction = p_navigation_transaction(hTransaction);
+    entry = p_navigation_resource_at(transaction, index);
+    if (entry == NULL) {
+        return PBROWSER_ERROR_RANGE;
+    }
+    if (entry->state == PBROWSER_NAVIGATION_RESOURCE_READY ||
+            entry->state == PBROWSER_NAVIGATION_RESOURCE_FAILED ||
+            entry->state == PBROWSER_NAVIGATION_RESOURCE_CANCELLED) {
+        return PBROWSER_OK;
+    }
+    entry->state = PBROWSER_NAVIGATION_RESOURCE_CANCELLED;
+    entry->failure_class = PBROWSER_NAVIGATION_FAILURE_CANCELLED;
+    entry->attempted = 1;
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceCancelAll(HANDLE hTransaction)
+{
+    p_browser_navigation_transaction *transaction;
+    int i;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (!p_navigation_transaction_valid(transaction)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    for (i = 0; i < transaction->resource_count; i++) {
+        (void) PBrowser_NavigationResourceCancel(hTransaction, i);
+    }
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceCommitGate(HANDLE hTransaction)
+{
+    p_browser_navigation_transaction *transaction;
+    p_browser_navigation_resource *entry;
+    int pending;
+    int cancelled;
+    int required_failed;
+    int optional_failed;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (!p_navigation_transaction_valid(transaction)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    pending = 0;
+    cancelled = 0;
+    required_failed = 0;
+    optional_failed = 0;
+    for (entry = transaction->resources;
+            entry < transaction->resources + transaction->resource_count;
+            entry++) {
+        if (entry->state == PBROWSER_NAVIGATION_RESOURCE_PENDING) {
+            pending++;
+        } else if (entry->state == PBROWSER_NAVIGATION_RESOURCE_FAILED) {
+            if (entry->required) {
+                required_failed++;
+            } else {
+                optional_failed++;
+            }
+        } else if (entry->state == PBROWSER_NAVIGATION_RESOURCE_CANCELLED) {
+            cancelled++;
+        }
+    }
+    transaction->required_failed = required_failed;
+    transaction->optional_failed = optional_failed;
+    p_navigation_resource_summary_rebuild(transaction);
+    if (cancelled > 0) {
+        transaction->resource_commit_gate = PBROWSER_NAVIGATION_GATE_CANCELLED;
+    } else if (pending > 0) {
+        transaction->resource_commit_gate = PBROWSER_NAVIGATION_GATE_PENDING;
+    } else if (required_failed > 0) {
+        transaction->resource_commit_gate =
+                PBROWSER_NAVIGATION_GATE_REQUIRED_FAILED;
+    } else {
+        transaction->resource_commit_gate = PBROWSER_NAVIGATION_GATE_READY;
+    }
+    return transaction->resource_commit_gate;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceObserveFallbacks(
+        HANDLE hTransaction)
+{
+    p_browser_navigation_transaction *transaction;
+    p_browser_navigation_resource *entry;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (!p_navigation_transaction_valid(transaction)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    transaction->fallback_images = 0;
+    transaction->fallback_scripts = 0;
+    transaction->fallback_other = 0;
+    transaction->fallback_observed = 1;
+    for (entry = transaction->resources;
+            entry < transaction->resources + transaction->resource_count;
+            entry++) {
+        if (entry->state != PBROWSER_NAVIGATION_RESOURCE_FAILED ||
+                entry->required) {
+            continue;
+        }
+        if (entry->role_mask & PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE) {
+            transaction->fallback_images++;
+        }
+        if (entry->role_mask & PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT) {
+            transaction->fallback_scripts++;
+        }
+        if ((entry->role_mask &
+                (PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE |
+                PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT)) == 0) {
+            transaction->fallback_other++;
+        }
+    }
+    return PBROWSER_OK;
+}
+
+PBROWSER_API int PBrowser_NavigationResourceGetStats(HANDLE hTransaction,
+        PBrowserNavigationResourceStats *out_stats)
+{
+    p_browser_navigation_transaction *transaction;
+    p_browser_navigation_resource *entry;
+    unsigned long size;
+    int resources_ready;
+    int resources_failed;
+    int resources_cancelled;
+    int resources_pending;
+    int retry_exhausted;
+    int failures_resolve;
+    int failures_transport;
+    int failures_http;
+    int failures_budget;
+    int failures_memory;
+    int attempts;
+    int retries;
+
+    transaction = p_navigation_transaction(hTransaction);
+    if (out_stats == NULL || out_stats->size <
+            sizeof(PBrowserNavigationResourceStats) ||
+            !p_navigation_transaction_valid(transaction)) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    (void) PBrowser_NavigationResourceCommitGate(hTransaction);
+    resources_ready = 0;
+    resources_failed = 0;
+    resources_cancelled = 0;
+    resources_pending = 0;
+    retry_exhausted = 0;
+    failures_resolve = 0;
+    failures_transport = 0;
+    failures_http = 0;
+    failures_budget = 0;
+    failures_memory = 0;
+    attempts = 0;
+    retries = 0;
+    for (entry = transaction->resources;
+            entry < transaction->resources + transaction->resource_count;
+            entry++) {
+        attempts += entry->attempt_count;
+        retries += entry->retry_count;
+        if (entry->state == PBROWSER_NAVIGATION_RESOURCE_READY) {
+            resources_ready++;
+        } else if (entry->state == PBROWSER_NAVIGATION_RESOURCE_FAILED) {
+            resources_failed++;
+            switch (entry->failure_class) {
+            case PBROWSER_NAVIGATION_FAILURE_RESOLVE:
+                failures_resolve++;
+                break;
+            case PBROWSER_NAVIGATION_FAILURE_TRANSPORT:
+                failures_transport++;
+                if (entry->retry_count >=
+                        PBROWSER_NAVIGATION_RESOURCE_RETRY_LIMIT) {
+                    retry_exhausted++;
+                }
+                break;
+            case PBROWSER_NAVIGATION_FAILURE_HTTP:
+                failures_http++;
+                break;
+            case PBROWSER_NAVIGATION_FAILURE_BUDGET:
+                failures_budget++;
+                break;
+            case PBROWSER_NAVIGATION_FAILURE_MEMORY:
+                failures_memory++;
+                break;
+            default:
+                break;
+            }
+        } else if (entry->state == PBROWSER_NAVIGATION_RESOURCE_CANCELLED) {
+            resources_cancelled++;
+        } else if (entry->state == PBROWSER_NAVIGATION_RESOURCE_PENDING) {
+            resources_pending++;
+        }
+    }
+    size = out_stats->size;
+    memset(out_stats, 0, sizeof(*out_stats));
+    out_stats->size = size;
+    out_stats->resource_count = transaction->resource_count;
+    out_stats->resources_ready = resources_ready;
+    out_stats->resources_fetched = transaction->resources_fetched;
+    out_stats->resources_failed = resources_failed;
+    out_stats->resources_cancelled = resources_cancelled;
+    out_stats->resources_pending = resources_pending;
+    out_stats->resource_attempts = attempts;
+    out_stats->resource_retries = retries;
+    out_stats->resource_retry_exhausted = retry_exhausted;
+    out_stats->resource_failures_resolve = failures_resolve;
+    out_stats->resource_failures_transport = failures_transport;
+    out_stats->resource_failures_http = failures_http;
+    out_stats->resource_failures_budget = failures_budget;
+    out_stats->resource_failures_memory = failures_memory;
+    out_stats->resource_required_failed = transaction->required_failed;
+    out_stats->resource_optional_failed = transaction->optional_failed;
+    out_stats->resource_commit_gate = transaction->resource_commit_gate;
+    out_stats->resource_fallback_images = transaction->fallback_images;
+    out_stats->resource_fallback_scripts = transaction->fallback_scripts;
+    out_stats->resource_fallback_other = transaction->fallback_other;
+    out_stats->resource_fallback_observed = transaction->fallback_observed;
+    out_stats->resource_failure_summary_count =
+            transaction->failure_summary_count;
+    out_stats->resource_failure_summary_truncated =
+            transaction->failure_summary_truncated;
+    memcpy(out_stats->resource_failure_summary,
+            transaction->failure_summary,
+            sizeof(out_stats->resource_failure_summary));
+    out_stats->resource_bytes = transaction->resource_bytes;
+    out_stats->budget_rejected = failures_budget;
+    return PBROWSER_OK;
+}
+
+static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
+    "(function(g){"
         "function PElement(id){this.__id=id;}"
         "Object.defineProperty(PElement.prototype,'nodeType',{value:1,writable:false,"
         "configurable:false,enumerable:true});Object.defineProperty(PElement.prototype,'ELEMENT_NODE',"

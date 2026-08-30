@@ -21,9 +21,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 提供可以单独消费、也可
 WM6 应用 / test_host.exe
         │
         ├── 平台窗口、消息循环、WM 控件、SIP/IME、文件选择器
-        ├── 导航事务、后台网络调度、资源获取/终态与页面提交
+        ├── 导航候选、后台网络调度、资源 I/O、取消与页面提交策略
         │
-        ├── positron_browser.dll ── history、script session、DOM/Event 协调
+        ├── positron_browser.dll ── history、script session、DOM/Event、资源事务
         ├── positron_core.dll    ── HTML/CSS/DOM、style、layout、paint、表单
         ├── positron_script.dll  ── 有预算的通用 JavaScript runtime
         ├── positron_image.dll   ── bitmap/SVG decode、draw、encode
@@ -95,9 +95,9 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 
 Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/free 回调完成；Core 在回调返回前复制需要保留的字节，再按契约调用 free。Core 也不执行 JavaScript，只发现、缓存和枚举脚本。
 
-资源请求的 `pending`、`ready`、`failed`、`cancelled` 终态及 resolve、transport、HTTP、budget、memory 失败分类属于宿主的导航调度 telemetry，不是 Core 的公共 ABI。宿主可对 `status_code == 0` 的 transport 失败按固定预算重试（当前每项最多 2 次重试、3 次尝试），但 HTTP、resolve、budget、memory 和取消不得重试；预算耗尽仍是 `failed/transport`。宿主必须把成功字节复制到候选自己的缓存，并让失败或取消保持不可用；取消不能伪装成网络失败或成功。
+资源发现仍属于 Core，资源事务属于 Browser。Core/宿主通过 Browser 的 `PBrowser_NavigationResource*` API 注册 URL、role 和 required/optional policy，再把每次尝试、成功字节、失败分类或取消结果提交给 Browser。Browser 负责 `pending`、`ready`、`failed`、`cancelled` 的单向终态、按 URL 去重、资源字节预算、transport 重试计数、required/optional gate、hash-only 摘要和 fallback family 计数；宿主负责 DNS/TCP/TLS/HTTP、worker、取消时机和页面提交策略。Browser 不创建线程、不访问网络、不持有 Core document，也不替宿主决定何时重试。
 
-页面提交策略由宿主决定：主文档必须先成功，样式表和 `@import` 在 style pass 中归为 required，脚本与图片归为 optional。宿主在 layout/swap 前必须重新检查资源 gate；required 失败、仍有未收敛的 pending 或候选取消时保留旧 document/session/history，不触发 teardown 或 swap。optional 失败可以继续提交，Core 按既定的 alt/src/default-style fallback 绘制。宿主可为日志输出最多 4 项不含原始 URL 的 `role/failure#hash` 失败摘要，并在 layout 成功后记录 image/script/other fallback family 的粗粒度观测；这些 required/optional 分类、gate 统计和观测是宿主策略，不是公共 Core/Browser ABI，也不提供通用逐资源 UI。
+主文档必须先成功，样式表和 `@import` 在 style pass 中通常注册为 required，脚本与图片注册为 optional。宿主在 layout/swap 前读取 Browser gate；required 失败、仍有 pending 或候选取消时保留旧 document/session/history，不触发 teardown 或 swap。optional 失败可以继续提交，Core 按既定的 alt/src/default-style fallback 绘制。失败摘要最多 4 项且不含原始 URL，transport 失败每项最多 2 次重试（总计 3 次尝试），HTTP、resolve、budget、memory 和取消不重试；这些状态和计数由 Browser 提供，宿主只负责调度与日志。
 
 文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单和交互状态。释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。style/layout/paint 通常属于同一 UI 线程；不得在后台 worker 并发操作同一个文档。
 
@@ -118,6 +118,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - Event、input、keyboard、focus、composition、click 和导航协调；
 - timer、animation frame、microtask、idle、message 和页面生命周期队列，以及显式的 document visibility/pagehide/unload teardown 与队列清理入口；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
+- 导航资源事务：按 URL 去重并合并 role/policy，拥有资源字节、终态、失败分类、transport 重试预算、required/optional commit gate、hash-only failure summary 和 fallback observation。
 
 它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。
 
@@ -140,7 +141,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 顶层窗口、消息循环、滚动条和 DPI/旋转通知；
 - native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位、销毁并跟踪其平台鼠标/键盘选区；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、写入和所有权也只属于宿主；
 - 后台线程、导航取消、loading 状态与页面 swap；较新的导航可以取代仍在准备的候选，宿主用 generation 门控 worker 完成、进度和提交消息，并让退休候选持有自己的线程、response、资源队列和脚本对象直到 worker 收尾；退休队列有固定上限，达到上限时新导航 fail closed 而不改变当前页；候选成功时在旧 document/session 仍有效的窗口内调用 Browser teardown，再停止 native 回调、释放旧对象并提交新页；
-- DNS/TCP/TLS/HTTP 组合策略和资源调度；每项资源在宿主内沿 `pending`→`ready`/`failed`/`cancelled` 单向收敛，失败摘要区分 resolve、transport、HTTP、budget、memory，transport 失败每项最多重试 2 次（总计最多 3 次尝试），其他失败和取消不重试，取消单独计数且不得重新进入缓存；
+- DNS/TCP/TLS/HTTP 组合策略、worker、取消时机和资源调度；宿主通过 Browser 资源事务注册 URL 并提交 attempt/data/failure/cancel 结果，决定何时重试、何时运行 style/layout、何时提交页面。资源终态、成功字节、预算、required/optional gate、失败摘要和 fallback 计数由 Browser 拥有，宿主读取统计用于 loading、日志和应用策略，不复制第二份资源状态或数据；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
 - 把 Core 的 contenteditable 状态/文本 callback 和 selection callback 注册到 Browser session，并把 WM/native 输入接到 `beforeinput`→Core mutation→`input` 顺序；宿主只保留窗口、焦点、坐标、键盘/拖选 anchor、Shift 状态和原生选区，在范围变化或捕获/焦点中断后调用 Browser 的通知入口，不经 Core 重复派发 `selectionchange`；对 `WM_PASTE`/`WM_COPY`/`WM_CUT`，宿主读取并规范化有界 `CF_UNICODETEXT`，让 Browser 决定取消后再执行 native default，折叠复制保持原剪贴板不变，并对 WinCE `WM_CUT` 的同一 HWND 内部 `WM_COPY` 重入做局部放行；
@@ -157,9 +158,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 1. UI 线程记录导航意图和当前页面，但不立即销毁旧文档。
 2. worker 获取主文档及可并行准备的网络资源；网络层不触碰 DOM/NetSurf 状态。较新的导航会使旧候选进入 retired 状态，旧 worker 的完成和进度消息不得越过 generation 门控；仍在收尾的退休候选数量受宿主固定上限约束。
 3. UI 线程解析 HTML，创建候选文档。
-4. 通过 Core 的 resolver/fetch 回调准备 CSS、`@import`、图片和 script cache；宿主为每项资源记录有界的终态和失败分类，并仅对 transport 失败执行固定的最多 2 次重试，取消项不能被后续样式阶段当作待获取资源。
-5. style/image pass 若发现新的 pending 资源则回到 worker；样式表与 `@import` 按 required 策略，图片与 script 按 optional 策略。重复 URL 共享宿主资源条目，并保留 stylesheet/script/image 的 role bitmask。
-6. UI 线程在 layout/swap 前重新计算资源 gate，同时重建最多 4 项 hash-only failure summary；required 失败、未收敛 pending 或取消时只释放候选，保留旧页、旧 session 和旧队列；optional 失败在 Core fallback 可用时允许继续，并在 layout 成功后记录粗粒度 fallback family 观测。
+4. 通过 Core 的 resolver/fetch 回调发现 CSS、`@import`、图片和 script；宿主为每项调用 Browser 资源事务的 register/begin-attempt，并把网络结果、成功字节、失败分类或取消提交回 Browser。取消项不会被后续样式阶段当作待获取资源。
+5. style/image pass 若发现新的 pending 资源则回到 worker；样式表与 `@import` 按 required policy，图片与 script 按 optional policy。重复 URL 由 Browser 事务去重并合并 stylesheet/script/image role bitmask；宿主只保留 URL 到 Browser resource index 的短引用。
+6. UI 线程在 layout/swap 前读取 Browser commit gate 和 stats；required 失败、未收敛 pending 或取消时只释放候选，保留旧页、旧 session 和旧队列；optional 失败在 Core fallback 可用时允许继续，并在 layout 成功后通知 Browser 记录 fallback family 观测。宿主日志可读取最多 4 项 hash-only failure summary，但不拥有或重建摘要。
 7. gate READY 后，在旧 document/session 仍有效时调用 Browser teardown，停止旧页回调并原子提交页面与 history。
 8. 交互、旋转或动态 DOM 修改按需重新 style/layout/paint。
 

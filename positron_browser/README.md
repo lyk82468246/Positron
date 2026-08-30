@@ -105,6 +105,42 @@ Browser 可把 anchor/programmatic navigation 分类为 assign、replace、fragm
 
 它不解析完整 URL、不连接网络、不创建 HWND，也不决定下载和外部协议。单窗口宿主可以接受当前-context target，并对 `_blank` 或不匹配的 named target 保守返回失败。target、rel、URL 和 context name 都是同步借用快照。
 
+### Navigation resource transaction
+
+`PBrowser_NavigationResource*` 把一次候选页面的资源状态放在 Browser，而不是测试宿主或应用自己的重复结构中。事务 handle 由 `PBrowser_NavigationResourceCreate` 创建、由 `PBrowser_NavigationResourceDestroy` 销毁；它按 UTF-8 URL 去重，合并 stylesheet/script/image role 和 required/optional policy，并拥有成功字节、终态、失败分类、attempt/retry 计数、资源预算、commit gate、hash-only failure summary 与 fallback observation。
+
+Browser 不执行 DNS、TCP、TLS、HTTP 或 worker。宿主（或其他应用）负责发现资源、调度网络和决定取消/重试时机，再按顺序提交结果：
+
+```c
+HANDLE tx;
+int index;
+PBrowserNavigationResourceInfo info;
+const char css_url[] = "https://example.invalid/site.css";
+const char *bytes;
+int byte_count;
+
+tx = PBrowser_NavigationResourceCreate();
+if (tx != NULL &&
+    PBrowser_NavigationResourceRegister(
+        tx, css_url,
+        PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+        PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
+        &index) == PBROWSER_OK &&
+    PBrowser_NavigationResourceBeginAttempt(tx, index) == PBROWSER_OK) {
+    /* Network code owns response bytes until this call returns. */
+    PBrowser_NavigationResourceSetData(tx, index, bytes, byte_count);
+}
+
+if (PBrowser_NavigationResourceCommitGate(tx) ==
+    PBROWSER_NAVIGATION_GATE_READY) {
+    /* The host may now run layout and submit the candidate page. */
+}
+PBrowser_NavigationResourceGet(tx, index, &info);
+PBrowser_NavigationResourceDestroy(tx);
+```
+
+`SetData` copies the input into Browser-owned storage; the caller still owns `bytes`. Failed or cancelled attempts use `Fail`/`Cancel`, and `ShouldRetry` only permits transport retries within the fixed budget. `GetStats` supplies the gate counters and bounded summary for logs. `CopyData` returns a caller-owned copy of a ready resource. The APIs are synchronous and must be serialized by the caller; they do not normalize URLs, cache across transactions, create threads, or retain Core document pointers.
+
 ### 队列与生命周期
 
 Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
@@ -129,6 +165,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 ## 所有权与错误
 
 - History 和 script-session handle 由 Browser 创建/销毁，不使用 `CloseHandle`。
+- 导航资源事务 handle、URL 副本和资源字节均由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationResourceDestroy`，调用方需要自己的数据时使用 `PBrowser_NavigationResourceCopyData`。
 - History 返回的 entry/state 字符串是借用值，调用方不得 free。
 - callback table 和 `pw` 由宿主持有，必须活到 unregister 或 session destroy。
 - callback 中的字符串、event info 和输出缓冲只在同步调用期间有效。

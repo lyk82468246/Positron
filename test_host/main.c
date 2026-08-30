@@ -6156,33 +6156,38 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_COMMIT_STYLE 3
 #define PCORE_NAV_COMMIT_IMAGES 4
 #define PCORE_NAV_COMMIT_LAYOUT 5
-#define PCORE_NAV_MAX_RESOURCES 64
-#define PCORE_NAV_RESOURCE_BYTES_MAX (2 * 1024 * 1024)
-#define PCORE_NAV_RESOURCE_RETRY_LIMIT 2
+#define PCORE_NAV_MAX_RESOURCES PBROWSER_NAVIGATION_RESOURCE_MAX
+#define PCORE_NAV_RESOURCE_BYTES_MAX \
+    ((int) PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX)
+#define PCORE_NAV_RESOURCE_RETRY_LIMIT \
+    PBROWSER_NAVIGATION_RESOURCE_RETRY_LIMIT
 #define PCORE_NAV_RETIRED_MAX 4
-#define PCORE_NAV_RESOURCE_PENDING 0
-#define PCORE_NAV_RESOURCE_READY 1
-#define PCORE_NAV_RESOURCE_FAILED 2
-#define PCORE_NAV_RESOURCE_CANCELLED 3
-#define PCORE_NAV_RESOURCE_ROLE_NONE 0
-#define PCORE_NAV_RESOURCE_ROLE_STYLESHEET 1
-#define PCORE_NAV_RESOURCE_ROLE_SCRIPT 2
-#define PCORE_NAV_RESOURCE_ROLE_IMAGE 4
-#define PCORE_NAV_RESOURCE_OPTIONAL 0
-#define PCORE_NAV_RESOURCE_REQUIRED 1
-#define PCORE_NAV_GATE_READY 0
-#define PCORE_NAV_GATE_PENDING 1
-#define PCORE_NAV_GATE_REQUIRED_FAILED 2
-#define PCORE_NAV_GATE_CANCELLED 3
-#define PCORE_NAV_RESOURCE_SUMMARY_MAX 4
-#define PCORE_NAV_RESOURCE_SUMMARY_CAPACITY 320
-#define PCORE_NAV_FAILURE_NONE 0
-#define PCORE_NAV_FAILURE_RESOLVE 1
-#define PCORE_NAV_FAILURE_TRANSPORT 2
-#define PCORE_NAV_FAILURE_HTTP 3
-#define PCORE_NAV_FAILURE_BUDGET 4
-#define PCORE_NAV_FAILURE_MEMORY 5
-#define PCORE_NAV_FAILURE_CANCELLED 6
+#define PCORE_NAV_RESOURCE_PENDING PBROWSER_NAVIGATION_RESOURCE_PENDING
+#define PCORE_NAV_RESOURCE_READY PBROWSER_NAVIGATION_RESOURCE_READY
+#define PCORE_NAV_RESOURCE_FAILED PBROWSER_NAVIGATION_RESOURCE_FAILED
+#define PCORE_NAV_RESOURCE_CANCELLED \
+    PBROWSER_NAVIGATION_RESOURCE_CANCELLED
+#define PCORE_NAV_RESOURCE_ROLE_NONE \
+    PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE
+#define PCORE_NAV_RESOURCE_ROLE_STYLESHEET \
+    PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET
+#define PCORE_NAV_RESOURCE_ROLE_SCRIPT PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT
+#define PCORE_NAV_RESOURCE_ROLE_IMAGE PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE
+#define PCORE_NAV_RESOURCE_OPTIONAL PBROWSER_NAVIGATION_RESOURCE_OPTIONAL
+#define PCORE_NAV_RESOURCE_REQUIRED PBROWSER_NAVIGATION_RESOURCE_REQUIRED
+#define PCORE_NAV_GATE_READY PBROWSER_NAVIGATION_GATE_READY
+#define PCORE_NAV_GATE_PENDING PBROWSER_NAVIGATION_GATE_PENDING
+#define PCORE_NAV_GATE_REQUIRED_FAILED PBROWSER_NAVIGATION_GATE_REQUIRED_FAILED
+#define PCORE_NAV_GATE_CANCELLED PBROWSER_NAVIGATION_GATE_CANCELLED
+#define PCORE_NAV_RESOURCE_SUMMARY_CAPACITY \
+    PBROWSER_NAVIGATION_RESOURCE_SUMMARY_CAPACITY
+#define PCORE_NAV_FAILURE_NONE PBROWSER_NAVIGATION_FAILURE_NONE
+#define PCORE_NAV_FAILURE_RESOLVE PBROWSER_NAVIGATION_FAILURE_RESOLVE
+#define PCORE_NAV_FAILURE_TRANSPORT PBROWSER_NAVIGATION_FAILURE_TRANSPORT
+#define PCORE_NAV_FAILURE_HTTP PBROWSER_NAVIGATION_FAILURE_HTTP
+#define PCORE_NAV_FAILURE_BUDGET PBROWSER_NAVIGATION_FAILURE_BUDGET
+#define PCORE_NAV_FAILURE_MEMORY PBROWSER_NAVIGATION_FAILURE_MEMORY
+#define PCORE_NAV_FAILURE_CANCELLED PBROWSER_NAVIGATION_FAILURE_CANCELLED
 
 typedef struct pcore_navigation_progress_message {
     LONG generation;
@@ -6192,16 +6197,8 @@ typedef struct pcore_navigation_progress_message {
 
 typedef struct pcore_navigation_resource {
     struct pcore_navigation_resource *next;
+    int index;
     char *url;
-    char *data;
-    int len;
-    int attempted;
-    int attempt_count;
-    int retry_count;
-    int state;
-    int failure_class;
-    int required;
-    int role_mask;
 } pcore_navigation_resource;
 
 typedef struct pcore_browser_script_bridge pcore_browser_script_bridge;
@@ -6447,9 +6444,9 @@ typedef struct pcore_navigation_request {
     HANDLE         document;
     HANDLE         script_runtime;
     pcore_browser_script_bridge *script_bridge;
+    HANDLE         resource_transaction;
     pcore_navigation_resource *resources;
-    int            resource_count;
-    int            resource_bytes;
+    int            resource_ref_count;
     int            resource_policy;
     int            resource_role_mask;
     int            worker_stage;
@@ -13110,147 +13107,88 @@ static pcore_navigation_resource *pcore_navigation_resource_find(
     return NULL;
 }
 
-static void pcore_navigation_text_append(char *out, int capacity, int *used,
-        const char *part)
-{
-    int length;
-
-    if (out == NULL || used == NULL || part == NULL || capacity <= 0 ||
-            *used < 0 || *used >= capacity) {
-        return;
-    }
-    if (*used > 0) {
-        if (*used >= capacity - 1) {
-            return;
-        }
-        out[(*used)++] = '+';
-    }
-    length = (int) strlen(part);
-    if (length > capacity - 1 - *used) {
-        length = capacity - 1 - *used;
-    }
-    if (length > 0) {
-        memcpy(out + *used, part, (size_t) length);
-        *used += length;
-    }
-    out[*used] = '\0';
-}
-
-static void pcore_navigation_resource_role_text(int role_mask, char *out,
-        int capacity)
-{
-    int used;
-
-    if (out == NULL || capacity <= 0) {
-        return;
-    }
-    out[0] = '\0';
-    used = 0;
-    if (role_mask & PCORE_NAV_RESOURCE_ROLE_STYLESHEET) {
-        pcore_navigation_text_append(out, capacity, &used, "style");
-    }
-    if (role_mask & PCORE_NAV_RESOURCE_ROLE_SCRIPT) {
-        pcore_navigation_text_append(out, capacity, &used, "script");
-    }
-    if (role_mask & PCORE_NAV_RESOURCE_ROLE_IMAGE) {
-        pcore_navigation_text_append(out, capacity, &used, "image");
-    }
-    if (used == 0) {
-        cstr_copy(out, capacity, "other");
-    }
-}
-
-static const char *pcore_navigation_resource_failure_name(int failure_class)
-{
-    switch (failure_class) {
-    case PCORE_NAV_FAILURE_RESOLVE:
-        return "resolve";
-    case PCORE_NAV_FAILURE_TRANSPORT:
-        return "transport";
-    case PCORE_NAV_FAILURE_HTTP:
-        return "http";
-    case PCORE_NAV_FAILURE_BUDGET:
-        return "budget";
-    case PCORE_NAV_FAILURE_MEMORY:
-        return "memory";
-    case PCORE_NAV_FAILURE_CANCELLED:
-        return "cancelled";
-    default:
-        return "unknown";
-    }
-}
-
-static unsigned long pcore_navigation_resource_hash(const char *url)
-{
-    unsigned long hash;
-
-    hash = 2166136261UL;
-    if (url != NULL) {
-        while (*url != '\0') {
-            hash ^= (unsigned long) (unsigned char) *url++;
-            hash *= 16777619UL;
-        }
-    }
-    return hash;
-}
-
-/* Rebuild the bounded failure list from final resource roles. A URL is never
- * copied to telemetry; the stable hash only lets a reader distinguish entries
- * without leaking a page's path or query string. Rebuilding at the gate also
- * means a URL upgraded from optional to required is reported consistently. */
-static void pcore_navigation_resource_summary_rebuild(
+/* Test fixtures historically allocated requests directly. Keep the product
+ * transaction lazy so those fixtures and the real navigation path share the
+ * same Browser-owned resource state without adding a second host state
+ * machine. */
+static int pcore_navigation_resource_ensure(
         pcore_navigation_request *request)
 {
-    pcore_navigation_resource *entry;
-    char role[32];
-    char item[96];
-    int used;
-    int length;
-
     if (request == NULL) {
-        return;
+        return 1;
     }
-    request->stats.resource_failure_summary[0] = '\0';
-    request->stats.resource_failure_summary_count = 0;
-    request->stats.resource_failure_summary_truncated = 0;
-    used = 0;
-    for (entry = request->resources; entry != NULL; entry = entry->next) {
-        if (entry->state != PCORE_NAV_RESOURCE_FAILED &&
-                entry->state != PCORE_NAV_RESOURCE_CANCELLED) {
-            continue;
-        }
-        if (request->stats.resource_failure_summary_count >=
-                PCORE_NAV_RESOURCE_SUMMARY_MAX) {
-            request->stats.resource_failure_summary_truncated++;
-            continue;
-        }
-        pcore_navigation_resource_role_text(entry->role_mask, role,
-                sizeof(role));
-        length = _snprintf(item, sizeof(item) - 1, "%s/%s#%08lX", role,
-                pcore_navigation_resource_failure_name(entry->failure_class),
-                pcore_navigation_resource_hash(entry->url));
-        item[sizeof(item) - 1] = '\0';
-        if (length < 0 || length >= (int) sizeof(item) - 1) {
-            request->stats.resource_failure_summary_truncated++;
-            continue;
-        }
-        if (used > 0) {
-            if (used >= PCORE_NAV_RESOURCE_SUMMARY_CAPACITY - 1) {
-                request->stats.resource_failure_summary_truncated++;
-                continue;
-            }
-            request->stats.resource_failure_summary[used++] = '|';
-        }
-        if (length > PCORE_NAV_RESOURCE_SUMMARY_CAPACITY - 1 - used) {
-            request->stats.resource_failure_summary_truncated++;
-            continue;
-        }
-        memcpy(request->stats.resource_failure_summary + used, item,
-                (size_t) length);
-        used += length;
-        request->stats.resource_failure_summary[used] = '\0';
-        request->stats.resource_failure_summary_count++;
+    if (request->resource_transaction == NULL) {
+        request->resource_transaction =
+                PBrowser_NavigationResourceCreate();
     }
+    return request->resource_transaction != NULL ? 0 : 1;
+}
+
+static int pcore_navigation_resource_info(
+        const pcore_navigation_request *request,
+        const pcore_navigation_resource *entry,
+        PBrowserNavigationResourceInfo *info)
+{
+    if (request == NULL || entry == NULL || info == NULL ||
+            request->resource_transaction == NULL) {
+        return 1;
+    }
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    return PBrowser_NavigationResourceGet(request->resource_transaction,
+            entry->index, info) == PBROWSER_OK ? 0 : 1;
+}
+
+static int pcore_navigation_resource_stats_sync(
+        pcore_navigation_request *request)
+{
+    PBrowserNavigationResourceStats product;
+
+    if (request == NULL || request->resource_transaction == NULL) {
+        return 1;
+    }
+    memset(&product, 0, sizeof(product));
+    product.size = sizeof(product);
+    if (PBrowser_NavigationResourceGetStats(request->resource_transaction,
+            &product) != PBROWSER_OK) {
+        return 1;
+    }
+    request->stats.resources_queued = product.resource_count;
+    request->stats.resources_fetched = product.resources_fetched;
+    request->stats.resources_failed = product.resources_failed;
+    request->stats.resources_cancelled = product.resources_cancelled;
+    request->stats.resources_pending = product.resources_pending;
+    request->stats.resource_attempts = product.resource_attempts;
+    request->stats.resource_retries = product.resource_retries;
+    request->stats.resource_retry_exhausted = product.resource_retry_exhausted;
+    request->stats.resource_failures_resolve =
+            product.resource_failures_resolve;
+    request->stats.resource_failures_transport =
+            product.resource_failures_transport;
+    request->stats.resource_failures_http = product.resource_failures_http;
+    request->stats.resource_failures_budget = product.resource_failures_budget;
+    request->stats.resource_failures_memory = product.resource_failures_memory;
+    request->stats.resource_required_failed =
+            product.resource_required_failed;
+    request->stats.resource_optional_failed =
+            product.resource_optional_failed;
+    request->stats.resource_commit_gate = product.resource_commit_gate;
+    request->stats.resource_fallback_images = product.resource_fallback_images;
+    request->stats.resource_fallback_scripts =
+            product.resource_fallback_scripts;
+    request->stats.resource_fallback_other = product.resource_fallback_other;
+    request->stats.resource_fallback_observed =
+            product.resource_fallback_observed;
+    request->stats.resource_failure_summary_count =
+            product.resource_failure_summary_count;
+    request->stats.resource_failure_summary_truncated =
+            product.resource_failure_summary_truncated;
+    memcpy(request->stats.resource_failure_summary,
+            product.resource_failure_summary,
+            sizeof(request->stats.resource_failure_summary));
+    request->stats.resource_bytes = product.resource_bytes;
+    request->stats.budget_rejected = product.budget_rejected;
+    return 0;
 }
 
 /* PCore calls this on the window thread. A ready cache hit returns an owned
@@ -13265,64 +13203,81 @@ static int pcore_navigation_resource_cb(void *pw, const char *url,
     pcore_navigation_resource *entry;
     size_t url_len;
     char *copy;
+    PBrowserNavigationResourceInfo info;
+    int index;
+    int rc;
 
     request = (pcore_navigation_request *) pw;
     *out_data = NULL;
     *out_len = 0;
-    if (request == NULL || url == NULL || url[0] == '\0') {
+    if (request == NULL || url == NULL || url[0] == '\0' ||
+            pcore_navigation_resource_ensure(request) != 0) {
         return 1;
     }
     entry = pcore_navigation_resource_find(request, url);
     if (entry == NULL) {
         url_len = strlen(url);
-        if (url_len == 0 || url_len >= 1024 ||
-                request->resource_count >= PCORE_NAV_MAX_RESOURCES) {
+        if (url_len == 0 || url_len >= PBROWSER_NAVIGATION_RESOURCE_URL_MAX ||
+                request->resource_ref_count >= PCORE_NAV_MAX_RESOURCES) {
+            return 1;
+        }
+        rc = PBrowser_NavigationResourceRegister(
+                request->resource_transaction, url,
+                request->resource_policy == PCORE_NAV_RESOURCE_REQUIRED,
+                (unsigned int) request->resource_role_mask, &index);
+        if (rc != PBROWSER_OK) {
             return 1;
         }
         entry = (pcore_navigation_resource *) malloc(sizeof(*entry));
         if (entry == NULL) {
+            (void) PBrowser_NavigationResourceFail(
+                    request->resource_transaction, index,
+                    PCORE_NAV_FAILURE_MEMORY);
             return 1;
         }
         memset(entry, 0, sizeof(*entry));
+        entry->index = index;
         entry->url = (char *) malloc(url_len + 1);
         if (entry->url == NULL) {
+            (void) PBrowser_NavigationResourceFail(
+                    request->resource_transaction, index,
+                    PCORE_NAV_FAILURE_MEMORY);
             free(entry);
             return 1;
         }
         memcpy(entry->url, url, url_len + 1);
-        entry->state = PCORE_NAV_RESOURCE_PENDING;
-        entry->failure_class = PCORE_NAV_FAILURE_NONE;
-        entry->required = request->resource_policy ==
-                PCORE_NAV_RESOURCE_REQUIRED;
-        entry->role_mask = request->resource_role_mask;
         entry->next = request->resources;
         request->resources = entry;
-        request->resource_count++;
+        request->resource_ref_count++;
         return 1;
     }
-    entry->role_mask |= request->resource_role_mask;
-    if (request->resource_policy == PCORE_NAV_RESOURCE_REQUIRED) {
-        /* A URL may first be discovered by an optional pass and later be
-         * referenced by the document's required stylesheet graph. Upgrade
-         * the single shared entry before consulting its terminal state. */
-        entry->required = 1;
-    }
-    if (entry->state == PCORE_NAV_RESOURCE_FAILED ||
-            entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
+    rc = PBrowser_NavigationResourceRegister(
+            request->resource_transaction, url,
+            request->resource_policy == PCORE_NAV_RESOURCE_REQUIRED,
+            (unsigned int) request->resource_role_mask, &index);
+    if (rc != PBROWSER_OK || index != entry->index ||
+            pcore_navigation_resource_info(request, entry, &info) != 0) {
         return 1;
     }
-    if (entry->data == NULL || entry->len <= 0) {
+    if (info.state == PCORE_NAV_RESOURCE_FAILED ||
+            info.state == PCORE_NAV_RESOURCE_CANCELLED) {
         return 1;
     }
-    copy = (char *) malloc((size_t) entry->len);
+    if (info.state != PCORE_NAV_RESOURCE_READY || info.data_bytes <= 0) {
+        return 1;
+    }
+    copy = (char *) malloc((size_t) info.data_bytes);
     if (copy == NULL) {
         return 1;
     }
-    memcpy(copy, entry->data, (size_t) entry->len);
-    entry->state = PCORE_NAV_RESOURCE_READY;
-    entry->failure_class = PCORE_NAV_FAILURE_NONE;
+    rc = PBrowser_NavigationResourceCopyData(request->resource_transaction,
+            entry->index, copy, info.data_bytes, &index);
+    if (rc != PBROWSER_OK || index != info.data_bytes) {
+        free(copy);
+        return 1;
+    }
     *out_data = copy;
-    *out_len = entry->len;
+    *out_len = info.data_bytes;
     return 0;
 }
 
@@ -13335,134 +13290,56 @@ static void page_resource_free_cb(void *pw, char *data)
 static int pcore_navigation_pending_count(
         const pcore_navigation_request *request)
 {
-    const pcore_navigation_resource *entry;
-    int count;
+    PBrowserNavigationResourceStats stats;
 
-    count = 0;
-    if (request == NULL) {
+    if (request == NULL || request->resource_transaction == NULL) {
         return 0;
     }
-    for (entry = request->resources; entry != NULL; entry = entry->next) {
-        if (entry->state == PCORE_NAV_RESOURCE_PENDING &&
-                !entry->attempted) {
-            count++;
-        }
+    memset(&stats, 0, sizeof(stats));
+    stats.size = sizeof(stats);
+    if (PBrowser_NavigationResourceGetStats(request->resource_transaction,
+            &stats) != PBROWSER_OK) {
+        return 0;
     }
-    return count;
+    return stats.resources_pending;
 }
 
 static int pcore_navigation_resource_pending_total(
         const pcore_navigation_request *request)
 {
-    const pcore_navigation_resource *entry;
-    int count;
-
-    count = 0;
-    if (request == NULL) {
-        return 0;
-    }
-    for (entry = request->resources; entry != NULL; entry = entry->next) {
-        if (entry->state == PCORE_NAV_RESOURCE_PENDING) {
-            count++;
-        }
-    }
-    return count;
+    return pcore_navigation_pending_count(request);
 }
 
-/* The host owns the candidate commit policy. CSS discovered while styling is
- * required; scripts and images are optional and may fall back to Core's
- * built-in behavior. A candidate is never swapped while a required resource
- * failed, a resource is still pending, or cancellation left a terminal mark. */
+/* The Browser transaction owns the resource commit policy. CSS discovered
+ * while styling is required; scripts and images are optional and may fall
+ * back to Core's built-in behavior. */
 static int pcore_navigation_resource_commit_gate(
         pcore_navigation_request *request)
 {
-    pcore_navigation_resource *entry;
-    int required_failed;
-    int optional_failed;
-    int pending;
-    int cancelled;
-
-    required_failed = 0;
-    optional_failed = 0;
-    pending = 0;
-    cancelled = 0;
-    if (request != NULL) {
-        for (entry = request->resources; entry != NULL;
-                entry = entry->next) {
-            if (entry->state == PCORE_NAV_RESOURCE_PENDING) {
-                pending++;
-            } else if (entry->state == PCORE_NAV_RESOURCE_FAILED) {
-                if (entry->required) {
-                    required_failed++;
-                } else {
-                    optional_failed++;
-                }
-            } else if (entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
-                cancelled++;
-            }
-        }
-    }
-    if (request != NULL) {
-        request->stats.resource_required_failed = required_failed;
-        request->stats.resource_optional_failed = optional_failed;
-        pcore_navigation_resource_summary_rebuild(request);
-    }
-    if (cancelled > 0) {
-        if (request != NULL) {
-            request->stats.resource_commit_gate = PCORE_NAV_GATE_CANCELLED;
-        }
-        return PCORE_NAV_GATE_CANCELLED;
-    }
-    if (pending > 0) {
-        if (request != NULL) {
-            request->stats.resource_commit_gate = PCORE_NAV_GATE_PENDING;
-        }
+    if (request == NULL || request->resource_transaction == NULL) {
         return PCORE_NAV_GATE_PENDING;
     }
-    if (required_failed > 0) {
-        if (request != NULL) {
-            request->stats.resource_commit_gate =
-                    PCORE_NAV_GATE_REQUIRED_FAILED;
-        }
-        return PCORE_NAV_GATE_REQUIRED_FAILED;
+    if (PBrowser_NavigationResourceCommitGate(
+            request->resource_transaction) < 0) {
+        return PCORE_NAV_GATE_PENDING;
     }
-    if (request != NULL) {
-        request->stats.resource_commit_gate = PCORE_NAV_GATE_READY;
-    }
-    return PCORE_NAV_GATE_READY;
+    (void) pcore_navigation_resource_stats_sync(request);
+    return request->stats.resource_commit_gate;
 }
 
-/* Once layout has succeeded, record which Core fallback families were
- * exercised by optional failures. This is intentionally a coarse host
- * observation: the public Core ABI does not expose its internal box type or
- * image carrier, while the documented fallback contract is stable. */
+/* Once layout has succeeded, ask the Browser transaction to record which Core
+ * fallback families were exercised by optional failures. The host supplies
+ * the layout-success boundary but does not own resource policy or counters. */
 static void pcore_navigation_observe_fallbacks(
         pcore_navigation_request *request)
 {
-    pcore_navigation_resource *entry;
-
-    if (request == NULL || !request->stats.core_box_valid) {
+    if (request == NULL || request->resource_transaction == NULL ||
+            !request->stats.core_box_valid) {
         return;
     }
-    request->stats.resource_fallback_images = 0;
-    request->stats.resource_fallback_scripts = 0;
-    request->stats.resource_fallback_other = 0;
-    request->stats.resource_fallback_observed = 1;
-    for (entry = request->resources; entry != NULL; entry = entry->next) {
-        if (entry->state != PCORE_NAV_RESOURCE_FAILED || entry->required) {
-            continue;
-        }
-        if (entry->role_mask & PCORE_NAV_RESOURCE_ROLE_IMAGE) {
-            request->stats.resource_fallback_images++;
-        }
-        if (entry->role_mask & PCORE_NAV_RESOURCE_ROLE_SCRIPT) {
-            request->stats.resource_fallback_scripts++;
-        }
-        if ((entry->role_mask & (PCORE_NAV_RESOURCE_ROLE_IMAGE |
-                PCORE_NAV_RESOURCE_ROLE_SCRIPT)) == 0) {
-            request->stats.resource_fallback_other++;
-        }
-    }
+    (void) PBrowser_NavigationResourceObserveFallbacks(
+            request->resource_transaction);
+    (void) pcore_navigation_resource_stats_sync(request);
 }
 
 static int pcore_navigation_is_cancelled(
@@ -13476,12 +13353,11 @@ static void pcore_navigation_resource_begin_attempt(
         pcore_navigation_resource *entry)
 {
     if (request == NULL || entry == NULL ||
-            entry->state != PCORE_NAV_RESOURCE_PENDING) {
+            request->resource_transaction == NULL) {
         return;
     }
-    entry->attempted = 1;
-    entry->attempt_count++;
-    request->stats.resource_attempts++;
+    (void) PBrowser_NavigationResourceBeginAttempt(
+            request->resource_transaction, entry->index);
 }
 
 static int pcore_navigation_resource_is_transport_failure(
@@ -13496,16 +13372,21 @@ static int pcore_navigation_resource_should_retry(
         pcore_navigation_request *request,
         pcore_navigation_resource *entry, const PHttpResponse *response)
 {
+    int retry;
+
     if (request == NULL || entry == NULL ||
-            entry->state != PCORE_NAV_RESOURCE_PENDING ||
+            request->resource_transaction == NULL ||
             !pcore_navigation_resource_is_transport_failure(response) ||
-            pcore_navigation_is_cancelled(request) ||
-            entry->retry_count >= PCORE_NAV_RESOURCE_RETRY_LIMIT) {
+            pcore_navigation_is_cancelled(request)) {
         return 0;
     }
-    entry->retry_count++;
-    request->stats.resource_retries++;
-    return 1;
+    retry = 0;
+    if (PBrowser_NavigationResourceShouldRetry(
+            request->resource_transaction, entry->index, 1,
+            &retry) != PBROWSER_OK) {
+        return 0;
+    }
+    return retry;
 }
 
 static void pcore_navigation_resource_fail(
@@ -13513,34 +13394,11 @@ static void pcore_navigation_resource_fail(
         pcore_navigation_resource *entry, int failure_class)
 {
     if (request == NULL || entry == NULL ||
-            entry->state == PCORE_NAV_RESOURCE_READY ||
-            entry->state == PCORE_NAV_RESOURCE_FAILED ||
-            entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
+            request->resource_transaction == NULL) {
         return;
     }
-    entry->state = PCORE_NAV_RESOURCE_FAILED;
-    entry->failure_class = failure_class;
-    entry->attempted = 1;
-    request->stats.resources_failed++;
-    switch (failure_class) {
-    case PCORE_NAV_FAILURE_RESOLVE:
-        request->stats.resource_failures_resolve++;
-        break;
-    case PCORE_NAV_FAILURE_TRANSPORT:
-        request->stats.resource_failures_transport++;
-        break;
-    case PCORE_NAV_FAILURE_HTTP:
-        request->stats.resource_failures_http++;
-        break;
-    case PCORE_NAV_FAILURE_BUDGET:
-        request->stats.resource_failures_budget++;
-        break;
-    case PCORE_NAV_FAILURE_MEMORY:
-        request->stats.resource_failures_memory++;
-        break;
-    default:
-        break;
-    }
+    (void) PBrowser_NavigationResourceFail(request->resource_transaction,
+            entry->index, failure_class);
 }
 
 static void pcore_navigation_resource_cancel(
@@ -13548,28 +13406,21 @@ static void pcore_navigation_resource_cancel(
         pcore_navigation_resource *entry)
 {
     if (request == NULL || entry == NULL ||
-            entry->state == PCORE_NAV_RESOURCE_READY ||
-            entry->state == PCORE_NAV_RESOURCE_FAILED ||
-            entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
+            request->resource_transaction == NULL) {
         return;
     }
-    entry->state = PCORE_NAV_RESOURCE_CANCELLED;
-    entry->failure_class = PCORE_NAV_FAILURE_CANCELLED;
-    entry->attempted = 1;
-    request->stats.resources_cancelled++;
+    (void) PBrowser_NavigationResourceCancel(request->resource_transaction,
+            entry->index);
 }
 
 static void pcore_navigation_resource_cancel_all(
         pcore_navigation_request *request)
 {
-    pcore_navigation_resource *entry;
-
-    if (request == NULL) {
+    if (request == NULL || request->resource_transaction == NULL) {
         return;
     }
-    for (entry = request->resources; entry != NULL; entry = entry->next) {
-        pcore_navigation_resource_cancel(request, entry);
-    }
+    (void) PBrowser_NavigationResourceCancelAll(
+            request->resource_transaction);
 }
 
 /* Record one completed worker response. The response remains owned by the
@@ -13579,25 +13430,30 @@ static int pcore_navigation_resource_store_response(
         pcore_navigation_request *request,
         pcore_navigation_resource *entry, const PHttpResponse *response)
 {
-    char *data;
+    PBrowserNavigationResourceInfo info;
+    int rc;
 
     if (request == NULL || entry == NULL ||
-            entry->state == PCORE_NAV_RESOURCE_FAILED ||
-            entry->state == PCORE_NAV_RESOURCE_CANCELLED) {
+            request->resource_transaction == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (pcore_navigation_resource_info(request, entry, &info) != 0) {
+        return 1;
+    }
+    if (info.state == PCORE_NAV_RESOURCE_FAILED ||
+            info.state == PCORE_NAV_RESOURCE_CANCELLED) {
         return 1;
     }
     if (pcore_navigation_is_cancelled(request)) {
         pcore_navigation_resource_cancel(request, entry);
         return 1;
     }
-    if (entry->state == PCORE_NAV_RESOURCE_READY &&
-            entry->data != NULL && entry->len > 0) {
+    if (info.state == PCORE_NAV_RESOURCE_READY && info.data_bytes > 0) {
         return 0;
     }
     if (pcore_navigation_resource_is_transport_failure(response)) {
-        if (entry->retry_count >= PCORE_NAV_RESOURCE_RETRY_LIMIT) {
-            request->stats.resource_retry_exhausted++;
-        }
         pcore_navigation_resource_fail(request, entry,
                 PCORE_NAV_FAILURE_TRANSPORT);
         return 1;
@@ -13608,30 +13464,9 @@ static int pcore_navigation_resource_store_response(
                 PCORE_NAV_FAILURE_HTTP);
         return 1;
     }
-    if (request->resource_bytes < 0 ||
-            request->resource_bytes > PCORE_NAV_RESOURCE_BYTES_MAX ||
-            response->body_len > PCORE_NAV_RESOURCE_BYTES_MAX -
-                    request->resource_bytes) {
-        request->stats.budget_rejected++;
-        pcore_navigation_resource_fail(request, entry,
-                PCORE_NAV_FAILURE_BUDGET);
-        return 1;
-    }
-    data = (char *) malloc((size_t) response->body_len);
-    if (data == NULL) {
-        pcore_navigation_resource_fail(request, entry,
-                PCORE_NAV_FAILURE_MEMORY);
-        return 1;
-    }
-    memcpy(data, response->body, (size_t) response->body_len);
-    entry->data = data;
-    entry->len = response->body_len;
-    entry->attempted = 1;
-    entry->state = PCORE_NAV_RESOURCE_READY;
-    entry->failure_class = PCORE_NAV_FAILURE_NONE;
-    request->resource_bytes += response->body_len;
-    request->stats.resources_fetched++;
-    return 0;
+    rc = PBrowser_NavigationResourceSetData(request->resource_transaction,
+            entry->index, response->body, response->body_len);
+    return rc == PBROWSER_OK ? 0 : 1;
 }
 
 static void pcore_navigation_request_close_worker(
@@ -13666,13 +13501,16 @@ static void pcore_navigation_request_free(
     }
     free(request->request_body);
     free(request->request_content_type);
+    if (request->resource_transaction != NULL) {
+        PBrowser_NavigationResourceDestroy(request->resource_transaction);
+        request->resource_transaction = NULL;
+    }
     entry = request->resources;
     while (entry != NULL) {
         pcore_navigation_resource *next;
 
         next = entry->next;
         free(entry->url);
-        free(entry->data);
         free(entry);
         entry = next;
     }
@@ -13954,6 +13792,7 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
     pcore_navigation_request *request;
     pcore_navigation_resource *entry;
     PHttpResponse *resp;
+    PBrowserNavigationResourceInfo info;
     char host[256];
     char path[1024];
     int port;
@@ -13983,8 +13822,11 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
             if (pcore_navigation_is_cancelled(request)) {
                 break;
             }
-            if (entry->attempted ||
-                    entry->state != PCORE_NAV_RESOURCE_PENDING) {
+            memset(&info, 0, sizeof(info));
+            info.size = sizeof(info);
+            if (pcore_navigation_resource_info(request, entry, &info) != 0 ||
+                    info.attempted ||
+                    info.state != PCORE_NAV_RESOURCE_PENDING) {
                 continue;
             }
             port = request->port;
@@ -16274,10 +16116,9 @@ static void pcore_navigation_finish(HWND hwnd,
 {
     (void) pcore_navigation_resource_commit_gate(request);
     request->stats.total_ms = GetTickCount() - request->stats.started_tick;
-    request->stats.resources_queued = request->resource_count;
+    (void) pcore_navigation_resource_stats_sync(request);
     request->stats.resources_pending =
             pcore_navigation_resource_pending_total(request);
-    request->stats.resource_bytes = request->resource_bytes;
     g_nav_last_stats = request->stats;
     g_nav_last_stats_valid = 1;
     testbench_log_navigation(request);
@@ -16341,22 +16182,26 @@ static pcore_navigation_request *pcore_navigation_request_create_ex(
         return NULL;
     }
     memset(request, 0, sizeof(*request));
+    if (pcore_navigation_resource_ensure(request) != 0) {
+        free(request);
+        return NULL;
+    }
     request->port = 443;
     request->history_target_index = PCORE_BROWSE_HISTORY_TARGET_NEW;
     if (!resolve_url(href, request->host, sizeof(request->host),
             request->path, sizeof(request->path), &request->port)) {
-        free(request);
+        pcore_navigation_request_free(request);
         return NULL;
     }
     request->method = (method == 2 || method == 3) ? method : 1;
     if (request->method == 2 || request->method == 3) {
         if (body_len < 0 || (body_len > 0 && body == NULL)) {
-            free(request);
+            pcore_navigation_request_free(request);
             return NULL;
         }
         request->request_body = (char *) malloc((size_t) body_len + 1);
         if (request->request_body == NULL) {
-            free(request);
+            pcore_navigation_request_free(request);
             return NULL;
         }
         if (body_len > 0) {
@@ -28857,6 +28702,7 @@ static int test1118_seed_navigation_resource(
     pcore_navigation_resource *entry;
     char *probe_data;
     int probe_len;
+    int rc;
 
     if (request == NULL || url == NULL || data == NULL || len <= 0) {
         return 1;
@@ -28874,17 +28720,14 @@ static int test1118_seed_navigation_resource(
     if (entry == NULL) {
         return 1;
     }
-    entry->data = (char *) malloc((size_t) len);
-    if (entry->data == NULL) {
+    rc = PBrowser_NavigationResourceBeginAttempt(
+            request->resource_transaction, entry->index);
+    if (rc != PBROWSER_OK && rc != PBROWSER_ERROR_STATE) {
         return 1;
     }
-    memcpy(entry->data, data, (size_t) len);
-    entry->len = len;
-    entry->attempted = 1;
-    entry->state = PCORE_NAV_RESOURCE_READY;
-    entry->failure_class = PCORE_NAV_FAILURE_NONE;
-    request->resource_bytes += len;
-    return 0;
+    rc = PBrowser_NavigationResourceSetData(request->resource_transaction,
+            entry->index, data, len);
+    return rc == PBROWSER_OK ? 0 : 1;
 }
 
 static PHttpResponse *test1118_response(int status, const char *body)
@@ -29394,39 +29237,70 @@ static int test1119_add_resource(pcore_navigation_request *request,
 {
     pcore_navigation_resource *entry;
     size_t url_len;
+    PBrowserNavigationResourceInfo info;
+    int index;
+    int rc;
 
     if (request == NULL || url == NULL || data == NULL || len <= 0) {
         return 1;
     }
     url_len = strlen(url);
-    if (url_len == 0 || url_len >= 1024 || len >
-            PCORE_NAV_RESOURCE_BYTES_MAX - request->resource_bytes) {
+    if (url_len == 0 || url_len >= PBROWSER_NAVIGATION_RESOURCE_URL_MAX ||
+            pcore_navigation_resource_ensure(request) != 0) {
         return 1;
     }
-    entry = (pcore_navigation_resource *) malloc(sizeof(*entry));
+    rc = PBrowser_NavigationResourceRegister(request->resource_transaction,
+            url, PCORE_NAV_RESOURCE_OPTIONAL,
+            PCORE_NAV_RESOURCE_ROLE_NONE, &index);
+    if (rc != PBROWSER_OK) {
+        return 1;
+    }
+    entry = pcore_navigation_resource_find(request, url);
     if (entry == NULL) {
+        entry = (pcore_navigation_resource *) malloc(sizeof(*entry));
+        if (entry == NULL) {
+            (void) PBrowser_NavigationResourceFail(
+                    request->resource_transaction, index,
+                    PCORE_NAV_FAILURE_MEMORY);
+            return 1;
+        }
+        memset(entry, 0, sizeof(*entry));
+        entry->index = index;
+        entry->url = (char *) malloc(url_len + 1);
+        if (entry->url == NULL) {
+            (void) PBrowser_NavigationResourceFail(
+                    request->resource_transaction, index,
+                    PCORE_NAV_FAILURE_MEMORY);
+            free(entry);
+            return 1;
+        }
+        memcpy(entry->url, url, url_len + 1);
+        entry->next = request->resources;
+        request->resources = entry;
+        request->resource_ref_count++;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (pcore_navigation_resource_info(request, entry, &info) != 0) {
         return 1;
     }
-    memset(entry, 0, sizeof(*entry));
-    entry->url = (char *) malloc(url_len + 1);
-    entry->data = (char *) malloc((size_t) len);
-    if (entry->url == NULL || entry->data == NULL) {
-        free(entry->url);
-        free(entry->data);
-        free(entry);
+    if (!attempted) {
+        return info.state == PCORE_NAV_RESOURCE_PENDING ? 0 : 1;
+    }
+    if (info.state == PCORE_NAV_RESOURCE_READY &&
+            info.data_bytes == len) {
+        return 0;
+    }
+    rc = PBrowser_NavigationResourceBeginAttempt(
+            request->resource_transaction, entry->index);
+    if (rc != PBROWSER_OK) {
         return 1;
     }
-    memcpy(entry->url, url, url_len + 1);
-    memcpy(entry->data, data, (size_t) len);
-    entry->len = len;
-    entry->attempted = attempted ? 1 : 0;
-    entry->state = attempted ? PCORE_NAV_RESOURCE_READY :
-            PCORE_NAV_RESOURCE_PENDING;
-    entry->failure_class = PCORE_NAV_FAILURE_NONE;
-    entry->next = request->resources;
-    request->resources = entry;
-    request->resource_count++;
-    request->resource_bytes += len;
+    rc = PBrowser_NavigationResourceSetData(request->resource_transaction,
+            entry->index, data, len);
+    if (rc != PBROWSER_OK) {
+        return 1;
+    }
     return 0;
 }
 
@@ -29831,6 +29705,7 @@ static pcore_navigation_resource *test1120_queue_resource(
         pcore_navigation_request *request, const char *url)
 {
     pcore_navigation_resource *entry;
+    PBrowserNavigationResourceInfo info;
     char *data;
     int len;
 
@@ -29844,8 +29719,11 @@ static pcore_navigation_resource *test1120_queue_resource(
         return NULL;
     }
     entry = pcore_navigation_resource_find(request, url);
-    if (entry != NULL && entry->state == PCORE_NAV_RESOURCE_PENDING &&
-            !entry->attempted) {
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (entry != NULL &&
+            pcore_navigation_resource_info(request, entry, &info) == 0 &&
+            info.state == PCORE_NAV_RESOURCE_PENDING && !info.attempted) {
         return entry;
     }
     return NULL;
@@ -29873,6 +29751,11 @@ static BOOL test1120_navigation_resource_terminals(void)
     PHttpResponse response;
     char *data;
     int len;
+    PBrowserNavigationResourceInfo ready_info;
+    PBrowserNavigationResourceInfo http_info;
+    PBrowserNavigationResourceInfo transport_info;
+    PBrowserNavigationResourceInfo budget_info;
+    PBrowserNavigationResourceInfo cancel_info;
     int cache_ready;
     int terminal_unavailable;
     int ok;
@@ -29948,7 +29831,7 @@ static BOOL test1120_navigation_resource_terminals(void)
         ok = 0;
     }
     pcore_navigation_resource_cancel_all(request);
-    request->stats.resources_queued = request->resource_count;
+    (void) pcore_navigation_resource_stats_sync(request);
     request->stats.resources_pending = pcore_navigation_pending_count(request);
 
     data = NULL;
@@ -29966,17 +29849,33 @@ static BOOL test1120_navigation_resource_terminals(void)
     terminal_unavailable = terminal_unavailable &&
             pcore_navigation_resource_cb(request, CANCEL_URL, &data, &len) ==
             1 && data == NULL && len == 0;
-    if (ready->state != PCORE_NAV_RESOURCE_READY ||
-            ready->failure_class != PCORE_NAV_FAILURE_NONE ||
-            http->state != PCORE_NAV_RESOURCE_FAILED ||
-            http->failure_class != PCORE_NAV_FAILURE_HTTP ||
-            transport->state != PCORE_NAV_RESOURCE_FAILED ||
-            transport->failure_class != PCORE_NAV_FAILURE_TRANSPORT ||
-            budget->state != PCORE_NAV_RESOURCE_FAILED ||
-            budget->failure_class != PCORE_NAV_FAILURE_BUDGET ||
-            cancel->state != PCORE_NAV_RESOURCE_CANCELLED ||
-            cancel->failure_class != PCORE_NAV_FAILURE_CANCELLED ||
-            request->resource_count != 5 ||
+    memset(&ready_info, 0, sizeof(ready_info));
+    ready_info.size = sizeof(ready_info);
+    memset(&http_info, 0, sizeof(http_info));
+    http_info.size = sizeof(http_info);
+    memset(&transport_info, 0, sizeof(transport_info));
+    transport_info.size = sizeof(transport_info);
+    memset(&budget_info, 0, sizeof(budget_info));
+    budget_info.size = sizeof(budget_info);
+    memset(&cancel_info, 0, sizeof(cancel_info));
+    cancel_info.size = sizeof(cancel_info);
+    if (pcore_navigation_resource_info(request, ready, &ready_info) != 0 ||
+            pcore_navigation_resource_info(request, http, &http_info) != 0 ||
+            pcore_navigation_resource_info(request, transport,
+                    &transport_info) != 0 ||
+            pcore_navigation_resource_info(request, budget, &budget_info) != 0 ||
+            pcore_navigation_resource_info(request, cancel, &cancel_info) != 0 ||
+            ready_info.state != PCORE_NAV_RESOURCE_READY ||
+            ready_info.failure_class != PCORE_NAV_FAILURE_NONE ||
+            http_info.state != PCORE_NAV_RESOURCE_FAILED ||
+            http_info.failure_class != PCORE_NAV_FAILURE_HTTP ||
+            transport_info.state != PCORE_NAV_RESOURCE_FAILED ||
+            transport_info.failure_class != PCORE_NAV_FAILURE_TRANSPORT ||
+            budget_info.state != PCORE_NAV_RESOURCE_FAILED ||
+            budget_info.failure_class != PCORE_NAV_FAILURE_BUDGET ||
+            cancel_info.state != PCORE_NAV_RESOURCE_CANCELLED ||
+            cancel_info.failure_class != PCORE_NAV_FAILURE_CANCELLED ||
+            request->resource_ref_count != 5 ||
             request->stats.resources_queued != 5 ||
             request->stats.resources_fetched != 1 ||
             request->stats.resources_failed != 3 ||
@@ -29988,22 +29887,22 @@ static BOOL test1120_navigation_resource_terminals(void)
             request->stats.resource_failures_budget != 1 ||
             request->stats.resource_failures_memory != 0 ||
             request->stats.budget_rejected != 1 ||
-            request->resource_bytes != (int) sizeof(SUCCESS_BODY) - 1 ||
+            request->stats.resource_bytes != (int) sizeof(SUCCESS_BODY) - 1 ||
             !cache_ready || !terminal_unavailable) {
         if (error[0] == '\0') {
             _snprintf(error, sizeof(error) - 1,
                     "states=%d/%d/%d/%d/%d classes=%d/%d/%d/%d/%d "
                     "counts=%d/%d/%d/%d bytes=%d cache=%d/%d",
-                    ready->state, http->state, transport->state,
-                    budget->state, cancel->state,
-                    ready->failure_class, http->failure_class,
-                    transport->failure_class, budget->failure_class,
-                    cancel->failure_class,
+                     ready_info.state, http_info.state, transport_info.state,
+                     budget_info.state, cancel_info.state,
+                     ready_info.failure_class, http_info.failure_class,
+                     transport_info.failure_class, budget_info.failure_class,
+                     cancel_info.failure_class,
                     request->stats.resources_fetched,
                     request->stats.resources_failed,
                     request->stats.resources_cancelled,
                     request->stats.resources_pending,
-                    request->resource_bytes, cache_ready,
+                     request->stats.resource_bytes, cache_ready,
                     terminal_unavailable);
             error[sizeof(error) - 1] = '\0';
         }
@@ -30044,6 +29943,12 @@ static BOOL test1121_navigation_resource_retry_budget(void)
     PHttpResponse response;
     char *data;
     int len;
+    PBrowserNavigationResourceInfo recover_info;
+    PBrowserNavigationResourceInfo exhausted_info;
+    PBrowserNavigationResourceInfo http_info;
+    PBrowserNavigationResourceInfo budget_info;
+    PBrowserNavigationResourceInfo resolve_info;
+    PBrowserNavigationResourceInfo cancel_info;
     int i;
     int cache_ready;
     int terminal_unavailable;
@@ -30178,7 +30083,7 @@ static BOOL test1121_navigation_resource_retry_budget(void)
         request->cancel_requested = 0;
     }
 
-    request->stats.resources_queued = request->resource_count;
+    (void) pcore_navigation_resource_stats_sync(request);
     request->stats.resources_pending = pcore_navigation_pending_count(request);
     data = NULL;
     len = 0;
@@ -30194,26 +30099,46 @@ static BOOL test1121_navigation_resource_retry_budget(void)
     terminal_unavailable = terminal_unavailable &&
             pcore_navigation_resource_cb(request, CANCEL_URL, &data, &len) ==
             1 && data == NULL && len == 0;
-    if (recover->state != PCORE_NAV_RESOURCE_READY ||
-            recover->failure_class != PCORE_NAV_FAILURE_NONE ||
-            recover->attempt_count != 2 || recover->retry_count != 1 ||
-            exhausted->state != PCORE_NAV_RESOURCE_FAILED ||
-            exhausted->failure_class != PCORE_NAV_FAILURE_TRANSPORT ||
-            exhausted->attempt_count != PCORE_NAV_RESOURCE_RETRY_LIMIT + 1 ||
-            exhausted->retry_count != PCORE_NAV_RESOURCE_RETRY_LIMIT ||
-            http->state != PCORE_NAV_RESOURCE_FAILED ||
-            http->failure_class != PCORE_NAV_FAILURE_HTTP ||
-            http->attempt_count != 1 || http->retry_count != 0 ||
-            budget->state != PCORE_NAV_RESOURCE_FAILED ||
-            budget->failure_class != PCORE_NAV_FAILURE_BUDGET ||
-            budget->attempt_count != 1 || budget->retry_count != 0 ||
-            resolve->state != PCORE_NAV_RESOURCE_FAILED ||
-            resolve->failure_class != PCORE_NAV_FAILURE_RESOLVE ||
-            resolve->attempt_count != 0 || resolve->retry_count != 0 ||
-            cancel->state != PCORE_NAV_RESOURCE_CANCELLED ||
-            cancel->failure_class != PCORE_NAV_FAILURE_CANCELLED ||
-            cancel->attempt_count != 0 || cancel->retry_count != 0 ||
-            request->resource_count != 6 ||
+    memset(&recover_info, 0, sizeof(recover_info));
+    recover_info.size = sizeof(recover_info);
+    memset(&exhausted_info, 0, sizeof(exhausted_info));
+    exhausted_info.size = sizeof(exhausted_info);
+    memset(&http_info, 0, sizeof(http_info));
+    http_info.size = sizeof(http_info);
+    memset(&budget_info, 0, sizeof(budget_info));
+    budget_info.size = sizeof(budget_info);
+    memset(&resolve_info, 0, sizeof(resolve_info));
+    resolve_info.size = sizeof(resolve_info);
+    memset(&cancel_info, 0, sizeof(cancel_info));
+    cancel_info.size = sizeof(cancel_info);
+    if (pcore_navigation_resource_info(request, recover, &recover_info) != 0 ||
+            pcore_navigation_resource_info(request, exhausted,
+                    &exhausted_info) != 0 ||
+            pcore_navigation_resource_info(request, http, &http_info) != 0 ||
+            pcore_navigation_resource_info(request, budget, &budget_info) != 0 ||
+            pcore_navigation_resource_info(request, resolve,
+                    &resolve_info) != 0 ||
+            pcore_navigation_resource_info(request, cancel, &cancel_info) != 0 ||
+            recover_info.state != PCORE_NAV_RESOURCE_READY ||
+            recover_info.failure_class != PCORE_NAV_FAILURE_NONE ||
+            recover_info.attempt_count != 2 || recover_info.retry_count != 1 ||
+            exhausted_info.state != PCORE_NAV_RESOURCE_FAILED ||
+            exhausted_info.failure_class != PCORE_NAV_FAILURE_TRANSPORT ||
+            exhausted_info.attempt_count != PCORE_NAV_RESOURCE_RETRY_LIMIT + 1 ||
+            exhausted_info.retry_count != PCORE_NAV_RESOURCE_RETRY_LIMIT ||
+            http_info.state != PCORE_NAV_RESOURCE_FAILED ||
+            http_info.failure_class != PCORE_NAV_FAILURE_HTTP ||
+            http_info.attempt_count != 1 || http_info.retry_count != 0 ||
+            budget_info.state != PCORE_NAV_RESOURCE_FAILED ||
+            budget_info.failure_class != PCORE_NAV_FAILURE_BUDGET ||
+            budget_info.attempt_count != 1 || budget_info.retry_count != 0 ||
+            resolve_info.state != PCORE_NAV_RESOURCE_FAILED ||
+            resolve_info.failure_class != PCORE_NAV_FAILURE_RESOLVE ||
+            resolve_info.attempt_count != 0 || resolve_info.retry_count != 0 ||
+            cancel_info.state != PCORE_NAV_RESOURCE_CANCELLED ||
+            cancel_info.failure_class != PCORE_NAV_FAILURE_CANCELLED ||
+            cancel_info.attempt_count != 0 || cancel_info.retry_count != 0 ||
+            request->resource_ref_count != 6 ||
             request->stats.resources_queued != 6 ||
             request->stats.resources_fetched != 1 ||
             request->stats.resources_failed != 4 ||
@@ -30229,17 +30154,17 @@ static BOOL test1121_navigation_resource_retry_budget(void)
             request->stats.resource_failures_budget != 1 ||
             request->stats.resource_failures_memory != 0 ||
             request->stats.budget_rejected != 1 ||
-            request->resource_bytes != (int) sizeof(BODY) - 1 ||
+            request->stats.resource_bytes != (int) sizeof(BODY) - 1 ||
             !cache_ready || !terminal_unavailable) {
         if (error[0] == '\0') {
             _snprintf(error, sizeof(error) - 1,
                     "states=%d/%d/%d/%d/%d/%d attempts=%d/%d/%d/%d/%d/%d "
                     "retry=%d/%d/%d cache=%d/%d",
-                    recover->state, exhausted->state, http->state,
-                    budget->state, resolve->state, cancel->state,
-                    recover->attempt_count, exhausted->attempt_count,
-                    http->attempt_count, budget->attempt_count,
-                    resolve->attempt_count, cancel->attempt_count,
+                     recover_info.state, exhausted_info.state, http_info.state,
+                     budget_info.state, resolve_info.state, cancel_info.state,
+                     recover_info.attempt_count, exhausted_info.attempt_count,
+                     http_info.attempt_count, budget_info.attempt_count,
+                     resolve_info.attempt_count, cancel_info.attempt_count,
                     request->stats.resource_attempts,
                     request->stats.resource_retries,
                     request->stats.resource_retry_exhausted,
@@ -30314,6 +30239,7 @@ static BOOL test1122_navigation_resource_commit_gate(void)
     int optional_pending_seen;
     int old_text_bytes;
     int optional_text_bytes;
+    PBrowserNavigationResourceInfo entry_info;
     int ok;
 
     required_request = NULL;
@@ -30423,8 +30349,13 @@ static BOOL test1122_navigation_resource_commit_gate(void)
         if (result == PCORE_NAV_RESULT_MORE) {
             entry = pcore_navigation_resource_find(required_request,
                     REQUIRED_URL);
-            if (entry == NULL || entry->state != PCORE_NAV_RESOURCE_PENDING ||
-                    entry->required != 1) {
+            memset(&entry_info, 0, sizeof(entry_info));
+            entry_info.size = sizeof(entry_info);
+            if (entry == NULL ||
+                    pcore_navigation_resource_info(required_request, entry,
+                            &entry_info) != 0 ||
+                    entry_info.state != PCORE_NAV_RESOURCE_PENDING ||
+                    entry_info.required != 1) {
                 cstr_copy(error, sizeof(error),
                         "required stylesheet was not queued as required");
                 ok = 0;
@@ -30513,8 +30444,13 @@ static BOOL test1122_navigation_resource_commit_gate(void)
         if (result == PCORE_NAV_RESULT_MORE) {
             entry = pcore_navigation_resource_find(optional_request,
                     OPTIONAL_IMAGE_URL);
-            if (entry == NULL || entry->state != PCORE_NAV_RESOURCE_PENDING ||
-                    entry->required != PCORE_NAV_RESOURCE_OPTIONAL) {
+            memset(&entry_info, 0, sizeof(entry_info));
+            entry_info.size = sizeof(entry_info);
+            if (entry == NULL ||
+                    pcore_navigation_resource_info(optional_request, entry,
+                            &entry_info) != 0 ||
+                    entry_info.state != PCORE_NAV_RESOURCE_PENDING ||
+                    entry_info.required != PCORE_NAV_RESOURCE_OPTIONAL) {
                 cstr_copy(error, sizeof(error),
                         "optional image was not queued as optional");
                 ok = 0;
@@ -30670,6 +30606,12 @@ static BOOL test1123_navigation_resource_observability(void)
     pcore_navigation_resource *deep;
     pcore_navigation_resource *script;
     pcore_navigation_resource *image;
+    PBrowserNavigationResourceInfo root_info;
+    PBrowserNavigationResourceInfo nested_info;
+    PBrowserNavigationResourceInfo deep_info;
+    PBrowserNavigationResourceInfo script_info;
+    PBrowserNavigationResourceInfo image_info;
+    PBrowserNavigationResourceInfo entry_info;
     const char *source;
     char error[512];
     char summary[PCORE_NAV_RESOURCE_SUMMARY_CAPACITY];
@@ -30765,8 +30707,12 @@ static BOOL test1123_navigation_resource_observability(void)
         filled = 0;
         for (entry = request->resources; entry != NULL;
                 entry = entry->next) {
-            if (entry->state != PCORE_NAV_RESOURCE_PENDING ||
-                    entry->attempted) {
+            memset(&entry_info, 0, sizeof(entry_info));
+            entry_info.size = sizeof(entry_info);
+            if (pcore_navigation_resource_info(request, entry,
+                    &entry_info) != 0 ||
+                    entry_info.state != PCORE_NAV_RESOURCE_PENDING ||
+                    entry_info.attempted) {
                 continue;
             }
             source = NULL;
@@ -30800,16 +30746,28 @@ static BOOL test1123_navigation_resource_observability(void)
         root = pcore_navigation_resource_find(request, ROOT_URL);
         nested = pcore_navigation_resource_find(request, NESTED_URL);
         deep = pcore_navigation_resource_find(request, DEEP_URL);
+        memset(&root_info, 0, sizeof(root_info));
+        root_info.size = sizeof(root_info);
+        memset(&nested_info, 0, sizeof(nested_info));
+        nested_info.size = sizeof(nested_info);
+        memset(&deep_info, 0, sizeof(deep_info));
+        deep_info.size = sizeof(deep_info);
         if (root == NULL || nested == NULL || deep == NULL ||
-                root->state != PCORE_NAV_RESOURCE_READY ||
-                nested->state != PCORE_NAV_RESOURCE_READY ||
-                deep->state != PCORE_NAV_RESOURCE_READY ||
-                root->required != 1 || nested->required != 1 ||
-                deep->required != 1 ||
-                root->role_mask != PCORE_NAV_RESOURCE_ROLE_STYLESHEET ||
-                nested->role_mask != PCORE_NAV_RESOURCE_ROLE_STYLESHEET ||
-                deep->role_mask != PCORE_NAV_RESOURCE_ROLE_STYLESHEET ||
-                request->resource_count != 3) {
+                pcore_navigation_resource_info(request, root,
+                        &root_info) != 0 ||
+                pcore_navigation_resource_info(request, nested,
+                        &nested_info) != 0 ||
+                pcore_navigation_resource_info(request, deep,
+                        &deep_info) != 0 ||
+                root_info.state != PCORE_NAV_RESOURCE_READY ||
+                nested_info.state != PCORE_NAV_RESOURCE_READY ||
+                deep_info.state != PCORE_NAV_RESOURCE_READY ||
+                root_info.required != 1 || nested_info.required != 1 ||
+                deep_info.required != 1 ||
+                root_info.role_mask != PCORE_NAV_RESOURCE_ROLE_STYLESHEET ||
+                nested_info.role_mask != PCORE_NAV_RESOURCE_ROLE_STYLESHEET ||
+                deep_info.role_mask != PCORE_NAV_RESOURCE_ROLE_STYLESHEET ||
+                request->resource_ref_count != 3) {
             cstr_copy(error, sizeof(error),
                     "deep stylesheet role or dedupe state was inconsistent");
             ok = 0;
@@ -30829,10 +30787,15 @@ static BOOL test1123_navigation_resource_observability(void)
     }
     if (ok) {
         script = pcore_navigation_resource_find(request, SCRIPT_URL);
-        if (script == NULL || script->state != PCORE_NAV_RESOURCE_PENDING ||
-                script->required != 0 ||
-                script->role_mask != PCORE_NAV_RESOURCE_ROLE_SCRIPT ||
-                request->resource_count != 4) {
+        memset(&script_info, 0, sizeof(script_info));
+        script_info.size = sizeof(script_info);
+        if (script == NULL ||
+                pcore_navigation_resource_info(request, script,
+                        &script_info) != 0 ||
+                script_info.state != PCORE_NAV_RESOURCE_PENDING ||
+                script_info.required != 0 ||
+                script_info.role_mask != PCORE_NAV_RESOURCE_ROLE_SCRIPT ||
+                request->resource_ref_count != 4) {
             cstr_copy(error, sizeof(error),
                     "duplicate script was not one optional resource");
             ok = 0;
@@ -30855,10 +30818,15 @@ static BOOL test1123_navigation_resource_observability(void)
     }
     if (ok) {
         image = pcore_navigation_resource_find(request, IMAGE_URL);
-        if (image == NULL || image->state != PCORE_NAV_RESOURCE_PENDING ||
-                image->required != 0 ||
-                image->role_mask != PCORE_NAV_RESOURCE_ROLE_IMAGE ||
-                request->resource_count != 5) {
+        memset(&image_info, 0, sizeof(image_info));
+        image_info.size = sizeof(image_info);
+        if (image == NULL ||
+                pcore_navigation_resource_info(request, image,
+                        &image_info) != 0 ||
+                image_info.state != PCORE_NAV_RESOURCE_PENDING ||
+                image_info.required != 0 ||
+                image_info.role_mask != PCORE_NAV_RESOURCE_ROLE_IMAGE ||
+                request->resource_ref_count != 5) {
             cstr_copy(error, sizeof(error),
                     "duplicate image was not one optional resource");
             ok = 0;
@@ -34663,6 +34631,7 @@ static BOOL test43_navigation_resource_transaction(void)
     int retry_dns_ok;
     int retry_http_ok;
     int retry_post_ok;
+    int seed_rc;
     char msg[256];
 
     request = (pcore_navigation_request *) malloc(sizeof(*request));
@@ -34720,18 +34689,14 @@ static BOOL test43_navigation_resource_transaction(void)
         show_error(L"TEST 43 FAIL", "resource queue lookup failed");
         return FALSE;
     }
-    entry->data = (char *) malloc(3);
-    if (entry->data == NULL) {
+    pcore_navigation_resource_begin_attempt(request, entry);
+    seed_rc = PBrowser_NavigationResourceSetData(request->resource_transaction,
+            entry->index, "css", 3);
+    if (seed_rc != PBROWSER_OK) {
         pcore_navigation_request_free(request);
         show_error(L"TEST 43 FAIL", "resource body allocation failed");
         return FALSE;
     }
-    memcpy(entry->data, "css", 3);
-    entry->len = 3;
-    entry->attempted = 1;
-    entry->state = PCORE_NAV_RESOURCE_READY;
-    entry->failure_class = PCORE_NAV_FAILURE_NONE;
-    request->resource_bytes = 3;
     data = NULL;
     len = 0;
     hit_rc = pcore_navigation_resource_cb(request, "style.css",
@@ -34758,7 +34723,7 @@ static BOOL test43_navigation_resource_transaction(void)
     if (!root_ok || !absolute_ok || !retry_eof_ok || !retry_dns_ok ||
             !retry_http_ok || !retry_post_ok ||
             first_rc != 1 || duplicate_rc != 1 ||
-            request->resource_count != 2 || hit_rc != 0 ||
+            request->resource_ref_count != 2 || hit_rc != 0 ||
             hit_data == NULL || hit_len != 3 ||
             memcmp(hit_data, "css", 3) != 0 || entry == NULL ||
             pcore_navigation_pending_count(request) != 0) {
@@ -34767,7 +34732,7 @@ static BOOL test43_navigation_resource_transaction(void)
                 root_ok, absolute_ok, retry_eof_ok, retry_dns_ok,
                 retry_http_ok, retry_post_ok,
                 first_rc, duplicate_rc, hit_rc,
-                request->resource_count, hit_len,
+                request->resource_ref_count, hit_len,
                 pcore_navigation_pending_count(request));
         msg[sizeof(msg) - 1] = '\0';
         if (data != NULL) { page_resource_free_cb(NULL, data); }
