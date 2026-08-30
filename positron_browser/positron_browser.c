@@ -18,7 +18,7 @@
  * browser sessions; independent PScript contexts remain at their 512 KiB
  * default. */
 #define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 112UL * 1024UL)
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 134UL * 1024UL)
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -762,7 +762,8 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "configurable:true,enumerable:true});Object.defineProperty(PElement.prototype,'ownerDocument',"
         "{get:function(){return g.document||null;},enumerable:true});"
         "Object.defineProperty(PElement.prototype,'isConnected',{get:function(){"
-        "return !!__pcoreHasElement({id:this.__id});},enumerable:true});"
+        "return typeof __pcoreHasElement==='function'&&!!__pcoreHasElement({"
+        "id:this.__id});},enumerable:true});"
         "PElement.prototype.click=function(){"
         "if(!__pcoreClick({id:this.__id})){throw new Error('click failed');}};"
         "var pDialogModalOwner=null;var pDialogModalId='';"
@@ -2214,11 +2215,13 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "var pdocumentHeadToken='__positron_document_head__';"
         "var pdocumentBodyToken='__positron_document_body__';"
         "var pdocumentStructuralCache={};"
-        "function pdocumentStructural(id){if(!__pcoreHasElement({id:id})){return null;}"
+        "function pdocumentStructural(id){if(typeof __pcoreHasElement!=='function'||"
+        "!__pcoreHasElement({id:id})){return null;}"
         "if(!pdocumentStructuralCache[id]){pdocumentStructuralCache[id]=new PElement(id);}"
         "return pdocumentStructuralCache[id];}"
         "var pdocument={getElementById:function(id){id=String(id);"
-        "return __pcoreHasElement({id:id})?new PElement(id):null;},"
+        "return typeof __pcoreHasElement==='function'&&"
+        "__pcoreHasElement({id:id})?new PElement(id):null;},"
         "addEventListener:pdocumentAddEventListener,"
         "removeEventListener:pdocumentRemoveEventListener};"
         "Object.defineProperty(pdocument,'nodeType',{value:9,writable:false,"
@@ -2885,7 +2888,8 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "if(clp){var oldAdd7=clp.add;var oldRemove7=clp.remove;var oldToggle7=clp.toggle;var oldReplace7=clp.replace;"
         "clp.add=function(){var i;for(i=0;i<arguments.length;i++){validToken7(arguments[i]);}return oldAdd7.apply(this,arguments);};"
         "clp.remove=function(){var i;for(i=0;i<arguments.length;i++){validToken7(arguments[i]);}return oldRemove7.apply(this,arguments);};"
-        "clp.toggle=function(token,force){validToken7(token);return oldToggle7.call(this,token,force);};"
+        "clp.toggle=function(token,force){validToken7(token);if(arguments.length>1){"
+        "return oldToggle7.call(this,token,force);}return oldToggle7.call(this,token);};"
         "clp.replace=function(oldToken,newToken){validToken7(oldToken);validToken7(newToken);return oldReplace7.call(this,oldToken,newToken);};}}"
         "if(rlp){var oldAddRel7=rlp.prototype.add;var oldRemoveRel7=rlp.prototype.remove;"
         "var oldToggleRel7=rlp.prototype.toggle;var oldReplaceRel7=rlp.prototype.replace;"

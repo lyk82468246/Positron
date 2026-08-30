@@ -532,8 +532,11 @@ table_used_left_border_for_cell(const css_unit_ctx *unit_len_ctx, struct box *ce
 	/* a now contains the used left border for the cell */
 	cell->border[LEFT].style = a.style;
 	cell->border[LEFT].c = a.c;
-	cell->border[LEFT].width = FIXTOINT(css_unit_len2device_px(
-			cell->style, unit_len_ctx, a.width, a.unit));
+	/* Candidates above were already converted to device pixels and tagged
+	 * CSS_UNIT_PX. Do not convert them a second time: besides wasting work,
+	 * a second rounding step inflates integer borders when the conversion
+	 * helper preserves a fractional device-pixel scale. */
+	cell->border[LEFT].width = FIXTOINT(a.width);
 }
 
 
@@ -635,8 +638,7 @@ table_used_top_border_for_cell(const css_unit_ctx *unit_len_ctx, struct box *cel
 	/* a now contains the used top border for the cell */
 	cell->border[TOP].style = a.style;
 	cell->border[TOP].c = a.c;
-	cell->border[TOP].width = FIXTOINT(css_unit_len2device_px(
-			cell->style, unit_len_ctx, a.width, a.unit));
+	cell->border[TOP].width = FIXTOINT(a.width);
 }
 
 /**
@@ -738,8 +740,7 @@ table_used_right_border_for_cell(const css_unit_ctx *unit_len_ctx, struct box *c
 	/* a now contains the used right border for the cell */
 	cell->border[RIGHT].style = a.style;
 	cell->border[RIGHT].c = a.c;
-	cell->border[RIGHT].width = FIXTOINT(css_unit_len2device_px(
-			cell->style, unit_len_ctx, a.width, a.unit));
+	cell->border[RIGHT].width = FIXTOINT(a.width);
 }
 
 
@@ -844,8 +845,7 @@ table_used_bottom_border_for_cell(const css_unit_ctx *unit_len_ctx,
 	/* a now contains the used bottom border for the cell */
 	cell->border[BOTTOM].style = a.style;
 	cell->border[BOTTOM].c = a.c;
-	cell->border[BOTTOM].width = FIXTOINT(css_unit_len2device_px(
-			cell->style, unit_len_ctx, a.width, a.unit));
+	cell->border[BOTTOM].width = FIXTOINT(a.width);
 }
 
 

@@ -1120,7 +1120,7 @@ typedef struct PBrowserScriptEventInfo {
 #define PBROWSER_SCRIPT_EVENT_ACTION_PREVENT_DEFAULT 0x01u
 
 /* Browser script session. The session owns one browser-sized PScript context
- * (the browser bootstrap uses a bounded 624 KiB heap ceiling) and all
+ * (the browser bootstrap uses a bounded 646 KiB heap ceiling) and all
  * registered native functions. It does not own a core document or any host
  * callback pw value. Return codes from Evaluate/Call/Set/Register are the
  * stable positron_script result codes; zero is success. */

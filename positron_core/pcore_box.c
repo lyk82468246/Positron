@@ -2029,6 +2029,8 @@ static struct box *pcore_construct_block(dom_node *node,
                     struct box *t = pcore_make_text_box(child, style, ctx,
                             stats);
                     if (t != NULL) {
+                        t->node = node;   /* attribute block text to its
+                                           * parent for label hit-testing */
                         if (inline_cont == NULL) {
                             inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
                                     NULL, ctx);

@@ -27,16 +27,13 @@
 
 ## 近期目标
 
-### 安排后续的全量设备 checkpoint
+### 建立第二条离线 compatibility corpus
 
-沿用当前源码 dispatch 动态生成的 automation-safe 选择，覆盖首个离线 corpus 流程及其相邻基础设施回归。checkpoint 应包含：
+next670 已完成一次由源码 dispatch 动态生成的 1080 项全量自动 checkpoint。下一批转向第二条固定、离线、可重复的真实页面流程，优先覆盖候选文档加载、资源准备、失败回滚和成功提交之间的生命周期边界。
 
-- 与产品代码同一次构建的完整 staging；
-- 当前 dispatch 中所有 automation-safe 测试，排除 manual-only fixture；
-- TEST999 完成提示音与唯一 `TESTBENCH PASS` 判定；
-- 可追溯的设备日志和构建/RAPI/断言/环境失败分类。
+next671 的 corpus 应包含代表性 HTML/CSS/资源、完整用户动作和可机器判定的几何/状态/事件/导航或回滚结果。网络端点不成为契约测试前提；真实网络只作为独立哨兵。若流程暴露可复用的 URL/history/DOM/Event/资源语义，应先进入 Core 或 Browser，再由宿主提供 WM 接线和调度。
 
-checkpoint 完成后，再从已有 corpus 暴露的实际缺口选择第二条离线流程；新 fixture 仍应包含代表性 HTML/CSS/资源、完整用户动作、几何/状态/事件/导航或回滚断言，并保持网络不成为契约测试前提。
+完成 next671 后，再按风险累计条件安排更宽回归或新的全量 checkpoint；不要把一次全量门当成永久覆盖，也不要为增加测试编号拆分能力。
 
 ### 继续清理产品所有权
 

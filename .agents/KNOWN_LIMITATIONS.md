@@ -72,7 +72,7 @@
 - Windows Mobile EDIT/COMBOBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
 - synthetic `WM_CHAR`/key/composition/mouse 测试可以证明 WM EDIT 代理的事务边界、有界脚本选区同步、selectionchange 去重、无修饰拖选方向、Shift/捕获/焦点中断的收尾，以及 TEST1115 的受限 `CF_UNICODETEXT` paste/cut data、取消和 fail-closed 路径、TEST1116 的 `WM_COPY` 非空/折叠选区和超长/非 Unicode 拒绝；由于 WinCE 的直接 `SendMessage` 不会更新键盘状态表，TEST1114 对 Shift 扩展在 key-up 前注入有界原生范围，不能替代 OEM 默认键盘行为。CF_TEXT/富文本转换、不同应用的剪贴板互操作、候选词窗口、完整 IME、真实硬键盘、自动重复或 SIP 视觉仍需人工验收。
 - 文件选择器的权限、取消、窗口返回和路径显示需要真实设备人工验收。
-- select popup、焦点矩形、滚动可见性和 label 触摸命中可能受控件窗口层级与 DPI 影响。
+- select popup、焦点矩形和滚动可见性仍可能受控件窗口层级与 DPI 影响；next670 已修复并在 192-DPI 设备验证 block 文本 label forwarding，复杂嵌套 label 或其他窗口层级组合仍需人工观察。
 - 旋转、不同 screen/DPI、软键盘占用区域和系统非客户区只能通过设备观察确认。
 
 ## WMDC 与自动化
@@ -85,7 +85,7 @@
 
 ## 测试覆盖
 
-- 最近开发主要使用定向设备门；多批窄门不等于新的全量范围基线。
+- next670 已建立一次 1080 项动态全量自动设备 checkpoint；后续定向门仍不能替代下一次按风险触发的全量范围基线。
 - 已有一个离线 compatibility-corpus 场景（TEST1117），把固定 HTML/CSS 中的 contenteditable、dialog validation、`method="dialog"` close、same-document history 和失败候选回滚串成一条自动流程；它只覆盖这一条流程，不代表任意真实网站或完整 Web 标准。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。

@@ -8,8 +8,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`；产品代码提交为 `88d68ebd`（next669），本文件更新后工作区应保持 clean。
-- 当前产品代码基线：`88d68ebd`（next669，首个离线 compatibility corpus 完整流程）；上一产品基线为 `c0c4ba0e`（next668，单元素 `contenteditable` 的受限 CF_UNICODETEXT 粘贴/剪切与 WM_COPY 边界、折叠选区 no-op、超长/非 Unicode fail-closed 和 WinCE 原生 WM_CUT 重入保护）。
+- 分支：`main`；当前候选为 next670，包含待提交的产品修复和测试夹具修订；完成提交后工作区应保持 clean。
+- next670 在 next669 的离线 corpus 基础上修复了 collapsed-border 的重复 DPI 换算、浏览器 `classList.toggle` 的参数个数语义、无 DOM bootstrap 回退，以及高 DPI 重排后 block 文本盒的 label 命中关联；同时将浏览器 session 堆上限固定为经设备二分验证的 646 KiB，并恢复稳定的 TEST3/TEST5 网络哨兵组合。
+- 上一产品基线为 `88d68ebd`（next669，首个离线 compatibility corpus 完整流程）；更早基线为 `c0c4ba0e`（next668，单元素 `contenteditable` 的受限 CF_UNICODETEXT 粘贴/剪切与 WM_COPY 边界、折叠选区 no-op、超长/非 Unicode fail-closed 和 WinCE 原生 WM_CUT 重入保护）。
 - Core 现在报告稳定的有效表单方法常量，并为显式 submitter 或单行输入隐式提交解析最近祖先 dialog id 与 submitter value。Browser 提供按 id 直接执行 `dialog.close(value)` 的会话边界；参考宿主只在 validation 和可取消 `submit` 均允许后调用它，不生成网络导航，也不错误派发 `cancel`。Core 还提供 `PCore_PaintDocumentWithModal`：普通文档绘制后覆盖有界实体色 backdrop，并按 Browser 的活动 id 重绘已打开的 dialog；next658 的 backdrop 指针策略和此前的 modal 焦点/Escape 边界保持不变。
 - `tmp/` 保存本地设备日志和截图，不跟踪。
 
@@ -19,7 +20,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-完成 next669 之后的全量自动设备 checkpoint，确认动态 dispatch 生成的 automation-safe 测试集合与同批 staging 在真实设备上保持一致，再依据 corpus 暴露的实际缺口选择下一条高价值纵切。不得只为增加测试编号而拆分能力，也不得把产品语义继续堆在 `test_host`。
+推进 next671：建立第二条固定、离线、可重复的 compatibility-corpus 纵向流程，优先覆盖候选页面失败回滚与资源/导航生命周期边界。先从真实页面动作定义 Core/Browser 契约，再补宿主接线、自动断言和相邻设备门；不得只为增加测试编号而拆分能力，也不得把产品语义继续堆在 `test_host`。
 
 ## 已验证产品事实
 
@@ -52,16 +53,15 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 最新有效设备证据
 
-当前最新产品门为 next669：
+当前最新产品门为 next670：
 
-- 本地目录：`tmp/device-runs/20260830-115654-next669-corpus-final/`；
-- 选择：TEST1081、TEST1107、TEST1114、TEST1115、TEST1116、TEST1117 与 TEST999；
-- 结果：7/7，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`；
-- 设备：640x480，dpi=192；该门使用当前 WMDC GUI 会话并完成了 staging、远端启动、日志回收和退出提示音。
+- 全量目录：`tmp/device-runs/20260830-163642-next670-full-final/`；
+- 动态选择：`1-22,24-77,80-231,233-262,264-448,482-998,1000-1117,7b,999`，共 1080 项；仅排除 manual-only 的 TEST232/TEST263；
+- 结果：1080/1080，通过；唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，TEST999 提示音请求一次；
+- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging，完整门使用 3600 秒等待上限；
+- 直接相邻尾段 `tmp/device-runs/20260830-163347-next670-window-1076-1117/` 也已 43/43 通过，确认 TEST1077 的高 DPI label 命中修复没有影响后续 native 控件、键盘和导航测试。
 
-该门除重跑 next668 的 contenteditable/剪贴板相邻回归和 TEST1081 的 fragment history 外，首次自动验证 TEST1117 的离线完整流程：高 DPI 下 640×480 设备几何、固定 dialog/form/contenteditable/link 盒、beforeinput 取消与允许后的 mutation/input/change、selectionchange 去重、required validation 不关闭 dialog、`method="dialog"` 的 submit/close/returnValue、same-document fragment history、错误候选不改写现有 history，以及 back traversal 后的最终状态。它是定向门，不是全量回归。
-
-最近一次完整编号范围基线仍是 next255，早于当前多批能力；此后主要使用定向门和相邻回归。因此，累积风险达到路线图条件时必须安排新的全量 checkpoint，不能把多个窄门宣称为全量覆盖。
+next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 bootstrap、classList、selector、Promise/namespace 堆预算、native 控件、label forwarding、contenteditable、dialog、history 和 TEST1117 离线 corpus。全量选择由源码 dispatch 动态生成，不等于 tracked smoke INI；`tmp/` 中的日志仅是本地证据。
 
 ## 当前人工验收状态
 
@@ -93,7 +93,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 唯一下一步
 
-next670 安排一次新的全量自动设备 checkpoint：沿用当前源码 dispatch 动态生成的 automation-safe 选择，覆盖 TEST1117 及其相邻基础设施回归，并保留 TEST999。它只验证当前已完成能力的组合和 staging 一致性，不在同一批加入新的 API、人工 fixture 或无关 CSS/剪贴板扩张；全量通过后再从 corpus 暴露的实际缺口选择下一条纵向能力。
+next671 建立第二条离线 compatibility corpus：以一个可固定的真实页面动作串联候选文档加载、资源准备、失败回滚和成功提交，验证旧页面/history 保留、资源缓存清理、页面生命周期队列与 Browser/Core 的所有权边界。先完成契约和最小夹具，再实现公共 DLL 语义与宿主接线；不把网络端点或视觉人工操作写成自动契约。
 
 优先场景应同时满足：
 
@@ -105,9 +105,9 @@ next670 安排一次新的全量自动设备 checkpoint：沿用当前源码 dis
 
 ## 下一步完成标准
 
-- 全量选择由当前 `run_configured_tests` dispatch 动态生成，排除 manual-only fixture，并包含 TEST1117 与 TEST999；
-- VS2008 ARMV4I 正式构建和完整 staging 来自同一配置、同一源码提交，无旧 EXE/DLL 混包；
-- 全量设备门中每个所选测试都有完成记录，日志唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，退出提示音只请求一次；
-- 全量门后保留一份可追溯的 `tmp/device-runs/` 证据，并把失败按构建、RAPI、测试断言或设备环境分类；
-- `python scripts/test_c89ize.py`、`python scripts/audit_repo.py` 和 `git diff --check` 通过；
-- handoff 覆盖为 checkpoint 快照，ROADMAP 只保留下一条未完成的纵向能力。
+- next671 的 HTML/CSS/资源和用户动作完全离线固定，自动断言覆盖几何、状态、事件、导航或失败回滚中的主要结果；
+- 可复用的 URL/history/DOM/Event/资源生命周期语义位于 Core 或 Browser，`test_host` 只负责 WM 接线、调度和夹具；
+- VS2008 ARMV4I 正式构建、同批 staging、C89 回归和仓库审计通过，无旧 EXE/DLL 混包；
+- next671 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，并保留可追溯的 `tmp/device-runs/` 证据；
+- 视觉、触摸、SIP/IME、picker 或旋转等无法自动判断的风险进入既有人工累计清单，不以人工缺席伪造自动通过；
+- handoff 覆盖为 next671 快照，ROADMAP 只保留下一条未完成的纵向能力。

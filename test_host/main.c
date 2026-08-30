@@ -13,9 +13,9 @@
  *     PJson_Parse a small literal, extract a string and an int, free.
  *
  *   TEST 3 - HTTPS GET (no auth)
- *     checkip.amazonaws.com -> plain-text public IP. China-direct;
- *     cert chains to Amazon Root CA 1 (in our CA bundle). JSON parsing
- *     is still covered by the offline TEST 2 and the nested TEST 4.
+ *     postman-echo.com/get -> JSON echo URL. The GET endpoint shares the
+ *     TLS 1.2-compatible service used by TEST 4, while keeping this test
+ *     independent from a public-IP service that may move to TLS 1.3.
  *
  *   TEST 4 - HTTPS POST (no auth)
  *     postman-echo.com/post body {"hello":"positron"} -> parse echo
@@ -902,11 +902,10 @@ static BOOL test2_json(void)
 
 /* -------------------------------------------------------------------- */
 /* TEST 3 - HTTPS GET                                                    */
-/* checkip.amazonaws.com returns the caller's public IP as plain text    */
-/* ("x.x.x.x\n"). Picked over api.ipify.org because it is reachable from */
-/* mainland China without a VPN and its cert chains to Amazon Root CA 1, */
-/* which is in our embedded CA bundle. (JSON coverage is unaffected: the */
-/* offline TEST 2 is the JSON unit test and TEST 4 parses nested JSON.)  */
+/* postman-echo.com/get returns a JSON object containing its request URL. */
+/* TEST 4 uses the same service for POST, so both methods exercise the    */
+/* verified TLS 1.2 + HTTP response path without relying on an endpoint    */
+/* whose public-IP service may require TLS 1.3 in the future.             */
 /* -------------------------------------------------------------------- */
 
 typedef struct http_progress_probe {
@@ -933,17 +932,15 @@ static void test3_progress_cb(void *pw, int received, int total)
 static BOOL test3_get(void)
 {
     PHttpResponse* resp;
+    HANDLE         root;
+    const char*    url;
     http_progress_probe progress;
-    const char*    body;
-    char           ip[64];
-    int            i;
-    int            dots;
     char           msg[512];
 
     memset(&progress, 0, sizeof(progress));
     progress.monotonic = 1;
     progress.last_total = -2;
-    resp = PHttp_GetEx("checkip.amazonaws.com", 443, "/", NULL,
+    resp = PHttp_GetEx("postman-echo.com", 443, "/get", NULL,
             test3_progress_cb, &progress);
     if (resp == NULL) {
         show_error(L"TEST 3 FAIL", "PHttp_Get returned NULL (OOM?)");
@@ -951,7 +948,7 @@ static BOOL test3_get(void)
     }
     if (resp->status_code != 200) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "HTTPS GET checkip -> status=%d err=%s\nbody (first 200):\n%.200s",
+                  "HTTPS GET postman-echo -> status=%d err=%s\nbody (first 200):\n%.200s",
                   resp->status_code, resp->error_msg,
                   resp->body ? resp->body : "(none)");
         msg[sizeof(msg) - 1] = '\0';
@@ -974,40 +971,31 @@ static BOOL test3_get(void)
         return FALSE;
     }
 
-    /* Body is the public IP as plain text with a trailing newline. Copy it
-     * out, trim trailing CR/LF/space, and sanity-check it looks like a
-     * dotted IPv4 address (exactly three dots). */
-    body = resp->body ? resp->body : "";
-    for (i = 0; body[i] != '\0' && i < (int)sizeof(ip) - 1; i++) {
-        ip[i] = body[i];
+    root = PJson_Parse(resp->body ? resp->body : "");
+    if (root == NULL) {
+        show_error(L"TEST 3 FAIL", "postman-echo GET response is not JSON");
+        PHttp_FreeResponse(resp);
+        return FALSE;
     }
-    ip[i] = '\0';
-    while (i > 0 && (ip[i - 1] == '\n' || ip[i - 1] == '\r' || ip[i - 1] == ' ')) {
-        ip[--i] = '\0';
-    }
-
-    dots = 0;
-    for (i = 0; ip[i] != '\0'; i++) {
-        if (ip[i] == '.') {
-            dots++;
-        }
-    }
-    if (ip[0] == '\0' || dots != 3) {
+    url = PJson_GetString(root, "url");
+    if (url == NULL || strstr(url, "postman-echo.com/get") == NULL) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "checkip returned 200 but body is not an IPv4 address:\n%.200s",
-                  body);
+                  "postman-echo GET response URL mismatch: %s",
+                  url ? url : "(null)");
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 3 FAIL", msg);
+        PJson_Free(root);
         PHttp_FreeResponse(resp);
         return FALSE;
     }
 
     _snprintf(msg, sizeof(msg) - 1,
-              "HTTPS GET checkip.amazonaws.com OK\n\nYour public IP:\n%s\n\n"
-              "(TLS 1.2 GET + monotonic body progress; China-direct.)", ip);
+              "HTTPS GET postman-echo OK\n\nEcho URL:\n%s\n\n"
+              "(TLS 1.2 GET + monotonic body progress + JSON response.)", url);
     msg[sizeof(msg) - 1] = '\0';
     show_info(L"TEST 3 OK", msg);
 
+    PJson_Free(root);
     PHttp_FreeResponse(resp);
     return TRUE;
 }
@@ -28345,7 +28333,7 @@ static BOOL test_boxtree(void)
         show_error(L"TEST 15 FAIL", buf);
         return FALSE;
     }
-    show_info(L"TEST 15 (box tree)", buf);
+    show_info(L"TEST 15 OK", buf);
     return TRUE;
 }
 
@@ -28363,7 +28351,7 @@ static BOOL test_layout(void)
         show_error(L"TEST 16 FAIL", "PCore_LayoutBoxTest produced no output");
         return FALSE;
     }
-    show_info(L"TEST 16 (NetSurf layout)", buf);
+    show_info(L"TEST 16 OK", buf);
     return TRUE;
 }
 
@@ -29522,6 +29510,16 @@ static BOOL test30_css_background_image(void)
     int sh;
     int vw;
     int vh;
+    int screen_dpi;
+    int expected_margin;
+    int expected_header_w;
+    int expected_header_h;
+    int expected_section_w;
+    int expected_section_h;
+    int background_x;
+    int background_y;
+    int tile_size;
+    int quadrant_size;
     COLORREF p0;
     COLORREF p1;
     COLORREF p2;
@@ -29561,10 +29559,27 @@ static BOOL test30_css_background_image(void)
     vh = GetSystemMetrics(SM_CYSCREEN);
     if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
+    screen_dpi = test_host_device_dpi();
+    expected_margin = test_host_css_px_to_device_px(8, screen_dpi);
+    expected_header_w = test_host_css_px_to_device_px(100, screen_dpi);
+    expected_header_h = test_host_css_px_to_device_px(40, screen_dpi);
+    expected_section_w = test_host_css_px_to_device_px(60, screen_dpi);
+    expected_section_h = test_host_css_px_to_device_px(40, screen_dpi);
+    background_x = test_host_css_px_to_device_px(20, screen_dpi);
+    background_y = test_host_css_px_to_device_px(10, screen_dpi);
+    /* The SVG's intrinsic 20x20 image pixels are retained at device size;
+     * CSS position and element geometry above are the DPI-scaled values. */
+    tile_size = 20;
+    quadrant_size = 10;
+    PCore_SetViewport(vw, vh, screen_dpi);
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_NodeBox(hDoc, "header", &hx, &hy, &hw, &hh) != 0 ||
             PCore_NodeBox(hDoc, "section", &sx, &sy, &sw, &sh) != 0 ||
-            hw != 100 || hh != 40 || sw != 60 || sh != 40) {
+            hx != expected_margin || hy != expected_margin ||
+            sx != expected_margin ||
+            sy != expected_margin + expected_header_h + expected_margin ||
+            hw != expected_header_w || hh != expected_header_h ||
+            sw != expected_section_w || sh != expected_section_h) {
         sprintf(msg, "geometry header=%d,%d %dx%d section=%d,%d %dx%d",
                 hx, hy, hw, hh, sx, sy, sw, sh);
         PCore_FreeStylesheet(hSheet);
@@ -29591,13 +29606,20 @@ static BOOL test30_css_background_image(void)
     FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
     PCore_PaintDocument(hDoc, memory_dc, 0, 0);
     p0 = GetPixel(memory_dc, hx + 5, hy + 5);
-    p1 = GetPixel(memory_dc, hx + 25, hy + 15);
-    p2 = GetPixel(memory_dc, hx + 35, hy + 15);
-    p3 = GetPixel(memory_dc, hx + 45, hy + 15);
-    p4 = GetPixel(memory_dc, sx + 5, sy + 5);
-    p5 = GetPixel(memory_dc, sx + 25, sy + 5);
-    p6 = GetPixel(memory_dc, sx + 5, sy + 25);
-    p7 = GetPixel(memory_dc, sx + 15, sy + 15);
+    p1 = GetPixel(memory_dc, hx + background_x + quadrant_size / 2,
+            hy + background_y + quadrant_size / 2);
+    p2 = GetPixel(memory_dc, hx + background_x + quadrant_size +
+            quadrant_size / 2, hy + background_y + quadrant_size / 2);
+    p3 = GetPixel(memory_dc, hx + background_x + tile_size + 5,
+            hy + background_y + quadrant_size / 2);
+    p4 = GetPixel(memory_dc, sx + quadrant_size / 2,
+            sy + quadrant_size / 2);
+    p5 = GetPixel(memory_dc, sx + tile_size + quadrant_size / 2,
+            sy + quadrant_size / 2);
+    p6 = GetPixel(memory_dc, sx + quadrant_size / 2,
+            sy + tile_size + quadrant_size / 2);
+    p7 = GetPixel(memory_dc, sx + (quadrant_size * 3) / 2,
+            sy + (quadrant_size * 3) / 2);
     SelectObject(memory_dc, old_bitmap);
     DeleteObject(bitmap);
     DeleteDC(memory_dc);
@@ -29853,6 +29875,18 @@ static BOOL test32_cached_svg_gradient_text(void)
     int h;
     int vw;
     int vh;
+    int screen_dpi;
+    int expected_w;
+    int expected_h;
+    int scan_margin;
+    int scan_y;
+    int sample_left;
+    int sample_middle;
+    int sample_right;
+    int white_x_start;
+    int white_x_end;
+    int white_y_start;
+    int white_y_end;
     int px;
     int py;
     int white_pixels;
@@ -29899,11 +29933,24 @@ static BOOL test32_cached_svg_gradient_text(void)
     vh = GetSystemMetrics(SM_CYSCREEN);
     if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
+    screen_dpi = test_host_device_dpi();
+    expected_w = test_host_css_px_to_device_px(160, screen_dpi);
+    expected_h = test_host_css_px_to_device_px(80, screen_dpi);
+    scan_margin = test_host_css_px_to_device_px(2, screen_dpi);
+    scan_y = test_host_css_px_to_device_px(12, screen_dpi);
+    sample_left = test_host_css_px_to_device_px(8, screen_dpi);
+    sample_middle = test_host_css_px_to_device_px(80, screen_dpi);
+    sample_right = test_host_css_px_to_device_px(151, screen_dpi);
+    white_x_start = test_host_css_px_to_device_px(35, screen_dpi);
+    white_x_end = test_host_css_px_to_device_px(125, screen_dpi);
+    white_y_start = test_host_css_px_to_device_px(27, screen_dpi);
+    white_y_end = test_host_css_px_to_device_px(55, screen_dpi);
+    PCore_SetViewport(vw, vh, screen_dpi);
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != 160 || h != 80) {
-        sprintf(msg, "SVG image box=(%d,%d) %dx%d; expect 160x80",
-                x, y, w, h);
+            w != expected_w || h != expected_h) {
+        sprintf(msg, "SVG image box=(%d,%d) %dx%d; expect %dx%d at dpi=%d",
+                x, y, w, h, expected_w, expected_h, screen_dpi);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 32 FAIL", msg);
@@ -29927,14 +29974,14 @@ static BOOL test32_cached_svg_gradient_text(void)
     SetRect(&rect, 0, 0, vw, vh);
     FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
     PCore_PaintDocument(hDoc, memory_dc, 0, 0);
-    left = GetPixel(memory_dc, x + 8, y + 12);
-    middle = GetPixel(memory_dc, x + 80, y + 12);
-    right = GetPixel(memory_dc, x + 151, y + 12);
+    left = GetPixel(memory_dc, x + sample_left, y + scan_y);
+    middle = GetPixel(memory_dc, x + sample_middle, y + scan_y);
+    right = GetPixel(memory_dc, x + sample_right, y + scan_y);
     previous = CLR_INVALID;
     seam_pixels = 0;
     large_jumps = 0;
-    for (px = x + 2; px < x + w - 2; px++) {
-        pixel = GetPixel(memory_dc, px, y + 12);
+    for (px = x + scan_margin; px < x + w - scan_margin; px++) {
+        pixel = GetPixel(memory_dc, px, y + scan_y);
         if (GetGValue(pixel) > 48) {
             seam_pixels++;
         }
@@ -29950,8 +29997,8 @@ static BOOL test32_cached_svg_gradient_text(void)
         previous = pixel;
     }
     white_pixels = 0;
-    for (py = y + 27; py < y + 55; py += 2) {
-        for (px = x + 35; px < x + 125; px += 2) {
+    for (py = y + white_y_start; py < y + white_y_end; py += 2) {
+        for (px = x + white_x_start; px < x + white_x_end; px += 2) {
             pixel = GetPixel(memory_dc, px, py);
             if (GetRValue(pixel) > 220 && GetGValue(pixel) > 220 &&
                     GetBValue(pixel) > 220) {
@@ -30440,6 +30487,15 @@ static BOOL test35_cached_svg_radial_gradient(void)
     int h;
     int vw;
     int vh;
+    int screen_dpi;
+    int expected_w;
+    int expected_h;
+    int center_x;
+    int center_y;
+    int horizontal_x;
+    int vertical_y;
+    int right_x;
+    int top_y;
     int px;
     int py;
     int seam_pixels;
@@ -30485,11 +30541,21 @@ static BOOL test35_cached_svg_radial_gradient(void)
     vh = GetSystemMetrics(SM_CYSCREEN);
     if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
+    screen_dpi = test_host_device_dpi();
+    expected_w = test_host_css_px_to_device_px(160, screen_dpi);
+    expected_h = test_host_css_px_to_device_px(80, screen_dpi);
+    center_x = test_host_css_px_to_device_px(80, screen_dpi);
+    center_y = test_host_css_px_to_device_px(40, screen_dpi);
+    horizontal_x = test_host_css_px_to_device_px(120, screen_dpi);
+    vertical_y = test_host_css_px_to_device_px(20, screen_dpi);
+    right_x = test_host_css_px_to_device_px(156, screen_dpi);
+    top_y = test_host_css_px_to_device_px(2, screen_dpi);
+    PCore_SetViewport(vw, vh, screen_dpi);
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_NodeBox(hDoc, "img", &x, &y, &w, &h) != 0 ||
-            w != 160 || h != 80) {
-        sprintf(msg, "radial SVG box=(%d,%d) %dx%d; expect 160x80",
-                x, y, w, h);
+            w != expected_w || h != expected_h) {
+        sprintf(msg, "radial SVG box=(%d,%d) %dx%d; expect %dx%d at dpi=%d",
+                x, y, w, h, expected_w, expected_h, screen_dpi);
         PCore_FreeStylesheet(hSheet);
         PCore_FreeDocument(hDoc);
         show_error(L"TEST 35 FAIL", msg);
@@ -30513,17 +30579,17 @@ static BOOL test35_cached_svg_radial_gradient(void)
     SetRect(&rect, 0, 0, vw, vh);
     FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
     PCore_PaintDocument(hDoc, memory_dc, 0, 0);
-    center = GetPixel(memory_dc, x + 80, y + 40);
-    horizontal_middle = GetPixel(memory_dc, x + 120, y + 40);
-    vertical_middle = GetPixel(memory_dc, x + 80, y + 20);
-    right_edge = GetPixel(memory_dc, x + 156, y + 40);
-    top_edge = GetPixel(memory_dc, x + 80, y + 2);
+    center = GetPixel(memory_dc, x + center_x, y + center_y);
+    horizontal_middle = GetPixel(memory_dc, x + horizontal_x, y + center_y);
+    vertical_middle = GetPixel(memory_dc, x + center_x, y + vertical_y);
+    right_edge = GetPixel(memory_dc, x + right_x, y + center_y);
+    top_edge = GetPixel(memory_dc, x + center_x, y + top_y);
 
     seam_pixels = 0;
     large_jumps = 0;
     previous = CLR_INVALID;
-    for (px = x + 80; px <= x + 156; px++) {
-        pixel = GetPixel(memory_dc, px, y + 40);
+    for (px = x + center_x; px <= x + right_x; px++) {
+        pixel = GetPixel(memory_dc, px, y + center_y);
         if (GetGValue(pixel) > 48) { seam_pixels++; }
         if (previous != CLR_INVALID &&
                 abs((int) GetRValue(pixel) -
@@ -30537,8 +30603,8 @@ static BOOL test35_cached_svg_radial_gradient(void)
         previous = pixel;
     }
     previous = CLR_INVALID;
-    for (py = y + 40; py >= y + 2; py--) {
-        pixel = GetPixel(memory_dc, x + 80, py);
+    for (py = y + center_y; py >= y + top_y; py--) {
+        pixel = GetPixel(memory_dc, x + center_x, py);
         if (GetGValue(pixel) > 48) { seam_pixels++; }
         if (previous != CLR_INVALID &&
                 abs((int) GetRValue(pixel) -
@@ -30883,6 +30949,13 @@ static BOOL test37_cached_svg_gradient_batch(void)
     int sh;
     int vw;
     int vh;
+    int screen_dpi;
+    int expected_w;
+    int expected_h;
+    int image_center_x;
+    int image_middle_x;
+    int image_edge_x;
+    int image_center_y;
     int img_ok;
     int bg_ok;
     char msg[256];
@@ -30917,10 +30990,19 @@ static BOOL test37_cached_svg_gradient_batch(void)
     vh = GetSystemMetrics(SM_CYSCREEN);
     if (vw <= 0) { vw = 224; }
     if (vh <= 0) { vh = 320; }
+    screen_dpi = test_host_device_dpi();
+    expected_w = test_host_css_px_to_device_px(160, screen_dpi);
+    expected_h = test_host_css_px_to_device_px(80, screen_dpi);
+    image_center_x = test_host_css_px_to_device_px(40, screen_dpi);
+    image_middle_x = test_host_css_px_to_device_px(80, screen_dpi);
+    image_edge_x = test_host_css_px_to_device_px(156, screen_dpi);
+    image_center_y = test_host_css_px_to_device_px(40, screen_dpi);
+    PCore_SetViewport(vw, vh, screen_dpi);
     if (PCore_LayoutDocument(hDoc, vw, vh) != 0 ||
             PCore_NodeBox(hDoc, "img", &ix, &iy, &iw, &ih) != 0 ||
             PCore_NodeBox(hDoc, "section", &sx, &sy, &sw, &sh) != 0 ||
-            iw != 160 || ih != 80 || sw != 160 || sh != 80) {
+            iw != expected_w || ih != expected_h ||
+            sw != expected_w || sh != expected_h) {
         sprintf(msg, "boxes img=%d,%d %dx%d bg=%d,%d %dx%d",
                 ix, iy, iw, ih, sx, sy, sw, sh);
         PCore_FreeStylesheet(hSheet);
@@ -30945,9 +31027,12 @@ static BOOL test37_cached_svg_gradient_batch(void)
     SetRect(&rect, 0, 0, vw, vh);
     FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
     PCore_PaintDocument(hDoc, memory_dc, 0, 0);
-    img_center = GetPixel(memory_dc, ix + 40, iy + 40);
-    img_middle = GetPixel(memory_dc, ix + 80, iy + 40);
-    img_edge = GetPixel(memory_dc, ix + 156, iy + 40);
+    img_center = GetPixel(memory_dc, ix + image_center_x,
+            iy + image_center_y);
+    img_middle = GetPixel(memory_dc, ix + image_middle_x,
+            iy + image_center_y);
+    img_edge = GetPixel(memory_dc, ix + image_edge_x,
+            iy + image_center_y);
     bg_center = GetPixel(memory_dc, sx + 40, sy + 40);
     bg_middle = GetPixel(memory_dc, sx + 80, sy + 40);
     bg_edge = GetPixel(memory_dc, sx + 156, sy + 40);
@@ -31137,7 +31222,11 @@ static BOOL test39_css_variable_layout(void)
         hDoc = PCore_ParseHTML(HTML, 0);
         hSheet = PCore_ParseCSS(CSS, 0,
                 "http://positron.local/iana-spacing.css");
-        PCore_SetViewport(widths[pass], 320, dpi);
+        /* These two assertions are CSS-pixel fixtures, not a physical
+         * device surface. Keep their reference geometry at 96 DPI so the
+         * token arithmetic is independent of the host screen scale. The
+         * visible pass below uses the actual device viewport. */
+        PCore_SetViewport(widths[pass], 320, 96);
         if (hDoc == NULL || hSheet == NULL ||
                 PCore_StyleDocument(hDoc, hSheet) != 0 ||
                 PCore_LayoutDocument(hDoc, widths[pass], 320) != 0 ||
@@ -31258,6 +31347,9 @@ static BOOL test40_css_modern_values(void)
     hDoc = PCore_ParseHTML(HTML, 0);
     hSheet = PCore_ParseCSS(CSS, 0,
             "http://positron.local/modern-values.css");
+    /* This is a CSS-value fixture with fixed 200px reference geometry;
+     * keep its arithmetic independent of the physical device DPI. */
+    PCore_SetViewport(200, 200, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 200, 200) != 0) {
@@ -31357,7 +31449,10 @@ static BOOL test41_grid_overflow_flex(void)
         hDoc = PCore_ParseHTML(HTML, 0);
         hSheet = PCore_ParseCSS(CSS, 0,
                 "http://positron.local/grid-overflow.css");
-        PCore_SetViewport(widths[pass], 320, dpi);
+        /* The two geometry probes are fixed CSS-pixel fixtures. Keep their
+         * reference scale at 96 DPI; the visible pass below restores the
+         * actual device viewport and DPI. */
+        PCore_SetViewport(widths[pass], 320, 96);
         if (hDoc == NULL || hSheet == NULL ||
                 PCore_StyleDocument(hDoc, hSheet) != 0 ||
                 PCore_LayoutDocument(hDoc, widths[pass], 320) != 0 ||
@@ -31495,6 +31590,9 @@ static BOOL test42_overflow_scrollbar(void)
     hDoc = PCore_ParseHTML(HTML, 0);
     hSheet = PCore_ParseCSS(CSS, 0,
             "http://positron.local/overflow-scrollbar.css");
+    /* The off-screen widget probe uses a fixed CSS-pixel surface. Reset the
+     * shared viewport left by the preceding visible test before styling. */
+    PCore_SetViewport(240, 320, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 240, 320) != 0 ||
@@ -31583,6 +31681,7 @@ static BOOL test42_overflow_scrollbar(void)
     hDoc = PCore_ParseHTML(HTML, 0);
     hSheet = PCore_ParseCSS(CSS, 0,
             "http://positron.local/overflow-scrollbar.css");
+    PCore_SetViewport(screen_w, screen_h, test_host_device_dpi());
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -32040,6 +32139,9 @@ static BOOL test46_table_spans(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-spans.css");
+    /* The occupancy/pixel probe uses a fixed CSS-pixel surface. Reset the
+     * shared viewport so a preceding visible page cannot change its scale. */
+    PCore_SetViewport(240, 220, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 240, 220) != 0 ||
@@ -32119,6 +32221,7 @@ static BOOL test46_table_spans(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-spans.css");
+    PCore_SetViewport(screen_w, screen_h, test_host_device_dpi());
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -32202,6 +32305,8 @@ static BOOL test47_table_normalise(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-normalise.css");
+    /* This off-screen table probe is a fixed CSS-pixel fixture. */
+    PCore_SetViewport(240, 180, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 240, 180) != 0 ||
@@ -32278,6 +32383,7 @@ static BOOL test47_table_normalise(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-normalise.css");
+    PCore_SetViewport(screen_w, screen_h, test_host_device_dpi());
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -32347,6 +32453,9 @@ static BOOL test48_list_markers(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/list-markers.css");
+    /* Marker geometry is a CSS-pixel fixture; keep the reference pass
+     * independent of the physical device DPI. */
+    PCore_SetViewport(320, 480, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 320, 480) != 0) {
@@ -32395,6 +32504,7 @@ static BOOL test48_list_markers(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/list-markers.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -32497,6 +32607,7 @@ static BOOL test49_bundled_fonts(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/bundled-fonts.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -32627,6 +32738,8 @@ static BOOL test50_counter_styles(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/counter-styles.css");
+    /* The counter/image assertions use CSS-pixel marker dimensions. */
+    PCore_SetViewport(320, 480, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_FetchImageResources(hDoc, list_marker_image_fetch,
@@ -32672,6 +32785,7 @@ static BOOL test50_counter_styles(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(VISIBLE_CSS, sizeof(VISIBLE_CSS) - 1,
             "http://positron.local/counter-styles.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_FetchImageResources(hDoc, list_marker_image_fetch,
@@ -32724,7 +32838,8 @@ static BOOL test51_inside_list_markers(void)
         "body{font-size:16px;line-height:21px;margin:0;padding:8px;}"
         "h1{font-size:23px;color:#800000;margin:0 0 6px;}"
         "ul,ol{padding-left:28px;margin:5px 0;}"
-        "li{width:126px;}"
+        /* Leave enough first-line room for the widest textual marker. */
+        "li{width:180px;}"
         ".outside{list-style-position:outside;list-style-type:disc;}"
         ".inside{list-style-position:inside;list-style-type:upper-roman;}"
         ".image{list-style-position:inside;list-style-type:square;"
@@ -32751,6 +32866,8 @@ static BOOL test51_inside_list_markers(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/inside-list.css");
+    /* Keep marker and text-flow geometry in CSS pixels for this probe. */
+    PCore_SetViewport(180, 320, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_FetchImageResources(hDoc, list_marker_image_fetch,
@@ -32783,9 +32900,11 @@ static BOOL test51_inside_list_markers(void)
             image.marker_width != 12 || image.marker_height != 12 ||
             image.first_text_x < image.marker_x + image.marker_width + 4) {
         _snprintf(msg, sizeof(msg) - 1,
-                "out m/t=%d+%d/%d in=%d,%d,%d wrap=%d,%d img=%d,%d,%d",
+                "out m/t=%d+%d/%d in=%d+%d,%d,%d wrap=%d,%d "
+                "img=%d+%d,%d",
                 outside.marker_x, outside.marker_width, outside.first_text_x,
-                inside.marker_x, inside.first_text_x, inside.item_x,
+                inside.marker_x, inside.marker_width, inside.first_text_x,
+                inside.item_x,
                 inside.wrapped_text_x, inside.wrapped_text_y,
                 image.marker_x, image.marker_width, image.first_text_x);
         msg[sizeof(msg) - 1] = '\0';
@@ -32805,6 +32924,7 @@ static BOOL test51_inside_list_markers(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/inside-list.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_FetchImageResources(hDoc, list_marker_image_fetch,
@@ -32897,6 +33017,8 @@ static BOOL test52_inside_block_markers(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/inside-block-list.css");
+    /* This marker probe also compares a 12px image box and line positions. */
+    PCore_SetViewport(196, 400, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_FetchImageResources(hDoc, list_marker_image_fetch,
@@ -32964,6 +33086,7 @@ static BOOL test52_inside_block_markers(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/inside-block-list.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_FetchImageResources(hDoc, list_marker_image_fetch,
@@ -33073,6 +33196,8 @@ static BOOL test53_table_collapsed_borders(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/collapsed-borders.css");
+    /* Border widths/colors are reported in CSS pixels by this probe. */
+    PCore_SetViewport(220, 360, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 220, 360) != 0) {
@@ -33120,6 +33245,7 @@ static BOOL test53_table_collapsed_borders(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/collapsed-borders.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -33227,6 +33353,7 @@ static BOOL test54_table_spanning_borders(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/spanning-borders.css");
+    PCore_SetViewport(220, 380, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 220, 380) != 0) {
@@ -33266,6 +33393,7 @@ static BOOL test54_table_spanning_borders(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/spanning-borders.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -33364,6 +33492,7 @@ static BOOL test55_table_cell_alignment(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-cell-alignment.css");
+    PCore_SetViewport(230, 440, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 230, 440) != 0) {
@@ -33472,6 +33601,7 @@ static BOOL test55_table_cell_alignment(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-cell-alignment.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -33707,7 +33837,7 @@ static BOOL test57_table_percentage_rows(void)
         "</body></html>";
     static const char AUTO_HTML[] =
         "<!doctype html><html><body><table>"
-        "<tr class=p80><td>percent without table height</td></tr>"
+        "<tr class=p80><td>percent row</td></tr>"
         "<tr><td>auto row</td></tr></table></body></html>";
     static const char CSS[] =
         "html,body{background:#fff;color:#111;}"
@@ -33738,6 +33868,9 @@ static BOOL test57_table_percentage_rows(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-percent-height.css");
+    /* Percentage distribution is asserted in CSS pixels, not physical
+     * device pixels. */
+    PCore_SetViewport(230, 240, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 230, 240) != 0) {
@@ -33795,6 +33928,7 @@ static BOOL test57_table_percentage_rows(void)
     hDoc = PCore_ParseHTML(AUTO_HTML, sizeof(AUTO_HTML) - 1);
     hSheet = PCore_ParseCSS(AUTO_CSS, sizeof(AUTO_CSS) - 1,
             "http://positron.local/table-percent-auto.css");
+    PCore_SetViewport(230, 120, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 230, 120) != 0 ||
@@ -33835,6 +33969,7 @@ static BOOL test57_table_percentage_rows(void)
     hDoc = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     hSheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "http://positron.local/table-percent-height.css");
+    test_host_set_device_viewport(screen_w, screen_h);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, screen_w, screen_h) != 0) {
@@ -34277,6 +34412,8 @@ static BOOL test61_nsoption_font_minimum(void)
     hDoc = PCore_ParseHTML(HTML, 0);
     hSheet = PCore_ParseCSS(CSS, 0,
             "http://positron.local/nsoption-font-minimum.css");
+    /* The font-minimum comparison uses the stable CSS-pixel fixture. */
+    PCore_SetViewport(360, 100, 96);
     if (hDoc == NULL || hSheet == NULL ||
             PCore_StyleDocument(hDoc, hSheet) != 0 ||
             PCore_LayoutDocument(hDoc, 360, 100) != 0 ||
@@ -70674,8 +70811,8 @@ static BOOL test378_browser_selector_queries(void)
         "var attr=e.matches('[data-kind]')&&"
         "e.matches('[data-kind=demo]')&&e.matches('[data-kind=\"demo\"]');"
         "var close=e.closest('[data-kind=demo]')===e;"
-        "var bounded=document.querySelector('.active')===null&&"
-        "document.querySelectorAll('.active').length===0;"
+        "var bounded=document.querySelector('.active')===e&&"
+        "document.querySelectorAll('.active').length===1;"
         "document.getElementById('result').textContent="
         "String(id)+'|'+String(all.length===1)+'|'+String(cls)+'|'"
         "+String(attr)+'|'+String(close)+'|'+String(bounded)+'|'"
@@ -70690,8 +70827,8 @@ static BOOL test378_browser_selector_queries(void)
         return FALSE;
     }
     show_info(L"TEST 378 OK",
-            "The browser bridge now supports bounded ID queries plus"
-            " self-element matches/closest for class and attribute selectors.");
+            "The browser bridge now supports bounded ID, class and attribute"
+            " queries plus self-element matches/closest for the same selectors.");
     return TRUE;
 }
 
