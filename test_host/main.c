@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1117
+#define TEST_MAX_NUMBER 1118
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15471,6 +15471,17 @@ static int pcore_navigation_commit_step(HWND hwnd,
             PCore_GetImageDecodeStats(request->document,
                     &request->stats.core_image) == 0;
 
+    /* A successful cross-document commit is the last moment when the old
+     * script session and document are both alive. Let the product Browser
+     * dispatch its one-shot visibility/pagehide/unload boundary and clear
+     * page-owned queues before native children and the old DOM are released.
+     * A failed candidate never reaches this point, so the visible page keeps
+     * its session and pending work. */
+    if (g_browser_script_session.session != NULL) {
+        (void) PBrowser_ScriptSessionDispatchPageTeardown(
+                g_browser_script_session.session);
+    }
+
     /* Swap in the new document; native children must release their old DOM
      * indices before the document they describe is freed. */
     pcore_native_edits_destroy();
@@ -20924,6 +20935,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         g_interaction_restyle_pending = 0;
         pcore_native_edits_destroy();
         pcore_native_selects_destroy();
+        if (g_browser_script_session.session != NULL) {
+            (void) PBrowser_ScriptSessionDispatchPageTeardown(
+                    g_browser_script_session.session);
+        }
         pcore_browser_script_session_destroy();
         g_browser_script_initial_window_name[0] = '\0';
         g_browser_script_context_window_name[0] = '\0';
@@ -28012,6 +28027,589 @@ static BOOL test1117_browser_offline_compatibility_corpus(void)
             " input/selection, invalid-dialog rollback, method=dialog close,"
             " fragment navigation, failed-candidate history preservation and"
             " same-document back traversal without network I/O.");
+    return TRUE;
+}
+
+typedef struct test1118_lifecycle_probe {
+    int visibility;
+    int pagehide;
+    int unload;
+    int timer;
+    int microtask;
+    int message;
+    char lifecycle_trace[96];
+} test1118_lifecycle_probe;
+
+static int test1118_lifecycle_mark(void *pw, const char *args_json,
+        int args_len, char *out_json, int out_capacity, int *out_len)
+{
+    test1118_lifecycle_probe *probe;
+    char args[96];
+    const char *lifecycle_label;
+    int trace_length;
+    int length;
+
+    probe = (test1118_lifecycle_probe *) pw;
+    if (probe == NULL || args_json == NULL || args_len < 0 ||
+            out_json == NULL || out_len == NULL || out_capacity <= 4) {
+        return 1;
+    }
+    length = args_len;
+    if (length >= (int) sizeof(args)) {
+        length = (int) sizeof(args) - 1;
+    }
+    memcpy(args, args_json, (size_t) length);
+    args[length] = '\0';
+    lifecycle_label = NULL;
+    if (strstr(args, "visibility") != NULL) {
+        probe->visibility++;
+        lifecycle_label = "visibility";
+    } else if (strstr(args, "pagehide") != NULL) {
+        probe->pagehide++;
+        lifecycle_label = "pagehide";
+    } else if (strstr(args, "unload") != NULL) {
+        probe->unload++;
+        lifecycle_label = "unload";
+    } else if (strstr(args, "microtask") != NULL) {
+        probe->microtask++;
+    } else if (strstr(args, "message") != NULL) {
+        probe->message++;
+    } else if (strstr(args, "timer") != NULL) {
+        probe->timer++;
+    }
+    if (lifecycle_label != NULL) {
+        trace_length = (int) strlen(probe->lifecycle_trace);
+        if (trace_length > 0 && trace_length <
+                (int) sizeof(probe->lifecycle_trace) - 1) {
+            probe->lifecycle_trace[trace_length++] = '|';
+            probe->lifecycle_trace[trace_length] = '\0';
+        }
+        if (trace_length < (int) sizeof(probe->lifecycle_trace) - 1) {
+            cstr_copy(probe->lifecycle_trace + trace_length,
+                    (int) sizeof(probe->lifecycle_trace) - trace_length,
+                    lifecycle_label);
+        }
+    }
+    memcpy(out_json, "true", 5);
+    *out_len = 4;
+    return 0;
+}
+
+static int test1118_seed_navigation_resource(
+        pcore_navigation_request *request, const char *url,
+        const char *data, int len)
+{
+    pcore_navigation_resource *entry;
+    char *probe_data;
+    int probe_len;
+
+    if (request == NULL || url == NULL || data == NULL || len <= 0) {
+        return 1;
+    }
+    probe_data = NULL;
+    probe_len = 0;
+    if (pcore_navigation_resource_cb(request, url, &probe_data,
+            &probe_len) != 1 || probe_data != NULL || probe_len != 0) {
+        if (probe_data != NULL) {
+            page_resource_free_cb(NULL, probe_data);
+        }
+        return 1;
+    }
+    entry = pcore_navigation_resource_find(request, url);
+    if (entry == NULL) {
+        return 1;
+    }
+    entry->data = (char *) malloc((size_t) len);
+    if (entry->data == NULL) {
+        return 1;
+    }
+    memcpy(entry->data, data, (size_t) len);
+    entry->len = len;
+    entry->attempted = 1;
+    request->resource_bytes += len;
+    return 0;
+}
+
+static PHttpResponse *test1118_response(int status, const char *body)
+{
+    PHttpResponse *response;
+    int length;
+
+    response = (PHttpResponse *) HeapAlloc(GetProcessHeap(),
+            HEAP_ZERO_MEMORY, sizeof(*response));
+    if (response == NULL) {
+        return NULL;
+    }
+    response->status_code = status;
+    if (body == NULL) {
+        return response;
+    }
+    length = (int) strlen(body);
+    response->body = (char *) HeapAlloc(GetProcessHeap(), 0,
+            (SIZE_T) length + 1);
+    if (response->body == NULL) {
+        HeapFree(GetProcessHeap(), 0, response);
+        return NULL;
+    }
+    memcpy(response->body, body, (size_t) length + 1);
+    response->body_len = length;
+    return response;
+}
+
+/* TEST 1118 - offline candidate resource/commit lifecycle corpus. A failed
+ * candidate must leave the visible page and its pending work intact; a
+ * successful candidate must prepare its external resources, dispatch the old
+ * page teardown exactly once, clear old page queues, and commit a new history
+ * entry atomically. The fixture uses the real navigation commit path with
+ * deterministic response/resource bytes and does not open a network socket. */
+static BOOL test1118_browser_offline_candidate_lifecycle(void)
+{
+    static const char OLD_URL[] =
+        "https://positron.local/old/index.html";
+    static const char OLD_HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.oldTrace='';"
+        "function oldMark(v){window.oldTrace+=(window.oldTrace===''?'':'|')+v;"
+         "__test1118Mark(v);}"
+        "document.addEventListener('visibilitychange',function(){"
+        "oldMark('visibility');});"
+        "addEventListener('pagehide',function(){oldMark('pagehide');});"
+        "addEventListener('unload',function(){oldMark('unload');});"
+        "addEventListener('message',function(){oldMark('message');});"
+        "setTimeout(function(){oldMark('timer');},0);"
+        "queueMicrotask(function(){oldMark('microtask');});"
+        "postMessage('queued','*');"
+        "</script></head><body><p id='result'>old</p></body></html>";
+    static const char OLD_CSS[] =
+        "body{display:block;width:220px;height:80px;color:#111;}"
+        "#result{display:block;width:140px;height:24px;}";
+    static const char CANDIDATE_URL[] =
+        "https://positron.local/candidate/index.html";
+    static const char CANDIDATE_HTML[] =
+        "<!doctype html><html><head>"
+        "<script src='/assets/app.js'></script>"
+        "<script src='/assets/app.js'></script>"
+        "<style>body{display:block;width:240px;height:120px;}"
+        "#hero{display:block;width:24px;height:12px;}"
+        "#result{display:block;width:180px;height:24px;}</style>"
+         "<script>addEventListener('load',function(){document.getElementById('result')."
+         "textContent=String(window.resourceReady)+'|'+document.readyState;});</script>"
+        "</head><body><img id='hero' src='/images/hero.svg' alt='fallback'>"
+        "<img id='hero-copy' src='/images/hero.svg' alt='fallback'>"
+        "<p id='result'>pending</p></body></html>";
+    static const char CANDIDATE_SCRIPT[] =
+        "window.resourceReady=1;";
+    static const char CANDIDATE_SVG[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='12'>"
+        "<rect width='24' height='12' fill='red'/></svg>";
+    static const char EXPECTED_RESULT[] = "1|complete";
+    pcore_navigation_request *failed_request;
+    pcore_navigation_request *candidate_request;
+    PHttpResponse *response;
+    HANDLE old_document;
+    HANDLE old_sheet;
+    HANDLE old_runtime;
+    HANDLE candidate_session;
+    pcore_browser_script_bridge *old_bridge;
+    test1118_lifecycle_probe probe;
+    PCoreScriptResourceInfo script_info;
+    PCoreImageDecodeStats image_stats;
+    const char *script_data;
+    char script_url[192];
+    char result[128];
+    char error[512];
+    char saved_host[sizeof(g_cur_host)];
+    char saved_path[sizeof(g_cur_path)];
+    char saved_initial_name[sizeof(g_browser_script_initial_window_name)];
+    char saved_context_name[sizeof(g_browser_script_context_window_name)];
+    int saved_port;
+    int saved_javascript;
+    int saved_scroll;
+    int saved_doc_h;
+    int saved_view_h;
+    int executed;
+    int ignored;
+    int result_bytes;
+    int failed_result;
+    int candidate_result;
+    int candidate_steps;
+    int found_images;
+    int fetched_images;
+    int script_count;
+    int stage;
+    int marker_rc;
+    unsigned long native_count;
+    int ok;
+    BOOL failed_kept;
+
+    failed_request = NULL;
+    candidate_request = NULL;
+    response = NULL;
+    old_document = NULL;
+    old_sheet = NULL;
+    old_runtime = NULL;
+    candidate_session = NULL;
+    old_bridge = NULL;
+    memset(&probe, 0, sizeof(probe));
+    memset(&script_info, 0, sizeof(script_info));
+    memset(&image_stats, 0, sizeof(image_stats));
+    script_data = NULL;
+    memset(script_url, 0, sizeof(script_url));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    memcpy(saved_host, g_cur_host, sizeof(saved_host));
+    memcpy(saved_path, g_cur_path, sizeof(saved_path));
+    memcpy(saved_initial_name, g_browser_script_initial_window_name,
+            sizeof(saved_initial_name));
+    memcpy(saved_context_name, g_browser_script_context_window_name,
+            sizeof(saved_context_name));
+    saved_port = g_cur_port;
+    saved_javascript = g_browser_javascript_enabled;
+    saved_scroll = g_scroll_y;
+    saved_doc_h = g_doc_h;
+    saved_view_h = g_view_h;
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    failed_result = PCORE_NAV_RESULT_FAILED;
+    candidate_result = PCORE_NAV_RESULT_FAILED;
+    candidate_steps = 0;
+    found_images = 0;
+    fetched_images = 0;
+    script_count = -1;
+    stage = 0;
+    marker_rc = PSCRIPT_ERROR_ARGUMENT;
+    native_count = 0;
+    ok = 1;
+    failed_kept = FALSE;
+
+    if (g_render_doc != NULL || g_nav_request != NULL || g_nav_loading) {
+        _snprintf(error, sizeof(error) - 1,
+                "navigation globals were not idle");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok) {
+        stage = 1;
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_nav_request = NULL;
+    g_nav_loading = 0;
+    g_browser_javascript_enabled = 1;
+    pcore_browse_history_reset();
+    if (ok && pcore_browse_history_commit_navigation(OLD_URL, 1,
+            PCORE_BROWSE_HISTORY_TARGET_NEW) != 0) {
+        _snprintf(error, sizeof(error) - 1,
+                "old history entry failed");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok) {
+        stage = 2;
+    }
+
+    if (ok) {
+        stage = 3;
+        old_document = PCore_ParseHTML(OLD_HTML, sizeof(OLD_HTML) - 1);
+        old_sheet = PCore_ParseCSS(OLD_CSS, sizeof(OLD_CSS) - 1,
+                OLD_URL);
+        if (old_document == NULL) {
+            cstr_copy(error, sizeof(error), "old document parse failed");
+            ok = 0;
+        } else if (old_sheet == NULL) {
+            cstr_copy(error, sizeof(error), "old stylesheet parse failed");
+            ok = 0;
+        } else if (PCore_StyleDocument(old_document, old_sheet) != 0) {
+            cstr_copy(error, sizeof(error), "old stylesheet application failed");
+            ok = 0;
+        } else if (PCore_LayoutDocument(old_document, 240, 120) != 0) {
+            cstr_copy(error, sizeof(error), "old layout failed");
+            ok = 0;
+        } else if (pcore_browser_execute_scripts_with_history(old_document, 1,
+                0, OLD_URL, 1, 0, 1, "null", NULL, NULL, &executed,
+                &ignored, error, sizeof(error), &old_runtime,
+                &old_bridge) != 0) {
+            if (error[0] == '\0') {
+                cstr_copy(error, sizeof(error), "old script execution failed");
+            }
+            ok = 0;
+        } else if (executed != 1 || ignored != 0 || old_runtime == NULL ||
+                old_bridge == NULL) {
+            _snprintf(error, sizeof(error) - 1,
+                    "old scripts executed=%d ignored=%d runtime=%d bridge=%d",
+                    executed, ignored, old_runtime != NULL, old_bridge != NULL);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = 4;
+        g_render_doc = old_document;
+        g_render_sheet = old_sheet;
+        g_doc_h = PCore_DocumentHeight(old_document);
+        g_view_h = 120;
+        g_scroll_y = 0;
+        g_browser_script_session.document = old_document;
+        g_browser_script_session.session = old_bridge->session;
+        g_browser_script_session.runtime = old_runtime;
+        g_browser_script_session.bridge = old_bridge;
+        candidate_session = old_bridge->session;
+        old_runtime = NULL;
+        old_bridge = NULL;
+        marker_rc = PBrowser_ScriptSessionRegisterJsonFunction(
+                candidate_session, "__test1118Mark",
+                test1118_lifecycle_mark, &probe);
+        native_count = PBrowser_ScriptSessionNativeFunctionCount(
+                candidate_session);
+        if (marker_rc != PSCRIPT_OK) {
+            _snprintf(error, sizeof(error) - 1,
+                    "lifecycle probe registration rc=%d native=%lu error=%s",
+                    marker_rc, native_count,
+                    PBrowser_ScriptSessionGetError(candidate_session));
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = 5;
+        failed_request = (pcore_navigation_request *) malloc(
+                sizeof(*failed_request));
+        response = test1118_response(503, NULL);
+        if (failed_request == NULL || response == NULL) {
+            ok = 0;
+        } else {
+            memset(failed_request, 0, sizeof(*failed_request));
+            cstr_copy(failed_request->host, sizeof(failed_request->host),
+                    "positron.local");
+            cstr_copy(failed_request->path, sizeof(failed_request->path),
+                    "/candidate/missing.html");
+            failed_request->port = 443;
+            failed_request->method = 1;
+            failed_request->response = response;
+            failed_request->commit_stage = PCORE_NAV_COMMIT_PARSE;
+            failed_request->generation = ++g_nav_generation;
+            failed_request->stats.started_tick = GetTickCount();
+            response = NULL;
+            g_nav_request = failed_request;
+            g_nav_loading = 1;
+        }
+    }
+    if (ok) {
+        stage = 6;
+        failed_result = pcore_navigation_commit_step(NULL,
+                failed_request, 0);
+        failed_kept = failed_result == PCORE_NAV_RESULT_FAILED &&
+                g_render_doc == old_document &&
+                g_browser_script_session.session == candidate_session &&
+                probe.visibility == 0 && probe.pagehide == 0 &&
+                probe.unload == 0;
+        pcore_navigation_finish(NULL, failed_request);
+        failed_request = NULL;
+        if (!failed_kept || PBrowser_ScriptSessionRunTimers(
+                candidate_session, 0) != PSCRIPT_OK || probe.timer != 1 ||
+                PBrowser_ScriptSessionEvaluate(candidate_session,
+                "setTimeout(function(){__test1118Mark('timer2');},0);"
+                "queueMicrotask(function(){__test1118Mark('microtask2');});"
+                "postMessage('queued2','*');", -1) != PSCRIPT_OK) {
+            _snprintf(error, sizeof(error) - 1,
+                    "failed result=%d kept=%d probe=%d/%d/%d timer=%d",
+                    failed_result, failed_kept, probe.visibility,
+                    probe.pagehide, probe.unload, probe.timer);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = 7;
+        candidate_request = (pcore_navigation_request *) malloc(
+                sizeof(*candidate_request));
+        response = test1118_response(200, CANDIDATE_HTML);
+        if (candidate_request == NULL || response == NULL) {
+            cstr_copy(error, sizeof(error), "candidate fixture allocation failed");
+            ok = 0;
+        } else {
+            memset(candidate_request, 0, sizeof(*candidate_request));
+        }
+        if (ok &&
+                test1118_seed_navigation_resource(candidate_request,
+                "https://positron.local/assets/app.js",
+                CANDIDATE_SCRIPT, (int) sizeof(CANDIDATE_SCRIPT) - 1) != 0 ||
+                (ok &&
+                test1118_seed_navigation_resource(candidate_request,
+                "/images/hero.svg", CANDIDATE_SVG,
+                (int) sizeof(CANDIDATE_SVG) - 1) != 0)) {
+            if (error[0] == '\0') {
+                cstr_copy(error, sizeof(error), "candidate resource seed failed");
+            }
+            ok = 0;
+        } else if (ok) {
+            cstr_copy(candidate_request->host,
+                    sizeof(candidate_request->host), "positron.local");
+            cstr_copy(candidate_request->path,
+                    sizeof(candidate_request->path), "/candidate/index.html");
+            candidate_request->port = 443;
+            candidate_request->method = 1;
+            candidate_request->response = response;
+            candidate_request->history_target_index =
+                    PCORE_BROWSE_HISTORY_TARGET_NEW;
+            candidate_request->commit_stage = PCORE_NAV_COMMIT_PARSE;
+            candidate_request->generation = ++g_nav_generation;
+            candidate_request->stats.started_tick = GetTickCount();
+            response = NULL;
+            g_nav_request = candidate_request;
+            g_nav_loading = 1;
+        }
+    }
+    if (ok) {
+        stage = 8;
+        candidate_result = pcore_navigation_commit_step(NULL,
+                candidate_request, 0);
+        candidate_steps = 1;
+        while (candidate_result == PCORE_NAV_RESULT_CONTINUE &&
+                candidate_steps < 8) {
+            candidate_result = pcore_navigation_commit_step(NULL,
+                    candidate_request, 0);
+            candidate_steps++;
+        }
+        if (candidate_result != PCORE_NAV_RESULT_DONE ||
+                g_render_doc == old_document ||
+                probe.visibility != 1 || probe.pagehide != 1 ||
+                 probe.unload != 1 || probe.timer != 1 ||
+                 probe.microtask != 0 || probe.message != 0 ||
+                 strcmp(probe.lifecycle_trace,
+                 "visibility|pagehide|unload") != 0 ||
+                 PBrowser_ScriptSessionRunTimers(
+                g_browser_script_session.session, 0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionRunMessages(
+                g_browser_script_session.session, 64) != PSCRIPT_OK ||
+                PCore_NodeTextContentById(g_render_doc, "result", result,
+                sizeof(result), &result_bytes) != 0 ||
+                strcmp(result, EXPECTED_RESULT) != 0 ||
+                (script_count = PCore_GetScriptResourceCount(g_render_doc)) !=
+                1 || PCore_GetScriptResource(g_render_doc, 0, &script_info,
+                script_url, sizeof(script_url), &script_data) != 0 ||
+                !script_info.available ||
+                strcmp(script_url, "https://positron.local/assets/app.js") !=
+                0 || script_data == NULL ||
+                script_info.data_bytes != (int) sizeof(CANDIDATE_SCRIPT) - 1 ||
+                memcmp(script_data, CANDIDATE_SCRIPT,
+                (size_t) script_info.data_bytes) != 0 ||
+                PCore_FetchImageResources(g_render_doc, NULL, NULL, NULL,
+                &found_images, &fetched_images) != 0 || found_images != 2 ||
+                fetched_images != 2 ||
+                PCore_GetImageDecodeStats(g_render_doc, &image_stats) != 0 ||
+                image_stats.svg_creates == 0 ||
+                PBrowser_ScriptSessionDispatchPageTeardown(
+                g_browser_script_session.session) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionDispatchPageTeardown(
+                g_browser_script_session.session) != PSCRIPT_OK ||
+                PBrowser_HistoryCount(g_browse_history_product) != 2 ||
+                strcmp(pcore_browse_history_current(), CANDIDATE_URL) != 0 ||
+                strcmp(PBrowser_HistoryEntryUrl(g_browse_history_product, 0),
+                OLD_URL) != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "candidate result=%d/%d page=%d probe=%d/%d/%d/%d/%d/%d "
+                    "trace=%s text[%d]=%s scripts=%d images=%d/%d svg=%u "
+                    "history=%d",
+                    candidate_result, candidate_steps,
+                    g_render_doc != old_document, probe.visibility,
+                    probe.pagehide, probe.unload, probe.timer,
+                     probe.microtask, probe.message, probe.lifecycle_trace,
+                     result_bytes, result,
+                    script_count, found_images, fetched_images,
+                    image_stats.svg_creates,
+                    (g_browse_history_product != NULL) ?
+                    PBrowser_HistoryCount(g_browse_history_product) : -1);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+        pcore_navigation_finish(NULL, candidate_request);
+        candidate_request = NULL;
+    }
+    if (response != NULL) {
+        PHttp_FreeResponse(response);
+        response = NULL;
+    }
+    if (failed_request != NULL) {
+        pcore_navigation_request_free(failed_request);
+        failed_request = NULL;
+    }
+    if (candidate_request != NULL) {
+        pcore_navigation_request_free(candidate_request);
+        candidate_request = NULL;
+    }
+    pcore_browser_script_session_destroy();
+    if (g_render_doc != NULL) {
+        if (g_render_doc == old_document) {
+            old_document = NULL;
+        }
+        PCore_FreeDocument(g_render_doc);
+        g_render_doc = NULL;
+    }
+    if (g_render_sheet != NULL) {
+        if (g_render_sheet == old_sheet) {
+            old_sheet = NULL;
+        }
+        PCore_FreeStylesheet(g_render_sheet);
+        g_render_sheet = NULL;
+    }
+    if (old_document != NULL && candidate_result != PCORE_NAV_RESULT_DONE) {
+        PCore_FreeDocument(old_document);
+        old_document = NULL;
+    }
+    if (old_sheet != NULL) {
+        PCore_FreeStylesheet(old_sheet);
+        old_sheet = NULL;
+    }
+    if (old_runtime != NULL) {
+        PScript_Destroy(old_runtime);
+        old_runtime = NULL;
+    }
+    if (old_bridge != NULL) {
+        pcore_browser_script_bridge_destroy(old_bridge);
+        free(old_bridge);
+        old_bridge = NULL;
+    }
+    pcore_browse_history_reset();
+    g_nav_request = NULL;
+    g_nav_loading = 0;
+    g_browser_javascript_enabled = saved_javascript;
+    memcpy(g_cur_host, saved_host, sizeof(g_cur_host));
+    memcpy(g_cur_path, saved_path, sizeof(g_cur_path));
+    g_cur_port = saved_port;
+    memcpy(g_browser_script_initial_window_name, saved_initial_name,
+            sizeof(g_browser_script_initial_window_name));
+    memcpy(g_browser_script_context_window_name, saved_context_name,
+            sizeof(g_browser_script_context_window_name));
+    g_scroll_y = saved_scroll;
+    g_doc_h = saved_doc_h;
+    g_view_h = saved_view_h;
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "state failed=%d/%d candidate=%d/%d probe=%d/%d/%d "
+                    "timer=%d microtask=%d message=%d scripts=%d images=%d/%d "
+                    "stage=%d marker=%d/%lu",
+                    failed_result, failed_kept, candidate_result,
+                    candidate_steps, probe.visibility, probe.pagehide,
+                    probe.unload, probe.timer, probe.microtask, probe.message,
+                    script_count, found_images, fetched_images, stage,
+                    marker_rc, native_count);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1118 FAIL", error[0] != '\0' ? error :
+                "offline candidate lifecycle transaction failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1118 OK",
+            "Offline candidate loading prepared duplicate external script and"
+            " SVG resources, preserved the old page on a failed response, and"
+            " committed a new document with one-shot pagehide/unload teardown"
+            " and old queue cleanup.");
     return TRUE;
 }
 
@@ -86023,6 +86621,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1115: ok = test1115_browser_native_contenteditable_clipboard_contract(); break;
         case 1116: ok = test1116_browser_native_contenteditable_clipboard_edge_contract(); break;
         case 1117: ok = test1117_browser_offline_compatibility_corpus(); break;
+        case 1118: ok = test1118_browser_offline_candidate_lifecycle(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

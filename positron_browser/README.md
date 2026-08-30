@@ -109,7 +109,7 @@ Browser 可把 anchor/programmatic navigation 分类为 assign、replace、fragm
 
 Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
 
-页面替换时应先停止新平台回调，再清理队列和 native transaction，销毁 script session，最后释放宿主持有的 Core document。不得从 Browser callback 内重入或销毁当前 session。
+跨文档候选已经完成 parse、资源、style、layout 并准备提交时，宿主仍应保留旧 document/session，然后调用 `PBrowser_ScriptSessionDispatchPageTeardown`。首次调用在旧页可见时依次派发 document `visibilitychange`、window `pagehide` 和 `unload`，再清理 timer、animation frame、microtask、idle、message 队列；已隐藏或已派发 `pagehide` 的页面不会重复派发，重复调用也保持幂等。宿主随后停止 native 回调、销毁控件和 script session，最后释放旧 Core document 并安装候选页。失败候选不得调用该入口，旧页、旧 session 和旧队列必须继续保留。该 API 不创建线程、不访问 HWND，也不替宿主决定取消策略；不得从 Browser callback 内重入或销毁当前 session。
 
 ## 典型 Core 组合
 
@@ -122,7 +122,7 @@ Browser 提供受限 timer、animation frame、microtask、idle callback、messa
 5. 把 WM 输入转换为 Browser typed transaction；
 6. 只在 Browser 允许默认动作后修改 Core/native 控件；
 7. mutation 后重新 layout/paint；
-8. 导航候选成功后提交 history，再销毁旧 session/document。
+8. 导航候选成功后，在旧 document/session 仍有效时调用 Browser 的 page-teardown 入口，再销毁旧 session/document 并提交新页面与 history；失败候选保留旧页及其队列。
 
 完整组合示例见 [`../test_host/`](../test_host/README.md)，但产品应用应根据自己的窗口、网络和安全策略实现 callbacks。
 

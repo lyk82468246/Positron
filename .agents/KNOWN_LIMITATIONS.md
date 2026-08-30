@@ -55,6 +55,7 @@
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
 - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。
+- 页面替换的产品入口只保证宿主显式调用 `PBrowser_ScriptSessionDispatchPageTeardown` 时，在旧 session 仍有效的同步、有界 `visibilitychange`、`pagehide`、`unload` 和页面队列清理；不提供 `beforeunload`、可恢复的 bfcache `persisted` 语义或异步卸载保证。
 - Browser session callback 同步且不可重入；宿主若在 callback 中销毁或重入 session，行为不受支持。
 - 该运行时不是完整浏览器安全沙箱，不能直接执行不可信互联网脚本并假定与现代浏览器等价隔离。
 
@@ -86,7 +87,7 @@
 ## 测试覆盖
 
 - next670 已建立一次 1080 项动态全量自动设备 checkpoint；后续定向门仍不能替代下一次按风险触发的全量范围基线。
-- 已有一个离线 compatibility-corpus 场景（TEST1117），把固定 HTML/CSS 中的 contenteditable、dialog validation、`method="dialog"` close、same-document history 和失败候选回滚串成一条自动流程；它只覆盖这一条流程，不代表任意真实网站或完整 Web 标准。
+- 已有两条离线 compatibility-corpus 流程：TEST1117 覆盖 contenteditable、dialog validation、`method="dialog"` close、same-document history 和失败候选回滚；TEST1118 进一步覆盖重复外链 script/SVG 资源准备、失败候选保留旧页、成功提交时的一次性页面 teardown、旧队列清理和 history 更新。它们仍只是固定夹具，不代表任意真实网站或完整 Web 标准。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

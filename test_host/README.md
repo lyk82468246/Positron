@@ -76,7 +76,7 @@ DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM 
 
 宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、表单、validation、`contenteditable` 状态、文本和可选原生选区。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的 Core mutation、WM 默认动作和导航副作用。
 
-callback 同步且不可重入。页面替换时先停止新消息和事务，再销毁 native 控件、Browser session 和 Core document，避免 stale token 或借用指针逃逸。
+callback 同步且不可重入。候选页面成功提交前，宿主必须在旧 document/session 仍有效时调用 `PBrowser_ScriptSessionDispatchPageTeardown`；它负责一次性的 `visibilitychange`→`pagehide`→`unload` 边界和页面队列清理。随后宿主停止新消息和事务，销毁 native 控件、Browser session 和 Core document，避免 stale token 或借用指针逃逸。失败候选不调用 teardown，旧页状态继续服务。
 
 ### Native EDIT/SELECT/button/file
 

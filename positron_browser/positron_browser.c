@@ -2004,12 +2004,12 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "phistoryStateJson=s;phistoryLength=n;purl=u;}"
         "var pscrollX=0;var pscrollY=0;"
         "var pwindowListeners={popstate:[],hashchange:[],load:[],scroll:[],"
-        "pagehide:[],pageshow:[],DOMContentLoaded:[],readystatechange:[],message:[],storage:[]};"
+        "pagehide:[],pageshow:[],unload:[],DOMContentLoaded:[],readystatechange:[],message:[],storage:[]};"
         "g.onpopstate=null;g.onhashchange=null;g.onpagehide=null;g.onpageshow=null;"
-        "g.onmessage=null;g.onstorage=null;"
+        "g.onunload=null;g.onmessage=null;g.onstorage=null;"
         "g.addEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if((t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
-        "t!=='scroll'&&t!=='pagehide'&&t!=='pageshow'&&"
+        "t!=='scroll'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange'&&t!=='message'&&"
         "t!=='storage')||"
         "typeof fn!=='function'){return;}a=pwindowListeners[t];var o=pEventOptions(capture);"
@@ -2020,7 +2020,7 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "o.signal.addEventListener('abort',function(){pRemoveListenerEntry(entry);},{once:true});}};"
         "g.removeEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if(t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
-        "t!=='scroll'&&t!=='pagehide'&&t!=='pageshow'&&"
+        "t!=='scroll'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange'&&t!=='message'&&"
         "t!=='storage'){return;}"
         "a=pwindowListeners[t];for(i=a.length-1;i>=0;i--){"
@@ -2187,17 +2187,21 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "catch(documentListenerError){}}}"
         "function ppageEvent(type,target){return {type:type,target:target,"
         "currentTarget:target,bubbles:false,cancelable:false,"
-        "defaultPrevented:false,isTrusted:true};}"
+        "defaultPrevented:false,isTrusted:true,persisted:false};}"
+        "var pdomContentLoaded=false;var ppagehideSent=false;"
+        "var ppageTeardownDone=false;"
         "function ppageLifecycle(state){state=String(state);"
         "if(state==='interactive'&&preadyState==='loading'){"
         "preadyState='interactive';pdocumentDispatch('readystatechange');return;}"
         "if(state==='domcontentloaded'&&preadyState==='loading'){"
         "preadyState='interactive';pdocumentDispatch('readystatechange');}"
         "if(state==='domcontentloaded'&&preadyState==='interactive'){"
-        "pdocumentDispatch('DOMContentLoaded');return;}"
+        "if(!pdomContentLoaded){pdomContentLoaded=true;"
+        "pdocumentDispatch('DOMContentLoaded');}return;}"
         "if(state==='complete'){if(preadyState==='loading'){"
         "preadyState='interactive';pdocumentDispatch('readystatechange');}"
-        "if(preadyState==='interactive'){pdocumentDispatch('DOMContentLoaded');}"
+        "if(preadyState==='interactive'&&!pdomContentLoaded){"
+        "pdomContentLoaded=true;pdocumentDispatch('DOMContentLoaded');}"
         "if(preadyState!=='complete'){preadyState='complete';"
         "pdocumentDispatch('readystatechange');"
         "pdispatchWindow('DOMContentLoaded',ppageEvent('DOMContentLoaded',g));"
@@ -2209,8 +2213,16 @@ PBROWSER_API const char *PBrowser_HistoryNavigationState(HANDLE hHistory,
         "g.__pcoreVisibilityChange=function(hidden){var next=!!hidden;"
         "if(next===phidden){return;}phidden=next;"
         "pdocumentDispatch('visibilitychange');"
+        "if(next){ppagehideSent=true;}else{ppagehideSent=false;}"
         "pdispatchWindow(next?'pagehide':'pageshow',ppageEvent("
         "next?'pagehide':'pageshow',g));};"
+        "g.__pcorePageTeardown=function(){if(ppageTeardownDone){return false;}"
+        "ppageTeardownDone=true;if(!phidden){phidden=true;"
+        "pdocumentDispatch('visibilitychange');}if(!ppagehideSent){"
+        "ppagehideSent=true;pdispatchWindow('pagehide',ppageEvent('pagehide',g));}"
+        "pdispatchWindow('unload',ppageEvent('unload',g));ptimers=[];"
+        "pframes=[];pmicrotasks=[];pidles=[];pmessageQueue=[];"
+        "pextraMessages.length=0;return true;};"
         "var pdocumentElementToken='__positron_document_element__';"
         "var pdocumentHeadToken='__positron_document_head__';"
         "var pdocumentBodyToken='__positron_document_body__';"
@@ -5700,6 +5712,18 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
         return PSCRIPT_ERROR_ARGUMENT;
     }
     return p_browser_script_dispatch_page_lifecycle(session, state);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchPageTeardown(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcorePageTeardown", "[]");
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRunTimers(HANDLE hSession,

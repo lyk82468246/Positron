@@ -112,7 +112,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、focus、composition、click 和导航协调；
-- timer、animation frame、microtask、idle、message 和页面生命周期队列；
+- timer、animation frame、microtask、idle、message 和页面生命周期队列，以及显式的 document visibility/pagehide/unload teardown 与队列清理入口；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
 
 它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。
@@ -135,7 +135,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
 - 顶层窗口、消息循环、滚动条和 DPI/旋转通知；
 - native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位、销毁并跟踪其平台鼠标/键盘选区；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、写入和所有权也只属于宿主；
-- 后台线程、导航取消、loading 状态与页面 swap；
+- 后台线程、导航取消、loading 状态与页面 swap；候选成功时在旧 document/session 仍有效的窗口内调用 Browser teardown，再停止 native 回调、释放旧对象并提交新页；
 - DNS/TCP/TLS/HTTP 组合策略和资源调度；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
@@ -155,7 +155,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 3. UI 线程解析 HTML，创建候选文档。
 4. 通过 Core 的 resolver/fetch 回调准备 CSS、`@import`、图片和 script cache。
 5. UI 线程完成 style、layout 和首帧可绘制性检查。
-6. 候选成功后原子提交页面与 history；失败则释放候选并保留旧页。
+6. 候选成功后，在旧 document/session 仍有效时调用 Browser teardown，停止旧页回调并原子提交页面与 history；失败则只释放候选，保留旧页、旧 session 和旧队列。
 7. 交互、旋转或动态 DOM 修改按需重新 style/layout/paint。
 
 任何后台线程都不能持有 DOM 节点、computed style、box tree 或 HDC。失败日志应区分 DNS、TCP、TLS、证书、HTTP、资源、解析、style、layout 和提交阶段。
@@ -171,7 +171,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation，Browser 的脚本 selection API 在可用时同步宿主原生选区；原生 WM EDIT 的无修饰 down/move/up 或 Shift/方向键默认处理返回后，宿主用短暂 anchor 计算方向，并在捕获/取消/焦点中断时收尾，再通知 Browser；paste/copy/cut 还必须在 native default 前完成 clipboard data 的格式和容量检查，且不得让宿主复制一份 Browser 的 Range/Selection 模型；
 6. Browser 派发 mutation 后的 `input`、`change`、focus、`selectionchange` 或 lifecycle 事件；原生选区通知必须先由 Browser 去重，不能由宿主和 Core 各发一次；
 7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；
-8. 页面替换时销毁 session 与文档。
+8. 页面替换时先调用 Browser page-teardown（visible 页面依次为 `visibilitychange`、`pagehide`、`unload`，并清理页面队列），再销毁 session 与文档；失败候选不得触发 teardown。
 
 事件顺序、取消和状态提交必须由产品层确定，不能依赖 test fixture 的偶然消息顺序。真实 SIP、OEM IME、系统 picker 和窗口创建仍需要设备人工验收。
 

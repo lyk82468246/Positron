@@ -27,13 +27,13 @@
 
 ## 近期目标
 
-### 建立第二条离线 compatibility corpus
+### 候选导航取消与资源事务
 
-next670 已完成一次由源码 dispatch 动态生成的 1080 项全量自动 checkpoint。下一批转向第二条固定、离线、可重复的真实页面流程，优先覆盖候选文档加载、资源准备、失败回滚和成功提交之间的生命周期边界。
+下一条纵向能力是 next672：在已有两条离线候选流程之上，覆盖两个确定性导航在资源准备期间交错时的 generation 与取消边界。过时候选必须停止继续提交，不得污染当前 document、script session 或 history，并释放自己的响应、资源和队列；最新候选仍应能完成准备并原子提交。
 
-next671 的 corpus 应包含代表性 HTML/CSS/资源、完整用户动作和可机器判定的几何/状态/事件/导航或回滚结果。网络端点不成为契约测试前提；真实网络只作为独立哨兵。若流程暴露可复用的 URL/history/DOM/Event/资源语义，应先进入 Core 或 Browser，再由宿主提供 WM 接线和调度。
+next672 的语料应固定 HTML/CSS/资源、候选响应和取消时序，自动断言旧页可绘制、过时请求不可见、资源清理完整、最终页面正确。网络端点不成为契约测试前提；真实网络只作为独立哨兵。通用 generation、取消和资源所有权若暴露缺口，应先进入 Core 或 Browser，再由宿主提供 WM 调度和接线。
 
-完成 next671 后，再按风险累计条件安排更宽回归或新的全量 checkpoint；不要把一次全量门当成永久覆盖，也不要为增加测试编号拆分能力。
+完成 next672 后，再按风险累计条件安排更宽回归或新的全量 checkpoint；不要把一次全量门当成永久覆盖，也不要为增加测试编号拆分能力。
 
 ### 继续清理产品所有权
 
@@ -44,7 +44,7 @@ next671 的 corpus 应包含代表性 HTML/CSS/资源、完整用户动作和可
 ### JavaScript 与 Web 组合
 
 - 依据 corpus 补齐高价值 DOM/Event/form/navigation 对象，不追求一次性完整 Web API。
-- 明确 script session 与 document/window 生命周期，补齐取消、页面替换和 queue 清理。
+- 明确 script session 与 document/window 生命周期，继续验证取消、过时导航和 queue 清理的组合顺序。
 - 为 timer、microtask、animation frame、message 和 lifecycle 的组合顺序增加真实页面断言。
 - 保持浏览器 JavaScript 显式 opt-in，并持续验证关闭时不抓取或执行页面脚本。
 - 评估可信/不可信脚本边界，避免把有限 Duktape host 误称为现代浏览器安全沙箱。

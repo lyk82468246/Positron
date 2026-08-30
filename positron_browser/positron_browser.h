@@ -1155,6 +1155,14 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchHashNavigation(
  * dispatches readystatechange/DOMContentLoaded/load in that order. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
         HANDLE hSession, const char *state);
+/* Complete the product-owned lifecycle for a document that is being
+ * replaced. The first call dispatches document visibilitychange (when the
+ * page was visible), window pagehide, and window unload in that order, then
+ * clears page-owned timers, animation frames, microtasks, idle callbacks and
+ * queued messages. Repeated calls are idempotent. The host must call this
+ * while the old document and session are still alive, before destroying the
+ * session; failed candidate navigations must not call it. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchPageTeardown(HANDLE hSession);
 /* Run due script-owned timers at a host monotonic millisecond timestamp.
  * The host owns the clock and may call this from its message loop; the
  * bootstrap runs bounded setTimeout/setInterval callbacks synchronously. */
