@@ -4,6 +4,10 @@
 
 宿主的职责是把 WM6 窗口/消息、native 控件、网络 I/O、设备文件系统和测试 fixture 接到公共 DLL；可复用的 URL、history、DOM、Event、表单、图像或 script-session 语义必须位于相应 DLL。
 
+## 硬性所有权边界
+
+`test_host` 只能包含平台适配、网络/线程调度、应用级页面提交策略、测试夹具和断言。任何可被其他应用复用的产品语义（包括 URL/资源状态、history、DOM/Event、表单默认动作、图像、脚本 session 或生命周期）必须实现于对应顶层 DLL，由宿主通过公开 C ABI 调用。不得把产品 `.c` 文件编译进宿主，也不得在宿主定义 `PBrowser_*`、`PCore_*`、`PHttp_*`、`PTls_*`、`PJson_*`、`PImage_*` 或 `PScript_*` 公共入口。提交前的 `python scripts\audit_repo.py` 会执行这两类机械边界检查；它不能替代对静态 helper 是否承载业务语义的人工审查。
+
 ## 产物与依赖
 
 - 工程：`test_host.vcproj`

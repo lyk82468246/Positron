@@ -84,6 +84,58 @@ DOC_STRUCTURE_PATHS.update((
     ".agents/DEBUGGING.md",
 ))
 
+# `test_host` may consume public DLLs, but it must never compile a product
+# implementation into the harness or define a public product entry point.
+# This is a deliberately narrow static guard: it catches the easy ways to
+# move ownership back into the host while the architecture review remains the
+# authority for less mechanical business-semantics decisions.  The line
+# prefix must look like a C return type; calls such as `if (PBrowser_...)` and
+# `return PBrowser_...` must not be reported.
+PRODUCT_IMPLEMENTATION_RE = re.compile(
+    r"(?m)^[ \t]*(?!(?:if|for|while|switch|return|sizeof)\b)"
+    r"(?:static\s+)?(?:const\s+|volatile\s+|unsigned\s+|signed\s+|"
+    r"long\s+|short\s+|struct\s+|enum\s+|[A-Za-z_]\w*\s+|\*+)+"
+    r"P(?:Tls|Json|Http|Image|Script|Core|Browser)_[A-Za-z0-9_]+\s*\(")
+PRODUCT_SOURCE_INCLUDE_RE = re.compile(
+    r"(?m)^\s*#\s*include\s*[\"<][^\" >]*positron_"
+    r"(?:tls|json|http|image|script|core|browser)[^\" >]*\.c[\">]")
+
+
+def audit_test_host_boundary(errors):
+    """Reject product implementation/source inclusion in the test host."""
+    host_root = os.path.join(ROOT, "test_host")
+    if not os.path.isdir(host_root):
+        return 0
+
+    checked = 0
+    for base, dirs, files in os.walk(host_root):
+        parts = set(relpath(base).split("/"))
+        if "bin" in parts or "obj" in parts:
+            dirs[:] = []
+            continue
+        for filename in files:
+            if not filename.lower().endswith((".c", ".h", ".cpp", ".cxx")):
+                continue
+            path = os.path.join(base, filename)
+            name = relpath(path)
+            try:
+                with open(path, "r", encoding="utf-8") as handle:
+                    text = handle.read()
+            except (IOError, UnicodeError) as exc:
+                errors.append("cannot read host source %s: %s" % (name, exc))
+                continue
+            checked += 1
+            if PRODUCT_SOURCE_INCLUDE_RE.search(text) is not None:
+                errors.append(
+                    "%s includes a product implementation source; "
+                    "test_host may consume DLL headers only" % name)
+            for match in PRODUCT_IMPLEMENTATION_RE.finditer(text):
+                line = text.count("\n", 0, match.start()) + 1
+                errors.append(
+                    "%s:%d defines a public product API; move the "
+                    "implementation into its owning DLL" % (name, line))
+    return checked
+
 
 def relpath(path):
     return os.path.relpath(path, ROOT).replace(os.sep, "/")
@@ -173,6 +225,13 @@ def audit_project(project, tracked, errors):
             elif tracked is not None and source_rel not in tracked:
                 errors.append("%s references untracked %s" %
                               (relpath(project), source_rel))
+            if (relpath(project).lower() == "test_host/test_host.vcproj" and
+                    re.match(r"^positron_[^/]+/.*\.c$", source_rel,
+                             re.IGNORECASE)):
+                errors.append(
+                    "%s compiles product source %s; test_host must consume "
+                    "the owning DLL instead" %
+                    (relpath(project), source_rel))
 
         for attr in ("AdditionalIncludeDirectories",
                      "AdditionalLibraryDirectories"):
@@ -413,6 +472,7 @@ def main():
         project_count += 1
         source_count += audit_project(project, tracked, errors)
 
+    host_source_count = audit_test_host_boundary(errors)
     audit_versions(errors)
     structured_document_count = audit_document_structure(worktree_files,
                                                           errors)
@@ -431,6 +491,8 @@ def main():
           (document_count, link_count))
     print("Documentation structure OK: %d role-governed files." %
           structured_document_count)
+    print("test_host boundary OK: %d source files checked." %
+          host_source_count)
     print("Pinned sources: Mbed TLS 2.16.12, cJSON 1.7.18.")
     return 0
 

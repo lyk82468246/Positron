@@ -92,7 +92,7 @@ python scripts\test_c89ize.py
 python scripts\audit_repo.py
 ```
 
-审计覆盖工程输入、版本 pin、许可证、Git 跟踪、UTF-8、Markdown 链接和文档结构。审计成功不代替目标构建或设备行为。
+审计覆盖工程输入、版本 pin、许可证、Git 跟踪、UTF-8、Markdown 链接、文档结构和 `test_host` 产品边界（禁止编译产品 `.c` 或定义产品公共入口）。审计成功不代替目标构建、设备行为或对宿主 helper 语义归属的人工审查。
 
 ### ARMV4I 构建
 
