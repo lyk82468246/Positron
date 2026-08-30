@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1120
+#define TEST_MAX_NUMBER 1121
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6158,6 +6158,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_COMMIT_LAYOUT 5
 #define PCORE_NAV_MAX_RESOURCES 64
 #define PCORE_NAV_RESOURCE_BYTES_MAX (2 * 1024 * 1024)
+#define PCORE_NAV_RESOURCE_RETRY_LIMIT 2
 #define PCORE_NAV_RETIRED_MAX 4
 #define PCORE_NAV_RESOURCE_PENDING 0
 #define PCORE_NAV_RESOURCE_READY 1
@@ -6183,6 +6184,8 @@ typedef struct pcore_navigation_resource {
     char *data;
     int len;
     int attempted;
+    int attempt_count;
+    int retry_count;
     int state;
     int failure_class;
 } pcore_navigation_resource;
@@ -6383,6 +6386,9 @@ typedef struct pcore_navigation_stats {
     int resources_failed;
     int resources_cancelled;
     int resources_pending;
+    int resource_attempts;
+    int resource_retries;
+    int resource_retry_exhausted;
     int resource_failures_resolve;
     int resource_failures_transport;
     int resource_failures_http;
@@ -12645,7 +12651,8 @@ static void testbench_log_navigation(
             "%d/%d/%d/%d/%d/%d\n"
             "resource fail resolve/transport/http/budget/memory="
             "%d/%d/%d/%d/%d\n"
-            "bytes=%d retry=%d\n"
+            "resource attempts/retries/exhausted=%d/%d/%d\n"
+            "bytes=%d doc-retry=%d\n"
             "core layout total=%lums box/first/settle/final="
             "%lu/%lu/%lu/%lums pass=%d\n"
             "box tree/image/reuse/markup-first=%lu/%lu/%u/%u\n"
@@ -12671,6 +12678,9 @@ static void testbench_log_navigation(
             request->stats.resource_failures_http,
             request->stats.resource_failures_budget,
             request->stats.resource_failures_memory,
+            request->stats.resource_attempts,
+            request->stats.resource_retries,
+            request->stats.resource_retry_exhausted,
             request->stats.resource_bytes,
             request->stats.document_retries,
             (unsigned long) request->stats.core_layout.total_ms,
@@ -13155,6 +13165,43 @@ static int pcore_navigation_is_cancelled(
     return request != NULL && request->cancel_requested != 0;
 }
 
+static void pcore_navigation_resource_begin_attempt(
+        pcore_navigation_request *request,
+        pcore_navigation_resource *entry)
+{
+    if (request == NULL || entry == NULL ||
+            entry->state != PCORE_NAV_RESOURCE_PENDING) {
+        return;
+    }
+    entry->attempted = 1;
+    entry->attempt_count++;
+    request->stats.resource_attempts++;
+}
+
+static int pcore_navigation_resource_is_transport_failure(
+        const PHttpResponse *response)
+{
+    return response == NULL || response->status_code == 0;
+}
+
+/* Only transport failures are retryable. The counter is incremented before
+ * the caller releases the failed response and starts the next bounded try. */
+static int pcore_navigation_resource_should_retry(
+        pcore_navigation_request *request,
+        pcore_navigation_resource *entry, const PHttpResponse *response)
+{
+    if (request == NULL || entry == NULL ||
+            entry->state != PCORE_NAV_RESOURCE_PENDING ||
+            !pcore_navigation_resource_is_transport_failure(response) ||
+            pcore_navigation_is_cancelled(request) ||
+            entry->retry_count >= PCORE_NAV_RESOURCE_RETRY_LIMIT) {
+        return 0;
+    }
+    entry->retry_count++;
+    request->stats.resource_retries++;
+    return 1;
+}
+
 static void pcore_navigation_resource_fail(
         pcore_navigation_request *request,
         pcore_navigation_resource *entry, int failure_class)
@@ -13241,7 +13288,10 @@ static int pcore_navigation_resource_store_response(
             entry->data != NULL && entry->len > 0) {
         return 0;
     }
-    if (response == NULL || response->status_code == 0) {
+    if (pcore_navigation_resource_is_transport_failure(response)) {
+        if (entry->retry_count >= PCORE_NAV_RESOURCE_RETRY_LIMIT) {
+            request->stats.resource_retry_exhausted++;
+        }
         pcore_navigation_resource_fail(request, entry,
                 PCORE_NAV_FAILURE_TRANSPORT);
         return 1;
@@ -13631,7 +13681,6 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                     entry->state != PCORE_NAV_RESOURCE_PENDING) {
                 continue;
             }
-            entry->attempted = 1;
             port = request->port;
             if (!resolve_url_from(request->host, request->path,
                     request->port, entry->url, host, sizeof(host), path,
@@ -13643,17 +13692,31 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                         PCORE_NAV_FAILURE_RESOLVE);
                 continue;
             }
-            resp = pcore_navigation_get(request, host, port, path);
-            if (pcore_navigation_is_cancelled(request)) {
+            for (;;) {
+                if (pcore_navigation_is_cancelled(request)) {
+                    break;
+                }
+                pcore_navigation_resource_begin_attempt(request, entry);
+                resp = pcore_navigation_get(request, host, port, path);
+                if (pcore_navigation_is_cancelled(request)) {
+                    if (resp != NULL) {
+                        PHttp_FreeResponse(resp);
+                    }
+                    break;
+                }
+                if (pcore_navigation_resource_should_retry(request, entry,
+                        resp)) {
+                    if (resp != NULL) {
+                        PHttp_FreeResponse(resp);
+                    }
+                    continue;
+                }
+                (void) pcore_navigation_resource_store_response(request,
+                        entry, resp);
                 if (resp != NULL) {
                     PHttp_FreeResponse(resp);
                 }
                 break;
-            }
-            (void) pcore_navigation_resource_store_response(request, entry,
-                    resp);
-            if (resp != NULL) {
-                PHttp_FreeResponse(resp);
             }
         }
     }
@@ -29607,6 +29670,245 @@ static BOOL test1120_navigation_resource_terminals(void)
     return TRUE;
 }
 
+/* TEST 1121 - transport retries have a fixed budget and no other terminal
+ * outcome is retried. The fixture is offline: one resource recovers after a
+ * transport miss, one exhausts the budget, and HTTP/resolve/budget/cancelled
+ * entries remain terminal on their first decision. */
+static BOOL test1121_navigation_resource_retry_budget(void)
+{
+    static const char RECOVER_URL[] = "/retry/recover.bin";
+    static const char EXHAUSTED_URL[] = "/retry/exhausted.bin";
+    static const char HTTP_URL[] = "/retry/http.bin";
+    static const char BUDGET_URL[] = "/retry/budget.bin";
+    static const char RESOLVE_URL[] = "/retry/resolve.bin";
+    static const char CANCEL_URL[] = "/retry/cancel.bin";
+    static const char BODY[] = "ok";
+    pcore_navigation_request *request;
+    pcore_navigation_resource *recover;
+    pcore_navigation_resource *exhausted;
+    pcore_navigation_resource *http;
+    pcore_navigation_resource *budget;
+    pcore_navigation_resource *resolve;
+    pcore_navigation_resource *cancel;
+    PHttpResponse response;
+    char *data;
+    int len;
+    int i;
+    int cache_ready;
+    int terminal_unavailable;
+    int ok;
+    char error[512];
+
+    request = (pcore_navigation_request *) malloc(sizeof(*request));
+    recover = NULL;
+    exhausted = NULL;
+    http = NULL;
+    budget = NULL;
+    resolve = NULL;
+    cancel = NULL;
+    data = NULL;
+    len = 0;
+    cache_ready = 0;
+    terminal_unavailable = 0;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    if (request == NULL) {
+        show_error(L"TEST 1121 FAIL", "request allocation failed");
+        return FALSE;
+    }
+    memset(request, 0, sizeof(*request));
+    cstr_copy(request->host, sizeof(request->host), "offline.test");
+    cstr_copy(request->path, sizeof(request->path), "/retry/page.html");
+    request->port = 443;
+    request->method = 1;
+
+    recover = test1120_queue_resource(request, RECOVER_URL);
+    exhausted = test1120_queue_resource(request, EXHAUSTED_URL);
+    http = test1120_queue_resource(request, HTTP_URL);
+    budget = test1120_queue_resource(request, BUDGET_URL);
+    resolve = test1120_queue_resource(request, RESOLVE_URL);
+    cancel = test1120_queue_resource(request, CANCEL_URL);
+    if (recover == NULL || exhausted == NULL || http == NULL ||
+            budget == NULL || resolve == NULL || cancel == NULL) {
+        cstr_copy(error, sizeof(error), "resource queue preparation failed");
+        ok = 0;
+    }
+    if (!ok) {
+        pcore_navigation_request_free(request);
+        show_error(L"TEST 1121 FAIL", error);
+        return FALSE;
+    }
+
+    memset(&response, 0, sizeof(response));
+    pcore_navigation_resource_begin_attempt(request, recover);
+    if (!pcore_navigation_resource_should_retry(request, recover,
+            &response)) {
+        cstr_copy(error, sizeof(error), "recovering transport was not retried");
+        ok = 0;
+    }
+    response.status_code = 200;
+    response.body = (char *) BODY;
+    response.body_len = (int) sizeof(BODY) - 1;
+    if (ok) {
+        pcore_navigation_resource_begin_attempt(request, recover);
+        if (pcore_navigation_resource_should_retry(request, recover,
+                &response) ||
+                pcore_navigation_resource_store_response(request, recover,
+                &response) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "recovering transport did not reach ready");
+            ok = 0;
+        }
+    }
+
+    memset(&response, 0, sizeof(response));
+    for (i = 0; ok && i < PCORE_NAV_RESOURCE_RETRY_LIMIT; i++) {
+        pcore_navigation_resource_begin_attempt(request, exhausted);
+        if (!pcore_navigation_resource_should_retry(request, exhausted,
+                &response)) {
+            cstr_copy(error, sizeof(error),
+                    "exhausted transport retry budget early");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        pcore_navigation_resource_begin_attempt(request, exhausted);
+        if (pcore_navigation_resource_should_retry(request, exhausted,
+                &response) ||
+                pcore_navigation_resource_store_response(request, exhausted,
+                &response) == 0) {
+            cstr_copy(error, sizeof(error),
+                    "exhausted transport remained retryable");
+            ok = 0;
+        }
+    }
+
+    memset(&response, 0, sizeof(response));
+    response.status_code = 503;
+    if (ok) {
+        pcore_navigation_resource_begin_attempt(request, http);
+        if (pcore_navigation_resource_should_retry(request, http,
+                &response) ||
+                pcore_navigation_resource_store_response(request, http,
+                &response) == 0) {
+            cstr_copy(error, sizeof(error),
+                    "HTTP failure was retried or accepted");
+            ok = 0;
+        }
+    }
+
+    memset(&response, 0, sizeof(response));
+    response.status_code = 200;
+    response.body = (char *) BODY;
+    response.body_len = PCORE_NAV_RESOURCE_BYTES_MAX;
+    if (ok) {
+        pcore_navigation_resource_begin_attempt(request, budget);
+        if (pcore_navigation_resource_should_retry(request, budget,
+                &response) ||
+                pcore_navigation_resource_store_response(request, budget,
+                &response) == 0) {
+            cstr_copy(error, sizeof(error),
+                    "budget failure was retried or accepted");
+            ok = 0;
+        }
+    }
+
+    if (ok) {
+        pcore_navigation_resource_fail(request, resolve,
+                PCORE_NAV_FAILURE_RESOLVE);
+        request->cancel_requested = 1;
+        memset(&response, 0, sizeof(response));
+        if (pcore_navigation_resource_should_retry(request, cancel,
+                &response)) {
+            cstr_copy(error, sizeof(error), "cancelled resource was retried");
+            ok = 0;
+        }
+        pcore_navigation_resource_cancel(request, cancel);
+        request->cancel_requested = 0;
+    }
+
+    request->stats.resources_queued = request->resource_count;
+    request->stats.resources_pending = pcore_navigation_pending_count(request);
+    data = NULL;
+    len = 0;
+    cache_ready = pcore_navigation_resource_cb(request, RECOVER_URL,
+            &data, &len) == 0 && data != NULL && len ==
+            (int) sizeof(BODY) - 1 && memcmp(data, BODY, (size_t) len) == 0;
+    if (data != NULL) {
+        page_resource_free_cb(NULL, data);
+        data = NULL;
+    }
+    terminal_unavailable = pcore_navigation_resource_cb(request, HTTP_URL,
+            &data, &len) == 1 && data == NULL && len == 0;
+    terminal_unavailable = terminal_unavailable &&
+            pcore_navigation_resource_cb(request, CANCEL_URL, &data, &len) ==
+            1 && data == NULL && len == 0;
+    if (recover->state != PCORE_NAV_RESOURCE_READY ||
+            recover->failure_class != PCORE_NAV_FAILURE_NONE ||
+            recover->attempt_count != 2 || recover->retry_count != 1 ||
+            exhausted->state != PCORE_NAV_RESOURCE_FAILED ||
+            exhausted->failure_class != PCORE_NAV_FAILURE_TRANSPORT ||
+            exhausted->attempt_count != PCORE_NAV_RESOURCE_RETRY_LIMIT + 1 ||
+            exhausted->retry_count != PCORE_NAV_RESOURCE_RETRY_LIMIT ||
+            http->state != PCORE_NAV_RESOURCE_FAILED ||
+            http->failure_class != PCORE_NAV_FAILURE_HTTP ||
+            http->attempt_count != 1 || http->retry_count != 0 ||
+            budget->state != PCORE_NAV_RESOURCE_FAILED ||
+            budget->failure_class != PCORE_NAV_FAILURE_BUDGET ||
+            budget->attempt_count != 1 || budget->retry_count != 0 ||
+            resolve->state != PCORE_NAV_RESOURCE_FAILED ||
+            resolve->failure_class != PCORE_NAV_FAILURE_RESOLVE ||
+            resolve->attempt_count != 0 || resolve->retry_count != 0 ||
+            cancel->state != PCORE_NAV_RESOURCE_CANCELLED ||
+            cancel->failure_class != PCORE_NAV_FAILURE_CANCELLED ||
+            cancel->attempt_count != 0 || cancel->retry_count != 0 ||
+            request->resource_count != 6 ||
+            request->stats.resources_queued != 6 ||
+            request->stats.resources_fetched != 1 ||
+            request->stats.resources_failed != 4 ||
+            request->stats.resources_cancelled != 1 ||
+            request->stats.resources_pending != 0 ||
+            request->stats.resource_attempts != 7 ||
+            request->stats.resource_retries !=
+                    PCORE_NAV_RESOURCE_RETRY_LIMIT + 1 ||
+            request->stats.resource_retry_exhausted != 1 ||
+            request->stats.resource_failures_resolve != 1 ||
+            request->stats.resource_failures_transport != 1 ||
+            request->stats.resource_failures_http != 1 ||
+            request->stats.resource_failures_budget != 1 ||
+            request->stats.resource_failures_memory != 0 ||
+            request->stats.budget_rejected != 1 ||
+            request->resource_bytes != (int) sizeof(BODY) - 1 ||
+            !cache_ready || !terminal_unavailable) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "states=%d/%d/%d/%d/%d/%d attempts=%d/%d/%d/%d/%d/%d "
+                    "retry=%d/%d/%d cache=%d/%d",
+                    recover->state, exhausted->state, http->state,
+                    budget->state, resolve->state, cancel->state,
+                    recover->attempt_count, exhausted->attempt_count,
+                    http->attempt_count, budget->attempt_count,
+                    resolve->attempt_count, cancel->attempt_count,
+                    request->stats.resource_attempts,
+                    request->stats.resource_retries,
+                    request->stats.resource_retry_exhausted,
+                    cache_ready, terminal_unavailable);
+            error[sizeof(error) - 1] = '\0';
+        }
+        ok = 0;
+    }
+    pcore_navigation_request_free(request);
+    if (!ok) {
+        show_error(L"TEST 1121 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1121 OK",
+            "Transport failures retried at most twice; a recovered resource "
+            "became ready, an exhausted resource stayed transport-failed, "
+            "and HTTP/resolve/budget/cancelled outcomes were not retried.");
+    return TRUE;
+}
+
 static BOOL test12_render(void)
 {
     static const char *HTML =
@@ -29837,7 +30139,8 @@ static BOOL test_browse(void)
                 "%lu/%lu/%lu/%lu/%lums\n"
                 "res q/ok/f/c/p/r=%d/%d/%d/%d/%d/%d\n"
                 "res fail r/t/h/b/m=%d/%d/%d/%d/%d\n"
-                "bytes doc/cache=%d/%d reject=%d retry=%d\n"
+                "res attempts/retries/exhausted=%d/%d/%d\n"
+                "bytes doc/cache=%d/%d reject=%d doc-retry=%d\n"
                 "layout total=%lums pass=%d\n"
                 "box/first/settle/final/other=\n"
                 "%lu/%lu/%lu/%lu/%lums",
@@ -29861,6 +30164,9 @@ static BOOL test_browse(void)
                 g_nav_last_stats.resource_failures_http,
                 g_nav_last_stats.resource_failures_budget,
                 g_nav_last_stats.resource_failures_memory,
+                g_nav_last_stats.resource_attempts,
+                g_nav_last_stats.resource_retries,
+                g_nav_last_stats.resource_retry_exhausted,
                 g_nav_last_stats.document_bytes,
                 g_nav_last_stats.resource_bytes,
                 g_nav_last_stats.budget_rejected,
@@ -87629,6 +87935,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1118: ok = test1118_browser_offline_candidate_lifecycle(); break;
         case 1119: ok = test1119_navigation_supersede_transaction(); break;
         case 1120: ok = test1120_navigation_resource_terminals(); break;
+        case 1121: ok = test1121_navigation_resource_retry_budget(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
