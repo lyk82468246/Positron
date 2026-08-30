@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1115
+#define TEST_MAX_NUMBER 1116
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -384,6 +384,70 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
     PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES
 #define PCORE_NATIVE_EDIT_CLIPBOARD_WIDE_CAP \
     (PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES * 2 + 1)
+
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK 0
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_ARGUMENT 1
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OPEN_FAILED 2
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_EMPTY_FAILED 3
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_ALLOC_FAILED 4
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_LOCK_FAILED 5
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_SET_FAILED 6
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_NO_UNICODE_FORMAT 7
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_SIZE 8
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_UNTERMINATED 9
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_CONVERSION_FAILED 10
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE 11
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_SELECTION_FAILED 12
+#define PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_COLLAPSED_SELECTION 13
+
+static int g_native_edit_clipboard_status =
+        PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK;
+
+static void pcore_native_edit_clipboard_status_set(int status)
+{
+    g_native_edit_clipboard_status = status;
+}
+
+static int pcore_native_edit_clipboard_status(void)
+{
+    return g_native_edit_clipboard_status;
+}
+
+static const char *pcore_native_edit_clipboard_status_name(int status)
+{
+    switch (status) {
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK:
+        return "ok";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_ARGUMENT:
+        return "invalid-argument";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OPEN_FAILED:
+        return "open-failed";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_EMPTY_FAILED:
+        return "empty-failed";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_ALLOC_FAILED:
+        return "alloc-failed";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_LOCK_FAILED:
+        return "lock-failed";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_SET_FAILED:
+        return "set-failed";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_NO_UNICODE_FORMAT:
+        return "no-unicode-format";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_SIZE:
+        return "invalid-size";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_UNTERMINATED:
+        return "unterminated";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_CONVERSION_FAILED:
+        return "conversion-failed";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE:
+        return "oversize";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_SELECTION_FAILED:
+        return "selection-failed";
+    case PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_COLLAPSED_SELECTION:
+        return "collapsed-selection";
+    default:
+        return "unknown";
+    }
+}
 
 static BOOL test_browser_raw_string_fixture(const char *html,
         const char *probe, const char *expected, char *error,
@@ -7205,6 +7269,7 @@ typedef struct pcore_native_edit {
     char *content_editable_id;
     int native_change_expected;
     int native_mutation_in_progress;
+    int native_cut_default_in_progress;
     int native_selection_direction;
     int native_selection_direction_valid;
     int native_selection_mouse_active;
@@ -7530,6 +7595,8 @@ static int pcore_native_edit_selection_utf8(
 
     if (native_edit == NULL || out == NULL || capacity < 1 ||
             out_has_selection == NULL) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_ARGUMENT);
         return 0;
     }
     out[0] = '\0';
@@ -7538,11 +7605,15 @@ static int pcore_native_edit_selection_utf8(
             &native_start, &native_end) ||
             !pcore_native_edit_selection_load_text(native_edit->hwnd,
             &text, &text_length)) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_SELECTION_FAILED);
         return 0;
     }
     if (native_start < 0 || native_end < 0 || native_start > text_length ||
             native_end > text_length) {
         free(text);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_SELECTION_FAILED);
         return 0;
     }
     if (native_end < native_start) {
@@ -7553,12 +7624,16 @@ static int pcore_native_edit_selection_utf8(
     }
     if (selected_length == 0) {
         free(text);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_COLLAPSED_SELECTION);
         return 1;
     }
     selected = (WCHAR *) malloc((size_t) (selected_length + 1) *
             sizeof(WCHAR));
     if (selected == NULL) {
         free(text);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_ALLOC_FAILED);
         return 0;
     }
     memcpy(selected, text + native_start,
@@ -7568,22 +7643,30 @@ static int pcore_native_edit_selection_utf8(
     utf8 = wide_to_utf8_alloc(selected);
     free(selected);
     if (utf8 == NULL) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_CONVERSION_FAILED);
         return 0;
     }
     utf8_length = (int) strlen(utf8);
     if (utf8_length >= capacity) {
         free(utf8);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE);
         return 0;
     }
     normalized_length = pcore_native_edit_clipboard_normalize_utf8(utf8,
             capacity);
     if (normalized_length < 0 || normalized_length >= capacity) {
         free(utf8);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE);
         return 0;
     }
     memcpy(out, utf8, (size_t) normalized_length + 1);
     free(utf8);
     *out_has_selection = 1;
+    pcore_native_edit_clipboard_status_set(
+            PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK);
     return 1;
 }
 
@@ -7606,20 +7689,28 @@ static int pcore_native_edit_clipboard_get_utf8(HWND owner, char *out,
     int normalized_length;
 
     if (owner == NULL || out == NULL || capacity < 1) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_ARGUMENT);
         return 0;
     }
     out[0] = '\0';
     if (!OpenClipboard(owner)) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OPEN_FAILED);
         return 0;
     }
     data_handle = GetClipboardData(CF_UNICODETEXT);
     if (data_handle == NULL) {
         CloseClipboard();
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_NO_UNICODE_FORMAT);
         return 0;
     }
     memory_bytes = GlobalSize((HGLOBAL) data_handle);
     if (memory_bytes < sizeof(WCHAR)) {
         CloseClipboard();
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_SIZE);
         return 0;
     }
     max_chars = (int) (memory_bytes / sizeof(WCHAR));
@@ -7629,6 +7720,8 @@ static int pcore_native_edit_clipboard_get_utf8(HWND owner, char *out,
     source = (WCHAR *) GlobalLock((HGLOBAL) data_handle);
     if (source == NULL) {
         CloseClipboard();
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_LOCK_FAILED);
         return 0;
     }
     source_length = 0;
@@ -7638,6 +7731,8 @@ static int pcore_native_edit_clipboard_get_utf8(HWND owner, char *out,
     if (source_length >= max_chars) {
         GlobalUnlock((HGLOBAL) data_handle);
         CloseClipboard();
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_UNTERMINATED);
         return 0;
     }
     copy = (WCHAR *) malloc((size_t) (source_length + 1) *
@@ -7645,6 +7740,8 @@ static int pcore_native_edit_clipboard_get_utf8(HWND owner, char *out,
     if (copy == NULL) {
         GlobalUnlock((HGLOBAL) data_handle);
         CloseClipboard();
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_ALLOC_FAILED);
         return 0;
     }
     memcpy(copy, source, (size_t) (source_length + 1) * sizeof(WCHAR));
@@ -7653,21 +7750,87 @@ static int pcore_native_edit_clipboard_get_utf8(HWND owner, char *out,
     utf8 = wide_to_utf8_alloc(copy);
     free(copy);
     if (utf8 == NULL) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_CONVERSION_FAILED);
         return 0;
     }
     utf8_length = (int) strlen(utf8);
     if (utf8_length >= capacity) {
         free(utf8);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE);
         return 0;
     }
     normalized_length = pcore_native_edit_clipboard_normalize_utf8(utf8,
             capacity);
     if (normalized_length < 0 || normalized_length >= capacity) {
         free(utf8);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE);
         return 0;
     }
     memcpy(out, utf8, (size_t) normalized_length + 1);
     free(utf8);
+    pcore_native_edit_clipboard_status_set(
+            PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK);
+    return 1;
+}
+
+/* Write one clipboard format after preparing and copying the data. Allocate
+ * and lock the new handle before EmptyClipboard so an allocation/lock
+ * failure cannot erase the caller's existing clipboard. */
+static int pcore_native_edit_clipboard_set_bytes(HWND owner, UINT format,
+        const void *bytes, int byte_count)
+{
+    HANDLE data_handle;
+    void *locked;
+    int open;
+
+    if (owner == NULL || bytes == NULL || byte_count < 1) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_ARGUMENT);
+        return 0;
+    }
+    data_handle = (HANDLE) LocalAlloc(LMEM_MOVEABLE | LMEM_ZEROINIT,
+            (UINT) byte_count);
+    if (data_handle == NULL) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_ALLOC_FAILED);
+        return 0;
+    }
+    locked = (void *) GlobalLock((HGLOBAL) data_handle);
+    if (locked == NULL) {
+        GlobalFree((HGLOBAL) data_handle);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_LOCK_FAILED);
+        return 0;
+    }
+    memcpy(locked, bytes, (size_t) byte_count);
+    GlobalUnlock((HGLOBAL) data_handle);
+    open = OpenClipboard(owner) ? 1 : 0;
+    if (!open) {
+        GlobalFree((HGLOBAL) data_handle);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OPEN_FAILED);
+        return 0;
+    }
+    if (!EmptyClipboard()) {
+        GlobalFree((HGLOBAL) data_handle);
+        CloseClipboard();
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_EMPTY_FAILED);
+        return 0;
+    }
+    if (SetClipboardData(format, data_handle) == NULL) {
+        GlobalFree((HGLOBAL) data_handle);
+        CloseClipboard();
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_SET_FAILED);
+        return 0;
+    }
+    CloseClipboard();
+    pcore_native_edit_clipboard_status_set(
+            PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK);
     return 1;
 }
 
@@ -7687,10 +7850,14 @@ static int pcore_native_edit_clipboard_set_utf8(HWND owner, const char *text)
     int open;
 
     if (owner == NULL || text == NULL) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_ARGUMENT);
         return 0;
     }
     source = utf8_to_wide_alloc(text);
     if (source == NULL) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_CONVERSION_FAILED);
         return 0;
     }
     source_length = 0;
@@ -7698,6 +7865,8 @@ static int pcore_native_edit_clipboard_set_utf8(HWND owner, const char *text)
         source_length++;
         if (source_length >= PCORE_NATIVE_EDIT_CLIPBOARD_WIDE_CAP) {
             free(source);
+            pcore_native_edit_clipboard_status_set(
+                    PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE);
             return 0;
         }
     }
@@ -7706,6 +7875,8 @@ static int pcore_native_edit_clipboard_set_utf8(HWND owner, const char *text)
         if (source[i] == L'\n') {
             if (target_length >= PCORE_NATIVE_EDIT_CLIPBOARD_WIDE_CAP - 1) {
                 free(source);
+                pcore_native_edit_clipboard_status_set(
+                        PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE);
                 return 0;
             }
             target_length++;
@@ -7715,6 +7886,8 @@ static int pcore_native_edit_clipboard_set_utf8(HWND owner, const char *text)
             sizeof(WCHAR));
     if (normalized == NULL) {
         free(source);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_ALLOC_FAILED);
         return 0;
     }
     target_length = 0;
@@ -7732,12 +7905,23 @@ static int pcore_native_edit_clipboard_set_utf8(HWND owner, const char *text)
     }
     normalized[target_length] = L'\0';
     free(source);
+
+    /* Windows CE's clipboard broker expects the Unicode handle to be
+     * allocated after the clipboard has been opened and emptied. Keep this
+     * ordering for CF_UNICODETEXT seeding; the generic byte helper above is
+     * used only to inject a raw non-Unicode format in the negative probe. */
     open = OpenClipboard(owner) ? 1 : 0;
-    if (!open || !EmptyClipboard()) {
-        if (open) {
-            CloseClipboard();
-        }
+    if (!open) {
         free(normalized);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OPEN_FAILED);
+        return 0;
+    }
+    if (!EmptyClipboard()) {
+        CloseClipboard();
+        free(normalized);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_EMPTY_FAILED);
         return 0;
     }
     data_handle = (HANDLE) LocalAlloc(LMEM_MOVEABLE | LMEM_ZEROINIT,
@@ -7745,6 +7929,8 @@ static int pcore_native_edit_clipboard_set_utf8(HWND owner, const char *text)
     if (data_handle == NULL) {
         CloseClipboard();
         free(normalized);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_ALLOC_FAILED);
         return 0;
     }
     locked = (WCHAR *) GlobalLock((HGLOBAL) data_handle);
@@ -7752,6 +7938,8 @@ static int pcore_native_edit_clipboard_set_utf8(HWND owner, const char *text)
         GlobalFree((HGLOBAL) data_handle);
         CloseClipboard();
         free(normalized);
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_LOCK_FAILED);
         return 0;
     }
     memcpy(locked, normalized, (size_t) (target_length + 1) *
@@ -7761,9 +7949,13 @@ static int pcore_native_edit_clipboard_set_utf8(HWND owner, const char *text)
     if (SetClipboardData(CF_UNICODETEXT, data_handle) == NULL) {
         GlobalFree((HGLOBAL) data_handle);
         CloseClipboard();
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_SET_FAILED);
         return 0;
     }
     CloseClipboard();
+    pcore_native_edit_clipboard_status_set(
+            PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK);
     return 1;
 }
 
@@ -7773,14 +7965,21 @@ static int pcore_native_edit_clipboard_empty(HWND owner)
     int result;
 
     if (owner == NULL) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_INVALID_ARGUMENT);
         return 0;
     }
     opened = OpenClipboard(owner) ? 1 : 0;
     if (!opened) {
+        pcore_native_edit_clipboard_status_set(
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OPEN_FAILED);
         return 0;
     }
     result = EmptyClipboard() ? 1 : 0;
     CloseClipboard();
+    pcore_native_edit_clipboard_status_set(result ?
+            PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK :
+            PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_EMPTY_FAILED);
     return result;
 }
 
@@ -7996,6 +8195,7 @@ static int g_native_contenteditable_keyboard_probe_ok = 0;
 static char g_native_contenteditable_keyboard_probe_detail[512];
 static int g_native_contenteditable_clipboard_probe = 0;
 static int g_native_contenteditable_clipboard_probe_ok = 0;
+static int g_native_contenteditable_clipboard_edge_probe = 0;
 static char g_native_contenteditable_clipboard_probe_detail[768];
 static int g_native_form_enter_probe = 0;
 static int g_native_form_enter_probe_seen = 0;
@@ -9067,6 +9267,37 @@ failed:
             '\0';
 }
 
+/* Keep a probe's Core text and its native EDIT text aligned without routing
+ * the setup through a user-edit transaction. The subclass ignores the
+ * synchronous EN_CHANGE while this guard is held; the Browser selection
+ * callback is then used to establish the test range. */
+static int pcore_native_contenteditable_probe_set_text(
+        pcore_native_edit *native_edit, const char *text)
+{
+    WCHAR *wide;
+    int result;
+
+    if (native_edit == NULL || native_edit->hwnd == NULL ||
+            native_edit->content_editable_id == NULL || text == NULL ||
+            g_render_doc == NULL) {
+        return 0;
+    }
+    result = PCore_ContentEditableSetTextById(g_render_doc,
+            native_edit->content_editable_id, text);
+    if (result != 0) {
+        return 0;
+    }
+    wide = utf8_to_wide_alloc(text);
+    if (wide == NULL) {
+        return 0;
+    }
+    native_edit->native_mutation_in_progress = 1;
+    result = SetWindowTextW(native_edit->hwnd, wide) ? 0 : 1;
+    native_edit->native_mutation_in_progress = 0;
+    free(wide);
+    return result == 0;
+}
+
 /* Exercise the narrow native clipboard contract without depending on an
  * interactive desktop clipboard. The probe seeds CF_UNICODETEXT through the
  * same HWND owner used by a real WM6 EDIT, then verifies Browser's data,
@@ -9075,13 +9306,19 @@ static void pcore_native_contenteditable_clipboard_probe_run(HWND parent)
 {
     pcore_native_edit *native_edit;
     char result[768];
-    char text[256];
+    char text[512];
     char clipboard[PCORE_NATIVE_EDIT_CLIPBOARD_TEXT_CAP];
+    static char long_text[320];
     char error[256];
     const char *stage;
     unsigned int i;
     int found;
     int bytes;
+    int clipboard_status;
+    int long_i;
+    int failure_status;
+    int native_start;
+    int native_end;
 
     g_native_contenteditable_clipboard_probe_ok = 0;
     g_native_contenteditable_clipboard_probe_detail[0] = '\0';
@@ -9089,9 +9326,15 @@ static void pcore_native_contenteditable_clipboard_probe_run(HWND parent)
     stage = "find-edit";
     found = 0;
     bytes = 0;
+    clipboard_status = PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK;
+    long_i = 0;
+    failure_status = PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK;
+    native_start = -1;
+    native_end = -1;
     memset(result, 0, sizeof(result));
     memset(text, 0, sizeof(text));
     memset(clipboard, 0, sizeof(clipboard));
+    memset(long_text, 0, sizeof(long_text));
     memset(error, 0, sizeof(error));
     if (parent == NULL) {
         _snprintf(g_native_contenteditable_clipboard_probe_detail,
@@ -9190,10 +9433,22 @@ static void pcore_native_contenteditable_clipboard_probe_run(HWND parent)
     memset(result, 0, sizeof(result));
     memset(clipboard, 0, sizeof(clipboard));
     if (PCore_NodeTextContentById(g_render_doc, "editor", text,
-            sizeof(text), &bytes) != 0 || strcmp(text, "adef") != 0 ||
-            pcore_native_edit_clipboard_get_utf8(native_edit->hwnd,
-            clipboard, sizeof(clipboard)) == 0 || strcmp(clipboard, "XY") != 0 ||
-            pcore_browser_script_session_evaluate(
+            sizeof(text), &bytes) != 0 || strcmp(text, "adef") != 0) {
+        _snprintf(result, sizeof(result) - 1,
+                "cut-text-bad|%s", text);
+        result[sizeof(result) - 1] = '\0';
+        goto failed;
+    }
+    if (pcore_native_edit_clipboard_get_utf8(native_edit->hwnd,
+            clipboard, sizeof(clipboard)) == 0 || strcmp(clipboard, "XY") != 0) {
+        _snprintf(result, sizeof(result) - 1,
+                "cut-clipboard-bad|%s|status=%s", clipboard,
+                pcore_native_edit_clipboard_status_name(
+                pcore_native_edit_clipboard_status()));
+        result[sizeof(result) - 1] = '\0';
+        goto failed;
+    }
+    if (pcore_browser_script_session_evaluate(
             "var e=document.getElementById('editor');"
             "document.getElementById('result').textContent="
             "(window.clipValid&&window.clipEvents==='beforeinput|deleteByCut|"
@@ -9248,9 +9503,12 @@ static void pcore_native_contenteditable_clipboard_probe_run(HWND parent)
         goto failed;
     }
     SendMessage(native_edit->hwnd, WM_PASTE, 0, 0);
+    clipboard_status = pcore_native_edit_clipboard_status();
     memset(text, 0, sizeof(text));
     memset(result, 0, sizeof(result));
-    if (PCore_NodeTextContentById(g_render_doc, "editor", text,
+    if (clipboard_status !=
+            PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_NO_UNICODE_FORMAT ||
+            PCore_NodeTextContentById(g_render_doc, "editor", text,
             sizeof(text), &bytes) != 0 || strcmp(text, "adef") != 0 ||
             pcore_browser_script_session_evaluate(
             "var e=document.getElementById('editor');"
@@ -9265,15 +9523,216 @@ static void pcore_native_contenteditable_clipboard_probe_run(HWND parent)
             sizeof(result), NULL) != 0 || strcmp(result, "empty-ok") != 0) {
         goto failed;
     }
+
+    if (g_native_contenteditable_clipboard_edge_probe) {
+        /* Keep the native EDIT below its 256-character limit while making
+         * the UTF-8 payload exceed the Browser transaction slot: one hundred
+         * U+4E2D characters occupy three hundred UTF-8 bytes. */
+        for (long_i = 0; long_i < 100; long_i++) {
+            long_text[long_i * 3] = (char) 0xe4;
+            long_text[long_i * 3 + 1] = (char) 0xb8;
+            long_text[long_i * 3 + 2] = (char) 0xad;
+        }
+        long_text[300] = '\0';
+
+        stage = "copy";
+        if (!pcore_native_contenteditable_probe_set_text(native_edit,
+                "abcdef") ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "e.setSelectionRange(1,3,'forward');window.clipEvents='';"
+                "window.clipValid=true;window.selCount=0;window.cancelPaste=false;",
+                -1, error, sizeof(error)) != 0 ||
+                !pcore_native_edit_clipboard_set_utf8(native_edit->hwnd,
+                "keep")) {
+            goto failed;
+        }
+        SendMessage(native_edit->hwnd, WM_COPY, 0, 0);
+        clipboard_status = pcore_native_edit_clipboard_status();
+        memset(text, 0, sizeof(text));
+        memset(result, 0, sizeof(result));
+        memset(clipboard, 0, sizeof(clipboard));
+        if (clipboard_status != PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OK ||
+                pcore_native_edit_clipboard_get_utf8(native_edit->hwnd,
+                clipboard, sizeof(clipboard)) == 0 ||
+                strcmp(clipboard, "bc") != 0 ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "document.getElementById('result').textContent="
+                "(window.clipValid&&window.clipEvents===''&&window.selCount===0&&"
+                "e.selectionStart===1&&e.selectionEnd===3&&"
+                "e.selectionDirection==='forward')?'copy-ok':"
+                "'copy-bad|'+window.clipEvents+'|'+window.selCount+'|'"
+                "+e.selectionStart+'|'+e.selectionEnd+'|'+e.selectionDirection+'|'"
+                "+String(window.clipValid);", -1, error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(g_render_doc, "result", result,
+                sizeof(result), NULL) != 0 || strcmp(result, "copy-ok") != 0) {
+            goto failed;
+        }
+
+        stage = "copy-collapsed";
+        if (!pcore_native_edit_clipboard_set_utf8(native_edit->hwnd,
+                "keep") ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "e.setSelectionRange(2,2,'none');window.clipEvents='';"
+                "window.clipValid=true;window.selCount=0;window.cancelPaste=false;",
+                -1, error, sizeof(error)) != 0) {
+            goto failed;
+        }
+        SendMessage(native_edit->hwnd, WM_COPY, 0, 0);
+        clipboard_status = pcore_native_edit_clipboard_status();
+        memset(clipboard, 0, sizeof(clipboard));
+        if (clipboard_status !=
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_COLLAPSED_SELECTION ||
+                pcore_native_edit_clipboard_get_utf8(native_edit->hwnd,
+                clipboard, sizeof(clipboard)) == 0 ||
+                strcmp(clipboard, "keep") != 0 ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "document.getElementById('result').textContent="
+                "(window.clipValid&&window.clipEvents===''&&window.selCount===0&&"
+                "e.selectionStart===2&&e.selectionEnd===2&&"
+                "e.selectionDirection==='none')?'copy-collapsed-ok':"
+                "'copy-collapsed-bad|'+window.clipEvents+'|'"
+                "+window.selCount+'|'+e.selectionStart+'|'+e.selectionEnd+'|'"
+                "+e.selectionDirection+'|'+String(window.clipValid);", -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(g_render_doc, "result", result,
+                sizeof(result), NULL) != 0 ||
+                strcmp(result, "copy-collapsed-ok") != 0) {
+            goto failed;
+        }
+
+        stage = "oversize-paste";
+        if (!pcore_native_edit_clipboard_set_utf8(native_edit->hwnd,
+                long_text) ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "e.setSelectionRange(1,1,'none');window.clipEvents='';"
+                "window.clipValid=true;window.selCount=0;window.cancelPaste=false;",
+                -1, error, sizeof(error)) != 0) {
+            goto failed;
+        }
+        SendMessage(native_edit->hwnd, WM_PASTE, 0, 0);
+        clipboard_status = pcore_native_edit_clipboard_status();
+        memset(text, 0, sizeof(text));
+        memset(result, 0, sizeof(result));
+        if (clipboard_status != PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE ||
+                PCore_NodeTextContentById(g_render_doc, "editor", text,
+                sizeof(text), &bytes) != 0 || strcmp(text, "abcdef") != 0 ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "document.getElementById('result').textContent="
+                "(window.clipValid&&window.clipEvents===''&&window.selCount===0&&"
+                "e.selectionStart===1&&e.selectionEnd===1&&"
+                "e.selectionDirection==='none')?'oversize-paste-ok':"
+                "'oversize-paste-bad|'+window.clipEvents+'|'"
+                "+window.selCount+'|'+e.selectionStart+'|'+e.selectionEnd+'|'"
+                "+e.selectionDirection+'|'+String(window.clipValid);", -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(g_render_doc, "result", result,
+                sizeof(result), NULL) != 0 ||
+                strcmp(result, "oversize-paste-ok") != 0) {
+            goto failed;
+        }
+
+        stage = "non-unicode-paste";
+        if (!pcore_native_edit_clipboard_set_bytes(native_edit->hwnd,
+                CF_TEXT, "ANSI", 5) ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "e.setSelectionRange(1,1,'none');window.clipEvents='';"
+                "window.clipValid=true;window.selCount=0;window.cancelPaste=false;",
+                -1, error, sizeof(error)) != 0) {
+            goto failed;
+        }
+        SendMessage(native_edit->hwnd, WM_PASTE, 0, 0);
+        clipboard_status = pcore_native_edit_clipboard_status();
+        memset(text, 0, sizeof(text));
+        memset(result, 0, sizeof(result));
+        if (clipboard_status !=
+                PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_NO_UNICODE_FORMAT ||
+                PCore_NodeTextContentById(g_render_doc, "editor", text,
+                sizeof(text), &bytes) != 0 || strcmp(text, "abcdef") != 0 ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "document.getElementById('result').textContent="
+                "(window.clipValid&&window.clipEvents===''&&window.selCount===0&&"
+                "e.selectionStart===1&&e.selectionEnd===1&&"
+                "e.selectionDirection==='none')?'non-unicode-paste-ok':"
+                "'non-unicode-paste-bad|'+window.clipEvents+'|'"
+                "+window.selCount+'|'+e.selectionStart+'|'+e.selectionEnd+'|'"
+                "+e.selectionDirection+'|'+String(window.clipValid);", -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(g_render_doc, "result", result,
+                sizeof(result), NULL) != 0 ||
+                strcmp(result, "non-unicode-paste-ok") != 0) {
+            goto failed;
+        }
+
+        stage = "oversize-copy";
+        if (!pcore_native_contenteditable_probe_set_text(native_edit,
+                long_text) ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "e.setSelectionRange(0,100,'forward');window.clipEvents='';"
+                "window.clipValid=true;window.selCount=0;window.cancelPaste=false;",
+                -1, error, sizeof(error)) != 0 ||
+                /* Browser's bounded text getter cannot expose the 300-byte
+                 * fixture, so pin the native range explicitly for this
+                 * host-level rejection check. */
+                !pcore_native_edit_selection_apply(native_edit, 0, 100,
+                PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD) ||
+                !pcore_native_edit_clipboard_set_utf8(native_edit->hwnd,
+                "keep")) {
+            goto failed;
+        }
+        SendMessage(native_edit->hwnd, WM_COPY, 0, 0);
+        clipboard_status = pcore_native_edit_clipboard_status();
+        if (!pcore_native_edit_selection_native_range(native_edit,
+                &native_start, &native_end)) {
+            native_start = -1;
+            native_end = -1;
+        }
+        memset(text, 0, sizeof(text));
+        memset(clipboard, 0, sizeof(clipboard));
+        if (clipboard_status != PCORE_NATIVE_EDIT_CLIPBOARD_STATUS_OVERSIZE ||
+                native_start != 0 || native_end != 100 ||
+                !native_edit->native_selection_direction_valid ||
+                native_edit->native_selection_direction !=
+                PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD ||
+                pcore_native_edit_clipboard_get_utf8(native_edit->hwnd,
+                clipboard, sizeof(clipboard)) == 0 ||
+                strcmp(clipboard, "keep") != 0 ||
+                PCore_NodeTextContentById(g_render_doc, "editor", text,
+                sizeof(text), &bytes) != 0 || strcmp(text, long_text) != 0 ||
+                pcore_browser_script_session_evaluate(
+                "var e=document.getElementById('editor');"
+                "document.getElementById('result').textContent="
+                "(window.clipValid&&window.clipEvents===''&&window.selCount===0)?"
+                "'oversize-copy-ok':"
+                "'oversize-copy-bad|'+window.clipEvents+'|'"
+                "+window.selCount+'|'+e.selectionStart+'|'+e.selectionEnd+'|'"
+                "+e.selectionDirection+'|'+String(window.clipValid);", -1,
+                error, sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(g_render_doc, "result", result,
+                sizeof(result), NULL) != 0 ||
+                strcmp(result, "oversize-copy-ok") != 0) {
+            goto failed;
+        }
+    }
     g_native_contenteditable_clipboard_probe_ok = 1;
     return;
 
 failed:
+    failure_status = pcore_native_edit_clipboard_status();
     pcore_native_edit_clipboard_empty(native_edit->hwnd);
     _snprintf(g_native_contenteditable_clipboard_probe_detail,
             sizeof(g_native_contenteditable_clipboard_probe_detail) - 1,
-            "stage=%s result=%s text=%s clipboard=%s error=%s",
-            stage, result, text, clipboard, error);
+            "stage=%s status=%s result=%s text=%s clipboard=%s error=%s",
+            stage, pcore_native_edit_clipboard_status_name(failure_status),
+            result, text, clipboard, error);
     g_native_contenteditable_clipboard_probe_detail[
             sizeof(g_native_contenteditable_clipboard_probe_detail) - 1] =
             '\0';
@@ -9533,6 +9992,35 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                     return native_result;
                 }
             }
+            if (msg == WM_COPY && native_edit->content_editable) {
+                /* The WinCE EDIT implementation sends WM_COPY to itself as
+                 * part of its WM_CUT default action. Let that nested call
+                 * reach the original control; intercepting it would make
+                 * the native cut abort before deleting the selection. */
+                if (native_edit->native_cut_default_in_progress) {
+                    native_result = (original != NULL) ?
+                            CallWindowProc(original, hwnd, msg, wp, lp) :
+                            DefWindowProc(hwnd, msg, wp, lp);
+                    return native_result;
+                }
+                if (!pcore_native_edit_selection_utf8(native_edit,
+                        cut_data, sizeof(cut_data), &cut_has_selection)) {
+                    /* An invalid or oversized selection must not fall
+                     * through to the native EDIT's potentially different
+                     * clipboard format. */
+                    return 0;
+                }
+                if (!cut_has_selection) {
+                    /* Copying a collapsed range is a no-op. Preserve the
+                     * existing clipboard instead of manufacturing empty
+                     * CF_UNICODETEXT data. */
+                    return 0;
+                }
+                if (!pcore_native_edit_clipboard_set_utf8(hwnd, cut_data)) {
+                    return 0;
+                }
+                return 0;
+            }
             if (msg == WM_CUT) {
                 edit_input_data = "";
                 if (native_edit->content_editable) {
@@ -9553,11 +10041,13 @@ static LRESULT CALLBACK pcore_native_edit_proc(HWND hwnd, UINT msg,
                     return 0;
                 }
                 if (native_edit->content_editable) {
+                    native_edit->native_cut_default_in_progress = 1;
                     native_edit->native_mutation_in_progress = 1;
                     native_result = (original != NULL) ?
                             CallWindowProc(original, hwnd, msg, wp, lp) :
                             DefWindowProc(hwnd, msg, wp, lp);
                     native_edit->native_mutation_in_progress = 0;
+                    native_edit->native_cut_default_in_progress = 0;
                     pcore_native_edit_changed(hwnd);
                     return native_result;
                 }
@@ -26995,8 +27485,8 @@ static BOOL test1114_browser_native_contenteditable_keyboard_selection_contract(
     return TRUE;
 }
 
-/* TEST 1115 - native contenteditable clipboard transaction contract. */
-static BOOL test1115_browser_native_contenteditable_clipboard_contract(void)
+/* Shared fixture for the baseline and edge-case native clipboard contracts. */
+static BOOL test_native_contenteditable_clipboard_contract(int edge_probe)
 {
     static const char HTML[] =
         "<!doctype html><html><head><script>window.boot=1;</script></head>"
@@ -27048,10 +27538,12 @@ static BOOL test1115_browser_native_contenteditable_clipboard_contract(void)
         runtime = NULL;
         bridge = NULL;
         g_native_contenteditable_clipboard_probe = 1;
+        g_native_contenteditable_clipboard_edge_probe = edge_probe;
         if (!show_render_window()) {
             ok = 0;
         }
         g_native_contenteditable_clipboard_probe = 0;
+        g_native_contenteditable_clipboard_edge_probe = 0;
         g_render_doc = NULL;
         g_render_sheet = NULL;
     }
@@ -27075,16 +27567,36 @@ static BOOL test1115_browser_native_contenteditable_clipboard_contract(void)
         PCore_FreeDocument(document);
     }
     if (!ok) {
-        show_error(L"TEST 1115 FAIL", error[0] != '\0' ? error :
+        show_error(edge_probe ? L"TEST 1116 FAIL" : L"TEST 1115 FAIL",
+                error[0] != '\0' ? error :
                 "native contenteditable clipboard transaction failed");
         return FALSE;
     }
-    show_info(L"TEST 1115 OK",
-            "Native contenteditable CF_UNICODETEXT paste and cut expose"
-            " exact beforeinput data, honour cancellation, commit Core text"
-            " once, and synchronize the collapsed caret/selectionchange path."
-            " Unsupported clipboard formats fail closed.");
+    if (edge_probe) {
+        show_info(L"TEST 1116 OK",
+                "Native contenteditable copy preserves selection, treats a"
+                " collapsed range as a no-op, and reports oversize/non-Unicode"
+                " clipboard rejection without changing Core text.");
+    } else {
+        show_info(L"TEST 1115 OK",
+                "Native contenteditable CF_UNICODETEXT paste and cut expose"
+                " exact beforeinput data, honour cancellation, commit Core text"
+                " once, and synchronize the collapsed caret/selectionchange path."
+                " Unsupported clipboard formats fail closed.");
+    }
     return TRUE;
+}
+
+/* TEST 1115 - native contenteditable clipboard transaction contract. */
+static BOOL test1115_browser_native_contenteditable_clipboard_contract(void)
+{
+    return test_native_contenteditable_clipboard_contract(0);
+}
+
+/* TEST 1116 - native contenteditable clipboard edge contract. */
+static BOOL test1116_browser_native_contenteditable_clipboard_edge_contract(void)
+{
+    return test_native_contenteditable_clipboard_contract(1);
 }
 
 static BOOL test12_render(void)
@@ -84944,6 +85456,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1113: ok = test1113_browser_native_contenteditable_mouse_selection_contract(); break;
         case 1114: ok = test1114_browser_native_contenteditable_keyboard_selection_contract(); break;
         case 1115: ok = test1115_browser_native_contenteditable_clipboard_contract(); break;
+        case 1116: ok = test1116_browser_native_contenteditable_clipboard_edge_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
