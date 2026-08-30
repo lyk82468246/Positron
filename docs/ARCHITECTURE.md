@@ -87,6 +87,7 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - CSS 解析、cascade、媒体条件和整树 computed style；
 - 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
+- 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；
 - 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
 - 表单值、约束验证、提交、reset 和 successful controls；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
@@ -99,7 +100,7 @@ Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/
 
 主文档必须先成功，样式表和 `@import` 在 style pass 中通常注册为 required，脚本与图片注册为 optional。宿主在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo`，一次读取独立 candidate result 与 resource gate；只有 `decision=PBROWSER_NAVIGATION_COMMIT_READY` 且 `can_commit` 非零时才可继续页面提交。required 失败、仍有 pending、资源取消或候选取消/过时时保留旧 document/session/history，不触发 teardown 或 swap。optional 失败可以继续提交，Core 按既定的 alt/src/default-style fallback 绘制。失败摘要最多 4 项且不含原始 URL，transport 失败每项最多 2 次重试（总计 3 次尝试），HTTP、resolve、budget、memory 和取消不重试；这些状态和计数由 Browser 提供，宿主只负责调度与日志。组合快照不合并两个 handle，也不替代 `PBrowser_NavigationCandidateMarkCommitted` 的最终重检。
 
-文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单和交互状态。释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。style/layout/paint 通常属于同一 UI 线程；不得在后台 worker 并发操作同一个文档。
+文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单和交互状态。释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。`PCore_DocumentWidth`/`PCore_DocumentHeight` 只报告最近一次 layout 的 page-level extent；Core 不访问窗口、不创建滚动条，也不拥有宿主的 viewport offset。style/layout/paint 通常属于同一 UI 线程；不得在后台 worker 并发操作同一个文档。
 
 `PCore_ContentEditableTargetInfo` 是宿主的 native editing-host 快照：它只返回已布局、可见且带非空 id 的有效 editing host，按 DOM 顺序限制为每页 16 个，文本限制为 8192 个 UTF-8 字节。嵌套且仅继承编辑状态的后代归最近 editing host 所有，不会产生第二个窗口。快照的几何和字符串只在当前文档/layout 仍有效时使用；文档 mutation 或重排后宿主应重新枚举并重建窗口。
 
@@ -121,7 +122,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 导航资源事务：按 URL 去重并合并 role/policy，拥有资源字节、终态、失败分类、transport 重试预算、required/optional commit gate、hash-only failure summary 和 fallback observation。
 - 导航候选生命周期：以 opaque handle 拥有不可变 generation、取消请求、退休状态和 committed/failed 终态，并提供当前 generation 的 `CanApply` 提交资格与 pending/committed/failed/cancelled/stale 结果摘要；`PBrowser_NavigationCommitGetInfo` 只读组合该结果与独立资源 gate，`PBrowser_NavigationCleanupGetInfo` 在释放前复制 candidate result 与完整有界 resource observation；两个入口都不接管任一 handle 的所有权。
 
-它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。每个 history entry 还由 Browser 保存非负的 `(scroll_x, scroll_y)` viewport snapshot；该快照随 entry 的新建、裁剪、replace 和 traversal 规则维护，但 Browser 不知道文档高度、不访问 HWND，也不替宿主做 clamp。
+它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。每个 history entry 还由 Browser 保存非负的 `(scroll_x, scroll_y)` viewport snapshot；该快照随 entry 的新建、裁剪、replace 和 traversal 规则维护，但 Browser 不知道 Core 的文档 extent、不访问 HWND，也不替宿主做 clamp。
 
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
 
@@ -141,7 +142,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
 宿主拥有所有与具体应用或 Windows Mobile UI 绑定的行为：
 
-- 顶层窗口、消息循环、滚动条和 DPI/旋转通知；
+- 顶层窗口、消息循环、滚动条和 DPI/旋转通知；layout 后读取 Core 的 page-level width/height，维护两个轴的 viewport offset、clamp 和 native child reposition；
 - native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位、销毁并跟踪其平台鼠标/键盘选区；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、写入和所有权也只属于宿主；
 - 后台线程、loading 状态与页面 swap；较新的导航可以取代仍在准备的候选，宿主为每个请求保存 Browser 的 candidate handle，以宿主 generation 计数器构造并门控 worker 完成、进度和提交消息，再让退休候选持有自己的线程、response、资源队列和脚本对象直到 worker 收尾；Browser handle 拥有该候选的 generation、取消请求、退休状态、提交资格和结果分类，宿主只拥有退休队列与平台回收，并通过 `PBrowser_NavigationCandidateGetResult` 把分类复制到应用日志；退休队列有固定上限，达到上限时新导航 fail closed 而不改变当前页；候选成功时在旧 document/session 仍有效的窗口内调用 Browser teardown，再停止 native 回调、释放旧对象并提交新页；
 - DNS/TCP/TLS/HTTP 组合策略、worker、取消时机和资源调度；宿主通过 Browser 资源事务注册 URL 并提交 attempt/data/failure/cancel 结果，决定何时重试、何时运行 style/layout、何时提交页面。资源终态、成功字节、预算、required/optional gate、失败摘要和 fallback 计数由 Browser 拥有，宿主读取统计用于 loading、日志和应用策略，不复制第二份资源状态或数据；页面提交时由 Browser 的 `PBrowser_NavigationCommitGetInfo` 给出 candidate/resource 组合快照，宿主不复制其中的分类规则；
@@ -170,7 +171,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 5. style/image pass 若发现新的 pending 资源则回到 worker；样式表与 `@import` 按 required policy，图片与 script 按 optional policy。重复 URL 由 Browser 事务去重并合并 stylesheet/script/image role bitmask；宿主只保留 URL 到 Browser resource index 的短引用。
 6. UI 线程在 layout/swap 前读取 Browser 的 `PBrowser_NavigationCommitGetInfo` 与 resource stats；组合快照为 PENDING 时继续等待资源，其他非 READY 结果禁止 swap，并在失败/取消/过时时释放候选、保留旧页、旧 session 和旧队列；optional 失败在 Core fallback 可用时允许继续，并在 layout 成功后通知 Browser 记录 fallback family 观测。宿主日志可读取最多 4 项 hash-only failure summary，但不拥有或重建摘要。
 7. 组合快照 READY 且最终 candidate 重检通过后，在旧 document/session 仍有效时调用 Browser teardown，停止旧页回调并原子提交页面与 history；新 entry 的 viewport 初始为 `(0, 0)`。
-8. history traversal 或 same-document fragment 完成后，宿主用 `PBrowser_HistoryEntryScroll` 读取目标 entry 的快照，再按新 document/client area clamp 并应用到 scrollbar/HWND。Browser 只提供值，不执行滚动副作用。
+8. history traversal 或 same-document fragment 完成后，宿主用 `PBrowser_HistoryEntryScroll` 读取目标 entry 的快照，再读取新 document 的 page-level width/height，按 client area 对 `(scroll_x, scroll_y)` 两个轴 clamp，并应用到 scrollbar/HWND、paint 和命中测试。Browser 只提供值，不执行滚动副作用。
 9. worker 已收尾后、销毁 request 的 candidate/resource handle 前，失败或过时 request 先取消剩余 pending 资源；宿主调用 `PBrowser_NavigationCleanupGetInfo` 复制终态、gate、pending、`can_release` 和有界 failure/fallback 观测。正常路径要求 `can_release` 为非零；若观测仍为 0，宿主必须 fail closed、记录异常并完成成对的最终释放，不能把它当作成功提交。复制值在 handle 销毁后仍可用于日志。
 10. 交互、旋转或动态 DOM 修改按需重新 style/layout/paint。
 

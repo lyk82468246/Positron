@@ -48,6 +48,8 @@ transport 失败每项最多重试 2 次（最多 3 次尝试）；HTTP、resolv
 
 TEST1081/TEST1082 覆盖 history entry 的 viewport snapshot：same-document fragment 和跨文档 traversal 都从 Browser 读取目标 `(scroll_x, scroll_y)`，新 entry 从零开始，短页面由宿主按 document extent clamp；TEST1082 还验证非负约束、横向值保持和非法索引 fail closed。宿主不得用私有按 entry 数组替代 `PBrowser_HistoryEntryScroll`。
 
+TEST1128 覆盖 page-level horizontal viewport：离线宽页面通过 `PCore_DocumentWidth` 暴露溢出范围，宿主对 x/y 两轴执行 clamp、滚动和 native 坐标换算，Browser snapshot 保存/恢复横向位置，fragment 命中使用同一 document-space x 坐标。它不代表嵌套 overflow 容器或复杂真实页面的视觉兼容性。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

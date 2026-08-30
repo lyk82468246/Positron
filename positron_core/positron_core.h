@@ -752,6 +752,12 @@ PCORE_API int PCore_PaintDocumentWithModal(HANDLE hDoc, HDC hdc,
  * recent PCore_LayoutDocument). Lets the application size a scrollbar. */
 PCORE_API int PCore_DocumentHeight(HANDLE hDoc);
 
+/* Total laid-out document width in device px (the value is from the most
+ * recent PCore_LayoutDocument). Includes content that overflows the page
+ * viewport horizontally, so an application can expose a page-level
+ * horizontal scrollbar alongside PCore_DocumentHeight. */
+PCORE_API int PCore_DocumentWidth(HANDLE hDoc);
+
 /* Set the rendering viewport: CSS-px width/height (used for vw/vh units and
  * the initial containing block) and the device DPI. Call before styling /
  * layout; defaults are 800x600 @ 96 dpi. The app should pass the real screen

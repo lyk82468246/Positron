@@ -8,7 +8,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。next672–681 的过时导航、资源终态/重试、提交门、摘要观测、资源事务所有权、候选生命周期所有权、candidate/resource 提交组合和提交后清理观测，均已提交；这些能力的逐批细节以 Git 历史为准。
+- 分支：`main`。next672–682 的过时导航、资源终态/重试、提交门、摘要观测、资源事务所有权、候选生命周期所有权、candidate/resource 提交组合、提交后清理观测和 Browser-owned history viewport snapshot 均已提交；next683 的 page-level 横向 viewport 与本文档更新属于当前批次。
 - next678 已把候选 generation、取消请求、退休状态、提交资格和 committed/failed 终态迁入 `positron_browser.dll` 的 opaque handle。next679 进一步把 pending/committed/failed/cancelled/stale 结果分类作为只读 Browser 摘要；next680 再提供独立 candidate/resource 的只读提交组合快照；next681 增加提交后 cleanup snapshot 和宿主回收观测；next682 将 history entry 的 viewport snapshot 迁入 Browser，并移除宿主的按 entry 滚动数组。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列、窗口滚动应用和页面 swap，不把线程、窗口、网络或 Core document 带入 Browser ABI。
 - Browser 现在同时拥有 URL 去重、role/policy、资源字节、终态、失败分类、重试预算、commit gate、hash-only 摘要、fallback 计数、候选 admission 状态、候选结果分类、candidate/resource 组合 decision 和 cleanup snapshot；宿主只保留 URL→resource-index 短引用、candidate handle 和平台调度状态，并消费结果快照写日志。清理快照复制完整有界 resource observation，要求 pending 工作先收敛，committed candidate 还必须配 READY gate。
 - 上一产品基线为 `88d68ebd`（next669，首个离线 compatibility corpus 完整流程）；更早基线为 `c0c4ba0e`（next668，单元素 `contenteditable` 的受限 CF_UNICODETEXT 粘贴/剪切与 WM_COPY 边界）。
@@ -21,7 +21,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-next682 的 history viewport snapshot 纵向能力已经完成并保持公共 ABI 可消费：Browser 为每个有界 history entry 保存非负 `(scroll_x, scroll_y)`，随新文档、replace、push、裁剪和 traversal 维护；宿主只在离开页面时写入当前值，在目标页面提交后读取并按 document/client extent clamp。当前下一条纵向能力是 next683：从真实页面哨兵和离线 compatibility corpus 中选择一个已被证据固定的用户可见组合缺口。
+next683 已完成 page-level 横向 viewport：Core 报告页面宽度，宿主维护 x/y viewport、滚动条、命中坐标、native child 定位和 Browser history snapshot。当前唯一下一条纵向能力是 next684：从真实页面哨兵或离线 compatibility corpus 中选择一个已被源码、日志或截图固定的用户可见组合缺口。
 
 ## 已验证产品事实
 
@@ -37,7 +37,8 @@ next682 的 history viewport snapshot 纵向能力已经完成并保持公共 AB
 - HTML/CSS/DOM、整树 style、NetSurf layout/redraw、GDI 绘制与资源缓存已形成正式 Core 路径。
 - 常用 block/inline/flex/table、图片/SVG、背景、列表、有限定位、表单控件、验证、提交与 reset 已有设备回归；这不代表完整 CSS/HTML。
 - Browser 层提供有界 history、same-document state、script session、DOM/Event/input/navigation callbacks，以及 timer/microtask/lifecycle、native 控件事务、导航资源事务和候选生命周期/结果协调。
-- Browser history entry 同时拥有非负的 `(scroll_x, scroll_y)` viewport snapshot；新 document entry 和同 URL 新 document 从零开始，`replaceState`/traversal 保留目标值，`pushState` 新 entry 从零开始，history 裁剪会同步搬移 snapshot。Browser 不访问窗口、不知道文档高度；宿主只负责保存/读取并 clamp/apply。
+- Browser history entry 同时拥有非负的 `(scroll_x, scroll_y)` viewport snapshot；新 document entry 和同 URL 新 document 从零开始，`replaceState`/traversal 保留目标值，`pushState` 新 entry 从零开始，history 裁剪会同步搬移 snapshot。Browser 不访问窗口、不知道 Core 的页面 extent；宿主读取 `PCore_DocumentWidth/Height` 后保存/读取并对两个轴 clamp/apply。
+- Core 的 `PCore_DocumentWidth` 与 `PCore_DocumentHeight` 在最近一次 layout 后报告 page-level extent；宽度包含页面内容的水平溢出且不小于 layout viewport。宿主把同一 `(scroll_x, scroll_y)` 用于 paint、命中测试、fragment reveal、滚动条和 native child reposition；嵌套 overflow 容器的独立滚动仍未实现。
 - 页面导航保留旧页到候选文档成功提交；主文档和资源网络阶段与 UI 文档操作分离。Browser candidate handle 拥有 generation、取消/退休、提交资格和结果分类，宿主用它门控 worker 完成/进度消息并在 worker 收尾后回收旧候选；旧候选不能越过 generation 门。layout/swap 前，宿主通过 `PBrowser_NavigationCommitGetInfo` 读取独立 candidate/resource 的组合 decision 与 `can_commit`，不在宿主复制失败/过时提交规则。
 - Browser 资源事务按 URL 去重并拥有 `pending`、`ready`、`failed`、`cancelled` 四种终态、成功字节、失败分类、required/optional gate、transport 重试预算、最多 4 项 hash-only 摘要和 fallback family 计数。宿主负责网络 I/O、worker、取消/重试时机和页面提交，只保留 URL→resource-index 短引用；HTTP、resolve、budget、memory 和取消不重试，取消也不会重新暴露为可用缓存。
 - 深层 DOM 资源准备使用单个事务级 heap scratch，避免大批固定栈缓冲耗尽 WM6 线程栈。
@@ -60,62 +61,19 @@ next682 的 history viewport snapshot 纵向能力已经完成并保持公共 AB
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1127。
+- `TEST_MAX_NUMBER`：1128。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next682 history viewport snapshot 回归；最近一次稳定全量 checkpoint 仍为 next670：
+当前最新产品门为 next683 page-level 横向 viewport 回归；最近一次稳定全量 checkpoint 仍为 next670：
 
-- next682 定向目录：`tmp/device-runs/20260831-013410-next682-history-scroll-r2/`；
-- 动态选择：`136,201,407,442,1080-1083,999`，9 项；9/9 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；TEST1082 验证 Browser-owned `(scroll_x, scroll_y)` 的保存、traversal 保持、新 entry 清零、宿主 clamp 和非法参数拒绝。
-- next682 直接相邻目录：`tmp/device-runs/20260831-013503-next682-history-scroll-adjacent/`；
-- 动态选择：`1076-1084,136,201,999`，12 项；12/12 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；确认 label/native anchor、fragment token、history 和产品 ABI 回归未受影响。
+- next683 定向目录：`tmp/device-runs/20260831-023828-next683-page-scroll-r3/`；
+- 动态选择：`1128,1080-1084,999`，7 项；7/7 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。TEST1128 验证 Core page width、宿主 x/y clamp、Browser 横向 snapshot、fragment document-space 命中和新 entry 清零；TEST1080–1084 验证直接相邻 history、fragment、label/native 路径。
 - 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging。
-
-首次尝试 `tmp/device-runs/20260831-012854-next682-history-scroll/` 误含真实网络 TEST141；该测试在 IANA TLS EOF 后停止，未执行本批新测试，不作为产品门证据，也没有改变源码或基线。
-
-- next681 最终相邻目录：`tmp/device-runs/20260831-004203-next681-final2/`；
-- 动态选择：`1118-1127,999`，11 项；11/11 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；TEST1127 覆盖 cleanup decision、pending 资源收敛、required failure、optional fallback、取消/stale、清理前复制、handle 销毁后的快照存活，以及成功/失败 `pcore_navigation_finish` 回收路径。
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging。
-
-- next680 最终定向目录：`tmp/device-runs/20260831-001915-next680-final3/`；
-- 动态选择：`1122-1126,999`，6 项；6/6 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；TEST1126 覆盖 Browser candidate/resource 组合 decision 与 `can_commit`，TEST1122 验证 required 失败统计与旧页保留。
-- next680 直接相邻目录：`tmp/device-runs/20260831-000141-next680-adjacent/`；
-- 动态选择：`1118-1126,999`，10 项；10/10 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；确认新组合快照没有改变既有候选、资源、失败回滚和 fallback 行为。
-- TEST1122 独立复核目录：`tmp/device-runs/20260831-000054-next680-debug1122c/`；`1122,999`，2/2 通过；确认 required stylesheet 失败路径在未依赖前置测试时也同步 gate 统计并保留旧页。
-- next680 Browse 目录：`tmp/device-runs/20260831-001052-next680-browse/`；`13,1126,999`，3/3 通过；TEST13 三个真实路由均记录 Browser candidate 结果与组合 commit decision（终态 committed，decision=8，resource gate=0），TEST1126 通过。
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging。
-
-- next678 最终定向目录：`tmp/device-runs/20260830-224449-next678-final/`；
-- 动态选择：`1118-1124,999`，8 项；8/8 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging。TEST1119 验证宿主以 Browser candidate handle 门控新旧 worker，TEST1124 验证 Browser candidate generation、取消、退休和终态 API；TEST1118、1120–1123 继续验证原有资源/提交契约。
-
-- next677 定向目录：`tmp/device-runs/20260830-215254-next677-browser-resource-ownership-final/`；
-- 动态选择：`43,1120-1123,999`，6 项；6/6 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging。TEST1120–1123 验证资源事务在 Browser 中的终态、重试、required/optional gate、去重、摘要和 fallback 观测；宿主只保留 URL→index 引用。
-
-- next676 回归目录：`tmp/device-runs/20260830-204152-next676-regression/`；
-- 动态选择：`1117-1123,999`，8 项；8/8 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging；TEST1123 验证重复资源与深层 `@import` 的 role/dedupe、一致的 required/optional gate、hash-only 失败摘要和 Core fallback 观测。
-
-- next676 定向目录：`tmp/device-runs/20260830-203754-next676-observe/`；
-- 动态选择：`1122-1123,999`，3 项；3/3 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。
-- 设备：同一 640x480、dpi=192 WMDC GUI 会话与正式 Debug staging。
-
-- next675 回归目录：`tmp/device-runs/20260830-201218-next675-regression/`；
-- 动态选择：`1117-1122,999`，7 项；7/7 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging；TEST1122 验证 required stylesheet 失败保留旧页/history、optional image 失败提交候选并记录 gate 结果。
-
-- next675 定向目录：`tmp/device-runs/20260830-201133-next675-gate2/`；
-- 动态选择：`1122,999`，2 项；2/2 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
-- 设备：同一 640x480、dpi=192 WMDC GUI 会话与正式 Debug staging。
-
-- next674 定向目录：`tmp/device-runs/20260830-194038-next674-final2/`；
-- 动态选择：`1117,1118,1119,1120,1121,999`，6 项；6/6 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 VS2008 ARMV4I Debug 构建和同批 staging；TEST1119 覆盖资源准备期间的新旧候选交错、generation 取消、过时消息隔离、退休请求回收和最新候选提交，TEST1120 覆盖资源终态与错误分类摘要，TEST1121 覆盖 transport 重试预算和不可重试终态。
+- 静态验证：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py` 与正式 Debug 增量构建均通过；设备日志中的选择、完成数、错误数和唯一 `TESTBENCH PASS` 已复核。
 
 - 全量目录：`tmp/device-runs/20260830-163642-next670-full-final/`；
 - 动态选择：`1-22,24-77,80-231,233-262,264-448,482-998,1000-1117,7b,999`，共 1080 项；仅排除 manual-only 的 TEST232/TEST263；
@@ -136,17 +94,15 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 - 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
-- TEST1117、TEST1118、TEST1119、TEST1120 与 TEST1121 都是无网络自动夹具，没有新增必须立即人工复核的风险；其 dialog、候选页面视觉、链接触摸、滚动/旋转和不同 DPI 的整体呈现仍按既有规则累计人工验收。TEST1121 的重试计数是宿主调度契约，不能替代真实网络恢复体验。
-- TEST1122、TEST1123、TEST1124 与 TEST1125 同样是无网络自动夹具，没有新增必须立即人工复核的风险；required stylesheet 失败时旧页保留、optional image 失败时 Core fallback 的视觉细节仍可与既有失败网络/布局风险一起累计观察。TEST1123 的 hash-only 摘要和 family 计数只证明宿主观测边界，不证明任意站点的 fallback 视觉或逐资源 UI；TEST1124/1125 的 candidate 状态与结果快照断言也不替代真实 worker 阻塞、触摸或窗口视觉验收。
-- TEST1126 同样是无网络自动夹具，没有新增必须立即人工复核的风险；组合 commit decision 与 `can_commit` 只证明两个 Browser handle 的提交边界，不替代真实 worker 阻塞、触摸或窗口视觉验收。
-- TEST1127 同样是无网络自动夹具，没有新增必须立即人工复核的风险；cleanup snapshot 与 host 回收路径只证明有界终态复制、pending 收敛和 handle 销毁后的值存活，不替代真实网络阻塞、页面视觉、触摸或 OEM 控件验收。
-- next682 的 TEST1081/1082 仍没有新增必须立即人工复核的崩溃或数据风险；不同页面高度、横向滚动、旋转、DPI 和真实后退按钮的整体视觉/触摸结果继续与既有滚动和 history 风险一起累计观察。自动门只证明 Browser snapshot 与宿主 clamp/apply 的语义。
+- TEST1117–TEST1128 都是离线自动夹具，没有新增必须立即人工复核的崩溃或数据风险；它们的 dialog、候选提交、资源 gate、cleanup、history 和 page viewport 视觉、触摸、旋转与不同 DPI 呈现，继续与既有人工清单一起累计观察。自动结果不替代真实网络恢复、OEM 控件或逐资源视觉验收。
+- next682 的 TEST1081/1082 没有新增必须立即人工复核的崩溃或数据风险；不同页面高度、横向滚动、旋转、DPI 和真实后退按钮的整体视觉/触摸结果继续与既有滚动和 history 风险一起累计观察。自动门只证明 Browser snapshot 与宿主 clamp/apply 的语义。
+- next683 的 TEST1128 同样是离线自动夹具，没有新增必须立即人工复核的崩溃或数据风险；宽页面的横向滚动条、左右边距、触摸/键盘操作、resize/旋转/DPI 视觉和真实页面 overflow 结果进入既有人工累计清单。自动门只证明 page-level extent、坐标一致性、clamp 和 snapshot 语义。
 
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
 
-- 已建立十一条固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119/1120/1121/1122/1123/1124/1125/1126/1127 已覆盖候选取消、Browser candidate admission/结果/终态、Browser 资源事务终态、有界 transport 重试、required/optional 提交门、candidate/resource 组合决策、重复/深层资源摘要观测和提交后清理快照，但取消仍是协作式的，不能保证正在阻塞的 PHttp 调用立即返回；宿主尚未提供面向用户的逐资源 UI，也不能保证任意真实站点的 fallback 视觉或精确逐元素 fallback 归因。
+- 已建立固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119–TEST1128 已覆盖候选取消、Browser candidate admission/结果/终态、资源事务终态、有界 transport 重试、required/optional 提交门、candidate/resource 组合决策、清理快照和 page-level viewport，但取消仍是协作式的，不能保证正在阻塞的 PHttp 调用立即返回；宿主尚未提供面向用户的逐资源 UI，也不能保证任意真实站点的 fallback 视觉或精确逐元素归因。
 - `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围、有界 backdrop 指针策略和 Core 实体色 modal paint；当前表单桥要求最近祖先 dialog 有非空 id。CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
@@ -157,9 +113,9 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步
+## 唯一下一步：next684
 
-next682 已完成 history viewport snapshot 边界：Browser 为每个 entry 保存非负 `(scroll_x, scroll_y)`，宿主只保存/读取并按当前文档 clamp/apply；TEST1081/1082 及直接相邻门均通过。下一步 next683 只从真实页面哨兵和离线 compatibility corpus 选择一个已有证据的用户可见组合缺口，不扩大公共 ABI 所有权。
+先从源码、日志或截图固定一个真实缺口，再选择离线 fixture 或稳定哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主只做平台接线、调度、应用策略和断言；不要把互不相关的能力拆成只增加编号的提交，也不要在没有证据时扩大 ABI。next683 的 page-level 横向 viewport 已有自动与设备证据，嵌套 overflow、平滑滚动和视觉差异仍是限制，不应在下一步中被误写成已支持。
 
 优先场景应同时满足：
 
@@ -169,11 +125,11 @@ next682 已完成 history viewport snapshot 边界：Browser 为每个 entry 保
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一步完成标准（next683）
+## 下一步完成标准（next684）
 
 - 先用源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
 - 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱 next682 的 history snapshot、宿主 clamp/apply 或旧页保留契约；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- handoff 覆盖为 next683 快照，ROADMAP 只保留当前尚未完成的纵向能力。
+- handoff 覆盖为 next684 快照，ROADMAP 只保留当前尚未完成的纵向能力。

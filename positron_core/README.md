@@ -42,6 +42,8 @@ PCore_Shutdown();
 
 DOM 或控件状态改变后，调用方负责重新执行所需的 style/layout，再 paint。HDC、viewport、滚动位置和失效区域始终属于宿主。
 
+布局成功后，`PCore_DocumentWidth` 和 `PCore_DocumentHeight` 返回最近一次 layout 的 page-level extent。宽度和高度包含页面内容溢出 viewport 的部分，至少不小于传入的 viewport；宿主据此决定是否显示横向/纵向滚动条、把 `(scroll_x, scroll_y)` clamp 到 client area，并把相同坐标传给 paint、命中测试和 native child 定位。Core 不创建滚动条，也不实现嵌套 `overflow` 容器的独立滚动。
+
 ## 资源获取
 
 真实页面通常使用 `PCore_StyleDocumentEx2`：
@@ -61,7 +63,7 @@ DOM 或控件状态改变后，调用方负责重新执行所需的 style/layout
 - HTML → libdom document；
 - CSS parse、UA/author cascade、media 条件与 inheritance；
 - `<style>`、外链 stylesheet、`@import` 和 inline style；
-- box construction、normalisation、layout、geometry、scroll extent；
+- box construction、normalisation、layout、geometry、page-level scroll extent；
 - GDI paint、clip、文字、border、背景和 retained image carrier。
 
 Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代浏览器。具体缺口见已知限制。
@@ -134,7 +136,7 @@ paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
 
 ## 宿主应负责什么
 
-- HWND、消息循环、DPI/旋转、scrollbar、invalid region 和 HDC；
+- HWND、消息循环、DPI/旋转、scrollbar、invalid region 和 HDC；宿主在 layout 后读取 `PCore_DocumentWidth/Height`，维护 page-level `(scroll_x, scroll_y)`，并负责 clamp、滚动条消息和 native child reposition；
 - HTTP/TLS、后台 worker、取消、loading 和候选页面提交；
 - native EDIT/SELECT/button/file picker 与 SIP/IME；
 - contenteditable 的 WM EDIT 窗口、焦点、键盘和 IME 接线；宿主按 Browser 的 `beforeinput` 取消结果调用 Core 的受限文本 mutation，使用 Browser 的 selection callback 同步原生范围，并在原生范围改变后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`。无修饰鼠标拖选、Shift/方向键的 anchor 与默认消息跟踪，以及捕获/取消/焦点中断收尾也由宿主维护；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、所有权和 native default 包裹也由宿主维护。Core 只提供 editing-host 快照和文本状态，不创建窗口，也不保存第二份编辑模型或重新派发 `selectionchange`；Range/Selection 对象、富文本和完整 IME 仍不在此边界内；

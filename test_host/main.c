@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1127
+#define TEST_MAX_NUMBER 1128
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -5703,11 +5703,11 @@ static BOOL test22_reverse_flex_padding(void)
 /* without calling transport again. Rotation must also preserve the      */
 /* reader's relative position in the old/new scrollable ranges.          */
 /* -------------------------------------------------------------------- */
-static int pcore_scale_scroll_position(int old_pos, int old_doc_h,
-        int old_view_h, int new_doc_h, int new_view_h)
+static int pcore_scale_scroll_position(int old_pos, int old_extent,
+        int old_view, int new_extent, int new_view)
 {
-    int old_max = (old_doc_h > old_view_h) ? old_doc_h - old_view_h : 0;
-    int new_max = (new_doc_h > new_view_h) ? new_doc_h - new_view_h : 0;
+    int old_max = (old_extent > old_view) ? old_extent - old_view : 0;
+    int new_max = (new_extent > new_view) ? new_extent - new_view : 0;
     double ratio;
     int result;
 
@@ -6047,8 +6047,11 @@ static BOOL test11_layout(void)
 
 static HANDLE g_render_doc = NULL;
 static HANDLE g_render_sheet = NULL; /* caller-owned while window lives */
+static int    g_scroll_x = 0;
 static int    g_scroll_y = 0;
+static int    g_doc_w = 0;
 static int    g_doc_h = 0;
+static int    g_view_w = 0;
 static int    g_view_h = 0;
 static int    g_plot_test = 0;   /* M1: paint via PCore_PlotTest, not a doc */
 static int    g_ns_render = 0;    /* M5e: paint via PCore_NsRenderTest */
@@ -6504,9 +6507,9 @@ static pcore_browse_history g_browse_history;
 static HANDLE g_browse_history_product = NULL;
 
 /* Implemented next to the host scrollbar code below.  The Browser history
- * handle owns per-entry viewport snapshots; this helper only applies one to
- * the host window and clamps it against the current document. */
-static int pcore_scroll_to_y(HWND hwnd, int target_y);
+ * handle owns per-entry viewport snapshots; these helpers only apply one to
+ * the host window and clamp it against the current document. */
+static int pcore_scroll_to_xy(HWND hwnd, int target_x, int target_y);
 
 /* The product DLL owns URL/state/document-id history and viewport snapshots.
  * This fixed-size host mirror carries URL/state/document ids for legacy
@@ -6564,31 +6567,49 @@ static void pcore_browse_history_save_scroll(void)
             g_browse_history.index >= 0 &&
             g_browse_history.index < g_browse_history.count) {
         (void) PBrowser_HistorySetEntryScroll(g_browse_history_product,
-                g_browse_history.index, 0,
+                g_browse_history.index,
+                (g_scroll_x >= 0) ? g_scroll_x : 0,
                 (g_scroll_y >= 0) ? g_scroll_y : 0);
     }
 }
 
-static int pcore_browse_history_scroll_at(int index)
+static int pcore_browse_history_scroll_at(int index, int *out_x, int *out_y)
 {
     int scroll_x;
     int scroll_y;
 
+    if (out_x != NULL) {
+        *out_x = 0;
+    }
+    if (out_y != NULL) {
+        *out_y = 0;
+    }
     if (g_browse_history_product != NULL && index >= 0 &&
             index < g_browse_history.count &&
             PBrowser_HistoryEntryScroll(g_browse_history_product, index,
             &scroll_x, &scroll_y) == PBROWSER_OK) {
-        return scroll_y;
+        if (out_x != NULL) {
+            *out_x = scroll_x;
+        }
+        if (out_y != NULL) {
+            *out_y = scroll_y;
+        }
+        return PBROWSER_OK;
     }
-    if (index < 0 || index >= g_browse_history.count) {
-        return 0;
-    }
-    return 0;
+    return PBROWSER_ERROR_ARGUMENT;
 }
 
 static int pcore_browse_history_restore_scroll(HWND hwnd, int index)
 {
-    return pcore_scroll_to_y(hwnd, pcore_browse_history_scroll_at(index));
+    int scroll_x;
+    int scroll_y;
+
+    if (pcore_browse_history_scroll_at(index, &scroll_x, &scroll_y) !=
+            PBROWSER_OK) {
+        scroll_x = 0;
+        scroll_y = 0;
+    }
+    return pcore_scroll_to_xy(hwnd, scroll_x, scroll_y);
 }
 
 static void pcore_browse_history_product_destroy(void)
@@ -11470,6 +11491,7 @@ static void pcore_native_edits_position(HWND parent)
                         &left, &top, &width, &height, NULL, NULL)) {
             continue;
         }
+        left -= g_scroll_x;
         top -= g_scroll_y;
         width = (width > 0) ? width : 1;
         height = (height > 0) ? height : 1;
@@ -11646,7 +11668,7 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
             style |= ES_PASSWORD;
         }
         items[i].hwnd = CreateWindowW(L"EDIT", wide_value, style,
-                info.x, info.y - g_scroll_y,
+                info.x - g_scroll_x, info.y - g_scroll_y,
                 (info.width > 0) ? info.width : 1,
                 (info.height > 0) ? info.height : 1,
                 parent, (HMENU) (INT_PTR) (1000 + i),
@@ -11739,7 +11761,7 @@ static void pcore_native_edits_rebuild(HWND parent, int preserve_focus)
         style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT |
                 ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL;
         items[slot].hwnd = CreateWindowW(L"EDIT", wide_value, style,
-                content_info.x, content_info.y - g_scroll_y,
+                content_info.x - g_scroll_x, content_info.y - g_scroll_y,
                 (content_info.width > 0) ? content_info.width : 1,
                 (content_info.height > 0) ? content_info.height : 1,
                 parent, (HMENU) (INT_PTR) (1000 + slot),
@@ -11964,7 +11986,7 @@ static void pcore_native_selects_position(HWND parent)
                         &info) != 0) {
             continue;
         }
-        left = info.x;
+        left = info.x - g_scroll_x;
         top = info.y - g_scroll_y;
         width = (info.width > 0) ? info.width : 1;
         height = g_native_selects[i].multiple ?
@@ -12044,7 +12066,7 @@ static void pcore_native_selects_rebuild(HWND parent, int preserve_focus)
                     CBS_DROPDOWNLIST;
         }
         items[i].hwnd = CreateWindowW(class_name, L"", style,
-                info.x, info.y - g_scroll_y,
+                info.x - g_scroll_x, info.y - g_scroll_y,
                 (info.width > 0) ? info.width : 1,
                 info.multiple ?
                         ((info.height > 0) ? info.height : 1) :
@@ -12741,31 +12763,80 @@ static void testbench_log_navigation(
             wide_title, body);
 }
 
-/* Configure the vertical scrollbar from the document height + client size. */
+/* Configure both page-level scrollbars from the document extents + client
+ * size. Adding one scrollbar changes the client dimension used by the other,
+ * so settle the window style before publishing ranges and clamping offsets. */
 static void pcore_set_scrollbar(HWND hwnd)
 {
     SCROLLINFO si;
     RECT rc;
+    int cw;
     int ch;
-    int needed;
+    int needed_h;
+    int needed_v;
+    int pass;
     LONG style;
     LONG next_style;
 
-    GetClientRect(hwnd, &rc);
-    ch = rc.bottom - rc.top;
-    needed = g_doc_h > ch;
-    if (!needed) {
-        g_scroll_y = 0;
-    }
-    style = GetWindowLong(hwnd, GWL_STYLE);
-    next_style = needed ? (style | WS_VSCROLL) :
-            (style & ~WS_VSCROLL);
-    if (next_style != style) {
+    for (pass = 0; pass < 3; pass++) {
+        GetClientRect(hwnd, &rc);
+        cw = rc.right - rc.left;
+        ch = rc.bottom - rc.top;
+        needed_h = (g_doc_w > cw);
+        needed_v = (g_doc_h > ch);
+        style = GetWindowLong(hwnd, GWL_STYLE);
+        next_style = style;
+        if (needed_h) {
+            next_style |= WS_HSCROLL;
+        } else {
+            next_style &= ~WS_HSCROLL;
+        }
+        if (needed_v) {
+            next_style |= WS_VSCROLL;
+        } else {
+            next_style &= ~WS_VSCROLL;
+        }
+        if (next_style == style) {
+            break;
+        }
         SetWindowLong(hwnd, GWL_STYLE, next_style);
         SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                 SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
+    GetClientRect(hwnd, &rc);
+    cw = rc.right - rc.left;
+    ch = rc.bottom - rc.top;
+    g_view_w = (cw > 0) ? cw : 0;
+    g_view_h = (ch > 0) ? ch : 0;
+    if (g_doc_w <= cw) {
+        g_scroll_x = 0;
+    } else {
+        if (g_scroll_x < 0) {
+            g_scroll_x = 0;
+        }
+        if (g_scroll_x > g_doc_w - cw) {
+            g_scroll_x = g_doc_w - cw;
+        }
+    }
+    if (g_doc_h <= ch) {
+        g_scroll_y = 0;
+    } else {
+        if (g_scroll_y < 0) {
+            g_scroll_y = 0;
+        }
+        if (g_scroll_y > g_doc_h - ch) {
+            g_scroll_y = g_doc_h - ch;
+        }
+    }
+    memset(&si, 0, sizeof(si));
+    si.cbSize = sizeof(si);
+    si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+    si.nMin = 0;
+    si.nMax = (g_doc_w > 0) ? (g_doc_w - 1) : 0;
+    si.nPage = (UINT) ((cw > 0) ? cw : 1);
+    si.nPos = g_scroll_x;
+    SetScrollInfo(hwnd, SB_HORZ, &si, TRUE);
     memset(&si, 0, sizeof(si));
     si.cbSize = sizeof(si);
     si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
@@ -12776,33 +12847,69 @@ static void pcore_set_scrollbar(HWND hwnd)
     SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
 }
 
-/* Scroll by dy px, clamped to [0, doc_height - client_height], and repaint. */
-static void pcore_scroll_by(HWND hwnd, int dy)
+/* Scroll by both page offsets, clamped to the document/client extents, and
+ * repaint only the newly exposed strips. */
+static void pcore_scroll_by_xy(HWND hwnd, int dx, int dy)
 {
     RECT rc;
     RECT scroll_rc;
-    int ch, maxpos, oldpos, applied;
+    RECT loading_rc;
+    int cw;
+    int ch;
+    int max_x;
+    int max_y;
+    int old_x;
+    int old_y;
+    int applied_x;
+    int applied_y;
 
+    if (hwnd == NULL || !IsWindow(hwnd)) {
+        return;
+    }
     GetClientRect(hwnd, &rc);
+    cw = rc.right - rc.left;
     ch = rc.bottom - rc.top;
-    maxpos = (g_doc_h > ch) ? (g_doc_h - ch) : 0;
-    oldpos = g_scroll_y;
-    g_scroll_y += dy;
+    max_x = (g_doc_w > cw) ? (g_doc_w - cw) : 0;
+    max_y = (g_doc_h > ch) ? (g_doc_h - ch) : 0;
+    old_x = g_scroll_x;
+    old_y = g_scroll_y;
+    if (dx > 0 && g_scroll_x > max_x - dx) {
+        g_scroll_x = max_x;
+    } else if (dx < 0 && g_scroll_x < -dx) {
+        g_scroll_x = 0;
+    } else {
+        g_scroll_x += dx;
+    }
+    if (dy > 0 && g_scroll_y > max_y - dy) {
+        g_scroll_y = max_y;
+    } else if (dy < 0 && g_scroll_y < -dy) {
+        g_scroll_y = 0;
+    } else {
+        g_scroll_y += dy;
+    }
+    if (g_scroll_x < 0) {
+        g_scroll_x = 0;
+    }
+    if (g_scroll_x > max_x) {
+        g_scroll_x = max_x;
+    }
     if (g_scroll_y < 0) {
         g_scroll_y = 0;
     }
-    if (g_scroll_y > maxpos) {
-        g_scroll_y = maxpos;
+    if (g_scroll_y > max_y) {
+        g_scroll_y = max_y;
     }
-    applied = g_scroll_y - oldpos;
-    if (applied == 0) {
+    applied_x = g_scroll_x - old_x;
+    applied_y = g_scroll_y - old_y;
+    if (applied_x == 0 && applied_y == 0) {
         return;
     }
     pcore_browse_history_save_scroll();
+    SetScrollPos(hwnd, SB_HORZ, g_scroll_x, TRUE);
     SetScrollPos(hwnd, SB_VERT, g_scroll_y, TRUE);
     pcore_native_edits_position(hwnd);
     pcore_native_selects_position(hwnd);
-    /* Shift the existing pixels by -applied and invalidate only the newly
+    /* Shift the existing pixels by the applied offsets and invalidate only the newly
      * exposed strip; the following WM_PAINT repaints just that strip at the
      * new scroll offset. Far cheaper than repainting the whole client. */
     scroll_rc = rc;
@@ -12810,10 +12917,10 @@ static void pcore_scroll_by(HWND hwnd, int dy)
             scroll_rc.bottom - scroll_rc.top > g_nav_bar_h) {
         scroll_rc.top += g_nav_bar_h;
     }
-    ScrollWindowEx(hwnd, 0, -applied, &scroll_rc, &scroll_rc,
+    ScrollWindowEx(hwnd, -applied_x, -applied_y, &scroll_rc, &scroll_rc,
             NULL, NULL, SW_INVALIDATE);
     if (g_nav_loading) {
-        RECT loading_rc = rc;
+        loading_rc = rc;
         loading_rc.bottom = loading_rc.top +
                 ((g_nav_bar_h > 0) ? g_nav_bar_h : 6);
         InvalidateRect(hwnd, &loading_rc, FALSE);
@@ -12821,37 +12928,60 @@ static void pcore_scroll_by(HWND hwnd, int dy)
     UpdateWindow(hwnd);
 }
 
+/* Preserve the existing vertical-only call sites while routing all movement
+ * through the page viewport implementation. */
+static void pcore_scroll_by(HWND hwnd, int dy)
+{
+    pcore_scroll_by_xy(hwnd, 0, dy);
+}
+
 /* Restore a history-owned viewport without exposing HWND/scrollbar state in
  * the product browser ABI. A missing window is used by deterministic host
- * tests and still clamps against the last known viewport height. */
-static int pcore_scroll_to_y(HWND hwnd, int target_y)
+ * tests and still clamps against the last known viewport dimensions. */
+static int pcore_scroll_to_xy(HWND hwnd, int target_x, int target_y)
 {
     RECT rc;
+    int viewport_w;
     int viewport_h;
-    int maxpos;
+    int max_x;
+    int max_y;
 
+    if (target_x < 0) {
+        target_x = 0;
+    }
     if (target_y < 0) {
         target_y = 0;
     }
+    viewport_w = g_view_w;
     viewport_h = g_view_h;
     if (hwnd != NULL && IsWindow(hwnd)) {
         GetClientRect(hwnd, &rc);
+        viewport_w = rc.right - rc.left;
         viewport_h = rc.bottom - rc.top;
+    }
+    if (viewport_w < 0) {
+        viewport_w = 0;
     }
     if (viewport_h < 0) {
         viewport_h = 0;
     }
-    maxpos = (g_doc_h > viewport_h) ? g_doc_h - viewport_h : 0;
-    if (target_y > maxpos) {
-        target_y = maxpos;
+    max_x = (g_doc_w > viewport_w) ? g_doc_w - viewport_w : 0;
+    max_y = (g_doc_h > viewport_h) ? g_doc_h - viewport_h : 0;
+    if (target_x > max_x) {
+        target_x = max_x;
+    }
+    if (target_y > max_y) {
+        target_y = max_y;
     }
     if (hwnd == NULL || !IsWindow(hwnd)) {
+        g_scroll_x = target_x;
         g_scroll_y = target_y;
         pcore_browse_history_save_scroll();
         return 1;
     }
-    pcore_scroll_by(hwnd, target_y - g_scroll_y);
-    if (g_scroll_y != target_y) {
+    pcore_scroll_by_xy(hwnd, target_x - g_scroll_x, target_y - g_scroll_y);
+    if (g_scroll_x != target_x || g_scroll_y != target_y) {
+        g_scroll_x = target_x;
         g_scroll_y = target_y;
         pcore_browse_history_save_scroll();
         pcore_set_scrollbar(hwnd);
@@ -12932,6 +13062,7 @@ static int pcore_browser_script_scroll_to_fragment(HWND hwnd,
     const char *hash;
     char fragment_id[PCORE_SCRIPT_NAVIGATION_URL_MAX];
     size_t length;
+    int target_x;
     int target_y;
 
     if (g_render_doc == NULL || url == NULL || url[0] == '\0') {
@@ -12946,22 +13077,24 @@ static int pcore_browser_script_scroll_to_fragment(HWND hwnd,
         return 0;
     }
     if (length == 0) {
+        target_x = 0;
         target_y = 0;
     } else {
         if (!pcore_browser_script_decode_fragment(hash + 1,
                 fragment_id, sizeof(fragment_id)) ||
                 fragment_id[0] == '\0' ||
                 PCore_FragmentInfoByToken(g_render_doc, fragment_id,
-                NULL, &target_y, NULL, NULL) != 0) {
+                &target_x, &target_y, NULL, NULL) != 0) {
             return 0;
         }
     }
     if (hwnd == NULL || !IsWindow(hwnd)) {
+        g_scroll_x = target_x;
         g_scroll_y = target_y;
         pcore_browse_history_save_scroll();
         return 1;
     }
-    pcore_scroll_by(hwnd, target_y - g_scroll_y);
+    pcore_scroll_to_xy(hwnd, target_x, target_y);
     return 1;
 }
 
@@ -12983,9 +13116,9 @@ static void pcore_invalidate_overflow(HWND hwnd)
         return;
     }
     GetClientRect(hwnd, &client);
-    dirty.left = x - 1;
+    dirty.left = x - g_scroll_x - 1;
     dirty.top = y - g_scroll_y - 1;
-    dirty.right = x + w + 1;
+    dirty.right = x + w - g_scroll_x + 1;
     dirty.bottom = y - g_scroll_y + h + 1;
     if (dirty.left < client.left) { dirty.left = client.left; }
     if (dirty.top < client.top) { dirty.top = client.top; }
@@ -16322,8 +16455,10 @@ static int pcore_navigation_commit_step(HWND hwnd,
     request->script_runtime = NULL;
     request->script_bridge = NULL;
     g_render_sheet = NULL;
+    g_doc_w = PCore_DocumentWidth(g_render_doc);
     g_doc_h = PCore_DocumentHeight(g_render_doc);
     pcore_browse_history_save_scroll();
+    g_scroll_x = 0;
     g_scroll_y = 0;
     cstr_copy(g_cur_host, sizeof(g_cur_host), request->host);
     cstr_copy(g_cur_path, sizeof(g_cur_path), request->path);
@@ -17033,6 +17168,7 @@ static int pcore_restyle_form_state(HWND hwnd, int preserve_focus)
     const char *document_base;
     int width;
     int height;
+    int max_scroll_x;
     int max_scroll;
 
     if (hwnd == NULL || g_render_doc == NULL) {
@@ -17050,8 +17186,13 @@ static int pcore_restyle_form_state(HWND hwnd, int preserve_focus)
             document_base, width, height, test_host_device_dpi()) != 0) {
         return 1;
     }
+    g_doc_w = PCore_DocumentWidth(g_render_doc);
     g_doc_h = PCore_DocumentHeight(g_render_doc);
+    max_scroll_x = (g_doc_w > width) ? g_doc_w - width : 0;
     max_scroll = (g_doc_h > height) ? g_doc_h - height : 0;
+    if (g_scroll_x > max_scroll_x) {
+        g_scroll_x = max_scroll_x;
+    }
     if (g_scroll_y > max_scroll) {
         g_scroll_y = max_scroll;
     }
@@ -18168,9 +18309,9 @@ static void pcore_invalidate_form_dirty(HWND hwnd,
     if (width <= 0 || height <= 0) {
         return;
     }
-    dirty.left = x;
+    dirty.left = x - g_scroll_x;
     dirty.top = y - g_scroll_y;
-    dirty.right = dirty.left + width;
+    dirty.right = x - g_scroll_x + width;
     dirty.bottom = dirty.top + height;
     InvalidateRect(hwnd, &dirty, FALSE);
 }
@@ -18823,16 +18964,26 @@ static void pcore_sequential_focus_reveal(HWND hwnd,
         const PCoreFocusTargetInfo *target)
 {
     RECT client;
+    int viewport_width;
     int viewport_height;
+    int target_scroll_x;
     int target_scroll;
 
     if (hwnd == NULL || target == NULL || !IsWindow(hwnd)) {
         return;
     }
     GetClientRect(hwnd, &client);
+    viewport_width = client.right - client.left;
     viewport_height = client.bottom - client.top;
-    if (viewport_height <= 0) {
+    if (viewport_width <= 0 || viewport_height <= 0) {
         return;
+    }
+    target_scroll_x = g_scroll_x;
+    if (target->x < g_scroll_x + 4) {
+        target_scroll_x = target->x - 4;
+    } else if (target->x + target->width >
+            g_scroll_x + viewport_width - 4) {
+        target_scroll_x = target->x + target->width - viewport_width + 4;
     }
     target_scroll = g_scroll_y;
     if (target->y < g_scroll_y + 4) {
@@ -18841,8 +18992,8 @@ static void pcore_sequential_focus_reveal(HWND hwnd,
             g_scroll_y + viewport_height - 4) {
         target_scroll = target->y + target->height - viewport_height + 4;
     }
-    if (target_scroll != g_scroll_y) {
-        (void) pcore_scroll_to_y(hwnd, target_scroll);
+    if (target_scroll_x != g_scroll_x || target_scroll != g_scroll_y) {
+        (void) pcore_scroll_to_xy(hwnd, target_scroll_x, target_scroll);
     }
 }
 
@@ -19286,8 +19437,12 @@ static void pcore_handle_invalid_form(HWND hwnd,
 {
     RECT client;
     RECT dirty;
+    int client_width;
     int client_height;
+    int target_scroll_x;
     int target_scroll;
+    int left;
+    int right;
     int top;
     int bottom;
 
@@ -19301,7 +19456,16 @@ static void pcore_handle_invalid_form(HWND hwnd,
         return;
     }
     GetClientRect(hwnd, &client);
+    client_width = client.right - client.left;
     client_height = client.bottom - client.top;
+    left = validation->first_x;
+    right = left + validation->first_width;
+    target_scroll_x = g_scroll_x;
+    if (left < g_scroll_x + 8) {
+        target_scroll_x = left - 8;
+    } else if (right > g_scroll_x + client_width - 8) {
+        target_scroll_x = right - client_width + 8;
+    }
     top = validation->first_y;
     bottom = top + validation->first_height;
     target_scroll = g_scroll_y;
@@ -19310,12 +19474,12 @@ static void pcore_handle_invalid_form(HWND hwnd,
     } else if (bottom > g_scroll_y + client_height - 8) {
         target_scroll = bottom - client_height + 8;
     }
-    pcore_scroll_by(hwnd, target_scroll - g_scroll_y);
+    pcore_scroll_to_xy(hwnd, target_scroll_x, target_scroll);
     pcore_focus_native_form_control(validation->first_control_kind,
             validation->first_x, validation->first_y);
-    dirty.left = validation->first_x;
+    dirty.left = validation->first_x - g_scroll_x;
     dirty.top = validation->first_y - g_scroll_y;
-    dirty.right = dirty.left + validation->first_width;
+    dirty.right = validation->first_x - g_scroll_x + validation->first_width;
     dirty.bottom = dirty.top + validation->first_height;
     InvalidateRect(hwnd, &dirty, FALSE);
     MessageBeep(MB_ICONEXCLAMATION);
@@ -21021,10 +21185,12 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     sizeof(modal_id));
             if (modal_scope > 0) {
                 g_native_modal_paint_branch_seen = 1;
-                (void) PCore_PaintDocumentWithModal(g_render_doc, hdc, 0,
+                (void) PCore_PaintDocumentWithModal(g_render_doc, hdc,
+                        g_scroll_x,
                         g_scroll_y, modal_id);
             } else {
-                PCore_PaintDocument(g_render_doc, hdc, 0, g_scroll_y);
+                PCore_PaintDocument(g_render_doc, hdc, g_scroll_x,
+                        g_scroll_y);
             }
         }
         if (g_native_modal_paint_probe && g_render_doc != NULL) {
@@ -21050,7 +21216,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_SIZE: {
         int cw = LOWORD(lp);    /* new client width  */
         int chh = HIWORD(lp);   /* new client height */
+        int old_scroll_x = g_scroll_x;
         int old_scroll = g_scroll_y;
+        int old_doc_w = g_doc_w;
         int old_doc_h = g_doc_h;
         char document_url[1536];
         const char *document_base = NULL;
@@ -21074,10 +21242,14 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     page_resource_cache_only_cb, NULL, NULL) == 0) {
                 PCore_LayoutDocument(g_render_doc, cw, chh);
             }
+            g_doc_w = PCore_DocumentWidth(g_render_doc);
             g_doc_h = PCore_DocumentHeight(g_render_doc);
+            g_scroll_x = pcore_scale_scroll_position(old_scroll_x, old_doc_w,
+                    g_view_w, g_doc_w, cw);
             g_scroll_y = pcore_scale_scroll_position(old_scroll, old_doc_h,
                     g_view_h, g_doc_h, chh);
         }
+        g_view_w = cw;
         g_view_h = chh;
         if (g_nav_bar != NULL && cw > 0) {
             MoveWindow(g_nav_bar, 0, 0, cw, g_nav_bar_h, TRUE);
@@ -21104,6 +21276,26 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         case SB_THUMBTRACK:
         case SB_THUMBPOSITION:
             pcore_scroll_by(hwnd, (int) HIWORD(wp) - g_scroll_y);
+            break;
+        default:
+            break;
+        }
+        return 0;
+    }
+    case WM_HSCROLL: {
+        RECT rc;
+        int cw;
+
+        GetClientRect(hwnd, &rc);
+        cw = rc.right - rc.left;
+        switch (LOWORD(wp)) {
+        case SB_LINELEFT:  pcore_scroll_by_xy(hwnd, -16, 0); break;
+        case SB_LINERIGHT: pcore_scroll_by_xy(hwnd, 16, 0);  break;
+        case SB_PAGELEFT:  pcore_scroll_by_xy(hwnd, -cw, 0); break;
+        case SB_PAGERIGHT: pcore_scroll_by_xy(hwnd, cw, 0);  break;
+        case SB_THUMBTRACK:
+        case SB_THUMBPOSITION:
+            pcore_scroll_by_xy(hwnd, (int) HIWORD(wp) - g_scroll_x, 0);
             break;
         default:
             break;
@@ -21502,7 +21694,16 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         switch (wp) {
         case VK_LEFT:
-            (void) pcore_browse_navigate_back(hwnd);
+            if (g_scroll_x > 0 || g_doc_w > g_view_w) {
+                pcore_scroll_by_xy(hwnd, -16, 0);
+            } else {
+                (void) pcore_browse_navigate_back(hwnd);
+            }
+            break;
+        case VK_RIGHT:
+            if (g_doc_w > g_view_w) {
+                pcore_scroll_by_xy(hwnd, 16, 0);
+            }
             break;
         case VK_UP:    pcore_scroll_by(hwnd, -16);   break;
         case VK_DOWN:  pcore_scroll_by(hwnd, 16);    break;
@@ -21547,6 +21748,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_LBUTTONDOWN: {
         int cx = (int) (short) LOWORD(lp);
         int cy = (int) (short) HIWORD(lp);
+        int doc_x;
+        int doc_y;
         int default_allowed;
         int link_found;
         int toggle_found;
@@ -21570,8 +21773,10 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         char target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
         char rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
 
-        modal_pointer = pcore_browser_script_modal_pointer(hwnd, cx,
-                cy + g_scroll_y);
+        doc_x = cx + g_scroll_x;
+        doc_y = cy + g_scroll_y;
+        modal_pointer = pcore_browser_script_modal_pointer(hwnd, doc_x,
+                doc_y);
         modal_inside = modal_pointer == 2;
         if (modal_pointer == 1) {
             return 0;
@@ -21582,7 +21787,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         pcore_sequential_focus_clear();
         if (g_render_doc != NULL &&
                 PCore_OverflowPointer(g_render_doc, PCORE_POINTER_DOWN,
-                        cx, cy + g_scroll_y)) {
+                        doc_x, doc_y)) {
             g_overflow_pointer = 1;
             SetCapture(hwnd);
             pcore_invalidate_overflow(hwnd);
@@ -21590,15 +21795,15 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         if (g_render_doc != NULL &&
                 PCore_InteractionSetAt(g_render_doc,
-                        cx, cy + g_scroll_y,
+                        doc_x, doc_y,
                         PCORE_INTERACTION_FOCUS |
                         PCORE_INTERACTION_ACTIVE) > 0) {
             pcore_request_interaction_restyle(hwnd);
         }
         if (g_render_doc != NULL) {
-            (void) pcore_toggle_focus_track_at(cx, cy + g_scroll_y);
-            (void) pcore_disclosure_focus_track_at(cx, cy + g_scroll_y);
-            pcore_sequential_focus_track_at(cx, cy + g_scroll_y);
+            (void) pcore_toggle_focus_track_at(doc_x, doc_y);
+            (void) pcore_disclosure_focus_track_at(doc_x, doc_y);
+            pcore_sequential_focus_track_at(doc_x, doc_y);
         }
         toggle_found = 0;
         toggle_product_started = 0;
@@ -21615,13 +21820,13 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         button_disabled = 0;
         button_validation_valid = 0;
         if (g_render_doc != NULL &&
-                pcore_form_toggle_control_at(cx, cy + g_scroll_y,
+                pcore_form_toggle_control_at(doc_x, doc_y,
                 &toggle_index, &toggle_kind, &toggle_selected_before,
                 &toggle_disabled)) {
             toggle_found = 1;
         }
         if (g_render_doc != NULL &&
-                pcore_form_button_control_at(cx, cy + g_scroll_y,
+                pcore_form_button_control_at(doc_x, doc_y,
                 &button_index, &button_kind, &button_disabled)) {
             button_found = 1;
             if (!button_disabled) {
@@ -21633,26 +21838,26 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         target[0] = '\0';
         rel[0] = '\0';
         if (g_render_doc != NULL &&
-                PCore_LinkAtEx(g_render_doc, cx, cy + g_scroll_y,
+                PCore_LinkAtEx(g_render_doc, doc_x, doc_y,
                              href, sizeof(href), target, sizeof(target),
                              rel, sizeof(rel)) == 0) {
             link_found = 1;
         }
         if (g_render_doc != NULL &&
-                PCore_DisclosureInfoAt(g_render_doc, cx, cy + g_scroll_y,
+                PCore_DisclosureInfoAt(g_render_doc, doc_x, doc_y,
                 NULL, NULL, NULL, NULL, NULL) == 1) {
             disclosure_found = 1;
         }
         if (link_found && pcore_native_script_active()) {
             (void) pcore_browser_script_dispatch_anchor_click_at(
-                    cx, cy + g_scroll_y, href, target, rel);
+                    doc_x, doc_y, href, target, rel);
             return 0;
         }
         if (button_found && pcore_native_script_active()) {
             default_allowed = 1;
             button_phase_result =
                     pcore_browser_script_dispatch_native_button_phase(
-                    button_index, button_kind, cx, cy + g_scroll_y,
+                    button_index, button_kind, doc_x, doc_y,
                     PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK, button_disabled, 0,
                     &default_allowed);
             if (button_phase_result < 0 ||
@@ -21666,8 +21871,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         default_allowed = 1;
         if (g_render_doc != NULL && !button_product_started &&
                 !(toggle_found && pcore_native_script_active())) {
-            default_allowed = pcore_browser_script_dispatch_click_at(cx,
-                    cy + g_scroll_y);
+            default_allowed = pcore_browser_script_dispatch_click_at(doc_x,
+                    doc_y);
             if (!default_allowed) {
                 return 0;
             }
@@ -21676,7 +21881,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             default_allowed = 1;
             toggle_phase_result =
                     pcore_browser_script_dispatch_native_toggle_phase(
-                    toggle_index, toggle_kind, cx, cy + g_scroll_y,
+                    toggle_index, toggle_kind, doc_x, doc_y,
                     PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK, toggle_disabled,
                     toggle_selected_before, toggle_selected_before,
                     &default_allowed);
@@ -21691,7 +21896,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         if (button_product_started) {
             if (!pcore_native_script_active()) {
                 (void) pcore_browser_script_dispatch_native_button_phase(
-                        button_index, button_kind, cx, cy + g_scroll_y,
+                        button_index, button_kind, doc_x, doc_y,
                         PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL,
                         button_disabled, 0, NULL);
                 return 0;
@@ -21700,8 +21905,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             if (button_kind == 7) {
                 PCoreFormValidationInfo button_validation;
 
-                if (PCore_FormValidationAt(g_render_doc, cx,
-                        cy + g_scroll_y, &button_validation) &&
+                if (PCore_FormValidationAt(g_render_doc, doc_x,
+                        doc_y, &button_validation) &&
                         button_validation.valid) {
                     button_validation_valid = 1;
                 }
@@ -21709,7 +21914,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             default_allowed = 1;
             button_phase_result =
                     pcore_browser_script_dispatch_native_button_phase(
-                    button_index, button_kind, cx, cy + g_scroll_y,
+                    button_index, button_kind, doc_x, doc_y,
                     PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT,
                     button_disabled, button_validation_valid,
                     &default_allowed);
@@ -21719,33 +21924,33 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         if (g_render_doc != NULL) {
             if (button_product_started) {
-                if (pcore_handle_form_button_default(hwnd, cx,
-                        cy + g_scroll_y, button_kind)) {
+                if (pcore_handle_form_button_default(hwnd, doc_x,
+                        doc_y, button_kind)) {
                     return 0;
                 }
-            } else if (pcore_handle_form_button(hwnd, cx,
-                    cy + g_scroll_y)) {
+            } else if (pcore_handle_form_button(hwnd, doc_x,
+                    doc_y)) {
                 return 0;
             }
         }
         if (g_render_doc != NULL &&
-                pcore_handle_file_input(hwnd, cx, cy + g_scroll_y)) {
+                pcore_handle_file_input(hwnd, doc_x, doc_y)) {
             return 0;
         }
         if (g_render_doc != NULL &&
-                pcore_handle_form_toggle(hwnd, cx, cy + g_scroll_y,
+                pcore_handle_form_toggle(hwnd, doc_x, doc_y,
                 toggle_product_started)) {
             return 0;
         }
         if (g_render_doc != NULL &&
-                pcore_handle_label(hwnd, cx, cy + g_scroll_y)) {
+                pcore_handle_label(hwnd, doc_x, doc_y)) {
             return 0;
         }
         if (disclosure_found) {
-            (void) pcore_handle_disclosure(hwnd, cx, cy + g_scroll_y);
+            (void) pcore_handle_disclosure(hwnd, doc_x, doc_y);
             return 0;
         }
-        /* Document-space point = client point + scroll (scroll_x is 0). If it
+        /* Document-space point = client point + both page scroll offsets. If it
          * lands on a link, follow it; otherwise a tap closes the view. */
         if (link_found) {
             navigate_to(hwnd, href);
@@ -21765,7 +21970,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             int cx = (int) (short) LOWORD(lp);
             int cy = (int) (short) HIWORD(lp);
             PCore_OverflowPointer(g_render_doc, PCORE_POINTER_MOVE,
-                    cx, cy + g_scroll_y);
+                    cx + g_scroll_x, cy + g_scroll_y);
             pcore_invalidate_overflow(hwnd);
             return 0;
         }
@@ -21776,7 +21981,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         if (g_render_doc != NULL &&
                 PCore_InteractionSetAt(g_render_doc,
-                        (int) (short) LOWORD(lp),
+                        (int) (short) LOWORD(lp) + g_scroll_x,
                         (int) (short) HIWORD(lp) + g_scroll_y,
                         PCORE_INTERACTION_HOVER) > 0) {
             pcore_request_interaction_restyle(hwnd);
@@ -21793,7 +21998,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             int cy = (int) (short) HIWORD(lp);
             if (g_render_doc != NULL) {
                 PCore_OverflowPointer(g_render_doc, PCORE_POINTER_UP,
-                        cx, cy + g_scroll_y);
+                        cx + g_scroll_x, cy + g_scroll_y);
             }
             g_overflow_pointer = 0;
             ReleaseCapture();
@@ -22152,8 +22357,8 @@ failed:
 }
 
 /* Create the full-screen render window and run its message loop until closed.
- * Assumes g_render_doc + g_doc_h + g_scroll_y are already set. Returns FALSE
- * only if the window could not be created. */
+ * Assumes g_render_doc + document extents are already set. Returns FALSE only
+ * if the window could not be created. */
 static BOOL show_render_window(void)
 {
     HINSTANCE hInst;
@@ -22164,6 +22369,9 @@ static BOOL show_render_window(void)
     char      ime_probe_data[8];
     char      history_url[PCORE_BROWSE_HISTORY_URL_MAX];
 
+    if (g_render_doc != NULL) {
+        g_doc_w = PCore_DocumentWidth(g_render_doc);
+    }
     hInst = GetModuleHandle(NULL);
     memset(&icc, 0, sizeof(icc));
     icc.dwSize = sizeof(icc);
@@ -22180,12 +22388,13 @@ static BOOL show_render_window(void)
     RegisterClassW(&wc);
 
     hwnd = CreateWindowW(L"PositronRenderWnd", L"Positron render",
-            WS_VISIBLE | WS_VSCROLL | WS_CLIPCHILDREN,
+            WS_VISIBLE | WS_HSCROLL | WS_VSCROLL | WS_CLIPCHILDREN,
             CW_USEDEFAULT, CW_USEDEFAULT,
             CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInst, NULL);
     if (hwnd == NULL) {
         return FALSE;
     }
+    pcore_set_scrollbar(hwnd);
     if (g_browser_script_session.bridge != NULL &&
             g_browser_script_session.document == g_render_doc) {
         g_browser_script_session.bridge->hwnd = hwnd;
@@ -23854,6 +24063,9 @@ static BOOL test1081_browser_fragment_history_scroll(void)
     pcore_browse_history_reset();
     g_render_doc = NULL;
     g_render_sheet = NULL;
+    g_scroll_x = 0;
+    g_doc_w = 0;
+    g_view_w = 0;
     g_scroll_y = 0;
     (void) pcore_browse_history_commit_navigation(URL_FIRST, 1, -1);
     document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
@@ -23993,7 +24205,10 @@ static BOOL test1082_browser_cross_document_history_scroll(void)
     pcore_browse_history_reset();
     g_render_doc = NULL;
     g_render_sheet = NULL;
+    g_scroll_x = 0;
     g_doc_h = 1200;
+    g_doc_w = 0;
+    g_view_w = 0;
     g_view_h = 240;
     g_scroll_y = 0;
     if (pcore_browse_history_commit_navigation(URL_A, 1, -1) != 0) {
@@ -24094,6 +24309,9 @@ static BOOL test1082_browser_cross_document_history_scroll(void)
     }
     g_render_doc = NULL;
     g_render_sheet = NULL;
+    g_scroll_x = 0;
+    g_doc_w = 0;
+    g_view_w = 0;
     g_doc_h = 0;
     g_view_h = 0;
     g_scroll_y = 0;
@@ -32289,6 +32507,192 @@ static BOOL test1127_navigation_cleanup_snapshot(void)
             " bounded through success, required failure, optional fallback,"
             " cancellation and stale completion; host copied the snapshot"
             " before releasing each request.");
+    return TRUE;
+}
+
+/* TEST 1128 - page-level horizontal viewport and history restore. The Core
+ * reports the laid-out page width; the host clamps both axes, applies the
+ * Browser-owned snapshot, and uses the same x coordinate for fragment
+ * targeting. This stays offline so a transport failure cannot mask the
+ * viewport contract. */
+static BOOL test1128_page_horizontal_viewport(void)
+{
+    static const char URL_A[] =
+        "https://positron.local/horizontal-a";
+    static const char URL_B[] =
+        "https://positron.local/horizontal-b";
+    static const char HTML[] =
+        "<!doctype html><html><head><title>horizontal</title></head>"
+        "<body><div id='wide'><a id='right' href='#right'>Right target</a>"
+        "</div></body></html>";
+    static const char CSS[] =
+        "body{margin:8px;font:14px sans-serif}"
+        "#wide{width:720px;height:48px;border:1px solid #204060}"
+        "#right{display:block;width:90px;height:24px;margin-left:600px}"
+        "#right{white-space:nowrap}";
+    HANDLE document;
+    HANDLE sheet;
+    char error[256];
+    char href[64];
+    int right_x;
+    int right_y;
+    int right_w;
+    int right_h;
+    int doc_width;
+    int doc_height;
+    int max_scroll_x;
+    int first_scroll_x;
+    int entry_x;
+    int entry_y;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    right_x = 0;
+    right_y = 0;
+    right_w = 0;
+    right_h = 0;
+    doc_width = 0;
+    doc_height = 0;
+    max_scroll_x = 0;
+    first_scroll_x = 0;
+    entry_x = 0;
+    entry_y = 0;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    memset(href, 0, sizeof(href));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 240;
+    g_view_h = 160;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "https://positron.local/horizontal.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, g_view_w, g_view_h) != 0 ||
+            PCore_LinkInfoById(document, "right", &right_x, &right_y,
+            &right_w, &right_h, href, sizeof(href)) != 0) {
+        cstr_copy(error, sizeof(error), "wide page layout failed");
+        ok = 0;
+    }
+    if (ok) {
+        doc_width = PCore_DocumentWidth(document);
+        doc_height = PCore_DocumentHeight(document);
+        max_scroll_x = (doc_width > g_view_w) ?
+                doc_width - g_view_w : 0;
+        if (doc_width <= g_view_w || right_x <= g_view_w ||
+                right_w <= 0 || right_h <= 0 || max_scroll_x <= 0) {
+            cstr_copy(error, sizeof(error),
+                    "Core did not expose horizontal overflow geometry");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = doc_width;
+        g_doc_h = doc_height;
+        if (pcore_browse_history_commit_navigation(URL_A, 1, -1) != 0) {
+            cstr_copy(error, sizeof(error), "initial history entry failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        first_scroll_x = right_x;
+        if (first_scroll_x > max_scroll_x) {
+            first_scroll_x = max_scroll_x;
+        }
+        if (first_scroll_x <= 0 ||
+                !pcore_scroll_to_xy(NULL, first_scroll_x, 0) ||
+                g_scroll_x != first_scroll_x) {
+            cstr_copy(error, sizeof(error),
+                    "page horizontal scroll did not move");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        pcore_browse_history_save_scroll();
+        if (PBrowser_HistoryEntryScroll(g_browse_history_product, 0,
+                &entry_x, &entry_y) != PBROWSER_OK ||
+                entry_x != first_scroll_x || entry_y != 0 ||
+                pcore_browse_history_commit_navigation(URL_B, 1, -1) != 0 ||
+                PBrowser_HistoryEntryScroll(g_browse_history_product, 1,
+                &entry_x, &entry_y) != PBROWSER_OK ||
+                entry_x != 0 || entry_y != 0) {
+            cstr_copy(error, sizeof(error),
+                    "horizontal history snapshot/new entry failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (!pcore_scroll_to_xy(NULL, max_scroll_x, 0) ||
+                g_scroll_x != max_scroll_x) {
+            cstr_copy(error, sizeof(error),
+                    "horizontal max scroll did not clamp to end");
+            ok = 0;
+        }
+        pcore_browse_history_save_scroll();
+    }
+    if (ok) {
+        if (pcore_browse_history_commit_navigation(URL_A, 1, 0) != 0 ||
+                !pcore_browse_history_restore_scroll(NULL, 0) ||
+                g_scroll_x != first_scroll_x) {
+            cstr_copy(error, sizeof(error),
+                    "history traversal did not restore x offset");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_scroll_x = 0;
+        if (!pcore_browser_script_scroll_to_fragment(NULL,
+                "https://positron.local/horizontal-a#right") ||
+                g_scroll_x != first_scroll_x ||
+                !pcore_scroll_to_xy(NULL, doc_width + 400, 0) ||
+                g_scroll_x != max_scroll_x) {
+            cstr_copy(error, sizeof(error),
+                    "fragment horizontal target or clamp failed");
+            ok = 0;
+        }
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "doc=%d,%d target=%d,%d,%d,%d max=%d scroll=%d entry=%d,%d",
+                    doc_width, doc_height, right_x, right_y, right_w,
+                    right_h, max_scroll_x, g_scroll_x, entry_x, entry_y);
+            error[sizeof(error) - 1] = '\0';
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    pcore_browse_history_reset();
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1128 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1128 OK",
+            "Core page width exposed horizontal overflow; host scrolling"
+            " clamps, saves and restores x snapshots, and fragment targets"
+            " use the same page coordinate.");
     return TRUE;
 }
 
@@ -90322,6 +90726,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1125: ok = test1125_navigation_candidate_results(); break;
         case 1126: ok = test1126_navigation_commit_consistency(); break;
         case 1127: ok = test1127_navigation_cleanup_snapshot(); break;
+        case 1128: ok = test1128_page_horizontal_viewport(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

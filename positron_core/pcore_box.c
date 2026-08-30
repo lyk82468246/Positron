@@ -3340,6 +3340,7 @@ typedef struct pcore_render {
     struct box   *root_box;    /* == content.layout                          */
     html_content  content;     /* operated on by layout_document/html_redraw */
     int           doc_height;  /* total laid-out height (CSS px)             */
+    int           doc_width;   /* total laid-out width (CSS px)              */
     int           vw;          /* viewport used for layout (redraw extent)   */
     int           vh;
     struct scrollbar *active_scrollbar;
@@ -4297,6 +4298,16 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     if (tree->descendant_y1 > st->doc_height) {
         st->doc_height = tree->descendant_y1;   /* include overflowing content */
     }
+    st->doc_width = tree->x + tree->padding[LEFT] + tree->width +
+            tree->padding[RIGHT] + tree->border[RIGHT].width +
+            tree->margin[RIGHT];
+    if (tree->x + tree->descendant_x1 > st->doc_width) {
+        st->doc_width = tree->x + tree->descendant_x1;
+                                                    /* include overflowing content */
+    }
+    if (st->doc_width < viewport_w) {
+        st->doc_width = viewport_w;
+    }
 
     /* Replace any previous state (re-layout on resize). set_user_data does NOT
      * run the handler on replace, so free the old state by hand. */
@@ -4349,6 +4360,12 @@ PCORE_API int PCore_DocumentHeight(HANDLE hDoc)
 {
     pcore_render *st = pcore_get_render((dom_document *) hDoc);
     return (st != NULL) ? st->doc_height : 0;
+}
+
+PCORE_API int PCore_DocumentWidth(HANDLE hDoc)
+{
+    pcore_render *st = pcore_get_render((dom_document *) hDoc);
+    return (st != NULL) ? st->doc_width : 0;
 }
 
 /* DFS for the first box whose DOM node is an element named `want` (caseless). */
