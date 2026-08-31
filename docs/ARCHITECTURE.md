@@ -115,7 +115,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 有界 history entries、每项 viewport snapshot、same-document state 和 traversal；
 - 浏览器 script session 与 bootstrap；
 - 浏览器脚本 `window.scrollTo`/`scrollBy` 的 typed viewport callback，以及宿主物理滚动后的去重同步入口；
-- 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、宿主 resize 通知、去重的 window `resize` 事件和有界 `matchMedia()` 列表刷新；
+- 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、focus、composition、click 和导航协调；
@@ -132,20 +132,22 @@ CSS page 坐标，由宿主换算为 Core 的物理设备坐标，按当前 exte
 尚未提交时宿主只回显坐标，不能改变旧页面。宿主完成 scrollbar、触摸、键盘、
 resize 或 fragment reveal 后先把物理位置换算为 CSS page 坐标，再调用
 `PBrowser_ScriptSessionNotifyScroll`，Browser
-只更新脚本侧偏移并在实际变化时派发一次 `scroll`，不会重新调用 scroll callback。
-这让脚本 origin 与平台 origin 共用一份最终 viewport，同时避免同步 callback
-递归进入同一 runtime。
+只更新脚本侧偏移并在实际变化时派发一次 visual viewport `scroll` 和一次 window
+`scroll`，不会重新调用 scroll callback。这让脚本 origin 与平台 origin 共用一份最终
+viewport，同时避免同步 callback 递归进入同一 runtime。
 
 窗口 resize 的边界也由 Browser 提供：宿主完成新的 Core style/layout、page-level
 clamp 和 native child reposition 后，调用
 `PBrowser_ScriptSessionNotifyResize` 传入 CSS viewport 宽高与 DPR。Browser 更新
 viewport getters 和 `screen` 的宽高/方向，刷新最多 64 个已创建的
 `matchMedia()` 列表，并在匹配结果实际变化时先同步派发一次带 `media`/`matches`
-的 `change`，再派发一次不冒泡、不可取消的 window `resize`；相同快照或未发生
-匹配变化不会重复派发。该入口不访问窗口、不触发 Core layout，也不自动运行
-timer 或 animation-frame queue；页面若在 handler 中排队工作，仍由宿主消息循环
+的 `change`，再按顺序派发 visual viewport 与 window 的不冒泡、不可取消 `resize`；
+相同快照或未发生匹配变化不会重复派发。有效快照变化时，`visualViewport` 的
+`width`/`height`/`pageLeft`/`pageTop` 与同一布局视口同步，`scale` 固定为 `1`、
+`offsetLeft`/`offsetTop` 固定为 `0`。该入口不访问窗口、不触发 Core layout，也不自动
+运行 timer 或 animation-frame queue；页面若在 handler 中排队工作，仍由宿主消息循环
 驱动既有 scheduler。超过追踪上限的列表只保留初始匹配快照，完整媒体查询语法、
-nested overflow 和视觉像素差异不因这个通知而获得额外保证。
+nested overflow、pinch zoom 和视觉像素差异不因这个通知而获得额外保证。
 
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
 

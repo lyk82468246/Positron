@@ -24,7 +24,7 @@ Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础�
 | `positron_image.dll` | 位图/SVG 解码、绘制与编码 | `PImage_CreateBitmapFromMemory`、`PImage_DrawBitmap` |
 | `positron_script.dll` | 有预算的独立 JavaScript context、JSON bridge 与模块加载 | `PScript_CreateEx`、`PScript_Evaluate`、`PScript_Destroy` |
 | `positron_core.dll` | HTML/CSS/DOM、样式、layout、绘制、表单和交互模型 | `PCore_Init`、`PCore_ParseHTML`、`PCore_LayoutDocument`、`PCore_DocumentWidth/Height`、paint API |
-| `positron_browser.dll` | history/session 与每项 viewport snapshot、脚本 bootstrap/scroll/resize、动态 `matchMedia()` 与有限布局几何同步、DOM/Event、候选导航生命周期与结果摘要、资源/候选提交及清理快照、平台回调协调 | `PBrowser_HistoryCreate`、`PBrowser_HistoryEntryScroll`、`PBrowser_HistorySetEntryScroll`、`PBrowser_ScriptSessionCreate`、`PBrowser_ScriptSessionNotifyScroll`、`PBrowser_ScriptSessionNotifyResize`、脚本 `Element.getBoundingClientRect()`、`PBrowser_NavigationCandidateCreate`、`PBrowser_NavigationCandidateGetResult`、`PBrowser_NavigationCommitGetInfo`、`PBrowser_NavigationCleanupGetInfo` |
+| `positron_browser.dll` | history/session 与每项 viewport snapshot、脚本 bootstrap/scroll/resize、动态 `matchMedia()`/`visualViewport`、有限布局几何同步、DOM/Event、候选导航生命周期与结果摘要、资源/候选提交及清理快照、平台回调协调 | `PBrowser_HistoryCreate`、`PBrowser_HistoryEntryScroll`、`PBrowser_HistorySetEntryScroll`、`PBrowser_ScriptSessionCreate`、`PBrowser_ScriptSessionNotifyScroll`、`PBrowser_ScriptSessionNotifyResize`、脚本 `Element.getBoundingClientRect()`、`PBrowser_NavigationCandidateCreate`、`PBrowser_NavigationCandidateGetResult`、`PBrowser_NavigationCommitGetInfo`、`PBrowser_NavigationCleanupGetInfo` |
 
 精确签名、错误码和所有权以各项目的公开头文件为准。调用示例和边界说明见对应子目录的 README；整体所有权与数据流见[架构文档](docs/ARCHITECTURE.md)。
 

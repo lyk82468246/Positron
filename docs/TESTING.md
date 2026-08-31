@@ -79,6 +79,13 @@ TEST1132 覆盖 viewport/DPR 变化对已有 `MediaQueryList` 的刷新：宽度
 移除监听器保持静默。Browser 会追踪每个 session 最多 64 个列表，超出部分仍
 提供创建时快照但不保证后续 `change` 通知；完整媒体查询语法仍不在范围内。
 
+TEST1133 覆盖浏览器脚本 `visualViewport` 的有限布局视口快照：`width`、`height`
+和 page scroll 会随 Browser 的 resize/scroll 通知同步，`scale` 固定为 1，
+`offsetLeft`/`offsetTop` 固定为 0。断言检查 visual `resize`/`scroll` 的 target、
+事件字段、可信标志、监听器顺序和重复通知去重，并确认移除 visual handler 后
+window 事件仍可独立到达。它不保证 pinch zoom、嵌套 overflow、视觉像素或真实
+旋转体验。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

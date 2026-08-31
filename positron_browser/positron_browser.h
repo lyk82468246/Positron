@@ -1764,19 +1764,22 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterScrollCallbacks(
         HANDLE hSession);
 /* Synchronize a physical host viewport change into the Browser bootstrap.
  * Coordinates are non-negative CSS page pixels. The Browser dispatches one
- * window `scroll` event only when the effective pair changes; it does not
- * call the host scroll adapter again, so hosts can use this after scrollbar,
- * touch, keyboard or resize handling without recursion. */
+ * visualViewport `scroll` followed by one window `scroll` event only when the
+ * effective pair changes; it does not call the host scroll adapter again, so
+ * hosts can use this after scrollbar, touch, keyboard or resize handling
+ * without recursion. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
         int scroll_x, int scroll_y);
 /* Synchronize a host viewport change into the Browser bootstrap. Width and
  * height are CSS pixels and device_pixel_ratio must be positive. The Browser
  * updates inner/outer dimensions, devicePixelRatio and screen metadata, then
  * synchronously refreshes at most 64 `matchMedia()` lists and dispatches
- * their `change` events before one non-bubbling window `resize` event when the
- * effective snapshot changes. It does not perform Core style/layout work or
- * run queued timers/animation frames. Duplicate snapshots are accepted
- * without dispatching another event. */
+ * their `change` events before the visualViewport and window `resize` events
+ * when the effective snapshot changes. The visualViewport snapshot follows
+ * this layout viewport: scale is 1, offsets are 0, and pageLeft/pageTop track
+ * the page scroll. It does not perform Core style/layout work or run queued
+ * timers/animation frames. Duplicate snapshots are accepted without
+ * dispatching another event. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyResize(HANDLE hSession,
         double viewport_width, double viewport_height,
         double device_pixel_ratio);

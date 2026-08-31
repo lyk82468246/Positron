@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1132
+#define TEST_MAX_NUMBER 1133
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -33519,6 +33519,193 @@ static BOOL test1132_browser_match_media_resize_contract(void)
     show_info(L"TEST 1132 OK",
             "Existing MediaQueryList objects refresh on viewport/DPR changes;"
             " change events are synchronous, bounded and deduplicated.");
+    return TRUE;
+}
+
+/* TEST 1133 - visualViewport metadata and host-driven event ordering. */
+static BOOL test1133_browser_visual_viewport_contract(void)
+{
+    static const char URL[] = "https://positron.local/visual-viewport";
+    HANDLE session;
+    const char *result;
+    char error[512];
+    int ok;
+    int rc;
+
+    session = NULL;
+    result = NULL;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    rc = PSCRIPT_OK;
+    pcore_browser_script_session_destroy();
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    if (session == NULL) {
+        cstr_copy(error, sizeof(error), "visualViewport session create failed");
+        ok = 0;
+    } else {
+        rc = PBrowser_ScriptSessionSetGlobalString(session,
+                "__pcoreDocumentUrl", URL);
+        if (rc == PSCRIPT_OK) {
+            rc = PBrowser_ScriptSessionSetGlobalNumber(session,
+                    "__pcoreHistoryLength", 1.0);
+        }
+        if (rc == PSCRIPT_OK) {
+            rc = PBrowser_ScriptSessionSetGlobalJson(session,
+                    "__pcoreHistoryState", "null");
+        }
+        if (rc == PSCRIPT_OK) {
+            rc = PBrowser_ScriptSessionSetGlobalNumber(session,
+                    "__pcoreViewportWidth", 320.0);
+        }
+        if (rc == PSCRIPT_OK) {
+            rc = PBrowser_ScriptSessionSetGlobalNumber(session,
+                    "__pcoreViewportHeight", 240.0);
+        }
+        if (rc == PSCRIPT_OK) {
+            rc = PBrowser_ScriptSessionSetGlobalNumber(session,
+                    "__pcoreDevicePixelRatio", 1.0);
+        }
+        if (rc == PSCRIPT_OK) {
+            rc = PBrowser_ScriptSessionEvaluateBootstrap(session);
+        }
+        if (rc != PSCRIPT_OK) {
+            _snprintf(error, sizeof(error) - 1,
+                    "visualViewport bootstrap failed rc=%d", rc);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "var vv=visualViewport;var trace='';var resizeCount=0;"
+                "var scrollCount=0;"
+                "function resizeHandler(e){resizeCount++;trace+='R:'+e.type+'|'"
+                "+String(e.target===vv)+'|'+String(e.currentTarget===vv)+'|'"
+                "+String(e.bubbles)+'|'+String(e.cancelable)+'|'"
+                "+String(e.isTrusted)+'|'+String(e.eventPhase)+';';}"
+                "function scrollHandler(e){scrollCount++;trace+='S:'+e.type+'|'"
+                "+String(e.target===vv)+'|'+String(e.currentTarget===vv)+'|'"
+                "+String(e.bubbles)+'|'+String(e.cancelable)+'|'"
+                "+String(e.isTrusted)+'|'+String(e.eventPhase)+';';}"
+                "function resizeListener(e){trace+='Lr;';}"
+                "function scrollListener(e){trace+='Ls;';}"
+                "vv.onresize=resizeHandler;vv.onscroll=scrollHandler;"
+                "vv.addEventListener('resize',resizeListener);"
+                "vv.addEventListener('scroll',scrollListener);"
+                "window.addEventListener('resize',function(){trace+='Wr;';});"
+                "window.addEventListener('scroll',function(){trace+='Ws;';});"
+                "String(vv.width)+'|'+String(vv.height)+'|'+String(vv.scale)+'|'"
+                "+String(vv.offsetLeft)+'|'+String(vv.offsetTop)+'|'"
+                "+String(vv.pageLeft)+'|'+String(vv.pageTop)+'|'"
+                "+String(vv===visualViewport);", -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "320|240|1|0|0|0|0|true") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "initial visualViewport snapshot mismatch");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 160.0, 200.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(vv.width)+'|'+String(vv.height)+'|'"
+                "+String(vv.pageLeft)+'|'+String(vv.pageTop)+'|'"
+                "+resizeCount+'|'+scrollCount+'|'+trace;", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "160|200|0|0|1|0|R:resize|true|true|false|false|true|2;"
+                "Lr;Wr;") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "visualViewport resize event contract failed");
+            if (result != NULL) {
+                _snprintf(error, sizeof(error) - 1,
+                        "visualViewport resize result: %s", result);
+                error[sizeof(error) - 1] = '\0';
+            }
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 160.0, 200.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(resizeCount)+'|'+String(scrollCount)+'|'+trace;",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "1|0|R:resize|true|true|false|false|true|2;Lr;Wr;") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "duplicate viewport resize was not silent");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyScroll(session, 10, 20) !=
+                PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(vv.pageLeft)+'|'+String(vv.pageTop)+'|'"
+                "+resizeCount+'|'+scrollCount+'|'+trace;", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "10|20|1|1|R:resize|true|true|false|false|true|2;Lr;Wr;"
+                "S:scroll|true|true|false|false|true|2;Ls;Ws;") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "visualViewport scroll event contract failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyScroll(session, 10, 20) !=
+                PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(resizeCount)+'|'+String(scrollCount)+'|'+trace;",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "1|1|R:resize|true|true|false|false|true|2;Lr;Wr;"
+                "S:scroll|true|true|false|false|true|2;Ls;Ws;") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "duplicate viewport scroll was not silent");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "vv.onresize=null;vv.onscroll=null;"
+                "vv.removeEventListener('resize',resizeListener);"
+                "vv.removeEventListener('scroll',scrollListener);", -1) !=
+                PSCRIPT_OK ||
+                PBrowser_ScriptSessionNotifyResize(session, 320.0, 180.0,
+                1.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionNotifyScroll(session, 0, 0) !=
+                PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(vv.width)+'|'+String(vv.height)+'|'"
+                "+String(vv.pageLeft)+'|'+String(vv.pageTop)+'|'"
+                "+String(vv.scale)+'|'+String(vv.offsetLeft)+'|'"
+                "+String(vv.offsetTop)+'|'+resizeCount+'|'+scrollCount+'|'"
+                "+trace;", -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "320|180|0|0|1|0|0|1|1|R:resize|true|true|false|false|true|2;"
+                "Lr;Wr;S:scroll|true|true|false|false|true|2;Ls;Ws;Wr;Ws;") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "visualViewport listener removal or state mismatch");
+            ok = 0;
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 1133 FAIL", error[0] != '\0' ? error :
+                "visualViewport contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1133 OK",
+            "visualViewport exposes bounded viewport/page snapshots and"
+            " synchronous, deduplicated host-driven resize/scroll events.");
     return TRUE;
 }
 
@@ -91557,6 +91744,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1130: ok = test1130_browser_bounding_client_rect_contract(); break;
         case 1131: ok = test1131_browser_viewport_resize_contract(); break;
         case 1132: ok = test1132_browser_match_media_resize_contract(); break;
+        case 1133: ok = test1133_browser_visual_viewport_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

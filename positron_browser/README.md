@@ -65,6 +65,15 @@ viewport 或 DPR 变化时，只有 `matches` 实际翻转的列表才同步派�
 未发生匹配变化都保持静默。超过追踪上限的列表仍返回初始快照，但不会收到后续
 `change` 通知。该能力不扩展到 nested overflow 或完整媒体查询语法。
 
+同一个 bootstrap 还暴露有限的 `window.visualViewport`。它是当前布局视口的
+稳定 `EventTarget` 快照：`width`/`height` 读取当前 viewport，`pageLeft`/
+`pageTop` 读取当前 page scroll，`scale` 固定为 `1`，`offsetLeft`/`offsetTop`
+固定为 `0`。宿主的有效 resize 会先同步派发 visual viewport `resize`，再派发
+window `resize`；有效 scroll 会先派发 visual viewport `scroll`，再派发 window
+`scroll`。重复快照保持静默，`onresize`/`onscroll` 与普通 listener 都可使用。
+该对象不模拟 pinch zoom、视觉 viewport 偏移或 nested overflow；宿主仍负责
+真实窗口、Core layout 和滚动应用。
+
 ### Layout geometry 与 `getBoundingClientRect()`
 
 DOM relation callback 还提供四个数值分量：当前 Core layout box 的
