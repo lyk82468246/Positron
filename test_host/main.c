@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1137
+#define TEST_MAX_NUMBER 1138
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -34512,6 +34512,130 @@ static BOOL test1137_browser_task_checkpoint_contract(void)
     show_info(L"TEST 1137 OK",
             "A bounded host checkpoint runs selected script phases in a"
             " stable timer/frame/message/idle order with microtask turns.");
+    return TRUE;
+}
+
+/* TEST 1138 - page lifecycle exposes initial and visibility-restored pageshow. */
+static BOOL test1138_browser_page_show_lifecycle_contract(void)
+{
+    static const char URL[] = "https://positron.local/page-show";
+    static const char SETUP[] =
+        "var trace=[];"
+        "function windowEvent(e){trace.push(e.type+':'+document.readyState+':'"
+        "+document.visibilityState+':'+String(e.persisted));}"
+        "function visibilityEvent(e){trace.push(e.type+':'"
+        "+document.visibilityState);}"
+        "window.addEventListener('load',windowEvent,false);"
+        "window.addEventListener('pageshow',windowEvent,false);"
+        "window.addEventListener('pagehide',windowEvent,false);"
+        "document.addEventListener('visibilitychange',visibilityEvent,false);";
+    static const char INITIAL[] =
+        "load:complete:visible:false|pageshow:complete:visible:false";
+    static const char FINAL[] =
+        "load:complete:visible:false|pageshow:complete:visible:false|"
+        "visibilitychange:hidden|pagehide:complete:hidden:false|"
+        "visibilitychange:visible|pageshow:complete:visible:false";
+    HANDLE session;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int ok;
+
+    session = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    if (session == NULL ||
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", URL) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", 320.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", 240.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
+        session_error = session != NULL ?
+                PBrowser_ScriptSessionGetError(session) : NULL;
+        if (session_error != NULL && session_error[0] != '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "pageshow bootstrap failed: %s", session_error);
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            cstr_copy(error, sizeof(error), "pageshow bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionEvaluate(session, SETUP, -1) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "pageshow listener setup failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchPageLifecycle(session,
+            "complete") != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "initial page lifecycle failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchPageLifecycle(session,
+            "complete") != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "repeated page lifecycle failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|');", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, INITIAL) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "initial pageshow was missing, duplicated, or malformed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchVisibility(session, 1) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "hidden visibility transition failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchVisibility(session, 1) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "duplicate hidden transition failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchVisibility(session, 0) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "visible visibility transition failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchVisibility(session, 0) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "duplicate visible transition failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|');", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, FINAL) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "visibility pageshow/pagehide ordering mismatch");
+        ok = 0;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1138 FAIL", error[0] != '\0' ? error :
+                "page lifecycle pageshow contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1138 OK",
+            "Initial load emits one pageshow; hidden-to-visible recovery"
+            " emits one more after pagehide, with duplicate transitions"
+            " remaining silent and persisted false.");
     return TRUE;
 }
 
@@ -92555,6 +92679,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1135: ok = test1135_browser_screen_orientation_change_contract(); break;
         case 1136: ok = test1136_browser_beforeunload_contract(); break;
         case 1137: ok = test1137_browser_task_checkpoint_contract(); break;
+        case 1138: ok = test1138_browser_page_show_lifecycle_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

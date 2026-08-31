@@ -36,14 +36,17 @@ resize、动态 `matchMedia()`、布局视口对应的 `visualViewport` 快照�
 next691 已完成页面替换前的 cancelable `beforeunload` 门和参考宿主的 fail-closed
 关闭/提交策略。next692 已把脚本 timer、animation frame、message、idle 和
 microtask 的阶段顺序收拢为 Browser-owned 的统一任务检查点，并接入参考宿主的
-UI 消息循环；宿主仍提供时钟、限额和平台调度。下一条纵向能力是 next693，仍须
-从源码、日志或截图固定一个新的可复现用户可见组合缺口；不能凭空扩张 ABI，也
-不能把页面业务规则塞回 `test_host`。嵌套 overflow 容器、pinch zoom、平滑/惯性
-滚动和视觉猜测不得误写成已支持能力。
+UI 消息循环；宿主仍提供时钟、限额和平台调度。next693 已补齐完成加载后的初始
+`pageshow`，以及 hidden→visible 恢复时的去重 `visibilitychange`/
+`pagehide`/`pageshow` 组合，语义位于 Browser 而不是 `test_host`。下一条
+纵向能力是 next694，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；
+不能凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。嵌套 overflow 容器、
+pinch zoom、平滑/惯性滚动和视觉猜测不得误写成已支持能力。
 
 优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
-next693 的完成证据应包括定向自动断言、直接相邻回归和风险相称的设备门；
+next693 的完成证据包括定向自动断言、直接相邻回归和风险相称的设备门；下一批
+next694 必须沿用同一完成标准。
 视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、
 严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，
 也不要在没有实际缺口证据时提前选择下一能力方向。

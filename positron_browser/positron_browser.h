@@ -1427,7 +1427,9 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchHashNavigation(
  * after the document's classic scripts have run. `state` accepts
  * "interactive", "domcontentloaded", or "complete"; repeated or regressive
  * states are ignored. The bootstrap updates document.readyState and
- * dispatches readystatechange/DOMContentLoaded/load in that order. */
+ * dispatches readystatechange/DOMContentLoaded/load, then one window
+ * pageshow event, in that order. The initial pageshow is not repeated when
+ * "complete" is dispatched again. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
         HANDLE hSession, const char *state);
 /* Dispatch the current document's cancelable `beforeunload` event before a
@@ -1478,7 +1480,10 @@ PBROWSER_API int PBrowser_ScriptSessionRunTimers(HANDLE hSession,
 PBROWSER_API int PBrowser_ScriptSessionRunAnimationFrames(HANDLE hSession,
         unsigned long timestamp_ms);
 /* Update the product-owned visibility state and dispatch visibilitychange
- * followed by pagehide/pageshow. `hidden` is normalized to 0 or 1. */
+ * followed by pagehide when entering hidden or pageshow when returning to
+ * visible. Duplicate visibility values are silent; pageshow events expose
+ * persisted == false because this layer has no bfcache. `hidden` is
+ * normalized to 0 or 1. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchVisibility(HANDLE hSession,
         int hidden);
 /* Pump bounded product-owned microtasks, idle callbacks, and queued

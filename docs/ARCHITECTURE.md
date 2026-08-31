@@ -120,7 +120,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、focus、composition、click 和导航协调；
-- timer、animation frame、microtask、idle、message 和页面生命周期队列，以及显式的 document visibility/pagehide/unload teardown 与队列清理入口；
+- timer、animation frame、microtask、idle、message 和页面生命周期队列，以及初次完成加载后的 pageshow、可见性切换的 visibilitychange/pagehide/pageshow、显式的 document teardown 与队列清理入口；
 - `PBrowser_ScriptSessionRunTaskCheckpoint` 提供统一的有界脚本任务检查点：按调用方选择的阶段以 timer → animation frame → message → idle 的固定顺序运行，并在每个阶段后排空一次 microtask；Browser 拥有顺序和队列预算，宿主提供单调时钟、idle deadline、message limit 和消息循环接线；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
 - 导航资源事务：按 URL 去重并合并 role/policy，拥有资源字节、终态、失败分类、transport 重试预算、required/optional commit gate、hash-only failure summary 和 fallback observation。
@@ -162,6 +162,14 @@ Browser 还拥有脚本可见的 history scroll-restoration 策略：
 clamp/apply；`MANUAL` 保留当前 page viewport。该查询不接管窗口或滚动副作用，
 fragment reveal 和显式 `scrollTo` 仍走各自的宿主路径；查询失败必须按默认
 `AUTO` 处理，不能错误地跳过恢复。
+
+页面生命周期同样由 Browser 保持顺序：宿主在 classic script 完成后推进
+`PBrowser_ScriptSessionDispatchPageLifecycle("complete")`，Browser 先完成已有的
+`readystatechange`/`DOMContentLoaded`/`load` 序列，再派发一次 window `pageshow`；
+重复的 `complete` 不会复制初始事件。宿主驱动可见性时，进入 hidden 先派发
+document `visibilitychange` 和 window `pagehide`，恢复 visible 再派发
+`visibilitychange` 和一次 `pageshow`，相同状态保持静默。该有限实现不提供 bfcache，
+因此这些 page event 的 `persisted` 固定为 `false`。
 
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
 

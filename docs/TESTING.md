@@ -112,6 +112,13 @@ animation frame、message 和 idle callback，固定按阶段顺序运行，并�
 宿主还在窗口 UI 线程以 16 ms `WM_TIMER` 调用 `PBROWSER_SCRIPT_PUMP_ALL`。这项
 测试证明队列语义和宿主接线，不证明 OEM 消息调度、功耗策略或真实页面的视觉结果。
 
+TEST1138 覆盖 Browser 页面生命周期的 pageshow 组合：`complete` 在已有的
+readystatechange/DOMContentLoaded/load 序列后派发一次初始 `pageshow`，重复
+`complete` 不重复；进入 hidden 时按 visibilitychange→pagehide，回到 visible
+时按 visibilitychange→pageshow，重复的 hidden 值保持静默。断言同时检查
+`document.readyState`、`visibilityState` 和 `persisted === false`。它是离线
+脚本语义夹具，不证明 bfcache、真实后台挂起、OEM 可见性通知或视觉结果。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

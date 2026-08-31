@@ -3553,7 +3553,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "currentTarget:target,bubbles:false,cancelable:false,"
         "defaultPrevented:false,isTrusted:true,persisted:false};}"
         "var pdomContentLoaded=false;var ppagehideSent=false;"
-        "var ppageTeardownDone=false;"
+        "var ppageShowSent=false;var ppageTeardownDone=false;"
         "function ppageLifecycle(state){state=String(state);"
         "if(state==='interactive'&&preadyState==='loading'){"
         "preadyState='interactive';pdocumentDispatch('readystatechange');return;}"
@@ -3570,16 +3570,18 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "pdocumentDispatch('readystatechange');"
         "pdispatchWindow('DOMContentLoaded',ppageEvent('DOMContentLoaded',g));"
         "pdispatchWindow('load',ppageEvent('load',g));"
-        "pdocumentDispatch('load');}}}"
+        "pdocumentDispatch('load');}if(!ppageShowSent){ppageShowSent=true;"
+        "pdispatchWindow('pageshow',ppageEvent('pageshow',g));}}}"
         "function pvisibilityEvent(type){return {type:type,target:pdocument,"
         "currentTarget:pdocument,bubbles:false,cancelable:false,"
         "defaultPrevented:false,isTrusted:true};}"
         "g.__pcoreVisibilityChange=function(hidden){var next=!!hidden;"
         "if(next===phidden){return;}phidden=next;"
         "pdocumentDispatch('visibilitychange');"
-        "if(next){ppagehideSent=true;}else{ppagehideSent=false;}"
-        "pdispatchWindow(next?'pagehide':'pageshow',ppageEvent("
-        "next?'pagehide':'pageshow',g));};"
+        "if(next){ppagehideSent=true;ppageShowSent=false;"
+        "pdispatchWindow('pagehide',ppageEvent('pagehide',g));}"
+        "else{ppagehideSent=false;if(!ppageShowSent){ppageShowSent=true;"
+        "pdispatchWindow('pageshow',ppageEvent('pageshow',g));}}};"
         "g.__pcorePageTeardown=function(){if(ppageTeardownDone){return false;}"
         "ppageTeardownDone=true;if(!phidden){phidden=true;"
         "pdocumentDispatch('visibilitychange');}if(!ppagehideSent){"
@@ -7331,15 +7333,15 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchVisibility(HANDLE hSession,
         int hidden)
 {
     p_browser_script_session *session;
-    const char *args;
+    const char *source;
 
     session = p_script_session(hSession);
     if (!p_script_session_valid(session)) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
-    args = hidden ? "[true]" : "[false]";
-    return PBrowser_ScriptSessionCallGlobalJson(hSession,
-            "__pcoreVisibilityChange", args);
+    source = hidden ? "__pcoreVisibilityChange(true);true;" :
+            "__pcoreVisibilityChange(false);true;";
+    return PScript_Evaluate(session->runtime, source, -1);
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRunMicrotasks(HANDLE hSession)
