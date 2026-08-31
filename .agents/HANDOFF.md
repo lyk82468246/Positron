@@ -8,7 +8,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。next672–688 的过时导航、资源终态/重试、提交门、摘要观测、资源事务所有权、候选生命周期所有权、candidate/resource 提交组合、提交后清理观测、Browser-owned history viewport snapshot、page-level 横向 viewport、脚本滚动视口桥接、布局几何桥接、viewport resize 通知、动态 `matchMedia()` 更新和布局视口对应的 `visualViewport` 均已提交。
+- 分支：`main`。next672–689 的过时导航、资源终态/重试、提交门、摘要观测、资源事务所有权、候选生命周期所有权、candidate/resource 提交组合、提交后清理观测、Browser-owned history viewport snapshot、page-level 横向 viewport、脚本滚动视口桥接、布局几何桥接、viewport resize 通知、动态 `matchMedia()` 更新、布局视口对应的 `visualViewport` 以及 `history.scrollRestoration` 宿主策略门均已提交。
 - next678 已把候选 generation、取消请求、退休状态、提交资格和 committed/failed 终态迁入 `positron_browser.dll` 的 opaque handle。next679 进一步把 pending/committed/failed/cancelled/stale 结果分类作为只读 Browser 摘要；next680 再提供独立 candidate/resource 的只读提交组合快照；next681 增加提交后 cleanup snapshot 和宿主回收观测；next682 将 history entry 的 viewport snapshot 迁入 Browser，并移除宿主的按 entry 滚动数组。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列、窗口滚动应用和页面 swap，不把线程、窗口、网络或 Core document 带入 Browser ABI。
 - Browser 现在同时拥有 URL 去重、role/policy、资源字节、终态、失败分类、重试预算、commit gate、hash-only 摘要、fallback 计数、候选 admission 状态、候选结果分类、candidate/resource 组合 decision 和 cleanup snapshot；宿主只保留 URL→resource-index 短引用、candidate handle 和平台调度状态，并消费结果快照写日志。清理快照复制完整有界 resource observation，要求 pending 工作先收敛，committed candidate 还必须配 READY gate。
 - Browser script session 现在可注册 page-level scroll callback：脚本 `scrollTo`/`scrollBy` 请求由宿主 clamp/apply 并返回实际坐标，宿主的 scrollbar、触摸、键盘、resize 或 fragment reveal 路径可用 `PBrowser_ScriptSessionNotifyScroll` 同步脚本偏移；同步通知去重 `scroll` 事件，且脚本 callback 内不会递归进入 runtime。候选 session 在提交前只回显坐标，不改变旧页。
@@ -25,7 +25,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-next685–687 已完成布局几何、viewport resize 和动态 `matchMedia()` 的相邻组合；next688 在同一 Browser session 中补齐布局视口对应的 `visualViewport` 快照与 host-driven resize/scroll 事件顺序。TEST1129、TEST1130、TEST1131、TEST1132、TEST1133 覆盖直接相邻路径。当前唯一下一条纵向能力是 next689：从源码、日志或截图选择另一个尚未覆盖的用户可见组合缺口。
+next685–688 已完成布局几何、viewport resize、动态 `matchMedia()` 和布局视口对应的 `visualViewport` 相邻组合；next689 补齐 `history.scrollRestoration` 对宿主 history snapshot restore 的 `auto`/`manual` 策略门。TEST1129、TEST1130、TEST1131、TEST1132、TEST1133、TEST1134 覆盖直接相邻路径。当前唯一下一条纵向能力是 next690：从源码、日志或截图选择另一个尚未覆盖的用户可见组合缺口。
 
 ## 已验证产品事实
 
@@ -44,6 +44,7 @@ next685–687 已完成布局几何、viewport resize 和动态 `matchMedia()` �
 - Browser 层还提供由宿主显式驱动的 viewport resize 合同：`PBrowser_ScriptSessionNotifyResize` 更新 CSS viewport/DPR 和动态 `screen` 方向，值变化时同步派发一次 window `resize`；调用不负责 Core relayout 或 frame scheduling。
 - 同一 Browser session 还提供布局视口对应的 `visualViewport`：`width`/`height` 与 CSS viewport 同步，`pageLeft`/`pageTop` 与 page scroll 同步，`scale` 为 1、offset 为 0；有效 resize/scroll 先派发 visual viewport 事件，再派发 window 事件，并对重复快照去重。TEST1133 覆盖该合同。
 - Browser history entry 同时拥有非负的 `(scroll_x, scroll_y)` viewport snapshot；新 document entry 和同 URL 新 document 从零开始，`replaceState`/traversal 保留目标值，`pushState` 新 entry 从零开始，history 裁剪会同步搬移 snapshot。Browser 不访问窗口、不知道 Core 的页面 extent；宿主读取 `PCore_DocumentWidth/Height` 后保存/读取并对两个轴 clamp/apply。
+- Browser script session 的 `PBrowser_ScriptSessionGetScrollRestoration` 暴露脚本的 `auto`/`manual` 策略。宿主在非 fragment history traversal 前只对 `AUTO` 自动读取并应用 entry snapshot；`MANUAL` 保留当前 viewport，查询失败按默认 `AUTO` 处理。fragment reveal 与显式脚本滚动不受该自动恢复门影响。
 - Browser script session 的 `window.scrollTo`/`scrollBy` 经过 `PBrowserScriptScrollCallbacks` 交给活动宿主；宿主返回实际 page 坐标后，Browser 只派发一次 `scroll`。宿主的物理滚动路径用 `PBrowser_ScriptSessionNotifyScroll` 反向同步，重复坐标不派发事件，回调内不会重入 runtime。
 - Browser script session 的 scroll callback 和 `PBrowser_ScriptSessionNotifyScroll` 均使用 CSS page 坐标；宿主在调用 Core 的物理滚动、绘制、命中测试和滚动条路径时负责当前 DPI 的双向换算。重复坐标不派发事件，回调内不会重入 runtime。
 - Core 的布局 relation 在成功 layout 后提供单元素 border-box 的整数 CSS 像素快照；Browser 用它生成 viewport-relative `getBoundingClientRect()`，再扣除当前 CSS page scroll。未布局、无对应 box 或不满足边界时返回全零/不可用结果；不承诺 transforms、nested overflow 或多片段 union。
@@ -69,17 +70,25 @@ next685–687 已完成布局几何、viewport resize 和动态 `matchMedia()` �
 - TEST1081/TEST1082 继续覆盖同文档 fragment 与跨文档 traversal 的 Browser-owned viewport snapshot；TEST1082 还覆盖新 entry 清零、横向值存取、宿主 clamp 和非法参数 fail closed。
 - TEST1132 覆盖已有 `MediaQueryList` 在 viewport/DPR 改变后的匹配刷新、legacy `addListener`/`removeListener`、`onchange`、可信 change 事件字段、状态翻转去重和监听器移除。
 - TEST1133 覆盖布局视口对应的 `visualViewport` 快照、page scroll 同步、visual/window resize/scroll 顺序、事件字段、监听器移除和重复通知去重。
+- TEST1134 覆盖 `history.scrollRestoration` 的 Browser→宿主策略门：`manual` 保留当前 viewport，`auto` 恢复并 clamp Browser entry snapshot，非法参数不改变调用方输出。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1133。
+- `TEST_MAX_NUMBER`：1134。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next688 的布局视口 `visualViewport` 与 resize/scroll 相邻回归；最近一次稳定全量 checkpoint 仍为 next670：
+当前最新产品门为 next689 的 `history.scrollRestoration` 与 viewport snapshot restore 相邻回归；最近一次稳定全量 checkpoint 仍为 next670：
+
+- next689 定向目录：`tmp/device-runs/20260831-135517-next689-scroll-restoration-r6/`；
+- 动态选择：`1131,1132,1133,1134,999`，5 项；5/5 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。TEST1131–1133 保留 viewport、动态媒体查询和 visualViewport 直接相邻回归；TEST1134 验证默认/显式 `history.scrollRestoration`、宿主自动 snapshot restore 的跳过/恢复、非法参数保护；TEST999 提示音请求一次。
+- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、完整 Rebuild 后的 VS2008 ARMV4I Debug 构建和同批 staging。
+- 静态验证：`python scripts/test_c89ize.py`、正式 Debug 构建、设备门和 `python scripts/audit_repo.py` 均通过；设备日志中的选择、完成数、错误数和唯一 `TESTBENCH PASS` 已复核。
+
+上一条产品门为 next688 的布局视口 `visualViewport` 与 resize/scroll 相邻回归；最近一次稳定全量 checkpoint 仍为 next670：
 
 - next688 定向目录：`tmp/device-runs/20260831-131517-next688-visual-viewport-r14/`；
 - 动态选择：`1133,1132,1131,999`，4 项；4/4 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。TEST1133 验证 `visualViewport` 快照、page scroll 同步、visual/window resize/scroll 顺序、事件字段、监听器移除和重复通知去重；TEST1132 验证动态媒体查询；TEST1131 验证 WM_SIZE 的 CSS viewport/DPR 与 window 事件；TEST999 提示音请求一次。
@@ -141,9 +150,9 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next689
+## 唯一下一步：next690
 
-先从源码、日志或截图固定一个真实缺口，再选择离线 fixture 或稳定哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主只做平台接线、调度、应用策略和断言；不要把互不相关的能力拆成只增加编号的提交，也不要在没有证据时扩大 ABI。现有 viewport、几何、媒体查询和 visualViewport 组合已有自动与设备证据；复杂布局、nested overflow、pinch zoom、transforms、平滑/惯性滚动、完整媒体查询语法、脚本队列自动调度和视觉差异仍是限制，不应在下一步中被误写成已支持。
+先从源码、日志或截图固定一个真实缺口，再选择离线 fixture 或稳定哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主只做平台接线、调度、应用策略和断言；不要把互不相关的能力拆成只增加编号的提交，也不要在没有证据时扩大 ABI。现有 viewport、几何、媒体查询、visualViewport 和 scroll restoration 组合已有自动与设备证据；复杂布局、nested overflow、pinch zoom、transforms、平滑/惯性滚动、完整媒体查询语法、脚本队列自动调度和视觉差异仍是限制，不应在下一步中被误写成已支持。
 
 优先场景应同时满足：
 
@@ -153,11 +162,11 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一步完成标准（next689）
+## 下一步完成标准（next690）
 
 - 先用源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
-- 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱 next685 的布局 relation、`getBoundingClientRect()`、DPI 换算、history snapshot、宿主 clamp/apply 或旧页保留契约；
+- 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱 next685–689 的布局 relation、`getBoundingClientRect()`、DPI 换算、history snapshot、宿主 clamp/apply、scroll restoration 或旧页保留契约；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- handoff 覆盖为 next688 快照，ROADMAP 只保留当前尚未完成的纵向能力。
+- handoff 覆盖为 next689 快照，ROADMAP 只保留当前尚未完成的纵向能力。

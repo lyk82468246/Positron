@@ -80,6 +80,12 @@ worker 收尾后、释放 request 前，宿主调用 `PBrowser_NavigationCleanup
 
 History entry 的 viewport snapshot 也由 `positron_browser.dll` 持有。宿主在离开当前页面前调用 `PBrowser_HistorySetEntryScroll` 保存当前 `(scroll_x, scroll_y)`，在提交新文档或完成 history traversal 后用 `PBrowser_HistoryEntryScroll` 读取目标坐标，再读取 Core 的 page-level `PCore_DocumentWidth/Height`，根据 client area 调用自己的 scrollbar/HWND 逻辑对两个轴 clamp/apply。宿主不再维护第二份按 entry 保存的滚动数组；Browser 不访问窗口，也不替宿主决定坐标的物理单位。嵌套 overflow 容器仍不在此路径内。
 
+如果当前脚本 session 的 `history.scrollRestoration` 为 `manual`，宿主通过
+`PBrowser_ScriptSessionGetScrollRestoration` 得到
+`PBROWSER_SCROLL_RESTORATION_MANUAL` 后必须跳过这次自动 snapshot restore，保留
+当前 viewport；查询失败按默认 `AUTO` 继续，不能把错误当成手动策略。fragment
+定位和显式脚本滚动不受这条自动恢复门影响。
+
 浏览器脚本启用时，宿主还注册 `PBrowserScriptScrollCallbacks`。Browser 的
 `window.scrollTo()`/`scrollBy()` 请求先经过该 callback，宿主把 page 坐标按
 当前 document/client extent clamp，更新滚动条、native child 和绘制位置，再

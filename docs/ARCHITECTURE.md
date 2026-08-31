@@ -112,7 +112,8 @@ Core 不保存编辑选区，也不重新派发 `selectionchange`。Browser 以 
 
 Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
-- 有界 history entries、每项 viewport snapshot、same-document state 和 traversal；
+- 有界 history entries、每项 viewport snapshot、same-document state、traversal 和
+  `scrollRestoration` 策略；
 - 浏览器 script session 与 bootstrap；
 - 浏览器脚本 `window.scrollTo`/`scrollBy` 的 typed viewport callback，以及宿主物理滚动后的去重同步入口；
 - 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；
@@ -148,6 +149,13 @@ viewport getters 和 `screen` 的宽高/方向，刷新最多 64 个已创建的
 运行 timer 或 animation-frame queue；页面若在 handler 中排队工作，仍由宿主消息循环
 驱动既有 scheduler。超过追踪上限的列表只保留初始匹配快照，完整媒体查询语法、
 nested overflow、pinch zoom 和视觉像素差异不因这个通知而获得额外保证。
+
+Browser 还拥有脚本可见的 history scroll-restoration 策略：
+`PBrowser_ScriptSessionGetScrollRestoration` 只读返回 `AUTO` 或 `MANUAL`。宿主
+在 traversal 后读取 entry viewport snapshot 时，只有明确得到 `AUTO` 才执行自动
+clamp/apply；`MANUAL` 保留当前 page viewport。该查询不接管窗口或滚动副作用，
+fragment reveal 和显式 `scrollTo` 仍走各自的宿主路径；查询失败必须按默认
+`AUTO` 处理，不能错误地跳过恢复。
 
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
 
@@ -196,7 +204,7 @@ nested overflow、pinch zoom 和视觉像素差异不因这个通知而获得额
 5. style/image pass 若发现新的 pending 资源则回到 worker；样式表与 `@import` 按 required policy，图片与 script 按 optional policy。重复 URL 由 Browser 事务去重并合并 stylesheet/script/image role bitmask；宿主只保留 URL 到 Browser resource index 的短引用。
 6. UI 线程在 layout/swap 前读取 Browser 的 `PBrowser_NavigationCommitGetInfo` 与 resource stats；组合快照为 PENDING 时继续等待资源，其他非 READY 结果禁止 swap，并在失败/取消/过时时释放候选、保留旧页、旧 session 和旧队列；optional 失败在 Core fallback 可用时允许继续，并在 layout 成功后通知 Browser 记录 fallback family 观测。宿主日志可读取最多 4 项 hash-only failure summary，但不拥有或重建摘要。
 7. 组合快照 READY 且最终 candidate 重检通过后，在旧 document/session 仍有效时调用 Browser teardown，停止旧页回调并原子提交页面与 history；新 entry 的 viewport 初始为 `(0, 0)`。
-8. history traversal 或 same-document fragment 完成后，宿主用 `PBrowser_HistoryEntryScroll` 读取目标 entry 的快照，再读取新 document 的 page-level width/height，按 client area 对 `(scroll_x, scroll_y)` 两个轴 clamp，并应用到 scrollbar/HWND、paint 和命中测试。Browser 只提供值，不执行滚动副作用。
+8. history traversal 或 same-document fragment 完成后，宿主用 `PBrowser_HistoryEntryScroll` 读取目标 entry 的快照；对于非 fragment traversal，只有当前 script session 的 `PBrowser_ScriptSessionGetScrollRestoration` 明确返回 `AUTO` 时才按 client area 对 `(scroll_x, scroll_y)` 两个轴 clamp 并应用到 scrollbar/HWND、paint 和命中测试。`MANUAL` 保留当前 viewport，fragment reveal 与显式滚动仍照常执行。Browser 只提供值，不执行滚动副作用。
 9. worker 已收尾后、销毁 request 的 candidate/resource handle 前，失败或过时 request 先取消剩余 pending 资源；宿主调用 `PBrowser_NavigationCleanupGetInfo` 复制终态、gate、pending、`can_release` 和有界 failure/fallback 观测。正常路径要求 `can_release` 为非零；若观测仍为 0，宿主必须 fail closed、记录异常并完成成对的最终释放，不能把它当作成功提交。复制值在 handle 销毁后仍可用于日志。
 10. 交互、旋转或动态 DOM 修改按需重新 style/layout/paint。
 

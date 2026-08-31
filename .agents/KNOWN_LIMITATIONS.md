@@ -65,7 +65,7 @@
 ## History、导航与窗口
 
 - history 是进程内、有界条目集合，不持久化到磁盘，也不恢复跨进程页面状态。
-- same-document 与跨文档 scroll restore 覆盖 Browser entry 保存的有界 page-level `(scroll_x, scroll_y)` viewport snapshot；参考宿主读取 Core 的 page-level width/height，对两个轴按当前 client extent clamp，并把物理坐标用于 scrollbar、paint、命中测试和 native child。浏览器脚本的 page-level `scrollTo`/`scrollBy` 也可经 typed callback 应用到该视口，宿主在 CSS page 坐标与物理坐标之间换算，并在物理滚动后用 notification 同步脚本偏移；有效变化会先派发 `visualViewport.scroll`，再派发 window `scroll`。嵌套 overflow 容器的独立滚动、视觉 viewport 偏移、滚动锚定、平滑/惯性滚动和跨窗口恢复仍未实现。
+- same-document 与跨文档 scroll restore 覆盖 Browser entry 保存的有界 page-level `(scroll_x, scroll_y)` viewport snapshot；参考宿主读取 Core 的 page-level width/height，对两个轴按当前 client extent clamp，并把物理坐标用于 scrollbar、paint、命中测试和 native child。浏览器脚本的 page-level `scrollTo`/`scrollBy` 也可经 typed callback 应用到该视口，宿主在 CSS page 坐标与物理坐标之间换算，并在物理滚动后用 notification 同步脚本偏移；有效变化会先派发 `visualViewport.scroll`，再派发 window `scroll`。脚本把 `history.scrollRestoration` 设为 `manual` 时，宿主会跳过自动 entry restore，但 fragment reveal 和显式滚动仍可执行。嵌套 overflow 容器的独立滚动、视觉 viewport 偏移、滚动锚定、平滑/惯性滚动和跨窗口恢复仍未实现。
 - 当前是单窗口/单 browsing context 组合；`_blank`、未知 named target、第二个 global、opener、跨窗口 history 和真实窗口复用未实现或保守拒绝。
 - `window.open()` 仅在允许复用当前 context 的受限 target 上工作，不创建新的 WM 顶层窗口。
 - download、外部协议、权限、文件系统和应用跳转策略仍由宿主决定。
@@ -88,6 +88,7 @@
 - RAPI 1 只暴露当前连接，不支持安全枚举多个设备；自动门假定恰好一个当前目标。
 - 主机 WMDC 重装可能恢复旧 RAPI COM 注册值并触发 `0x8007007E`，应使用严格、幂等的修复脚本取证，不要手改未知注册项。
 - RAPI 没有可靠的通用远端强杀语义；超时后可能需要用户在设备上关闭遗留进程。
+- 新增公共 DLL 导出后若直接使用增量链接产物，设备门曾出现已有 Browser bootstrap 的 `PSCRIPT_ERROR_TIMEOUT (-4)`；完整执行 `scripts\build.bat Debug rebuild` 并重新 staging 后恢复通过。看到这类 bootstrap 超时应先排除旧产物/混包，不能把一次增量构建失败当作产品回归。
 - 自动可视门只保证首帧和断言，不保证边距、字体、触摸、SIP、picker、旋转或失败网络体验。
 
 ## 测试覆盖
@@ -95,7 +96,7 @@
 - next670 已建立一次 1080 项动态全量自动设备 checkpoint；后续定向门仍不能替代下一次按风险触发的全量范围基线。
 - TEST1081/TEST1082 覆盖 Browser-owned history viewport snapshot 的 fragment/traversal 保持、新 entry 清零、横向值存取、宿主 clamp 和非法参数 fail closed；
 - TEST1128 覆盖 Core page-level width、宿主横向/纵向 viewport clamp、Browser 横向 snapshot restore、fragment document-space 命中和直接相邻的离线宽页面路径；不证明嵌套 overflow 容器或真实页面视觉兼容性；
-- 已有十三条离线 compatibility-corpus 流程，仍不代表任意真实网站或完整 Web 标准：
+- 已有十四条离线 compatibility-corpus 流程，仍不代表任意真实网站或完整 Web 标准：
   - TEST1117–TEST1119 覆盖 contenteditable/dialog/history 组合、重复资源准备、失败旧页保留、页面 teardown、generation 取消、过时消息隔离、退休请求回收和最新候选提交；
   - TEST1120–TEST1123 覆盖 Browser 资源事务终态、失败分类、transport 重试预算、required/optional gate、重复 script/image、三层 `@import`、最多 4 项 hash-only 摘要和 layout 后 fallback family 观测；
   - TEST1124–TEST1126 覆盖 candidate generation/取消/退休/终态结果、candidate/resource commit snapshot、`can_commit` 和非法参数；
@@ -103,6 +104,7 @@
 - TEST1130 覆盖 Core layout relation 与 Browser `getBoundingClientRect()` 的边界、矩形边界算术和 page-level scroll 换算；不证明复杂 CSS 几何、nested overflow 或真实页面视觉。
 - TEST1131 覆盖 WM_SIZE 到 Browser 的 CSS viewport/DPR resize 通知、window 事件字段、重复快照去重和 screen 方向更新；不证明真实旋转、字体/边距、滚动条或 resize handler 中 animation-frame 的视觉结果。
 - TEST1133 覆盖 `visualViewport` 的布局视口/page scroll 快照、visual/window 事件顺序、事件字段、监听器移除和重复 resize/scroll 去重；不证明 pinch zoom、nested overflow 或视觉像素。
+- TEST1134 覆盖 `history.scrollRestoration` 的 Browser→宿主策略门：`manual` 保留当前 viewport，`auto` 恢复并 clamp Browser entry snapshot，且非法查询参数 fail closed；不证明复杂窗口或真实页面的视觉滚动体验。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

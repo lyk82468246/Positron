@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1133
+#define TEST_MAX_NUMBER 1134
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6619,6 +6619,19 @@ static int pcore_browse_history_restore_scroll(HWND hwnd, int index)
 {
     int scroll_x;
     int scroll_y;
+    int restoration_mode;
+
+    /* The Browser owns history.scrollRestoration. A manual page policy
+     * deliberately leaves the current host viewport untouched; any
+     * fragment reveal or explicit script scroll remains a separate path. */
+    restoration_mode = PBROWSER_SCROLL_RESTORATION_AUTO;
+    if (g_browser_script_session.session != NULL &&
+            PBrowser_ScriptSessionGetScrollRestoration(
+            g_browser_script_session.session, &restoration_mode) ==
+            PSCRIPT_OK && restoration_mode ==
+            PBROWSER_SCROLL_RESTORATION_MANUAL) {
+        return 1;
+    }
 
     if (pcore_browse_history_scroll_at(index, &scroll_x, &scroll_y) !=
             PBROWSER_OK) {
@@ -33706,6 +33719,156 @@ static BOOL test1133_browser_visual_viewport_contract(void)
     show_info(L"TEST 1133 OK",
             "visualViewport exposes bounded viewport/page snapshots and"
             " synchronous, deduplicated host-driven resize/scroll events.");
+    return TRUE;
+}
+
+/* TEST 1134 - history.scrollRestoration gates host viewport restore. */
+static BOOL test1134_browser_scroll_restoration_contract(void)
+{
+    static const char URL_A[] = "https://positron.local/scroll-auto";
+    static const char URL_B[] = "https://positron.local/scroll-next";
+    HANDLE session;
+    char error[512];
+    int mode;
+    int rc;
+    int ok;
+
+    session = NULL;
+    mode = -1;
+    rc = PSCRIPT_OK;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_reset();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 800;
+    g_doc_h = 600;
+    g_view_w = 200;
+    g_view_h = 200;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    if (pcore_browse_history_commit_navigation(URL_A, 1, -1) != 0) {
+        cstr_copy(error, sizeof(error), "initial history entry failed");
+        ok = 0;
+    }
+    if (ok) {
+        g_scroll_x = 32;
+        g_scroll_y = 48;
+        pcore_browse_history_save_scroll();
+        if (pcore_browse_history_commit_navigation(URL_B, 1, -1) != 0 ||
+                g_browse_history.index != 1) {
+            cstr_copy(error, sizeof(error), "second history entry failed");
+            ok = 0;
+        }
+    }
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    if (ok && (session == NULL ||
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", URL_B) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 2.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", 200.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", 200.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK)) {
+        cstr_copy(error, sizeof(error), "scroll restoration bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        g_browser_script_session.document = (HANDLE) 1;
+        g_browser_script_session.session = session;
+        g_browser_script_session.runtime =
+                PBrowser_ScriptSessionRuntime(session);
+        session = NULL;
+        if (PBrowser_ScriptSessionGetScrollRestoration(
+                g_browser_script_session.session, &mode) != PSCRIPT_OK ||
+                mode != PBROWSER_SCROLL_RESTORATION_AUTO) {
+            cstr_copy(error, sizeof(error), "default scroll mode was not auto");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session,
+                "history.scrollRestoration='manual';", -1) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionGetScrollRestoration(
+                g_browser_script_session.session, &mode) != PSCRIPT_OK ||
+                mode != PBROWSER_SCROLL_RESTORATION_MANUAL) {
+            cstr_copy(error, sizeof(error), "manual scroll mode was not exposed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_scroll_x = 5;
+        g_scroll_y = 7;
+        if (!pcore_browse_history_restore_scroll(NULL, 0) ||
+                g_scroll_x != 5 || g_scroll_y != 7) {
+            cstr_copy(error, sizeof(error),
+                    "manual mode changed the host viewport");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session,
+                "history.scrollRestoration='auto';", -1);
+        if (rc != PSCRIPT_OK ||
+                PBrowser_ScriptSessionGetScrollRestoration(
+                g_browser_script_session.session, &mode) != PSCRIPT_OK ||
+                mode != PBROWSER_SCROLL_RESTORATION_AUTO ||
+                !pcore_browse_history_restore_scroll(NULL, 0) ||
+                g_scroll_x != 32 || g_scroll_y != 48) {
+            cstr_copy(error, sizeof(error),
+                    "auto mode did not restore the saved viewport");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        mode = -1;
+        if (PBrowser_ScriptSessionGetScrollRestoration(
+                g_browser_script_session.session, NULL) !=
+                PSCRIPT_ERROR_ARGUMENT ||
+                PBrowser_ScriptSessionGetScrollRestoration(NULL, &mode) !=
+                PSCRIPT_ERROR_ARGUMENT || mode != -1) {
+            cstr_copy(error, sizeof(error),
+                    "scroll mode argument guard failed");
+            ok = 0;
+        }
+    }
+    if (g_browser_script_session.session != NULL) {
+        PBrowser_ScriptSessionDestroy(g_browser_script_session.session);
+    }
+    g_browser_script_session.document = NULL;
+    g_browser_script_session.session = NULL;
+    g_browser_script_session.runtime = NULL;
+    g_browser_script_session.bridge = NULL;
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browse_history_reset();
+    if (!ok) {
+        show_error(L"TEST 1134 FAIL", error[0] != '\0' ? error :
+                "scroll restoration contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1134 OK",
+            "Browser-owned history.scrollRestoration now gates the host's"
+            " automatic viewport restore; manual leaves the current position"
+            " untouched while auto restores the saved entry snapshot.");
     return TRUE;
 }
 
@@ -91745,6 +91908,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1131: ok = test1131_browser_viewport_resize_contract(); break;
         case 1132: ok = test1132_browser_match_media_resize_contract(); break;
         case 1133: ok = test1133_browser_visual_viewport_contract(); break;
+        case 1134: ok = test1134_browser_scroll_restoration_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -30,15 +30,16 @@
 ### 真实页面组合缺口
 
 现有 Browser viewport 组合已经覆盖 page-level scroll、有限布局几何、WM_SIZE
-resize、动态 `matchMedia()` 和布局视口对应的 `visualViewport` 快照；这些能力
-都必须继续由 Browser/Core 提供，不能退回到 `test_host` 的业务 helper。下一条
-纵向能力是 next689，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；
+resize、动态 `matchMedia()`、布局视口对应的 `visualViewport` 快照和
+`history.scrollRestoration` 的宿主策略门；这些能力都必须继续由 Browser/Core
+提供，不能退回到 `test_host` 的业务 helper。下一条纵向能力是 next690，仍须从
+源码、日志或截图固定一个新的可复现用户可见组合缺口；
 不能凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。嵌套 overflow 容器、
 pinch zoom、平滑/惯性滚动和视觉猜测不得误写成已支持能力。
 
 优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
-next689 的完成证据应包括定向自动断言、直接相邻回归和风险相称的设备门；
+next690 的完成证据应包括定向自动断言、直接相邻回归和风险相称的设备门；
 视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、
 严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，
 也不要在没有实际缺口证据时提前选择下一能力方向。

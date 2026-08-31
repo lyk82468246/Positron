@@ -33,6 +33,13 @@ if (PBrowser_HistoryEntryScroll(history, entry_index,
 
 新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState` 与 history traversal 保留已有 snapshot，`pushState` 的新 entry 从零开始，history 达到上限裁剪时 snapshot 与 URL/state 一起移动。History 只决定条目语义，不请求 URL、不保存文档、不创建窗口，也不持久化到磁盘。宿主只有在页面真正提交后才应 commit 新导航；失败候选不得污染 history。
 
+浏览器脚本的 `history.scrollRestoration` 初始为 `auto`，也可以设为
+`manual`。Browser 通过 `PBrowser_ScriptSessionGetScrollRestoration()` 把这项
+策略提供给宿主；宿主只有在结果为 `PBROWSER_SCROLL_RESTORATION_AUTO` 时才应在
+history traversal 后自动应用 entry snapshot，`MANUAL` 则保留当前 viewport。这个
+查询不改变 history 或 viewport；fragment reveal 和应用显式请求的滚动仍由宿主
+单独处理。只有明确读到 `MANUAL` 才能跳过恢复，查询失败不能把页面误判为手动模式。
+
 ### Page viewport 与脚本滚动
 
 注册 `PBrowserScriptScrollCallbacks` 后，Browser bootstrap 的

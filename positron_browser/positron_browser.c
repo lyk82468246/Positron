@@ -10686,6 +10686,40 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
     return rc;
 }
 
+PBROWSER_API int PBrowser_ScriptSessionGetScrollRestoration(HANDLE hSession,
+        int *out_mode)
+{
+    p_browser_script_session *session;
+    const char *result;
+    int rc;
+
+    if (out_mode == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    *out_mode = PBROWSER_SCROLL_RESTORATION_AUTO;
+    rc = PScript_Evaluate(session->runtime,
+            "history.scrollRestoration;", -1);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    result = PScript_GetResult(session->runtime);
+    if (result == NULL) {
+        return PSCRIPT_ERROR_CALL;
+    }
+    if (strcmp(result, "manual") == 0) {
+        *out_mode = PBROWSER_SCROLL_RESTORATION_MANUAL;
+        return PSCRIPT_OK;
+    }
+    if (strcmp(result, "auto") == 0) {
+        return PSCRIPT_OK;
+    }
+    return PSCRIPT_ERROR_CALL;
+}
+
 /* C89 has no portable isfinite() helper.  Subtracting a finite value from
  * itself yields zero; both NaN and infinity produce a non-finite result. */
 static int p_browser_script_double_finite(double value)

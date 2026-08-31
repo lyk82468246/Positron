@@ -86,6 +86,12 @@ TEST1133 覆盖浏览器脚本 `visualViewport` 的有限布局视口快照：`w
 window 事件仍可独立到达。它不保证 pinch zoom、嵌套 overflow、视觉像素或真实
 旋转体验。
 
+TEST1134 覆盖 history traversal 的自动滚动恢复策略：Browser 以
+`PBrowser_ScriptSessionGetScrollRestoration` 暴露脚本的 `auto`/`manual` 状态，
+宿主在明确 `manual` 时保留当前 viewport，在 `auto` 时才读取并 clamp Browser
+保存的 entry snapshot；查询的空句柄/空输出参数会 fail closed。fragment reveal
+和显式脚本滚动不属于这条自动恢复门。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

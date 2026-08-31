@@ -1770,6 +1770,16 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterScrollCallbacks(
  * without recursion. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
         int scroll_x, int scroll_y);
+/* Read the browser history scroll-restoration policy. The output is
+ * PBROWSER_SCROLL_RESTORATION_AUTO (the default) or
+ * PBROWSER_SCROLL_RESTORATION_MANUAL. A host should skip its automatic
+ * history viewport restore only for the MANUAL value; fragment scrolling and
+ * explicit application scrolling remain host policy. The output is written
+ * on success and the session/bootstrap state is otherwise left untouched. */
+#define PBROWSER_SCROLL_RESTORATION_AUTO   0
+#define PBROWSER_SCROLL_RESTORATION_MANUAL 1
+PBROWSER_API int PBrowser_ScriptSessionGetScrollRestoration(HANDLE hSession,
+        int *out_mode);
 /* Synchronize a host viewport change into the Browser bootstrap. Width and
  * height are CSS pixels and device_pixel_ratio must be positive. The Browser
  * updates inner/outer dimensions, devicePixelRatio and screen metadata, then
