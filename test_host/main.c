@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1130
+#define TEST_MAX_NUMBER 1131
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6525,6 +6525,7 @@ static HANDLE g_browse_history_product = NULL;
  * the host window and clamp it against the current document. */
 static int pcore_scroll_to_xy(HWND hwnd, int target_x, int target_y);
 static void pcore_browser_script_sync_scroll(void);
+static void pcore_browser_script_notify_resize(void);
 
 /* The product DLL owns URL/state/document-id history and viewport snapshots.
  * This fixed-size host mirror carries URL/state/document ids for legacy
@@ -12889,6 +12890,37 @@ static void pcore_browser_script_sync_scroll(void)
     css_y = MulDiv((g_scroll_y >= 0) ? g_scroll_y : 0, 96, dpi);
     (void) PBrowser_ScriptSessionNotifyScroll(bridge->session,
             css_x, css_y);
+}
+
+/* Reflect the physical WM_SIZE viewport into the active Browser script
+ * session. Core has already re-styled and re-laid out the document when this
+ * helper runs, so a resize listener observes the new page geometry. */
+static void pcore_browser_script_notify_resize(void)
+{
+    pcore_browser_script_bridge *bridge;
+    int dpi;
+    double viewport_width;
+    double viewport_height;
+    double device_pixel_ratio;
+
+    if (g_render_doc == NULL || g_view_w <= 0 || g_view_h <= 0 ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.bridge == NULL) {
+        return;
+    }
+    bridge = g_browser_script_session.bridge;
+    if (bridge->document != g_render_doc || bridge->session == NULL) {
+        return;
+    }
+    dpi = g_page_scroll_dpi;
+    if (dpi <= 0) {
+        dpi = 96;
+    }
+    viewport_width = (double) g_view_w * 96.0 / (double) dpi;
+    viewport_height = (double) g_view_h * 96.0 / (double) dpi;
+    device_pixel_ratio = (double) dpi / 96.0;
+    (void) PBrowser_ScriptSessionNotifyResize(bridge->session,
+            viewport_width, viewport_height, device_pixel_ratio);
 }
 
 /* Scroll by both page offsets, clamped to the document/client extents, and
@@ -21360,6 +21392,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         pcore_set_scrollbar(hwnd);
         pcore_browse_history_save_scroll();
         pcore_browser_script_sync_scroll();
+        pcore_browser_script_notify_resize();
         pcore_native_edits_rebuild(hwnd, 1);
         pcore_native_selects_rebuild(hwnd, 1);
         SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);   /* keep SIP hidden on rotate */
@@ -33175,6 +33208,167 @@ static BOOL test1130_browser_bounding_client_rect_contract(void)
             "Core exposes a bounded laid-out border box through the existing"
             " DOM relation bridge; Browser getBoundingClientRect returns a"
             " viewport-relative snapshot and tracks page scroll.");
+    return TRUE;
+}
+
+/* TEST 1131 - a host viewport change updates script viewport metadata and
+ * dispatches one synchronous, deduplicated window resize event. */
+static BOOL test1131_browser_viewport_resize_contract(void)
+{
+    static const char URL[] = "https://positron.local/viewport-resize";
+    HANDLE session;
+    pcore_browser_script_bridge host_bridge;
+    const char *result;
+    char error[512];
+    int ok;
+
+    session = NULL;
+    memset(&host_bridge, 0, sizeof(host_bridge));
+    result = NULL;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    if (session == NULL ||
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", URL) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", 320.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", 240.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "resize bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "window.__resizeEvents=0;window.__resizeTrace='';"
+                "window.onresize=function(e){window.__resizeTrace+='handler:'"
+                "+e.type+'|'+String(e.target===window)+'|'"
+                "+String(e.currentTarget===window)+'|'+String(e.bubbles)+'|'"
+                "+String(e.cancelable)+'|'+String(e.isTrusted)+'|'"
+                "+String(e.defaultPrevented);};"
+                "window.addEventListener('resize',function(e){"
+                "window.__resizeEvents++;window.__resizeTrace+='|listener';});"
+                "[window.innerWidth,window.innerHeight,window.outerWidth,"
+                "window.outerHeight,window.devicePixelRatio,screen.width,"
+                "screen.height,screen.orientation.type,screen.orientation.angle].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "320|240|320|240|1|320|240|landscape-primary|90") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "initial viewport metadata mismatch");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 160.0, 300.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[window.innerWidth,window.innerHeight,window.outerWidth,"
+                "window.outerHeight,window.devicePixelRatio,screen.width,"
+                "screen.height,screen.orientation.type,screen.orientation.angle,"
+                "window.__resizeEvents,window.__resizeTrace].join('|');", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "160|300|160|300|2|160|300|portrait-primary|0|1|"
+                "handler:resize|true|true|false|false|true|false|listener") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "resize metadata or event contract mismatch");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 160.0, 300.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(window.__resizeEvents)+'|'+window.__resizeTrace;",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "1|handler:resize|true|true|false|false|true|false|listener") !=
+                0) {
+            cstr_copy(error, sizeof(error),
+                    "duplicate resize dispatched an event");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 300.0, 160.0,
+                1.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[window.innerWidth,window.innerHeight,screen.orientation.type,"
+                "screen.orientation.angle,window.__resizeEvents].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "300|160|landscape-primary|90|2") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "second resize did not update orientation");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        /* Exercise the same physical-to-CSS conversion used by WM_SIZE. */
+        host_bridge.document = (HANDLE) 1;
+        host_bridge.session = session;
+        g_render_doc = (HANDLE) 1;
+        g_view_w = 300;
+        g_view_h = 160;
+        g_page_scroll_dpi = 192;
+        g_browser_script_session.document = g_render_doc;
+        g_browser_script_session.session = session;
+        g_browser_script_session.runtime =
+                PBrowser_ScriptSessionRuntime(session);
+        g_browser_script_session.bridge = &host_bridge;
+        pcore_browser_script_notify_resize();
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "[window.innerWidth,window.innerHeight,"
+                "window.devicePixelRatio,screen.orientation.type,"
+                "screen.orientation.angle,window.__resizeEvents].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "150|80|2|landscape-primary|90|3") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "WM_SIZE viewport conversion mismatch");
+            ok = 0;
+        }
+        g_browser_script_session.document = NULL;
+        g_browser_script_session.session = NULL;
+        g_browser_script_session.runtime = NULL;
+        g_browser_script_session.bridge = NULL;
+        g_render_doc = NULL;
+        g_view_w = 0;
+        g_view_h = 0;
+        g_page_scroll_dpi = 96;
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, -1.0, 160.0, 1.0) !=
+                PSCRIPT_ERROR_ARGUMENT ||
+                PBrowser_ScriptSessionNotifyResize(session, 300.0, 160.0,
+                0.0) != PSCRIPT_ERROR_ARGUMENT) {
+            cstr_copy(error, sizeof(error),
+                    "invalid resize arguments were accepted");
+            ok = 0;
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 1131 FAIL", error[0] != '\0' ? error :
+                "viewport resize contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1131 OK",
+            "Browser viewport metadata follows host resize notifications;"
+            " resize events are synchronous, trusted, and deduplicated,"
+            " including dynamic screen orientation metadata.");
     return TRUE;
 }
 
@@ -91211,6 +91405,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1128: ok = test1128_page_horizontal_viewport(); break;
         case 1129: ok = test1129_browser_script_scroll_contract(); break;
         case 1130: ok = test1130_browser_bounding_client_rect_contract(); break;
+        case 1131: ok = test1131_browser_viewport_resize_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

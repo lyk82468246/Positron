@@ -3312,13 +3312,13 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "throw new Error('history push state failed');}"
         "phistoryStateJson=s;phistoryLength=n;purl=u;}"
         "var pscrollX=0;var pscrollY=0;"
-        "var pwindowListeners={popstate:[],hashchange:[],load:[],scroll:[],"
+        "var pwindowListeners={popstate:[],hashchange:[],load:[],scroll:[],resize:[],"
         "pagehide:[],pageshow:[],unload:[],DOMContentLoaded:[],readystatechange:[],message:[],storage:[]};"
-        "g.onpopstate=null;g.onhashchange=null;g.onpagehide=null;g.onpageshow=null;"
-        "g.onunload=null;g.onmessage=null;g.onstorage=null;"
+        "g.onpopstate=null;g.onhashchange=null;g.onresize=null;g.onpagehide=null;"
+        "g.onpageshow=null;g.onunload=null;g.onmessage=null;g.onstorage=null;"
         "g.addEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if((t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
-        "t!=='scroll'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
+        "t!=='scroll'&&t!=='resize'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange'&&t!=='message'&&"
         "t!=='storage')||"
         "typeof fn!=='function'){return;}a=pwindowListeners[t];var o=pEventOptions(capture);"
@@ -3329,7 +3329,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "o.signal.addEventListener('abort',function(){pRemoveListenerEntry(entry);},{once:true});}};"
         "g.removeEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if(t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
-        "t!=='scroll'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
+        "t!=='scroll'&&t!=='resize'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange'&&t!=='message'&&"
         "t!=='storage'){return;}"
         "a=pwindowListeners[t];for(i=a.length-1;i>=0;i--){"
@@ -3353,6 +3353,16 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function pdispatchScroll(){var e={type:'scroll',target:g,"
         "currentTarget:g,bubbles:false,cancelable:false,defaultPrevented:false,"
         "isTrusted:false};e.preventDefault=function(){};pdispatchWindow('scroll',e);}"
+        "function pdispatchResize(){var e={type:'resize',target:g,"
+        "currentTarget:g,bubbles:false,cancelable:false,defaultPrevented:false,"
+        "isTrusted:true};e.preventDefault=function(){};pdispatchWindow('resize',e);}"
+        "function psetViewportResize(width,height,dpr){var nw=Number(width);"
+        "var nh=Number(height);var nd=Number(dpr);"
+        "if(!isFinite(nw)||!isFinite(nh)||!isFinite(nd)||nw<0||nh<0||nd<=0){"
+        "return false;}nw=Math.floor(nw);nh=Math.floor(nh);"
+        "if(nw===pviewportWidth&&nh===pviewportHeight&&nd===pdevicePixelRatio){"
+        "return true;}pviewportWidth=nw;pviewportHeight=nh;"
+        "pdevicePixelRatio=nd;pdispatchResize();return true;}"
         "function psetScrollApplied(x,y){var nx=Number(x);var ny=Number(y);"
         "if(!isFinite(nx)){nx=0;}if(!isFinite(ny)){ny=0;}if(nx<0){nx=0;}"
         "if(ny<0){ny=0;}nx=Math.floor(nx);ny=Math.floor(ny);"
@@ -3381,6 +3391,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return pscrollY;},enumerable:true});"
         "Object.defineProperty(g,'__pcoreScrollApplied',{value:function(x,y){"
         "psetScrollApplied(x,y);},writable:false,configurable:false});"
+        "Object.defineProperty(g,'__pcoreViewportResize',{value:function(w,h,d){"
+        "return psetViewportResize(w,h,d);},writable:false,configurable:false});"
         "Object.defineProperty(g,'__pcoreHistoryTraverse',{"
         "value:function(state,url){var s=JSON.stringify(state);var oldUrl=purl;"
         "var newUrl=String(url);if(typeof s!=='string'){s='null';}"
@@ -3751,21 +3763,32 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(!isFinite(pviewportWidth)||pviewportWidth<0){pviewportWidth=0;}"
         "if(!isFinite(pviewportHeight)||pviewportHeight<0){pviewportHeight=0;}"
         "if(!isFinite(pdevicePixelRatio)||pdevicePixelRatio<=0){pdevicePixelRatio=1;}"
-        "Object.defineProperty(g,'innerWidth',{value:pviewportWidth,"
-        "writable:false,configurable:false,enumerable:true});"
-        "Object.defineProperty(g,'innerHeight',{value:pviewportHeight,"
-        "writable:false,configurable:false,enumerable:true});"
-        "Object.defineProperty(g,'outerWidth',{value:pviewportWidth,"
-        "writable:false,configurable:false,enumerable:true});"
-        "Object.defineProperty(g,'outerHeight',{value:pviewportHeight,"
-        "writable:false,configurable:false,enumerable:true});"
-        "Object.defineProperty(g,'devicePixelRatio',{value:pdevicePixelRatio,"
-        "writable:false,configurable:false,enumerable:true});"
-        "g.screen=Object.freeze({width:pviewportWidth,height:pviewportHeight,"
-        "availWidth:pviewportWidth,availHeight:pviewportHeight,left:0,top:0,"
-        "availLeft:0,availTop:0,colorDepth:16,pixelDepth:16,orientation:Object.freeze({"
-        "type:pviewportWidth>=pviewportHeight?'landscape-primary':'portrait-primary',"
-        "angle:pviewportWidth>=pviewportHeight?90:0})});"
+        "Object.defineProperty(g,'innerWidth',{get:function(){return pviewportWidth;},"
+        "configurable:false,enumerable:true});"
+        "Object.defineProperty(g,'innerHeight',{get:function(){return pviewportHeight;},"
+        "configurable:false,enumerable:true});"
+        "Object.defineProperty(g,'outerWidth',{get:function(){return pviewportWidth;},"
+        "configurable:false,enumerable:true});"
+        "Object.defineProperty(g,'outerHeight',{get:function(){return pviewportHeight;},"
+        "configurable:false,enumerable:true});"
+        "Object.defineProperty(g,'devicePixelRatio',{get:function(){return pdevicePixelRatio;},"
+        "configurable:false,enumerable:true});"
+        "var pscreen={};Object.defineProperty(pscreen,'width',{get:function(){"
+        "return pviewportWidth;},enumerable:true});"
+        "Object.defineProperty(pscreen,'height',{get:function(){return pviewportHeight;},"
+        "enumerable:true});Object.defineProperty(pscreen,'availWidth',{get:function(){"
+        "return pviewportWidth;},enumerable:true});"
+        "Object.defineProperty(pscreen,'availHeight',{get:function(){return pviewportHeight;},"
+        "enumerable:true});Object.defineProperty(pscreen,'left',{value:0,enumerable:true});"
+        "Object.defineProperty(pscreen,'top',{value:0,enumerable:true});"
+        "Object.defineProperty(pscreen,'availLeft',{value:0,enumerable:true});"
+        "Object.defineProperty(pscreen,'availTop',{value:0,enumerable:true});"
+        "Object.defineProperty(pscreen,'colorDepth',{value:16,enumerable:true});"
+        "Object.defineProperty(pscreen,'pixelDepth',{value:16,enumerable:true});"
+        "Object.defineProperty(pscreen,'orientation',{get:function(){"
+        "return Object.freeze({type:pviewportWidth>=pviewportHeight?"
+        "'landscape-primary':'portrait-primary',angle:pviewportWidth>=pviewportHeight?90:0});"
+        "},enumerable:true});Object.freeze(pscreen);g.screen=pscreen;"
         "function PMediaQueryList(query,matches){this.media=String(query);this.matches=!!matches;"
         "this.onchange=null;this.__listeners=[];}"
         "PMediaQueryList.prototype.addEventListener=function(type,fn,options){"
@@ -10619,6 +10642,54 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
     (void) PScript_Evaluate(session->runtime,
             "delete this.__pcoreScrollX;delete this.__pcoreScrollY;", -1);
     return rc;
+}
+
+/* C89 has no portable isfinite() helper.  Subtracting a finite value from
+ * itself yields zero; both NaN and infinity produce a non-finite result. */
+static int p_browser_script_double_finite(double value)
+{
+    double difference;
+
+    difference = value - value;
+    return difference == 0.0;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionNotifyResize(HANDLE hSession,
+        double viewport_width, double viewport_height,
+        double device_pixel_ratio)
+{
+    p_browser_script_session *session;
+    char args[128];
+    const char *result;
+    int length;
+    int rc;
+
+    if (!p_browser_script_double_finite(viewport_width) ||
+            !p_browser_script_double_finite(viewport_height) ||
+            !p_browser_script_double_finite(device_pixel_ratio) ||
+            viewport_width < 0.0 || viewport_height < 0.0 ||
+            device_pixel_ratio <= 0.0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    length = _snprintf(args, sizeof(args) - 1,
+            "[%.17g,%.17g,%.17g]", viewport_width, viewport_height,
+            device_pixel_ratio);
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    args[length] = '\0';
+    rc = PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreViewportResize", args);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    result = PBrowser_ScriptSessionGetResult(hSession);
+    return (result != NULL && strcmp(result, "true") == 0) ?
+            PSCRIPT_OK : PSCRIPT_ERROR_CALL;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(

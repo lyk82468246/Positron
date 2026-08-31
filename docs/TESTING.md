@@ -66,6 +66,13 @@ TEST1130 覆盖真实 IANA 页面目录脚本需要的布局几何：Core 在成
 算术和滚动后的尺寸/横坐标保持不变；它不证明 transforms、`getClientRects()`、
 Range、多片段文本、nested overflow 或真实页面的字体/像素视觉。
 
+TEST1131 覆盖 WM_SIZE 到 Browser script session 的 viewport resize 合同：宿主
+把物理 client area 按 DPI 换算为 CSS 宽高/DPR，Browser 更新
+`innerWidth`/`outerWidth`/`devicePixelRatio` 与 `screen` 方向，并同步派发一次
+可信、不可取消且不冒泡的 window `resize`。断言覆盖监听器顺序、事件字段、重复
+三元组去重、方向变化和负值/零 DPR 的参数拒绝；它不替代真实旋转、字体、边距、
+滚动条或页面在 resize handler 中排队的 animation-frame 视觉验收。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

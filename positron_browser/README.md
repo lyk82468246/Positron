@@ -49,6 +49,18 @@ viewport 位置换算为 CSS page 坐标，再调用
 因此宿主可以在完成自己的 clamp/apply 后安全调用它。回调同步且不可重入；
 宿主不得在 scroll callback 内再次进入或销毁同一 Browser session。
 
+宿主完成物理窗口的 style/layout 和 viewport clamp 后，还应把 CSS viewport
+宽高与当前 `devicePixelRatio` 传给
+`PBrowser_ScriptSessionNotifyResize(session, width, height, dpr)`。Browser
+会更新 `innerWidth`、`innerHeight`、`outerWidth`、`outerHeight`、
+`devicePixelRatio` 以及 `screen` 的宽高/方向，并同步派发一次不冒泡、不可取消、
+`isTrusted` 为真的 window `resize` 事件。宽高允许为零，DPR 必须为正；参数必须
+是有限数值。完全相同的三元组仍返回成功，但不会重复派发事件。该入口只更新
+脚本侧快照，不触发 Core style/layout，也不自动运行 timer 或
+`requestAnimationFrame` 队列；宿主若页面在 resize handler 中排队下一帧，必须用
+已有的 frame pump 另行驱动。事件监听器只能在 bootstrap 提供的 window
+`resize` 类型上注册，不能借此推断 nested overflow 或 `matchMedia` 的动态更新。
+
 ### Layout geometry 与 `getBoundingClientRect()`
 
 DOM relation callback 还提供四个数值分量：当前 Core layout box 的

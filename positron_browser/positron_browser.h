@@ -1769,6 +1769,16 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterScrollCallbacks(
  * touch, keyboard or resize handling without recursion. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
         int scroll_x, int scroll_y);
+/* Synchronize a host viewport change into the Browser bootstrap. Width and
+ * height are CSS pixels and device_pixel_ratio must be positive. The Browser
+ * updates inner/outer dimensions, devicePixelRatio and screen metadata, then
+ * dispatches one synchronous non-bubbling window `resize` event when the
+ * effective snapshot changes. It does not perform Core style/layout work or
+ * run queued timers/animation frames. Duplicate snapshots are accepted
+ * without dispatching another event. */
+PBROWSER_API int PBrowser_ScriptSessionNotifyResize(HANDLE hSession,
+        double viewport_width, double viewport_height,
+        double device_pixel_ratio);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
         HANDLE hSession,
         const PBrowserScriptDomAttributeCallbacks *callbacks);
