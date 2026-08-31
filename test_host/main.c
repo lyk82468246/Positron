@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1136
+#define TEST_MAX_NUMBER 1137
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6161,6 +6161,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_NAV_COMMIT_TIMER 25
 #define TESTBENCH_RENDER_TIMER 26
 #define PCORE_HOVER_TIMER 27
+#define PCORE_SCRIPT_PUMP_TIMER 28
 #define PCORE_NAV_STAGE_DOCUMENT 1
 #define PCORE_NAV_STAGE_RESOURCES 2
 #define PCORE_NAV_RESULT_MORE 0
@@ -12968,6 +12969,31 @@ static void pcore_browser_script_notify_resize(void)
     device_pixel_ratio = (double) dpi / 96.0;
     (void) PBrowser_ScriptSessionNotifyResize(bridge->session,
             viewport_width, viewport_height, device_pixel_ratio);
+}
+
+/* Drive one product-owned script task checkpoint from the UI message loop.
+ * The host supplies the clock and cadence; Browser owns the queue ordering
+ * and performs a microtask checkpoint after every selected phase. A failed
+ * checkpoint is returned so the caller can stop scheduling this session
+ * without inventing a second script policy in the host. */
+static int pcore_browser_script_run_task_checkpoint(void)
+{
+    pcore_browser_script_bridge *bridge;
+    unsigned long now_ms;
+
+    if (g_render_doc == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.bridge == NULL) {
+        return PSCRIPT_OK;
+    }
+    bridge = g_browser_script_session.bridge;
+    if (bridge->document != g_render_doc || bridge->session == NULL) {
+        return PSCRIPT_OK;
+    }
+    now_ms = (unsigned long) GetTickCount();
+    return PBrowser_ScriptSessionRunTaskCheckpoint(bridge->session,
+            now_ms, now_ms, now_ms, 16UL,
+            PBROWSER_SCRIPT_PUMP_ALL);
 }
 
 /* Scroll by both page offsets, clamped to the document/client extents, and
@@ -21493,6 +21519,12 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         return 0;
     }
     case WM_TIMER:
+        if (wp == PCORE_SCRIPT_PUMP_TIMER) {
+            if (pcore_browser_script_run_task_checkpoint() != PSCRIPT_OK) {
+                KillTimer(hwnd, PCORE_SCRIPT_PUMP_TIMER);
+            }
+            return 0;
+        }
         if (wp == TESTBENCH_RENDER_TIMER && g_testbench_auto &&
                 !g_testbench_browse_active) {
             if (g_testbench_render_paints > 0) {
@@ -22215,6 +22247,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         pcore_disclosure_focus_clear();
         pcore_sequential_focus_clear();
         KillTimer(hwnd, PCORE_HOVER_TIMER);
+        KillTimer(hwnd, PCORE_SCRIPT_PUMP_TIMER);
         g_mouse_tracking = 0;
         g_interaction_restyle_pending = 0;
         pcore_native_edits_destroy();
@@ -22808,6 +22841,14 @@ static BOOL show_render_window(void)
     SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);
     SHSipPreference(hwnd, SIP_FORCEDOWN);
     pcore_set_scrollbar(hwnd);
+    if (g_browser_script_session.document == g_render_doc &&
+            g_browser_script_session.session != NULL &&
+            g_browser_script_session.bridge != NULL) {
+        /* The reference host schedules browser-script work from the UI
+         * thread. A host timer failure leaves the page visible; consumers
+         * may choose a different clock or report that platform failure. */
+        (void) SetTimer(hwnd, PCORE_SCRIPT_PUMP_TIMER, 16, NULL);
+    }
     if (g_testbench_auto) {
         if (g_testbench_browse_active) {
             PostMessage(hwnd, WM_TESTBENCH_NAVIGATE, 0, 0);
@@ -34305,6 +34346,172 @@ static BOOL test1136_browser_beforeunload_contract(void)
     show_info(L"TEST 1136 OK",
             "beforeunload dispatch is cancelable and fail-closed; the host"
             " can preserve the current page before navigation or close.");
+    return TRUE;
+}
+
+/* TEST 1137 - one host task checkpoint preserves bounded queue ordering. */
+static BOOL test1137_browser_task_checkpoint_contract(void)
+{
+    HANDLE session;
+    const char *result;
+    const char *session_error;
+    static const char EXPECTED[] =
+            "timer|timer-micro|frame|frame-micro|message:one|"
+            "message-micro|message:two|message-micro|idle|idle-micro|"
+            "only-micro";
+    char error[1024];
+    int ok;
+
+    session = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS * 2UL);
+    if (session == NULL ||
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", "https://positron.local/task-checkpoint") !=
+            PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", 320.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", 240.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
+        session_error = session != NULL ?
+                PBrowser_ScriptSessionGetError(session) : NULL;
+        if (session_error != NULL && session_error[0] != '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "task checkpoint bootstrap failed: %s", session_error);
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            cstr_copy(error, sizeof(error),
+                    "task checkpoint bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionEvaluate(session,
+            "var trace=[];var frameStamp=-1;var idleTimeout=false;"
+            "function mark(v){trace.push(v);}"
+            "addEventListener('message',function(e){mark('message:'+e.data);"
+            "queueMicrotask(function(){mark('message-micro');});});"
+            "setTimeout(function(){mark('timer');queueMicrotask(function(){"
+            "mark('timer-micro');});},0);"
+            "requestAnimationFrame(function(t){frameStamp=t;mark('frame');"
+            "queueMicrotask(function(){mark('frame-micro');});});"
+            "requestIdleCallback(function(e){idleTimeout=e.didTimeout;"
+            "mark('idle');queueMicrotask(function(){mark('idle-micro');});},"
+            "{timeout:5});postMessage('one','*');postMessage('two','*');", -1) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "task checkpoint queue setup failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionRunTaskCheckpoint(session, 0, 16, 20,
+            1, PBROWSER_SCRIPT_PUMP_TIMERS) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "timer checkpoint failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|');", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, "timer|timer-micro") != 0)) {
+        cstr_copy(error, sizeof(error), "timer phase ordering mismatch");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionRunTaskCheckpoint(session, 10, 16, 20,
+            1, PBROWSER_SCRIPT_PUMP_ANIMATION_FRAMES) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "animation checkpoint failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|')+'|'+frameStamp;", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, "timer|timer-micro|frame|frame-micro|16") != 0)) {
+        cstr_copy(error, sizeof(error), "animation phase ordering mismatch");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionRunTaskCheckpoint(session, 10, 16, 20,
+            1, PBROWSER_SCRIPT_PUMP_MESSAGES) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "first message checkpoint failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|');", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result,
+            "timer|timer-micro|frame|frame-micro|message:one|"
+            "message-micro") != 0)) {
+        cstr_copy(error, sizeof(error), "first message ordering mismatch");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionRunTaskCheckpoint(session, 10, 16, 20,
+            1, PBROWSER_SCRIPT_PUMP_MESSAGES) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "second message checkpoint failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|');", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result,
+            "timer|timer-micro|frame|frame-micro|message:one|"
+            "message-micro|message:two|message-micro") != 0)) {
+        cstr_copy(error, sizeof(error), "second message ordering mismatch");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionRunTaskCheckpoint(session, 10, 16, 20,
+            1, PBROWSER_SCRIPT_PUMP_IDLE_CALLBACKS) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "idle checkpoint failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|')+'|'+String(idleTimeout);", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result,
+            "timer|timer-micro|frame|frame-micro|message:one|"
+            "message-micro|message:two|message-micro|idle|idle-micro|true") !=
+            0)) {
+        cstr_copy(error, sizeof(error), "idle phase ordering mismatch");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionEvaluate(session,
+            "queueMicrotask(function(){mark('only-micro');});", -1) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "microtask-only setup failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionRunTaskCheckpoint(session, 10, 16, 20,
+            1, 0) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "microtask-only checkpoint failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|');", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, EXPECTED) != 0)) {
+        cstr_copy(error, sizeof(error), "microtask-only ordering mismatch");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionRunTaskCheckpoint(session, 10, 16, 20,
+            1, 0x8000UL) != PSCRIPT_ERROR_ARGUMENT) {
+        cstr_copy(error, sizeof(error), "unknown phase mask was accepted");
+        ok = 0;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1137 FAIL", error[0] != '\0' ? error :
+                "task checkpoint contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1137 OK",
+            "A bounded host checkpoint runs selected script phases in a"
+            " stable timer/frame/message/idle order with microtask turns.");
     return TRUE;
 }
 
@@ -92347,6 +92554,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1134: ok = test1134_browser_scroll_restoration_contract(); break;
         case 1135: ok = test1135_browser_screen_orientation_change_contract(); break;
         case 1136: ok = test1136_browser_beforeunload_contract(); break;
+        case 1137: ok = test1137_browser_task_checkpoint_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

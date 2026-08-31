@@ -1439,6 +1439,26 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
  * host owns that policy and must call this while the session is alive. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchBeforeUnload(
         HANDLE hSession, int *out_prevented);
+/* A task checkpoint lets the host drive the bounded browser-script queues
+ * through one product-owned ordering. Timers, animation frames, messages and
+ * idle callbacks are selected by phase_mask; after every selected phase the
+ * Browser drains the bounded microtask queue. A zero mask only drains
+ * microtasks. `now_ms`, `frame_timestamp_ms` and `idle_deadline_ms` are
+ * host-owned monotonic millisecond values. A zero message_limit uses the
+ * message queue's default bound. The call is synchronous and never creates a
+ * thread or takes ownership of the host clock. */
+#define PBROWSER_SCRIPT_PUMP_TIMERS             0x0001UL
+#define PBROWSER_SCRIPT_PUMP_ANIMATION_FRAMES   0x0002UL
+#define PBROWSER_SCRIPT_PUMP_MESSAGES           0x0004UL
+#define PBROWSER_SCRIPT_PUMP_IDLE_CALLBACKS     0x0008UL
+#define PBROWSER_SCRIPT_PUMP_ALL                (PBROWSER_SCRIPT_PUMP_TIMERS | \
+                                                  PBROWSER_SCRIPT_PUMP_ANIMATION_FRAMES | \
+                                                  PBROWSER_SCRIPT_PUMP_MESSAGES | \
+                                                  PBROWSER_SCRIPT_PUMP_IDLE_CALLBACKS)
+PBROWSER_API int PBrowser_ScriptSessionRunTaskCheckpoint(HANDLE hSession,
+        unsigned long now_ms, unsigned long frame_timestamp_ms,
+        unsigned long idle_deadline_ms, unsigned long message_limit,
+        unsigned long phase_mask);
 /* Complete the product-owned lifecycle for a document that is being
  * replaced after beforeunload has been allowed. The first call dispatches
  * document visibilitychange (when the page was visible), window pagehide,

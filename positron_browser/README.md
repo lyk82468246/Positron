@@ -364,6 +364,28 @@ PBrowser_NavigationCandidateGetResult(candidate, current_generation,
 
 Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
 
+宿主可以逐项调用这些入口，也可以用
+`PBrowser_ScriptSessionRunTaskCheckpoint` 驱动一次统一检查点。统一入口按
+`phase_mask` 选择 timer、animation frame、message 和 idle callback；每个已选阶段
+完成后立即运行一次有界 microtask checkpoint。阶段顺序固定为 timer → frame →
+message → idle，未选择的阶段不会被隐式执行；`phase_mask == 0` 只运行
+microtask。宿主传入自己的单调毫秒时钟、frame timestamp、idle deadline 和
+message limit，Browser 不创建线程、不接管时钟，也不拥有窗口消息。参考宿主在
+窗口 UI 线程上以 16 ms `WM_TIMER` 调用 `PBROWSER_SCRIPT_PUMP_ALL`；其他应用可以
+按自己的消息循环和功耗策略选择阶段或继续使用独立入口。任何入口返回脚本错误
+时，宿主都应停止继续调度该 session，并按应用策略记录失败。
+
+```c
+unsigned long now_ms;
+
+now_ms = host_monotonic_ms();
+if (PBrowser_ScriptSessionRunTaskCheckpoint(
+        session, now_ms, now_ms, now_ms, 16UL,
+        PBROWSER_SCRIPT_PUMP_ALL) != PSCRIPT_OK) {
+    /* Stop scheduling this session and keep the host's error policy. */
+}
+```
+
 跨文档候选已经完成 parse、资源、style、layout 并准备提交时，宿主仍应保留旧 document/session，先调用 `PBrowser_ScriptSessionDispatchBeforeUnload`。该入口同步派发当前 window 的 cancelable、non-bubbling、trusted `beforeunload` 事件，覆盖 `window.onbeforeunload` 与 `addEventListener('beforeunload', ...)`；调用 `preventDefault()`、写入非空 `event.returnValue`，或从 `window.onbeforeunload` 返回非空字符串都会把 `out_prevented` 置为非零。它只返回取消决定，不显示提示框、不执行导航或 teardown；提示 UI 和“继续/取消”的产品策略由宿主决定，脚本调用或结果解析失败时必须按取消处理。参考宿主没有确认对话框，因此直接拒绝候选提交或窗口关闭并保留旧页。
 
 只有 `beforeunload` 允许后，宿主才调用 `PBrowser_ScriptSessionDispatchPageTeardown`。首次 teardown 在旧页可见时依次派发 document `visibilitychange`、window `pagehide` 和 `unload`，再清理 timer、animation frame、microtask、idle、message 队列；已隐藏或已派发 `pagehide` 的页面不会重复派发，重复调用也保持幂等。宿主随后停止 native 回调、销毁控件和 script session，最后释放旧 Core document 并安装候选页。失败或被取消的候选不得调用 teardown，旧页、旧 session 和旧队列必须继续保留。两个入口都不创建线程、不访问 HWND，也不得从 Browser callback 内重入或销毁当前 session。

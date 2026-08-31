@@ -7394,6 +7394,73 @@ PBROWSER_API int PBrowser_ScriptSessionRunMessages(HANDLE hSession,
             "__pcoreRunMessages", args);
 }
 
+PBROWSER_API int PBrowser_ScriptSessionRunTaskCheckpoint(HANDLE hSession,
+        unsigned long now_ms, unsigned long frame_timestamp_ms,
+        unsigned long idle_deadline_ms, unsigned long message_limit,
+        unsigned long phase_mask)
+{
+    p_browser_script_session *session;
+    int ran_phase;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) ||
+            (phase_mask & ~PBROWSER_SCRIPT_PUMP_ALL) != 0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    ran_phase = 0;
+    if ((phase_mask & PBROWSER_SCRIPT_PUMP_TIMERS) != 0) {
+        rc = PBrowser_ScriptSessionRunTimers(hSession, now_ms);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+        ran_phase = 1;
+        rc = PBrowser_ScriptSessionRunMicrotasks(hSession);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+    }
+    if ((phase_mask & PBROWSER_SCRIPT_PUMP_ANIMATION_FRAMES) != 0) {
+        rc = PBrowser_ScriptSessionRunAnimationFrames(hSession,
+                frame_timestamp_ms);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+        ran_phase = 1;
+        rc = PBrowser_ScriptSessionRunMicrotasks(hSession);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+    }
+    if ((phase_mask & PBROWSER_SCRIPT_PUMP_MESSAGES) != 0) {
+        rc = PBrowser_ScriptSessionRunMessages(hSession, message_limit);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+        ran_phase = 1;
+        rc = PBrowser_ScriptSessionRunMicrotasks(hSession);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+    }
+    if ((phase_mask & PBROWSER_SCRIPT_PUMP_IDLE_CALLBACKS) != 0) {
+        rc = PBrowser_ScriptSessionRunIdleCallbacks(hSession,
+                idle_deadline_ms);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+        ran_phase = 1;
+        rc = PBrowser_ScriptSessionRunMicrotasks(hSession);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
+    }
+    if (!ran_phase) {
+        return PBrowser_ScriptSessionRunMicrotasks(hSession);
+    }
+    return PSCRIPT_OK;
+}
+
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks)
 {
