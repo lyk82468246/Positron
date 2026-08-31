@@ -107,8 +107,9 @@ Browser 还提供页面级的 `Element.scrollIntoView()`。它读取同一
 物理滚动、绘制和实际位置回报。默认等价于 `{block: "start", inline: "nearest"}`，
 布尔值 `false` 选择 block end；对象形式只接受 `block`/`inline` 的
 `start`、`center`、`end`、`nearest`，以及 `behavior` 的 `auto` 或 `instant`。
-无可用 layout、矩形或 scroll callback 时安全 no-op；不支持 `smooth`、scroll-margin
-或 nested overflow 容器。调用完成后，实际位置变化仍由既有 scroll callback 和
+无可用 layout 或矩形时安全 no-op；没有 scroll callback 时不会影响宿主真实 viewport，
+脚本侧仍遵循既有 `scrollTo()` 的本地状态规则。不支持 `smooth`、scroll-margin 或
+nested overflow 容器。调用完成后，实际位置变化仍由既有 scroll callback 和
 `PBrowser_ScriptSessionNotifyScroll` 负责同步与事件去重。
 
 ### Script session
