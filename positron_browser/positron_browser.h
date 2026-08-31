@@ -1303,6 +1303,26 @@ typedef struct PBrowserScriptNavigationCallbacks {
     PBrowserScriptNavigateFn navigate;
 } PBrowserScriptNavigationCallbacks;
 
+/* Typed host adapter for the product page viewport. The Browser bootstrap
+ * normalizes window.scrollTo/scrollBy coordinates, then gives the active
+ * host a chance to clamp and apply them. The request is in non-negative CSS
+ * page pixels; the host writes the actually applied non-negative coordinates
+ * to out_x/out_y. A zero return means the request was handled, while a
+ * negative return rejects it as an adapter failure. The callback is never
+ * asked to create a window or own the Browser session. */
+typedef struct PBrowserScriptScrollInfo {
+    unsigned long size;
+    int scroll_x;
+    int scroll_y;
+} PBrowserScriptScrollInfo;
+typedef int (*PBrowserScriptScrollFn)(void *pw,
+        const PBrowserScriptScrollInfo *info, int *out_x, int *out_y);
+typedef struct PBrowserScriptScrollCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptScrollFn scroll;
+} PBrowserScriptScrollCallbacks;
+
 /* Typed host adapters for product-owned DOM attribute callbacks. The
  * browser DLL parses and encodes JSON. get_attribute returns 0 when an
  * attribute is present, 1 when it is absent and <0 on error; its out_len
@@ -1731,6 +1751,17 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterNavigationCallbacks(
         const PBrowserScriptNavigationCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterNavigationCallbacks(
         HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterScrollCallbacks(
+        HANDLE hSession, const PBrowserScriptScrollCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterScrollCallbacks(
+        HANDLE hSession);
+/* Synchronize a physical host viewport change into the Browser bootstrap.
+ * Coordinates are non-negative CSS page pixels. The Browser dispatches one
+ * window `scroll` event only when the effective pair changes; it does not
+ * call the host scroll adapter again, so hosts can use this after scrollbar,
+ * touch, keyboard or resize handling without recursion. */
+PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
+        int scroll_x, int scroll_y);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
         HANDLE hSession,
         const PBrowserScriptDomAttributeCallbacks *callbacks);

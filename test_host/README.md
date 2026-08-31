@@ -80,6 +80,15 @@ worker 收尾后、释放 request 前，宿主调用 `PBrowser_NavigationCleanup
 
 History entry 的 viewport snapshot 也由 `positron_browser.dll` 持有。宿主在离开当前页面前调用 `PBrowser_HistorySetEntryScroll` 保存当前 `(scroll_x, scroll_y)`，在提交新文档或完成 history traversal 后用 `PBrowser_HistoryEntryScroll` 读取目标坐标，再读取 Core 的 page-level `PCore_DocumentWidth/Height`，根据 client area 调用自己的 scrollbar/HWND 逻辑对两个轴 clamp/apply。宿主不再维护第二份按 entry 保存的滚动数组；Browser 不访问窗口，也不替宿主决定坐标的物理单位。嵌套 overflow 容器仍不在此路径内。
 
+浏览器脚本启用时，宿主还注册 `PBrowserScriptScrollCallbacks`。Browser 的
+`window.scrollTo()`/`scrollBy()` 请求先经过该 callback，宿主把 page 坐标按
+当前 document/client extent clamp，更新滚动条、native child 和绘制位置，再
+返回实际 `(x, y)`；候选文档在提交前只回显坐标，不能触碰旧页。宿主完成用户
+滚动、fragment reveal 或 resize 后调用
+`PBrowser_ScriptSessionNotifyScroll`，把物理位置同步到脚本侧并触发至多一次
+去重的 `scroll` 事件。同步 callback 不可重入，脚本 callback 内不会再次进入
+Browser runtime。
+
 DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM node、box、computed style 或 HDC。
 
 ### Core 与 Browser callbacks

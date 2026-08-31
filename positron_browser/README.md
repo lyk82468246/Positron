@@ -33,6 +33,21 @@ if (PBrowser_HistoryEntryScroll(history, entry_index,
 
 新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState` 与 history traversal 保留已有 snapshot，`pushState` 的新 entry 从零开始，history 达到上限裁剪时 snapshot 与 URL/state 一起移动。History 只决定条目语义，不请求 URL、不保存文档、不创建窗口，也不持久化到磁盘。宿主只有在页面真正提交后才应 commit 新导航；失败候选不得污染 history。
 
+### Page viewport 与脚本滚动
+
+注册 `PBrowserScriptScrollCallbacks` 后，Browser bootstrap 的
+`window.scrollTo()`、`scroll()` 和 `scrollBy()` 会把规范化后的非负 CSS
+page 坐标交给宿主。宿主负责按当前 Core document extent 和 client area
+clamp，并通过 `out_x/out_y` 返回实际应用的坐标；候选 session 尚未提交时应
+只回显请求，不能改变旧页面。Browser 只在最终坐标改变时分发一次非冒泡的
+`scroll` 事件。
+
+宿主处理滚动条、触摸、键盘、resize 或 fragment reveal 后，应调用
+`PBrowser_ScriptSessionNotifyScroll(session, x, y)` 同步物理 viewport。这个
+入口只更新脚本侧 `scrollX`/`scrollY` 并做去重，不会再次调用 scroll adapter，
+因此宿主可以在完成自己的 clamp/apply 后安全调用它。回调同步且不可重入；
+宿主不得在 scroll callback 内再次进入或销毁同一 Browser session。
+
 ### Script session
 
 `PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context，`Destroy` 释放 bootstrap、队列、native function 和事务状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但它的 Web host objects 由 Browser callbacks 提供。

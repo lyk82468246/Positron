@@ -50,6 +50,14 @@ TEST1081/TEST1082 覆盖 history entry 的 viewport snapshot：same-document fra
 
 TEST1128 覆盖 page-level horizontal viewport：离线宽页面通过 `PCore_DocumentWidth` 暴露溢出范围，宿主对 x/y 两轴执行 clamp、滚动和 native 坐标换算，Browser snapshot 保存/恢复横向位置，fragment 命中使用同一 document-space x 坐标。它不代表嵌套 overflow 容器或复杂真实页面的视觉兼容性。
 
+TEST1129 覆盖浏览器脚本滚动与宿主视口的双向边界：`window.scrollTo()`/
+`scrollBy()` 经过 Browser 的 typed scroll callback，由宿主按 document/client
+extent clamp 并返回实际坐标；滚动条或其他宿主路径再通过
+`PBrowser_ScriptSessionNotifyScroll` 更新脚本侧 `scrollX`/`scrollY`。断言覆盖
+候选式回显、越界 clamp、`scroll` 事件去重、宿主反向同步、重复通知、回调
+注销和非法坐标；回调期间不得重入脚本 runtime。它仍不证明嵌套 overflow、平滑
+滚动、触摸惯性或真实页面的视觉体验。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

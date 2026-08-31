@@ -3339,11 +3339,20 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function pdispatchScroll(){var e={type:'scroll',target:g,"
         "currentTarget:g,bubbles:false,cancelable:false,defaultPrevented:false,"
         "isTrusted:false};e.preventDefault=function(){};pdispatchWindow('scroll',e);}"
-        "function psetScroll(x,y){var nx=Number(x);var ny=Number(y);"
+        "function psetScrollApplied(x,y){var nx=Number(x);var ny=Number(y);"
         "if(!isFinite(nx)){nx=0;}if(!isFinite(ny)){ny=0;}if(nx<0){nx=0;}"
         "if(ny<0){ny=0;}nx=Math.floor(nx);ny=Math.floor(ny);"
         "if(nx===pscrollX&&ny===pscrollY){return;}pscrollX=nx;pscrollY=ny;"
         "pdispatchScroll();}"
+        "function psetScroll(x,y){var nx=Number(x);var ny=Number(y);"
+        "var applied;"
+        "if(!isFinite(nx)){nx=0;}if(!isFinite(ny)){ny=0;}if(nx<0){nx=0;}"
+        "if(ny<0){ny=0;}nx=Math.floor(nx);ny=Math.floor(ny);"
+        "if(typeof __pcoreScroll==='function'){"
+        "try{applied=__pcoreScroll({x:nx,y:ny});}catch(scrollError){return;}"
+        "if(!applied||typeof applied.x!=='number'||"
+        "typeof applied.y!=='number'){return;}nx=applied.x;ny=applied.y;}"
+        "psetScrollApplied(nx,ny);}"
         "g.scrollTo=function(x,y){if(arguments.length===1&&typeof x==='object'){"
         "psetScroll(x.left||0,x.top||0);}else{psetScroll(x,y);}};"
         "g.scroll=function(x,y){g.scrollTo(x,y);};"
@@ -3356,6 +3365,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "Object.defineProperty(g,'pageXOffset',{get:function(){return pscrollX;},"
         "enumerable:true});Object.defineProperty(g,'pageYOffset',{get:function(){"
         "return pscrollY;},enumerable:true});"
+        "Object.defineProperty(g,'__pcoreScrollApplied',{value:function(x,y){"
+        "psetScrollApplied(x,y);},writable:false,configurable:false});"
         "Object.defineProperty(g,'__pcoreHistoryTraverse',{"
         "value:function(state,url){var s=JSON.stringify(state);var oldUrl=purl;"
         "var newUrl=String(url);if(typeof s!=='string'){s='null';}"
@@ -5036,6 +5047,10 @@ typedef struct p_browser_script_navigation_binding {
     PBrowserScriptNavigationCallbacks callbacks;
 } p_browser_script_navigation_binding;
 
+typedef struct p_browser_script_scroll_binding {
+    PBrowserScriptScrollCallbacks callbacks;
+} p_browser_script_scroll_binding;
+
 typedef struct p_browser_script_dom_attribute_binding {
     PBrowserScriptDomAttributeCallbacks callbacks;
 } p_browser_script_dom_attribute_binding;
@@ -5078,6 +5093,7 @@ typedef struct p_browser_script_session {
     p_browser_script_form_event_binding *form_event;
     p_browser_script_invalid_binding *invalid;
     p_browser_script_navigation_binding *navigation;
+    p_browser_script_scroll_binding *scroll;
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
 } p_browser_script_session;
@@ -5263,6 +5279,28 @@ static int p_browser_script_write_int(int value, char *out_json,
     }
     number[length] = '\0';
     memcpy(out_json, number, (size_t) length + 1);
+    *out_len = length;
+    return 0;
+}
+
+static int p_browser_script_write_scroll(int scroll_x, int scroll_y,
+        char *out_json, int out_capacity, int *out_len)
+{
+    char value[64];
+    int length;
+
+    if (scroll_x < 0 || scroll_y < 0 || out_json == NULL ||
+            out_len == NULL || out_capacity <= 0) {
+        return 1;
+    }
+    length = _snprintf(value, sizeof(value) - 1,
+            "{\"x\":%d,\"y\":%d}", scroll_x, scroll_y);
+    if (length < 0 || length >= (int) sizeof(value) - 1 ||
+            length >= out_capacity) {
+        return 1;
+    }
+    value[length] = '\0';
+    memcpy(out_json, value, (size_t) length + 1);
     *out_len = length;
     return 0;
 }
@@ -6717,6 +6755,49 @@ static int p_browser_script_programmatic_click(void *pw,
             out_capacity, out_len);
 }
 
+static int p_browser_script_scroll(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_scroll_binding *binding;
+    PBrowserScriptScrollInfo info;
+    HANDLE root;
+    HANDLE object;
+    int out_x;
+    int out_y;
+    int result;
+
+    binding = (p_browser_script_scroll_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    if (binding == NULL || root == NULL || object == NULL ||
+            binding->callbacks.scroll == NULL) {
+        PJson_Free(root);
+        return p_browser_script_write_null(out_json, out_capacity,
+                out_len);
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.scroll_x = PJson_GetInt(object, "x");
+    info.scroll_y = PJson_GetInt(object, "y");
+    if (info.scroll_x < 0 || info.scroll_y < 0) {
+        PJson_Free(root);
+        return p_browser_script_write_null(out_json, out_capacity,
+                out_len);
+    }
+    out_x = info.scroll_x;
+    out_y = info.scroll_y;
+    result = binding->callbacks.scroll(binding->callbacks.pw, &info,
+            &out_x, &out_y);
+    PJson_Free(root);
+    if (result < 0 || out_x < 0 || out_y < 0) {
+        return p_browser_script_write_null(out_json, out_capacity,
+                out_len);
+    }
+    return p_browser_script_write_scroll(out_x, out_y, out_json,
+            out_capacity, out_len);
+}
+
 PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
 {
     p_browser_script_session *session;
@@ -6757,6 +6838,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->form_event = NULL;
     session->invalid = NULL;
     session->navigation = NULL;
+    session->scroll = NULL;
     session->dom_attribute = NULL;
     session->event = NULL;
     session->runtime = PScript_CreateEx(budget_ms,
@@ -6907,6 +6989,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreNavigation", -1);
         free(session->navigation);
         session->navigation = NULL;
+    }
+    if (session->scroll != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreScroll", -1);
+        free(session->scroll);
+        session->scroll = NULL;
     }
     if (session->dom_attribute != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -10430,6 +10518,88 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterNavigationCallbacks(
             "__pcoreNavigation", -1);
     free(session->navigation);
     session->navigation = NULL;
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterScrollCallbacks(
+        HANDLE hSession, const PBrowserScriptScrollCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_scroll_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptScrollCallbacks) ||
+            callbacks->scroll == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->scroll != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_scroll_binding *) malloc(sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreScroll", -1, p_browser_script_scroll, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->scroll = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterScrollCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->scroll == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreScroll", -1);
+    free(session->scroll);
+    session->scroll = NULL;
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
+        int scroll_x, int scroll_y)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    if (scroll_x < 0 || scroll_y < 0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = PScript_SetGlobalNumber(session->runtime, "__pcoreScrollX", -1,
+            (double) scroll_x);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    rc = PScript_SetGlobalNumber(session->runtime, "__pcoreScrollY", -1,
+            (double) scroll_y);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_Evaluate(session->runtime,
+                "if(typeof __pcoreScrollApplied==='function')"
+                "{__pcoreScrollApplied(__pcoreScrollX,__pcoreScrollY);};",
+                -1);
+    }
+    (void) PScript_Evaluate(session->runtime,
+            "delete this.__pcoreScrollX;delete this.__pcoreScrollY;", -1);
     return rc;
 }
 

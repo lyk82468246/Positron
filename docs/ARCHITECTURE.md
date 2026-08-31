@@ -114,6 +114,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
 - 有界 history entries、每项 viewport snapshot、same-document state 和 traversal；
 - 浏览器 script session 与 bootstrap；
+- 浏览器脚本 `window.scrollTo`/`scrollBy` 的 typed viewport callback，以及宿主物理滚动后的去重同步入口；
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、focus、composition、click 和导航协调；
@@ -123,6 +124,14 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 导航候选生命周期：以 opaque handle 拥有不可变 generation、取消请求、退休状态和 committed/failed 终态，并提供当前 generation 的 `CanApply` 提交资格与 pending/committed/failed/cancelled/stale 结果摘要；`PBrowser_NavigationCommitGetInfo` 只读组合该结果与独立资源 gate，`PBrowser_NavigationCleanupGetInfo` 在释放前复制 candidate result 与完整有界 resource observation；两个入口都不接管任一 handle 的所有权。
 
 它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。每个 history entry 还由 Browser 保存非负的 `(scroll_x, scroll_y)` viewport snapshot；该快照随 entry 的新建、裁剪、replace 和 traversal 规则维护，但 Browser 不知道 Core 的文档 extent、不访问 HWND，也不替宿主做 clamp。
+
+脚本滚动也遵循同一边界：`PBrowserScriptScrollCallbacks` 接收 Browser 规范化的
+page 坐标，由宿主按当前 Core extent/client area 应用并返回实际值；候选 session
+尚未提交时宿主只回显坐标，不能改变旧页面。宿主完成 scrollbar、触摸、键盘、
+resize 或 fragment reveal 后调用 `PBrowser_ScriptSessionNotifyScroll`，Browser
+只更新脚本侧偏移并在实际变化时派发一次 `scroll`，不会重新调用 scroll callback。
+这让脚本 origin 与平台 origin 共用一份最终 viewport，同时避免同步 callback
+递归进入同一 runtime。
 
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
 
@@ -187,7 +196,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；WM6 `EDIT` 可能在 `WM_CHAR` 默认处理完成前发送 `EN_CHANGE`，宿主必须在默认处理返回后读取最终值，避免把旧值提交为一次 mutation；`WM_PASTE`/`WM_CUT`/`WM_COPY` 只在可取得有界 `CF_UNICODETEXT` data 时进入 contenteditable 事务，折叠复制直接 no-op；
 5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation，Browser 的脚本 selection API 在可用时同步宿主原生选区；原生 WM EDIT 的无修饰 down/move/up 或 Shift/方向键默认处理返回后，宿主用短暂 anchor 计算方向，并在捕获/取消/焦点中断时收尾，再通知 Browser；paste/copy/cut 还必须在 native default 前完成 clipboard data 的格式和容量检查，且不得让宿主复制一份 Browser 的 Range/Selection 模型；
 6. Browser 派发 mutation 后的 `input`、`change`、focus、`selectionchange` 或 lifecycle 事件；原生选区通知必须先由 Browser 去重，不能由宿主和 Core 各发一次；
-7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；
+7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；宿主的滚动条、触摸、键盘、resize 或 fragment reveal 更新 viewport 后调用 Browser 的 scroll notification，让脚本 `scrollX`/`scrollY` 与物理位置保持一致；
 8. 页面替换时先调用 Browser page-teardown（visible 页面依次为 `visibilitychange`、`pagehide`、`unload`，并清理页面队列），再销毁 session 与文档；失败候选不得触发 teardown。
 
 事件顺序、取消和状态提交必须由产品层确定，不能依赖 test fixture 的偶然消息顺序。真实 SIP、OEM IME、系统 picker 和窗口创建仍需要设备人工验收。

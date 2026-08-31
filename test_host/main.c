@@ -373,7 +373,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1128
+#define TEST_MAX_NUMBER 1129
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6053,6 +6053,10 @@ static int    g_doc_w = 0;
 static int    g_doc_h = 0;
 static int    g_view_w = 0;
 static int    g_view_h = 0;
+/* Suppress host-to-script re-entry while a script-originated scroll request
+ * is already being evaluated. The Browser callback returns the final pair
+ * to that evaluation; a second notification would re-enter the runtime. */
+static int    g_browser_script_scroll_dispatch = 0;
 static int    g_plot_test = 0;   /* M1: paint via PCore_PlotTest, not a doc */
 static int    g_ns_render = 0;    /* M5e: paint via PCore_NsRenderTest */
 static int    g_image_test = 0;   /* TEST 19: native WM Imaging draw */
@@ -6510,6 +6514,7 @@ static HANDLE g_browse_history_product = NULL;
  * handle owns per-entry viewport snapshots; these helpers only apply one to
  * the host window and clamp it against the current document. */
 static int pcore_scroll_to_xy(HWND hwnd, int target_x, int target_y);
+static void pcore_browser_script_sync_scroll(void);
 
 /* The product DLL owns URL/state/document-id history and viewport snapshots.
  * This fixed-size host mirror carries URL/state/document ids for legacy
@@ -12847,6 +12852,27 @@ static void pcore_set_scrollbar(HWND hwnd)
     SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
 }
 
+/* Reflect a host-owned movement into the active Browser script session. The
+ * callback's re-entry guard keeps a script-originated request on its native
+ * return path; the Browser then receives the final coordinates once. */
+static void pcore_browser_script_sync_scroll(void)
+{
+    pcore_browser_script_bridge *bridge;
+
+    if (g_browser_script_scroll_dispatch || g_render_doc == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.bridge == NULL) {
+        return;
+    }
+    bridge = g_browser_script_session.bridge;
+    if (bridge->document != g_render_doc || bridge->session == NULL) {
+        return;
+    }
+    (void) PBrowser_ScriptSessionNotifyScroll(bridge->session,
+            (g_scroll_x >= 0) ? g_scroll_x : 0,
+            (g_scroll_y >= 0) ? g_scroll_y : 0);
+}
+
 /* Scroll by both page offsets, clamped to the document/client extents, and
  * repaint only the newly exposed strips. */
 static void pcore_scroll_by_xy(HWND hwnd, int dx, int dy)
@@ -12926,6 +12952,7 @@ static void pcore_scroll_by_xy(HWND hwnd, int dx, int dy)
         InvalidateRect(hwnd, &loading_rc, FALSE);
     }
     UpdateWindow(hwnd);
+    pcore_browser_script_sync_scroll();
 }
 
 /* Preserve the existing vertical-only call sites while routing all movement
@@ -12945,6 +12972,8 @@ static int pcore_scroll_to_xy(HWND hwnd, int target_x, int target_y)
     int viewport_h;
     int max_x;
     int max_y;
+    int old_x;
+    int old_y;
 
     if (target_x < 0) {
         target_x = 0;
@@ -12974,9 +13003,14 @@ static int pcore_scroll_to_xy(HWND hwnd, int target_x, int target_y)
         target_y = max_y;
     }
     if (hwnd == NULL || !IsWindow(hwnd)) {
+        old_x = g_scroll_x;
+        old_y = g_scroll_y;
         g_scroll_x = target_x;
         g_scroll_y = target_y;
-        pcore_browse_history_save_scroll();
+        if (old_x != g_scroll_x || old_y != g_scroll_y) {
+            pcore_browse_history_save_scroll();
+            pcore_browser_script_sync_scroll();
+        }
         return 1;
     }
     pcore_scroll_by_xy(hwnd, target_x - g_scroll_x, target_y - g_scroll_y);
@@ -12988,6 +13022,7 @@ static int pcore_scroll_to_xy(HWND hwnd, int target_x, int target_y)
         pcore_native_edits_position(hwnd);
         pcore_native_selects_position(hwnd);
         InvalidateRect(hwnd, NULL, FALSE);
+        pcore_browser_script_sync_scroll();
     }
     return 1;
 }
@@ -14975,6 +15010,41 @@ static int pcore_browser_script_single_window_open_target_allowed(
         unsigned int target_kind, const char *target,
         const char *context_name);
 
+/* Apply Browser-originated window.scrollTo/scrollBy requests to the active
+ * host viewport. Candidate documents are intentionally side-effect free:
+ * before commit they receive their normalized request back without touching
+ * the old page. */
+static int pcore_browser_script_scroll(void *pw,
+        const PBrowserScriptScrollInfo *info, int *out_x, int *out_y)
+{
+    pcore_browser_script_bridge *bridge;
+    int rc;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptScrollInfo) ||
+            out_x == NULL || out_y == NULL || info->scroll_x < 0 ||
+            info->scroll_y < 0) {
+        return -1;
+    }
+    if (bridge != g_browser_script_session.bridge ||
+            bridge->document == NULL || bridge->document != g_render_doc) {
+        *out_x = info->scroll_x;
+        *out_y = info->scroll_y;
+        return 0;
+    }
+    g_browser_script_scroll_dispatch++;
+    rc = pcore_scroll_to_xy(bridge->hwnd, info->scroll_x,
+            info->scroll_y);
+    g_browser_script_scroll_dispatch--;
+    if (!rc) {
+        return -1;
+    }
+    *out_x = (g_scroll_x >= 0) ? g_scroll_x : 0;
+    *out_y = (g_scroll_y >= 0) ? g_scroll_y : 0;
+    return 0;
+}
+
 static int pcore_browser_script_navigation(void *pw,
         const PBrowserScriptNavigationInfo *info, int *out_value)
 {
@@ -15707,6 +15777,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFormEventCallbacks form_event_callbacks;
     PBrowserScriptInvalidCallbacks invalid_callbacks;
     PBrowserScriptNavigationCallbacks navigation_callbacks;
+    PBrowserScriptScrollCallbacks scroll_callbacks;
     PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
     PBrowserScriptEventCallbacks event_callbacks;
     char *source;
@@ -15909,6 +15980,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     navigation_callbacks.size = sizeof(navigation_callbacks);
     navigation_callbacks.pw = bridge;
     navigation_callbacks.navigate = pcore_browser_script_navigation;
+    scroll_callbacks.size = sizeof(scroll_callbacks);
+    scroll_callbacks.pw = bridge;
+    scroll_callbacks.scroll = pcore_browser_script_scroll;
     dom_attribute_callbacks.size = sizeof(dom_attribute_callbacks);
     dom_attribute_callbacks.pw = bridge;
     dom_attribute_callbacks.get_attribute =
@@ -16013,6 +16087,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &event_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterNavigationCallbacks(session,
             &navigation_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterScrollCallbacks(session,
+            &scroll_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity, "DOM bootstrap",
                 PBrowser_ScriptSessionGetError(session));
@@ -21256,6 +21332,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         pcore_set_scrollbar(hwnd);
         pcore_browse_history_save_scroll();
+        pcore_browser_script_sync_scroll();
         pcore_native_edits_rebuild(hwnd, 1);
         pcore_native_selects_rebuild(hwnd, 1);
         SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);   /* keep SIP hidden on rotate */
@@ -32693,6 +32770,180 @@ static BOOL test1128_page_horizontal_viewport(void)
             "Core page width exposed horizontal overflow; host scrolling"
             " clamps, saves and restores x snapshots, and fragment targets"
             " use the same page coordinate.");
+    return TRUE;
+}
+
+/* TEST 1129 - Browser script scrolling is applied by the host viewport and
+ * host-originated movement is reflected back without recursive callbacks. */
+static BOOL test1129_browser_script_scroll_contract(void)
+{
+    static const char URL[] = "https://positron.local/script-scroll";
+    PBrowserScriptScrollCallbacks callbacks;
+    pcore_browser_script_bridge bridge;
+    HANDLE session;
+    const char *result;
+    char error[256];
+    int ok;
+
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&bridge, 0, sizeof(bridge));
+    memset(error, 0, sizeof(error));
+    session = NULL;
+    result = NULL;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    pcore_browse_history_product_destroy();
+    g_render_doc = (HANDLE) 1;
+    g_render_sheet = NULL;
+    g_doc_w = 300;
+    g_doc_h = 250;
+    g_view_w = 100;
+    g_view_h = 100;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_browser_script_scroll_dispatch = 0;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    bridge.document = g_render_doc;
+    bridge.session = session;
+    bridge.runtime = (session != NULL) ?
+            PBrowser_ScriptSessionRuntime(session) : NULL;
+    bridge.hwnd = NULL;
+    g_browser_script_session.document = g_render_doc;
+    g_browser_script_session.session = session;
+    g_browser_script_session.runtime = bridge.runtime;
+    g_browser_script_session.bridge = &bridge;
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &bridge;
+    callbacks.scroll = pcore_browser_script_scroll;
+    if (session == NULL || bridge.runtime == NULL ||
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", URL) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", 100.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", 100.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterScrollCallbacks(session,
+            &callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionNativeFunctionCount(session) != 1 ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "scroll bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionRegisterScrollCallbacks(session,
+                &callbacks) != PSCRIPT_ERROR_GLOBAL) {
+            cstr_copy(error, sizeof(error), "duplicate scroll register");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "window.__scrollEvents=0;"
+                "window.addEventListener('scroll',function(){"
+                "window.__scrollEvents++;});"
+                "window.scrollTo(999,999);"
+                "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "200|150|1") != 0 || g_scroll_x != 200 ||
+                g_scroll_y != 150) {
+            cstr_copy(error, sizeof(error),
+                    "script scroll was not host-clamped");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "window.scrollBy(-50,-60);"
+                "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "150|90|2") != 0 || g_scroll_x != 150 ||
+                g_scroll_y != 90) {
+            cstr_copy(error, sizeof(error),
+                    "script scrollBy did not use applied position");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (!pcore_scroll_to_xy(NULL, 40, 30) || g_scroll_x != 40 ||
+                g_scroll_y != 30 ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "40|30|3") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "host scroll was not reflected into script");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyScroll(session, 40, 30) !=
+                PSCRIPT_OK || PBrowser_ScriptSessionEvaluate(session,
+                "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "40|30|3") != 0 ||
+                PBrowser_ScriptSessionNotifyScroll(session, 12, 34) !=
+                PSCRIPT_OK || PBrowser_ScriptSessionEvaluate(session,
+                "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "12|34|4") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "scroll notification did not deduplicate");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionUnregisterScrollCallbacks(session) !=
+                PSCRIPT_OK ||
+                PBrowser_ScriptSessionNativeFunctionCount(session) != 0 ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "window.scrollTo(7,8);"
+                "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "7|8|5") != 0 || g_scroll_x != 40 ||
+                g_scroll_y != 30 ||
+                PBrowser_ScriptSessionNotifyScroll(session, -1, 0) !=
+                PSCRIPT_ERROR_ARGUMENT) {
+            cstr_copy(error, sizeof(error),
+                    "scroll unregister or argument guard failed");
+            ok = 0;
+        }
+    }
+    g_browser_script_session.document = NULL;
+    g_browser_script_session.session = NULL;
+    g_browser_script_session.runtime = NULL;
+    g_browser_script_session.bridge = NULL;
+    g_render_doc = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_browser_script_scroll_dispatch = 0;
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error), "unknown scroll contract failure");
+        }
+        show_error(L"TEST 1129 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1129 OK",
+            "Browser script scrolling is clamped and applied by the host;"
+            " physical host movement synchronizes scrollX/scrollY with one"
+            " deduplicated scroll event and no callback re-entry.");
     return TRUE;
 }
 
@@ -90727,6 +90978,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1126: ok = test1126_navigation_commit_consistency(); break;
         case 1127: ok = test1127_navigation_cleanup_snapshot(); break;
         case 1128: ok = test1128_page_horizontal_viewport(); break;
+        case 1129: ok = test1129_browser_script_scroll_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
