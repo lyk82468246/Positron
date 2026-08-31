@@ -3337,14 +3337,16 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "phistoryStateJson=s;phistoryLength=n;purl=u;}"
         "var pscrollX=0;var pscrollY=0;"
         "var pwindowListeners={popstate:[],hashchange:[],load:[],scroll:[],resize:[],"
-        "pagehide:[],pageshow:[],unload:[],beforeunload:[],DOMContentLoaded:[],"
-        "readystatechange:[],message:[],storage:[]};"
+        "focus:[],blur:[],pagehide:[],pageshow:[],unload:[],beforeunload:[],"
+        "DOMContentLoaded:[],readystatechange:[],message:[],storage:[]};"
         "g.onpopstate=null;g.onhashchange=null;g.onresize=null;g.onpagehide=null;"
-        "g.onpageshow=null;g.onunload=null;g.onbeforeunload=null;"
+        "g.onpageshow=null;g.onfocus=null;g.onblur=null;g.onunload=null;"
+        "g.onbeforeunload=null;"
         "g.onmessage=null;g.onstorage=null;"
         "g.addEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if((t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
-        "t!=='scroll'&&t!=='resize'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
+        "t!=='scroll'&&t!=='resize'&&t!=='focus'&&t!=='blur'&&"
+        "t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
         "t!=='beforeunload'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange'&&t!=='message'&&"
         "t!=='storage')||"
@@ -3356,7 +3358,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "o.signal.addEventListener('abort',function(){pRemoveListenerEntry(entry);},{once:true});}};"
         "g.removeEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if(t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
-        "t!=='scroll'&&t!=='resize'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
+        "t!=='scroll'&&t!=='resize'&&t!=='focus'&&t!=='blur'&&"
+        "t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
         "t!=='beforeunload'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange'&&t!=='message'&&"
         "t!=='storage'){return;}"
@@ -3532,7 +3535,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "plocation.replace=preplace;"
         "plocation.toString=function(){return this.href;};"
         "plocation.toJSON=function(){return this.href;};"
-        "var phidden=false;var pdocumentListeners={readystatechange:[],"
+        "var pwindowFocused=true;var phidden=false;var pdocumentListeners={readystatechange:[],"
         "DOMContentLoaded:[],load:[],visibilitychange:[]};"
         "var preadyState='loading';"
         "function pdocumentAddEventListener(type,fn){var a;var i;"
@@ -3575,6 +3578,9 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function pvisibilityEvent(type){return {type:type,target:pdocument,"
         "currentTarget:pdocument,bubbles:false,cancelable:false,"
         "defaultPrevented:false,isTrusted:true};}"
+        "function pwindowFocusEvent(type){return {type:type,target:g,"
+        "currentTarget:g,bubbles:false,cancelable:false,"
+        "defaultPrevented:false,isTrusted:true,preventDefault:function(){}};}"
         "g.__pcoreVisibilityChange=function(hidden){var next=!!hidden;"
         "if(next===phidden){return;}phidden=next;"
         "pdocumentDispatch('visibilitychange');"
@@ -3582,6 +3588,9 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "pdispatchWindow('pagehide',ppageEvent('pagehide',g));}"
         "else{ppagehideSent=false;if(!ppageShowSent){ppageShowSent=true;"
         "pdispatchWindow('pageshow',ppageEvent('pageshow',g));}}};"
+        "g.__pcoreWindowFocusChange=function(focused){var next=!!focused;"
+        "if(next===pwindowFocused){return;}pwindowFocused=next;"
+        "pdispatchWindow(next?'focus':'blur',pwindowFocusEvent(next?'focus':'blur'));};"
         "g.__pcorePageTeardown=function(){if(ppageTeardownDone){return false;}"
         "ppageTeardownDone=true;if(!phidden){phidden=true;"
         "pdocumentDispatch('visibilitychange');}if(!ppagehideSent){"
@@ -3602,7 +3611,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return typeof __pcoreHasElement==='function'&&"
         "__pcoreHasElement({id:id})?new PElement(id):null;},"
         "addEventListener:pdocumentAddEventListener,"
-        "removeEventListener:pdocumentRemoveEventListener};"
+        "removeEventListener:pdocumentRemoveEventListener,"
+        "hasFocus:function(){return pwindowFocused;}};"
         "Object.defineProperty(pdocument,'nodeType',{value:9,writable:false,"
         "configurable:false,enumerable:true});Object.defineProperty(pdocument,'nodeName',"
         "{value:'#document',writable:false,configurable:false,enumerable:true});"
@@ -7341,6 +7351,21 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchVisibility(HANDLE hSession,
     }
     source = hidden ? "__pcoreVisibilityChange(true);true;" :
             "__pcoreVisibilityChange(false);true;";
+    return PScript_Evaluate(session->runtime, source, -1);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchWindowFocus(HANDLE hSession,
+        int focused)
+{
+    p_browser_script_session *session;
+    const char *source;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    source = focused ? "__pcoreWindowFocusChange(true);true;" :
+            "__pcoreWindowFocusChange(false);true;";
     return PScript_Evaluate(session->runtime, source, -1);
 }
 

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1138
+#define TEST_MAX_NUMBER 1139
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -21873,6 +21873,12 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         break;
     }
     case WM_ACTIVATE:
+        if (pcore_native_script_active() &&
+                g_browser_script_session.session != NULL) {
+            (void) PBrowser_ScriptSessionDispatchWindowFocus(
+                    g_browser_script_session.session,
+                    LOWORD(wp) != WA_INACTIVE);
+        }
         if (LOWORD(wp) == WA_INACTIVE) {
             pcore_toggle_focus_clear();
             pcore_button_focus_clear();
@@ -34636,6 +34642,147 @@ static BOOL test1138_browser_page_show_lifecycle_contract(void)
             "Initial load emits one pageshow; hidden-to-visible recovery"
             " emits one more after pagehide, with duplicate transitions"
             " remaining silent and persisted false.");
+    return TRUE;
+}
+
+/* TEST 1139 - host activation updates window focus state and events. */
+static BOOL test1139_browser_window_focus_lifecycle_contract(void)
+{
+    static const char URL[] = "https://positron.local/window-focus";
+    static const char SETUP[] =
+        "var trace=[];var propertyTrace=[];"
+        "function eventValid(e){return e.target===window&&"
+        "e.currentTarget===window&&e.bubbles===false&&"
+        "e.cancelable===false&&e.defaultPrevented===false&&"
+        "e.isTrusted===true&&typeof e.preventDefault==='function'&&"
+        "document.hasFocus()===(e.type==='focus');}"
+        "function record(e){trace.push(e.type+':'+String(document.hasFocus())+':'"
+        "+String(eventValid(e)));}"
+        "window.addEventListener('focus',record,false);"
+        "window.addEventListener('blur',record,false);"
+        "window.onfocus=function(e){propertyTrace.push('on'+e.type);};"
+        "window.onblur=function(e){propertyTrace.push('on'+e.type);};";
+    static const char EXPECTED_INITIAL[] = "true";
+    static const char EXPECTED_TRACE[] = "blur:false:true|focus:true:true";
+    static const char EXPECTED_PROPERTIES[] = "onblur|onfocus";
+    HANDLE session;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int ok;
+
+    session = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    if (PBrowser_ScriptSessionDispatchWindowFocus(NULL, 1) !=
+            PSCRIPT_ERROR_ARGUMENT) {
+        cstr_copy(error, sizeof(error),
+                "invalid window focus session was accepted");
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    if (ok) {
+        session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+        if (session == NULL ||
+                PBrowser_ScriptSessionSetGlobalString(session,
+                "__pcoreDocumentUrl", URL) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionSetGlobalNumber(session,
+                "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionSetGlobalJson(session,
+                "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+                PBrowser_ScriptSessionSetGlobalNumber(session,
+                "__pcoreViewportWidth", 320.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionSetGlobalNumber(session,
+                "__pcoreViewportHeight", 240.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionSetGlobalNumber(session,
+                "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluateBootstrap(session) !=
+                PSCRIPT_OK) {
+            session_error = session != NULL ?
+                    PBrowser_ScriptSessionGetError(session) : NULL;
+            if (session_error != NULL && session_error[0] != '\0') {
+                _snprintf(error, sizeof(error) - 1,
+                        "window focus bootstrap failed: %s", session_error);
+                error[sizeof(error) - 1] = '\0';
+            } else {
+                cstr_copy(error, sizeof(error),
+                        "window focus bootstrap failed");
+            }
+            ok = 0;
+        }
+    }
+    if (ok && PBrowser_ScriptSessionEvaluate(session, SETUP, -1) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "window focus listener setup failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "document.hasFocus()?'true':'false';", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, EXPECTED_INITIAL) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "new window did not start focused");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchWindowFocus(session, 0) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "blur transition failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchWindowFocus(session, 0) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "duplicate blur transition failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchWindowFocus(session, 2) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "normalized focus transition failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchWindowFocus(session, 1) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "duplicate normalized focus transition failed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|');", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, EXPECTED_TRACE) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "focus event ordering, fields, or deduplication mismatch");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "propertyTrace.join('|');", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, EXPECTED_PROPERTIES) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "window focus property handlers were not dispatched");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "document.hasFocus()?'true':'false';", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, EXPECTED_INITIAL) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "focused state was not restored after activation");
+        ok = 0;
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1139 FAIL", error[0] != '\0' ? error :
+                "window focus lifecycle contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1139 OK",
+            "Host activation updates document.hasFocus and window focus/blur"
+            " events; duplicate values are silent and event fields are stable.");
     return TRUE;
 }
 
@@ -92680,6 +92827,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1136: ok = test1136_browser_beforeunload_contract(); break;
         case 1137: ok = test1137_browser_task_checkpoint_contract(); break;
         case 1138: ok = test1138_browser_page_show_lifecycle_contract(); break;
+        case 1139: ok = test1139_browser_window_focus_lifecycle_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

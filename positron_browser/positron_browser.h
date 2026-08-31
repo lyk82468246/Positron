@@ -1486,6 +1486,14 @@ PBROWSER_API int PBrowser_ScriptSessionRunAnimationFrames(HANDLE hSession,
  * normalized to 0 or 1. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchVisibility(HANDLE hSession,
         int hidden);
+/* Update the product-owned top-level window focus state and dispatch a
+ * non-bubbling window focus or blur event when the normalized value changes.
+ * Duplicate values are silent; `focused` is normalized to 0 or 1. The host
+ * must call this for every WM activation transition and immediately report
+ * an inactive state when a session is created in an inactive window. The
+ * script-facing document.hasFocus() reflects the current state. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchWindowFocus(HANDLE hSession,
+        int focused);
 /* Pump bounded product-owned microtasks, idle callbacks, and queued
  * same-window postMessage deliveries. The host owns scheduling and may call
  * these from its message loop; each function returns the script result code. */

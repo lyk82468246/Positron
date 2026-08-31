@@ -119,8 +119,8 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、稳定的 `screen.orientation` 对象及方向变化事件、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
-- Event、input、keyboard、focus、composition、click 和导航协调；
-- timer、animation frame、microtask、idle、message 和页面生命周期队列，以及初次完成加载后的 pageshow、可见性切换的 visibilitychange/pagehide/pageshow、显式的 document teardown 与队列清理入口；
+- Event、input、keyboard、element focus、window focus/blur、composition、click 和导航协调；
+- timer、animation frame、microtask、idle、message 和页面生命周期队列，以及初次完成加载后的 pageshow、可见性切换的 visibilitychange/pagehide/pageshow、宿主驱动的 document.hasFocus/window focus/blur、显式的 document teardown 与队列清理入口；
 - `PBrowser_ScriptSessionRunTaskCheckpoint` 提供统一的有界脚本任务检查点：按调用方选择的阶段以 timer → animation frame → message → idle 的固定顺序运行，并在每个阶段后排空一次 microtask；Browser 拥有顺序和队列预算，宿主提供单调时钟、idle deadline、message limit 和消息循环接线；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
 - 导航资源事务：按 URL 去重并合并 role/policy，拥有资源字节、终态、失败分类、transport 重试预算、required/optional commit gate、hash-only failure summary 和 fallback observation。
@@ -171,6 +171,13 @@ document `visibilitychange` 和 window `pagehide`，恢复 visible 再派发
 `visibilitychange` 和一次 `pageshow`，相同状态保持静默。该有限实现不提供 bfcache，
 因此这些 page event 的 `persisted` 固定为 `false`。
 
+窗口激活由宿主在每次 `WM_ACTIVATE` 时调用
+`PBrowser_ScriptSessionDispatchWindowFocus(session, focused)` 推进。Browser
+归一化 focused 值并维护脚本可见的 `document.hasFocus()`；状态变化时只派发一次
+可信、不可取消、不冒泡的 window `focus` 或 `blur`，同时调用对应的属性 handler
+和 listener。新 session 默认 focused，非激活窗口创建后由宿主补发零值。该入口
+不创建窗口、不操作 native 控件，也不替宿主决定初始焦点、焦点矩形或跨窗口策略。
+
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
 
 浏览器 JavaScript 与 `positron_script.dll` 共用 Duktape 实现，但角色不同：Script DLL 是通用嵌入服务；Browser DLL 负责把有限 Web 对象、事件语义和任务检查点组合到一个页面 session。浏览器脚本仍需要宿主提供真实 DOM、平台默认动作、导航、窗口生命周期和消息循环；如果宿主不调用 pump，页面的异步脚本队列不会自行推进。
@@ -189,7 +196,7 @@ document `visibilitychange` 和 window `pagehide`，恢复 visible 再派发
 
 宿主拥有所有与具体应用或 Windows Mobile UI 绑定的行为：
 
-- 顶层窗口、消息循环、滚动条和 DPI/旋转通知；layout 后读取 Core 的 page-level width/height，维护两个轴的 viewport offset、clamp 和 native child reposition，并把新的物理 client area 按 DPI 换算后通知 Browser viewport；
+- 顶层窗口、消息循环、滚动条和 DPI/旋转通知；layout 后读取 Core 的 page-level width/height，维护两个轴的 viewport offset、clamp 和 native child reposition，并把新的物理 client area 按 DPI 换算后通知 Browser viewport；宿主还负责把每次 `WM_ACTIVATE` 映射为 Browser 的 window focus 通知，但不在宿主复制 `document.hasFocus()` 或 focus/blur 事件语义；
 - native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位、销毁并跟踪其平台鼠标/键盘选区；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、写入和所有权也只属于宿主；
 - 后台线程、loading 状态与页面 swap；较新的导航可以取代仍在准备的候选，宿主为每个请求保存 Browser 的 candidate handle，以宿主 generation 计数器构造并门控 worker 完成、进度和提交消息，再让退休候选持有自己的线程、response、资源队列和脚本对象直到 worker 收尾；Browser handle 拥有该候选的 generation、取消请求、退休状态、提交资格和结果分类，宿主只拥有退休队列与平台回收，并通过 `PBrowser_NavigationCandidateGetResult` 把分类复制到应用日志；退休队列有固定上限，达到上限时新导航 fail closed 而不改变当前页；候选成功时先在旧 document/session 仍有效的窗口内调用 `PBrowser_ScriptSessionDispatchBeforeUnload`，按应用策略处理取消，再调用 Browser teardown、停止 native 回调、释放旧对象并提交新页；
 - DNS/TCP/TLS/HTTP 组合策略、worker、取消时机和资源调度；宿主通过 Browser 资源事务注册 URL 并提交 attempt/data/failure/cancel 结果，决定何时重试、何时运行 style/layout、何时提交页面。资源终态、成功字节、预算、required/optional gate、失败摘要和 fallback 计数由 Browser 拥有，宿主读取统计用于 loading、日志和应用策略，不复制第二份资源状态或数据；页面提交时由 Browser 的 `PBrowser_NavigationCommitGetInfo` 给出 candidate/resource 组合快照，宿主不复制其中的分类规则；

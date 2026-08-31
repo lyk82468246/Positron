@@ -119,6 +119,15 @@ readystatechange/DOMContentLoaded/load 序列后派发一次初始 `pageshow`，
 `document.readyState`、`visibilityState` 和 `persisted === false`。它是离线
 脚本语义夹具，不证明 bfcache、真实后台挂起、OEM 可见性通知或视觉结果。
 
+TEST1139 覆盖 Browser 的顶层窗口焦点合同：新 session 的
+`document.hasFocus()` 初始为真；宿主调用
+`PBrowser_ScriptSessionDispatchWindowFocus()` 后，状态变化按 blur/focus 顺序
+派发一次可信、不可取消、不冒泡的 window 事件，并同时支持属性 handler 和普通
+listener。重复的零值或非零值保持静默，非零输入归一化为 focused；测试还断言
+`target`、`currentTarget`、`isTrusted`、`preventDefault()` 和状态读取。它是
+离线脚本语义夹具，不证明 OEM 激活通知、native 控件焦点矩形或真实窗口切换的
+视觉结果。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

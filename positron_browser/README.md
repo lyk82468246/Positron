@@ -362,7 +362,7 @@ PBrowser_NavigationCandidateGetResult(candidate, current_generation,
 
 ### 队列与生命周期
 
-Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
+Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility、window focus 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
 
 宿主可以逐项调用这些入口，也可以用
 `PBrowser_ScriptSessionRunTaskCheckpoint` 驱动一次统一检查点。统一入口按
@@ -395,6 +395,15 @@ if (PBrowser_ScriptSessionRunTaskCheckpoint(
 document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同样边界派发
 `visibilitychange` 和一次 `pageshow`。相同的 hidden 值不会产生重复事件，所有
 这些有限 page event 的 `persisted` 都是 `false`，因为 Browser 不实现 bfcache。
+
+顶层窗口的激活状态也由宿主显式推进：每次收到 `WM_ACTIVATE` 时调用
+`PBrowser_ScriptSessionDispatchWindowFocus(session, focused)`，其中非零值表示
+激活、零表示停用。Browser 对输入值归一化，只在状态真正变化时更新
+`document.hasFocus()`，并同步派发一次可信、不可取消、不冒泡的 window `focus`
+或 `blur`；`window.onfocus`/`onblur` 和普通监听器都遵循同一顺序。新 session
+默认从 focused 开始，若宿主在非激活窗口中创建它，必须立即补发一次零值。这个
+入口只描述脚本可见的顶层窗口状态，不创建 HWND，也不代替宿主管理 native
+控件焦点、焦点矩形或跨窗口策略。
 
 跨文档候选已经完成 parse、资源、style、layout 并准备提交时，宿主仍应保留旧 document/session，先调用 `PBrowser_ScriptSessionDispatchBeforeUnload`。该入口同步派发当前 window 的 cancelable、non-bubbling、trusted `beforeunload` 事件，覆盖 `window.onbeforeunload` 与 `addEventListener('beforeunload', ...)`；调用 `preventDefault()`、写入非空 `event.returnValue`，或从 `window.onbeforeunload` 返回非空字符串都会把 `out_prevented` 置为非零。它只返回取消决定，不显示提示框、不执行导航或 teardown；提示 UI 和“继续/取消”的产品策略由宿主决定，脚本调用或结果解析失败时必须按取消处理。参考宿主没有确认对话框，因此直接拒绝候选提交或窗口关闭并保留旧页。
 
@@ -432,7 +441,7 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
-- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台焦点。CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期和其他浏览器焦点策略未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
+- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台 native 控件焦点。脚本层的顶层窗口 focus/blur 与 `document.hasFocus()` 由宿主通过显式通知维护，但完整初始焦点、焦点陷阱、跨窗口焦点策略和 CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期仍未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。

@@ -105,6 +105,11 @@ window `resize` listener 看到的是新布局后的快照；匹配结果翻转�
 WM 接线；Browser 不访问窗口，也不替宿主运行排队的 timer 或 animation frame。若页面的 resize handler 使用
 `requestAnimationFrame`，宿主必须在自己的消息循环中按需调用已有 frame pump。
 
+窗口收到 `WM_ACTIVATE` 时，宿主把 `WA_INACTIVE` 映射为零、其他激活值映射为非零，
+调用 `PBrowser_ScriptSessionDispatchWindowFocus`。Browser 因此维护脚本可见的
+`document.hasFocus()`，并在状态变化时派发一次 window `blur`/`focus`；宿主仍
+负责 native 控件焦点、焦点矩形以及 OEM/跨窗口策略。
+
 DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM node、box、computed style 或 HDC。
 
 ### Core 与 Browser callbacks
@@ -117,7 +122,7 @@ callback 同步且不可重入。候选页面成功提交前，宿主必须在�
 
 WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生 `input`、`change`、submit/reset 等后续事件。对 contenteditable，宿主从 `PCore_ContentEditableTargetInfo` 枚举带 id 的已布局 editing host，创建最多 16 个 WM multiline EDIT 代理；`WM_CHAR` 默认处理返回后才回读最终文本并调用 Core mutation。宿主实现的 selection callback 把 WM EDIT 的 UTF-16 位置（包括 CRLF）转换为 Browser 使用的逻辑 UTF-16 位置，并只保存原生控件的短暂状态；原生范围确定后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`，由 Browser 去重并分发一次 `selectionchange`。这样可吸收 WM6 在默认处理期间提前发送的 `EN_CHANGE`，避免把旧值或空值提交为一次 input，也避免宿主经 Core 重复派发选区事件。对 `WM_PASTE`/`WM_COPY`/`WM_CUT`，宿主读取有界 `CF_UNICODETEXT`、规范化 CRLF，并把精确 data 交给 `beforeinput`；`WM_COPY` 的折叠选区保持现有剪贴板不变，允许的 paste/cut 才执行 native default 和 Core/input 提交，格式缺失或超长时 fail closed。WinCE 原生 `WM_CUT` 可能内部重入 `WM_COPY`，宿主只在该外层默认动作期间放行同一 HWND 的重入，不让它绕过自己的外部 copy 规则。键盘/拖选 anchor、Shift 状态和捕获/取消/焦点中断收尾同样只属于宿主平台接线。
 
-系统 picker、文件路径、SIP/IME、HWND、COMBOBOX popup 和真实焦点仍属于宿主。synthetic 消息只能做自动契约，不能替代 OEM 设备人工验收。
+系统 picker、文件路径、SIP/IME、HWND、COMBOBOX popup、native 控件焦点和焦点视觉仍属于宿主；Browser 只拥有上述脚本层窗口状态与事件合同。synthetic 消息只能做自动契约，不能替代 OEM 设备人工验收。
 
 ### 单元素 `contenteditable`
 
