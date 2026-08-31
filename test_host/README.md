@@ -84,8 +84,8 @@ History entry 的 viewport snapshot 也由 `positron_browser.dll` 持有。宿�
 `window.scrollTo()`/`scrollBy()` 请求先经过该 callback，宿主把 page 坐标按
 当前 document/client extent clamp，更新滚动条、native child 和绘制位置，再
 返回实际 `(x, y)`；候选文档在提交前只回显坐标，不能触碰旧页。宿主完成用户
-滚动、fragment reveal 或 resize 后调用
-`PBrowser_ScriptSessionNotifyScroll`，把物理位置同步到脚本侧并触发至多一次
+滚动、fragment reveal 或 resize 后把物理位置换算为 CSS page 坐标，再调用
+`PBrowser_ScriptSessionNotifyScroll` 同步脚本侧并触发至多一次
 去重的 `scroll` 事件。同步 callback 不可重入，脚本 callback 内不会再次进入
 Browser runtime。
 
@@ -93,7 +93,7 @@ DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM 
 
 ### Core 与 Browser callbacks
 
-宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、表单、validation、`contenteditable` 状态、文本和可选原生选区。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的 Core mutation、WM 默认动作和导航副作用。
+宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、表单、validation、`contenteditable` 状态、文本、布局几何和可选原生选区。布局几何 callback 只转发 Core 已完成 layout 的 border-box 快照；Browser 负责把它转换为 `getBoundingClientRect()` 的视口坐标，宿主不复制 box tree 或实现 DOM 几何语义。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的 Core mutation、WM 默认动作和导航副作用。
 
 callback 同步且不可重入。候选页面成功提交前，宿主必须在旧 document/session 仍有效时调用 `PBrowser_ScriptSessionDispatchPageTeardown`；它负责一次性的 `visibilitychange`→`pagehide`→`unload` 边界和页面队列清理。随后宿主停止新消息和事务，销毁 native 控件、Browser session 和 Core document，避免 stale token 或借用指针逃逸。失败候选不调用 teardown，旧页状态继续服务。
 

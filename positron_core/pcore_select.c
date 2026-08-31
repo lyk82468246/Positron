@@ -5400,6 +5400,48 @@ static int pcore_relation_child_node_field(dom_node *node,
     return 0;
 }
 
+/* Return one component of the current border-box geometry. The relation
+ * bridge intentionally exposes only integer CSS-pixel snapshots; it never
+ * lends the internal box tree to a script host. */
+static int pcore_relation_layout_rect(dom_document *doc,
+        dom_element *element, unsigned int relation, int *out_number)
+{
+    int x;
+    int y;
+    int width;
+    int height;
+    int ignored;
+
+    if (out_number == NULL) {
+        out_number = &ignored;
+    }
+    *out_number = 0;
+    if (doc == NULL || element == NULL) {
+        return 1;
+    }
+    if (pcore_box_geometry_for_node(doc, (dom_node *) element, &x, &y,
+            &width, &height) != 0 || width < 0 || height < 0) {
+        return 2;
+    }
+    switch (relation) {
+    case PCORE_NODE_RELATION_LAYOUT_RECT_X:
+        *out_number = x;
+        break;
+    case PCORE_NODE_RELATION_LAYOUT_RECT_Y:
+        *out_number = y;
+        break;
+    case PCORE_NODE_RELATION_LAYOUT_RECT_WIDTH:
+        *out_number = width;
+        break;
+    case PCORE_NODE_RELATION_LAYOUT_RECT_HEIGHT:
+        *out_number = height;
+        break;
+    default:
+        return 1;
+    }
+    return 0;
+}
+
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,
         int value_capacity, int *out_bytes, int *out_number)
@@ -5551,6 +5593,13 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     case PCORE_NODE_RELATION_CHILD_NODE_TEXT_AT:
         err = pcore_relation_child_node_field((dom_node *) element, index,
                 3, out_value, value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_LAYOUT_RECT_X:
+    case PCORE_NODE_RELATION_LAYOUT_RECT_Y:
+    case PCORE_NODE_RELATION_LAYOUT_RECT_WIDTH:
+    case PCORE_NODE_RELATION_LAYOUT_RECT_HEIGHT:
+        err = pcore_relation_layout_rect((dom_document *) hDoc, element,
+                relation, out_number);
         break;
     default:
         err = 1;

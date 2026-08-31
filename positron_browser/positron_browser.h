@@ -420,7 +420,10 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 /* Relationship constants mirror positron_core.h without requiring public
  * browser consumers to include the core header. The three structural tokens
  * are shared with positron_core.h so a host adapter can expose document root
- * wrappers without inventing a second DOM identity scheme. */
+ * wrappers without inventing a second DOM identity scheme. The four
+ * LAYOUT_RECT_* relations are numeric document-CSS-pixel geometry components;
+ * the Browser wrapper subtracts the current page scroll before exposing them
+ * through Element.getBoundingClientRect(). */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -447,6 +450,10 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_LABEL_CONTROL       20u
 #define PBROWSER_SCRIPT_NODE_RELATION_CONTROL_LABEL_COUNT 21u
 #define PBROWSER_SCRIPT_NODE_RELATION_CONTROL_LABEL_AT    22u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_X       23u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_Y       24u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_WIDTH   25u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_HEIGHT  26u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

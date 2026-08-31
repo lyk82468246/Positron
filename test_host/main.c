@@ -110,6 +110,10 @@ static const char g_test_jpeg_16x16_b64[] =
 static int    g_testbench_auto = 0;
 static int    g_browser_javascript_enabled = 0;
 static HANDLE g_testbench_log = INVALID_HANDLE_VALUE;
+/* Core paints and hit-tests in physical device pixels; Browser script
+ * viewport coordinates are CSS pixels.  The active page DPI is maintained by
+ * the host adapter so the two domains meet only at this boundary. */
+static int    g_page_scroll_dpi = 96;
 
 static int test_host_device_dpi(void)
 {
@@ -140,8 +144,14 @@ static int test_host_css_px_to_device_px(int css_px, int dpi)
 
 static void test_host_set_device_viewport(int device_width, int device_height)
 {
-    PCore_SetDeviceViewport(device_width, device_height,
-            test_host_device_dpi());
+    int dpi;
+
+    dpi = test_host_device_dpi();
+    if (dpi <= 0) {
+        dpi = 96;
+    }
+    g_page_scroll_dpi = dpi;
+    PCore_SetDeviceViewport(device_width, device_height, dpi);
 }
 
 static int test_host_sibling_path(const WCHAR *name,
@@ -373,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1129
+#define TEST_MAX_NUMBER 1130
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -12858,6 +12868,9 @@ static void pcore_set_scrollbar(HWND hwnd)
 static void pcore_browser_script_sync_scroll(void)
 {
     pcore_browser_script_bridge *bridge;
+    int dpi;
+    int css_x;
+    int css_y;
 
     if (g_browser_script_scroll_dispatch || g_render_doc == NULL ||
             g_browser_script_session.document != g_render_doc ||
@@ -12868,9 +12881,14 @@ static void pcore_browser_script_sync_scroll(void)
     if (bridge->document != g_render_doc || bridge->session == NULL) {
         return;
     }
+    dpi = g_page_scroll_dpi;
+    if (dpi <= 0) {
+        dpi = 96;
+    }
+    css_x = MulDiv((g_scroll_x >= 0) ? g_scroll_x : 0, 96, dpi);
+    css_y = MulDiv((g_scroll_y >= 0) ? g_scroll_y : 0, 96, dpi);
     (void) PBrowser_ScriptSessionNotifyScroll(bridge->session,
-            (g_scroll_x >= 0) ? g_scroll_x : 0,
-            (g_scroll_y >= 0) ? g_scroll_y : 0);
+            css_x, css_y);
 }
 
 /* Scroll by both page offsets, clamped to the document/client extents, and
@@ -15018,6 +15036,9 @@ static int pcore_browser_script_scroll(void *pw,
         const PBrowserScriptScrollInfo *info, int *out_x, int *out_y)
 {
     pcore_browser_script_bridge *bridge;
+    int dpi;
+    int device_x;
+    int device_y;
     int rc;
 
     bridge = (pcore_browser_script_bridge *) pw;
@@ -15033,15 +15054,20 @@ static int pcore_browser_script_scroll(void *pw,
         *out_y = info->scroll_y;
         return 0;
     }
+    dpi = g_page_scroll_dpi;
+    if (dpi <= 0) {
+        dpi = 96;
+    }
+    device_x = MulDiv(info->scroll_x, dpi, 96);
+    device_y = MulDiv(info->scroll_y, dpi, 96);
     g_browser_script_scroll_dispatch++;
-    rc = pcore_scroll_to_xy(bridge->hwnd, info->scroll_x,
-            info->scroll_y);
+    rc = pcore_scroll_to_xy(bridge->hwnd, device_x, device_y);
     g_browser_script_scroll_dispatch--;
     if (!rc) {
         return -1;
     }
-    *out_x = (g_scroll_x >= 0) ? g_scroll_x : 0;
-    *out_y = (g_scroll_y >= 0) ? g_scroll_y : 0;
+    *out_x = MulDiv((g_scroll_x >= 0) ? g_scroll_x : 0, 96, dpi);
+    *out_y = MulDiv((g_scroll_y >= 0) ? g_scroll_y : 0, 96, dpi);
     return 0;
 }
 
@@ -17228,6 +17254,7 @@ static int pcore_style_layout_device_document(HANDLE document, HANDLE sheet,
     if (document == NULL || width <= 0 || height <= 0 || dpi <= 0) {
         return 1;
     }
+    g_page_scroll_dpi = dpi;
     PCore_SetDeviceViewport(width, height, dpi);
     if (PCore_StyleDocumentEx2(document, sheet, document_base,
             wm_combine_url, page_resource_cache_only_cb, NULL, NULL) != 0 ||
@@ -32795,12 +32822,13 @@ static BOOL test1129_browser_script_scroll_contract(void)
     pcore_browse_history_product_destroy();
     g_render_doc = (HANDLE) 1;
     g_render_sheet = NULL;
-    g_doc_w = 300;
-    g_doc_h = 250;
-    g_view_w = 100;
-    g_view_h = 100;
+    g_doc_w = 600;
+    g_doc_h = 500;
+    g_view_w = 200;
+    g_view_h = 200;
     g_scroll_x = 0;
     g_scroll_y = 0;
+    g_page_scroll_dpi = 192;
     g_browser_script_scroll_dispatch = 0;
     session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
     bridge.document = g_render_doc;
@@ -32851,8 +32879,8 @@ static BOOL test1129_browser_script_scroll_contract(void)
                 "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
                 -1) != PSCRIPT_OK ||
                 (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
-                strcmp(result, "200|150|1") != 0 || g_scroll_x != 200 ||
-                g_scroll_y != 150) {
+                strcmp(result, "200|150|1") != 0 || g_scroll_x != 400 ||
+                g_scroll_y != 300) {
             cstr_copy(error, sizeof(error),
                     "script scroll was not host-clamped");
             ok = 0;
@@ -32864,16 +32892,16 @@ static BOOL test1129_browser_script_scroll_contract(void)
                 "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
                 -1) != PSCRIPT_OK ||
                 (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
-                strcmp(result, "150|90|2") != 0 || g_scroll_x != 150 ||
-                g_scroll_y != 90) {
+                strcmp(result, "150|90|2") != 0 || g_scroll_x != 300 ||
+                g_scroll_y != 180) {
             cstr_copy(error, sizeof(error),
                     "script scrollBy did not use applied position");
             ok = 0;
         }
     }
     if (ok) {
-        if (!pcore_scroll_to_xy(NULL, 40, 30) || g_scroll_x != 40 ||
-                g_scroll_y != 30 ||
+        if (!pcore_scroll_to_xy(NULL, 80, 60) || g_scroll_x != 80 ||
+                g_scroll_y != 60 ||
                 PBrowser_ScriptSessionEvaluate(session,
                 "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
                 -1) != PSCRIPT_OK ||
@@ -32911,8 +32939,8 @@ static BOOL test1129_browser_script_scroll_contract(void)
                 "[window.scrollX,window.scrollY,window.__scrollEvents].join('|');",
                 -1) != PSCRIPT_OK ||
                 (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
-                strcmp(result, "7|8|5") != 0 || g_scroll_x != 40 ||
-                g_scroll_y != 30 ||
+                strcmp(result, "7|8|5") != 0 || g_scroll_x != 80 ||
+                g_scroll_y != 60 ||
                 PBrowser_ScriptSessionNotifyScroll(session, -1, 0) !=
                 PSCRIPT_ERROR_ARGUMENT) {
             cstr_copy(error, sizeof(error),
@@ -32931,6 +32959,7 @@ static BOOL test1129_browser_script_scroll_contract(void)
     g_view_h = 0;
     g_scroll_x = 0;
     g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
     g_browser_script_scroll_dispatch = 0;
     PBrowser_ScriptSessionDestroy(session);
     if (!ok) {
@@ -32944,6 +32973,208 @@ static BOOL test1129_browser_script_scroll_contract(void)
             "Browser script scrolling is clamped and applied by the host;"
             " physical host movement synchronizes scrollX/scrollY with one"
             " deduplicated scroll event and no callback re-entry.");
+    return TRUE;
+}
+
+/* TEST 1130 - Browser Element.getBoundingClientRect exposes the current Core
+ * layout box and follows the page-level script scroll offset. */
+static BOOL test1130_browser_bounding_client_rect_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "window.captureRect=function(){var r=document.getElementById('target').getBoundingClientRect();"
+        "var valid=r.width>0&&r.height>0&&r.right===r.left+r.width&&"
+        "r.bottom===r.top+r.height;var previous=window.__firstRect;"
+        "var moved=previous===undefined||"
+        "(r.left===previous.left&&r.top===previous.top-10&&"
+        "r.width===previous.width&&r.height===previous.height);"
+        "if(previous===undefined){window.__firstRect={left:r.left,top:r.top,"
+        "width:r.width,height:r.height};}"
+        "document.getElementById('result').textContent=String(valid)+'|'+"
+        "String(previous===undefined?'first':moved);};"
+        "</script></head><body><div id='target'>Target</div>"
+        "<div id='spacer'>spacer</div><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0}"
+        "#target{display:block;position:absolute;left:17px;top:31px;"
+        "width:40px;height:20px;padding:3px;border:2px solid #000}"
+        "#spacer{height:300px}";
+    static const char URL[] =
+        "https://positron.local/bounding-client-rect";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    int evaluate_rc;
+    int executed;
+    int ignored;
+    int pre_layout_rc;
+    int relation_x;
+    int relation_y;
+    int relation_width;
+    int relation_height;
+    const char *result;
+    char error[384];
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    evaluate_rc = PSCRIPT_ERROR_ARGUMENT;
+    executed = -1;
+    ignored = -1;
+    pre_layout_rc = -1;
+    relation_x = 0;
+    relation_y = 0;
+    relation_width = 0;
+    relation_height = 0;
+    result = NULL;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL, NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        pre_layout_rc = PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_RECT_X, 0, NULL, 0, NULL,
+                &relation_x);
+        if (pre_layout_rc != 2) {
+            cstr_copy(error, sizeof(error),
+                    "layout relation was available before layout");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/bounding-client-rect.css");
+        /* Exercise the same device-backed layout path used by the product,
+         * then verify that the script-facing relation converts its physical
+         * box back to CSS pixels.  A 240x200 @ 192-DPI viewport is a stable
+         * two-to-one fixture on both desktop and WM6. */
+        PCore_SetDeviceViewport(240, 200, 192);
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 240, 200) != 0 ||
+                PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_RECT_X, 0, NULL, 0, NULL,
+                &relation_x) != 0 ||
+                PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_RECT_Y, 0, NULL, 0, NULL,
+                &relation_y) != 0 ||
+                PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_RECT_WIDTH, 0, NULL, 0, NULL,
+                &relation_width) != 0 ||
+                PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_RECT_HEIGHT, 0, NULL, 0, NULL,
+                &relation_height) != 0 || relation_x != 17 ||
+                relation_y != 31 || relation_width != 50 ||
+                relation_height != 30) {
+            _snprintf(error, sizeof(error) - 1,
+                    "Core layout relation rect=%d,%d,%d,%d rc=%d",
+                    relation_x, relation_y, relation_width, relation_height,
+                    pre_layout_rc);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        evaluate_rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session,
+                "window.captureRect();document.getElementById('result').textContent;",
+                -1);
+        result = (evaluate_rc == PSCRIPT_OK) ?
+                PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session) : NULL;
+        if (evaluate_rc != PSCRIPT_OK || result == NULL ||
+                strcmp(result, "true|first") != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "initial getBoundingClientRect snapshot failed rc=%d result=%s error=%s",
+                    evaluate_rc, result != NULL ? result : "<null>",
+                    PBrowser_ScriptSessionGetError(
+                    g_browser_script_session.session) != NULL ?
+                    PBrowser_ScriptSessionGetError(
+                    g_browser_script_session.session) : "<none>");
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyScroll(
+                g_browser_script_session.session, 0, 10) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session,
+                "window.captureRect();document.getElementById('result').textContent;",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session)) == NULL ||
+                strcmp(result, "true|true") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "getBoundingClientRect did not follow page scroll");
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    {
+        int restore_width;
+        int restore_height;
+
+        restore_width = GetSystemMetrics(SM_CXSCREEN);
+        restore_height = GetSystemMetrics(SM_CYSCREEN);
+        if (restore_width <= 0) {
+            restore_width = 240;
+        }
+        if (restore_height <= 0) {
+            restore_height = 320;
+        }
+        PCore_SetViewport(restore_width, restore_height,
+                test_host_device_dpi());
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "rc=%d rect=%d,%d,%d,%d result=%s", pre_layout_rc,
+                    relation_x, relation_y, relation_width, relation_height,
+                    result != NULL ? result : "<null>");
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1130 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1130 OK",
+            "Core exposes a bounded laid-out border box through the existing"
+            " DOM relation bridge; Browser getBoundingClientRect returns a"
+            " viewport-relative snapshot and tracks page scroll.");
     return TRUE;
 }
 
@@ -90979,6 +91210,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1127: ok = test1127_navigation_cleanup_snapshot(); break;
         case 1128: ok = test1128_page_horizontal_viewport(); break;
         case 1129: ok = test1129_browser_script_scroll_contract(); break;
+        case 1130: ok = test1130_browser_bounding_client_rect_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

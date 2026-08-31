@@ -86,6 +86,13 @@ struct box *pcore_box_construct(struct dom_node *root, void *ctx);
 struct box *pcore_box_construct_profile(struct dom_node *root, void *ctx,
         PCoreBoxStats *stats);
 
+/* Return the current border-box geometry for one DOM element. Coordinates and
+ * dimensions are document CSS pixels; the box tree remains private to the
+ * core DLL. Returns 0 when a laid-out box exists and non-zero when the
+ * document/element has no usable box. */
+int pcore_box_geometry_for_node(struct dom_document *doc,
+        struct dom_node *node, int *x, int *y, int *w, int *h);
+
 /* Overflow scrollbar helpers owned by pcore_box_inspect.c. */
 struct scrollbar;
 bool pcore_scrollbar_is_dragging(struct scrollbar *scrollbar);

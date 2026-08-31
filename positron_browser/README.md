@@ -42,11 +42,26 @@ clamp，并通过 `out_x/out_y` 返回实际应用的坐标；候选 session 尚
 只回显请求，不能改变旧页面。Browser 只在最终坐标改变时分发一次非冒泡的
 `scroll` 事件。
 
-宿主处理滚动条、触摸、键盘、resize 或 fragment reveal 后，应调用
-`PBrowser_ScriptSessionNotifyScroll(session, x, y)` 同步物理 viewport。这个
+宿主处理滚动条、触摸、键盘、resize 或 fragment reveal 后，应先把物理
+viewport 位置换算为 CSS page 坐标，再调用
+`PBrowser_ScriptSessionNotifyScroll(session, x, y)` 同步脚本侧 viewport。这个
 入口只更新脚本侧 `scrollX`/`scrollY` 并做去重，不会再次调用 scroll adapter，
 因此宿主可以在完成自己的 clamp/apply 后安全调用它。回调同步且不可重入；
 宿主不得在 scroll callback 内再次进入或销毁同一 Browser session。
+
+### Layout geometry 与 `getBoundingClientRect()`
+
+DOM relation callback 还提供四个数值分量：当前 Core layout box 的
+`x`、`y`、`width` 和 `height`。Browser 在 `Element.getBoundingClientRect()`
+中把它们组合成一个有限的 `{left, top, right, bottom, x, y, width, height}`
+快照，并减去当前 page-level `scrollX`/`scrollY`，所以返回值是 viewport-relative
+的 CSS 像素。元素没有已完成的 layout、没有可用 box 或 relation callback 未注册时，
+方法返回全零矩形；它不会触发 style/layout，也不会暴露 Core 的 box 指针。
+
+这是一个有界的单矩形接口：不承诺 transforms、Range/多片段 union、完整
+`getClientRects()`、独立 nested overflow scrolling 或视觉像素精度。宿主仍负责
+在 DOM mutation、resize 或页面提交后重新 style/layout，并按实际滚动位置调用
+`PBrowser_ScriptSessionNotifyScroll`。
 
 ### Script session
 

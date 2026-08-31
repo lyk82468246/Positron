@@ -319,11 +319,13 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * String results use the same probe/truncation contract as
  * PCore_NodeTextContentById. Numeric results are returned through
  * out_number; ATTRIBUTE_NAME_AT and ATTRIBUTE_VALUE_AT enumerate the
- * element's bounded NamedNodeMap in parser order. The return value is 0 for
- * a relationship that was found, 2 for an absent/unavailable relationship
- * and 1 for invalid input or a DOM failure. The tree and attribute map are
- * read snapshots for the duration of the host script call; mutation remains
- * on the existing attribute APIs. */
+ * element's bounded NamedNodeMap in parser order. The four LAYOUT_RECT_*
+ * relations return the current laid-out border-box x/y/width/height in
+ * document CSS pixels and are unavailable until a successful layout. The
+ * return value is 0 for a relationship that was found, 2 for an
+ * absent/unavailable relationship and 1 for invalid input or a DOM failure.
+ * The tree and attribute map are read snapshots for the duration of the host
+ * script call; mutation remains on the existing attribute APIs. */
 #define PCORE_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PCORE_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PCORE_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -350,6 +352,10 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_LABEL_CONTROL       20u
 #define PCORE_NODE_RELATION_CONTROL_LABEL_COUNT 21u
 #define PCORE_NODE_RELATION_CONTROL_LABEL_AT    22u
+#define PCORE_NODE_RELATION_LAYOUT_RECT_X       23u
+#define PCORE_NODE_RELATION_LAYOUT_RECT_Y       24u
+#define PCORE_NODE_RELATION_LAYOUT_RECT_WIDTH   25u
+#define PCORE_NODE_RELATION_LAYOUT_RECT_HEIGHT  26u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

@@ -3343,6 +3343,8 @@ typedef struct pcore_render {
     int           doc_width;   /* total laid-out width (CSS px)              */
     int           vw;          /* viewport used for layout (redraw extent)   */
     int           vh;
+    int           geometry_device_backed;
+    int           geometry_dpi;
     struct scrollbar *active_scrollbar;
     int           active_scrollbar_x;
     int           active_scrollbar_y;
@@ -4217,6 +4219,8 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     PCoreLayoutStats stats;
     PCoreBoxStats stats_box;
     css_unit_ctx layout_unit_ctx;
+    int device_backed;
+    int geometry_dpi;
     DWORD total_started;
     DWORD started;
 
@@ -4239,7 +4243,12 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
      * directly. Anonymous style composition reads this context too, so
      * delaying the decision until after construction can mix CSS and device
      * pixels on a high-DPI relayout. */
-    if (pcore_device_viewport_pending != 0) {
+    device_backed = (pcore_device_viewport_pending != 0) ? 1 : 0;
+    geometry_dpi = FIXTOINT(pcore_get_unit_ctx()->device_dpi);
+    if (geometry_dpi <= 0) {
+        geometry_dpi = 96;
+    }
+    if (device_backed) {
         pcore_device_viewport_pending = 0;
     } else {
         PCore_SetViewport(viewport_w, viewport_h, 0);
@@ -4273,6 +4282,8 @@ PCORE_API int PCore_LayoutDocument(HANDLE hDoc, int viewport_w, int viewport_h)
     st->root_box = tree;
     st->vw = viewport_w;
     st->vh = viewport_h;
+    st->geometry_device_backed = device_backed;
+    st->geometry_dpi = geometry_dpi;
 
     memset(&st->content, 0, sizeof(st->content));
     st->content.layout = tree;
@@ -11683,6 +11694,54 @@ static struct box *pcore_box_for_any_node(struct box *box, dom_node *node)
         }
     }
     return NULL;
+}
+
+/* Internal geometry bridge used by the script-facing relation table. Keep
+ * the box lookup and border-box arithmetic in the layout owner so other DLLs
+ * never need to know about NetSurf's struct box. */
+int pcore_box_geometry_for_node(struct dom_document *doc,
+        struct dom_node *node, int *x, int *y, int *w, int *h)
+{
+    pcore_render *st;
+    struct box *box;
+    int raw_x;
+    int raw_y;
+    int raw_w;
+    int raw_h;
+
+    st = pcore_get_render((dom_document *) doc);
+    if (st == NULL || node == NULL) {
+        return 1;
+    }
+    box = pcore_box_for_any_node(st->root_box, node);
+    if (box == NULL) {
+        return 1;
+    }
+    pcore_contenteditable_box_geometry(box, &raw_x, &raw_y, &raw_w,
+            &raw_h);
+    if (st->geometry_device_backed && st->geometry_dpi != 96) {
+        raw_x = FIXTOINT(css_unit_device2css_px(INTTOFIX(raw_x),
+                INTTOFIX(st->geometry_dpi)));
+        raw_y = FIXTOINT(css_unit_device2css_px(INTTOFIX(raw_y),
+                INTTOFIX(st->geometry_dpi)));
+        raw_w = FIXTOINT(css_unit_device2css_px(INTTOFIX(raw_w),
+                INTTOFIX(st->geometry_dpi)));
+        raw_h = FIXTOINT(css_unit_device2css_px(INTTOFIX(raw_h),
+                INTTOFIX(st->geometry_dpi)));
+    }
+    if (x != NULL) {
+        *x = raw_x;
+    }
+    if (y != NULL) {
+        *y = raw_y;
+    }
+    if (w != NULL) {
+        *w = raw_w;
+    }
+    if (h != NULL) {
+        *h = raw_h;
+    }
+    return 0;
 }
 
 /* Resolve the first direct summary trigger of a details element. The

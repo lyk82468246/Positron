@@ -2061,6 +2061,20 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "id:this.__id});},enumerable:true});"
         "PElement.prototype.click=function(){"
         "if(!__pcoreClick({id:this.__id})){throw new Error('click failed');}};"
+        "function pRectZero(){return {x:0,y:0,top:0,left:0,right:0,bottom:0,width:0,height:0};}"
+        "function pRectNumber(id,relation){var value;"
+        "if(typeof g.__pcoreGetNodeRelation!=='function'){return null;}"
+        "try{value=g.__pcoreGetNodeRelation({id:id,relation:relation,index:0});}"
+        "catch(rectError){return null;}"
+        "return typeof value==='number'&&isFinite(value)?value:null;}"
+        "PElement.prototype.getBoundingClientRect=function(){var x;var y;"
+        "var w;var h;var sx;var sy;"
+        "x=pRectNumber(this.__id,23);y=pRectNumber(this.__id,24);"
+        "w=pRectNumber(this.__id,25);h=pRectNumber(this.__id,26);"
+        "if(x===null||y===null||w===null||h===null||w<0||h<0){return pRectZero();}"
+        "sx=Number(g.scrollX);sy=Number(g.scrollY);if(!isFinite(sx)){sx=0;}"
+        "if(!isFinite(sy)){sy=0;}x-=sx;y-=sy;return {x:x,y:y,top:y,left:x,right:x+w,"
+        "bottom:y+h,width:w,height:h};};"
         "var pDialogModalOwner=null;var pDialogModalId='';"
         "function pDialogError(message){"
         "if(typeof g.DOMException==='function'){"
@@ -5653,7 +5667,11 @@ static int p_browser_script_relation_is_count(unsigned int relation)
             relation == PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_COUNT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_COUNT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_TYPE_AT ||
-            relation == PBROWSER_SCRIPT_NODE_RELATION_CONTROL_LABEL_COUNT;
+            relation == PBROWSER_SCRIPT_NODE_RELATION_CONTROL_LABEL_COUNT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_X ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_Y ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_WIDTH ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_HEIGHT;
 }
 
 static int p_browser_script_dom_get_relation(void *pw,

@@ -87,7 +87,7 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - CSS 解析、cascade、媒体条件和整树 computed style；
 - 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
-- 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；
+- 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；同时为 ID-addressable 元素提供有界的 border-box 几何快照，供 Browser 组合 `getBoundingClientRect()`；
 - 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
 - 表单值、约束验证、提交、reset 和 successful controls；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
@@ -126,9 +126,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 它通过 callback table 与 Core 和宿主交换信息，不直接依赖窗口、网络或设备控件。callback 必须同步、有界、不可重入，并遵守头文件中的借用缓冲规则。history 与 script-session handle 相互独立，销毁顺序由宿主明确管理。每个 history entry 还由 Browser 保存非负的 `(scroll_x, scroll_y)` viewport snapshot；该快照随 entry 的新建、裁剪、replace 和 traversal 规则维护，但 Browser 不知道 Core 的文档 extent、不访问 HWND，也不替宿主做 clamp。
 
 脚本滚动也遵循同一边界：`PBrowserScriptScrollCallbacks` 接收 Browser 规范化的
-page 坐标，由宿主按当前 Core extent/client area 应用并返回实际值；候选 session
+CSS page 坐标，由宿主换算为 Core 的物理设备坐标，按当前 extent/client area 应用，
+再把实际位置换回 CSS 坐标返回；候选 session
 尚未提交时宿主只回显坐标，不能改变旧页面。宿主完成 scrollbar、触摸、键盘、
-resize 或 fragment reveal 后调用 `PBrowser_ScriptSessionNotifyScroll`，Browser
+resize 或 fragment reveal 后先把物理位置换算为 CSS page 坐标，再调用
+`PBrowser_ScriptSessionNotifyScroll`，Browser
 只更新脚本侧偏移并在实际变化时派发一次 `scroll`，不会重新调用 scroll callback。
 这让脚本 origin 与平台 origin 共用一份最终 viewport，同时避免同步 callback
 递归进入同一 runtime。

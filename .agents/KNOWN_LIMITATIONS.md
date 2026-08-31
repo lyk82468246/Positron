@@ -54,7 +54,8 @@
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
-- `window.scrollTo`/`scrollBy` 的 page-level 请求只有在宿主注册 `PBrowserScriptScrollCallbacks` 时才会应用到真实 viewport；宿主必须返回 clamp 后的坐标，并在滚动条、触摸、键盘、resize 或 fragment reveal 后调用 `PBrowser_ScriptSessionNotifyScroll`。该边界不覆盖嵌套 overflow、平滑/惯性滚动或滚动锚定。
+- `window.scrollTo`/`scrollBy` 的 page-level 请求只有在宿主注册 `PBrowserScriptScrollCallbacks` 时才会应用到真实 viewport；callback 和 `PBrowser_ScriptSessionNotifyScroll` 使用 CSS page 坐标，宿主必须在 Core 的物理设备坐标与 CSS 坐标之间换算，返回 clamp 后的坐标，并在滚动条、触摸、键盘、resize 或 fragment reveal 后通知 Browser。该边界不覆盖嵌套 overflow、平滑/惯性滚动或滚动锚定。
+- `Element.getBoundingClientRect()` 只在 Core 已完成 layout 且存在对应 box 时返回一个整数 CSS 像素 border-box 快照；未布局或不可用时为全零矩形。它不提供 transforms、`getClientRects()`、Range/多片段 union、独立 nested overflow 坐标或视觉像素精度，宿主仍须在 layout 后同步 page scroll。
 - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。
 - 页面替换的产品入口只保证宿主显式调用 `PBrowser_ScriptSessionDispatchPageTeardown` 时，在旧 session 仍有效的同步、有界 `visibilitychange`、`pagehide`、`unload` 和页面队列清理；不提供 `beforeunload`、可恢复的 bfcache `persisted` 语义或异步卸载保证。
 - Browser session callback 同步且不可重入；宿主若在 callback 中销毁或重入 session，行为不受支持。
@@ -63,7 +64,7 @@
 ## History、导航与窗口
 
 - history 是进程内、有界条目集合，不持久化到磁盘，也不恢复跨进程页面状态。
-- same-document 与跨文档 scroll restore 覆盖 Browser entry 保存的有界 page-level `(scroll_x, scroll_y)` viewport snapshot；参考宿主读取 Core 的 page-level width/height，对两个轴按当前 client extent clamp，并把同一坐标用于 scrollbar、paint、命中测试和 native child。浏览器脚本的 page-level `scrollTo`/`scrollBy` 也可经 typed callback 应用到该视口，宿主物理滚动后用 notification 同步脚本偏移并去重派发 `scroll`。嵌套 overflow 容器的独立滚动、滚动锚定、平滑/惯性滚动和跨窗口恢复仍未实现。
+- same-document 与跨文档 scroll restore 覆盖 Browser entry 保存的有界 page-level `(scroll_x, scroll_y)` viewport snapshot；参考宿主读取 Core 的 page-level width/height，对两个轴按当前 client extent clamp，并把物理坐标用于 scrollbar、paint、命中测试和 native child。浏览器脚本的 page-level `scrollTo`/`scrollBy` 也可经 typed callback 应用到该视口，宿主在 CSS page 坐标与物理坐标之间换算，并在物理滚动后用 notification 同步脚本偏移、去重派发 `scroll`。嵌套 overflow 容器的独立滚动、滚动锚定、平滑/惯性滚动和跨窗口恢复仍未实现。
 - 当前是单窗口/单 browsing context 组合；`_blank`、未知 named target、第二个 global、opener、跨窗口 history 和真实窗口复用未实现或保守拒绝。
 - `window.open()` 仅在允许复用当前 context 的受限 target 上工作，不创建新的 WM 顶层窗口。
 - download、外部协议、权限、文件系统和应用跳转策略仍由宿主决定。
@@ -93,11 +94,12 @@
 - next670 已建立一次 1080 项动态全量自动设备 checkpoint；后续定向门仍不能替代下一次按风险触发的全量范围基线。
 - TEST1081/TEST1082 覆盖 Browser-owned history viewport snapshot 的 fragment/traversal 保持、新 entry 清零、横向值存取、宿主 clamp 和非法参数 fail closed；
 - TEST1128 覆盖 Core page-level width、宿主横向/纵向 viewport clamp、Browser 横向 snapshot restore、fragment document-space 命中和直接相邻的离线宽页面路径；不证明嵌套 overflow 容器或真实页面视觉兼容性；
-- 已有十二条离线 compatibility-corpus 流程，仍不代表任意真实网站或完整 Web 标准：
+- 已有十三条离线 compatibility-corpus 流程，仍不代表任意真实网站或完整 Web 标准：
   - TEST1117–TEST1119 覆盖 contenteditable/dialog/history 组合、重复资源准备、失败旧页保留、页面 teardown、generation 取消、过时消息隔离、退休请求回收和最新候选提交；
   - TEST1120–TEST1123 覆盖 Browser 资源事务终态、失败分类、transport 重试预算、required/optional gate、重复 script/image、三层 `@import`、最多 4 项 hash-only 摘要和 layout 后 fallback family 观测；
   - TEST1124–TEST1126 覆盖 candidate generation/取消/退休/终态结果、candidate/resource commit snapshot、`can_commit` 和非法参数；
   - TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。
+- TEST1130 覆盖 Core layout relation 与 Browser `getBoundingClientRect()` 的边界、矩形边界算术和 page-level scroll 换算；不证明复杂 CSS 几何、nested overflow 或真实页面视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

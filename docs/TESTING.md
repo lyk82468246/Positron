@@ -53,10 +53,18 @@ TEST1128 覆盖 page-level horizontal viewport：离线宽页面通过 `PCore_Do
 TEST1129 覆盖浏览器脚本滚动与宿主视口的双向边界：`window.scrollTo()`/
 `scrollBy()` 经过 Browser 的 typed scroll callback，由宿主按 document/client
 extent clamp 并返回实际坐标；滚动条或其他宿主路径再通过
-`PBrowser_ScriptSessionNotifyScroll` 更新脚本侧 `scrollX`/`scrollY`。断言覆盖
+`PBrowser_ScriptSessionNotifyScroll` 更新脚本侧 `scrollX`/`scrollY`；设备 DPI
+边界由宿主在物理坐标与 CSS page 坐标之间换算。断言覆盖
 候选式回显、越界 clamp、`scroll` 事件去重、宿主反向同步、重复通知、回调
 注销和非法坐标；回调期间不得重入脚本 runtime。它仍不证明嵌套 overflow、平滑
 滚动、触摸惯性或真实页面的视觉体验。
+
+TEST1130 覆盖真实 IANA 页面目录脚本需要的布局几何：Core 在成功 layout 前
+拒绝几何关系，layout 后通过现有 DOM relation callback 暴露元素 border-box 的
+`x/y/width/height`，Browser 将四个整数组合成 `getBoundingClientRect()` 快照，
+并随 page-level scroll 返回 viewport-relative 的 `top`。断言同时检查矩形边界
+算术和滚动后的尺寸/横坐标保持不变；它不证明 transforms、`getClientRects()`、
+Range、多片段文本、nested overflow 或真实页面的字体/像素视觉。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
