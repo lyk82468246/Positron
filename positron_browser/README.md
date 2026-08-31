@@ -364,7 +364,9 @@ PBrowser_NavigationCandidateGetResult(candidate, current_generation,
 
 Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
 
-跨文档候选已经完成 parse、资源、style、layout 并准备提交时，宿主仍应保留旧 document/session，然后调用 `PBrowser_ScriptSessionDispatchPageTeardown`。首次调用在旧页可见时依次派发 document `visibilitychange`、window `pagehide` 和 `unload`，再清理 timer、animation frame、microtask、idle、message 队列；已隐藏或已派发 `pagehide` 的页面不会重复派发，重复调用也保持幂等。宿主随后停止 native 回调、销毁控件和 script session，最后释放旧 Core document 并安装候选页。失败候选不得调用该入口，旧页、旧 session 和旧队列必须继续保留。该 API 不创建线程、不访问 HWND，也不替宿主决定取消策略；不得从 Browser callback 内重入或销毁当前 session。
+跨文档候选已经完成 parse、资源、style、layout 并准备提交时，宿主仍应保留旧 document/session，先调用 `PBrowser_ScriptSessionDispatchBeforeUnload`。该入口同步派发当前 window 的 cancelable、non-bubbling、trusted `beforeunload` 事件，覆盖 `window.onbeforeunload` 与 `addEventListener('beforeunload', ...)`；调用 `preventDefault()`、写入非空 `event.returnValue`，或从 `window.onbeforeunload` 返回非空字符串都会把 `out_prevented` 置为非零。它只返回取消决定，不显示提示框、不执行导航或 teardown；提示 UI 和“继续/取消”的产品策略由宿主决定，脚本调用或结果解析失败时必须按取消处理。参考宿主没有确认对话框，因此直接拒绝候选提交或窗口关闭并保留旧页。
+
+只有 `beforeunload` 允许后，宿主才调用 `PBrowser_ScriptSessionDispatchPageTeardown`。首次 teardown 在旧页可见时依次派发 document `visibilitychange`、window `pagehide` 和 `unload`，再清理 timer、animation frame、microtask、idle、message 队列；已隐藏或已派发 `pagehide` 的页面不会重复派发，重复调用也保持幂等。宿主随后停止 native 回调、销毁控件和 script session，最后释放旧 Core document 并安装候选页。失败或被取消的候选不得调用 teardown，旧页、旧 session 和旧队列必须继续保留。两个入口都不创建线程、不访问 HWND，也不得从 Browser callback 内重入或销毁当前 session。
 
 ## 典型 Core 组合
 

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1135
+#define TEST_MAX_NUMBER 1136
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -8454,6 +8454,40 @@ static int pcore_browser_script_request_dialog_close(void)
         return 0;
     }
     return handled ? 1 : 0;
+}
+
+/* The reference host has no browser-supplied confirmation dialog. A
+ * beforeunload cancellation therefore keeps the current page visible and
+ * rejects the pending navigation/close; an application with its own prompt
+ * may call the same Browser API and choose a different policy. Script errors
+ * also fail closed. */
+static int pcore_browser_script_beforeunload_allows_close(int report_errors)
+{
+    int blocked;
+    int rc;
+
+    if (!pcore_native_script_active() ||
+            g_browser_script_session.session == NULL) {
+        return 1;
+    }
+    blocked = 1;
+    rc = PBrowser_ScriptSessionDispatchBeforeUnload(
+            g_browser_script_session.session, &blocked);
+    if (rc != PSCRIPT_OK) {
+        if (report_errors) {
+            show_error(L"Navigation blocked",
+                    "beforeunload could not be dispatched");
+        }
+        return 0;
+    }
+    if (blocked) {
+        if (report_errors) {
+            show_error(L"Navigation blocked",
+                    "beforeunload prevented replacing or closing the page");
+        }
+        return 0;
+    }
+    return 1;
 }
 
 /* Route a document-space pointer against the active script-owned modal. The
@@ -16574,11 +16608,17 @@ static int pcore_navigation_commit_step(HWND hwnd,
     pcore_navigation_observe_fallbacks(request);
 
     /* A successful cross-document commit is the last moment when the old
-     * script session and document are both alive. Let the product Browser
-     * dispatch its one-shot visibility/pagehide/unload boundary and clear
-     * page-owned queues before native children and the old DOM are released.
-     * A failed candidate never reaches this point, so the visible page keeps
-     * its session and pending work. */
+     * script session and document are both alive. Give the old page one
+     * cancelable beforeunload boundary first; a rejection leaves the old page,
+     * its session and its pending work untouched and fails this candidate. */
+    if (!pcore_browser_script_beforeunload_allows_close(report_errors)) {
+        return PCORE_NAV_RESULT_FAILED;
+    }
+    /* The beforeunload check passed. Let the product Browser dispatch its
+     * one-shot visibility/pagehide/unload boundary and clear page-owned
+     * queues before native children and the old DOM are released. A failed
+     * candidate never reaches this point, so the visible page keeps its
+     * session and pending work. */
     if (g_browser_script_session.session != NULL) {
         (void) PBrowser_ScriptSessionDispatchPageTeardown(
                 g_browser_script_session.session);
@@ -21863,10 +21903,14 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             if (pcore_browser_script_request_dialog_close()) {
                 break;
             }
-            DestroyWindow(hwnd);
+            if (pcore_browser_script_beforeunload_allows_close(1)) {
+                DestroyWindow(hwnd);
+            }
             break;
         case VK_RETURN:
-            DestroyWindow(hwnd);
+            if (pcore_browser_script_beforeunload_allows_close(1)) {
+                DestroyWindow(hwnd);
+            }
             break;
         default:
             break;
@@ -22110,7 +22154,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
              * point. */
             return 0;
         } else {
-            DestroyWindow(hwnd);
+            if (pcore_browser_script_beforeunload_allows_close(1)) {
+                DestroyWindow(hwnd);
+            }
         }
         return 0;
     }
@@ -22157,7 +22203,9 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         }
         break;
     case WM_CLOSE:
-        DestroyWindow(hwnd);
+        if (pcore_browser_script_beforeunload_allows_close(1)) {
+            DestroyWindow(hwnd);
+        }
         return 0;
     case WM_DESTROY:
         g_nav_generation++;
@@ -34046,6 +34094,217 @@ static BOOL test1135_browser_screen_orientation_change_contract(void)
             "ScreenOrientation is a stable product object; direction flips"
             " dispatch one trusted change event before the host resize event,"
             " while duplicate and same-direction resizes stay quiet.");
+    return TRUE;
+}
+
+/* TEST 1136 - beforeunload protects a live document before replacement. */
+static BOOL test1136_browser_beforeunload_contract(void)
+{
+    static const char URL[] = "https://positron.local/before-unload";
+    HANDLE session;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int blocked;
+    int ok;
+
+    session = NULL;
+    result = NULL;
+    blocked = -1;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    if (session == NULL ||
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", URL) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", 320.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", 240.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
+        session_error = session != NULL ?
+                PBrowser_ScriptSessionGetError(session) : NULL;
+        if (session_error != NULL && session_error[0] != '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "beforeunload bootstrap failed: %s", session_error);
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            cstr_copy(error, sizeof(error),
+                    "beforeunload bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "var trace='';var handlerCount=0;var listenerCount=0;"
+                "var block=false;"
+                "function onBefore(e){handlerCount++;trace+=(trace===''?'':'/')"
+                "+'H:'+e.type+'|'+String(e.target===window)+'|'"
+                "+String(e.currentTarget===window)+'|'+String(e.bubbles)+'|'"
+                "+String(e.cancelable)+'|'+String(e.isTrusted)+'|'"
+                "+String(e.defaultPrevented)+'|'+String(e.returnValue);};"
+                "function listener(e){listenerCount++;trace+='|L:'"
+                "+String(e.defaultPrevented);if(block){e.preventDefault();"
+                "trace+=':P';}}"
+                "window.onbeforeunload=onBefore;"
+                "window.addEventListener('beforeunload',listener);"
+                "String(window.onbeforeunload===onBefore);", -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "true") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "beforeunload listener setup mismatch");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        blocked = -1;
+        if (PBrowser_ScriptSessionDispatchBeforeUnload(session,
+                &blocked) != PSCRIPT_OK || blocked != 0 ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[handlerCount,listenerCount,trace].join('|');", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "1|1|H:beforeunload|true|true|false|true|true|false||L:false") !=
+                0) {
+            cstr_copy(error, sizeof(error),
+                    "unblocked beforeunload dispatch mismatch");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "block=true;", -1) != PSCRIPT_OK) {
+            cstr_copy(error, sizeof(error),
+                    "beforeunload block setup failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        blocked = -1;
+        if (PBrowser_ScriptSessionDispatchBeforeUnload(session,
+                &blocked) != PSCRIPT_OK || blocked != 1 ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[handlerCount,listenerCount,trace].join('|');", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "2|2|H:beforeunload|true|true|false|true|true|false||L:false/"
+                "H:beforeunload|true|true|false|true|true|false||L:false:P") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "preventDefault did not block beforeunload");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "block=false;window.onbeforeunload=function(e){handlerCount++;"
+                "trace+=(trace===''?'':'/')+'R:'+e.returnValue;"
+                "e.returnValue='unsaved';};", -1) != PSCRIPT_OK) {
+            cstr_copy(error, sizeof(error),
+                    "returnValue block setup failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        blocked = -1;
+        if (PBrowser_ScriptSessionDispatchBeforeUnload(session,
+                &blocked) != PSCRIPT_OK || blocked != 1 ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[handlerCount,listenerCount,trace].join('|');", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "3|3|H:beforeunload|true|true|false|true|true|false||L:false/"
+                "H:beforeunload|true|true|false|true|true|false||L:false:P/"
+                "R:|L:true") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "returnValue did not block beforeunload");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "window.onbeforeunload=function(){return 'prompt';};", -1) !=
+                PSCRIPT_OK) {
+            cstr_copy(error, sizeof(error),
+                    "handler return setup failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        blocked = -1;
+        if (PBrowser_ScriptSessionDispatchBeforeUnload(session,
+                &blocked) != PSCRIPT_OK || blocked != 1 ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[handlerCount,listenerCount,trace].join('|');", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "3|4|H:beforeunload|true|true|false|true|true|false||L:false/"
+                "H:beforeunload|true|true|false|true|true|false||L:false:P/"
+                "R:|L:true|L:true") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "onbeforeunload return did not block");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "window.onbeforeunload=null;"
+                "window.removeEventListener('beforeunload',listener);", -1) !=
+                PSCRIPT_OK) {
+            cstr_copy(error, sizeof(error),
+                    "beforeunload listener removal failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        blocked = -1;
+        if (PBrowser_ScriptSessionDispatchBeforeUnload(session,
+                &blocked) != PSCRIPT_OK || blocked != 0 ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[handlerCount,listenerCount,trace].join('|');", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "3|4|H:beforeunload|true|true|false|true|true|false||L:false/"
+                "H:beforeunload|true|true|false|true|true|false||L:false:P/"
+                "R:|L:true|L:true") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "removed beforeunload listener still blocked");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        blocked = -1;
+        if (PBrowser_ScriptSessionDispatchBeforeUnload(session, NULL) !=
+                PSCRIPT_ERROR_ARGUMENT ||
+                PBrowser_ScriptSessionDispatchBeforeUnload(NULL, &blocked) !=
+                PSCRIPT_ERROR_ARGUMENT || blocked != 1) {
+            cstr_copy(error, sizeof(error),
+                    "beforeunload argument guard failed");
+            ok = 0;
+        }
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1136 FAIL", error[0] != '\0' ? error :
+                "beforeunload contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1136 OK",
+            "beforeunload dispatch is cancelable and fail-closed; the host"
+            " can preserve the current page before navigation or close.");
     return TRUE;
 }
 
@@ -92087,6 +92346,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1133: ok = test1133_browser_visual_viewport_contract(); break;
         case 1134: ok = test1134_browser_scroll_restoration_contract(); break;
         case 1135: ok = test1135_browser_screen_orientation_change_contract(); break;
+        case 1136: ok = test1136_browser_beforeunload_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

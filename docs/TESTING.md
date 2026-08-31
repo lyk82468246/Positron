@@ -99,6 +99,12 @@ TEST1135 覆盖 `screen.orientation` 的 Browser 语义：同一 session 内多�
 `addEventListener` 监听器、事件字段、监听器移除和非法 resize 的 fail-closed
 保护；不证明设备真实旋转动画、非客户区或视觉像素结果。
 
+TEST1136 覆盖页面替换前的 `beforeunload` Browser 合同：`window.onbeforeunload`
+与 `addEventListener('beforeunload', ...)` 的事件字段、调用顺序、
+`preventDefault()`、非空 `returnValue`、handler 返回字符串和监听器移除。它还
+检查空句柄/空输出参数的 fail-closed 行为；参考宿主没有确认对话框，因此取消时
+保留当前页面，测试不把 prompt UI 当作 Browser 的职责。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

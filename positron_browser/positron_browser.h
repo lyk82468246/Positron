@@ -1430,9 +1430,19 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchHashNavigation(
  * dispatches readystatechange/DOMContentLoaded/load in that order. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
         HANDLE hSession, const char *state);
+/* Dispatch the current document's cancelable `beforeunload` event before a
+ * host replaces or closes it. `out_prevented` is set to one when a handler
+ * called preventDefault(), assigned a non-empty returnValue, or returned a
+ * non-empty string from window.onbeforeunload. The output is initialized to
+ * one and remains fail-closed when the script call cannot be completed. The
+ * event is not a prompt UI and does not perform navigation or teardown; the
+ * host owns that policy and must call this while the session is alive. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchBeforeUnload(
+        HANDLE hSession, int *out_prevented);
 /* Complete the product-owned lifecycle for a document that is being
- * replaced. The first call dispatches document visibilitychange (when the
- * page was visible), window pagehide, and window unload in that order, then
+ * replaced after beforeunload has been allowed. The first call dispatches
+ * document visibilitychange (when the page was visible), window pagehide,
+ * and window unload in that order, then
  * clears page-owned timers, animation frames, microtasks, idle callbacks and
  * queued messages. Repeated calls are idempotent. The host must call this
  * while the old document and session are still alive, before destroying the

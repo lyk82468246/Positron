@@ -3337,12 +3337,15 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "phistoryStateJson=s;phistoryLength=n;purl=u;}"
         "var pscrollX=0;var pscrollY=0;"
         "var pwindowListeners={popstate:[],hashchange:[],load:[],scroll:[],resize:[],"
-        "pagehide:[],pageshow:[],unload:[],DOMContentLoaded:[],readystatechange:[],message:[],storage:[]};"
+        "pagehide:[],pageshow:[],unload:[],beforeunload:[],DOMContentLoaded:[],"
+        "readystatechange:[],message:[],storage:[]};"
         "g.onpopstate=null;g.onhashchange=null;g.onresize=null;g.onpagehide=null;"
-        "g.onpageshow=null;g.onunload=null;g.onmessage=null;g.onstorage=null;"
+        "g.onpageshow=null;g.onunload=null;g.onbeforeunload=null;"
+        "g.onmessage=null;g.onstorage=null;"
         "g.addEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if((t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
         "t!=='scroll'&&t!=='resize'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
+        "t!=='beforeunload'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange'&&t!=='message'&&"
         "t!=='storage')||"
         "typeof fn!=='function'){return;}a=pwindowListeners[t];var o=pEventOptions(capture);"
@@ -3354,6 +3357,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "g.removeEventListener=function(type,fn,capture){var t=String(type);"
         "var a;var i;if(t!=='popstate'&&t!=='hashchange'&&t!=='load'&&"
         "t!=='scroll'&&t!=='resize'&&t!=='pagehide'&&t!=='pageshow'&&t!=='unload'&&"
+        "t!=='beforeunload'&&"
         "t!=='DOMContentLoaded'&&t!=='readystatechange'&&t!=='message'&&"
         "t!=='storage'){return;}"
         "a=pwindowListeners[t];for(i=a.length-1;i>=0;i--){"
@@ -3583,6 +3587,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "pdispatchWindow('unload',ppageEvent('unload',g));ptimers=[];"
         "pframes=[];pmicrotasks=[];pidles=[];pmessageQueue=[];"
         "pextraMessages.length=0;return true;};"
+        "g.__pcoreBeforeUnloadListeners=pwindowListeners.beforeunload;"
         "var pdocumentElementToken='__positron_document_element__';"
         "var pdocumentHeadToken='__positron_document_head__';"
         "var pdocumentBodyToken='__positron_document_body__';"
@@ -4928,6 +4933,30 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return a;}"
         "g.__pcoreDecorateCollection13=decorate13;g.__pcoreFormNamed13=formNamed13;"
         "})(this);";
+
+    /* Keep the cancelable navigation hook out of the cold bootstrap path. It
+     * is installed only when the host is about to replace or close a live
+     * document, which keeps startup within the small WM6 script budget. */
+    static const char P_BROWSER_SCRIPT_BEFORE_UNLOAD_INSTALL[] =
+        "(function(g){var a=g.__pcoreBeforeUnloadListeners;"
+        "var invoke=g.__pcoreInvokeListener;var e;var value;var h;var r;"
+        "var i;var b;"
+        "if(!a||typeof a.slice!=='function'||typeof invoke!=='function'){"
+        "throw new Error('beforeunload unavailable');}"
+        "g.__pcoreBeforeUnload=function(){"
+        "e={type:'beforeunload',target:g,currentTarget:g,bubbles:false,"
+        "cancelable:true,defaultPrevented:false,isTrusted:true,"
+        "__passive:false};value='';"
+        "Object.defineProperty(e,'returnValue',{get:function(){return value;},"
+        "set:function(v){value=String(v);if(value!==''){"
+        "e.defaultPrevented=true;}},enumerable:true});"
+        "e.preventDefault=function(){if(!e.__passive){"
+        "e.defaultPrevented=true;}};h=g.onbeforeunload;r=null;"
+        "if(typeof h==='function'){try{r=h.call(g,e);if(typeof r==='string'&&"
+        "r!==''){e.returnValue=r;}}catch(handlerError){}}"
+        "b=a.slice(0);for(i=0;i<b.length;i++){invoke(b[i],e,g);}"
+        "return !!e.defaultPrevented;};})(this);";
+
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 {
     int result;
@@ -7204,6 +7233,46 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchPageLifecycle(
         return PSCRIPT_ERROR_ARGUMENT;
     }
     return p_browser_script_dispatch_page_lifecycle(session, state);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchBeforeUnload(
+        HANDLE hSession, int *out_prevented)
+{
+    p_browser_script_session *session;
+    const char *result;
+    int rc;
+
+    if (out_prevented == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    *out_prevented = 1;
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = PScript_Evaluate(session->runtime,
+            P_BROWSER_SCRIPT_BEFORE_UNLOAD_INSTALL, -1);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    rc = PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreBeforeUnload", "[]");
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    result = PBrowser_ScriptSessionGetResult(hSession);
+    if (result == NULL) {
+        return PSCRIPT_ERROR_CALL;
+    }
+    if (strcmp(result, "true") == 0) {
+        *out_prevented = 1;
+        return PSCRIPT_OK;
+    }
+    if (strcmp(result, "false") == 0) {
+        *out_prevented = 0;
+        return PSCRIPT_OK;
+    }
+    return PSCRIPT_ERROR_CALL;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionDispatchPageTeardown(HANDLE hSession)
