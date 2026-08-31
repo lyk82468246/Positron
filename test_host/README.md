@@ -92,9 +92,10 @@ Browser runtime。
 窗口收到 `WM_SIZE` 时，宿主先按新的物理 client area 重新 style/layout、
 clamp 两个 page-level scroll 轴并更新 native child，再把同一尺寸按当前 DPI
 换算为 CSS viewport，调用 `PBrowser_ScriptSessionNotifyResize`。因此页面的
-`innerWidth`/`devicePixelRatio`、`screen` 方向和 window `resize` listener
-看到的是新布局后的快照。该调用只属于 WM 接线；Browser 不访问窗口，也不替
-宿主运行排队的 timer 或 animation frame。若页面的 resize handler 使用
+`innerWidth`/`devicePixelRatio`、`screen` 方向、已有 `matchMedia()` 列表和
+window `resize` listener 看到的是新布局后的快照；匹配结果翻转的列表会先
+收到同步 `change`。该调用只属于 WM 接线；Browser 不访问窗口，也不替宿主
+运行排队的 timer 或 animation frame。若页面的 resize handler 使用
 `requestAnimationFrame`，宿主必须在自己的消息循环中按需调用已有 frame pump。
 
 DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM node、box、computed style 或 HDC。

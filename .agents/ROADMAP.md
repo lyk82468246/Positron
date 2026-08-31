@@ -29,19 +29,18 @@
 
 ### 真实页面组合缺口
 
-next686 已完成：在 `tmp/iana_example_domains.html` 的目录脚本证据基础上，
-Browser 通过 `PBrowser_ScriptSessionNotifyResize` 更新 CSS viewport、DPR 和
-动态 `screen` 方向，并为变化派发去重的 window `resize`；宿主只在 WM_SIZE
-完成 Core style/layout、page-level clamp 和 native child reposition 后做物理到
-CSS 的换算与通知。TEST1131 覆盖事件字段、监听器顺序、重复快照和参数拒绝，
-并与 TEST1129/1130 一起通过设备门。下一条纵向能力是 next687，仍须从源码、
-日志或截图固定一个新的可复现用户可见组合缺口；不能凭空扩张 API，也不能把
-页面业务规则塞回 `test_host`。
+next687 已完成：在 next686 的 WM_SIZE viewport/DPR 通知之上，Browser 为已有
+`matchMedia()` 列表提供有界动态刷新；匹配结果实际翻转时先同步派发带
+`media`/`matches` 的 `change`，再派发去重的 window `resize`。legacy
+`addListener`/`removeListener`、`onchange`、分辨率条件和重复快照均由 TEST1132
+覆盖，并与 TEST1129/1130/1131 一起通过设备门。下一条纵向能力是 next688，
+仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；不能凭空扩张 ABI，
+也不能把页面业务规则塞回 `test_host`。
 嵌套 overflow 容器、平滑/惯性滚动和视觉猜测不得误写成已支持能力。
 
 优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
-next687 的完成证据应包括定向自动断言、直接相邻回归和风险相称的设备门；
+next688 的完成证据应包括定向自动断言、直接相邻回归和风险相称的设备门；
 视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、
 严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，
 也不要在没有实际缺口证据时提前选择下一能力方向。

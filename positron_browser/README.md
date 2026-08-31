@@ -58,8 +58,12 @@ viewport 位置换算为 CSS page 坐标，再调用
 是有限数值。完全相同的三元组仍返回成功，但不会重复派发事件。该入口只更新
 脚本侧快照，不触发 Core style/layout，也不自动运行 timer 或
 `requestAnimationFrame` 队列；宿主若页面在 resize handler 中排队下一帧，必须用
-已有的 frame pump 另行驱动。事件监听器只能在 bootstrap 提供的 window
-`resize` 类型上注册，不能借此推断 nested overflow 或 `matchMedia` 的动态更新。
+已有的 frame pump 另行驱动。会话会追踪最多 64 个 `matchMedia()` 列表；有效
+viewport 或 DPR 变化时，只有 `matches` 实际翻转的列表才同步派发一次 `change`
+事件，且发生在同一次 `resize` 事件之前。事件提供 `media`、`matches`、
+`target`、`currentTarget`、`isTrusted` 和固定的非冒泡/不可取消字段；重复快照和
+未发生匹配变化都保持静默。超过追踪上限的列表仍返回初始快照，但不会收到后续
+`change` 通知。该能力不扩展到 nested overflow 或完整媒体查询语法。
 
 ### Layout geometry 与 `getBoundingClientRect()`
 

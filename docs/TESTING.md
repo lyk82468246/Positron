@@ -73,6 +73,12 @@ TEST1131 覆盖 WM_SIZE 到 Browser script session 的 viewport resize 合同：
 三元组去重、方向变化和负值/零 DPR 的参数拒绝；它不替代真实旋转、字体、边距、
 滚动条或页面在 resize handler 中排队的 animation-frame 视觉验收。
 
+TEST1132 覆盖 viewport/DPR 变化对已有 `MediaQueryList` 的刷新：宽度和分辨率
+条件在匹配结果实际翻转时各派发一次同步 `change`，事件带有 `media`、
+`matches`、target/currentTarget 和可信/取消标志；重复 resize、未变化条件以及
+移除监听器保持静默。Browser 会追踪每个 session 最多 64 个列表，超出部分仍
+提供创建时快照但不保证后续 `change` 通知；完整媒体查询语法仍不在范围内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

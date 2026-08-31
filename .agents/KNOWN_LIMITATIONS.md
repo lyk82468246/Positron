@@ -55,7 +55,7 @@
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
 - `window.scrollTo`/`scrollBy` 的 page-level 请求只有在宿主注册 `PBrowserScriptScrollCallbacks` 时才会应用到真实 viewport；callback 和 `PBrowser_ScriptSessionNotifyScroll` 使用 CSS page 坐标，宿主必须在 Core 的物理设备坐标与 CSS 坐标之间换算，返回 clamp 后的坐标，并在滚动条、触摸、键盘、resize 或 fragment reveal 后通知 Browser。该边界不覆盖嵌套 overflow、平滑/惯性滚动或滚动锚定。
-- 宿主完成 WM_SIZE 的 Core style/layout、page-level clamp 和 native child reposition 后可调用 `PBrowser_ScriptSessionNotifyResize`；该入口更新 `innerWidth`/`outerWidth`/`devicePixelRatio`、`screen` 宽高/方向，并去重派发 window `resize`。它不替宿主运行 timer/animation frame，不动态更新 `matchMedia`，也不为嵌套 overflow、视觉像素或真实旋转提供保证。
+- 宿主完成 WM_SIZE 的 Core style/layout、page-level clamp 和 native child reposition 后可调用 `PBrowser_ScriptSessionNotifyResize`；该入口更新 `innerWidth`/`outerWidth`/`devicePixelRatio`、`screen` 宽高/方向，刷新每个 session 最多 64 个 `matchMedia()` 列表，并在匹配结果翻转时同步派发 `change` 后再派发 window `resize`。它不替宿主运行 timer/animation frame，不支持完整媒体查询语法，也不为嵌套 overflow、视觉像素或真实旋转提供保证；超过 64 个列表只保留创建时快照。
 - `Element.getBoundingClientRect()` 只在 Core 已完成 layout 且存在对应 box 时返回一个整数 CSS 像素 border-box 快照；未布局或不可用时为全零矩形。它不提供 transforms、`getClientRects()`、Range/多片段 union、独立 nested overflow 坐标或视觉像素精度，宿主仍须在 layout 后同步 page scroll。
 - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。
 - 页面替换的产品入口只保证宿主显式调用 `PBrowser_ScriptSessionDispatchPageTeardown` 时，在旧 session 仍有效的同步、有界 `visibilitychange`、`pagehide`、`unload` 和页面队列清理；不提供 `beforeunload`、可恢复的 bfcache `persisted` 语义或异步卸载保证。

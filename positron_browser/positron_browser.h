@@ -1772,7 +1772,8 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
 /* Synchronize a host viewport change into the Browser bootstrap. Width and
  * height are CSS pixels and device_pixel_ratio must be positive. The Browser
  * updates inner/outer dimensions, devicePixelRatio and screen metadata, then
- * dispatches one synchronous non-bubbling window `resize` event when the
+ * synchronously refreshes at most 64 `matchMedia()` lists and dispatches
+ * their `change` events before one non-bubbling window `resize` event when the
  * effective snapshot changes. It does not perform Core style/layout work or
  * run queued timers/animation frames. Duplicate snapshots are accepted
  * without dispatching another event. */

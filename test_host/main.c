@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1131
+#define TEST_MAX_NUMBER 1132
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -33369,6 +33369,156 @@ static BOOL test1131_browser_viewport_resize_contract(void)
             "Browser viewport metadata follows host resize notifications;"
             " resize events are synchronous, trusted, and deduplicated,"
             " including dynamic screen orientation metadata.");
+    return TRUE;
+}
+
+/* TEST 1132 - viewport changes refresh existing MediaQueryList snapshots. */
+static BOOL test1132_browser_match_media_resize_contract(void)
+{
+    static const char URL[] = "https://positron.local/match-media-resize";
+    HANDLE session;
+    const char *result;
+    char error[512];
+    int ok;
+
+    session = NULL;
+    result = NULL;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    if (session == NULL ||
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", URL) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", 320.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", 240.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "matchMedia bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "var narrow=matchMedia('(max-width: 200px)');"
+                "var range=matchMedia('(min-width: 100px) and (max-width: 400px)');"
+                "var retina=matchMedia('(resolution: 2dppx)');"
+                "var trace='';var narrowChanges=0;var rangeChanges=0;"
+                "var retinaChanges=0;"
+                "function narrowListener(e){narrowChanges++;trace+='n:'+"
+                "String(e.matches)+'|'+e.media+'|'+String(e.target===narrow)+'|'+"
+                "String(e.currentTarget===narrow)+'|'+String(e.bubbles)+'|'+"
+                "String(e.cancelable)+'|'+String(e.isTrusted)+'|'+"
+                "String(e.defaultPrevented)+';';}"
+                "function rangeListener(e){rangeChanges++;trace+='r:'+"
+                "String(e.matches)+'|'+String(this===range)+';';}"
+                "retina.onchange=function(e){retinaChanges++;trace+='d:'+"
+                "String(e.matches)+'|'+String(e.target===retina)+';';};"
+                "window.addEventListener('resize',function(){trace+='w;';});"
+                "narrow.addListener(narrowListener);narrow.addListener(narrowListener);"
+                "range.onchange=rangeListener;"
+                "[String(narrow.matches),String(range.matches),String(retina.matches),"
+                "narrow.media,range.media,retina.media].join('|');", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "false|true|false|(max-width: 200px)|"
+                "(min-width: 100px) and (max-width: 400px)|"
+                "(resolution: 2dppx)") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "initial MediaQueryList snapshot mismatch");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 160.0, 240.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[String(narrow.matches),String(range.matches),"
+                "String(retina.matches),narrowChanges,rangeChanges,"
+                "retinaChanges,trace].join('|');", -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "true|true|true|1|0|1|"
+                "n:true|(max-width: 200px)|true|true|false|false|true|false;"
+                "d:true|true;w;") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "first resize did not dispatch media changes");
+            if (result != NULL) {
+                _snprintf(error, sizeof(error) - 1,
+                        "first resize result: %s", result);
+                error[sizeof(error) - 1] = '\0';
+            }
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 160.0, 240.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(narrowChanges)+'|'+String(rangeChanges)+'|' +"
+                "String(retinaChanges)+'|'+trace;", -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "1|0|1|n:true|(max-width: 200px)|true|true|false|false|"
+                "true|false;d:true|true;w;") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "duplicate resize dispatched media changes");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 80.0, 240.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[String(narrow.matches),String(range.matches),"
+                "String(retina.matches),narrowChanges,rangeChanges,"
+                "retinaChanges,trace].join('|');", -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "true|false|true|1|1|1|"
+                "n:true|(max-width: 200px)|true|true|false|false|true|false;"
+                "d:true|true;w;r:false|true;w;") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "range media change was not reported");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "narrow.removeListener(narrowListener);"
+                "retina.onchange=null;", -1) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionNotifyResize(session, 320.0, 240.0,
+                1.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[String(narrow.matches),String(range.matches),"
+                "String(retina.matches),narrowChanges,rangeChanges,"
+                "retinaChanges,trace].join('|');", -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "false|true|false|1|2|1|"
+                "n:true|(max-width: 200px)|true|true|false|false|true|false;"
+                "d:true|true;w;r:false|true;w;r:true|true;w;") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "listener removal or final media state mismatch");
+            ok = 0;
+        }
+    }
+    PBrowser_ScriptSessionDestroy(session);
+    if (!ok) {
+        show_error(L"TEST 1132 FAIL", error[0] != '\0' ? error :
+                "dynamic matchMedia contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1132 OK",
+            "Existing MediaQueryList objects refresh on viewport/DPR changes;"
+            " change events are synchronous, bounded and deduplicated.");
     return TRUE;
 }
 
@@ -91406,6 +91556,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1129: ok = test1129_browser_script_scroll_contract(); break;
         case 1130: ok = test1130_browser_bounding_client_rect_contract(); break;
         case 1131: ok = test1131_browser_viewport_resize_contract(); break;
+        case 1132: ok = test1132_browser_match_media_resize_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
