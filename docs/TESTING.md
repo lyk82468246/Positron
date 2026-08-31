@@ -136,6 +136,14 @@ UTF-8 size-probe、过小缓冲的完整字节数和不修改输出、注册后 
 浏览器焦点算法、native HWND 焦点矩形、自动初始焦点、焦点陷阱或真实窗口切换
 视觉；这些仍由宿主和人工设备验收负责。
 
+TEST1141 覆盖 `HTMLElement.focus()`/`blur()` 的可选 Browser→宿主桥：脚本请求按
+ id 经过 Core 的已布局焦点资格检查，focus 在切换目标时先发旧目标的 blur/focusout，
+ 再发新目标的 focus/focusin；对非当前目标的 blur、disabled/plain 目标和注销后的
+ bridge 都保持 no-op，`document.activeElement` 与 body 回退保持一致。它同时验证
+ 新增 Core `PCore_FocusTargetInfoById`/`PCore_InteractionFocusById` 的边界和固定
+ native-function 预算回归。该离线夹具不证明完整焦点算法、自动初始焦点、焦点矩形、
+ scroll-into-view、真实 native HWND/OEM 控件或跨窗口视觉。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

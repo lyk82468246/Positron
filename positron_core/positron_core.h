@@ -905,6 +905,19 @@ PCORE_API int PCore_InteractionClear(HANDLE hDoc,
  * focus or style state is changed. */
 PCORE_API int PCore_InteractionFocusElementId(HANDLE hDoc,
         char *out_id, int id_capacity, int *out_bytes);
+/* Resolve one id-addressable, laid-out focus target using the same bounded
+ * eligibility rules as PCore_FocusTargetInfo(). The result includes the
+ * document-space geometry and focus-target kind, but does not change focus.
+ * Returns 0 when the target is eligible and non-zero for an absent,
+ * disabled, hidden, stale or otherwise unsupported target. */
+PCORE_API int PCore_FocusTargetInfoById(HANDLE hDoc, const char *element_id,
+        PCoreFocusTargetInfo *out_info);
+/* Set the Core focus node for one id-addressable target. Returns 1 when the
+ * focus node changed, 0 when the target is eligible but already focused or
+ * unavailable, and -1 for invalid arguments or a DOM/ownership failure.
+ * Native HWND focus, focus events and repaint scheduling remain host-owned. */
+PCORE_API int PCore_InteractionFocusById(HANDLE hDoc,
+        const char *element_id);
 
 /* DOM event bridge. Listener callbacks run synchronously on the dispatching
  * thread and return a bitwise combination of PCORE_EVENT_ACTION_* values.

@@ -151,6 +151,34 @@ PBrowser_ScriptSessionRegisterActiveElementCallbacks(session, &active);
 因此这项组合不提供完整浏览器焦点算法、自动初始焦点、焦点矩形、native HWND
 切换或跨窗口策略。回调指针只在同步调用期间借用，宿主仍拥有 native 焦点状态。
 
+#### `HTMLElement.focus()` / `blur()` 请求
+
+脚本主动聚焦是另一条按需安装的桥。宿主注册
+`PBrowserScriptFocusRequestCallbacks` 后，Browser 在 bootstrap 后为每个
+`PElement` 安装 `focus()` 与 `blur()`；方法只发送当前元素的 id 和 `focused` 值，
+返回值保持 `undefined`。Browser 不猜测焦点顺序，也不直接访问窗口；宿主 callback
+应以 `PCore_FocusTargetInfoById` 检查已布局目标，以
+`PCore_InteractionFocusById` 更新 Core，再切换相应 native HWND 并派发一次
+`blur`/`focusout` 或 `focus`/`focusin`。disabled、hidden、stale、无 id、未布局、
+对非当前目标的 `blur()` 以及重复 `focus()` 都必须安全 no-op。注销 callback 会
+移除 native 请求来源，已安装的方法仍保留为 no-op；未注册 callback 的 session
+不安装这组可选方法，以控制 WM6 bootstrap 成本。
+
+最小注册形态如下，`request_focus` 的 `element_id` 只在同步 callback 期间借用：
+
+```c
+PBrowserScriptFocusRequestCallbacks focus;
+
+memset(&focus, 0, sizeof(focus));
+focus.size = sizeof(focus);
+focus.pw = bridge;
+focus.request_focus = host_request_focus;
+PBrowser_ScriptSessionRegisterFocusRequestCallbacks(session, &focus);
+```
+
+该桥只覆盖 id-addressable 的 Core 目标，不提供完整 focus navigation、自动初始
+焦点、focus ring、scroll-into-view、跨窗口策略或 OEM 控件视觉保证。
+
 ### DOM、表单与 validation adapters
 
 Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把当前 Core document 的受限查询和 mutation 映射为：
@@ -444,8 +472,9 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 1. 用 `positron_core.dll` 创建、style、layout 当前文档；
 2. 为该文档构造 callback context；
 3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；若需要
-   `document.activeElement`，同时准备 Core 焦点 id callback；
-4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement callback，并按文档
+   `document.activeElement` 或 `HTMLElement.focus()`/`blur()`，同时准备 Core 焦点
+   id 与 focus request callbacks；
+4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement/focus request callback，并按文档
    顺序执行允许的 classic script；
 5. 把 WM 输入转换为 Browser typed transaction；
 6. 只在 Browser 允许默认动作后修改 Core/native 控件；
@@ -475,6 +504,11 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   后才安装；它通过 Core 的有界焦点 id 和现有 DOM 读回调解析元素，空值、过长或
   过时 id 回退到 `document.body`。它不替代完整焦点算法、native 焦点矩形、自动
   初始焦点、焦点陷阱或跨窗口策略。
+- `HTMLElement.focus()`/`blur()` 只有在宿主注册
+  `PBrowserScriptFocusRequestCallbacks` 后才安装；宿主必须用 Core 的按 id 资格与
+  focus node API 接线 native HWND 和 focus family。不可用目标、重复请求、对非当前
+  目标的 blur，以及注销后的方法都 fail closed/no-op；它不替代完整焦点导航、初始
+  焦点、focus ring、scroll-into-view 或跨窗口策略。
 - `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台 native 控件焦点。脚本层的顶层窗口 focus/blur 与 `document.hasFocus()` 由宿主通过显式通知维护，但完整初始焦点、焦点陷阱、跨窗口焦点策略和 CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期仍未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。

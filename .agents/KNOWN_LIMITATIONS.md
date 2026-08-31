@@ -64,13 +64,21 @@
 - 宿主完成 WM_SIZE 的 Core style/layout、page-level clamp 和 native child reposition 后可调用 `PBrowser_ScriptSessionNotifyResize`；该入口更新 `innerWidth`/`outerWidth`/`devicePixelRatio`、`screen` 宽高/方向和布局视口对应的 `visualViewport`，刷新每个 session 最多 64 个 `matchMedia()` 列表，并在匹配结果翻转时同步派发 `change`。同一 session 的 `screen.orientation` 对象保持身份稳定，方向翻转时再派发一次可信 `change`，随后按 visual viewport、window 顺序派发 `resize`；同方向尺寸变化不派发 orientation 事件。`visualViewport` 的 scale 固定为 1，offset 固定为 0，pageLeft/pageTop 与 page scroll 同步；它不替宿主运行 timer/animation frame，不支持完整媒体查询语法、pinch zoom 或嵌套 overflow，也不为视觉像素或真实旋转提供保证；超过 64 个媒体列表和 16 个 orientation 监听器只保留有界的已注册状态。
 - `Element.getBoundingClientRect()` 只在 Core 已完成 layout 且存在对应 box 时返回一个整数 CSS 像素 border-box 快照；未布局或不可用时为全零矩形。它不提供 transforms、`getClientRects()`、Range/多片段 union、独立 nested overflow 坐标或视觉像素精度，宿主仍须在 layout 后同步 page scroll。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
-- script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。
+- script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 26；Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement` 和 `HTMLElement.focus()`/`blur()` 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
   后才存在；getter 每次同步读取一个有界焦点 id，并通过 DOM read adapter 解析。
   空、超长、过时或不可用的 id 都回退到 `document.body`，注销来源后也保持该回退。
   未注册 callback 的 session 不承诺这个可选属性，以控制 WM6 bootstrap 成本。
+- `HTMLElement.focus()`/`blur()` 只有在宿主注册
+  `PBrowserScriptFocusRequestCallbacks` 后才安装；Browser 只验证并同步转发
+  `element_id`/`focused` 请求，宿主必须以 Core 的
+  `PCore_FocusTargetInfoById`/`PCore_InteractionFocusById` 接线 native HWND、
+  focus family 和重绘。无 id、disabled、hidden、stale、未布局、重复请求、
+  对非当前目标的 blur，以及注销后的方法都 fail closed/no-op。该桥不提供完整
+  focus navigation、自动初始焦点、focus ring、scroll-into-view、跨窗口策略或
+  OEM 控件视觉保证。
 - Browser session callback 同步且不可重入；宿主若在 callback 中销毁或重入 session，行为不受支持。
 - 该运行时不是完整浏览器安全沙箱，不能直接执行不可信互联网脚本并假定与现代浏览器等价隔离。
 
@@ -122,6 +130,10 @@
 - TEST1140 覆盖 Core 焦点 id 到 Browser `document.activeElement` 的可选桥、body 回退、
   注册/注销、Core size-probe、过小缓冲和失效 id 的 fail-closed 行为；不证明完整
   浏览器焦点算法、自动初始焦点、native HWND 焦点矩形或真实窗口切换视觉。
+- TEST1141 覆盖按 id 的 `HTMLElement.focus()`/`blur()` 请求、Core 目标资格与
+  focus node 更新、旧目标 blur/focusout→新目标 focus/focusin 顺序、非当前目标
+  blur、不可用目标和注销后的 no-op；不证明完整焦点算法、自动初始焦点、焦点矩形、
+  scroll-into-view、真实 native HWND/OEM 控件或跨窗口视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

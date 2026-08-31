@@ -4959,6 +4959,18 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "try{element=d.getElementById(id);if(element!==null){return element;}}"
         "catch(e2){}}return d.body;},enumerable:true,configurable:true});})(this);";
 
+    /* Keep script-driven focus requests out of the cold bootstrap path. The
+     * host must opt in because it owns native HWND focus and the Core
+     * interaction transaction; an installed method remains a safe no-op if
+     * that bridge is later unregistered. */
+    static const char P_BROWSER_SCRIPT_FOCUS_REQUEST[] =
+        "(function(g){var P=g.__pcorePElement;"
+        "if(!P){throw new Error('focus bridge unavailable');}"
+        "P.prototype.focus=function(){if(typeof g.__pcoreFocus==='function')"
+        "{g.__pcoreFocus({id:this.__id,focused:1});}};"
+        "P.prototype.blur=function(){if(typeof g.__pcoreFocus==='function')"
+        "{g.__pcoreFocus({id:this.__id,focused:0});}};})(this);";
+
     /* Keep the cancelable navigation hook out of the cold bootstrap path. It
      * is installed only when the host is about to replace or close a live
      * document, which keeps startup within the small WM6 script budget. */
@@ -5062,6 +5074,11 @@ typedef struct p_browser_script_dom_read_binding {
 typedef struct p_browser_script_active_element_binding {
     PBrowserScriptActiveElementCallbacks callbacks;
 } p_browser_script_active_element_binding;
+
+typedef struct p_browser_script_focus_request_binding {
+    HANDLE session;
+    PBrowserScriptFocusRequestCallbacks callbacks;
+} p_browser_script_focus_request_binding;
 
 typedef struct p_browser_script_dom_relation_binding {
     PBrowserScriptDomRelationCallbacks callbacks;
@@ -5233,6 +5250,7 @@ typedef struct p_browser_script_session {
     int bootstrap_ready;
     p_browser_script_dom_read_binding *dom_read;
     p_browser_script_active_element_binding *active_element;
+    p_browser_script_focus_request_binding *focus_request;
     p_browser_script_dom_relation_binding *dom_relation;
     p_browser_script_dom_write_binding *dom_write;
     p_browser_script_content_editable_binding *content_editable;
@@ -5291,9 +5309,21 @@ static int p_browser_script_install_active_element(
             P_BROWSER_SCRIPT_ACTIVE_ELEMENT, -1);
 }
 
+static int p_browser_script_install_focus_request(
+        p_browser_script_session *session)
+{
+    if (!p_script_session_valid(session) || !session->bootstrap_ready ||
+            session->focus_request == NULL) {
+        return PSCRIPT_OK;
+    }
+    return PBrowser_ScriptSessionEvaluate((HANDLE) session,
+            P_BROWSER_SCRIPT_FOCUS_REQUEST, -1);
+}
+
 static int p_browser_script_finish_bootstrap(HANDLE hSession)
 {
     p_browser_script_session *session;
+    int rc;
 
     session = p_script_session(hSession);
     if (!p_script_session_valid(session)) {
@@ -5301,9 +5331,12 @@ static int p_browser_script_finish_bootstrap(HANDLE hSession)
     }
     session->bootstrap_ready = 1;
     if (session->active_element != NULL) {
-        return p_browser_script_install_active_element(session);
+        rc = p_browser_script_install_active_element(session);
+        if (rc != PSCRIPT_OK) {
+            return rc;
+        }
     }
-    return PSCRIPT_OK;
+    return p_browser_script_install_focus_request(session);
 }
 
 static void p_browser_script_clear_dispatch_globals(
@@ -5787,6 +5820,40 @@ static int p_browser_script_get_active_element(void *pw,
         element_id = "";
     }
     return p_browser_script_write_string(element_id, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_request_focus(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_focus_request_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    PBrowserScriptFocusRequestInfo info;
+    const char *id;
+    int focused;
+    int rc;
+
+    binding = (p_browser_script_focus_request_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    focused = (object != NULL) ? PJson_GetInt(object, "focused") : -1;
+    if (binding == NULL || binding->session == NULL || root == NULL ||
+            id == NULL || id[0] == '\0' ||
+            (focused != 0 && focused != 1)) {
+        PJson_Free(root);
+        return p_browser_script_write_bool(0, out_json, out_capacity,
+                out_len);
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.element_id = id;
+    info.focused = focused;
+    rc = PBrowser_ScriptSessionDispatchFocusRequest(binding->session, &info);
+    PJson_Free(root);
+    return p_browser_script_write_bool(rc == PSCRIPT_OK, out_json,
             out_capacity, out_len);
 }
 
@@ -7033,6 +7100,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->bootstrap_ready = 0;
     session->dom_read = NULL;
     session->active_element = NULL;
+    session->focus_request = NULL;
     session->dom_relation = NULL;
     session->dom_write = NULL;
     session->content_editable = NULL;
@@ -7097,6 +7165,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreGetActiveElement", -1);
         free(session->active_element);
         session->active_element = NULL;
+    }
+    if (session->focus_request != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreFocus", -1);
+        free(session->focus_request);
+        session->focus_request = NULL;
     }
     if (session->dom_relation != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -7696,6 +7770,90 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterActiveElementCallbacks(
     free(session->active_element);
     session->active_element = NULL;
     return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterFocusRequestCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptFocusRequestCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_focus_request_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptFocusRequestCallbacks) ||
+            callbacks->request_focus == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->focus_request != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_focus_request_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    binding->session = hSession;
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreFocus", -1, p_browser_script_request_focus, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->focus_request = binding;
+    if (session->bootstrap_ready) {
+        rc = p_browser_script_install_focus_request(session);
+        if (rc != PSCRIPT_OK) {
+            PScript_UnregisterGlobalJsonFunction(session->runtime,
+                    "__pcoreFocus", -1);
+            session->focus_request = NULL;
+            free(binding);
+            return rc;
+        }
+    }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusRequestCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->focus_request == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreFocus", -1);
+    free(session->focus_request);
+    session->focus_request = NULL;
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchFocusRequest(HANDLE hSession,
+        const PBrowserScriptFocusRequestInfo *info)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->focus_request == NULL ||
+            info == NULL ||
+            info->size < sizeof(PBrowserScriptFocusRequestInfo) ||
+            info->element_id == NULL || info->element_id[0] == '\0' ||
+            strlen(info->element_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+            (info->focused != 0 && info->focused != 1)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = session->focus_request->callbacks.request_focus(
+            session->focus_request->callbacks.pw, info);
+    return rc < 0 ? PSCRIPT_ERROR_NATIVE : PSCRIPT_OK;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomRelationCallbacks(

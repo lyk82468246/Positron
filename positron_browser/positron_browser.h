@@ -414,6 +414,29 @@ typedef struct PBrowserScriptActiveElementCallbacks {
     PBrowserScriptGetActiveElementFn get_active_element;
 } PBrowserScriptActiveElementCallbacks;
 
+/* Typed host adapter for script-visible HTMLElement.focus()/blur(). The
+ * browser layer owns the methods and request validation; the host resolves
+ * the id, updates native/Core focus and dispatches the corresponding focus
+ * family through the host's existing focus event callbacks. focused is 1 for
+ * focus() and 0 for blur(). The id is borrowed only for this synchronous
+ * callback. A non-negative return means that the request was processed,
+ * including a no-op for a disconnected, disabled or already-unfocused target;
+ * a negative return reports an adapter failure. Registering this table
+ * installs the
+ * optional methods after bootstrap. */
+typedef struct PBrowserScriptFocusRequestInfo {
+    unsigned long size;
+    const char *element_id;
+    int focused;
+} PBrowserScriptFocusRequestInfo;
+typedef int (*PBrowserScriptRequestFocusFn)(void *pw,
+        const PBrowserScriptFocusRequestInfo *info);
+typedef struct PBrowserScriptFocusRequestCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptRequestFocusFn request_focus;
+} PBrowserScriptFocusRequestCallbacks;
+
 /* Typed host adapter for the bounded, ID-addressable DOM relationship
  * boundary. Value relationships (parent/sibling/child-at/tag/form-owner)
  * use the same UTF-8 size-probe contract as PBrowserScriptGetTextFn. Count
@@ -1527,6 +1550,15 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterActiveElementCallbacks(
         const PBrowserScriptActiveElementCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterActiveElementCallbacks(
         HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFocusRequestCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptFocusRequestCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusRequestCallbacks(
+        HANDLE hSession);
+/* Dispatch one script-visible HTMLElement.focus()/blur() request through the
+ * registered host adapter. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchFocusRequest(HANDLE hSession,
+        const PBrowserScriptFocusRequestInfo *info);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomRelationCallbacks(
         HANDLE hSession, const PBrowserScriptDomRelationCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomRelationCallbacks(

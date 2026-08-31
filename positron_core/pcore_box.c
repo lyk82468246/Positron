@@ -74,6 +74,8 @@ extern const struct gui_layout_table pcore_gdi_layout;
 static struct box *pcore_hit(struct box *box, int px, int py);
 static struct box *pcore_box_for_node(struct box *box, dom_node *node);
 static struct box *pcore_box_for_any_node(struct box *box, dom_node *node);
+static dom_element *pcore_box_element_by_id(dom_document *doc,
+        const char *element_id);
 static int pcore_disclosure_summary_box_info(struct pcore_render *st,
         dom_node *summary, struct box *summary_box, int *x, int *y,
         int *w, int *h, int *open, dom_element **out_details);
@@ -5389,6 +5391,68 @@ PCORE_API int PCore_FocusTargetInfoWithin(HANDLE hDoc,
             (dom_node *) ancestor, index, out_info);
     dom_node_unref((dom_node *) ancestor);
     return result;
+}
+
+PCORE_API int PCore_FocusTargetInfoById(HANDLE hDoc, const char *element_id,
+        PCoreFocusTargetInfo *out_info)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_element *element;
+    int result;
+
+    if (out_info == NULL) {
+        return 1;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    doc = (dom_document *) hDoc;
+    if (doc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return 1;
+    }
+    st = pcore_get_render(doc);
+    if (st == NULL) {
+        return 1;
+    }
+    element = pcore_box_element_by_id(doc, element_id);
+    if (element == NULL) {
+        return 1;
+    }
+    result = pcore_focus_target_for_element(st, (dom_node *) element,
+            out_info, NULL) ? 0 : 1;
+    dom_node_unref((dom_node *) element);
+    return result;
+}
+
+PCORE_API int PCore_InteractionFocusById(HANDLE hDoc,
+        const char *element_id)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_element *element;
+    PCoreFocusTargetInfo target;
+    int result;
+
+    doc = (dom_document *) hDoc;
+    if (doc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return -1;
+    }
+    st = pcore_get_render(doc);
+    if (st == NULL) {
+        return 0;
+    }
+    element = pcore_box_element_by_id(doc, element_id);
+    if (element == NULL) {
+        return 0;
+    }
+    if (!pcore_focus_target_for_element(st, (dom_node *) element,
+            &target, NULL)) {
+        dom_node_unref((dom_node *) element);
+        return 0;
+    }
+    result = pcore_interaction_set_node(doc, PCORE_INTERACTION_FOCUS,
+            (dom_node *) element);
+    dom_node_unref((dom_node *) element);
+    return result < 0 ? -1 : result;
 }
 
 static struct box *pcore_file_input_at_index(struct box *box,

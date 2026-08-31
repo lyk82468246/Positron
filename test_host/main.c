@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1140
+#define TEST_MAX_NUMBER 1141
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -8298,7 +8298,11 @@ static int pcore_browser_script_key_dispatch(void *pw,
         int *out_default_allowed);
 static int pcore_browser_script_focus_dispatch(void *pw,
         const PBrowserScriptFocusEventInfo *info);
+static void pcore_browser_script_dispatch_focus_at(int x, int y,
+        const char *event_type, int bubbles);
 static const char *pcore_browser_script_get_active_element(void *pw);
+static int pcore_browser_script_focus_request(void *pw,
+        const PBrowserScriptFocusRequestInfo *info);
 static int pcore_browser_script_edit_dispatch(void *pw,
         const PBrowserScriptEditEventInfo *info);
 static int pcore_browser_script_select_dispatch(void *pw,
@@ -10518,6 +10522,172 @@ static const char *pcore_browser_script_get_active_element(void *pw)
         return "";
     }
     return bridge->active_element_id;
+}
+
+/* Focus requests originate in the Browser DLL; the reference host only
+ * connects an eligible Core target to a native child window when one exists.
+ * Suppress the native subclass notifications while doing so because this
+ * transaction emits one explicit focus-family pair below. */
+static int pcore_browser_script_focus_native_target(
+        const PCoreFocusTargetInfo *target)
+{
+    int old_edit_syncing;
+    int old_select_syncing;
+    int result;
+    int x;
+    int y;
+    int width;
+    int height;
+    unsigned int i;
+
+    if (target == NULL) {
+        return 0;
+    }
+    old_edit_syncing = g_native_edit_syncing;
+    old_select_syncing = g_native_select_syncing;
+    g_native_edit_syncing = 1;
+    g_native_select_syncing = 1;
+    result = pcore_focus_native_form_control(target->kind,
+            target->x + target->width / 2,
+            target->y + target->height / 2);
+    if (result == 0 && target->kind == PCORE_FOCUS_TARGET_CONTENTEDITABLE) {
+        for (i = 0; i < g_native_edit_count; i++) {
+            if (g_native_edits[i].hwnd == NULL ||
+                    !pcore_native_edit_geometry_info(&g_native_edits[i],
+                    &x, &y, &width, &height, NULL, NULL) ||
+                    target->x != x || target->y != y ||
+                    target->width != width || target->height != height) {
+                continue;
+            }
+            if (IsWindowEnabled(g_native_edits[i].hwnd)) {
+                SetFocus(g_native_edits[i].hwnd);
+                result = 1;
+            }
+            break;
+        }
+    }
+    g_native_edit_syncing = old_edit_syncing;
+    g_native_select_syncing = old_select_syncing;
+    return result;
+}
+
+static void pcore_browser_script_focus_move_platform(
+        pcore_browser_script_bridge *bridge,
+        const PCoreFocusTargetInfo *target, int focus_target)
+{
+    int old_edit_syncing;
+    int old_select_syncing;
+
+    if (bridge == NULL || target == NULL || bridge->document != g_render_doc) {
+        return;
+    }
+    if (focus_target &&
+            pcore_browser_script_focus_native_target(target) != 0) {
+        return;
+    }
+    if (bridge->hwnd == NULL || !IsWindow(bridge->hwnd)) {
+        return;
+    }
+    old_edit_syncing = g_native_edit_syncing;
+    old_select_syncing = g_native_select_syncing;
+    g_native_edit_syncing = 1;
+    g_native_select_syncing = 1;
+    SetFocus(bridge->hwnd);
+    g_native_edit_syncing = old_edit_syncing;
+    g_native_select_syncing = old_select_syncing;
+}
+
+static void pcore_browser_script_focus_pair(
+        const PCoreFocusTargetInfo *target, const char *first,
+        const char *second)
+{
+    int x;
+    int y;
+
+    if (target == NULL || first == NULL || second == NULL) {
+        return;
+    }
+    x = target->x + target->width / 2;
+    y = target->y + target->height / 2;
+    pcore_browser_script_dispatch_focus_at(x, y, first,
+            strcmp(first, "focusin") == 0 ||
+            strcmp(first, "focusout") == 0);
+    pcore_browser_script_dispatch_focus_at(x, y, second,
+            strcmp(second, "focusin") == 0 ||
+            strcmp(second, "focusout") == 0);
+}
+
+static int pcore_browser_script_focus_request(void *pw,
+        const PBrowserScriptFocusRequestInfo *info)
+{
+    pcore_browser_script_bridge *bridge;
+    PCoreFocusTargetInfo target;
+    PCoreFocusTargetInfo old_target;
+    char old_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
+    int old_bytes;
+    int old_valid;
+    int old_target_valid;
+    int changed;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptFocusRequestInfo) ||
+            info->element_id == NULL || info->element_id[0] == '\0' ||
+            (info->focused != 0 && info->focused != 1)) {
+        return -1;
+    }
+    memset(&target, 0, sizeof(target));
+    if (PCore_FocusTargetInfoById(bridge->document, info->element_id,
+            &target) != 0) {
+        return 0;
+    }
+    memset(old_id, 0, sizeof(old_id));
+    old_bytes = 0;
+    old_valid = PCore_InteractionFocusElementId(bridge->document, old_id,
+            sizeof(old_id), &old_bytes) == 0 && old_bytes > 0;
+    if (!info->focused) {
+        if (!old_valid || strcmp(old_id, info->element_id) != 0) {
+            return 0;
+        }
+        pcore_browser_script_focus_move_platform(bridge, &target, 0);
+        pcore_browser_script_focus_pair(&target, "blur", "focusout");
+        changed = PCore_InteractionClear(bridge->document,
+                PCORE_INTERACTION_FOCUS);
+        if (changed < 0) {
+            return -1;
+        }
+        pcore_toggle_focus_clear();
+        pcore_button_focus_clear();
+        pcore_disclosure_focus_clear();
+        pcore_sequential_focus_clear();
+        pcore_request_interaction_restyle(bridge->hwnd);
+        return 0;
+    }
+    if (old_valid && strcmp(old_id, info->element_id) == 0) {
+        return 0;
+    }
+    old_target_valid = old_valid &&
+            PCore_FocusTargetInfoById(bridge->document, old_id,
+            &old_target) == 0;
+    if (old_target_valid) {
+        pcore_browser_script_focus_pair(&old_target, "blur", "focusout");
+    }
+    pcore_browser_script_focus_move_platform(bridge, &target, 1);
+    changed = PCore_InteractionFocusById(bridge->document,
+            info->element_id);
+    if (changed < 0) {
+        return -1;
+    }
+    if (changed == 0 && old_valid) {
+        return 0;
+    }
+    pcore_toggle_focus_clear();
+    pcore_button_focus_clear();
+    pcore_disclosure_focus_clear();
+    pcore_sequential_focus_clear();
+    pcore_browser_script_focus_pair(&target, "focus", "focusin");
+    pcore_request_interaction_restyle(bridge->hwnd);
+    return 0;
 }
 
 static int pcore_browser_script_edit_dispatch(void *pw,
@@ -15907,6 +16077,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     HANDLE runtime;
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
     PBrowserScriptActiveElementCallbacks active_element_callbacks;
+    PBrowserScriptFocusRequestCallbacks focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
@@ -16031,6 +16202,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     active_element_callbacks.pw = bridge;
     active_element_callbacks.get_active_element =
             pcore_browser_script_get_active_element;
+    focus_request_callbacks.size = sizeof(focus_request_callbacks);
+    focus_request_callbacks.pw = bridge;
+    focus_request_callbacks.request_focus =
+            pcore_browser_script_focus_request;
     dom_relation_callbacks.size = sizeof(dom_relation_callbacks);
     dom_relation_callbacks.pw = bridge;
     dom_relation_callbacks.get_relation =
@@ -16263,6 +16438,17 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &active_element_callbacks) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity,
                 "activeElement bridge", PBrowser_ScriptSessionGetError(session));
+        pcore_browser_script_bridge_destroy(bridge);
+        if (out_runtime != NULL) {
+            free(bridge);
+        }
+        return 1;
+    }
+    if (PBrowser_ScriptSessionRegisterFocusRequestCallbacks(session,
+            &focus_request_callbacks) != PSCRIPT_OK) {
+        pcore_browser_script_error(error, error_capacity,
+                "focus request bridge", PBrowser_ScriptSessionGetError(
+                session));
         pcore_browser_script_bridge_destroy(bridge);
         if (out_runtime != NULL) {
             free(bridge);
@@ -35057,6 +35243,202 @@ static BOOL test1140_browser_active_element_contract(void)
     show_info(L"TEST 1140 OK",
             "Core focus ids reach Browser document.activeElement with a"
             " body fallback and bounded fail-closed lookup.");
+    return TRUE;
+}
+
+/* TEST 1141 - script focus()/blur() reaches the Core focus state. */
+static BOOL test1141_browser_script_focus_request_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='first' tabindex='0'>First</div>"
+        "<input id='second' value='two'>"
+        "<input id='disabled' disabled value='locked'>"
+        "<div id='plain'>Plain</div><p id='result'>idle</p>"
+        "<script>window.trace='';"
+        "function record(e){window.trace+=e.type+':'+"
+        "String(e.target.id||'')+';';}"
+        "var f=document.getElementById('first');"
+        "var s=document.getElementById('second');"
+        "f.addEventListener('focus',record);f.addEventListener('focusin',record);"
+        "f.addEventListener('blur',record);f.addEventListener('focusout',record);"
+        "s.addEventListener('focus',record);s.addEventListener('focusin',record);"
+        "s.addEventListener('blur',record);s.addEventListener('focusout',record);"
+        "</script></body></html>";
+    static const char CSS[] =
+        "body{margin:4px}"
+        "#first,#second,#disabled,#plain{display:block;width:180px;"
+        "height:24px;margin:2px}";
+    static const char URL[] = "https://positron.local/focus-request";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    PCoreFocusTargetInfo target;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    memset(&target, 0, sizeof(target));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/focus-request.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 260, 320) != 0) {
+            cstr_copy(error, sizeof(error), "focus request fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = 260;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 260;
+        g_view_h = 320;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+    }
+    if (ok && (PCore_FocusTargetInfoById(document, "first", &target) != 0 ||
+            target.kind != PCORE_FOCUS_TARGET_GENERIC || target.width <= 0 ||
+            target.height <= 0)) {
+        cstr_copy(error, sizeof(error), "generic focus target was not resolved");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(document.getElementById('first').focus())+'|'+"
+            "document.activeElement.id+'|'+window.trace;", -1,
+            error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "undefined|first|focus:first;focusin:first;") != 0)) {
+        cstr_copy(error, sizeof(error), "focus() did not set activeElement");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "document.getElementById('second').focus();"
+            "document.activeElement.id+'|'+window.trace;", -1,
+            error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "second|focus:first;focusin:first;blur:first;"
+            "focusout:first;focus:second;focusin:second;") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "focus() did not preserve blur/focus ordering");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "document.getElementById('first').blur();"
+            "document.activeElement.id+'|'+window.trace;", -1,
+            error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strstr(result, "second|focus:first;focusin:first;blur:first;") ==
+            NULL)) {
+        cstr_copy(error, sizeof(error),
+                "blur() changed a different active element");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "document.getElementById('second').blur();"
+            "String(document.activeElement===document.body)+'|'+window.trace;",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strstr(result, "true|focus:first;focusin:first;blur:first;"
+            "focusout:first;focus:second;focusin:second;blur:second;"
+            "focusout:second;") == NULL)) {
+        cstr_copy(error, sizeof(error),
+                "blur() did not restore the body fallback");
+        ok = 0;
+    }
+    if (ok && (PCore_InteractionFocusById(document, "disabled") != 0 ||
+            PCore_InteractionFocusById(document, "plain") != 0 ||
+            PCore_FocusTargetInfoById(document, "disabled", &target) == 0 ||
+            PCore_FocusTargetInfoById(document, "plain", &target) == 0)) {
+        cstr_copy(error, sizeof(error),
+                "ineligible focus target was accepted by Core");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionUnregisterFocusRequestCallbacks(
+            g_browser_script_session.session) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "focus request bridge unregister failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "document.getElementById('first').focus();"
+            "String(document.activeElement===document.body);", -1,
+            error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "unregistered focus bridge did not fail closed");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1141 FAIL", error[0] != '\0' ? error :
+                "script focus request contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1141 OK",
+            "Browser focus()/blur() requests resolve eligible Core targets,"
+            " preserve focus-family ordering and fail closed after unregister.");
     return TRUE;
 }
 
@@ -93103,6 +93485,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1138: ok = test1138_browser_page_show_lifecycle_contract(); break;
         case 1139: ok = test1139_browser_window_focus_lifecycle_contract(); break;
         case 1140: ok = test1140_browser_active_element_contract(); break;
+        case 1141: ok = test1141_browser_script_focus_request_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

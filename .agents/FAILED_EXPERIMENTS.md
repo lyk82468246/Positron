@@ -1,6 +1,6 @@
 # 失败实验与禁止恢复边界
 
-更新时间：2026-08-30
+更新时间：2026-08-31
 
 这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
@@ -12,6 +12,25 @@
 - **环境误报**：失败来自旧进程、DLL 混用或设备环境，仍需保留流程护栏。
 
 ## 失败与暂挂
+
+### next696 首轮设备门：新增 focus request bridge 超过脚本槽位 — 已替代
+
+问题：在 next695 已占用 24 个 native function 槽位的标准 Browser 组合上新增
+`HTMLElement.focus()`/`blur()` 请求桥后，首轮 `1141,1140,1078,999` 设备门在
+TEST1078 的 activeElement/bootstrap 阶段失败，日志为 `native function limit
+exceeded`。源码、正式 Debug 构建、staging 和 RAPI 部署均已完成；失败发生在
+脚本注册预算，不是 WMDC、Core 文档或焦点断言。
+
+替代方案：将 `positron_script` 的公共 `PSCRIPT_MAX_NATIVE_FUNCTIONS` 从 24 精确
+提升到 26，保留注册失败的 fail-closed 语义，并在资源预算文档中说明 Browser 同时
+启用两个可选焦点桥时会占满槽位。第二轮同一设备门使用同批 Debug payload，通过
+TEST1078、1140、1141、999（4/4，唯一 `TESTBENCH PASS`，零 `ERROR`/`FAIL`）。
+
+决定：后续新增 Browser 全局 callback 前必须核对实际注册数量；若扩容，只能调整
+`positron_script` 公共预算并同步文档/设备门，不能跳过 activeElement/focus 注册、
+删除断言或把 bootstrap 超时误判为 WMDC 故障。首轮目录
+`tmp/device-runs/20260831-205814-next696-focus-request/` 只保留为失败取证，不是
+产品基线。
 
 ### next663 首轮设备门：Browser native callback 槽位不足 — 已替代
 
