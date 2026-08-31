@@ -4946,6 +4946,19 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "g.__pcoreDecorateCollection13=decorate13;g.__pcoreFormNamed13=formNamed13;"
         "})(this);";
 
+    /* Install the Core-backed getter only after a host callback is registered;
+     * sessions without the optional bridge do not pay this extra script cost. */
+    static const char P_BROWSER_SCRIPT_ACTIVE_ELEMENT[] =
+        "(function(g){var d=g.document;"
+        "Object.defineProperty(d,'activeElement',{get:function(){"
+        "var id='';var element;"
+        "if(typeof g.__pcoreGetActiveElement==='function'){try{"
+        "id=String(g.__pcoreGetActiveElement({})||'');"
+        "}catch(e){id='';}}"
+        "if(id!==''&&typeof g.__pcoreHasElement==='function'){"
+        "try{element=d.getElementById(id);if(element!==null){return element;}}"
+        "catch(e2){}}return d.body;},enumerable:true,configurable:true});})(this);";
+
     /* Keep the cancelable navigation hook out of the cold bootstrap path. It
      * is installed only when the host is about to replace or close a live
      * document, which keeps startup within the small WM6 script budget. */
@@ -4968,6 +4981,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "r!==''){e.returnValue=r;}}catch(handlerError){}}"
         "b=a.slice(0);for(i=0;i<b.length;i++){invoke(b[i],e,g);}"
         "return !!e.defaultPrevented;};})(this);";
+
+static int p_browser_script_finish_bootstrap(HANDLE hSession);
 
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 {
@@ -5033,12 +5048,20 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     if (result != PSCRIPT_OK) {
         return result;
     }
-    return PBrowser_ScriptSessionEvaluate(hSession,
+    result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART13, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    return p_browser_script_finish_bootstrap(hSession);
 }
 typedef struct p_browser_script_dom_read_binding {
     PBrowserScriptDomReadCallbacks callbacks;
 } p_browser_script_dom_read_binding;
+
+typedef struct p_browser_script_active_element_binding {
+    PBrowserScriptActiveElementCallbacks callbacks;
+} p_browser_script_active_element_binding;
 
 typedef struct p_browser_script_dom_relation_binding {
     PBrowserScriptDomRelationCallbacks callbacks;
@@ -5207,7 +5230,9 @@ typedef struct p_browser_script_event_binding {
 
 typedef struct p_browser_script_session {
     HANDLE runtime;
+    int bootstrap_ready;
     p_browser_script_dom_read_binding *dom_read;
+    p_browser_script_active_element_binding *active_element;
     p_browser_script_dom_relation_binding *dom_relation;
     p_browser_script_dom_write_binding *dom_write;
     p_browser_script_content_editable_binding *content_editable;
@@ -5253,6 +5278,32 @@ static int p_script_session_valid(
         const p_browser_script_session *session)
 {
     return session != NULL && session->runtime != NULL;
+}
+
+static int p_browser_script_install_active_element(
+        p_browser_script_session *session)
+{
+    if (!p_script_session_valid(session) || !session->bootstrap_ready ||
+            session->active_element == NULL) {
+        return PSCRIPT_OK;
+    }
+    return PBrowser_ScriptSessionEvaluate((HANDLE) session,
+            P_BROWSER_SCRIPT_ACTIVE_ELEMENT, -1);
+}
+
+static int p_browser_script_finish_bootstrap(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    session->bootstrap_ready = 1;
+    if (session->active_element != NULL) {
+        return p_browser_script_install_active_element(session);
+    }
+    return PSCRIPT_OK;
 }
 
 static void p_browser_script_clear_dispatch_globals(
@@ -5714,6 +5765,29 @@ static int p_browser_script_write_string(const char *value,
     out_json[escaped + 2] = '\0';
     *out_len = escaped + 2;
     return 0;
+}
+
+static int p_browser_script_get_active_element(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_active_element_binding *binding;
+    const char *element_id;
+
+    (void) args_json;
+    (void) args_len;
+    binding = (p_browser_script_active_element_binding *) pw;
+    element_id = NULL;
+    if (binding != NULL && binding->callbacks.get_active_element != NULL) {
+        element_id = binding->callbacks.get_active_element(
+                binding->callbacks.pw);
+    }
+    if (element_id == NULL || strlen(element_id) >=
+            PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
+        element_id = "";
+    }
+    return p_browser_script_write_string(element_id, out_json,
+            out_capacity, out_len);
 }
 
 static int p_browser_script_dom_has_element(void *pw,
@@ -6956,7 +7030,9 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     if (session == NULL) {
         return NULL;
     }
+    session->bootstrap_ready = 0;
     session->dom_read = NULL;
+    session->active_element = NULL;
     session->dom_relation = NULL;
     session->dom_write = NULL;
     session->content_editable = NULL;
@@ -7015,6 +7091,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreGetText", -1);
         free(session->dom_read);
         session->dom_read = NULL;
+    }
+    if (session->active_element != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetActiveElement", -1);
+        free(session->active_element);
+        session->active_element = NULL;
     }
     if (session->dom_relation != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -7550,6 +7632,70 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
     free(session->dom_read);
     session->dom_read = NULL;
     return (rc != PSCRIPT_OK) ? rc : second_rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterActiveElementCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptActiveElementCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_active_element_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptActiveElementCallbacks) ||
+            callbacks->get_active_element == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->active_element != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_active_element_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetActiveElement", -1,
+            p_browser_script_get_active_element, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->active_element = binding;
+    if (session->bootstrap_ready) {
+        rc = p_browser_script_install_active_element(session);
+        if (rc != PSCRIPT_OK) {
+            PScript_UnregisterGlobalJsonFunction(session->runtime,
+                    "__pcoreGetActiveElement", -1);
+            session->active_element = NULL;
+            free(binding);
+            return rc;
+        }
+    }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterActiveElementCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->active_element == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetActiveElement", -1);
+    free(session->active_element);
+    session->active_element = NULL;
+    return rc;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomRelationCallbacks(

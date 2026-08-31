@@ -3807,6 +3807,55 @@ static void pcore_copy_dom_string(dom_string *value, char *buffer,
     buffer[copy_length] = '\0';
 }
 
+PCORE_API int PCore_InteractionFocusElementId(HANDLE hDoc,
+        char *out_id, int id_capacity, int *out_bytes)
+{
+    dom_node *focus_node;
+    dom_string *id;
+    const char *data;
+    size_t length;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (out_id != NULL && id_capacity > 0) {
+        out_id[0] = '\0';
+    }
+    if (hDoc == NULL || out_bytes == NULL || id_capacity < 0) {
+        return 1;
+    }
+    focus_node = NULL;
+    pcore_interaction_snapshot((dom_document *) hDoc, &focus_node,
+            NULL, NULL);
+    if (focus_node == NULL) {
+        return 1;
+    }
+    id = NULL;
+    if (dom_html_element_get_id(focus_node, &id) != DOM_NO_ERR ||
+            id == NULL) {
+        return 1;
+    }
+    data = dom_string_data(id);
+    length = dom_string_byte_length(id);
+    if (data == NULL || length == 0 || length > (size_t) INT_MAX) {
+        dom_string_unref(id);
+        return 1;
+    }
+    *out_bytes = (int) length;
+    if (out_id == NULL || id_capacity == 0) {
+        dom_string_unref(id);
+        return 0;
+    }
+    if (length >= (size_t) id_capacity) {
+        dom_string_unref(id);
+        return 2;
+    }
+    memcpy(out_id, data, length);
+    out_id[length] = '\0';
+    dom_string_unref(id);
+    return 0;
+}
+
 PCORE_API int PCore_GetInlineScriptCount(HANDLE hDoc)
 {
     pcore_inline_script_scan scan;

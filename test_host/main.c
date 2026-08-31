@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1139
+#define TEST_MAX_NUMBER 1140
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6267,6 +6267,7 @@ struct pcore_browser_script_bridge {
      * callback so native form controls are dispatched by identity rather than
      * by a layout hit-test that can miss their overlaid child window. */
     char *programmatic_click_element_id;
+    char active_element_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
 };
 
 typedef struct pcore_browser_script_session {
@@ -8297,6 +8298,7 @@ static int pcore_browser_script_key_dispatch(void *pw,
         int *out_default_allowed);
 static int pcore_browser_script_focus_dispatch(void *pw,
         const PBrowserScriptFocusEventInfo *info);
+static const char *pcore_browser_script_get_active_element(void *pw);
 static int pcore_browser_script_edit_dispatch(void *pw,
         const PBrowserScriptEditEventInfo *info);
 static int pcore_browser_script_select_dispatch(void *pw,
@@ -10494,6 +10496,28 @@ static int pcore_browser_script_focus_dispatch(void *pw,
             info->event_type, info->bubbles ? 1 : 0,
             info->cancelable ? 1 : 0, NULL);
     return (result < 0) ? -1 : 0;
+}
+
+static const char *pcore_browser_script_get_active_element(void *pw)
+{
+    pcore_browser_script_bridge *bridge;
+    int bytes;
+    int rc;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL) {
+        return "";
+    }
+    bridge->active_element_id[0] = '\0';
+    bytes = 0;
+    rc = PCore_InteractionFocusElementId(bridge->document,
+            bridge->active_element_id, sizeof(bridge->active_element_id),
+            &bytes);
+    if (rc != 0 || bytes <= 0) {
+        bridge->active_element_id[0] = '\0';
+        return "";
+    }
+    return bridge->active_element_id;
 }
 
 static int pcore_browser_script_edit_dispatch(void *pw,
@@ -15882,6 +15906,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     HANDLE session;
     HANDLE runtime;
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
+    PBrowserScriptActiveElementCallbacks active_element_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
@@ -15997,10 +16022,15 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     bridge->next_event_id = 1;
     bridge->events = NULL;
     bridge->programmatic_click_element_id = NULL;
+    bridge->active_element_id[0] = '\0';
     dom_read_callbacks.size = sizeof(dom_read_callbacks);
     dom_read_callbacks.pw = bridge;
     dom_read_callbacks.has_element = pcore_browser_script_dom_has_element;
     dom_read_callbacks.get_text = pcore_browser_script_dom_get_text;
+    active_element_callbacks.size = sizeof(active_element_callbacks);
+    active_element_callbacks.pw = bridge;
+    active_element_callbacks.get_active_element =
+            pcore_browser_script_get_active_element;
     dom_relation_callbacks.size = sizeof(dom_relation_callbacks);
     dom_relation_callbacks.pw = bridge;
     dom_relation_callbacks.get_relation =
@@ -16223,6 +16253,16 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity, "DOM bootstrap",
                 PBrowser_ScriptSessionGetError(session));
+        pcore_browser_script_bridge_destroy(bridge);
+        if (out_runtime != NULL) {
+            free(bridge);
+        }
+        return 1;
+    }
+    if (PBrowser_ScriptSessionRegisterActiveElementCallbacks(session,
+            &active_element_callbacks) != PSCRIPT_OK) {
+        pcore_browser_script_error(error, error_capacity,
+                "activeElement bridge", PBrowser_ScriptSessionGetError(session));
         pcore_browser_script_bridge_destroy(bridge);
         if (out_runtime != NULL) {
             free(bridge);
@@ -33973,11 +34013,13 @@ static BOOL test1135_browser_screen_orientation_change_contract(void)
     static const char URL[] = "https://positron.local/screen-orientation";
     HANDLE session;
     const char *result;
+    const char *session_error;
     char error[1024];
     int ok;
 
     session = NULL;
     result = NULL;
+    session_error = NULL;
     memset(error, 0, sizeof(error));
     ok = 1;
     pcore_browser_script_session_destroy();
@@ -33996,8 +34038,12 @@ static BOOL test1135_browser_screen_orientation_change_contract(void)
             PBrowser_ScriptSessionSetGlobalNumber(session,
             "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
             PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
-        cstr_copy(error, sizeof(error),
-                "screen orientation bootstrap failed");
+        session_error = PBrowser_ScriptSessionGetError(session);
+        _snprintf(error, sizeof(error) - 1,
+                "screen orientation bootstrap failed: %s",
+                session_error != NULL && session_error[0] != '\0' ?
+                session_error : "unknown error");
+        error[sizeof(error) - 1] = '\0';
         ok = 0;
     }
     if (ok) {
@@ -34783,6 +34829,234 @@ static BOOL test1139_browser_window_focus_lifecycle_contract(void)
     show_info(L"TEST 1139 OK",
             "Host activation updates document.hasFocus and window focus/blur"
             " events; duplicate values are silent and event fields are stable.");
+    return TRUE;
+}
+
+/* TEST 1140 - Core focus target reaches document.activeElement. */
+static BOOL test1140_browser_active_element_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<input id='first' value='one'>"
+        "<button id='second' type='button'>Next</button>"
+        "<a href='/no-id'>No id</a>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/active-element";
+    static const char CSS[] =
+        "body{margin:8px}"
+        "input,button,a{display:block;width:180px;height:24px;margin:4px}";
+    pcore_browser_script_bridge bridge;
+    PBrowserScriptDomReadCallbacks dom_read_callbacks;
+    PBrowserScriptActiveElementCallbacks active_element_callbacks;
+    PBrowserScriptDomAttributeCallbacks dom_attribute_callbacks;
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE session;
+    const char *result;
+    const char *session_error;
+    char id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
+    char error[1024];
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int selected;
+    int disabled;
+    int bytes;
+    int rc;
+    int set_rc;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    session = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(&bridge, 0, sizeof(bridge));
+    memset(&dom_read_callbacks, 0, sizeof(dom_read_callbacks));
+    memset(&active_element_callbacks, 0,
+            sizeof(active_element_callbacks));
+    memset(&dom_attribute_callbacks, 0,
+            sizeof(dom_attribute_callbacks));
+    memset(id, 0, sizeof(id));
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    document = PCore_ParseHTML(HTML, 0);
+    if (document == NULL) {
+        cstr_copy(error, sizeof(error), "focus fixture layout failed");
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/active-element.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 240) != 0) {
+            cstr_copy(error, sizeof(error), "focus fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        bridge.document = document;
+        session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS * 2UL);
+        if (session == NULL ||
+                PBrowser_ScriptSessionSetGlobalString(session,
+                "__pcoreDocumentUrl", URL) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionSetGlobalNumber(session,
+                "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionSetGlobalJson(session,
+                "__pcoreHistoryState", "null") != PSCRIPT_OK) {
+            cstr_copy(error, sizeof(error), "activeElement session setup failed");
+            ok = 0;
+        }
+    }
+    dom_read_callbacks.size = sizeof(dom_read_callbacks);
+    dom_read_callbacks.pw = &bridge;
+    dom_read_callbacks.has_element = pcore_browser_script_dom_has_element;
+    dom_read_callbacks.get_text = pcore_browser_script_dom_get_text;
+    active_element_callbacks.size = sizeof(active_element_callbacks);
+    active_element_callbacks.pw = &bridge;
+    active_element_callbacks.get_active_element =
+            pcore_browser_script_get_active_element;
+    dom_attribute_callbacks.size = sizeof(dom_attribute_callbacks);
+    dom_attribute_callbacks.pw = &bridge;
+    dom_attribute_callbacks.get_attribute =
+            pcore_browser_script_dom_get_attribute;
+    dom_attribute_callbacks.set_attribute =
+            pcore_browser_script_dom_set_attribute;
+    dom_attribute_callbacks.remove_attribute =
+            pcore_browser_script_dom_remove_attribute;
+    if (ok && (PBrowser_ScriptSessionRegisterDomReadCallbacks(session,
+            &dom_read_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK)) {
+        session_error = PBrowser_ScriptSessionGetError(session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "activeElement bootstrap failed: %s", session_error);
+            error[sizeof(error) - 1] = '\0';
+        } else {
+            cstr_copy(error, sizeof(error), "activeElement bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionRegisterActiveElementCallbacks(session,
+            &active_element_callbacks) != PSCRIPT_OK) {
+        session_error = PBrowser_ScriptSessionGetError(session);
+        _snprintf(error, sizeof(error) - 1,
+                "activeElement bridge setup failed: %s",
+                session_error != NULL && session_error[0] != '\0' ?
+                session_error : "unknown error");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    bytes = -1;
+    if (ok && (PCore_InteractionFocusElementId(document, id,
+            sizeof(id), &bytes) != 1 || bytes != 0 || id[0] != '\0')) {
+        cstr_copy(error, sizeof(error),
+                "unfocused Core target did not fail closed");
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "String(document.activeElement===document.body);", -1) !=
+            PSCRIPT_OK || (result = PBrowser_ScriptSessionGetResult(session)) ==
+            NULL || strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "activeElement did not fall back to body");
+        ok = 0;
+    }
+    rc = -1;
+    set_rc = -1;
+    if (ok && (PCore_FormControlInfoById(document, "first", &x, &y, &width,
+            &height, &kind, &selected, &disabled) != 0 ||
+            (set_rc = PCore_InteractionSetAt(document, x + width / 2,
+            y + height / 2, PCORE_INTERACTION_FOCUS)) < 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "first focus target setup failed rc=%d geom=%d,%d,%d,%d kind=%d disabled=%d",
+                set_rc, x, y, width, height, kind, disabled);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && ((rc = PCore_InteractionFocusElementId(document, id,
+            sizeof(id), &bytes)) != 0 || strcmp(id, "first") != 0 ||
+            bytes != 5)) {
+        _snprintf(error, sizeof(error) - 1,
+                "Core did not expose focused id rc=%d set=%d bytes=%d id=%s geom=%d,%d,%d,%d",
+                rc, set_rc, bytes, id, x, y, width, height);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
+            &dom_attribute_callbacks) != PSCRIPT_OK) {
+        session_error = PBrowser_ScriptSessionGetError(session);
+        _snprintf(error, sizeof(error) - 1,
+                "activeElement attribute bridge setup failed: %s",
+                session_error != NULL && session_error[0] != '\0' ?
+                session_error : "unknown error");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "document.activeElement.id+'|'+"
+            "String(document.activeElement===document.body);", -1) !=
+            PSCRIPT_OK || (result = PBrowser_ScriptSessionGetResult(session)) ==
+            NULL || strcmp(result, "first|false") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "document.activeElement did not reflect Core focus actual=%s error=%s",
+                result != NULL ? result : "<null>",
+                (session_error = PBrowser_ScriptSessionGetError(session)) != NULL &&
+                session_error[0] != '\0' ? session_error : "<none>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (PCore_InteractionClear(document, PCORE_INTERACTION_FOCUS) < 0 ||
+            PBrowser_ScriptSessionEvaluate(session,
+            "String(document.activeElement===document.body);", -1) !=
+            PSCRIPT_OK || (result = PBrowser_ScriptSessionGetResult(session)) ==
+            NULL || strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "cleared focus did not restore body fallback");
+        ok = 0;
+    }
+    if (ok && (PCore_FormControlInfoById(document, "second", &x, &y, &width,
+            &height, &kind, &selected, &disabled) != 0 ||
+            PCore_InteractionSetAt(document, x + width / 2, y + height / 2,
+            PCORE_INTERACTION_FOCUS) < 0 ||
+            PCore_InteractionFocusElementId(document, id, 2, &bytes) != 2 ||
+            bytes != 6 || id[0] != '\0')) {
+        cstr_copy(error, sizeof(error),
+                "small activeElement id buffer was not rejected");
+        ok = 0;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionUnregisterActiveElementCallbacks(session);
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(document.activeElement===document.body);", -1) ==
+                PSCRIPT_OK &&
+                (result = PBrowser_ScriptSessionGetResult(session)) != NULL &&
+                strcmp(result, "true") == 0;
+        if (!ok) {
+            cstr_copy(error, sizeof(error),
+                    "activeElement unregister did not fail closed");
+        }
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1140 FAIL", error[0] != '\0' ? error :
+                "activeElement contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1140 OK",
+            "Core focus ids reach Browser document.activeElement with a"
+            " body fallback and bounded fail-closed lookup.");
     return TRUE;
 }
 
@@ -92828,6 +93102,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1137: ok = test1137_browser_task_checkpoint_contract(); break;
         case 1138: ok = test1138_browser_page_show_lifecycle_contract(); break;
         case 1139: ok = test1139_browser_window_focus_lifecycle_contract(); break;
+        case 1140: ok = test1140_browser_active_element_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

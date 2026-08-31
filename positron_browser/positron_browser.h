@@ -46,6 +46,7 @@ extern "C" {
 #define PBROWSER_SCRIPT_WINDOW_NAME_MAX 64
 #define PBROWSER_SCRIPT_DIALOG_VALUE_MAX 1024
 #define PBROWSER_SCRIPT_DIALOG_ID_MAX 1024
+#define PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX 1024
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -397,6 +398,21 @@ typedef struct PBrowserScriptDomReadCallbacks {
     PBrowserScriptHasElementFn has_element;
     PBrowserScriptGetTextFn get_text;
 } PBrowserScriptDomReadCallbacks;
+
+/* The host supplies the current focused element's non-empty UTF-8 DOM id.
+ * The returned pointer is borrowed for the synchronous callback only;
+ * NULL/empty means that no id-addressable element is focused and makes
+ * document.activeElement fall back to document.body. The host remains the
+ * owner of native focus and may derive this value from positron_core's
+ * PCore_InteractionFocusElementId. Registering this table installs the
+ * optional activeElement projection; a session without this bridge does not
+ * pay for or promise that extra property. */
+typedef const char *(*PBrowserScriptGetActiveElementFn)(void *pw);
+typedef struct PBrowserScriptActiveElementCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetActiveElementFn get_active_element;
+} PBrowserScriptActiveElementCallbacks;
 
 /* Typed host adapter for the bounded, ID-addressable DOM relationship
  * boundary. Value relationships (parent/sibling/child-at/tag/form-owner)
@@ -1505,6 +1521,11 @@ PBROWSER_API int PBrowser_ScriptSessionRunMessages(HANDLE hSession,
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterActiveElementCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptActiveElementCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterActiveElementCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomRelationCallbacks(
         HANDLE hSession, const PBrowserScriptDomRelationCallbacks *callbacks);

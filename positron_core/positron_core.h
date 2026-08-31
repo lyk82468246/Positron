@@ -895,6 +895,17 @@ PCORE_API int PCore_InteractionSetAt(HANDLE hDoc, int x, int y,
 PCORE_API int PCore_InteractionClear(HANDLE hDoc,
                                     unsigned int state_flags);
 
+/* Read the non-empty UTF-8 id of the current Core focus node. The returned
+ * id is copied into caller-owned storage when capacity is positive and the
+ * complete byte count (excluding the NUL) is always written to out_bytes.
+ * A NULL/zero-capacity buffer is a size probe. Returns 0 when a focused
+ * element with an id was found, 1 when there is no focused/id-addressable
+ * element, 2 when a supplied buffer is too small, and 1 for invalid or
+ * unavailable DOM state. The node is borrowed from the document and no
+ * focus or style state is changed. */
+PCORE_API int PCore_InteractionFocusElementId(HANDLE hDoc,
+        char *out_id, int id_capacity, int *out_bytes);
+
 /* DOM event bridge. Listener callbacks run synchronously on the dispatching
  * thread and return a bitwise combination of PCORE_EVENT_ACTION_* values.
  * Element ids and event types are UTF-8. The opaque listener handle remains

@@ -128,6 +128,14 @@ listener。重复的零值或非零值保持静默，非零输入归一化为 fo
 离线脚本语义夹具，不证明 OEM 激活通知、native 控件焦点矩形或真实窗口切换的
 视觉结果。
 
+TEST1140 覆盖 Core 焦点 id 到 Browser `document.activeElement` 的可选桥：未设置
+焦点或焦点节点没有 id 时返回 `document.body`，有 id 时通过现有 DOM read adapter
+解析到对应元素；清除焦点和注销 callback 都保持安全回退。断言还覆盖 Core
+UTF-8 size-probe、过小缓冲的完整字节数和不修改输出、注册后 getter 的同步读取，
+以及空/无效 id 的 fail-closed 行为。它是离线脚本/Core 语义夹具，不证明完整
+浏览器焦点算法、native HWND 焦点矩形、自动初始焦点、焦点陷阱或真实窗口切换
+视觉；这些仍由宿主和人工设备验收负责。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

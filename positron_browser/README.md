@@ -123,6 +123,34 @@ PBrowser_HistoryDestroy(history);
 
 精确预算、返回码和 callback 结构以 `positron_browser.h` 为准。
 
+### `document.activeElement` 与 Core 焦点桥
+
+`document.activeElement` 是一个按需安装的 Browser 投影，不是 Browser 自己猜测
+native 焦点。宿主在 bootstrap 完成前或完成后注册
+`PBrowserScriptActiveElementCallbacks`，然后在页面脚本运行前确保 Core 的 DOM
+读回调也已注册。回调只需同步返回当前焦点节点的非空 UTF-8 DOM id；返回空值、
+过长 id、已失效 id 或 Core 没有可用的 id-addressable 焦点时，getter 都安全地
+返回 `document.body`。注册后再注销只移除 native id 来源，已安装的 getter 仍会
+回退到 `body`；从未注册该表的 session 不安装这个可选属性，以免增加 WM6 的
+bootstrap 成本。
+
+参考宿主把 Core 的 `PCore_InteractionFocusElementId` 适配到这个 callback：
+
+```c
+PBrowserScriptActiveElementCallbacks active;
+
+memset(&active, 0, sizeof(active));
+active.size = sizeof(active);
+active.pw = bridge;
+active.get_active_element = host_get_active_element_id;
+PBrowser_ScriptSessionRegisterActiveElementCallbacks(session, &active);
+```
+
+`PCore_InteractionFocusElementId` 使用与其他 UTF-8 查询相同的 size-probe 和
+固定容量规则；它只报告当前 Core 交互状态中的 id，不改变焦点、style 或 layout。
+因此这项组合不提供完整浏览器焦点算法、自动初始焦点、焦点矩形、native HWND
+切换或跨窗口策略。回调指针只在同步调用期间借用，宿主仍拥有 native 焦点状态。
+
 ### DOM、表单与 validation adapters
 
 Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把当前 Core document 的受限查询和 mutation 映射为：
@@ -415,8 +443,10 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 
 1. 用 `positron_core.dll` 创建、style、layout 当前文档；
 2. 为该文档构造 callback context；
-3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；
-4. 显式 bootstrap，并按文档顺序执行允许的 classic script；
+3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；若需要
+   `document.activeElement`，同时准备 Core 焦点 id callback；
+4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement callback，并按文档
+   顺序执行允许的 classic script；
 5. 把 WM 输入转换为 Browser typed transaction；
 6. 只在 Browser 允许默认动作后修改 Core/native 控件；
 7. mutation 后重新 layout/paint；
@@ -441,6 +471,10 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
+- `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
+  后才安装；它通过 Core 的有界焦点 id 和现有 DOM 读回调解析元素，空值、过长或
+  过时 id 回退到 `document.body`。它不替代完整焦点算法、native 焦点矩形、自动
+  初始焦点、焦点陷阱或跨窗口策略。
 - `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台 native 控件焦点。脚本层的顶层窗口 focus/blur 与 `document.hasFocus()` 由宿主通过显式通知维护，但完整初始焦点、焦点陷阱、跨窗口焦点策略和 CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期仍未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。
