@@ -52,14 +52,17 @@ TEST1141 与定向设备门验证了切换顺序、no-op 和注销后的 fail-cl
 同步和 viewport 可见性。next698 又补齐了页面级 `Element.scrollIntoView()`：Browser
 复用 `getBoundingClientRect()` 和现有 scroll callback，提供有限的 block/inline 对齐，
 并以 TEST1143 与定向设备门验证默认、center、末端、nearest 和 smooth 拒绝路径。
-下一条纵向能力是 next699，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；不能
+next699 又补齐了基于 Core 单矩形快照的 `Element.getClientRects()`：Browser 返回每次
+新建、最多含一个 viewport-relative 矩形的 array-like 集合，并以 TEST1144 与定向设备门
+验证集合/矩形身份、边界、page-level scroll 跟随和隐藏元素空集合。下一条纵向能力是
+next700，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；不能
 凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。嵌套 overflow 容器、
 pinch zoom、平滑/惯性滚动和视觉猜测不得误写成已支持能力。
 
 优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
-next694、next695、next696、next697 和 next698 的完成证据都包括定向自动断言、直接相邻
-回归和风险相称的设备门；下一批 next699 必须沿用同一完成标准。
+next694、next695、next696、next697、next698 和 next699 的完成证据都包括定向自动断言、
+直接相邻回归和风险相称的设备门；下一批 next700 必须沿用同一完成标准。
 视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、
 严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，
 也不要在没有实际缺口证据时提前选择下一能力方向。

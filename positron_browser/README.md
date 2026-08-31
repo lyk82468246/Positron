@@ -85,7 +85,7 @@ window `resize`；有效 scroll 会先派发 visual viewport `scroll`，再派�
 该对象不模拟 pinch zoom、视觉 viewport 偏移或 nested overflow；宿主仍负责
 真实窗口、Core layout 和滚动应用。
 
-### Layout geometry 与 `getBoundingClientRect()`
+### Layout geometry 与 `getBoundingClientRect()` / `getClientRects()`
 
 DOM relation callback 还提供四个数值分量：当前 Core layout box 的
 `x`、`y`、`width` 和 `height`。Browser 在 `Element.getBoundingClientRect()`
@@ -94,10 +94,16 @@ DOM relation callback 还提供四个数值分量：当前 Core layout box 的
 的 CSS 像素。元素没有已完成的 layout、没有可用 box 或 relation callback 未注册时，
 方法返回全零矩形；它不会触发 style/layout，也不会暴露 Core 的 box 指针。
 
-这是一个有界的单矩形接口：不承诺 transforms、Range/多片段 union、完整
-`getClientRects()`、独立 nested overflow scrolling 或视觉像素精度。宿主仍负责
-在 DOM mutation、resize 或页面提交后重新 style/layout，并按实际滚动位置调用
-`PBrowser_ScriptSessionNotifyScroll`。
+这是一个有界的单矩形接口：不承诺 transforms、Range/多片段 union、独立 nested
+overflow scrolling 或视觉像素精度。`Element.getClientRects()` 使用同一个
+Core border-box 快照，返回每次调用都新建的 array-like 集合：`length` 只能是
+`0` 或 `1`，有可用且宽高均为正的矩形时该矩形位于索引 `0`，并可通过
+`.item(0)` 读取；`.item()` 对越界或非负整数之外的参数返回 `null`。集合和其中的矩形
+都不与上一次调用共享身份。它们与 `getBoundingClientRect()` 一样是
+viewport-relative CSS 像素，并随 Browser 的 page-level scroll 更新；未布局、隐藏、
+无可用 box 或非正尺寸时返回空集合。该方法不模拟 inline 多片段、Range、transform、
+nested overflow 或视觉像素精度。宿主仍负责在 DOM mutation、resize 或页面提交后
+重新 style/layout，并按实际滚动位置调用 `PBrowser_ScriptSessionNotifyScroll`。
 
 ### `Element.scrollIntoView()`
 
@@ -550,6 +556,10 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   CSS scroll 坐标在 callback 返回后同步回脚本。不可用目标、对非当前目标的 blur，以及
   注销后的方法都 fail closed/no-op；重复 focus 不重复派发 focus family。nested overflow、scroll-margin、
   平滑/惯性滚动、完整焦点导航、初始焦点、focus ring 或跨窗口策略仍不在范围内。
+- `getBoundingClientRect()` 与 `getClientRects()` 只组合已有的 Core relation geometry
+  单矩形快照；后者返回每次调用都新建、最多含一个矩形的 array-like 集合，未布局、隐藏
+  或非正尺寸时为空。它们不提供 transforms、inline 多片段/Range、nested overflow 或
+  视觉像素精度。
 - `Element.scrollIntoView()` 只组合已有的 Core relation geometry 和 page-level scroll
   callback，支持有限的 block/inline 对齐与 `auto`/`instant` 行为；无 layout 或不支持的
   `smooth`/nested overflow 请求安全 no-op。宿主仍负责页面 extent、clamp、物理滚动和

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1143
+#define TEST_MAX_NUMBER 1144
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -35884,6 +35884,203 @@ static BOOL test1143_browser_scroll_into_view_contract(void)
     }
     show_info(L"TEST 1143 OK",
             "scrollIntoView aligns page targets and safely rejects smooth scroll.");
+    return TRUE;
+}
+
+/* TEST 1144 - Element.getClientRects exposes the bounded Core box snapshot. */
+static BOOL test1144_browser_client_rects_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='target'>Target</div>"
+        "<div id='spacer'>Spacer</div>"
+        "<div id='far'>Far</div>"
+        "<div id='hidden'>Hidden</div>"
+        "<div id='tail'>Tail</div>"
+        "<script>window.__clientRectsReady=true;</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:0}"
+        "#target,#far{display:block;width:90px;height:24px;margin:2px}"
+        "#spacer{display:block;width:240px;height:360px}"
+        "#hidden{display:none}#tail{height:180px}";
+    static const char URL[] = "https://positron.local/client-rects";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/client-rects.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 180, 120) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "client rects fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = PCore_DocumentWidth(document);
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 180;
+        g_view_h = 120;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (PBrowser_ScriptSessionNotifyResize(
+                g_browser_script_session.session, 180, 120, 1) !=
+                PSCRIPT_OK) {
+            cstr_copy(error, sizeof(error),
+                    "client rects fixture viewport sync failed");
+            ok = 0;
+        }
+    }
+    if (ok && (g_doc_w <= g_view_w || g_doc_h <= g_view_h)) {
+        cstr_copy(error, sizeof(error),
+                "client rects fixture did not create page overflow");
+        ok = 0;
+    }
+    if (ok) {
+        if (pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('target');"
+                "var a=e.getClientRects();var b=e.getClientRects();var r=e.getBoundingClientRect();"
+                "return String(a.length===1&&a.item(0)===a[0]&&a.item(-1)===null&&"
+                "a.item(1)===null&&a.item('0')===a[0]&&a!==b&&a[0]!==b[0]&&"
+                "a[0].x===r.x&&a[0].y===r.y&&a[0].top===r.top&&a[0].left===r.left&&"
+                "a[0].right===r.right&&a[0].bottom===r.bottom&&a[0].width===r.width&&"
+                "a[0].height===r.height);})();", -1, error,
+                sizeof(error)) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "client rect snapshot evaluation failed");
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                cstr_copy(error, sizeof(error),
+                        "client rect list did not mirror the element box (snapshot)");
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        if (pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('far');var a;var b;"
+                "window.scrollTo(0,0);a=e.getClientRects();window.scrollTo(9999,9999);"
+                "b=e.getClientRects();return String(a.length===1&&b.length===1&&"
+                "b[0].top===e.getBoundingClientRect().top&&"
+                "b[0].left===e.getBoundingClientRect().left&&"
+                "a[0].top-b[0].top===window.scrollY&&"
+                "a[0].left-b[0].left===window.scrollX);})();", -1,
+                error, sizeof(error)) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "client rect scroll evaluation failed");
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                cstr_copy(error, sizeof(error),
+                        "client rect list did not follow page scroll (scroll)");
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        if (pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('hidden');"
+                "var a=e.getClientRects();return String(a.length===0&&a.item(0)===null&&"
+                "e.getBoundingClientRect().width===0&&e.getBoundingClientRect().height===0);})();",
+                -1, error, sizeof(error)) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "client rect hidden evaluation failed");
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                cstr_copy(error, sizeof(error),
+                        "hidden element unexpectedly exposed a client rect (hidden)");
+                ok = 0;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1144 FAIL", error[0] != '\0' ? error :
+                "getClientRects contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1144 OK",
+            "getClientRects exposes one bounded box, tracks page scroll,"
+            " and returns an empty list for hidden elements.");
     return TRUE;
 }
 
@@ -93933,6 +94130,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1141: ok = test1141_browser_script_focus_request_contract(); break;
         case 1142: ok = test1142_browser_focus_scroll_contract(); break;
         case 1143: ok = test1143_browser_scroll_into_view_contract(); break;
+        case 1144: ok = test1144_browser_client_rects_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

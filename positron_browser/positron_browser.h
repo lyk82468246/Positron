@@ -490,7 +490,9 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * wrappers without inventing a second DOM identity scheme. The four
  * LAYOUT_RECT_* relations are numeric document-CSS-pixel geometry components;
  * the Browser wrapper subtracts the current page scroll before exposing them
- * through Element.getBoundingClientRect(). */
+ * through Element.getBoundingClientRect() or the bounded, single-rectangle
+ * Element.getClientRects() collection. The latter is a fresh array-like
+ * snapshot with length 0 or 1; it does not expose the Core box tree. */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"

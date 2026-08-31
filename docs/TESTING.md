@@ -63,8 +63,8 @@ TEST1130 覆盖真实 IANA 页面目录脚本需要的布局几何：Core 在成
 拒绝几何关系，layout 后通过现有 DOM relation callback 暴露元素 border-box 的
 `x/y/width/height`，Browser 将四个整数组合成 `getBoundingClientRect()` 快照，
 并随 page-level scroll 返回 viewport-relative 的 `top`。断言同时检查矩形边界
-算术和滚动后的尺寸/横坐标保持不变；它不证明 transforms、`getClientRects()`、
-Range、多片段文本、nested overflow 或真实页面的字体/像素视觉。
+算术和滚动后的尺寸/横坐标保持不变；它不证明 transforms、Range、多片段文本、
+nested overflow 或真实页面的字体/像素视觉。
 
 TEST1131 覆盖 WM_SIZE 到 Browser script session 的 viewport resize 合同：宿主
 把物理 client area 按 DPI 换算为 CSS 宽高/DPR，Browser 更新
@@ -160,6 +160,12 @@ callback，并在实际变化时只产生一次 window `scroll`；已经可见�
 静默。夹具还断言不支持的 `behavior:"smooth"` 安全拒绝，不改变 viewport 或事件
 队列。它不证明 scroll-margin、nested overflow、平滑/惯性滚动、真实触摸/滚动条
 视觉或复杂布局中的完整浏览器对齐算法。
+
+TEST1144 覆盖 `Element.getClientRects()` 的有界单矩形集合：每次调用都会得到新的
+array-like 集合和矩形，`length`、索引 `0` 与 `.item(0)` 与同一元素的
+`getBoundingClientRect()` 保持一致，越界项返回 `null`；集合随 page-level scroll
+更新，隐藏元素返回空集合。它不证明 transforms、inline 多片段/Range、nested
+overflow 或视觉像素精度。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
