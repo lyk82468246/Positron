@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1134
+#define TEST_MAX_NUMBER 1135
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -33869,6 +33869,183 @@ static BOOL test1134_browser_scroll_restoration_contract(void)
             "Browser-owned history.scrollRestoration now gates the host's"
             " automatic viewport restore; manual leaves the current position"
             " untouched while auto restores the saved entry snapshot.");
+    return TRUE;
+}
+
+/* TEST 1135 - ScreenOrientation keeps identity and reports direction flips. */
+static BOOL test1135_browser_screen_orientation_change_contract(void)
+{
+    static const char URL[] = "https://positron.local/screen-orientation";
+    HANDLE session;
+    const char *result;
+    char error[1024];
+    int ok;
+
+    session = NULL;
+    result = NULL;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    if (session == NULL ||
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", URL) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", 320.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", 240.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "screen orientation bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "var orientation=screen.orientation;var trace='';"
+                "var handlerCount=0;var listenerCount=0;"
+                "function handler(e){handlerCount++;trace+='H:'+e.type+'|'"
+                "+String(e.target===orientation)+'|'"
+                "+String(e.currentTarget===orientation)+'|'"
+                "+String(e.bubbles)+'|'+String(e.cancelable)+'|'"
+                "+String(e.isTrusted)+'|'+String(e.defaultPrevented)+'|'"
+                "+orientation.type+'|'+orientation.angle;}"
+                "function listener(e){listenerCount++;trace+='|L:'"
+                "+String(e.target===orientation);}"
+                "orientation.onchange=handler;"
+                "orientation.addEventListener('change',listener);"
+                "window.addEventListener('resize',function(){trace+='|R';});"
+                "String(orientation===screen.orientation)+'|'"
+                "+orientation.type+'|'+orientation.angle;", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "true|landscape-primary|90") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "initial orientation identity mismatch");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 160.0, 300.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "[String(orientation===screen.orientation),orientation.type,"
+                "orientation.angle,handlerCount,listenerCount,trace].join('|');",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "true|portrait-primary|0|1|1|H:change|true|true|false|false|"
+                "true|false|portrait-primary|0|L:true|R") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "orientation change event contract mismatch");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 160.0, 300.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(handlerCount)+'|'+String(listenerCount)+'|'+trace;",
+                -1) != PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "1|1|H:change|true|true|false|false|true|false|"
+                "portrait-primary|0|L:true|R") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "duplicate orientation resize was not silent");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 120.0, 300.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(handlerCount)+'|'+String(listenerCount)+'|'"
+                "+orientation.type+'|'+orientation.angle+'|'+trace;", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "1|1|portrait-primary|0|H:change|true|true|false|false|true|"
+                "false|portrait-primary|0|L:true|R|R") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "same-direction resize dispatched orientation change");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, 300.0, 120.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(handlerCount)+'|'+String(listenerCount)+'|'"
+                "+orientation.type+'|'+orientation.angle+'|'+trace;", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "2|2|landscape-primary|90|H:change|true|true|false|false|true|"
+                "false|portrait-primary|0|L:true|R|RH:change|true|true|false|"
+                "false|true|false|landscape-primary|90|L:true|R") != 0) {
+            if (result != NULL) {
+                _snprintf(error, sizeof(error) - 1,
+                        "second orientation result: %s", result);
+                error[sizeof(error) - 1] = '\0';
+            } else {
+                cstr_copy(error, sizeof(error),
+                        "second orientation change was not ordered correctly");
+            }
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionEvaluate(session,
+                "orientation.removeEventListener('change',listener);"
+                "orientation.onchange=null;", -1) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionNotifyResize(session, 120.0, 300.0,
+                2.0) != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(handlerCount)+'|'+String(listenerCount)+'|'"
+                "+orientation.type+'|'+orientation.angle+'|'+trace;", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result,
+                "2|2|portrait-primary|0|H:change|true|true|false|false|true|"
+                "false|portrait-primary|0|L:true|R|RH:change|true|true|false|"
+                "false|true|false|landscape-primary|90|L:true|R|R") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "orientation listener removal mismatch");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PBrowser_ScriptSessionNotifyResize(session, -1.0, 300.0, 2.0) !=
+                PSCRIPT_ERROR_ARGUMENT ||
+                PBrowser_ScriptSessionEvaluate(session,
+                "String(handlerCount)+'|'+String(listenerCount)+'|'"
+                "+orientation.type+'|'+orientation.angle;", -1) !=
+                PSCRIPT_OK ||
+                (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+                strcmp(result, "2|2|portrait-primary|0") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "invalid orientation resize changed state");
+            ok = 0;
+        }
+    }
+    if (session != NULL) {
+        PBrowser_ScriptSessionDestroy(session);
+    }
+    if (!ok) {
+        show_error(L"TEST 1135 FAIL", error[0] != '\0' ? error :
+                "screen orientation contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1135 OK",
+            "ScreenOrientation is a stable product object; direction flips"
+            " dispatch one trusted change event before the host resize event,"
+            " while duplicate and same-direction resizes stay quiet.");
     return TRUE;
 }
 
@@ -91909,6 +92086,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1132: ok = test1132_browser_match_media_resize_contract(); break;
         case 1133: ok = test1133_browser_visual_viewport_contract(); break;
         case 1134: ok = test1134_browser_scroll_restoration_contract(); break;
+        case 1135: ok = test1135_browser_screen_orientation_change_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -92,6 +92,13 @@ TEST1134 覆盖 history traversal 的自动滚动恢复策略：Browser 以
 保存的 entry snapshot；查询的空句柄/空输出参数会 fail closed。fragment reveal
 和显式脚本滚动不属于这条自动恢复门。
 
+TEST1135 覆盖 `screen.orientation` 的 Browser 语义：同一 session 内多次读取保持
+同一个对象身份，`type`/`angle` 随布局视口方向更新；方向翻转时先在媒体列表刷新后
+同步派发一次以 orientation 为 target 的可信 `change`，再进入 visual/window
+`resize`，而重复或同方向 resize 不重复派发。断言同时覆盖 `onchange`、有限
+`addEventListener` 监听器、事件字段、监听器移除和非法 resize 的 fail-closed
+保护；不证明设备真实旋转动画、非客户区或视觉像素结果。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

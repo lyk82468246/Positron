@@ -1784,12 +1784,15 @@ PBROWSER_API int PBrowser_ScriptSessionGetScrollRestoration(HANDLE hSession,
  * height are CSS pixels and device_pixel_ratio must be positive. The Browser
  * updates inner/outer dimensions, devicePixelRatio and screen metadata, then
  * synchronously refreshes at most 64 `matchMedia()` lists and dispatches
- * their `change` events before the visualViewport and window `resize` events
- * when the effective snapshot changes. The visualViewport snapshot follows
- * this layout viewport: scale is 1, offsets are 0, and pageLeft/pageTop track
- * the page scroll. It does not perform Core style/layout work or run queued
- * timers/animation frames. Duplicate snapshots are accepted without
- * dispatching another event. */
+ * their `change` events before a direction flip dispatches the stable
+ * `screen.orientation` object's trusted `change` event, followed by the
+ * visualViewport and window `resize` events. The visualViewport snapshot
+ * follows this layout viewport: scale is 1, offsets are 0, and pageLeft/pageTop
+ * track the page scroll. It does not perform Core style/layout work or run
+ * queued timers/animation frames. Duplicate snapshots are accepted without
+ * dispatching another event; same-direction resizes do not dispatch an
+ * orientation event. `screen.orientation` tracks at most 16 listeners and
+ * supports the `onchange` property. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyResize(HANDLE hSession,
         double viewport_width, double viewport_height,
         double device_pixel_ratio);

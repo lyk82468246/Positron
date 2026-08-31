@@ -61,9 +61,13 @@ viewport 位置换算为 CSS page 坐标，再调用
 `PBrowser_ScriptSessionNotifyResize(session, width, height, dpr)`。Browser
 会更新 `innerWidth`、`innerHeight`、`outerWidth`、`outerHeight`、
 `devicePixelRatio` 以及 `screen` 的宽高/方向，并同步派发一次不冒泡、不可取消、
-`isTrusted` 为真的 window `resize` 事件。宽高允许为零，DPR 必须为正；参数必须
-是有限数值。完全相同的三元组仍返回成功，但不会重复派发事件。该入口只更新
-脚本侧快照，不触发 Core style/layout，也不自动运行 timer 或
+`isTrusted` 为真的 window `resize` 事件。`screen.orientation` 是跨读取保持身份
+稳定的对象；其 `type`/`angle` 随布局视口的横竖方向更新，支持 `onchange` 和
+有限的 `addEventListener('change', ...)` 监听器。方向真正翻转时，Browser 先完成
+同一次通知中的媒体列表刷新，再派发 orientation `change`，最后派发 visual viewport
+与 window 的 `resize`；仅尺寸或 DPR 改变而方向不变时不会伪造 orientation 事件。宽高允许为零，
+DPR 必须为正；参数必须是有限数值。完全相同的三元组仍返回成功，但不会重复派发
+事件。该入口只更新脚本侧快照，不触发 Core style/layout，也不自动运行 timer 或
 `requestAnimationFrame` 队列；宿主若页面在 resize handler 中排队下一帧，必须用
 已有的 frame pump 另行驱动。会话会追踪最多 64 个 `matchMedia()` 列表；有效
 viewport 或 DPR 变化时，只有 `matches` 实际翻转的列表才同步派发一次 `change`

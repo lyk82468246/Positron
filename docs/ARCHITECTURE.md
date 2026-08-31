@@ -116,7 +116,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `scrollRestoration` 策略；
 - 浏览器 script session 与 bootstrap；
 - 浏览器脚本 `window.scrollTo`/`scrollBy` 的 typed viewport callback，以及宿主物理滚动后的去重同步入口；
-- 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；
+- 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、稳定的 `screen.orientation` 对象及方向变化事件、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、focus、composition、click 和导航协调；
@@ -142,12 +142,15 @@ clamp 和 native child reposition 后，调用
 `PBrowser_ScriptSessionNotifyResize` 传入 CSS viewport 宽高与 DPR。Browser 更新
 viewport getters 和 `screen` 的宽高/方向，刷新最多 64 个已创建的
 `matchMedia()` 列表，并在匹配结果实际变化时先同步派发一次带 `media`/`matches`
-的 `change`，再按顺序派发 visual viewport 与 window 的不冒泡、不可取消 `resize`；
+的 `change`。`screen.orientation` 在同一 session 内保持对象身份稳定，方向真正
+翻转时再派发一次以该对象为 target 的可信 `change`；随后按顺序派发 visual viewport
+与 window 的不冒泡、不可取消 `resize`；同方向的尺寸变化不会伪造 orientation 事件。
 相同快照或未发生匹配变化不会重复派发。有效快照变化时，`visualViewport` 的
 `width`/`height`/`pageLeft`/`pageTop` 与同一布局视口同步，`scale` 固定为 `1`、
 `offsetLeft`/`offsetTop` 固定为 `0`。该入口不访问窗口、不触发 Core layout，也不自动
 运行 timer 或 animation-frame queue；页面若在 handler 中排队工作，仍由宿主消息循环
-驱动既有 scheduler。超过追踪上限的列表只保留初始匹配快照，完整媒体查询语法、
+驱动既有 scheduler。orientation 监听器最多保留 16 个；超过追踪上限的列表只保留
+初始匹配快照，完整媒体查询语法、
 nested overflow、pinch zoom 和视觉像素差异不因这个通知而获得额外保证。
 
 Browser 还拥有脚本可见的 history scroll-restoration 策略：
@@ -220,7 +223,7 @@ fragment reveal 和显式 `scrollTo` 仍走各自的宿主路径；查询失败�
 4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；WM6 `EDIT` 可能在 `WM_CHAR` 默认处理完成前发送 `EN_CHANGE`，宿主必须在默认处理返回后读取最终值，避免把旧值提交为一次 mutation；`WM_PASTE`/`WM_CUT`/`WM_COPY` 只在可取得有界 `CF_UNICODETEXT` data 时进入 contenteditable 事务，折叠复制直接 no-op；
 5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation，Browser 的脚本 selection API 在可用时同步宿主原生选区；原生 WM EDIT 的无修饰 down/move/up 或 Shift/方向键默认处理返回后，宿主用短暂 anchor 计算方向，并在捕获/取消/焦点中断时收尾，再通知 Browser；paste/copy/cut 还必须在 native default 前完成 clipboard data 的格式和容量检查，且不得让宿主复制一份 Browser 的 Range/Selection 模型；
 6. Browser 派发 mutation 后的 `input`、`change`、focus、`selectionchange` 或 lifecycle 事件；原生选区通知必须先由 Browser 去重，不能由宿主和 Core 各发一次；
-7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；宿主的滚动条、触摸、键盘或 fragment reveal 更新 page offset 后调用 Browser 的 scroll notification，让脚本 `scrollX`/`scrollY` 与物理位置保持一致；WM_SIZE 完成新的 style/layout、clamp 和 native child reposition 后再调用 Browser 的 resize notification，让 `innerWidth`、DPR、screen 方向和 window `resize` listener 看到同一快照；
+7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；宿主的滚动条、触摸、键盘或 fragment reveal 更新 page offset 后调用 Browser 的 scroll notification，让脚本 `scrollX`/`scrollY` 与物理位置保持一致；WM_SIZE 完成新的 style/layout、clamp 和 native child reposition 后再调用 Browser 的 resize notification，让 `innerWidth`、DPR、稳定的 `screen.orientation` 和 window `resize` listener 看到同一快照；方向翻转时 orientation `change` 位于 visual/window `resize` 之前。
 8. 页面替换时先调用 Browser page-teardown（visible 页面依次为 `visibilitychange`、`pagehide`、`unload`，并清理页面队列），再销毁 session 与文档；失败候选不得触发 teardown。
 
 事件顺序、取消和状态提交必须由产品层确定，不能依赖 test fixture 的偶然消息顺序。真实 SIP、OEM IME、系统 picker 和窗口创建仍需要设备人工验收。
