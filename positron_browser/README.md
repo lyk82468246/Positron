@@ -99,6 +99,18 @@ DOM relation callback 还提供四个数值分量：当前 Core layout box 的
 在 DOM mutation、resize 或页面提交后重新 style/layout，并按实际滚动位置调用
 `PBrowser_ScriptSessionNotifyScroll`。
 
+### `Element.scrollIntoView()`
+
+Browser 还提供页面级的 `Element.scrollIntoView()`。它读取同一
+`getBoundingClientRect()` 矩形，再把目标对齐请求交给已有的
+`window.scrollTo()` page-level callback；宿主仍负责 extent/client area 的 clamp、
+物理滚动、绘制和实际位置回报。默认等价于 `{block: "start", inline: "nearest"}`，
+布尔值 `false` 选择 block end；对象形式只接受 `block`/`inline` 的
+`start`、`center`、`end`、`nearest`，以及 `behavior` 的 `auto` 或 `instant`。
+无可用 layout、矩形或 scroll callback 时安全 no-op；不支持 `smooth`、scroll-margin
+或 nested overflow 容器。调用完成后，实际位置变化仍由既有 scroll callback 和
+`PBrowser_ScriptSessionNotifyScroll` 负责同步与事件去重。
+
 ### Script session
 
 `PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context，`Destroy` 释放 bootstrap、队列、native function 和事务状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但它的 Web host objects 由 Browser callbacks 提供。
@@ -537,6 +549,10 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   CSS scroll 坐标在 callback 返回后同步回脚本。不可用目标、对非当前目标的 blur，以及
   注销后的方法都 fail closed/no-op；重复 focus 不重复派发 focus family。nested overflow、scroll-margin、
   平滑/惯性滚动、完整焦点导航、初始焦点、focus ring 或跨窗口策略仍不在范围内。
+- `Element.scrollIntoView()` 只组合已有的 Core relation geometry 和 page-level scroll
+  callback，支持有限的 block/inline 对齐与 `auto`/`instant` 行为；无 layout 或不支持的
+  `smooth`/nested overflow 请求安全 no-op。宿主仍负责页面 extent、clamp、物理滚动和
+  `PBrowser_ScriptSessionNotifyScroll`。
 - `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台 native 控件焦点。脚本层的顶层窗口 focus/blur 与 `document.hasFocus()` 由宿主通过显式通知维护，但完整初始焦点、焦点陷阱、跨窗口焦点策略和 CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期仍未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。

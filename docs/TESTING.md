@@ -146,13 +146,20 @@ TEST1141 覆盖 `HTMLElement.focus()`/`blur()` 的可选 Browser→宿主桥：�
  跨窗口视觉。
 
 TEST1142 覆盖 focus request Ex bridge 的页面级 viewport 组合：默认
- `HTMLElement.focus()` 会把 Core layout 矩形滚入宿主的 page-level viewport，Browser
- 在宿主 callback 返回后才同步实际 CSS `scrollY` 并派发一次 window `scroll`；
- `focus({preventScroll:true})` 更新 active element 和 focus family，但保留原滚动
- 位置且不产生滚动事件。夹具同时断言目标矩形在 viewport 内、Core geometry 与
- Browser `getBoundingClientRect()` 使用同一滚动偏移，以及 callback 内不重入脚本。
- 它不证明 nested overflow、scroll-margin、平滑/惯性滚动、真实触摸滚动或 OEM 控件
- 的焦点视觉。
+`HTMLElement.focus()` 会把 Core layout 矩形滚入宿主的 page-level viewport，Browser
+在宿主 callback 返回后才同步实际 CSS `scrollY` 并派发一次 window `scroll`；
+`focus({preventScroll:true})` 更新 active element 和 focus family，但保留原滚动
+位置且不产生滚动事件。夹具同时断言目标矩形在 viewport 内、Core geometry 与
+Browser `getBoundingClientRect()` 使用同一滚动偏移，以及 callback 内不重入脚本。
+它不证明 nested overflow、scroll-margin、平滑/惯性滚动、真实触摸滚动或 OEM 控件
+的焦点视觉。
+
+TEST1143 覆盖页面级 `Element.scrollIntoView()`：默认 block start/inline nearest、
+布尔值 `false` 的末端对齐，以及有限的 center 对齐都复用既有 page-level scroll
+callback，并在实际变化时只产生一次 window `scroll`；已经可见的 nearest 请求保持
+静默。夹具还断言不支持的 `behavior:"smooth"` 安全拒绝，不改变 viewport 或事件
+队列。它不证明 scroll-margin、nested overflow、平滑/惯性滚动、真实触摸/滚动条
+视觉或复杂布局中的完整浏览器对齐算法。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

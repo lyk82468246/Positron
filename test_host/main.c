@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1142
+#define TEST_MAX_NUMBER 1143
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -35688,6 +35688,202 @@ static BOOL test1142_browser_focus_scroll_contract(void)
     show_info(L"TEST 1142 OK",
             "Default focus reveals a page-level target and"
             " focus({preventScroll:true}) preserves the viewport.");
+    return TRUE;
+}
+
+/* TEST 1143 - Element.scrollIntoView uses the page viewport only. */
+static BOOL test1143_browser_scroll_into_view_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='top'>Top</div>"
+        "<div id='spacer'>Spacer</div>"
+        "<div id='far'>Far</div><div id='tail'>Tail</div>"
+        "<script>window.trace='';"
+        "window.addEventListener('scroll',function(e){window.trace+='scroll:'+"
+        "String(e.target.id||'window')+';';});</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:0}"
+        "#top,#far{display:block;width:80px;height:24px;margin:2px}"
+        "#spacer{display:block;width:520px;height:380px}"
+        "#far{margin-left:300px}#tail{height:180px}";
+    static const char URL[] = "https://positron.local/scroll-into-view";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/scroll-into-view.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 180, 120) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "scrollIntoView fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = PCore_DocumentWidth(document);
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 180;
+        g_view_h = 120;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (PBrowser_ScriptSessionNotifyResize(
+                g_browser_script_session.session, 180, 120, 1) !=
+                PSCRIPT_OK) {
+            cstr_copy(error, sizeof(error),
+                    "scrollIntoView fixture viewport sync failed");
+            ok = 0;
+        }
+    }
+    if (ok && (g_doc_w <= g_view_w || g_doc_h <= g_view_h)) {
+        cstr_copy(error, sizeof(error),
+                "scrollIntoView fixture did not create page overflow");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "window.trace='';document.getElementById('far').scrollIntoView();"
+            "(function(){var r=document.getElementById('far').getBoundingClientRect();"
+            "return String(window.scrollX>0&&window.scrollY>0&&r.top===0&&"
+            "r.left>=0&&r.right<=window.innerWidth&&window.trace==='scroll:window;');"
+            "})();", -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "default scrollIntoView did not align the target");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "window.scrollTo(0,0);window.trace='';"
+            "document.getElementById('far').scrollIntoView({block:'center',"
+            "inline:'center'});(function(){var r=document.getElementById('far')."
+            "getBoundingClientRect();return String(Math.abs((r.top+r.bottom)/2-"
+            "window.innerHeight/2)<=1&&Math.abs((r.left+r.right)/2-"
+            "window.innerWidth/2)<=1&&window.trace==='scroll:window;');})();", -1,
+            error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "center scrollIntoView did not align both axes");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "window.scrollTo(0,0);window.trace='';"
+            "document.getElementById('far').scrollIntoView(false);"
+            "(function(){var r=document.getElementById('far').getBoundingClientRect();"
+            "return String(r.bottom===window.innerHeight&&r.left>=0&&"
+            "r.right<=window.innerWidth&&window.trace==='scroll:window;');})();", -1,
+            error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "boolean false scrollIntoView did not align the end");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "window.trace='';document.getElementById('far').scrollIntoView({"
+            "block:'nearest',inline:'nearest'});String(window.trace==='');", -1,
+            error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "nearest scrollIntoView moved an already visible target");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "window.scrollTo(0,0);window.trace='';"
+            "document.getElementById('far').scrollIntoView({behavior:'smooth'});"
+            "String(window.scrollX===0&&window.scrollY===0&&window.trace==='');",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "unsupported smooth scroll was not rejected safely");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1143 FAIL", error[0] != '\0' ? error :
+                "scrollIntoView contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1143 OK",
+            "scrollIntoView aligns page targets and safely rejects smooth scroll.");
     return TRUE;
 }
 
@@ -93736,6 +93932,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1140: ok = test1140_browser_active_element_contract(); break;
         case 1141: ok = test1141_browser_script_focus_request_contract(); break;
         case 1142: ok = test1142_browser_focus_scroll_contract(); break;
+        case 1143: ok = test1143_browser_scroll_into_view_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

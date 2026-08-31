@@ -141,6 +141,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   page-level scroll 坐标纳入同步结果，Browser 在 callback 返回后更新脚本 viewport。
   未注册时不增加方法；注销后已安装方法保持安全 no-op；nested overflow 和
   smooth/inertial scrolling 不属于这条边界；
+- 页面级 `Element.scrollIntoView()`：Browser 复用 Core relation geometry 和现有
+  page-level scroll callback，计算有限的 block/inline 对齐；宿主仍负责 clamp、
+  物理滚动、绘制和实际位置同步，不把 nested overflow 或 smooth scrolling 引入
+  Browser ABI；
 - timer、animation frame、microtask、idle、message 和页面生命周期队列，以及初次完成加载后的 pageshow、可见性切换的 visibilitychange/pagehide/pageshow、宿主驱动的 document.hasFocus/window focus/blur、显式的 document teardown 与队列清理入口；
 - `PBrowser_ScriptSessionRunTaskCheckpoint` 提供统一的有界脚本任务检查点：按调用方选择的阶段以 timer → animation frame → message → idle 的固定顺序运行，并在每个阶段后排空一次 microtask；Browser 拥有顺序和队列预算，宿主提供单调时钟、idle deadline、message limit 和消息循环接线；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
@@ -151,13 +155,18 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
 脚本滚动也遵循同一边界：`PBrowserScriptScrollCallbacks` 接收 Browser 规范化的
 CSS page 坐标，由宿主换算为 Core 的物理设备坐标，按当前 extent/client area 应用，
-再把实际位置换回 CSS 坐标返回；候选 session
+再把实际位置换回 CSS 坐标返回。`Element.scrollIntoView()` 只在 Browser 内用
+`getBoundingClientRect()` 的单元素矩形计算 page-level 的 block/inline 对齐，再复用
+同一个 scroll callback；默认是 block start、inline nearest，也支持有限的 center、end
+和 `false` 末端对齐。候选 session
 尚未提交时宿主只回显坐标，不能改变旧页面。宿主完成 scrollbar、触摸、键盘、
 resize 或 fragment reveal 后先把物理位置换算为 CSS page 坐标，再调用
 `PBrowser_ScriptSessionNotifyScroll`，Browser
 只更新脚本侧偏移并在实际变化时派发一次 visual viewport `scroll` 和一次 window
 `scroll`，不会重新调用 scroll callback。这让脚本 origin 与平台 origin 共用一份最终
-viewport，同时避免同步 callback 递归进入同一 runtime。
+viewport，同时避免同步 callback 递归进入同一 runtime。对齐只覆盖当前页面视口；
+无 layout/矩形或不支持的 `smooth`、scroll-margin、nested overflow 请求由脚本安全
+no-op，Browser 不替宿主做 clamp、绘制或独立滚动容器管理。
 
 窗口 resize 的边界也由 Browser 提供：宿主完成新的 Core style/layout、page-level
 clamp 和 native child reposition 后，调用
