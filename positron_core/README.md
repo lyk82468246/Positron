@@ -105,9 +105,9 @@ Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action
 
 Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispatch 和可聚焦目标枚举。Browser 决定脚本事件/默认动作事务，宿主把 WM 消息和 native 控件状态映射进来。
 
-`PCore_FocusTargetInfo` 返回有界的键盘焦点快照：正值 `tabindex` 按数值升序排列，同值保持 DOM 顺序，随后是缺省/零值组的 DOM 顺序；负值、disabled、hidden、未布局目标和 file picker 会被排除。除支持的链接、表单控件和 `summary` 外，带有效非负 `tabindex` 的普通布局元素也会以 `PCORE_FOCUS_TARGET_GENERIC` 返回。`PCore_FocusTargetInfoWithin` 用 UTF-8 DOM id 将同一快照限制在某个已布局祖先及其后代内，顺序和预算保持一致，适合宿主实现 modal 的 Tab/Shift+Tab 范围。两者都只返回几何与 kind，不改变焦点；focus scroll、native HWND 切换以及把 Browser 报告的活动 modal id 接入消息循环仍由宿主完成；Core 不调用 `SetFocus`，也不创建控件窗口。
+`PCore_FocusTargetInfo` 返回有界的键盘焦点快照：正值 `tabindex` 按数值升序排列，同值保持 DOM 顺序，随后是缺省/零值组的 DOM 顺序；负值、disabled、hidden、未布局目标和 file picker 会被排除。除支持的链接、表单控件和 `summary` 外，带有效非负 `tabindex` 的普通布局元素也会以 `PCORE_FOCUS_TARGET_GENERIC` 返回。`PCore_FocusTargetInfoWithin` 用 UTF-8 DOM id 将同一快照限制在某个已布局祖先及其后代内，顺序和预算保持一致，适合宿主实现 modal 的 Tab/Shift+Tab 范围。两者都只返回几何与 kind，不改变焦点；页面级 focus reveal、native HWND 切换以及把 Browser 报告的活动 modal id 接入消息循环仍由宿主完成；Core 不调用 `SetFocus`，也不创建控件窗口。
 
-脚本主动聚焦使用两个按 id 的同步入口：`PCore_FocusTargetInfoById` 解析一个已布局且符合相同资格规则的目标，返回其 geometry/kind；`PCore_InteractionFocusById` 只更新 Core 的 focus node。无 id、disabled、hidden、stale、未布局或不支持的目标均 fail closed，重复聚焦返回 no-op。Core 不切换 native HWND、不派发 focus family、不滚动目标、不画焦点矩形；宿主应在 Browser 的 focus request callback 中负责这些平台动作，并在文档或 layout 改变后重新查询，不能缓存旧快照。
+脚本主动聚焦使用两个按 id 的同步入口：`PCore_FocusTargetInfoById` 解析一个已布局且符合相同资格规则的目标，返回其 geometry/kind；`PCore_InteractionFocusById` 只更新 Core 的 focus node。无 id、disabled、hidden、stale、未布局或不支持的目标均 fail closed，重复聚焦返回 no-op。Core 不切换 native HWND、不派发 focus family、不滚动目标、不画焦点矩形；Browser 的 `PBrowserScriptFocusRequestCallbacksEx` 可消费这份 geometry 实现 page-level reveal，并通过结果把宿主实际滚动位置同步回脚本。宿主仍负责 native HWND、focus family 和窗口策略，并在文档或 layout 改变后重新查询，不能缓存旧快照。
 
 ### Modal presentation
 

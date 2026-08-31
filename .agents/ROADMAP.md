@@ -46,15 +46,18 @@ TEST1139 与定向设备门已验证该合同。next695 又补齐 Core 焦点 id
 验证了有 id、无 id、清除焦点、过小缓冲和注销后的 body 回退。next696 又补齐了
 按 id 的 `HTMLElement.focus()`/`blur()` 请求桥：Browser 负责脚本方法和请求验证，
 Core 负责已布局目标资格与 focus node，宿主负责 native HWND 和 focus family；
-TEST1141 与定向设备门验证了切换顺序、no-op 和注销后的 fail-closed。下一条纵向
-能力是 next697，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；不能
+TEST1141 与定向设备门验证了切换顺序、no-op 和注销后的 fail-closed。next697
+增加了 Ex focus request、默认 page-level focus reveal 和
+`focus({preventScroll:true})`，由 TEST1142 与定向设备门验证 callback 后脚本滚动
+同步和 viewport 可见性。下一条纵向能力是 next698，仍须从源码、日志或截图固定一个
+新的可复现用户可见组合缺口；不能
 凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。嵌套 overflow 容器、
 pinch zoom、平滑/惯性滚动和视觉猜测不得误写成已支持能力。
 
 优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
-next694、next695 和 next696 的完成证据都包括定向自动断言、直接相邻回归和风险
-相称的设备门；下一批 next697 必须沿用同一完成标准。
+next694、next695、next696 和 next697 的完成证据都包括定向自动断言、直接相邻回归和风险
+相称的设备门；下一批 next698 必须沿用同一完成标准。
 视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、
 严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，
 也不要在没有实际缺口证据时提前选择下一能力方向。
@@ -82,8 +85,7 @@ next694、next695 和 next696 的完成证据都包括定向自动断言、直�
 
 ### 表单、输入与可访问交互
 
-- 依据实际流程在已有有界 `dialog` 脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape 请求桥接、宿主顺序 Tab 子树范围、实体色 modal paint、backdrop 指针策略和单元素 contenteditable WM EDIT 接线、去重 `selectionchange` 通知、无修饰连续鼠标拖选以及 Shift/键盘、捕获和焦点中断收尾之上，继续用 compatibility corpus 选择相邻缺口。next667 已实现受限 paste/cut 事务与选区同步，next668 已完成 `WM_COPY` 非空选区、折叠选区 no-op、超长/非 Unicode fail-closed 及 WinCE `WM_CUT` 内部重入保护；保持已实现的有界 `tabindex` 排序与 Core/宿主事务边界。
-- 依据实际流程在已有有界 `dialog` 脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape 请求桥接、宿主顺序 Tab 子树范围、实体色 modal paint、backdrop 指针策略和单元素 contenteditable WM EDIT 接线、去重 `selectionchange` 通知、无修饰连续鼠标拖选以及 Shift/键盘、捕获和焦点中断收尾之上，继续用 compatibility corpus 选择相邻缺口。next667 已实现受限 paste/cut 事务与选区同步，next668 已完成 `WM_COPY` 非空选区、折叠选区 no-op、超长/非 Unicode fail-closed 及 WinCE `WM_CUT` 内部重入保护；next696 已把按 id 的 `HTMLElement.focus()`/`blur()` 请求桥接到 Core/native focus 事务；保持已实现的有界 `tabindex` 排序与 Core/宿主事务边界。
+- 依据实际流程在已有有界 `dialog` 脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape 请求桥接、宿主顺序 Tab 子树范围、实体色 modal paint、backdrop 指针策略和单元素 contenteditable WM EDIT 接线、去重 `selectionchange` 通知、无修饰连续鼠标拖选以及 Shift/键盘、捕获和焦点中断收尾之上，继续用 compatibility corpus 选择相邻缺口。next667 已实现受限 paste/cut 事务与选区同步，next668 已完成 `WM_COPY` 非空选区、折叠选区 no-op、超长/非 Unicode fail-closed 及 WinCE `WM_CUT` 内部重入保护；next696 已把按 id 的 `HTMLElement.focus()`/`blur()` 请求桥接到 Core/native focus 事务，next697 又加入 Ex focus request 的 page-level reveal 与 `preventScroll`；保持已实现的有界 `tabindex` 排序与 Core/宿主事务边界。
 - 保持 native 控件 mutation、Browser event policy 与 Core form state 的事务顺序。
 - 扩充真实 SIP/IME、硬键盘、SELECT popup、file picker 和旋转的成批人工矩阵。
 - 对 disabled/hidden/stale target 一律 fail closed，不为通过测试绕过生命周期检查。

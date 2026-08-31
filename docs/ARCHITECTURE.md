@@ -99,8 +99,8 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   fail closed；
 - 按 DOM id 解析已布局且符合有界焦点资格的目标，并在宿主焦点事务中更新 Core
   focus node；`PCore_FocusTargetInfoById` 只返回 geometry/kind，
-  `PCore_InteractionFocusById` 只更新 Core 状态，native HWND、focus 事件、焦点
-  矩形和重绘调度仍由宿主负责；
+  `PCore_InteractionFocusById` 只更新 Core 状态，page-level focus reveal、native
+  HWND、focus 事件、焦点矩形和重绘调度仍由宿主负责；
 - 给脚本/浏览器层使用的有界 DOM、属性、关系、表单与导航查询。
 
 Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/free 回调完成；Core 在回调返回前复制需要保留的字节，再按契约调用 free。Core 也不执行 JavaScript，只发现、缓存和枚举脚本。
@@ -134,10 +134,13 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   UTF-8 id，并通过既有 DOM read adapter 解析；空、过长、失效或不可用 id 一律
   回退到 `document.body`；未注册 callback 的 session 不安装该可选属性；
 - 可选的 `HTMLElement.focus()`/`blur()` 请求桥：宿主注册
-  `PBrowserScriptFocusRequestCallbacks` 后，Browser 在 bootstrap 后安装方法，
-  验证 id 与操作值并同步调用宿主 typed callback；宿主用 Core 的按 id 焦点边界
-  解析目标、更新 native/Core 焦点并派发对应的 focus/blur 与 focusin/focusout
-  事件。未注册时不增加方法；注销后已安装方法保持安全 no-op；
+  `PBrowserScriptFocusRequestCallbacks` 或其 Ex 版本后，Browser 在 bootstrap 后
+  安装方法，验证 id 与操作值并同步调用宿主 typed callback；宿主用 Core 的按 id
+  焦点边界解析目标、更新 native/Core 焦点并派发对应的 focus/blur 与
+  focusin/focusout 事件。Ex 版本还把 `focus({preventScroll:true})` 和实际
+  page-level scroll 坐标纳入同步结果，Browser 在 callback 返回后更新脚本 viewport。
+  未注册时不增加方法；注销后已安装方法保持安全 no-op；nested overflow 和
+  smooth/inertial scrolling 不属于这条边界；
 - timer、animation frame、microtask、idle、message 和页面生命周期队列，以及初次完成加载后的 pageshow、可见性切换的 visibilitychange/pagehide/pageshow、宿主驱动的 document.hasFocus/window focus/blur、显式的 document teardown 与队列清理入口；
 - `PBrowser_ScriptSessionRunTaskCheckpoint` 提供统一的有界脚本任务检查点：按调用方选择的阶段以 timer → animation frame → message → idle 的固定顺序运行，并在每个阶段后排空一次 microtask；Browser 拥有顺序和队列预算，宿主提供单调时钟、idle deadline、message limit 和消息循环接线；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
@@ -203,13 +206,18 @@ document `visibilitychange` 和 window `pagehide`，恢复 visible 再派发
 尝试侦测 `WM_ACTIVATE`、创建控件或改变 Core 文档。
 
 脚本调用 `HTMLElement.focus()` 或 `blur()` 时，Browser 只发出一个同步的、带
-`element_id` 与 `focused` 的 typed 请求；它不自行选择下一个目标，也不直接访问
+`element_id` 与 `focused` 的 typed 请求；Ex 请求还带有 `prevent_scroll`，并接收
+宿主实际应用的 CSS page scroll 结果。Browser 不自行选择下一个目标，也不直接访问
 窗口。宿主应先用 `PCore_FocusTargetInfoById` 检查当前 layout 中的目标，再按需调用
 `PCore_InteractionFocusById`、切换 native HWND，并通过已有事件命中/dispatch 接线
-发出 focus family。无 id、disabled、hidden、stale、未布局或其他不符合 Core 资格的
-目标必须 no-op；已有焦点的重复请求和对非当前目标的 `blur()` 也必须 no-op。该桥
-只覆盖 id-addressable 的有界目标，不提供完整 focus navigation、自动初始焦点、焦点
-矩形、scroll-into-view、跨窗口策略或原生控件的 OEM 视觉保证。
+发出 focus family；默认 focus 可在同一宿主 callback 中把目标矩形 reveal 到
+page-level viewport，`prevent_scroll` 为真时跳过这一步。Browser 等 callback 返回
+后再同步脚本 scroll 状态，避免 callback 内重入 runtime。无 id、disabled、hidden、
+stale、未布局或其他不符合 Core 资格的目标必须 no-op；重复 focus 不重复派发 focus
+family，但 Ex callback 仍可按默认规则 reveal 已聚焦且不可见的目标；对非当前目标的
+`blur()` 必须 no-op。该桥只覆盖 id-addressable 的有界目标，不提供完整
+focus navigation、自动初始焦点、焦点矩形、nested overflow、scroll-margin、平滑/惯性
+滚动、跨窗口策略或原生控件的 OEM 视觉保证。
 
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
 
@@ -237,8 +245,9 @@ document `visibilitychange` 和 window `pagehide`，恢复 visible 再派发
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
-  并在需要脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks`；宿主负责按 id
-  验证 Core 几何/资格、native HWND 切换、focus family 事件和重绘调度；
+  并在需要脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本；
+  宿主负责按 id 验证 Core 几何/资格、page-level scroll reveal、native HWND 切换、
+  focus family 事件和重绘调度；
 - 把 Core 的 contenteditable 状态/文本 callback 和 selection callback 注册到 Browser session，并把 WM/native 输入接到 `beforeinput`→Core mutation→`input` 顺序；宿主只保留窗口、焦点、坐标、键盘/拖选 anchor、Shift 状态和原生选区，在范围变化或捕获/焦点中断后调用 Browser 的通知入口，不经 Core 重复派发 `selectionchange`；对 `WM_PASTE`/`WM_COPY`/`WM_CUT`，宿主读取并规范化有界 `CF_UNICODETEXT`，让 Browser 决定取消后再执行 native default，折叠复制保持原剪贴板不变，并对 WinCE `WM_CUT` 的同一 HWND 内部 `WM_COPY` 重入做局部放行；
 - 从 Browser 读取活动 modal id，并在 WM_PAINT 中调用 Core 的 modal paint 组合入口；
 - 决定何时启用浏览器 JavaScript；

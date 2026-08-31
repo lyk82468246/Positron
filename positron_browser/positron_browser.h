@@ -422,8 +422,7 @@ typedef struct PBrowserScriptActiveElementCallbacks {
  * callback. A non-negative return means that the request was processed,
  * including a no-op for a disconnected, disabled or already-unfocused target;
  * a negative return reports an adapter failure. Registering this table
- * installs the
- * optional methods after bootstrap. */
+ * installs the optional methods after bootstrap. */
 typedef struct PBrowserScriptFocusRequestInfo {
     unsigned long size;
     const char *element_id;
@@ -436,6 +435,35 @@ typedef struct PBrowserScriptFocusRequestCallbacks {
     void *pw;
     PBrowserScriptRequestFocusFn request_focus;
 } PBrowserScriptFocusRequestCallbacks;
+
+/* Extended focus request adapter. This additive form preserves the original
+ * callback ABI while allowing focus(options) to request page-level reveal.
+ * prevent_scroll is 1 only for focus({preventScroll:true}). The host may
+ * write the actually applied CSS page scroll into out_result; coordinates
+ * are non-negative and scroll_changed is nonzero only when the viewport
+ * moved. The result is copied synchronously and is never retained. Nested
+ * overflow containers, smooth scrolling and scroll-margin are outside this
+ * boundary. */
+typedef struct PBrowserScriptFocusRequestInfoEx {
+    unsigned long size;
+    const char *element_id;
+    int focused;
+    int prevent_scroll;
+} PBrowserScriptFocusRequestInfoEx;
+typedef struct PBrowserScriptFocusRequestResult {
+    unsigned long size;
+    int scroll_changed;
+    int scroll_x;
+    int scroll_y;
+} PBrowserScriptFocusRequestResult;
+typedef int (*PBrowserScriptRequestFocusFnEx)(void *pw,
+        const PBrowserScriptFocusRequestInfoEx *info,
+        PBrowserScriptFocusRequestResult *out_result);
+typedef struct PBrowserScriptFocusRequestCallbacksEx {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptRequestFocusFnEx request_focus;
+} PBrowserScriptFocusRequestCallbacksEx;
 
 /* Typed host adapter for the bounded, ID-addressable DOM relationship
  * boundary. Value relationships (parent/sibling/child-at/tag/form-owner)
@@ -1553,12 +1581,22 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterActiveElementCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterFocusRequestCallbacks(
         HANDLE hSession,
         const PBrowserScriptFocusRequestCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFocusRequestCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptFocusRequestCallbacksEx *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusRequestCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusRequestCallbacksEx(
         HANDLE hSession);
 /* Dispatch one script-visible HTMLElement.focus()/blur() request through the
  * registered host adapter. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchFocusRequest(HANDLE hSession,
         const PBrowserScriptFocusRequestInfo *info);
+/* Extended dispatch carries focus({preventScroll:true}) and an optional
+ * caller-owned result containing the host's applied CSS page scroll. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchFocusRequestEx(HANDLE hSession,
+        const PBrowserScriptFocusRequestInfoEx *info,
+        PBrowserScriptFocusRequestResult *out_result);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomRelationCallbacks(
         HANDLE hSession, const PBrowserScriptDomRelationCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomRelationCallbacks(

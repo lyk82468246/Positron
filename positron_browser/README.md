@@ -155,16 +155,27 @@ PBrowser_ScriptSessionRegisterActiveElementCallbacks(session, &active);
 
 脚本主动聚焦是另一条按需安装的桥。宿主注册
 `PBrowserScriptFocusRequestCallbacks` 后，Browser 在 bootstrap 后为每个
-`PElement` 安装 `focus()` 与 `blur()`；方法只发送当前元素的 id 和 `focused` 值，
-返回值保持 `undefined`。Browser 不猜测焦点顺序，也不直接访问窗口；宿主 callback
-应以 `PCore_FocusTargetInfoById` 检查已布局目标，以
+`PElement` 安装 `focus()` 与 `blur()`；旧 callback 只接收当前元素的 id 和
+`focused` 值，返回值保持 `undefined`。宿主应以
+`PCore_FocusTargetInfoById` 检查已布局目标，以
 `PCore_InteractionFocusById` 更新 Core，再切换相应 native HWND 并派发一次
 `blur`/`focusout` 或 `focus`/`focusin`。disabled、hidden、stale、无 id、未布局、
-对非当前目标的 `blur()` 以及重复 `focus()` 都必须安全 no-op。注销 callback 会
+对非当前目标的 `blur()` 都必须安全 no-op；重复 `focus()` 不再派发额外焦点事件，
+但 Ex callback 仍可按默认规则把已聚焦且不可见的目标 reveal。注销 callback 会
 移除 native 请求来源，已安装的方法仍保留为 no-op；未注册 callback 的 session
 不安装这组可选方法，以控制 WM6 bootstrap 成本。
 
-最小注册形态如下，`request_focus` 的 `element_id` 只在同步 callback 期间借用：
+需要页面级滚动可见性时，宿主注册新增的
+`PBrowserScriptFocusRequestCallbacksEx`。Browser 把
+`focus({preventScroll:true})` 表示为 `prevent_scroll=1`；宿主在完成自己的
+viewport clamp/apply 后，把实际 CSS page 坐标写入
+`PBrowserScriptFocusRequestResult`。Browser 等 callback 返回后才更新脚本侧
+`scrollX`/`scrollY`，因此滚动事件不会从 native callback 内递归进入 runtime。
+默认 `focus()` 会让目标的 Core layout 矩形进入 page-level viewport，
+`preventScroll:true` 保持现有滚动位置；`blur()` 不滚动。
+
+只需要焦点事务时的最小注册形态如下，`request_focus` 的 `element_id` 只在同步
+callback 期间借用：
 
 ```c
 PBrowserScriptFocusRequestCallbacks focus;
@@ -176,8 +187,22 @@ focus.request_focus = host_request_focus;
 PBrowser_ScriptSessionRegisterFocusRequestCallbacks(session, &focus);
 ```
 
-该桥只覆盖 id-addressable 的 Core 目标，不提供完整 focus navigation、自动初始
-焦点、focus ring、scroll-into-view、跨窗口策略或 OEM 控件视觉保证。
+页面级滚动扩展的注册形态如下；`out_result` 由 Browser 预先清零并在 callback
+返回后读取，宿主不应保存它或其中的借用指针：
+
+```c
+PBrowserScriptFocusRequestCallbacksEx focus_ex;
+
+memset(&focus_ex, 0, sizeof(focus_ex));
+focus_ex.size = sizeof(focus_ex);
+focus_ex.pw = bridge;
+focus_ex.request_focus = host_request_focus_ex;
+PBrowser_ScriptSessionRegisterFocusRequestCallbacksEx(session, &focus_ex);
+```
+
+该扩展只覆盖 id-addressable Core 目标和 page-level viewport，不提供完整 focus
+navigation、自动初始焦点、focus ring、nested overflow/scroll container、
+scroll-margin、平滑/惯性滚动、跨窗口策略或 OEM 控件视觉保证。
 
 ### DOM、表单与 validation adapters
 
@@ -205,7 +230,7 @@ Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 di
 - 宿主处理指针时，可把 client 坐标换算为 document 坐标，用活动 id 对应的 Core 几何做有界命中测试：dialog 外部调用 `PBrowser_ScriptSessionRequestDialogClose`，内部继续交给普通控件命中；即使 `cancel` 阻止关闭，宿主也应消费这次 backdrop 点击。Browser 只提供生命周期桥，不自行读取窗口坐标。
 - 对 `method="dialog"` 的表单，宿主先让 Core 完成约束验证并解析最近祖先 dialog 与 submitter value，再派发可取消的 `submit`。事件允许默认动作后，调用 `PBrowser_ScriptSessionCloseDialogById` 可执行 `dialog.close(value)`：更新 `returnValue`、派发 `close`，不先派发 `cancel`，也不发起网络导航。显式点击、脚本 `click()` 和单行输入的隐式 Enter 可共用这条组合路径。
 
-这些方法属于 Browser 的脚本语义，不创建 HWND，也不直接绘制 top layer、backdrop 或系统模态窗口。宿主可把活动 id 同时交给 Core 的 `PCore_PaintDocumentWithModal`，由 Core 在普通文档绘制后组合有界实体色 backdrop 和指定 dialog 的重绘；Browser 仍只拥有生命周期状态。宿主必须自己决定初始焦点、native HWND 切换、滚动可见性和焦点视觉，跨文档 modal 生命周期仍未覆盖。
+这些方法属于 Browser 的脚本语义，不创建 HWND，也不直接绘制 top layer、backdrop 或系统模态窗口。宿主可把活动 id 同时交给 Core 的 `PCore_PaintDocumentWithModal`，由 Core 在普通文档绘制后组合有界实体色 backdrop 和指定 dialog 的重绘；Browser 仍只拥有生命周期状态。宿主必须自己决定初始焦点、native HWND 切换、nested scroll container 和焦点视觉，跨文档 modal 生命周期仍未覆盖。
 
 ### 单元素 `contenteditable`
 
@@ -473,7 +498,8 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 2. 为该文档构造 callback context；
 3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；若需要
    `document.activeElement` 或 `HTMLElement.focus()`/`blur()`，同时准备 Core 焦点
-   id 与 focus request callbacks；
+   id 与 focus request callbacks；若需要页面级滚动可见性，使用 focus request 的
+   Ex callbacks；
 4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement/focus request callback，并按文档
    顺序执行允许的 classic script；
 5. 把 WM 输入转换为 Browser typed transaction；
@@ -505,10 +531,12 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   过时 id 回退到 `document.body`。它不替代完整焦点算法、native 焦点矩形、自动
   初始焦点、焦点陷阱或跨窗口策略。
 - `HTMLElement.focus()`/`blur()` 只有在宿主注册
-  `PBrowserScriptFocusRequestCallbacks` 后才安装；宿主必须用 Core 的按 id 资格与
-  focus node API 接线 native HWND 和 focus family。不可用目标、重复请求、对非当前
-  目标的 blur，以及注销后的方法都 fail closed/no-op；它不替代完整焦点导航、初始
-  焦点、focus ring、scroll-into-view 或跨窗口策略。
+  `PBrowserScriptFocusRequestCallbacks`（或 Ex 版本）后才安装；宿主必须用 Core 的
+  按 id 资格与 focus node API 接线 native HWND 和 focus family。Ex 版本还支持默认
+  focus 的 page-level viewport reveal 与 `focus({preventScroll:true})`，并把实际
+  CSS scroll 坐标在 callback 返回后同步回脚本。不可用目标、对非当前目标的 blur，以及
+  注销后的方法都 fail closed/no-op；重复 focus 不重复派发 focus family。nested overflow、scroll-margin、
+  平滑/惯性滚动、完整焦点导航、初始焦点、focus ring 或跨窗口策略仍不在范围内。
 - `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台 native 控件焦点。脚本层的顶层窗口 focus/blur 与 `document.hasFocus()` 由宿主通过显式通知维护，但完整初始焦点、焦点陷阱、跨窗口焦点策略和 CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期仍未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。

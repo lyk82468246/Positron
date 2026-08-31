@@ -3426,6 +3426,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return pscrollY;},enumerable:true});"
         "Object.defineProperty(g,'__pcoreScrollApplied',{value:function(x,y){"
         "psetScrollApplied(x,y);},writable:false,configurable:false});"
+        "Object.defineProperty(g,'__pcoreFocusAppliedScroll',{value:function(x,y){"
+        "psetScrollApplied(x,y);},writable:false,configurable:false});"
         "Object.defineProperty(g,'__pcoreViewportResize',{value:function(w,h,d){"
         "return psetViewportResize(w,h,d);},writable:false,configurable:false});"
         "Object.defineProperty(g,'__pcoreHistoryTraverse',{"
@@ -4966,10 +4968,17 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
     static const char P_BROWSER_SCRIPT_FOCUS_REQUEST[] =
         "(function(g){var P=g.__pcorePElement;"
         "if(!P){throw new Error('focus bridge unavailable');}"
-        "P.prototype.focus=function(){if(typeof g.__pcoreFocus==='function')"
-        "{g.__pcoreFocus({id:this.__id,focused:1});}};"
+        "function applyFocusResult(r){if(r&&r.ok&&r.scrollChanged&&"
+        "typeof g.__pcoreFocusAppliedScroll==='function'){"
+        "g.__pcoreFocusAppliedScroll(r.x,r.y);}}"
+        "P.prototype.focus=function(options){var prevent=0;var result;"
+        "if(options&&typeof options==='object'&&options.preventScroll){"
+        "prevent=1;}if(typeof g.__pcoreFocus==='function'){"
+        "result=g.__pcoreFocus({id:this.__id,focused:1,"
+        "preventScroll:prevent});applyFocusResult(result);}};"
         "P.prototype.blur=function(){if(typeof g.__pcoreFocus==='function')"
-        "{g.__pcoreFocus({id:this.__id,focused:0});}};})(this);";
+        "{g.__pcoreFocus({id:this.__id,focused:0,preventScroll:0});}};"
+        "})(this);";
 
     /* Keep the cancelable navigation hook out of the cold bootstrap path. It
      * is installed only when the host is about to replace or close a live
@@ -5077,7 +5086,9 @@ typedef struct p_browser_script_active_element_binding {
 
 typedef struct p_browser_script_focus_request_binding {
     HANDLE session;
+    int extended;
     PBrowserScriptFocusRequestCallbacks callbacks;
+    PBrowserScriptFocusRequestCallbacksEx callbacks_ex;
 } p_browser_script_focus_request_binding;
 
 typedef struct p_browser_script_dom_relation_binding {
@@ -5493,6 +5504,40 @@ static int p_browser_script_write_bool(int value, char *out_json,
     return 0;
 }
 
+static int p_browser_script_write_focus_result(int ok,
+        const PBrowserScriptFocusRequestResult *result, char *out_json,
+        int out_capacity, int *out_len)
+{
+    int scroll_changed;
+    int scroll_x;
+    int scroll_y;
+    int written;
+
+    if (result == NULL) {
+        scroll_changed = 0;
+        scroll_x = 0;
+        scroll_y = 0;
+    } else {
+        scroll_changed = result->scroll_changed ? 1 : 0;
+        scroll_x = (result->scroll_x >= 0) ? result->scroll_x : 0;
+        scroll_y = (result->scroll_y >= 0) ? result->scroll_y : 0;
+    }
+    if (out_json == NULL || out_len == NULL || out_capacity < 2) {
+        return 1;
+    }
+    written = _snprintf(out_json, out_capacity - 1,
+            "{\"ok\":%s,\"scrollChanged\":%s,\"x\":%d,\"y\":%d}",
+            ok ? "true" : "false",
+            scroll_changed ? "true" : "false", scroll_x, scroll_y);
+    if (written < 0 || written >= out_capacity) {
+        out_json[out_capacity - 1] = '\0';
+        return 1;
+    }
+    out_json[written] = '\0';
+    *out_len = written;
+    return 0;
+}
+
 static int p_browser_script_write_int(int value, char *out_json,
         int out_capacity, int *out_len)
 {
@@ -5831,8 +5876,11 @@ static int p_browser_script_request_focus(void *pw,
     HANDLE root;
     HANDLE object;
     PBrowserScriptFocusRequestInfo info;
+    PBrowserScriptFocusRequestInfoEx info_ex;
+    PBrowserScriptFocusRequestResult result;
     const char *id;
     int focused;
+    int prevent_scroll;
     int rc;
 
     binding = (p_browser_script_focus_request_binding *) pw;
@@ -5840,21 +5888,39 @@ static int p_browser_script_request_focus(void *pw,
     root = p_browser_script_args_object(args_json, args_len, &object);
     id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
     focused = (object != NULL) ? PJson_GetInt(object, "focused") : -1;
+    prevent_scroll = (object != NULL) ?
+            PJson_GetInt(object, "preventScroll") : -1;
     if (binding == NULL || binding->session == NULL || root == NULL ||
             id == NULL || id[0] == '\0' ||
-            (focused != 0 && focused != 1)) {
+            (focused != 0 && focused != 1) ||
+            (prevent_scroll != 0 && prevent_scroll != 1)) {
+        memset(&result, 0, sizeof(result));
+        result.size = sizeof(result);
         PJson_Free(root);
-        return p_browser_script_write_bool(0, out_json, out_capacity,
-                out_len);
+        return p_browser_script_write_focus_result(0, &result, out_json,
+                out_capacity, out_len);
     }
-    memset(&info, 0, sizeof(info));
-    info.size = sizeof(info);
-    info.element_id = id;
-    info.focused = focused;
-    rc = PBrowser_ScriptSessionDispatchFocusRequest(binding->session, &info);
+    memset(&result, 0, sizeof(result));
+    result.size = sizeof(result);
+    if (binding->extended) {
+        memset(&info_ex, 0, sizeof(info_ex));
+        info_ex.size = sizeof(info_ex);
+        info_ex.element_id = id;
+        info_ex.focused = focused;
+        info_ex.prevent_scroll = prevent_scroll;
+        rc = PBrowser_ScriptSessionDispatchFocusRequestEx(binding->session,
+                &info_ex, &result);
+    } else {
+        memset(&info, 0, sizeof(info));
+        info.size = sizeof(info);
+        info.element_id = id;
+        info.focused = focused;
+        rc = PBrowser_ScriptSessionDispatchFocusRequest(binding->session,
+                &info);
+    }
     PJson_Free(root);
-    return p_browser_script_write_bool(rc == PSCRIPT_OK, out_json,
-            out_capacity, out_len);
+    return p_browser_script_write_focus_result(rc == PSCRIPT_OK, &result,
+            out_json, out_capacity, out_len);
 }
 
 static int p_browser_script_dom_has_element(void *pw,
@@ -7795,7 +7861,56 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterFocusRequestCallbacks(
         return PSCRIPT_ERROR_FATAL;
     }
     binding->session = hSession;
+    binding->extended = 0;
+    memset(&binding->callbacks_ex, 0, sizeof(binding->callbacks_ex));
     memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreFocus", -1, p_browser_script_request_focus, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->focus_request = binding;
+    if (session->bootstrap_ready) {
+        rc = p_browser_script_install_focus_request(session);
+        if (rc != PSCRIPT_OK) {
+            PScript_UnregisterGlobalJsonFunction(session->runtime,
+                    "__pcoreFocus", -1);
+            session->focus_request = NULL;
+            free(binding);
+            return rc;
+        }
+    }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterFocusRequestCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptFocusRequestCallbacksEx *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_focus_request_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptFocusRequestCallbacksEx) ||
+            callbacks->request_focus == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->focus_request != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_focus_request_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    binding->session = hSession;
+    binding->extended = 1;
+    memset(&binding->callbacks, 0, sizeof(binding->callbacks));
+    memcpy(&binding->callbacks_ex, callbacks,
+            sizeof(binding->callbacks_ex));
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreFocus", -1, p_browser_script_request_focus, binding);
     if (rc != PSCRIPT_OK) {
@@ -7836,10 +7951,17 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusRequestCallbacks(
     return rc;
 }
 
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusRequestCallbacksEx(
+        HANDLE hSession)
+{
+    return PBrowser_ScriptSessionUnregisterFocusRequestCallbacks(hSession);
+}
+
 PBROWSER_API int PBrowser_ScriptSessionDispatchFocusRequest(HANDLE hSession,
         const PBrowserScriptFocusRequestInfo *info)
 {
     p_browser_script_session *session;
+    PBrowserScriptFocusRequestInfoEx info_ex;
     int rc;
 
     session = p_script_session(hSession);
@@ -7851,8 +7973,49 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchFocusRequest(HANDLE hSession,
             (info->focused != 0 && info->focused != 1)) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
+    if (session->focus_request->extended) {
+        memset(&info_ex, 0, sizeof(info_ex));
+        info_ex.size = sizeof(info_ex);
+        info_ex.element_id = info->element_id;
+        info_ex.focused = info->focused;
+        info_ex.prevent_scroll = 0;
+        return PBrowser_ScriptSessionDispatchFocusRequestEx(hSession,
+                &info_ex, NULL);
+    }
     rc = session->focus_request->callbacks.request_focus(
             session->focus_request->callbacks.pw, info);
+    return rc < 0 ? PSCRIPT_ERROR_NATIVE : PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionDispatchFocusRequestEx(HANDLE hSession,
+        const PBrowserScriptFocusRequestInfoEx *info,
+        PBrowserScriptFocusRequestResult *out_result)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || session->focus_request == NULL ||
+            info == NULL ||
+            info->size < sizeof(PBrowserScriptFocusRequestInfoEx) ||
+            info->element_id == NULL || info->element_id[0] == '\0' ||
+            strlen(info->element_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+            (info->focused != 0 && info->focused != 1) ||
+            (info->prevent_scroll != 0 && info->prevent_scroll != 1) ||
+            (out_result != NULL && out_result->size <
+            sizeof(PBrowserScriptFocusRequestResult))) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (out_result != NULL) {
+        out_result->scroll_changed = 0;
+        out_result->scroll_x = 0;
+        out_result->scroll_y = 0;
+    }
+    if (!session->focus_request->extended) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = session->focus_request->callbacks_ex.request_focus(
+            session->focus_request->callbacks_ex.pw, info, out_result);
     return rc < 0 ? PSCRIPT_ERROR_NATIVE : PSCRIPT_OK;
 }
 

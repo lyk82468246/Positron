@@ -72,13 +72,15 @@
   空、超长、过时或不可用的 id 都回退到 `document.body`，注销来源后也保持该回退。
   未注册 callback 的 session 不承诺这个可选属性，以控制 WM6 bootstrap 成本。
 - `HTMLElement.focus()`/`blur()` 只有在宿主注册
-  `PBrowserScriptFocusRequestCallbacks` 后才安装；Browser 只验证并同步转发
-  `element_id`/`focused` 请求，宿主必须以 Core 的
-  `PCore_FocusTargetInfoById`/`PCore_InteractionFocusById` 接线 native HWND、
-  focus family 和重绘。无 id、disabled、hidden、stale、未布局、重复请求、
-  对非当前目标的 blur，以及注销后的方法都 fail closed/no-op。该桥不提供完整
-  focus navigation、自动初始焦点、focus ring、scroll-into-view、跨窗口策略或
-  OEM 控件视觉保证。
+  `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本后才安装；Browser 只验证并同步
+  转发 `element_id`/`focused` 请求。Ex 版本还传递 `prevent_scroll`，宿主以 Core 的
+  `PCore_FocusTargetInfoById`/`PCore_InteractionFocusById` 接线 native HWND、focus
+  family 和重绘，并可把默认 focus 的 page-level reveal 结果回传给 Browser。Browser
+  在 callback 返回后同步脚本滚动位置；无 id、disabled、hidden、stale、未布局、
+  对非当前目标的 blur，以及注销后的方法都 fail closed/no-op；重复 focus 不重复
+  派发 focus family。该桥不提供
+  完整 focus navigation、自动初始焦点、focus ring、nested overflow、scroll-margin、
+  平滑/惯性滚动、跨窗口策略或 OEM 控件视觉保证。
 - Browser session callback 同步且不可重入；宿主若在 callback 中销毁或重入 session，行为不受支持。
 - 该运行时不是完整浏览器安全沙箱，不能直接执行不可信互联网脚本并假定与现代浏览器等价隔离。
 
@@ -133,7 +135,11 @@
 - TEST1141 覆盖按 id 的 `HTMLElement.focus()`/`blur()` 请求、Core 目标资格与
   focus node 更新、旧目标 blur/focusout→新目标 focus/focusin 顺序、非当前目标
   blur、不可用目标和注销后的 no-op；不证明完整焦点算法、自动初始焦点、焦点矩形、
-  scroll-into-view、真实 native HWND/OEM 控件或跨窗口视觉。
+  page-level focus reveal、真实 native HWND/OEM 控件或跨窗口视觉。
+- TEST1142 覆盖 Ex focus request 的默认 page-level focus reveal、callback 后脚本
+  scroll 同步、目标矩形可见性，以及 `focus({preventScroll:true})` 的 viewport 保持
+  和 scroll 事件抑制；不证明 nested overflow、scroll-margin、平滑/惯性滚动、真实
+  触摸滚动、不同 DPI 下的焦点视觉或 OEM 控件行为。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。
