@@ -151,8 +151,7 @@ TEST1142 覆盖 focus request Ex bridge 的页面级 viewport 组合：默认
 `focus({preventScroll:true})` 更新 active element 和 focus family，但保留原滚动
 位置且不产生滚动事件。夹具同时断言目标矩形在 viewport 内、Core geometry 与
 Browser `getBoundingClientRect()` 使用同一滚动偏移，以及 callback 内不重入脚本。
-它不证明 nested overflow、scroll-margin、平滑/惯性滚动、真实触摸滚动或 OEM 控件
-的焦点视觉。
+它专门覆盖 page-level 路径；焦点与嵌套 retained overflow 的联动由 TEST1150 覆盖。
 
 TEST1143 覆盖页面级 `Element.scrollIntoView()`：默认 block start/inline nearest、
 布尔值 `false` 的末端对齐，以及有限的 center 对齐都复用既有 page-level scroll
@@ -202,6 +201,14 @@ TEST1149 覆盖 `Element.scrollIntoView({container:"all"})` 的有界多层 reve
 inner→outer。重复 `nearest` 请求、未知 `container` 和 `behavior:"smooth"` 都必须
 保持位置与事件队列不变；64 层上限、完整 scroll tree、scroll chaining/anchoring、
 scroll-margin、平滑/惯性、匿名目标和视觉滚动条仍不由该测试覆盖。
+
+TEST1150 覆盖 `HTMLElement.focus()` 与有限 nested `scrollIntoView()` 的组合：Browser
+发现可寻址 retained overflow ancestor 时，Ex callback 的 `prevent_scroll` 会要求宿主
+暂缓 page-level reveal，随后 Browser 依次滚动 inner→outer，并保持 page viewport 不变。
+夹具断言两个轴的 retained offset、目标在两层 client edge 内、focus/focusin→scroll
+事件顺序、重复 focus 静默、`focus({preventScroll:true})` 不移动任何滚动容器，以及
+远端目标 `blur()` 不触发滚动。它不证明完整 scroll tree、scroll chaining/anchoring、
+scroll-margin、平滑/惯性滚动、真实触摸滚动或 OEM 控件焦点视觉。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

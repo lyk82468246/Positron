@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1149
+#define TEST_MAX_NUMBER 1150
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -10724,8 +10724,14 @@ static int pcore_browser_script_focus_request(void *pw,
             &target) != 0) {
         return 0;
     }
-    pcore_browser_script_focus_reveal(bridge, &target,
-            info->prevent_scroll, out_result);
+    if (info->focused) {
+        pcore_browser_script_focus_reveal(bridge, &target,
+                info->prevent_scroll, out_result);
+    } else if (out_result != NULL) {
+        out_result->scroll_changed = 0;
+        out_result->scroll_x = 0;
+        out_result->scroll_y = 0;
+    }
     memset(old_id, 0, sizeof(old_id));
     old_bytes = 0;
     old_valid = PCore_InteractionFocusElementId(bridge->document, old_id,
@@ -35643,6 +35649,7 @@ static BOOL test1142_browser_focus_scroll_contract(void)
     if (ok) {
         sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
                 "https://positron.local/focus-scroll.css");
+        PCore_SetViewport(180, 120, 0);
         if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
                 PCore_LayoutDocument(document, 180, 120) != 0) {
             cstr_copy(error, sizeof(error), "focus scroll fixture layout failed");
@@ -35671,7 +35678,7 @@ static BOOL test1142_browser_focus_scroll_contract(void)
                 "focus scroll fixture did not create a far target");
         ok = 0;
     }
-    if (ok && (pcore_browser_script_session_evaluate(
+    if (ok && pcore_browser_script_session_evaluate(
             "window.trace='';document.getElementById('far').focus();"
             "String(document.activeElement.id==='far'&&window.scrollY>0&&"
             "document.getElementById('far').getBoundingClientRect().top>=0&&"
@@ -35679,13 +35686,23 @@ static BOOL test1142_browser_focus_scroll_contract(void)
             "window.innerHeight&&window.trace.indexOf('focus:far;')>=0&&"
             "window.trace.indexOf('focusin:far;')>=0&&"
             "window.trace.indexOf('scroll:window;')>=0);", -1,
-            error, sizeof(error)) != 0 ||
-            (result = PBrowser_ScriptSessionGetResult(
-            g_browser_script_session.session)) == NULL ||
-            strcmp(result, "true") != 0)) {
-        cstr_copy(error, sizeof(error),
-                "default focus did not reveal the page target");
+            error, sizeof(error)) != 0) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "default focus browser evaluation failed");
+        }
         ok = 0;
+    }
+    if (ok) {
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (result == NULL || strcmp(result, "true") != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "default focus did not reveal the page target: %s",
+                    result != NULL ? result : "<null>");
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
     }
     if (ok && (pcore_browser_script_session_evaluate(
             "window.scrollTo(0,0);document.getElementById('top').focus();"
@@ -37253,6 +37270,254 @@ static BOOL test1149_browser_all_scroll_into_view_contract(void)
     show_info(L"TEST 1149 OK",
             "scrollIntoView container all reveals targets through the retained"
             " ancestor chain without moving the page viewport.");
+    return TRUE;
+}
+
+/* TEST 1150 - Browser focus reveals nested overflow targets without letting
+ * blur requests move the page viewport. */
+static BOOL test1150_browser_focus_nested_scroll_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='outer'><div id='inner'><div id='target' tabindex='0'>Target</div>"
+        "<div id='tail'>Tail</div></div></div>"
+        "<div id='gap'>Gap</div><div id='far' tabindex='0'>Far</div>"
+        "<script>window.trace='';"
+        "function record(e){window.trace+=e.type+':'+String(e.target.id||'window')+';';}"
+        "window.addEventListener('scroll',record);"
+        "var t=document.getElementById('target');"
+        "var i=document.getElementById('inner');"
+        "var o=document.getElementById('outer');"
+        "var f=document.getElementById('far');"
+        "t.addEventListener('focus',record);t.addEventListener('focusin',record);"
+        "t.addEventListener('blur',record);t.addEventListener('focusout',record);"
+        "i.addEventListener('scroll',record);o.addEventListener('scroll',record);"
+        "f.addEventListener('focus',record);f.addEventListener('focusin',record);"
+        "f.addEventListener('blur',record);f.addEventListener('focusout',record);"
+        "</script></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0}"
+        "#outer{display:block;width:100px;height:70px;padding:3px;"
+        "border:2px solid #000;overflow:scroll;margin-left:10px;margin-top:10px}"
+        "#inner{display:block;width:70px;height:50px;padding:2px;"
+        "border:1px solid #000;overflow:scroll;margin-left:35px;margin-top:20px}"
+        "#target{display:block;width:24px;height:22px;"
+        "margin-left:70px;margin-top:40px}"
+        "#tail{display:block;width:24px;height:80px}"
+        "#gap{display:block;height:260px}"
+        "#far{display:block;width:120px;height:24px;margin:2px}";
+    static const char URL[] = "https://positron.local/focus-nested-scroll";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    PCoreFocusTargetInfo target;
+    int outer_scrollable_x;
+    int outer_scrollable_y;
+    int inner_scrollable_x;
+    int inner_scrollable_y;
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    memset(&target, 0, sizeof(target));
+    outer_scrollable_x = 0;
+    outer_scrollable_y = 0;
+    inner_scrollable_x = 0;
+    inner_scrollable_y = 0;
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        cstr_copy(error, sizeof(error),
+                "nested focus script bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/focus-nested-scroll.css");
+        PCore_SetViewport(240, 260, 0);
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 240, 260) != 0 ||
+                PCore_NodeRelationById(document, "outer",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_X, 0, NULL, 0,
+                NULL, &outer_scrollable_x) != 0 ||
+                PCore_NodeRelationById(document, "outer",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_Y, 0, NULL, 0,
+                NULL, &outer_scrollable_y) != 0 ||
+                PCore_NodeRelationById(document, "inner",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_X, 0, NULL, 0,
+                NULL, &inner_scrollable_x) != 0 ||
+                PCore_NodeRelationById(document, "inner",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_Y, 0, NULL, 0,
+                NULL, &inner_scrollable_y) != 0 ||
+                outer_scrollable_x != 1 || outer_scrollable_y != 1 ||
+                inner_scrollable_x != 1 || inner_scrollable_y != 1) {
+            cstr_copy(error, sizeof(error),
+                    "nested focus fixture or Core relation failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = PCore_DocumentWidth(document);
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 240;
+        g_view_h = 260;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (PBrowser_ScriptSessionNotifyResize(
+                g_browser_script_session.session, 240, 260, 1) !=
+                PSCRIPT_OK || PCore_FocusTargetInfoById(document, "target",
+                &target) != 0 || target.kind != PCORE_FOCUS_TARGET_GENERIC ||
+                target.y < 0 || target.y + target.height > g_view_h ||
+                g_doc_h <= g_view_h) {
+            _snprintf(error, sizeof(error) - 1,
+                    "nested focus target was not page-visible: target=%d,%d,%d,%d doc=%d view=%d",
+                    target.x, target.y, target.width, target.height,
+                    g_doc_h, g_view_h);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok && pcore_browser_script_session_evaluate(
+            "window.trace='';var t=document.getElementById('target');"
+            "var i=document.getElementById('inner');var o=document.getElementById('outer');"
+            "var pageX=window.scrollX;var pageY=window.scrollY;"
+            "t.focus();var r=t.getBoundingClientRect();var ir=i.getBoundingClientRect();"
+            "var or=o.getBoundingClientRect();var moved=i.scrollLeft>0&&"
+            "i.scrollTop>0&&o.scrollLeft>0&&o.scrollTop>0;"
+            "var visible=r.left>=ir.left&&r.top>=ir.top&&r.right<=ir.right&&"
+            "r.bottom<=ir.bottom&&r.left>=or.left&&r.top>=or.top&&"
+            "r.right<=or.right&&r.bottom<=or.bottom;"
+            "String(document.activeElement===t&&moved&&visible&&"
+            "window.scrollX===pageX&&window.scrollY===pageY&&window.trace==="
+            "'focus:target;focusin:target;scroll:inner;scroll:outer;');", -1,
+            error, sizeof(error)) != 0) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "nested focus browser evaluation failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (result == NULL || strcmp(result, "true") != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "focus did not reveal nested target: %s",
+                    result != NULL ? result : "<null>");
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var i=document.getElementById('inner');var o=document.getElementById('outer');"
+            "var before=window.trace;var ix=i.scrollLeft;var iy=i.scrollTop;"
+            "var ox=o.scrollLeft;var oy=o.scrollTop;"
+            "document.getElementById('target').focus();"
+            "String(window.trace===before&&i.scrollLeft===ix&&i.scrollTop===iy&&"
+            "o.scrollLeft===ox&&o.scrollTop===oy);", -1, error,
+            sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "repeated nested focus was not silent");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var t=document.getElementById('target');var i=document.getElementById('inner');"
+            "var o=document.getElementById('outer');i.scrollTo(0,0);o.scrollTo(0,0);"
+            "window.trace='';var pageX=window.scrollX;var pageY=window.scrollY;"
+            "t.focus({preventScroll:true});String(i.scrollLeft===0&&i.scrollTop===0&&"
+            "o.scrollLeft===0&&o.scrollTop===0&&window.scrollX===pageX&&"
+            "window.scrollY===pageY&&window.trace==='');", -1, error,
+            sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "focus preventScroll moved a nested container");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var f=document.getElementById('far');f.focus();"
+            "var pageMoved=window.scrollY>0;window.scrollTo(0,0);window.trace='';"
+            "f.blur();String(pageMoved&&window.scrollY===0&&"
+            "window.trace==='blur:far;focusout:far;');", -1, error,
+            sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "blur unexpectedly revealed the page target");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1150 FAIL", error[0] != '\0' ? error :
+                "nested focus scroll contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1150 OK",
+            "focus reveals nested retained containers, while blur and"
+            " preventScroll preserve the existing viewport.");
     return TRUE;
 }
 
@@ -95308,6 +95573,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1147: ok = test1147_browser_element_scroll_contract(); break;
         case 1148: ok = test1148_browser_nested_scroll_into_view_contract(); break;
         case 1149: ok = test1149_browser_all_scroll_into_view_contract(); break;
+        case 1150: ok = test1150_browser_focus_nested_scroll_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

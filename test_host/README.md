@@ -66,7 +66,7 @@ tests=13,20,27,999
 - 固定离线 compatibility corpus，把 contenteditable、dialog/form、same-document navigation 和失败回滚组合成可重复的完整流程；
 - 最新的滚动几何夹具还验证 Core/Browser 的布局尺寸、retained overflow offset，以及
   `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
-  有限 reveal（TEST1146–1149）；
+  有限 reveal，以及 `HTMLElement.focus()` 对该链的联动（TEST1146–1150）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -136,9 +136,10 @@ id/位置，再调用 `PBrowser_ScriptSessionNotifyElementScroll()`。该通知�
 retained overflow ancestor；调用方显式传入 `container:"all"` 时，Browser 从最近者向
 外最多遍历 64 层，并在每个适用祖先滚动后重新读取目标矩形。宿主只提供 Core relation、
 滚动 callback、clamp、重绘和实际位置通知；TEST1148 覆盖默认 nearest，TEST1149 覆盖
-`container:"all"` 的双层滚动链、事件顺序、重复静默和非法选项拒绝。完整 scroll tree、
-scroll chaining/anchoring、scroll-margin、smooth/inertia、匿名目标和视觉滚动条仍不在
-宿主或 Browser 合同内。
+`container:"all"` 的双层滚动链，TEST1150 覆盖 focus 调用对该链的联动。完整 scroll
+tree、scroll chaining/anchoring、scroll-margin、smooth/inertia、匿名目标和视觉滚动条
+仍不在宿主或 Browser 合同内。宿主在 Ex focus callback 中必须尊重 Browser 传入的
+`prevent_scroll`，不要在 Browser 的嵌套 reveal 前抢先移动 page viewport。
 
 ### Native EDIT/SELECT/button/file
 

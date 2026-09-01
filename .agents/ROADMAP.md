@@ -66,16 +66,21 @@ next703 又补齐了有限的嵌套 `Element.scrollIntoView()`：Core 关系 40�
 祖先，并在没有适用祖先时回退 page-level scroll；TEST1148 已通过定向设备门。next704
 在同一公共 Browser 语义上增加了显式 `container:"all"`：从最近到最外依次处理适用
 祖先、每次滚动后重读目标矩形，链完成后才按需回退页面滚动；TEST1149 与 1148 的相邻
-设备门已通过。完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/Selection、
-pinch zoom、平滑/惯性滚动和匿名目标仍未实现，不能把有限 reveal 误写成完整 Web 行为。
-下一条纵向能力是 next705，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；
+设备门已通过。next705 在同一公共 Browser 语义上把 `HTMLElement.focus()` 与这条嵌套
+滚动路径接合：Browser 沿最多 64 层检测 retained overflow ancestor，必要时向 Ex
+host callback 传递有效 `prevent_scroll`，由宿主先保持 page viewport 不变，再由 Browser
+按最近到最外执行 `container:"all"` reveal；显式 `focus({preventScroll:true})` 和
+`blur()` 不移动页面或元素。TEST1150 与 TEST1142、1148、1149 的相邻设备门已通过。
+完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/Selection、pinch
+zoom、平滑/惯性滚动和匿名目标仍未实现，不能把有限 reveal 误写成完整 Web 行为。
+下一条纵向能力是 next706，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；
 不能凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。
 
 优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
-next694、next695、next696、next697、next698、next699、next700、next701、next702 和
-next703 的完成证据都包括定向自动断言、直接相邻回归和风险相称的设备门；下一批
-next704 必须沿用同一完成标准。
+next694、next695、next696、next697、next698、next699、next700、next701、next702、
+next703、next704 和 next705 的完成证据都包括定向自动断言、直接相邻回归和风险相称
+的设备门；下一批 next706 必须沿用同一完成标准。
 视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、
 严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，
 也不要在没有实际缺口证据时提前选择下一能力方向。
@@ -98,17 +103,18 @@ next704 必须沿用同一完成标准。
 
 - 用真实页面缺口驱动 float、position、table、media、字体和复杂 inline 行为。
 - 优先修复严重错位、内容不可达、错误滚动和交互几何，不做脱离语料的全面 CSS 扩张。
-- 在继续扩展前，保持 next704 的边界：默认 `scrollIntoView()` 只 reveal 最近 retained
-  overflow 祖先；显式 `container:"all"` 才沿最多 64 层可寻址父链向外依次 reveal，并在
-  每次滚动后重读目标矩形。完整滚动容器树、scroll chaining/anchoring、scroll-margin、
-  smooth/inertia 和匿名目标不因关系 40–43 bridge 而被误称为已实现。真实滚动条裁剪和
-  触摸视觉进入人工验收矩阵。
+- 在继续扩展前，保持 next704–705 的边界：默认 `scrollIntoView()` 只 reveal 最近
+  retained overflow 祖先；显式 `container:"all"` 和默认 focus 的嵌套路径才沿最多 64 层
+  可寻址父链向外依次 reveal，并在每次滚动后重读目标矩形。focus Ex callback 的有效
+  `prevent_scroll` 只负责让宿主延后 page-level reveal，显式 `preventScroll` 则不滚动。
+  完整滚动容器树、scroll chaining/anchoring、scroll-margin、smooth/inertia 和匿名目标
+  不因关系 40–43 bridge 而被误称为已实现。真实滚动条裁剪和触摸视觉进入人工验收矩阵。
 - 继续降低深 DOM、资源树和重排路径的栈/heap 峰值，并为失败清理添加资源断言。
 - 建立多 viewport/DPI 截图基线，但把设备量化和字体差异与语义断言分开。
 
 ### 表单、输入与可访问交互
 
-- 依据实际流程在已有有界 `dialog` 脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape 请求桥接、宿主顺序 Tab 子树范围、实体色 modal paint、backdrop 指针策略和单元素 contenteditable WM EDIT 接线、去重 `selectionchange` 通知、无修饰连续鼠标拖选以及 Shift/键盘、捕获和焦点中断收尾之上，继续用 compatibility corpus 选择相邻缺口。next667 已实现受限 paste/cut 事务与选区同步，next668 已完成 `WM_COPY` 非空选区、折叠选区 no-op、超长/非 Unicode fail-closed 及 WinCE `WM_CUT` 内部重入保护；next696 已把按 id 的 `HTMLElement.focus()`/`blur()` 请求桥接到 Core/native focus 事务，next697 又加入 Ex focus request 的 page-level reveal 与 `preventScroll`；保持已实现的有界 `tabindex` 排序与 Core/宿主事务边界。
+- 依据实际流程在已有有界 `dialog` 脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape 请求桥接、宿主顺序 Tab 子树范围、实体色 modal paint、backdrop 指针策略和单元素 contenteditable WM EDIT 接线、去重 `selectionchange` 通知、无修饰连续鼠标拖选以及 Shift/键盘、捕获和焦点中断收尾之上，继续用 compatibility corpus 选择相邻缺口。next667 已实现受限 paste/cut 事务与选区同步，next668 已完成 `WM_COPY` 非空选区、折叠选区 no-op、超长/非 Unicode fail-closed 及 WinCE `WM_CUT` 内部重入保护；next696 已把按 id 的 `HTMLElement.focus()`/`blur()` 请求桥接到 Core/native focus 事务，next697 又加入 Ex focus request 的 page-level reveal 与 `preventScroll`，next705 补齐了 Browser-owned 的嵌套 focus reveal 与宿主 page-reveal defer；保持已实现的有界 `tabindex` 排序与 Core/宿主事务边界。
 - 保持 native 控件 mutation、Browser event policy 与 Core form state 的事务顺序。
 - 扩充真实 SIP/IME、硬键盘、SELECT popup、file picker 和旋转的成批人工矩阵。
 - 对 disabled/hidden/stale target 一律 fail closed，不为通过测试绕过生命周期检查。

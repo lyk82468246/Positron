@@ -101,12 +101,16 @@
   `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本后才安装；Browser 只验证并同步
   转发 `element_id`/`focused` 请求。Ex 版本还传递 `prevent_scroll`，宿主以 Core 的
   `PCore_FocusTargetInfoById`/`PCore_InteractionFocusById` 接线 native HWND、focus
-  family 和重绘，并可把默认 focus 的 page-level reveal 结果回传给 Browser。Browser
-  在 callback 返回后同步脚本滚动位置；无 id、disabled、hidden、stale、未布局、
-  对非当前目标的 blur，以及注销后的方法都 fail closed/no-op；重复 focus 不重复
-  派发 focus family。该桥不提供
-  完整 focus navigation、自动初始焦点、focus ring、nested overflow reveal、scroll-margin、
-  平滑/惯性滚动、跨窗口策略或 OEM 控件视觉保证。
+  family 和重绘，并可把默认 focus 的 page-level reveal 结果回传给 Browser。若 Browser
+  能从目标向上找到最多 64 层内、可由 Core relation 寻址的 retained overflow ancestor，
+  它会把 `prevent_scroll` 设为有效提示，让宿主先保持 page viewport 不动，再复用
+  `scrollIntoView({container:"all"})` 完成最近到最外的有限嵌套 reveal；显式
+  `focus({preventScroll:true})` 则保持页面和元素滚动位置不变。Browser 在 callback
+  返回后同步脚本滚动位置；无 id、disabled、hidden、stale、未布局、对非当前目标的
+  blur，以及注销后的方法都 fail closed/no-op；重复 focus 不重复派发 focus family，
+  blur 不执行滚动。该桥不提供完整 focus navigation、自动初始焦点、focus ring、
+  完整滚动树、scroll chaining、scroll-margin、平滑/惯性滚动、跨窗口策略或 OEM 控件
+  视觉保证。
 - Browser session callback 同步且不可重入；宿主若在 callback 中销毁或重入 session，行为不受支持。
 - 该运行时不是完整浏览器安全沙箱，不能直接执行不可信互联网脚本并假定与现代浏览器等价隔离。
 
@@ -164,8 +168,8 @@
   page-level focus reveal、真实 native HWND/OEM 控件或跨窗口视觉。
 - TEST1142 覆盖 Ex focus request 的默认 page-level focus reveal、callback 后脚本
   scroll 同步、目标矩形可见性，以及 `focus({preventScroll:true})` 的 viewport 保持
-  和 scroll 事件抑制；不证明 nested overflow、scroll-margin、平滑/惯性滚动、真实
-  触摸滚动、不同 DPI 下的焦点视觉或 OEM 控件行为。
+  和 scroll 事件抑制；它只覆盖页面级目标，不证明 nested overflow、scroll-margin、
+  平滑/惯性滚动、真实触摸滚动、不同 DPI 下的焦点视觉或 OEM 控件行为。
 - TEST1143 覆盖页面级 `Element.scrollIntoView()` 的默认 start/nearest、`false` 末端
   对齐、center 对齐、已可见目标的 nearest 静默，以及不支持 smooth 行为的安全拒绝；
   不证明 scroll-margin、nested overflow、平滑/惯性滚动、复杂布局对齐或真实滚动条、
@@ -196,6 +200,12 @@
   页面 viewport 稳定、重复 nearest 静默、未知 container 与 smooth 拒绝。它仍不证明
   无界滚动树、scroll chaining/anchoring、scroll-margin、平滑/惯性滚动、匿名目标、
   复杂布局或真实滚动条视觉。
+- TEST1150 覆盖 `HTMLElement.focus()` 对同一嵌套 overflow 链的协调：Browser 发现
+  retained ancestor 后向 Ex host callback 传递有效 `prevent_scroll`，再按 inner→outer
+  顺序完成有限 reveal；断言两个轴、focus/focusin 与 scroll 顺序、重复 focus 静默、
+  `focus({preventScroll:true})` 保持页面和元素位置，以及远端目标 blur 不移动页面。
+  它仍不证明完整焦点算法、滚动树、scroll chaining/anchoring、scroll-margin、平滑/惯性
+  滚动、复杂布局或真实滚动条视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

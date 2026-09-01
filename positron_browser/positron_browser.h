@@ -437,13 +437,16 @@ typedef struct PBrowserScriptFocusRequestCallbacks {
 } PBrowserScriptFocusRequestCallbacks;
 
 /* Extended focus request adapter. This additive form preserves the original
- * callback ABI while allowing focus(options) to request page-level reveal.
- * prevent_scroll is 1 only for focus({preventScroll:true}). The host may
- * write the actually applied CSS page scroll into out_result; coordinates
- * are non-negative and scroll_changed is nonzero only when the viewport
- * moved. The result is copied synchronously and is never retained. Nested
- * overflow containers, smooth scrolling and scroll-margin are outside this
- * boundary. */
+ * callback ABI while allowing focus(options) to coordinate page-level reveal.
+ * prevent_scroll requests that the host leave the page viewport unchanged. It
+ * is set for focus({preventScroll:true}) and also when Browser has identified
+ * a retained overflow ancestor and will perform its bounded nested reveal
+ * after the callback; hosts must honor it in both cases. The host may write
+ * the actually applied CSS page scroll into out_result; coordinates are
+ * non-negative and scroll_changed is nonzero only when the viewport moved.
+ * The result is copied synchronously and is never retained. Complete scroll
+ * trees, scroll chaining, smooth scrolling and scroll-margin remain outside
+ * this boundary. */
 typedef struct PBrowserScriptFocusRequestInfoEx {
     unsigned long size;
     const char *element_id;
@@ -1620,7 +1623,8 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFocusRequestCallbacksEx(
  * registered host adapter. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchFocusRequest(HANDLE hSession,
         const PBrowserScriptFocusRequestInfo *info);
-/* Extended dispatch carries focus({preventScroll:true}) and an optional
+/* Extended dispatch carries the page-reveal suppression requested by the
+ * script path (including focus({preventScroll:true})) and an optional
  * caller-owned result containing the host's applied CSS page scroll. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchFocusRequestEx(HANDLE hSession,
         const PBrowserScriptFocusRequestInfoEx *info,

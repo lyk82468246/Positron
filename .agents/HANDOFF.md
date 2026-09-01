@@ -8,9 +8,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。本批 next704 的 Browser/host 接线与职责文档已完成，未触碰
+- 分支：`main`。本批 next705 的 Browser/host 接线与职责文档已完成，未触碰
   `tmp/` 中的本地证据。
-- `TEST_MAX_NUMBER` 已为 1149。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- `TEST_MAX_NUMBER` 已为 1150。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
@@ -45,12 +45,20 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   与 TEST1148 共同覆盖双轴对齐、inner→outer 事件顺序、页面稳定、重复静默和非法选项
   拒绝。宿主只负责 callback、Core relation、clamp、重绘和实际位置通知。
 
+- next705 在 next704 的公共 Browser 滚动语义上接合 `HTMLElement.focus()`：Browser
+  沿目标到根最多检查 64 层 retained overflow ancestor；发现嵌套容器时向 Ex host
+  callback 传递有效 `prevent_scroll`，宿主因此只处理 Core/native focus 和 page-level
+  适配而不先移动页面，Browser 随后按 `container:"all"` 的最近到最外顺序 reveal。
+  显式 `focus({preventScroll:true})` 保持页面与元素滚动位置，`blur()` 不执行滚动。
+  TEST1150 与 TEST1142、1148、1149 的相邻设备门验证了双轴、事件顺序、重复静默、
+  callback 后同步和远端 blur 行为；没有新增公共 ABI 字段。
+
 - next678 已把候选 generation、取消请求、退休状态、提交资格和 committed/failed 终态迁入 `positron_browser.dll` 的 opaque handle。next679 进一步把 pending/committed/failed/cancelled/stale 结果分类作为只读 Browser 摘要；next680 再提供独立 candidate/resource 的只读提交组合快照；next681 增加提交后 cleanup snapshot 和宿主回收观测；next682 将 history entry 的 viewport snapshot 迁入 Browser，并移除宿主的按 entry 滚动数组。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列、窗口滚动应用和页面 swap，不把线程、窗口、网络或 Core document 带入 Browser ABI。
 - Browser 现在同时拥有 URL 去重、role/policy、资源字节、终态、失败分类、重试预算、commit gate、hash-only 摘要、fallback 计数、候选 admission 状态、候选结果分类、candidate/resource 组合 decision 和 cleanup snapshot；宿主只保留 URL→resource-index 短引用、candidate handle 和平台调度状态，并消费结果快照写日志。清理快照复制完整有界 resource observation，要求 pending 工作先收敛，committed candidate 还必须配 READY gate。
 - Browser script session 现在可注册 page-level scroll callback：脚本 `scrollTo`/`scrollBy` 请求由宿主 clamp/apply 并返回实际坐标，宿主的 scrollbar、触摸、键盘、resize 或 fragment reveal 路径可用 `PBrowser_ScriptSessionNotifyScroll` 同步脚本偏移；同步通知去重 `scroll` 事件，且脚本 callback 内不会递归进入 runtime。候选 session 在提交前只回显坐标，不改变旧页。
 - Browser script session 还提供 `PBrowser_ScriptSessionNotifyResize`：宿主在 WM_SIZE 完成 Core style/layout、page-level clamp 和 native child reposition 后传入 CSS viewport 宽高/DPR；Browser 更新 `innerWidth`/`outerWidth`/`devicePixelRatio`、`screen` 宽高/方向，刷新每个 session 最多 64 个 `matchMedia()` 列表，并在匹配翻转时先同步派发 `change`、再派发去重的 window `resize`。它不触发 Core layout，也不自动运行 timer/animation frame；超过 64 个列表只保留创建时快照。
 - Browser script session 还提供布局视口对应的 `visualViewport`：`width`/`height` 与 viewport 同步，`pageLeft`/`pageTop` 与 page scroll 同步，`scale` 固定为 1，`offsetLeft`/`offsetTop` 固定为 0；有效 resize/scroll 按 visual viewport、window 顺序同步派发并去重。它不模拟 pinch zoom、视觉 viewport 偏移或 nested overflow。
-- Browser script session 还提供由宿主驱动的顶层窗口焦点合同：`PBrowser_ScriptSessionDispatchWindowFocus` 归一化激活值，更新 `document.hasFocus()`，并在实际变化时按属性 handler、listener 顺序派发可信的非冒泡 focus/blur；重复值保持静默。参考宿主已把 `WM_ACTIVATE` 接到该入口，但 native 控件焦点、焦点矩形和 OEM/跨窗口策略仍由宿主负责。next695 增加的 `PBrowserScriptActiveElementCallbacks` 是显式可选桥：宿主把 Core 的当前焦点 id 提供给 Browser，getter 解析有效 id，否则回退 `document.body`；未注册 callback 的 session 不承诺安装该属性。next696 增加的 `PBrowserScriptFocusRequestCallbacks` 只把带 id 的 `focus()`/`blur()` 请求同步交给宿主；next697 通过新增 Ex callback 传递 `prevent_scroll` 和实际 CSS page scroll 结果，默认 focus 可 reveal 到 page-level viewport；宿主仍用 Core 的资格/焦点 API、native HWND 和已有事件接线完成事务，disabled/hidden/stale/重复请求安全 no-op。
+- Browser script session 还提供由宿主驱动的顶层窗口焦点合同：`PBrowser_ScriptSessionDispatchWindowFocus` 归一化激活值，更新 `document.hasFocus()`，并在实际变化时按属性 handler、listener 顺序派发可信的非冒泡 focus/blur；重复值保持静默。参考宿主已把 `WM_ACTIVATE` 接到该入口，但 native 控件焦点、焦点矩形和 OEM/跨窗口策略仍由宿主负责。next695 增加的 `PBrowserScriptActiveElementCallbacks` 是显式可选桥：宿主把 Core 的当前焦点 id 提供给 Browser，getter 解析有效 id，否则回退 `document.body`；未注册 callback 的 session 不承诺安装该属性。next696 增加的 `PBrowserScriptFocusRequestCallbacks` 只把带 id 的 `focus()`/`blur()` 请求同步交给宿主；next697 通过新增 Ex callback 传递 `prevent_scroll` 和实际 CSS page scroll 结果，默认 focus 可 reveal 到 page-level viewport；next705 又让 Browser 在发现 retained overflow ancestor 时复用 Ex 的有效 `prevent_scroll`，并在 callback 后完成有界嵌套 reveal；宿主仍用 Core 的资格/焦点 API、native HWND 和已有事件接线完成事务，disabled/hidden/stale/重复请求安全 no-op。
 - Browser script session 还提供统一的 `PBrowser_ScriptSessionRunTaskCheckpoint`：宿主用 `phase_mask` 选择 timer、animation frame、message 和 idle callback，Browser 按固定顺序执行并在每个阶段后运行一次有界 microtask；宿主提供单调时钟、frame timestamp、idle deadline、message limit 和 UI 消息循环。参考宿主已通过 16 ms `WM_TIMER` 接入，Browser 不创建线程或接管宿主调度。
 - Browser script session 的页面生命周期还覆盖初始 `complete` 后只派发一次的 `pageshow`，以及 hidden→visible 的 `visibilitychange`→`pagehide`/`pageshow` 顺序；重复 complete 或重复 hidden 值保持静默，有限 page event 的 `persisted` 固定为 `false`，因为没有 bfcache。宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`，Browser 维护 `document.hasFocus()` 并在状态变化时派发可信的 window focus/blur；重复状态保持静默。
 - Core 通过既有 DOM relation callback 暴露当前 layout border-box 的 `x`、`y`、`width`、`height` 四个整数 CSS 像素分量；Browser 的 `Element.getBoundingClientRect()` 和有界 `Element.getClientRects()` 组合 viewport-relative 矩形并扣除 CSS page scroll。宿主把 Core 的物理滚动坐标与 Browser 的 CSS page 坐标在当前 DPI 边界换算，避免高 DPI 下重复放大或缩小。
@@ -65,13 +73,14 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-- next703/704 已在 next702 的带 id retained overflow 滚动桥之上，增加有限的嵌套
-  `Element.scrollIntoView()`：Core 暴露两轴可滚动标志和 padding/client edge 的
-  document-CSS-pixel origin（关系 40–43），Browser 默认处理最近 retained overflow
-  ancestor，显式 `container:"all"` 时沿最多 64 层可寻址 `parentElement` 向外依次处理，
-  每次滚动后重读目标矩形并按需回退 page-level。`test_host.exe` 只提供 WM 接线、离线
-  fixture 和断言，TEST1148/1149 是该能力的自动入口。
-- 当前唯一下一步是 next705：重新检查 compatibility corpus、源码、设备日志和截图，
+- next705 已在 next704 的带 id retained overflow 滚动桥之上，把
+  `HTMLElement.focus()` 接入有限的嵌套 reveal：Browser 沿最多 64 层可寻址
+  `parentElement` 检查 retained ancestor，必要时向 Ex host callback 传递有效
+  `prevent_scroll`，再按最近到最外重用 `container:"all"` 路径；显式
+  `focus({preventScroll:true})` 和 `blur()` 不移动页面或元素。`test_host.exe` 只提供
+  WM 接线、page-level callback、离线 fixture 和断言，TEST1150 与 TEST1142/1148/1149
+  是该能力的自动入口。
+- 当前唯一下一步是 next706：重新检查 compatibility corpus、源码、设备日志和截图，
   固定一个新的用户可见缺口，再选择一个边界清楚的公共 DLL 纵向能力。不要仅为增加
   编号拆分提交，也不要把页面语义放回 `test_host`。
 
@@ -118,27 +127,29 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1149。
+- `TEST_MAX_NUMBER`：1150。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next704 的 Core/Browser 嵌套 overflow `scrollIntoView()` 组合：
+当前最新产品门为 next705 的 Browser/Core focus 与嵌套 overflow `scrollIntoView()` 组合：
 
-- next704 定向目录：`tmp/device-runs/20260901-142410-next704/`；
-- 动态选择：`1148-1149,999`，3 项；3/3 通过，零 `ERROR`/`FAIL`，唯一
-  `TESTBENCH PASS`。TEST1148 验证关系 40–43、默认最近 retained ancestor、start/nearest
-  对齐、page viewport 稳定、事件去重和 smooth 拒绝；TEST1149 验证
-  `container:"all"` 的双层 ancestor 链、inner→outer 事件顺序、每层重读矩形、页面稳定、
-  重复静默和未知 container/smooth 拒绝；TEST999 请求一次提示音。
+- next705 定向目录：`tmp/device-runs/20260901-174347-next705-final/`；
+- 动态选择：`1142,1148-1150,999`，5 项；5/5 通过，零 `ERROR`/`FAIL`，唯一
+  `TESTBENCH PASS`。TEST1142 保留 page-level focus reveal 和 `preventScroll` 回归；
+  TEST1148/1149 保留最近 ancestor 与 `container:"all"` 相邻滚动；TEST1150 验证
+  Browser 发现嵌套 retained ancestor 后向 Ex host callback 传递 page-reveal defer，
+  再按 inner→outer 处理双轴 reveal、focus/focusin 与 scroll 顺序、重复 focus 静默、
+  `focus({preventScroll:true})` 的位置保持，以及远端目标 blur 不移动页面；TEST999
+  请求一次提示音。
 - 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 Debug ARMV4I 构建和同批
   staging。RAPI gate 只复用已有 GUI 会话，不连接、选择、重置或杀死设备。
-- 静态验证：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、正式
-  Debug ARMV4I 全量重建、同批 staging 和定向设备门均通过；设备日志中的选择、完成
-  数、错误数和唯一 `TESTBENCH PASS` 已复核。Browser session 的有界 heap ceiling
-  已为 nested geometry bootstrap 增加 16 KiB，独立 `positron_script.dll` 默认预算不变。
+- 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I 构建、同批 staging、
+  定向设备门和仓库审计均通过；设备日志中的选择、完成数、错误数和唯一
+  `TESTBENCH PASS` 已复核。该能力没有新增 ABI 字段，Browser session 的有界 heap
+  ceiling 与既有 nested geometry bootstrap 保持不变。
 
 ## 历史设备证据（仅供追溯）
 
@@ -155,75 +166,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   staging 和定向设备门均通过；设备日志中的选择、完成数、错误数和唯一
   `TESTBENCH PASS` 已复核。
 
-上一条产品门为 next700 的 Core/Browser inline 多片段组合：
-
-- next700 定向目录：`tmp/device-runs/20260901-095509-next700/`；
-- 动态选择：`1130,1144-1145,999`，4 项；4/4 通过，零 `ERROR`/`FAIL`，唯一
-  `TESTBENCH PASS`。TEST1130 保留已有 layout geometry 回归，TEST1144 保留单
-  矩形集合回归，TEST1145 验证窄容器 inline 文本的 Core count/index relations、
-  多行矩形 identity/顺序、`.item()` 边界和 union，TEST999 请求一次提示音。
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 Debug ARMV4I 构建和同批
-  staging。RAPI gate 只复用已有 GUI 会话，不连接、选择、重置或杀死设备。
-- 静态验证：`python scripts/test_c89ize.py`、`python scripts/audit_repo.py`、正式
-  Debug ARMV4I 增量构建、同批 staging 和定向设备门均通过；设备日志中的选择、完成
-  数、错误数和唯一 `TESTBENCH PASS` 已复核。
-
-上一条产品门为 next698 的页面级 `Element.scrollIntoView()` 组合：
-
-- next698 定向目录：`tmp/device-runs/20260831-222051-next698-r2/`；
-- 动态选择：`1078,1140,1141,1142,1143,999`，6 项；6/6 通过，零 `ERROR`/`FAIL`，唯一
-  `TESTBENCH PASS`。TEST1143 验证默认 start/nearest、center、`false` 末端对齐、
-  已可见目标的 nearest 静默和不支持 smooth 的安全拒绝；TEST1142、TEST1141、
-  TEST1140 与 TEST1078 保留直接相邻 focus、geometry、activeElement/bootstrap 回归，
-  TEST999 提示音请求一次。
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 Debug ARMV4I 构建和同批
-  staging。RAPI gate 只复用已有 GUI 会话，不连接、选择、重置或杀死设备。
-- 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I 构建、同批 staging、
-  定向设备门和增量构建均通过；日志中的选择、完成数、错误数和唯一 `TESTBENCH PASS`
-  已复核。
-
-历史产品门为 next697 的 Core/Browser Ex focus request 与 page-level viewport
-组合：
-
-- next697 定向目录：`tmp/device-runs/20260831-214413-next697/`；
-- 动态选择：`1078,1140,1141,1142,999`，5 项；5/5 通过，零 `ERROR`/`FAIL`，唯一
-  `TESTBENCH PASS`。TEST1142 验证默认 focus 将目标矩形 reveal 到 page-level
-  viewport、Browser 在 callback 返回后同步实际 CSS scroll 并派发一次 scroll，
-  `focus({preventScroll:true})` 保留位置且不派发 scroll；TEST1141、TEST1140 和
-  TEST1078 保留直接相邻焦点/bootstrap 回归，TEST999 提示音请求一次。
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 Debug ARMV4I 构建和同批
-  staging。RAPI gate 只复用已有 GUI 会话，不连接、选择、重置或杀死设备。
-- 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I 构建、同批 staging、
-  定向设备门和增量构建均通过；日志中的选择、完成数、错误数和唯一
-  `TESTBENCH PASS` 已复核。
-
-上一条产品门为 next696 的 Core/Browser `HTMLElement.focus()`/`blur()` 请求
-组合：
-
-- next696 定向目录：`tmp/device-runs/20260831-212029-next696-focus-request-r3/`；
-- 动态选择：`1078,1140,1141,999`，4 项；4/4 通过，零 `ERROR`/`FAIL`，唯一
-  `TESTBENCH PASS`。TEST1141 验证按 id 的 focus/blur 请求、旧目标
-  blur/focusout 与新目标 focus/focusin 顺序、Core 资格检查、非当前目标 blur、
-  disabled/plain 目标拒绝和注销后的 no-op；TEST1140 保留 activeElement/body
-  回退，TEST1078 保留 Browser bootstrap 相邻回归，TEST999 提示音请求一次。
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 Debug ARMV4I 构建和同批
-  staging。RAPI gate 只复用已有 GUI 会话，不连接、选择、重置或杀死设备。
-- 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I Rebuild、同批 staging、
-  定向设备门和增量构建均通过；r2 日志中的选择、完成数、错误数和唯一
-  `TESTBENCH PASS` 已复核。首轮设备门因脚本 native-function 槽位不足在 TEST1078
-  停止，已记录于 `FAILED_EXPERIMENTS.md`，不作为产品基线；扩容到 26 后才采用 r2。
-
-上一条产品门为 next694 的顶层窗口焦点生命周期组合：
-
-- next694 定向目录：`tmp/device-runs/20260831-172103-next694-window-focus-adjacent-r1/`；
-- 动态选择：`1135,1136,1137,1138,1139,999`，6 项；6/6 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。TEST1135–1138 保留 screen.orientation、beforeunload、统一任务检查点和 pageshow/visibility 相邻回归；TEST1139 验证新 session 的 `document.hasFocus()`、WM_ACTIVATE 对应的 focus/blur、事件字段、属性 handler、重复值静默和非零归一化；TEST999 提示音请求一次。
-- 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 Debug ARMV4I Rebuild 和同批 staging；RAPI gate 只复用已有 GUI 会话，不连接、选择、重置或杀死设备。
-- 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I Rebuild、设备门和 `python scripts/audit_repo.py` 均通过；r1 日志中的选择、完成数、错误数和唯一 `TESTBENCH PASS` 已复核。
-
-next690、next689 及更早设备证据已由 Git 历史保留；当前 handoff 只保留
-next699、next698、next697、next696、next695 和稳定全量基线，稳定语义见 `docs/TESTING.md`。
-
-- 设备与静态验证已包含在 next695/next694 当前证据中；更早记录由 Git 历史保留。
+next700 及更早设备证据已由 Git 历史保留；当前 handoff 只保留最近的 next701、
+next705 和稳定全量基线，稳定语义见 `docs/TESTING.md`。
 
 - 全量目录：`tmp/device-runs/20260830-163642-next670-full-final/`；
 - 动态选择：`1-22,24-77,80-231,233-262,264-448,482-998,1000-1117,7b,999`，共 1080 项；仅排除 manual-only 的 TEST232/TEST263；
@@ -244,20 +188,21 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 - 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
-- TEST1117–TEST1149 都是离线自动夹具，没有新增必须立即人工复核的崩溃或数据风险；它们的真实视觉、触摸、旋转、SIP/IME、picker 和不同 DPI 呈现继续进入人工累计清单。自动结果不替代真实网络恢复、OEM 控件或逐资源视觉验收。
+- TEST1117–TEST1150 都是离线自动夹具，没有新增必须立即人工复核的崩溃或数据风险；它们的真实视觉、触摸、旋转、SIP/IME、picker 和不同 DPI 呈现继续进入人工累计清单。自动结果不替代真实网络恢复、OEM 控件或逐资源视觉验收。
 - TEST1136 是同步、可取消的脚本生命周期门，没有新增必须立即人工复核的视觉风险；参考宿主取消时只保留当前页面，不显示 prompt。自定义宿主若提供确认 UI，仍需把真实关闭、导航和提示交互加入人工清单。
 - TEST1137 是离线的脚本队列顺序和宿主调度夹具，没有新增必须立即人工复核的视觉风险；真实页面的 timer/frame/message/idle 频率、功耗和 OEM 消息行为仍属于宿主集成观察，自动门只证明 Browser 顺序与限额合同。
 - TEST1138 是离线的页面生命周期语义夹具，没有新增必须立即人工复核的视觉风险；真实页面的后台挂起、OEM 可见性通知、bfcache 和页面视觉仍属于宿主集成观察，自动门只证明 Browser 的有限事件顺序、去重和 `persisted == false` 合同。
 - TEST1139 是离线的窗口焦点语义夹具，没有新增必须立即人工复核的视觉风险；真实 WM_ACTIVATE/OEM 前后台切换、native 控件焦点、焦点矩形和跨窗口策略仍属于宿主集成观察，自动门只证明 Browser 的 `document.hasFocus()`、focus/blur 事件字段与去重合同。
 - TEST1140 是离线的 Core/Browser activeElement 语义夹具，没有新增必须立即人工复核的视觉风险；真实 native 控件焦点、焦点矩形、自动初始焦点、焦点陷阱、SIP/IME 和跨窗口切换仍属于宿主集成观察，自动门只证明有界 id 投影和 body 回退合同。
 - TEST1141 是离线的 Browser/Core focus request 语义夹具，没有新增必须立即人工复核的视觉风险；真实 native HWND 切换、焦点矩形、OEM 控件、SIP/IME 和跨窗口切换仍属于宿主集成观察，自动门只证明按 id 资格、Core focus node、focus family 顺序、重复/失效目标 no-op 和注销后的 fail-closed 合同。
-- TEST1142 是离线的 Browser/Core page-level focus reveal 语义夹具，没有新增必须立即人工复核的视觉风险；真实滚动条、触摸/键盘滚动、nested overflow、scroll-margin、平滑/惯性滚动、不同 DPI 下的焦点视觉和 OEM 控件仍属于宿主集成观察，自动门只证明默认 reveal、`preventScroll` 保持 viewport、矩形可见性和 callback 后脚本同步合同。
+- TEST1142 是离线的 Browser/Core page-level focus reveal 语义夹具，没有新增必须立即人工复核的视觉风险；真实滚动条、触摸/键盘滚动、nested overflow、scroll-margin、平滑/惯性滚动、不同 DPI 下的焦点视觉和 OEM 控件仍属于宿主集成观察，自动门只证明默认 reveal、`preventScroll` 保持 viewport、矩形可见性和 callback 后脚本同步合同；TEST1150 另覆盖嵌套 focus reveal。
 - TEST1143 是离线的 Browser page-level `scrollIntoView()` 语义夹具，没有新增必须立即人工复核的视觉风险；真实滚动条、触摸/键盘滚动、nested overflow、scroll-margin、平滑/惯性滚动、复杂布局和不同 DPI 下的对齐视觉仍属于宿主集成观察，自动门只证明有限对齐、事件去重和 smooth 拒绝合同。
 - TEST1144 是离线的 Browser/Core `getClientRects()` 语义夹具，没有新增必须立即人工复核的视觉风险；真实页面的 inline 多片段、Range、transforms、nested overflow、字体、滚动和不同 DPI 视觉仍属于宿主集成观察，自动门只证明单矩形集合的身份、边界、滚动跟随和隐藏回退合同。
 - TEST1145 是离线的 Browser/Core inline 多片段语义夹具，没有新增必须立即人工复核的视觉风险；真实页面的复杂 inline 嵌套、Range/Selection、字体度量、transforms、nested overflow、滚动和不同 DPI 视觉仍属于宿主集成观察，自动门只证明最多 16 个按行片段的 identity、顺序、union 和 Core/Browser 一致性。
 - TEST1146 是离线的 Browser/Core 布局尺寸语义夹具，没有新增必须立即人工复核的视觉风险；真实页面的复杂 box model、滚动条绘制、nested overflow、transforms、字体度量和不同 DPI 视觉仍属于宿主集成观察，自动门只证明六个整数尺寸 relation、只读 getter、边框/内边距/retained-scrollport 算术和后代 extent 的有界一致性。
 - TEST1147 是离线的 Browser/Core 元素 overflow 滚动语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实嵌套滚动条的绘制、裁剪、指针/触摸、不同 DPI 和复杂滚动容器仍属于宿主集成观察，自动门只证明带 id 常见 box 的 offset/clamp、脚本方法、事件去重和 pointer snapshot 同步。
 - TEST1148/1149 是离线的 Browser/Core 有限 nested `scrollIntoView()` 语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实多层滚动树的裁剪、scroll chaining、scroll-margin、指针/触摸、不同 DPI 和平滑/惯性滚动仍属于宿主集成观察，自动门只证明最近 ancestor 与 `container:"all"` 的有界链、关系 40–43、对齐、page 稳定、事件去重和 smooth 拒绝合同。
+- TEST1150 是离线的 Browser/Core nested focus 语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实滚动条裁剪、焦点矩形、触摸/SIP、不同 DPI 和完整滚动树仍属于宿主集成观察，自动门只证明 Ex `prevent_scroll` 协调、inner→outer 双轴 reveal、focus/scroll 顺序、重复 focus、显式 `preventScroll` 和远端 blur 的合同。
 - next682 的 TEST1081/1082 没有新增必须立即人工复核的崩溃或数据风险；不同页面高度、横向滚动、旋转、DPI 和真实后退按钮的整体视觉/触摸结果继续与既有滚动和 history 风险一起累计观察。自动门只证明 Browser snapshot 与宿主 clamp/apply 的语义。
 - next683 的 TEST1128 同样是离线自动夹具，没有新增必须立即人工复核的崩溃或数据风险；宽页面的横向滚动条、左右边距、触摸/键盘操作、resize/旋转/DPI 视觉和真实页面 overflow 结果进入既有人工累计清单。自动门只证明 page-level extent、坐标一致性、clamp 和 snapshot 语义。
 - next684 的 TEST1129 是离线脚本/宿主同步夹具，没有新增必须立即人工复核的崩溃或数据风险；真实页面脚本滚动、滚动条视觉、触摸/键盘、resize/旋转/DPI 和嵌套 overflow 仍进入既有人工累计清单。自动门只证明 page-level 坐标、clamp、反向同步、事件去重和 callback 不可重入。
@@ -279,10 +224,12 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
   overflow box 上增加 retained 两轴滚动和有限 nested `scrollIntoView()`；默认选择最近
   ancestor，`container:"all"` 才沿最多 64 层向外处理，完整滚动容器树、scroll
   chaining/anchoring、scroll-margin、smooth/inertia 和匿名目标仍未实现。
-  TEST1146–1149 只证明离线 fixture 中 Core/Browser 的整数值、clamp、事件和 fail-closed
-  回退一致。
+  next705 又让 `HTMLElement.focus()` 复用同一条 Browser-owned 嵌套 reveal 路径，并由
+  Ex `prevent_scroll` 让宿主延后 page-level reveal；完整滚动树和焦点导航仍未实现。
+  TEST1146–1150 只证明离线 fixture 中 Core/Browser 的整数值、clamp、事件和
+  fail-closed 回退一致。
 
-- 已建立固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119–TEST1149 已覆盖导航事务、资源 gate、页面生命周期、滚动/几何、布局尺寸、元素 overflow、媒体/焦点和脚本调度的有界合同。取消仍是协作式的，脚本队列仍依赖宿主调度；任意真实站点的 fallback 视觉、复杂布局、Range/Selection、inline 嵌套、完整滚动容器树、scroll chaining、pinch zoom、精确逐元素归因和自定义 prompt 仍未保证。
+- 已建立固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119–TEST1150 已覆盖导航事务、资源 gate、页面生命周期、滚动/几何、布局尺寸、元素 overflow、媒体/焦点和脚本调度的有界合同。取消仍是协作式的，脚本队列仍依赖宿主调度；任意真实站点的 fallback 视觉、复杂布局、Range/Selection、inline 嵌套、完整滚动容器树、scroll chaining、pinch zoom、精确逐元素归因和自定义 prompt 仍未保证。
 - `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围、有界 backdrop 指针策略和 Core 实体色 modal paint；当前表单桥要求最近祖先 dialog 有非空 id。CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
@@ -293,16 +240,16 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next705
+## 唯一下一步：next706
 
-next704 已把显式 `container:"all"` 的有限多祖先 `scrollIntoView()` 接入
-Core/Browser，并由 TEST1148/1149 与 `1148-1149,999` 定向设备门验证。下一步先从
-compatibility corpus、源码、日志或截图固定另一个真实缺口，再选择一个边界清楚的
-离线 fixture 或稳定哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主只做平台接线、
-调度、应用策略和断言；不要把互不相关的能力拆成只增加编号的提交，也不要在没有证据时
-扩大 ABI。完整滚动容器树、Range/Selection、pinch zoom、transforms、scroll-margin、
-平滑/惯性滚动、完整媒体查询语法、bfcache 和视觉差异仍是限制，不应在下一步中被误写
-成已支持。
+next705 已把 `HTMLElement.focus()` 与 Browser-owned 的有限嵌套
+`scrollIntoView({container:"all"})` 路径接合，并由 TEST1150 与
+`1142,1148-1150,999` 定向设备门验证。下一步先从 compatibility corpus、源码、日志
+或截图固定另一个真实缺口，再选择一个边界清楚的离线 fixture 或稳定哨兵。实现必须把
+可复用语义放在正确的公共 DLL，宿主只做平台接线、调度、应用策略和断言；不要把互不
+相关的能力拆成只增加编号的提交，也不要在没有证据时扩大 ABI。完整滚动容器树、
+Range/Selection、pinch zoom、transforms、scroll-margin、平滑/惯性滚动、完整媒体查询
+语法、bfcache 和视觉差异仍是限制，不应在下一步中被误写成已支持。
 
 优先场景应同时满足：
 
@@ -312,11 +259,11 @@ compatibility corpus、源码、日志或截图固定另一个真实缺口，再
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一步完成标准（next705）
+## 下一步完成标准（next706）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
-- 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱 next685–704 的布局 relation、布局尺寸、元素滚动、`getBoundingClientRect()`/`getClientRects()`、DPI 换算、history snapshot、宿主 clamp/apply、scroll restoration、beforeunload、脚本任务检查点、窗口焦点、activeElement、focus/blur 请求、page-level/nested scrollIntoView 或旧页保留契约；
+- 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱 next685–705 的布局 relation、布局尺寸、元素滚动、`getBoundingClientRect()`/`getClientRects()`、DPI 换算、history snapshot、宿主 clamp/apply、scroll restoration、beforeunload、脚本任务检查点、窗口焦点、activeElement、focus/blur 请求、page-level/nested scrollIntoView 或旧页保留契约；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- handoff 覆盖为 next704 快照，ROADMAP 只保留当前尚未完成的纵向能力。
+- handoff 覆盖为 next705 快照，ROADMAP 只保留当前尚未完成的纵向能力。

@@ -232,12 +232,15 @@ PBrowser_ScriptSessionRegisterActiveElementCallbacks(session, &active);
 
 需要页面级滚动可见性时，宿主注册新增的
 `PBrowserScriptFocusRequestCallbacksEx`。Browser 把
-`focus({preventScroll:true})` 表示为 `prevent_scroll=1`；宿主在完成自己的
-viewport clamp/apply 后，把实际 CSS page 坐标写入
-`PBrowserScriptFocusRequestResult`。Browser 等 callback 返回后才更新脚本侧
-`scrollX`/`scrollY`，因此滚动事件不会从 native callback 内递归进入 runtime。
-默认 `focus()` 会让目标的 Core layout 矩形进入 page-level viewport，
-`preventScroll:true` 保持现有滚动位置；`blur()` 不滚动。
+`focus({preventScroll:true})` 表示为 `prevent_scroll=1`；如果 Browser 能从
+当前目标沿 `parentElement` 找到 retained overflow ancestor，也会把这一位设为
+1，要求宿主先不要做 page-level reveal。宿主在完成自己的 viewport clamp/apply 后，
+把实际 CSS page 坐标写入 `PBrowserScriptFocusRequestResult`。Browser 等 callback
+返回后才更新脚本侧 `scrollX`/`scrollY`，因此滚动事件不会从 native callback 内
+递归进入 runtime。普通 `focus()` 随后由 Browser 调用有界的
+`scrollIntoView({block:"nearest",inline:"nearest",container:"all"})`：先处理
+最近到最外的可寻址 retained overflow ancestor，仍在页面视口外时才使用 page-level
+scroll callback。`preventScroll:true` 完全保持现有页面和元素滚动位置；`blur()` 不滚动。
 
 只需要焦点事务时的最小注册形态如下，`request_focus` 的 `element_id` 只在同步
 callback 期间借用：
@@ -265,9 +268,10 @@ focus_ex.request_focus = host_request_focus_ex;
 PBrowser_ScriptSessionRegisterFocusRequestCallbacksEx(session, &focus_ex);
 ```
 
-该扩展只覆盖 id-addressable Core 目标和 page-level viewport，不提供完整 focus
-navigation、自动初始焦点、focus ring、nested overflow/scroll container、
-scroll-margin、平滑/惯性滚动、跨窗口策略或 OEM 控件视觉保证。
+该扩展覆盖 id-addressable Core 目标、page-level viewport 和最多 64 层可寻址的
+retained overflow ancestor 链，但不提供完整 focus navigation、自动初始焦点、
+focus ring、完整 scroll tree、scroll chaining、scroll-margin、平滑/惯性滚动、
+跨窗口策略或 OEM 控件视觉保证。
 
 ### DOM、表单与 validation adapters
 
@@ -598,10 +602,13 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 - `HTMLElement.focus()`/`blur()` 只有在宿主注册
   `PBrowserScriptFocusRequestCallbacks`（或 Ex 版本）后才安装；宿主必须用 Core 的
   按 id 资格与 focus node API 接线 native HWND 和 focus family。Ex 版本还支持默认
-  focus 的 page-level viewport reveal 与 `focus({preventScroll:true})`，并把实际
-  CSS scroll 坐标在 callback 返回后同步回脚本。不可用目标、对非当前目标的 blur，以及
-  注销后的方法都 fail closed/no-op；重复 focus 不重复派发 focus family。nested overflow reveal、scroll-margin、
-  平滑/惯性滚动、完整焦点导航、初始焦点、focus ring 或跨窗口策略仍不在范围内。
+  focus 的 page-level viewport reveal、最多 64 层 retained overflow ancestor reveal
+  与 `focus({preventScroll:true})`，并把实际 CSS scroll 坐标在 callback 返回后同步回
+  脚本。Browser 在发现可寻址嵌套祖先时把 Ex 请求的 `prevent_scroll` 置为真，要求
+  宿主暂缓页面级 reveal，再由 Browser 完成 `container:"all"` 的有限链；不可用目标、
+  对非当前目标的 blur，以及注销后的方法都 fail closed/no-op；重复 focus 不重复派发
+  focus family。完整焦点导航、初始焦点、focus ring、完整 scroll tree、scroll chaining、
+  scroll-margin、平滑/惯性滚动或跨窗口策略仍不在范围内。
 - `getBoundingClientRect()` 与 `getClientRects()` 只组合已有的 Core relation geometry
   片段快照；后者返回每次调用都新建、最多 16 个按行排列的正尺寸矩形，前者返回这些
   片段的 union。未布局、隐藏或非正尺寸时分别返回全零/空集合。它们不提供 transforms、
