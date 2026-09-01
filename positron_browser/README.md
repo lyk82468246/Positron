@@ -141,22 +141,26 @@ reveal 见下文。
   去重事件，不会再次调用 scroll callback，因此不会递归；
 - 该能力要求目标有稳定 DOM `id` 和可用 layout。关系 40/41 报告两个 retained
   scrollbar 轴，关系 42/43 报告 padding/client edge 的文档坐标；Browser 用它们为
-  `scrollIntoView()` 选择最近的可寻址祖先。它不实现完整滚动容器树、滚动链、scroll
-  anchoring、scroll-margin、平滑/惯性动画或匿名目标的宿主归因。
+  `scrollIntoView()` 选择最近的可寻址祖先，或在 `container:"all"` 下依次处理最多
+  64 层父链。它不实现完整滚动容器树、滚动链、scroll anchoring、scroll-margin、
+  平滑/惯性动画或匿名目标的宿主归因。
 
 ### `Element.scrollIntoView()`
 
 Browser 还提供页面级的 `Element.scrollIntoView()`。它读取同一
 `getBoundingClientRect()` 矩形；如果父链中存在可寻址的 retained overflow box，
-最多遍历 64 层并选择最近者，用 Core 的轴可用标志与 client edge 坐标在对应轴上
-直接对齐，否则把请求交给已有的 `window.scrollTo()` page-level callback。宿主仍
-负责 extent/client area 的 clamp、物理滚动、绘制和实际位置回报。默认等价于
-`{block: "start", inline: "nearest"}`，布尔值 `false` 选择 block end；对象形式只
-接受 `block`/`inline` 的 `start`、`center`、`end`、`nearest`，以及 `behavior` 的
-`auto` 或 `instant`。无可用 layout、矩形或 nested client bridge 时安全回退/ no-op；
-没有 scroll callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scrollTo()` 的
-本地状态规则。不支持 `smooth`、scroll-margin、完整滚动容器树、scroll chaining、
-scroll anchoring 或匿名祖先/目标。调用完成后，实际位置变化仍由既有 scroll callback
+最多遍历 64 层。默认选择最近者，用 Core 的轴可用标志与 client edge 坐标在对应轴上
+直接对齐；对象形式的 `container: "all"` 则从最近者向外依次处理每个可寻址的
+retained overflow ancestor，并在每次滚动后重新读取目标矩形。没有适用祖先时把请求
+交给已有的 `window.scrollTo()` page-level callback；`container: "all"` 处理完祖先后，
+仅当目标仍在页面视口外才使用该 fallback。宿主仍负责 extent/client area 的 clamp、
+物理滚动、绘制和实际位置回报。默认等价于 `{block: "start", inline: "nearest"}`，
+布尔值 `false` 选择 block end；对象形式只接受 `block`/`inline` 的 `start`、`center`、
+`end`、`nearest`，`behavior` 的 `auto` 或 `instant`，以及 `container` 的 `nearest`
+或 `all`。无可用 layout、矩形或 nested client bridge 时安全回退/ no-op；没有 scroll
+callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scrollTo()` 的本地状态规则。
+不支持 `smooth`、scroll-margin、完整滚动容器树、scroll chaining、scroll anchoring 或
+匿名祖先/目标。调用完成后，实际位置变化仍由既有 scroll callback
 和 `PBrowser_ScriptSessionNotifyScroll`/`PBrowser_ScriptSessionNotifyElementScroll`
 负责同步与事件去重。
 
@@ -609,12 +613,14 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   `scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 使用 Core 的 retained scrollbar。
   不支持 scroll chaining、scroll-margin、smooth/inertia、transforms 或 pinch zoom。
 - `Element.scrollIntoView()` 组合已有的 Core relation geometry、关系 40–43 和 page-level
-  scroll callback，支持有限的 block/inline 对齐与 `auto`/`instant` 行为。它只在父链
-  可由 DOM relation 寻址、最多 64 层且最近祖先拥有 retained scrollbar 时直接移动一个
-  nested overflow box；否则回退到 page-level scroll。无 layout、矩形或 client bridge
-  时安全 no-op。完整滚动容器树、scroll chaining/anchoring、scroll-margin、smooth/inertia、
-  transforms、pinch zoom 和匿名目标仍不在范围内；宿主仍负责页面 extent、clamp、物理
-  滚动和 `PBrowser_ScriptSessionNotifyScroll`/`PBrowser_ScriptSessionNotifyElementScroll`。
+  scroll callback，支持有限的 block/inline 对齐、`auto`/`instant` 行为，以及
+  `container:"nearest"`/`"all"`。默认只移动父链中最近的可寻址 retained overflow
+  box；`container:"all"` 才从最近到最外遍历最多 64 层，并在每次滚动后重读目标矩形，
+  仅在链完成后目标仍位于页面视口外时回退 page-level scroll。无 layout、矩形或 client
+  bridge 时安全 no-op。完整滚动容器树、scroll chaining/anchoring、scroll-margin、
+  smooth/inertia、transforms、pinch zoom 和匿名目标仍不在范围内；宿主仍负责页面 extent、
+  clamp、物理滚动和 `PBrowser_ScriptSessionNotifyScroll`/
+  `PBrowser_ScriptSessionNotifyElementScroll`。
 - `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台 native 控件焦点。脚本层的顶层窗口 focus/blur 与 `document.hasFocus()` 由宿主通过显式通知维护，但完整初始焦点、焦点陷阱、跨窗口焦点策略和 CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期仍未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。

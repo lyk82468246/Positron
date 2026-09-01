@@ -196,6 +196,13 @@ padding/client edge 文档坐标，Browser 沿 `parentElement` 最多遍历 64 �
 到既有 page-level 行为。它不证明完整 scroll tree、scroll chaining/anchoring、
 scroll-margin、平滑/惯性滚动、匿名目标、复杂布局或真实滚动条/触摸视觉。
 
+TEST1149 覆盖 `Element.scrollIntoView({container:"all"})` 的有界多层 reveal：离线
+夹具包含两个 retained overflow ancestor，断言 Browser 从最近到最外层依次重新读取
+目标矩形并移动两个滚动容器，页面 viewport 保持稳定，元素 `scroll` 事件顺序为
+inner→outer。重复 `nearest` 请求、未知 `container` 和 `behavior:"smooth"` 都必须
+保持位置与事件队列不变；64 层上限、完整 scroll tree、scroll chaining/anchoring、
+scroll-margin、平滑/惯性、匿名目标和视觉滚动条仍不由该测试覆盖。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

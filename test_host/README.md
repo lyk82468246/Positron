@@ -65,7 +65,8 @@ tests=13,20,27,999
 - history、navigation、script session、DOM bridge 和平台事务；
 - 固定离线 compatibility corpus，把 contenteditable、dialog/form、same-document navigation 和失败回滚组合成可重复的完整流程；
 - 最新的滚动几何夹具还验证 Core/Browser 的布局尺寸、retained overflow offset，以及
-  `Element.scrollIntoView()` 对最近可寻址 overflow 祖先的一次有限 reveal（TEST1146–1148）；
+  `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
+  有限 reveal（TEST1146–1149）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -130,6 +131,14 @@ id/位置，再调用 `PBrowser_ScriptSessionNotifyElementScroll()`。该通知�
 去重派发目标元素的 `scroll`，不会再进入 scroll callback。没有稳定 id、没有 layout 或
 不支持的 smooth/scroll chaining 请求必须安全 no-op；这些限制属于公共 DLL 合同，不应由
 宿主 helper 绕过。
+
+`Element.scrollIntoView()` 的对齐和祖先选择属于 Browser。默认只处理最近的可寻址
+retained overflow ancestor；调用方显式传入 `container:"all"` 时，Browser 从最近者向
+外最多遍历 64 层，并在每个适用祖先滚动后重新读取目标矩形。宿主只提供 Core relation、
+滚动 callback、clamp、重绘和实际位置通知；TEST1148 覆盖默认 nearest，TEST1149 覆盖
+`container:"all"` 的双层滚动链、事件顺序、重复静默和非法选项拒绝。完整 scroll tree、
+scroll chaining/anchoring、scroll-margin、smooth/inertia、匿名目标和视觉滚动条仍不在
+宿主或 Browser 合同内。
 
 ### Native EDIT/SELECT/button/file
 

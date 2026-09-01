@@ -62,12 +62,14 @@ next702 已在 Core/Browser 中完成带 DOM id 的常见 overflow box retained 
 关系 38/39、按 id setter、两轴 clamp、脚本 `scrollLeft`/`scrollTop`/`scrollTo()`/
 `scrollBy()`、目标元素事件去重和宿主 pointer snapshot 同步均有 TEST1147 覆盖。
 next703 又补齐了有限的嵌套 `Element.scrollIntoView()`：Core 关系 40–43 提供轴可用性
-和 client edge 快照，Browser 沿最多 64 层可寻址父链只移动最近 retained overflow
-祖先，并在没有适用祖先时回退 page-level scroll；TEST1148 已通过定向设备门。完整
-滚动容器树、scroll chaining/anchoring、scroll-margin、Range/Selection、pinch zoom、
-平滑/惯性滚动和匿名目标仍未实现，不能把有限 reveal 误写成完整 Web 行为。下一条
-纵向能力是 next704，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；不能
-凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。
+和 client edge 快照，Browser 沿最多 64 层可寻址父链默认只移动最近 retained overflow
+祖先，并在没有适用祖先时回退 page-level scroll；TEST1148 已通过定向设备门。next704
+在同一公共 Browser 语义上增加了显式 `container:"all"`：从最近到最外依次处理适用
+祖先、每次滚动后重读目标矩形，链完成后才按需回退页面滚动；TEST1149 与 1148 的相邻
+设备门已通过。完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/Selection、
+pinch zoom、平滑/惯性滚动和匿名目标仍未实现，不能把有限 reveal 误写成完整 Web 行为。
+下一条纵向能力是 next705，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；
+不能凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。
 
 优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
@@ -96,10 +98,11 @@ next704 必须沿用同一完成标准。
 
 - 用真实页面缺口驱动 float、position、table、media、字体和复杂 inline 行为。
 - 优先修复严重错位、内容不可达、错误滚动和交互几何，不做脱离语料的全面 CSS 扩张。
-- 在继续扩展前，保持 next703 的边界：当前只有最多 64 层可寻址父链中最近 retained
-  overflow 祖先的一次有限 `scrollIntoView()` reveal；完整滚动容器树、scroll
-  chaining/anchoring、scroll-margin、smooth/inertia 和匿名目标不因关系 40–43 bridge
-  而被误称为已实现。真实滚动条裁剪和触摸视觉进入人工验收矩阵。
+- 在继续扩展前，保持 next704 的边界：默认 `scrollIntoView()` 只 reveal 最近 retained
+  overflow 祖先；显式 `container:"all"` 才沿最多 64 层可寻址父链向外依次 reveal，并在
+  每次滚动后重读目标矩形。完整滚动容器树、scroll chaining/anchoring、scroll-margin、
+  smooth/inertia 和匿名目标不因关系 40–43 bridge 而被误称为已实现。真实滚动条裁剪和
+  触摸视觉进入人工验收矩阵。
 - 继续降低深 DOM、资源树和重排路径的栈/heap 峰值，并为失败清理添加资源断言。
 - 建立多 viewport/DPI 截图基线，但把设备量化和字体差异与语义断言分开。
 

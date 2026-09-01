@@ -143,11 +143,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   page-level scroll 坐标纳入同步结果，Browser 在 callback 返回后更新脚本 viewport。
   未注册时不增加方法；注销后已安装方法保持安全 no-op；nested overflow reveal 和
   smooth/inertial scrolling 不属于这条边界；
- - 页面级与有限嵌套的 `Element.scrollIntoView()`：Browser 复用 Core relation geometry、
+- 页面级与有限嵌套的 `Element.scrollIntoView()`：Browser 复用 Core relation geometry、
   retained-scrollbar 关系 40–43 和现有 page-level/element scroll callback，计算有限的
-  block/inline 对齐。父链最多遍历 64 层，只选择能被 DOM relation 寻址且拥有 retained
-  scrollbar 的最近祖先；没有可用 client bridge 时回退 page-level scroll。宿主仍负责
-  clamp、物理滚动、绘制和实际位置同步；完整 scroll tree、scroll chaining、scroll
+  block/inline 对齐。父链最多遍历 64 层；默认只选择能被 DOM relation 寻址且拥有 retained
+  scrollbar 的最近祖先，`container:"all"` 才从最近祖先向外依次处理适用祖先，并在每次
+  滚动后重新读取目标矩形；链完成后目标仍在页面视口外才使用 page-level fallback。宿主
+  仍负责 clamp、物理滚动、绘制和实际位置同步；完整 scroll tree、scroll chaining、scroll
   anchoring、scroll-margin、smooth/inertial scrolling 和匿名目标不进入 Browser ABI；
 - `Element.getBoundingClientRect()` 与 `Element.getClientRects()` 共用 Core 的有界
   layout fragment relation。块级元素通常返回一个片段，inline flow 按视觉行返回最多
@@ -176,9 +177,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 CSS page 坐标，由宿主换算为 Core 的物理设备坐标，按当前 extent/client area 应用，
 再把实际位置换回 CSS 坐标返回。`Element.scrollIntoView()` 在 Browser 内先用
 `getBoundingClientRect()` 的单元素矩形计算 page-level 的 block/inline 对齐；若可寻址
-父链中找到最近 retained overflow ancestor，则使用 Core 的 client edge/轴关系只移动
-该元素滚动容器，否则复用 page-level callback。默认是 block start、inline nearest，
-也支持有限的 center、end 和 `false` 末端对齐。对 `Element.scrollTo()`/`scrollBy()`，
+父链中找到 retained overflow ancestor，则默认使用 Core 的 client edge/轴关系只移动最近
+元素滚动容器；传入 `container:"all"` 时按最近到最外的顺序处理最多 64 层，并在每次
+滚动后重新取得矩形，只有目标仍在页面视口外才复用 page-level callback。默认是 block
+start、inline nearest，也支持有限的 center、end 和 `false` 末端对齐。对
+`Element.scrollTo()`/`scrollBy()`，
 同一个 callback 的末尾 `element_id` 指向 Core 的有界 retained overflow box，返回值是
 两个轴的实际 clamp 位置。候选 session 尚未提交时宿主只回显坐标，不能改变旧页面。宿主
 完成 page scrollbar、嵌套 overflow pointer、触摸、键盘、resize 或 fragment reveal 后，
@@ -371,7 +374,8 @@ focus navigation、自动初始焦点、焦点矩形、nested overflow reveal、
 - 完整 CSS Grid、任意 float/position/table 边界和桌面级字体排版；
 - 完整 nested overflow scroll tree、scroll chaining/anchoring、scroll-margin、平滑/惯性
   滚动和无界 `scrollIntoView()` 容器遍历；当前只提供带 id 的常见 box 的 retained
-  offset bridge，以及最多 64 层可寻址父链中最近容器的一次有限 reveal；
+  offset bridge，以及最多 64 层可寻址父链中最近容器的一次有限 reveal，或显式
+  `container:"all"` 时从最近到最外的有界滚动链；
 - 通用 ClipboardEvent、async clipboard、CF_TEXT/富文本转换或跨应用剪贴板格式互操作；当前宿主只提供有界 `CF_UNICODETEXT` contenteditable paste/copy/cut 接线；
 - 多窗口浏览器、完整现代 modal dialog/backdrop（仅支持有界实体色组合）或持久化浏览历史；
 - 在 DLL 内接管应用消息循环、系统 picker、OEM IME 或设备连接；

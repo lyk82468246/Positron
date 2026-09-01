@@ -67,9 +67,11 @@
   宿主必须在 Core 的物理设备坐标与 CSS 坐标之间换算，返回 clamp 后的坐标，并在滚动条、
   触摸、键盘、resize 或 fragment reveal 后通知 Browser。`scrollIntoView()` 复用单元素
   `getBoundingClientRect()`，默认 start/nearest，支持 center、end 和 `false`，只接受
-  `behavior` 的 `auto`/`instant`；无 layout/矩形或不支持的 smooth、scroll-margin 请求
-  安全 no-op。若父链能由 DOM relation 寻址，Browser 最多遍历 64 层并把目标交给最近
-  的 retained overflow ancestor；否则回退到 page-level scroll。带 id 的常见 overflow
+  `behavior` 的 `auto`/`instant`，以及 `container` 的 `nearest`/`all`；无 layout/矩形或
+  不支持的 smooth、scroll-margin 请求安全 no-op。若父链能由 DOM relation 寻址，Browser
+  最多遍历 64 层：默认把目标交给最近 retained overflow ancestor，`container:"all"`
+  才从最近到最外依次处理适用祖先，链完成后目标仍在页面视口外才回退到 page-level
+  scroll。带 id 的常见 overflow
   box 可使用 `scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()`，由 Core callback clamp，
   并由宿主的 pointer notification 同步；该边界不覆盖完整滚动链/锚定或平滑/惯性滚动。
 - 宿主完成 WM_SIZE 的 Core style/layout、page-level clamp 和 native child reposition 后可调用 `PBrowser_ScriptSessionNotifyResize`；该入口更新 `innerWidth`/`outerWidth`/`devicePixelRatio`、`screen` 宽高/方向和布局视口对应的 `visualViewport`，刷新每个 session 最多 64 个 `matchMedia()` 列表，并在匹配结果翻转时同步派发 `change`。同一 session 的 `screen.orientation` 对象保持身份稳定，方向翻转时再派发一次可信 `change`，随后按 visual viewport、window 顺序派发 `resize`；同方向尺寸变化不派发 orientation 事件。`visualViewport` 的 scale 固定为 1，offset 固定为 0，pageLeft/pageTop 与 page scroll 同步；它不替宿主运行 timer/animation frame，不支持完整媒体查询语法、pinch zoom 或嵌套 overflow，也不为视觉像素或真实旋转提供保证；超过 64 个媒体列表和 16 个 orientation 监听器只保留有界的已注册状态。
@@ -85,8 +87,8 @@
   client、scroll 的整数 CSS 像素定义不等于完整 CSSOM box model。带 id 的常见
   overflow box 另有 retained `scrollTop`/`scrollLeft`、`scrollTo()`/`scrollBy()` 桥，
   但不提供 scroll chaining、scroll-margin、smooth/inertia、transforms 或 pinch zoom；
-  没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 只在最近的
-  可寻址 retained ancestor 上做一次有限 reveal，不遍历完整滚动树。
+  没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
+  有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
 - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 26；Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement` 和 `HTMLElement.focus()`/`blur()` 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
@@ -189,6 +191,11 @@
   一次非冒泡 scroll、重复 nearest 静默和 smooth 拒绝。它不证明完整 scroll tree、
   scroll chaining/anchoring、scroll-margin、平滑/惯性滚动、匿名目标、复杂布局或真实
   滚动条视觉。
+- TEST1149 覆盖 `Element.scrollIntoView({container:"all"})` 的两个 retained overflow
+  ancestor 链：Browser 从最近到最外依次重读目标矩形并滚动，断言 inner→outer 事件顺序、
+  页面 viewport 稳定、重复 nearest 静默、未知 container 与 smooth 拒绝。它仍不证明
+  无界滚动树、scroll chaining/anchoring、scroll-margin、平滑/惯性滚动、匿名目标、
+  复杂布局或真实滚动条视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

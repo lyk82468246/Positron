@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1148
+#define TEST_MAX_NUMBER 1149
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -37046,6 +37046,213 @@ static BOOL test1148_browser_nested_scroll_into_view_contract(void)
     show_info(L"TEST 1148 OK",
             "Browser scrollIntoView reveals a target through the nearest"
             " retained Core overflow ancestor while preserving page scroll.");
+    return TRUE;
+}
+
+/* TEST 1149 - Browser can reveal a target through every retained Core
+ * overflow ancestor when the caller opts into the all-container chain. */
+static BOOL test1149_browser_all_scroll_into_view_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='outer'><div id='inner'><div id='target'>Target</div>"
+        "<div id='tail'>Tail</div></div></div>"
+        "<script>window.__allScrollReady=true;</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:0}"
+        "#outer{display:block;width:70px;height:50px;padding:3px;"
+        "border:2px solid #000;overflow:scroll;margin-left:20px;"
+        "margin-top:20px}"
+        "#inner{display:block;width:50px;height:35px;padding:2px;"
+        "border:1px solid #000;overflow:scroll;margin-left:55px;"
+        "margin-top:42px}"
+        "#target{display:block;width:20px;height:20px;"
+        "margin-left:65px;margin-top:55px}"
+        "#tail{display:block;width:20px;height:80px}";
+    static const char URL[] = "https://positron.local/all-scroll-into-view";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int outer_scrollable_x;
+    int outer_scrollable_y;
+    int inner_scrollable_x;
+    int inner_scrollable_y;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    outer_scrollable_x = 0;
+    outer_scrollable_y = 0;
+    inner_scrollable_x = 0;
+    inner_scrollable_y = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        cstr_copy(error, sizeof(error),
+                "all-container scrollIntoView script bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/all-scroll-into-view.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 220, 160) != 0 ||
+                PCore_NodeRelationById(document, "outer",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_X, 0, NULL, 0,
+                NULL, &outer_scrollable_x) != 0 ||
+                PCore_NodeRelationById(document, "outer",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_Y, 0, NULL, 0,
+                NULL, &outer_scrollable_y) != 0 ||
+                PCore_NodeRelationById(document, "inner",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_X, 0, NULL, 0,
+                NULL, &inner_scrollable_x) != 0 ||
+                PCore_NodeRelationById(document, "inner",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_Y, 0, NULL, 0,
+                NULL, &inner_scrollable_y) != 0 ||
+                outer_scrollable_x != 1 || outer_scrollable_y != 1 ||
+                inner_scrollable_x != 1 || inner_scrollable_y != 1) {
+            cstr_copy(error, sizeof(error),
+                    "all-container scrollIntoView fixture or Core relation failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = PCore_DocumentWidth(document);
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 220;
+        g_view_h = 160;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (PBrowser_ScriptSessionNotifyResize(
+                g_browser_script_session.session, 220, 160, 1) !=
+                PSCRIPT_OK || pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('target');"
+                "var i=document.getElementById('inner');"
+                "var o=document.getElementById('outer');var events='';"
+                "var pageX=window.scrollX;var pageY=window.scrollY;"
+                "var targetOk=true;var initial=i.scrollLeft===0&&"
+                "i.scrollTop===0&&o.scrollLeft===0&&o.scrollTop===0;"
+                "i.addEventListener('scroll',function(ev){events+='inner;';"
+                "targetOk=targetOk&&ev.target===i&&ev.currentTarget===i&&"
+                "ev.bubbles===false;});"
+                "o.addEventListener('scroll',function(ev){events+='outer;';"
+                "targetOk=targetOk&&ev.target===o&&ev.currentTarget===o&&"
+                "ev.bubbles===false;});"
+                "e.scrollIntoView({block:'start',inline:'start',container:'all'});"
+                "var r=e.getBoundingClientRect();var ir=i.getBoundingClientRect();"
+                "var or=o.getBoundingClientRect();var moved=i.scrollLeft>0&&"
+                "i.scrollTop>0&&o.scrollLeft>0&&o.scrollTop>0;"
+                "var pageStable=window.scrollX===pageX&&window.scrollY===pageY;"
+                "var innerVisible=r.left>=ir.left&&r.top>=ir.top&&"
+                "r.right<=ir.right&&r.bottom<=ir.bottom;"
+                "var outerVisible=r.left>=or.left&&r.top>=or.top&&"
+                "r.right<=or.right&&r.bottom<=or.bottom;"
+                "var ordered=events==='inner;outer;';var before=events;"
+                "var ix=i.scrollLeft;var iy=i.scrollTop;var ox=o.scrollLeft;"
+                "var oy=o.scrollTop;"
+                "e.scrollIntoView({block:'nearest',inline:'nearest',container:'all'});"
+                "var repeat=events===before&&i.scrollLeft===ix&&i.scrollTop===iy&&"
+                "o.scrollLeft===ox&&o.scrollTop===oy;"
+                "e.scrollIntoView({container:'bogus'});"
+                "var badRejected=events===before&&i.scrollLeft===ix&&"
+                "i.scrollTop===iy&&o.scrollLeft===ox&&o.scrollTop===oy;"
+                "e.scrollIntoView({behavior:'smooth',container:'all'});"
+                "var smoothRejected=events===before&&i.scrollLeft===ix&&"
+                "i.scrollTop===iy&&o.scrollLeft===ox&&o.scrollTop===oy;"
+                "var all=initial&&moved&&pageStable&&innerVisible&&"
+                "outerVisible&&ordered&&repeat&&badRejected&&smoothRejected&&"
+                "targetOk;return all?'true':('initial='+initial+';moved='+moved+"
+                "';page='+pageStable+';inner='+innerVisible+';outer='+"
+                "outerVisible+';ordered='+ordered+';repeat='+repeat+"
+                "';bad='+badRejected+';smooth='+smoothRejected+';target='+"
+                "targetOk+';events='+events+';scroll='+i.scrollLeft+','+"
+                "i.scrollTop+','+o.scrollLeft+','+o.scrollTop);})();", -1,
+                error, sizeof(error)) != 0) {
+            if (error[0] == '\0') {
+                cstr_copy(error, sizeof(error),
+                        "all-container scrollIntoView browser evaluation failed");
+            }
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "all-container scrollIntoView contract failed: %s",
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1149 FAIL", error[0] != '\0' ? error :
+                "all-container scrollIntoView contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1149 OK",
+            "scrollIntoView container all reveals targets through the retained"
+            " ancestor chain without moving the page viewport.");
     return TRUE;
 }
 
@@ -95100,6 +95307,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1146: ok = test1146_browser_layout_metrics_contract(); break;
         case 1147: ok = test1147_browser_element_scroll_contract(); break;
         case 1148: ok = test1148_browser_nested_scroll_into_view_contract(); break;
+        case 1149: ok = test1149_browser_all_scroll_into_view_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
