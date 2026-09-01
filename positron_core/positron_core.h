@@ -588,6 +588,18 @@ PCORE_API int PCore_FocusTargetInfo(HANDLE hDoc, unsigned int index,
 PCORE_API int PCore_FocusTargetInfoWithin(HANDLE hDoc,
         const char *ancestor_id, unsigned int index,
         PCoreFocusTargetInfo *out_info);
+/* Resolve the first laid-out element carrying the boolean `autofocus`
+ * attribute. The document-order walk is bounded by the same Core focus
+ * budget and uses the same eligibility rules as PCore_FocusTargetInfo().
+ * `out_info` receives document-space geometry and kind. When a target has a
+ * non-empty UTF-8 id, it is copied to `element_id`; a NULL/zero-capacity
+ * buffer is a size probe and `out_bytes` receives the id length. Returns 0
+ * when a target was found, 1 when the document is unavailable or has no
+ * eligible target, and 2 when the supplied id buffer is too small. The
+ * query never changes Core focus or layout state. */
+PCORE_API int PCore_AutofocusTargetInfo(HANDLE hDoc,
+        PCoreFocusTargetInfo *out_info, char *element_id, int id_capacity,
+        int *out_bytes);
 
 /* Resolve a file gadget at a document-space point. `file_index` is the
  * file-only index accepted by PCore_FileInputInfo/SetPath. A disabled gadget
@@ -964,6 +976,13 @@ PCORE_API int PCore_FocusTargetInfoById(HANDLE hDoc, const char *element_id,
  * Native HWND focus, focus events and repaint scheduling remain host-owned. */
 PCORE_API int PCore_InteractionFocusById(HANDLE hDoc,
         const char *element_id);
+/* Set the Core focus node to the first eligible laid-out element carrying
+ * `autofocus`. This is an explicit host request made after layout; it does
+ * not switch native HWND focus, dispatch Browser events, reveal scrolling or
+ * restyle the document. Returns 1 when the node changed, 0 when there is no
+ * eligible target or it was already focused, and -1 for invalid arguments or
+ * a DOM/ownership failure. */
+PCORE_API int PCore_InteractionFocusAutofocus(HANDLE hDoc);
 
 /* DOM event bridge. Listener callbacks run synchronously on the dispatching
  * thread and return a bitwise combination of PCORE_EVENT_ACTION_* values.
@@ -1051,6 +1070,16 @@ PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
 PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
                                    const char *event_type, int bubbles,
                                    int cancelable, int *default_allowed);
+/* Dispatch one event to the document's current Core focus node. This is the
+ * target-preserving companion to PCore_EventDispatchAt() for host focus
+ * transactions whose element has no DOM id. The event is dispatched
+ * synchronously through the document's listener table; the API does not
+ * change focus, native HWND state, layout or scrolling. Returns 1 when a
+ * focused node received the event, 0 when no node is focused, and -1 for an
+ * invalid event/document. */
+PCORE_API int PCore_EventDispatchFocus(HANDLE hDoc, const char *event_type,
+                                      int bubbles, int cancelable,
+                                      int *default_allowed);
 /* Dispatch a trusted keyboard event with host-provided key metadata. The
  * metadata is valid only during synchronous listener callbacks. */
 PCORE_API int PCore_EventDispatchKeyToId(HANDLE hDoc,

@@ -102,6 +102,13 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   focus node；`PCore_FocusTargetInfoById` 只返回 geometry/kind，
   `PCore_InteractionFocusById` 只更新 Core 状态，page-level focus reveal、native
   HWND、focus 事件、焦点矩形和重绘调度仍由宿主负责；
+- 按 DOM 顺序解析带 `autofocus` 属性且符合相同布局/可见性/焦点资格预算的第一个目标；
+  `PCore_AutofocusTargetInfo` 只复制 geometry/kind 与可选 id，
+  `PCore_InteractionFocusAutofocus` 只更新 Core focus node，
+  `PCore_EventDispatchFocus` 为无 id 的当前焦点节点提供目标保持的同步 dispatch。
+  Core 不在页面解析或后台线程中自动执行这条路径，宿主仍负责何时调用、page-level/nested
+  reveal、native HWND、focus/focusin 和重绘；Browser 的 activeElement projection 对无
+  id 节点继续回退到 `document.body`；
 - 给脚本/浏览器层使用的有界 DOM、属性、关系、表单与导航查询。
 
 Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/free 回调完成；Core 在回调返回前复制需要保留的字节，再按契约调用 free。Core 也不执行 JavaScript，只发现、缓存和枚举脚本。
@@ -241,6 +248,14 @@ document `visibilitychange` 和 window `pagehide`，恢复 visible 再派发
 只负责 getter、id-addressable DOM lookup 和 `body` 回退，不复制焦点状态，也不
 尝试侦测 `WM_ACTIVATE`、创建控件或改变 Core 文档。
 
+初始 `autofocus` 同样不是 Browser session 的自主生命周期步骤。页面提交后，宿主在
+Core style/layout 和 native 子控件创建完成的边界显式调用
+`PCore_AutofocusTargetInfo`/`PCore_InteractionFocusAutofocus`。有 id 的目标可以接入
+既有 Ex focus request callback；无 id 的目标由宿主使用 Core 的 target-preserving
+`PCore_EventDispatchFocus` 派发 focus/focusin。Browser 只拥有脚本事件对象、滚动链和
+activeElement 的 id 投影，不复制第二份 autofocus 或焦点节点模型；无 id 目标的
+`document.activeElement` 仍按可空 id 合同回退到 `body`。
+
 脚本调用 `HTMLElement.focus()` 或 `blur()` 时，Browser 只发出一个同步的、带
 `element_id` 与 `focused` 的 typed 请求；Ex 请求还带有 `prevent_scroll`，并接收
 宿主实际应用的 CSS page scroll 结果。Browser 不自行选择下一个目标，也不直接访问
@@ -256,7 +271,7 @@ callback 内重入 runtime。无 id、disabled、hidden、
 stale、未布局或其他不符合 Core 资格的目标必须 no-op；重复 focus 不重复派发 focus
 family，但 Ex callback 仍可按默认规则 reveal 已聚焦且不可见的目标；对非当前目标的
 `blur()` 必须 no-op，且 blur 不执行滚动。该桥只覆盖 id-addressable 的有界目标，不
-提供完整 focus navigation、自动初始焦点、焦点矩形、滚动树、scroll chaining、
+提供完整 focus navigation、自主自动初始焦点、焦点矩形、滚动树、scroll chaining、
 scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视觉保证。
 
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
@@ -287,8 +302,10 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
   并在需要脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本；
   宿主负责按 id 验证 Core 几何/资格、遵守 Ex 的 `prevent_scroll` 并执行
-  page-level scroll reveal、native HWND 切换、focus family 事件和重绘调度；Browser
-  负责已验证目标的有界嵌套 overflow reveal，宿主不得在其中复制第二份滚动树；
+  page-level scroll reveal、native HWND 切换、focus family 事件和重绘调度；页面提交后
+  若启用 `autofocus`，宿主还负责在 layout/native 子控件创建完成后显式调用 Core 的
+  autofocus 查询/设置入口；Browser 负责已验证目标的有界嵌套 overflow reveal，宿主不得
+  在其中复制第二份滚动树；
 - 把 Core 的 contenteditable 状态/文本 callback 和 selection callback 注册到 Browser session，并把 WM/native 输入接到 `beforeinput`→Core mutation→`input` 顺序；宿主只保留窗口、焦点、坐标、键盘/拖选 anchor、Shift 状态和原生选区，在范围变化或捕获/焦点中断后调用 Browser 的通知入口，不经 Core 重复派发 `selectionchange`；对 `WM_PASTE`/`WM_COPY`/`WM_CUT`，宿主读取并规范化有界 `CF_UNICODETEXT`，让 Browser 决定取消后再执行 native default，折叠复制保持原剪贴板不变，并对 WinCE `WM_CUT` 的同一 HWND 内部 `WM_COPY` 重入做局部放行；
 - 从 Browser 读取活动 modal id，并在 WM_PAINT 中调用 Core 的 modal paint 组合入口；
 - 决定何时启用浏览器 JavaScript；

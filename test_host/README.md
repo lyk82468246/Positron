@@ -66,7 +66,8 @@ tests=13,20,27,999
 - 固定离线 compatibility corpus，把 contenteditable、dialog/form、same-document navigation 和失败回滚组合成可重复的完整流程；
 - 最新的滚动几何夹具还验证 Core/Browser 的布局尺寸、retained overflow offset，以及
   `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
-  有限 reveal，以及 `HTMLElement.focus()` 对该链的联动（TEST1146–1150）；
+  有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
+  `autofocus` 目标发现和无 id focus 事件保持（TEST1146–1151）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -140,6 +141,14 @@ retained overflow ancestor；调用方显式传入 `container:"all"` 时，Brows
 tree、scroll chaining/anchoring、scroll-margin、smooth/inertia、匿名目标和视觉滚动条
 仍不在宿主或 Browser 合同内。宿主在 Ex focus callback 中必须尊重 Browser 传入的
 `prevent_scroll`，不要在 Browser 的嵌套 reveal 前抢先移动 page viewport。
+
+页面提交后若要使用 HTML `autofocus`，宿主在 Core style/layout 和 native 子控件创建
+完成后调用 `PCore_AutofocusTargetInfo` 与 `PCore_InteractionFocusAutofocus`。有 id 的
+目标可复用 Browser focus bridge；无 id 的目标由宿主用 `PCore_EventDispatchFocus` 派发
+focus/focusin。这个时机和选择策略属于宿主应用生命周期，目标资格和焦点节点仍属于
+Core；Browser 不自行执行初始焦点，`document.activeElement` 对无 id 目标按既有合同
+回退到 `document.body`。TEST1151 是该组合的离线自动夹具，不能替代设备焦点矩形、
+native HWND、滚动条或 OEM 输入视觉验收。
 
 ### Native EDIT/SELECT/button/file
 

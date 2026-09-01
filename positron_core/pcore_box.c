@@ -4074,6 +4074,39 @@ PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
             bubbles, cancelable, NULL, NULL, 0, default_allowed);
 }
 
+PCORE_API int PCore_EventDispatchFocus(HANDLE hDoc, const char *event_type,
+        int bubbles, int cancelable, int *default_allowed)
+{
+    dom_document *doc;
+    dom_node *target;
+    pcore_event_state *event_state;
+    int result;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || event_type == NULL || event_type[0] == '\0' ||
+            (bubbles != 0 && bubbles != 1) ||
+            (cancelable != 0 && cancelable != 1)) {
+        return -1;
+    }
+    doc = (dom_document *) hDoc;
+    target = NULL;
+    pcore_interaction_snapshot(doc, &target, NULL, NULL);
+    if (target == NULL) {
+        return 0;
+    }
+    target = dom_node_ref(target);
+    if (target == NULL) {
+        return -1;
+    }
+    event_state = pcore_event_state_get(doc, 0);
+    result = pcore_event_dispatch_node(target, event_type, bubbles,
+            cancelable, event_state, NULL, NULL, 0, default_allowed);
+    dom_node_unref(target);
+    return result < 0 ? -1 : 1;
+}
+
 PCORE_API int PCore_EventDispatchKeyAt(HANDLE hDoc, int x, int y,
         const char *event_type, int bubbles, int cancelable,
         const PCoreKeyEventData *key_data, int *default_allowed)
@@ -5184,6 +5217,245 @@ static int pcore_focus_target_for_element(pcore_render *st,
     }
     return pcore_focus_generic_target(st, node, tabindex_present,
             tabindex_valid, tabindex, out_info, out_tabindex);
+}
+
+/* Find the first eligible autofocus target in DOM order. The retained box
+ * tree is private to Core, so the caller receives a referenced DOM node only
+ * inside this DLL and copies any public data before releasing it. A deep or
+ * otherwise unreadable subtree fails closed instead of silently selecting a
+ * later target. */
+static int pcore_autofocus_target_walk(pcore_render *st, dom_node *node,
+        unsigned int depth, dom_node **out_node,
+        PCoreFocusTargetInfo *out_info)
+{
+    dom_node_type node_type;
+    dom_node *child;
+    dom_node *next;
+    PCoreFocusTargetInfo candidate;
+    int result;
+
+    if (st == NULL || node == NULL || out_node == NULL || out_info == NULL) {
+        return -1;
+    }
+    if (depth > PCORE_FOCUS_WALK_DEPTH_MAX) {
+        return -1;
+    }
+    node_type = DOM_NODE_TYPE_COUNT;
+    if (dom_node_get_node_type(node, &node_type) != DOM_NO_ERR) {
+        return -1;
+    }
+    if (node_type == DOM_ELEMENT_NODE &&
+            pcore_node_has_attr(node, "autofocus") &&
+            pcore_focus_target_for_element(st, node, &candidate, NULL)) {
+        *out_node = dom_node_ref(node);
+        if (*out_node == NULL) {
+            return -1;
+        }
+        *out_info = candidate;
+        return 1;
+    }
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return -1;
+    }
+    while (child != NULL) {
+        result = pcore_autofocus_target_walk(st, child, depth + 1U,
+                out_node, out_info);
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return -1;
+        }
+        dom_node_unref(child);
+        if (result != 0) {
+            if (next != NULL) {
+                dom_node_unref(next);
+            }
+            return result;
+        }
+        child = next;
+    }
+    return 0;
+}
+
+/* Copy the optional UTF-8 id of an autofocus node. An empty or absent id is
+ * a successful zero-byte result, while an undersized caller buffer is
+ * reported without a partial copy. */
+static int pcore_autofocus_copy_id(dom_node *node, char *element_id,
+        int id_capacity, int *out_bytes)
+{
+    dom_string *name;
+    dom_string *value;
+    const char *data;
+    size_t length;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (element_id != NULL && id_capacity > 0) {
+        element_id[0] = '\0';
+    }
+    if (node == NULL || id_capacity < 0) {
+        return 1;
+    }
+    name = NULL;
+    value = NULL;
+    if (dom_string_create((const uint8_t *) "id", 2, &name) !=
+            DOM_NO_ERR || name == NULL ||
+            dom_element_get_attribute((dom_element *) node, name, &value) !=
+            DOM_NO_ERR) {
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        return 1;
+    }
+    data = (value != NULL) ? dom_string_data(value) : NULL;
+    length = (value != NULL) ? dom_string_byte_length(value) : 0;
+    if ((data == NULL && length != 0) || length > (size_t) INT_MAX) {
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        dom_string_unref(name);
+        return 1;
+    }
+    if (out_bytes != NULL) {
+        *out_bytes = (int) length;
+    }
+    if (length == 0) {
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        dom_string_unref(name);
+        return 0;
+    }
+    if (element_id == NULL || id_capacity == 0) {
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        dom_string_unref(name);
+        return 0;
+    }
+    if (length >= (size_t) id_capacity) {
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        dom_string_unref(name);
+        return 2;
+    }
+    memcpy(element_id, data, length);
+    element_id[length] = '\0';
+    if (value != NULL) {
+        dom_string_unref(value);
+    }
+    dom_string_unref(name);
+    return 0;
+}
+
+static int pcore_autofocus_target_find(dom_document *doc,
+        pcore_render *st, dom_node **out_node,
+        PCoreFocusTargetInfo *out_info)
+{
+    dom_element *root;
+    int result;
+
+    if (out_node != NULL) {
+        *out_node = NULL;
+    }
+    if (out_info != NULL) {
+        memset(out_info, 0, sizeof(*out_info));
+    }
+    if (doc == NULL || st == NULL || out_node == NULL ||
+            out_info == NULL) {
+        return -1;
+    }
+    root = NULL;
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        if (root != NULL) {
+            dom_node_unref((dom_node *) root);
+        }
+        return -1;
+    }
+    result = pcore_autofocus_target_walk(st, (dom_node *) root, 0,
+            out_node, out_info);
+    dom_node_unref((dom_node *) root);
+    return result;
+}
+
+PCORE_API int PCore_AutofocusTargetInfo(HANDLE hDoc,
+        PCoreFocusTargetInfo *out_info, char *element_id, int id_capacity,
+        int *out_bytes)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_node *target;
+    PCoreFocusTargetInfo info;
+    int result;
+    int id_result;
+
+    if (out_info == NULL || id_capacity < 0) {
+        return 1;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    if (element_id != NULL && id_capacity > 0) {
+        element_id[0] = '\0';
+    }
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (doc == NULL || st == NULL) {
+        return 1;
+    }
+    target = NULL;
+    memset(&info, 0, sizeof(info));
+    result = pcore_autofocus_target_find(doc, st, &target, &info);
+    if (result != 1 || target == NULL) {
+        if (target != NULL) {
+            dom_node_unref(target);
+        }
+        return 1;
+    }
+    *out_info = info;
+    id_result = pcore_autofocus_copy_id(target, element_id, id_capacity,
+            out_bytes);
+    dom_node_unref(target);
+    return id_result == 2 ? 2 : (id_result == 0 ? 0 : 1);
+}
+
+PCORE_API int PCore_InteractionFocusAutofocus(HANDLE hDoc)
+{
+    dom_document *doc;
+    pcore_render *st;
+    dom_node *target;
+    PCoreFocusTargetInfo info;
+    int result;
+
+    doc = (dom_document *) hDoc;
+    if (doc == NULL) {
+        return -1;
+    }
+    st = pcore_get_render(doc);
+    if (st == NULL) {
+        return 0;
+    }
+    target = NULL;
+    memset(&info, 0, sizeof(info));
+    result = pcore_autofocus_target_find(doc, st, &target, &info);
+    if (result < 0) {
+        return -1;
+    }
+    if (result == 0 || target == NULL) {
+        return 0;
+    }
+    result = pcore_interaction_set_node(doc, PCORE_INTERACTION_FOCUS,
+            target);
+    dom_node_unref(target);
+    return result < 0 ? -1 : result;
 }
 
 /* Collect a bounded natural-order snapshot before sorting the positive

@@ -268,6 +268,14 @@ focus_ex.request_focus = host_request_focus_ex;
 PBrowser_ScriptSessionRegisterFocusRequestCallbacksEx(session, &focus_ex);
 ```
 
+#### 宿主驱动的初始 `autofocus`
+
+Browser 不自主执行 `autofocus`。宿主在 Core layout/native
+子控件完成后调用 `PCore_AutofocusTargetInfo` 与
+`PCore_InteractionFocusAutofocus`；有 id 目标复用 focus bridge，无 id 目标用
+`PCore_EventDispatchFocus` 派发 focus/focusin。无合格目标、过期目标或超长 id 安全回退；
+无 id 的 `document.activeElement` 返回 `body`，事件监听器应按可空 `target` 处理。
+
 该扩展覆盖 id-addressable Core 目标、page-level viewport 和最多 64 层可寻址的
 retained overflow ancestor 链，但不提供完整 focus navigation、自动初始焦点、
 focus ring、完整 scroll tree、scroll chaining、scroll-margin、平滑/惯性滚动、
@@ -598,7 +606,7 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
   后才安装；它通过 Core 的有界焦点 id 和现有 DOM 读回调解析元素，空值、过长或
   过时 id 回退到 `document.body`。它不替代完整焦点算法、native 焦点矩形、自动
-  初始焦点、焦点陷阱或跨窗口策略。
+  自主 autofocus、焦点陷阱或跨窗口策略。
 - `HTMLElement.focus()`/`blur()` 只有在宿主注册
   `PBrowserScriptFocusRequestCallbacks`（或 Ex 版本）后才安装；宿主必须用 Core 的
   按 id 资格与 focus node API 接线 native HWND 和 focus family。Ex 版本还支持默认
@@ -607,7 +615,7 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   脚本。Browser 在发现可寻址嵌套祖先时把 Ex 请求的 `prevent_scroll` 置为真，要求
   宿主暂缓页面级 reveal，再由 Browser 完成 `container:"all"` 的有限链；不可用目标、
   对非当前目标的 blur，以及注销后的方法都 fail closed/no-op；重复 focus 不重复派发
-  focus family。完整焦点导航、初始焦点、focus ring、完整 scroll tree、scroll chaining、
+  focus family。完整焦点导航、自动初始焦点、focus ring、完整 scroll tree、scroll chaining、
   scroll-margin、平滑/惯性滚动或跨窗口策略仍不在范围内。
 - `getBoundingClientRect()` 与 `getClientRects()` 只组合已有的 Core relation geometry
   片段快照；后者返回每次调用都新建、最多 16 个按行排列的正尺寸矩形，前者返回这些

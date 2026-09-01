@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1150
+#define TEST_MAX_NUMBER 1151
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -19303,6 +19303,43 @@ static int pcore_sequential_focus_current(PCoreFocusTargetInfo *out_info)
     return 1;
 }
 
+/* Return the sequential-focus index for an already resolved target. The
+ * autofocus path uses this only to seed the next Tab transaction; matching
+ * the complete geometry/kind snapshot makes stale or ambiguous data fail
+ * closed rather than moving the keyboard order unexpectedly. */
+static int pcore_sequential_focus_index_for_target(
+        const PCoreFocusTargetInfo *wanted, unsigned int *out_index)
+{
+    PCoreFocusTargetInfo info;
+    char modal_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+    unsigned int index;
+    int scope;
+
+    if (wanted == NULL || g_render_doc == NULL) {
+        return 0;
+    }
+    scope = pcore_sequential_focus_scope(modal_id, sizeof(modal_id));
+    if (scope < 0) {
+        return 0;
+    }
+    for (index = 0; index < PCORE_SEQUENTIAL_FOCUS_MAX; index++) {
+        memset(&info, 0, sizeof(info));
+        if (pcore_sequential_focus_info_at(scope > 0 ? modal_id : NULL,
+                index, &info) != 0) {
+            break;
+        }
+        if (info.kind == wanted->kind && info.x == wanted->x &&
+                info.y == wanted->y && info.width == wanted->width &&
+                info.height == wanted->height) {
+            if (out_index != NULL) {
+                *out_index = index;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int pcore_sequential_focus_target_at(int x, int y,
         unsigned int *out_index, PCoreFocusTargetInfo *out_info)
 {
@@ -19637,6 +19674,85 @@ static int pcore_sequential_focus_apply(HWND hwnd, unsigned int index,
     pcore_browser_script_dispatch_focus_at(x, y, "focus", 0);
     pcore_browser_script_dispatch_focus_at(x, y, "focusin", 1);
     return 1;
+}
+
+/* Apply the document's first eligible autofocus target after layout and
+ * native-child creation. Browser remains the owner of id-addressable focus
+ * events and nested/page reveal; the id-less path uses Core's explicit
+ * interaction setter and the same host platform/event adapter. */
+static int pcore_browser_script_autofocus_apply(HWND hwnd)
+{
+    PCoreFocusTargetInfo target;
+    PBrowserScriptFocusRequestInfoEx request;
+    PBrowserScriptFocusRequestResult request_result;
+    char element_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
+    unsigned int index;
+    int id_bytes;
+    int rc;
+    int changed;
+
+    if (g_render_doc == NULL) {
+        return 0;
+    }
+    memset(&target, 0, sizeof(target));
+    memset(element_id, 0, sizeof(element_id));
+    id_bytes = 0;
+    rc = PCore_AutofocusTargetInfo(g_render_doc, &target, element_id,
+            sizeof(element_id), &id_bytes);
+    if (rc != 0 || target.width <= 0 || target.height <= 0) {
+        return 0;
+    }
+    if (element_id[0] != '\0' && pcore_native_script_active() &&
+            g_browser_script_session.bridge != NULL &&
+            g_browser_script_session.bridge->session != NULL) {
+        memset(&request, 0, sizeof(request));
+        request.size = sizeof(request);
+        request.element_id = element_id;
+        request.focused = 1;
+        request.prevent_scroll = 0;
+        memset(&request_result, 0, sizeof(request_result));
+        request_result.size = sizeof(request_result);
+        rc = PBrowser_ScriptSessionDispatchFocusRequestEx(
+                g_browser_script_session.bridge->session, &request,
+                &request_result);
+        if (rc == PSCRIPT_OK) {
+            if (pcore_sequential_focus_index_for_target(&target, &index)) {
+                pcore_sequential_focus_store(index, &target);
+            }
+            return 1;
+        }
+    }
+    if (element_id[0] == '\0') {
+        changed = PCore_InteractionFocusAutofocus(g_render_doc);
+        if (changed < 0) {
+            return 0;
+        }
+        if (pcore_sequential_focus_index_for_target(&target, &index)) {
+            pcore_sequential_focus_store(index, &target);
+        }
+        if (changed == 0) {
+            return 1;
+        }
+        pcore_sequential_focus_reveal(hwnd, &target);
+        if (pcore_browser_script_focus_native_target(&target) == 0) {
+            if (hwnd != NULL && IsWindow(hwnd)) {
+                SetFocus(hwnd);
+            }
+        }
+        if (pcore_native_script_active()) {
+            if (PCore_EventDispatchFocus(g_render_doc, "focus", 0, 0,
+                    NULL) < 0 || PCore_EventDispatchFocus(g_render_doc,
+                    "focusin", 1, 0, NULL) < 0) {
+                return 0;
+            }
+        }
+        pcore_request_interaction_restyle(hwnd);
+        return 1;
+    }
+    if (pcore_sequential_focus_index_for_target(&target, &index)) {
+        return pcore_sequential_focus_apply(hwnd, index, &target);
+    }
+    return 0;
 }
 
 static int pcore_sequential_focus_move(HWND hwnd, int backwards,
@@ -23013,6 +23129,7 @@ static BOOL show_render_window(void)
     }
     pcore_native_edits_rebuild(hwnd, 0);
     pcore_native_selects_rebuild(hwnd, 0);
+    (void) pcore_browser_script_autofocus_apply(hwnd);
     if (g_native_programmatic_focus_probe) {
         pcore_native_programmatic_focus_probe_run(hwnd);
     }
@@ -37518,6 +37635,261 @@ static BOOL test1150_browser_focus_nested_scroll_contract(void)
     show_info(L"TEST 1150 OK",
             "focus reveals nested retained containers, while blur and"
             " preventScroll preserve the existing viewport.");
+    return TRUE;
+}
+
+/* TEST 1151 - the first eligible autofocus target is applied after layout. */
+static BOOL test1151_browser_autofocus_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<input id='hidden' autofocus value='hidden'>"
+        "<input id='disabled' autofocus disabled value='disabled'>"
+        "<input id='auto' autofocus value='first'>"
+        "<button id='later' class='later-target' autofocus type='button'>Later</button>"
+        "<script>window.trace='';"
+        "function record(e){window.trace+=e.type+':'+"
+        "String(e.target&&e.target.id||'')+';';}"
+        "var a=document.getElementById('auto');"
+        "var l=document.getElementById('later');"
+        "a.addEventListener('focus',record);a.addEventListener('focusin',record);"
+        "l.addEventListener('focus',record);l.addEventListener('focusin',record);"
+        "</script></body></html>";
+    static const char CSS[] =
+        "body{margin:4px}"
+        "#hidden{display:none}"
+        "#disabled,#auto{display:block;width:160px;height:24px;margin:2px}"
+        ".later-target{display:block;width:160px;height:24px;margin:2px}";
+    static const char URL[] = "https://positron.local/autofocus";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    char id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
+    char tiny_id[2];
+    PCoreFocusTargetInfo target;
+    int id_bytes;
+    int executed;
+    int ignored;
+    int rc;
+    int clear_rc;
+    int autofocus_rc;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    memset(id, 0, sizeof(id));
+    memset(tiny_id, 0, sizeof(tiny_id));
+    id_bytes = 0;
+    executed = -1;
+    ignored = -1;
+    clear_rc = 0;
+    autofocus_rc = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "autofocus script bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/autofocus.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 260, 180) != 0) {
+            cstr_copy(error, sizeof(error), "autofocus fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = PCore_DocumentWidth(document);
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 260;
+        g_view_h = 180;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+    }
+    if (ok) {
+        memset(&target, 0, sizeof(target));
+        id_bytes = 0;
+        rc = PCore_AutofocusTargetInfo(document, &target, NULL, 0,
+                &id_bytes);
+        if (rc != 0 || id_bytes != 4) {
+            cstr_copy(error, sizeof(error), "autofocus size probe failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        memset(&target, 0, sizeof(target));
+        id_bytes = 0;
+        rc = PCore_AutofocusTargetInfo(document, &target, tiny_id,
+                sizeof(tiny_id), &id_bytes);
+        if (rc != 2 || id_bytes != 4 || tiny_id[0] != '\0' ||
+                target.kind != 3 || target.width <= 0 || target.height <= 0) {
+            cstr_copy(error, sizeof(error),
+                    "autofocus id size probe did not fail closed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        memset(&target, 0, sizeof(target));
+        memset(id, 0, sizeof(id));
+        id_bytes = 0;
+        rc = PCore_AutofocusTargetInfo(document, &target, id,
+                sizeof(id), &id_bytes);
+        if (rc != 0 || strcmp(id, "auto") != 0 || id_bytes != 4 ||
+                target.kind != 3 || target.width <= 0 ||
+                target.height <= 0) {
+            cstr_copy(error, sizeof(error),
+                    "autofocus did not select the first eligible target");
+            ok = 0;
+        }
+    }
+    if (ok && !pcore_browser_script_autofocus_apply(NULL)) {
+        cstr_copy(error, sizeof(error), "autofocus host apply failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(document.activeElement.id==='auto'&&window.trace==='"
+            "focus:auto;focusin:auto;');", -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "autofocus did not dispatch the expected focus family");
+        ok = 0;
+    }
+    if (ok && pcore_browser_script_autofocus_apply(NULL) != 1) {
+        cstr_copy(error, sizeof(error), "repeated autofocus apply was not stable");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(window.trace==='focus:auto;focusin:auto;');", -1,
+            error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "repeated autofocus emitted duplicate events");
+        ok = 0;
+    }
+    if (ok && ((clear_rc = PCore_InteractionClear(document,
+            PCORE_INTERACTION_FOCUS)) < 0 ||
+            PCore_NodeRemoveAttributeById(document, "hidden", "autofocus") !=
+            0 || PCore_NodeRemoveAttributeById(document, "disabled",
+            "autofocus") != 0 || PCore_NodeRemoveAttributeById(document,
+            "auto", "autofocus") != 0 || PCore_NodeSetAttributeById(document,
+            "later", "autofocus", "autofocus") != 0 ||
+            PCore_NodeRemoveAttributeById(document, "later", "id") != 0 ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 260, 180) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "autofocus id-less mutation layout failed");
+        ok = 0;
+    }
+    if (ok && clear_rc != 1) {
+        _snprintf(error, sizeof(error) - 1,
+                "autofocus old focus was not cleared: clear=%d",
+                clear_rc);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "window.trace='';", -1, error, sizeof(error)) != 0 ||
+            !(autofocus_rc = pcore_browser_script_autofocus_apply(NULL)))) {
+        _snprintf(error, sizeof(error) - 1,
+                "id-less autofocus host apply failed: clear=%d apply=%d",
+                clear_rc, autofocus_rc);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok) {
+        memset(&target, 0, sizeof(target));
+        memset(id, 0, sizeof(id));
+        id_bytes = 0;
+        rc = PCore_AutofocusTargetInfo(document, &target, id,
+                sizeof(id), &id_bytes);
+        if (rc != 0 || id_bytes != 0 || id[0] != '\0') {
+            cstr_copy(error, sizeof(error),
+                    "id-less autofocus target was not reported safely");
+            ok = 0;
+        }
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(document.activeElement===document.body)+'|'+window.trace;",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|focus:;focusin:;") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "id-less autofocus did not preserve Core focus semantics: %s apply=%d",
+                result != NULL ? result : "<null>", autofocus_rc);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' && g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1151 FAIL", error[0] != '\0' ? error :
+                "autofocus contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1151 OK",
+            "autofocus selects the first eligible laid-out target,"
+            " applies focus after native creation, and remains id-safe.");
     return TRUE;
 }
 
@@ -95574,6 +95946,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1148: ok = test1148_browser_nested_scroll_into_view_contract(); break;
         case 1149: ok = test1149_browser_all_scroll_into_view_contract(); break;
         case 1150: ok = test1150_browser_focus_nested_scroll_contract(); break;
+        case 1151: ok = test1151_browser_autofocus_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

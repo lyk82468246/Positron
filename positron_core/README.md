@@ -138,6 +138,8 @@ Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispa
 
 脚本主动聚焦使用两个按 id 的同步入口：`PCore_FocusTargetInfoById` 解析一个已布局且符合相同资格规则的目标，返回其 geometry/kind；`PCore_InteractionFocusById` 只更新 Core 的 focus node。无 id、disabled、hidden、stale、未布局或不支持的目标均 fail closed，重复聚焦返回 no-op。Core 不切换 native HWND、不派发 focus family、不滚动目标、不画焦点矩形；Browser 的 `PBrowserScriptFocusRequestCallbacksEx` 消费这份 geometry 实现 page-level reveal，并在发现可寻址的 retained overflow 祖先时完成有界的嵌套 reveal。Ex 的 `prevent_scroll` 让宿主在 Browser 处理嵌套链前保持页面 viewport 不变，回调结果仍用于同步宿主实际 page scroll。宿主仍负责 native HWND、focus family 和窗口策略，并在文档或 layout 改变后重新查询，不能缓存旧快照。
 
+页面提交后若应用需要遵循 HTML 的 `autofocus` 提示，宿主可在 style/layout 完成并创建 native 子控件后显式调用 `PCore_AutofocusTargetInfo`。Core 按 DOM 顺序扫描带 boolean `autofocus` 属性的元素，复用现有焦点资格、可见性、布局和深度预算；查询只复制 geometry/kind 与可选 UTF-8 id，不改变文档焦点。随后宿主调用 `PCore_InteractionFocusAutofocus` 更新 Core focus node，再自行完成 page-level reveal、native HWND、focus/focusin 事件和重绘。重复调用是 no-op；没有合格目标、过期布局、无 id 或 id 超出宿主桥接容量时必须安全回退。为无 id 目标派发事件时使用 `PCore_EventDispatchFocus`，它在同步 dispatch 期间保留当前焦点节点引用，保证监听器修改焦点不会使目标悬空。该路径是宿主触发的一次性、有界初始焦点事务，不是 Core 自主运行的完整焦点算法；Browser 的 `document.activeElement` 仍只投影可寻址 id，无 id 时按既有合同回退到 `document.body`。
+
 ### Modal presentation
 
 宿主先从 Browser session 读取活动 modal 的 UTF-8 id，再在普通文档绘制后调用 `PCore_PaintDocumentWithModal`：
@@ -171,6 +173,7 @@ paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
 - HTTP/TLS、后台 worker、取消、loading 和候选页面提交；
 - native EDIT/SELECT/button/file picker 与 SIP/IME；
 - contenteditable 的 WM EDIT 窗口、焦点、键盘和 IME 接线；宿主按 Browser 的 `beforeinput` 取消结果调用 Core 的受限文本 mutation，使用 Browser 的 selection callback 同步原生范围，并在原生范围改变后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`。无修饰鼠标拖选、Shift/方向键的 anchor 与默认消息跟踪，以及捕获/取消/焦点中断收尾也由宿主维护；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、所有权和 native default 包裹也由宿主维护。Core 只提供 editing-host 快照和文本状态，不创建窗口，也不保存第二份编辑模型或重新派发 `selectionchange`；Range/Selection 对象、富文本和完整 IME 仍不在此边界内；
+- 页面提交后的初始焦点策略；若启用 `autofocus`，宿主须在 style/layout 和 native 子控件创建完成后调用 `PCore_AutofocusTargetInfo`/`PCore_InteractionFocusAutofocus`，按结果完成 page-level reveal、native HWND、focus/focusin 事件和重绘。无 id 目标的 focus family 使用 `PCore_EventDispatchFocus`；Core 不在后台或页面解析期间自动抢占焦点；
 - history、浏览器 script session 和新窗口/外部协议策略；
 - 失败回滚、日志、持久化和应用生命周期。
 
@@ -181,7 +184,7 @@ paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
 - 不支持完整现代 HTML/CSS/DOM；float、复杂 table/position、Grid、custom properties 等仍有限。
 - 字体、SVG、图像格式和高 DPI 结果受 WM6 GDI/依赖版本限制。
 - Core resource cache、DOM bridge、表单集合和深度/数量均有固定预算。
-- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；`PCore_PaintDocumentWithModal` 可按宿主提供的活动 id 在已 layout 的 `<dialog open>` 之上组合实体色遮罩与对话框重绘。Core 不自行决定初始焦点、背景点击或跨窗口焦点策略；脚本生命周期、活动 modal id 和实际关闭仍由 `positron_browser.dll` 提供。
+- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；`PCore_AutofocusTargetInfo`/`PCore_InteractionFocusAutofocus` 让宿主在页面 layout 和 native 子控件创建后显式选择第一个合格的 `autofocus` 目标，`PCore_EventDispatchFocus` 可为无 id 的当前焦点节点保留目标并派发事件。`PCore_PaintDocumentWithModal` 可按宿主提供的活动 id 在已 layout 的 `<dialog open>` 之上组合实体色遮罩与对话框重绘。Core 不自行启动初始焦点、背景点击或跨窗口焦点策略；脚本生命周期、活动 modal id、native 焦点、页面 reveal 和实际关闭仍由宿主/`positron_browser.dll` 组合完成。
 - Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。Browser 的 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 只覆盖有 id 的、已布局支持 box，并通过本页的 Core API 接线；`Element.scrollIntoView()` 另可使用关系 40–43 沿最多 64 层可寻址父链，从最近到最外处理 `container:"all"` 的有限 reveal，`HTMLElement.focus()` 复用同一条路径。完整滚动树、scroll chaining、scroll-margin、平滑/惯性滚动和匿名目标仍不在范围内。
 - 精确 API、返回码、结构布局和借用期限以 [`positron_core.h`](positron_core.h) 为准。
 

@@ -27,14 +27,15 @@
 - CSS Grid、完整 float、完整 positioned layout、复杂 table/caption/column/baseline、完整 generated content 与自定义 counter style 未覆盖。
 - 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。
 - `details`/`summary`、`hidden` 等只有受限静态或交互子集；`dialog` 已有 Browser 脚本的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id、宿主驱动的 Escape 请求桥接和参考宿主的有界 backdrop 点击策略。Core/Browser 组合支持有 id 祖先 dialog 的显式、脚本和隐式 `method="dialog"` 提交，包括 validation、可取消 `submit`、submitter value 与直接 close；无 id、无祖先 dialog 或跨文档目标会 fail closed。宿主可以组合 Core 的 scoped focus snapshot 实现顺序 Tab/Shift+Tab 子树范围，并调用 `PCore_PaintDocumentWithModal` 得到实体色遮罩和指定 dialog 重绘；这不是 CSS `::backdrop`、透明合成或跨文档 top layer。Browser 不自动接管平台消息；宿主必须显式调用这些边界。
-- Core 已支持有界的自定义 `tabindex` 顺序：正值升序（同值保持 DOM 顺序），随后是零/缺省组；`PCore_FocusTargetInfoWithin` 可按已知 DOM id 限定到一个祖先子树；负值、disabled/hidden/stale 目标和 file picker 仍会被排除。完整浏览器焦点策略、自动初始焦点、动态焦点区域和跨窗口焦点仍未实现。
+- Core 已支持有界的自定义 `tabindex` 顺序：正值升序（同值保持 DOM 顺序），随后是零/缺省组；`PCore_FocusTargetInfoWithin` 可按已知 DOM id 限定到一个祖先子树；负值、disabled/hidden/stale 目标和 file picker 仍会被排除。`PCore_AutofocusTargetInfo`/`PCore_InteractionFocusAutofocus` 现在允许宿主在 style/layout 与 native 子控件创建完成后，按 DOM 顺序选择第一个符合相同资格的 `autofocus` 目标；这只是一次显式、有界的事务，不是 Browser 自主生命周期，也不提供完整焦点导航、动态焦点区域、focus ring 或跨窗口焦点。目标必须有可用 layout，深度超限、无 id 或 id 超出 Browser 桥接容量时宿主应安全回退；无 id 目标的事件可通过 `PCore_EventDispatchFocus` 派发，但 Browser 的 `document.activeElement` 仍按 id projection 合同回退到 `document.body`。
 - Core/Browser 对带 DOM `id` 的常见 block/replaced/flex overflow box 提供 retained scrollbar offset、`scrollLeft`/`scrollTop`、`scrollTo()`/`scrollBy()` 和宿主 pointer 同步；这只是有界的两个轴桥接，不能代表完整 CSS overflow 语义。client 尺寸是 retained scrollport 的 padding 区域，滚动条覆盖在边缘。
 - Browser script session 已能由宿主显式维护顶层窗口 focus/blur 状态，并让 `document.hasFocus()` 与去重后的 window 事件保持一致；这不等于完整浏览器焦点策略，native 控件焦点、焦点矩形、焦点陷阱和 OEM/跨窗口激活仍由宿主负责。
 - Core 的 `PCore_InteractionFocusElementId` 只报告当前交互状态中、带非空 UTF-8
   id 的焦点节点；没有焦点、没有 id、节点过时或缓冲不足时调用方必须按失败/回退
   处理。Browser 的 `document.activeElement` 是显式 callback 注册后才安装的可选
-  projection，通过现有 ID lookup 返回元素，否则返回 `document.body`；它不提供
-  自动初始焦点、完整焦点算法、native 焦点矩形或跨窗口焦点。
+  projection，通过现有 ID lookup 返回元素，否则返回 `document.body`；Browser 不自主
+  执行初始 `autofocus`，宿主可在 layout/native 子控件创建后显式调用 Core 的有界入口；
+  这仍不提供完整焦点算法、native 焦点矩形或跨窗口焦点。
 - `contenteditable` 目前覆盖单元素的祖先继承、`isContentEditable`、有界纯文本 mutation、宿主编排的 `beforeinput`/`input`，Browser 的 `selectionStart`/`selectionEnd`/`selectionDirection`，以及去重后的非冒泡、不可取消 `selectionchange`。带 id 且已布局的有效 editing host 可由宿主映射为最多 16 个 WM multiline EDIT 代理；无修饰鼠标拖选和 Shift/方向键扩展会把 CRLF 位置转换为逻辑 UTF-16 并报告 forward/backward 方向，捕获丢失、取消模式和焦点切换会结束未完成手势而不重复通知。文本上限为 8192 UTF-8 字节，嵌套继承后代不重复代理。宿主另有受限 `CF_UNICODETEXT` paste/cut 事务，但 Range/Selection 对象、ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有的自动重复与复杂行导航、design mode 和完整 IME 组合仍未实现。
 - 字体 fallback 使用 bundled 子集与系统 GDI，不能保证桌面浏览器字形、kerning、emoji 彩色渲染或抗锯齿一致。
 - WM6 高 DPI、字体度量和设备色深会产生量化差异；自动像素断言不能取代整体视觉判断。
@@ -108,7 +109,7 @@
   `focus({preventScroll:true})` 则保持页面和元素滚动位置不变。Browser 在 callback
   返回后同步脚本滚动位置；无 id、disabled、hidden、stale、未布局、对非当前目标的
   blur，以及注销后的方法都 fail closed/no-op；重复 focus 不重复派发 focus family，
-  blur 不执行滚动。该桥不提供完整 focus navigation、自动初始焦点、focus ring、
+  blur 不执行滚动。该桥不提供完整 focus navigation、自主自动初始焦点、focus ring、
   完整滚动树、scroll chaining、scroll-margin、平滑/惯性滚动、跨窗口策略或 OEM 控件
   视觉保证。
 - Browser session callback 同步且不可重入；宿主若在 callback 中销毁或重入 session，行为不受支持。
@@ -206,6 +207,12 @@
   `focus({preventScroll:true})` 保持页面和元素位置，以及远端目标 blur 不移动页面。
   它仍不证明完整焦点算法、滚动树、scroll chaining/anchoring、scroll-margin、平滑/惯性
   滚动、复杂布局或真实滚动条视觉。
+- TEST1151 覆盖页面提交后由宿主显式触发的有界 `autofocus`：Core 按 DOM 顺序跳过
+  hidden、disabled 和未布局目标，提供 UTF-8 id size-probe 与 geometry 快照，并只更新
+  Core focus node；有 id 目标复用 Browser focus bridge，无 id 目标通过
+  `PCore_EventDispatchFocus` 保留焦点节点并派发 focus/focusin。它同时检查重复应用不
+  重复派发、过小 id buffer 不部分写入，以及无 id 目标的 `document.activeElement` 按
+  id projection 合同回退到 `body`；不证明完整焦点算法、native HWND/焦点矩形或 OEM 视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。
