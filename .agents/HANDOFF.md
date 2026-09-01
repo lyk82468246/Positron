@@ -8,10 +8,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。next708 的 Browser selector 属性操作符语义、TEST1153 夹具和职责文档已完成；
+- 分支：`main`。next709 的 Browser selector 结构伪类语义、TEST1154 夹具和职责文档已完成；
   tracked 范围只涉及 `positron_browser`、`test_host` 和对应文档，未把 `tmp/`
   中的本地证据纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1153。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- `TEST_MAX_NUMBER` 已为 1154。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
@@ -19,49 +19,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 近期已完成能力摘要
 
-- next698 已在 Browser 中增加页面级 `Element.scrollIntoView()`：复用
-  `getBoundingClientRect()` 与现有 page-level scroll callback，支持有限的 block/inline
-  对齐和 `auto`/`instant` 行为；TEST1143 与定向设备门已验证默认、center、末端、
-  nearest、一次 scroll 事件和 smooth 拒绝路径。宿主仍负责 clamp、物理滚动、绘制和
-  实际位置同步，nested overflow、scroll-margin 与平滑/惯性滚动仍不在范围内。
-
-- next700 在 Core 与 Browser 之间补齐了有界 inline 多片段几何：Core 从 NetSurf
-  inline 起止标记和实际行片段生成最多 16 个 document-CSS-pixel 矩形，Browser
-  bootstrap 将其组合为新的 `getClientRects()` 集合，并以同一快照计算
-  `getBoundingClientRect()` union。块级元素继续返回单片段；未布局、隐藏或没有正
-  尺寸片段时分别返回全零/空集合。TEST1145 覆盖 Core count/index relations、
-  集合与矩形身份、行顺序、`.item()` 边界和 union；Range/Selection、transforms、
-  nested overflow、pinch zoom、平滑滚动和视觉像素精度仍不在范围内。
-
-- next701 在同一 Core/Browser relation bridge 上补齐了已布局常见 box 的六个只读布局
-  尺寸快照。Core 返回整数 CSS 像素的 offset/client/scroll width/height，Browser
-  映射为对应 element getter；TEST1146 覆盖边框、内边距、预留 scrollbar、后代 extent、
-  只读 descriptor 和隐藏元素零值回退。它不改变 page-level scroll，也不实现
-  `scrollTop`/`scrollLeft`、transforms 或独立 nested overflow。
-
-- next704 在 next703 的最近祖先 reveal 之上，把显式 `Element.scrollIntoView({container:"all"})`
-  作为 Browser-owned 的有界滚动链接入：最多遍历 64 层可寻址父链，从最近到最外依次
-  处理 retained overflow ancestor，每次滚动后重读目标矩形，链完成后仅在目标仍在页面
-  视口外才回退 page-level callback。默认 `container:"nearest"` 行为保持不变；TEST1149
-  与 TEST1148 共同覆盖双轴对齐、inner→outer 事件顺序、页面稳定、重复静默和非法选项
-  拒绝。宿主只负责 callback、Core relation、clamp、重绘和实际位置通知。
-
-- next705 在 next704 的公共 Browser 滚动语义上接合 `HTMLElement.focus()`：Browser
-  沿目标到根最多检查 64 层 retained overflow ancestor；发现嵌套容器时向 Ex host
-  callback 传递有效 `prevent_scroll`，宿主因此只处理 Core/native focus 和 page-level
-  适配而不先移动页面，Browser 随后按 `container:"all"` 的最近到最外顺序 reveal。
-  显式 `focus({preventScroll:true})` 保持页面与元素滚动位置，`blur()` 不执行滚动。
-  TEST1150 与 TEST1142、1148、1149 的相邻设备门验证了双轴、事件顺序、重复静默、
-  callback 后同步和远端 blur 行为；没有新增公共 ABI 字段。
-
-- next706 在 Core 中增加了有界 `autofocus` 目标发现、Core focus node 设置和目标保持的
-  `PCore_EventDispatchFocus`；参考宿主只在页面 style/layout 与 native 子控件创建完成后
-  显式调用这条路径，有 id 目标复用 Browser focus bridge，无 id 目标仍能派发
-  focus/focusin 而不暴露第二份焦点模型。Core 按 DOM 顺序跳过 hidden、disabled、负值
-  或未布局目标，查询支持 UTF-8 size-probe，事件 dispatch 在同步监听器可能改变焦点时
-  保持节点引用。TEST1151、定向门 `1151,999` 和相邻回归门
-  `1142,1148-1151,999` 均已验证重复应用静默、无 id 回退、过小缓冲 fail-closed 和
-  目标事件；该批没有把 autofocus 语义放进 `test_host`。
+- next698–706 已完成 Browser/Core 的有限滚动、inline 几何、布局尺寸、nested reveal、
+  focus 和 autofocus 组合；对应语义由公共 DLL 拥有，宿主只做 Core relation、WM/native
+  接线、clamp、绘制和生命周期调度。TEST1143–1151 已覆盖这些路径的离线合同与定向门；
+  完整滚动树、Range/Selection、transform、pinch zoom、平滑/惯性滚动、完整焦点算法和
+  OEM 视觉仍属于已知限制，具体边界见 `docs/TESTING.md`。
 
 - next707 在 `positron_browser.dll` 的脚本 bootstrap 中补齐了有界 selector 列表和
   关系组合器：`matches()`、`closest()`、`querySelector()` 与 `querySelectorAll()`
@@ -78,6 +40,15 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   不支持的大小写修饰符和未知语法均 fail closed。TEST1153 覆盖正向/负向匹配、列表
   顺序、组合器和非法输入；实现全部位于 `positron_browser.dll`，宿主只保留 fixture
   与断言，未新增公共 ABI 或 heap ceiling。
+
+- next709 在同一 Browser selector 解析器中加入有界结构伪类：`:root`、`:empty`、
+  `:first-child`、`:last-child`、`:only-child`、`*-of-type` 变体和四种 `nth-*` 变体。
+  `odd`/`even`、整数和受限 `an+b` 公式只读取 childNodes/关系快照，组合与祖先/兄弟
+  遍历仍有 64 步上限；非法公式、`of` 过滤、`:not()`、伪元素和超大数值安全拒绝。
+  TEST1154 覆盖 root/empty/child/type/list/matches/closest 与 fail-closed 输入；实现
+  全部位于 `positron_browser.dll`，宿主只保留离线 fixture 和断言。为容纳 bootstrap，
+  Browser 会话 heap ceiling 从 678 KiB 调整为 710 KiB；空元素的 `:empty` 不依赖会
+  返回 NULL 的 textContent callback，而使用只读 childNodes 快照。
 
 - next678 已把候选 generation、取消请求、退休状态、提交资格和 committed/failed 终态迁入 `positron_browser.dll` 的 opaque handle。next679 进一步把 pending/committed/failed/cancelled/stale 结果分类作为只读 Browser 摘要；next680 再提供独立 candidate/resource 的只读提交组合快照；next681 增加提交后 cleanup snapshot 和宿主回收观测；next682 将 history entry 的 viewport snapshot 迁入 Browser，并移除宿主的按 entry 滚动数组。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列、窗口滚动应用和页面 swap，不把线程、窗口、网络或 Core document 带入 Browser ABI。
 - Browser 现在同时拥有 URL 去重、role/policy、资源字节、终态、失败分类、重试预算、commit gate、hash-only 摘要、fallback 计数、候选 admission 状态、候选结果分类、candidate/resource 组合 decision 和 cleanup snapshot；宿主只保留 URL→resource-index 短引用、candidate handle 和平台调度状态，并消费结果快照写日志。清理快照复制完整有界 resource observation，要求 pending 工作先收敛，committed candidate 还必须配 READY gate。
@@ -104,8 +75,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   目标复用 Browser focus bridge，无 id 目标仍可派发 focus/focusin。TEST1151、
   `1151,999` 定向门和 `1142,1148-1151,999` 相邻回归门均已通过；`test_host.exe`
   只保留生命周期接线、native/page 适配、fixture 和断言。
-- next707–708 已完成 Browser selector 的列表/组合器/属性操作符纵向能力；
-  TEST1152–1153、`1152-1153,999` 定向门已通过，当前唯一下一步是 next709：重新检查
+- next707–709 已完成 Browser selector 的列表/组合器/属性操作符/结构伪类纵向能力；
+  TEST1152–1154、`1152-1154,999` 定向门已通过。当前唯一下一步是 next710：重新检查
   compatibility corpus、源码、设备日志和截图，固定一个新的用户可见缺口，再选择一个
   边界清楚的公共 DLL 纵向能力。不要仅为增加编号拆分提交，也不要把页面语义放回
   `test_host`。
@@ -153,25 +124,26 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1153。
+- `TEST_MAX_NUMBER`：1154。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next708 的 Browser selector 属性操作符与 next707 组合器相邻回归：
+当前最新产品门为 next709 的 Browser selector 结构伪类与 next708/707 相邻回归：
 
-- next708 最新定向目录：`tmp/device-runs/20260901-213612-next708-selector-attrs-final/`；
-  动态选择 `1152-1153,999`，3 项；3/3 通过，零 `ERROR`/`FAIL`，唯一
-  `TESTBENCH PASS`。TEST1153 验证 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 属性匹配、通配
-  标签、组合器/列表顺序、引号内 `]` 保护、空操作数/未闭合引号/大小写修饰符拒绝；
-  TEST1152 验证既有 selector 组合器，TEST999 请求一次提示音。
+- next709 最新定向目录：`tmp/device-runs/20260901-222938-next709-selector-structural-final2/`；
+  动态选择 `1152-1154,999`，4 项；4/4 通过，零 `ERROR`/`FAIL`，唯一
+  `TESTBENCH PASS`。TEST1154 验证 `:root`、`:empty`、child/of-type 与四种 `nth-*`
+  结构伪类、列表顺序、`matches()`/`closest()`、受限 `an+b` 公式和非法输入回退；
+  TEST1152/1153 验证既有组合器和六类属性操作符，TEST999 请求一次提示音。
 - 设备：640x480，dpi=192；使用当前 WMDC GUI 会话、正式 Debug ARMV4I 构建和同批
   staging。RAPI gate 只复用已有 GUI 会话，不连接、选择、重置或杀死设备。
 - 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I 构建和
   `python scripts/audit_repo.py` 均通过；实现和测试分别位于 `positron_browser` 与
-  `test_host`，未新增公共 ABI，Browser heap ceiling 仍为 678 KiB。
+  `test_host`，未新增公共 ABI，Browser heap ceiling 为 710 KiB。678 KiB 预算在新
+  bootstrap 下无法通过，已由定向实验确认并记录为产品边界。
 
 next707 的相邻证据保留如下，作为本批的直接回归依据：
 
@@ -218,7 +190,7 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 - 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
-- TEST1117–TEST1153 都是离线自动夹具，没有新增必须立即人工复核的崩溃或数据风险；它们的真实视觉、触摸、旋转、SIP/IME、picker 和不同 DPI 呈现继续进入人工累计清单。自动结果不替代真实网络恢复、OEM 控件或逐资源视觉验收。
+- TEST1117–TEST1154 都是离线自动夹具，没有新增必须立即人工复核的崩溃或数据风险；它们的真实视觉、触摸、旋转、SIP/IME、picker 和不同 DPI 呈现继续进入人工累计清单。自动结果不替代真实网络恢复、OEM 控件或逐资源视觉验收。
 - TEST1136 是同步、可取消的脚本生命周期门，没有新增必须立即人工复核的视觉风险；参考宿主取消时只保留当前页面，不显示 prompt。自定义宿主若提供确认 UI，仍需把真实关闭、导航和提示交互加入人工清单。
 - TEST1137 是离线的脚本队列顺序和宿主调度夹具，没有新增必须立即人工复核的视觉风险；真实页面的 timer/frame/message/idle 频率、功耗和 OEM 消息行为仍属于宿主集成观察，自动门只证明 Browser 顺序与限额合同。
 - TEST1138 是离线的页面生命周期语义夹具，没有新增必须立即人工复核的视觉风险；真实页面的后台挂起、OEM 可见性通知、bfcache 和页面视觉仍属于宿主集成观察，自动门只证明 Browser 的有限事件顺序、去重和 `persisted == false` 合同。
@@ -234,8 +206,9 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 - TEST1148/1149 是离线的 Browser/Core 有限 nested `scrollIntoView()` 语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实多层滚动树的裁剪、scroll chaining、scroll-margin、指针/触摸、不同 DPI 和平滑/惯性滚动仍属于宿主集成观察，自动门只证明最近 ancestor 与 `container:"all"` 的有界链、关系 40–43、对齐、page 稳定、事件去重和 smooth 拒绝合同。
 - TEST1150 是离线的 Browser/Core nested focus 语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实滚动条裁剪、焦点矩形、触摸/SIP、不同 DPI 和完整滚动树仍属于宿主集成观察，自动门只证明 Ex `prevent_scroll` 协调、inner→outer 双轴 reveal、focus/scroll 顺序、重复 focus、显式 `preventScroll` 和远端 blur 的合同。
 - TEST1151 是离线的 Core/Browser autofocus 语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实初始焦点矩形、native HWND、滚动条裁剪、触摸/SIP、不同 DPI 和多窗口策略仍属于宿主集成观察，自动门只证明 DOM 顺序资格、size-probe、Core focus node、无 id 目标事件保持和 Browser body 回退合同。
-- TEST1152 是离线的 Browser selector 组合器语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实页面的复杂 CSS selector、伪类/伪元素、属性大小写修饰符、namespace、shadow DOM、布局视觉和不同 DPI 仍属于宿主集成观察，自动门只证明有界列表/组合器、属性值分隔、查询顺序和非法输入 fail-closed 合同。
-- TEST1153 是离线的 Browser selector 属性操作符语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实页面的完整 CSS selector、伪类/伪元素、属性大小写修饰符、namespace、shadow DOM、布局视觉和不同 DPI 仍属于宿主集成观察，自动门只证明六类操作符、通配标签、组合器/列表顺序、引号内 `]` 保护和非法输入 fail-closed 合同。
+- TEST1152 是离线的 Browser selector 组合器语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实页面的复杂 CSS selector、动态伪类/伪元素、属性大小写修饰符、namespace、shadow DOM、布局视觉和不同 DPI 仍属于宿主集成观察，自动门只证明有界列表/组合器、属性值分隔、查询顺序和非法输入 fail-closed 合同。
+- TEST1153 是离线的 Browser selector 属性操作符语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实页面的完整 CSS selector、动态伪类/伪元素、属性大小写修饰符、namespace、shadow DOM、布局视觉和不同 DPI 仍属于宿主集成观察，自动门只证明六类操作符、通配标签、组合器/列表顺序、引号内 `]` 保护和非法输入 fail-closed 合同。
+- TEST1154 是离线的 Browser selector 结构伪类语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实页面的动态状态、伪元素、完整公式、namespace、shadow DOM、布局视觉和不同 DPI 仍属于宿主集成观察，自动门只证明有限 root/empty/child/of-type/nth 关系、列表顺序、matches/closest 和非法输入 fail-closed 合同。
 - next682 的 TEST1081/1082 没有新增必须立即人工复核的崩溃或数据风险；不同页面高度、横向滚动、旋转、DPI 和真实后退按钮的整体视觉/触摸结果继续与既有滚动和 history 风险一起累计观察。自动门只证明 Browser snapshot 与宿主 clamp/apply 的语义。
 - next683 的 TEST1128 同样是离线自动夹具，没有新增必须立即人工复核的崩溃或数据风险；宽页面的横向滚动条、左右边距、触摸/键盘操作、resize/旋转/DPI 视觉和真实页面 overflow 结果进入既有人工累计清单。自动门只证明 page-level extent、坐标一致性、clamp 和 snapshot 语义。
 - next684 的 TEST1129 是离线脚本/宿主同步夹具，没有新增必须立即人工复核的崩溃或数据风险；真实页面脚本滚动、滚动条视觉、触摸/键盘、resize/旋转/DPI 和嵌套 overflow 仍进入既有人工累计清单。自动门只证明 page-level 坐标、clamp、反向同步、事件去重和 callback 不可重入。
@@ -268,19 +241,19 @@ next670 的全量门覆盖了表格边框、DPI 几何、网络哨兵、独立 b
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
-- Browser selector 目前只覆盖简单 compound selector 的顶层列表、后代/子代/兄弟关系和六类属性操作符；TEST1152/1153 已验证 64 步上限、属性值保护和非法输入回退，但完整 CSS Selectors 语法、伪类/伪元素、属性大小写修饰符、namespace 和 shadow DOM 仍未实现。新增 bootstrap 使浏览器脚本有界 heap ceiling 保持为 678 KiB，复杂页面仍可能触及资源预算。
+- Browser selector 目前只覆盖简单 compound selector 的顶层列表、后代/子代/兄弟关系、六类属性操作符和有限结构伪类；TEST1152–1154 已验证 64 步上限、属性/伪类参数保护、受限 `an+b` 公式和非法输入回退，但动态状态、`:not()`、伪元素、属性大小写修饰符、namespace、shadow DOM 和完整 CSS Selectors 语法仍未实现。新增 bootstrap 使浏览器脚本有界 heap ceiling 为 710 KiB，复杂页面仍可能触及资源预算。
 - 多窗口、持久 history、完整下载/外部协议策略仍属于宿主或未实现范围。
 - mbed TLS 2.16.12 等依赖为旧平台兼容 pin，发布前必须审查当前安全风险。
 - OEM SIP/IME、系统 picker、视觉和旋转不能仅凭 synthetic 自动测试保证。
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next709
+## 唯一下一步：next710
 
-next708 已在 Browser bootstrap 中补齐六类有界属性操作符：TEST1153、`1152-1153,999`
-定向设备门验证了前缀/后缀/子串/分词/语言前缀匹配、通配标签、列表与组合器顺序、
-引号内 `]` 保护和非法输入 fail-closed。下一步先从 compatibility corpus、源码、日志或
-截图固定另一个真实缺口，再选择一个边界清楚的离线 fixture 或稳定哨兵。
+next709 已在 Browser bootstrap 中补齐有限结构伪类：TEST1154、`1152-1154,999`
+定向设备门验证了 root/empty/child/of-type/nth 关系、受限 `an+b` 公式、列表顺序、
+`matches()`/`closest()` 和非法输入 fail-closed。下一步先从 compatibility corpus、
+源码、日志或截图固定另一个真实缺口，再选择一个边界清楚的离线 fixture 或稳定哨兵。
 实现必须把可复用语义放在正确的公共 DLL，宿主只做平台接线、调度、应用策略和断言；
 不要把互不相关的能力拆成只增加编号的提交，也不要在没有证据时扩大 ABI。完整滚动
 容器树、Range/Selection、pinch zoom、transforms、scroll-margin、平滑/惯性滚动、
@@ -294,11 +267,11 @@ next708 已在 Browser bootstrap 中补齐六类有界属性操作符：TEST1153
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一步完成标准（next709）
+## 下一步完成标准（next710）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
 - 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱 next685–707 的布局 relation、布局尺寸、元素滚动、`getBoundingClientRect()`/`getClientRects()`、DPI 换算、history snapshot、宿主 clamp/apply、scroll restoration、beforeunload、脚本任务检查点、窗口焦点、activeElement、focus/blur 请求、autofocus、page-level/nested scrollIntoView 或旧页保留契约；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- handoff 覆盖为 next708 快照，ROADMAP 只保留当前尚未完成的纵向能力。
+- handoff 覆盖为 next709 快照，ROADMAP 只保留当前尚未完成的纵向能力。

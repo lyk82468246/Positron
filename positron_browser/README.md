@@ -166,7 +166,10 @@ callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scroll
 
 ### Script session
 
-`PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context，`Destroy` 释放 bootstrap、队列、native function 和事务状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但它的 Web host objects 由 Browser callbacks 提供。
+`PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context；Browser bootstrap 使用
+独立的 710 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
+状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但它的 Web host
+objects 由 Browser callbacks 提供。
 
 典型生命周期：
 
@@ -295,10 +298,12 @@ Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把
 
 Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实文档状态。callback 参数和输出缓冲只在调用期间借用，不得缓存。
 
-selector 方法支持简单 compound selector、顶层列表、空格/`>`/`+`/`~` 组合器和六类
-属性操作符：`=`, `^=`, `$=`, `*=`, `~=`, `|=`（精确、前缀、后缀、子串、分词、语言
-前缀）。组合及祖先/兄弟遍历最多 64 步；引号内的空格、逗号和 `]` 受保护。伪类、
-伪元素、属性大小写修饰符、namespace、shadow DOM 和完整 CSS Selectors 语法仍不支持。
+selector 方法支持简单 compound、顶层列表、空格/`>`/`+`/`~` 组合器和属性操作符
+`=`, `^=`, `$=`, `*=`, `~=`, `|=`。还支持有限结构伪类 `:root`、`:empty`、child/of-type
+变体及四种 `nth-*` 变体；
+`odd`/`even`、整数和受限 `an+b` 按只读 DOM 快照求值。遍历最多 64 步，公式/heap 有
+固定上限；引号内分隔符受保护。动态伪类、`:not()`、伪元素、大小写修饰符、namespace、
+shadow DOM 及其他选择器语法不支持；非法输入 fail closed。
 
 ### `dialog` 生命周期
 

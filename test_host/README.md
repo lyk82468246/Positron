@@ -68,7 +68,7 @@ tests=13,20,27,999
   `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器和
-  属性操作符查询（TEST1146–1153）；
+  属性操作符与结构伪类查询（TEST1146–1154）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -154,8 +154,10 @@ native HWND、滚动条或 OEM 输入视觉验收。
 Browser 的 `matches()`、`closest()` 与 document selector 查询由
 `positron_browser.dll` 拥有。宿主只需提供已有的 DOM parent/child/sibling relation
 callback；TEST1152 用离线 fixture 断言顶层 selector 列表、后代/子代/兄弟组合器、
-属性值中的逗号和非法 selector 的 fail-closed 行为。宿主不得在测试 helper 中复制
-selector 解析或匹配规则。
+属性值中的逗号和非法 selector 的 fail-closed 行为；TEST1153 断言六类属性操作符，
+TEST1154 断言 `:root`、`:empty`、child/of-type 与四种 `nth-*` 结构伪类及其非法
+输入回退。宿主不得在测试 helper 中复制 selector 解析或匹配规则；这些语义和固定
+预算都属于 Browser。
 
 ### Native EDIT/SELECT/button/file
 

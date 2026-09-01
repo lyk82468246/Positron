@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1153
+#define TEST_MAX_NUMBER 1154
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -38186,6 +38186,175 @@ static BOOL test1153_browser_selector_attribute_operator_contract(void)
     show_info(L"TEST 1153 OK",
             "Selector attribute operators support bounded prefix, suffix,"
             " substring, token and language matching with fail-closed input.");
+    return TRUE;
+}
+
+/* TEST 1154 - bounded structural selector pseudo-classes. */
+static BOOL test1154_browser_selector_structural_pseudo_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<ul id='items'><li id='one'>One</li><li id='two'>Two</li>"
+        "<li id='three'>Three</li><li id='four'>Four</li></ul>"
+        "<div id='single'><span id='only'>Only</span></div>"
+        "<div id='empty'></div><div id='text'>text</div>"
+        "<section id='typed'><span id='span-one'>A</span>"
+        "<b id='bold'>B</b><span id='span-two'>C</span></section>"
+        "<script>window.__selectorStructuralContractReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selector-structural";
+    static const char *PHASE_NAMES[] = {
+        "root-child-empty", "nth-child", "of-type-and-list", "invalid-input"
+    };
+    static const char *PHASES[] = {
+        "(function(){var root=document.documentElement;"
+        "var one=document.getElementById('one');var four=document.getElementById('four');"
+        "var only=document.getElementById('only');var empty=document.getElementById('empty');"
+        "var text=document.getElementById('text');var ok="
+        "document.querySelector(':root')===root&&root.matches(':root')&&root.matches('html:root')&&"
+        "document.querySelector('#items > li:first-child')===one&&"
+        "document.querySelector('#items > li:last-child')===four&&"
+        "document.querySelector('#single > span:only-child')===only&&"
+        "only.closest('div > span:only-child')===only&&empty.matches(':empty')&&"
+        "text.matches(':empty')===false&&document.querySelectorAll('div:empty').length===1;"
+        "return ok?'true':'phase1';})();",
+        "(function(){var one=document.getElementById('one');var two=document.getElementById('two');"
+        "var three=document.getElementById('three');var four=document.getElementById('four');"
+        "var odd=document.querySelectorAll('#items > li:nth-child(2n + 1)');"
+        "var even=document.querySelectorAll('#items > li:nth-child(even)');"
+        "var range=document.querySelectorAll('#items > li:nth-child(-n+2)');"
+        "var ok=odd.length===2&&odd[0]===one&&odd[1]===three&&"
+        "even.length===2&&even[0]===two&&even[1]===four&&"
+        "range.length===2&&range[0]===one&&range[1]===two&&"
+        "document.querySelector('#items > li:nth-last-child(2)')===three;"
+        "return ok?'true':'phase2';})();",
+        "(function(){var one=document.getElementById('one');var three=document.getElementById('three');"
+        "var spanOne=document.getElementById('span-one');var spanTwo=document.getElementById('span-two');"
+        "var bold=document.getElementById('bold');var list="
+        "document.querySelectorAll(':root, #items > li:first-child');"
+        "var ok=document.querySelector('section#typed > span:first-of-type')===spanOne&&"
+        "document.querySelector('section#typed > span:last-of-type')===spanTwo&&"
+        "document.querySelector('section#typed > span:nth-of-type(2)')===spanTwo&&"
+        "document.querySelector('section#typed > span:nth-last-of-type(2)')===spanOne&&"
+        "bold.matches('b:only-of-type')&&list.length===2&&list[0]===document.documentElement&&"
+        "list[1]===one&&three.matches('li:nth-child(2n + 1)')&&"
+        "three.closest('ul > li:nth-child(2n + 1)')===three;"
+        "return ok?'true':'phase3';})();",
+        "(function(){var one=document.getElementById('one');var ok="
+        "document.querySelectorAll('#items > li:nth-child()').length===0&&"
+        "document.querySelectorAll('#items > li:nth-child(2n+)').length===0&&"
+        "document.querySelectorAll('#items > li:nth-child(2 of .item)').length===0&&"
+        "document.querySelectorAll('li::before').length===0&&"
+        "document.querySelectorAll('li:not(.item)').length===0&&"
+        "one.matches('li:nth-child(999999999999999999999)')===false;"
+        "return ok?'true':'phase4';})();"
+    };
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int phase;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    phase = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector structural script bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        for (phase = 0; phase < 4; ++phase) {
+            memset(error, 0, sizeof(error));
+            if (pcore_browser_script_session_evaluate(PHASES[phase], -1,
+                    error, sizeof(error)) != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector structural phase %d (%s) evaluation failed",
+                        phase + 1, PHASE_NAMES[phase]);
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector structural phase %d (%s) failed: %s",
+                        phase + 1, PHASE_NAMES[phase],
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1154 FAIL", error[0] != '\0' ? error :
+                "selector structural contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1154 OK",
+            "Selector structural pseudo-classes support bounded child, "
+            "type and nth matching with fail-closed input.");
     return TRUE;
 }
 
@@ -96245,6 +96414,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1151: ok = test1151_browser_autofocus_contract(); break;
         case 1152: ok = test1152_browser_selector_combinator_contract(); break;
         case 1153: ok = test1153_browser_selector_attribute_operator_contract(); break;
+        case 1154: ok = test1154_browser_selector_structural_pseudo_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
