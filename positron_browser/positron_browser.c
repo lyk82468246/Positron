@@ -2067,6 +2067,20 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "try{value=g.__pcoreGetNodeRelation({id:id,relation:relation,index:index||0});}"
         "catch(rectError){return null;}"
         "return typeof value==='number'&&isFinite(value)?value:null;}"
+        "function pMetricNumber(id,relation){var value=pRectNumber(id,relation,0);"
+        "return value===null||value<0?0:Math.floor(value);}"
+        "Object.defineProperty(PElement.prototype,'offsetWidth',{get:function(){"
+        "return pMetricNumber(this.__id,32);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'offsetHeight',{get:function(){"
+        "return pMetricNumber(this.__id,33);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'clientWidth',{get:function(){"
+        "return pMetricNumber(this.__id,34);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'clientHeight',{get:function(){"
+        "return pMetricNumber(this.__id,35);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'scrollWidth',{get:function(){"
+        "return pMetricNumber(this.__id,36);},enumerable:true});"
+        "Object.defineProperty(PElement.prototype,'scrollHeight',{get:function(){"
+        "return pMetricNumber(this.__id,37);},enumerable:true});"
         "function pRectViewport(id,index){var x;var y;var w;var h;var sx;var sy;"
         "x=pRectNumber(id,28,index);y=pRectNumber(id,29,index);"
         "w=pRectNumber(id,30,index);h=pRectNumber(id,31,index);"
@@ -6058,7 +6072,13 @@ static int p_browser_script_relation_is_count(unsigned int relation)
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_X_AT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT ||
-            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT;
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_OFFSET_WIDTH ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_OFFSET_HEIGHT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_WIDTH ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_HEIGHT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_WIDTH ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_HEIGHT;
 }
 
 static int p_browser_script_dom_get_relation(void *pw,

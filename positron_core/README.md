@@ -95,6 +95,16 @@ box 时返回 unavailable；成功返回的数值只在当前 document/layout �
 可以直接用这些关系实现 `getClientRects()` 和其 union，但其他宿主不应依赖 NetSurf
 的内部 `struct box` 或复制第二份布局模型。
 
+同一 relation bridge 还提供六个只读布局尺寸快照：
+`PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH/HEIGHT`、
+`PCORE_NODE_RELATION_LAYOUT_CLIENT_WIDTH/HEIGHT` 和
+`PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH/HEIGHT`。它们是最近一次成功 layout 的
+整数 CSS 像素；offset 尺寸包含 border，client 尺寸表示扣除预留 CSS scrollbar 后的
+padding 区域，scroll 尺寸包含有界后代内容 extent。该快照只对已布局的 block、
+replaced、常见 table/flex box 有效；inline/text、隐藏、无 box 或未完成 layout
+返回 unavailable。查询不会触发 relayout，也不实现 `scrollTop`/`scrollLeft` 或
+独立的 nested overflow 滚动。
+
 ### 单元素 `contenteditable`
 
 `PCore_ContentEditableInfoById` 解析元素及其祖先的 `contenteditable` 枚举值：空值/`true` 进入普通纯文本模式，`plaintext-only` 进入显式纯文本模式，`false` 禁用，未知值继续向祖先继承。返回值同时报告有效模式和当前 `textContent` 的 UTF-8 字节数；查询不要求 style/layout，id 不存在或结构不完整时 fail closed。

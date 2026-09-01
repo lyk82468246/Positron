@@ -74,6 +74,12 @@
   `getClientRects()` 每次新建最多 16 个按视觉行排列的正尺寸矩形；块级元素通常一个，
   inline flow 可有多个。两者都要求宿主在 layout 后同步 page scroll，不提供 transforms、
   Range/Selection、独立 nested overflow 坐标、pinch zoom、平滑滚动或视觉像素精度。
+- Browser 还可把 Core 的最近一次 layout 快照映射为只读的
+  `offsetWidth`/`offsetHeight`、`clientWidth`/`clientHeight` 和
+  `scrollWidth`/`scrollHeight`。目前只承诺已布局的常见 block、replaced、table/flex
+  box；inline/text、隐藏、未布局或无 box 时返回 `0`，查询不触发 relayout。offset、
+  client、scroll 的整数 CSS 像素定义不等于完整 CSSOM box model，仍不提供
+  `scrollTop`/`scrollLeft`、transforms、pinch zoom 或独立 nested overflow scrolling。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
 - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 26；Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement` 和 `HTMLElement.focus()`/`blur()` 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
@@ -162,6 +168,9 @@
   `getClientRects()` 的按行顺序和新对象身份，以及 `getBoundingClientRect()` union。
   它不证明 transforms、Range/Selection、nested overflow、pinch zoom、复杂字体度量或
   视觉像素精度。
+- TEST1146 覆盖支持 box 的六个布局尺寸 relation、Browser 只读 getter、边框/内边距/
+  scrollbar 的有界算术、后代 extent 和隐藏元素零值回退；它不证明完整 CSSOM、
+  `scrollTop`/`scrollLeft`、nested overflow scrolling 或真实滚动条视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

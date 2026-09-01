@@ -12040,6 +12040,164 @@ int pcore_box_geometry_for_node(struct dom_document *doc,
     return 0;
 }
 
+/* Keep the first box-metric slice deliberately small and deterministic.  The
+ * relation bridge is useful to script consumers that need layout dimensions,
+ * but it must not expose anonymous inline/text boxes whose dimensions do not
+ * have the block-level offset/client meaning used here. */
+static int pcore_box_metrics_supported(const struct box *box)
+{
+    if (box == NULL) {
+        return 0;
+    }
+    switch (box->type) {
+    case BOX_BLOCK:
+    case BOX_INLINE_BLOCK:
+    case BOX_TABLE:
+    case BOX_TABLE_CELL:
+    case BOX_FLEX:
+    case BOX_INLINE_FLEX:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int pcore_box_metric_scroll_x(const struct box *box)
+{
+    unsigned int overflow;
+
+    if (box == NULL || box->style == NULL) {
+        return 0;
+    }
+    overflow = css_computed_overflow_x(box->style);
+    return overflow == CSS_OVERFLOW_SCROLL ||
+            (overflow == CSS_OVERFLOW_AUTO && box_hscrollbar_present(box));
+}
+
+static int pcore_box_metric_scroll_y(const struct box *box)
+{
+    unsigned int overflow;
+
+    if (box == NULL || box->style == NULL) {
+        return 0;
+    }
+    overflow = css_computed_overflow_y(box->style);
+    return overflow == CSS_OVERFLOW_SCROLL ||
+            (overflow == CSS_OVERFLOW_AUTO && box_vscrollbar_present(box));
+}
+
+static int pcore_box_metric_clamp(long value)
+{
+    if (value <= 0) {
+        return 0;
+    }
+    if (value > INT_MAX) {
+        return INT_MAX;
+    }
+    return (int) value;
+}
+
+static int pcore_layout_dimension_to_css(pcore_render *st, int value)
+{
+    if (value <= 0 || st == NULL || !st->geometry_device_backed ||
+            st->geometry_dpi == 96) {
+        return value > 0 ? value : 0;
+    }
+    return pcore_box_metric_clamp(FIXTOINT(css_unit_device2css_px(
+            INTTOFIX(value), INTTOFIX(st->geometry_dpi))));
+}
+
+/* Return integer CSS-pixel offset/client/scroll dimensions from the current
+ * retained layout.  This mirrors box_handle_scrollbars()'s extent arithmetic
+ * while remaining valid before a paint pass has created scrollbar objects. */
+int pcore_box_layout_metrics_for_node(struct dom_document *doc,
+        struct dom_node *node, int *offset_width, int *offset_height,
+        int *client_width, int *client_height, int *scroll_width,
+        int *scroll_height)
+{
+    pcore_render *st;
+    struct box *box;
+    long visible_width;
+    long visible_height;
+    long border_width;
+    long border_height;
+    long full_width;
+    long full_height;
+    long client_w;
+    long client_h;
+
+    if (offset_width != NULL) { *offset_width = 0; }
+    if (offset_height != NULL) { *offset_height = 0; }
+    if (client_width != NULL) { *client_width = 0; }
+    if (client_height != NULL) { *client_height = 0; }
+    if (scroll_width != NULL) { *scroll_width = 0; }
+    if (scroll_height != NULL) { *scroll_height = 0; }
+    if (doc == NULL || node == NULL) {
+        return 1;
+    }
+    st = pcore_get_render(doc);
+    if (st == NULL || st->root_box == NULL) {
+        return 1;
+    }
+    box = pcore_box_for_any_node(st->root_box, node);
+    if (!pcore_box_metrics_supported(box)) {
+        return 1;
+    }
+
+    visible_width = (long) box->width + box->padding[LEFT] +
+            box->padding[RIGHT];
+    visible_height = (long) box->height + box->padding[TOP] +
+            box->padding[BOTTOM];
+    border_width = visible_width + box->border[LEFT].width +
+            box->border[RIGHT].width;
+    border_height = visible_height + box->border[TOP].width +
+            box->border[BOTTOM].width;
+    full_width = visible_width;
+    if ((long) box->descendant_x1 - box->border[RIGHT].width >
+            visible_width) {
+        full_width = (long) box->descendant_x1 + box->padding[RIGHT];
+    }
+    full_height = visible_height;
+    if ((long) box->descendant_y1 - box->border[BOTTOM].width >
+            visible_height) {
+        full_height = (long) box->descendant_y1 + box->padding[BOTTOM];
+    }
+    client_w = visible_width -
+            (pcore_box_metric_scroll_y(box) ? SCROLLBAR_WIDTH : 0);
+    client_h = visible_height -
+            (pcore_box_metric_scroll_x(box) ? SCROLLBAR_WIDTH : 0);
+    if (client_w < 0) { client_w = 0; }
+    if (client_h < 0) { client_h = 0; }
+    if (full_width < client_w) { full_width = client_w; }
+    if (full_height < client_h) { full_height = client_h; }
+
+    if (offset_width != NULL) {
+        *offset_width = pcore_layout_dimension_to_css(st,
+                pcore_box_metric_clamp(border_width));
+    }
+    if (offset_height != NULL) {
+        *offset_height = pcore_layout_dimension_to_css(st,
+                pcore_box_metric_clamp(border_height));
+    }
+    if (client_width != NULL) {
+        *client_width = pcore_layout_dimension_to_css(st,
+                pcore_box_metric_clamp(client_w));
+    }
+    if (client_height != NULL) {
+        *client_height = pcore_layout_dimension_to_css(st,
+                pcore_box_metric_clamp(client_h));
+    }
+    if (scroll_width != NULL) {
+        *scroll_width = pcore_layout_dimension_to_css(st,
+                pcore_box_metric_clamp(full_width));
+    }
+    if (scroll_height != NULL) {
+        *scroll_height = pcore_layout_dimension_to_css(st,
+                pcore_box_metric_clamp(full_height));
+    }
+    return 0;
+}
+
 /* Resolve the first direct summary trigger of a details element. The
  * returned parent is retained by dom_node_get_parent_node and belongs to the
  * caller. Later summary elements are intentionally not activation targets;

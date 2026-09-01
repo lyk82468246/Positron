@@ -100,6 +100,13 @@ int pcore_box_layout_fragment_count(struct dom_document *doc,
 int pcore_box_layout_fragment_at(struct dom_document *doc,
         struct dom_node *node, unsigned int index, int *x, int *y,
         int *w, int *h);
+/* Return the read-only integer CSS-pixel box metrics used by the script
+ * relation boundary. Metrics are available only for laid-out block,
+ * replaced, table and flex boxes; the private box tree remains hidden. */
+int pcore_box_layout_metrics_for_node(struct dom_document *doc,
+        struct dom_node *node, int *offset_width, int *offset_height,
+        int *client_width, int *client_height, int *scroll_width,
+        int *scroll_height);
 
 /* Overflow scrollbar helpers owned by pcore_box_inspect.c. */
 struct scrollbar;

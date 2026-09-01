@@ -90,6 +90,7 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
 - 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；同时为 ID-addressable 元素提供有界的 border-box union 和 inline 行片段快照，供 Browser 组合 `getBoundingClientRect()` 与 `getClientRects()`；
+- 为已布局的常见 block、replaced、table/flex box 提供最近一次 layout 的 offset、client 和 scroll 尺寸快照；这些是整数 CSS 像素的只读 relation，不触发 relayout，也不拥有嵌套滚动位置；
 - 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
 - 表单值、约束验证、提交、reset 和 successful controls；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
@@ -151,6 +152,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   集合并按索引和 `.item()` 暴露正尺寸矩形。未布局、隐藏、无可用 box 或非正尺寸时
   分别返回全零/空集合。两者都不暴露 Core box 指针，不提供 transforms、Range/Selection、
   nested overflow 坐标、pinch zoom、平滑滚动或视觉像素精度。
+- 对支持的已布局元素，Browser 还通过同一 relation callback 暴露只读的
+  `offsetWidth`/`offsetHeight`、`clientWidth`/`clientHeight` 和
+  `scrollWidth`/`scrollHeight`。这些 getter 只消费 Core 的整数 CSS 像素快照；
+  callback 未注册、元素未布局、隐藏、inline/text 或没有可用 box 时返回 `0`，不会
+  复制 box model 或触发 relayout。`scrollTop`/`scrollLeft`、transforms、pinch zoom
+  和独立 nested overflow scrolling 仍由产品边界明确排除。
 - timer、animation frame、microtask、idle、message 和页面生命周期队列，以及初次完成加载后的 pageshow、可见性切换的 visibilitychange/pagehide/pageshow、宿主驱动的 document.hasFocus/window focus/blur、显式的 document teardown 与队列清理入口；
 - `PBrowser_ScriptSessionRunTaskCheckpoint` 提供统一的有界脚本任务检查点：按调用方选择的阶段以 timer → animation frame → message → idle 的固定顺序运行，并在每个阶段后排空一次 microtask；Browser 拥有顺序和队列预算，宿主提供单调时钟、idle deadline、message limit 和消息循环接线；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。

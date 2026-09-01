@@ -5463,6 +5463,12 @@ static int pcore_relation_layout_rect(dom_document *doc,
     int height;
     int count;
     int ignored;
+    int offset_width;
+    int offset_height;
+    int client_width;
+    int client_height;
+    int scroll_width;
+    int scroll_height;
 
     if (out_number == NULL) {
         out_number = &ignored;
@@ -5470,6 +5476,41 @@ static int pcore_relation_layout_rect(dom_document *doc,
     *out_number = 0;
     if (doc == NULL || element == NULL) {
         return 1;
+    }
+    if (relation == PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH ||
+            relation == PCORE_NODE_RELATION_LAYOUT_OFFSET_HEIGHT ||
+            relation == PCORE_NODE_RELATION_LAYOUT_CLIENT_WIDTH ||
+            relation == PCORE_NODE_RELATION_LAYOUT_CLIENT_HEIGHT ||
+            relation == PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH ||
+            relation == PCORE_NODE_RELATION_LAYOUT_SCROLL_HEIGHT) {
+        if (pcore_box_layout_metrics_for_node(doc, (dom_node *) element,
+                &offset_width, &offset_height, &client_width, &client_height,
+                &scroll_width, &scroll_height) != 0) {
+            return 2;
+        }
+        switch (relation) {
+        case PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH:
+            *out_number = offset_width;
+            break;
+        case PCORE_NODE_RELATION_LAYOUT_OFFSET_HEIGHT:
+            *out_number = offset_height;
+            break;
+        case PCORE_NODE_RELATION_LAYOUT_CLIENT_WIDTH:
+            *out_number = client_width;
+            break;
+        case PCORE_NODE_RELATION_LAYOUT_CLIENT_HEIGHT:
+            *out_number = client_height;
+            break;
+        case PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH:
+            *out_number = scroll_width;
+            break;
+        case PCORE_NODE_RELATION_LAYOUT_SCROLL_HEIGHT:
+            *out_number = scroll_height;
+            break;
+        default:
+            return 1;
+        }
+        return 0;
     }
     if (relation == PCORE_NODE_RELATION_LAYOUT_FRAGMENT_COUNT) {
         count = pcore_box_layout_fragment_count(doc,
@@ -5693,6 +5734,15 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT:
     case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT:
     case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT:
+        err = pcore_relation_layout_rect((dom_document *) hDoc, element,
+                relation, index, out_number);
+        break;
+    case PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH:
+    case PCORE_NODE_RELATION_LAYOUT_OFFSET_HEIGHT:
+    case PCORE_NODE_RELATION_LAYOUT_CLIENT_WIDTH:
+    case PCORE_NODE_RELATION_LAYOUT_CLIENT_HEIGHT:
+    case PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH:
+    case PCORE_NODE_RELATION_LAYOUT_SCROLL_HEIGHT:
         err = pcore_relation_layout_rect((dom_document *) hDoc, element,
                 relation, index, out_number);
         break;

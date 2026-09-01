@@ -107,6 +107,18 @@ style/layout，并按实际滚动位置调用 `PBrowser_ScriptSessionNotifyScrol
 该边界只覆盖 Core 已布局的普通 block 与 inline 行片段，不承诺 transforms、Range/
 Selection、独立 nested overflow scrolling、pinch zoom、平滑滚动或视觉像素精度。
 
+#### 布局尺寸快照
+
+当宿主注册 DOM relation callback 后，Browser 为已布局的支持元素安装只读的
+`offsetWidth`、`offsetHeight`、`clientWidth`、`clientHeight`、`scrollWidth` 和
+`scrollHeight` getter。getter 每次从最近一次 Core layout 快照读取整数 CSS 像素：
+offset 包含 border，client 为扣除预留 CSS scrollbar 后的 padding 区域，scroll 包含
+有界后代内容 extent。Core 不提供快照时这些属性返回 `0`；它们不会触发 style/layout，
+也不会改变滚动位置。宿主仍须在 DOM/样式变化后自行重新 layout，并继续通过 page-level
+scroll callback 管理实际滚动。该桥不提供 `scrollTop`/`scrollLeft`、transforms、
+pinch zoom 或独立 nested overflow scrolling，inline/text/隐藏元素的零值不应被解释
+为可滚动的真实尺寸。
+
 ### `Element.scrollIntoView()`
 
 Browser 还提供页面级的 `Element.scrollIntoView()`。它读取同一
@@ -562,6 +574,11 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   片段快照；后者返回每次调用都新建、最多 16 个按行排列的正尺寸矩形，前者返回这些
   片段的 union。未布局、隐藏或非正尺寸时分别返回全零/空集合。它们不提供 transforms、
   Range/Selection、nested overflow、pinch zoom、平滑滚动或视觉像素精度。
+- `offsetWidth`/`offsetHeight`、`clientWidth`/`clientHeight` 和
+  `scrollWidth`/`scrollHeight` 只读回 Core 最近一次 layout 的有界尺寸快照，支持的
+  block/replaced/table/flex box 返回整数 CSS 像素，未布局、隐藏、inline/text 或
+  不可用 box 返回 `0`。这些 getter 不触发 relayout、不提供 `scrollTop`/`scrollLeft`，
+  也不实现 transforms、pinch zoom 或独立 nested overflow scrolling。
 - `Element.scrollIntoView()` 只组合已有的 Core relation geometry 和 page-level scroll
   callback，支持有限的 block/inline 对齐与 `auto`/`instant` 行为；无 layout 或不支持的
   `smooth`/nested overflow 请求安全 no-op。宿主仍负责页面 extent、clamp、物理滚动和

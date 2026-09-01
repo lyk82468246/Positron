@@ -493,7 +493,11 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * through Element.getBoundingClientRect() or the bounded Element.getClientRects()
  * collection. The latter is a fresh array-like snapshot with at most
  * PBROWSER_SCRIPT_LAYOUT_FRAGMENT_MAX rectangles; it does not expose the Core
- * box tree. */
+ * box tree. LAYOUT_OFFSET_*, LAYOUT_CLIENT_* and LAYOUT_SCROLL_* relations are
+ * integer CSS-pixel width/height snapshots for supported block, replaced,
+ * table and flex boxes. They are read-only and unavailable until layout; the
+ * Browser wrapper maps unavailable metrics to zero and does not implement
+ * scrollTop/scrollLeft through this relation boundary. */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -530,6 +534,12 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT 30u
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT 31u
 #define PBROWSER_SCRIPT_LAYOUT_FRAGMENT_MAX                 16u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_OFFSET_WIDTH   32u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_OFFSET_HEIGHT  33u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_WIDTH   34u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_HEIGHT  35u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_WIDTH   36u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_HEIGHT  37u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

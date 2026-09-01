@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1145
+#define TEST_MAX_NUMBER 1146
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -36287,6 +36287,227 @@ static BOOL test1145_browser_inline_client_rects_contract(void)
     show_info(L"TEST 1145 OK",
             "getClientRects exposes bounded inline line fragments and"
             " getBoundingClientRect() returns their union.");
+    return TRUE;
+}
+
+/* TEST 1146 - Core owns the bounded element box metrics consumed by Browser. */
+static BOOL test1146_browser_layout_metrics_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='clip'><div id='wide'>Wide</div></div>"
+        "<div id='plain'>Plain</div>"
+        "<div id='hidden'>Hidden</div>"
+        "<script>window.__layoutMetricsReady=true;</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:0}"
+        "#clip{display:block;width:40px;height:30px;padding:3px;"
+        "border:2px solid #000;overflow:scroll}"
+        "#wide{display:block;width:120px;height:90px}"
+        "#plain{display:block;width:60px;height:20px;padding:4px;"
+        "border:2px solid #000;margin-top:4px}"
+        "#hidden{display:none}";
+    static const char URL[] = "https://positron.local/layout-metrics";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int offset_width;
+    int offset_height;
+    int client_width;
+    int client_height;
+    int scroll_width;
+    int scroll_height;
+    int hidden_metric;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    offset_width = 0;
+    offset_height = 0;
+    client_width = 0;
+    client_height = 0;
+    scroll_width = 0;
+    scroll_height = 0;
+    hidden_metric = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        cstr_copy(error, sizeof(error),
+                "layout metrics script bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/layout-metrics.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 180, 120) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "layout metrics fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH, 0, NULL, 0,
+                NULL, &offset_width) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_OFFSET_HEIGHT, 0, NULL, 0,
+                NULL, &offset_height) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_CLIENT_WIDTH, 0, NULL, 0,
+                NULL, &client_width) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_CLIENT_HEIGHT, 0, NULL, 0,
+                NULL, &client_height) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH, 0, NULL, 0,
+                NULL, &scroll_width) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_SCROLL_HEIGHT, 0, NULL, 0,
+                NULL, &scroll_height) != 0 || offset_width < client_width ||
+                offset_height < client_height || client_width <= 0 ||
+                client_height <= 0 || scroll_width < client_width ||
+                scroll_height < client_height || scroll_width <= client_width ||
+                scroll_height <= client_height) {
+            _snprintf(error, sizeof(error) - 1,
+                    "clip metrics=%d,%d client=%d,%d scroll=%d,%d",
+                    offset_width, offset_height, client_width, client_height,
+                    scroll_width, scroll_height);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PCore_NodeRelationById(document, "plain",
+                PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH, 0, NULL, 0,
+                NULL, &offset_width) != 0 ||
+                PCore_NodeRelationById(document, "plain",
+                PCORE_NODE_RELATION_LAYOUT_CLIENT_WIDTH, 0, NULL, 0,
+                NULL, &client_width) != 0 ||
+                PCore_NodeRelationById(document, "plain",
+                PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH, 0, NULL, 0,
+                NULL, &scroll_width) != 0 || offset_width <= client_width ||
+                scroll_width < client_width) {
+            _snprintf(error, sizeof(error) - 1,
+                    "plain metrics=%d client=%d scroll=%d",
+                    offset_width, client_width, scroll_width);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok && PCore_NodeRelationById(document, "hidden",
+            PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH, 0, NULL, 0, NULL,
+            &hidden_metric) != 2) {
+        cstr_copy(error, sizeof(error),
+                "hidden element unexpectedly exposed box metrics");
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = PCore_DocumentWidth(document);
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 180;
+        g_view_h = 120;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (PBrowser_ScriptSessionNotifyResize(
+                g_browser_script_session.session, 180, 120, 1) !=
+                PSCRIPT_OK || pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('clip');"
+                "var p=document.getElementById('plain');"
+                "var h=document.getElementById('hidden');var a=e.offsetWidth;"
+                "var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),"
+                "'offsetWidth');e.offsetWidth=1;"
+                "return String(a>=e.clientWidth&&e.offsetHeight>=e.clientHeight&&"
+                "e.clientWidth>0&&e.clientHeight>0&&e.scrollWidth>=e.clientWidth&&"
+                "e.scrollHeight>=e.clientHeight&&e.scrollWidth>e.clientWidth&&"
+                "e.scrollHeight>e.clientHeight&&p.offsetWidth>p.clientWidth&&"
+                "p.scrollWidth>=p.clientWidth&&h.offsetWidth===0&&"
+                "h.clientWidth===0&&h.scrollWidth===0&&h.scrollHeight===0&&"
+                "d&&typeof d.get==='function'&&e.offsetWidth===a);})();", -1,
+                error, sizeof(error)) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "layout metrics browser evaluation failed");
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                cstr_copy(error, sizeof(error),
+                        "browser layout metric properties were inconsistent");
+                ok = 0;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1146 FAIL", error[0] != '\0' ? error :
+                "layout metric contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1146 OK",
+            "Core exposes bounded block box dimensions and Browser maps them"
+            " to read-only offset/client/scroll properties.");
     return TRUE;
 }
 
@@ -94338,6 +94559,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1143: ok = test1143_browser_scroll_into_view_contract(); break;
         case 1144: ok = test1144_browser_client_rects_contract(); break;
         case 1145: ok = test1145_browser_inline_client_rects_contract(); break;
+        case 1146: ok = test1146_browser_layout_metrics_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

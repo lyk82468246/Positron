@@ -327,6 +327,13 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * one fragment; an inline element may have several line fragments. The
  * fragment count is capped at PCORE_NODE_LAYOUT_FRAGMENT_MAX, and an indexed
  * query returns the corresponding document-CSS-pixel border-box component.
+ * The LAYOUT_OFFSET_*, LAYOUT_CLIENT_* and LAYOUT_SCROLL_* relations return
+ * integer CSS-pixel width/height metrics for block, replaced and common
+ * table/flex boxes. They are read-only snapshots from the last successful
+ * layout; inline/text/hidden/unavailable boxes return unavailable. Offset
+ * metrics include borders, client metrics include padding but exclude a
+ * reserved CSS scrollbar, and scroll metrics include the bounded descendant
+ * extent. They do not provide scrollTop/scrollLeft or force a re-layout.
  * return value is 0 for a relationship that was found, 2 for an
  * absent/unavailable relationship and 1 for invalid input or a DOM failure.
  * The tree and attribute map are read snapshots for the duration of the host
@@ -367,6 +374,12 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT 30u
 #define PCORE_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT 31u
 #define PCORE_NODE_LAYOUT_FRAGMENT_MAX            16u
+#define PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH   32u
+#define PCORE_NODE_RELATION_LAYOUT_OFFSET_HEIGHT  33u
+#define PCORE_NODE_RELATION_LAYOUT_CLIENT_WIDTH   34u
+#define PCORE_NODE_RELATION_LAYOUT_CLIENT_HEIGHT  35u
+#define PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH   36u
+#define PCORE_NODE_RELATION_LAYOUT_SCROLL_HEIGHT  37u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,
