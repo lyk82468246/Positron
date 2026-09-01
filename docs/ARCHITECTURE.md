@@ -143,10 +143,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   page-level scroll 坐标纳入同步结果，Browser 在 callback 返回后更新脚本 viewport。
   未注册时不增加方法；注销后已安装方法保持安全 no-op；nested overflow reveal 和
   smooth/inertial scrolling 不属于这条边界；
-- 页面级 `Element.scrollIntoView()`：Browser 复用 Core relation geometry 和现有
-  page-level scroll callback，计算有限的 block/inline 对齐；宿主仍负责 clamp、
-  物理滚动、绘制和实际位置同步；元素滚动桥不把 nested scroll chaining 或 smooth
-  scrolling 引入 Browser ABI；
+ - 页面级与有限嵌套的 `Element.scrollIntoView()`：Browser 复用 Core relation geometry、
+  retained-scrollbar 关系 40–43 和现有 page-level/element scroll callback，计算有限的
+  block/inline 对齐。父链最多遍历 64 层，只选择能被 DOM relation 寻址且拥有 retained
+  scrollbar 的最近祖先；没有可用 client bridge 时回退 page-level scroll。宿主仍负责
+  clamp、物理滚动、绘制和实际位置同步；完整 scroll tree、scroll chaining、scroll
+  anchoring、scroll-margin、smooth/inertial scrolling 和匿名目标不进入 Browser ABI；
 - `Element.getBoundingClientRect()` 与 `Element.getClientRects()` 共用 Core 的有界
   layout fragment relation。块级元素通常返回一个片段，inline flow 按视觉行返回最多
   16 个片段；前者计算这些片段的 viewport-relative union，后者每次新建 array-like
@@ -158,8 +160,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `scrollWidth`/`scrollHeight`。这些 getter 只消费 Core 的整数 CSS 像素快照；
   callback 未注册、元素未布局、隐藏、inline/text 或没有可用 box 时返回 `0`，不会
   复制 box model 或触发 relayout。对有 id 的支持 box，Browser 另通过 scroll callback
-  接入 Core 的 retained `scrollTop`/`scrollLeft`；scroll chaining、nested
-  `scrollIntoView()`、transforms、pinch zoom 和平滑/惯性滚动仍由产品边界排除。
+  接入 Core 的 retained `scrollTop`/`scrollLeft`；关系 40/41 表示 retained scrollbar
+  的轴可用性，42/43 表示 padding/client edge 坐标，供有限的 nested
+  `scrollIntoView()` 使用。完整 scroll chaining、transforms、pinch zoom 和平滑/惯性
+  滚动仍由产品边界排除。
 - timer、animation frame、microtask、idle、message 和页面生命周期队列，以及初次完成加载后的 pageshow、可见性切换的 visibilitychange/pagehide/pageshow、宿主驱动的 document.hasFocus/window focus/blur、显式的 document teardown 与队列清理入口；
 - `PBrowser_ScriptSessionRunTaskCheckpoint` 提供统一的有界脚本任务检查点：按调用方选择的阶段以 timer → animation frame → message → idle 的固定顺序运行，并在每个阶段后排空一次 microtask；Browser 拥有顺序和队列预算，宿主提供单调时钟、idle deadline、message limit 和消息循环接线；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
@@ -170,18 +174,20 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
 脚本滚动也遵循同一边界：`PBrowserScriptScrollCallbacks` 接收 Browser 规范化的
 CSS page 坐标，由宿主换算为 Core 的物理设备坐标，按当前 extent/client area 应用，
-再把实际位置换回 CSS 坐标返回。`Element.scrollIntoView()` 只在 Browser 内用
-`getBoundingClientRect()` 的单元素矩形计算 page-level 的 block/inline 对齐，再复用
-同一个 scroll callback；默认是 block start、inline nearest，也支持有限的 center、end
-和 `false` 末端对齐。对 `Element.scrollTo()`/`scrollBy()`，同一个 callback 的末尾
-`element_id` 指向 Core 的有界 retained overflow box，返回值是两个轴的实际 clamp
-位置。候选 session 尚未提交时宿主只回显坐标，不能改变旧页面。宿主完成 page scrollbar、
-嵌套 overflow pointer、触摸、键盘、resize 或 fragment reveal 后，分别使用
-`PBrowser_ScriptSessionNotifyScroll` 或 `PBrowser_ScriptSessionNotifyElementScroll`
-同步 Browser；通知只更新脚本侧状态并在实际变化时派发一次对应的非冒泡 `scroll`，不会
-重新调用 callback。这让脚本 origin 与平台 origin 共用一份最终位置，同时避免同步
-callback 递归进入同一 runtime。无 layout/矩形或不支持的 `smooth`、scroll-margin、
-scroll chaining 请求由脚本安全 no-op，Browser 不替宿主做 clamp、绘制或窗口管理。
+再把实际位置换回 CSS 坐标返回。`Element.scrollIntoView()` 在 Browser 内先用
+`getBoundingClientRect()` 的单元素矩形计算 page-level 的 block/inline 对齐；若可寻址
+父链中找到最近 retained overflow ancestor，则使用 Core 的 client edge/轴关系只移动
+该元素滚动容器，否则复用 page-level callback。默认是 block start、inline nearest，
+也支持有限的 center、end 和 `false` 末端对齐。对 `Element.scrollTo()`/`scrollBy()`，
+同一个 callback 的末尾 `element_id` 指向 Core 的有界 retained overflow box，返回值是
+两个轴的实际 clamp 位置。候选 session 尚未提交时宿主只回显坐标，不能改变旧页面。宿主
+完成 page scrollbar、嵌套 overflow pointer、触摸、键盘、resize 或 fragment reveal 后，
+分别使用 `PBrowser_ScriptSessionNotifyScroll` 或
+`PBrowser_ScriptSessionNotifyElementScroll` 同步 Browser；通知只更新脚本侧状态并在
+实际变化时派发一次对应的非冒泡 `scroll`，不会重新调用 callback。这让脚本 origin 与
+平台 origin 共用一份最终位置，同时避免同步 callback 递归进入同一 runtime。无
+layout/矩形或不支持的 `smooth`、scroll-margin、scroll chaining/anchoring 请求由脚本
+安全 no-op，Browser 不替宿主做 clamp、绘制或窗口管理。
 
 窗口 resize 的边界也由 Browser 提供：宿主完成新的 Core style/layout、page-level
 clamp 和 native child reposition 后，调用
@@ -363,8 +369,9 @@ focus navigation、自动初始焦点、焦点矩形、nested overflow reveal、
 - TLS 1.3、HTTP/2、HTTP/3 或现代浏览器级网络栈；
 - 完整 WHATWG URL、DOM、HTML、CSSOM、Web API 或 ECMAScript host environment；
 - 完整 CSS Grid、任意 float/position/table 边界和桌面级字体排版；
-- 完整 nested overflow scroll tree、scroll chaining/anchoring、`scrollIntoView()` 容器遍历、
-  平滑/惯性滚动；当前只提供带 id 的常见 box 的 retained offset bridge；
+- 完整 nested overflow scroll tree、scroll chaining/anchoring、scroll-margin、平滑/惯性
+  滚动和无界 `scrollIntoView()` 容器遍历；当前只提供带 id 的常见 box 的 retained
+  offset bridge，以及最多 64 层可寻址父链中最近容器的一次有限 reveal；
 - 通用 ClipboardEvent、async clipboard、CF_TEXT/富文本转换或跨应用剪贴板格式互操作；当前宿主只提供有界 `CF_UNICODETEXT` contenteditable paste/copy/cut 接线；
 - 多窗口浏览器、完整现代 modal dialog/backdrop（仅支持有界实体色组合）或持久化浏览历史；
 - 在 DLL 内接管应用消息循环、系统 picker、OEM IME 或设备连接；

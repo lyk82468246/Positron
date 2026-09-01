@@ -335,7 +335,11 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * padding (the current scrollbar implementation overlays the edge rather
  * than subtracting a fixed width), and scroll metrics include the bounded
  * descendant extent. The overflow scroll relations below expose the current
- * retained scroll offsets without forcing a re-layout.
+ * retained scroll offsets and the two axis-availability flags without forcing
+ * a re-layout. A scrollable flag is true only when the retained Core box owns
+ * that axis' scrollbar; it does not imply a complete scroll-container tree
+ * or scroll chaining. LAYOUT_CLIENT_X/Y expose the padding/client edge origin
+ * in document CSS pixels for the bounded Browser scrollport calculation.
  * return value is 0 for a relationship that was found, 2 for an
  * absent/unavailable relationship and 1 for invalid input or a DOM failure.
  * The tree and attribute map are read snapshots for the duration of the host
@@ -384,6 +388,10 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_LAYOUT_SCROLL_HEIGHT  37u
 #define PCORE_NODE_RELATION_LAYOUT_SCROLL_LEFT    38u
 #define PCORE_NODE_RELATION_LAYOUT_SCROLL_TOP     39u
+#define PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_X   40u
+#define PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_Y   41u
+#define PCORE_NODE_RELATION_LAYOUT_CLIENT_X       42u
+#define PCORE_NODE_RELATION_LAYOUT_CLIENT_Y       43u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

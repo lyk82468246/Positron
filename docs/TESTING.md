@@ -188,6 +188,14 @@ TEST1147 覆盖带 DOM `id` 的嵌套 overflow box：Core 的关系 38/39、按 
 位置同步和事件去重。它不证明完整滚动容器树、scroll chaining/anchoring、nested
 `scrollIntoView()`、smooth/inertia、匿名目标、触摸手势或滚动条视觉。
 
+TEST1148 覆盖 `Element.scrollIntoView()` 对最近可寻址 retained overflow 祖先的有限
+嵌套 reveal：Core 关系 40/41 报告两个轴是否有 retained scrollbar，42/43 提供
+padding/client edge 文档坐标，Browser 沿 `parentElement` 最多遍历 64 层并只移动最近
+祖先。断言覆盖两个轴的 start 对齐、页面 viewport 保持、目标元素一次非冒泡 scroll
+事件、重复 nearest 静默以及 smooth 请求拒绝；没有可用嵌套 client bridge 时仍应回退
+到既有 page-level 行为。它不证明完整 scroll tree、scroll chaining/anchoring、
+scroll-margin、平滑/惯性滚动、匿名目标、复杂布局或真实滚动条/触摸视觉。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

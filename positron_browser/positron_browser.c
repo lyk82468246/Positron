@@ -13,12 +13,12 @@
 #include "positron_json.h"
 #include "positron_script.h"
 
-/* The browser bootstrap owns additional bounded DOM collection layers beyond
- * the standalone script surface. Keep its heap ceiling explicit and local to
- * browser sessions; independent PScript contexts remain at their 512 KiB
- * default. */
+/* The browser bootstrap owns additional bounded DOM, geometry and scrolling
+ * layers beyond the standalone script surface. Keep its heap ceiling explicit
+ * and local to browser sessions; independent PScript contexts remain at their
+ * 512 KiB default. */
 #define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 134UL * 1024UL)
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 150UL * 1024UL)
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -2155,6 +2155,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "PElement.prototype.getClientRects=function(){return pRectList(this.__id);};"
         "PElement.prototype.scrollIntoView=function(options){var r;var block='start';"
         "var inline='nearest';var v;var sx;var sy;var iw;var ih;var nx;var ny;"
+        "var n;var cx;var cy;var left;var top;var right;var bottom;"
         "if(options===false){block='end';}else if(options&&typeof options==='object'){"
         "v=options.block;if(v!==undefined){if(v!=='start'&&v!=='center'&&"
         "v!=='end'&&v!=='nearest'){return;}block=v;}v=options.inline;"
@@ -2172,6 +2173,21 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "sy=Number(g.scrollY);iw=Number(g.innerWidth);ih=Number(g.innerHeight);"
         "if(!isFinite(sx)||!isFinite(sy)||!isFinite(iw)||!isFinite(ih)||"
         "iw<=0||ih<=0){return;}nx=sx;ny=sy;"
+        "n=this.parentElement;right=0;while(n!==null&&right<64){cx=pRectNumber(n.__id,40,0);"
+        "cy=pRectNumber(n.__id,41,0);if(cx===1||cy===1){break;}"
+        "n=n.parentElement;right++;}if(n!==null&&(cx===1||cy===1)){"
+        "left=pRectNumber(n.__id,42,0);top=pRectNumber(n.__id,43,0);"
+        "if(left!==null&&top!==null&&n.clientWidth>=0&&n.clientHeight>=0){"
+        "left-=sx;top-=sy;right=left+n.clientWidth;bottom=top+n.clientHeight;"
+        "nx=n.scrollLeft;ny=n.scrollTop;"
+        "if(cy===1){if(block==='start'){ny=ny+r.top-top;}else if(block==='center'){"
+        "ny=ny+r.top-(top+(bottom-top-r.height)/2);}else if(block==='end'){"
+        "ny=ny+r.bottom-bottom;}else if(r.top<top){ny=ny+r.top-top;}else if(r.bottom>bottom){"
+        "ny=ny+r.bottom-bottom;}}"
+        "if(cx===1){if(inline==='start'){nx=nx+r.left-left;}else if(inline==='center'){"
+        "nx=nx+r.left-(left+(right-left-r.width)/2);}else if(inline==='end'){"
+        "nx=nx+r.right-right;}else if(r.left<left){nx=nx+r.left-left;}else if(r.right>right){"
+        "nx=nx+r.right-right;}}n.scrollTo(nx,ny);return;}}"
         "if(block==='start'){ny=sy+r.top;}else if(block==='center'){"
         "ny=sy+r.top-(ih-r.height)/2;}else if(block==='end'){"
         "ny=sy+r.bottom-ih;}else if(r.top<0){ny=sy+r.top;}else if(r.bottom>ih){"
@@ -6128,7 +6144,11 @@ static int p_browser_script_relation_is_count(unsigned int relation)
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_WIDTH ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_HEIGHT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_LEFT ||
-            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_TOP;
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_TOP ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLLABLE_X ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLLABLE_Y ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_X ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_Y;
 }
 
 static int p_browser_script_dom_get_relation(void *pw,

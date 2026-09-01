@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1147
+#define TEST_MAX_NUMBER 1148
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -36595,6 +36595,7 @@ static BOOL test1147_browser_element_scroll_contract(void)
     int snapshot_x;
     int snapshot_y;
     int snapshot_bytes;
+    int snapshot_result;
     int rect_x;
     int rect_y;
     int rect_w;
@@ -36620,6 +36621,7 @@ static BOOL test1147_browser_element_scroll_contract(void)
     snapshot_x = 0;
     snapshot_y = 0;
     snapshot_bytes = 0;
+    snapshot_result = 0;
     rect_x = 0;
     rect_y = 0;
     rect_w = 0;
@@ -36726,8 +36728,10 @@ static BOOL test1147_browser_element_scroll_contract(void)
                 "';client='+e.clientWidth+','+e.clientHeight+';scroll='+"
                 "e.scrollWidth+','+e.scrollHeight+';events='+events);})();", -1,
                 error, sizeof(error)) != 0) {
-            cstr_copy(error, sizeof(error),
-                    "element scroll browser evaluation failed");
+            if (error[0] == '\0') {
+                cstr_copy(error, sizeof(error),
+                        "element scroll browser evaluation failed");
+            }
             ok = 0;
         } else {
             result = PBrowser_ScriptSessionGetResult(
@@ -36764,11 +36768,17 @@ static BOOL test1147_browser_element_scroll_contract(void)
         pointer_down = PCore_OverflowPointer(document, PCORE_POINTER_DOWN,
                 rect_x + rect_w - 8, rect_y + rect_h - 8);
         snapshot_bytes = 0;
-        if (PCore_OverflowScrollSnapshot(document, target_id,
+        snapshot_result = PCore_OverflowScrollSnapshot(document, target_id,
                 sizeof(target_id), &snapshot_bytes, &snapshot_x,
-                &snapshot_y) != 0 || strcmp(target_id, "clip") != 0) {
-            cstr_copy(error, sizeof(error),
-                    "overflow pointer target snapshot failed");
+                &snapshot_y);
+        if (snapshot_result != 0 || strcmp(target_id, "clip") != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "overflow pointer target snapshot failed: rc=%d id='%s'"
+                    " bytes=%d scroll=%d,%d pointer=%d,%d rect=%d,%d,%d,%d",
+                    snapshot_result, target_id, snapshot_bytes, snapshot_x,
+                    snapshot_y, pointer_down, pointer_up, rect_x, rect_y,
+                    rect_w, rect_h);
+            error[sizeof(error) - 1] = '\0';
             ok = 0;
         }
         pointer_up = PCore_OverflowPointer(document, PCORE_POINTER_UP,
@@ -36827,6 +36837,215 @@ static BOOL test1147_browser_element_scroll_contract(void)
             "Core-owned nested overflow offsets bridge to Element scroll"
             " methods/properties and host pointer snapshots dispatch one"
             " deduplicated element scroll event.");
+    return TRUE;
+}
+
+/* TEST 1148 - Browser reveals a target through the nearest retained Core
+ * overflow ancestor without moving the page viewport. */
+static BOOL test1148_browser_nested_scroll_into_view_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='clip'><div id='target'>Target</div><div id='tail'>Tail</div></div>"
+        "<script>window.__nestedScrollReady=true;</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:0}"
+        "#clip{display:block;width:40px;height:30px;padding:3px;"
+        "border:2px solid #000;overflow:scroll}"
+        "#target{display:block;width:20px;height:20px;"
+        "margin-left:70px;margin-top:60px}"
+        "#tail{display:block;width:20px;height:80px}";
+    static const char URL[] = "https://positron.local/nested-scroll-into-view";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int scrollable_x;
+    int scrollable_y;
+    int client_x;
+    int client_y;
+    int clip_x;
+    int clip_y;
+    int clip_w;
+    int clip_h;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    scrollable_x = 0;
+    scrollable_y = 0;
+    client_x = 0;
+    client_y = 0;
+    clip_x = 0;
+    clip_y = 0;
+    clip_w = 0;
+    clip_h = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        cstr_copy(error, sizeof(error),
+                "nested scrollIntoView script bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/nested-scroll-into-view.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 180, 120) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_X, 0, NULL, 0,
+                NULL, &scrollable_x) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_Y, 0, NULL, 0,
+                NULL, &scrollable_y) != 0 || scrollable_x != 1 ||
+                scrollable_y != 1 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_CLIENT_X, 0, NULL, 0, NULL,
+                &client_x) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_CLIENT_Y, 0, NULL, 0, NULL,
+                &client_y) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_RECT_X, 0, NULL, 0, NULL,
+                &clip_x) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_RECT_Y, 0, NULL, 0, NULL,
+                &clip_y) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_RECT_WIDTH, 0, NULL, 0, NULL,
+                &clip_w) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_RECT_HEIGHT, 0, NULL, 0, NULL,
+                &clip_h) != 0 || client_x < clip_x || client_y < clip_y ||
+                client_x >= clip_x + clip_w ||
+                client_y >= clip_y + clip_h) {
+            cstr_copy(error, sizeof(error),
+                    "nested scrollIntoView fixture or Core relation failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = PCore_DocumentWidth(document);
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 180;
+        g_view_h = 120;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (PBrowser_ScriptSessionNotifyResize(
+                g_browser_script_session.session, 180, 120, 1) !=
+                PSCRIPT_OK || pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('target');"
+                "var c=document.getElementById('clip');var events=0;"
+                "var pageX=window.scrollX;var pageY=window.scrollY;"
+                "var targetOk=true;var initial=c.scrollLeft===0&&"
+                "c.scrollTop===0;"
+                "c.addEventListener('scroll',function(ev){events++;"
+                "targetOk=targetOk&&ev.target===c&&ev.currentTarget===c&&"
+                "ev.bubbles===false;});"
+                "e.scrollIntoView({block:'start',inline:'start'});"
+                "var r=e.getBoundingClientRect();var cr=c.getBoundingClientRect();"
+                "var moved=c.scrollLeft>0&&c.scrollTop>0;"
+                "var pageStable=window.scrollX===pageX&&window.scrollY===pageY;"
+                "var startVisible=r.left>=cr.left&&r.top>=cr.top&&"
+                "r.left<cr.left+10&&r.top<cr.top+10;var before=events;"
+                "var sx=c.scrollLeft;var sy=c.scrollTop;"
+                "e.scrollIntoView({block:'nearest',inline:'nearest'});"
+                "var nearest=events===before&&c.scrollLeft===sx&&c.scrollTop===sy;"
+                "e.scrollIntoView({behavior:'smooth'});"
+                "var smoothRejected=events===before&&c.scrollLeft===sx&&"
+                "c.scrollTop===sy;var all=initial&&moved&&pageStable&&"
+                "startVisible&&nearest&&smoothRejected&&targetOk;"
+                "return all?'true':('initial='+initial+';moved='+moved+"
+                "';page='+pageStable+';visible='+startVisible+"
+                "';nearest='+nearest+';smooth='+smoothRejected+"
+                "';target='+targetOk+';scroll='+c.scrollLeft+','+"
+                "c.scrollTop+';rect='+r.left+','+r.top+','+cr.left+','+cr.top+"
+                "';events='+events);})();", -1,
+                error, sizeof(error)) != 0) {
+            if (error[0] == '\0') {
+                cstr_copy(error, sizeof(error),
+                        "nested scrollIntoView browser evaluation failed");
+            }
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "nested scrollIntoView contract failed: %s",
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1148 FAIL", error[0] != '\0' ? error :
+                "nested scrollIntoView contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1148 OK",
+            "Browser scrollIntoView reveals a target through the nearest"
+            " retained Core overflow ancestor while preserving page scroll.");
     return TRUE;
 }
 
@@ -94880,6 +95099,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1145: ok = test1145_browser_inline_client_rects_contract(); break;
         case 1146: ok = test1146_browser_layout_metrics_contract(); break;
         case 1147: ok = test1147_browser_element_scroll_contract(); break;
+        case 1148: ok = test1148_browser_nested_scroll_into_view_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

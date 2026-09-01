@@ -5527,6 +5527,25 @@ static int pcore_relation_layout_rect(dom_document *doc,
                 scroll_left : scroll_top;
         return 0;
     }
+    if (relation == PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_X ||
+            relation == PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_Y) {
+        if (pcore_box_overflow_axis_available(doc, (dom_node *) element,
+                relation == PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_X ? 0 : 1,
+                out_number) != 0) {
+            return 2;
+        }
+        return 0;
+    }
+    if (relation == PCORE_NODE_RELATION_LAYOUT_CLIENT_X ||
+            relation == PCORE_NODE_RELATION_LAYOUT_CLIENT_Y) {
+        if (pcore_box_layout_client_origin_for_node(doc,
+                (dom_node *) element, &x, &y) != 0) {
+            return 2;
+        }
+        *out_number = relation == PCORE_NODE_RELATION_LAYOUT_CLIENT_X ?
+                x : y;
+        return 0;
+    }
     if (relation == PCORE_NODE_RELATION_LAYOUT_FRAGMENT_COUNT) {
         count = pcore_box_layout_fragment_count(doc,
                 (dom_node *) element);
@@ -5763,6 +5782,10 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         break;
     case PCORE_NODE_RELATION_LAYOUT_SCROLL_LEFT:
     case PCORE_NODE_RELATION_LAYOUT_SCROLL_TOP:
+    case PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_X:
+    case PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_Y:
+    case PCORE_NODE_RELATION_LAYOUT_CLIENT_X:
+    case PCORE_NODE_RELATION_LAYOUT_CLIENT_Y:
         err = pcore_relation_layout_rect((dom_document *) hDoc, element,
                 relation, index, out_number);
         break;

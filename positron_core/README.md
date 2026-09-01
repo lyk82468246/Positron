@@ -105,9 +105,14 @@ padding 区域（本实现的滚动条覆盖在边缘，不从 client 尺寸再�
 replaced、常见 table/flex box 有效；inline/text、隐藏、无 box 或未完成 layout
 返回 unavailable。查询不会触发 relayout，也不会为没有 retained scrollbar 的元素伪造
 滚动范围。带有效 `id` 的支持 box 可以通过 `PCore_NodeOverflowScrollToById` 进行有界、
-立即生效的 `scrollLeft`/`scrollTop` 读写；关系 38/39 返回当前 CSS 像素偏移。该边界
-不包含 scroll chaining、`scrollIntoView()`、scroll-margin、平滑/惯性滚动或匿名目标的
-宿主指针同步。
+立即生效的 `scrollLeft`/`scrollTop` 读写；关系 38/39 返回当前 CSS 像素偏移。
+关系 40/41（`LAYOUT_SCROLLABLE_X/Y`）报告 retained scrollbar 是否拥有对应轴，
+关系 42/43（`LAYOUT_CLIENT_X/Y`）报告该 box 的 padding/client edge 文档坐标。
+这四个只读关系让 Browser 在不暴露 `struct box` 的情况下实现有限的嵌套
+`Element.scrollIntoView()`：它只遍历最多 64 层、且能被 DOM relation 寻址的祖先，
+选择最近的 retained overflow box，并在目标轴上对齐；找不到可用祖先时仍由 Browser
+回退到 page-level scroll。Core 仍不实现完整 scroll tree、scroll chaining、
+scroll-margin、平滑/惯性滚动或匿名目标的宿主指针归因。
 
 ### 单元素 `contenteditable`
 
@@ -177,7 +182,7 @@ paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
 - 字体、SVG、图像格式和高 DPI 结果受 WM6 GDI/依赖版本限制。
 - Core resource cache、DOM bridge、表单集合和深度/数量均有固定预算。
 - 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；`PCore_PaintDocumentWithModal` 可按宿主提供的活动 id 在已 layout 的 `<dialog open>` 之上组合实体色遮罩与对话框重绘。Core 不自行决定初始焦点、背景点击或跨窗口焦点策略；脚本生命周期、活动 modal id 和实际关闭仍由 `positron_browser.dll` 提供。
-- Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。Browser 的 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 只覆盖有 id 的、已布局支持 box，并通过本页的 Core API 接线。
+- Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。Browser 的 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 只覆盖有 id 的、已布局支持 box，并通过本页的 Core API 接线；`Element.scrollIntoView()` 另可使用关系 40–43 对最近的可寻址 retained overflow 祖先做一次有限 reveal。完整滚动树、scroll chaining、scroll-margin、平滑/惯性滚动和匿名目标仍不在范围内。
 - 精确 API、返回码、结构布局和借用期限以 [`positron_core.h`](positron_core.h) 为准。
 
 整体所有权见 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。

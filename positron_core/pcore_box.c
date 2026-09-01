@@ -12144,6 +12144,39 @@ static int pcore_layout_dimension_to_device(pcore_render *st, int value)
             INTTOFIX(value), INTTOFIX(st->geometry_dpi))));
 }
 
+int pcore_box_layout_client_origin_for_node(struct dom_document *doc,
+        struct dom_node *node, int *x, int *y)
+{
+    pcore_render *st;
+    struct box *box;
+    int ax;
+    int ay;
+
+    if (x != NULL) {
+        *x = 0;
+    }
+    if (y != NULL) {
+        *y = 0;
+    }
+    if (doc == NULL || node == NULL || x == NULL || y == NULL) {
+        return 1;
+    }
+    st = pcore_get_render(doc);
+    if (st == NULL || st->root_box == NULL) {
+        return 2;
+    }
+    box = pcore_box_for_any_node(st->root_box, node);
+    if (!pcore_box_metrics_supported(box)) {
+        return 2;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    *x = pcore_layout_dimension_to_css(st, ax);
+    *y = pcore_layout_dimension_to_css(st, ay);
+    return 0;
+}
+
 /* Return integer CSS-pixel offset/client/scroll dimensions from the current
  * retained layout.  This mirrors box_handle_scrollbars()'s extent arithmetic
  * while remaining valid before a paint pass has created scrollbar objects. */
@@ -12286,6 +12319,35 @@ int pcore_box_overflow_scroll_for_node(struct dom_document *doc,
         *scroll_y = pcore_layout_dimension_to_css(st,
                 scrollbar_get_offset(box->scroll_y));
     }
+    return 0;
+}
+
+int pcore_box_overflow_axis_available(struct dom_document *doc,
+        struct dom_node *node, int axis, int *out_available)
+{
+    pcore_render *st;
+    struct box *box;
+
+    if (out_available != NULL) {
+        *out_available = 0;
+    }
+    if (doc == NULL || node == NULL || out_available == NULL ||
+            (axis != 0 && axis != 1)) {
+        return 1;
+    }
+    st = pcore_get_render(doc);
+    if (st == NULL || st->root_box == NULL) {
+        return 2;
+    }
+    box = pcore_box_for_any_node(st->root_box, node);
+    if (box == NULL) {
+        return 2;
+    }
+    if (pcore_box_ensure_overflow_scrollbars(st, box) != 0) {
+        return 1;
+    }
+    *out_available = (axis == 0) ? (box->scroll_x != NULL) :
+            (box->scroll_y != NULL);
     return 0;
 }
 

@@ -113,6 +113,18 @@ int pcore_box_layout_metrics_for_node(struct dom_document *doc,
 int pcore_box_overflow_scroll_for_node(struct dom_document *doc,
         struct dom_node *node, int requested_x, int requested_y,
         int *scroll_x, int *scroll_y);
+/* Report whether a laid-out element owns a retained horizontal (axis 0) or
+ * vertical (axis 1) overflow scrollbar. The helper materializes the same
+ * lazy scrollbar pair used by the public scroll setter so relation reads do
+ * not depend on a prior paint. Returns 0 with *out_available set to 0/1,
+ * 2 when no usable box exists and 1 for invalid input. */
+int pcore_box_overflow_axis_available(struct dom_document *doc,
+        struct dom_node *node, int axis, int *out_available);
+/* Return the document-CSS-pixel origin of a laid-out box's padding/client
+ * edge. This is a read-only geometry primitive for the Browser scrollport
+ * bridge; it keeps border asymmetry and high-DPI conversion in Core. */
+int pcore_box_layout_client_origin_for_node(struct dom_document *doc,
+        struct dom_node *node, int *x, int *y);
 
 /* Overflow scrollbar helpers owned by pcore_box_inspect.c. */
 struct scrollbar;

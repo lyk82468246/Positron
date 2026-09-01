@@ -64,6 +64,8 @@ tests=13,20,27,999
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
 - 固定离线 compatibility corpus，把 contenteditable、dialog/form、same-document navigation 和失败回滚组合成可重复的完整流程；
+- 最新的滚动几何夹具还验证 Core/Browser 的布局尺寸、retained overflow offset，以及
+  `Element.scrollIntoView()` 对最近可寻址 overflow 祖先的一次有限 reveal（TEST1146–1148）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
