@@ -2062,26 +2062,35 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "PElement.prototype.click=function(){"
         "if(!__pcoreClick({id:this.__id})){throw new Error('click failed');}};"
         "function pRectZero(){return {x:0,y:0,top:0,left:0,right:0,bottom:0,width:0,height:0};}"
-        "function pRectNumber(id,relation){var value;"
+        "function pRectNumber(id,relation,index){var value;"
         "if(typeof g.__pcoreGetNodeRelation!=='function'){return null;}"
-        "try{value=g.__pcoreGetNodeRelation({id:id,relation:relation,index:0});}"
+        "try{value=g.__pcoreGetNodeRelation({id:id,relation:relation,index:index||0});}"
         "catch(rectError){return null;}"
         "return typeof value==='number'&&isFinite(value)?value:null;}"
-        "function pRectViewport(id){var x;var y;var w;var h;var sx;var sy;"
-        "x=pRectNumber(id,23);y=pRectNumber(id,24);"
-        "w=pRectNumber(id,25);h=pRectNumber(id,26);"
+        "function pRectViewport(id,index){var x;var y;var w;var h;var sx;var sy;"
+        "x=pRectNumber(id,28,index);y=pRectNumber(id,29,index);"
+        "w=pRectNumber(id,30,index);h=pRectNumber(id,31,index);"
         "if(x===null||y===null||w===null||h===null||w<0||h<0){return null;}"
         "sx=Number(g.scrollX);sy=Number(g.scrollY);if(!isFinite(sx)){sx=0;}"
         "if(!isFinite(sy)){sy=0;}x-=sx;y-=sy;return {x:x,y:y,top:y,left:x,right:x+w,"
         "bottom:y+h,width:w,height:h};}"
         "function pRectListItem(index){var n=Number(index);"
         "return n===n&&n>=0&&n===Math.floor(n)&&n<this.length?this[n]:null;}"
-        "function pRectList(rect){var list=[];if(rect!==null&&rect.width>0&&rect.height>0){"
-        "list.push(rect);}list.item=pRectListItem;return list;}"
-        "PElement.prototype.getBoundingClientRect=function(){var r=pRectViewport(this.__id);"
-        "return r===null?pRectZero():r;};"
-        "PElement.prototype.getClientRects=function(){return pRectList("
-        "pRectViewport(this.__id));};"
+        "function pRectList(id){var list=[];var count;var i;var rect;"
+        "count=pRectNumber(id,27,0);if(count===null||count<0){count=0;}"
+        "if(count>16){count=16;}for(i=0;i<count;i++){rect=pRectViewport(id,i);"
+        "if(rect!==null&&rect.width>0&&rect.height>0){list.push(rect);}}"
+        "list.item=pRectListItem;return list;}"
+        "function pRectUnion(list){var r;var i;var left;var top;var right;var bottom;"
+        "if(!list||list.length===0){return pRectZero();}r=list[0];left=r.left;top=r.top;"
+        "right=r.right;bottom=r.bottom;for(i=1;i<list.length;i++){r=list[i];"
+        "if(r.left<left){left=r.left;}if(r.top<top){top=r.top;}"
+        "if(r.right>right){right=r.right;}if(r.bottom>bottom){bottom=r.bottom;}}"
+        "return {x:left,y:top,top:top,left:left,right:right,bottom:bottom,"
+        "width:right-left,height:bottom-top};}"
+        "PElement.prototype.getBoundingClientRect=function(){return pRectUnion("
+        "pRectList(this.__id));};"
+        "PElement.prototype.getClientRects=function(){return pRectList(this.__id);};"
         "PElement.prototype.scrollIntoView=function(options){var r;var block='start';"
         "var inline='nearest';var v;var sx;var sy;var iw;var ih;var nx;var ny;"
         "if(options===false){block='end';}else if(options&&typeof options==='object'){"
@@ -6044,7 +6053,12 @@ static int p_browser_script_relation_is_count(unsigned int relation)
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_X ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_Y ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_WIDTH ||
-            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_HEIGHT;
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_HEIGHT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_COUNT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_X_AT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT;
 }
 
 static int p_browser_script_dom_get_relation(void *pw,

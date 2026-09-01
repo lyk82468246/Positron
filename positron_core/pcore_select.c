@@ -5451,14 +5451,17 @@ static int pcore_relation_child_node_field(dom_node *node,
 
 /* Return one component of the current border-box geometry. The relation
  * bridge intentionally exposes only integer CSS-pixel snapshots; it never
- * lends the internal box tree to a script host. */
+ * lends the internal box tree to a script host. Fragment components use the
+ * same callback and add an index-bounded visual line snapshot. */
 static int pcore_relation_layout_rect(dom_document *doc,
-        dom_element *element, unsigned int relation, int *out_number)
+        dom_element *element, unsigned int relation, unsigned int index,
+        int *out_number)
 {
     int x;
     int y;
     int width;
     int height;
+    int count;
     int ignored;
 
     if (out_number == NULL) {
@@ -5467,6 +5470,41 @@ static int pcore_relation_layout_rect(dom_document *doc,
     *out_number = 0;
     if (doc == NULL || element == NULL) {
         return 1;
+    }
+    if (relation == PCORE_NODE_RELATION_LAYOUT_FRAGMENT_COUNT) {
+        count = pcore_box_layout_fragment_count(doc,
+                (dom_node *) element);
+        if (count < 0) {
+            return 2;
+        }
+        *out_number = count;
+        return 0;
+    }
+    if (relation == PCORE_NODE_RELATION_LAYOUT_FRAGMENT_X_AT ||
+            relation == PCORE_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT ||
+            relation == PCORE_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT ||
+            relation == PCORE_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT) {
+        if (pcore_box_layout_fragment_at(doc, (dom_node *) element, index,
+                &x, &y, &width, &height) != 0) {
+            return 2;
+        }
+        switch (relation) {
+        case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_X_AT:
+            *out_number = x;
+            break;
+        case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT:
+            *out_number = y;
+            break;
+        case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT:
+            *out_number = width;
+            break;
+        case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT:
+            *out_number = height;
+            break;
+        default:
+            return 1;
+        }
+        return 0;
     }
     if (pcore_box_geometry_for_node(doc, (dom_node *) element, &x, &y,
             &width, &height) != 0 || width < 0 || height < 0) {
@@ -5648,7 +5686,15 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     case PCORE_NODE_RELATION_LAYOUT_RECT_WIDTH:
     case PCORE_NODE_RELATION_LAYOUT_RECT_HEIGHT:
         err = pcore_relation_layout_rect((dom_document *) hDoc, element,
-                relation, out_number);
+                relation, index, out_number);
+        break;
+    case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_COUNT:
+    case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_X_AT:
+    case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT:
+    case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT:
+    case PCORE_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT:
+        err = pcore_relation_layout_rect((dom_document *) hDoc, element,
+                relation, index, out_number);
         break;
     default:
         err = 1;

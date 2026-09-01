@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1144
+#define TEST_MAX_NUMBER 1145
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -36081,6 +36081,212 @@ static BOOL test1144_browser_client_rects_contract(void)
     show_info(L"TEST 1144 OK",
             "getClientRects exposes one bounded box, tracks page scroll,"
             " and returns an empty list for hidden elements.");
+    return TRUE;
+}
+
+/* TEST 1145 - inline elements expose bounded line fragments. */
+static BOOL test1145_browser_inline_client_rects_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='wrap'><span id='target'>alpha beta gamma delta "
+        "epsilon zeta eta theta</span></div>"
+        "<div id='block'>Block</div><div id='result'></div>"
+        "<script>window.__inlineClientRectsReady=true;</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:0;font:16px sans-serif}"
+        "#wrap{width:48px;line-height:20px}"
+        "#target{padding-left:2px;padding-right:2px;"
+        "border-left:1px solid #000;border-right:1px solid #000}"
+        "#block{width:80px;height:20px}";
+    static const char URL[] = "https://positron.local/inline-client-rects";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int count;
+    int index;
+    int x;
+    int y;
+    int width;
+    int height;
+    int previous_y;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    count = 0;
+    previous_y = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/inline-client-rects.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 180, 120) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "inline client rect fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        count = PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_FRAGMENT_COUNT, 0, NULL, 0,
+                NULL, &x) == 0 ? x : 0;
+        if (count < 2 || count > (int) PCORE_NODE_LAYOUT_FRAGMENT_MAX) {
+            _snprintf(error, sizeof(error) - 1,
+                    "inline Core fragment count=%d", count);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        for (index = 0; index < count; index++) {
+            if (PCore_NodeRelationById(document, "target",
+                    PCORE_NODE_RELATION_LAYOUT_FRAGMENT_X_AT,
+                    (unsigned int) index, NULL, 0, NULL, &x) != 0 ||
+                    PCore_NodeRelationById(document, "target",
+                    PCORE_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT,
+                    (unsigned int) index, NULL, 0, NULL, &y) != 0 ||
+                    PCore_NodeRelationById(document, "target",
+                    PCORE_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT,
+                    (unsigned int) index, NULL, 0, NULL, &width) != 0 ||
+                    PCore_NodeRelationById(document, "target",
+                    PCORE_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT,
+                    (unsigned int) index, NULL, 0, NULL, &height) != 0 ||
+                    width <= 0 || height <= 0 ||
+                    (index > 0 && y <= previous_y)) {
+                _snprintf(error, sizeof(error) - 1,
+                        "inline Core fragment[%d]=%d,%d,%d,%d",
+                        index, x, y, width, height);
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+            previous_y = y;
+        }
+        if (ok && PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_FRAGMENT_X_AT, count, NULL, 0,
+                NULL, &x) != 2) {
+            cstr_copy(error, sizeof(error),
+                    "inline Core fragment relation exceeded its count");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = PCore_DocumentWidth(document);
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 180;
+        g_view_h = 120;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (PBrowser_ScriptSessionNotifyResize(
+                g_browser_script_session.session, 180, 120, 1) !=
+                PSCRIPT_OK || pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('target');"
+                "var a=e.getClientRects();var b=e.getClientRects();"
+                "var r=e.getBoundingClientRect();var good=a.length>=2&&"
+                "a.length<=16&&a!==b&&a[0]!==b[0]&&a.item(0)===a[0]&&"
+                "a.item(-1)===null&&a.item(a.length)===null;var i;"
+                "var left;var top;var right;var bottom;"
+                "left=a[0].left;top=a[0].top;right=a[0].right;"
+                "bottom=a[0].bottom;"
+                "for(i=0;i<a.length;i++){good=good&&a[i].width>0&&"
+                "a[i].height>0&&(i===0||a[i].top>a[i-1].top)&&"
+                "a[i].left>=r.left&&a[i].right<=r.right&&"
+                "a[i].top>=r.top&&a[i].bottom<=r.bottom;"
+                "if(a[i].left<left){left=a[i].left;}"
+                "if(a[i].top<top){top=a[i].top;}"
+                "if(a[i].right>right){right=a[i].right;}"
+                "if(a[i].bottom>bottom){bottom=a[i].bottom;}}"
+                "return String(good&&r.left===left&&r.top===top&&"
+                "r.right===right&&r.bottom===bottom);})();", -1, error,
+                sizeof(error)) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "inline client rect script evaluation failed");
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                cstr_copy(error, sizeof(error),
+                        "inline client rect collection was not line-bounded");
+                ok = 0;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1145 FAIL", error[0] != '\0' ? error :
+                "inline getClientRects contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1145 OK",
+            "getClientRects exposes bounded inline line fragments and"
+            " getBoundingClientRect() returns their union.");
     return TRUE;
 }
 
@@ -94131,6 +94337,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1142: ok = test1142_browser_focus_scroll_contract(); break;
         case 1143: ok = test1143_browser_scroll_into_view_contract(); break;
         case 1144: ok = test1144_browser_client_rects_contract(); break;
+        case 1145: ok = test1145_browser_inline_client_rects_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

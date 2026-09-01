@@ -85,6 +85,16 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 
+布局完成后，`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_LAYOUT_RECT_*`
+关系返回元素 border-box union 的整数 CSS 像素。对应的
+`PCORE_NODE_RELATION_LAYOUT_FRAGMENT_COUNT` 与
+`PCORE_NODE_RELATION_LAYOUT_FRAGMENT_*_AT` 关系返回有界视觉片段：块级元素通常
+只有一个，inline flow 按实际行分割，最多
+`PCORE_NODE_LAYOUT_FRAGMENT_MAX`（16）个。索引越界、未布局、隐藏或没有可用
+box 时返回 unavailable；成功返回的数值只在当前 document/layout 有效。Browser
+可以直接用这些关系实现 `getClientRects()` 和其 union，但其他宿主不应依赖 NetSurf
+的内部 `struct box` 或复制第二份布局模型。
+
 ### 单元素 `contenteditable`
 
 `PCore_ContentEditableInfoById` 解析元素及其祖先的 `contenteditable` 枚举值：空值/`true` 进入普通纯文本模式，`plaintext-only` 进入显式纯文本模式，`false` 禁用，未知值继续向祖先继承。返回值同时报告有效模式和当前 `textContent` 的 UTF-8 字节数；查询不要求 style/layout，id 不存在或结构不完整时 fail closed。

@@ -89,7 +89,7 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - CSS 解析、cascade、媒体条件和整树 computed style；
 - 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
-- 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；同时为 ID-addressable 元素提供有界的 border-box 几何快照，供 Browser 组合 `getBoundingClientRect()` 和单矩形 `getClientRects()`；
+- 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；同时为 ID-addressable 元素提供有界的 border-box union 和 inline 行片段快照，供 Browser 组合 `getBoundingClientRect()` 与 `getClientRects()`；
 - 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
 - 表单值、约束验证、提交、reset 和 successful controls；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
@@ -145,11 +145,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   page-level scroll callback，计算有限的 block/inline 对齐；宿主仍负责 clamp、
   物理滚动、绘制和实际位置同步，不把 nested overflow 或 smooth scrolling 引入
   Browser ABI；
-- `Element.getBoundingClientRect()` 与 `Element.getClientRects()` 共用 Core 的单个
-  layout border-box relation。前者返回 viewport-relative 的矩形快照，后者返回每次
-  新建、`length` 为 0 或 1 的 array-like 集合，并在索引 `0` 与 `.item(0)` 暴露同一
-  个矩形；未布局、隐藏、无可用 box 或非正尺寸时为空。两者都不暴露 Core box 指针，
-  不提供 transforms、inline 多片段/Range、nested overflow 坐标或视觉像素精度。
+- `Element.getBoundingClientRect()` 与 `Element.getClientRects()` 共用 Core 的有界
+  layout fragment relation。块级元素通常返回一个片段，inline flow 按视觉行返回最多
+  16 个片段；前者计算这些片段的 viewport-relative union，后者每次新建 array-like
+  集合并按索引和 `.item()` 暴露正尺寸矩形。未布局、隐藏、无可用 box 或非正尺寸时
+  分别返回全零/空集合。两者都不暴露 Core box 指针，不提供 transforms、Range/Selection、
+  nested overflow 坐标、pinch zoom、平滑滚动或视觉像素精度。
 - timer、animation frame、microtask、idle、message 和页面生命周期队列，以及初次完成加载后的 pageshow、可见性切换的 visibilitychange/pagehide/pageshow、宿主驱动的 document.hasFocus/window focus/blur、显式的 document teardown 与队列清理入口；
 - `PBrowser_ScriptSessionRunTaskCheckpoint` 提供统一的有界脚本任务检查点：按调用方选择的阶段以 timer → animation frame → message → idle 的固定顺序运行，并在每个阶段后排空一次 microtask；Browser 拥有顺序和队列预算，宿主提供单调时钟、idle deadline、message limit 和消息循环接线；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。

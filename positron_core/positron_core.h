@@ -322,6 +322,11 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * element's bounded NamedNodeMap in parser order. The four LAYOUT_RECT_*
  * relations return the current laid-out border-box x/y/width/height in
  * document CSS pixels and are unavailable until a successful layout. The
+ * LAYOUT_FRAGMENT_COUNT and LAYOUT_FRAGMENT_*_AT relations expose a bounded
+ * visual fragment snapshot for the same element. A block-level element has
+ * one fragment; an inline element may have several line fragments. The
+ * fragment count is capped at PCORE_NODE_LAYOUT_FRAGMENT_MAX, and an indexed
+ * query returns the corresponding document-CSS-pixel border-box component.
  * return value is 0 for a relationship that was found, 2 for an
  * absent/unavailable relationship and 1 for invalid input or a DOM failure.
  * The tree and attribute map are read snapshots for the duration of the host
@@ -356,6 +361,12 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_LAYOUT_RECT_Y       24u
 #define PCORE_NODE_RELATION_LAYOUT_RECT_WIDTH   25u
 #define PCORE_NODE_RELATION_LAYOUT_RECT_HEIGHT  26u
+#define PCORE_NODE_RELATION_LAYOUT_FRAGMENT_COUNT 27u
+#define PCORE_NODE_RELATION_LAYOUT_FRAGMENT_X_AT   28u
+#define PCORE_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT   29u
+#define PCORE_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT 30u
+#define PCORE_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT 31u
+#define PCORE_NODE_LAYOUT_FRAGMENT_MAX            16u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

@@ -490,9 +490,10 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * wrappers without inventing a second DOM identity scheme. The four
  * LAYOUT_RECT_* relations are numeric document-CSS-pixel geometry components;
  * the Browser wrapper subtracts the current page scroll before exposing them
- * through Element.getBoundingClientRect() or the bounded, single-rectangle
- * Element.getClientRects() collection. The latter is a fresh array-like
- * snapshot with length 0 or 1; it does not expose the Core box tree. */
+ * through Element.getBoundingClientRect() or the bounded Element.getClientRects()
+ * collection. The latter is a fresh array-like snapshot with at most
+ * PBROWSER_SCRIPT_LAYOUT_FRAGMENT_MAX rectangles; it does not expose the Core
+ * box tree. */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -523,6 +524,12 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_Y       24u
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_WIDTH   25u
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_RECT_HEIGHT  26u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_COUNT 27u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_X_AT   28u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT   29u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT 30u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT 31u
+#define PBROWSER_SCRIPT_LAYOUT_FRAGMENT_MAX                 16u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

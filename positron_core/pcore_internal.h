@@ -92,6 +92,14 @@ struct box *pcore_box_construct_profile(struct dom_node *root, void *ctx,
  * document/element has no usable box. */
 int pcore_box_geometry_for_node(struct dom_document *doc,
         struct dom_node *node, int *x, int *y, int *w, int *h);
+/* Return the bounded visual fragment count or -1 when the document/element
+ * has no laid-out box. Indexed fragments are document CSS-pixel border boxes;
+ * the box tree remains private to the core DLL. */
+int pcore_box_layout_fragment_count(struct dom_document *doc,
+        struct dom_node *node);
+int pcore_box_layout_fragment_at(struct dom_document *doc,
+        struct dom_node *node, unsigned int index, int *x, int *y,
+        int *w, int *h);
 
 /* Overflow scrollbar helpers owned by pcore_box_inspect.c. */
 struct scrollbar;

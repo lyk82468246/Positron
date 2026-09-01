@@ -167,6 +167,13 @@ array-like 集合和矩形，`length`、索引 `0` 与 `.item(0)` 与同一元�
 更新，隐藏元素返回空集合。它不证明 transforms、inline 多片段/Range、nested
 overflow 或视觉像素精度。
 
+TEST1145 覆盖 Core 到 Browser 的 inline 多片段组合：窄容器中的带边框文本被分成
+多个按行排列的正尺寸矩形，Core 的 count/index relations 与 Browser 的
+`getClientRects()` 使用同一快照，`getBoundingClientRect()` 是这些片段的 union。
+夹具同时检查每次调用的新集合/新矩形身份、`.item()` 边界、索引顺序和旧的
+`getClientRects()` 单矩形行为不回退。它不证明 transforms、Range/Selection、
+nested overflow、pinch zoom、复杂字体度量或视觉像素精度。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

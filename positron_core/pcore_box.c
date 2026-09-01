@@ -11760,51 +11760,283 @@ static struct box *pcore_box_for_any_node(struct box *box, dom_node *node)
     return NULL;
 }
 
+/* Return one visual piece of an inline formatting run.  NetSurf keeps the
+ * opening inline box and its INLINE_END marker as siblings around the text
+ * pieces; the opening box owns the left decoration while the end marker owns
+ * the right decoration.  Keeping those edges separate avoids manufacturing a
+ * full border box at both ends of every wrapped line. */
+static int pcore_layout_piece_geometry(struct box *box, int *x, int *y,
+        int *w, int *h)
+{
+    int ax;
+    int ay;
+    int width;
+    int height;
+
+    if (box == NULL || x == NULL || y == NULL || w == NULL || h == NULL) {
+        return 1;
+    }
+    ax = 0;
+    ay = 0;
+    box_coords(box, &ax, &ay);
+    if (box->type == BOX_INLINE && box->inline_end != NULL) {
+        width = box->width > 0 ? box->width : 0;
+        height = box->height > 0 ? box->height : 0;
+        *x = ax - box->border[LEFT].width;
+        /* The layout pass already positions an inline opening box above its
+         * content by padding[TOP], so only the border needs subtracting here.
+         * This matches pcore_contenteditable_box_geometry's border-box edge. */
+        *y = ay - box->border[TOP].width;
+        *w = box->border[LEFT].width + box->padding[LEFT] + width;
+        *h = box->border[TOP].width + box->padding[TOP] + height +
+                box->padding[BOTTOM] + box->border[BOTTOM].width;
+    } else {
+        pcore_contenteditable_box_geometry(box, x, y, w, h);
+    }
+    if (*w < 0 || *h < 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static void pcore_layout_fragment_to_css(pcore_render *st, int *x, int *y,
+        int *w, int *h)
+{
+    if (st == NULL || x == NULL || y == NULL || w == NULL || h == NULL ||
+            !st->geometry_device_backed || st->geometry_dpi == 96) {
+        return;
+    }
+    *x = FIXTOINT(css_unit_device2css_px(INTTOFIX(*x),
+            INTTOFIX(st->geometry_dpi)));
+    *y = FIXTOINT(css_unit_device2css_px(INTTOFIX(*y),
+            INTTOFIX(st->geometry_dpi)));
+    *w = FIXTOINT(css_unit_device2css_px(INTTOFIX(*w),
+            INTTOFIX(st->geometry_dpi)));
+    *h = FIXTOINT(css_unit_device2css_px(INTTOFIX(*h),
+            INTTOFIX(st->geometry_dpi)));
+}
+
+static void pcore_layout_fragment_emit(int x, int y, int w, int h,
+        int wanted, int *emitted, int *found, int *out_x, int *out_y,
+        int *out_w, int *out_h)
+{
+    if (emitted == NULL || found == NULL || w <= 0 || h <= 0 ||
+            *emitted >= (int) PCORE_NODE_LAYOUT_FRAGMENT_MAX) {
+        return;
+    }
+    if (wanted >= 0 && *emitted == wanted) {
+        if (out_x != NULL) { *out_x = x; }
+        if (out_y != NULL) { *out_y = y; }
+        if (out_w != NULL) { *out_w = w; }
+        if (out_h != NULL) { *out_h = h; }
+        *found = 1;
+    }
+    *emitted += 1;
+}
+
+/* Scan the private box tree once and either count or return one bounded
+ * visual fragment.  `wanted` is -1 for count mode.  Inline descendants are
+ * deliberately consumed as part of the enclosing inline range; their own
+ * opening/end markers contribute decoration edges while text and replaced
+ * boxes contribute the measured line extent. */
+static int pcore_layout_fragment_scan(pcore_render *st, dom_node *node,
+        int wanted, int *out_count, int *out_found, int *out_x, int *out_y,
+        int *out_w, int *out_h)
+{
+    struct box *start;
+    struct box *end;
+    struct box *cursor;
+    struct box *boundary;
+    int emitted;
+    int found;
+    int have_line;
+    int line_left;
+    int line_right;
+    int line_top;
+    int line_bottom;
+    int piece_x;
+    int piece_y;
+    int piece_w;
+    int piece_h;
+
+    if (out_count != NULL) { *out_count = 0; }
+    if (out_found != NULL) { *out_found = 0; }
+    if (out_x != NULL) { *out_x = 0; }
+    if (out_y != NULL) { *out_y = 0; }
+    if (out_w != NULL) { *out_w = 0; }
+    if (out_h != NULL) { *out_h = 0; }
+    if (st == NULL || st->root_box == NULL || node == NULL) {
+        return 1;
+    }
+    start = pcore_box_for_any_node(st->root_box, node);
+    if (start == NULL) {
+        return 1;
+    }
+
+    /* Block/replaced boxes already represent one visual fragment. */
+    end = (start->type == BOX_INLINE) ? start->inline_end : NULL;
+    boundary = start;
+    if (end != NULL && start->parent != NULL && end->parent == start->parent) {
+        while (boundary != NULL && boundary != end) {
+            boundary = boundary->next;
+        }
+    } else {
+        boundary = NULL;
+    }
+    if (end == NULL || start->parent == NULL || boundary == NULL) {
+        if (pcore_layout_piece_geometry(start, &piece_x, &piece_y,
+                &piece_w, &piece_h) != 0 || piece_w <= 0 || piece_h <= 0) {
+            return 0;
+        }
+        pcore_layout_fragment_to_css(st, &piece_x, &piece_y, &piece_w,
+                &piece_h);
+        emitted = 0;
+        found = 0;
+        pcore_layout_fragment_emit(piece_x, piece_y, piece_w, piece_h,
+                wanted, &emitted, &found, out_x, out_y, out_w, out_h);
+        if (out_count != NULL) { *out_count = emitted; }
+        if (out_found != NULL) { *out_found = found; }
+        return 0;
+    }
+
+    emitted = 0;
+    found = 0;
+    have_line = 0;
+    line_left = 0;
+    line_right = 0;
+    line_top = 0;
+    line_bottom = 0;
+    for (cursor = start; cursor != NULL; cursor = cursor->next) {
+        if (pcore_layout_piece_geometry(cursor, &piece_x, &piece_y,
+                &piece_w, &piece_h) == 0) {
+            pcore_layout_fragment_to_css(st, &piece_x, &piece_y,
+                    &piece_w, &piece_h);
+            if (!have_line) {
+                line_left = piece_x;
+                line_right = piece_x + piece_w;
+                line_top = piece_y;
+                line_bottom = piece_y + piece_h;
+                have_line = 1;
+            } else if (piece_y >= line_bottom ||
+                    line_top >= piece_y + piece_h) {
+                pcore_layout_fragment_emit(line_left, line_top,
+                        line_right - line_left, line_bottom - line_top,
+                        wanted, &emitted, &found, out_x, out_y, out_w,
+                        out_h);
+                line_left = piece_x;
+                line_right = piece_x + piece_w;
+                line_top = piece_y;
+                line_bottom = piece_y + piece_h;
+            } else {
+                if (piece_x < line_left) { line_left = piece_x; }
+                if (piece_x + piece_w > line_right) {
+                    line_right = piece_x + piece_w;
+                }
+                if (piece_y < line_top) { line_top = piece_y; }
+                if (piece_y + piece_h > line_bottom) {
+                    line_bottom = piece_y + piece_h;
+                }
+            }
+        }
+        if (cursor == end) {
+            break;
+        }
+    }
+    if (have_line) {
+        pcore_layout_fragment_emit(line_left, line_top,
+                line_right - line_left, line_bottom - line_top, wanted,
+                &emitted, &found, out_x, out_y, out_w, out_h);
+    }
+    if (out_count != NULL) { *out_count = emitted; }
+    if (out_found != NULL) { *out_found = found; }
+    return 0;
+}
+
+int pcore_box_layout_fragment_count(struct dom_document *doc,
+        struct dom_node *node)
+{
+    pcore_render *st;
+    int count;
+
+    st = pcore_get_render((dom_document *) doc);
+    count = 0;
+    if (pcore_layout_fragment_scan(st, node, -1, &count, NULL, NULL,
+            NULL, NULL, NULL) != 0) {
+        return -1;
+    }
+    return count;
+}
+
+int pcore_box_layout_fragment_at(struct dom_document *doc,
+        struct dom_node *node, unsigned int index, int *x, int *y,
+        int *w, int *h)
+{
+    pcore_render *st;
+    int count;
+    int found;
+
+    if (x != NULL) { *x = 0; }
+    if (y != NULL) { *y = 0; }
+    if (w != NULL) { *w = 0; }
+    if (h != NULL) { *h = 0; }
+    if (index >= PCORE_NODE_LAYOUT_FRAGMENT_MAX) {
+        return 1;
+    }
+    st = pcore_get_render((dom_document *) doc);
+    count = 0;
+    found = 0;
+    if (pcore_layout_fragment_scan(st, node, (int) index, &count, &found,
+            x, y, w, h) != 0 || !found) {
+        return 1;
+    }
+    return 0;
+}
+
 /* Internal geometry bridge used by the script-facing relation table. Keep
  * the box lookup and border-box arithmetic in the layout owner so other DLLs
  * never need to know about NetSurf's struct box. */
 int pcore_box_geometry_for_node(struct dom_document *doc,
         struct dom_node *node, int *x, int *y, int *w, int *h)
 {
-    pcore_render *st;
-    struct box *box;
-    int raw_x;
-    int raw_y;
-    int raw_w;
-    int raw_h;
+    int count;
+    unsigned int index;
+    int fragment_x;
+    int fragment_y;
+    int fragment_w;
+    int fragment_h;
+    int right;
+    int bottom;
+    int union_x;
+    int union_y;
+    int union_right;
+    int union_bottom;
 
-    st = pcore_get_render((dom_document *) doc);
-    if (st == NULL || node == NULL) {
+    count = pcore_box_layout_fragment_count(doc, node);
+    if (count <= 0) {
         return 1;
     }
-    box = pcore_box_for_any_node(st->root_box, node);
-    if (box == NULL) {
-        return 1;
+    union_x = 0;
+    union_y = 0;
+    union_right = 0;
+    union_bottom = 0;
+    for (index = 0; index < (unsigned int) count; index++) {
+        if (pcore_box_layout_fragment_at(doc, node, index, &fragment_x,
+                &fragment_y, &fragment_w, &fragment_h) != 0) {
+            return 1;
+        }
+        right = fragment_x + fragment_w;
+        bottom = fragment_y + fragment_h;
+        if (index == 0 || fragment_x < union_x) { union_x = fragment_x; }
+        if (index == 0 || fragment_y < union_y) { union_y = fragment_y; }
+        if (index == 0 || right > union_right) { union_right = right; }
+        if (index == 0 || bottom > union_bottom) {
+            union_bottom = bottom;
+        }
     }
-    pcore_contenteditable_box_geometry(box, &raw_x, &raw_y, &raw_w,
-            &raw_h);
-    if (st->geometry_device_backed && st->geometry_dpi != 96) {
-        raw_x = FIXTOINT(css_unit_device2css_px(INTTOFIX(raw_x),
-                INTTOFIX(st->geometry_dpi)));
-        raw_y = FIXTOINT(css_unit_device2css_px(INTTOFIX(raw_y),
-                INTTOFIX(st->geometry_dpi)));
-        raw_w = FIXTOINT(css_unit_device2css_px(INTTOFIX(raw_w),
-                INTTOFIX(st->geometry_dpi)));
-        raw_h = FIXTOINT(css_unit_device2css_px(INTTOFIX(raw_h),
-                INTTOFIX(st->geometry_dpi)));
-    }
-    if (x != NULL) {
-        *x = raw_x;
-    }
-    if (y != NULL) {
-        *y = raw_y;
-    }
-    if (w != NULL) {
-        *w = raw_w;
-    }
-    if (h != NULL) {
-        *h = raw_h;
-    }
+    if (x != NULL) { *x = union_x; }
+    if (y != NULL) { *y = union_y; }
+    if (w != NULL) { *w = union_right - union_x; }
+    if (h != NULL) { *h = union_bottom - union_y; }
     return 0;
 }
 
