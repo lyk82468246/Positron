@@ -18,7 +18,7 @@
  * and local to browser sessions; independent PScript contexts remain at their
  * 512 KiB default. */
 #define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 150UL * 1024UL)
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 166UL * 1024UL)
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -4619,17 +4619,41 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "for(k=0;k<kids.length;k++){if(kids[k].__id===a[i].__id){ai=k;}if(kids[k].__id===b[j].__id){bi=k;}}"
         "return ai<bi?4:2;};"
         "function trim9(value){return String(value).replace(/^\\s+|\\s+$/g,'');}"
-        "function match9(owner,selector){var s=trim9(selector);var pos=0;var start;var end;var token;var body;var eq;var name;var value;"
-        "if(s==='*'){return true;}if(s.indexOf(' ')>=0||s.indexOf('>')>=0||s.indexOf('+')>=0||s.indexOf('~')>=0){return false;}"
+        "function matchSimple9(owner,selector){var s=trim9(selector);var pos=0;var start;var end;var token;var body;var eq;var name;var value;"
+        "if(!owner||s===''){return false;}if(s==='*'){return true;}"
         "start=0;while(pos<s.length&&s.charAt(pos)!=='#'&&s.charAt(pos)!=='.'&&s.charAt(pos)!=='['){pos++;}"
         "if(pos>0&&owner.localName!==s.substring(0,pos).toLowerCase()){return false;}"
         "while(pos<s.length){if(s.charAt(pos)==='#'){start=++pos;while(pos<s.length&&s.charAt(pos)!=='#'&&s.charAt(pos)!=='.'&&s.charAt(pos)!=='['){pos++;}"
-        "if(owner.id!==s.substring(start,pos)){return false;}}else if(s.charAt(pos)==='.'){start=++pos;while(pos<s.length&&s.charAt(pos)!=='#'&&s.charAt(pos)!=='.'&&s.charAt(pos)!=='['){pos++;}"
+        "if(start===pos||owner.id!==s.substring(start,pos)){return false;}}else if(s.charAt(pos)==='.'){start=++pos;while(pos<s.length&&s.charAt(pos)!=='#'&&s.charAt(pos)!=='.'&&s.charAt(pos)!=='['){pos++;}"
         "token=s.substring(start,pos);if(token===''||!owner.classList.contains(token)){return false;}}else if(s.charAt(pos)==='['){"
         "end=s.indexOf(']',pos+1);if(end<0){return false;}body=trim9(s.substring(pos+1,end));eq=body.indexOf('=');"
         "if(eq<0){if(body===''||!owner.hasAttribute(body)){return false;}}else{name=trim9(body.substring(0,eq));value=trim9(body.substring(eq+1));"
         "if((value.charAt(0)==='\\\"'&&value.charAt(value.length-1)==='\\\"')||(value.charAt(0)==='\\''&&value.charAt(value.length-1)==='\\'')){value=value.substring(1,value.length-1);}"
         "if(name===''||owner.getAttribute(name)!==value){return false;}}pos=end+1;}else{return false;}}return true;}"
+        "function selectorParse9(selector){var s=trim9(selector);var parts=[];var ops=[];var current='';var bracket=0;var quote='';var pending=0;var i;var c;var part;"
+        "if(s===''){return null;}for(i=0;i<s.length;i++){c=s.charAt(i);if(quote!==''){current+=c;if(c===quote){quote='';}continue;}"
+        "if(bracket>0){current+=c;if(c==='\\\"'||c==='\\''){quote=c;}else if(c===']'){bracket--;}continue;}"
+        "if(c==='['){if(pending&&parts.length>0&&ops.length===parts.length-1){ops.push(' ');}pending=0;bracket=1;current+=c;continue;}"
+        "if(c===' '||c==='\\t'||c==='\\r'||c==='\\n'||c==='\\f'){if(current!==''){part=trim9(current);if(part===''){return null;}parts.push(part);current='';if(parts.length>64){return null;}}"
+        "if(parts.length===0){return null;}pending=1;continue;}"
+        "if(c==='>'||c==='+'||c==='~'){if(current!==''){part=trim9(current);if(part===''){return null;}parts.push(part);current='';if(parts.length>64){return null;}}"
+        "if(parts.length===0||ops.length!==parts.length-1){return null;}ops.push(c);pending=0;continue;}"
+        "if(pending&&parts.length>0&&ops.length===parts.length-1){ops.push(' ');}pending=0;current+=c;}"
+        "if(current!==''){part=trim9(current);if(part===''){return null;}parts.push(part);if(parts.length>64){return null;}}"
+        "if(parts.length===0||parts.length!==ops.length+1){return null;}return {parts:parts,ops:ops};}"
+        "function matchSelector9(owner,selector){var parsed=selectorParse9(selector);var n=owner;var i;var op;var found;var depth;"
+        "if(parsed===null||!n||!matchSimple9(n,parsed.parts[parsed.parts.length-1])){return false;}"
+        "for(i=parsed.parts.length-2;i>=0;i--){op=parsed.ops[i];if(op==='>'){n=n.parentElement;"
+        "if(!n||!matchSimple9(n,parsed.parts[i])){return false;}}else if(op==='+'){n=n.previousElementSibling;"
+        "if(!n||!matchSimple9(n,parsed.parts[i])){return false;}}else if(op==='~'){n=n.previousElementSibling;found=false;depth=0;"
+        "while(n!==null&&depth<64){if(matchSimple9(n,parsed.parts[i])){found=true;break;}n=n.previousElementSibling;depth++;}"
+        "if(!found){return false;}}else{n=n.parentElement;found=false;depth=0;while(n!==null&&depth<64){"
+        "if(matchSimple9(n,parsed.parts[i])){found=true;break;}n=n.parentElement;depth++;}if(!found){return false;}}}return true;}"
+        "function match9(owner,selector){var s=String(selector);var start=0;var bracket=0;var quote='';var i;var c;var part;var matched=false;"
+        "for(i=0;i<s.length;i++){c=s.charAt(i);if(quote!==''){if(c===quote){quote='';}continue;}if(bracket>0){"
+        "if(c==='\\\"'||c==='\\''){quote=c;}else if(c===']'){bracket--;}continue;}if(c==='['){bracket=1;continue;}"
+        "if(c===','){part=trim9(s.substring(start,i));if(part===''){return false;}if(matchSelector9(owner,part)){matched=true;}start=i+1;}}"
+        "part=trim9(s.substring(start));return part!==''&&(matched||matchSelector9(owner,part));}"
         "PElement.prototype.matches=function(selector){return match9(this,selector);};"
         "PElement.prototype.closest=function(selector){var n=this;var i=0;while(n&&i<64){if(match9(n,selector)){return n;}n=n.parentElement;i++;}return null;};"
         "function query9(owner,selector,all,named){var out=[];var stack=[];var kids;var i;var n;"

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1151
+#define TEST_MAX_NUMBER 1152
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -37890,6 +37890,156 @@ static BOOL test1151_browser_autofocus_contract(void)
     show_info(L"TEST 1151 OK",
             "autofocus selects the first eligible laid-out target,"
             " applies focus after native creation, and remains id-safe.");
+    return TRUE;
+}
+
+/* TEST 1152 - bounded selector lists and relationship combinators. */
+static BOOL test1152_browser_selector_combinator_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='root' class='panel' data-scope='main'>"
+        "<section id='lane' class='lane'><button id='first' "
+        "class='action primary' data-kind='save,now'>First</button>"
+        "<button id='second' class='action' data-kind='cancel'>Second</button>"
+        "<span id='tail' class='tail'>Tail</span></section>"
+        "<p id='outside'>Outside</p></div>"
+        "<script>window.__selectorContractReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selectors";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector combinator script bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(
+                "(function(){var root=document.getElementById('root');"
+                "var lane=document.getElementById('lane');"
+                "var first=document.getElementById('first');"
+                "var second=document.getElementById('second');"
+                "var tail=document.getElementById('tail');var outside="
+                "document.getElementById('outside');var list;var all;"
+                "var direct=document.querySelector('div.panel > section.lane')===lane;"
+                "var desc=document.querySelector('div.panel section button.action')===first;"
+                "var adjacent=document.querySelector('button.action + button.action')===second;"
+                "var general=document.querySelector('button.action ~ span')===tail;"
+                "var chain=second.matches('div.panel > section.lane > button.action');"
+                "var attr=first.matches(\"button[data-kind='save,now']\");"
+                "var closest=tail.closest('div.panel > section.lane')===lane;"
+                "var closestList=tail.closest('section.lane, body')===lane;"
+                "var noMatch=tail.closest('article, aside')===null;"
+                "list=document.querySelectorAll('section > button.action, section > span');"
+                "all=document.querySelectorAll('button.action, span');"
+                "var listOk=list.length===3&&list[0]===first&&list[1]===second&&"
+                "list[2]===tail;var allOk=all.length===3&&all[0]===first&&"
+                "all[1]===second&&all[2]===tail;"
+                "var invalid=document.querySelector('div > > section')===null&&"
+                "document.querySelectorAll('div > > section').length===0&&"
+                "first.matches('div,')===false&&"
+                "first.matches('button.action,')===false&&"
+                "first.matches('missing, button.action')===true;"
+                "var outsideOk=document.querySelector('div.panel > p')===outside;"
+                "return direct&&desc&&adjacent&&general&&chain&&attr&&closest&&"
+                "closestList&&noMatch&&listOk&&allOk&&invalid&&outsideOk?'true':"
+                "('direct='+direct+';desc='+desc+';adjacent='+adjacent+"
+                "';general='+general+';chain='+chain+';attr='+attr+"
+                "';closest='+closest+';closestList='+closestList+"
+                "';noMatch='+noMatch+';list='+list.length+"
+                "';all='+all.length+';invalid='+invalid+"
+                "';outside='+outsideOk);})();", -1, error,
+                sizeof(error)) != 0) {
+            if (error[0] == '\0') {
+                cstr_copy(error, sizeof(error),
+                        "selector combinator browser evaluation failed");
+            }
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector combinator contract failed: %s",
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1152 FAIL", error[0] != '\0' ? error :
+                "selector combinator contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1152 OK",
+            "Selector lists and bounded descendant, child and sibling"
+            " combinators work for matches, closest and queries.");
     return TRUE;
 }
 
@@ -95947,6 +96097,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1149: ok = test1149_browser_all_scroll_into_view_contract(); break;
         case 1150: ok = test1150_browser_focus_nested_scroll_contract(); break;
         case 1151: ok = test1151_browser_autofocus_contract(); break;
+        case 1152: ok = test1152_browser_selector_combinator_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -218,6 +218,13 @@ Core focus node；有 id 目标复用 Browser focus bridge，无 id 目标通过
 Browser 的 id-addressable `document.activeElement` 按合同回退到 `body`。它不证明
 完整焦点算法、Browser 自主初始焦点、native HWND/焦点矩形、完整滚动树或 OEM 视觉。
 
+TEST1152 覆盖 Browser selector 子集的组合查询：顶层逗号列表、后代空格、子代 `>`、
+相邻兄弟 `+` 和一般兄弟 `~` 在 `matches()`、`closest()`、`querySelector()` 与
+`querySelectorAll()` 中保持一致，带逗号的属性值不会被误拆分，查询结果按文档顺序
+返回 snapshot。夹具还断言三段组合链、非法/空 selector 的 fail-closed 结果，以及
+`closest()` 的列表匹配。组合链和祖先/兄弟遍历各自有 64 步上限；伪类、伪元素、
+属性操作符、namespace、shadow DOM 和完整 CSS Selectors 语法仍不在范围内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

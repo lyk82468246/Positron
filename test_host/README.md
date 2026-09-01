@@ -67,7 +67,8 @@ tests=13,20,27,999
 - 最新的滚动几何夹具还验证 Core/Browser 的布局尺寸、retained overflow offset，以及
   `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
-  `autofocus` 目标发现和无 id focus 事件保持（TEST1146–1151）；
+  `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器
+  查询（TEST1146–1152）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -149,6 +150,12 @@ focus/focusin。这个时机和选择策略属于宿主应用生命周期，目�
 Core；Browser 不自行执行初始焦点，`document.activeElement` 对无 id 目标按既有合同
 回退到 `document.body`。TEST1151 是该组合的离线自动夹具，不能替代设备焦点矩形、
 native HWND、滚动条或 OEM 输入视觉验收。
+
+Browser 的 `matches()`、`closest()` 与 document selector 查询由
+`positron_browser.dll` 拥有。宿主只需提供已有的 DOM parent/child/sibling relation
+callback；TEST1152 用离线 fixture 断言顶层 selector 列表、后代/子代/兄弟组合器、
+属性值中的逗号和非法 selector 的 fail-closed 行为。宿主不得在测试 helper 中复制
+selector 解析或匹配规则。
 
 ### Native EDIT/SELECT/button/file
 

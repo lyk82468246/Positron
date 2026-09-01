@@ -290,7 +290,7 @@ Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把
 - form properties、control collection 与 selected state；
 - validity、custom validity、report validity 和 validation message；
 - `contenteditable` 有效状态、`isContentEditable`/`innerText` 的有界纯文本桥、`selectionStart`/`selectionEnd`/`selectionDirection` 和 `selectionchange`；
-- event listener、navigation 和平台默认动作。
+- event listener、navigation；selector 查询支持组合器。
 
 Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实文档状态。callback 参数和输出缓冲只在调用期间借用，不得缓存。
 
