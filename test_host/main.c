@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1152
+#define TEST_MAX_NUMBER 1153
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -38040,6 +38040,152 @@ static BOOL test1152_browser_selector_combinator_contract(void)
     show_info(L"TEST 1152 OK",
             "Selector lists and bounded descendant, child and sibling"
             " combinators work for matches, closest and queries.");
+    return TRUE;
+}
+
+/* TEST 1153 - bounded selector attribute operators. */
+static BOOL test1153_browser_selector_attribute_operator_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='root' data-scope='main-shell' data-bracket='a]b'>"
+        "<a id='start' class='link' href='/docs/start' "
+        "data-token='alpha beta'>Start</a>"
+        "<a id='end' class='link' href='/docs/end' "
+        "data-token='alpha gamma'>End</a>"
+        "<span id='middle' data-label='prefix-middle-suffix' "
+        "data-token='beta delta' lang='en-US'>Middle</span>"
+        "<p id='plain' data-token='alpha'>Plain</p></div>"
+        "<script>window.__selectorAttributeContractReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selector-attributes";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector attribute script bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(
+                "(function(){var root=document.getElementById('root');"
+                "var start=document.getElementById('start');"
+                "var end=document.getElementById('end');"
+                "var middle=document.getElementById('middle');"
+                "var plain=document.getElementById('plain');var list;"
+                "var prefix=document.querySelector('a[href^=\"/docs/\"]')===start;"
+                "var suffix=document.querySelector('a[href$=\"end\"]')===end;"
+                "var contains=document.querySelector('[data-label*=\"middle\"]')===middle;"
+                "var token=middle.matches('[data-token~=beta]');"
+                "var language=middle.matches('[lang|=en]');"
+                "var quoted=root.matches(\"*[data-bracket='a]b']\");"
+                "var chain=document.querySelector(\"div[data-scope^='main'] > a[href$='start']\")===start;"
+                "list=document.querySelectorAll(\"a[href^='/docs/'],span[data-token~='beta']\");"
+                "var listOk=list.length===3&&list[0]===start&&list[1]===end&&"
+                "list[2]===middle;var negatives=!plain.matches('[data-token~=beta]')&&"
+                "!start.matches('[href^=\"https\"]')&&!end.matches('[href$=\"startx\"]')&&"
+                "!middle.matches('[lang|=eng]')&&!middle.matches('[data-label*=none]');"
+                "var wildcard=document.querySelector(\"*[href$='end']\")===end;"
+                "var invalid=!start.matches(\"[href^='']\")&&"
+                "!start.matches(\"[href^='/docs]\")&&"
+                "!start.matches('*foo')&&"
+                "document.querySelectorAll(\"[data-token~='alpha' i]\").length===0;"
+                "return prefix&&suffix&&contains&&token&&language&&quoted&&chain&&"
+                "listOk&&negatives&&wildcard&&invalid?'true':"
+                "('prefix='+prefix+';suffix='+suffix+';contains='+contains+"
+                "';token='+token+';language='+language+';quoted='+quoted+"
+                "';chain='+chain+';list='+list.length+';negative='+negatives+"
+                "';wildcard='+wildcard+';invalid='+invalid);})();", -1, error,
+                sizeof(error)) != 0) {
+            if (error[0] == '\0') {
+                cstr_copy(error, sizeof(error),
+                        "selector attribute browser evaluation failed");
+            }
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector attribute contract failed: %s",
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1153 FAIL", error[0] != '\0' ? error :
+                "selector attribute contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1153 OK",
+            "Selector attribute operators support bounded prefix, suffix,"
+            " substring, token and language matching with fail-closed input.");
     return TRUE;
 }
 
@@ -96098,6 +96244,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1150: ok = test1150_browser_focus_nested_scroll_contract(); break;
         case 1151: ok = test1151_browser_autofocus_contract(); break;
         case 1152: ok = test1152_browser_selector_combinator_contract(); break;
+        case 1153: ok = test1153_browser_selector_attribute_operator_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

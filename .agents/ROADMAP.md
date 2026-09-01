@@ -77,19 +77,20 @@ next706 在页面提交后的宿主生命周期中补齐了有界 `autofocus`：
 有 id 目标复用 Browser bridge，无 id 目标仍能派发 focus/focusin。TEST1151 与定向设备
 门已通过。完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/Selection、
 pinch zoom、平滑/惯性滚动和匿名目标仍未实现，不能把有限 reveal 或宿主 autofocus
-事务误写成完整 Web 行为。next707 已在 Browser bootstrap 中补齐有界 selector 列表、
-后代/子代/相邻兄弟/一般兄弟组合器，并由 TEST1152 验证 `matches()`、`closest()`、
-`querySelector()` 和 `querySelectorAll()` 的一致性、属性值逗号保护和非法 selector
-的 fail-closed 行为；为容纳该 bootstrap，Browser 会话堆上限明确为 678 KiB。完整
-Selectors 语法、伪类/伪元素、属性操作符、namespace、shadow DOM 和完整滚动容器树等
-边界仍未实现。下一条纵向能力是 next708，仍须从源码、日志或截图固定一个新的可复现
-用户可见组合缺口；不能凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。
+事务误写成完整 Web 行为。next707–708 已在 Browser bootstrap 中形成一个有界 selector
+子集：顶层列表、后代/子代/相邻兄弟/一般兄弟组合器，以及 `=`, `^=`, `$=`, `*=`,
+`~=`, `|=` 属性匹配；TEST1152/1153 验证了查询一致性、列表顺序、通配标签、属性值
+引号/逗号/`]` 保护和非法输入的 fail-closed 行为。Browser 会话堆上限保持为 678 KiB。
+完整 Selectors 语法、伪类/伪元素、属性大小写修饰符、namespace、shadow DOM 和完整
+滚动容器树等边界仍未实现。下一条纵向能力是 next709，仍须从源码、日志或截图固定一
+个新的可复现用户可见组合缺口；不能凭空扩张 ABI，也不能把页面业务规则塞回
+`test_host`。
 
 优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
 next694、next695、next696、next697、next698、next699、next700、next701、next702、
-next703、next704、next705、next706 和 next707 的完成证据都包括定向自动断言、直接
-相邻回归和风险相称的设备门；下一批 next708 必须沿用同一完成标准。
+next703、next704、next705、next706、next707 和 next708 的完成证据都包括定向自动断言、
+直接相邻回归和风险相称的设备门；下一批 next709 必须沿用同一完成标准。
 视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、
 严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，
 也不要在没有实际缺口证据时提前选择下一能力方向。
@@ -103,8 +104,9 @@ next703、next704、next705、next706 和 next707 的完成证据都包括定向
 ### JavaScript 与 Web 组合
 
 - 依据 corpus 补齐高价值 DOM/Event/form/navigation 对象，不追求一次性完整 Web API。
-- 继续在 Browser 中按真实页面缺口扩展有界 selector/DOM 组合；当前只承诺简单
-  compound selector 的列表与四种关系组合器，完整 CSS Selectors 语法仍不作为默认目标。
+- 继续在 Browser 中按真实页面缺口扩展有界 selector/DOM 组合；当前承诺简单 compound
+  selector 的列表、四种关系组合器和六类属性操作符，完整 CSS Selectors 语法仍不作为
+  默认目标。
 - 明确 script session 与 document/window 生命周期，继续验证取消、过时导航和 queue 清理的组合顺序。
 - 为 timer、microtask、animation frame、message 和 lifecycle 的组合顺序增加真实页面断言。
 - 保持浏览器 JavaScript 显式 opt-in，并持续验证关闭时不抓取或执行页面脚本。

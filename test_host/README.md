@@ -67,8 +67,8 @@ tests=13,20,27,999
 - 最新的滚动几何夹具还验证 Core/Browser 的布局尺寸、retained overflow offset，以及
   `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
-  `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器
-  查询（TEST1146–1152）；
+  `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器和
+  属性操作符查询（TEST1146–1153）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。

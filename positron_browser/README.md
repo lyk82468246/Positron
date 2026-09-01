@@ -290,9 +290,15 @@ Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把
 - form properties、control collection 与 selected state；
 - validity、custom validity、report validity 和 validation message；
 - `contenteditable` 有效状态、`isContentEditable`/`innerText` 的有界纯文本桥、`selectionStart`/`selectionEnd`/`selectionDirection` 和 `selectionchange`；
-- event listener、navigation；selector 查询支持组合器。
+- event listener、navigation；selector 查询支持顶层列表、后代/子代/兄弟组合器和有界
+  属性操作符。
 
 Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实文档状态。callback 参数和输出缓冲只在调用期间借用，不得缓存。
+
+selector 方法支持简单 compound selector、顶层列表、空格/`>`/`+`/`~` 组合器和六类
+属性操作符：`=`, `^=`, `$=`, `*=`, `~=`, `|=`（精确、前缀、后缀、子串、分词、语言
+前缀）。组合及祖先/兄弟遍历最多 64 步；引号内的空格、逗号和 `]` 受保护。伪类、
+伪元素、属性大小写修饰符、namespace、shadow DOM 和完整 CSS Selectors 语法仍不支持。
 
 ### `dialog` 生命周期
 
@@ -636,7 +642,7 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   smooth/inertia、transforms、pinch zoom 和匿名目标仍不在范围内；宿主仍负责页面 extent、
   clamp、物理滚动和 `PBrowser_ScriptSessionNotifyScroll`/
   `PBrowser_ScriptSessionNotifyElementScroll`。
-- `dialog` 只有上述有界脚本生命周期、活动 modal id 查询、宿主驱动的 Escape→`requestClose()`、Core 组合的 `method="dialog"` 默认动作、Core 的实体色 modal paint 和参考宿主的有界 backdrop 点击策略；Browser 不自动接管平台 native 控件焦点。脚本层的顶层窗口 focus/blur 与 `document.hasFocus()` 由宿主通过显式通知维护，但完整初始焦点、焦点陷阱、跨窗口焦点策略和 CSS `::backdrop`、透明合成、多个 modal、跨文档 modal 生命周期仍未实现。`contenteditable` 已提供单元素纯文本状态/mutation、事件、有界 selectionStart/End/Direction、去重后的 selectionchange 接线和参考宿主的无修饰鼠标拖选、键盘扩展及中断收尾通知；Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode 和完整 IME 仍未实现。
+- `dialog` 与 `contenteditable` 都是有界的脚本/宿主组合；完整 CSS `::backdrop`、多窗口 modal、Range/Selection、富文本、designMode 和完整 IME 仍不在范围内，详细事务边界见上文对应章节。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
